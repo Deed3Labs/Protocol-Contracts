@@ -137,7 +137,8 @@ const ready = new Set<string>();
 
 export const needsData = (route: string) => LIVE && SERVED.has(route) && !ready.has(route);
 
-const replace = (arr, rows) => arr.splice(0, arr.length, ...rows);
+// what the API doesn't send yet (a figure nothing has written: no seed since Phase 9) empties the list
+const replace = (arr, rows) => arr.splice(0, arr.length, ...(rows ?? []));
 /** An object the sections import, its keys replaced in place. */
 const assign = (obj, value) => {
   for (const k of Object.keys(obj)) delete obj[k];
@@ -329,13 +330,18 @@ const apply = {
   },
 };
 
-export async function loadSection(route: string, opts: { reveal?: boolean } = {}) {
-  const d = await api('GET', `/sections/${route}${opts.reveal ? '?reveal=1' : ''}`);
+/** A section's answer from the API, written into the datasets the page draws from. */
+export function applySection(route: string, d) {
   apply[route](d);
   setFigures(d.figures);
+  vars.asOf = d.asOf;
+}
+
+export async function loadSection(route: string, opts: { reveal?: boolean } = {}) {
+  const d = await api('GET', `/sections/${route}${opts.reveal ? '?reveal=1' : ''}`);
+  applySection(route, d);
   // Contracts' signers and their queue come from the Ops Safe, when one is configured
   if (route === 'contracts') await import('./safe').then((m) => m.loadSafe().then(m.loadSafeQueue)).catch(() => undefined);
-  vars.asOf = d.asOf;
   ready.add(route);
   // the feeds' health rides along with every section (Phase 6a)
   void import('./feeds').then((m) => m.loadFeeds()).catch(() => undefined);

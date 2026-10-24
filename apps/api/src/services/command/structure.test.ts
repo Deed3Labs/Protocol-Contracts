@@ -1,6 +1,9 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
+import { TOTALS } from './levels.js';
+import type { ChainReader } from './onchain.js';
+import { moneySection } from './sections.js';
 import { structureCommand } from './structure.js';
 
 /* Phase 9: the co-op's structure is there with no seed, and only its shape: no people, no dates. */
@@ -13,7 +16,7 @@ beforeAll(async () => {
 describe('the structure', () => {
   test('writes the contracts, entities, boards and who decides, once', async () => {
     const first = await structureCommand(db);
-    expect(first).toEqual(['31 contracts', '9 entities', '3 boards']);
+    expect(first).toEqual(['31 contracts', '6 accounts', '9 entities', '3 boards']);
     // a second start leaves it alone
     expect(await structureCommand(db)).toEqual([]);
   });
@@ -44,9 +47,28 @@ describe('the structure', () => {
     expect(rows[0]).toEqual({ n: 31, notes: 0 });
     const { rows: links } = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM command.contract_links');
     expect(links[0].n).toBeGreaterThan(0);
-    for (const t of ['agreements', 'contract_changes', 'contract_releases', 'signers', 'filings', 'board_people', 'resolutions', 'member_votes']) {
+    for (const t of ['agreements', 'contract_changes', 'contract_releases', 'signers', 'filings', 'board_people', 'resolutions', 'member_votes', 'account_snapshots', 'account_entries', 'figures']) {
       const { rows: r } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM command.${t}`);
       expect(r[0].n).toBe(0);
+    }
+  });
+});
+
+describe('Money with only the structure', () => {
+  test('answers live with zeros, never a crash or a NaN', async () => {
+    const env = process.env.PROVIDER_MONEY;
+    process.env.PROVIDER_MONEY = 'live';
+    try {
+      const chain: ChainReader = {
+        read: async (calls) => calls.map((c) => (c.fn === 'asset' ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e' : c.fn === 'decimals' ? 6n : 0n)),
+      };
+      const m: any = await moneySection(db, { level: TOTALS, reveal: false, now: new Date(), chain });
+      expect(m.ACCTS.map((a: any[]) => a[0])).toEqual(['sav', 'yld', 'pay', 'ap', 'ops', 'coop']);
+      expect(m.ACCTS.every((a: any[]) => a[5] === 0)).toBe(true);
+      for (const [k, v] of Object.entries(m.M)) expect([k, Number.isFinite(v)]).toEqual([k, true]);
+      expect([m.AP_BAL, m.UNSEC, m.COOP_W, m.FLOWS]).toEqual([[0], [0], [], []]);
+    } finally {
+      env == null ? delete process.env.PROVIDER_MONEY : (process.env.PROVIDER_MONEY = env);
     }
   });
 });

@@ -966,7 +966,7 @@ export function nReserves() {
       <div className="ablock">
         <span className="lbl">Added each week · fee share</span>
         {columns(
-          NW.slice(1).map((t, i) => [t, apW[i]]),
+          NW.slice(1).map((t, i) => [t, apW[i] ?? 0]),
           {
             h: 104,
             hi: apW.length - 1,
@@ -1061,7 +1061,7 @@ export function nReserves() {
     <div className="ablock">
       <span className="lbl">Added each week</span>
       {columns(
-        NW.slice(1).map((t, i) => [t, COOP_W[i]]),
+        NW.slice(1).map((t, i) => [t, COOP_W[i] ?? 0]),
         {
           h: 104,
           hi: 5,

@@ -204,7 +204,7 @@ export function render() {
     loadSection(r).then(
       () => S.route === r && render(),
       (e) => {
-        html($('#main'), stateError());
+        html($('#main'), stateError(e));
         toast(e.message);
       },
     );

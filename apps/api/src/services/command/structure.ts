@@ -1,11 +1,12 @@
 import contractsFx from '@clear/command-types/src/fixtures/contracts.json';
 import governanceFx from '@clear/command-types/src/fixtures/governance.json';
+import moneyFx from '@clear/command-types/src/fixtures/money.json';
 import type { Db, Queryable } from '../../db/db.js';
 
 /*
  * The co-op's structure, which is real before anything has happened (Phase 9): the protocol's
- * contracts and how they connect, the entities and who owns them, each board's seats, and who
- * decides what. Written on every start into the tables that are empty, seed or not; never over
+ * contracts and how they connect, the entities and who owns them, each board's seats, who decides
+ * what, and the accounts Money keeps (their balances are the chain's and the bank's, never stored here). Written on every start into the tables that are empty, seed or not; never over
  * anything there.
  *
  * Only the shape: no people, no dates, no events. Every entity starts not formed (planned) and every
@@ -36,6 +37,13 @@ export async function structureCommand(db: Db): Promise<string[]> {
         await tx.query('INSERT INTO command.contract_links (position, from_id, to_id, kind, verb, label, label_side) VALUES ($1, $2, $3, $4, $5, $6, $7)', [i, from, to, kind, verb, label, side ?? null]);
       }
       done.push(`${C.contracts.length} contracts`);
+    }
+
+    if (await empty(tx, 'command.accounts')) {
+      for (const [i, a] of moneyFx.accounts.entries()) {
+        await tx.query('INSERT INTO command.accounts (id, position, name, purpose, owner_group, source, swatch) VALUES ($1, $2, $3, $4, $5, $6, $7)', [a.id, i, a.name, a.why, a.group, a.source, a.swatch]);
+      }
+      done.push(`${moneyFx.accounts.length} accounts`);
     }
 
     if (await empty(tx, 'command.entities')) {
