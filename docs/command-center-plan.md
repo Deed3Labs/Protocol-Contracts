@@ -219,7 +219,7 @@ more step saves each section's own actions (a scan, a stage move, a document upl
 - Money: `yield_position` (per depositor: shares, assets, pledged, first deposit), and the yield
   pool's sample data in the seed: 18 depositors, daily balances since 15 Oct, the 4 Nov loan.
 
-### Phase 4: two-person rule and the Safe (in progress)
+### Phase 4: two-person rule and the Safe (built: 4a #753, 4b #754, 4c; the handover waits on Kai)
 
 Kai, 2026-10-23: Kai creates the Ops Safe (2 of 3 on Base Sepolia, the signers' own wallets) in
 Safe{Wallet}; Command is built address-agnostic and tested against a throwaway Safe on a fork until
