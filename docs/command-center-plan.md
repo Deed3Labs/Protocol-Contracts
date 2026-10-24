@@ -294,7 +294,9 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
 - **7b · Members**, with the waitlist and batches: the site's join form into the waitlist, batches
   that send real invites once approved (codes tracked, not gated), and Members from the member app.
   Built: `services/command/waitlist.ts`, `memberSource.ts`.
-- **7c · Site visits and forms**, with the site's PR. **7d · The map's style** in env.
+- **7c · Site visits and forms.** Plausible on useclear.org (clearpath-website #95) read back through
+  its Stats API as the `site` feed; forms from the join form. Built: `services/command/siteFeed.ts`.
+- **7d · The map's style** in env.
 
 ### Phase 8: launch
 

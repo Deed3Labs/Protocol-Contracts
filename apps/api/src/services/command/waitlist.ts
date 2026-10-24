@@ -66,8 +66,8 @@ export async function join(db: Queryable, j: Join, now: Date): Promise<void> {
   const [first, ...rest] = j.name.trim().split(/\s+/);
   const source = j.poster ? 'Poster' : 'Website';
   await db.query(
-    `INSERT INTO command.form_submissions (first_name, last_name, email, form, city, source, received_at, status, zip, details)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'New', $8, $9)`,
+    `INSERT INTO command.form_submissions (first_name, last_name, email, form, city, source, received_at, status, zip, details, live)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'New', $8, $9, true)`,
     [first ?? '', rest.join(' '), email, FORM[j.as], city, source, now, zip || null, j.details && Object.keys(j.details).length ? JSON.stringify(j.details) : null],
   );
   if (j.as !== 'member') return;

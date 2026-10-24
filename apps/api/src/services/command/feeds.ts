@@ -10,8 +10,8 @@ import type { Queryable } from '../../db/db.js';
  * Stripe key, an unrestricted shop key) doesn't run: its row says it's off and why.
  */
 
-export type FeedId = 'plaid' | 'bridge' | 'lithic' | 'stripe' | 'shop' | 'catalog';
-export const FEED_IDS: FeedId[] = ['plaid', 'bridge', 'lithic', 'stripe', 'shop', 'catalog'];
+export type FeedId = 'plaid' | 'bridge' | 'lithic' | 'stripe' | 'shop' | 'catalog' | 'site';
+export const FEED_IDS: FeedId[] = ['plaid', 'bridge', 'lithic', 'stripe', 'shop', 'catalog', 'site'];
 export const FEED_NAMES: Record<FeedId | 'protocol', string> = {
   plaid: 'Plaid',
   bridge: 'Bridge',
@@ -19,6 +19,7 @@ export const FEED_NAMES: Record<FeedId | 'protocol', string> = {
   stripe: 'Stripe',
   shop: 'Shop orders',
   catalog: 'Shop catalog',
+  site: 'Site visits',
   protocol: 'Clear protocol',
 };
 
