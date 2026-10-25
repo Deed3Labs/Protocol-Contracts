@@ -70,7 +70,8 @@ const real = (list) => {
 const noneYet = <span className="small quiet">None yet.</span>;
 /* ── Home ────────────────────────────────────────────────── */
 export function home() {
-  const pv = S.preview;
+  // the preview states are the prototype's, for designing: live, Home is always itself
+  const pv = LIVE ? 'live' : S.preview;
   const shown = pv === 'clear' ? 0 : S.waiting.length;
   const words = ['', 'One thing needs', 'Two things need', 'Three things need', 'Four things need'];
   const title =
@@ -104,7 +105,9 @@ export function home() {
     title,
     tools,
   );
-  const proto = (
+  const proto = LIVE ? (
+    ''
+  ) : (
     <div className="proto">
       <span className="lbl">Prototype · preview state</span>
       {segHtml(

@@ -1460,7 +1460,7 @@ button.gev:hover b{text-decoration:underline;text-underline-offset:3px}
 button.wh-r:hover .wh-k b,.wh-r.sel .wh-k b{text-decoration:underline;text-underline-offset:3px}
 .wh-sw{width:12px;height:12px}
 .wh-k{display:flex;flex-direction:column;gap:2px;min-width:0} .wh-k > *{white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .wh-k b{font-weight:600;font-size:14px}
-.wh-src{display:flex;align-items:center;gap:8px;font:400 11px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.04em;color:var(--fg-70);white-space:nowrap} .wh-src .dot{color:var(--settled);width:6px;height:6px} .wh-src.late .dot{color:var(--underway)} .wh-src.late{color:var(--underway)}
+.wh-src{display:flex;align-items:center;gap:8px;font:400 11px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.04em;color:var(--fg-70);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis} .wh-src .dot{color:var(--settled);width:6px;height:6px} .wh-src.late .dot{color:var(--underway)} .wh-src.late{color:var(--underway)}
 .wh-sp{width:100%;height:28px} .wh-sp path{fill:none;stroke:var(--fg-70);stroke-width:1.5;vector-effect:non-scaling-stroke}
 .wh-ch{text-align:right;color:var(--fg-70)} .wh-ch.up{color:var(--settled)}
 .wh-v{text-align:right;font-weight:600;font-size:15px}
