@@ -2,6 +2,7 @@
 import { CAN, FEED_FROM, INVITES, NEED, PEOPLE_T, ROLES, RULES2, S, SG, SIGNIN, UPD_FROM, VSEC, WAIT2, W_ICON, W_VIZ, vars } from '../sections/data';
 import { go, render, setWho, toast } from '../sections/shell';
 import { hideLogin, showLogin, sgnDraw, sgnIn, sgnStep } from '../sections/signin';
+import { ANSWERS } from './env';
 import { ApiError, api, city, deviceKey, forgetSession, keepSession, sessionId, whenSessionEnds } from './api';
 import { privy, privyReady } from './privy';
 import { forgetSections } from './sections';
@@ -171,8 +172,9 @@ export async function liveBoot(start) {
     toast('Your session ended. Sign in again.');
   });
   showLogin();
-  await privyReady();
-  if (sessionId() && privy.authenticated) {
+  // dev-only saved answers (live/answers.ts): signed in at once, no Privy
+  if (!ANSWERS) await privyReady();
+  if (ANSWERS || (sessionId() && privy.authenticated)) {
     try {
       const { me } = await api('GET', '/me');
       applyMe(me);

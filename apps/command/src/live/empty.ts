@@ -22,7 +22,7 @@ const KEEP = new Set([
   'CM_ST', 'CK', 'CM_K', 'CM_GEO', 'ML_STYLE', 'KST', 'LOGT', 'NEXT_ACT', 'FS', 'OUT', 'NS', 'NW', 'GROUPS', 'CS', 'NOW', 'YEAR', 'AST',
   'AGR_T', 'LAYERS', 'RK', 'VS', 'EST', 'FST', 'FSHORT', 'SEATC', 'AK', 'RPX', 'RPN', 'RPA', 'BODIES', 'MBODY', 'RS', 'DT', 'DONE1', 'DSTAT',
   'COVER_K', 'CV', 'AREAS', 'RESULT', 'TS', 'SECS', 'LV', 'ROLES', 'SS', 'SW', 'SIZES', 'LINES', 'SHELF', 'RETURN_WHY', 'OST', 'PAY',
-  'PRE_ST', 'GLY', 'VSEC', 'V_OK', 'V_PERSONAL_TABS', 'SG', 'KEY', 'SHOP_COSTS', 'SHIP_NET', 'gpWeeks', 'CHAIN', 'REDEEMED_PAID',
+  'PRE_ST', 'GLY', 'VSEC', 'V_OK', 'V_PERSONAL_TABS', 'SG', 'KEY', 'SHOP_COSTS', 'SHIP_NET', 'gpWeeks', 'REDEEMED_PAID',
   // the co-op's structure, as the API writes it (services/command/structure.ts): the protocol map and the entity tree
   'CTR', 'REL', 'ENT', 'PARENT', 'OWN', 'UNDER', 'ENTF', 'GBOARDS', 'MATTERS',
 ]);
@@ -42,7 +42,8 @@ function emptyArray(a: unknown[]): unknown[] {
   if (a.length && a.every((x) => x == null || ['string', 'number', 'boolean'].includes(typeof x))) return a.map(blank);
   return [];
 }
-function zero(o: Record<string, unknown>): Record<string, unknown> {
+/** An object's fields kept, each blank: 0, '', an empty list. */
+export function zero(o: Record<string, unknown>): Record<string, unknown> {
   for (const k of Object.keys(o)) o[k] = blank(o[k]);
   return o;
 }
@@ -63,6 +64,8 @@ export function emptyData(): string[] {
   }
   // UI state that carries data: Home's "Needs you" list starts as the prototype's
   DATA.S.waiting.splice(0);
+  // the shop's costs are rates, kept; how many orders it shipped is data
+  DATA.SHOP_COSTS.shipped4w = 0;
   // the structure keeps its shape only: every entity not formed, every seat empty, no dated notes
   for (const e of DATA.ENT) e[3] = 'planned';
   const facts = DATA.ENTF as Record<string, { tax?: string }>;

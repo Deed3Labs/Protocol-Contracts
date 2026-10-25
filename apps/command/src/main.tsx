@@ -2,7 +2,7 @@ import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import './styles/command.css';
 import { App } from './App';
-import { LIVE, REAL } from './live/env';
+import { ANSWERS, LIVE, REAL } from './live/env';
 import { registerServiceWorker } from './live/pwa';
 
 // The shell goes in first and synchronously: the sections' start-up code reads it, as the
@@ -11,7 +11,7 @@ const root = createRoot(document.getElementById('app')!);
 flushSync(() => root.render(<App />));
 
 // Privy has a root of its own, so its state never redraws the shell. The preview doesn't load it.
-if (LIVE) {
+if (LIVE && !ANSWERS) {
   import('./live/privy').then(({ PrivyBridge }) => {
     const el = document.createElement('div');
     el.id = 'privyRoot';

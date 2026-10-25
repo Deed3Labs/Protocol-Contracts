@@ -9,6 +9,7 @@ import { variantParts } from './feedSources.js';
 import type { MemberSource } from './memberSource.js';
 import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
 import { codeChanges, codeConfig } from './github.js';
+import { safeConfig } from './safe.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -1054,6 +1055,17 @@ const msOr = (d: Date | null, empty: number | null = null) => (d == null ? empty
  * flight and done, and the Safe's signers. Nothing here is personal: parties are companies and
  * shops, signers are the co-op's officers.
  */
+/**
+ * Live, the header Contracts draws: the chain, the newest block the indexer has read, and the Ops Safe
+ * if one is set (its threshold is read from the Safe itself, in the app). There's no timelock: a change
+ * goes live once it's signed.
+ */
+async function chainHeader(db: Queryable): Promise<{ network: string; block: number; safe: string; threshold: number; delayHours: number }> {
+  const { rows } = await db.query<{ chain_id: number; indexed_to: string }>('SELECT chain_id, indexed_to FROM command.chain_cursor ORDER BY chain_id LIMIT 1');
+  const chainId = rows[0]?.chain_id ?? 84532;
+  return { network: chainId === 8453 ? 'Base' : 'Base Sepolia', block: Number(rows[0]?.indexed_to ?? 0), safe: safeConfig() ? 'Ops Safe' : 'No Ops Safe yet', threshold: 0, delayHours: 0 };
+}
+
 export async function contractsSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('contracts');
   // live, each contract's address, version and releases are the chain's (Phase 5b); the map and the changes are still the tables'
@@ -1105,7 +1117,7 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     AGR, CTR, CTR_NOTE, REL, RELEASES, PENDING,
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),
-    NOW, figures: await figures(db, 'contracts'), asOf: asOfFor(provider, o.now),
+    NOW, figures: { ...(await figures(db, 'contracts')), ...(provider === 'live' ? { 'contracts.chain': await chainHeader(db) } : {}) }, asOf: asOfFor(provider, o.now),
   };
 }
 

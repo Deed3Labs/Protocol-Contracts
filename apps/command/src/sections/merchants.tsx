@@ -843,7 +843,7 @@ export function xOverview() {
     's-7',
     'Cleared by shop',
     'October so far',
-    top.length ? figHtml(pct(top[0].oct, oct), `of October’s volume is ${top[0].name}, a financing shop`) : '',
+    top.length && oct ? figHtml(pct(top[0].oct, oct), `of October’s volume is ${top[0].name}, a financing shop`) : '',
     <>
       <div className="hbars">
         {top.length ? '' : NONE()}
@@ -899,7 +899,7 @@ export function xOverview() {
           <span className="capr-k">
             <b>{m.name}</b>
             <span className="small quiet">
-              {money(m.cap)}
+              {m.cap == null ? '—' : money(m.cap)}
               {' cap · '}
               {pz(m.lost, m.orig)}
               {' loss on '}
@@ -1830,7 +1830,7 @@ export function kcNew() {
       next: 'First visit',
       due: TODAY + DAY,
       note: '',
-      owner: me && me.can ? me.first : 'Marcus',
+      owner: me && me.can ? me.first : REAL ? '' : 'Marcus',
       stage: 'prospect',
       source: 'Walk-in',
       contact: {
@@ -2115,7 +2115,7 @@ export function xPartners() {
                   </td>
                   <td>{m.tx ? m.id === 'uptown' ? <span className="quiet">Free, 7/20</span> : m.fee.toFixed(1) + '%' : <span className="quiet">–</span>}</td>
                   <td className="l">{m.tx ? m.terms : <span className="quiet">–</span>}</td>
-                  <td>{m.tx ? money(m.cap).replace('.00', '') : <span className="quiet">–</span>}</td>
+                  <td>{m.tx && m.cap != null ? money(m.cap).replace('.00', '') : <span className="quiet">–</span>}</td>
                   <td className="l">
                     {m.tx ? (
                       <span className="hits">

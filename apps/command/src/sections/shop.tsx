@@ -362,7 +362,7 @@ export function stockGrid() {
   const rows = goods
     .filter((p) => p.st !== 'arch' && p.line !== 'patch')
     .flatMap((p) =>
-      Object.entries(STK[p.id]).map(([col, v], k) => ({
+      Object.entries(STK[p.id] ?? {}).map(([col, v], k) => ({
         p,
         col,
         v,
@@ -442,7 +442,7 @@ export function coverBars() {
                 )}
                 <em style={css(`left:${(p.lead / mx) * 100}%`)} />
               </span>
-              <b className={`num${short || out ? ' warn' : ''}`}>{out ? '0' : w >= mx ? '24+' : w.toFixed(1)}</b>
+              <b className={`num${short || out ? ' warn' : ''}`}>{out ? '0' : w == null ? '—' : w >= mx ? '24+' : w.toFixed(1)}</b>
             </button>
           );
         })}
@@ -708,9 +708,9 @@ export function sOverview() {
     aov = REV_W.map((r, i) => per(r, ORD_W[i]));
   const kpis = (
     <>
-      {kpiCell('Sales', money(S.rev), `+${((S.rev / S.prev - 1) * 100).toFixed(1)}% on the 4 weeks before`, REV_W, '4 weeks')}
-      {kpiCell('Gross profit', money(S.gross), `${((S.gross / S.rev) * 100).toFixed(1)}% of sales, after cost, shipping and fees`, GP_W, '4 weeks')}
-      {kpiCell('Orders', String(S.ord), `${(S.items / S.ord).toFixed(1)} items each · ${toPackN()} to pack now`, ORD_W, '4 weeks')}
+      {kpiCell('Sales', money(S.rev), `+${(S.prev ? (S.rev / S.prev - 1) * 100 : 0).toFixed(1)}% on the 4 weeks before`, REV_W, '4 weeks')}
+      {kpiCell('Gross profit', money(S.gross), `${(per(S.gross, S.rev) * 100).toFixed(1)}% of sales, after cost, shipping and fees`, GP_W, '4 weeks')}
+      {kpiCell('Orders', String(S.ord), `${per(S.items, S.ord).toFixed(1)} items each · ${toPackN()} to pack now`, ORD_W, '4 weeks')}
       {kpiCell('Average order', money(S.rev / S.ord), 'before shipping and tax', aov, '4 weeks')}
     </>
   );
@@ -1115,7 +1115,8 @@ export function sInventory() {
     .reduce(
       (a, p) =>
         a +
-        Object.values(STK[p.id])
+        // live, a product with no stock record yet counts as nothing sold out
+        Object.values(STK[p.id] ?? {})
           .flat()
           .filter((v) => v === 0).length,
       0,
@@ -1495,7 +1496,7 @@ export function shopPane() {
               ))}
               <span>Total</span>
             </div>
-            {Object.entries(STK[p.id]).map(([col, v], __k) => (
+            {Object.entries(STK[p.id] ?? {}).map(([col, v], __k) => (
               <div key={__k} className="sg-r">
                 <span className="sg-col">
                   <i className={`sw-c ${col.toLowerCase()}`} />

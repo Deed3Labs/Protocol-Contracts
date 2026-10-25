@@ -187,7 +187,10 @@ export function dayWord(t) {
   const d = Math.round((TODAY - (t - (t % DAY))) / DAY);
   return d === 0 ? 'today' : d === 1 ? 'yesterday' : 'on ' + fmtD(t);
 }
-const safeRule = () => (SIGNERS.length ? `${CHAIN.threshold} of ${SIGNERS.length} sign, then a ${CHAIN.delayHours}-hour wait` : `${CHAIN.threshold} sign, then a ${CHAIN.delayHours}-hour wait`);
+const safeRule = () =>
+  REAL && !CHAIN.threshold
+    ? 'No Ops Safe yet · the deployer wallet signs alone'
+    : `${SIGNERS.length ? `${CHAIN.threshold} of ${SIGNERS.length}` : CHAIN.threshold} sign${REAL && !CHAIN.delayHours ? '' : `, then a ${CHAIN.delayHours}-hour wait`}`;
 const noneYet = <span className="small quiet">None yet.</span>;
 const median = (v) => {
   const s = [...v].sort((a, b) => a - b),
@@ -493,8 +496,14 @@ export function protoMap() {
         <div className="mp-safe">
           <b>{CHAIN.safe}</b>
           <span>
-            {CHAIN.threshold} of {SIGNERS.length}
-            {' · admin and pause on every live contract'}
+            {REAL && !CHAIN.threshold ? (
+              'The deployer wallet holds admin and pause until the handover'
+            ) : (
+              <>
+                {CHAIN.threshold} of {SIGNERS.length}
+                {' · admin and pause on every live contract'}
+              </>
+            )}
           </span>
         </div>
         <div className="mp-in">
@@ -736,7 +745,7 @@ export function cOverview() {
         <span className="tag">
           {CHAIN.network}
           {' · block '}
-          {CHAIN.block.toLocaleString('en-US')}
+          {(CHAIN.block ?? 0).toLocaleString('en-US')}
         </span>
       </header>
       <div className="c-fig">
@@ -1627,7 +1636,7 @@ export function openCFlow(kind, id) {
             ['Contract', ch.c],
             ['Proposed by', ch.by],
             ['Signatures', `${ch.ev.filter((e) => e[0] === 'sign' && !e[3]).length} of ${CHAIN.threshold} · yours is next`],
-            ['Then', `A ${CHAIN.delayHours}-hour wait, then live`, 1],
+            ['Then', REAL && !CHAIN.delayHours ? 'Live once signed' : `A ${CHAIN.delayHours}-hour wait, then live`, 1],
           ]
         : [],
       rule: ch && ch.by,
