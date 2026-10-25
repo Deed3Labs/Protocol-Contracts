@@ -1,4 +1,5 @@
 // @ts-nocheck: writes into the sections' untyped data (src/sections/data.tsx).
+import { zero } from './empty';
 import {
   ACCTS,
   AGENDA,
@@ -140,10 +141,26 @@ export const needsData = (route: string) => LIVE && SERVED.has(route) && !ready.
 // what the API doesn't send yet (a figure nothing has written: no seed since Phase 9) empties the list
 const replace = (arr, rows) => arr.splice(0, arr.length, ...(rows ?? []));
 /** An object the sections import, its keys replaced in place. */
+// what the API doesn't send keeps its fields, blank, as the empty preview draws them (a record, say CHAIN, read field by field)
 const assign = (obj, value) => {
+  if (value == null) return void zero(obj);
   for (const k of Object.keys(obj)) delete obj[k];
   Object.assign(obj, value);
 };
+
+/**
+ * The member counts several sections send. Home sends funded as {bank, five, deposit} and Growth as
+ * {Bank, $5, Deposit}; whichever loaded last, both shapes are there for the pages that read them.
+ */
+function mergeSummary(sum) {
+  const m = { ...vars.memberSummary, ...sum };
+  const f = m.funded ?? {};
+  const bank = f.bank ?? f.Bank ?? 0,
+    five = f.five ?? f.$5 ?? 0,
+    deposit = f.deposit ?? f.Deposit ?? 0;
+  m.funded = { bank, five, deposit, Bank: bank, $5: five, Deposit: deposit };
+  vars.memberSummary = m;
+}
 
 /** The batch waiting for approval, keeping Members' full record when Growth only knows its number. */
 function nextBatch(n) {
@@ -156,7 +173,7 @@ const apply = {
     assign(DESIGNS, d.DESIGNS);
     replace(INBOX, d.INBOX ?? []);
     nextBatch(d.NEXT_BATCH);
-    vars.memberSummary = { ...vars.memberSummary, ...d.MEMBER_SUMMARY };
+    mergeSummary(d.MEMBER_SUMMARY);
     vars.formNamesShown = d.names === 'shown';
     // the datasets Growth draws are stored figures; the derived ones are worked out again from them
     const f = d.figures;
@@ -220,7 +237,7 @@ const apply = {
     assign(ENTRIES, d.ENTRIES);
     replace(TX, d.TX);
     replace(TXO, TX.map(T));
-    vars.memberSummary = { ...vars.memberSummary, ...d.MEMBER_SUMMARY };
+    mergeSummary(d.MEMBER_SUMMARY);
     if (d.SET_ASIDE) vars.setAside = d.SET_ASIDE;
     // live, Lithic's card spend and what's moving through Bridge (Phase 6b)
     vars.cardSpend = d.CARD_SPEND ?? null;
@@ -310,7 +327,7 @@ const apply = {
     if (vars.me) vars.meId = shortId(vars.me);
   },
   home(d) {
-    vars.memberSummary = { ...vars.memberSummary, ...d.MEMBER_SUMMARY };
+    mergeSummary(d.MEMBER_SUMMARY);
     assign(OWED, d.OWED);
     vars.shopNames = d.SHOP_NAMES;
     vars.posterCount = d.POSTERS;

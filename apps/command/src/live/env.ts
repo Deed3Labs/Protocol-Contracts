@@ -10,6 +10,13 @@ export const PREVIEW = import.meta.env.DEV && new URLSearchParams(window.locatio
 export const LIVE = !PREVIEW;
 
 /**
+ * Dev only: `?answers=<file>` runs the live app signed in as an admin, its API calls answered from a
+ * saved file (live/answers.ts) instead of the network. How a page is checked against the API's real
+ * answers, drawn by the same live code paths, with no sign-in. Never in a production build.
+ */
+export const ANSWERS = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('answers') : null;
+
+/**
  * Real data only (Phase 9): the live app, or the preview with `&empty=1`, which is the live app's
  * pages with nothing loaded, for checking every page renders empty. Under it the prototype's data never
  * shows: every dataset starts empty and the dates are today's.

@@ -226,7 +226,7 @@ export function chart({ h = 200, max, yTicks = [], x = [], paths = '', marks = [
   );
 }
 export function px(i, n) {
-  return (i / (n - 1)) * 100;
+  return n > 1 ? (i / (n - 1)) * 100 : 100;
 }
 export function line(v, max, cls) {
   return <path d={`M${v.map((y, i) => `${px(i, v.length) * 10},${(1 - y / max) * 100}`).join(' L')}`} className={cls} />;
@@ -694,7 +694,9 @@ export function gAcquisition() {
       {kpiCell('On a phone', `${(phone[phone.length - 1] ?? 0).toFixed(1)}%`, 'of visits · posters are phone-only', phone, '30 days')}
     </>
   );
-  const best = SRC30.length ? SRC30.reduce((a, b) => (b[2] / b[1] > a[2] / a[1] ? b : a)) : null;
+  // the best source among those with visits (live, a source can have none yet)
+  const seen = SRC30.filter((r) => r[1] > 0);
+  const best = seen.length ? seen.reduce((a, b) => (b[2] / b[1] > a[2] / a[1] ? b : a)) : null;
   const srcTable = (
     <div className="tbl-wrap">
       <table className="tbl compact">
@@ -750,7 +752,9 @@ export function gAcquisition() {
     best
       ? figHtml(
           pct(best[2], best[1]),
-          `join rate from ${best[0].toLowerCase()} · ${Math.round(best[2] / best[1] / ((tot[1] - best[2]) / (tot[0] - best[1])))}× every other source combined`,
+          tot[0] > best[1] && tot[1] > best[2]
+            ? `join rate from ${best[0].toLowerCase()} · ${Math.round(best[2] / best[1] / ((tot[1] - best[2]) / (tot[0] - best[1])))}× every other source combined`
+            : `join rate from ${best[0].toLowerCase()}`,
         )
       : figHtml('0.0%', 'join rate'),
     <div className="flush-x">{srcTable}</div>,
@@ -921,7 +925,7 @@ export function gAcquisition() {
 export function miniSparkV(v, w = 96, h = 24) {
   const max = Math.max(...v),
     min = Math.min(...v);
-  const pts = v.map((y, i) => `${((i / (v.length - 1)) * (w - 2) + 1).toFixed(1)},${(h - 2 - ((y - min) / (max - min || 1)) * (h - 4)).toFixed(1)}`);
+  const pts = v.map((y, i) => `${((v.length > 1 ? i / (v.length - 1) : 1) * (w - 2) + 1).toFixed(1)},${(h - 2 - ((y - min) / (max - min || 1)) * (h - 4)).toFixed(1)}`);
   return (
     <svg className="tspark" viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden="true">
       <path d={`M${pts.join(' L')}`} />
@@ -1810,9 +1814,11 @@ export function posterPane() {
 
 /* ── Site and forms pane ──────────────────────────────────────────────── */
 export function mask(s) {
+  if (!s) return '';
   return s[0] + '•'.repeat(Math.max(2, Math.min(5, s.length - 1)));
 }
 export function maskMail(m) {
+  if (!m || !m.includes('@')) return m ?? '';
   const [u, d] = m.split('@');
   return u[0] + '•••@' + d[0] + '•••.' + d.split('.').pop();
 }

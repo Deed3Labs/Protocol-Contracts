@@ -333,7 +333,7 @@ export function compBar(parts) {
           <span key={__k}>
             <i className="sw" style={css(`background:${p[2]}`)} />
             <span className="k">{p[0]}</span>
-            <b className="num">{p[3] || p[1].toLocaleString('en-US')}</b>
+            <b className="num">{p[3] || (p[1] ?? 0).toLocaleString('en-US')}</b>
           </span>
         ))}
       </div>

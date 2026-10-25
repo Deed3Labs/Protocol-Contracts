@@ -27,6 +27,13 @@ It serves on http://localhost:5230.
 - `http://localhost:5230/` is the live app: Privy sign-in against the API in `VITE_API_BASE_URL`.
   Against a local API (`npm run dev --workspace=@clear/api` with `COMMAND_SEED=on`), every section
   draws the seed, which is the prototype's rows loaded into the database.
+- `http://localhost:5230/?preview=1&empty=1` is the live app's pages with nothing in them, as dev starts
+  with no seed. `npx playwright test empty` crawls every page, tab and the first controls on each under
+  it, and fails on an error, a prototype name, or NaN / undefined on screen.
+- `http://localhost:5230/?answers=<file>` is the live app signed in as an admin, its API calls answered
+  from a saved file (`src/live/answers.ts`): each section's `GET /sections/<name>` answer, by name. How a
+  page is checked against real answers through the live code paths, with no sign-in. Keep such a file
+  under `e2e/.results/` (git-ignored): real answers hold member data, masked or not. Dev builds only.
 
 `#login`, `#members`, `#merchants` and so on open a page.
 

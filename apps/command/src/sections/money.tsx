@@ -225,13 +225,13 @@ export function holdings() {
       mn = Math.min(...v);
     return (
       <svg className="wh-sp" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
-        <path d={`M${v.map((y, i) => `${((i / (v.length - 1)) * 100).toFixed(1)},${(26 - ((y - mn) / (mx - mn || 1)) * 24).toFixed(1)}`).join(' L')}`} />
+        <path d={`M${v.map((y, i) => `${((v.length > 1 ? i / (v.length - 1) : 1) * 100).toFixed(1)},${(26 - ((y - mn) / (mx - mn || 1)) * 24).toFixed(1)}`).join(' L')}`} />
       </svg>
     );
   };
   const rows = ACCTS.map((a, __k) => {
     const [id, n, why, g, src, bal, wk, col] = a,
-      ch = wk[wk.length - 1] - wk[wk.length - 2],
+      ch = wk.length > 1 ? wk[wk.length - 1] - wk[wk.length - 2] : 0,
       st = (LIVE && hasFeeds() ? feedLate(src) : src === 'plaid') ? 'late' : '';
     return (
       <Fragment key={__k}>

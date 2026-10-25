@@ -1,4 +1,4 @@
-import { API_BASE } from './env';
+import { ANSWERS, API_BASE } from './env';
 import { privy } from './privy';
 
 /**
@@ -79,6 +79,7 @@ let onEnded: (() => void) | null = null;
 export const whenSessionEnds = (fn: () => void) => (onEnded = fn);
 
 export async function api<T = Record<string, unknown>>(method: string, path: string, body?: unknown): Promise<T> {
+  if (ANSWERS) return (await import('./answers')).answer(method, path) as Promise<T>;
   const token = await privy.token();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;

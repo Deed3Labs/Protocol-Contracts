@@ -231,7 +231,7 @@ export function vizSpark(v) {
     H = 40,
     max = Math.max(...v),
     min = Math.min(...v);
-  const pts = v.map((y, i) => `${((i / (v.length - 1)) * (W - 6) + 3).toFixed(1)},${(H - 4 - ((y - min) / (max - min)) * (H - 8)).toFixed(1)}`);
+  const pts = v.map((y, i) => `${((v.length > 1 ? i / (v.length - 1) : 1) * (W - 6) + 3).toFixed(1)},${(H - 4 - ((y - min) / (max - min || 1)) * (H - 8)).toFixed(1)}`);
   const last = pts[pts.length - 1].split(',');
   return (
     <>

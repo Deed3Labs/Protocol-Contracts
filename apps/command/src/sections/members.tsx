@@ -21,6 +21,9 @@ const pz = (a, b) => (b ? pct(a, b) : pct(0, 1));
 const fz = (k, d) => fig(k) ?? d;
 const bCount = () => (BATCH_DATE.some((t) => t) ? BATCH_DATE.length : 0);
 export function mName(m) {
+  // live, a member who hasn't given a name yet goes by their member number
+  if (!m.first && !m.last) return m.no || 'No name yet';
+  if (!m.first || !m.last) return MS.reveal ? m.first || m.last : mask(m.first || m.last);
   return MS.reveal ? `${m.first} ${m.last}` : `${mask(m.first)} ${mask(m.last)}`;
 }
 /* stacked columns, one per batch: active / opened / not opened */
@@ -125,7 +128,7 @@ export function unitCell() {
               type="button"
               className={`uc-q ${k}`}
               data-member={m.id}
-              title={`${m.first == null ? 'A member' : `${m.first} ${m.last[0]}.`} · batch ${m.batch} · ${UK[k][0]}`}
+              title={`${m.first == null ? 'A member' : m.last ? `${m.first} ${m.last[0]}.` : m.first} · batch ${m.batch} · ${UK[k][0]}`}
               {...attrs(sty(k))}
             />
           );
@@ -862,8 +865,8 @@ export function memberPane() {
               {m.city}
               {' · batch '}
               {m.batch}
-              {' · '}
-              {MS.reveal ? `${m.first.toLowerCase()}.${m.last.toLowerCase()}@gmail.com` : maskMail(m.first.toLowerCase() + '@gmail.com')}
+              {REAL ? '' : ' · '}
+              {REAL ? '' : MS.reveal ? `${m.first.toLowerCase()}.${m.last.toLowerCase()}@gmail.com` : maskMail(m.first.toLowerCase() + '@gmail.com')}
             </p>
           </div>
           <div className="pp-figs">

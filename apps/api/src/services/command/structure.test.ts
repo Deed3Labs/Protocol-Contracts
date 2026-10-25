@@ -3,7 +3,7 @@ import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
 import { TOTALS } from './levels.js';
 import type { ChainReader } from './onchain.js';
-import { moneySection } from './sections.js';
+import { contractsSection, moneySection } from './sections.js';
 import { structureCommand } from './structure.js';
 
 /* Phase 9: the co-op's structure is there with no seed, and only its shape: no people, no dates. */
@@ -69,6 +69,23 @@ describe('Money with only the structure', () => {
       expect([m.AP_BAL, m.UNSEC, m.COOP_W, m.FLOWS]).toEqual([[0], [0], [], []]);
     } finally {
       env == null ? delete process.env.PROVIDER_MONEY : (process.env.PROVIDER_MONEY = env);
+    }
+  });
+});
+
+describe('Contracts with only the structure', () => {
+  test('the header is the chain’s: the newest block indexed, and no Safe until one is set', async () => {
+    const env = { p: process.env.PROVIDER_CONTRACTS, s: process.env.COMMAND_SAFE_ADDRESS };
+    process.env.PROVIDER_CONTRACTS = 'live';
+    delete process.env.COMMAND_SAFE_ADDRESS;
+    try {
+      await db.query('INSERT INTO command.chain_cursor (chain_id, indexed_to) VALUES (84532, 49815448)');
+      const c: any = await contractsSection(db, { level: TOTALS, reveal: false, now: new Date() });
+      expect(c.figures['contracts.chain']).toEqual({ network: 'Base Sepolia', block: 49815448, safe: 'No Ops Safe yet', threshold: 0, delayHours: 0 });
+      expect(c.CTR).toHaveLength(31);
+    } finally {
+      env.p == null ? delete process.env.PROVIDER_CONTRACTS : (process.env.PROVIDER_CONTRACTS = env.p);
+      if (env.s != null) process.env.COMMAND_SAFE_ADDRESS = env.s;
     }
   });
 });
