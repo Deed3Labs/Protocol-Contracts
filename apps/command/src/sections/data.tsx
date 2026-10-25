@@ -2042,6 +2042,8 @@ export const CS = {
   af: 'all',
   ag: null,
   ct: null,
+  /* the Code tab's branch filter */
+  cb: 'all',
 };
 export const NOW = REAL ? Date.now() : TODAY + 14 * 3600e3;
 /* 21 Oct, 14:00 */
@@ -2230,6 +2232,8 @@ export const CTR_NOTE = {
 };
 /* the chain the map is read from, and the multisig every live contract answers to */
 export const CHAIN = { network: 'Base Sepolia', block: 18204331, safe: 'Ops Safe', threshold: 2, delayHours: 24 };
+/* live only: the GitHub activity behind the contracts (the Code tab, which the prototype doesn't have). Empty until the API fills it */
+export const CODE = { repo: '', path: '', names: 'none', commits: [], pulls: [], branches: [], contributors: [], people: 0, poller: { ranAt: 0, error: '', token: false, waiting: 0, branches: [] } };
 /* who holds each role (1 holds it · 2 once funded · 3 open, closes with v1.3) */
 export const KEY_ROLES = {
   holders: ['Ops Safe', 'Issuers', 'ClearCredit', 'BurnerBond', 'Validator', 'Anyone', 'LendingPool'],

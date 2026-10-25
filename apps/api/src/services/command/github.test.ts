@@ -15,7 +15,8 @@ import { seedCommand } from './seed.js';
  * commits before a release what it shipped.
  */
 
-const cfg = codeConfig({});
+// one branch here: the branches together are githubCode.test.ts's
+const cfg = codeConfig({ COMMAND_GITHUB_BRANCHES: 'dev' });
 const sha = (n: number) => n.toString(16).padStart(40, '0');
 const commit = (n: number, at: string, message: string, author = 'Isaiah Litt', email = 'kai@useclear.org'): ListedCommit => ({
   sha: sha(n),
@@ -46,6 +47,8 @@ const src: GithubSource = {
     detailCalls++;
     return { files: filesOf[s] ?? [], remaining: --left };
   },
+  pulls: async () => ({ notModified: false, etag: null, pulls: [], more: false, remaining: left }),
+  pullFiles: async () => ({ files: [], remaining: left, requests: 1 }),
 };
 
 let db: Db;

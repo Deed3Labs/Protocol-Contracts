@@ -19,6 +19,7 @@ import {
   CHAIN,
   CH_DONE,
   CITY_V,
+  CODE,
   COHORTS,
   COOP_W,
   COST_W,
@@ -278,6 +279,8 @@ const apply = {
     assign(PENDING, d.PENDING);
     replace(CH, d.CH);
     replace(CH_DONE, d.CH_DONE);
+    // live only, the Code tab: GitHub's commits, pull requests, branches and contributors
+    assign(CODE, d.CODE);
     vars.contractsNow = d.NOW;
     replace(SIGNERS, d.SIGNERS);
     const f = d.figures;
