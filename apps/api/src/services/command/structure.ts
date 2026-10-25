@@ -6,7 +6,8 @@ import type { Db, Queryable } from '../../db/db.js';
 /*
  * The co-op's structure, which is real before anything has happened (Phase 9): the protocol's
  * contracts and how they connect, the entities and who owns them, each board's seats, who decides
- * what, and the accounts Money keeps (their balances are the chain's and the bank's, never stored here). Written on every start into the tables that are empty, seed or not; never over
+ * what, and the accounts Money keeps (their balances are the chain's and the bank's, never stored here).
+ * An account added later (BondVault) is added to a list that's already there; nothing else is. Written on every start into the tables that are empty, seed or not; never over
  * anything there.
  *
  * Only the shape: no people, no dates, no events. Every entity starts not formed (planned) and every
@@ -18,6 +19,12 @@ async function empty(db: Queryable, table: string): Promise<boolean> {
   const { rows } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${table}`);
   return rows[0].n === 0;
 }
+
+/** The accounts Money keeps: the prototype's six, and BondVault, where bond buyers' money is held. */
+const ACCOUNTS = [
+  ...moneyFx.accounts,
+  { id: 'bond', name: 'BondVault', why: 'Bond buyers’ money, held to pay them at maturity', group: 'set', source: 'protocol', swatch: 'color-mix(in srgb,var(--fg-50) 55%,transparent)' },
+];
 
 /** A seat's note when it says how the seat is filled, not when ("Elect 15 Jan"). */
 const howFilled = (note: string | undefined) => (note && !/\d/.test(note) ? note : null);
@@ -39,12 +46,20 @@ export async function structureCommand(db: Db): Promise<string[]> {
       done.push(`${C.contracts.length} contracts`);
     }
 
-    if (await empty(tx, 'command.accounts')) {
-      for (const [i, a] of moneyFx.accounts.entries()) {
-        await tx.query('INSERT INTO command.accounts (id, position, name, purpose, owner_group, source, swatch) VALUES ($1, $2, $3, $4, $5, $6, $7)', [a.id, i, a.name, a.why, a.group, a.source, a.swatch]);
-      }
-      done.push(`${moneyFx.accounts.length} accounts`);
+    let added = 0;
+    for (const [i, a] of ACCOUNTS.entries()) {
+      const r = await tx.query('INSERT INTO command.accounts (id, position, name, purpose, owner_group, source, swatch) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING RETURNING id', [
+        a.id,
+        i,
+        a.name,
+        a.why,
+        a.group,
+        a.source,
+        a.swatch,
+      ]);
+      added += r.rows.length;
     }
+    if (added) done.push(`${added} accounts`);
 
     if (await empty(tx, 'command.entities')) {
       const G = governanceFx as unknown as Record<string, any>;

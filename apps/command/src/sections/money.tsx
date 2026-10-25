@@ -211,10 +211,16 @@ export function holdings() {
       </div>
       <div className="wh-br">
         {grp.map(({ g, l, w, v }, __k) => (
-          <span key={__k} className="wh-b" style={css(`left:${l}%;width:${w}%`)}>
+          <span key={__k} className="wh-b" style={css(`left:${l}%;width:${w}%`)} {...(REAL ? { title: `${GROUPS[g][0]} · ${money(v)}` } : {})}>
             <i />
-            <b>{GROUPS[g][0]}</b>
-            <span className="num">{money(v)}</span>
+            {REAL && w < 14 ? (
+              ''
+            ) : (
+              <>
+                <b>{GROUPS[g][0]}</b>
+                <span className="num">{money(v)}</span>
+              </>
+            )}
           </span>
         ))}
       </div>
@@ -364,6 +370,12 @@ export function moneyPane() {
       ['Covers bonds until BondVault', money(M.bonds)],
       ['Moves by', 'Two people', 1],
     ],
+    bond: [
+      ['Owed to bondholders', money(M.bonds) + ` · ${BONDS.length} ${BONDS.length === 1 ? 'bond' : 'bonds'}`],
+      ['Held against it', M.bonds ? `${money(bal)} · ${pct(bal, M.bonds)}` : money(bal)],
+      ['First due', BONDS.length ? firstBond() : 'None yet'],
+      ['Pays out', 'At each bond’s maturity', 1],
+    ],
     coop: [
       ['Added in October', money(COOP_W.slice(3).reduce((s, b) => s + b, 0))],
       ['From', 'Member discounts at partner shops'],
@@ -391,7 +403,7 @@ export function moneyPane() {
                   ...entryRows('ap'),
                 ]
               : [
-                  ...entryRows('coop'),
+                  ...entryRows(id),
                 ];
   const act = {
     yld: ['yrate', 'How the rate works'],
@@ -451,9 +463,15 @@ export function moneyPane() {
         </header>
         <div className="pane-mn">{body}</div>
         <footer className="pane-ft">
-          <button className="btn btn-p" type="button" data-nflow={act[0]}>
-            {act[1]}
-          </button>
+          {act ? (
+            <button className="btn btn-p" type="button" data-nflow={act[0]}>
+              {act[1]}
+            </button>
+          ) : (
+            <button className="btn btn-p" type="button" data-npane="bonds">
+              Every bond
+            </button>
+          )}
           {id === 'yld' ? (
             <button className="btn btn-g" type="button" data-npane="yield">
               Yield pool

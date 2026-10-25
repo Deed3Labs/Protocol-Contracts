@@ -89,19 +89,67 @@ export function plaidFeed(env: Env = process.env, f: typeof fetch = fetch): Feed
   };
 }
 
-/** The co-op's sandbox bank link: made once with Plaid's sandbox-only call, the token kept encrypted. */
+/**
+ * The co-op's sandbox bank, as a custom Plaid sandbox user: one business checking account with a
+ * modest balance (COMMAND_PLAID_SANDBOX_BALANCE, $2,500.00 unless set) and a few weeks of ordinary
+ * activity, instead of Plaid's stock test user and its five-figure balance. `marker` names the setup,
+ * so a change to it links the bank afresh.
+ */
+export function sandboxBank(env: Env, now = Date.now()): { marker: string; password: string } {
+  const balance = Number(env.COMMAND_PLAID_SANDBOX_BALANCE) > 0 ? Number(env.COMMAND_PLAID_SANDBOX_BALANCE) : 2500;
+  const day = (ago: number) => new Date(now - ago * 86_400_000).toISOString().slice(0, 10);
+  // Plaid's sign: money out is positive, money in negative
+  const activity: Array<[number, number, string]> = [
+    [45, -1200, 'Member fees'],
+    [41, 89, 'Poster printing'],
+    [34, 24, 'Domain and hosting'],
+    [27, -650, 'Shop sales payout'],
+    [20, 140, 'Shipping labels'],
+    [13, 24, 'Domain and hosting'],
+    [9, -480, 'Shop sales payout'],
+    [3, 62.5, 'Poster printing'],
+  ];
+  const config = {
+    override_accounts: [
+      {
+        type: 'depository',
+        subtype: 'checking',
+        starting_balance: balance,
+        meta: { name: 'Business checking', mask: '4821' },
+        transactions: activity.map(([ago, amount, description]) => ({ date_transacted: day(ago), date_posted: day(ago), amount, description, currency: 'USD' })),
+      },
+    ],
+  };
+  return { marker: `custom $${balance.toFixed(2)}`, password: JSON.stringify(config) };
+}
+
+/**
+ * The co-op's sandbox bank link: made with Plaid's sandbox-only call, the token kept encrypted. When the
+ * sandbox setup changes, the old link is removed (at Plaid and here, with its transactions) and made again.
+ */
 async function plaidToken(db: Queryable, post: <T>(p: string, b: Record<string, unknown>) => Promise<T>, env: Env): Promise<string> {
-  const { rows } = await db.query<{ access_token: Record<string, string> }>('SELECT access_token FROM command.plaid_items WHERE id = $1', [PLAID_ITEM]);
-  if (rows.length) return decryptWithEnvelope(unsealed(rows[0].access_token), PLAID_CONTEXT);
   const institution = env.COMMAND_PLAID_INSTITUTION?.trim() || 'ins_109508';
+  const bank = sandboxBank(env);
+  const want = `${institution} · ${bank.marker}`;
+  const { rows } = await db.query<{ access_token: Record<string, string>; institution: string | null }>('SELECT access_token, institution FROM command.plaid_items WHERE id = $1', [PLAID_ITEM]);
+  if (rows.length && rows[0].institution === want) return decryptWithEnvelope(unsealed(rows[0].access_token), PLAID_CONTEXT);
+  if (rows.length) {
+    await post('/item/remove', { access_token: decryptWithEnvelope(unsealed(rows[0].access_token), PLAID_CONTEXT) }).catch(() => undefined);
+    await db.query('DELETE FROM command.bank_transactions WHERE item = $1', [PLAID_ITEM]);
+    await db.query('DELETE FROM command.plaid_items WHERE id = $1', [PLAID_ITEM]);
+  }
   const hook = env.COMMAND_PLAID_WEBHOOK_URL?.trim();
-  const pt = await post<{ public_token: string }>('/sandbox/public_token/create', { institution_id: institution, initial_products: ['transactions'], ...(hook ? { options: { webhook: hook } } : {}) });
+  const pt = await post<{ public_token: string }>('/sandbox/public_token/create', {
+    institution_id: institution,
+    initial_products: ['transactions'],
+    options: { ...(hook ? { webhook: hook } : {}), override_username: 'user_custom', override_password: bank.password },
+  });
   const ex = await post<{ access_token: string; item_id: string }>('/item/public_token/exchange', { public_token: pt.public_token });
   await db.query('INSERT INTO command.plaid_items (id, item_id, access_token, institution) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING', [
     PLAID_ITEM,
     ex.item_id,
     JSON.stringify(sealed(encryptWithEnvelope(ex.access_token, PLAID_CONTEXT))),
-    institution,
+    want,
   ]);
   return ex.access_token;
 }

@@ -327,6 +327,30 @@ export async function bondsLive(db: Queryable, reader: ChainReader): Promise<Bon
   return [...bonds.values()].map((b) => ({ ...b, holder: holders.get(b.id) ?? null }));
 }
 
+/** What the AssurancePool holds against losses: its primary, buffer and excess reserves, in its reserve token. */
+export async function assurancePoolLive(reader: ChainReader): Promise<{ total: number; primary: number; buffer: number; excess: number }> {
+  const [primary, buffer, excess, token] = await reader.read([
+    { contract: 'AssurancePool', fn: 'primaryBalance' },
+    { contract: 'AssurancePool', fn: 'bufferBalance' },
+    { contract: 'AssurancePool', fn: 'excessBalance' },
+    { contract: 'AssurancePool', fn: 'reserveToken' },
+  ]);
+  const [decimals] = await reader.read([{ contract: 'ERC20', address: String(token), fn: 'decimals' }]);
+  const usd = (v: unknown) => Math.round((Number(big(v)) / 10 ** Number(decimals)) * 100) / 100;
+  const [p, b, e] = [usd(primary), usd(buffer), usd(excess)];
+  return { total: Math.round((p + b + e) * 100) / 100, primary: p, buffer: b, excess: e };
+}
+
+/** What BondVault holds for bondholders: its reserve token's balance, read with that token's decimals. */
+export async function bondVaultLive(reader: ChainReader): Promise<number> {
+  const [held, token] = await reader.read([
+    { contract: 'BondVault', fn: 'held' },
+    { contract: 'BondVault', fn: 'reserveToken' },
+  ]);
+  const [decimals] = await reader.read([{ contract: 'ERC20', address: String(token), fn: 'decimals' }]);
+  return Math.round((Number(big(held)) / 10 ** Number(decimals)) * 100) / 100;
+}
+
 // ── Releases ────────────────────────────────────────────────────────────────
 
 export interface Release {

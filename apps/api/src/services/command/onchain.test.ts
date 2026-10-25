@@ -52,6 +52,10 @@ const reader: ChainReader = {
     return calls.map((c) => {
       if (c.contract === 'ClearUSDUpgradeable') return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.clrusd));
       if ((c.contract === 'LendingPool' && c.fn === 'asset') || (c.contract === 'BurnerBond' && c.fn === 'underlyingToken')) return USDC;
+      // BondVault: the bond buyers' money it holds, in the same token
+      if (c.contract === 'BondVault') return c.fn === 'reserveToken' ? USDC : BigInt(usdc(290.38));
+      // the AssurancePool: all of it in the buffer reserve, as on Base Sepolia
+      if (c.contract === 'AssurancePool') return c.fn === 'reserveToken' ? USDC : c.fn === 'bufferBalance' ? BigInt(usdc(125.03)) : 0n;
       if (c.contract === 'ERC20') {
         expect([c.address, ...(c.fn === 'balanceOf' ? [c.args![0]] : [])]).toEqual([USDC, ...(c.fn === 'balanceOf' ? [getAddress(C.ESADepositVault.address)] : [])]);
         return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.vault));
@@ -256,6 +260,17 @@ describe('the savings reserve, live (6b)', () => {
     expect([sav[2], sav[4], sav[5]]).toEqual(['CLRUSD, backed 1:1 by USDC in the savings vault', 'protocol', 899.5]);
     // the weeks are CLRUSD's mints and burns; now is the vault's USDC
     expect(sav[6]).toEqual([0, 0, 0, 0, 0, 500, 899.5]);
+  });
+});
+
+describe('the AssurancePool, live', () => {
+  test('what it holds is the contract’s: primary, buffer and excess reserves together', async () => {
+    const m: any = await moneySection(db, read());
+    expect(m.M.assurance).toBe(125.03);
+    expect(m.ACCTS.find((a: any[]) => a[0] === 'ap')[5]).toBe(125.03);
+    // the weekly series ends on it, and RTD has no unsecured credit to divide by
+    expect(m.AP_BAL.at(-1)).toBe(125.03);
+    expect(Number.isFinite(m.M.rtd)).toBe(true);
   });
 });
 

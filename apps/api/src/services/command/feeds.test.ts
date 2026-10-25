@@ -58,9 +58,11 @@ describe('only sandboxes', () => {
 describe('Plaid', () => {
   const env = { PLAID_CLIENT_ID: 'c', PLAID_SECRET: 's', PLAID_ENV: 'sandbox', COMMAND_PLAID_WEBHOOK_URL: 'https://api.test/api/command/webhooks/plaid' };
   let pages: any[] = [];
+  let links = 0;
   const s = stand({
     '/sandbox/public_token/create': () => ({ public_token: 'public-sandbox-1' }),
-    '/item/public_token/exchange': () => ({ access_token: 'access-sandbox-SECRET', item_id: 'item-1' }),
+    '/item/public_token/exchange': () => ({ access_token: 'access-sandbox-SECRET', item_id: `item-${++links}` }),
+    '/item/remove': () => ({ request_id: 'r' }),
     '/transactions/sync': () => pages.shift() ?? { added: [], modified: [], removed: [], next_cursor: 'c-end', has_more: false },
     '/accounts/get': () => ({
       accounts: [
@@ -80,7 +82,12 @@ describe('Plaid', () => {
     const feed = plaidFeed(env, s.f);
     expect(await runFeed(db, feed)).toBe('ok');
     const made = s.asked.find((a) => a.path.endsWith('/sandbox/public_token/create'))!;
-    expect(made.body).toMatchObject({ institution_id: 'ins_109508', initial_products: ['transactions'], options: { webhook: env.COMMAND_PLAID_WEBHOOK_URL } });
+    expect(made.body).toMatchObject({ institution_id: 'ins_109508', initial_products: ['transactions'], options: { webhook: env.COMMAND_PLAID_WEBHOOK_URL, override_username: 'user_custom' } });
+    // a custom sandbox user: one business checking account, $2,500.00 unless set, a few weeks of activity
+    const custom = JSON.parse(made.body.options.override_password).override_accounts;
+    expect(custom).toHaveLength(1);
+    expect(custom[0]).toMatchObject({ type: 'depository', subtype: 'checking', starting_balance: 2500 });
+    expect(custom[0].transactions.length).toBeGreaterThan(3);
     const { rows } = await db.query<any>('SELECT item_id, access_token::text AS tok, sync_cursor FROM command.plaid_items');
     expect(rows).toHaveLength(1);
     expect(rows[0].tok).not.toContain('access-sandbox-SECRET');
@@ -155,6 +162,20 @@ describe('Plaid', () => {
       expect((await feedRows(db)).get('plaid')).toMatchObject({ requested_by: 'Plaid webhook' });
       server.close();
     });
+  });
+
+  test('a new sandbox balance links the bank afresh: the old link removed, at Plaid and here', async () => {
+    s.asked.length = 0;
+    expect(await runFeed(db, plaidFeed({ ...env, COMMAND_PLAID_SANDBOX_BALANCE: '900' }, s.f))).toBe('ok');
+    expect(s.asked.find((a) => a.path.endsWith('/item/remove'))!.body).toMatchObject({ access_token: 'access-sandbox-SECRET' });
+    const made = s.asked.find((a) => a.path.endsWith('/sandbox/public_token/create'))!;
+    expect(JSON.parse(made.body.options.override_password).override_accounts[0].starting_balance).toBe(900);
+    const { rows } = await db.query<any>('SELECT item_id, institution FROM command.plaid_items');
+    expect(rows).toEqual([{ item_id: 'item-2', institution: 'ins_109508 · custom $900.00' }]);
+    // the same balance again: the link is kept
+    s.asked.length = 0;
+    expect(await runFeed(db, plaidFeed({ ...env, COMMAND_PLAID_SANDBOX_BALANCE: '900' }, s.f))).toBe('ok');
+    expect(s.asked.some((a) => a.path.endsWith('/public_token/create'))).toBe(false);
   });
 });
 
