@@ -1,6 +1,7 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { css, html } from '../runtime/dom';
 import { $, ic } from './core';
+import { costPick } from './costing';
 import { CS, FS, GS, MS, NS, RS, SS, VS, XS } from './data';
 import { render } from './shell';
 
@@ -41,6 +42,8 @@ export function ddOpen(dd) {
 }
 export function ddPick(dd, v) {
   const id = dd.dataset.dd;
+  // a dropdown inside a costing flow (Phase 10b) redraws its flow, not the page
+  if (id.startsWith('cf-')) return costPick(id, v);
   if (id === 'pf') {
     GS.pf = v;
     GS.pg = 0;
@@ -62,6 +65,7 @@ export function ddPick(dd, v) {
   if (id === 'rlf') RS.lf = v;
   if (id === 'spf') SS.pf = v;
   if (id === 'sof') SS.of = v;
+  if (id === 'scf') SS.cf = v;
   if (id === 'crf') CS.rf = v;
   render();
   const b = document.querySelector(`[data-dd="${id}"] .dd-btn`);

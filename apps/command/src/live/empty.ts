@@ -30,7 +30,7 @@ const KEEP = new Set([
 /** Keyed by id (a shop, a product, a contract, an entity…): emptied of their keys. */
 const DICTS = new Set([
   'OWED', 'CITY_V', 'DESIGNS', 'STK', 'SHELF_EV', 'SHIST', 'RELEASES', 'PENDING', 'CTR_NOTE', 'ENTRIES',
-  'COVER', 'APPR', 'SIGN_W', 'SHOP_NO', 'SHOP_INFO', 'FEED_FROM', 'NEED',
+  'COVER', 'APPR', 'SIGN_W', 'SHOP_NO', 'SHOP_INFO', 'FEED_FROM', 'NEED', 'RECIPES',
 ]);
 
 const plain = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype;

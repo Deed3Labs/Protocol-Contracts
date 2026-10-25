@@ -3294,6 +3294,9 @@ export const SS = {
   of: 'open',
   why: 'stock',
   line: 'logo',
+  // live only (Phase 10): the Costs tab's open input and which inputs it lists
+  input: null,
+  cf: 'live',
 };
 export const SW = WEEKS.slice(4);
 /* the shop opened 1 Sep: eight weeks */
@@ -3544,6 +3547,11 @@ export const ORD_W = [9, 13, 13, 15, 18, 20, 17, 19];
    held (the rate, on the taxable share of sales); and how many of the last 4 weeks' orders shipped */
 export const SHOP_COSTS = { shipNet: 1.4, cardPct: 0.029, cardFixed: 0.3, taxRate: 0.0775, taxable: 0.92, shipped4w: 60 };
 export const SHIP_NET = SHOP_COSTS.shipNet;
+/* what goes into each product (Phase 10), live only, so empty here: the inputs library, each product's
+   recipe by product id, and the materials kept on hand (services/command/costing.ts, costingPayload) */
+export const INPUTS = [];
+export const RECIPES = {};
+export const MATERIALS = { onHand: [], low: [], makes: {} };
 export const REV_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * p.price, 0));
 export const COST_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * unitCost(p), 0));
 export const LINE_COSTS = [

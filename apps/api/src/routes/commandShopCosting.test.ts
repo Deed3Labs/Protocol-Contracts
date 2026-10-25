@@ -292,13 +292,16 @@ describe('a change to an input’s cost', () => {
     const line = (await lines('gcm')).find((l) => l[0] === 'embroidery');
     expect(line).toEqual(['embroidery', 2, 520]);
     const d = (await call(kai, 'GET', '/sections/shop')).body;
-    expect(d.RECIPES.gcm.lines.find((l: any) => l.input === 'embroidery')).toMatchObject({ amount: 2, cost: 6, entered: 'cost' });
+    // the editor still shows what was typed
+    expect(d.RECIPES.gcm.lines.find((l: any) => l.input === 'embroidery')).toMatchObject({ amount: 2, cost: 6, entered: 'cost', typed: 5.2 });
   });
 
   test('a line typed as a cost before its input had any cost gets its amount when the cost comes', async () => {
     expect((await act(kai, 'input', { id: 'dye', name: 'Dye', kind: 'material', unit: 'ml' })).status).toBe(200);
     expect((await act(kai, 'recipe-line', { product: 'gcm', input: 'dye', cost: 1.2 })).status).toBe(200);
     expect((await lines('gcm')).find((l) => l[0] === 'dye')).toEqual(['dye', null, 120]);
+    const before = (await call(kai, 'GET', '/sections/shop')).body.RECIPES.gcm.lines.find((l: any) => l.input === 'dye');
+    expect(before).toMatchObject({ amount: null, cost: 1.2, typed: 1.2, note: 'No unit cost yet, so the amount is worked out once it has one' });
     // $0.04 a ml: $1.20 is 30 ml, and from now on the cost follows the dye's
     expect((await act(kai, 'input', { id: 'dye', name: 'Dye', kind: 'material', unit: 'ml', unitCost: 0.04 })).status).toBe(200);
     expect((await lines('gcm')).find((l) => l[0] === 'dye')).toEqual(['dye', 30, 120]);
