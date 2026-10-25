@@ -316,6 +316,8 @@ describe('Contracts’ Code payload', () => {
     expect(kai).toMatchObject({ name: 'Isaiah Litt', commits30: 5, pulls30: 2 });
     expect(CODE.contributors.find((x: any) => x.who === 'Someone Else')).toMatchObject({ commits30: 1, pulls30: 0 });
     expect(CODE.contributors.find((x: any) => x.who === 'someone')).toMatchObject({ commits30: 0, pulls30: 4 });
+    // everyone in the stored history, with their last 30 days alongside
+    expect(CODE.contributors.every((x: any) => x.commits >= x.commits30 && x.pulls >= x.pulls30)).toBe(true);
     // a PR that touches nothing under the path doesn't make its author a contributor
     expect(CODE.contributors.find((x: any) => x.who === 'docs-writer')).toBeUndefined();
     expect(CODE.people).toBe(CODE.contributors.length);

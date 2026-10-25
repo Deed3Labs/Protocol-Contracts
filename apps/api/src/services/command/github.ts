@@ -446,7 +446,8 @@ export interface CodePayload {
   }>;
   branches: Array<{ name: string; commits30: number; lastAt: number | null }>;
   /** Who's contributed in the window, by GitHub login (else the commit's name); empty at Totals. */
-  contributors: Array<{ who: string; name: string; commits30: number; pulls30: number; lastAt: number }>;
+  /** Everyone in the stored history (commits and PRs touching the path), with their last 30 days too. */
+  contributors: Array<{ who: string; name: string; commits: number; pulls: number; commits30: number; pulls30: number; lastAt: number }>;
   /** How many people contributed in the window: the one figure Totals keeps. */
   people: number;
   poller: { ranAt: number | null; error: string | null; token: boolean; waiting: number; branches: string[] };
@@ -476,30 +477,32 @@ export async function codeActivity(db: Queryable, c: CodeConfig, now: number, na
     branches.push({ name, commits30: rows[0].n, lastAt: msOf(rows[0].last) });
   }
 
-  // who: a commit's GitHub login, else the name on it; a PR's author
-  const { rows: byCommit } = await db.query<{ who: string; name: string; n: number; last: Date }>(
-    `SELECT coalesce(login, author) AS who, max(author) AS name, count(*)::int AS n, max(committed_at) AS last FROM command.code_commits
-      WHERE repo = $1 AND branches && $2::text[] AND committed_at >= $3 GROUP BY 1`,
+  // who: a commit's GitHub login, else the name on it; a PR's author. Everyone in the stored history, so a
+  // quiet month doesn't empty the list; the last 30 days ride along.
+  const { rows: byCommit } = await db.query<{ who: string; name: string; n: number; n30: number; last: Date }>(
+    `SELECT coalesce(login, author) AS who, max(author) AS name, count(*)::int AS n, count(*) FILTER (WHERE committed_at >= $3)::int AS n30, max(committed_at) AS last
+       FROM command.code_commits WHERE repo = $1 AND branches && $2::text[] GROUP BY 1`,
     [c.repo, c.branches, cutoff],
   );
-  const { rows: byPull } = await db.query<{ who: string; n: number; last: Date }>(
-    `SELECT login AS who, count(*)::int AS n, max(created_at) AS last FROM command.code_pulls
-      WHERE repo = $1 AND touches AND login IS NOT NULL AND created_at >= $2 GROUP BY 1`,
+  const { rows: byPull } = await db.query<{ who: string; n: number; n30: number; last: Date }>(
+    `SELECT login AS who, count(*)::int AS n, count(*) FILTER (WHERE created_at >= $2)::int AS n30, max(created_at) AS last FROM command.code_pulls
+      WHERE repo = $1 AND touches AND login IS NOT NULL GROUP BY 1`,
     [c.repo, cutoff],
   );
   const people = new Map<string, CodePayload['contributors'][number]>();
-  const of = (who: string, name: string) => people.get(who) ?? (people.set(who, { who, name, commits30: 0, pulls30: 0, lastAt: 0 }), people.get(who)!);
+  const of = (who: string, name: string) =>
+    people.get(who) ?? (people.set(who, { who, name, commits: 0, pulls: 0, commits30: 0, pulls30: 0, lastAt: 0 }), people.get(who)!);
   for (const r of byCommit) {
     const p = of(r.who, r.name);
-    p.commits30 = r.n;
+    [p.commits, p.commits30] = [r.n, r.n30];
     p.lastAt = Math.max(p.lastAt, msOf(r.last)!);
   }
   for (const r of byPull) {
     const p = of(r.who, r.who);
-    p.pulls30 = r.n;
+    [p.pulls, p.pulls30] = [r.n, r.n30];
     p.lastAt = Math.max(p.lastAt, msOf(r.last)!);
   }
-  const contributors = [...people.values()].sort((a, b) => b.commits30 + b.pulls30 - (a.commits30 + a.pulls30) || b.lastAt - a.lastAt || a.who.localeCompare(b.who));
+  const contributors = [...people.values()].sort((a, b) => b.commits + b.pulls - (a.commits + a.pulls) || b.lastAt - a.lastAt || a.who.localeCompare(b.who));
 
   // how fresh: the last run of any part of the poller, and the first error any part has
   const { rows: runs } = await db.query<{ ran_at: Date; error: string | null; part: string }>(

@@ -1497,12 +1497,13 @@ export function cCode() {
     </section>
   );
   const ppl = CODE.contributors,
-    top = ppl.reduce((a, c) => Math.max(a, c.commits30 + c.pulls30), 0);
+    top = ppl.reduce((a, c) => Math.max(a, c.commits + c.pulls), 0),
+    active = ppl.filter((c) => c.commits30 + c.pulls30).length;
   const people = gCell(
     's-8',
     'Contributors',
-    'Commits and pull requests, 30 days',
-    figHtml(String(CODE.people), CODE.people === 1 ? 'person contributed in the last 30 days' : 'people contributed in the last 30 days'),
+    'Commits and pull requests to the contracts',
+    figHtml(String(CODE.people), `${CODE.people === 1 ? 'person has' : 'people have'} contributed · ${active} in the last 30 days`),
     !named ? (
       <span className="small quiet">Names show from See up.</span>
     ) : ppl.length ? (
@@ -1512,11 +1513,11 @@ export function cCode() {
             <div key={c.who} className="hb">
               <span className="hb-k">{c.who}</span>
               <span className="hb-bar">
-                <i style={css(`width:${top ? (c.commits30 / top) * 100 : 0}%;background:var(--fg)`)} />
-                <i style={css(`width:${top ? (c.pulls30 / top) * 100 : 0}%;background:var(--underway)`)} />
+                <i style={css(`width:${top ? (c.commits / top) * 100 : 0}%;background:var(--fg)`)} />
+                <i style={css(`width:${top ? (c.pulls / top) * 100 : 0}%;background:var(--underway)`)} />
               </span>
               <b className="num">
-                {c.commits30} · {c.pulls30}
+                {c.commits} · {c.pulls}
               </b>
             </div>
           ))}
