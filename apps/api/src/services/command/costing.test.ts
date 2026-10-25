@@ -292,11 +292,13 @@ describe('the Shop payload', () => {
     expect(m.low).toEqual(['blank']);
     // 8 blanks make 8, 200 m of thread at 12 m a tee 16: the blanks run out first
     expect(m.makes.lts).toEqual({ units: 8, binding: 'blank' });
+    // each on its own: the blanks would make 8, the thread 16
+    expect(m.covers).toEqual({ blank: { lts: 8 }, thread: { lts: 16 } });
   });
 
   test('below See, none of it is sent; the products keep their cost', async () => {
     const d: any = await shopSection(db, at(TOTALS));
-    expect([d.INPUTS, d.RECIPES, d.MATERIALS]).toEqual([[], {}, { onHand: [], low: [], makes: {} }]);
+    expect([d.INPUTS, d.RECIPES, d.MATERIALS, d.RUNS]).toEqual([[], {}, { onHand: [], low: [], makes: {}, covers: {} }, []]);
     expect(d.PR.find((p: any) => p.id === 'lts').c).toEqual([14.91, 0, 0, 0]);
   });
 

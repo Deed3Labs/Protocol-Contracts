@@ -5,7 +5,7 @@ import { api } from '../live/api';
 import { attrs, css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
 import { compBar, head, ic, money } from './core';
-import { costsTitle, costsTool, inputPane, recipeSec, sCosts, startRecipe } from './costing';
+import { costsTitle, costsTool, inputPane, recipeSec, sCosts, startRecipe, stockGroup } from './costing';
 import {
   BUYERS,
   DAY,
@@ -1179,6 +1179,8 @@ export function sInventory() {
   return (
     <>
       {G('Stock', 'Each square is a size · darker means more on hand', '', grid)}
+      {/* live only (Phase 10c): the materials kept on hand and the production runs, from See */}
+      {REAL && !(LIVE && vLevel('shop') === 1) ? stockGroup() : ''}
       {G(
         'Planning',
         '',

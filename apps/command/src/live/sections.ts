@@ -80,6 +80,7 @@ import {
   RESOS,
   RETURNS,
   REV_W,
+  RUNS,
   RP,
   RTD_W,
   SHELF_EV,
@@ -169,6 +170,23 @@ function mergeSummary(sum) {
 /** The batch waiting for approval, keeping Members' full record when Growth only knows its number. */
 function nextBatch(n) {
   vars.NEXT_BATCH = n && vars.NEXT_BATCH?.number === n.number ? vars.NEXT_BATCH : n;
+}
+
+/** "3", "0.25": up to 4 places. */
+const qty = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 4 });
+/** A material at or under its low mark, as one of Home's alerts: it opens Shop's Inventory. */
+function lowAlert(m) {
+  const on = Number(m.onHand) || 0;
+  const left = on > 0 ? `${qty(on)} ${m.unit} left` : on < 0 ? `none left, ${qty(-on)} ${m.unit} short` : 'none left';
+  return {
+    t: `Low on ${m.name}: ${left}, ${on < m.lowMark ? 'under' : 'at'} its mark of ${qty(m.lowMark)}`,
+    sev: on <= 0 ? 'absent' : 'underway',
+    area: 'Shop',
+    age: 'Materials kept on hand',
+    go: 'shop',
+    spane: 'inventory',
+    fix: 'stock',
+  };
 }
 
 const apply = {
@@ -261,7 +279,9 @@ const apply = {
     replace(INPUTS, d.INPUTS);
     for (const k of Object.keys(RECIPES)) delete RECIPES[k];
     Object.assign(RECIPES, d.RECIPES ?? {});
-    assign(MATERIALS, d.MATERIALS ?? { onHand: [], low: [], makes: {} });
+    assign(MATERIALS, { onHand: [], low: [], makes: {}, covers: {}, ...(d.MATERIALS ?? {}) });
+    // the recent production runs (Phase 10c)
+    replace(RUNS, d.RUNS);
     const f = d.figures;
     replace(ORD_W, f['shop.orders_weekly']);
     assign(SHOP_COSTS, f['shop.costs']);
@@ -345,7 +365,8 @@ const apply = {
     replace(DEADLINES, d.DEADLINES);
     const f = d.figures;
     replace(FUNNEL, f['home.funnel']);
-    replace(ALERTS0, f['home.alerts']);
+    // the stored alerts, and the shop's materials at or under their low mark (Phase 10c)
+    replace(ALERTS0, [...(f['home.alerts'] ?? []), ...(d.LOW_MATERIALS ?? []).map(lowAlert)]);
     if (f['growth.range']) assign(RANGE, f['growth.range']);
   },
   members(d) {

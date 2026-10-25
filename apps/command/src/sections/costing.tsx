@@ -4,18 +4,21 @@ import { LIVE } from '../live/env';
 import { reloadSection } from '../live/sections';
 import { css } from '../runtime/dom';
 import { ic, money } from './core';
-import { INPUTS, PR, RECIPES, SIZES, SS, STK, vars } from './data';
+import { INPUTS, MATERIALS, PR, RECIPES, RUNS, SIZES, SS, STK, vars } from './data';
 import { kv, sec, vModal } from './governance';
 import { G, figHtml, fmtD } from './growth';
+import { mkey } from './home';
 import { ddHtml, stepFlow } from './kit';
 import { strip } from './money';
 import { closeModal, render, toast } from './shell';
-import { glyph, pName, prOf } from './shop';
+import { glyph, pName, prOf, shortN } from './shop';
 
 /*
  * What goes into a product (docs/command-center-plan.md, Phase 10b), live only: Shop's Costs tab (the
- * inputs library and an input's pane), the product pane's recipe, and their flows. The prototype has
- * none of it, so nothing here draws unless REAL; shop.tsx and startup.tsx call in.
+ * inputs library and an input's pane), the product pane's recipe, and their flows. Phase 10c adds the
+ * stock: Inventory's Materials and Runs, an input's purchases and ledger, counting and writing off,
+ * and recording a production run. The prototype has none of it, so nothing here draws unless REAL;
+ * shop.tsx and startup.tsx call in.
  *
  * Money in the payload and in the actions' bodies is dollars. A unit cost keeps its fractions of a
  * cent ($0.0425 a ml); a line's cost comes rounded to the cent.
@@ -49,6 +52,26 @@ const usedBy = (iid) =>
     .filter(([p, l]) => p && l);
 /** Why a line's other side is missing: the API says "zero" for a unit cost that isn't known yet too. */
 const noteOf = (l, i) => (i && i.unitCost == null ? (l.amount == null ? 'No unit cost yet: the amount is worked out once it has one' : 'No unit cost yet: it costs nothing until it has one') : l.note);
+/** "+12 each", "−0.5 m": a stock move. */
+const moveQty = (n, unit) => (n > 0 ? '+' : n < 0 ? '−' : '') + amountOf(Math.abs(n), unit);
+/** To the millionth, as the API keeps quantities. */
+const round6 = (v) => Math.round(v * 1e6) / 1e6;
+/** A run's colour and size: "Black M", "One size". */
+const runVariant = (o, s) => [o, s].filter(Boolean).join(' ') || 'One size';
+const productName = (pid) => {
+  const p = prOf(pid);
+  return p ? pName(p) : pid;
+};
+const productShort = (pid) => {
+  const p = prOf(pid);
+  return p ? shortN(p) : pid;
+};
+/** What a run used of one input: "12 × Blank tee", "144 m Thread". */
+const usedText = (u) => {
+  const i = inputOf(u.input);
+  return i?.unit === 'each' ? `${qty(u.quantity)} × ${i.name}` : `${amountOf(u.quantity, i?.unit ?? '')} ${i?.name ?? u.input}`;
+};
+const REASON = { purchase: 'Bought', run: 'Used in a run', adjust: 'Counted', waste: 'Written off' };
 const lastBought = (i) => (i.lastPurchase ? `${fmtD(i.lastPurchase.at)} · ${qty(i.lastPurchase.quantity)} for ${money(i.lastPurchase.total)}` : 'Not yet');
 
 /* ── Shop → Costs ─────────────────────────────────────────────────────── */
@@ -174,34 +197,39 @@ export function inputPane() {
     </button>,
   );
   const lp = i.lastPurchase;
+  // the history (Phase 10c), newest first; an older answer has only the latest
+  const ps = i.purchases ?? (lp ? [{ ...lp, unitCost: lp.quantity ? lp.total / lp.quantity : null, note: '' }] : []);
   const bought = sec(
     'Purchases',
     <div className="pn-list">
-      {lp ? (
-        <div className="pn-r">
-          <span className="ev-d">{fmtD(lp.at)}</span>
-          <span className="pn-k">
-            <b>
-              {amountOf(lp.quantity, i.unit)}
-              {' for '}
-              {money(lp.total)}
-            </b>
-            <span className="small quiet">
-              {lp.supplier || 'No supplier given'}
-              {' · '}
-              {unitCostText(lp.quantity ? lp.total / lp.quantity : null, i.unit)}
+      {ps.length ? (
+        ps.map((x, n) => (
+          <div key={n} className="pn-r">
+            <span className="ev-d">{fmtD(x.at)}</span>
+            <span className="pn-k">
+              <b>
+                {amountOf(x.quantity, i.unit)}
+                {' for '}
+                {money(x.total)}
+              </b>
+              <span className="small quiet">
+                {x.supplier || 'No supplier given'}
+                {' · '}
+                {unitCostText(x.unitCost, i.unit)}
+                {x.note ? ` · ${x.note}` : ''}
+              </span>
             </span>
-          </span>
-          <span className="small quiet">Latest</span>
-        </div>
+            <span className="small quiet">{n === 0 ? 'Latest' : ''}</span>
+          </div>
+        ))
       ) : (
         <p className="quiet small" style={css('margin:0')}>
           None yet.
         </p>
       )}
-      {lp ? (
+      {ps.length ? (
         <p className="quiet small" style={css('margin:8px 0 0')}>
-          The latest purchase sets the unit cost. Earlier ones are kept.
+          The latest purchase sets the unit cost. Earlier ones are kept{ps.length >= 20 ? ': the latest 20 show here' : ''}.
         </p>
       ) : (
         ''
@@ -215,6 +243,58 @@ export function inputPane() {
       </button>
     ),
   );
+  // a kept-on-hand input's stock ledger: bought, used, counted, written off
+  const moves = i.moves ?? [];
+  const moveNote = (m) => {
+    if (m.reason === 'run') {
+      const r = RUNS.find((x) => x.id === m.ref);
+      return r ? `${r.units} ${productName(r.product)} · ${runVariant(r.option, r.size)}` : 'A production run';
+    }
+    if (m.reason === 'purchase') return m.note || 'No supplier given';
+    return m.note || (m.reason === 'waste' ? 'No reason given' : 'No note');
+  };
+  const ledger = i.stocked
+    ? sec(
+        'Stock ledger',
+        <div className="pn-list">
+          {moves.length ? (
+            moves.map((m, n) => (
+              <div key={n} className="pn-r">
+                <span className="ev-d">{fmtD(m.at)}</span>
+                <span className="pn-k">
+                  <b>{REASON[m.reason] ?? m.reason}</b>
+                  <span className="small quiet">{moveNote(m)}</span>
+                </span>
+                <b className="num">{moveQty(m.quantity, i.unit)}</b>
+              </div>
+            ))
+          ) : (
+            <p className="quiet small" style={css('margin:0')}>
+              No moves yet. A purchase, a run, a count or a write-off shows here.
+            </p>
+          )}
+          {moves.length >= 30 ? (
+            <p className="quiet small" style={css('margin:8px 0 0')}>
+              The latest 30 show here.
+            </p>
+          ) : (
+            ''
+          )}
+        </div>,
+        i.archived ? (
+          ''
+        ) : (
+          <>
+            <button type="button" className="pn-link" data-cflow="count" data-cid={i.id}>
+              Count stock
+            </button>
+            <button type="button" className="pn-link" data-cflow="waste" data-cid={i.id}>
+              Write off
+            </button>
+          </>
+        ),
+      )
+    : '';
   const used = sec(
     'Used in',
     <div className="pn-list">
@@ -296,6 +376,7 @@ export function inputPane() {
           </div>
           {facts}
           {bought}
+          {ledger}
           {used}
         </div>
         <footer className="pane-ft">{foot}</footer>
@@ -303,6 +384,210 @@ export function inputPane() {
     </>
   );
 }
+
+/* ── Inventory: materials and production runs (Phase 10c) ────────────── */
+
+/** The products a run can be recorded for: a recipe, and the colours and sizes Command keeps stock of. */
+const runnable = () =>
+  Object.keys(RECIPES)
+    .map(prOf)
+    .filter((p) => p && !p.dep && p.st !== 'arch' && Object.keys(STK[p.id] ?? {}).length);
+const optsOf = (pid) => Object.keys(STK[pid] ?? {});
+const sizesOf = (pid, opt) => ((STK[pid]?.[opt]?.length ?? 0) === SIZES.length ? SIZES : ['']);
+const sizeFor = (pid, opt, cur) => {
+  const ss = sizesOf(pid, opt);
+  return ss.includes(cur) ? cur : ss.includes('M') ? 'M' : ss[0];
+};
+/** What's on the shelf of a colour and size now. */
+const shelfOf = (pid, opt, size) => {
+  const ss = sizesOf(pid, opt);
+  return STK[pid]?.[opt]?.[Math.max(0, ss.indexOf(size))] ?? 0;
+};
+/** A recipe line's amount for a colour and size, with the override the API would pick: colour and size, then size, then colour. */
+function amountFor(pid, iid, opt, size) {
+  const r = RECIPES[pid];
+  const ovs = (r?.overrides ?? []).filter((o) => o.input === iid);
+  const o = ovs.find((x) => x.option && x.size && x.option === opt && x.size === size) ?? ovs.find((x) => !x.option && x.size && x.size === size) ?? ovs.find((x) => x.option && !x.size && x.option === opt);
+  return (o ?? r?.lines?.find((x) => x.input === iid))?.amount ?? null;
+}
+/** What a run of `units` uses of each kept-on-hand input, and what's left after; worked out as the API's run action does. */
+function runPlan(pid, opt, size, units) {
+  const plan = { uses: [], unknown: [], toOrder: [] };
+  for (const l of RECIPES[pid]?.lines ?? []) {
+    const i = inputOf(l.input);
+    if (!i?.stocked) {
+      plan.toOrder.push(l.input);
+      continue;
+    }
+    const per = amountFor(pid, l.input, opt, size);
+    if (per == null) {
+      plan.unknown.push(l.input);
+      continue;
+    }
+    const quantity = round6(per * units),
+      on = i.onHand ?? 0,
+      after = round6(on - quantity);
+    plan.uses.push({ input: l.input, per, quantity, on, after, short: after < -1e-9 });
+  }
+  return plan;
+}
+
+/** Inventory's Materials: each kept-on-hand input against its low mark, and what it covers. */
+function materialsCell() {
+  const list = MATERIALS.onHand ?? [];
+  const low = list.filter((m) => m.low);
+  // the product that runs out first, and the input it runs out of
+  const first = Object.entries(MATERIALS.makes ?? {})
+    .map(([pid, k]) => [prOf(pid), k])
+    .filter(([p, k]) => p && p.st !== 'arch' && k && k.units != null)
+    .sort((a, b) => a[1].units - b[1].units)[0];
+  const rows = list.map((m) => {
+    const i = inputOf(m.input);
+    const on = Number(m.onHand) || 0;
+    // the bar is against the largest purchase, or the low mark, whichever is more
+    const top = Math.max(on, m.lowMark ?? 0, i?.lastPurchase?.quantity ?? 0, ...(i?.purchases ?? []).map((x) => x.quantity));
+    const pct = (v) => (top > 0 ? Math.min(100, (Math.max(0, v) / top) * 100) : 0).toFixed(1);
+    const cov = Object.entries(MATERIALS.covers?.[m.input] ?? {})
+      .map(([pid, n]) => [prOf(pid), n])
+      .filter(([p]) => p)
+      .sort((a, b) => a[1] - b[1]);
+    return (
+      <button key={m.input} type="button" className="pn-r two cvb-r" data-sinput={m.input} style={css('padding:10px 0')}>
+        <span className="pn-k">
+          <b>{m.name}</b>
+          <span className="wb-b" style={css('display:block;margin:6px 0')}>
+            <i style={css(`width:${pct(on)}%${m.low ? ';background:var(--underway)' : ''}`)} />
+            {m.lowMark != null && top > 0 ? <em style={css(`left:${pct(m.lowMark)}%`)} /> : ''}
+          </span>
+          <span className="small quiet">
+            {m.lowMark == null ? 'No low mark' : `Low mark ${amountOf(m.lowMark, m.unit)}`}
+            {' · '}
+            {cov.length ? `covers ${cov.map(([p, n]) => `${n} ${shortN(p)}`).join(', ')}` : 'in no recipe yet'}
+          </span>
+        </span>
+        <b className={`num${m.low ? ' warn' : ''}`}>{amountOf(on, m.unit)}</b>
+      </button>
+    );
+  });
+  return (
+    <section className="cell s-6">
+      <header className="c-hd">
+        <span className="lbl">Materials</span>
+        <span className="tag">{list.length ? 'Select one for its ledger' : ''}</span>
+      </header>
+      <div className="c-fig">{figHtml(String(list.length), `materials kept on hand · ${low.length ? `${low.length} low` : 'none low'}`)}</div>
+      <div className="c-body start">
+        {rows.length ? (
+          <>
+            <div className="pn-list cvb">{rows}</div>
+            {mkey([
+              ['var(--fg)', 'On hand'],
+              ['var(--underway)', 'At or under its low mark'],
+              ['var(--fg-50)', 'Tick · low mark'],
+            ])}
+          </>
+        ) : (
+          <p className="quiet small" style={css('margin:0')}>
+            No materials kept on hand yet. Add them on Costs.
+          </p>
+        )}
+      </div>
+      {strip([
+        ['Kept on hand', String(list.length)],
+        ['Low', String(low.length), low.map((m) => m.name).join(', '), low.length ? 'warn' : ''],
+        [
+          'Runs out first',
+          first ? shortN(first[0]) : 'Nothing yet',
+          first
+            ? first[1].units > 0
+              ? `${first[1].units} more before ${inputOf(first[1].binding)?.name ?? first[1].binding} runs out`
+              : `${inputOf(first[1].binding)?.name ?? first[1].binding} has run out`
+            : 'No recipe uses a material kept on hand',
+          first && first[1].units === 0 ? 'warn' : '',
+        ],
+      ])}
+    </section>
+  );
+}
+
+const SHOWN_RUNS = 10;
+/** Inventory's Runs: the recent production runs, and recording one. */
+function runsCell() {
+  const units = RUNS.reduce((a, r) => a + (r.units || 0), 0),
+    short = RUNS.filter((r) => r.short).length;
+  const rows = RUNS.slice(0, SHOWN_RUNS).map((r) => (
+    <div key={r.id} className="pn-r">
+      <span className="ev-d">{fmtD(r.at)}</span>
+      <span className="pn-k">
+        <b>
+          {productName(r.product)}
+          {' · '}
+          {runVariant(r.option, r.size)}
+        </b>
+        <span className="small quiet">
+          {r.who || 'Someone'}
+          {r.note ? ` · ${r.note}` : ''}
+        </span>
+        <span className="small quiet">{r.uses?.length ? `Used ${r.uses.map(usedText).join(', ')}` : 'Used nothing kept on hand'}</span>
+        {r.short ? (
+          <span className="small" style={css('color:var(--underway)')}>
+            Short: recorded with too little on hand
+          </span>
+        ) : (
+          ''
+        )}
+      </span>
+      <b className="num">+{r.units}</b>
+    </div>
+  ));
+  return (
+    <section className="cell s-6">
+      <header className="c-hd">
+        <span className="lbl">Production runs</span>
+        <span className="hd-tools">
+          <button className="btn btn-g btn-s" type="button" data-cflow="run">
+            Record a run
+          </button>
+        </span>
+      </header>
+      <div className="c-fig">{figHtml(String(RUNS.length), RUNS.length ? `recent runs · ${units} units made` : 'runs recorded')}</div>
+      <div className="c-body start">
+        {rows.length ? (
+          <div className="pn-list">
+            {rows}
+            {RUNS.length > SHOWN_RUNS ? (
+              <p className="quiet small" style={css('margin:8px 0 0')}>
+                And {RUNS.length - SHOWN_RUNS} earlier.
+              </p>
+            ) : (
+              ''
+            )}
+          </div>
+        ) : (
+          <p className="quiet small" style={css('margin:0')}>
+            No runs recorded yet. Record one when a batch is made: it uses up the materials by the recipe and adds the units to stock.
+          </p>
+        )}
+      </div>
+      {strip([
+        ['Units made', String(units)],
+        ['Short', String(short), short ? 'too little on hand' : '', short ? 'warn' : ''],
+        ['Latest', RUNS[0] ? fmtD(RUNS[0].at) : 'None yet', RUNS[0] ? productShort(RUNS[0].product) : ''],
+      ])}
+    </section>
+  );
+}
+/** Inventory's Materials group, live only. */
+export const stockGroup = () =>
+  G(
+    'Materials',
+    'Kept on hand, and what’s been made',
+    '',
+    <>
+      {materialsCell()}
+      {runsCell()}
+    </>,
+  );
 
 /* ── The product pane's recipe ────────────────────────────────────────── */
 
@@ -518,6 +803,23 @@ const out = (k) => <span data-cout={k}>—</span>;
 /** The live sums: what a purchase works out to, what a line costs or uses. */
 function compute() {
   const set = (k, t) => document.querySelectorAll(`#modalRoot [data-cout="${k}"]`).forEach((el) => (el.textContent = t));
+  if (CF.kind === 'count' || CF.kind === 'waste') {
+    const i = inputOf(CF.iid);
+    if (!i) return;
+    const on = i.onHand ?? 0,
+      v = num(val('cf-qty'));
+    const typed = v != null && isFinite(v) && v >= 0;
+    if (CF.kind === 'count') {
+      const d = typed ? round6(v - on) : null;
+      set('diff', d == null ? 'Type what you counted' : Math.abs(d) < 1e-9 ? 'None: it matches the books' : moveQty(d, i.unit));
+      set('after', typed ? amountOf(v, i.unit) : '—');
+    } else {
+      const after = typed ? round6(on - v) : null;
+      set('after', after == null ? 'Type the amount written off' : after < -1e-9 ? `Can’t go below nothing: ${amountOf(on, i.unit)} on hand` : amountOf(after, i.unit));
+    }
+    return;
+  }
+  if (CF.kind === 'run') return computeRun(set);
   if (CF.kind === 'input' || CF.kind === 'purchase') {
     const unit = CF.kind === 'input' ? (CF.ikind === 'labour' ? 'h' : val('cf-unit').toLowerCase() || 'unit') : (inputOf(CF.iid)?.unit ?? 'unit');
     set('unit', unit);
@@ -559,6 +861,12 @@ export function openCostFlow(kind, pid = '', iid = '', ds = {}) {
     if (kind === 'line' && !CF.iid) CF.iid = INPUTS.find((x) => !x.archived && !r?.lines?.some((y) => y.input === x.id))?.id ?? '';
     if (kind === 'override' && !CF.iid) CF.iid = r?.lines?.[0]?.input ?? '';
   }
+  // a run starts on the first product it can be recorded for, its first colour, and M where it's sized
+  if (kind === 'run') {
+    if (!runnable().some((x) => x.id === CF.pid)) CF.pid = runnable()[0]?.id ?? '';
+    CF.opt = optsOf(CF.pid)[0] ?? '';
+    CF.size = sizeFor(CF.pid, CF.opt, '');
+  }
   draw();
 }
 function draw() {
@@ -581,6 +889,11 @@ function redraw() {
 }
 /** A pick from a dropdown in a costing flow (kit.tsx ddPick hands over ids starting cf-). */
 export function costPick(id, v) {
+  if (id === 'cf-prod') {
+    CF.pid = v;
+    CF.opt = optsOf(v)[0] ?? '';
+    CF.size = sizeFor(v, CF.opt, CF.size);
+  }
   if (id === 'cf-input') {
     if (v === '__new') return openCostFlow('input', '', '', { back: { kind: CF.kind, pid: CF.pid, opt: CF.opt, size: CF.size } });
     CF.iid = v;
@@ -726,6 +1039,69 @@ function build() {
       });
     return f;
   }
+  if (k === 'count' && i?.stocked) {
+    const f = {
+      t: 'Count stock',
+      lbl: i.name,
+      h: `Count ${i.name}`,
+      p: 'Type what’s on hand now. The difference from the books is recorded as an adjustment.',
+      pre: (
+        <>
+          {field('cf-qty', `Counted, in ${i.unit}`, '', { inputMode: 'decimal' })}
+          {field('cf-note', 'Note', '', { placeholder: 'Monthly count' })}
+        </>
+      ),
+      rows: [
+        ['On the books', amountOf(i.onHand ?? 0, i.unit)],
+        ['Difference', out('diff')],
+        ['On hand after', out('after'), 1],
+      ],
+      btn: 'Record the count',
+      steps: ['Recorded the count', 'Set what’s on hand', 'Worked out what it covers'],
+      done: ['Counted.', 'What’s on hand is what you counted.'],
+    };
+    f.go = () =>
+      submit(f, () => {
+        const v = num(val('cf-qty'));
+        if (v == null || !isFinite(v) || v < 0) fail('Type what you counted');
+        const d = round6(v - (i.onHand ?? 0));
+        if (Math.abs(d) < 1e-9) fail('That’s what the books say: nothing to record');
+        return [['stock-adjust', { input: i.id, quantity: d, reason: 'adjust', note: val('cf-note') }]];
+      });
+    return f;
+  }
+  if (k === 'waste' && i?.stocked) {
+    const on = i.onHand ?? 0;
+    const f = {
+      t: 'Write off',
+      lbl: i.name,
+      h: `Write off ${i.name}`,
+      p: 'Stock that was spoiled, damaged or lost. It comes off what’s on hand.',
+      pre: (
+        <>
+          {field('cf-qty', `Amount written off, in ${i.unit}`, '', { inputMode: 'decimal' })}
+          {field('cf-note', 'Why', '', { placeholder: 'Misprinted' })}
+        </>
+      ),
+      rows: [
+        ['On hand', amountOf(on, i.unit)],
+        ['On hand after', out('after'), 1],
+      ],
+      btn: 'Write it off',
+      steps: ['Recorded the write-off', 'Took it off what’s on hand'],
+      done: ['Written off.', 'The ledger shows it, with why.'],
+    };
+    f.go = () =>
+      submit(f, () => {
+        const v = num(val('cf-qty'));
+        if (v == null || !isFinite(v) || v <= 0) fail('Type the amount written off');
+        if (v - on > 1e-9) fail(`Only ${amountOf(on, i.unit)} on hand`);
+        if (!val('cf-note')) fail('Say why it’s written off');
+        return [['stock-adjust', { input: i.id, quantity: -round6(v), reason: 'waste', note: val('cf-note') }]];
+      });
+    return f;
+  }
+  if (k === 'run') return runFlow();
   if (k === 'line' && p) return lineFlow(p, i);
   if (k === 'override' && p) return overrideFlow(p, i);
   if (k === 'copy' && p && RECIPES[p.id]) {
@@ -771,6 +1147,125 @@ function build() {
     return f;
   }
   return null;
+}
+
+/** Recording a production run: a product with a recipe, its colour and size, and how many were made. */
+function runFlow() {
+  const list = runnable();
+  const p = prOf(CF.pid);
+  if (!p) {
+    return {
+      t: 'Record a run',
+      lbl: 'Production',
+      h: 'Nothing to record a run for yet',
+      p: 'A run uses up the materials by a product’s recipe. Start a recipe from a product’s pane on Products.',
+      rows: [['Products with a recipe', String(Object.keys(RECIPES).length)]],
+    };
+  }
+  CF.size = sizeFor(p.id, CF.opt, CF.size);
+  const opts = optsOf(p.id),
+    sizes = sizesOf(p.id, CF.opt);
+  const plan = runPlan(p.id, CF.opt, CF.size, 0);
+  const name = (id) => inputOf(id)?.name ?? id;
+  const f = {
+    t: 'Record a run',
+    lbl: 'Production',
+    h: 'What was made',
+    p: 'It uses up what the recipe takes of each material kept on hand, and adds the units to that colour and size’s stock.',
+    pre: (
+      <>
+        <span className="lbl">Product</span>
+        {ddHtml(
+          'cf-prod',
+          list.map((x) => [x.id, pName(x), '']),
+          p.id,
+          'Product',
+        )}
+        {opts.length > 1 ? (
+          <>
+            <span className="lbl">Colour</span>
+            {seg(
+              opts.map((o) => [o, o]),
+              CF.opt,
+              'opt',
+              'Colour',
+            )}
+          </>
+        ) : (
+          ''
+        )}
+        {sizes.length > 1 ? (
+          <>
+            <span className="lbl">Size</span>
+            {seg(
+              sizes.map((z) => [z, z]),
+              CF.size,
+              'size',
+              'Size',
+            )}
+          </>
+        ) : (
+          ''
+        )}
+        <div className="f2">
+          {field('cf-units', 'Units made', '', { inputMode: 'numeric', placeholder: '12' })}
+          {field('cf-note', 'Note', '', { placeholder: 'First batch' })}
+        </div>
+      </>
+    ),
+    rows: [
+      ['Makes', out('makes')],
+      ...plan.uses.map((u) => [name(u.input), out(`use-${u.input}`)]),
+      ...plan.unknown.map((id) => [name(id), 'Can’t tell how much a unit uses']),
+      ...(plan.toOrder.length ? [['Made to order', `${plan.toOrder.map(name).join(', ')} · costed when it sells`]] : []),
+      ['On the shelf after', out('shelf'), 1],
+    ],
+    note: <span data-cout="note" />,
+    btn: 'Record the run',
+    steps: ['Recorded the run', 'Used up the materials', 'Added the units to stock'],
+    done: ['Recorded.', 'Inventory shows what it used and the units it added.'],
+  };
+  f.go = () =>
+    submit(f, () => {
+      const n = num(val('cf-units'));
+      if (n == null || !Number.isInteger(n) || n <= 0) fail('Type how many were made, a whole number');
+      if (n > 10000) fail('At most 10,000 in one run');
+      const pl = runPlan(p.id, CF.opt, CF.size, n);
+      if (pl.unknown.length) fail(`Can’t tell how much ${pl.unknown.map(name).join(', ')} a unit uses: enter its line as an amount, or give it a unit cost`);
+      // short: the flow said so, and the button says "Record it anyway"
+      return [['run', { product: p.id, option: CF.opt, size: CF.size, units: n, note: val('cf-note'), ...(pl.uses.some((u) => u.short) ? { allowShort: true } : {}) }]];
+    });
+  return f;
+}
+/** The run flow's live sums: what it uses of each material, what's left, and whether any goes below nothing. */
+function computeRun(set) {
+  const p = prOf(CF.pid);
+  if (!p) return;
+  const n = num(val('cf-units'));
+  const ok = n != null && Number.isInteger(n) && n > 0 && n <= 10000;
+  const plan = runPlan(p.id, CF.opt, CF.size, ok ? n : 0);
+  set('makes', ok ? `${n} × ${pName(p)} · ${runVariant(CF.opt, CF.size)}` : n == null ? 'Type how many were made' : 'A whole number, up to 10,000');
+  for (const u of plan.uses) {
+    const unit = inputOf(u.input)?.unit ?? '';
+    set(`use-${u.input}`, ok ? `${amountOf(u.quantity, unit)} · ${amountOf(u.on, unit)} on hand → ${amountOf(u.after, unit)}` : `${amountOf(u.per, unit)} a unit · ${amountOf(u.on, unit)} on hand`);
+    document.querySelectorAll(`#modalRoot [data-cout="use-${u.input}"]`).forEach((el) => (el.style.color = ok && u.short ? 'var(--underway)' : ''));
+  }
+  const shelf = shelfOf(p.id, CF.opt, CF.size);
+  set('shelf', ok ? `${shelf + n} (${shelf} now)` : `${shelf} now`);
+  const short = ok ? plan.uses.filter((u) => u.short) : [];
+  const names = (xs) => xs.map((u) => inputOf(u.input)?.name ?? u.input).join(', ');
+  const note = short.length
+    ? `Not enough on hand: ${names(short)} would go below nothing. If the count was off, record it anyway, then count it to put it right.`
+    : plan.unknown.length
+      ? `Can’t tell how much ${plan.unknown.map((id) => inputOf(id)?.name ?? id).join(', ')} a unit uses: enter its line as an amount, or give it a unit cost.`
+      : !plan.uses.length
+        ? 'Nothing in its recipe is kept on hand: the run only adds the units.'
+        : '';
+  set('note', note);
+  const box = document.querySelector('#modalRoot [data-cout="note"]')?.closest('.note');
+  if (box) box.hidden = !note;
+  const b = document.querySelector('#modalRoot [data-vgo]');
+  if (b) b.textContent = short.length ? 'Record it anyway' : 'Record the run';
 }
 
 function inputFlow(i) {

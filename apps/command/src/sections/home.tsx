@@ -998,6 +998,11 @@ export function numbers(cobaltFree, alerts) {
       <button className="btn btn-g btn-s" type="button" data-go="field">
         Add to route
       </button>
+    ) : a.fix === 'stock' ? (
+      // live only (Phase 10c): a material under its low mark
+      <button className="btn btn-g btn-s" type="button" data-spane="inventory">
+        See materials
+      </button>
     ) : (
       <button className="chip plain" type="button" data-go="waiting" style={css('height:24px')}>
         In Needs you
@@ -1016,7 +1021,7 @@ export function numbers(cobaltFree, alerts) {
           {alerts.map((a, __k) => (
             <div key={__k} className="arow">
               <i className="sev" style={css(`background:var(--${a.sev})`)} aria-label={a.sev === 'absent' ? 'High' : 'Check'} />
-              <button className="amain" type="button" data-go={a.go}>
+              <button className="amain" type="button" data-go={a.spane ? undefined : a.go} data-spane={a.spane}>
                 <b>{a.t}</b>
                 <span className="small quiet">
                   {a.area}
