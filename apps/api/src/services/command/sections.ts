@@ -10,7 +10,7 @@ import type { MemberSource } from './memberSource.js';
 import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
 import { codeActivity, codeChanges, codeConfig } from './github.js';
 import { safeConfig } from './safe.js';
-import { costingPayload, lowMaterials, noCosting, productCost, readBook, readHistory, shown, type Book } from './costing.js';
+import { costHistory, costingPayload, lowMaterials, noCosting, orderCosts, productCost, readBook, readHistory, roundCents, shown, type Book } from './costing.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -1059,8 +1059,14 @@ async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, u
   for (const h of hist) (SHIST[h.product_id] ??= []).push([ms_(h.at), h.what, h.who]);
 
   const totals = o.level <= TOTALS;
+  // what each line cost when it sold (Phase 10d), from See: a line not costed yet has null
+  const recorded = await orderCosts(db);
+  const sees = o.level >= SEE;
   const ORDERS = ord.map((r) => {
-    const items = r.items.map(([slug, col, sz, q]) => [pid(slug), col, sz, q]);
+    const items = r.items.map(([slug, col, sz, q], n) => {
+      const c = recorded.get(r.id)?.get(n);
+      return sees ? [pid(slug), col, sz, q, c == null ? null : shown(c)] : [pid(slug), col, sz, q];
+    });
     return totals ? [r.id, 0, '', 0, items, r.paid_with, r.fulfilment, r.pickup_at, r.state, ''] : [r.id, ms_(r.paid_at), r.buyer, r.member ? 1 : 0, items, r.paid_with, r.fulfilment, r.pickup_at, r.state, r.city];
   });
   const { rows: pre } = await db.query<{ payment_intent: string; line: number; shop: string; slug: string; variant: string; units: number; state: string; placed_at: Date }>('SELECT * FROM command.shop_live_preorders ORDER BY placed_at');
@@ -1078,20 +1084,30 @@ async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, u
   const kept = ord.filter((r) => r.state !== 'refund');
   const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
   const ordersWeekly = Array(8).fill(0);
+  // the cost of what sold each week: each line's recorded cost, or today's for one not costed yet
+  const costWeekly = Array(8).fill(0);
   for (const r of kept) {
     const w = weekOf(new Date(r.paid_at).getTime());
-    if (w >= 0 && w <= 7) ordersWeekly[w]++;
+    if (w < 0 || w > 7) continue;
+    ordersWeekly[w]++;
+    r.items.forEach(([slug, col, sz, q], n) => {
+      const c = recorded.get(r.id)?.get(n) ?? roundCents(productCost(book, pid(slug), { option: col, size: sz }).costCents);
+      costWeekly[w] += q * c;
+    });
   }
   const live = {
     'shop.units_weekly': Object.fromEntries(PR.map((p) => [p.id, p.wk])),
     'shop.orders_weekly': ordersWeekly,
+    'shop.cost_weekly': costWeekly.map(shown),
     'shop.size_mix': sizes.map((z) => [z, kept.reduce((a, r) => a + r.items.filter(([, , sz]) => sz === z).reduce((b, [, , , q]) => b + q, 0), 0)]),
     'shop.paid_with': [['Card', kept.length]],
     'shop.buyers': [['Buyers', kept.length]],
   };
   // the costing, with margins at the site's prices
-  const costing = o.level >= SEE ? costingPayload(book, new Map(PR.map((p) => [p.id, p.price])), await readHistory(db)) : noCosting();
-  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
+  const costing = sees ? costingPayload(book, new Map(PR.map((p) => [p.id, p.price])), await readHistory(db)) : noCosting();
+  // each product's cost over time, from its sales' recorded costs
+  const COST_HIST = sees ? await costHistory(db) : {};
+  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, COST_HIST, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
 }
 
 // ── Contracts ───────────────────────────────────────────────────────────────

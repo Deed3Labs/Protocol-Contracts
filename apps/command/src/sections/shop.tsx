@@ -5,7 +5,7 @@ import { api } from '../live/api';
 import { attrs, css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
 import { compBar, head, ic, money } from './core';
-import { costsTitle, costsTool, inputPane, recipeSec, sCosts, startRecipe, stockGroup } from './costing';
+import { costHistSec, costsTitle, costsTool, inputPane, orderCostRows, recipeSec, sCosts, startRecipe, stockGroup } from './costing';
 import {
   BUYERS,
   DAY,
@@ -1712,6 +1712,7 @@ export function shopPane() {
       </div>
       {shelf}
       {price}
+      {REAL && costHistSec(p)}
       {stockSec}
       {sales}
       {hist}
@@ -1826,6 +1827,7 @@ export function orderPane() {
             ['Sales tax', money(tax)],
             ['Total', money(sub + ship + tax), 1],
           ])}
+          {REAL && orderCostRows(o, sub).length ? kv(orderCostRows(o, sub)) : ''}
         </>,
       )}
       {sec(

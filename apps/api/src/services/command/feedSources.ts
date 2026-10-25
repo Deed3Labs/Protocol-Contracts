@@ -1,7 +1,8 @@
 import { createHash, createPublicKey, timingSafeEqual, verify, type JsonWebKey } from 'node:crypto';
 import type { Queryable } from '../../db/db.js';
 import { decryptWithEnvelope, encryptWithEnvelope, isEnvelopeEncryptionConfigured, type EncryptedPayload } from '../../utils/envelopeEncryption.js';
-import type { Feed, FeedRow } from './feeds.js';
+import { costOrders } from './costing.js';
+import { feedRows, type Feed, type FeedRow } from './feeds.js';
 import { siteFeed } from './siteFeed.js';
 
 /*
@@ -399,9 +400,19 @@ export function shopFeed(env: Env = process.env, f: typeof fetch = fetch): Feed 
         const refunded = Number(pi.latest_charge?.amount_refunded ?? 0);
         await db.query(`UPDATE command.shop_orders SET refunded_cents = $2, state = CASE WHEN $2 >= coalesce(total_cents, 0) AND $2 > 0 THEN 'refund' ELSE state END WHERE payment_intent = $1`, [id, refunded]);
       }
-      return { figures: { since: newest, orders, reserved, refunds: touched.length } };
+      // what each order cost when it sold (Phase 10d): the new ones, and once, any from before
+      const costed = await costOrders(db, await productBySlug(db));
+      return { figures: { since: newest, orders, reserved, refunds: touched.length, costed } };
     },
   };
+}
+
+/** Command's product for a site slug, old slugs followed to their new ones (the catalog's `moved`), or null. */
+export async function productBySlug(db: Queryable): Promise<(slug: string) => string | null> {
+  const moved = ((await feedRows(db)).get('catalog')?.figures as { moved?: Record<string, string> } | undefined)?.moved ?? {};
+  const { rows } = await db.query<{ id: string; slug: string }>('SELECT id, slug FROM command.shop_products');
+  const by = new Map(rows.map((r) => [moved[r.slug] ?? r.slug, r.id]));
+  return (slug) => by.get(moved[slug] ?? slug) ?? null;
 }
 
 /** One live order's shipping address, read from Stripe when someone packs it: never stored. */

@@ -22,6 +22,7 @@ import {
   CODE,
   COHORTS,
   COOP_W,
+  COST_HIST,
   COST_W,
   COVER,
   CTR,
@@ -282,6 +283,9 @@ const apply = {
     assign(MATERIALS, { onHand: [], low: [], makes: {}, covers: {}, ...(d.MATERIALS ?? {}) });
     // the recent production runs (Phase 10c)
     replace(RUNS, d.RUNS);
+    // each product's cost at sale, by week (Phase 10d)
+    for (const k of Object.keys(COST_HIST)) delete COST_HIST[k];
+    Object.assign(COST_HIST, d.COST_HIST ?? {});
     const f = d.figures;
     replace(ORD_W, f['shop.orders_weekly']);
     assign(SHOP_COSTS, f['shop.costs']);
@@ -293,7 +297,8 @@ const apply = {
     replace(PAID_WITH, f['shop.paid_with']);
     // the weekly sales and the 4-week totals are worked out again from the rows, as the prototype did
     replace(REV_W, SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * p.price, 0)));
-    replace(COST_W, SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * unitCost(p), 0)));
+    // live, the cost of what sold is each sale's recorded cost (Phase 10d), so past margins stay as they were
+    replace(COST_W, f['shop.cost_weekly'] ?? SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * unitCost(p), 0)));
     assign(SHOP, shopTotals());
     replace(GP_W, gpWeeks());
   },

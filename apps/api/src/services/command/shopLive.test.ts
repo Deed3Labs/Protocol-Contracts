@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
-import { catalogFeed, maskBuyer, shopAddress, shopFeed, variantParts } from './feedSources.js';
+import { costHistory, costOrders, orderLineCost } from './costing.js';
+import { catalogFeed, maskBuyer, productBySlug, shopAddress, shopFeed, variantParts } from './feedSources.js';
 import { feedRows, runFeed } from './feeds.js';
 import { SEE, TOTALS, type Level } from './levels.js';
 import { moneySection, shopSection } from './sections.js';
@@ -96,6 +97,15 @@ describe('the shop feed', () => {
     expect(rows[0].items).toEqual([['logo-tee', 'Black', 'M', 2], ['logo-patch', 'Circle', '', 1]]);
     // no address anywhere in what's kept
     expect(JSON.stringify(rows[0])).not.toContain('Orange St');
+    // each line's cost is recorded as it comes in: the patch has no record in Command, so it costs nothing
+    const costs = (await db.query<any>(`SELECT line, product_id, option, size, unit_cost_cents, source FROM command.shop_order_costs WHERE order_id = '1001' ORDER BY line`)).rows;
+    const lts = await orderLineCost(db, 'lts', 'Black', 'M');
+    expect(costs).toEqual([
+      { line: 0, product_id: 'lts', option: 'Black', size: 'M', unit_cost_cents: lts.unitCostCents, source: lts.source },
+      { line: 1, product_id: 'logo-patch', option: 'Circle', size: '', unit_cost_cents: 0, source: 'none' },
+    ]);
+    expect(lts.unitCostCents).toBeGreaterThan(0);
+    expect((await feedRows(db)).get('shop')!.figures).toMatchObject({ orders: 1, costed: 1 });
     const pre = (await db.query<any>('SELECT * FROM command.shop_live_preorders')).rows;
     expect(pre).toEqual([expect.objectContaining({ payment_intent: 'pi_reserve', line: 1, shop: 'Mesa Laundry', slug: 'clear-point', variant: 'counter', units: 2, deposit_cents: 5500, state: 'held' })]);
   });
@@ -105,6 +115,7 @@ describe('the shop feed', () => {
     expect(await runFeed(db, shopFeed(env, shop.f))).toBe('ok');
     const { rows } = await db.query<any>(`SELECT id, state FROM command.shop_orders WHERE source = 'stripe'`);
     expect(rows).toEqual([{ id: '1001', state: 'packed' }]);
+    expect((await feedRows(db)).get('shop')!.figures).toMatchObject({ orders: 0, costed: 0 });
     // it asks from a day before the newest order it has
     const since = Number(shop.asked.filter((a) => a.path === '/v1/checkout/sessions').at(-1)!.q.get('created[gte]'));
     expect(since).toBe(sec('2026-10-23T09:00:00Z') - 86_400);
@@ -167,7 +178,9 @@ describe('Shop, live', () => {
 
   test('orders and reservations are the live ones, items pointing at the products; sales by week from them', async () => {
     const s = await read();
-    expect(s.ORDERS).toEqual([['1001', Date.parse('2026-10-22T10:00:00Z'), 'Ana R.', 0, [['lts', 'Black', 'M', 2], ['logopatch', 'Circle', '', 1]], 'card', 'ship', '', 'paid', 'Redlands']]);
+    const lts = (await orderLineCost(db, 'lts', 'Black', 'M')).unitCostCents / 100;
+    // from See each line carries what it cost when it sold; the patch has no record in Command, so nothing
+    expect(s.ORDERS).toEqual([['1001', Date.parse('2026-10-22T10:00:00Z'), 'Ana R.', 0, [['lts', 'Black', 'M', 2, lts], ['logopatch', 'Circle', '', 1, 0]], 'card', 'ship', '', 'paid', 'Redlands']]);
     expect(s.PRE).toEqual([['eserve-1', 'Mesa Laundry', 'cpt', 'Counter', 2, 'held', Date.parse('2026-10-23T09:00:00Z')]]);
     expect(s.PR.find((p: any) => p.id === 'lts').wk).toEqual([0, 0, 0, 0, 0, 0, 0, 2]);
     expect(s.figures['shop.orders_weekly']).toEqual([0, 0, 0, 0, 0, 0, 0, 1]);
@@ -176,8 +189,41 @@ describe('Shop, live', () => {
 
   test('at Totals an order leaves with no buyer, city or time', async () => {
     const s = await read(TOTALS);
-    expect(s.ORDERS[0]).toEqual(['1001', 0, '', 0, expect.any(Array), 'card', 'ship', '', 'paid', '']);
+    expect(s.ORDERS[0]).toEqual(['1001', 0, '', 0, [['lts', 'Black', 'M', 2], ['logopatch', 'Circle', '', 1]], 'card', 'ship', '', 'paid', '']);
+    expect(s.COST_HIST).toEqual({});
     expect(s.RETURNS).toEqual([]);
+  });
+
+  test('what a sale costs (Phase 10d): the cost at sale stays when the recipe changes; a line not costed yet uses today’s', async () => {
+    const at = (await orderLineCost(db, 'lts', 'Black', 'M')).unitCostCents;
+    const before = await read();
+    expect(before.figures['shop.cost_weekly']).toEqual([0, 0, 0, 0, 0, 0, 0, (2 * at) / 100]);
+    // the shirt's costs go up after it sold
+    const { rows } = await db.query<{ cost_cents: number[] }>(`SELECT cost_cents FROM command.shop_products WHERE id = 'lts'`);
+    await db.query(`UPDATE command.shop_products SET cost_cents = $1 WHERE id = 'lts'`, [rows[0].cost_cents.map((c, i) => (i === 0 ? c + 500 : c))]);
+    const after = await read();
+    expect(after.ORDERS[0][4][0][4]).toBe(at / 100);
+    expect(after.figures['shop.cost_weekly']).toEqual(before.figures['shop.cost_weekly']);
+    // with no record, the week falls back to today's cost
+    await db.query(`DELETE FROM command.shop_order_costs WHERE order_id = '1001'`);
+    const bare = await read();
+    expect(bare.ORDERS[0][4][0][4]).toBeNull();
+    expect(bare.figures['shop.cost_weekly'][7]).toBe((2 * (at + 500)) / 100);
+    // costing it now records today's cost, and only once
+    expect(await costOrders(db, await productBySlug(db))).toBe(1);
+    expect(await costOrders(db, await productBySlug(db))).toBe(0);
+    expect((await read()).ORDERS[0][4][0][4]).toBe((at + 500) / 100);
+    await db.query(`UPDATE command.shop_products SET cost_cents = $1 WHERE id = 'lts'`, [rows[0].cost_cents]);
+  });
+
+  test('a product’s cost over time is by week from its sales, marked when it was costed after it sold', async () => {
+    await db.query(`UPDATE command.shop_order_costs SET costed_at = '2026-10-22T10:05:00Z' WHERE order_id = '1001'`);
+    const s = await read();
+    const lts = (await db.query<{ unit_cost_cents: number }>(`SELECT unit_cost_cents FROM command.shop_order_costs WHERE order_id = '1001' AND line = 0`)).rows[0].unit_cost_cents;
+    // the week of Monday 19 October; the patch, with no record in Command, isn't a cost
+    expect(s.COST_HIST).toEqual({ lts: [{ week: Date.parse('2026-10-19T00:00:00Z'), low: lts / 100, high: lts / 100, units: 2, later: false }] });
+    await db.query(`UPDATE command.shop_order_costs SET costed_at = '2026-10-25T09:00:00Z' WHERE order_id = '1001'`);
+    expect((await costHistory(db)).lts[0].later).toBe(true);
   });
 
   test('Money’s set-asides are the shop’s live ones: the deposits held, the tax on the last 4 weeks', async () => {

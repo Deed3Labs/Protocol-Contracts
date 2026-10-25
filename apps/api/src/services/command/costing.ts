@@ -346,6 +346,86 @@ export async function orderLineCost(db: Queryable, productId: string, option: st
   return { unitCostCents: roundCents(c.costCents), source: c.source };
 }
 
+/** A live order's line as shop_orders keeps it: the site's slug, colour, size and quantity. */
+type OrderItem = [string, string, string, number];
+
+/**
+ * Records what each line of a live order cost (shop_order_costs), for every Stripe order that has no
+ * record yet: new orders as the shop feed brings them in, and, once, the orders from before Phase
+ * 10d. Those are costed at the recipe as it stands when they're recorded, which their costed_at says.
+ * `productOf` maps a line's slug to Command's product id (null when Command has no record of it: that
+ * line costs nothing, source 'none'). Each order's lines go in one statement, so an order is costed
+ * whole or not at all. Returns how many orders it costed.
+ */
+export async function costOrders(db: Queryable, productOf: (slug: string) => string | null, book?: Book): Promise<number> {
+  const { rows } = await db.query<{ id: string; items: OrderItem[] }>(
+    `SELECT o.id, o.items FROM command.shop_orders o
+     WHERE o.source = 'stripe' AND NOT EXISTS (SELECT 1 FROM command.shop_order_costs c WHERE c.order_id = o.id)
+     ORDER BY o.paid_at`,
+  );
+  if (!rows.length) return 0;
+  const b = book ?? (await readBook(db));
+  let costed = 0;
+  for (const o of rows) {
+    if (!o.items.length) continue;
+    const values: unknown[] = [];
+    const marks = o.items.map(([slug, option, size], line) => {
+      const pid = productOf(slug);
+      const c = pid ? productCost(b, pid, { option, size }) : null;
+      values.push(o.id, line, pid ?? slug, option, size, c ? roundCents(c.costCents) : 0, c?.source ?? 'none');
+      const n = line * 7;
+      return `($${n + 1}, $${n + 2}, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7})`;
+    });
+    const r = await db.query(
+      `INSERT INTO command.shop_order_costs (order_id, line, product_id, option, size, unit_cost_cents, source) VALUES ${marks.join(', ')} ON CONFLICT (order_id, line) DO NOTHING RETURNING 1`,
+      values,
+    );
+    if (r.rows.length) costed++;
+  }
+  return costed;
+}
+
+/** Each live order's recorded line costs, in cents, by order and line. */
+export async function orderCosts(db: Queryable): Promise<Map<string, Map<number, number>>> {
+  const { rows } = await db.query<{ order_id: string; line: number; unit_cost_cents: number }>('SELECT order_id, line, unit_cost_cents FROM command.shop_order_costs');
+  const m = new Map<string, Map<number, number>>();
+  for (const r of rows) (m.get(r.order_id) ?? m.set(r.order_id, new Map()).get(r.order_id)!).set(r.line, r.unit_cost_cents);
+  return m;
+}
+
+/** One week of a product's cost at sale: the lowest and highest unit cost its sales recorded (sizes can differ). Dollars. */
+export interface CostWeek {
+  week: number;
+  low: number;
+  high: number;
+  units: number;
+  /** some of the week's sales came in before Phase 10d and were costed later, at the recipe then */
+  later: boolean;
+}
+
+/**
+ * Each product's cost over time, from its sales' recorded costs: by week (from Monday, UTC), newest
+ * first, the last `weeks` weeks that had a sale. A line costed more than a day after it sold is
+ * `later`. Lines Command had no record for (source 'none') aren't a cost, so they're left out.
+ */
+export async function costHistory(db: Queryable, weeks = 26): Promise<Record<string, CostWeek[]>> {
+  const { rows } = await db.query<{ product_id: string; week: string; low: number; high: number; units: string; later: boolean }>(
+    `SELECT c.product_id, (extract(epoch FROM date_trunc('week', o.paid_at AT TIME ZONE 'UTC')) * 1000)::bigint AS week,
+            min(c.unit_cost_cents) AS low, max(c.unit_cost_cents) AS high,
+            sum((o.items -> c.line ->> 3)::int) AS units,
+            bool_or(c.costed_at > o.paid_at + interval '1 day') AS later
+     FROM command.shop_order_costs c JOIN command.shop_orders o ON o.id = c.order_id
+     WHERE c.source <> 'none'
+     GROUP BY c.product_id, week ORDER BY c.product_id, week DESC`,
+  );
+  const out: Record<string, CostWeek[]> = {};
+  for (const r of rows) {
+    const list = (out[r.product_id] ??= []);
+    if (list.length < weeks) list.push({ week: Number(r.week), low: shown(Number(r.low)), high: shown(Number(r.high)), units: Number(r.units), later: !!r.later });
+  }
+  return out;
+}
+
 // ── the payload ─────────────────────────────────────────────────────────────
 
 /** The products using each input. */
