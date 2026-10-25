@@ -798,7 +798,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const UNSEC = [...((f['money.credit.unsecured_weeks'] as number[] | undefined) ?? []), M.unsecured];
   // live, BondVault's balance is the chain's: the bond buyers' money, held to pay them at maturity
   const vault = provider === 'live' ? await bondVaultLive(chainOf(o, 'money')) : null;
-  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}), ...(vault != null ? { bond: vault } : {}) };
+  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}), ...(vault ? { bond: vault.held } : {}) };
   const ACCTS = accts.map((a) => {
     const w = weeks(a.id);
     const now = live[a.id] ?? w.at(-1) ?? 0;
@@ -842,6 +842,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
         : {}),
       // live, the reserve as the vault stands now: its USDC to each CLRUSD, read with this page
       ...(reserve ? { 'money.reserve': { ratio: reserveRatio(reserve.usdc, reserve.clrusd), checked: 'just now' } } : {}),
+      // live, what BondVault keeps back for bondholders and what the Safe may take for the co-op's use
+      ...(vault ? { 'money.bondvault': { required: vault.required, deployable: vault.deployable, floorPct: vault.floorPct, windowDays: vault.windowDays } } : {}),
     },
     asOf: asOfFor(provider, o.now),
   };

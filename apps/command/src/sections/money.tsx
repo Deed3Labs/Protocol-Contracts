@@ -177,7 +177,9 @@ export function holdings() {
   const tot = ACCTS.reduce((a, x) => a + x[5], 0),
     aside = ASIDE(),
     asideT = aside.reduce((a, x) => a + x[1], 0),
-    free = M.cash - asideT;
+    // live, bond capital the Safe may take from BondVault is the co-op's to use too
+    bv = REAL ? fig('money.bondvault') : null,
+    free = M.cash - asideT + (bv?.deployable ?? 0);
   let c = 0;
   const seg = ACCTS.map((a) => {
     const w = (a[5] / tot) * 100,
@@ -265,6 +267,24 @@ export function holdings() {
           </span>
           <b className="wh-v num">{money(bal)}</b>
         </button>
+        {id === 'bond' && bv
+          ? [
+              ['Kept for bondholders', bv.required, `Due within ${bv.windowDays} days, or ${bv.floorPct}% of all owed`, 'Kept back'],
+              ['The Safe can take', bv.deployable, 'For operations, growth or the pools', 'Usable'],
+            ].map(([k, v, s, w], __k) => (
+              <div key={__k} className="wh-r sub">
+                <i />
+                <span className="wh-k">
+                  <b>{k}</b>
+                  <span className="small quiet">{s}</span>
+                </span>
+                <span className="wh-src" />
+                <span className="wh-sp" />
+                <span className="wh-ch small quiet">{w}</span>
+                <b className="wh-v num">{money(v)}</b>
+              </div>
+            ))
+          : ''}
         {id === 'ops'
           ? aside.map(([k, v, s], __k) => (
               <div key={__k} className="wh-r sub">
@@ -311,7 +331,7 @@ export function holdings() {
         [REAL ? 'Owed to shops, 14 days' : 'Owed to shops by 4 Nov', money(M.owed14), `${money(M.short)} lent by the yield pool`],
         ['Owed to bondholders', money(M.bonds), BONDS.length ? `first due ${firstBond()}` : ''],
         ['Reserve check', fig('money.reserve')?.ratio ?? pct(0, 1), fig('money.reserve') ? `member savings · ${fig('money.reserve').checked}` : 'member savings'],
-        ['Free to spend', money(free), 'after tax and deposits'],
+        ['Free to spend', money(free), bv?.deployable ? 'after tax and deposits · with bond capital' : 'after tax and deposits'],
       ])}
     </section>
   );
@@ -379,9 +399,10 @@ export function moneyPane() {
     ],
     bond: [
       ['Owed to bondholders', money(M.bonds) + ` · ${BONDS.length} ${BONDS.length === 1 ? 'bond' : 'bonds'}`],
-      ['Held against it', M.bonds ? `${money(bal)} · ${pct(bal, M.bonds)}` : money(bal)],
+      ['Kept back', fig('money.bondvault') ? `${money(fig('money.bondvault').required)} · due in ${fig('money.bondvault').windowDays} days or ${fig('money.bondvault').floorPct}% floor` : '—'],
+      ['The Safe can take', fig('money.bondvault') ? `${money(fig('money.bondvault').deployable)} · operations, growth or the pools` : '—'],
       ['First due', BONDS.length ? firstBond() : 'None yet'],
-      ['Pays out', 'At each bond’s maturity', 1],
+      ['Pays out', 'Face value, at each bond’s maturity', 1],
     ],
     coop: [
       ['Added in October', money(COOP_W.slice(3).reduce((s, b) => s + b, 0))],
@@ -1749,7 +1770,9 @@ export function nBonds() {
     ),
     strip([
       ['Operating cash', money(M.cash)],
-      ['BondVault reserve', '30%', 'once funded'],
+      REAL && fig('money.bondvault')
+        ? ['BondVault keeps', money(fig('money.bondvault').required), `${fig('money.bondvault').floorPct}% floor · ${fig('money.bondvault').windowDays}-day window`]
+        : ['BondVault reserve', '30%', 'once funded'],
     ]),
   );
   const tbl = (
