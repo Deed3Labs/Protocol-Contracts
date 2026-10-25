@@ -2,7 +2,7 @@ import { DAY, SEED_TODAY, mask, type FieldPayload, type FormRow, type GrowthPayl
 import type { Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { SEE, TOTALS, type Level } from './levels.js';
-import { deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { bondsLive, deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { variantParts } from './feedSources.js';
@@ -701,6 +701,26 @@ const ms_ = (d: Date) => new Date(d).getTime();
  * here, with the prototype's own formulas: the update to the brief says rates are never computed in
  * the browser, and Phase 5 swaps these sums for the contracts' own reads.
  */
+/**
+ * The open bonds as Money draws them: id, face value, issued, matures, term in months, the yearly rate
+ * the discount works out to, and the holder (a contract by name, else the wallet, shortened; nobody at
+ * Totals), then when it matures and was issued, for the ladder. A date outside this year says its year.
+ */
+async function bondRowsLive(db: Queryable, chain: ChainReader, o: ReadOptions): Promise<unknown[][]> {
+  const year = o.now.getUTCFullYear();
+  const when = (t: number) => (new Date(t).getUTCFullYear() === year ? dayMon(t) : `${dayMon(t)} ${new Date(t).getUTCFullYear()}`);
+  const named = new Map([...(await inventory(db))].map(([name, c]) => [c.address.toLowerCase(), name]));
+  return (await bondsLive(db, chain))
+    .filter((b) => !b.closed)
+    .sort((a, b) => a.maturesAt - b.maturesAt)
+    .map((b) => {
+      const years = (b.maturesAt - b.issuedAt) / (365.25 * DAY);
+      const rate = b.price && years > 0 ? Math.round(((b.face - b.price) / b.price / years) * 1000) / 10 : 0;
+      const holder = o.level <= TOTALS || !b.holder ? '' : (named.get(b.holder.toLowerCase()) ?? shortAddress(b.holder));
+      return [`BB-${b.id.padStart(4, '0')}`, b.face, when(b.issuedAt), when(b.maturesAt), Math.round(years * 12), rate, holder, b.maturesAt, b.issuedAt];
+    });
+}
+
 export async function moneySection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('money');
   const f = await figures(db, 'money');
@@ -722,7 +742,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const weeks = (id: string) => snaps.filter((s) => s.account_id === id).map((s) => Number(s.balance_cents) / 100);
   const bal = (id: string) => weeks(id).at(-1) ?? 0;
   const { rows: bondRows } = await db.query<{ id: string; face_cents: string; issued_on: Date; matures_on: Date; term_months: number; rate_pct: string; holder: string }>('SELECT * FROM command.bonds ORDER BY issued_on');
-  const BONDS = bondRows.map((b) => [b.id, Number(b.face_cents) / 100, dayMon(ms_(b.issued_on)), dayMon(ms_(b.matures_on)), b.term_months, Number(b.rate_pct), b.holder]);
+  // live, the bonds are BurnerBond's on chain, open ones only; the seed's are the tables'
+  const BONDS = provider === 'live' ? await bondRowsLive(db, chainOf(o, 'money'), o) : bondRows.map((b) => [b.id, Number(b.face_cents) / 100, dayMon(ms_(b.issued_on)), dayMon(ms_(b.matures_on)), b.term_months, Number(b.rate_pct), b.holder]);
   // live, the yield pool is the LendingPool's (Phase 5b); the rest of Money is still the tables' until its sources come
   const chainPool = provider === 'live' ? await yieldPoolLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
   const { rows: pos } = chainPool ? { rows: [] } : await db.query<{ depositor: string; assets_cents: string; first_deposit: Date; pledged_cents: string }>('SELECT * FROM command.yield_positions ORDER BY assets_cents DESC, position');

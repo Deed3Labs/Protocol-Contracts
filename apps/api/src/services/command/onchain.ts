@@ -281,6 +281,52 @@ export async function reserveLive(db: Queryable, reader: ChainReader, now: numbe
   };
 }
 
+// ── Bonds ───────────────────────────────────────────────────────────────────
+
+export interface BondLive {
+  id: string;
+  face: number;
+  price: number;
+  issuedAt: number;
+  maturesAt: number;
+  /** Who holds it now, from its ERC-1155 transfers; null if it has none. */
+  holder: string | null;
+  /** Redeemed at maturity or early, or rolled into a new bond. */
+  closed: boolean;
+}
+
+const BOND_EVENTS = ['BondMinted', 'BondRedeemed', 'RedeemedEarly', 'BondRolled', 'TransferSingle', 'TransferBatch'];
+
+/**
+ * Every BurnerBond, from its events: what it was minted for (face value, price paid, maturity), who
+ * holds it now, and whether it's closed. Amounts are in the bond's own token (underlyingToken), read
+ * with its decimals.
+ */
+export async function bondsLive(db: Queryable, reader: ChainReader): Promise<BondLive[]> {
+  const ev = await events(db, ['BurnerBond'], BOND_EVENTS);
+  if (!ev.some((e) => e.event === 'BondMinted')) return [];
+  const [token] = await reader.read([{ contract: 'BurnerBond', fn: 'underlyingToken' }]);
+  const [decimals] = await reader.read([{ contract: 'ERC20', address: String(token), fn: 'decimals' }]);
+  const usd = (v: unknown) => Math.round((Number(big(v)) / 10 ** Number(decimals)) * 100) / 100;
+  const bonds = new Map<string, BondLive>();
+  // a mint's transfer comes before its BondMinted, so holders are kept apart and joined at the end
+  const holders = new Map<string, string>();
+  const moved = (id: unknown, to: unknown) => String(to).toLowerCase() !== ZERO && holders.set(String(id), getAddress(String(to)));
+  const close = (id: unknown) => {
+    const b = bonds.get(String(id));
+    if (b) b.closed = true;
+  };
+  for (const { event, args: a, at } of ev) {
+    if (event === 'BondMinted')
+      bonds.set(String(a.bondId), { id: String(a.bondId), face: usd(a.faceValue), price: usd(a.purchasePrice), issuedAt: at, maturesAt: Number(a.maturityDate) * 1000, holder: null, closed: false });
+    else if (event === 'TransferSingle') moved(a.id, a.to);
+    else if (event === 'TransferBatch') for (const id of a.ids as unknown as string[]) moved(id, a.to);
+    else if (event === 'BondRolled') close(a.oldBondId);
+    else close(a.bondId);
+  }
+  return [...bonds.values()].map((b) => ({ ...b, holder: holders.get(b.id) ?? null }));
+}
+
 // ── Releases ────────────────────────────────────────────────────────────────
 
 export interface Release {

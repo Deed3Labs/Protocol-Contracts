@@ -1650,7 +1650,7 @@ export function nCredit() {
 
 /* ── Bonds: what we owe bondholders, and when ─────────────────────────── */
 export function nBonds() {
-  const months = [
+  const months = REAL ? bondMonths() : [
     ['Dec', 2500],
     ['Jan', 5000],
     ['Feb', 0],
@@ -1666,18 +1666,28 @@ export function nBonds() {
     's-8',
     'Bond ladder',
     srcTxt('protocol'),
-    figHtml(money(M.bonds), BONDS.length ? 'face value across 6 BurnerBonds, each its own token' : 'face value'),
+    figHtml(
+      money(M.bonds),
+      BONDS.length ? (REAL ? `face value across ${BONDS.length} BurnerBond${BONDS.length === 1 ? '' : 's'}, each its own token` : 'face value across 6 BurnerBonds, each its own token') : 'face value',
+    ),
     BONDS.length ? (
       columns(months, {
         hi: 0,
         h: 128,
-        fmt: (v) => (v ? '$' + (v / 1000).toFixed(1) + 'k' : ''),
+        fmt: (v) => (v ? (v >= 1000 ? '$' + (v / 1000).toFixed(1) + 'k' : '$' + Math.round(v)) : ''),
       })
     ) : (
       <span className="small quiet">None yet.</span>
     ),
     strip(
-      BONDS.length
+      BONDS.length && REAL
+        ? [
+            ['Bonds', String(BONDS.length)],
+            ['Next', firstBond()],
+            ['Last', BONDS.slice().sort((a, b) => b[7] - a[7])[0][3]],
+            ['Kind', 'Zero-coupon'],
+          ]
+        : BONDS.length
         ? [
             ['Bonds', '6'],
             ['Next', '14 Dec'],
@@ -1690,12 +1700,21 @@ export function nBonds() {
           ],
     ),
   );
+  // live, what matures in the next 90 days, oldest first
+  const soon = BONDS.filter((b) => b[7] <= TODAY + 90 * DAY),
+    soonSum = soon.reduce((a, b) => a + b[1], 0);
   const due = gCell(
     's-4 wt',
     'Due in 90 days',
-    BONDS.length ? 'Through 21 Jan' : '',
-    figHtml(money(BONDS.length ? 7500 : 0), BONDS.length ? 'two bonds · cash covers it 2.9 times' : 'nothing due'),
-    BONDS.length ? (
+    REAL ? `Through ${fmtD(TODAY + 90 * DAY)}` : BONDS.length ? 'Through 21 Jan' : '',
+    REAL
+      ? soonSum
+        ? figHtml(money(soonSum), `${soon.length === 1 ? 'one bond' : `${soon.length} bonds`} · cash covers it ${(M.cash / soonSum).toFixed(1)} times`)
+        : figHtml(money(0), 'nothing due')
+      : figHtml(money(BONDS.length ? 7500 : 0), BONDS.length ? 'two bonds · cash covers it 2.9 times' : 'nothing due'),
+    REAL && soon.length ? (
+      evRows(soon.map((b) => [b[3], b[0], b[6] || '—', money(b[1])]))
+    ) : !REAL && BONDS.length ? (
       evRows([
         ['14 Dec', 'BB-0001', 'Member', money(2500)],
         ['21 Jan', 'BB-0002', 'Founding lender', money(5000)],
@@ -1883,8 +1902,19 @@ export function activeMembers() {
 }
 /** When the first bond matures ("14 Dec"): ordered by issue month plus term, so a maturity next year sorts after this year's. */
 export function firstBond() {
+  // live, each bond carries when it matures
+  if (REAL) return BONDS.slice().sort((a, b) => a[7] - b[7])[0][3];
   const due = (b) => (MON.indexOf(b[2].split(' ')[1]) + b[4]) * 31 + Number(b[3].split(' ')[0]);
   return BONDS.slice().sort((a, b) => due(a) - due(b))[0][3];
+}
+/** Live, the bond ladder: face value maturing in each of the next 12 months (anything overdue in this one), then later. */
+export function bondMonths() {
+  const d = new Date(TODAY),
+    start = (i) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + i, 1);
+  const sum = (from, to) => BONDS.filter((b) => b[7] >= from && b[7] < to).reduce((a, b) => a + b[1], 0);
+  const out = Array.from({ length: 12 }, (_, i) => [MON[new Date(start(i)).getUTCMonth()], sum(i ? start(i) : -Infinity, start(i + 1))]);
+  const later = sum(start(12), Infinity);
+  return later ? [...out, ['Later', later]] : out;
 }
 export function largestDeposit() {
   return Y_DEP.length ? Math.max(...Y_DEP.map((r) => r[1])) : 0;
