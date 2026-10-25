@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Queryable } from '../../db/db.js';
 import { PROPOSE, type Level, type Section } from './levels.js';
 import { providerFor } from './sections.js';
+import { productCost, readBook, runUses } from './costing.js';
 import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
 import { sendBatch } from './waitlist.js';
@@ -280,6 +281,319 @@ const orderState = (to: string, from: string[], line: string, tell: boolean): Ac
   outbox: tell,
 });
 const SIZE = z.enum(['', 'XS', 'S', 'M', 'L', 'XL', 'XXL']);
+
+// ── Shop: what goes into a product (Phase 10) ───────────────────────────────
+//
+// Command's own records, so they run at Propose with nobody else: none of this moves money. Money
+// in a body is dollars, as the rest of the shop's are; a unit cost or a line's cost keeps its
+// fractions of a cent (services/command/costing.ts rounds only where money is shown or stored).
+
+/** Dollars to cents, keeping fractions of a cent ($0.0425 is 4.25¢) but not float dust. */
+const fcents = (v: number) => Math.round(v * 1e8) / 1e6;
+/** A quantity to the millionth: 0.1 × 3 is 0.3, not 0.30000000000000004. */
+const qty = (v: number) => Math.round(v * 1e6) / 1e6;
+const amount = z.number().positive().max(1_000_000);
+const unitText = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[a-z]{1,12}$/, 'A unit is a short word: each, m, g, ml, h…');
+type InputRow = { id: string; name: string; kind: string; unit: string; stocked: boolean; unit_cost_cents: string | null; archived_at: Date | null };
+const inputRow = (db: Queryable, iid: string) => must<InputRow>(db, 'SELECT * FROM command.shop_inputs WHERE id = $1', [iid], 'input');
+const liveInput = async (db: Queryable, iid: string) => {
+  const i = await inputRow(db, iid);
+  if (i.archived_at) throw new ActionError(409, 'ARCHIVED', `${i.name} is archived: restore it first`);
+  return i;
+};
+/** A line or override as typed: the amount when there is one (it wins over a cost), else the cost. */
+const entered = (b: { amount?: number; cost?: number }) =>
+  b.amount != null ? { amount: qty(b.amount), cost: null, entered: 'amount' as const } : { amount: null, cost: fcents(b.cost!), entered: 'cost' as const };
+/**
+ * A cost typed is kept with the amount it works out to, whenever the input has a unit cost, so a later
+ * change to that unit cost flows into the recipe (Phase 10: "a change to an input's cost flows into
+ * every recipe that uses it"). With no unit cost yet it stays a cost until one comes (pinLines).
+ */
+const pinned = (e: ReturnType<typeof entered>, unitCostCents: unknown) => {
+  const u = Number(unitCostCents ?? 0);
+  return e.amount == null && u > 0 && e.cost! > 0 ? { ...e, amount: e.cost! / u } : e;
+};
+/** An input's first unit cost gives its cost-only lines and overrides their amounts. */
+const pinLines = async (tx: Queryable, iid: string) => {
+  for (const t of ['shop_recipe_lines', 'shop_recipe_overrides'])
+    await tx.query(
+      `UPDATE command.${t} SET amount = ${t}.cost_cents / i.unit_cost_cents FROM command.shop_inputs i
+        WHERE i.id = $1 AND ${t}.input_id = $1 AND ${t}.amount IS NULL AND ${t}.cost_cents > 0 AND i.unit_cost_cents > 0`,
+      [iid],
+    );
+};
+const eitherWay = <T extends { amount?: number; cost?: number; remove?: boolean }>(b: T) => !!b.remove || b.amount != null || b.cost != null;
+const EITHER = 'Give an amount used or a cost per product';
+const ofVariant = (o: string, s: string) => [o, s].filter(Boolean).join(' ') || 'one size';
+/** Sets a recipe line, keeping its place when it's there already. */
+const setLine = (tx: Queryable, pid: string, iid: string, e: { amount: number | null; cost: number | null; entered: 'amount' | 'cost' }) =>
+  tx.query(
+    `INSERT INTO command.shop_recipe_lines (product_id, input_id, position, amount, cost_cents, entered)
+     VALUES ($1, $2, (SELECT coalesce(max(position), -1) + 1 FROM command.shop_recipe_lines WHERE product_id = $1), $3, $4, $5)
+     ON CONFLICT (product_id, input_id) DO UPDATE SET amount = $3, cost_cents = $4, entered = $5`,
+    [pid, iid, e.amount, e.cost, e.entered],
+  );
+
+const inputBody = z
+  .object({
+    /** An existing input to edit; left out (or new), one is added. */
+    id: z.string().trim().regex(/^[a-z0-9][a-z0-9-]{0,47}$/).optional(),
+    name: text(80).min(1),
+    kind: z.enum(['material', 'service', 'labour']),
+    unit: unitText,
+    stocked: z.boolean().default(false),
+    /** Dollars a unit. Left out keeps what it is; null clears it (the latest purchase's, then). */
+    unitCost: z.number().nonnegative().max(100_000).nullable().optional(),
+    lowMark: z.number().nonnegative().max(1_000_000).nullable().default(null),
+    note: text(500).default(''),
+  })
+  .superRefine((b, ctx) => {
+    if (b.kind === 'labour' && b.unit !== 'h') ctx.addIssue({ code: 'custom', message: 'Labour is costed by the hour (h)' });
+    if (b.stocked && b.kind !== 'material') ctx.addIssue({ code: 'custom', message: 'Only a material is kept on hand' });
+    if (b.lowMark != null && !b.stocked) ctx.addIssue({ code: 'custom', message: 'A low mark is for an input kept on hand' });
+  });
+
+const costing: Record<string, Action> = {
+  input: {
+    body: inputBody,
+    summary: async (b, db) => ((b.id && (await one(db, 'SELECT 1 FROM command.shop_inputs WHERE id = $1', [b.id]))) ? `Updated input ${b.name}` : `Added input ${b.name}`),
+    apply: async ({ tx, at }, b) => {
+      const iid = b.id ?? (b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'input') + '-' + Date.now().toString(36).slice(-4);
+      const cost = b.unitCost === undefined ? undefined : b.unitCost === null ? null : fcents(b.unitCost);
+      await tx.query(
+        `INSERT INTO command.shop_inputs (id, name, kind, unit, stocked, unit_cost_cents, low_mark, note, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET name = $2, kind = $3, unit = $4, stocked = $5, low_mark = $7, note = $8,
+           unit_cost_cents = CASE WHEN $10 THEN command.shop_inputs.unit_cost_cents ELSE $6 END`,
+        [iid, b.name, b.kind, b.unit, b.stocked, cost ?? null, b.lowMark, b.note, at, cost === undefined],
+      );
+      await pinLines(tx, iid);
+      return { id: iid };
+    },
+  },
+  'input-archive': {
+    body: z.object({ id, archived: z.boolean().default(true) }),
+    summary: async (b, db) => `${b.archived ? 'Archived' : 'Restored'} input ${(await inputRow(db, b.id)).name}`,
+    // an archived input leaves the library's pickers; recipes that use it still cost it
+    apply: async ({ tx, at }, b) => {
+      await inputRow(tx, b.id);
+      await tx.query('UPDATE command.shop_inputs SET archived_at = $2 WHERE id = $1', [b.id, b.archived ? at : null]);
+    },
+  },
+  purchase: {
+    body: z.object({
+      input: id,
+      quantity: amount,
+      /** What was paid, in dollars. */
+      total: money,
+      supplier: text(120).default(''),
+      note: text(500).default(''),
+      on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }),
+    summary: async (b, db) => {
+      const i = await inputRow(db, b.input);
+      return `Bought ${qty(b.quantity)} ${i.unit} of ${i.name} · $${b.total.toFixed(2)}`;
+    },
+    apply: async (c, b) => {
+      const i = await liveInput(c.tx, b.input);
+      const at = b.on ? new Date(b.on + 'T00:00:00Z') : c.at;
+      const q = qty(b.quantity);
+      const { id: pid } = (await one<{ id: number }>(
+        c.tx,
+        'INSERT INTO command.shop_input_purchases (input_id, at, quantity, total_cents, supplier, note, who) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+        [i.id, at, q, cents(b.total), b.supplier, b.note, who(c.person)],
+      ))!;
+      // the newest purchase sets the unit cost; one dated before it is history only
+      await c.tx.query(
+        `UPDATE command.shop_inputs SET unit_cost_cents = $2::numeric / $3::numeric
+         WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM command.shop_input_purchases WHERE input_id = $1 AND id <> $4 AND at > $5)`,
+        [i.id, cents(b.total), q, pid, at],
+      );
+      if (i.stocked) await c.tx.query(`INSERT INTO command.shop_input_moves (input_id, at, quantity, reason, ref, note) VALUES ($1, $2, $3, 'purchase', $4, $5)`, [i.id, at, q, pid, b.supplier]);
+      await pinLines(c.tx, i.id);
+      return { id: pid, unitCost: cents(b.total) / q / 100 };
+    },
+  },
+  'recipe-line': {
+    body: z
+      .object({ product: id, input: id, amount: amount.optional(), cost: money.optional(), remove: z.boolean().default(false) })
+      .refine(eitherWay, EITHER),
+    summary: async (b, db) => {
+      const [p, i] = [await prod(db, b.product), await inputRow(db, b.input)];
+      return b.remove ? `Took ${i.name} out of ${p.name}’s recipe` : `Set ${i.name} in ${p.name}’s recipe`;
+    },
+    apply: async (c, b) => {
+      await prod(c.tx, b.product);
+      if (b.remove) {
+        const i = await inputRow(c.tx, b.input);
+        const r = await c.tx.query('DELETE FROM command.shop_recipe_lines WHERE product_id = $1 AND input_id = $2 RETURNING 1', [b.product, b.input]);
+        if (!r.rows.length) throw new ActionError(404, 'NOT_FOUND', `${i.name} isn’t in that recipe`);
+        await history(c, b.product, `Recipe · took out ${i.name}`);
+        return;
+      }
+      const i = await liveInput(c.tx, b.input);
+      await setLine(c.tx, b.product, b.input, pinned(entered(b), i.unit_cost_cents));
+      await history(c, b.product, `Recipe · set ${i.name}`);
+    },
+  },
+  'recipe-override': {
+    body: z
+      .object({ product: id, input: id, option: text(40).default(''), size: SIZE.default(''), amount: amount.optional(), cost: money.optional(), remove: z.boolean().default(false) })
+      .refine(eitherWay, EITHER)
+      .refine((b) => b.option !== '' || b.size !== '', 'Say which colour or size it’s for'),
+    summary: async (b, db) => {
+      const [p, i] = [await prod(db, b.product), await inputRow(db, b.input)];
+      return `${b.remove ? 'Removed' : 'Set'} ${i.name} for ${ofVariant(b.option, b.size)} in ${p.name}’s recipe`;
+    },
+    apply: async (c, b) => {
+      await prod(c.tx, b.product);
+      const i = await inputRow(c.tx, b.input);
+      if (b.remove) {
+        const r = await c.tx.query('DELETE FROM command.shop_recipe_overrides WHERE product_id = $1 AND input_id = $2 AND option = $3 AND size = $4 RETURNING 1', [b.product, b.input, b.option, b.size]);
+        if (!r.rows.length) throw new ActionError(404, 'NOT_FOUND', `No ${ofVariant(b.option, b.size)} override for ${i.name}`);
+        return;
+      }
+      await must(c.tx, 'SELECT 1 FROM command.shop_recipe_lines WHERE product_id = $1 AND input_id = $2', [b.product, b.input], `${i.name} line in that recipe`);
+      await must(c.tx, `SELECT 1 FROM command.shop_stock WHERE product_id = $1 AND ($2 = '' OR option = $2) AND ($3 = '' OR size = $3) LIMIT 1`, [b.product, b.option, b.size], 'colour or size of that product');
+      const e = pinned(entered(b), i.unit_cost_cents);
+      await c.tx.query(
+        `INSERT INTO command.shop_recipe_overrides (product_id, input_id, option, size, amount, cost_cents, entered) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (product_id, input_id, option, size) DO UPDATE SET amount = $5, cost_cents = $6, entered = $7`,
+        [b.product, b.input, b.option, b.size, e.amount, e.cost, e.entered],
+      );
+      await history(c, b.product, `Recipe · set ${i.name} for ${ofVariant(b.option, b.size)}`);
+    },
+  },
+  'recipe-copy': {
+    body: z
+      .object({
+        from: id,
+        to: z.array(id).min(1).max(100),
+        /** replace: each product's recipe becomes the copy. merge: the lines it lacks are added; a line it has stays as it is. */
+        mode: z.enum(['replace', 'merge']),
+      })
+      .refine((b) => !b.to.includes(b.from), 'A recipe can’t be copied onto itself'),
+    summary: async (b, db) => `Copied ${(await prod(db, b.from)).name}’s recipe onto ${b.to.length} product${b.to.length === 1 ? '' : 's'} (${b.mode})`,
+    apply: async (c, b) => {
+      const src = await prod(c.tx, b.from);
+      const { rows: lines } = await c.tx.query<{ input_id: string; position: number; amount: string | null; cost_cents: string | null; entered: string }>('SELECT * FROM command.shop_recipe_lines WHERE product_id = $1 ORDER BY position', [b.from]);
+      if (!lines.length) throw new ActionError(409, 'NO_RECIPE', `${src.name} has no recipe to copy`);
+      const { rows: ovs } = await c.tx.query<{ input_id: string; option: string; size: string; amount: string | null; cost_cents: string | null; entered: string }>('SELECT * FROM command.shop_recipe_overrides WHERE product_id = $1', [b.from]);
+      let copied = 0;
+      for (const to of [...new Set<string>(b.to)]) {
+        await prod(c.tx, to);
+        if (b.mode === 'replace') await c.tx.query('DELETE FROM command.shop_recipe_lines WHERE product_id = $1', [to]);
+        const added: string[] = [];
+        for (const l of lines) {
+          const r = await c.tx.query(
+            `INSERT INTO command.shop_recipe_lines (product_id, input_id, position, amount, cost_cents, entered)
+             VALUES ($1, $2, (SELECT coalesce(max(position), -1) + 1 FROM command.shop_recipe_lines WHERE product_id = $1), $3, $4, $5)
+             ON CONFLICT (product_id, input_id) DO NOTHING RETURNING input_id`,
+            [to, l.input_id, l.amount, l.cost_cents, l.entered],
+          );
+          if (r.rows.length) added.push(l.input_id);
+        }
+        // the copied lines' overrides, for the colours and sizes this product has
+        for (const o of ovs.filter((o) => added.includes(o.input_id)))
+          await c.tx.query(
+            `INSERT INTO command.shop_recipe_overrides (product_id, input_id, option, size, amount, cost_cents, entered)
+             SELECT $1, $2, $3, $4, $5, $6, $7 WHERE EXISTS (SELECT 1 FROM command.shop_stock WHERE product_id = $1 AND ($3 = '' OR option = $3) AND ($4 = '' OR size = $4))`,
+            [to, o.input_id, o.option, o.size, o.amount, o.cost_cents, o.entered],
+          );
+        await history(c, to, `Recipe · copied from ${src.name} (${b.mode})`);
+        copied += added.length;
+      }
+      return { lines: copied };
+    },
+  },
+  'input-apply': {
+    body: z
+      .object({ input: id, products: z.array(id).min(1).max(100), amount: amount.optional(), cost: money.optional() })
+      .refine((b) => b.amount != null || b.cost != null, EITHER),
+    summary: async (b, db) => `Added ${(await inputRow(db, b.input)).name} to ${b.products.length} product${b.products.length === 1 ? '' : 's'}`,
+    // a product that has the input already gets the new amount or cost
+    apply: async (c, b) => {
+      const i = await liveInput(c.tx, b.input);
+      const ps = [...new Set<string>(b.products)];
+      for (const pid of ps) {
+        await prod(c.tx, pid);
+        await setLine(c.tx, pid, i.id, pinned(entered(b), i.unit_cost_cents));
+        await history(c, pid, `Recipe · set ${i.name}`);
+      }
+      return { products: ps.length };
+    },
+  },
+  'stock-adjust': {
+    body: z
+      .object({
+        input: id,
+        /** Signed: + found or counted in, − out. Waste is always out. */
+        quantity: z.number().min(-1_000_000).max(1_000_000).refine((q) => q !== 0, 'A move of nothing'),
+        reason: z.enum(['adjust', 'waste']).default('adjust'),
+        note: text(300).default(''),
+      })
+      .refine((b) => b.reason !== 'waste' || b.quantity < 0, 'Waste takes stock out: a negative quantity'),
+    summary: async (b, db) => {
+      const i = await inputRow(db, b.input);
+      return `${b.reason === 'waste' ? 'Wasted' : 'Adjusted'} ${i.name} · ${b.quantity > 0 ? '+' : ''}${qty(b.quantity)} ${i.unit}`;
+    },
+    apply: async ({ tx, at }, b) => {
+      const i = await inputRow(tx, b.input);
+      if (!i.stocked) throw new ActionError(409, 'NOT_STOCKED', `${i.name} is made to order: it has no stock`);
+      const q = qty(b.quantity);
+      const on = Number((await one<{ n: string }>(tx, 'SELECT coalesce(sum(quantity), 0) AS n FROM command.shop_input_moves WHERE input_id = $1', [i.id]))!.n);
+      if (q < 0 && on + q < -1e-9) throw new ActionError(409, 'SHORT', `Only ${qty(on)} ${i.unit} of ${i.name} on hand`);
+      await tx.query('INSERT INTO command.shop_input_moves (input_id, at, quantity, reason, note) VALUES ($1, $2, $3, $4, $5)', [i.id, at, q, b.reason, b.note]);
+      return { onHand: qty(on + q) };
+    },
+  },
+  run: {
+    body: z.object({
+      product: id,
+      option: text(40).default(''),
+      size: SIZE.default(''),
+      units: z.number().int().positive().max(10_000),
+      note: text(300).default(''),
+      /** Record it even if a stocked input would go below zero (the count was off). */
+      allowShort: z.boolean().default(false),
+    }),
+    summary: async (b, db) => `Made ${b.units} ${(await prod(db, b.product)).name}${b.option || b.size ? ' · ' + ofVariant(b.option, b.size) : ''}`,
+    apply: async (c, b) => {
+      const p = await prod(c.tx, b.product);
+      await must(c.tx, 'SELECT 1 FROM command.shop_stock WHERE product_id = $1 AND option = $2 AND size = $3', [b.product, b.option, b.size], 'colour and size of that product');
+      const book = await readBook(c.tx);
+      const costed = productCost(book, b.product, { option: b.option, size: b.size });
+      // a product with no recipe yet uses nothing it can count
+      const { uses, unknown } = costed.source === 'recipe' ? runUses(costed, book.inputs, b.units) : { uses: [], unknown: [] };
+      if (unknown.length)
+        throw new ActionError(409, 'NO_AMOUNT', `Can’t tell how much ${unknown.map((u) => book.inputs.get(u)?.name ?? u).join(', ')} a unit uses: enter the line as an amount, or give the input a unit cost`);
+      const short = uses
+        .map((u) => ({ ...u, quantity: qty(u.quantity), input: book.inputs.get(u.inputId)!, on: book.onHand.get(u.inputId) ?? 0 }))
+        .filter((u) => u.on - u.quantity < -1e-9);
+      if (short.length && !b.allowShort)
+        throw new ActionError(409, 'SHORT', `Not enough on hand: ${short.map((s) => `${s.input.name} has ${qty(s.on)} ${s.input.unit}, the run needs ${s.quantity}`).join('; ')}`);
+      const { id: rid } = (await one<{ id: number }>(c.tx, 'INSERT INTO command.shop_runs (product_id, option, size, units, at, note, who, short) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id', [
+        b.product,
+        b.option,
+        b.size,
+        b.units,
+        c.at,
+        b.note,
+        who(c.person),
+        short.length > 0,
+      ]))!;
+      for (const u of uses) if (qty(u.quantity) > 0) await c.tx.query(`INSERT INTO command.shop_input_moves (input_id, at, quantity, reason, ref) VALUES ($1, $2, $3, 'run', $4)`, [u.inputId, c.at, -qty(u.quantity), rid]);
+      await c.tx.query('UPDATE command.shop_stock SET on_hand = on_hand + $4 WHERE product_id = $1 AND option = $2 AND size = $3', [b.product, b.option, b.size, b.units]);
+      await history(c, b.product, `Made ${b.units} · ${ofVariant(b.option, b.size)}`);
+      return { id: rid, uses: uses.map((u) => ({ input: u.inputId, quantity: qty(u.quantity) })), short: short.map((s) => s.inputId) };
+    },
+  },
+};
+
 const shop: Record<string, Action> = {
   'product-add': {
     body: z.object({
@@ -401,6 +715,7 @@ const shop: Record<string, Action> = {
     outbox: true,
   },
   'signup-link': { body: z.object({ id }), summary: (b) => `Send pre-order ${b.id} the merchant sign-up link`, outbox: true },
+  ...costing,
 };
 
 // ── Money ───────────────────────────────────────────────────────────────────
