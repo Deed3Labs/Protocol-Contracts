@@ -1,11 +1,13 @@
 import { merchantDb } from '../config/merchantDb.js';
-import { codeConfig, liveGithub, pollOnce, recordCodeError } from '../services/command/github.js';
+import { codeConfig, liveGithub, pollOnce, pollPulls, recordCodeError, recordPullError } from '../services/command/github.js';
 
 /*
  * The Command Center's GitHub poller, on a schedule (docs/command-center-plan.md, Phase 5c): every
  * 5 minutes by default (COMMAND_GITHUB_MINUTES), and a catch-up when someone opens Contracts, at
- * most once a minute. A quiet run is one request, answered 304 with the last ETag, which costs
- * nothing against GITHUB_TOKEN's rate limit.
+ * most once a minute. Each run reads the commits on every watched branch (COMMAND_GITHUB_BRANCHES,
+ * `dev,main`), then the pull requests. A quiet run is one request a branch and one for the pull
+ * requests, each answered 304 with the last ETag, which costs nothing against GITHUB_TOKEN's rate
+ * limit; files are read only for what's new, within a budget a run.
  *
  * GITHUB_TOKEN: a fine-grained token, read-only, Contents on Deed3Labs/Protocol-Contracts. Without
  * one it still runs (the repository is public) at 60 requests an hour.
@@ -30,11 +32,22 @@ async function tick(reason: string): Promise<void> {
   const db = await merchantDb().catch(() => null);
   try {
     if (!db) return;
-    const r = await pollOnce(db, liveGithub(), c);
-    if (r.added || r.filled) console.log(`[github] ${reason}: +${r.added} commits, files for ${r.filled}${r.waiting ? `, ${r.waiting} still to read` : ''}`);
-  } catch (error) {
-    console.error('[github] run failed:', (error as Error).message);
-    if (db) await recordCodeError(db, c, error).catch(() => undefined);
+    const src = liveGithub();
+    // the commits and the pull requests fail apart: one's error doesn't stop the other
+    try {
+      const r = await pollOnce(db, src, c);
+      if (r.added || r.filled) console.log(`[github] ${reason}: +${r.added} commits, files for ${r.filled}${r.waiting ? `, ${r.waiting} still to read` : ''}`);
+    } catch (error) {
+      console.error('[github] commits failed:', (error as Error).message);
+      await recordCodeError(db, c, error).catch(() => undefined);
+    }
+    try {
+      const p = await pollPulls(db, src, c);
+      if (p.read) console.log(`[github] ${reason}: files for ${p.read} pull requests${p.waiting ? `, ${p.waiting} still to read` : ''}`);
+    } catch (error) {
+      console.error('[github] pull requests failed:', (error as Error).message);
+      await recordPullError(db, c, error).catch(() => undefined);
+    }
   } finally {
     running = false;
   }
@@ -51,5 +64,5 @@ export function startCommandGithub(): void {
   setInterval(() => void tick('scheduled'), minutes() * 60_000);
   void tick('boot');
   const c = codeConfig();
-  console.log(`[github] ${c.repo}@${c.branch}/${c.path} every ${minutes()} min, and on demand${process.env.GITHUB_TOKEN ? '' : ' (no GITHUB_TOKEN: 60 requests an hour)'}`);
+  console.log(`[github] ${c.repo}@${c.branches.join(',')}/${c.path} and its pull requests every ${minutes()} min, and on demand${process.env.GITHUB_TOKEN ? '' : ' (no GITHUB_TOKEN: 60 requests an hour)'}`);
 }

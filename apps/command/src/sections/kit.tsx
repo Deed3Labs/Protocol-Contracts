@@ -56,6 +56,7 @@ export function ddPick(dd, v) {
   if (id === 'fwho') FS.who = v;
   if (id === 'nsf') NS.sf = v;
   if (id === 'caf') CS.af = v;
+  if (id === 'ccb') CS.cb = v;
   if (id === 'vcal') VS.cal = v;
   if (id === 'rdf') RS.df = v;
   if (id === 'rlf') RS.lf = v;

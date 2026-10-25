@@ -8,7 +8,7 @@ import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { variantParts } from './feedSources.js';
 import type { MemberSource } from './memberSource.js';
 import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
-import { codeChanges, codeConfig } from './github.js';
+import { codeActivity, codeChanges, codeConfig } from './github.js';
 import { safeConfig } from './safe.js';
 
 /*
@@ -1092,7 +1092,8 @@ const msOr = (d: Date | null, empty: number | null = null) => (d == null ? empty
 /**
  * Contracts: every agreement, the contracts and how they connect, their releases, the changes in
  * flight and done, and the Safe's signers. Nothing here is personal: parties are companies and
- * shops, signers are the co-op's officers.
+ * shops, signers are the co-op's officers. Live, the Code tab's GitHub activity too: its authors are
+ * public GitHub names, but Totals still gets only counts.
  */
 /**
  * Live, the header Contracts draws: the chain, the newest block the indexer has read, and the Ops Safe
@@ -1152,9 +1153,12 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
       }), releases, NOW)
     : { open: [], done: [] };
   const { rows: sg } = await db.query<any>('SELECT * FROM command.signers ORDER BY position');
+  // live, the Code tab: GitHub's commits, pull requests, branches and contributors; at Totals, no names
+  const CODE = provider === 'live' ? await codeActivity(db, codeConfig(), NOW, o.level > TOTALS) : null;
   return {
     AGR, CTR, CTR_NOTE, REL, RELEASES, PENDING,
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
+    ...(CODE ? { CODE } : {}),
     SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),
     NOW, figures: { ...(await figures(db, 'contracts')), ...(provider === 'live' ? { 'contracts.chain': await chainHeader(db) } : {}) }, asOf: asOfFor(provider, o.now),
   };

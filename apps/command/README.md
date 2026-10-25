@@ -65,7 +65,7 @@ Each live source has its own, all listed with their reasons in `DECISIONS.md`:
 |---|---|
 | The Ops Safe (Phase 4) | `COMMAND_SAFE_ADDRESS`, `COMMAND_SAFE_CHAIN_ID`, `SAFE_TX_SERVICE_URL`, `SAFE_API_KEY` |
 | The indexer (5a) | `ETHERSCAN_API_KEY`, `BASE_SEPOLIA_RPC_URL`; `COMMAND_INDEXER=off`, `COMMAND_INDEXER_MINUTES` |
-| GitHub (5c) | `GITHUB_TOKEN` (read-only, Contents); `COMMAND_GITHUB_REPO`, `_BRANCH`, `_PATH`, `_MINUTES` |
+| GitHub (5c) | `GITHUB_TOKEN` (read-only, Contents); `COMMAND_GITHUB_REPO`, `_BRANCH` (release lanes, `dev`), `_BRANCHES` (Code tab, `dev,main`), `_PATH`, `_MINUTES` |
 | Plaid (6a) | `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV=sandbox`, `PLAID_TOKEN_MASTER_KEY`, `COMMAND_PLAID_WEBHOOK_URL`, `COMMAND_PLAID_HOURS` |
 | Bridge, Lithic, Stripe (6a) | `BRIDGE_ENV=sandbox` + `BRIDGE_SANDBOX_API_KEY`; `LITHIC_API_KEY`; `STRIPE_SECRET_KEY` or `COMMAND_STRIPE_KEY` (test keys only) |
 | The shop (7a) | `COMMAND_SHOP_STRIPE_KEY` (restricted, read-only), `COMMAND_CATALOG_TOKEN`, `COMMAND_SHOP_CATALOG_URL` |

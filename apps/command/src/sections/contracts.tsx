@@ -9,6 +9,7 @@ import {
   CH,
   CHAIN,
   CH_DONE,
+  CODE,
   CS,
   CTR,
   CTR_NOTE,
@@ -40,6 +41,7 @@ import { evRows, strip } from './money';
 import CHAIN_ABIS from '@clear/command-types/src/chain/base-sepolia.json';
 import { live } from '../live/actions';
 import { LIVE, REAL } from '../live/env';
+import { ago } from '../live/feeds';
 import { safeWaitingOn } from '../live/safe';
 import { modalShell, onKey } from './shell';
 export function D(m, d, y = 2026, h = 0) {
@@ -682,6 +684,10 @@ export function signerHeat() {
 }
 
 /* ── page ─────────────────────────────────────────────────────────────── */
+const codeTitle = () => {
+  const n = CODE.pulls.filter((p) => p.state === 'open').length;
+  return n === 0 ? 'No pull requests open on the contracts.' : n === 1 ? 'One pull request is open on the contracts.' : `${n} pull requests are open on the contracts.`;
+};
 export function contractsPage() {
   const P = CS.pane,
     mine = CH.filter((c) => c.mine).length + acnt((a) => a.st === 'out');
@@ -694,7 +700,9 @@ export function contractsPage() {
         ? `${AGR.length} agreements on file.`
         : P === 'chain'
           ? `${CTR.filter((c) => c[4] === 'live').length} contracts live on testnet.`
-          : `${CH.length} changes in flight.`;
+          : P === 'code'
+            ? codeTitle()
+            : `${CH.length} changes in flight.`;
   const tools = (
     <button className="btn btn-p" type="button" data-cflow="propose">
       <span className="dot pulse" style={css('color:var(--btn-dot)')} aria-hidden="true" />
@@ -706,12 +714,15 @@ export function contractsPage() {
     ['agreements', 'Agreements'],
     ['chain', 'On-chain'],
     ['changes', 'Changes'],
+    // live only: the prototype has no Code tab
+    ...(REAL ? [['code', 'Code']] : []),
   ];
   const body = {
     overview: cOverview,
     agreements: cAgreements,
     chain: cChain,
     changes: cChanges,
+    code: cCode,
   }[P]();
   return (
     <>
@@ -1339,6 +1350,216 @@ export function cChanges() {
         <>
           {signers}
           {speed}
+        </>,
+      )}
+    </>
+  );
+}
+
+/* ── code (live only: the prototype has no such tab) ──────────────────── */
+const PR_ST = { open: ['live', 'Open'], merged: ['settled', 'Merged'], closed: ['absent', 'Closed'] };
+const clip = (s, n = 72) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+const ctrList = (l) => (l?.length ? (l.length > 3 ? `${l.slice(0, 3).join(', ')} +${l.length - 3}` : l.join(', ')) : '—');
+const codeAge = (t) => (t ? `${ago(Math.max(0, Date.now() - t))} ago` : '—');
+const ghLink = (url) => (
+  <a href={url} target="_blank" rel="noopener">
+    GitHub {ic('out', 'sm')}
+  </a>
+);
+/** Pull requests open first, then the ones merged or closed in the last 30 days, newest first. */
+export const codePulls = () => [...CODE.pulls.filter((p) => p.state === 'open'), ...CODE.pulls.filter((p) => p.state !== 'open')];
+export function cCode() {
+  const pulls = codePulls(),
+    open = pulls.filter((p) => p.state === 'open').length,
+    merged = pulls.filter((p) => p.state === 'merged').length,
+    closed = pulls.filter((p) => p.state === 'closed').length;
+  const named = CODE.names !== 'none';
+  const pr = (
+    <section className="cell s-12">
+      <header className="c-hd">
+        <span className="lbl">Pull requests</span>
+        <span className="tag">Touching {CODE.path || 'contracts'}/ · open, and the last 30 days</span>
+      </header>
+      <div className="c-fig">{figHtml(String(open), `open · ${merged} merged and ${closed} closed in the last 30 days`)}</div>
+      <div className="c-body flush">
+        <div className="tbl-wrap">
+          <table className="tbl compact">
+            <thead>
+              <tr>
+                <th className="l">PR</th>
+                <th className="l">Title</th>
+                <th className="l">Author</th>
+                <th className="l">Branch</th>
+                <th className="l">State</th>
+                <th className="l">Contracts</th>
+                <th>Age</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {pulls.length ? (
+                ''
+              ) : (
+                <tr>
+                  <td className="l" colSpan="8">
+                    {noneYet}
+                  </td>
+                </tr>
+              )}
+              {pulls.map((p) => (
+                <tr key={p.number}>
+                  <td className="l mono">#{p.number}</td>
+                  <td className="l">
+                    <b>{clip(p.title)}</b>
+                    <span className="small quiet">{p.files === 1 ? '1 file' : `${p.files} files`}</span>
+                  </td>
+                  <td className="l">{named && p.login ? p.login : '—'}</td>
+                  <td className="l mono">
+                    {p.head} → {p.base}
+                  </td>
+                  <td className="l">
+                    <span className={`chip ${p.state === 'open' && p.draft ? 'plain' : PR_ST[p.state][0]}`}>{p.state === 'open' && p.draft ? 'Draft' : PR_ST[p.state][1]}</span>
+                  </td>
+                  <td className="l">{ctrList(p.contracts)}</td>
+                  <td>{codeAge(p.mergedAt ?? p.closedAt ?? p.createdAt)}</td>
+                  <td>{ghLink(p.url)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {strip([
+        ['Open', String(open)],
+        ['Drafts', String(pulls.filter((p) => p.state === 'open' && p.draft).length)],
+        ['Merged, 30 days', String(merged)],
+        ['Closed, 30 days', String(closed)],
+      ])}
+    </section>
+  );
+  const opts = [['all', 'All branches', CODE.commits.length], ...CODE.branches.map((b) => [b.name, b.name, CODE.commits.filter((c) => c.branches.includes(b.name)).length])];
+  const cb = opts.some((o) => o[0] === CS.cb) ? CS.cb : 'all';
+  const list = CODE.commits.filter((c) => cb === 'all' || c.branches.includes(cb));
+  const p = CODE.poller;
+  const fresh = p.ranAt
+    ? `Polled from GitHub ${codeAge(p.ranAt)} · ${(p.branches.length ? p.branches : ['dev']).join(', ')}${p.waiting ? ` · ${p.waiting} still to read` : ''}${p.token ? '' : ' · no token, 60 requests an hour'}`
+    : 'Not polled from GitHub yet';
+  const commits = (
+    <section className="cell s-12">
+      <header className="c-hd">
+        <span className="lbl">{cb === 'all' ? 'Commits, newest first' : `Commits on ${cb}, newest first`}</span>
+        <span className="hd-tools">{ddHtml('ccb', opts, cb, 'Branch')}</span>
+      </header>
+      <div className="c-fig">{figHtml(String(list.length), `of the newest commits touching ${CODE.path || 'contracts'}/${cb === 'all' ? ', on any branch' : ` are on ${cb}`}`)}</div>
+      <div className="c-body flush">
+        <div className="tbl-wrap">
+          <table className="tbl compact">
+            <thead>
+              <tr>
+                <th className="l">Commit</th>
+                <th className="l">Message</th>
+                <th className="l">Author</th>
+                <th className="l">Branches</th>
+                <th className="l">Contracts</th>
+                <th>Age</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {list.length ? (
+                ''
+              ) : (
+                <tr>
+                  <td className="l" colSpan="7">
+                    {noneYet}
+                  </td>
+                </tr>
+              )}
+              {list.map((c) => (
+                <tr key={c.url}>
+                  <td className="l mono">{c.sha}</td>
+                  <td className="l">
+                    <b>{clip(c.message)}</b>
+                    {c.pr ? <span className="small quiet">PR #{c.pr}</span> : ''}
+                  </td>
+                  <td className="l">{named ? c.login || c.author || '—' : '—'}</td>
+                  <td className="l mono">{c.branches.join(', ') || '—'}</td>
+                  <td className="l">{ctrList(c.contracts)}</td>
+                  <td>{codeAge(c.at)}</td>
+                  <td>{ghLink(c.url)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="c-ft">{footItem({ t: p.error ? `${fresh} · the last run failed: ${p.error}` : fresh })}</div>
+    </section>
+  );
+  const ppl = CODE.contributors,
+    top = ppl.reduce((a, c) => Math.max(a, c.commits + c.pulls), 0),
+    active = ppl.filter((c) => c.commits30 + c.pulls30).length;
+  const people = gCell(
+    's-8',
+    'Contributors',
+    'Commits and pull requests to the contracts',
+    figHtml(String(CODE.people), `${CODE.people === 1 ? 'person has' : 'people have'} contributed · ${active} in the last 30 days`),
+    !named ? (
+      <span className="small quiet">Names show from See up.</span>
+    ) : ppl.length ? (
+      <>
+        <div className="hbars">
+          {ppl.map((c) => (
+            <div key={c.who} className="hb">
+              <span className="hb-k">{c.who}</span>
+              <span className="hb-bar">
+                <i style={css(`width:${top ? (c.commits / top) * 100 : 0}%;background:var(--fg)`)} />
+                <i style={css(`width:${top ? (c.pulls / top) * 100 : 0}%;background:var(--underway)`)} />
+              </span>
+              <b className="num">
+                {c.commits} · {c.pulls}
+              </b>
+            </div>
+          ))}
+        </div>
+        {mkey([
+          ['var(--fg)', 'Commits'],
+          ['var(--underway)', 'Pull requests opened'],
+        ])}
+      </>
+    ) : (
+      noneYet
+    ),
+    strip([
+      ['Commits, 30 days', String(ppl.reduce((a, c) => a + c.commits30, 0))],
+      ['PRs opened, 30 days', String(ppl.reduce((a, c) => a + c.pulls30, 0))],
+    ]),
+  );
+  const busiest = CODE.branches.reduce((a, b) => (!a || b.commits30 > a.commits30 ? b : a), null);
+  const branches = gCell(
+    's-4',
+    'Branches',
+    'Commits, 30 days',
+    busiest ? figHtml(String(busiest.commits30), `commits on ${busiest.name} in the last 30 days`) : figHtml('0', 'commits in the last 30 days'),
+    CODE.branches.length ? evRows(CODE.branches.map((b) => [b.lastAt ? fmtD(b.lastAt) : '—', b.name, b.lastAt ? `last commit ${codeAge(b.lastAt)}` : 'No commits yet', String(b.commits30)])) : noneYet,
+    <div className="c-ft">
+      <a href={`https://github.com/${CODE.repo || 'Deed3Labs/Protocol-Contracts'}/branches`} target="_blank" rel="noopener">
+        <span className="t">Every branch on GitHub</span>
+        {ic('out', 'sm')}
+      </a>
+    </div>,
+  );
+  return (
+    <>
+      {G('Pull requests', p.error ? 'The last poll failed' : p.ranAt ? `Polled ${codeAge(p.ranAt)}` : 'Not polled yet', '', pr)}
+      {G('Commits', CODE.repo, '', commits)}
+      {G(
+        'People',
+        '',
+        '',
+        <>
+          {people}
+          {branches}
         </>,
       )}
     </>
