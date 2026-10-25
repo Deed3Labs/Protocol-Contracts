@@ -2,7 +2,7 @@ import { DAY, SEED_TODAY, mask, type FieldPayload, type FormRow, type GrowthPayl
 import type { Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { SEE, TOTALS, type Level } from './levels.js';
-import { bondsLive, deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { assurancePoolLive, bondVaultLive, bondsLive, deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { variantParts } from './feedSources.js';
@@ -737,7 +737,10 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const hist = (f['money.yield.history'] ?? { days: [], assets: [], lent: [] }) as { days: string[]; assets: number[]; lent: number[] };
   const floor = (f['money.floor'] ?? 0) as number;
 
-  const { rows: accts } = await db.query<{ id: string; name: string; purpose: string; owner_group: string; source: string; swatch: string }>('SELECT * FROM command.accounts ORDER BY position');
+  const { rows: accts } = await db.query<{ id: string; name: string; purpose: string; owner_group: string; source: string; swatch: string }>(
+    // by group, as the page brackets them (an account added later, BondVault, joins its group), then in order
+    `SELECT * FROM command.accounts ORDER BY CASE owner_group WHEN 'members' THEN 0 WHEN 'set' THEN 1 ELSE 2 END, position`,
+  );
   const { rows: snaps } = await db.query<{ account_id: string; balance_cents: string }>('SELECT account_id, balance_cents FROM command.account_snapshots ORDER BY as_of');
   const weeks = (id: string) => snaps.filter((s) => s.account_id === id).map((s) => Number(s.balance_cents) / 100);
   const bal = (id: string) => weeks(id).at(-1) ?? 0;
@@ -754,10 +757,12 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const reserve = provider === 'live' ? await reserveLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
   const feeds = provider === 'live' ? await feedRows(db) : null;
   const bank = feeds ? await bankLive(db, feeds.get('plaid'), feeds.get('stripe'), o.now.getTime()) : null;
+  // live, the AssurancePool's reserves are the contract's own
+  const assurance = provider === 'live' ? await assurancePoolLive(chainOf(o, 'money')) : null;
 
   // the headline numbers, as the prototype's M
   const M: Record<string, number> = {
-    savings: reserve ? reserve.usdc : bal('sav'), cash: bank ? bank.balance : bal('ops'), payout: bal('pay'), assurance: bal('ap'), coop: bal('coop'),
+    savings: reserve ? reserve.usdc : bal('sav'), cash: bank ? bank.balance : bal('ops'), payout: bal('pay'), assurance: assurance ? assurance.total : bal('ap'), coop: bal('coop'),
     ...book, ...due, bonds: BONDS.reduce((a, b) => a + (b[1] as number), 0), floor,
   };
   // the yield pool, as the prototype's Y: assets and pledges are the depositors'; it lends to unsecured credit
@@ -791,7 +796,9 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
 
   const AP_BAL = [...((f['money.ap.balance_weeks'] as number[] | undefined) ?? []), M.assurance];
   const UNSEC = [...((f['money.credit.unsecured_weeks'] as number[] | undefined) ?? []), M.unsecured];
-  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}) };
+  // live, BondVault's balance is the chain's: the bond buyers' money, held to pay them at maturity
+  const vault = provider === 'live' ? await bondVaultLive(chainOf(o, 'money')) : null;
+  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}), ...(vault != null ? { bond: vault } : {}) };
   const ACCTS = accts.map((a) => {
     const w = weeks(a.id);
     const now = live[a.id] ?? w.at(-1) ?? 0;

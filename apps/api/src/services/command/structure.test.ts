@@ -16,7 +16,7 @@ beforeAll(async () => {
 describe('the structure', () => {
   test('writes the contracts, entities, boards and who decides, once', async () => {
     const first = await structureCommand(db);
-    expect(first).toEqual(['31 contracts', '6 accounts', '9 entities', '3 boards']);
+    expect(first).toEqual(['31 contracts', '7 accounts', '9 entities', '3 boards']);
     // a second start leaves it alone
     expect(await structureCommand(db)).toEqual([]);
   });
@@ -60,11 +60,14 @@ describe('Money with only the structure', () => {
     process.env.PROVIDER_MONEY = 'live';
     try {
       const chain: ChainReader = {
-        read: async (calls) => calls.map((c) => (c.fn === 'asset' ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e' : c.fn === 'decimals' ? 6n : 0n)),
+        read: async (calls) =>
+          calls.map((c) => (c.fn === 'asset' || c.fn === 'reserveToken' ? '0x036CbD53842c5426634e7929541eC2318f3dCF7e' : c.fn === 'decimals' ? 6n : c.contract === 'BondVault' && c.fn === 'held' ? 290_380_000n : 0n)),
       };
       const m: any = await moneySection(db, { level: TOTALS, reveal: false, now: new Date(), chain });
-      expect(m.ACCTS.map((a: any[]) => a[0])).toEqual(['sav', 'yld', 'pay', 'ap', 'ops', 'coop']);
-      expect(m.ACCTS.every((a: any[]) => a[5] === 0)).toBe(true);
+      // by group: BondVault is set aside, beside the payout pool and the AssurancePool
+      expect(m.ACCTS.map((a: any[]) => a[0])).toEqual(['sav', 'yld', 'pay', 'ap', 'bond', 'ops', 'coop']);
+      // BondVault holds the bond buyers' money, read from the chain; the rest have nothing yet
+      expect(m.ACCTS.map((a: any[]) => [a[0], a[5]]).filter(([, v]: any[]) => v)).toEqual([['bond', 290.38]]);
       for (const [k, v] of Object.entries(m.M)) expect([k, Number.isFinite(v)]).toEqual([k, true]);
       expect([m.AP_BAL, m.UNSEC, m.COOP_W, m.FLOWS]).toEqual([[0], [0], [], []]);
     } finally {

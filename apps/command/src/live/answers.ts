@@ -11,7 +11,14 @@ import { ANSWERS } from './env';
  */
 
 let saved: Promise<Record<string, unknown>> | null = null;
-const file = () => (saved ??= fetch(ANSWERS!).then((r) => r.json()));
+// a failed load isn't kept: the next call tries again
+const file = () =>
+  (saved ??= fetch(ANSWERS!, { cache: 'no-store' })
+    .then((r) => r.json())
+    .catch((e) => {
+      saved = null;
+      throw e;
+    }));
 
 const ALL = Object.fromEntries(['home', 'growth', 'field', 'members', 'merchants', 'shop', 'money', 'contracts', 'governance', 'records', 'access'].map((k) => [k, 4]));
 const ME = { id: 'answers', name: 'Saved answers', email: 'answers@localhost', levels: ALL, group: { key: 'admin', name: 'Admin', description: 'Runs the co-op day to day' }, terms: { required: false }, expiresAt: null };
