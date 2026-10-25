@@ -322,6 +322,77 @@ which needs ClickHouse), instead of Plausible's Stats API.
 - **9c · Dev.** Every `PROVIDER_*=live`, `COMMAND_SEED` off, Umami hosted and on the site, and each
   page checked signed in.
 
+### Phase 10: what goes into a product (shop costing)
+
+Kai, 2026-10-25: a product's cost isn't four fixed boxes (blank, making, label, packing) typed per
+product. It's made of **inputs** (materials, services, labour), kept in one library, reused across
+products, and costed from either direction. His answers: materials bought and kept on hand are
+**stock**; an input can differ by **size or colour**; a sale **keeps the cost it sold at**; and
+**labour** is an input like any other.
+
+**Inputs, the library.** Each input has a name, a kind and a unit:
+- *material* (a blank tee, thread, mailers: "each", "m", "g", "ml"…);
+- *service* bought per piece (embroidery, printing by a supplier);
+- *labour*, by the hour.
+
+An input is either **kept on hand** (bought in bulk, used up as products are made) or **made to
+order** (a cost per use, no stock). Its cost per unit can be entered either way:
+- straight, as a unit cost ("$0.05 per ml", "$20 an hour"); or
+- from a **purchase**: what was paid and how much came ("$164 for 20 blanks"), which works out
+  $8.20 each.
+
+Each purchase is kept, so the unit cost has a history and stock has a source.
+
+**A product's recipe.** Each product lists the inputs that go into it, one line each. A line can be
+entered either way, and the other is worked out:
+- as the **amount used** ("1 blank", "0.25 h", "12 ml"), which gives the line's cost from the
+  input's unit cost; or
+- as the **cost per product** ("$5.20 of embroidery"), which gives the amount.
+
+The product's cost is the sum of its lines, and its margin is its price less that. Any size or
+colour can **override** a line's amount or cost (an XXL blank, a second colour of thread), and
+margin then shows per size where they differ. **Applying inputs to other products:** a recipe can
+be copied onto other products, and one input can be added to several products at once. A change to
+an input's cost flows into every recipe that uses it.
+
+**Stock.**
+- **Materials:** kept-on-hand inputs have a quantity on hand, a ledger (bought, used, adjusted,
+  wasted) and a low mark that warns on Inventory and Home.
+- **Production runs:** recording one ("made 12 Logo Tee · Short, size M") uses up its inputs by
+  the recipe, and adds the finished units to the product's stock.
+- **Made-to-order inputs** have no stock: their cost is counted when the product sells.
+
+**What a sale costs.** Each order line records its cost at the moment it sold, worked out from
+the recipe (with the size's overrides) as it stood then. Past margins stay true when costs change,
+and a product shows its cost over time.
+
+**Where it shows:**
+- **Shop → Costs:** a new tab, live only. The inputs library: name, kind, unit, unit cost,
+  kept-on-hand or made-to-order, on hand, and how many products use it. Plus adding or editing an
+  input, recording a purchase, and archiving.
+- **The product pane:** its Price section becomes the recipe. Lines show input, amount, cost and
+  any size overrides, with the margin worked out live. Lines are edited in either direction, from
+  the library or as a new input. "Copy to other products" lives here.
+- **Inventory:** a Materials cell (on hand, how many products that covers, low marks) and
+  "Record a run".
+- **Margins everywhere** (Overview's gross profit, Products' ladder and scatter, Orders) use the
+  recipe now and the sale's recorded cost for past orders.
+
+Products with no recipe yet keep the four cost boxes they have, so nothing breaks while recipes
+are filled in.
+
+- **10a · The API.** Migrations for inputs, purchases, the stock ledger, recipes and their size
+  overrides, production runs, and each order line's recorded cost. A costing engine (unit cost from
+  purchases, a line's cost from its amount or the reverse, per-size overrides), the shop's actions
+  (an input, a purchase, a recipe line, a copy, a run), and the Shop section's payload. Tests for
+  each direction of the arithmetic.
+- **10b · Costs and recipes in the app.** The Costs tab, the product pane's recipe editor, and
+  copying a recipe onto other products.
+- **10c · Stock.** Materials on Inventory, low marks (on Inventory and in Home's alerts), and
+  production runs that use up materials and add finished units.
+- **10d · What a sale costs.** Orders record their cost when they come in from Stripe. Margins use
+  it, and products show their cost history.
+
 ## Size
 
 The prototype is 6,981 lines: 2,280 of CSS and about 4,650 of JavaScript across 11 sections,
