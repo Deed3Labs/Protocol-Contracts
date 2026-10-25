@@ -327,18 +327,61 @@ export async function bondsLive(db: Queryable, reader: ChainReader): Promise<Bon
   return [...bonds.values()].map((b) => ({ ...b, holder: holders.get(b.id) ?? null }));
 }
 
-/** What the AssurancePool holds against losses: its primary, buffer and excess reserves, in its reserve token. */
-export async function assurancePoolLive(reader: ChainReader): Promise<{ total: number; primary: number; buffer: number; excess: number }> {
-  const [primary, buffer, excess, token] = await reader.read([
+export interface AssurancePoolLive {
+  total: number;
+  primary: number;
+  buffer: number;
+  excess: number;
+  /** The target RTD, as a fraction (the AssuranceOracle's). */
+  target: number;
+  /** The pool's exposure, in the reserve token: what it would pay if every member defaulted. */
+  exposure: number;
+  /** Primary reserve ÷ exposure, as a fraction; null with nothing out, when the contract calls it undefined. */
+  rtd: number | null;
+  /** Whether the pool is reserved to its target: always, with nothing out. */
+  valid: boolean;
+  /** Primary reserve less what the target needs against the exposure: above it when positive, below when negative. */
+  gap: number;
+  /** More exposure the primary reserve could take before RTD falls under the target. */
+  room: number;
+}
+
+/**
+ * What the AssurancePool holds against losses (its primary, buffer and excess reserves) and its RTD as
+ * the contract has it: the primary reserve alone against the pool's exposure, never the buffer or
+ * anything outside the pool. Amounts in its reserve token.
+ */
+export async function assurancePoolLive(reader: ChainReader): Promise<AssurancePoolLive> {
+  const [primary, buffer, excess, token, target, rtd, exposure, valid] = await reader.read([
     { contract: 'AssurancePool', fn: 'primaryBalance' },
     { contract: 'AssurancePool', fn: 'bufferBalance' },
     { contract: 'AssurancePool', fn: 'excessBalance' },
     { contract: 'AssurancePool', fn: 'reserveToken' },
+    { contract: 'AssurancePool', fn: 'targetRTD' },
+    { contract: 'AssurancePool', fn: 'RTD' },
+    { contract: 'AssurancePool', fn: 'poolExposure' },
+    { contract: 'AssurancePool', fn: 'hasValidRTD' },
   ]);
-  const [decimals] = await reader.read([{ contract: 'ERC20', address: String(token), fn: 'decimals' }]);
+  const [decimals, exposureReserve] = await reader.read([
+    { contract: 'ERC20', address: String(token), fn: 'decimals' },
+    { contract: 'AssurancePool', fn: 'convertStableCreditToReserveToken', args: [big(exposure)] },
+  ]);
   const usd = (v: unknown) => Math.round((Number(big(v)) / 10 ** Number(decimals)) * 100) / 100;
-  const [p, b, e] = [usd(primary), usd(buffer), usd(excess)];
-  return { total: Math.round((p + b + e) * 100) / 100, primary: p, buffer: b, excess: e };
+  const frac = (v: unknown) => Number(big(v)) / 1e18;
+  const [p, b, e, x] = [usd(primary), usd(buffer), usd(excess), usd(exposureReserve)];
+  const t = frac(target);
+  return {
+    total: Math.round((p + b + e) * 100) / 100,
+    primary: p,
+    buffer: b,
+    excess: e,
+    target: t,
+    exposure: x,
+    rtd: x ? frac(rtd) : null,
+    valid: valid === true || valid === 'true',
+    gap: Math.round((p - t * x) * 100) / 100,
+    room: t ? Math.max(0, Math.round((p / t - x) * 100) / 100) : 0,
+  };
 }
 
 export interface BondVaultLive {

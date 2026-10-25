@@ -790,6 +790,13 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   if (reserve) { M.clrusd = reserve.clrusd; M.reserveDiff = reserve.difference; }
   M.rtd = M.unsecured ? M.assurance / M.unsecured : 0;
   M.room = M.floor ? M.assurance / M.floor - M.unsecured : 0;
+  // live, the gate is the contract's: its target, its exposure, and RTD on the primary reserve alone
+  if (assurance) {
+    M.floor = assurance.target;
+    M.unsecured = assurance.exposure;
+    M.rtd = assurance.rtd ?? 0;
+    M.room = assurance.room;
+  }
   M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
   // live, the gap is the PayoutPool's own shortfall, never the tables' sample against real cash
   Y.toPayout = Math.min(chainPool ? chainPool.payoutShort : M.short, Y.cash); Y.utilAfter = Y.assets ? (Y.lent + Y.toPayout) / Y.assets : 0; Y.apyAfter = apy(borrowBps(Y.utilAfter) * Y.utilAfter);
@@ -798,6 +805,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const UNSEC = [...((f['money.credit.unsecured_weeks'] as number[] | undefined) ?? []), M.unsecured];
   // live, BondVault's balance is the chain's: the bond buyers' money, held to pay them at maturity
   const vault = provider === 'live' ? await bondVaultLive(chainOf(o, 'money')) : null;
+  if (vault) M.vault = vault.held;
   const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}), ...(vault ? { bond: vault.held } : {}) };
   const ACCTS = accts.map((a) => {
     const w = weeks(a.id);
@@ -843,6 +851,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       // live, the reserve as the vault stands now: its USDC to each CLRUSD, read with this page
       ...(reserve ? { 'money.reserve': { ratio: reserveRatio(reserve.usdc, reserve.clrusd), checked: 'just now' } } : {}),
       // live, what BondVault keeps back for bondholders and what the Safe may take for the co-op's use
+      ...(assurance ? { 'money.rtd': { target: assurance.target, rtd: assurance.rtd, exposure: assurance.exposure, primary: assurance.primary, buffer: assurance.buffer, excess: assurance.excess, valid: assurance.valid, gap: assurance.gap, room: assurance.room } } : {}),
       ...(vault ? { 'money.bondvault': { required: vault.required, deployable: vault.deployable, floorPct: vault.floorPct, windowDays: vault.windowDays } } : {}),
     },
     asOf: asOfFor(provider, o.now),
