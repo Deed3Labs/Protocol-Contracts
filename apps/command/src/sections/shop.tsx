@@ -5,6 +5,7 @@ import { api } from '../live/api';
 import { attrs, css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
 import { compBar, head, ic, money } from './core';
+import { costsTitle, costsTool, inputPane, recipeSec, sCosts, startRecipe } from './costing';
 import {
   BUYERS,
   DAY,
@@ -22,6 +23,7 @@ import {
   PR,
   PRE,
   PRE_ST,
+  RECIPES,
   RETURNS,
   RETURN_WHY,
   REV_W,
@@ -630,7 +632,7 @@ export function itemsLine(o) {
 export function shopPage() {
   // at Totals the orders are only counted: the list of buyers isn't shown
   const totals = LIVE && vLevel('shop') === 1;
-  if (totals && SS.pane === 'orders') SS.pane = 'overview';
+  if (totals && (SS.pane === 'orders' || SS.pane === 'costs')) SS.pane = 'overview';
   const P = SS.pane,
     onShelf = PR.filter((p) => p.st === 'on').length,
     toPack = ORDERS.filter((o) => o[8] === 'paid').length,
@@ -640,7 +642,9 @@ export function shopPage() {
       ? `${money(SHOP.left)} left for marketing.`
       : P === 'products'
         ? `${onShelf} products on the shelf.`
-        : P === 'inventory'
+        : P === 'costs'
+          ? costsTitle()
+          : P === 'inventory'
           ? `${['Nothing needs', 'One product needs', 'Two products need', 'Three products need'][low.length] ?? `${low.length} products need`} a reorder.`
           : `${['No orders', 'One order', 'Two orders', 'Three orders', 'Four orders', 'Five orders', 'Six orders'][toPack] ?? `${toPack} orders`} to pack.`;
   const tools =
@@ -648,6 +652,8 @@ export function shopPage() {
       <button className="btn btn-p" type="button" data-sflow="restock" data-sid="tn">
         Restock
       </button>
+    ) : P === 'costs' ? (
+      costsTool()
     ) : P === 'orders' ? (
       <>
         <button className="btn btn-g hide-s" type="button" data-sflow="labels">
@@ -673,12 +679,15 @@ export function shopPage() {
     ['products', 'Products'],
     ['inventory', 'Inventory'],
     ['orders', 'Orders'],
-  ].filter(([v]) => !(totals && v === 'orders'));
+    // live only (Phase 10b): what goes into each product, from See
+    ...(REAL ? [['costs', 'Costs']] : []),
+  ].filter(([v]) => !(totals && (v === 'orders' || v === 'costs')));
   const body = {
     overview: sOverview,
     products: sProducts,
     inventory: sInventory,
     orders: sOrders,
+    costs: sCosts,
   }[P]();
   return (
     <>
@@ -1478,6 +1487,7 @@ export function sOrders() {
 /* ── panels ───────────────────────────────────────────────────────────── */
 export function shopPane() {
   if (SS.order) return orderPane();
+  if (REAL && SS.input) return inputPane();
   if (!SS.prod) return '';
   const p = prOf(SS.prod);
   if (!p) return '';
@@ -1573,7 +1583,9 @@ export function shopPane() {
           ''
         ),
       )
-    : sec(
+    : REAL && RECIPES[p.id]
+      ? recipeSec(p)
+      : sec(
         'Price',
         <>
           <div className="ld ld-one">
@@ -1603,9 +1615,12 @@ export function shopPane() {
               ])}
         </>,
         p.st !== 'arch' ? (
-          <button type="button" className="pn-link" data-sflow="edit" data-sid={p.id}>
-            Edit
-          </button>
+          <>
+            {REAL && startRecipe(p)}
+            <button type="button" className="pn-link" data-sflow="edit" data-sid={p.id}>
+              Edit
+            </button>
+          </>
         ) : (
           ''
         ),
@@ -2024,8 +2039,8 @@ export function openSFlow(kind, id) {
               ''
             ) : (
               <label className="field">
-                <span className="lbl">Cost per item</span>
-                <input type="text" defaultValue={money(unitCost(p))} autoComplete="off" />
+                <span className="lbl">{REAL && RECIPES[p.id] ? 'Cost per item · from its recipe' : 'Cost per item'}</span>
+                <input type="text" defaultValue={money(unitCost(p))} autoComplete="off" {...(REAL && RECIPES[p.id] ? { readOnly: true } : {})} />
               </label>
             )}
           </div>

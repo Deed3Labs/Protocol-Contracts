@@ -52,7 +52,7 @@ describe('a line, either way', () => {
   });
 
   test('a cost gives its amount: $5.20 of embroidery at $2.60 a piece is 2', () => {
-    expect(workLine({ amount: null, costCents: 520 }, 260)).toEqual({ amount: 2, costCents: 520, entered: 'cost' });
+    expect(workLine({ amount: null, costCents: 520 }, 260)).toEqual({ amount: 2, costCents: 520, entered: 'cost', typedCents: 520 });
   });
 
   test('both typed: the amount wins and the cost is worked out', () => {
@@ -274,7 +274,7 @@ describe('the Shop payload', () => {
       ['labour', 0.25, 5, 'amount'],
     ]);
     // the XXL's blank, entered as a cost: its amount is worked out from the blank's $8.20
-    expect(lts.overrides).toEqual([{ option: '', size: 'XXL', input: 'blank', amount: 980 / 820, cost: 9.8, entered: 'cost' }]);
+    expect(lts.overrides).toEqual([{ option: '', size: 'XXL', input: 'blank', amount: 980 / 820, cost: 9.8, entered: 'cost', typed: 9.8 }]);
     expect(lts.cost).toBe(14.91);
     expect(lts.margin).toEqual({ amount: 31.09, share: 3109 / 4600 });
     expect(lts.differs).toBe(true);

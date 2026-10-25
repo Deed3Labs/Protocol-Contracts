@@ -44,6 +44,7 @@ import { openNFlow } from './money';
 import { openRFlow } from './records';
 import { closeModal, finish, go, openItem, render, runSteps, toast, vLevel, viewExit } from './shell';
 import { openSFlow } from './shop';
+import { openCostFlow } from './costing';
 import { sgnIn, sgnStep, sgnTimer, showLogin } from './signin';
 import { accOf, openTFlow } from './team';
 
@@ -730,7 +731,7 @@ export function startup() {
       return dd.querySelector('.dd-list').hidden ? ddOpen(dd) : ddClose();
     }
     const t = e.target.closest(
-      'button,[data-closenpane],[data-pf-close],[data-scrim],[data-poster],[data-closepane],[data-member],[data-closempane],[data-merchant],[data-cmcity],[data-closexpane],[data-fclose],[data-agr],[data-ctr],[data-closecpane],[data-ent],[data-closevpane],[data-doc],[data-rentry],[data-closerpane],[data-person],[data-closetpane],[data-product],[data-order],[data-closespane]',
+      'button,[data-closenpane],[data-pf-close],[data-scrim],[data-poster],[data-closepane],[data-member],[data-closempane],[data-merchant],[data-cmcity],[data-closexpane],[data-fclose],[data-agr],[data-ctr],[data-closecpane],[data-ent],[data-closevpane],[data-doc],[data-rentry],[data-closerpane],[data-person],[data-closetpane],[data-product],[data-order],[data-closespane],[data-sinput]',
     );
     if (!t) return;
     if (t.matches('[data-scrim]') && e.target === t) return closeModal();
@@ -835,6 +836,7 @@ export function startup() {
       SS.pane = t.dataset.spane;
       SS.prod = null;
       SS.order = null;
+      SS.input = null;
       if (S.route !== 'shop') S.route = 'shop';
       render();
       window.scrollTo({
@@ -845,11 +847,24 @@ export function startup() {
     if (t.dataset.closespane !== undefined) {
       SS.prod = null;
       SS.order = null;
+      SS.input = null;
       return render();
     }
+    // live only (Phase 10b): an input's pane on Shop's Costs tab, and the costing flows
+    if (t.dataset.sinput) {
+      SS.input = t.dataset.sinput;
+      SS.prod = null;
+      SS.order = null;
+      render();
+      const x = document.querySelector('.pane .x');
+      if (x) x.focus();
+      return;
+    }
+    if (t.dataset.cflow) return openCostFlow(t.dataset.cflow, t.dataset.sid, t.dataset.cid, t.dataset);
     if (t.dataset.product) {
       SS.prod = t.dataset.product;
       SS.order = null;
+      SS.input = null;
       if (document.querySelector('.modal')) closeModal();
       render();
       const x = document.querySelector('.pane .x');
@@ -859,6 +874,7 @@ export function startup() {
     if (t.dataset.order) {
       SS.order = t.dataset.order;
       SS.prod = null;
+      SS.input = null;
       render();
       const x = document.querySelector('.pane .x');
       if (x) x.focus();
@@ -1444,9 +1460,10 @@ export function startup() {
       if (b) b.focus();
       return;
     }
-    if (e.key === 'Escape' && (SS.prod || SS.order) && !document.querySelector('.modal')) {
+    if (e.key === 'Escape' && (SS.prod || SS.order || SS.input) && !document.querySelector('.modal')) {
       SS.prod = null;
       SS.order = null;
+      SS.input = null;
       render();
       return;
     }
@@ -1481,6 +1498,11 @@ export function startup() {
     }
     if (e.key === 'Enter' && e.target.matches && e.target.matches('tr[data-member]')) {
       MS.member = Number(e.target.dataset.member);
+      render();
+      return;
+    }
+    if (e.key === 'Enter' && e.target.matches && e.target.matches('tr[data-sinput]')) {
+      SS.input = e.target.dataset.sinput;
       render();
       return;
     }

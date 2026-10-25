@@ -91,6 +91,8 @@ export interface Worked {
   amount: number | null;
   costCents: number;
   entered: 'amount' | 'cost';
+  /** The cost as it was typed, when it was typed as a cost: what the editor shows as "entered as". */
+  typedCents?: number;
   note?: string;
 }
 
@@ -100,10 +102,12 @@ export interface Worked {
  * unit cost can't: the amount is null, with the reason.
  */
 export function workLine(e: Entered, unitCostCents: number | null): Worked {
-  if (e.amount != null) return { amount: e.amount, costCents: e.amount * (unitCostCents ?? 0), entered: e.entered ?? 'amount', ...(unitCostCents == null ? { note: 'No unit cost yet' } : {}) };
+  const typed = e.entered === 'cost' || (e.amount == null && e.costCents != null) ? { typedCents: e.costCents ?? 0 } : {};
+  if (e.amount != null) return { amount: e.amount, costCents: e.amount * (unitCostCents ?? 0), entered: e.entered ?? 'amount', ...typed, ...(unitCostCents == null ? { note: 'No unit cost yet' } : {}) };
   const cost = e.costCents ?? 0;
-  if (!unitCostCents) return { amount: null, costCents: cost, entered: 'cost', note: 'The unit cost is zero, so the amount can’t be worked out' };
-  return { amount: cost / unitCostCents, costCents: cost, entered: 'cost' };
+  if (unitCostCents == null) return { amount: null, costCents: cost, entered: 'cost', ...typed, note: 'No unit cost yet, so the amount is worked out once it has one' };
+  if (!unitCostCents) return { amount: null, costCents: cost, entered: 'cost', ...typed, note: 'The unit cost is zero, so the amount can’t be worked out' };
+  return { amount: cost / unitCostCents, costCents: cost, entered: 'cost', ...typed };
 }
 
 /** The override for a colour and size, if any: colour and size, then size alone, then colour alone. */
@@ -267,7 +271,7 @@ const usedIn = (book: Book) => {
   return m;
 };
 const isLow = (i: Input, onHand: number) => i.stocked && i.lowMark != null && onHand <= i.lowMark;
-const line = (l: Worked & { inputId: string }) => ({ input: l.inputId, amount: l.amount, cost: shown(l.costCents), entered: l.entered, ...(l.note ? { note: l.note } : {}) });
+const line = (l: Worked & { inputId: string }) => ({ input: l.inputId, amount: l.amount, cost: shown(l.costCents), entered: l.entered, ...(l.typedCents != null ? { typed: shown(l.typedCents) } : {}), ...(l.note ? { note: l.note } : {}) });
 
 /**
  * The Shop section's costing (INPUTS, RECIPES, MATERIALS). `priceOf` is the price the page shows a

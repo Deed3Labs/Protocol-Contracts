@@ -44,12 +44,14 @@ import {
   HEAT,
   INBOX,
   INCOMING,
+  INPUTS,
   KEY_ROLES,
   LANDING,
   LATER,
   LINE_COSTS,
   LOG,
   M,
+  MATERIALS,
   MATTERS,
   MEETING,
   MEETINGS_HELD,
@@ -72,6 +74,7 @@ import {
   PROSPECTS,
   RANGE,
   REFS,
+  RECIPES,
   REL,
   RELEASES,
   RESOS,
@@ -254,6 +257,11 @@ const apply = {
     replace(PRE, d.PRE);
     replace(INCOMING, d.INCOMING);
     replace(RETURNS, d.RETURNS);
+    // what goes into each product (Phase 10): below See the API sends them empty
+    replace(INPUTS, d.INPUTS);
+    for (const k of Object.keys(RECIPES)) delete RECIPES[k];
+    Object.assign(RECIPES, d.RECIPES ?? {});
+    assign(MATERIALS, d.MATERIALS ?? { onHand: [], low: [], makes: {} });
     const f = d.figures;
     replace(ORD_W, f['shop.orders_weekly']);
     assign(SHOP_COSTS, f['shop.costs']);
