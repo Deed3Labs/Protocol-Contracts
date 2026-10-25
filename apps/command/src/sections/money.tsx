@@ -2,7 +2,7 @@
 import { live } from '../live/actions';
 import { LIVE, REAL } from '../live/env';
 import { fig } from '../live/figures';
-import { feedLabel, feedLate, feedLine, hasFeeds } from '../live/feeds';
+import { ago, feedLabel, feedLate, feedLine, feedOf, hasFeeds } from '../live/feeds';
 import { Fragment } from 'react';
 import { attrs, css } from '../runtime/dom';
 import { compBar, head, ic, money, pct } from './core';
@@ -63,6 +63,13 @@ export function srcTxt(k) {
     bridge: 'Bridge · 2 min',
     plaid: 'Plaid · 3 h',
   }[k];
+}
+/** Live, a source as an account row has room for it: short name and age ("Protocol · 2 min"); the full words on hover. */
+export function srcShort(k) {
+  const f = LIVE && hasFeeds() ? feedOf(k) : null;
+  if (!f) return srcTxt(k) ?? '';
+  const name = { protocol: 'Protocol' }[k] ?? f.name;
+  return `${name} · ${f.health === 'off' ? 'off' : f.behindMs != null ? ago(f.behindMs) : 'not yet'}`;
 }
 /* stats attached to the foot of a cell; they sit in the footer row, so strips line up across a row */
 export function strip(items) {
@@ -247,9 +254,9 @@ export function holdings() {
             <b>{n}</b>
             <span className="small quiet">{why}</span>
           </span>
-          <span className={`wh-src ${st}`}>
+          <span className={`wh-src ${st}`} {...(REAL ? { title: srcTxt(src) } : {})}>
             <i className="dot" />
-            {srcTxt(src)}
+            {REAL ? srcShort(src) : srcTxt(src)}
           </span>
           {sp(wk)}
           <span className={`wh-ch num ${ch > 0 ? 'up' : ch < 0 ? 'dn' : ''}`}>
