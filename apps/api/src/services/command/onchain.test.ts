@@ -4,7 +4,7 @@ import { getAddress } from 'viem';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
 import { syncInventory } from './indexer.js';
-import { deployedName, type ChainCall, type ChainReader } from './onchain.js';
+import { bondsLive, deployedName, type ChainCall, type ChainReader } from './onchain.js';
 import { contractsSection, moneySection } from './sections.js';
 import { seedCommand } from './seed.js';
 import { TOTALS } from './levels.js';
@@ -51,7 +51,7 @@ const reader: ChainReader = {
     asked.push(calls);
     return calls.map((c) => {
       if (c.contract === 'ClearUSDUpgradeable') return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.clrusd));
-      if (c.contract === 'LendingPool' && c.fn === 'asset') return USDC;
+      if ((c.contract === 'LendingPool' && c.fn === 'asset') || (c.contract === 'BurnerBond' && c.fn === 'underlyingToken')) return USDC;
       if (c.contract === 'ERC20') {
         expect([c.address, ...(c.fn === 'balanceOf' ? [c.args![0]] : [])]).toEqual([USDC, ...(c.fn === 'balanceOf' ? [getAddress(C.ESADepositVault.address)] : [])]);
         return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.vault));
@@ -173,6 +173,44 @@ describe('the yield pool, live', () => {
 
   test('live with no reader says so', async () => {
     await expect(moneySection(db, { level: TOTALS, reveal: false, now: NOW })).rejects.toThrow(/PROVIDER_MONEY=live reads the chain/);
+  });
+});
+
+describe('bonds, live', () => {
+  test('every BurnerBond from its events: open ones with their holder, closed ones marked', async () => {
+    const fresh = (await testDb()).db;
+    const dbWas = db;
+    db = fresh;
+    try {
+      await syncInventory(db);
+      const mat = (iso: string) => String(Date.parse(iso) / 1000);
+      // a mint's transfer lands before its BondMinted, as the contract emits them
+      await put('BurnerBond', 'TransferSingle', { operator: A, from: ZERO, to: A, id: '1', value: '1' }, '01T10:00:00');
+      await put('BurnerBond', 'BondMinted', { bondId: '1', creator: A, faceValue: usdc(100), maturityDate: mat('2027-04-01T00:00:00Z'), discountPercentage: '322', purchasePrice: usdc(96.78) }, '01T10:00:00');
+      await put('BurnerBond', 'TransferSingle', { operator: B, from: ZERO, to: B, id: '2', value: '1' }, '02T10:00:00');
+      await put('BurnerBond', 'BondMinted', { bondId: '2', creator: B, faceValue: usdc(250), maturityDate: mat('2026-12-01T00:00:00Z'), discountPercentage: '200', purchasePrice: usdc(245) }, '02T10:00:00');
+      // bond 1 changes hands; bond 2 is redeemed
+      await put('BurnerBond', 'TransferSingle', { operator: A, from: A, to: Cc, id: '1', value: '1' }, '10T10:00:00');
+      await put('BurnerBond', 'BondRedeemed', { bondId: '2', redeemer: B, faceValue: usdc(250) }, '20T10:00:00');
+      const bonds = await bondsLive(db, reader);
+      expect(bonds.map((b) => [b.id, b.face, b.price, b.holder, b.closed])).toEqual([
+        ['1', 100, 96.78, getAddress(Cc), false],
+        ['2', 250, 245, getAddress(B), true],
+      ]);
+      expect(new Date(bonds[0].maturesAt).toISOString().slice(0, 10)).toBe('2027-04-01');
+      // Money lists the open one: its term, the yearly rate its discount works out to, and who holds it
+      const m: any = await moneySection(db, { level: 2 as any, reveal: false, now: NOW, chain: reader });
+      expect(m.BONDS).toHaveLength(1);
+      const [id, face, issued, matures, term, rate, holder] = m.BONDS[0];
+      expect([id, face, issued, matures, term, holder]).toEqual(['BB-0001', 100, '1 Oct', '1 Apr 2027', 6, `${getAddress(Cc).slice(0, 6)}…${getAddress(Cc).slice(-4)}`]);
+      expect(rate).toBe(6.7);
+      expect(m.M.bonds).toBe(100);
+      // at Totals, no holder leaves the server
+      const t: any = await moneySection(db, { level: TOTALS, reveal: false, now: NOW, chain: reader });
+      expect(t.BONDS[0][6]).toBe('');
+    } finally {
+      db = dbWas;
+    }
   });
 });
 

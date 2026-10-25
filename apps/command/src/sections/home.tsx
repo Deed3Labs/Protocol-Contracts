@@ -1184,7 +1184,9 @@ export function stateEmpty() {
   );
 }
 export function stateLoading() {
-  const src = [
+  // live, the real sources as they stand; the prototype's sample otherwise
+  const real = REAL ? feedList().map((f) => [f.name, ...feedChip(f)]) : null;
+  const src = real ?? [
     ['Site analytics', 'settled', 'Loaded'],
     ['Lithic', 'settled', 'Loaded'],
     ['Bridge', 'underway', 'Loading'],
@@ -1212,13 +1214,13 @@ export function stateLoading() {
   return (
     <div className="group">
       <div className="g-lbl">
-        <span className="lbl">Loading from 5 sources</span>
+        <span className="lbl">{real ? (real.length ? `Loading from ${real.length} sources` : 'Loading') : 'Loading from 5 sources'}</span>
       </div>
       <div className="bento">
         <section className="cell s-4">
           <header className="c-hd">
             <span className="lbl">Sources</span>
-            <span className="tag">2/5</span>
+            <span className="tag">{real ? `${real.filter((r) => r[1] === 'settled').length}/${real.length}` : '2/5'}</span>
           </header>
           <div className="c-mn">
             <div className="rows srcs">
@@ -1285,7 +1287,9 @@ export function stateError(err?: Error) {
       )}
       <div>
         <span className="lbl">Sources</span>
-        {LIVE && hasFeeds() ? (
+        {REAL && !hasFeeds() ? (
+          <span className="small quiet">Not loaded yet.</span>
+        ) : REAL ? (
           <div className="rows srcs">
             {feedList().map((f) => {
               const [cls, words] = feedChip(f);
