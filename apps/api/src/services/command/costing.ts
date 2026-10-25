@@ -251,6 +251,90 @@ export async function readBook(db: Queryable): Promise<Book> {
   return book;
 }
 
+/** A purchase as the payload shows it: newest first, the latest 20 an input. */
+export interface PurchaseRow {
+  at: number;
+  quantity: number;
+  totalCents: number;
+  supplier: string;
+  note: string;
+}
+/** A stock move: + in, − out. `ref` is the purchase or the run it came from. */
+export interface MoveRow {
+  at: number;
+  quantity: number;
+  reason: 'purchase' | 'run' | 'adjust' | 'waste';
+  note: string;
+  ref: number | null;
+}
+/** A production run, with what it used of each stocked input (its 'run' moves). */
+export interface RunRow {
+  id: number;
+  at: number;
+  productId: string;
+  option: string;
+  size: string;
+  units: number;
+  note: string;
+  short: boolean;
+  who: string;
+  uses: Array<{ inputId: string; quantity: number }>;
+}
+export interface History {
+  purchases: Map<string, PurchaseRow[]>;
+  moves: Map<string, MoveRow[]>;
+  runs: RunRow[];
+}
+export const HISTORY_CAPS = { purchases: 20, moves: 30, runs: 50 };
+export const noHistory = (): History => ({ purchases: new Map(), moves: new Map(), runs: [] });
+
+/**
+ * Each input's recent purchases and stock moves, and the recent production runs. A run's uses aren't
+ * stored on it: they're its 'run' moves (ref = the run), turned back to positive amounts.
+ */
+export async function readHistory(db: Queryable): Promise<History> {
+  const [purchases, moves, runs] = await Promise.all([
+    db.query<any>(
+      `SELECT * FROM (SELECT p.*, row_number() OVER (PARTITION BY input_id ORDER BY at DESC, id DESC) AS n FROM command.shop_input_purchases p) x
+       WHERE n <= $1 ORDER BY input_id, at DESC, id DESC`,
+      [HISTORY_CAPS.purchases],
+    ),
+    db.query<any>(
+      `SELECT * FROM (SELECT m.*, row_number() OVER (PARTITION BY input_id ORDER BY at DESC, id DESC) AS n FROM command.shop_input_moves m) x
+       WHERE n <= $1 ORDER BY input_id, at DESC, id DESC`,
+      [HISTORY_CAPS.moves],
+    ),
+    db.query<any>('SELECT * FROM command.shop_runs ORDER BY at DESC, id DESC LIMIT $1', [HISTORY_CAPS.runs]),
+  ]);
+  const h = noHistory();
+  for (const r of purchases.rows)
+    push(h.purchases, r.input_id, { at: new Date(r.at).getTime(), quantity: Number(r.quantity), totalCents: Number(r.total_cents), supplier: r.supplier, note: r.note });
+  for (const r of moves.rows) push(h.moves, r.input_id, { at: new Date(r.at).getTime(), quantity: Number(r.quantity), reason: r.reason, note: r.note, ref: r.ref == null ? null : Number(r.ref) });
+  const ids = runs.rows.map((r) => Number(r.id));
+  const uses = new Map<number, RunRow['uses']>();
+  if (ids.length) {
+    // in the order the run wrote them, which is the recipe's
+    const { rows } = await db.query<any>(
+      `SELECT ref, input_id, -sum(quantity) AS quantity FROM command.shop_input_moves WHERE reason = 'run' AND ref = ANY($1) GROUP BY ref, input_id ORDER BY ref, min(id)`,
+      [ids],
+    );
+    for (const r of rows) push(uses, Number(r.ref), { inputId: r.input_id, quantity: Number(r.quantity) });
+  }
+  h.runs = runs.rows.map((r) => ({
+    id: Number(r.id),
+    at: new Date(r.at).getTime(),
+    productId: r.product_id,
+    option: r.option,
+    size: r.size,
+    units: r.units,
+    note: r.note,
+    short: r.short,
+    who: r.who,
+    uses: uses.get(Number(r.id)) ?? [],
+  }));
+  return h;
+}
+
 /**
  * What one order line costs at the moment it sells, in whole cents, for shop_order_costs. Phase 10d
  * calls it at ingest (pass a book read once for a batch of orders). `productId` is Command's id: a
@@ -277,7 +361,7 @@ const line = (l: Worked & { inputId: string }) => ({ input: l.inputId, amount: l
  * The Shop section's costing (INPUTS, RECIPES, MATERIALS). `priceOf` is the price the page shows a
  * product at (live, the site's), in dollars, so margins agree with the page's own.
  */
-export function costingPayload(book: Book, priceOf: Map<string, number> = new Map()) {
+export function costingPayload(book: Book, priceOf: Map<string, number> = new Map(), history: History = noHistory()) {
   const uses = usedIn(book);
   const INPUTS = [...book.inputs.values()].map((i) => {
     const u = unitCostOf(i);
@@ -297,11 +381,16 @@ export function costingPayload(book: Book, priceOf: Map<string, number> = new Ma
       archived: i.archived,
       note: i.note,
       lastPurchase: i.lastPurchase ? { at: i.lastPurchase.at, quantity: i.lastPurchase.quantity, total: i.lastPurchase.totalCents / 100, supplier: i.lastPurchase.supplier } : null,
+      // the history (Phase 10c): purchases newest first, and the stock ledger of one kept on hand
+      purchases: (history.purchases.get(i.id) ?? []).map((p) => ({ at: p.at, quantity: p.quantity, total: p.totalCents / 100, unitCost: purchaseUnitCost(p.totalCents, p.quantity) / 100, supplier: p.supplier, note: p.note })),
+      moves: (history.moves.get(i.id) ?? []).map((m) => ({ at: m.at, quantity: m.quantity, reason: m.reason, note: m.note, ref: m.ref })),
     };
   });
 
   const RECIPES: Record<string, unknown> = {};
   const makes: Record<string, { units: number | null; binding: string | null; unknown?: string[] }> = {};
+  // each stocked input on its own: how many of each product what's on hand would make
+  const covers: Record<string, Record<string, number>> = {};
   for (const [pid, lines] of book.lines) {
     const p = book.products.get(pid);
     const price = Math.round((priceOf.get(pid) ?? (p ? p.priceCents / 100 : 0)) * 100);
@@ -329,6 +418,11 @@ export function costingPayload(book: Book, priceOf: Map<string, number> = new Ma
     };
     const k = canMake(base, book.inputs, book.onHand);
     makes[pid] = { units: k.units, binding: k.binding, ...(k.unknown.length ? { unknown: k.unknown } : {}) };
+    for (const l of base.lines) {
+      const i = book.inputs.get(l.inputId);
+      if (!i?.stocked || i.archived || !l.amount) continue;
+      (covers[l.inputId] ??= {})[pid] = floorCount((book.onHand.get(l.inputId) ?? 0) / l.amount);
+    }
   }
 
   const stocked = INPUTS.filter((i) => i.stocked && !i.archived);
@@ -336,9 +430,38 @@ export function costingPayload(book: Book, priceOf: Map<string, number> = new Ma
     onHand: stocked.map((i) => ({ input: i.id, name: i.name, unit: i.unit, onHand: i.onHand, lowMark: i.lowMark, low: i.low })),
     low: stocked.filter((i) => i.low).map((i) => i.id),
     makes,
+    covers,
   };
-  return { INPUTS, RECIPES, MATERIALS };
+  // the recent production runs (Phase 10c), newest first
+  const RUNS = history.runs.map((r) => ({
+    id: r.id,
+    at: r.at,
+    product: r.productId,
+    option: r.option,
+    size: r.size,
+    units: r.units,
+    note: r.note,
+    short: r.short,
+    who: r.who,
+    uses: r.uses.map((u) => ({ input: u.inputId, quantity: u.quantity })),
+  }));
+  return { INPUTS, RECIPES, MATERIALS, RUNS };
 }
 
 /** The same, empty: below See, the costing isn't sent. */
-export const noCosting = () => ({ INPUTS: [], RECIPES: {}, MATERIALS: { onHand: [], low: [], makes: {} } });
+export const noCosting = () => ({ INPUTS: [], RECIPES: {}, MATERIALS: { onHand: [], low: [], makes: {}, covers: {} }, RUNS: [] });
+
+/**
+ * The stocked inputs at or under their low mark, for Home's alerts: one small read, so Home needs
+ * none of Shop loaded. The same rule as MATERIALS.low.
+ */
+export async function lowMaterials(db: Queryable): Promise<Array<{ input: string; name: string; unit: string; onHand: number; lowMark: number }>> {
+  const { rows } = await db.query<{ id: string; name: string; unit: string; low_mark: string; on_hand: string }>(
+    `SELECT i.id, i.name, i.unit, i.low_mark, coalesce(sum(m.quantity), 0) AS on_hand
+     FROM command.shop_inputs i LEFT JOIN command.shop_input_moves m ON m.input_id = i.id
+     WHERE i.stocked AND i.archived_at IS NULL AND i.low_mark IS NOT NULL
+     GROUP BY i.id, i.name, i.unit, i.low_mark HAVING coalesce(sum(m.quantity), 0) <= i.low_mark
+     ORDER BY i.name`,
+  );
+  return rows.map((r) => ({ input: r.id, name: r.name, unit: r.unit, onHand: Number(r.on_hand), lowMark: Number(r.low_mark) }));
+}

@@ -307,3 +307,86 @@ describe('a change to an input’s cost', () => {
     expect((await lines('gcm')).find((l) => l[0] === 'dye')).toEqual(['dye', 30, 120]);
   });
 });
+
+describe('stock history, runs and Home’s alerts (Phase 10c)', () => {
+  test('each input carries its purchases and its stock ledger, newest first', async () => {
+    const d = (await call(kai, 'GET', '/sections/shop')).body;
+    const blank = d.INPUTS.find((i: any) => i.id === 'blank');
+    // the one dated 1 Jan is older than the one recorded "now"
+    expect(blank.purchases.map((p: any) => [p.quantity, p.total, p.unitCost, p.supplier])).toEqual([
+      [20, 164, 8.2, 'Blanks Co'],
+      [10, 100, 10, ''],
+    ]);
+    expect(blank.purchases[1]).toMatchObject({ at: Date.parse('2026-01-01T00:00:00Z'), note: '' });
+    // two runs (the short one last), then the two purchases, each with what it came from
+    expect(blank.moves.map((m: any) => [m.quantity, m.reason])).toEqual([
+      [-15, 'run'],
+      [-12, 'run'],
+      [20, 'purchase'],
+      [10, 'purchase'],
+    ]);
+    const runs = await q<{ id: number }>(`SELECT id FROM command.shop_runs WHERE product_id = 'gcm' ORDER BY id`);
+    expect(blank.moves[0].ref).toBe(runs[1].id);
+    expect(blank.moves[2]).toMatchObject({ note: 'Blanks Co' });
+    const thread = d.INPUTS.find((i: any) => i.id === 'thread');
+    expect(thread.moves.slice(-3).map((m: any) => [m.quantity, m.reason, m.note])).toEqual([
+      [5, 'adjust', ''],
+      [-20, 'waste', 'Tangled'],
+      [500, 'purchase', ''],
+    ]);
+    // made to order: purchases, no ledger
+    const emb = d.INPUTS.find((i: any) => i.id === 'embroidery');
+    expect([emb.purchases.length, emb.moves]).toEqual([2, []]);
+  });
+
+  test('RUNS: the runs newest first, with what each used and whether it ran short', async () => {
+    const d = (await call(kai, 'GET', '/sections/shop')).body;
+    expect(d.RUNS.map((r: any) => [r.product, r.option, r.size, r.units, r.short, r.note])).toEqual([
+      ['hd', 'Black', 'M', 2, false, ''],
+      ['gcm', 'White', 'L', 15, true, ''],
+      ['gcm', 'Black', 'M', 12, false, 'First batch'],
+    ]);
+    expect(d.RUNS[1].uses).toEqual([
+      { input: 'blank', quantity: 15 },
+      { input: 'thread', quantity: 180 },
+      { input: 'mailer', quantity: 30 },
+    ]);
+    // no recipe: it used nothing
+    expect(d.RUNS[0].uses).toEqual([]);
+    expect(d.RUNS[2]).toMatchObject({ who: expect.any(String), at: expect.any(Number) });
+    expect(typeof d.RUNS[2].id).toBe('number');
+    // MATERIALS.covers: each stocked input on its own, by the recipe as written
+    expect(d.MATERIALS.covers.blank).toMatchObject({ gcm: 3 });
+    expect(d.MATERIALS.covers.mailer).toMatchObject({ gcm: 0 });
+  });
+
+  test('Home: the low materials ride along, from See', async () => {
+    const h = (await call(kai, 'GET', '/sections/home')).body;
+    // 3 blanks left, under the mark of 5; the mailers have no mark
+    expect(h.LOW_MATERIALS).toEqual([{ input: 'blank', name: 'Blank tee (heavy)', unit: 'each', onHand: 3, lowMark: 5 }]);
+    expect((await call(look, 'GET', '/sections/home')).body.LOW_MATERIALS).toHaveLength(1);
+    // at the mark counts as low, as MATERIALS.low has it; archived doesn't
+    await act(kai, 'input', { id: 'thread', name: 'Thread', kind: 'material', unit: 'm', stocked: true, lowMark: 161 });
+    expect((await call(kai, 'GET', '/sections/home')).body.LOW_MATERIALS.map((x: any) => x.input)).toEqual(['blank', 'thread']);
+    await act(kai, 'input-archive', { id: 'thread' });
+    expect((await call(kai, 'GET', '/sections/home')).body.LOW_MATERIALS.map((x: any) => x.input)).toEqual(['blank']);
+    await act(kai, 'input-archive', { id: 'thread', archived: false });
+    // below See, nothing
+    const id = (await call(kai, 'GET', '/people')).body.people.find((p: any) => p.email === 'look@useclear.org').id;
+    expect((await call(kai, 'PATCH', `/people/${id}/access`, { custom: all(1) })).status).toBe(200);
+    expect((await call(look, 'GET', '/sections/home')).body.LOW_MATERIALS).toEqual([]);
+    expect((await call(kai, 'PATCH', `/people/${id}/access`, { custom: all(2) })).status).toBe(200);
+  });
+
+  test('the history is capped: 20 purchases and 30 moves an input', async () => {
+    for (let n = 0; n < 25; n++) await db.query(`INSERT INTO command.shop_input_purchases (input_id, at, quantity, total_cents) VALUES ('embroidery', $1, 1, 300)`, [new Date(Date.UTC(2026, 5, 1 + n))]);
+    for (let n = 0; n < 35; n++) await db.query(`INSERT INTO command.shop_input_moves (input_id, at, quantity, reason) VALUES ('thread', $1, 1, 'adjust')`, [new Date(Date.UTC(2026, 5, 1 + n))]);
+    const d = (await call(kai, 'GET', '/sections/shop')).body;
+    const emb = d.INPUTS.find((i: any) => i.id === 'embroidery');
+    const thread = d.INPUTS.find((i: any) => i.id === 'thread');
+    expect([emb.purchases.length, thread.moves.length]).toEqual([20, 30]);
+    const at = (xs: any[]) => xs.map((x) => x.at);
+    expect(at(thread.moves)).toEqual([...at(thread.moves)].sort((a, b) => b - a));
+    expect(at(emb.purchases)).toEqual([...at(emb.purchases)].sort((a, b) => b - a));
+  });
+});

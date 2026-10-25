@@ -10,7 +10,7 @@ import type { MemberSource } from './memberSource.js';
 import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
 import { codeActivity, codeChanges, codeConfig } from './github.js';
 import { safeConfig } from './safe.js';
-import { costingPayload, noCosting, productCost, readBook, shown, type Book } from './costing.js';
+import { costingPayload, lowMaterials, noCosting, productCost, readBook, readHistory, shown, type Book } from './costing.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -963,8 +963,8 @@ export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record
     second: r.second_person, refundedAt: r.refunded_at == null ? null : ms_(r.refunded_at), amount: r.amount_cents == null ? null : r.amount_cents / 100,
   }));
 
-  // what goes into each product (Phase 10): the inputs, the recipes and the materials on hand, from See
-  const costing = o.level >= SEE ? costingPayload(book) : noCosting();
+  // what goes into each product (Phase 10): the inputs and their history, the recipes, the materials on hand and the runs, from See
+  const costing = o.level >= SEE ? costingPayload(book, undefined, await readHistory(db)) : noCosting();
   return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, NOW, figures: f, asOf };
 }
 
@@ -1090,7 +1090,7 @@ async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, u
     'shop.buyers': [['Buyers', kept.length]],
   };
   // the costing, with margins at the site's prices
-  const costing = o.level >= SEE ? costingPayload(book, new Map(PR.map((p) => [p.id, p.price]))) : noCosting();
+  const costing = o.level >= SEE ? costingPayload(book, new Map(PR.map((p) => [p.id, p.price])), await readHistory(db)) : noCosting();
   return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
 }
 
@@ -1252,7 +1252,7 @@ export async function recordsSection(db: Queryable, o: ReadOptions): Promise<Rec
 
 /**
  * Home: what the other sections add up to, counted here so Home needs none of them loaded. Only
- * counts and shop names leave: no member, no person.
+ * counts, shop names and the shop's low materials leave: no member, no person.
  */
 export async function homeSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('home');
@@ -1277,7 +1277,10 @@ export async function homeSection(db: Queryable, o: ReadOptions): Promise<Record
     if (site?.range) f['growth.range'] = await liveRange(db, site.range, o.now.getTime(), m.rows);
   }
   if (m.rows) f['members.first_spends.poster_ten'] = 0;
+  // the shop's materials at or under their low mark, for the alerts (Phase 10c): from See, as Shop's costing is
+  const LOW_MATERIALS = o.level >= SEE ? await lowMaterials(db) : [];
   return {
+    LOW_MATERIALS,
     MEMBER_SUMMARY: { invited: m.invited, active: m.active, opened: m.opened, notOpened: m.notOpened, funded: m.funded },
     OWED: Object.fromEntries(owed.map((r) => [r.merchant_id, r.owed_cents / 100])),
     SHOP_NAMES: Object.fromEntries(owed.map((r) => [r.merchant_id, r.name ?? r.merchant_id])),

@@ -3551,7 +3551,9 @@ export const SHIP_NET = SHOP_COSTS.shipNet;
    recipe by product id, and the materials kept on hand (services/command/costing.ts, costingPayload) */
 export const INPUTS = [];
 export const RECIPES = {};
-export const MATERIALS = { onHand: [], low: [], makes: {} };
+export const MATERIALS = { onHand: [], low: [], makes: {}, covers: {} };
+// live only (Phase 10c): the recent production runs
+export const RUNS = [];
 export const REV_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * p.price, 0));
 export const COST_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * unitCost(p), 0));
 export const LINE_COSTS = [
