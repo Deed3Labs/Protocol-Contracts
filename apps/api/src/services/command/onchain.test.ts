@@ -53,7 +53,8 @@ const reader: ChainReader = {
       if (c.contract === 'ClearUSDUpgradeable') return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.clrusd));
       if ((c.contract === 'LendingPool' && c.fn === 'asset') || (c.contract === 'BurnerBond' && c.fn === 'underlyingToken')) return USDC;
       // BondVault: the bond buyers' money it holds, in the same token
-      if (c.contract === 'BondVault') return c.fn === 'reserveToken' ? USDC : BigInt(usdc(290.38));
+      if (c.contract === 'BondVault')
+        return c.fn === 'reserveToken' ? USDC : c.fn === 'requiredReserve' ? BigInt(usdc(90)) : c.fn === 'deployableExcess' ? BigInt(usdc(200.38)) : c.fn === 'minReserveBps' ? 3000n : c.fn === 'reserveWindow' ? BigInt(90 * 86400) : BigInt(usdc(290.38));
       // the AssurancePool: all of it in the buffer reserve, as on Base Sepolia
       if (c.contract === 'AssurancePool') return c.fn === 'reserveToken' ? USDC : c.fn === 'bufferBalance' ? BigInt(usdc(125.03)) : 0n;
       if (c.contract === 'ERC20') {
