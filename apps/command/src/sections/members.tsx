@@ -138,7 +138,15 @@ export function unitCell() {
             q = c ? Math.max(1, Math.round(c / unit)) : 0;
           return Array.from({ length: q }, (_, j) => <i key={`${__k}-${j}`} className={`uc-q ${k}`} title={`${UK[k][0]} · ${int(c)}`} {...attrs(sty(k))} />);
         });
-  const grid = <div className="uc">{sq}</div>;
+  // live, a few members keep the prototype's square size (50 columns of 6), not stretched across the cell
+  const squares = unit === 1 ? list.length : order.reduce((a, k) => a + (n(k) ? Math.max(1, Math.round(n(k) / unit)) : 0), 0);
+  const grid = REAL ? (
+    <div className="uc" style={css(`grid-template-columns:repeat(${Math.max(50, Math.ceil(squares / 6))},minmax(0,1fr))`)}>
+      {sq}
+    </div>
+  ) : (
+    <div className="uc">{sq}</div>
+  );
   const key = (
     <div className="uc-k">
       {order.map((k, __k) => (
