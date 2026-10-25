@@ -10,6 +10,7 @@ import type { MemberSource } from './memberSource.js';
 import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
 import { codeActivity, codeChanges, codeConfig } from './github.js';
 import { safeConfig } from './safe.js';
+import { costingPayload, noCosting, productCost, readBook, shown, type Book } from './costing.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -865,14 +866,20 @@ const reserveRatio = (usdc: number, clrusd: number) => (clrusd === 0 ? (usdc ===
 
 type ShopProduct = { id: string; n: string; v: string; line: string; g: string; price: number; c?: number[]; st: string; cols: string[]; wk: number[]; lead?: number; slug: string; why?: string; dep?: number };
 
-async function shopProducts(db: Queryable, f: Record<string, unknown>): Promise<ShopProduct[]> {
+/**
+ * The catalog as Command keeps it. A product with a recipe (Phase 10) sends its recipe's cost as the
+ * first of its four boxes, so the page's unitCost(), which sums them, uses it unchanged.
+ */
+async function shopProducts(db: Queryable, f: Record<string, unknown>, book?: Book): Promise<ShopProduct[]> {
   const units = (f['shop.units_weekly'] ?? {}) as Record<string, number[]>;
+  const b = book ?? (await readBook(db));
+  const boxes = (r: { id: string; cost_cents: number[] | null }) => (b.lines.get(r.id)?.length ? [shown(productCost(b, r.id).costCents), 0, 0, 0] : r.cost_cents?.map((c) => c / 100));
   const { rows } = await db.query<{ id: string; name: string; variant: string; line: string; glyph: string; price_cents: number; cost_cents: number[] | null; status: string; options: string[]; lead_weeks: number | null; slug: string; why: string | null; deposit: boolean }>(
     'SELECT * FROM command.shop_products ORDER BY position',
   );
   return rows.map((r) => ({
     id: r.id, n: r.name, v: r.variant, line: r.line, g: r.glyph, price: r.price_cents / 100,
-    ...(r.cost_cents ? { c: r.cost_cents.map((c) => c / 100) } : {}),
+    ...(r.cost_cents ? { c: boxes(r) } : {}),
     ...(r.deposit ? { dep: 1 } : {}),
     st: r.status, cols: r.options, wk: units[r.id] ?? [],
     ...(r.lead_weeks != null ? { lead: r.lead_weeks } : {}),
@@ -915,7 +922,8 @@ export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record
   const NOW = provider === 'seed' ? SEED_TODAY + 14 * 3600e3 : o.now.getTime();
   const at = (d: Date | null) => (d == null ? NOW : ms_(d));
   const f = await figures(db, 'shop');
-  const PR = await shopProducts(db, f);
+  const book = await readBook(db);
+  const PR = await shopProducts(db, f, book);
 
   const { rows: stock } = await db.query<{ product_id: string; option: string; on_hand: number }>(
     'SELECT s.product_id, s.option, s.on_hand FROM command.shop_stock s JOIN command.shop_products p ON p.id = s.product_id ORDER BY p.position, s.option_pos, s.size_pos',
@@ -955,7 +963,9 @@ export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record
     second: r.second_person, refundedAt: r.refunded_at == null ? null : ms_(r.refunded_at), amount: r.amount_cents == null ? null : r.amount_cents / 100,
   }));
 
-  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, NOW, figures: f, asOf };
+  // what goes into each product (Phase 10): the inputs, the recipes and the materials on hand, from See
+  const costing = o.level >= SEE ? costingPayload(book) : noCosting();
+  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, NOW, figures: f, asOf };
 }
 
 // ── Shop, live (Phase 7a) ───────────────────────────────────────────────────
@@ -1011,7 +1021,8 @@ function siteProduct(p: SiteProduct, own: ShopProduct | undefined, wk: number[])
 async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const NOW = o.now.getTime();
   const f = await figures(db, 'shop');
-  const own = await shopProducts(db, f);
+  const book = await readBook(db);
+  const own = await shopProducts(db, f, book);
   const feeds = await feedRows(db);
   const cat = feeds.get('catalog')?.figures as { products?: SiteProduct[]; moved?: Record<string, string> } | undefined;
   const moved = cat?.moved ?? {};
@@ -1078,7 +1089,9 @@ async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, u
     'shop.paid_with': [['Card', kept.length]],
     'shop.buyers': [['Buyers', kept.length]],
   };
-  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
+  // the costing, with margins at the site's prices
+  const costing = o.level >= SEE ? costingPayload(book, new Map(PR.map((p) => [p.id, p.price]))) : noCosting();
+  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
 }
 
 // ── Contracts ───────────────────────────────────────────────────────────────
