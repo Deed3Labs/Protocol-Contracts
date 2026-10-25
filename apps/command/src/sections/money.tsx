@@ -64,6 +64,11 @@ export function srcTxt(k) {
     plaid: 'Plaid · 3 h',
   }[k];
 }
+/** Live, the credit gate as the AssurancePool has it (its target, exposure, primary reserve); null in the prototype. */
+export function gateNow() {
+  const g = REAL ? fig('money.rtd') : null;
+  return g ? { ...g, pctT: `${Math.round(g.target * 100)}%`, out: g.exposure > 0 } : null;
+}
 /** Live, a source as an account row has room for it: short name and age ("Protocol · 2 min"); the full words on hover. */
 export function srcShort(k) {
   const f = LIVE && hasFeeds() ? feedOf(k) : null;
@@ -386,7 +391,7 @@ export function moneyPane() {
     ],
     ap: [
       ['Covers unsecured credit', money(M.unsecured)],
-      ['RTD', pct(M.rtd, 1) + ' · floor 20.0%'],
+      ['RTD', gateNow() ? `${gateNow().out ? pct(M.rtd, 1) : 'No credit out'} · target ${gateNow().pctT}` : pct(M.rtd, 1) + ' · floor 20.0%'],
       ['Room to issue', money(M.room)],
       ['Losses absorbed', money(M.lost), 1],
     ],
@@ -589,14 +594,24 @@ export function openNFlow(kind) {
     f = {
       t: 'The credit gate',
       lbl: 'AssurancePool',
-      h: `RTD ${pct(M.rtd, 1)}`,
-      p: 'Unsecured credit can only issue while the AssurancePool is at least 20% of it.',
-      rows: [
-        ['AssurancePool', money(M.assurance)],
-        ['Unsecured credit', money(M.unsecured)],
-        ['Floor', '20%'],
-        ['Room to issue', money(M.room), 1],
-      ],
+      h: gateNow() && !gateNow().out ? 'No credit out' : `RTD ${pct(M.rtd, 1)}`,
+      p: gateNow()
+        ? `Unsecured credit can only issue while the AssurancePool’s primary reserve is at least ${gateNow().pctT} of it. Its buffer doesn’t count.`
+        : 'Unsecured credit can only issue while the AssurancePool is at least 20% of it.',
+      rows: gateNow()
+        ? [
+            ['Primary reserve', money(gateNow().primary)],
+            ['Buffer, not counted', money(gateNow().buffer + gateNow().excess)],
+            ['Unsecured credit', money(M.unsecured)],
+            ['Target', gateNow().pctT],
+            ['Room to issue', money(M.room), 1],
+          ]
+        : [
+            ['AssurancePool', money(M.assurance)],
+            ['Unsecured credit', money(M.unsecured)],
+            ['Floor', '20%'],
+            ['Room to issue', money(M.room), 1],
+          ],
       btn: null,
     };
   else if (kind === 'vote')
@@ -644,15 +659,19 @@ export function nOverview() {
   );
   const floorLn = <line x1="0" x2="1000" y1={(1 - M.floor / rmax) * 100} y2={(1 - M.floor / rmax) * 100} className="ch-floor" />;
   /* the gate as a sum, a meter against the floor, and the last time it closed */
-  const gOpen = M.rtd >= M.floor,
-    GM = 0.4,
+  // live, the gate is the contract's: open at its target, and RTD undefined with nothing out
+  const g = gateNow();
+  const gOpen = g ? g.valid : M.rtd >= M.floor,
+    GM = g ? Math.max(0.4, g.target * 1.25) : 0.4,
     gBack = RTD_W.findIndex((v, i) => i > dip && v !== null && v >= M.floor);
   const gsum = (
     <div className="yeq">
       <div>
         <span className="lbl">AssurancePool</span>
-        <b className="fig fig-l">{money(M.assurance)}</b>
-        <span className="small quiet">covers losses</span>
+        <b className="fig fig-l">{money(g ? g.primary : M.assurance)}</b>
+        <span className="small quiet">
+          {g ? (g.buffer + g.excess ? `primary reserve · ${money(g.buffer + g.excess)} more in the buffer, not counted` : 'primary reserve') : 'covers losses'}
+        </span>
       </div>
       <span className="yeq-op" aria-hidden="true">
         ÷
@@ -667,25 +686,33 @@ export function nOverview() {
       </span>
       <div className={gOpen ? 'hi' : 'warn'}>
         <span className="lbl">RTD</span>
-        <b className="fig fig-l">{pct(M.rtd, 1)}</b>
-        <span className="small quiet">{gOpen ? 'above the 20% floor' : 'under the 20% floor'}</span>
+        <b className="fig fig-l">{g && !g.out ? 'At target' : pct(M.rtd, 1)}</b>
+        <span className="small quiet">
+          {g
+            ? g.out
+              ? `${money(Math.abs(g.gap))} ${g.gap >= 0 ? 'above' : 'below'} the ${g.pctT} target`
+              : `no credit out · nothing to cover`
+            : gOpen
+              ? 'above the 20% floor'
+              : 'under the 20% floor'}
+        </span>
       </div>
     </div>
   );
   const meter = (
     <div className="ablock">
-      <span className="lbl">Credit pauses below the floor</span>
-      <div className="gm" role="img" aria-label={`RTD ${pct(M.rtd, 1)} against a 20% floor`}>
+      <span className="lbl">{g ? 'Credit pauses below the target' : 'Credit pauses below the floor'}</span>
+      <div className="gm" role="img" aria-label={g ? `RTD ${g.out ? pct(M.rtd, 1) : 'at target, no credit out'} against a ${g.pctT} target` : `RTD ${pct(M.rtd, 1)} against a 20% floor`}>
         <div className="gm-t">
-          <i className={`gm-f${gOpen ? '' : ' warn'}`} style={css(`width:${Math.min(100, (M.rtd / GM) * 100).toFixed(1)}%`)} />
+          <i className={`gm-f${gOpen ? '' : ' warn'}`} style={css(`width:${(g && !g.out ? 100 : Math.min(100, (M.rtd / GM) * 100)).toFixed(1)}%`)} />
           <i className="gm-fl" style={css(`left:${((M.floor / GM) * 100).toFixed(1)}%`)} />
         </div>
         <div className="gm-x">
           <span style={css('left:0')}>0</span>
           <span className="fl" style={css(`left:${((M.floor / GM) * 100).toFixed(1)}%`)}>
-            20% floor
+            {g ? `${g.pctT} target` : '20% floor'}
           </span>
-          <span style={css('left:100%')}>40%</span>
+          <span style={css('left:100%')}>{g ? `${Math.round(GM * 100)}%` : '40%'}</span>
         </div>
       </div>
     </div>
@@ -708,14 +735,21 @@ export function nOverview() {
         <span className="lbl">Credit gate · RTD</span>
         <span className="tag">{srcTxt('protocol')}</span>
       </header>
-      <div className="c-fig">{figHtml(money(M.room), 'more unsecured credit can go out before the gate closes')}</div>
+      <div className="c-fig">
+        {figHtml(
+          money(M.room),
+          g && !g.primary
+            ? `more unsecured credit can go out · the primary reserve is empty${g.buffer + g.excess ? `; its ${money(g.buffer + g.excess)} is in the buffer` : ''}`
+            : 'more unsecured credit can go out before the gate closes',
+        )}
+      </div>
       <div className="c-body">
         {gsum}
         {meter}
         {hist}
       </div>
       {strip([
-        ['Floor', '20%', 'set in AssurancePool'],
+        g ? ['Target', g.pctT, 'set by the AssuranceOracle'] : ['Floor', '20%', 'set in AssurancePool'],
         ['Status', gOpen ? 'Open' : 'Closed', gOpen ? 'new credit may issue' : 'no new unsecured credit'],
       ])}
     </section>
@@ -727,9 +761,9 @@ export function nOverview() {
     [REAL ? 'Shops, 14 days' : 'Shops, by 4 Nov', 'Payout pool, then the yield pool', M.owed14, M.payout + M.dueMembers + YLD.toPayout],
     [
       'Bondholders',
-      'Operating cash, until BondVault',
+      REAL ? 'BondVault, then operating cash' : 'Operating cash, until BondVault',
       M.bonds,
-      M.cash,
+      REAL ? (M.vault ?? 0) + M.cash : M.cash,
     ] /* junior: first loss on unsecured credit. Owed what the pool holds, so always covered; the bar splits cash from loans out */,
     ['Yield pool deposits', 'Pool cash, then loans out', YLD.assets, YLD.assets, YLD.cash - YLD.toPayout],
   ];
@@ -751,7 +785,7 @@ export function nOverview() {
             <span className="lbl">Owed</span>
           </div>
           {claims.map(([k, by, owed, held, liq], i) => {
-            const c = owed ? Math.min(1, held / owed) : 0;
+            const c = owed ? Math.min(1, held / owed) : REAL ? 1 : 0;
             return (
               <div key={i} className="cl-r">
                 <span className="num-sq">{i + 1}</span>
@@ -786,7 +820,7 @@ export function nOverview() {
       {strip([
         ['Tier 1 gap', 'None'],
         ['Tier 2 gap', M.short > YLD.toPayout ? money(M.short - YLD.toPayout) : 'None'],
-        ['Tier 3 gap', money(M.bonds - M.cash)],
+        ['Tier 3 gap', REAL ? (M.bonds > (M.vault ?? 0) + M.cash ? money(M.bonds - (M.vault ?? 0) - M.cash) : 'None') : money(M.bonds - M.cash)],
         ['Tier 4 gap', 'None'],
       ])}
     </section>
@@ -1003,11 +1037,17 @@ export function nReserves() {
     'covers unsecured losses after the yield pool',
     <>
       <div className="ablock">
-        <span className="lbl">Against the 20% floor</span>
-        {compBar([
-          ['Needed for the floor', req, 'var(--fg)', money(req)],
-          ['Spare', M.assurance - req, 'var(--land)', money(M.assurance - req)],
-        ])}
+        <span className="lbl">{gateNow() ? `Against the ${gateNow().pctT} target` : 'Against the 20% floor'}</span>
+        {gateNow()
+          ? compBar([
+              ['Needed for the target', req, 'var(--fg)', money(req)],
+              ['Spare in the primary reserve', Math.max(0, gateNow().primary - req), 'var(--land)', money(Math.max(0, gateNow().primary - req))],
+              ['In the buffer, not counted', gateNow().buffer + gateNow().excess, 'var(--line)', money(gateNow().buffer + gateNow().excess)],
+            ])
+          : compBar([
+              ['Needed for the floor', req, 'var(--fg)', money(req)],
+              ['Spare', M.assurance - req, 'var(--land)', money(M.assurance - req)],
+            ])}
       </div>
       <div className="ablock">
         <span className="lbl">Added each week · fee share</span>

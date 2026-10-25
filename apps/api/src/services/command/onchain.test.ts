@@ -4,7 +4,7 @@ import { getAddress } from 'viem';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
 import { syncInventory } from './indexer.js';
-import { bondsLive, deployedName, type ChainCall, type ChainReader } from './onchain.js';
+import { assurancePoolLive, bondsLive, deployedName, type ChainCall, type ChainReader } from './onchain.js';
 import { contractsSection, moneySection } from './sections.js';
 import { seedCommand } from './seed.js';
 import { TOTALS } from './levels.js';
@@ -56,7 +56,8 @@ const reader: ChainReader = {
       if (c.contract === 'BondVault')
         return c.fn === 'reserveToken' ? USDC : c.fn === 'requiredReserve' ? BigInt(usdc(90)) : c.fn === 'deployableExcess' ? BigInt(usdc(200.38)) : c.fn === 'minReserveBps' ? 3000n : c.fn === 'reserveWindow' ? BigInt(90 * 86400) : BigInt(usdc(290.38));
       // the AssurancePool: all of it in the buffer reserve, as on Base Sepolia
-      if (c.contract === 'AssurancePool') return c.fn === 'reserveToken' ? USDC : c.fn === 'bufferBalance' ? BigInt(usdc(125.03)) : 0n;
+      if (c.contract === 'AssurancePool')
+        return c.fn === 'reserveToken' ? USDC : c.fn === 'bufferBalance' ? BigInt(usdc(125.03)) : c.fn === 'targetRTD' ? 800_000_000_000_000_000n : c.fn === 'hasValidRTD' ? true : 0n;
       if (c.contract === 'ERC20') {
         expect([c.address, ...(c.fn === 'balanceOf' ? [c.args![0]] : [])]).toEqual([USDC, ...(c.fn === 'balanceOf' ? [getAddress(C.ESADepositVault.address)] : [])]);
         return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.vault));
@@ -265,6 +266,35 @@ describe('the savings reserve, live (6b)', () => {
 });
 
 describe('the AssurancePool, live', () => {
+  // a pool reading what it's told: its reserves, target, exposure (credit decimals 18, reserve 6)
+  const pool = (v: { primary: number; buffer?: number; target: number; exposure: number }): ChainReader => ({
+    read: async (calls) =>
+      calls.map((c) => {
+        if (c.fn === 'reserveToken') return USDC;
+        if (c.fn === 'decimals') return 6n;
+        if (c.fn === 'primaryBalance') return BigInt(usdc(v.primary));
+        if (c.fn === 'bufferBalance') return BigInt(usdc(v.buffer ?? 0));
+        if (c.fn === 'targetRTD') return BigInt(Math.round(v.target * 1e6)) * 10n ** 12n;
+        if (c.fn === 'poolExposure') return BigInt(Math.round(v.exposure * 1e6)) * 10n ** 12n;
+        if (c.fn === 'convertStableCreditToReserveToken') return (c.args![0] as bigint) / 10n ** 12n;
+        if (c.fn === 'RTD') return v.exposure ? (BigInt(usdc(v.primary)) * 10n ** 18n) / BigInt(usdc(v.exposure)) : 0n;
+        if (c.fn === 'hasValidRTD') return !v.exposure || v.primary / v.exposure >= v.target;
+        return 0n;
+      }),
+  });
+
+  test('with nothing out, RTD is undefined and the pool is at its target, whatever it holds', async () => {
+    const a = await assurancePoolLive(pool({ primary: 0, buffer: 125.03, target: 0.8, exposure: 0 }));
+    expect(a).toMatchObject({ total: 125.03, primary: 0, buffer: 125.03, target: 0.8, exposure: 0, rtd: null, valid: true, gap: 0, room: 0 });
+  });
+
+  test('with credit out: RTD on the primary reserve alone, how far above or below target in dollars, and the room left', async () => {
+    const above = await assurancePoolLive(pool({ primary: 200, buffer: 50, target: 0.8, exposure: 100 }));
+    expect(above).toMatchObject({ rtd: 2, valid: true, gap: 120, room: 150 });
+    const below = await assurancePoolLive(pool({ primary: 40, target: 0.8, exposure: 100 }));
+    expect(below).toMatchObject({ rtd: 0.4, valid: false, gap: -40, room: 0 });
+  });
+
   test('what it holds is the contract’s: primary, buffer and excess reserves together', async () => {
     const m: any = await moneySection(db, read());
     expect(m.M.assurance).toBe(125.03);
