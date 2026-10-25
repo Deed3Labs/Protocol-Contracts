@@ -20,10 +20,10 @@ async function empty(db: Queryable, table: string): Promise<boolean> {
   return rows[0].n === 0;
 }
 
-/** The accounts Money keeps: the prototype's six, and BondVault, where bond buyers' money is held. */
+/** The accounts Money keeps: the prototype's six, and BondVault, where bond buyers' money is: the co-op's to use, owed back at maturity. */
 const ACCOUNTS = [
   ...moneyFx.accounts,
-  { id: 'bond', name: 'BondVault', why: 'Bond buyers’ money, held to pay them at maturity', group: 'set', source: 'protocol', swatch: 'color-mix(in srgb,var(--fg-50) 55%,transparent)' },
+  { id: 'bond', name: 'BondVault', why: 'Bond buyers’ money · the co-op’s to use, paid back at maturity', group: 'coop', source: 'protocol', swatch: 'color-mix(in srgb,var(--land) 70%,var(--fg))' },
 ];
 
 /** A seat's note when it says how the seat is filled, not when ("Elect 15 Jan"). */

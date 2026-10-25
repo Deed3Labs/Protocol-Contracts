@@ -341,14 +341,30 @@ export async function assurancePoolLive(reader: ChainReader): Promise<{ total: n
   return { total: Math.round((p + b + e) * 100) / 100, primary: p, buffer: b, excess: e };
 }
 
-/** What BondVault holds for bondholders: its reserve token's balance, read with that token's decimals. */
-export async function bondVaultLive(reader: ChainReader): Promise<number> {
-  const [held, token] = await reader.read([
+export interface BondVaultLive {
+  /** What it holds: the bond buyers' money. */
+  held: number;
+  /** What it must keep back: the face falling due inside its window, or its floor across all outstanding, whichever is more. */
+  required: number;
+  /** What the Safe may take for the co-op's use: what it holds less what it must keep. */
+  deployable: number;
+  floorPct: number;
+  windowDays: number;
+}
+
+/** BondVault as the contract has it: what it holds, keeps back and lets the Safe take, in its reserve token. */
+export async function bondVaultLive(reader: ChainReader): Promise<BondVaultLive> {
+  const [held, required, deployable, floorBps, window, token] = await reader.read([
     { contract: 'BondVault', fn: 'held' },
+    { contract: 'BondVault', fn: 'requiredReserve' },
+    { contract: 'BondVault', fn: 'deployableExcess' },
+    { contract: 'BondVault', fn: 'minReserveBps' },
+    { contract: 'BondVault', fn: 'reserveWindow' },
     { contract: 'BondVault', fn: 'reserveToken' },
   ]);
   const [decimals] = await reader.read([{ contract: 'ERC20', address: String(token), fn: 'decimals' }]);
-  return Math.round((Number(big(held)) / 10 ** Number(decimals)) * 100) / 100;
+  const usd = (v: unknown) => Math.round((Number(big(v)) / 10 ** Number(decimals)) * 100) / 100;
+  return { held: usd(held), required: usd(required), deployable: usd(deployable), floorPct: Number(floorBps) / 100, windowDays: Math.round(Number(window) / 86400) };
 }
 
 // ── Releases ────────────────────────────────────────────────────────────────
