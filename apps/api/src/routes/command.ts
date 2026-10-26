@@ -30,7 +30,7 @@ import { codeStatus } from '../services/command/github.js';
 import { feedStatus, requestSync, type Feed } from '../services/command/feeds.js';
 import { liveFeeds, plaidWebhook, plaidWebhookKey, shopAddress } from '../services/command/feedSources.js';
 import { join } from '../services/command/waitlist.js';
-import { publicCatalog, revalidateSite } from '../services/command/catalog.js';
+import { MAX_PHOTO_BYTES, PHOTO_TYPES, publicCatalog, revalidateSite, uploadPhoto } from '../services/command/catalog.js';
 import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
@@ -73,6 +73,8 @@ export interface CommandDeps {
   files?: FileStore;
   /** Tells the site its catalog changed (Phase 11b): COMMAND_SITE_REVALIDATE_URL unless given. */
   revalidate?: () => Promise<unknown>;
+  /** Stores a product photo (Phase 11d): through the site's /api/shop/photos into Vercel Blob unless given. */
+  uploadPhoto?: typeof uploadPhoto;
   /** Rate limits: sign-in attempts, and writes. */
   limits?: { signIn: RequestHandler; write: RequestHandler };
   now?: () => Date;
@@ -717,10 +719,10 @@ export function commandRouter(deps: CommandDeps) {
       await store.settleProposal(tx, p.id, 'approved', c.person.id, now());
       await auditFrom(req, { area: p.area, action: p.summary, detail: 'Approved by a second person', after: p.payload, result: 'approved', approver: c.person.id }, tx);
       const ap = p.payload as unknown as ActionPayload;
-      return { status: 200, result, kind: p.kind, section: ap.section, actionKind: ap.kind };
+      return { status: 200, result, kind: p.kind, section: ap.section, actionKind: ap.kind, body: ap.body };
     });
     if (out.status !== 200) return fail(res, out.status, out.code!, out.message!);
-    if (out.kind === 'action') afterAction(actionFor(out.section!, out.actionKind!) as Action);
+    if (out.kind === 'action') afterAction(actionFor(out.section!, out.actionKind!) as Action, out.body);
     res.json({ done: true, ...out.result });
   });
 
@@ -771,7 +773,7 @@ export function commandRouter(deps: CommandDeps) {
         await auditFrom(req, { area: section, action: summary, detail: r.queued ? 'Recorded for the outside system; nothing sent yet' : '', after: b.data, result: 'done' }, tx);
         return r;
       });
-      afterAction(a);
+      afterAction(a, b.data);
       res.json({ done: true, ...out });
     } catch (e) {
       if (e instanceof ActionError) return fail(res, e.status, e.code, e.message);
@@ -780,7 +782,8 @@ export function commandRouter(deps: CommandDeps) {
   });
 
   /** What follows a committed action: a change to the store's catalog tells the site, never holding up the answer. */
-  function afterAction(a: Action | undefined) {
+  function afterAction(a: Action | undefined, body?: unknown) {
+    if (a?.after) void a.after(body).catch(() => undefined);
     if (a?.revalidates) void (deps.revalidate ?? revalidateSite)().catch(() => undefined);
   }
 
@@ -833,6 +836,33 @@ export function commandRouter(deps: CommandDeps) {
       return stored;
     });
     res.status(201).json({ file: f });
+  });
+
+  /**
+   * A product photo (Phase 11d): checked here, stored through the site in Vercel Blob, and its address
+   * answered. Nothing's in the catalog until photo-add puts it there, so a photo that never gets added
+   * shows nowhere.
+   */
+  router.post('/shop/photos/:id', limits.write, raw, need('shop', PROPOSE), async (req, res) => {
+    const c = req.command!;
+    const pid = req.params.id;
+    const p = (await c.db.query<{ in_catalog: boolean }>('SELECT in_catalog FROM command.shop_products WHERE id = $1', [pid])).rows[0];
+    if (!p) return fail(res, 404, 'NOT_FOUND', 'No such product');
+    if (!p.in_catalog) return fail(res, 409, 'NOT_IN_CATALOG', 'It isn’t in Command’s catalog yet');
+    const mime = String(req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();
+    if (!PHOTO_TYPES.has(mime)) return fail(res, 415, 'BAD_TYPE', 'A photo is a JPEG, PNG or WebP');
+    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (!bytes.length) return fail(res, 400, 'EMPTY', 'That photo is empty');
+    if (bytes.length > MAX_PHOTO_BYTES) return fail(res, 413, 'TOO_BIG', 'A photo can be up to 4 MB: make it smaller and try again');
+    const name = String(req.query.name ?? 'photo').slice(0, 120);
+    let src: string;
+    try {
+      src = await (deps.uploadPhoto ?? uploadPhoto)(pid, name, mime, bytes);
+    } catch (e) {
+      return fail(res, 502, 'STORE', `The shop’s photo store didn’t take it: ${(e as Error).message}`);
+    }
+    await auditFrom(req, { area: 'shop', action: `Uploaded a photo of ${pid} · ${name}`, detail: `${Math.ceil(bytes.length / 1024)} KB`, result: 'done' });
+    res.status(201).json({ src });
   });
 
   const sendFile = (res: Response, f: { name: string; mime: string; bytes: Buffer }, disposition: 'attachment' | 'inline') => {

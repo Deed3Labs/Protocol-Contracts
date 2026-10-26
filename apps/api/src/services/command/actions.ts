@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Queryable } from '../../db/db.js';
 import { PROPOSE, type Level, type Section } from './levels.js';
 import { providerFor } from './sections.js';
-import { addToCatalog, adoptSiteProduct, siteProductRow, type CatalogColour, type CatalogProduct, type CatalogVariant } from './catalog.js';
+import { addToCatalog, adoptSiteProduct, deletePhoto, isProductPhoto, siteProductRow, type CatalogColour, type CatalogProduct, type CatalogVariant } from './catalog.js';
 import { productCost, readBook, runUses } from './costing.js';
 import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
@@ -43,6 +43,8 @@ export interface Action<B = any> {
   outbox?: boolean | ((b: B) => boolean);
   /** Changes the store's catalog (Phase 11): once it's done, the site is told to read it again. */
   revalidates?: boolean;
+  /** Runs once the change has committed, never holding up the answer (a photo's file deleted). */
+  after?: (b: B) => Promise<unknown>;
 }
 
 const id = z.string().trim().min(1).max(64);
@@ -324,6 +326,12 @@ const addVariant = (tx: Queryable, pid: string, v: CatalogVariant) =>
     'INSERT INTO command.shop_variants (product_id, id, position, label, colour, size, price_cents, deposit_cents, per, sold_out) VALUES ($1, $2, (SELECT coalesce(max(position), -1) + 1 FROM command.shop_variants WHERE product_id = $1), $3, $4, $5, $6, $7, $8, false)',
     [pid, v.id, v.label, v.colour ?? null, v.size ?? null, v.priceCents ?? null, v.depositCents ?? null, v.per ?? null],
   );
+/** A catalog product's photos, in order, and its store name (a photo's description until one's written). */
+const photosOf = async (tx: Queryable, pid: string) => {
+  await catalogRecord(tx, pid);
+  return (await one<{ images: Array<{ src: string; alt: string }>; title: string }>(tx, 'SELECT images, coalesce(title, name) AS title FROM command.shop_products WHERE id = $1', [pid]))!;
+};
+const setPhotos = (tx: Queryable, pid: string, images: Array<{ src: string; alt: string }>) => tx.query('UPDATE command.shop_products SET images = $2 WHERE id = $1', [pid, JSON.stringify(images)]);
 const STOCK_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 /** A new colour or option: on the product's list, with its stock at 0 (each of the six sizes for a garment). */
 const addOption = async (tx: Queryable, pid: string, option: string, sized: boolean) => {
@@ -894,6 +902,58 @@ const shop: Record<string, Action> = {
       if (!pid) throw new ActionError(409, 'TAKEN', `Another product has the address ${b.slug}`);
       await shelve(c, pid, 'draft');
       return { id: pid };
+    },
+  },
+  // product photos (Phase 11d): stored in the site's Blob store by POST /shop/photos/:id, then held here
+  'photo-add': {
+    revalidates: true,
+    body: z.object({ id, src: z.string().trim().url().max(500), alt: text(200).default('') }),
+    summary: (b) => `Added a photo to ${b.id}`,
+    apply: async (c, b) => {
+      const p = await photosOf(c.tx, b.id);
+      if (!isProductPhoto(b.src, b.id)) throw new ActionError(400, 'BAD_PHOTO', 'That isn’t one of this product’s photos in the store');
+      if (p.images.some((i) => i.src === b.src)) return { photos: p.images.length };
+      if (p.images.length >= 12) throw new ActionError(409, 'TOO_MANY', 'A product shows up to 12 photos');
+      await setPhotos(c.tx, b.id, [...p.images, { src: b.src, alt: b.alt || p.title }]);
+      await history(c, b.id, 'Added a photo');
+      return { photos: p.images.length + 1 };
+    },
+  },
+  'photo-remove': {
+    revalidates: true,
+    body: z.object({ id, src: z.string().trim().max(500) }),
+    summary: (b) => `Took a photo off ${b.id}`,
+    apply: async (c, b) => {
+      const p = await photosOf(c.tx, b.id);
+      if (!p.images.some((i) => i.src === b.src)) throw new ActionError(404, 'NOT_FOUND', 'No such photo of that product');
+      await setPhotos(c.tx, b.id, p.images.filter((i) => i.src !== b.src));
+      await history(c, b.id, 'Took a photo off');
+    },
+    // its file goes from the store once the catalog has let it go
+    after: (b) => deletePhoto(b.src),
+  },
+  'photo-move': {
+    revalidates: true,
+    body: z.object({ id, src: z.string().trim().max(500), to: z.number().int().min(0).max(11) }),
+    summary: (b) => `Moved a photo of ${b.id} to ${b.to + 1}`,
+    apply: async (c, b) => {
+      const p = await photosOf(c.tx, b.id);
+      const i = p.images.findIndex((x) => x.src === b.src);
+      if (i < 0) throw new ActionError(404, 'NOT_FOUND', 'No such photo of that product');
+      const rest = p.images.filter((_, k) => k !== i);
+      rest.splice(Math.min(b.to, rest.length), 0, p.images[i]);
+      await setPhotos(c.tx, b.id, rest);
+      if (b.to === 0 && i !== 0) await history(c, b.id, 'Chose the first photo');
+    },
+  },
+  'photo-alt': {
+    revalidates: true,
+    body: z.object({ id, src: z.string().trim().max(500), alt: text(200).min(1) }),
+    summary: (b) => `Described a photo of ${b.id}`,
+    apply: async (c, b) => {
+      const p = await photosOf(c.tx, b.id);
+      if (!p.images.some((i) => i.src === b.src)) throw new ActionError(404, 'NOT_FOUND', 'No such photo of that product');
+      await setPhotos(c.tx, b.id, p.images.map((i) => (i.src === b.src ? { ...i, alt: b.alt } : i)));
     },
   },
   'shelf-off': {
