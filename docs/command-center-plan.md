@@ -393,7 +393,7 @@ are filled in.
 - **10d · What a sale costs.** Orders record their cost when they come in from Stripe. Margins use
   it, and products show their cost history.
 
-### Phase 11: Command runs the shop's catalog
+### Phase 11: Command runs the shop's catalog (in progress: 11a)
 
 Kai, 2026-10-25: editing a product in Command should change the store. Today it doesn't:
 - **The store's catalog is a content file** in the website repo (`content/shop.ts`, 21 products).

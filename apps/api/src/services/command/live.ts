@@ -1,7 +1,7 @@
 import { merchantDb } from '../../config/merchantDb.js';
 import { requireIdentity } from '../../middleware/auth.js';
 import { limitByAddress } from '../../middleware/rateLimiter.js';
-import { commandJoinRouter, commandRouter, commandSharedRouter, commandWebhookRouter } from '../../routes/command.js';
+import { commandCatalogRouter, commandJoinRouter, commandRouter, commandSharedRouter, commandWebhookRouter } from '../../routes/command.js';
 import { indexerCatchUp } from '../../jobs/commandIndexer.js';
 import { githubCatchUp } from '../../jobs/commandGithub.js';
 import { liveChainReader } from './onchain.js';
@@ -28,6 +28,10 @@ export function liveCommandWebhookRouter() {
 }
 
 /** The site's join form posts here (Phase 7b): no sign-in, 5 a minute an address. */
+export function liveCommandCatalogRouter() {
+  return commandCatalogRouter({ db: merchantDb });
+}
+
 export function liveCommandJoinRouter() {
   return commandJoinRouter({ db: merchantDb, limit: limitByAddress('command-join', 60_000, 5) });
 }

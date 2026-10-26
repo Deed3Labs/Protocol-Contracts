@@ -320,14 +320,8 @@ function shopStripe(env: Env, f: typeof fetch) {
   return { off, get };
 }
 
-const SIZES = new Set(['xs', 's', 'm', 'l', 'xl', 'xxl']);
-const title = (s: string) => s.replace(/(^|-)([a-z])/g, (_m, sep, c) => (sep ? ' ' : '') + c.toUpperCase());
-/** A variant id as the page shows it: "black-m" is Black, M; "circle" is Circle, no size. */
-export function variantParts(variant: string): [string, string] {
-  const parts = variant.split('-');
-  const size = SIZES.has(parts.at(-1)!) ? parts.pop()!.toUpperCase() : '';
-  return [title(parts.join('-')) || 'One size', size];
-}
+import { importCatalog, isFull, variantParts } from './catalog.js';
+export { variantParts };
 /** "Ana Ruiz" → "Ana R.": buyers show by first name. */
 export const maskBuyer = (name: string | null | undefined) => {
   const [first, ...rest] = String(name ?? '').trim().split(/\s+/);
@@ -436,12 +430,15 @@ export function catalogFeed(env: Env = process.env, f: typeof fetch = fetch): Fe
     id: 'catalog',
     everyMs: minutes(env.COMMAND_FEEDS_MINUTES, 5),
     off: () => (url === 'off' ? 'COMMAND_SHOP_CATALOG_URL is off' : null),
-    async sync() {
-      const r = await f(url, { headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+    async sync(db) {
+      // with the token, the full records too (Phase 11a), for the import
+      const r = await f(token ? `${url}${url.includes('?') ? '&' : '?'}full=1` : url, { headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
       if (!r.ok) throw await fail(r, 'Shop catalog');
       const j: any = await r.json();
       if (!Array.isArray(j.products)) throw new Error('Shop catalog: no products in the answer');
-      return { figures: { products: j.products, moved: j.moved ?? {}, drafts: !!token } };
+      // each product Command doesn't own yet comes into its catalog, once; a site that sends only the summary imports nothing
+      const imported = isFull(j.products) ? await importCatalog(db, j.products, j.moved ?? {}, new Date()) : [];
+      return { figures: { products: j.products, moved: j.moved ?? {}, drafts: !!token, imported: imported.length } };
     },
   };
 }

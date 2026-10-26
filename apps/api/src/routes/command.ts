@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { z } from 'zod';
 import type { Db, Queryable } from '../db/db.js';
@@ -29,6 +30,7 @@ import { codeStatus } from '../services/command/github.js';
 import { feedStatus, requestSync, type Feed } from '../services/command/feeds.js';
 import { liveFeeds, plaidWebhook, plaidWebhookKey, shopAddress } from '../services/command/feedSources.js';
 import { join } from '../services/command/waitlist.js';
+import { publicCatalog } from '../services/command/catalog.js';
 import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
@@ -1147,6 +1149,25 @@ export function commandJoinRouter(deps: { db: () => Promise<Db | null>; limit?: 
     );
     await join(db, { ...p.data, zip: p.data.zip || undefined, details }, deps.now?.() ?? new Date());
     res.status(201).json({ ok: true });
+  });
+  return router;
+}
+
+/**
+ * The shop's catalog for the store (Phase 11), read by nobody signed in: the site's server reads it,
+ * cached, and falls back to its last good copy. Live products for anyone; the drafts too with the
+ * shared token (COMMAND_CATALOG_TOKEN, the same value in the site's env), compared as hashes.
+ */
+export function commandCatalogRouter(deps: { db: () => Promise<Db | null>; token?: () => string | undefined }) {
+  const router = forwardAsyncErrors(express.Router());
+  router.get('/', async (req, res) => {
+    const db = await deps.db();
+    if (!db) return res.status(503).json({ error: 'Not available right now' });
+    const want = (deps.token?.() ?? process.env.COMMAND_CATALOG_TOKEN)?.trim();
+    const got = req.header('authorization')?.replace(/^Bearer\s+/i, '').trim();
+    const drafts = !!want && !!got && timingSafeEqual(createHash('sha256').update(want).digest(), createHash('sha256').update(got).digest());
+    res.setHeader('Cache-Control', drafts ? 'private, no-store' : 'public, max-age=60');
+    res.json(await publicCatalog(db, drafts));
   });
   return router;
 }

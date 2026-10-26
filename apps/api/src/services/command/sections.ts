@@ -5,7 +5,7 @@ import { SEE, TOTALS, type Level } from './levels.js';
 import { assurancePoolLive, bondVaultLive, bondsLive, deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
-import { variantParts } from './feedSources.js';
+import { catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
 import type { MemberSource } from './memberSource.js';
 import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
 import { codeActivity, codeChanges, codeConfig } from './github.js';
@@ -864,7 +864,6 @@ const reserveRatio = (usdc: number, clrusd: number) => (clrusd === 0 ? (usdc ===
 
 // ── Shop ────────────────────────────────────────────────────────────────────
 
-type ShopProduct = { id: string; n: string; v: string; line: string; g: string; price: number; c?: number[]; st: string; cols: string[]; wk: number[]; lead?: number; slug: string; why?: string; dep?: number };
 
 /**
  * The catalog as Command keeps it. A product with a recipe (Phase 10) sends its recipe's cost as the
@@ -970,92 +969,7 @@ export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record
 
 // ── Shop, live (Phase 7a) ───────────────────────────────────────────────────
 
-/** A product as the site's catalog serves it (clearpath-website /api/shop/catalog). */
-interface SiteProduct {
-  slug: string;
-  section: 'goods' | 'for-shops';
-  name: string;
-  kind: string;
-  category: string;
-  alsoIn: string[];
-  priceCents: number;
-  status: 'live' | 'draft';
-  colours: Array<{ id: string; label: string }>;
-  variants: Array<{ id: string; label: string; depositCents?: number }>;
-}
-const SITE_GLYPH: Record<string, string> = { tee: 'tee', 'tee-ls': 'ls', turtleneck: 'turtle', hoodie: 'hood', patch: 'psq', point: 'point', counter: 'tab', kit: 'tab' };
 const WEEK = 7 * DAY;
-
-/** The site's product in the page's shape, with Command's own record of it (costs, glyph, lead time) where it has one. */
-function siteProduct(p: SiteProduct, own: ShopProduct | undefined, wk: number[]): ShopProduct & { full?: number; nc?: number } {
-  const hw = p.section === 'for-shops';
-  const graphic = p.category === 'Graphic Tees' || p.alsoIn.includes('Graphic Tees');
-  const line = hw ? 'hw' : graphic ? 'graphic' : p.kind === 'patch' ? 'patch' : p.kind === 'tee' || p.kind === 'tee-ls' ? 'logo' : 'layers';
-  const v = graphic ? p.name.replace(/^Graphic Tee\s*[·:–—-]?\s*/i, '') : line === 'logo' ? (p.kind === 'tee' ? 'Short sleeve' : 'Long sleeve') : line === 'patch' ? 'Logo' : '';
-  const deposits = p.variants.map((x) => x.depositCents).filter((d): d is number => d != null);
-  return {
-    id: own?.id ?? p.slug.replace(/[^a-z0-9]/g, ''),
-    n: line === 'logo' ? 'Logo Tee' : p.name,
-    v,
-    line,
-    g: own?.g ?? (graphic ? 'gtee' : (SITE_GLYPH[p.kind] ?? (hw ? 'tab' : 'tee'))),
-    // a deposit product's price is what it reserves now, as the prototype's is; its full price rides along
-    price: hw && deposits.length ? Math.min(...deposits) / 100 : p.priceCents / 100,
-    ...(hw ? { dep: 1, full: p.priceCents / 100 } : own?.c ? { c: own.c } : { c: [0, 0, 0, 0], nc: 1 }),
-    st: p.status === 'live' ? 'on' : 'draft',
-    cols: p.colours.length ? p.colours.map((c) => c.label) : p.variants.map((x) => x.label),
-    wk,
-    ...(own?.lead != null ? { lead: own.lead } : {}),
-    slug: p.slug,
-    ...(own?.why ? { why: own.why } : {}),
-  };
-}
-
-const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-/** The site's product that the page shows as `pid` (or whose slug is `pid`, as a live order's items carry), or null. */
-async function siteProductFor(db: Queryable, pid: string): Promise<{ site: SiteProduct; page: ReturnType<typeof siteProduct> } | null> {
-  const cat = (await feedRows(db)).get('catalog')?.figures as { products?: SiteProduct[] } | undefined;
-  for (const site of cat?.products ?? []) {
-    const page = siteProduct(site, undefined, []);
-    if (page.id === pid || site.slug === pid) return { site, page };
-  }
-  return null;
-}
-
-/** A product the site sells as the shop's actions read one: its name and state, from the catalog. Null when it sells none by that id. */
-export async function siteProductRow(db: Queryable, pid: string) {
-  const s = await siteProductFor(db, pid);
-  return s ? { id: s.page.id, name: s.page.n, variant: s.page.v, status: s.page.st, price_cents: Math.round((s.page.full ?? s.page.price) * 100) } : null;
-}
-
-/**
- * Makes Command's record of a product the site sells but Command has none for, from the catalog: live,
- * with no seed, every product starts this way, and its record is made the first time someone acts on
- * it (a recipe, a run, the shelf, its details). Its costs aren't entered yet (null boxes); its stock is
- * 0 for each colour and, for a sized product, each of the six sizes, so a run has somewhere to land.
- * Returns whether the site sells it (it may already have been made).
- */
-export async function adoptSiteProduct(db: Queryable, pid: string, at: Date, who: string): Promise<boolean> {
-  const s = await siteProductFor(db, pid);
-  if (!s || s.page.id !== pid) return false;
-  const { site, page } = s;
-  const priceCents = Math.round((page.full ?? page.price) * 100);
-  if (priceCents <= 0) return false;
-  const r = await db.query(
-    `INSERT INTO command.shop_products (id, position, name, variant, line, glyph, price_cents, cost_cents, status, options, lead_weeks, slug, why, deposit)
-     VALUES ($1, (SELECT coalesce(max(position), -1) + 1 FROM command.shop_products), $2, $3, $4, $5, $6, NULL, $7, $8, NULL, $9, NULL, $10)
-     ON CONFLICT DO NOTHING RETURNING 1`,
-    [pid, page.n, page.v, page.line, page.g, priceCents, page.st, page.cols, site.slug, !!page.dep],
-  );
-  if (!r.rows.length) return true;
-  // each colour (or option), and for a sized product all six sizes, so the page's grid lines up
-  const sized = site.variants.some((x) => variantParts(x.id)[1]);
-  const sizes = sized ? SIZE_ORDER : [''];
-  for (const [oi, opt] of page.cols.entries())
-    for (const [si, size] of sizes.entries()) await db.query('INSERT INTO command.shop_stock (product_id, option, option_pos, size, size_pos, on_hand) VALUES ($1, $2, $3, $4, $5, 0) ON CONFLICT DO NOTHING', [pid, opt, oi, size, si]);
-  await db.query('INSERT INTO command.shop_history (product_id, at, what, who) VALUES ($1, $2, $3, $4)', [pid, at, 'Command’s record started from the site’s catalog', who]);
-  return true;
-}
 
 /**
  * The shop, live and read-only (Kai, 2026-10-22 and 2026-10-24): what it sells from the site's
@@ -1088,8 +1002,16 @@ async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, u
     for (const [slug, , , q] of r.items) ((units.get(slugOf(slug)) ?? units.set(slugOf(slug), Array(8).fill(0)).get(slugOf(slug))!)[w] += q);
   }
 
-  const PR = cat?.products
-    ? cat.products.map((p) => siteProduct(p, ownBy.get(p.slug), units.get(p.slug) ?? Array(8).fill(0)))
+  // Command's own catalog first (Phase 11), its shelf status as Command keeps it; then what the site
+  // sells that Command hasn't imported yet
+  const catalog = await catalogProducts(db);
+  const mine = new Set(catalog.map((p) => p.slug));
+  const listed: Array<SiteProduct & { shelf?: string }> = [...catalog, ...(cat?.products ?? []).filter((p) => !mine.has(slugOf(p.slug)))];
+  const PR = listed.length
+    ? listed.map((p) => {
+        const o = ownBy.get(p.slug);
+        return { ...siteProduct(p, o, units.get(p.slug) ?? Array(8).fill(0)), ...(p.shelf && o ? { st: p.shelf, n: o.n, v: o.v } : {}) };
+      })
     : own.map((p) => ({ ...p, wk: units.get(slugOf(p.slug)) ?? Array(8).fill(0) }));
   const idOf = new Map(PR.map((p) => [p.slug, p.id]));
   const pid = (slug: string) => idOf.get(slugOf(slug)) ?? slugOf(slug);

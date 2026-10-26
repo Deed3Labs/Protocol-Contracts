@@ -2,7 +2,8 @@ import { DAY, SEED_TODAY } from '@clear/command-types';
 import { z } from 'zod';
 import type { Queryable } from '../../db/db.js';
 import { PROPOSE, type Level, type Section } from './levels.js';
-import { adoptSiteProduct, providerFor, siteProductRow } from './sections.js';
+import { providerFor } from './sections.js';
+import { adoptSiteProduct, siteProductRow } from './catalog.js';
 import { productCost, readBook, runUses } from './costing.js';
 import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
@@ -262,6 +263,26 @@ const merchants: Record<string, Action> = {
 // ── Shop ────────────────────────────────────────────────────────────────────
 
 const over50 = (amount: number) => amount > 50;
+/** A slug: lowercase letters, numbers and dashes. */
+const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/** Live, a change to the catalog is made in Command's (Phase 11), not queued for the site; seeded, it's queued as before. */
+const catalogOutbox = () => providerFor('shop') !== 'live';
+/** Whether a change to this product's price is one the store would charge: live, a product in Command's catalog and on the shelf, and the change real. */
+const livePriceChange = async (db: Queryable, pid: string, changed: (p: { price_cents: number }) => boolean) => {
+  if (providerFor('shop') !== 'live') return false;
+  const p = await one<{ price_cents: number; status: string; in_catalog: boolean }>(db, 'SELECT price_cents, status, in_catalog FROM command.shop_products WHERE id = $1', [pid]);
+  return !!p && p.in_catalog && p.status === 'on' && changed(p);
+};
+/** A product's new slug: the old one is kept as moved (and any slug moved to it follows), so links, bags and orders still find it. */
+const moveSlug = async (tx: Queryable, pid: string, slug: string) => {
+  const p = (await one<{ slug: string }>(tx, 'SELECT slug FROM command.shop_products WHERE id = $1', [pid]))!;
+  if (p.slug === slug) return;
+  if (await one(tx, 'SELECT 1 FROM command.shop_products WHERE slug = $1', [slug])) throw new ActionError(409, 'TAKEN', `Another product has the slug ${slug}`);
+  await tx.query('UPDATE command.shop_products SET slug = $2 WHERE id = $1', [pid, slug]);
+  await tx.query('DELETE FROM command.shop_moved WHERE old_slug = $1', [slug]);
+  await tx.query('UPDATE command.shop_moved SET new_slug = $2 WHERE new_slug = $1', [p.slug, slug]);
+  await tx.query('INSERT INTO command.shop_moved (old_slug, new_slug) VALUES ($1, $2) ON CONFLICT (old_slug) DO UPDATE SET new_slug = $2, moved_at = now()', [p.slug, slug]);
+};
 type ProductRow = { id: string; name: string; variant: string; status: string; price_cents: number };
 /**
  * A product, as Command records it. Live, a product the site sells that Command has no record of yet
@@ -638,18 +659,92 @@ const shop: Record<string, Action> = {
       await history(c, pid, 'Added as a draft');
       return { id: pid };
     },
-    // the live shop's catalog is a content file: the change goes there in Phase 7
-    outbox: true,
+    // live, Command's catalog is the store's (Phase 11): the change is made here, not queued
+    outbox: catalogOutbox,
   },
   'product-edit': {
-    body: z.object({ id, name: text(80).min(1), variant: text(80), price: money.positive(), cost: z.array(money).length(4).nullable() }),
-    summary: (b) => `Updated ${b.name}`,
+    body: z.object({
+      id,
+      name: text(80).min(1),
+      variant: text(80),
+      price: money.positive(),
+      cost: z.array(money).length(4).nullable(),
+      // the store's own fields (Phase 11), each left as it is when not sent
+      title: text(120).min(1).optional(),
+      tagline: text(200).optional(),
+      description: text(2000).optional(),
+      details: z.array(text(200).min(1)).max(20).optional(),
+      category: text(60).optional(),
+      alsoIn: z.array(text(60).min(1)).max(10).optional(),
+      featured: z.boolean().optional(),
+      weightOz: z.number().positive().max(2000).nullable().optional(),
+      ships: text(40).nullable().optional(),
+      fccNotice: text(1000).nullable().optional(),
+      founding: text(300).nullable().optional(),
+      slug: z.string().trim().regex(SLUG, 'Lowercase letters, numbers and dashes').max(80).optional(),
+    }),
+    summary: async (b, db) => {
+      const p = await one<{ price_cents: number }>(db, 'SELECT price_cents FROM command.shop_products WHERE id = $1', [b.id]);
+      return `Updated ${b.name}${p && p.price_cents !== cents(b.price) ? ` · price $${(p.price_cents / 100).toFixed(2)} → $${b.price.toFixed(2)}` : ''}`;
+    },
+    // live, a price change on a product the store sells waits for a second person (Kai, 2026-10-26)
+    second: (b, db) => livePriceChange(db, b.id, (p) => p.price_cents !== cents(b.price)),
+    apply: async (c, b) => {
+      const p = await prod(c.tx, b.id, c);
+      await c.tx.query('UPDATE command.shop_products SET name = $2, variant = $3, price_cents = $4, cost_cents = coalesce($5, cost_cents) WHERE id = $1', [b.id, b.name, b.variant, cents(b.price), b.cost ? b.cost.map(cents) : null]);
+      const sets: Array<[string, unknown]> = [];
+      const put = (col: string, v: unknown) => v !== undefined && sets.push([col, v]);
+      put('title', b.title);
+      put('tagline', b.tagline);
+      put('description', b.description);
+      put('details', b.details);
+      put('category', b.category);
+      put('also_in', b.alsoIn);
+      put('featured', b.featured);
+      put('weight_oz', b.weightOz);
+      put('ships', b.ships);
+      put('fcc_notice', b.fccNotice);
+      put('founding', b.founding);
+      if (sets.length) await c.tx.query(`UPDATE command.shop_products SET ${sets.map(([k], i) => `${k} = $${i + 2}`).join(', ')} WHERE id = $1`, [b.id, ...sets.map(([, v]) => v)]);
+      if (b.slug) await moveSlug(c.tx, b.id, b.slug);
+      await history(c, b.id, p.price_cents !== cents(b.price) ? `Updated the details · price $${(p.price_cents / 100).toFixed(2)} → $${b.price.toFixed(2)}` : 'Updated the details');
+    },
+    outbox: catalogOutbox,
+  },
+  'variant-edit': {
+    body: z
+      .object({
+        id,
+        variant: z.string().trim().regex(SLUG).max(64),
+        label: text(80).min(1).optional(),
+        price: money.positive().nullable().optional(),
+        deposit: money.positive().nullable().optional(),
+        per: text(40).nullable().optional(),
+        soldOut: z.boolean().optional(),
+      })
+      .refine((b) => b.deposit == null || (b.price ?? Infinity) >= b.deposit, 'A deposit can’t be more than the price'),
+    summary: (b) =>
+      `${b.id} · ${b.variant}: ${[b.label && `“${b.label}”`, b.price !== undefined && (b.price == null ? 'the product’s price' : `$${b.price.toFixed(2)}`), b.deposit !== undefined && (b.deposit == null ? 'no deposit' : `$${b.deposit.toFixed(2)} deposit`), b.soldOut !== undefined && (b.soldOut ? 'sold out' : 'back in stock')].filter(Boolean).join(', ') || 'no change'}`,
+    // a variant's price or deposit on a product the store sells, the same as the product's
+    second: async (b, db) => {
+      if (b.price === undefined && b.deposit === undefined) return false;
+      const v = await one<{ price_cents: number | null; deposit_cents: number | null }>(db, 'SELECT price_cents, deposit_cents FROM command.shop_variants WHERE product_id = $1 AND id = $2', [b.id, b.variant]);
+      if (!v) return false;
+      const changed = (b.price !== undefined && v.price_cents !== (b.price == null ? null : cents(b.price))) || (b.deposit !== undefined && v.deposit_cents !== (b.deposit == null ? null : cents(b.deposit)));
+      return changed && livePriceChange(db, b.id, () => true);
+    },
     apply: async (c, b) => {
       await prod(c.tx, b.id, c);
-      await c.tx.query('UPDATE command.shop_products SET name = $2, variant = $3, price_cents = $4, cost_cents = coalesce($5, cost_cents) WHERE id = $1', [b.id, b.name, b.variant, cents(b.price), b.cost ? b.cost.map(cents) : null]);
-      await history(c, b.id, 'Updated the details');
+      await must(c.tx, 'SELECT 1 FROM command.shop_variants WHERE product_id = $1 AND id = $2', [b.id, b.variant], 'variant of that product');
+      const sets: Array<[string, unknown]> = [];
+      if (b.label !== undefined) sets.push(['label', b.label]);
+      if (b.price !== undefined) sets.push(['price_cents', b.price == null ? null : cents(b.price)]);
+      if (b.deposit !== undefined) sets.push(['deposit_cents', b.deposit == null ? null : cents(b.deposit)]);
+      if (b.per !== undefined) sets.push(['per', b.per || null]);
+      if (b.soldOut !== undefined) sets.push(['sold_out', b.soldOut]);
+      if (sets.length) await c.tx.query(`UPDATE command.shop_variants SET ${sets.map(([k], i) => `${k} = $${i + 3}`).join(', ')} WHERE product_id = $1 AND id = $2`, [b.id, b.variant, ...sets.map(([, v]) => v)]);
+      await history(c, b.id, `Variant ${b.variant} updated`);
     },
-    outbox: true,
   },
   'shelf-off': {
     body: z.object({ id, why: text(120).min(1) }),
@@ -660,7 +755,7 @@ const shop: Record<string, Action> = {
       await shelve(c, b.id, 'off');
       await history(c, b.id, `Taken off the shelf · ${b.why.toLowerCase()}`);
     },
-    outbox: true,
+    outbox: catalogOutbox,
   },
   'shelf-on': {
     body: z.object({ id }),
@@ -671,7 +766,7 @@ const shop: Record<string, Action> = {
       await shelve(c, b.id, 'on');
       await history(c, b.id, 'Put on the shelf');
     },
-    outbox: true,
+    outbox: catalogOutbox,
   },
   archive: {
     body: z.object({ id, why: text(120).default('Archived') }),
@@ -682,7 +777,7 @@ const shop: Record<string, Action> = {
       await c.tx.query('UPDATE command.shop_shelf SET ends_at = $2 WHERE product_id = $1 AND ends_at IS NULL', [b.id, c.at]);
       await history(c, b.id, `Archived · ${b.why.toLowerCase()}`);
     },
-    outbox: true,
+    outbox: catalogOutbox,
   },
   restore: {
     body: z.object({ id }),
