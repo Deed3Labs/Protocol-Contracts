@@ -1011,6 +1011,52 @@ function siteProduct(p: SiteProduct, own: ShopProduct | undefined, wk: number[])
   };
 }
 
+const SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+/** The site's product that the page shows as `pid` (or whose slug is `pid`, as a live order's items carry), or null. */
+async function siteProductFor(db: Queryable, pid: string): Promise<{ site: SiteProduct; page: ReturnType<typeof siteProduct> } | null> {
+  const cat = (await feedRows(db)).get('catalog')?.figures as { products?: SiteProduct[] } | undefined;
+  for (const site of cat?.products ?? []) {
+    const page = siteProduct(site, undefined, []);
+    if (page.id === pid || site.slug === pid) return { site, page };
+  }
+  return null;
+}
+
+/** A product the site sells as the shop's actions read one: its name and state, from the catalog. Null when it sells none by that id. */
+export async function siteProductRow(db: Queryable, pid: string) {
+  const s = await siteProductFor(db, pid);
+  return s ? { id: s.page.id, name: s.page.n, variant: s.page.v, status: s.page.st, price_cents: Math.round((s.page.full ?? s.page.price) * 100) } : null;
+}
+
+/**
+ * Makes Command's record of a product the site sells but Command has none for, from the catalog: live,
+ * with no seed, every product starts this way, and its record is made the first time someone acts on
+ * it (a recipe, a run, the shelf, its details). Its costs aren't entered yet (null boxes); its stock is
+ * 0 for each colour and, for a sized product, each of the six sizes, so a run has somewhere to land.
+ * Returns whether the site sells it (it may already have been made).
+ */
+export async function adoptSiteProduct(db: Queryable, pid: string, at: Date, who: string): Promise<boolean> {
+  const s = await siteProductFor(db, pid);
+  if (!s || s.page.id !== pid) return false;
+  const { site, page } = s;
+  const priceCents = Math.round((page.full ?? page.price) * 100);
+  if (priceCents <= 0) return false;
+  const r = await db.query(
+    `INSERT INTO command.shop_products (id, position, name, variant, line, glyph, price_cents, cost_cents, status, options, lead_weeks, slug, why, deposit)
+     VALUES ($1, (SELECT coalesce(max(position), -1) + 1 FROM command.shop_products), $2, $3, $4, $5, $6, NULL, $7, $8, NULL, $9, NULL, $10)
+     ON CONFLICT DO NOTHING RETURNING 1`,
+    [pid, page.n, page.v, page.line, page.g, priceCents, page.st, page.cols, site.slug, !!page.dep],
+  );
+  if (!r.rows.length) return true;
+  // each colour (or option), and for a sized product all six sizes, so the page's grid lines up
+  const sized = site.variants.some((x) => variantParts(x.id)[1]);
+  const sizes = sized ? SIZE_ORDER : [''];
+  for (const [oi, opt] of page.cols.entries())
+    for (const [si, size] of sizes.entries()) await db.query('INSERT INTO command.shop_stock (product_id, option, option_pos, size, size_pos, on_hand) VALUES ($1, $2, $3, $4, $5, 0) ON CONFLICT DO NOTHING', [pid, opt, oi, size, si]);
+  await db.query('INSERT INTO command.shop_history (product_id, at, what, who) VALUES ($1, $2, $3, $4)', [pid, at, 'Command’s record started from the site’s catalog', who]);
+  return true;
+}
+
 /**
  * The shop, live and read-only (Kai, 2026-10-22 and 2026-10-24): what it sells from the site's
  * catalog, its orders and hardware reservations from its Stripe Checkout (synced by the shop feed),

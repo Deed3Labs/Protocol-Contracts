@@ -1,9 +1,12 @@
-import { beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Db } from '../db/db.js';
 import { testDb } from '../db/testDb.js';
-import { SECTIONS, type Levels } from '../services/command/levels.js';
+import { catalogFeed } from '../services/command/feedSources.js';
+import { runFeed } from '../services/command/feeds.js';
+import { SECTIONS, SEE, type Levels } from '../services/command/levels.js';
+import { shopSection } from '../services/command/sections.js';
 import { seedCommand } from '../services/command/seed.js';
 import { commandRouter } from './command.js';
 
@@ -388,5 +391,49 @@ describe('stock history, runs and Home’s alerts (Phase 10c)', () => {
     const at = (xs: any[]) => xs.map((x) => x.at);
     expect(at(thread.moves)).toEqual([...at(thread.moves)].sort((a, b) => b - a));
     expect(at(emb.purchases)).toEqual([...at(emb.purchases)].sort((a, b) => b - a));
+  });
+});
+
+describe('live, a product only the site sells: Command’s record is made the first time it’s acted on', () => {
+  const site = (slug: string, name: string, kind: string, colours: string[], variants: string[]) => ({
+    slug, section: 'goods', name, kind, category: 'Wear', alsoIn: ['Logo'], priceCents: 3200, status: 'live',
+    colours: colours.map((c) => ({ id: c.toLowerCase(), label: c })), variants: variants.map((v) => ({ id: v, label: v })),
+  });
+  const envShop = process.env.PROVIDER_SHOP;
+  beforeAll(async () => {
+    const catalog = { products: [site('logo-long-sleeve-tee', 'Logo Long Sleeve Tee', 'tee-ls', ['Black', 'White'], ['black-m', 'white-l']), site('logo-patch', 'Logo Patch', 'patch', [], ['square', 'circle'])], moved: {} };
+    expect(await runFeed(db, catalogFeed({}, (async () => new Response(JSON.stringify(catalog))) as unknown as typeof fetch))).toBe('ok');
+    process.env.PROVIDER_SHOP = 'live';
+  });
+  afterAll(() => {
+    if (envShop == null) delete process.env.PROVIDER_SHOP;
+    else process.env.PROVIDER_SHOP = envShop;
+  });
+
+  test('a recipe line: the record comes from the catalog, with no costs yet and stock at 0 for each colour and size', async () => {
+    expect((await q(`SELECT 1 FROM command.shop_products WHERE id = 'logolongsleevetee'`)).length).toBe(0);
+    const r = await act(kai, 'recipe-line', { product: 'logolongsleevetee', input: 'blank', amount: 1 });
+    expect(r.status).toBe(200);
+    expect((await q(`SELECT name, variant, line, status, cost_cents, slug, price_cents, deposit FROM command.shop_products WHERE id = 'logolongsleevetee'`))[0]).toEqual({
+      name: 'Logo Tee', variant: 'Long sleeve', line: 'logo', status: 'on', cost_cents: null, slug: 'logo-long-sleeve-tee', price_cents: 3200, deposit: false,
+    });
+    expect(await lines('logolongsleevetee')).toEqual([['blank', 1, null]]);
+    // two colours, six sizes each
+    expect((await q(`SELECT count(*)::int AS n FROM command.shop_stock WHERE product_id = 'logolongsleevetee'`))[0].n).toBe(12);
+    expect((await q(`SELECT what FROM command.shop_history WHERE product_id = 'logolongsleevetee' ORDER BY id`)).map((h) => h.what)).toEqual(['Command’s record started from the site’s catalog', 'Recipe · set Blank tee (heavy)']);
+    // the page: its recipe, and still no costs entered in the boxes
+    const s: any = await shopSection(db, { level: SEE, reveal: false, now: new Date('2026-10-24T17:00:00Z') });
+    expect(s.RECIPES.logolongsleevetee.lines).toHaveLength(1);
+    expect(s.PR.find((p: any) => p.id === 'logolongsleevetee')).toMatchObject({ slug: 'logo-long-sleeve-tee', nc: 1 });
+  });
+
+  test('a run lands in its stock; the shelf works on one with no sizes; one the site doesn’t sell is still no such product', async () => {
+    expect((await act(kai, 'run', { product: 'logolongsleevetee', option: 'Black', size: 'M', units: 3, allowShort: true })).status).toBe(200);
+    expect(await stock('logolongsleevetee', 'Black', 'M')).toBe(3);
+    expect((await act(kai, 'shelf-off', { id: 'logopatch', why: 'Sold out' })).status).toBe(200);
+    expect((await q(`SELECT status FROM command.shop_products WHERE id = 'logopatch'`))[0].status).toBe('off');
+    expect((await q(`SELECT option, size FROM command.shop_stock WHERE product_id = 'logopatch' ORDER BY option_pos`)).map((x) => [x.option, x.size])).toEqual([['square', ''], ['circle', '']]);
+    const r = await act(kai, 'recipe-line', { product: 'nosuchtee', input: 'blank', amount: 1 });
+    expect([r.status, r.body.error]).toEqual([404, 'No such product']);
   });
 });

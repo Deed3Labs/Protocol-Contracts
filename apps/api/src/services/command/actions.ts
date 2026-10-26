@@ -2,7 +2,7 @@ import { DAY, SEED_TODAY } from '@clear/command-types';
 import { z } from 'zod';
 import type { Queryable } from '../../db/db.js';
 import { PROPOSE, type Level, type Section } from './levels.js';
-import { providerFor } from './sections.js';
+import { adoptSiteProduct, providerFor, siteProductRow } from './sections.js';
 import { productCost, readBook, runUses } from './costing.js';
 import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
@@ -262,7 +262,24 @@ const merchants: Record<string, Action> = {
 // ── Shop ────────────────────────────────────────────────────────────────────
 
 const over50 = (amount: number) => amount > 50;
-const prod = async (db: Queryable, pid: string) => must<{ id: string; name: string; variant: string; status: string; price_cents: number }>(db, 'SELECT * FROM command.shop_products WHERE id = $1', [pid], 'product');
+type ProductRow = { id: string; name: string; variant: string; status: string; price_cents: number };
+/**
+ * A product, as Command records it. Live, a product the site sells that Command has no record of yet
+ * is read from the catalog; given an action (`c`), its record is made then, so the action has one to
+ * change (adoptSiteProduct).
+ */
+const prod = async (db: Queryable, pid: string, c?: Ctx): Promise<ProductRow> => {
+  const own = () => one<ProductRow>(db, 'SELECT * FROM command.shop_products WHERE id = $1', [pid]);
+  const r = await own();
+  if (r || providerFor('shop') !== 'live') return r ?? must<ProductRow>(db, 'SELECT * FROM command.shop_products WHERE id = $1', [pid], 'product');
+  if (c && (await adoptSiteProduct(db, pid, c.at, who(c.person)))) {
+    const made = await own();
+    if (made) return made;
+  }
+  const site = c ? null : await siteProductRow(db, pid);
+  if (!site) throw new ActionError(404, 'NOT_FOUND', 'No such product');
+  return site;
+};
 const history = (c: Ctx, pid: string, what: string) => c.tx.query('INSERT INTO command.shop_history (product_id, at, what, who) VALUES ($1, $2, $3, $4)', [pid, c.at, what, who(c.person)]);
 /** Closes the open shelf period and starts a new one. */
 const shelve = async (c: Ctx, pid: string, state: string) => {
@@ -427,7 +444,7 @@ const costing: Record<string, Action> = {
       return b.remove ? `Took ${i.name} out of ${p.name}’s recipe` : `Set ${i.name} in ${p.name}’s recipe`;
     },
     apply: async (c, b) => {
-      await prod(c.tx, b.product);
+      await prod(c.tx, b.product, c);
       if (b.remove) {
         const i = await inputRow(c.tx, b.input);
         const r = await c.tx.query('DELETE FROM command.shop_recipe_lines WHERE product_id = $1 AND input_id = $2 RETURNING 1', [b.product, b.input]);
@@ -450,7 +467,7 @@ const costing: Record<string, Action> = {
       return `${b.remove ? 'Removed' : 'Set'} ${i.name} for ${ofVariant(b.option, b.size)} in ${p.name}’s recipe`;
     },
     apply: async (c, b) => {
-      await prod(c.tx, b.product);
+      await prod(c.tx, b.product, c);
       const i = await inputRow(c.tx, b.input);
       if (b.remove) {
         const r = await c.tx.query('DELETE FROM command.shop_recipe_overrides WHERE product_id = $1 AND input_id = $2 AND option = $3 AND size = $4 RETURNING 1', [b.product, b.input, b.option, b.size]);
@@ -479,13 +496,13 @@ const costing: Record<string, Action> = {
       .refine((b) => !b.to.includes(b.from), 'A recipe can’t be copied onto itself'),
     summary: async (b, db) => `Copied ${(await prod(db, b.from)).name}’s recipe onto ${b.to.length} product${b.to.length === 1 ? '' : 's'} (${b.mode})`,
     apply: async (c, b) => {
-      const src = await prod(c.tx, b.from);
+      const src = await prod(c.tx, b.from, c);
       const { rows: lines } = await c.tx.query<{ input_id: string; position: number; amount: string | null; cost_cents: string | null; entered: string }>('SELECT * FROM command.shop_recipe_lines WHERE product_id = $1 ORDER BY position', [b.from]);
       if (!lines.length) throw new ActionError(409, 'NO_RECIPE', `${src.name} has no recipe to copy`);
       const { rows: ovs } = await c.tx.query<{ input_id: string; option: string; size: string; amount: string | null; cost_cents: string | null; entered: string }>('SELECT * FROM command.shop_recipe_overrides WHERE product_id = $1', [b.from]);
       let copied = 0;
       for (const to of [...new Set<string>(b.to)]) {
-        await prod(c.tx, to);
+        await prod(c.tx, to, c);
         if (b.mode === 'replace') await c.tx.query('DELETE FROM command.shop_recipe_lines WHERE product_id = $1', [to]);
         const added: string[] = [];
         for (const l of lines) {
@@ -520,7 +537,7 @@ const costing: Record<string, Action> = {
       const i = await liveInput(c.tx, b.input);
       const ps = [...new Set<string>(b.products)];
       for (const pid of ps) {
-        await prod(c.tx, pid);
+        await prod(c.tx, pid, c);
         await setLine(c.tx, pid, i.id, pinned(entered(b), i.unit_cost_cents));
         await history(c, pid, `Recipe · set ${i.name}`);
       }
@@ -563,7 +580,7 @@ const costing: Record<string, Action> = {
     }),
     summary: async (b, db) => `Made ${b.units} ${(await prod(db, b.product)).name}${b.option || b.size ? ' · ' + ofVariant(b.option, b.size) : ''}`,
     apply: async (c, b) => {
-      const p = await prod(c.tx, b.product);
+      const p = await prod(c.tx, b.product, c);
       await must(c.tx, 'SELECT 1 FROM command.shop_stock WHERE product_id = $1 AND option = $2 AND size = $3', [b.product, b.option, b.size], 'colour and size of that product');
       const book = await readBook(c.tx);
       const costed = productCost(book, b.product, { option: b.option, size: b.size });
@@ -628,7 +645,7 @@ const shop: Record<string, Action> = {
     body: z.object({ id, name: text(80).min(1), variant: text(80), price: money.positive(), cost: z.array(money).length(4).nullable() }),
     summary: (b) => `Updated ${b.name}`,
     apply: async (c, b) => {
-      await prod(c.tx, b.id);
+      await prod(c.tx, b.id, c);
       await c.tx.query('UPDATE command.shop_products SET name = $2, variant = $3, price_cents = $4, cost_cents = coalesce($5, cost_cents) WHERE id = $1', [b.id, b.name, b.variant, cents(b.price), b.cost ? b.cost.map(cents) : null]);
       await history(c, b.id, 'Updated the details');
     },
@@ -638,7 +655,7 @@ const shop: Record<string, Action> = {
     body: z.object({ id, why: text(120).min(1) }),
     summary: (b) => `Took ${b.id} off the shelf · ${b.why}`,
     apply: async (c, b) => {
-      await prod(c.tx, b.id);
+      await prod(c.tx, b.id, c);
       await c.tx.query(`UPDATE command.shop_products SET status = 'off', why = $2 WHERE id = $1`, [b.id, b.why]);
       await shelve(c, b.id, 'off');
       await history(c, b.id, `Taken off the shelf · ${b.why.toLowerCase()}`);
@@ -649,7 +666,7 @@ const shop: Record<string, Action> = {
     body: z.object({ id }),
     summary: (b) => `Put ${b.id} on the shelf`,
     apply: async (c, b) => {
-      await prod(c.tx, b.id);
+      await prod(c.tx, b.id, c);
       await c.tx.query(`UPDATE command.shop_products SET status = 'on', why = NULL WHERE id = $1`, [b.id]);
       await shelve(c, b.id, 'on');
       await history(c, b.id, 'Put on the shelf');
@@ -660,7 +677,7 @@ const shop: Record<string, Action> = {
     body: z.object({ id, why: text(120).default('Archived') }),
     summary: (b) => `Archived ${b.id}`,
     apply: async (c, b) => {
-      await prod(c.tx, b.id);
+      await prod(c.tx, b.id, c);
       await c.tx.query(`UPDATE command.shop_products SET status = 'arch', why = $2 WHERE id = $1`, [b.id, b.why]);
       await c.tx.query('UPDATE command.shop_shelf SET ends_at = $2 WHERE product_id = $1 AND ends_at IS NULL', [b.id, c.at]);
       await history(c, b.id, `Archived · ${b.why.toLowerCase()}`);
@@ -671,7 +688,7 @@ const shop: Record<string, Action> = {
     body: z.object({ id }),
     summary: (b) => `Restored ${b.id} as a draft`,
     apply: async (c, b) => {
-      await prod(c.tx, b.id);
+      await prod(c.tx, b.id, c);
       await c.tx.query(`UPDATE command.shop_products SET status = 'draft', why = 'Restored' WHERE id = $1`, [b.id]);
       await shelve(c, b.id, 'draft');
       await history(c, b.id, 'Restored as a draft');
@@ -696,6 +713,7 @@ const shop: Record<string, Action> = {
     apply: async (c, b) => {
       const o = await must<{ items: Array<[string, string, string, number]> }>(c.tx, 'SELECT items FROM command.shop_orders WHERE id = $1', [b.order], 'order');
       const [pid, , size] = o.items[0];
+      // only its name: a live order's items carry the site's slug, which the catalog answers
       const p = await prod(c.tx, pid);
       await c.tx.query(
         `INSERT INTO command.shop_returns (order_id, item, reason, returned_on, condition, proposed_by, proposed_at, second_person, refunded_at, amount_cents)
