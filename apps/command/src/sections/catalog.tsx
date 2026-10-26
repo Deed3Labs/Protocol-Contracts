@@ -1,5 +1,5 @@
 // @ts-nocheck: reads the sections' untyped data (src/sections/data.tsx), as the other section files do.
-import { api } from '../live/api';
+import { api, apiFile } from '../live/api';
 import { LIVE } from '../live/env';
 import { reloadSection } from '../live/sections';
 import { css } from '../runtime/dom';
@@ -78,6 +78,7 @@ export function storeSec(p) {
   const hw = c.section === 'for-shops';
   const colours = c.colours || [];
   const Row = edit ? 'button' : 'div';
+  const images = c.images || [];
   return sec(
     'On the store',
     <>
@@ -108,6 +109,40 @@ export function storeSec(p) {
       ) : (
         ''
       )}
+      <div className="pn-list">
+        <div className="pn-h">
+          <span className="lbl">Photos</span>
+          <span className="small quiet">{images.length ? 'The first is the one the shelf shows' : 'None yet: the shop draws it until there are'}</span>
+        </div>
+        {images.map((im, i) => (
+          <div key={im.src} className="pn-r">
+            <img src={im.src} alt="" width={56} height={56} style={css('width:56px;height:56px;object-fit:cover;flex:none;box-shadow:inset 0 0 0 1px var(--line)')} />
+            <span className="pn-k">
+              <b>{im.alt || 'No description'}</b>
+              <span className="small quiet">{i === 0 ? 'First' : `${i + 1} of ${images.length}`}</span>
+            </span>
+            {edit ? (
+              <span className="pn-a">
+                {i > 0 ? (
+                  <button type="button" className="pn-link" onClick={() => send([['photo-move', { id: p.id, src: im.src, to: 0 }]], null, 'It’s the first photo now.')}>
+                    First
+                  </button>
+                ) : (
+                  ''
+                )}
+                <button type="button" className="pn-link" data-kflow="photo" data-sid={p.id} data-ksrc={im.src}>
+                  Describe
+                </button>
+                <button type="button" className="pn-link" onClick={() => send([['photo-remove', { id: p.id, src: im.src }]], null, 'Taken off the store.')}>
+                  Take off
+                </button>
+              </span>
+            ) : (
+              <span />
+            )}
+          </div>
+        ))}
+      </div>
       {colours.length ? (
         <div className="pn-list">
           <div className="pn-h">
@@ -153,6 +188,10 @@ export function storeSec(p) {
       </div>
       {edit ? (
         <div className="pn-a">
+          <label className="pn-link" style={css('cursor:pointer')}>
+            Add photos
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => addPhotos(p, e.currentTarget)} />
+          </label>
           {colours.length ? (
             <button type="button" className="pn-link" data-kflow="colour" data-sid={p.id}>
               Add a colour
@@ -188,6 +227,36 @@ export function storeSec(p) {
       ''
     ),
   );
+}
+
+/** The largest photo the site's store takes in one go (a Vercel function's body tops out at 4.5 MB). */
+const MAX_PHOTO = 4 * 1024 * 1024;
+/**
+ * Uploads the photos picked, one after another (each stored in the site's Blob store, then added to the
+ * catalog), and says how it went. One too big or of the wrong kind is skipped, and said so.
+ */
+async function addPhotos(p, input) {
+  const files = [...(input.files || [])];
+  input.value = '';
+  if (!files.length || !LIVE) return;
+  const skipped = files.filter((f) => f.size > MAX_PHOTO || !['image/jpeg', 'image/png', 'image/webp'].includes(f.type));
+  const ok = files.filter((f) => !skipped.includes(f));
+  let added = 0;
+  toast(`Uploading ${ok.length} photo${ok.length === 1 ? '' : 's'}…`);
+  try {
+    for (const f of ok) {
+      const { src } = await apiFile(`/shop/photos/${p.id}?name=${encodeURIComponent(f.name)}`, f);
+      await api('POST', '/actions/shop/photo-add', { id: p.id, src });
+      added++;
+    }
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    await reloadSection('shop').catch(() => undefined);
+    render();
+  }
+  if (added || skipped.length)
+    toast([added ? `Added ${added} photo${added === 1 ? '' : 's'}` : '', skipped.length ? `${skipped.length} skipped: a photo is a JPEG, PNG or WebP up to 4 MB` : ''].filter(Boolean).join(' · '));
 }
 
 /** product-edit's required half: Command's shelf labels and the price as they are. */
@@ -238,13 +307,13 @@ function submit(f, calls) {
 /* ── The flows ────────────────────────────────────────────────────────── */
 
 /** The open flow: which, for what, and what's been picked in it. Typed fields survive a redraw. */
-const KF = { kind: '', pid: '', vid: '', col: '', sold: 'sale', tone: 'ink', section: 'goods', pkind: 'tee', colours: new Set(), sizes: new Set(SIZES), featured: false };
+const KF = { kind: '', pid: '', vid: '', col: '', src: '', sold: 'sale', tone: 'ink', section: 'goods', pkind: 'tee', colours: new Set(), sizes: new Set(SIZES), featured: false };
 
 export function openCatFlow(kind, pid = '', ds = {}) {
   vars.lastFocus = document.activeElement;
   const c = CATALOG[pid];
   const v = c?.variants?.find((x) => x.id === ds.kvar);
-  Object.assign(KF, { kind, pid: pid || '', vid: ds.kvar ?? '', col: ds.kcol ?? '', sold: v?.soldOut ? 'out' : 'sale', tone: 'ink', featured: !!c?.featured });
+  Object.assign(KF, { kind, pid: pid || '', vid: ds.kvar ?? '', col: ds.kcol ?? '', src: ds.ksrc ?? '', sold: v?.soldOut ? 'out' : 'sale', tone: 'ink', featured: !!c?.featured });
   if (kind === 'add')
     Object.assign(KF, {
       section: 'goods',
@@ -501,6 +570,27 @@ function build() {
           },
         ],
       ]);
+    return f;
+  }
+  if (k === 'photo' && p && c) {
+    const im = (c.images || []).find((x) => x.src === KF.src);
+    if (!im) return null;
+    const f = {
+      t: 'Describe a photo',
+      lbl: c.title,
+      h: 'What it shows',
+      p: 'Read aloud to someone who can’t see it, and shown if it doesn’t load.',
+      pre: (
+        <>
+          <img src={im.src} alt="" style={css('width:100%;max-height:240px;object-fit:contain;background:var(--raised)')} />
+          {field('kf-alt', 'Description', im.alt, { placeholder: 'The black Logo Tee, front, on a hanger' })}
+        </>
+      ),
+      btn: 'Save it',
+      steps: ['Saved the description', 'Told the store'],
+      done: ['Saved.', 'The store shows it within a minute.'],
+    };
+    f.go = () => submit(f, () => [['photo-alt', { id: p.id, src: im.src, alt: val('kf-alt') || fail('Say what it shows') }]]);
     return f;
   }
   if (k === 'add') return addFlow();

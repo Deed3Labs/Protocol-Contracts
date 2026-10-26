@@ -407,3 +407,52 @@ export async function revalidateSite(env: Record<string, string | undefined> = p
     return false;
   }
 }
+
+// ── Phase 11d: product photos ───────────────────────────────────────────────
+
+/** A photo the catalog can hold: the site's Blob store, under its product's folder (shop/<id>/). */
+export const isProductPhoto = (url: string, pid: string) => {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && /^[a-z0-9]+\.public\.blob\.vercel-storage\.com$/.test(u.hostname) && u.pathname.startsWith(`/shop/${pid}/`);
+  } catch {
+    return false;
+  }
+};
+export const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+/** What the site's route takes in one request (a Vercel function's body tops out at 4.5 MB). */
+export const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
+const photosUrl = (env: Record<string, string | undefined>) => env.COMMAND_SITE_PHOTOS_URL?.trim() || 'https://www.useclear.org/api/shop/photos';
+
+/**
+ * Stores a product photo through the site (its /api/shop/photos, with the shared token), which puts it
+ * in Vercel Blob and answers with its address. Throws with the site's reason when it refuses.
+ */
+export async function uploadPhoto(pid: string, name: string, type: string, bytes: Buffer, env: Record<string, string | undefined> = process.env, f: typeof fetch = fetch): Promise<string> {
+  const token = env.COMMAND_CATALOG_TOKEN?.trim();
+  if (!token) throw new Error('COMMAND_CATALOG_TOKEN isn’t set, so the site won’t take photos');
+  const r = await f(`${photosUrl(env)}?product=${encodeURIComponent(pid)}&name=${encodeURIComponent(name)}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': type },
+    body: new Uint8Array(bytes),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const j = (await r.json().catch(() => ({}))) as { url?: string; error?: string };
+  if (!r.ok || !j.url) throw new Error(j.error ?? `The site answered ${r.status}`);
+  if (!isProductPhoto(j.url, pid)) throw new Error('The site answered with an address that isn’t one of its photos');
+  return j.url;
+}
+
+/** Deletes a photo the catalog no longer holds, through the site. A failure is logged, not thrown: the catalog has already let it go. */
+export async function deletePhoto(url: string, env: Record<string, string | undefined> = process.env, f: typeof fetch = fetch): Promise<boolean> {
+  const token = env.COMMAND_CATALOG_TOKEN?.trim();
+  if (!token) return false;
+  try {
+    const r = await f(photosUrl(env), { method: 'DELETE', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) console.warn(`[catalog] the site didn't delete a photo: ${r.status}`);
+    return r.ok;
+  } catch (e) {
+    console.warn(`[catalog] couldn't reach the site to delete a photo: ${(e as Error).message}`);
+    return false;
+  }
+}

@@ -3,7 +3,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import type { AddressInfo } from 'node:net';
 import type { Db } from '../db/db.js';
 import { testDb } from '../db/testDb.js';
-import { revalidateSite } from '../services/command/catalog.js';
+import { deletePhoto, revalidateSite, uploadPhoto } from '../services/command/catalog.js';
 import { catalogFeed } from '../services/command/feedSources.js';
 import { feedRows, runFeed } from '../services/command/feeds.js';
 import { SEE } from '../services/command/levels.js';
@@ -20,6 +20,8 @@ import { commandCatalogRouter, commandRouter } from './command.js';
 const TOKEN = 'catalog-token-for-tests';
 let root = '';
 let pings = 0;
+const uploaded: Array<{ pid: string; name: string; type: string; size: number }> = [];
+const BLOB = 'https://abc123.public.blob.vercel-storage.com';
 let db: Db;
 const envShop = process.env.PROVIDER_SHOP;
 
@@ -118,6 +120,11 @@ beforeAll(async () => {
       appUrl: () => 'https://command.test',
       now: () => new Date('2026-10-26T17:00:00Z'),
       revalidate: async () => void pings++,
+      // the site's photo store, stood in for: it answers with the address Blob would
+      uploadPhoto: async (pid, name, type, bytes) => {
+        uploaded.push({ pid, name, type, size: bytes.length });
+        return `${BLOB}/shop/${pid}/${name.replace(/\.\w+$/, '')}-r${uploaded.length}.jpg`;
+      },
     }),
   );
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => res.status(500).json({ error: err.message }));
@@ -358,5 +365,71 @@ describe('telling the site', () => {
       throw new Error('down');
     }) as unknown as typeof fetch;
     expect(await revalidateSite({ COMMAND_SITE_REVALIDATE_URL: 'https://site.test/x', COMMAND_CATALOG_TOKEN: TOKEN }, down)).toBe(false);
+  });
+});
+
+describe('11d: product photos', () => {
+  const upload = async (who: Who, pid: string, bytes: Uint8Array, type = 'image/jpeg', name = 'front.jpg') => {
+    const r = await fetch(`${root}/api/command/shop/photos/${pid}?name=${name}`, { method: 'POST', headers: { 'content-type': type, 'x-test-user': who.user, 'x-command-session': who.session! }, body: bytes });
+    return { status: r.status, body: (await r.json()) as any };
+  };
+  const photos = async (slug: string) => (await pub(slug, TOKEN))?.images ?? [];
+  const pub = async (slug: string, token?: string) => (await catalog(token)).body.products.find((p: any) => p.slug === slug);
+
+  test('an upload is checked, stored through the site, and answered with its address; nothing’s in the catalog yet', async () => {
+    const r = await upload(kai, 'logopatch', new Uint8Array([0xff, 0xd8, 1, 2]));
+    expect(r.status).toBe(201);
+    expect(r.body.src).toBe(`${BLOB}/shop/logopatch/front-r1.jpg`);
+    expect(uploaded).toEqual([{ pid: 'logopatch', name: 'front.jpg', type: 'image/jpeg', size: 4 }]);
+    expect(await photos('logo-patch')).toEqual(patch.images);
+    expect((await upload(kai, 'logopatch', new Uint8Array([1]), 'image/gif')).status).toBe(415);
+    expect((await upload(kai, 'logopatch', new Uint8Array(0))).status).toBe(400);
+    expect((await upload(kai, 'logopatch', new Uint8Array(4 * 1024 * 1024 + 1))).status).toBe(413);
+    expect((await upload(kai, 'nosuch', new Uint8Array([1]))).status).toBe(404);
+    expect(uploaded).toHaveLength(1);
+  });
+
+  test('added, described, moved first and taken off; only this product’s photos in the store', async () => {
+    const a = `${BLOB}/shop/logopatch/front-r1.jpg`;
+    const b = (await upload(kai, 'logopatch', new Uint8Array([1, 2]), 'image/png', 'back.png')).body.src;
+    const before = pings;
+    expect((await act(kai, 'photo-add', { id: 'logopatch', src: a })).status).toBe(200);
+    expect((await act(kai, 'photo-add', { id: 'logopatch', src: b, alt: 'The back' })).status).toBe(200);
+    expect(pings).toBe(before + 2);
+    // the imported photo first, then the new ones; a photo without words is described by the product's name
+    expect(await photos('logo-patch')).toEqual([...patch.images, { src: a, alt: 'Logo Patch' }, { src: b, alt: 'The back' }]);
+    expect((await act(kai, 'photo-add', { id: 'logopatch', src: `${BLOB}/shop/logotee/x.jpg` })).status).toBe(400);
+    expect((await act(kai, 'photo-add', { id: 'logopatch', src: 'https://evil.example/shop/logopatch/x.jpg' })).status).toBe(400);
+    expect((await act(kai, 'photo-alt', { id: 'logopatch', src: a, alt: 'The patch, front' })).status).toBe(200);
+    expect((await act(kai, 'photo-move', { id: 'logopatch', src: b, to: 0 })).status).toBe(200);
+    expect((await photos('logo-patch')).map((i: any) => i.alt)).toEqual(['The back', 'The patch', 'The patch, front']);
+    expect((await act(kai, 'photo-remove', { id: 'logopatch', src: a })).status).toBe(200);
+    expect((await photos('logo-patch')).map((i: any) => i.src)).toEqual([b, patch.images[0].src]);
+    expect((await act(kai, 'photo-remove', { id: 'logopatch', src: a })).status).toBe(404);
+    // the Shop page has them too
+    const s: any = await shopSection(db, { level: SEE, reveal: false, now: new Date('2026-10-26T17:00:00Z') });
+    expect(s.CATALOG.logopatch.images.map((i: any) => i.src)).toEqual([b, patch.images[0].src]);
+  });
+
+  test('through the site: the token on each call, its refusal passed on, and a delete that never throws', async () => {
+    const sent: Array<{ url: string; method?: string; auth: string | null; type: string | null; body: unknown }> = [];
+    const site = (answer: unknown, status = 201) =>
+      (async (u: string, init?: RequestInit) => {
+        sent.push({ url: String(u), method: init?.method, auth: new Headers(init?.headers).get('authorization'), type: new Headers(init?.headers).get('content-type'), body: init?.body });
+        return new Response(JSON.stringify(answer), { status });
+      }) as unknown as typeof fetch;
+    const env = { COMMAND_CATALOG_TOKEN: TOKEN, COMMAND_SITE_PHOTOS_URL: 'https://site.test/api/shop/photos' };
+    expect(await uploadPhoto('logotee', 'front.jpg', 'image/jpeg', Buffer.from([1, 2]), env, site({ url: `${BLOB}/shop/logotee/front-x.jpg` }))).toBe(`${BLOB}/shop/logotee/front-x.jpg`);
+    expect(sent[0]).toMatchObject({ url: 'https://site.test/api/shop/photos?product=logotee&name=front.jpg', method: 'POST', auth: `Bearer ${TOKEN}`, type: 'image/jpeg' });
+    await expect(uploadPhoto('logotee', 'a.jpg', 'image/jpeg', Buffer.from([1]), env, site({ error: 'A photo can be up to 4 MB' }, 413))).rejects.toThrow('A photo can be up to 4 MB');
+    // an address that isn't this product's photo isn't believed
+    await expect(uploadPhoto('logotee', 'a.jpg', 'image/jpeg', Buffer.from([1]), env, site({ url: `${BLOB}/shop/other/a.jpg` }))).rejects.toThrow(/isn’t one of its photos/);
+    await expect(uploadPhoto('logotee', 'a.jpg', 'image/jpeg', Buffer.from([1]), {}, site({}))).rejects.toThrow(/COMMAND_CATALOG_TOKEN/);
+    expect(await deletePhoto(`${BLOB}/shop/logotee/front-x.jpg`, env, site({ ok: true }, 200))).toBe(true);
+    expect(sent.at(-1)).toMatchObject({ method: 'DELETE', body: JSON.stringify({ url: `${BLOB}/shop/logotee/front-x.jpg` }) });
+    const down = (async () => {
+      throw new Error('down');
+    }) as unknown as typeof fetch;
+    expect(await deletePhoto('x', env, down)).toBe(false);
   });
 });
