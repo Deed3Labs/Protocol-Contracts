@@ -22,6 +22,7 @@ import {
   CODE,
   COHORTS,
   COOP_W,
+  CATALOG,
   COST_HIST,
   COST_W,
   COVER,
@@ -286,6 +287,9 @@ const apply = {
     // each product's cost at sale, by week (Phase 10d)
     for (const k of Object.keys(COST_HIST)) delete COST_HIST[k];
     Object.assign(COST_HIST, d.COST_HIST ?? {});
+    // what the store shows of each catalog product (Phase 11b)
+    for (const k of Object.keys(CATALOG)) delete CATALOG[k];
+    Object.assign(CATALOG, d.CATALOG ?? {});
     const f = d.figures;
     replace(ORD_W, f['shop.orders_weekly']);
     assign(SHOP_COSTS, f['shop.costs']);

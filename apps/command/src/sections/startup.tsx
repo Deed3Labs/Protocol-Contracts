@@ -1,5 +1,5 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
-import { LIVE } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import * as live from '../live/account';
 import * as acts from '../live/actions';
 import { css, hasHtml, html } from '../runtime/dom';
@@ -8,6 +8,7 @@ import { $, closePf, money, openPf, pfAct, setRail, setTheme } from './core';
 import {
   MON,
   AGR,
+  CATALOG,
   CS,
   DAY,
   FS,
@@ -45,6 +46,7 @@ import { openRFlow } from './records';
 import { closeModal, finish, go, openItem, render, runSteps, toast, vLevel, viewExit } from './shell';
 import { openSFlow } from './shop';
 import { openCostFlow } from './costing';
+import { openCatFlow } from './catalog';
 import { sgnIn, sgnStep, sgnTimer, showLogin } from './signin';
 import { accOf, openTFlow } from './team';
 
@@ -861,6 +863,8 @@ export function startup() {
       return;
     }
     if (t.dataset.cflow) return openCostFlow(t.dataset.cflow, t.dataset.sid, t.dataset.cid, t.dataset);
+    // the store's catalog (Phase 11b): its own flows, live
+    if (t.dataset.kflow) return openCatFlow(t.dataset.kflow, t.dataset.sid, t.dataset);
     if (t.dataset.product) {
       SS.prod = t.dataset.product;
       SS.order = null;
@@ -903,6 +907,9 @@ export function startup() {
       return;
     }
     if (t.dataset.sflow) {
+      // live, adding a product and editing one in Command's catalog are the catalog's flows (Phase 11b)
+      if (REAL && t.dataset.sflow === 'add') return openCatFlow('add');
+      if (REAL && t.dataset.sflow === 'edit' && CATALOG[t.dataset.sid]) return openCatFlow('details', t.dataset.sid);
       if (t.dataset.sflow === 'add') SS.line = 'logo';
       if (t.dataset.sflow === 'shelf-off') SS.why = 'stock';
       return openSFlow(t.dataset.sflow, t.dataset.sid);

@@ -3,6 +3,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import type { AddressInfo } from 'node:net';
 import type { Db } from '../db/db.js';
 import { testDb } from '../db/testDb.js';
+import { revalidateSite } from '../services/command/catalog.js';
 import { catalogFeed } from '../services/command/feedSources.js';
 import { feedRows, runFeed } from '../services/command/feeds.js';
 import { SEE } from '../services/command/levels.js';
@@ -18,6 +19,7 @@ import { commandCatalogRouter, commandRouter } from './command.js';
 
 const TOKEN = 'catalog-token-for-tests';
 let root = '';
+let pings = 0;
 let db: Db;
 const envShop = process.env.PROVIDER_SHOP;
 
@@ -115,6 +117,7 @@ beforeAll(async () => {
       adminEmails: () => ['kai@useclear.org', 'second@useclear.org'],
       appUrl: () => 'https://command.test',
       now: () => new Date('2026-10-26T17:00:00Z'),
+      revalidate: async () => void pings++,
     }),
   );
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => res.status(500).json({ error: err.message }));
@@ -259,5 +262,101 @@ describe('editing the catalog', () => {
     // archived isn't sent at all
     expect((await act(kai, 'archive', { id: 'coopcap', why: 'Not making it' })).status).toBe(200);
     expect((await catalog(TOKEN)).body.products.map((p: any) => p.slug)).not.toContain('coop-cap');
+  });
+});
+
+describe('11b: editing the catalog from the app', () => {
+  const shop = (): Promise<any> => shopSection(db, { level: SEE, reveal: false, now: new Date('2026-10-26T17:00:00Z') });
+  const pub = async (slug: string, token?: string) => (await catalog(token)).body.products.find((p: any) => p.slug === slug);
+
+  test('the Shop page gets each catalog product as the store shows it, with what’s on hand behind each variant', async () => {
+    const c = (await shop()).CATALOG;
+    expect(c.logotee).toMatchObject({ slug: 'logo-tee-heavy', status: 'live', title: 'Logo Tee, heavyweight', price: 30, weightOz: 10, ships: 'Feb 2027', sellPastStock: true, variantLabel: 'Size' });
+    expect(c.logotee.variants[1]).toEqual({ id: 'black-m', label: 'Black · M', colour: 'black', size: 'm', price: null, deposit: null, per: null, soldOut: false, onHand: 0 });
+    expect(c.clearpoint).toMatchObject({ section: 'for-shops', fcc: true, ships: 'Feb 2027', founding: point.founding });
+    expect(c.clearpoint.variants[0]).toMatchObject({ id: 'table', price: 89, deposit: 60 });
+  });
+
+  test('a colour: in each of the garment’s sizes, with its stock; then taken off, unless some is on hand', async () => {
+    const before = pings;
+    const r = await act(kai, 'colour-add', { id: 'logotee', colour: { id: 'navy', label: 'Navy', swatch: '#252B3B', tone: 'ink' } });
+    expect(r.status).toBe(200);
+    expect(pings).toBe(before + 1);
+    const p = await pub('logo-tee-heavy');
+    expect(p.colours.map((c: any) => c.id)).toEqual(['black', 'white', 'navy']);
+    expect(p.variants.slice(-2)).toEqual([
+      { id: 'navy-s', label: 'Navy · S', colour: 'navy', size: 's' },
+      { id: 'navy-m', label: 'Navy · M', colour: 'navy', size: 'm' },
+    ]);
+    expect((await q(`SELECT count(*)::int AS n FROM command.shop_stock WHERE product_id = 'logotee' AND option = 'Navy'`))[0].n).toBe(6);
+    expect((await act(kai, 'colour-add', { id: 'logotee', colour: { id: 'navy2', label: 'navy', swatch: '#252B3B', tone: 'ink' } })).status).toBe(409);
+    await db.query(`UPDATE command.shop_stock SET on_hand = 2 WHERE product_id = 'logotee' AND option = 'Navy' AND size = 'M'`);
+    const held = await act(kai, 'colour-remove', { id: 'logotee', colour: 'navy' });
+    expect([held.status, held.body.error]).toEqual([409, 'Navy still has 2 on hand']);
+    await db.query(`UPDATE command.shop_stock SET on_hand = 0 WHERE product_id = 'logotee' AND option = 'Navy'`);
+    expect((await act(kai, 'colour-remove', { id: 'logotee', colour: 'navy' })).status).toBe(200);
+    expect((await pub('logo-tee-heavy')).variants.map((v: any) => v.id)).toEqual(['black-s', 'black-m', 'white-s', 'white-m']);
+    expect(await q(`SELECT 1 FROM command.shop_stock WHERE product_id = 'logotee' AND option = 'Navy'`)).toEqual([]);
+    expect((await q(`SELECT options FROM command.shop_products WHERE id = 'logotee'`))[0].options).toEqual(['Black', 'White']);
+  });
+
+  test('an option on a product without colours: its price waits for a second person while it’s on the shelf', async () => {
+    const r = await act(kai, 'variant-add', { id: 'clearpoint', label: 'Counter', price: 129, deposit: 65 });
+    expect(r.status).toBe(202);
+    const before = pings;
+    expect((await call(second, 'POST', `/proposals/${r.body.proposal.id}/approve`)).status).toBe(200);
+    expect(pings).toBe(before + 1);
+    expect((await pub('clear-point')).variants.at(-1)).toEqual({ id: 'counter', label: 'Counter', priceCents: 12900, depositCents: 6500 });
+    expect((await act(kai, 'variant-add', { id: 'logotee', label: 'XXL' })).status).toBe(409);
+    expect((await act(kai, 'variant-remove', { id: 'logotee', variant: 'black-s' })).status).toBe(409);
+    expect((await act(kai, 'variant-remove', { id: 'clearpoint', variant: 'counter' })).status).toBe(200);
+    expect((await pub('clear-point')).variants.map((v: any) => v.id)).toEqual(['table', 'ten']);
+    // one off the shelf takes a new option at once
+    expect((await act(kai, 'variant-add', { id: 'logopatch', label: 'Oval', price: 10 })).status).toBe(200);
+  });
+
+  test('stopping at what’s on hand: a colour and size with none shows sold out on the store', async () => {
+    expect((await act(kai, 'product-edit', await edit('logotee', { sellPastStock: false }))).status).toBe(200);
+    await db.query(`UPDATE command.shop_stock SET on_hand = 3 WHERE product_id = 'logotee' AND option = 'Black' AND size = 'S'`);
+    const p = await pub('logo-tee-heavy');
+    expect(p.variants.map((v: any) => [v.id, !!v.soldOut])).toEqual([['black-s', false], ['black-m', true], ['white-s', true], ['white-m', true]]);
+    expect((await shop()).CATALOG.logotee.variants[0]).toMatchObject({ onHand: 3, soldOut: false });
+    expect((await act(kai, 'product-edit', await edit('logotee', { sellPastStock: true }))).status).toBe(200);
+    expect((await pub('logo-tee-heavy')).variants.some((v: any) => v.soldOut)).toBe(false);
+  });
+
+  test('a new product goes into the catalog as a draft, in colours and sizes, with its stock and shelf', async () => {
+    const r = await act(kai, 'catalog-add', {
+      title: 'Logo Crewneck', slug: 'logo-crewneck', section: 'goods', kind: 'hoodie', category: 'Wear', alsoIn: ['Logo'], tagline: 'A heavy crewneck.', description: 'Fleece, patch on the chest.',
+      details: ['Heavy fleece'], price: 72, variantLabel: 'Size', colours: [{ id: 'black', label: 'Black', swatch: '#232324', tone: 'ink' }], sizes: ['s', 'm', 'l'], weightOz: 22, ships: 'Mar 2027',
+    });
+    expect(r.status).toBe(200);
+    expect(r.body.result.id).toBe('logocrewneck');
+    expect(await pub('logo-crewneck')).toBeUndefined();
+    expect(await pub('logo-crewneck', TOKEN)).toMatchObject({ status: 'draft', name: 'Logo Crewneck', priceCents: 7200, ships: 'Mar 2027', variants: [{ id: 'black-s' }, { id: 'black-m' }, { id: 'black-l' }] });
+    expect((await q(`SELECT count(*)::int AS n FROM command.shop_stock WHERE product_id = 'logocrewneck'`))[0].n).toBe(6);
+    expect((await shop()).PR.find((p: any) => p.id === 'logocrewneck')).toMatchObject({ st: 'draft', slug: 'logo-crewneck' });
+    expect((await act(kai, 'catalog-add', { title: 'Again', slug: 'logo-crewneck', section: 'goods', kind: 'tee', category: 'Wear', price: 10, weightOz: 5 })).status).toBe(409);
+    // hardware: one size, reserved with a deposit
+    const hw = await act(kai, 'catalog-add', { title: 'Clear Kiosk', slug: 'clear-kiosk', section: 'for-shops', kind: 'kit', category: 'For shops', price: 400, deposit: 100, weightOz: 80, ships: 'Jun 2027' });
+    expect(hw.status).toBe(200);
+    expect(await pub('clear-kiosk', TOKEN)).toMatchObject({ preorder: { ships: 'Jun 2027', fcc: false }, variants: [{ id: 'one-size', label: 'One size', depositCents: 10000 }] });
+  });
+});
+
+describe('telling the site', () => {
+  test('a POST with the token to COMMAND_SITE_REVALIDATE_URL; nothing without it, and a failure isn’t thrown', async () => {
+    const sent: Array<{ url: string; method?: string; auth: string | null }> = [];
+    const f = (async (u: string, init?: RequestInit) => {
+      sent.push({ url: String(u), method: init?.method, auth: new Headers(init?.headers).get('authorization') });
+      return new Response('{}');
+    }) as unknown as typeof fetch;
+    expect(await revalidateSite({ COMMAND_SITE_REVALIDATE_URL: 'https://site.test/api/shop/revalidate', COMMAND_CATALOG_TOKEN: TOKEN }, f)).toBe(true);
+    expect(sent).toEqual([{ url: 'https://site.test/api/shop/revalidate', method: 'POST', auth: `Bearer ${TOKEN}` }]);
+    expect(await revalidateSite({ COMMAND_CATALOG_TOKEN: TOKEN }, f)).toBe(false);
+    const down = (async () => {
+      throw new Error('down');
+    }) as unknown as typeof fetch;
+    expect(await revalidateSite({ COMMAND_SITE_REVALIDATE_URL: 'https://site.test/x', COMMAND_CATALOG_TOKEN: TOKEN }, down)).toBe(false);
   });
 });

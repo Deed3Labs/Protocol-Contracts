@@ -30,7 +30,7 @@ import { codeStatus } from '../services/command/github.js';
 import { feedStatus, requestSync, type Feed } from '../services/command/feeds.js';
 import { liveFeeds, plaidWebhook, plaidWebhookKey, shopAddress } from '../services/command/feedSources.js';
 import { join } from '../services/command/waitlist.js';
-import { publicCatalog } from '../services/command/catalog.js';
+import { publicCatalog, revalidateSite } from '../services/command/catalog.js';
 import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
@@ -71,6 +71,8 @@ export interface CommandDeps {
   safe?: { config: () => SafeConfig | null; reader: SafeReader };
   /** Where files people add are kept (Postgres unless given). */
   files?: FileStore;
+  /** Tells the site its catalog changed (Phase 11b): COMMAND_SITE_REVALIDATE_URL unless given. */
+  revalidate?: () => Promise<unknown>;
   /** Rate limits: sign-in attempts, and writes. */
   limits?: { signIn: RequestHandler; write: RequestHandler };
   now?: () => Date;
@@ -714,9 +716,11 @@ export function commandRouter(deps: CommandDeps) {
       const result = p.kind === 'action' ? await runAction(tx, p.payload as unknown as ActionPayload, proposer, c.person, p.id) : await apply(tx, p.payload as Change, proposer);
       await store.settleProposal(tx, p.id, 'approved', c.person.id, now());
       await auditFrom(req, { area: p.area, action: p.summary, detail: 'Approved by a second person', after: p.payload, result: 'approved', approver: c.person.id }, tx);
-      return { status: 200, result };
+      const ap = p.payload as unknown as ActionPayload;
+      return { status: 200, result, kind: p.kind, section: ap.section, actionKind: ap.kind };
     });
     if (out.status !== 200) return fail(res, out.status, out.code!, out.message!);
+    if (out.kind === 'action') afterAction(actionFor(out.section!, out.actionKind!) as Action);
     res.json({ done: true, ...out.result });
   });
 
@@ -767,12 +771,18 @@ export function commandRouter(deps: CommandDeps) {
         await auditFrom(req, { area: section, action: summary, detail: r.queued ? 'Recorded for the outside system; nothing sent yet' : '', after: b.data, result: 'done' }, tx);
         return r;
       });
+      afterAction(a);
       res.json({ done: true, ...out });
     } catch (e) {
       if (e instanceof ActionError) return fail(res, e.status, e.code, e.message);
       throw e;
     }
   });
+
+  /** What follows a committed action: a change to the store's catalog tells the site, never holding up the answer. */
+  function afterAction(a: Action | undefined) {
+    if (a?.revalidates) void (deps.revalidate ?? revalidateSite)().catch(() => undefined);
+  }
 
   /** Runs an action as the person who asked for it (and the second person, when approved). */
   async function runAction(tx: Queryable, p: ActionPayload, by: store.Person, approver: store.Person | null, proposalId: string | null) {

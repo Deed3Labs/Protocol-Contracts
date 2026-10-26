@@ -3556,6 +3556,8 @@ export const MATERIALS = { onHand: [], low: [], makes: {}, covers: {} };
 export const RUNS = [];
 // live only (Phase 10d): each product's cost at sale by week, from its sales' recorded costs
 export const COST_HIST = {};
+// live only (Phase 11b): what the store shows of each product in Command's catalog, by product id
+export const CATALOG = {};
 export const REV_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * p.price, 0));
 export const COST_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * unitCost(p), 0));
 export const LINE_COSTS = [

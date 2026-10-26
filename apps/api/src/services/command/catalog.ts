@@ -191,23 +191,42 @@ export async function importCatalog(db: Queryable, products: CatalogProduct[], m
     if (had?.in_catalog) continue;
     if (!had && !(await recordFromSite(db, p, at, who, 'Imported into Command’s catalog from the site'))) continue;
     const id = had?.id ?? siteProduct(p, undefined, []).id;
-    await db.query(
-      `UPDATE command.shop_products SET in_catalog = true, slug = $2, section = $3, kind = $4, title = $5, tagline = $6, description = $7, details = $8,
-         category = $9, also_in = $10, featured = $11, variant_label = $12, weight_oz = $13, ships = $14, fcc = $15, fcc_notice = $16, founding = $17,
-         images = $18, price_cents = $19, status = CASE WHEN $20 THEN status ELSE $21 END
-       WHERE id = $1`,
-      [
-        id, p.slug, p.section, p.kind, p.name, p.line ?? '', p.description, p.details, p.category, p.alsoIn ?? [], !!p.featured, p.variantLabel ?? null,
-        p.weightOz > 0 ? p.weightOz : null, p.preorder?.ships ?? p.ships ?? null, !!p.preorder?.fcc, p.fcc ?? null, p.founding ?? null,
-        JSON.stringify(p.images ?? []), p.priceCents, !!had, p.status === 'live' ? 'on' : 'draft',
-      ],
-    );
-    await setColours(db, id, p.colours ?? []);
-    await setVariants(db, id, p.variants);
+    await fillRecord(db, id, p, !!had);
     if (had) await db.query('INSERT INTO command.shop_history (product_id, at, what, who) VALUES ($1, $2, $3, $4)', [id, at, 'Imported into Command’s catalog from the site', who]);
     imported.push(id);
   }
   return imported;
+}
+
+/** Fills a record with the store's fields, colours and variants. `keepStatus`: an existing record keeps its shelf status. */
+async function fillRecord(db: Queryable, id: string, p: CatalogProduct, keepStatus: boolean) {
+  await db.query(
+    `UPDATE command.shop_products SET in_catalog = true, slug = $2, section = $3, kind = $4, title = $5, tagline = $6, description = $7, details = $8,
+       category = $9, also_in = $10, featured = $11, variant_label = $12, weight_oz = $13, ships = $14, fcc = $15, fcc_notice = $16, founding = $17,
+       images = $18, price_cents = $19, status = CASE WHEN $20 THEN status ELSE $21 END
+     WHERE id = $1`,
+    [
+      id, p.slug, p.section, p.kind, p.name, p.line ?? '', p.description, p.details, p.category, p.alsoIn ?? [], !!p.featured, p.variantLabel ?? null,
+      p.weightOz > 0 ? p.weightOz : null, p.preorder?.ships ?? p.ships ?? null, !!p.preorder?.fcc, p.fcc ?? null, p.founding ?? null,
+      JSON.stringify(p.images ?? []), p.priceCents, keepStatus, p.status === 'live' ? 'on' : 'draft',
+    ],
+  );
+  await setColours(db, id, p.colours ?? []);
+  await setVariants(db, id, p.variants);
+}
+
+/**
+ * A product added in Command (Phase 11b), straight into its catalog as a draft: its record made the way
+ * an imported one's is (shelf labels, line and glyph from its kind, stock at 0 for each colour and
+ * size). Returns its id, or null when one already has its slug or id.
+ */
+export async function addToCatalog(db: Queryable, p: CatalogProduct, at: Date, who: string): Promise<string | null> {
+  const draft = { ...p, status: 'draft' as const };
+  if (await db.query('SELECT 1 FROM command.shop_products WHERE slug = $1', [p.slug]).then((r) => r.rows.length)) return null;
+  if (!(await recordFromSite(db, draft, at, who, 'Added to the catalog as a draft'))) return null;
+  const id = siteProduct(draft, undefined, []).id;
+  await fillRecord(db, id, draft, false);
+  return id;
 }
 
 /** Replaces a product's colours, in order. */
@@ -248,10 +267,11 @@ type ProductRecord = {
   founding: string | null;
   images: Array<{ src: string; alt: string }>;
   price_cents: number;
+  sell_past_stock: boolean;
 };
 
 /** Command's catalog: every product in it, in the shelf's order, with Command's id and shelf status alongside the store's shape. */
-export async function catalogProducts(db: Queryable): Promise<Array<CatalogProduct & { id: string; shelf: string }>> {
+export async function catalogProducts(db: Queryable): Promise<Array<CatalogProduct & { id: string; shelf: string; sellPastStock: boolean }>> {
   const { rows } = await db.query<ProductRecord>('SELECT * FROM command.shop_products WHERE in_catalog ORDER BY position');
   if (!rows.length) return [];
   const { rows: cs } = await db.query<{ product_id: string; id: string; label: string; swatch: string; tone: Tone; fill: boolean }>('SELECT * FROM command.shop_colours ORDER BY product_id, position');
@@ -272,11 +292,23 @@ export async function catalogProducts(db: Queryable): Promise<Array<CatalogProdu
       ...(v.size ? { size: v.size } : {}),
       ...(v.sold_out ? { soldOut: true } : {}),
     });
+  // a product that stops at what's on hand: a colour and size with nothing left shows sold out
+  const stops = rows.filter((r) => !r.sell_past_stock).map((r) => r.id);
+  const stock = new Map<string, number>();
+  if (stops.length) {
+    const { rows: st } = await db.query<{ product_id: string; option: string; size: string; on_hand: number }>('SELECT product_id, option, size, on_hand FROM command.shop_stock WHERE product_id = ANY($1)', [stops]);
+    for (const x of st) stock.set(`${x.product_id}|${x.option}|${x.size}`, x.on_hand);
+  }
+  const onHandOf = (pid: string, v: CatalogVariant) => {
+    const option = v.colour ? (colours.get(pid)?.find((c) => c.id === v.colour)?.label ?? v.colour) : v.label;
+    return stock.get(`${pid}|${option}|${(v.size ?? '').toUpperCase()}`);
+  };
   return rows.map((r) => {
     const hw = r.section === 'for-shops';
     return {
       id: r.id,
       shelf: r.status,
+      sellPastStock: r.sell_past_stock,
       slug: r.slug,
       section: r.section,
       name: r.title ?? r.name,
@@ -288,7 +320,7 @@ export async function catalogProducts(db: Queryable): Promise<Array<CatalogProdu
       alsoIn: r.also_in,
       ...(r.featured ? { featured: true } : {}),
       ...(r.variant_label ? { variantLabel: r.variant_label } : {}),
-      variants: variants.get(r.id) ?? [],
+      variants: (variants.get(r.id) ?? []).map((v) => (!r.sell_past_stock && !v.soldOut && onHandOf(r.id, v) === 0 ? { ...v, soldOut: true } : v)),
       colours: colours.get(r.id) ?? [],
       details: r.details,
       weightOz: r.weight_oz == null ? 0 : Number(r.weight_oz),
@@ -308,7 +340,70 @@ export async function catalogProducts(db: Queryable): Promise<Array<CatalogProdu
  */
 export async function publicCatalog(db: Queryable, drafts: boolean) {
   const all = await catalogProducts(db);
-  const products = all.filter((p) => p.shelf !== 'arch' && (drafts || p.status === 'live')).map(({ id: _id, shelf: _shelf, ...p }) => p);
+  const products = all.filter((p) => p.shelf !== 'arch' && (drafts || p.status === 'live')).map(({ id: _id, shelf: _shelf, sellPastStock: _sell, ...p }) => p);
   const { rows } = await db.query<{ old_slug: string; new_slug: string }>('SELECT old_slug, new_slug FROM command.shop_moved ORDER BY old_slug');
   return { products, moved: Object.fromEntries(rows.map((r) => [r.old_slug, r.new_slug])) };
+}
+
+/**
+ * Command's catalog for the Shop page (Phase 11b), by product id: the store's fields as the store shows
+ * them, money in dollars, each variant with what's on hand behind it, and whether it sells past stock.
+ */
+export async function catalogPayload(db: Queryable): Promise<Record<string, unknown>> {
+  const all = await catalogProducts(db);
+  if (!all.length) return {};
+  const { rows: st } = await db.query<{ product_id: string; option: string; size: string; on_hand: number }>('SELECT product_id, option, size, on_hand FROM command.shop_stock WHERE product_id = ANY($1)', [all.map((p) => p.id)]);
+  const stock = new Map(st.map((x) => [`${x.product_id}|${x.option}|${x.size}`, x.on_hand]));
+  const d = (c: number | undefined) => (c == null ? null : c / 100);
+  return Object.fromEntries(
+    all.map((p) => [
+      p.id,
+      {
+        slug: p.slug,
+        status: p.status,
+        section: p.section,
+        kind: p.kind,
+        title: p.name,
+        tagline: p.line,
+        description: p.description,
+        details: p.details,
+        category: p.category,
+        alsoIn: p.alsoIn,
+        featured: !!p.featured,
+        variantLabel: p.variantLabel ?? null,
+        price: p.priceCents / 100,
+        weightOz: p.weightOz || null,
+        ships: p.preorder?.ships ?? p.ships ?? null,
+        fcc: !!p.preorder?.fcc,
+        fccNotice: p.fcc ?? null,
+        founding: p.founding ?? null,
+        images: p.images ?? [],
+        sellPastStock: p.sellPastStock,
+        colours: p.colours,
+        variants: p.variants.map((v) => {
+          const option = v.colour ? (p.colours.find((c) => c.id === v.colour)?.label ?? v.colour) : v.label;
+          return { id: v.id, label: v.label, colour: v.colour ?? null, size: v.size ?? null, price: d(v.priceCents), deposit: d(v.depositCents), per: v.per ?? null, soldOut: !!v.soldOut, onHand: stock.get(`${p.id}|${option}|${(v.size ?? '').toUpperCase()}`) ?? null };
+        }),
+      },
+    ]),
+  );
+}
+
+/**
+ * Tells the site its catalog changed (Phase 11b), so an edit shows within seconds rather than at its
+ * cache's next minute: a POST to COMMAND_SITE_REVALIDATE_URL with the shared token. Off until that's
+ * set (the site's route comes in 11c); a failure is logged, never thrown: the change is made either way.
+ */
+export async function revalidateSite(env: Record<string, string | undefined> = process.env, f: typeof fetch = fetch): Promise<boolean> {
+  const url = env.COMMAND_SITE_REVALIDATE_URL?.trim();
+  const token = env.COMMAND_CATALOG_TOKEN?.trim();
+  if (!url || !token) return false;
+  try {
+    const r = await f(url, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(5000) });
+    if (!r.ok) console.warn(`[catalog] the site's revalidate answered ${r.status}`);
+    return r.ok;
+  } catch (e) {
+    console.warn(`[catalog] couldn't reach the site's revalidate: ${(e as Error).message}`);
+    return false;
+  }
 }
