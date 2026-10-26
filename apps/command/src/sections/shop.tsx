@@ -141,6 +141,22 @@ export function shortN(p) {
           : p.n;
 }
 /* ── drawing ──────────────────────────────────────────────────────────── */
+/** A round step near x: 1, 2 or 5 times a power of ten. */
+const niceStep = (x) => {
+  const p = 10 ** Math.floor(Math.log10(x)),
+    f = x / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+};
+/** The waterfall's scale for these figures: from a round step at or under the lowest (0 at most) to one at or over the highest, and its gridlines. */
+export function wfScale(vals) {
+  const min = Math.min(0, ...vals),
+    max = Math.max(0, ...vals);
+  if (max - min < 1) return { lo: 0, hi: 1000, ticks: [0, 500, 1000] };
+  const step = niceStep((max - min) / 4),
+    lo = Math.floor(min / step) * step,
+    hi = Math.ceil(max / step) * step;
+  return { lo, hi, ticks: Array.from({ length: Math.round((hi - lo) / step) + 1 }, (_, i) => lo + i * step) };
+}
 export function waterfall() {
   const S = SHOP,
     steps = [
@@ -152,23 +168,27 @@ export function waterfall() {
       ['Running the line', S.left, S.gross, 'neg'],
       ['For marketing', 0, S.left, 'keep'],
     ];
-  const max = 5500,
-    Y = (v) => (v / max) * 100;
+  // live, the scale fits the figures and reaches below 0 when they do: the zero line moves up, so a
+  // bar under 0 stays in the chart rather than running into the labels. The prototype's is fixed.
+  const sc = REAL ? wfScale(steps.flatMap(([, lo, hi]) => [lo, hi])) : { lo: 0, hi: 5500, ticks: [0, 2000, 4000] },
+    Y = REAL ? (v) => ((v - sc.lo) / (sc.hi - sc.lo)) * 100 : (v) => (v / sc.hi) * 100,
+    H = REAL ? (d) => (Math.abs(d) / (sc.hi - sc.lo)) * 100 : Y;
   return (
     <div className="wfl" role="img" aria-label={steps.map((s) => s[0] + ' ' + money(s[2] - s[1])).join(', ')}>
       <div className="wfl-p">
-        {[0, 2000, 4000].map((v, __k) => (
+        {sc.ticks.map((v, __k) => (
           <i key={__k} className="wfl-g" style={css(`bottom:${Y(v)}%`)}>
-            <span>{v ? '$' + v / 1000 + 'k' : '0'}</span>
+            <span>{v ? (v < 0 ? '−$' : '$') + (Math.abs(v) >= 1000 ? Math.abs(v) / 1000 + 'k' : Math.abs(v)) : '0'}</span>
           </i>
         ))}
         {steps.map(([k, lo, hi, c], i) => (
           <div key={i} className="wfl-c">
-            <span className={`wfl-v ${c}`} style={css(`bottom:${Y(hi)}%`)}>
-              {c === 'neg' ? '−' : ''}
-              {k$(hi - lo)}
+            {/* a total below 0 (gross profit, what's left) reads −$506, not $-506 */}
+            <span className={`wfl-v ${c}`} style={css(`bottom:${Y(Math.max(lo, hi))}%`)}>
+              {c === 'neg' || hi < lo ? '−' : ''}
+              {k$(Math.abs(hi - lo))}
             </span>
-            <i className={`wfl-b ${c}`} style={css(`bottom:${Y(lo)}%;height:${Y(hi - lo)}%`)} />
+            <i className={`wfl-b ${c}`} style={css(`bottom:${Y(Math.min(lo, hi))}%;height:${H(hi - lo)}%`)} />
             {i < steps.length - 1 ? <em className="wfl-j" style={css(`bottom:${Y(c === 'neg' ? lo : hi)}%`)} /> : ''}
           </div>
         ))}
