@@ -4,20 +4,21 @@ import { LIVE } from '../live/env';
 import { reloadSection } from '../live/sections';
 import { css } from '../runtime/dom';
 import { ic, money } from './core';
-import { INPUTS, MATERIALS, PR, RECIPES, RUNS, SIZES, SS, STK, vars } from './data';
+import { COST_HIST, INPUTS, MATERIALS, PR, RECIPES, RUNS, SIZES, SS, STK, vars } from './data';
 import { kv, sec, vModal } from './governance';
 import { G, figHtml, fmtD } from './growth';
 import { mkey } from './home';
 import { ddHtml, stepFlow } from './kit';
 import { strip } from './money';
 import { closeModal, render, toast } from './shell';
-import { glyph, pName, prOf, shortN } from './shop';
+import { glyph, pName, prOf, shortN, unitCost } from './shop';
 
 /*
  * What goes into a product (docs/command-center-plan.md, Phase 10b), live only: Shop's Costs tab (the
  * inputs library and an input's pane), the product pane's recipe, and their flows. Phase 10c adds the
  * stock: Inventory's Materials and Runs, an input's purchases and ledger, counting and writing off,
- * and recording a production run. The prototype has none of it, so nothing here draws unless REAL;
+ * and recording a production run. Phase 10d adds what a sale cost: a product's cost at sale over
+ * time, and an order's cost and margin. The prototype has none of it, so nothing here draws unless REAL;
  * shop.tsx and startup.tsx call in.
  *
  * Money in the payload and in the actions' bodies is dollars. A unit cost keeps its fractions of a
@@ -700,6 +701,66 @@ export function recipeSec(p) {
       ''
     ),
   );
+}
+/** "$14.91", or "$14.91–$16.51" when the week's sizes cost differently. */
+const costRange = (lo, hi) => (lo === hi ? money(lo) : `${money(lo)}–${money(hi)}`);
+/** A product's cost at sale over time (Phase 10d): today's, then each week it sold, as its sales recorded. */
+export function costHistSec(p) {
+  const ws = COST_HIST[p.id] || [];
+  if (!ws.length) return '';
+  return sec(
+    'Cost at sale',
+    <>
+      <div className="pn-list">
+        <div className="pn-r">
+          <span className="ev-d">Now</span>
+          <span className="pn-k">
+            <b>{money(RECIPES[p.id]?.cost ?? unitCost(p))}</b>
+            <span className="small quiet">{RECIPES[p.id] ? 'From the recipe' : 'From the costs entered'}</span>
+          </span>
+          <span />
+        </div>
+        {ws.map((w) => (
+          <div key={w.week} className="pn-r">
+            <span className="ev-d">{fmtD(w.week)}</span>
+            <span className="pn-k">
+              <b>{costRange(w.low, w.high)}</b>
+              <span className="small quiet">
+                {w.units}
+                {' sold that week'}
+                {w.later ? ' · costed later' : ''}
+              </span>
+            </span>
+            <span />
+          </div>
+        ))}
+      </div>
+      {ws.some((w) => w.later) ? (
+        <p className="quiet small" style={css('margin:8px 0 0')}>
+          Sales from before costs were recorded were costed later, at the recipe as it stood then.
+        </p>
+      ) : (
+        ''
+      )}
+    </>,
+  );
+}
+/** An order's cost to make and its margin on the items (Phase 10d), from See: each line as it cost when it sold, or today's for one not costed yet. */
+export function orderCostRows(o, sub) {
+  const items = o[4];
+  if (!items.some((i) => i.length > 4)) return [];
+  let cost = 0,
+    bare = 0;
+  for (const [pid, , , q, c] of items) {
+    const p = prOf(pid);
+    if (c == null) bare++;
+    cost += q * (c ?? (p ? unitCost(p) : 0));
+  }
+  const m = sub - cost;
+  return [
+    ['Cost to make', `${money(cost)}${bare ? ` · ${bare === 1 ? 'a line' : `${bare} lines`} at today’s cost` : ''}`],
+    ['Margin on items', `${signed(m)} · ${share(sub ? m / sub : null)}`],
+  ];
 }
 /** For a product with no recipe yet: its boxes stay, and a recipe can be started. */
 export const startRecipe = (p) => (

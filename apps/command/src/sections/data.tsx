@@ -3554,6 +3554,8 @@ export const RECIPES = {};
 export const MATERIALS = { onHand: [], low: [], makes: {}, covers: {} };
 // live only (Phase 10c): the recent production runs
 export const RUNS = [];
+// live only (Phase 10d): each product's cost at sale by week, from its sales' recorded costs
+export const COST_HIST = {};
 export const REV_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * p.price, 0));
 export const COST_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * unitCost(p), 0));
 export const LINE_COSTS = [
