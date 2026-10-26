@@ -322,7 +322,7 @@ which needs ClickHouse), instead of Plausible's Stats API.
 - **9c · Dev.** Every `PROVIDER_*=live`, `COMMAND_SEED` off, Umami hosted and on the site, and each
   page checked signed in.
 
-### Phase 10: what goes into a product (shop costing)
+### Phase 10: what goes into a product (shop costing) (built: 10a #780, 10b #781, 10c #782, 10d #783)
 
 Kai, 2026-10-25: a product's cost isn't four fixed boxes (blank, making, label, packing) typed per
 product. It's made of **inputs** (materials, services, labour), kept in one library, reused across
@@ -392,6 +392,89 @@ are filled in.
   production runs that use up materials and add finished units.
 - **10d · What a sale costs.** Orders record their cost when they come in from Stripe. Margins use
   it, and products show their cost history.
+
+### Phase 11: Command runs the shop's catalog
+
+Kai, 2026-10-25: editing a product in Command should change the store. Today it doesn't:
+- **The store's catalog is a content file** in the website repo (`content/shop.ts`, 21 products).
+  The shelf, the product pages, the bag and the checkout all read it, and changing anything means
+  editing the file and redeploying.
+- **Command only reads it**, through the site's `/api/shop/catalog`. Its product actions (details,
+  shelf on and off, archive, add) save to Command's own tables and queue an outbox row that nothing
+  carries out. Live, the page shows the site's name, price and status, so an edit looks like it did
+  nothing. (#786 made the first action on a site product create Command's record of it, so recipes,
+  runs and stock work; the catalog itself is still the site's.)
+
+The aim: **Command is where the catalog lives**, and the store reads it from Command.
+
+**What moves, and what stays with the site.**
+- **Command owns what an owner changes:**
+  - the name, line, description and details;
+  - the price, and each variant's label, price, deposit, "per" and sold-out flag;
+  - colours (label and swatch), category, the other shelves it's listed on, and the featured tile;
+  - the packed weight (Shippo's parcel), the month goods ship, and hardware's pre-order details;
+  - its status, its photos, and its slug, with old slugs kept so links and orders still find it.
+- **The site keeps how a product is drawn**, because that's code: the kind's shape, the plate's
+  tone and art, and hardware's renders and CAD sheets (`media`). They're matched to Command's
+  products by slug. A product Command adds with no drawing yet gets its kind's plain plate.
+
+**How the store reads it.**
+- **Command's API serves the catalog publicly:** live products for anyone, drafts too when asked
+  with the shared token (`COMMAND_CATALOG_TOKEN`, now used in the other direction). Its shape is
+  the site's `Product` without the drawing fields.
+- **The site reads it on the server**, cached for a minute, and Command calls the site's
+  revalidate route after each change, so an edit shows within seconds.
+- **The store never goes down with Command.** The site keeps the last catalog it read and falls
+  back to it, and the content file stays as the first fallback.
+- **Product pages become incremental** (`dynamicParams` on), so a product added in Command gets its
+  page without a redeploy.
+- **Checkout keeps pricing on the server**, from the same catalog the buyer saw. Stripe needs no
+  syncing, because checkout sends `price_data` inline rather than Stripe Price ids.
+
+**In Command.**
+- **A one-time import** brings the 21 products from the site into Command. Ids stay the page ids
+  already in use (the slug without dashes), so the recipes, stock and order costs recorded since
+  #786 still match.
+- **The product pane's details become real edits:** name, line, description, details, price,
+  weight, ships, status, variants and colours, photos. Shelf on, off, archive and add change the
+  store directly, with no outbox row, and every change is logged as now.
+  - "On the shelf" is live on the site; off, draft and archived aren't shown.
+- **Sold out can follow stock** where a product is made ahead: a variant at 0 on hand shows sold
+  out. Goods sold on pre-order (paid now, made in one run) keep selling past 0. This is a setting
+  per product.
+
+**Open questions for Kai.**
+1. **Which API serves the live store.** command.useclear.org runs on the dev API (testnet, sandbox
+   Stripe), and the live store is production. *Recommendation:* build and prove it on dev, with
+   the site's Preview deploys reading dev's catalog. Production keeps its content file until
+   Command runs on the production API (when dev is released to main). Switching the live store is
+   then one env var on the site (`COMMAND_CATALOG_URL`).
+2. **Where photos live.** Today they're files in the website repo (`public/shop`). Command's file
+   store is Postgres and private (`services/command/files.ts`), so it can't serve a public image
+   as it stands. *Recommendation:* Vercel Blob on the website's project. Command uploads through a
+   small token-checked route on the site, and photos are served from Blob's CDN. Existing photos
+   keep their `/shop/...` paths.
+3. **Whether a price change on a live product needs a second person**, as refunds over $50 do.
+   *Recommendation:* no, it's logged, but say if you want it.
+
+- **11a · The catalog in Command (API).**
+  - Migrations for the catalog's fields on `shop_products`, plus its variants and colours.
+  - The import from the site, and the public catalog route (live, plus drafts with the token).
+  - Actions that change the catalog directly.
+  - A test that the import reproduces the site's catalog field for field (prices, variants,
+    weights).
+- **11b · Editing in the app.** The product pane's details, price, variants and colours, status and
+  ship month; adding a product; sold out from stock; the revalidate call to the site.
+- **11c · The site reads Command (website repo).**
+  - `lib/shop/catalog.ts` reads Command's catalog, cached, with the last good copy and the file as
+    fallbacks, and the drawing fields merged in by slug.
+  - Incremental product pages, and checkout pricing from the same read.
+  - Preview deploys point at dev.
+- **11d · Photos.** Uploading, ordering and removing a product's photos from Command, stored where
+  question 2 decides, and shown on the site.
+- **11e · The live store switches.** Once Command runs on the production API: a dry run comparing
+  Command's catalog with the content file (every price, variant and weight), then the env var on
+  production. The content file stays as the fallback.
 
 ## Size
 
