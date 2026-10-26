@@ -329,7 +329,8 @@ export function scatter() {
             const x = (u4(p) / xm) * 100,
               y = ((p.price - unitCost(p)) / ym) * 100,
               r = 8 + 12 * Math.sqrt((u4(p) * p.price) / rmax),
-              [t, s] = lbl[p.id];
+              // live, a product the site sells that the prototype had no label for goes by its short name
+              [t, s] = lbl[p.id] ?? [scName(p), ''];
             return (
               <button
                 key={__k}
@@ -888,7 +889,8 @@ export function shelfCell() {
     ) : p.st === 'draft' ? (
       <span className="shf-st">Not stocked</span>
     ) : (
-      <span className={`shf-st${out ? ' out' : low ? ' low' : ''}`}>{out ? 'Out' : h + ' on hand'}</span>
+      // live, a product the site sells that Command keeps no stock for says so, rather than "null on hand"
+      <span className={`shf-st${out ? ' out' : low ? ' low' : ''}`}>{out ? 'Out' : REAL && h == null ? 'No stock kept' : h + ' on hand'}</span>
     );
     const lv = p.dep || p.st === 'draft' ? 0 : Math.min(1, (w || 0) / 12);
     return (
