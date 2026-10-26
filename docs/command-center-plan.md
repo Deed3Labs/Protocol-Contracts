@@ -443,19 +443,16 @@ The aim: **Command is where the catalog lives**, and the store reads it from Com
   out. Goods sold on pre-order (paid now, made in one run) keep selling past 0. This is a setting
   per product.
 
-**Open questions for Kai.**
-1. **Which API serves the live store.** command.useclear.org runs on the dev API (testnet, sandbox
-   Stripe), and the live store is production. *Recommendation:* build and prove it on dev, with
-   the site's Preview deploys reading dev's catalog. Production keeps its content file until
+**Kai's answers (2026-10-26).**
+1. **Which API serves the live store: dev first, production later.** It's built and proved on dev,
+   with the site's Preview deploys reading dev's catalog. useclear.org keeps its content file until
    Command runs on the production API (when dev is released to main). Switching the live store is
    then one env var on the site (`COMMAND_CATALOG_URL`).
-2. **Where photos live.** Today they're files in the website repo (`public/shop`). Command's file
-   store is Postgres and private (`services/command/files.ts`), so it can't serve a public image
-   as it stands. *Recommendation:* Vercel Blob on the website's project. Command uploads through a
-   small token-checked route on the site, and photos are served from Blob's CDN. Existing photos
-   keep their `/shop/...` paths.
-3. **Whether a price change on a live product needs a second person**, as refunds over $50 do.
-   *Recommendation:* no, it's logged, but say if you want it.
+2. **Photos: Vercel Blob** on the website's project. Command uploads through a small token-checked
+   route on the site, and photos are served from Blob's CDN. Existing photos keep their `/shop/...`
+   paths. (Command's own file store is Postgres and private, so it can't serve them.)
+3. **A price change on a live product needs a second person**, as refunds over $50 do. A draft's
+   price changes freely.
 
 - **11a · The catalog in Command (API).**
   - Migrations for the catalog's fields on `shop_products`, plus its variants and colours.
