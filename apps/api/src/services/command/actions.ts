@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Queryable } from '../../db/db.js';
 import { PROPOSE, type Level, type Section } from './levels.js';
 import { providerFor } from './sections.js';
-import { adoptSiteProduct, siteProductRow } from './catalog.js';
+import { addToCatalog, adoptSiteProduct, siteProductRow, type CatalogColour, type CatalogProduct, type CatalogVariant } from './catalog.js';
 import { productCost, readBook, runUses } from './costing.js';
 import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
@@ -41,6 +41,8 @@ export interface Action<B = any> {
   apply?: (c: Ctx, b: B) => Promise<unknown>;
   /** Recorded for the outside system that carries it out. */
   outbox?: boolean | ((b: B) => boolean);
+  /** Changes the store's catalog (Phase 11): once it's done, the site is told to read it again. */
+  revalidates?: boolean;
 }
 
 const id = z.string().trim().min(1).max(64);
@@ -306,6 +308,36 @@ const history = (c: Ctx, pid: string, what: string) => c.tx.query('INSERT INTO c
 const shelve = async (c: Ctx, pid: string, state: string) => {
   await c.tx.query('UPDATE command.shop_shelf SET ends_at = $2 WHERE product_id = $1 AND ends_at IS NULL', [pid, c.at]);
   await c.tx.query('INSERT INTO command.shop_shelf (product_id, position, state, starts_at, ends_at) VALUES ($1, (SELECT coalesce(max(position), -1) + 1 FROM command.shop_shelf WHERE product_id = $1), $2, $3, NULL)', [pid, state, c.at]);
+};
+/** A product in Command's catalog (Phase 11), for the actions that change what the store sells. */
+const catalogRecord = async (tx: Queryable, pid: string) => {
+  const p = await must<{ in_catalog: boolean }>(tx, 'SELECT in_catalog FROM command.shop_products WHERE id = $1', [pid], 'product');
+  if (!p.in_catalog) throw new ActionError(409, 'NOT_IN_CATALOG', 'It isn’t in Command’s catalog yet');
+};
+/** A garment's sizes, in the order its variants list them ([] for a product with no sizes). */
+const sizesOf = async (tx: Queryable, pid: string) => {
+  const { rows } = await tx.query<{ size: string }>('SELECT size FROM command.shop_variants WHERE product_id = $1 AND size IS NOT NULL ORDER BY position', [pid]);
+  return [...new Set(rows.map((r) => r.size))];
+};
+const addVariant = (tx: Queryable, pid: string, v: CatalogVariant) =>
+  tx.query(
+    'INSERT INTO command.shop_variants (product_id, id, position, label, colour, size, price_cents, deposit_cents, per, sold_out) VALUES ($1, $2, (SELECT coalesce(max(position), -1) + 1 FROM command.shop_variants WHERE product_id = $1), $3, $4, $5, $6, $7, $8, false)',
+    [pid, v.id, v.label, v.colour ?? null, v.size ?? null, v.priceCents ?? null, v.depositCents ?? null, v.per ?? null],
+  );
+const STOCK_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+/** A new colour or option: on the product's list, with its stock at 0 (each of the six sizes for a garment). */
+const addOption = async (tx: Queryable, pid: string, option: string, sized: boolean) => {
+  await tx.query('UPDATE command.shop_products SET options = array_append(options, $2) WHERE id = $1 AND NOT ($2 = ANY(options))', [pid, option]);
+  const { rows } = await tx.query<{ n: number }>('SELECT coalesce(max(option_pos), -1) + 1 AS n FROM command.shop_stock WHERE product_id = $1', [pid]);
+  for (const [si, size] of (sized ? STOCK_SIZES : ['']).entries())
+    await tx.query('INSERT INTO command.shop_stock (product_id, option, option_pos, size, size_pos, on_hand) VALUES ($1, $2, $3, $4, $5, 0) ON CONFLICT DO NOTHING', [pid, option, rows[0].n, size, si]);
+};
+/** A colour or option going: refused while any of it is on hand; its stock rows and its place on the list go with it. */
+const dropOption = async (tx: Queryable, pid: string, option: string) => {
+  const { rows } = await tx.query<{ n: string }>('SELECT coalesce(sum(on_hand), 0) AS n FROM command.shop_stock WHERE product_id = $1 AND option = $2', [pid, option]);
+  if (Number(rows[0].n) > 0) throw new ActionError(409, 'ON_HAND', `${option} still has ${rows[0].n} on hand`);
+  await tx.query('DELETE FROM command.shop_stock WHERE product_id = $1 AND option = $2', [pid, option]);
+  await tx.query('UPDATE command.shop_products SET options = array_remove(options, $2) WHERE id = $1', [pid, option]);
 };
 const order = z.object({ order: z.string().regex(/^[0-9]+$/) });
 const orderState = (to: string, from: string[], line: string, tell: boolean): Action => ({
@@ -663,6 +695,7 @@ const shop: Record<string, Action> = {
     outbox: catalogOutbox,
   },
   'product-edit': {
+    revalidates: true,
     body: z.object({
       id,
       name: text(80).min(1),
@@ -682,6 +715,8 @@ const shop: Record<string, Action> = {
       fccNotice: text(1000).nullable().optional(),
       founding: text(300).nullable().optional(),
       slug: z.string().trim().regex(SLUG, 'Lowercase letters, numbers and dashes').max(80).optional(),
+      // whether it keeps selling at 0 on hand (pre-order) or shows sold out there (Phase 11b)
+      sellPastStock: z.boolean().optional(),
     }),
     summary: async (b, db) => {
       const p = await one<{ price_cents: number }>(db, 'SELECT price_cents FROM command.shop_products WHERE id = $1', [b.id]);
@@ -705,6 +740,7 @@ const shop: Record<string, Action> = {
       put('ships', b.ships);
       put('fcc_notice', b.fccNotice);
       put('founding', b.founding);
+      put('sell_past_stock', b.sellPastStock);
       if (sets.length) await c.tx.query(`UPDATE command.shop_products SET ${sets.map(([k], i) => `${k} = $${i + 2}`).join(', ')} WHERE id = $1`, [b.id, ...sets.map(([, v]) => v)]);
       if (b.slug) await moveSlug(c.tx, b.id, b.slug);
       await history(c, b.id, p.price_cents !== cents(b.price) ? `Updated the details · price $${(p.price_cents / 100).toFixed(2)} → $${b.price.toFixed(2)}` : 'Updated the details');
@@ -712,6 +748,7 @@ const shop: Record<string, Action> = {
     outbox: catalogOutbox,
   },
   'variant-edit': {
+    revalidates: true,
     body: z
       .object({
         id,
@@ -746,7 +783,121 @@ const shop: Record<string, Action> = {
       await history(c, b.id, `Variant ${b.variant} updated`);
     },
   },
+  'colour-add': {
+    revalidates: true,
+    body: z.object({
+      id,
+      colour: z.object({ id: z.string().trim().regex(SLUG).max(40), label: text(40).min(1), swatch: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'A swatch is a colour like #232324'), tone: z.enum(['ink', 'land', 'paper']), fill: z.boolean().optional() }),
+    }),
+    summary: (b) => `Added ${b.colour.label} to ${b.id}`,
+    apply: async (c, b) => {
+      await catalogRecord(c.tx, b.id);
+      if (await one(c.tx, 'SELECT 1 FROM command.shop_colours WHERE product_id = $1 AND (id = $2 OR lower(label) = lower($3))', [b.id, b.colour.id, b.colour.label]))
+        throw new ActionError(409, 'TAKEN', `It already comes in ${b.colour.label}`);
+      const sizes = await sizesOf(c.tx, b.id);
+      await c.tx.query('INSERT INTO command.shop_colours (product_id, id, position, label, swatch, tone, fill) VALUES ($1, $2, (SELECT coalesce(max(position), -1) + 1 FROM command.shop_colours WHERE product_id = $1), $3, $4, $5, $6)', [
+        b.id, b.colour.id, b.colour.label, b.colour.swatch, b.colour.tone, !!b.colour.fill,
+      ]);
+      // a garment: the colour in each of its sizes; otherwise the colour is the variant
+      const vs: CatalogVariant[] = sizes.length ? sizes.map((sz) => ({ id: `${b.colour.id}-${sz}`, label: `${b.colour.label} · ${sz.toUpperCase()}`, colour: b.colour.id, size: sz })) : [{ id: b.colour.id, label: b.colour.label, colour: b.colour.id }];
+      for (const v of vs) await addVariant(c.tx, b.id, v);
+      await addOption(c.tx, b.id, b.colour.label, sizes.length > 0);
+      await history(c, b.id, `Added the colour ${b.colour.label}`);
+    },
+  },
+  'colour-remove': {
+    revalidates: true,
+    body: z.object({ id, colour: z.string().trim().regex(SLUG).max(40) }),
+    summary: (b) => `Took ${b.colour} off ${b.id}`,
+    apply: async (c, b) => {
+      await catalogRecord(c.tx, b.id);
+      const col = await must<{ label: string }>(c.tx, 'SELECT label FROM command.shop_colours WHERE product_id = $1 AND id = $2', [b.id, b.colour], 'colour of that product');
+      if (!(await one(c.tx, 'SELECT 1 FROM command.shop_colours WHERE product_id = $1 AND id <> $2', [b.id, b.colour]))) throw new ActionError(409, 'LAST', 'It needs at least one colour');
+      await dropOption(c.tx, b.id, col.label);
+      await c.tx.query('DELETE FROM command.shop_variants WHERE product_id = $1 AND colour = $2', [b.id, b.colour]);
+      await c.tx.query('DELETE FROM command.shop_colours WHERE product_id = $1 AND id = $2', [b.id, b.colour]);
+      await history(c, b.id, `Took off the colour ${col.label}`);
+    },
+  },
+  'variant-add': {
+    revalidates: true,
+    body: z
+      .object({ id, label: text(80).min(1), price: money.positive().nullable().default(null), deposit: money.positive().nullable().default(null), per: text(40).nullable().default(null) })
+      .refine((b) => b.deposit == null || (b.price ?? Infinity) >= b.deposit, 'A deposit can’t be more than the price'),
+    summary: (b) => `Added ${b.label} to ${b.id}${b.price != null ? ` · $${b.price.toFixed(2)}` : ''}${b.deposit != null ? ` · $${b.deposit.toFixed(2)} deposit` : ''}`,
+    // a new price on a product the store sells, the same as changing one
+    second: (b, db) => (b.price != null || b.deposit != null ? livePriceChange(db, b.id, () => true) : false),
+    apply: async (c, b) => {
+      await catalogRecord(c.tx, b.id);
+      if (await one(c.tx, 'SELECT 1 FROM command.shop_colours WHERE product_id = $1', [b.id])) throw new ActionError(409, 'COLOURS', 'It comes in colours: add a colour instead');
+      const vid = b.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'option';
+      if (await one(c.tx, 'SELECT 1 FROM command.shop_variants WHERE product_id = $1 AND (id = $2 OR lower(label) = lower($3))', [b.id, vid, b.label])) throw new ActionError(409, 'TAKEN', `It already has ${b.label}`);
+      await addVariant(c.tx, b.id, { id: vid, label: b.label, ...(b.price != null ? { priceCents: cents(b.price) } : {}), ...(b.deposit != null ? { depositCents: cents(b.deposit) } : {}), ...(b.per ? { per: b.per } : {}) });
+      await addOption(c.tx, b.id, b.label, false);
+      await history(c, b.id, `Added ${b.label}`);
+      return { variant: vid };
+    },
+  },
+  'variant-remove': {
+    revalidates: true,
+    body: z.object({ id, variant: z.string().trim().regex(SLUG).max(64) }),
+    summary: (b) => `Took ${b.variant} off ${b.id}`,
+    apply: async (c, b) => {
+      await catalogRecord(c.tx, b.id);
+      const v = await must<{ label: string; colour: string | null }>(c.tx, 'SELECT label, colour FROM command.shop_variants WHERE product_id = $1 AND id = $2', [b.id, b.variant], 'variant of that product');
+      if (v.colour) throw new ActionError(409, 'COLOURS', 'It’s one of a colour’s sizes: take the colour off instead');
+      if (!(await one(c.tx, 'SELECT 1 FROM command.shop_variants WHERE product_id = $1 AND id <> $2', [b.id, b.variant]))) throw new ActionError(409, 'LAST', 'It needs at least one option to sell');
+      await dropOption(c.tx, b.id, v.label);
+      await c.tx.query('DELETE FROM command.shop_variants WHERE product_id = $1 AND id = $2', [b.id, b.variant]);
+      await history(c, b.id, `Took off ${v.label}`);
+    },
+  },
+  'catalog-add': {
+    revalidates: true,
+    body: z
+      .object({
+        title: text(120).min(1),
+        slug: z.string().trim().regex(SLUG, 'Lowercase letters, numbers and dashes').max(80),
+        section: z.enum(['goods', 'for-shops']),
+        kind: z.string().trim().regex(SLUG).max(30),
+        category: text(60).min(1),
+        alsoIn: z.array(text(60).min(1)).max(10).default([]),
+        tagline: text(200).default(''),
+        description: text(2000).default(''),
+        details: z.array(text(200).min(1)).max(20).default([]),
+        price: money.positive(),
+        // hardware is reserved: what each option holds now
+        deposit: money.positive().nullable().default(null),
+        variantLabel: text(40).nullable().default(null),
+        colours: z.array(z.object({ id: z.string().trim().regex(SLUG).max(40), label: text(40).min(1), swatch: z.string().regex(/^#[0-9A-Fa-f]{6}$/), tone: z.enum(['ink', 'land', 'paper']), fill: z.boolean().optional() })).max(12).default([]),
+        sizes: z.array(z.enum(['xs', 's', 'm', 'l', 'xl', 'xxl'])).max(6).default([]),
+        options: z.array(text(80).min(1)).max(20).default([]),
+        weightOz: z.number().positive().max(2000),
+        ships: text(40).nullable().default(null),
+      })
+      .refine((b) => b.deposit == null || b.deposit <= b.price, 'A deposit can’t be more than the price')
+      .refine((b) => !(b.colours.length && b.options.length), 'A product comes in colours or in options, not both'),
+    summary: (b) => `Added ${b.title} to the catalog as a draft`,
+    apply: async (c, b) => {
+      const dep = b.deposit != null ? { depositCents: cents(b.deposit) } : {};
+      // in colours: each colour in each size (or the colour alone); else each option, or one size
+      const variants: CatalogVariant[] = b.colours.length
+        ? b.colours.flatMap((col: CatalogColour) => (b.sizes.length ? b.sizes.map((sz: string) => ({ id: `${col.id}-${sz}`, label: `${col.label} · ${sz.toUpperCase()}`, colour: col.id, size: sz, ...dep })) : [{ id: col.id, label: col.label, colour: col.id, ...dep }]))
+        : (b.options.length ? b.options : ['One size']).map((label: string) => ({ id: label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'one', label, ...dep }));
+      if (new Set(variants.map((v) => v.id)).size !== variants.length) throw new ActionError(400, 'BAD_REQUEST', 'Two options have the same name');
+      const p: CatalogProduct = {
+        slug: b.slug, section: b.section, name: b.title, line: b.tagline, description: b.description, priceCents: cents(b.price), kind: b.kind, category: b.category, alsoIn: b.alsoIn,
+        ...(b.variantLabel ? { variantLabel: b.variantLabel } : {}), variants, colours: b.colours, details: b.details, weightOz: b.weightOz,
+        ...(b.ships ? (b.section === 'for-shops' ? { preorder: { ships: b.ships, fcc: false } } : { ships: b.ships }) : {}), status: 'draft',
+      };
+      const pid = await addToCatalog(c.tx, p, c.at, who(c.person));
+      if (!pid) throw new ActionError(409, 'TAKEN', `Another product has the address ${b.slug}`);
+      await shelve(c, pid, 'draft');
+      return { id: pid };
+    },
+  },
   'shelf-off': {
+    revalidates: true,
     body: z.object({ id, why: text(120).min(1) }),
     summary: (b) => `Took ${b.id} off the shelf · ${b.why}`,
     apply: async (c, b) => {
@@ -758,6 +909,7 @@ const shop: Record<string, Action> = {
     outbox: catalogOutbox,
   },
   'shelf-on': {
+    revalidates: true,
     body: z.object({ id }),
     summary: (b) => `Put ${b.id} on the shelf`,
     apply: async (c, b) => {
@@ -769,6 +921,7 @@ const shop: Record<string, Action> = {
     outbox: catalogOutbox,
   },
   archive: {
+    revalidates: true,
     body: z.object({ id, why: text(120).default('Archived') }),
     summary: (b) => `Archived ${b.id}`,
     apply: async (c, b) => {
@@ -780,6 +933,7 @@ const shop: Record<string, Action> = {
     outbox: catalogOutbox,
   },
   restore: {
+    revalidates: true,
     body: z.object({ id }),
     summary: (b) => `Restored ${b.id} as a draft`,
     apply: async (c, b) => {

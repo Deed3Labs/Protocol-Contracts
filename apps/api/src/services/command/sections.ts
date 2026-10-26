@@ -5,7 +5,7 @@ import { SEE, TOTALS, type Level } from './levels.js';
 import { assurancePoolLive, bondVaultLive, bondsLive, deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
-import { catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
+import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
 import type { MemberSource } from './memberSource.js';
 import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
 import { codeActivity, codeChanges, codeConfig } from './github.js';
@@ -1075,7 +1075,9 @@ async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, u
   const costing = sees ? costingPayload(book, new Map(PR.map((p) => [p.id, p.price])), await readHistory(db)) : noCosting();
   // each product's cost over time, from its sales' recorded costs
   const COST_HIST = sees ? await costHistory(db) : {};
-  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, COST_HIST, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
+  // what the store shows of each product in Command's catalog (Phase 11b): public, so at any level
+  const CATALOG = await catalogPayload(db);
+  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, COST_HIST, CATALOG, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
 }
 
 // ── Contracts ───────────────────────────────────────────────────────────────

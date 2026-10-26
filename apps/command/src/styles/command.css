@@ -2366,3 +2366,6 @@ body.signed-out .app,body.signed-out #pfRoot{display:none}
 @media (max-width:1100px){ .sgn-l{padding:var(--s3) var(--s4)} .sgn-facts{padding:var(--s3) var(--s4)} }
 @media (max-width:760px){ .sgn{grid-template-columns:minmax(0,1fr)} .sgn-l{padding:var(--s2);min-height:auto} .sgn-mn{padding:var(--s4) 0 var(--s3);justify-content:flex-start;max-width:none} .sgn-brand{max-width:none} .sgn-hd .h1{font-size:34px}
   .sgn-r{border-left:0;border-top:1px solid var(--line);min-height:0} .sgn-art{display:none} .sgn-facts{padding:var(--s3) var(--s2)} .sgn-ft{order:3} }
+/* the catalog's flows (Phase 11b): a longer answer, as the inputs are */
+.field textarea{min-height:96px;padding:var(--s1) var(--s2);background:var(--raised);border:1px solid var(--line);border-radius:0;font:inherit;color:var(--fg);resize:vertical}
+.field textarea:focus{outline:2px solid var(--fg);outline-offset:-1px}

@@ -6,8 +6,10 @@ import { attrs, css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
 import { compBar, head, ic, money } from './core';
 import { costHistSec, costsTitle, costsTool, inputPane, orderCostRows, recipeSec, sCosts, startRecipe, stockGroup } from './costing';
+import { storeSec } from './catalog';
 import {
   BUYERS,
+  CATALOG,
   DAY,
   GLY,
   GP_W,
@@ -1509,6 +1511,8 @@ export function sOrders() {
 }
 
 /* ── panels ───────────────────────────────────────────────────────────── */
+/** "None yet", "1 photo", "4 photos". */
+const photoCount = (n) => (n ? `${n} photo${n === 1 ? '' : 's'}` : 'None yet');
 export function shopPane() {
   if (SS.order) return orderPane();
   if (REAL && SS.input) return inputPane();
@@ -1687,8 +1691,9 @@ export function shopPane() {
       {shelfSeg}
       {kv([
         ['Page', <span className="mono">useclear.org/shop/{p.slug}</span>],
-        ['Shows as', p.st === 'on' ? (p.dep ? 'Pre-order' : 'In stock') : p.st === 'off' ? 'Back soon' : p.st === 'draft' ? 'Hidden' : 'Removed'],
-        p.why ? ['Why', p.why, 1] : ['Photos', p.line === 'hw' ? '2 renders' : '4 photos', 1],
+        ['Shows as', p.st === 'on' ? (p.dep ? 'Pre-order' : REAL && CATALOG[p.id]?.ships && CATALOG[p.id].sellPastStock ? `Pre-order · ships ${CATALOG[p.id].ships}` : 'In stock') : p.st === 'off' ? 'Back soon' : p.st === 'draft' ? 'Hidden' : 'Removed'],
+        // live, the photos the catalog has (none until Phase 11d), not the prototype's count
+        p.why ? ['Why', p.why, 1] : ['Photos', REAL ? photoCount(CATALOG[p.id]?.images?.length ?? 0) : p.line === 'hw' ? '2 renders' : '4 photos', 1],
       ])}
     </>,
     p.st === 'arch' ? (
@@ -1733,6 +1738,7 @@ export function shopPane() {
         </div>
       </div>
       {shelf}
+      {REAL && storeSec(p)}
       {price}
       {REAL && costHistSec(p)}
       {stockSec}
