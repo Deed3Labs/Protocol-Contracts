@@ -1,10 +1,15 @@
 // @ts-nocheck: ported from the redesign's MEMBERS2 module (design/command-center-ui) with scripts/port/module.cjs; its data is its own.
 import { Fragment } from 'react';
 import { attrs, css, hasHtml, html } from '../runtime/dom';
+import { REAL } from '../live/env';
+import { api } from '../live/api';
+import { run } from '../live/actions';
+import { addReveal } from './admin2';
 import { CC } from './cc';
 import { INBOX, RANGE } from './data';
+import { membersLive } from './membersLive';
 import { registerPage, shadowHost } from './pageHost';
-import { toast } from './shell';
+import { render as redraw, toast } from './shell';
 
 /*
  * Members (design/command-center-ui, the MEMBERS2 module): everyone from the waitlist to active, as one
@@ -19,9 +24,12 @@ function skeleton() {
 }
 function makeMembers() {
   const { host, R, W, into, $g: $m } = shadowHost('members', skeleton());
+  // live, every dataset is the API's (membersLive.ts); the prototype draws the reference's own
+  const LV = REAL ? membersLive() : null;
   const MLIVE = () => host.isConnected && CC.route() === 'members';
   const RO = () => CC.viewing() && CC.level('members') < 3;
-  const TOT = () => CC.viewing() && CC.level('members') === 1;
+  // Totals: the view previewed at that level, or live at it (the API sent no names)
+  const TOT = () => CC.viewing() && CC.level('members') === 1 || LV?.names === 'none';
   const barH = () => {
     const b = document.querySelector('.top');
     return b ? b.getBoundingClientRect().bottom : 0;
@@ -46,8 +54,9 @@ function makeMembers() {
      Everyone from the waitlist to active, as one set. Counts match Growth: 1,800 joined, 1,500 waiting,
      300 invited in 12 batches, 188 opened, 124 activated (64 opened but not funded), 109 first $10 spends.
      Names and contacts are masked; every reveal is logged. Account changes need a second person. */
-  const TODAY = 78;
-  const dayDate = i => new Date(2026, 7, 4 + i);
+  const TODAY = LV ? LV.TODAY : 78,
+    D0 = LV ? LV.D0 : [2026, 7, 4];
+  const dayDate = i => new Date(D0[0], D0[1], D0[2] + i);
   const dFmt = i => {
     const d = dayDate(i);
     return `${d.getDate()} ${d.toLocaleString('en', {
@@ -67,20 +76,20 @@ function makeMembers() {
     let s = seed;
     return () => (s = s * 16807 % 2147483647, (s - 1) / 2147483646);
   }
-  const CITIES = [['Redlands', .31], ['San Bernardino', .25], ['Riverside', .18], ['Fontana', .06], ['Highland', .05], ['Rialto', .04], ['Loma Linda', .04], ['Colton', .04], ['Yucaipa', .03]];
-  const SHOPS = [["Rosa’s Panadería", 'Redlands'], ['Inland Cycle Works', 'Redlands'], ['Uptown Barber', 'Redlands'], ['State St. Books', 'Redlands'], ['Mesa Laundry', 'San Bernardino'], ['La Michoacana', 'San Bernardino'], ['Arrowhead Nails', 'San Bernardino'], ['Citrus Bowl Café', 'Riverside'], ['Orange St. Laundromat', 'Redlands'], ['Redlands Tire & Lube', 'Redlands']];
+  const CITIES = LV ? LV.CITIES : [['Redlands', .31], ['San Bernardino', .25], ['Riverside', .18], ['Fontana', .06], ['Highland', .05], ['Rialto', .04], ['Loma Linda', .04], ['Colton', .04], ['Yucaipa', .03]];
+  const SHOPS = LV ? LV.SHOPS : [["Rosa’s Panadería", 'Redlands'], ['Inland Cycle Works', 'Redlands'], ['Uptown Barber', 'Redlands'], ['State St. Books', 'Redlands'], ['Mesa Laundry', 'San Bernardino'], ['La Michoacana', 'San Bernardino'], ['Arrowhead Nails', 'San Bernardino'], ['Citrus Bowl Café', 'Riverside'], ['Orange St. Laundromat', 'Redlands'], ['Redlands Tire & Lube', 'Redlands']];
   const LET = 'ABCDEFGHJKLMNPRSTVWY';
   const STAGES = [
   // key, label, colour, steps done (of invited · opened · funded · spent)
   ['waiting', 'On the waitlist', 'color-mix(in srgb,var(--fg) 14%,transparent)', 0], ['invited', 'Invited, not opened', 'color-mix(in srgb,var(--fg) 34%,transparent)', 1], ['opened', 'Opened, not funded', 'var(--land)', 2], ['active', 'Active, no spend yet', 'color-mix(in srgb,var(--fg) 70%,transparent)', 3], ['spent', 'Active and spending', 'var(--fg)', 4]];
   const STG = Object.fromEntries(STAGES.map(s => [s[0], s]));
-  const BATCH = [
+  const BATCH = LV ? LV.BATCH : [
   // batch, invite day, invited, opened, activated, spent
   [1, 42, 25, 16, 13, 12], [2, 49, 25, 16, 13, 12], [3, 56, 25, 17, 13, 12], [4, 56, 25, 17, 13, 12], [5, 63, 25, 19, 13, 12], [6, 63, 25, 18, 13, 11], [7, 63, 25, 18, 12, 10], [8, 70, 25, 17, 11, 9], [9, 70, 25, 17, 10, 9], [10, 70, 25, 17, 10, 8], [11, 77, 25, 8, 2, 1], [12, 77, 25, 8, 1, 1]]; // 300 · 188 · 124 · 109
   const FUND = ['Bank', 'Bank', 'Bank', '$5', '$5', 'Deposit'];
 
   /* build the 1,800 people once */
-  const PEOPLE = (() => {
+  const PEOPLE = LV ? LV.PEOPLE : (() => {
     const r = rng(909),
       out = [];
     let id = 1;
@@ -175,6 +184,10 @@ function makeMembers() {
     return out;
   })();
   const WAITING = PEOPLE.filter(p => p.stage === 'waiting').sort((a, b) => a.pos - b.pos);
+  // the batch waiting for a second person (13 in the reference) and the one being planned (14)
+  const N13 = LV ? LV.NEXT?.number ?? null : 13,
+    N14 = LV ? LV.B14N : 14,
+    S13 = LV ? LV.NEXT?.size ?? 0 : 25;
   const JOINS = WAITING.filter(p => p.joined > TODAY - 7).length; // joins this week (~320)
   const QUIET = p => p.act && TODAY - p.lastSeen >= 21;
   const LEFT = p => p.invited != null ? 90 - (TODAY - p.invited) : null;
@@ -203,14 +216,15 @@ function makeMembers() {
     b: {
       size: 25,
       how: 'oldest',
-      cities: new Set(['Riverside']),
+      cities: new Set(LV ? [] : ['Riverside']),
       shops: new Set(),
       picked: [],
       pace: 50,
       proposed: false,
       hq: ''
     },
-    b13: 'pending',
+    b13: LV && !LV.NEXT ? 'none' : 'pending',
+    real: {},
     ng: 'opened',
     msg: {},
     wqx: {},
@@ -230,7 +244,7 @@ function makeMembers() {
     if (M.F.shop.size) p.push(M.F.shop.size === 1 ? [...M.F.shop][0] : M.F.shop.size + ' shops');
     return p.join(' · ');
   };
-  const waitWeeks = () => Math.ceil(Math.max(0, WAITING.length - (M.b13 === 'pending' ? 25 : 0)) / M.b.pace);
+  const waitWeeks = () => Math.ceil(Math.max(0, WAITING.length - (M.b13 === 'pending' ? S13 : 0)) / M.b.pace);
   const ICON = {
     x: <svg className="i" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5 5 15" /></svg>,
     lock: <svg className="i" viewBox="0 0 20 20" style={css("width:14px;height:14px;vertical-align:-2px")}><path d="M5 9h10v8H5z" /><path d="M7 9V6.5a3 3 0 0 1 6 0V9" /></svg>,
@@ -252,18 +266,19 @@ function makeMembers() {
     const byCity = CITIES.map(([c]) => [c, W.filter(p => p.city === c)]).filter(x => x[1].length).sort((a, b) => b[1].length - a[1].length);
     const S = {
       people: <>{fmt(L.length)}{" people have joined. "}<a data-mtab="nudges">{fmt(o)}{" opened the app but haven’t funded"}</a>{", and "}{fmt(nev)}{" haven’t opened their invite."}</>,
-      batches: M.b13 === 'pending' ? <><a data-bjump="b13">Batch 13 is waiting for your approval.</a>{" At "}{M.b.pace}{" invites a week, someone who joins today waits about "}{waitWeeks()}{" weeks."}</> : <>{"At "}{M.b.pace}{" invites a week, someone who joins today waits about "}{waitWeeks()}{" weeks. "}<a data-bjump="b14">Batch 14</a>{" is next."}</>,
-      nudges: <>{fmt(nev)}{" people never opened their invite and "}<a data-ng="opened">{fmt(o)}{" stopped before funding"}</a>. Push works best: 31–44% act within a week.</>,
+      batches: M.b13 === 'pending' ? <><a data-bjump="b13">{"Batch "}{N13}{LV ? ' is waiting for a second person.' : ' is waiting for your approval.'}</a>{" At "}{M.b.pace}{" invites a week, someone who joins today waits about "}{waitWeeks()}{" weeks."}</> : <>{"At "}{M.b.pace}{" invites a week, someone who joins today waits about "}{waitWeeks()}{" weeks. "}<a data-bjump="b14">{"Batch "}{N14}</a>{" is next."}</>,
+      nudges: <>{fmt(nev)}{" people never opened their invite and "}<a data-ng="opened">{fmt(o)}{" stopped before funding"}</a>{LV ? '.' : '. Push works best: 31–44% act within a week.'}</>,
       waitlist: `${fmt(w)} people are waiting, ${fmt(old)} of them for four weeks or more.${byCity.length > 1 ? ` ${byCity[0][0]} has the most, ${fmt(byCity[0][1].length)}.` : ''}`
     }[M.tab];
-    html($m('hdr'), <><span className="when"><span className="dot" />Members · Demo data{fdesc() && M.tab !== 'batches' ? ' · ' + fdesc() : ''}</span><p className="brief">{S}</p><div className="strip"><div className="sc"><span className="lbl">Waitlist</span><div className="sc-v">{fmt(w)}{" "}<small>+{fmt(JOINS)}{" this week"}</small></div><div className="mb"><i style={css(`width:${pct(old, w)}%`)} /></div><div className="sc-s">{fmt(old)}{" waited 4+ weeks · median "}{med}{" days"}</div></div><div className="sc"><span className="lbl">Invited</span><div className="sc-v">{fmt(inv)}{" "}<small>12 batches</small></div><div className="mb"><i style={css(`width:${pct(inv - nev, inv)}%`)} /><span className="hroom" style={css(`left:${pct(inv - nev, inv)}%;right:0`)} /></div><div className="sc-s">{fmt(nev)}{" haven’t opened yet"}</div></div><div className="sc"><span className="lbl">Active</span><div className="sc-v">{fmt(act)}{" "}<small>{p1(pct(act, inv))}</small></div><div className="mb"><i style={css(`width:${pct(act, inv)}%`)} /><i style={css(`left:${pct(act, inv)}%;width:${pct(o, inv)}%;background:var(--land)`)} /></div><div className="sc-s">{fmt(cnt('spent', L))}{" have spent their $10"}</div></div><div className="sc"><span className="lbl">Stuck at funding</span><div className="sc-v">{fmt(o)}</div><div className="mb"><i style={css(`width:${pct(o, inv)}%;background:var(--land)`)} /></div><div className="sc-s">Opened the app, no money in yet</div></div></div></>);
+    html($m('hdr'), <><span className="when"><span className="dot" />Members{LV ? '' : ' · Demo data'}{fdesc() && M.tab !== 'batches' ? ' · ' + fdesc() : ''}</span><p className="brief">{S}</p><div className="strip"><div className="sc"><span className="lbl">Waitlist</span><div className="sc-v">{fmt(w)}{" "}<small>+{fmt(JOINS)}{" this week"}</small></div><div className="mb"><i style={css(`width:${pct(old, w)}%`)} /></div><div className="sc-s">{fmt(old)}{" waited 4+ weeks · median "}{med}{" days"}</div></div><div className="sc"><span className="lbl">Invited</span><div className="sc-v">{fmt(inv)}{" "}<small>{LV ? `${BATCH.length} ${BATCH.length === 1 ? 'batch' : 'batches'}` : '12 batches'}</small></div><div className="mb"><i style={css(`width:${pct(inv - nev, inv)}%`)} /><span className="hroom" style={css(`left:${pct(inv - nev, inv)}%;right:0`)} /></div><div className="sc-s">{fmt(nev)}{" haven’t opened yet"}</div></div><div className="sc"><span className="lbl">Active</span><div className="sc-v">{fmt(act)}{" "}<small>{p1(pct(act, inv))}</small></div><div className="mb"><i style={css(`width:${pct(act, inv)}%`)} /><i style={css(`left:${pct(act, inv)}%;width:${pct(o, inv)}%;background:var(--land)`)} /></div><div className="sc-s">{fmt(cnt('spent', L))}{" have spent their $10"}</div></div><div className="sc"><span className="lbl">Stuck at funding</span><div className="sc-v">{fmt(o)}</div><div className="mb"><i style={css(`width:${pct(o, inv)}%;background:var(--land)`)} /></div><div className="sc-s">Opened the app, no money in yet</div></div></div></>);
   }
 
   /* ── control bar: search + filters (People, Nudges, Waitlist) ── */
   const caret = <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 4.5l3 3 3-3" /></svg>;
   const FDEF = {
     city: ['City', CITIES.map(c => c[0])],
-    src: ['Joined from', ['Poster', 'Website', 'Social', 'Search']],
+    // live, the API knows a poster or the website: Social and Search aren't told apart yet
+    src: ['Joined from', LV ? ['Poster', 'Website'] : ['Poster', 'Website', 'Social', 'Search']],
     shop: ['Poster shop', SHOPS.map(s => s[0])]
   };
   let openMenu = null;
@@ -293,7 +308,7 @@ function makeMembers() {
   }
   function nextCell(p) {
     const left = LEFT(p);
-    if (p.stage === 'waiting') return p.b13 && M.b13 === 'pending' ? <span className="nx2"><b className="tlv">Batch 13</b><span>#{fmt(p.pos)}{" · needs approval"}</span></span> : <span className="nx2"><b>#{fmt(p.pos)}</b><span>{"in line · "}{p.joined === TODAY ? 'joined today' : 'waited ' + (TODAY - p.joined) + 'd'}</span></span>;
+    if (p.stage === 'waiting') return p.b13 && M.b13 === 'pending' ? <span className="nx2"><b className="tlv">{"Batch "}{N13}</b><span>#{fmt(p.pos)}{" · needs approval"}</span></span> : <span className="nx2"><b>#{fmt(p.pos)}</b><span>{"in line · "}{p.joined === TODAY ? 'joined today' : 'waited ' + (TODAY - p.joined) + 'd'}</span></span>;
     if (p.stage === 'spent') return <span className="nx2"><b>Done</b><span>{"Spent at "}{p.spentAt}</span></span>;
     if (p.stage === 'active') return <span className="nx2"><b>Spend $10</b><span>{"Funded by "}{p.fund === 'Deposit' ? 'direct deposit' : p.fund === '$5' ? '$5' : 'bank'}</span></span>;
     return <span className="nx2 w"><span className="wrow"><span className={`wbar ${left < 30 ? 'lo' : ''}`}><i style={css(`width:${(90 - left) / 90 * 100}%`)} /></span><b className={left < 30 ? 'warn' : ''}>{left}d left</b></span><span>{p.stage === 'invited' ? 'Open the invite' : 'Fund the account'}</span></span>;
@@ -325,6 +340,8 @@ function makeMembers() {
                 }) : <tr><td colSpan="5" className="tn"><span className="quiet">Nobody matches.</span></td></tr>}</tbody></table></div><div className="bk-ft"><span>{ICON.lock}{" Names are masked · showing one is logged in Records"}</span><span className="pg2"><span>{rows.length ? fmt(M.page * PAGE + 1) : 0}–{fmt(Math.min(rows.length, (M.page + 1) * PAGE))}{" of "}{fmt(rows.length)}</span><button data-mpage="-1" {...attrs(M.page === 0 ? 'disabled' : '')} aria-label="Previous"><svg viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg></button><button data-mpage="1" {...attrs(M.page >= pages - 1 ? 'disabled' : '')} aria-label="Next"><svg viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" /></svg></button></span></div></div></div></section>);
   }
   const realName = p => {
+    // live, the name the API sent for this person when it was shown (POST /members/:id/reveal)
+    if (LV) return M.real[p.id] ?? p.name;
     const F = ['Maria', 'James', 'Ana', 'Kevin', 'Lena', 'Sam', 'Tomas', 'Grace', 'Rosa', 'Eli', 'Nadia', 'Victor', 'Diane', 'Marco', 'Tasha', 'Hugo', 'Iris', 'Omar', 'Paula', 'Wes'];
     const Lx = ['Torres', 'Ortiz', 'Reyes', 'Walker', 'Hughes', 'Nguyen', 'Brooks', 'Kim', 'Alvarez', 'Vega', 'Patel', 'Lopez', 'Diaz', 'Price', 'Young', 'Stone', 'Moreno', 'Wright', 'Bell', 'Cruz'];
     return F[LET.indexOf(p.f) % F.length] + ' ' + Lx[LET.indexOf(p.l) % Lx.length];
@@ -357,12 +374,12 @@ function makeMembers() {
     const p = PEOPLE.find(x => x.id === M.open),
       shown = M.reveal.has(p.id),
       left = LEFT(p);
-    const steps = [['Joined', p.joined], ['Invited', p.invited], ['Opened the app', p.opened], [`Funded${p.fund ? ' · ' + (p.fund === 'Deposit' ? 'direct deposit' : p.fund === '$5' ? '$5' : 'bank') : ''}`, p.act], [`First $10 spend${p.spentAt ? ' · ' + p.spentAt : ''}`, p.stage === 'spent' ? Math.min(TODAY, (p.act || TODAY) + 2) : null]];
+    const steps = [['Joined', p.joined], ['Invited', p.invited], ['Opened the app', p.opened], [`Funded${p.fund ? ' · ' + (p.fund === 'Deposit' ? 'direct deposit' : p.fund === '$5' ? '$5' : 'bank') : ''}`, p.act], [`First $10 spend${p.spentAt ? ' · ' + p.spentAt : ''}`, p.stage === 'spent' ? LV ? p.spentDay : Math.min(TODAY, (p.act || TODAY) + 2) : null]];
     const pend = M.approvals.filter(a => a.id === p.id);
     const ch = chanFor(p),
       inB14 = batchPool().pick.includes(p);
-    const place = p.stage !== 'waiting' ? <div><span>Batch</span><b>{p.batch}{" · sent "}{dFmt(p.invited)}</b></div> : <div><span>Place in line</span><b>#{fmt(p.pos)}{" of "}{fmt(WAITING.length)}{p.b13 && M.b13 === 'pending' ? ' · batch 13' : inB14 ? ' · batch 14' : ''}</b></div>;
-    html(pn, <><div className="pn-hd"><span className="lbl">{p.id}</span>{stageCell(p)}<button className="x" data-mclose="" aria-label="Close">{ICON.x}</button></div><div className="pn-b"><div className="who3"><h3 className={shown ? '' : 'msk'}>{shown ? realName(p) : p.name}</h3>{shown ? <><div className="ct3"><span>{realName(p).split(' ')[0].toLowerCase()}@gmail.com</span>{p.phone ? <span>{'(909) 555-01' + String(LET.indexOf(p.f)).padStart(2, '0')}</span> : ''}</div><span className="lg3">{"You showed this at "}{new Date().toTimeString().slice(0, 5)}{" · logged"}</span></> : <><button className="btn" style={css("height:30px;font-size:13px")} data-mreveal={p.id}>{ICON.eye}Show name and contact</button><span className="lg3">Showing is logged in Records</span></>}</div><div className="led"><div><span>City</span><b>{p.city}</b></div><div><span>Joined from</span><b>{p.src === 'Poster' ? 'Poster at ' + p.shop : p.src}</b></div><div><span>Reachable by</span><b>{['Email', p.phone ? 'Text' : null, p.app ? 'Push' : null].filter(Boolean).join(' · ')}</b></div>{place}</div><div><span className="lbl">Journey</span><div className="jy">{steps.map(([t, d], i) => <div key={i} className={`jy-r ${d != null ? 'done' : ''} ${d == null && (i === 0 || steps[i - 1][1] != null) ? 'next' : ''}`}><i /><span>{t}</span><b>{d != null ? dFmt(d) : d == null && (i === 0 || steps[i - 1][1] != null) ? 'Next step' : ''}</b></div>)}</div></div>{left != null && !p.act ? <div className="w90"><div className="w90-h"><span className="lbl">90-day window</span><b className={left < 30 ? 'warn' : ''}>{left}{" days left"}</b></div><span className={`wbar big ${left < 30 ? 'lo' : ''}`}><i style={css(`width:${(90 - left) / 90 * 100}%`)} /></span><span className="small quiet">{"Closes "}{dFmt(p.invited + 90)}</span></div> : ''}<div><span className="lbl">Notes and tags</span><div className="tg3">{p.tags.map((t, __k) => <span key={__k} className="chip plain nodot">{t}</span>)}<button className="chip plain nodot addtag" data-maddtag={p.id}>+ Tag</button></div>{p.notes.length ? p.notes.map((n, __k) => <div key={__k} className="nt3"><p>{n.t}</p><span>{n.by}{" · "}{dFmt(n.at)}</span></div>) : <p className="small quiet" style={css("margin:6px 0 0")}>No notes yet.</p>}<div className="nt3-in"><textarea id="mnote" rows="2" placeholder="Add a note for the team" /><button className="btn" style={css("height:32px")} data-mnote={p.id}>Add</button></div></div>{p.log.length || pend.length ? <div><span className="lbl">History</span>{pend.map((a, __k) => <div key={__k} className="hs3 pend"><b>{a.what}</b><span>Proposed by you · waiting for a second person</span></div>)}{p.log.map((l, __k) => <div key={__k} className="hs3"><b>{l.t}</b><span>{dFmt(l.at)}</span></div>)}</div> : ''}</div><div className="pn-ft mft">{p.stage === 'waiting' && !p.b13 ? <button className={`btn ${inB14 ? '' : 'p'}`} data-mpick={p.id} {...attrs(inB14 ? 'disabled' : '')}>{inB14 ? 'In batch 14 ✓' : 'Add to batch 14'}</button> : ''}{['invited', 'opened', 'active'].includes(p.stage) ? <button className="btn p" data-mnudge1={p.id}>{"Nudge by "}{ch}</button> : ''}<div className="more3"><button className="btn" data-mmore="" aria-expanded="false">More ▾</button><div className="mm3" hidden>{p.invited != null && !p.act ? <><button data-mprop={`Resend the invite|${p.id}`}>{"Resend the invite "}<span>2nd approval</span></button><button data-mprop={`Extend the window 30 days|${p.id}`}>{"Extend the window 30 days "}<span>2nd approval</span></button></> : ''}{p.act ? <button data-mprop={`Freeze the account|${p.id}`}>{"Freeze the account "}<span>2nd approval</span></button> : ''}<button data-mprop={`Close the account|${p.id}`} className="dz">{"Close the account "}<span>2nd approval</span></button></div></div></div></>);
+    const place = p.stage !== 'waiting' ? <div><span>Batch</span><b>{LV && !p.batch ? 'None · joined another way' : <>{p.batch}{" · sent "}{dFmt(p.invited)}</>}</b></div> : <div><span>Place in line</span><b>#{fmt(p.pos)}{" of "}{fmt(WAITING.length)}{p.b13 && M.b13 === 'pending' ? ` · batch ${N13}` : inB14 ? ` · batch ${N14}` : ''}</b></div>;
+    html(pn, <><div className="pn-hd"><span className="lbl">{p.id}</span>{stageCell(p)}<button className="x" data-mclose="" aria-label="Close">{ICON.x}</button></div><div className="pn-b"><div className="who3"><h3 className={shown ? '' : 'msk'}>{shown ? realName(p) : p.name}</h3>{shown ? <>{LV ? '' : <div className="ct3"><span>{realName(p).split(' ')[0].toLowerCase()}@gmail.com</span>{p.phone ? <span>{'(909) 555-01' + String(LET.indexOf(p.f)).padStart(2, '0')}</span> : ''}</div>}<span className="lg3">{"You showed this at "}{new Date().toTimeString().slice(0, 5)}{" · logged"}</span></> : <><button className="btn" style={css("height:30px;font-size:13px")} data-mreveal={p.id}>{ICON.eye}{LV ? 'Show name' : 'Show name and contact'}</button><span className="lg3">Showing is logged in Records</span></>}</div><div className="led"><div><span>City</span><b>{p.city}</b></div><div><span>Joined from</span><b>{p.src === 'Poster' ? 'Poster at ' + p.shop : p.src}</b></div><div><span>Reachable by</span><b>{['Email', p.phone ? 'Text' : null, p.app ? 'Push' : null].filter(Boolean).join(' · ')}</b></div>{place}</div><div><span className="lbl">Journey</span><div className="jy">{steps.map(([t, d], i) => <div key={i} className={`jy-r ${d != null ? 'done' : ''} ${d == null && (i === 0 || steps[i - 1][1] != null) ? 'next' : ''}`}><i /><span>{t}</span><b>{d != null ? dFmt(d) : d == null && (i === 0 || steps[i - 1][1] != null) ? 'Next step' : ''}</b></div>)}</div></div>{left != null && !p.act ? <div className="w90"><div className="w90-h"><span className="lbl">90-day window</span><b className={left < 30 ? 'warn' : ''}>{left}{" days left"}</b></div><span className={`wbar big ${left < 30 ? 'lo' : ''}`}><i style={css(`width:${(90 - left) / 90 * 100}%`)} /></span><span className="small quiet">{"Closes "}{dFmt(p.invited + 90)}</span></div> : ''}{LV ? <div><span className="lbl">Notes and tags</span><p className="small quiet" style={css("margin:6px 0 0")}>Not real yet: notes and tags need somewhere the API keeps them.</p></div> : <div><span className="lbl">Notes and tags</span><div className="tg3">{p.tags.map((t, __k) => <span key={__k} className="chip plain nodot">{t}</span>)}<button className="chip plain nodot addtag" data-maddtag={p.id}>+ Tag</button></div>{p.notes.length ? p.notes.map((n, __k) => <div key={__k} className="nt3"><p>{n.t}</p><span>{n.by}{" · "}{dFmt(n.at)}</span></div>) : <p className="small quiet" style={css("margin:6px 0 0")}>No notes yet.</p>}<div className="nt3-in"><textarea id="mnote" rows="2" placeholder="Add a note for the team" /><button className="btn" style={css("height:32px")} data-mnote={p.id}>Add</button></div></div>}{p.log.length || pend.length ? <div><span className="lbl">History</span>{pend.map((a, __k) => <div key={__k} className="hs3 pend"><b>{a.what}</b><span>Proposed by you · waiting for a second person</span></div>)}{p.log.map((l, __k) => <div key={__k} className="hs3"><b>{l.t}</b><span>{dFmt(l.at)}</span></div>)}</div> : ''}</div><div className="pn-ft mft">{p.stage === 'waiting' && !p.b13 ? <button className={`btn ${inB14 ? '' : 'p'}`} data-mpick={p.id} {...attrs(inB14 ? 'disabled' : '')}>{inB14 ? `In batch ${N14} ✓` : `Add to batch ${N14}`}</button> : ''}{['invited', 'opened', 'active'].includes(p.stage) ? <button className="btn p" data-mnudge1={p.id}>{LV ? 'Nudge' : <>{"Nudge by "}{ch}</>}</button> : ''}{LV ? p.stage === 'waiting' ? '' : <div className="more3"><button className="btn" data-mmore="" aria-expanded="false">More ▾</button><div className="mm3" hidden>{p.stage === 'invited' ? <button data-mlive={`resend|${p.id}`}>{"Resend the invite "}<span>Logged</span></button> : <button data-mlive={`off|${p.id}`} className="dz">{"Turn off their access "}<span>Logged</span></button>}</div></div> : <div className="more3"><button className="btn" data-mmore="" aria-expanded="false">More ▾</button><div className="mm3" hidden>{p.invited != null && !p.act ? <><button data-mprop={`Resend the invite|${p.id}`}>{"Resend the invite "}<span>2nd approval</span></button><button data-mprop={`Extend the window 30 days|${p.id}`}>{"Extend the window 30 days "}<span>2nd approval</span></button></> : ''}{p.act ? <button data-mprop={`Freeze the account|${p.id}`}>{"Freeze the account "}<span>2nd approval</span></button> : ''}<button data-mprop={`Close the account|${p.id}`} className="dz">{"Close the account "}<span>2nd approval</span></button></div></div>}</div></>);
   }
   /* best channel each person has, given what Clear has set up */
   const SETUP = {
@@ -426,7 +443,7 @@ function makeMembers() {
       items: byDay[d]
     }));
     const now = [];
-    if (M.b13 !== 'back') now.push({
+    if (M.b13 !== 'back' && M.b13 !== 'none') now.push({
       kind: M.b13 === 'approved' ? 'go' : 'b13',
       n: 13
     });
@@ -439,7 +456,7 @@ function makeMembers() {
       now: true,
       items: now
     });
-    let n = 15;
+    let n = N14 + 1;
     for (let w = 1; w <= 2; w++) {
       weeks.push({
         label: dFmt(TODAY + 7 * w),
@@ -460,14 +477,14 @@ function makeMembers() {
     const col = it => {
       if (it.kind === 'sent') {
         const [b, d, i, o, a, s] = it.b;
-        const seg = (v, c, cls = '') => v ? <i className={cls} style={css(`height:${v / 25 * 100}%;${c ? 'background:' + c : ''}`)} /> : '';
+        const seg = (v, c, cls = '') => v ? <i className={cls} style={css(`height:${v / (i || 1) * 100}%;${c ? 'background:' + c : ''}`)} /> : '';
         return <button className="pl-c" data-bopen={b} title={`Batch ${b} · sent ${dFmt(d)} · ${o} opened · ${a} active · ${s} spent`}><span className="pl-v">{a}</span><span className="pl-b">{seg(s, 'var(--fg)')}{seg(a - s, 'color-mix(in srgb,var(--fg) 62%,transparent)')}{seg(o - a, 'var(--land)')}{seg(i - o, '', 'hatch')}</span><span className="pl-n">{b}</span></button>;
       }
-      if (it.kind === 'b13') return <button className="pl-c" data-bjump="b13" title="Batch 13 · needs your approval"><span className="pl-v tlv">25</span><span className="pl-b pend" /><span className="pl-n tlv">13</span></button>;
+      if (it.kind === 'b13') return <button className="pl-c" data-bjump="b13" title={`Batch ${N13} · ${LV ? 'waiting for a second person' : 'needs your approval'}`}><span className="pl-v tlv">{S13}</span><span className="pl-b pend" /><span className="pl-n tlv">{N13}</span></button>;
       if (it.kind === 'go') return <button className="pl-c" data-bjump="b13" title="Batch 13 · approved, sending tomorrow"><span className="pl-v ok">25</span><span className="pl-b m-go" /><span className="pl-n">13</span></button>;
       if (it.kind === 'b14') {
         const k = batchPool().pick.length;
-        return <button className="pl-c" data-bjump="b14" title={`Batch 14 · planning, ${k} of ${M.b.size}`}><span className="pl-v">{M.b.size}</span><span className="pl-b plan" /><span className="pl-n">14</span></button>;
+        return <button className="pl-c" data-bjump="b14" title={`Batch ${N14} · planning, ${k} of ${M.b.size}`}><span className="pl-v">{M.b.size}</span><span className="pl-b plan" /><span className="pl-n">{N14}</span></button>;
       }
       return <span className="pl-c fut" title={`${it.many ? `${it.many} batches` : 'Batch ' + it.n} at this pace`}><span className="pl-v">{it.many ? '×' + it.many : ''}</span><span className="pl-b ghost" /><span className="pl-n">{it.many ? `${it.n}–${it.n + it.many - 1}` : it.n}</span></span>;
     };
@@ -500,10 +517,34 @@ function makeMembers() {
     const list = b.how === 'picked' ? <>{lh(true)}<div className="bp5-list">{cand.length ? cand.map(((x, __k) => <Fragment key={__k}>{pkRow(x)}</Fragment>)) : <p className="small quiet" style={css("padding:14px 0;margin:0")}>Nobody in the queue matches.</p>}</div></> : pick.length ? <>{lh(false)}<div className="bp5-list">{pick.map(((x, __k) => <Fragment key={__k}>{pRow(x)}</Fragment>))}</div></> : <div className="bp5-list"><p className="small quiet" style={css("padding:14px 0;margin:0")}>Nobody matches yet. Pick a city or shop above.</p></div>;
     const waits = pick.map(p => TODAY - p.joined);
     const ready = pick.length === b.size;
-    const b13cell = M.b13 === 'pending' ? <><div className="hd"><h2>Batch 13</h2><div className="r"><span className="chip live">Needs your approval</span></div></div><div className="b3"><div className="b3-top"><div className="ugrid pend">{B13.map((_, __k) => <i key={__k} />)}</div><div className="b3-s"><div className="m-big">{"25 "}<small>people</small></div><span>{"Proposed by "}<b>Marcus Lee</b>{" on 19 Oct · oldest first"}</span><span>You’d be the second person. Invites go out the next morning.</span></div></div><div className="led"><div><span>Joined</span><b>{dFmt(Math.min(...B13.map(p => p.joined)))}{" · the first week of posters"}</b></div><div><span>Window would close</span><b>{dFmt(TODAY + 1 + 90)}</b></div></div>{mixBar('Where they live', mix(p => p.city, B13))}<div className="b3-l">{B13.map(((x, __k) => <Fragment key={__k}>{personRow(x)}</Fragment>))}</div></div><div className="b3-ft"><button className="lnk3" data-b13="back">Send it back</button><button className="btn p" data-b13="approve">Approve batch 13</button></div></> : M.b13 === 'approved' ? <><div className="hd"><h2>Batch 13</h2><div className="r"><span className="chip ok">Approved</span></div></div><div className="b3"><div className="b3-top"><div className="ugrid m-go">{B13.map((_, __k) => <i key={__k} />)}</div><div className="b3-s"><div className="m-big">{"25 "}<small>people</small></div><span>Approved by you · proposed by Marcus Lee</span><span>Invites go out tomorrow at 9:00am. Their 90 days start then.</span></div></div><div className="b3-done">{"Logged in Records as "}<b>Kai approved batch 13</b>.</div></div><div className="b3-ft"><span className="small quiet">Two people signed off</span><button className="lnk3" data-b13="undo">Undo</button></div></> : <><div className="hd"><h2>Batch 13</h2><div className="r"><span className="chip under">Sent back</span></div></div><div className="b3"><div className="b3-done">Marcus Lee gets a note. The 25 people go back to the front of the queue, so batch 14 now starts with them.</div></div><div className="b3-ft"><span className="small quiet">Logged in Records</span><button className="lnk3" data-b13="undo">Undo</button></div></>;
-    html($m('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd"><h2>Every batch</h2><div className="r"><span className="lbl">Invites a week</span><div className="seg sm" role="group" aria-label="Invites a week">{[25, 50, 100, 200, 325].map((n, __k) => <button key={__k} data-bpace={n} aria-pressed={b.pace === n}>{n}</button>)}</div></div></div><div className="pl-wrap"><div className="pl-main">{pipeline()}<div className="pl-k"><span><b className="pl-kn">13</b>active of 25</span><span><i style={css("background:var(--fg)")} />Spent $10</span><span><i style={css("background:color-mix(in srgb,var(--fg) 62%,transparent)")} />Active</span><span><i style={css("background:var(--land)")} />Not funded</span><span><i className="hatch" />Not opened</span><span><i className="kpend" />Needs approval</span><span><i className="kplan" />Planning</span><span><i className="kghost" />At this pace</span></div></div><div className="pl-side"><span className="lbl">{"At "}{b.pace}{" a week"}</span><div className="pl-big"><b>{waitWeeks()}</b>{" weeks"}</div><span className="pl-sub">for someone who joins today</span><div className="pl-rows"><div><span>Waitlist in 4 weeks</span><b className={net > 0 ? 'warn' : 'ok'}>{fmt(Math.max(0, WAITING.length + 4 * net))}</b></div><div><span>Joins a week</span><b>{fmt(JOINS)}</b></div><div><span>To keep up</span><b>{fmt(Math.ceil(JOINS / 25) * 25)}{" a week"}</b></div></div></div></div><div className="bk-ft"><span>Batches 11 and 12 went out on 20 Oct, so most of them haven’t opened yet. Click a batch to see who’s in it.</span><button data-gto="cohorts">How each week activates · Cohorts →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s5" id="b13">{b13cell}</div><div className="cell s7" id="b14"><div className="hd"><h2>Plan batch 14</h2><div className="r"><span className="lbl">Size</span>{sizeSeg}</div></div><div className="hw4" role="group" aria-label="Who goes first">{HOW.map(([k, t], __k) => <button key={__k} data-bhow={k} aria-pressed={b.how === k}>{t}</button>)}</div><div className="bp5"><div className="bp5-rule"><p>{HOW.find(h => h[0] === b.how)[2]}</p>{b.how === 'picked' ? <label className="msearch sm"><svg className="i" viewBox="0 0 20 20"><circle cx="9" cy="9" r="5" /><path d="M13 13l4 4" /></svg><input id="bq" placeholder="Search the queue: ID, city or shop" defaultValue={b.hq} /></label> : opts}</div><div className="bp5-sum"><div className="bp5-c"><div className="ugrid sz" style={css(`--cols:${b.size / 5}`)}>{Array.from({
+    const b13cell = LV ? liveB13(B13) : M.b13 === 'pending' ? <><div className="hd"><h2>Batch 13</h2><div className="r"><span className="chip live">Needs your approval</span></div></div><div className="b3"><div className="b3-top"><div className="ugrid pend">{B13.map((_, __k) => <i key={__k} />)}</div><div className="b3-s"><div className="m-big">{"25 "}<small>people</small></div><span>{"Proposed by "}<b>Marcus Lee</b>{" on 19 Oct · oldest first"}</span><span>You’d be the second person. Invites go out the next morning.</span></div></div><div className="led"><div><span>Joined</span><b>{dFmt(Math.min(...B13.map(p => p.joined)))}{" · the first week of posters"}</b></div><div><span>Window would close</span><b>{dFmt(TODAY + 1 + 90)}</b></div></div>{mixBar('Where they live', mix(p => p.city, B13))}<div className="b3-l">{B13.map(((x, __k) => <Fragment key={__k}>{personRow(x)}</Fragment>))}</div></div><div className="b3-ft"><button className="lnk3" data-b13="back">Send it back</button><button className="btn p" data-b13="approve">Approve batch 13</button></div></> : M.b13 === 'approved' ? <><div className="hd"><h2>Batch 13</h2><div className="r"><span className="chip ok">Approved</span></div></div><div className="b3"><div className="b3-top"><div className="ugrid m-go">{B13.map((_, __k) => <i key={__k} />)}</div><div className="b3-s"><div className="m-big">{"25 "}<small>people</small></div><span>Approved by you · proposed by Marcus Lee</span><span>Invites go out tomorrow at 9:00am. Their 90 days start then.</span></div></div><div className="b3-done">{"Logged in Records as "}<b>Kai approved batch 13</b>.</div></div><div className="b3-ft"><span className="small quiet">Two people signed off</span><button className="lnk3" data-b13="undo">Undo</button></div></> : <><div className="hd"><h2>Batch 13</h2><div className="r"><span className="chip under">Sent back</span></div></div><div className="b3"><div className="b3-done">Marcus Lee gets a note. The 25 people go back to the front of the queue, so batch 14 now starts with them.</div></div><div className="b3-ft"><span className="small quiet">Logged in Records</span><button className="lnk3" data-b13="undo">Undo</button></div></>;
+    html($m('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd"><h2>Every batch</h2><div className="r"><span className="lbl">Invites a week</span><div className="seg sm" role="group" aria-label="Invites a week">{[25, 50, 100, 200, 325].map((n, __k) => <button key={__k} data-bpace={n} aria-pressed={b.pace === n}>{n}</button>)}</div></div></div><div className="pl-wrap"><div className="pl-main">{pipeline()}<div className="pl-k">{LV ? BATCH.length ? <span><b className="pl-kn">{BATCH.at(-1)[4]}</b>{"active of "}{BATCH.at(-1)[2]}</span> : '' : <span><b className="pl-kn">13</b>active of 25</span>}<span><i style={css("background:var(--fg)")} />Spent $10</span><span><i style={css("background:color-mix(in srgb,var(--fg) 62%,transparent)")} />Active</span><span><i style={css("background:var(--land)")} />Not funded</span><span><i className="hatch" />Not opened</span><span><i className="kpend" />Needs approval</span><span><i className="kplan" />Planning</span><span><i className="kghost" />At this pace</span></div></div><div className="pl-side"><span className="lbl">{"At "}{b.pace}{" a week"}</span><div className="pl-big"><b>{waitWeeks()}</b>{" weeks"}</div><span className="pl-sub">for someone who joins today</span><div className="pl-rows"><div><span>Waitlist in 4 weeks</span><b className={net > 0 ? 'warn' : 'ok'}>{fmt(Math.max(0, WAITING.length + 4 * net))}</b></div><div><span>Joins a week</span><b>{fmt(JOINS)}</b></div><div><span>To keep up</span><b>{fmt(Math.ceil(JOINS / 25) * 25)}{" a week"}</b></div></div></div></div><div className="bk-ft"><span>{LV ? lastSentFoot() : 'Batches 11 and 12 went out on 20 Oct, so most of them haven’t opened yet. Click a batch to see who’s in it.'}</span><button data-gto="cohorts">How each week activates · Cohorts →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s5" id="b13">{b13cell}</div><div className="cell s7" id="b14"><div className="hd"><h2>{"Plan batch "}{N14}</h2><div className="r"><span className="lbl">Size</span>{sizeSeg}</div></div><div className="hw4" role="group" aria-label="Who goes first">{HOW.map(([k, t], __k) => <button key={__k} data-bhow={k} aria-pressed={b.how === k}>{t}</button>)}</div><div className="bp5"><div className="bp5-rule"><p>{HOW.find(h => h[0] === b.how)[2]}</p>{b.how === 'picked' ? <label className="msearch sm"><svg className="i" viewBox="0 0 20 20"><circle cx="9" cy="9" r="5" /><path d="M13 13l4 4" /></svg><input id="bq" placeholder="Search the queue: ID, city or shop" defaultValue={b.hq} /></label> : opts}</div><div className="bp5-sum"><div className="bp5-c"><div className="ugrid sz" style={css(`--cols:${b.size / 5}`)}>{Array.from({
                       length: b.size
-                    }, (_, i) => <i key={i} className={i < pick.length ? 'on' : ''} />)}</div><div><div className="m-big">{pick.length}{" "}<small>{"of "}{b.size}</small></div><span>{pick.length ? `Waited ${Math.min(...waits) === Math.max(...waits) ? Math.min(...waits) : Math.min(...waits) + '–' + Math.max(...waits)} days` : 'Nobody picked yet'}</span>{b.how === 'picked' && b.picked.length ? <button className="lnk3" data-bclearpick="">Clear picks</button> : ''}</div></div>{pick.length ? <div className="bp5-mx">{mixBar('Where they live', mix(p => p.city, pick))}{mixBar('How they joined', mix(p => p.src, pick))}</div> : ''}</div>{skipped ? <div className="fair">{ICON.warn}<span>{"Skips "}<b>{fmt(skipped)}</b>{" people who’ve waited longer. You’ll say why when you propose it."}</span></div> : ''}{list}</div><button className={`foot ${b.proposed ? 'done' : ''}`} data-bpropose="" {...attrs(!ready || b.proposed ? 'disabled' : '')}><span>{b.proposed ? 'Batch 14 proposed · waiting for a second person' : !ready ? `Pick ${b.size - pick.length} more to propose it` : `Propose batch 14 · ${b.size} people · needs a second person`}</span><span>{b.proposed ? '✓' : '→'}</span></button></div></div></section></>);
+                    }, (_, i) => <i key={i} className={i < pick.length ? 'on' : ''} />)}</div><div><div className="m-big">{pick.length}{" "}<small>{"of "}{b.size}</small></div><span>{pick.length ? `Waited ${Math.min(...waits) === Math.max(...waits) ? Math.min(...waits) : Math.min(...waits) + '–' + Math.max(...waits)} days` : 'Nobody picked yet'}</span>{b.how === 'picked' && b.picked.length ? <button className="lnk3" data-bclearpick="">Clear picks</button> : ''}</div></div>{pick.length ? <div className="bp5-mx">{mixBar('Where they live', mix(p => p.city, pick))}{mixBar('How they joined', mix(p => p.src, pick))}</div> : ''}</div>{skipped ? <div className="fair">{ICON.warn}<span>{"Skips "}<b>{fmt(skipped)}</b>{" people who’ve waited longer. You’ll say why when you propose it."}</span></div> : ''}{list}</div><button className={`foot ${b.proposed ? 'done' : ''}`} data-bpropose="" {...attrs(!ready || b.proposed ? 'disabled' : '')}><span>{b.proposed ? `Batch ${N14} proposed · waiting for a second person` : !ready ? `Pick ${b.size - pick.length} more to propose it` : `Propose batch ${N14} · ${b.size} people · needs a second person`}</span><span>{b.proposed ? '✓' : '→'}</span></button></div></div></section></>);
+  }
+  /* live: the batch waiting for a second person, approved or sent back in Needs you (the API's proposals) */
+  const HOWN = {
+    oldest: 'oldest first',
+    cities: 'by city',
+    shops: 'by poster shop',
+    picked: 'hand-picked',
+    posters: 'posters first',
+    city: 'Redlands first'
+  };
+  function liveB13(B13) {
+    const nx = LV.NEXT;
+    if (!nx) return <><div className="hd"><h2>Waiting for approval</h2></div><div className="b3"><div className="b3-done">No batch is waiting. Propose one beside this; someone else approves it in Needs you.</div></div></>;
+    return <><div className="hd"><h2>{"Batch "}{N13}</h2><div className="r"><span className="chip live">Needs a second person</span></div></div><div className="b3"><div className="b3-top"><div className="ugrid pend">{Array.from({
+              length: S13
+            }, (_, k) => <i key={k} />)}</div><div className="b3-s"><div className="m-big">{S13}{" "}<small>{S13 === 1 ? 'person' : 'people'}</small></div><span>{"Proposed by "}<b>{nx.proposedBy}</b>{nx.proposedAt != null ? ` on ${dFmt(nx.proposedAt)}` : ''}{" · "}{HOWN[nx.order] ?? HOWN.oldest}</span><span>Someone other than them approves it in Needs you. Invites go out once it’s approved.</span></div></div><div className="led"><div><span>Longest waiting</span><b>{"Joined "}{dFmt(nx.joinedFrom)}</b></div><div><span>Window would close</span><b>90 days after it sends</b></div></div>{B13.length ? mixBar('Where they live', mix(p => p.city, B13)) : ''}<div className="b3-l">{B13.map(((x, __k) => <Fragment key={__k}>{personRow(x)}</Fragment>))}</div></div><div className="b3-ft"><span className="small quiet">Logged in Records</span><button className="lnk3" data-go="waiting">Approve or send back in Needs you →</button></div></>;
+  }
+  /* live: which batches went out last, and when */
+  function lastSentFoot() {
+    if (!BATCH.length) return 'No batch has gone out yet.';
+    const d = BATCH.at(-1)[1],
+      last = BATCH.filter(x => x[1] === d).map(x => x[0]);
+    const nm = last.length === 1 ? `Batch ${last[0]} went` : `Batches ${last.slice(0, -1).join(', ')} and ${last.at(-1)} went`;
+    return `${nm} out on ${dFmt(d)}. Click a batch to see who’s in it.`;
   }
   function renderBatchPanel(pn) {
     const row = BATCH.find(x => x[0] === M.bopen),
@@ -519,7 +560,7 @@ function makeMembers() {
     ppl.sort((x, y) => order[x.stage] - order[y.stage]);
     const notOpened = ppl.filter(p => p.stage === 'invited'),
       notFunded = ppl.filter(p => p.stage === 'opened');
-    html(pn, <><div className="pn-hd"><span className="lbl">{"Batch "}{bn}</span><span className="chip plain nodot">{"Sent "}{dFmt(d)}</span><button className="x" data-mclose="" aria-label="Close">{ICON.x}</button></div><div className="pn-b"><h3>{"Batch "}{bn}</h3><div className="bx4">{[['Invited', i], ['Opened', o], ['Funded', a], ['Spent $10', s]].map(([t, v], __k) => <div key={__k}><span className="lbl">{t}</span><b>{v}</b></div>)}</div><div className="w90"><div className="w90-h"><span className="lbl">90-day window</span><b className={left < 30 ? 'warn' : ''}>{left}{" days left"}</b></div><span className={`wbar big ${left < 30 ? 'lo' : ''}`}><i style={css(`width:${(90 - left) / 90 * 100}%`)} /></span><span className="small quiet">{"Closes "}{dFmt(d + 90)}{" for anyone who hasn’t funded"}</span></div><div><span className="lbl">Who’s in it</span><div className="bpl">{ppl.map((p, __k) => <button key={__k} className="bpl-r" data-mp={p.id}><b className="msk">{p.name}</b>{stageCell(p)}</button>)}</div></div></div><div className="pn-ft">{notOpened.length ? <button className="btn p" style={css("height:40px")} data-mnudgeids={`invited|${notOpened.map(p => p.id).join(',')}`}>{"Nudge the "}{notOpened.length}{" who haven’t opened"}</button> : notFunded.length ? <button className="btn p" style={css("height:40px")} data-mnudgeids={`opened|${notFunded.map(p => p.id).join(',')}`}>{"Nudge the "}{notFunded.length}{" who haven’t funded"}</button> : ''}<button className="btn" style={css("height:40px;margin-left:auto")} data-mclose="">Close</button></div></>);
+    html(pn, <><div className="pn-hd"><span className="lbl">{"Batch "}{bn}</span><span className="chip plain nodot">{"Sent "}{dFmt(d)}</span><button className="x" data-mclose="" aria-label="Close">{ICON.x}</button></div><div className="pn-b"><h3>{"Batch "}{bn}</h3><div className="bx4">{[['Invited', i], ['Opened', o], ['Funded', a], ['Spent $10', s]].map(([t, v], __k) => <div key={__k}><span className="lbl">{t}</span><b>{v}</b></div>)}</div><div className="w90"><div className="w90-h"><span className="lbl">90-day window</span><b className={left < 30 ? 'warn' : ''}>{left}{" days left"}</b></div><span className={`wbar big ${left < 30 ? 'lo' : ''}`}><i style={css(`width:${(90 - left) / 90 * 100}%`)} /></span><span className="small quiet">{"Closes "}{dFmt(d + 90)}{" for anyone who hasn’t funded"}</span></div><div><span className="lbl">Who’s in it</span><div className="bpl">{ppl.map((p, __k) => <button key={__k} className="bpl-r" data-mp={p.id}><b className="msk">{p.name}</b>{stageCell(p)}</button>)}</div></div></div><div className="pn-ft">{LV ? '' : notOpened.length ? <button className="btn p" style={css("height:40px")} data-mnudgeids={`invited|${notOpened.map(p => p.id).join(',')}`}>{"Nudge the "}{notOpened.length}{" who haven’t opened"}</button> : notFunded.length ? <button className="btn p" style={css("height:40px")} data-mnudgeids={`opened|${notFunded.map(p => p.id).join(',')}`}>{"Nudge the "}{notFunded.length}{" who haven’t funded"}</button> : ''}<button className="btn" style={css("height:40px;margin-left:auto")} data-mclose="">Close</button></div></>);
   }
 
   /* ── Nudges ── */
@@ -603,6 +644,7 @@ function makeMembers() {
     acted: null,
     first: 'First ones go out 30 Nov'
   }];
+  if (LV) GROUPS.forEach(g => g.last = null);
   const grpList = (k, L) => k === 'quiet' ? L.filter(QUIET) : L.filter(p => p.stage === k);
   const fill = (t, p) => t.replace(/\{shop\}/g, p ? p.shop || 'a Clear shop near you' : 'their poster shop').replace(/\{days\}/g, p && LEFT(p) != null ? LEFT(p) : '54').replace(/\{first\}/g, 'Maria');
   function renderNudges() {
@@ -620,13 +662,13 @@ function makeMembers() {
       const sent = M.sent.find(s => s.k === g.k),
         list = grpList(g.k, L),
         u30 = list.filter(p => LEFT(p) != null && LEFT(p) < 30).length;
-      return sent ? <span className="ok">{"Sent "}{sent.when}{" · results in 7 days"}</span> : <>{g.last ? <>{"Last "}{g.last[0]}{" · "}<b>{g.last[1]}% acted</b></> : 'Never nudged'}{u30 ? <>{" · "}<span className="warn">{u30}{" under 30 days"}</span></> : ''}</>;
+      return sent ? <span className="ok">{"Sent "}{sent.when}{" · results in 7 days"}</span> : <>{g.last ? <>{"Last "}{g.last[0]}{" · "}<b>{g.last[1]}% acted</b></> : LV ? 'No nudge history yet' : 'Never nudged'}{u30 ? <>{" · "}<span className="warn">{u30}{" under 30 days"}</span></> : ''}</>;
     };
     // left: the funnel, one step a row; the hatched gap is the group that stopped there
     const step = (label, v, prev, gk) => {
       const on = gk && M.ng === gk,
         pc = prev ? Math.round(v / prev * 100) : null;
-      const inner = <><span className="nf5-s"><span>{label}</span><span className="nf5-p">{pc == null ? 'Everyone we invited' : `${pc}% of the step before`}</span></span><b className="nf5-v">{fmt(v)}</b><span className="nf-b"><i className="m-v" style={css(`width:${v / max * 100}%`)} />{prev != null && prev > v ? <i className={`m-gap ${on ? 'm-sel' : ''}`} style={css(`left:${v / max * 100}%;width:${(prev - v) / max * 100}%`)} /> : ''}</span></>;
+      const inner = <><span className="nf5-s"><span>{label}</span><span className="nf5-p">{prev == null ? 'Everyone we invited' : pc == null ? 'Nobody at the step before yet' : `${pc}% of the step before`}</span></span><b className="nf5-v">{fmt(v)}</b><span className="nf-b"><i className="m-v" style={css(`width:${v / max * 100}%`)} />{prev != null && prev > v ? <i className={`m-gap ${on ? 'm-sel' : ''}`} style={css(`left:${v / max * 100}%;width:${(prev - v) / max * 100}%`)} /> : ''}</span></>;
       return gk ? <button className={`nf5-r ${on ? 'on' : ''}`} data-ng={gk} aria-pressed={on}>{inner}</button> : <div className="nf5-r">{inner}</div>;
     };
     // right: the groups, as a list
@@ -639,7 +681,7 @@ function makeMembers() {
     const grow = (gk, n) => {
       const g = GROUPS.find(x => x.k === gk),
         on = M.ng === gk;
-      return <button className={`ng5 ${on ? 'on' : ''}`} data-ng={gk} aria-pressed={on}><span className="ng5-t"><i className={`ng5-sw ${gk === 'quiet' ? 'q' : ''}`} /><b>{fmt(n)}</b>{" "}{g.short}<span className="ng5-ar">{on ? 'Nudging ↓' : 'Nudge →'}</span></span><span className="ng5-m">{META[gk]}</span><span className="ng5-s">{gstat(g)}</span></button>;
+      return <button className={`ng5 ${on ? 'on' : ''}`} data-ng={gk} aria-pressed={on}><span className="ng5-t"><i className={`ng5-sw ${gk === 'quiet' ? 'q' : ''}`} /><b>{fmt(n)}</b>{" "}{g.short}<span className="ng5-ar">{LV ? 'See them →' : on ? 'Nudging ↓' : 'Nudge →'}</span></span><span className="ng5-m">{META[gk]}</span><span className="ng5-s">{gstat(g)}</span></button>;
     };
     const g = GROUPS.find(x => x.k === M.ng),
       list = grpList(g.k, L),
@@ -663,7 +705,7 @@ function makeMembers() {
     const preview = pvCh === 'push' ? <div className="pv-ph"><span className="pv-tm">12:00</span><span className="pv-dt">Sunday, 25 October</span><div className="pv-nt"><span className="pv-ic">C</span><div><div className="pv-nh"><b>Clear</b><span>now</span></div><b className="pv-st">{fill(g.sub, sample)}</b><p>{fill(msg, sample)}</p></div></div></div> : <div className="pv-em"><div className="pv-eh"><div><span>From</span><b>{"Clear <hello@useclear.org>"}</b></div><div><span>Subject</span><b>{fill(g.sub, sample)}</b></div></div><div className="pv-eb"><p>{"Hi "}{fill('{first}', sample)},</p><p>{fill(msg, sample)}</p><span className="pv-cta">{g.cta}</span><p className="pv-fine">You’re getting this because you joined Clear at useclear.org. Unsubscribe</p></div></div>;
     const fon = FLOWS.filter(f => f.on),
       fx = d => d <= 14 ? d / 14 * 32 : 32 + (d - 14) / 76 * 68; // first two weeks get a third of the axis
-    html($m('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd"><h2>Where people stop</h2><div className="r"><span className="lbl">Pick a group to nudge</span></div></div><div className="nf5"><div className="nf5-f">{step('Invited', N.inv, null, null)}{step('Opened the app', N.op, N.inv, 'invited')}{step('Funded', N.fd, N.op, 'opened')}{step('Spent their $10', N.sp, N.fd, 'active')}</div><div className="nf5-g">{grow('invited', N.inv - N.op)}{grow('opened', N.op - N.fd)}{grow('active', N.fd - N.sp)}{grow('quiet', quiet)}</div></div><div className="bk-ft"><span>The hatched part of each bar is who stopped there. Follow-ups below already reach most of them.</span><button data-ngjump="">Write the nudge ↓</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="ncomp"><div className="hd"><h2>{"Nudge "}{fmt(list.length)}{" "}{list.length === 1 ? 'person' : 'people'}</h2><span className="chip plain nodot">{g.t}</span></div><div className="nc"><div className="nc-r"><span className="lbl">Message</span><div><textarea id="ncmsg" rows="3" defaultValue={msg} /><div className="nc-tk"><span>Fill in per person</span>{[['{shop}', 'Their poster shop'], ['{days}', 'Days left'], ['{first}', 'First name']].map(([t, n], __k) => <button key={__k} data-tok={t}>{n}</button>)}</div></div></div><div className="nc-r"><span className="lbl">Send by</span><div><div className="seg sm" role="group" aria-label="Channel">{[['', 'Best for each'], ['push', 'Push'], ['email', 'Email'], ['text', 'Text']].map(([k, t], __k) => <button key={__k} data-mforce={k} aria-pressed={(M.force || '') === k} {...attrs(k === 'text' && !SETUP.text ? 'disabled title="Texting isn’t set up"' : '')}>{t}</button>)}</div><div className="nc-mx"><span className="mb2">{['push', 'email'].map((c, __k) => m[c] ? <i key={__k} style={css(`flex:${m[c]};background:${CHCOL[c]}`)} /> : '')}</span><span className="mk2">{['push', 'email'].filter(c => m[c]).map((c, __k) => <span key={__k}><i style={css(`background:${CHCOL[c]}`)} />{CH[c]}{" "}<b>{m[c]}</b></span>)}<span className="z">Text isn’t set up</span></span></div><p className="nc-h">{M.force ? `Everyone gets ${CH[M.force].toLowerCase()}.` : 'Push if they have the app, otherwise email.'}</p></div></div><div className="nc-r"><span className="lbl">When</span><div><div className="seg sm" role="group" aria-label="When">{[['now', 'Now'], ['sun', 'Sunday, noon'], ['tue', 'Tuesday, 6pm']].map(([k, t], __k) => <button key={__k} data-mwhen={k} aria-pressed={M.when === k}>{t}</button>)}</div><p className="nc-h">{M.when === 'now' ? 'Goes out as soon as you send.' : M.when === 'sun' ? 'Sunday at noon is when most people open the app.' : 'Tuesday evening gets the most email opens.'}</p></div></div></div><div className="nc-ft"><span>{sent ? <><b className="ok">{"Sent "}{sent.when}</b>{" · logged in Records"}</> : exp != null ? <>{"If it does as well as last time, about "}<b>{fmt(exp)}</b>{" will "}{deed}{" this week."}</> : 'Never nudged before. Results show up here after a week.'}</span><button className="btn p" data-ngsend="" {...attrs(!list.length || sent ? 'disabled' : '')}>{sent ? 'Sent ✓' : `${M.when === 'now' ? 'Send to' : 'Schedule for'} ${fmt(list.length)}`}</button></div></div><div className="cell s5"><div className="hd"><h2>Preview</h2><div className="r"><div className="seg sm" role="group" aria-label="Preview">{['push', 'email'].map((c, __k) => <button key={__k} data-pv={c} aria-pressed={pvCh === c} {...attrs(!m[c] && !M.force ? '' : '')}>{CH[c]}</button>)}</div></div></div><div className="pv">{preview}</div><div className="bk-ft"><span>{"Filled in for "}{sample ? sample.id : 'a sample person'}{sample && sample.shop ? ' · ' + sample.shop : ''}</span><button data-mtab="people" data-mstagego={g.k}>{"All "}{fmt(list.length)}{" in People →"}</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7"><div className="hd"><h2>Follow-ups that run on their own</h2><div className="r"><span className="lbl">{fon.length}{" on · "}{fmt(fon.reduce((s, f) => s + f.wk, 0))}{" sent this week"}</span></div></div><div className="fu-tr"><div className="fu-ax"><i className="fu-gap" style={css(`left:${fx(13)}%;width:${fx(75) - fx(13)}%`)}><span>{"Nothing for "}{75 - 13}{" days"}</span></i>{FLOWS.map((f, i) => <b key={i} className={`fu-m ${f.on ? '' : 'm-off'}`} style={css(`left:${fx(f.day)}%`)}>{i + 1}</b>)}</div><div className="fu-sc"><span style={css("left:0")}>Invited</span><span style={css(`left:${fx(7)}%`)}>Day 7</span><span style={css(`left:${fx(14)}%`)}>Day 14</span><span style={css(`left:${fx(30)}%`)}>Day 30</span><span style={css(`left:${fx(60)}%`)}>Day 60</span><span style={css("right:0")}>Day 90 · closes</span></div></div><div className="fu-l">{FLOWS.map((f, i) => <div key={i} className={`fu-r ${f.on ? '' : 'm-off'}`}><b className="fu-n">{i + 1}</b><span className="fu-t"><b>{f.when}</b><span>{f.who}{" · "}{f.ch}</span></span><span className="fu-s">{f.first && f.on ? f.first : f.on ? <>{f.wk}{" this week"}{f.acted != null ? <>{" · "}<b>{f.acted}% acted</b></> : ''}</> : 'Off'}</span><button className="sw4" role="switch" aria-checked={f.on} aria-label={f.when} data-flow={f.k}><i /></button></div>)}</div><div className="bk-ft"><span>Between day 13 and day 75 nobody hears from Clear.</span><button data-fuadd="">Add a follow-up at day 30 →</button></div></div><div className="cell s5"><div className="hd"><h2>How the last nudges did</h2><div className="r"><span className="lbl">Acted within 7 days</span></div></div><div className="pn3">{[...M.sent.map(s => ({
+    html($m('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd"><h2>Where people stop</h2><div className="r"><span className="lbl">Pick a group to nudge</span></div></div><div className="nf5"><div className="nf5-f">{step('Invited', N.inv, null, null)}{step('Opened the app', N.op, N.inv, 'invited')}{step('Funded', N.fd, N.op, 'opened')}{step('Spent their $10', N.sp, N.fd, 'active')}</div><div className="nf5-g">{grow('invited', N.inv - N.op)}{grow('opened', N.op - N.fd)}{grow('active', N.fd - N.sp)}{grow('quiet', quiet)}</div></div><div className="bk-ft"><span>{LV ? 'The hatched part of each bar is who stopped there. Pick a group to see who’s in it.' : 'The hatched part of each bar is who stopped there. Follow-ups below already reach most of them.'}</span>{LV ? <span /> : <button data-ngjump="">Write the nudge ↓</button>}</div></div></div></section>{LV ? nudgesNotReal() : <><section className="band"><div className="bento"><div className="cell s7" id="ncomp"><div className="hd"><h2>{"Nudge "}{fmt(list.length)}{" "}{list.length === 1 ? 'person' : 'people'}</h2><span className="chip plain nodot">{g.t}</span></div><div className="nc"><div className="nc-r"><span className="lbl">Message</span><div><textarea id="ncmsg" rows="3" defaultValue={msg} /><div className="nc-tk"><span>Fill in per person</span>{[['{shop}', 'Their poster shop'], ['{days}', 'Days left'], ['{first}', 'First name']].map(([t, n], __k) => <button key={__k} data-tok={t}>{n}</button>)}</div></div></div><div className="nc-r"><span className="lbl">Send by</span><div><div className="seg sm" role="group" aria-label="Channel">{[['', 'Best for each'], ['push', 'Push'], ['email', 'Email'], ['text', 'Text']].map(([k, t], __k) => <button key={__k} data-mforce={k} aria-pressed={(M.force || '') === k} {...attrs(k === 'text' && !SETUP.text ? 'disabled title="Texting isn’t set up"' : '')}>{t}</button>)}</div><div className="nc-mx"><span className="mb2">{['push', 'email'].map((c, __k) => m[c] ? <i key={__k} style={css(`flex:${m[c]};background:${CHCOL[c]}`)} /> : '')}</span><span className="mk2">{['push', 'email'].filter(c => m[c]).map((c, __k) => <span key={__k}><i style={css(`background:${CHCOL[c]}`)} />{CH[c]}{" "}<b>{m[c]}</b></span>)}<span className="z">Text isn’t set up</span></span></div><p className="nc-h">{M.force ? `Everyone gets ${CH[M.force].toLowerCase()}.` : 'Push if they have the app, otherwise email.'}</p></div></div><div className="nc-r"><span className="lbl">When</span><div><div className="seg sm" role="group" aria-label="When">{[['now', 'Now'], ['sun', 'Sunday, noon'], ['tue', 'Tuesday, 6pm']].map(([k, t], __k) => <button key={__k} data-mwhen={k} aria-pressed={M.when === k}>{t}</button>)}</div><p className="nc-h">{M.when === 'now' ? 'Goes out as soon as you send.' : M.when === 'sun' ? 'Sunday at noon is when most people open the app.' : 'Tuesday evening gets the most email opens.'}</p></div></div></div><div className="nc-ft"><span>{sent ? <><b className="ok">{"Sent "}{sent.when}</b>{" · logged in Records"}</> : exp != null ? <>{"If it does as well as last time, about "}<b>{fmt(exp)}</b>{" will "}{deed}{" this week."}</> : 'Never nudged before. Results show up here after a week.'}</span><button className="btn p" data-ngsend="" {...attrs(!list.length || sent ? 'disabled' : '')}>{sent ? 'Sent ✓' : `${M.when === 'now' ? 'Send to' : 'Schedule for'} ${fmt(list.length)}`}</button></div></div><div className="cell s5"><div className="hd"><h2>Preview</h2><div className="r"><div className="seg sm" role="group" aria-label="Preview">{['push', 'email'].map((c, __k) => <button key={__k} data-pv={c} aria-pressed={pvCh === c} {...attrs(!m[c] && !M.force ? '' : '')}>{CH[c]}</button>)}</div></div></div><div className="pv">{preview}</div><div className="bk-ft"><span>{"Filled in for "}{sample ? sample.id : 'a sample person'}{sample && sample.shop ? ' · ' + sample.shop : ''}</span><button data-mtab="people" data-mstagego={g.k}>{"All "}{fmt(list.length)}{" in People →"}</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7"><div className="hd"><h2>Follow-ups that run on their own</h2><div className="r"><span className="lbl">{fon.length}{" on · "}{fmt(fon.reduce((s, f) => s + f.wk, 0))}{" sent this week"}</span></div></div><div className="fu-tr"><div className="fu-ax"><i className="fu-gap" style={css(`left:${fx(13)}%;width:${fx(75) - fx(13)}%`)}><span>{"Nothing for "}{75 - 13}{" days"}</span></i>{FLOWS.map((f, i) => <b key={i} className={`fu-m ${f.on ? '' : 'm-off'}`} style={css(`left:${fx(f.day)}%`)}>{i + 1}</b>)}</div><div className="fu-sc"><span style={css("left:0")}>Invited</span><span style={css(`left:${fx(7)}%`)}>Day 7</span><span style={css(`left:${fx(14)}%`)}>Day 14</span><span style={css(`left:${fx(30)}%`)}>Day 30</span><span style={css(`left:${fx(60)}%`)}>Day 60</span><span style={css("right:0")}>Day 90 · closes</span></div></div><div className="fu-l">{FLOWS.map((f, i) => <div key={i} className={`fu-r ${f.on ? '' : 'm-off'}`}><b className="fu-n">{i + 1}</b><span className="fu-t"><b>{f.when}</b><span>{f.who}{" · "}{f.ch}</span></span><span className="fu-s">{f.first && f.on ? f.first : f.on ? <>{f.wk}{" this week"}{f.acted != null ? <>{" · "}<b>{f.acted}% acted</b></> : ''}</> : 'Off'}</span><button className="sw4" role="switch" aria-checked={f.on} aria-label={f.when} data-flow={f.k}><i /></button></div>)}</div><div className="bk-ft"><span>Between day 13 and day 75 nobody hears from Clear.</span><button data-fuadd="">Add a follow-up at day 30 →</button></div></div><div className="cell s5"><div className="hd"><h2>How the last nudges did</h2><div className="r"><span className="lbl">Acted within 7 days</span></div></div><div className="pn3">{[...M.sent.map(s => ({
                 t: GROUPS.find(x => x.k === s.k).t,
                 d: s.when,
                 ch: Object.keys(s.mix).filter(c => s.mix[c]).map(c => CH[c]).join(' + '),
@@ -677,7 +719,12 @@ function makeMembers() {
                 n: x.last[3],
                 o: x.last[4],
                 a: x.last[1]
-              }))].map((r, __k) => <div key={__k} className="pn3-r"><div className="pn3-t"><b>{r.t}</b><span>{r.d}{" · "}{r.ch}{" · "}{fmt(r.n)}{" people"}</span></div>{r.a == null ? <div className="pn3-w">Waiting on results</div> : <div className="pn3-b"><span className="pn3-bar"><i className="o" style={css(`width:${r.o}%`)} /><i className="a" style={css(`width:${r.a}%`)} /></span><span className="pn3-n"><span>{r.o}% opened</span><b>{r.a}% acted</b></span></div>}</div>)}</div><div className="bk-ft"><span>Push gets about twice the action email does.</span><button data-gto="settings">Set up texting →</button></div></div></div></section></>);
+              }))].map((r, __k) => <div key={__k} className="pn3-r"><div className="pn3-t"><b>{r.t}</b><span>{r.d}{" · "}{r.ch}{" · "}{fmt(r.n)}{" people"}</span></div>{r.a == null ? <div className="pn3-w">Waiting on results</div> : <div className="pn3-b"><span className="pn3-bar"><i className="o" style={css(`width:${r.o}%`)} /><i className="a" style={css(`width:${r.a}%`)} /></span><span className="pn3-n"><span>{r.o}% opened</span><b>{r.a}% acted</b></span></div>}</div>)}</div><div className="bk-ft"><span>Push gets about twice the action email does.</span><button data-gto="settings">Set up texting →</button></div></div></div></section></>}</>);
+  }
+  /* live: a group's nudge, the follow-ups and their results have no source yet; each says what it needs */
+  const NUDGE_NEEDS = [['Nudge a group', 'Group nudges need a message, a channel and a time the API can send. Today it records one person’s nudge (from their record in People) for the outside system.'], ['Follow-ups that run on their own', 'Follow-ups need rules the API runs on a schedule, and which channels are set up (email, push, text).'], ['How the last nudges did', 'Results need each nudge’s sends, opens and who acted within 7 days.']];
+  function nudgesNotReal() {
+    return <section className="band"><div className="bento">{NUDGE_NEEDS.map(([nm, need], i) => <div key={i} className={`cell ${i ? 's6' : 's12'}`}><div className="hd"><h2>{nm}</h2><div className="r"><span className="lbl">Not real yet</span></div></div><div className="bk-empty hatch" style={css("min-height:120px;opacity:.5")} /><div className="bk-empty">{need}</div></div>)}</div></section>;
   }
   function renderComposer(pn) {
     const g = GROUPS.find(x => x.k === M.nudge.k) || GROUPS[1];
@@ -713,7 +760,7 @@ function makeMembers() {
         g14 = W.filter(p => in14.has(p.id)),
         rest = W.filter(p => !(p.b13 && M.b13 === 'pending') && !in14.has(p.id));
       const per = pace / 25,
-        nb = i => 15 + Math.floor(i / 25),
+        nb = i => N14 + 1 + Math.floor(i / 25),
         nd = i => TODAY + 7 + 7 * Math.floor(Math.floor(i / 25) / per);
       // each group shows 2 at first; small groups open fully, the long tail opens 20 at a time
       const grp = (k, t, s, cls, ppl, right) => {
@@ -724,7 +771,7 @@ function makeMembers() {
         return <><div className={`qg ${cls}`}><span className="qg-t"><b>{t}</b><span>{s}</span></span><span className="qg-n">{fmt(ppl.length)}</span></div>{ppl.slice(0, n).map(((x, __k) => <Fragment key={__k}>{right(x)}</Fragment>))}{left || n > 2 ? <div className="qm">{left ? <button data-wqmore={`${k}|${n + step}`}>{step === left ? `Show ${left === ppl.length - 2 ? 'the other ' : ''}${fmt(left)}` : `Show ${step} more`}<span>{step === left ? '' : ` · ${fmt(left)} left`}</span></button> : ''}{n > 2 ? <button data-wqmore={`${k}|2`} className="lss">Show fewer</button> : ''}</div> : ''}</>;
       };
       none = !g13.length && !g14.length && !rest.length;
-      body = <>{grp('b13', 'Batch 13', 'Waiting on your approval', 'tlv', g13, p => qrow(p, <span className="qw">{TODAY - p.joined}d</span>))}{grp('b14', 'Batch 14', M.b.how === 'oldest' ? 'As planned, oldest first' : 'As planned, ' + {
+      body = <>{grp('b13', `Batch ${N13}`, LV ? 'Waiting for a second person' : 'Waiting on your approval', 'tlv', g13, p => qrow(p, <span className="qw">{TODAY - p.joined}d</span>))}{grp('b14', `Batch ${N14}`, M.b.how === 'oldest' ? 'As planned, oldest first' : 'As planned, ' + {
           city: 'by city',
           shop: 'by poster shop',
           picked: 'hand-picked'
@@ -750,7 +797,7 @@ function makeMembers() {
       };
     }).filter(x => x.n).sort((a, b) => b.n - a.n);
     const cm = Math.max(...cities.map(x => x.n), 1);
-    html($m('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s7"><div className="hd"><h2>The queue</h2><div className="r"><div className="seg sm" role="group" aria-label="Queue view"><button data-wq="next" aria-pressed={M.wq === 'next'}>Next in line</button><button data-wq="new" aria-pressed={M.wq === 'new'}>Just joined</button></div></div></div><div className="ql3">{none ? <p className="small quiet" style={css("padding:22px;margin:0")}>Nobody matches.</p> : body}</div><button className="foot" data-mtab="people" data-mstagego="waiting"><span>{"All "}{fmt(W.length)}{" on the waitlist"}</span><span>People →</span></button></div><div className="cell s5"><div className="hd"><h2>How long they’ve waited</h2><div className="r"><span className="lbl">{"Median "}{med}{" days"}</span></div></div><div className="wt3">{wk.map(([t, v, o], __k) => <div key={__k} className={`wt3-r ${o ? 'old' : ''}`}><span className="wt3-l">{t}</span><span className="wt3-b"><i style={css(`width:${v / bm * 100}%`)} /></span><b>{fmt(v)}</b></div>)}</div><div className="bk-ft"><span><b>{fmt(old)}</b>{" have waited four weeks or more"}</span><button data-mtab="batches">Plan batch 14 →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Where they’re waiting</h2><div className="r"><span className="lbl">For batches by city</span></div></div><div className="bt-wrap"><table className="bt wc"><colgroup><col style={css("width:18%")} /><col style={css("width:26%")} /><col style={css("width:11%")} /><col style={css("width:12%")} /><col style={css("width:11%")} /><col style={css("width:10%")} /><col style={css("width:12%")} /></colgroup><thead><tr><th className="c-nm">City</th><th style={css("text-align:left")}>Waiting</th><th>4+ weeks</th><th>This week</th><th>Posters</th><th>Shops live</th><th /></tr></thead><tbody>{cities.map((x, __k) => <tr key={__k}><td className="tn"><b>{x.c}</b></td><td style={css("text-align:left")}><span className="wc-b"><span className="m-bar"><i style={css(`width:${x.n / cm * 100}%`)} /></span><b>{fmt(x.n)}</b></span></td><td>{fmt(x.old)}</td><td>+{fmt(x.wk)}</td><td>{Math.round(pct(x.post, x.n))}%</td><td>{x.shops || <span className="quiet">None</span>}</td><td><button className="lnk4" data-bcitygo={x.c}>Plan a batch →</button></td></tr>)}</tbody></table></div><div className="bk-ft"><span>Cities with no live shop can’t spend their $10 nearby yet. Invite them once a shop signs.</span><button data-gto="merchants">Shops signing · Merchants →</button></div></div></div></section>{formsCell()}</>);
+    html($m('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s7"><div className="hd"><h2>The queue</h2><div className="r"><div className="seg sm" role="group" aria-label="Queue view"><button data-wq="next" aria-pressed={M.wq === 'next'}>Next in line</button><button data-wq="new" aria-pressed={M.wq === 'new'}>Just joined</button></div></div></div><div className="ql3">{none ? <p className="small quiet" style={css("padding:22px;margin:0")}>Nobody matches.</p> : body}</div><button className="foot" data-mtab="people" data-mstagego="waiting"><span>{"All "}{fmt(W.length)}{" on the waitlist"}</span><span>People →</span></button></div><div className="cell s5"><div className="hd"><h2>How long they’ve waited</h2><div className="r"><span className="lbl">{"Median "}{med}{" days"}</span></div></div><div className="wt3">{wk.map(([t, v, o], __k) => <div key={__k} className={`wt3-r ${o ? 'old' : ''}`}><span className="wt3-l">{t}</span><span className="wt3-b"><i style={css(`width:${v / bm * 100}%`)} /></span><b>{fmt(v)}</b></div>)}</div><div className="bk-ft"><span><b>{fmt(old)}</b>{" have waited four weeks or more"}</span><button data-mtab="batches">{"Plan batch "}{N14}{" →"}</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Where they’re waiting</h2><div className="r"><span className="lbl">For batches by city</span></div></div><div className="bt-wrap"><table className="bt wc"><colgroup><col style={css("width:18%")} /><col style={css("width:26%")} /><col style={css("width:11%")} /><col style={css("width:12%")} /><col style={css("width:11%")} /><col style={css("width:10%")} /><col style={css("width:12%")} /></colgroup><thead><tr><th className="c-nm">City</th><th style={css("text-align:left")}>Waiting</th><th>4+ weeks</th><th>This week</th><th>Posters</th><th>Shops live</th><th /></tr></thead><tbody>{cities.map((x, __k) => <tr key={__k}><td className="tn"><b>{x.c}</b></td><td style={css("text-align:left")}><span className="wc-b"><span className="m-bar"><i style={css(`width:${x.n / cm * 100}%`)} /></span><b>{fmt(x.n)}</b></span></td><td>{fmt(x.old)}</td><td>+{fmt(x.wk)}</td><td>{Math.round(pct(x.post, x.n))}%</td><td>{LV ? <span className="quiet">—</span> : x.shops || <span className="quiet">None</span>}</td><td><button className="lnk4" data-bcitygo={x.c}>Plan a batch →</button></td></tr>)}</tbody></table></div><div className="bk-ft"><span>{LV ? 'Shops live in each city isn’t here yet: Merchants has them.' : 'Cities with no live shop can’t spend their $10 nearby yet. Invite them once a shop signs.'}</span><button data-gto="merchants">Shops signing · Merchants →</button></div></div></div></section>{formsCell()}</>);
   }
 
   /* ── render + events ── */
@@ -771,6 +818,63 @@ function makeMembers() {
     M.nudge = null;
     M.bopen = null;
   };
+  /* live, a change goes through the API (POST /actions/members/<kind>, as the old page's flows did): the
+     section loads again, and the page is built again from what the server now holds */
+  const person = id => PEOPLE.find(p => p.id === id);
+  function liveAct(kind, body, done) {
+    run('members', kind, body, r => {
+      if (r.queued) toast(<>{done}{" · recorded for the outside system, nothing is sent yet"}</>);else if (!r.proposal) toast(done);
+      redraw();
+    });
+  }
+  /* live, one person's name, for a reason (POST /members/:id/reveal: Approve, logged); a blank reason is a rush, flagged */
+  async function reveal(p) {
+    const why = window.prompt('Why do you need to see this person’s name? This is logged.');
+    if (why == null) return;
+    try {
+      const r = await api('POST', `/members/${p.apiId}/reveal`, why.trim() ? {
+        reason: why.trim()
+      } : {
+        rush: true
+      });
+      M.real[p.id] = [r.first, r.last].filter(Boolean).join(' ') || p.id;
+      M.reveal.add(p.id);
+      addReveal(p.id, 'Name');
+      toast(why.trim() ? 'Shown · logged in Records with your reason' : 'Shown · logged in Records as a rush, without a reason');
+      render();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
+  /* live, the plan proposed as the API's batch: who goes first as its order, the reason for any skips */
+  function proposeLive() {
+    const {
+        pick,
+        skipped
+      } = batchPool(),
+      b = M.b;
+    let why = '';
+    if (skipped) {
+      why = window.prompt(`This skips ${fmt(skipped)} people who’ve waited longer. Say why; it’s logged.`);
+      if (why == null) return;
+    }
+    const body = {
+      size: b.size,
+      order: {
+        oldest: 'oldest',
+        city: 'cities',
+        shop: 'shops',
+        picked: 'picked'
+      }[b.how],
+      why: why.trim()
+    };
+    if (b.how === 'city') body.cities = [...b.cities];
+    if (b.how === 'shop') body.posters = [...new Set(WAITING.filter(p => p.poster && b.shops.has(p.shop)).map(p => p.poster))];
+    if (b.how === 'picked') body.ids = pick.map(p => p.apiId);
+    M.b.proposed = true;
+    render();
+    run('members', 'batch', body, () => redraw());
+  }
   R.addEventListener('click', e => {
     if (e.target.id === 'mscrim') {
       closeAll();
@@ -848,6 +952,10 @@ function makeMembers() {
       closeAll();
       return render();
     }
+    if (d.mreveal && LV) {
+      reveal(person(d.mreveal));
+      return;
+    }
     if (d.mreveal) {
       M.reveal.add(d.mreveal);
       M.audit.push({
@@ -880,6 +988,20 @@ function makeMembers() {
       mm.hidden = !mm.hidden;
       return;
     }
+    if (d.mlive) {
+      const [kind, id] = d.mlive.split('|'),
+        p = person(id);
+      t.closest('.mm3').hidden = true;
+      if (kind === 'resend') return liveAct('resend', {
+        id: p.apiId
+      }, 'Invite resent');
+      const why = window.prompt('Why turn off their access? This is logged.');
+      if (why == null) return;
+      return liveAct('off', {
+        id: p.apiId,
+        reason: why.trim()
+      }, 'Access turned off');
+    }
     if (d.mprop) {
       const [what, id] = d.mprop.split('|');
       M.approvals.push({
@@ -893,9 +1015,12 @@ function makeMembers() {
       if (!M.b.picked.includes(d.mpick)) M.b.picked.push(d.mpick);
       M.b.how = 'picked';
       M.b.proposed = false;
-      toast(`Added to batch 14 · ${M.b.picked.length} hand-picked`);
+      toast(`Added to batch ${N14} · ${M.b.picked.length} hand-picked`);
       return render();
     }
+    if (d.mnudge1 && LV) return liveAct('nudge', {
+      id: person(d.mnudge1).apiId
+    }, 'Nudge recorded');
     if (d.mnudge1) {
       M.nudge = {
         k: PEOPLE.find(p => p.id === d.mnudge1).stage,
@@ -933,6 +1058,17 @@ function makeMembers() {
       return render();
     }
     // nudges tab
+    // live there's no group nudge to write yet: a group opens its people
+    if (d.ng && LV) {
+      M.tab = 'people';
+      M.stage = d.ng;
+      M.page = 0;
+      closeAll();
+      render();
+      setHash();
+      tabTop();
+      return;
+    }
     if (d.ng) {
       if (M.tab !== 'nudges') {
         M.tab = 'nudges';
@@ -1078,6 +1214,7 @@ function makeMembers() {
       M.b.picked = [];
       return render();
     }
+    if (t.hasAttribute('data-bpropose') && LV) return proposeLive();
     if (t.hasAttribute('data-bpropose')) {
       M.b.proposed = true;
       toast('Batch 14 proposed · it shows in Needs you for a second person');
@@ -1171,11 +1308,11 @@ function makeMembers() {
     'Work with us': [3, 'Work with us', '/work', 'People asking to join the team · grant access here once they start']
   };
   function formsCell() {
-    const rows = INBOX.filter(x => x.type === 'Waitlist'),
+    const rows = LV ? LV.FORMS : INBOX.filter(x => x.type === 'Waitlist'),
       [i,, page, what] = FORM_META['Waitlist'],
       fresh = rows.filter(x => x.st === 'New').length,
       show = M.fshow && !RO();
-    return <section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>From the join form</h2><div className="r"><span className="lbl">{fresh ? fresh + ' new since this morning' : 'Nothing new since this morning'}</span></div></div><div className="bt-wrap"><table className="bt fm"><colgroup><col style={css("width:22%")} /><col style={css("width:26%")} /><col style={css("width:16%")} /><col style={css("width:20%")} /><col style={css("width:8%")} /><col style={css("width:8%")} /></colgroup><thead><tr><th className="c-nm">Name</th><th style={css("text-align:left")}>Email</th><th style={css("text-align:left")}>City</th><th style={css("text-align:left")}>Came from</th><th>At</th><th>Status</th></tr></thead><tbody>{rows.map((x, __k) => <tr key={__k}><td className="tn"><b className={show ? '' : 'msk'}>{show ? x.who.join(' ') : x.who.map(mask).join(' ')}</b></td><td style={css("text-align:left")} className="fm-m">{show ? x.mail : maskMail(x.mail)}</td><td style={css("text-align:left")}>{x.city}</td><td style={css("text-align:left")} className="fr">{x.src}</td><td className="fm-m">{x.when}</td><td><span className={`chip ${x.st === 'New' ? 'under' : x.st === 'Invited' ? 'ok' : 'plain'}`}>{x.st}</span></td></tr>)}</tbody></table></div><div className="bk-ft"><span>{ICON.lock}{" "}{fmt(RANGE.month.forms[i])}{" in the last 30 days from useclear.org"}{page}{" · "}{RO() ? 'names and emails stay hidden in this view' : show ? 'details shown · this is logged' : 'names and emails are masked'}</span>{RO() ? <span /> : <button data-mfreveal="">{show ? 'Hide details' : 'Show details'}</button>}</div></div></div></section>;
+    return <section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>From the join form</h2><div className="r"><span className="lbl">{LV ? rows.length ? fresh ? `${fresh} not invited yet` : 'All of them invited' : 'Nothing in the last 30 days' : fresh ? fresh + ' new since this morning' : 'Nothing new since this morning'}</span></div></div><div className="bt-wrap"><table className="bt fm"><colgroup><col style={css("width:22%")} /><col style={css("width:26%")} /><col style={css("width:16%")} /><col style={css("width:20%")} /><col style={css("width:8%")} /><col style={css("width:8%")} /></colgroup><thead><tr><th className="c-nm">Name</th><th style={css("text-align:left")}>Email</th><th style={css("text-align:left")}>City</th><th style={css("text-align:left")}>Came from</th><th>At</th><th>Status</th></tr></thead><tbody>{!rows.length ? <tr><td colSpan="6" className="tn"><span className="quiet">Nobody in the last 30 days.</span></td></tr> : rows.map((x, __k) => <tr key={__k}><td className="tn"><b className={show ? '' : 'msk'}>{show ? x.who.join(' ') : x.who.map(mask).join(' ')}</b></td><td style={css("text-align:left")} className="fm-m">{show ? x.mail : maskMail(x.mail)}</td><td style={css("text-align:left")}>{x.city}</td><td style={css("text-align:left")} className="fr">{x.src}</td><td className="fm-m">{x.when}</td><td><span className={`chip ${x.st === 'New' ? 'under' : x.st === 'Invited' ? 'ok' : 'plain'}`}>{x.st}</span></td></tr>)}</tbody></table></div><div className="bk-ft"><span>{ICON.lock}{" "}{fmt(LV ? LV.formsMonth : RANGE.month.forms[i])}{" in the last 30 days from useclear.org"}{page}{" · "}{RO() ? 'names and emails stay hidden in this view' : show ? 'details shown · this is logged' : 'names and emails are masked'}</span>{RO() || LV ? <span /> : <button data-mfreveal="">{show ? 'Hide details' : 'Show details'}</button>}</div></div></div></section>;
   }
   const TABS = ['people', 'batches', 'nudges', 'waitlist'];
   let pend = null;
@@ -1234,4 +1371,6 @@ function makeMembers() {
     host
   };
 }
-registerPage(['members'], 'm-slot', makeMembers);
+registerPage(['members'], 'm-slot', makeMembers, {
+  live: true
+});

@@ -1,4 +1,5 @@
 /** Members → the rows the section draws, as the API serves them (GET /api/command/sections/members). */
+import type { FormRow } from './growth';
 
 export type MemberStatus = 'invited' | 'opened' | 'active';
 
@@ -28,6 +29,35 @@ export interface MemberRow {
   quiet: boolean;
 }
 
+/**
+ * Someone on the waitlist, not invited yet. Never sent at Totals; masked unless names were asked for.
+ * `id` is the one their row keeps once a batch invites them (1,000,000 + their waitlist id), and `no`
+ * their waitlist number (W-0012), until they sign up and get a member number.
+ */
+export interface WaitingRow {
+  id: number;
+  no: string;
+  first: string | null;
+  last: string | null;
+  /** Place in line: 1 is the next one a batch takes, oldest first. */
+  pos: number;
+  joined: number;
+  city: string;
+  src: 'Poster' | 'Website';
+  poster: string | null;
+}
+
+/** A batch that went out, and how far its people got (counts only: sent at every level). */
+export interface BatchRow {
+  number: number;
+  sentAt: number;
+  size: number;
+  /** Opened the app (an account), funded (active) and made a first spend, each counted once. */
+  opened: number;
+  active: number;
+  spent: number;
+}
+
 /** The batch waiting for a second approval, if any. */
 export interface NextBatch {
   number: number;
@@ -38,6 +68,10 @@ export interface NextBatch {
   fromPosters: number;
   fromWebsite: number;
   windowEnds: number;
+  /** Live only: when it was proposed, who goes first, and who it would take (their ids; none at Totals). */
+  proposedAt?: number;
+  order?: string;
+  ids?: number[];
 }
 
 export interface MembersPayload {
@@ -47,6 +81,12 @@ export interface MembersPayload {
   B_ACT: number[];
   B_OPEN: number[];
   NEXT_BATCH: NextBatch | null;
+  /** The waitlist's people, in line order: null at Totals. */
+  WAITLIST: WaitingRow[] | null;
+  /** Every batch sent, oldest first. */
+  BATCHES: BatchRow[];
+  /** The join form's last 30 days (the newest 20), masked unless names were asked for: null at Totals. */
+  FORMS: FormRow[] | null;
   figures: Record<string, unknown>;
   /** The day it was read for (epoch ms), and whether names are in it. */
   asOf: number;

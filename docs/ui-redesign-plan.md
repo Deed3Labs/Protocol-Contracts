@@ -226,17 +226,27 @@ Filled in as each page is ported. Known before starting:
   Before its gate goes on, the new page needs controls (or the old "On the store" section kept beside it)
   for Phase 11's catalog editing and photos, the order flows (ship, ready, picked, remind, refund, labels,
   deposit refunds, the address reveal) and Phase 10's recipe overrides, stock counts and cost at sale.
-- **Members** (ported; found while porting):
-  - per person: waitlist position for everyone waiting, Social and Search as sources (the API sends
-    Poster or Website), whether they have the app and a phone (they pick the nudge channel), notes,
-    tags, a history log, and how often they've been nudged;
-  - per batch: its size and how many spent; batch 13's list of people and city mix;
-  - each group's last nudge (when, channel, sent, opened, acted), the automatic follow-ups and which
-    channels are set up;
-  - actions: the batch "who goes first" modes (oldest, a set of cities, a set of poster shops, hand-picked;
-    the API has oldest, posters and Redlands), group nudges with a message, channel and schedule,
-    follow-ups on and off, notes and tags, extending the invite window, approving or sending back a
-    batch from the page.
+- **Members** (live: `members2.tsx` + `membersLive.ts`, its gate on).
+  - **Live now.** People is the API's members plus the waitlist's people (the members section's new
+    `WAITLIST`: masked like members, never at Totals, with their place in line, join time, city, source and
+    poster). Batches are `BATCHES` (each batch's size, opened, funded and first spends); the batch waiting
+    for a second person is `NEXT_BATCH`, with who it would take (`ids`), its order and when it was proposed;
+    the next number is `members.next_batch.number`. The join form is `FORMS` (the last 30 days, newest 20,
+    masked; none at Totals) and `members.forms.month`. Days count from 1 Jan 2020 live (never day 0).
+  - **Actions.** Resend (`resend {id}`), turn off access with a reason (`off {id, reason}`), nudge one
+    person (`nudge {id}`), and propose a batch (`batch {size, order, cities | posters | ids, why}`: the
+    page's oldest, by city, by poster shop and hand-picked are `oldest`, `cities`, `shops` and `picked`,
+    each taking no one else, and a batch that skips people asks why). Approving or sending a batch back
+    stays in Needs you. Showing a name is one person at a time, with a reason (`POST /members/:id/reveal`,
+    W- numbers too), and logs in Records' Reveals when that page is live.
+  - **Still missing:** Social and Search as sources (the API sends Poster or Website); whether someone has
+    the app or a phone (so "best channel" and the channel mix); contact details on reveal (the endpoint
+    returns the name); notes, tags, a history log and nudge counts per person; which shops are live in
+    each city (the Waitlist table shows "—"); each group's last nudge (when, channel, sent, opened, acted),
+    group nudges with a message, channel and time, the automatic follow-ups and which channels are set up
+    (the Nudges tab's lower half says "Not real yet"); extending the invite window and closing an account
+    (hidden live; turning off access is there); the join form's whole-list reveal (hidden: one person at a
+    time from People); only the newest waiting batch proposal shows when there are two.
 - **Growth** (ported): campaigns (tagged links, spend, offers), cohorts by days since the invite with who
   stays active and spends, the apps' own events, bounce and time on page, browsers, the real-time view,
   and invites, opens and first spends by source, city, shop and design. Live, Campaigns, Cohorts and Apps

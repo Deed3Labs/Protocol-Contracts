@@ -80,13 +80,46 @@ export async function join(db: Queryable, j: Join, now: Date): Promise<void> {
 
 // ── Batches ─────────────────────────────────────────────────────────────────
 
-export type BatchOrder = 'oldest' | 'posters' | 'city';
-/** Who goes first: the longest waiting, posters' joiners, or Redlands (the page's three choices). */
+export type BatchOrder = 'oldest' | 'posters' | 'city' | 'cities' | 'shops' | 'picked';
+export const BATCH_ORDERS: readonly BatchOrder[] = ['oldest', 'posters', 'city', 'cities', 'shops', 'picked'];
+/**
+ * Who goes first. The old page's three: the longest waiting, posters' joiners first, or Redlands first.
+ * The redesign's: only people in the cities given, only those who joined at the posters given, or the
+ * people picked by hand (each oldest first). A batch of those takes no one else.
+ */
 const ORDER_BY: Record<BatchOrder, string> = {
   oldest: 'joined_at, id',
   posters: `(source = 'poster') DESC, joined_at, id`,
   city: `(city = 'Redlands') DESC, joined_at, id`,
+  cities: 'joined_at, id',
+  shops: 'joined_at, id',
+  picked: 'joined_at, id',
 };
+/** Who a batch may take, beyond its order: the cities, posters or people it was limited to. */
+export interface BatchPick {
+  cities?: string[];
+  posters?: string[];
+  /** The people picked, by the id the page has for them (WaitingRow.id: 1,000,000 + their waitlist id). */
+  ids?: number[];
+}
+export const WAITING_ID = 1_000_000;
+/** The waitlist number a person goes by until they sign up (W-0012). */
+export const waitNo = (id: number) => `W-${String(id).padStart(4, '0')}`;
+const LIMITED: Partial<Record<BatchOrder, { col: string; of: (p: BatchPick) => unknown[] }>> = {
+  cities: { col: 'city', of: (p) => p.cities ?? [] },
+  shops: { col: 'poster', of: (p) => p.posters ?? [] },
+  picked: { col: 'id', of: (p) => (p.ids ?? []).map((i) => i - WAITING_ID) },
+};
+
+/** The same choice in code, for showing who a proposed batch would take: `waiting` oldest first. */
+export function pickFrom<T extends { id: number; city: string; source: string; poster: string | null; joined_at: Date }>(waiting: T[], size: number, order: BatchOrder, pick: BatchPick = {}): T[] {
+  const lim = LIMITED[order];
+  const allowed = lim ? new Set(lim.of(pick).map(String)) : null;
+  const val = (w: T) => String(lim?.col === 'city' ? w.city : lim?.col === 'poster' ? w.poster : w.id);
+  const first = (w: T) => (order === 'posters' ? w.source === 'poster' : order === 'city' ? w.city === 'Redlands' : true);
+  const list = waiting.filter((w) => !allowed || allowed.has(val(w)));
+  return [...list.filter(first), ...list.filter((w) => !first(w))].slice(0, size);
+}
 export const WINDOW_DAYS = 90;
 
 /** An invite code: 10 characters from an alphabet with nothing to misread (no 0/O, 1/I/L). */
@@ -100,10 +133,11 @@ export function inviteCode(): string {
  * Sends a batch, once two people have agreed: the next `size` people waiting, in the chosen order, each
  * get a code, and their emails are queued for the job. Returns the batch's number and how many it took.
  */
-export async function sendBatch(tx: Queryable, size: number, order: BatchOrder, proposedBy: string, at: Date): Promise<{ number: number; size: number }> {
+export async function sendBatch(tx: Queryable, size: number, order: BatchOrder, proposedBy: string, at: Date, pick: BatchPick = {}): Promise<{ number: number; size: number }> {
+  const lim = LIMITED[order];
   const { rows: next } = await tx.query<{ id: number; joined_at: Date; source: string }>(
-    `SELECT id, joined_at, source FROM command.waitlist WHERE batch IS NULL ORDER BY ${ORDER_BY[order]} LIMIT $1 FOR UPDATE`,
-    [size],
+    `SELECT id, joined_at, source FROM command.waitlist WHERE batch IS NULL${lim ? ` AND ${lim.col}::text = ANY($2::text[])` : ''} ORDER BY ${ORDER_BY[order]} LIMIT $1 FOR UPDATE`,
+    lim ? [size, lim.of(pick).map(String)] : [size],
   );
   if (!next.length) throw Object.assign(new Error('Nobody is waiting, so there’s no batch to send'), { status: 409, code: 'NOBODY_WAITING' });
   const { rows: n } = await tx.query<{ number: number }>('SELECT coalesce(max(number), 0) + 1 AS number FROM command.batches');

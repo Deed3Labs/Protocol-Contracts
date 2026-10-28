@@ -8,7 +8,7 @@ import { productCost, readBook, roundCents, runUses } from './costing.js';
 import { recordOverhead, type OrderRow } from './shopModel.js';
 import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
-import { sendBatch } from './waitlist.js';
+import { BATCH_ORDERS, sendBatch } from './waitlist.js';
 import { ActionError } from './actionError.js';
 import { overLimit, readSetting, settingsActions } from './settings.js';
 
@@ -170,16 +170,27 @@ const members: Record<string, Action> = {
   nudge: { body: member, summary: () => 'Nudge a member to finish joining', outbox: true },
   off: { body: member.extend({ reason: text(200).default('') }), summary: () => 'Turn off a member’s access', outbox: true },
   // live (Phase 7b): once a second person approves, the next people waiting get their codes and the
-  // emails are queued for the invite job; on the seed it's recorded, as before
+  // emails are queued for the invite job; on the seed it's recorded, as before. Who goes first: the old
+  // page's oldest, posters or city (Redlands first), or the redesign's cities, shops (their posters) or
+  // people picked by hand, which take no one else; `why` is what was said for skipping people who waited longer.
   batch: {
-    body: z.object({ size: z.number().int().positive().max(500), order: text(40).default('oldest') }),
-    summary: (b) => `Send the next batch of ${b.size} invites`,
+    body: z
+      .object({
+        size: z.number().int().positive().max(500),
+        order: text(40).default('oldest'),
+        cities: z.array(text(80).min(1)).max(50).optional(),
+        posters: z.array(text(120).min(1)).max(200).optional(),
+        ids: z.array(z.number().int().positive()).max(500).optional(),
+        why: text(300).default(''),
+      })
+      .refine((b) => (b.order !== 'cities' || b.cities?.length) && (b.order !== 'shops' || b.posters?.length) && (b.order !== 'picked' || b.ids?.length), 'Say which cities, shops or people the batch takes'),
+    summary: (b) => `Send the next batch of ${b.size} invites${BATCH_FROM[b.order as string]?.(b) ?? ''}`,
     second: () => true,
     apply: async ({ tx, person, at }, b) => {
       if (providerFor('members') !== 'live') return;
-      const order = (['oldest', 'posters', 'city'] as const).find((o) => o === b.order) ?? 'oldest';
+      const order = BATCH_ORDERS.find((o) => o === b.order) ?? 'oldest';
       try {
-        return await sendBatch(tx, b.size, order, who(person), at);
+        return await sendBatch(tx, b.size, order, who(person), at, { cities: b.cities, posters: b.posters, ids: b.ids });
       } catch (e: any) {
         if (e?.code === 'NOBODY_WAITING') throw new ActionError(409, e.code, e.message);
         throw e;
@@ -187,6 +198,12 @@ const members: Record<string, Action> = {
     },
     outbox: () => providerFor('members') !== 'live',
   },
+};
+/** What a limited batch says it takes, for the audit log and Needs you. */
+const BATCH_FROM: Record<string, (b: { cities?: string[]; posters?: string[]; ids?: number[] }) => string> = {
+  cities: (b) => ` from ${b.cities!.join(', ')}`,
+  shops: (b) => ` from ${b.posters!.length === 1 ? 'one poster' : `${b.posters!.length} posters`}`,
+  picked: (b) => `, picked by hand`,
 };
 
 // ── Merchants ───────────────────────────────────────────────────────────────

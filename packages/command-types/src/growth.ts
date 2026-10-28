@@ -24,6 +24,8 @@ export interface FormRow {
   src: string;
   when: string;
   st: string;
+  /** When it came in (epoch ms), where the page shows more than the time of day. */
+  at?: number;
 }
 
 /** How many of the invited are at each step, for Growth's cohorts (counted from the members). */

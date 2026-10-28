@@ -398,14 +398,14 @@ export function commandRouter(deps: CommandDeps) {
     }
   });
 
-  /** One member's name, shown for a reason: Members at Approve, logged as a reveal before it's sent. */
+  /** One member's name (or someone waiting's), shown for a reason: Members at Approve, logged as a reveal before it's sent. */
   router.post('/members/:id/reveal', limits.write, need('members', APPROVE), async (req, res) => {
     const c = req.command!;
     try {
       const data = await membersSection(c.db, { level: c.levels.members, reveal: true, now: now(), memberSource: deps.memberSource });
-      const m = data.MEMBERS.find((x) => String(x.id) === req.params.id || x.no === req.params.id);
+      const m = [...data.MEMBERS, ...(data.WAITLIST ?? [])].find((x) => String(x.id) === req.params.id || x.no === req.params.id);
       if (!m) return fail(res, 404, 'NOT_FOUND', 'No such member');
-      if (!(await revealFrom(req, res, { section: 'members', subject: m.no ?? String(m.id), field: 'name' }))) return;
+      if (!(await revealFrom(req, res, { section: 'members', subject: m.no || String(m.id), field: 'name' }))) return;
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ id: m.id, no: m.no, first: m.first, last: m.last });
     } catch (e) {

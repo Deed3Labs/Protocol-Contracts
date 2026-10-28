@@ -43,6 +43,12 @@ const DEMO = [
   'Highland Hardware',
   'Board signer',
   'CDTFA',
+  // Members' reference (the redesign's MEMBERS2): its other poster shops, a tag and the made-up phone numbers
+  'State St. Books',
+  'La Michoacana',
+  'Orange St. Laundromat',
+  'Bank link issue',
+  '555-01',
 ];
 
 type Finding = { route: string; pane: string; after: string; kind: 'error' | 'demo' | 'garbage'; what: string };
@@ -82,6 +88,7 @@ for (const route of ROUTES) {
         if (t > 0) {
           const label = (await page.locator(TABS).nth(t).textContent())?.trim() ?? `tab ${t}`;
           where = { pane: label, after: 'tab' };
+          // the tab itself, the old pages' or the redesign's (counted with the same selector)
           await page
             .locator(TABS)
             .nth(t)
