@@ -849,6 +849,8 @@ export function startup() {
     }
     if (t.dataset.spane) {
       SS.pane = t.dataset.spane;
+      // the redesigned Shop opens the tab the old pane name stands for (shop2.tsx's OLD: costs is Materials)
+      pageModFor('shop')?.setTab('shop', t.dataset.spane);
       SS.prod = null;
       SS.order = null;
       SS.input = null;
