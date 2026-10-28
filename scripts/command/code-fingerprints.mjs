@@ -64,6 +64,10 @@ for (const f of readdirSync(DEPLOYED)
 const text = JSON.stringify({ chainId: 84532, contracts }, null, 1) + '\n';
 if (process.argv.includes('--check')) {
   if (!existsSync(OUT) || readFileSync(OUT, 'utf8') !== text) {
+    // which ones, so a stale file says what changed
+    const was = existsSync(OUT) ? JSON.parse(readFileSync(OUT, 'utf8')).contracts : {};
+    for (const n of new Set([...Object.keys(was), ...Object.keys(contracts)]))
+      if (JSON.stringify(was[n]) !== JSON.stringify(contracts[n])) console.error(`${n}: ${was[n]?.sha256?.slice(0, 12) ?? 'none'} in the file, ${contracts[n]?.sha256?.slice(0, 12) ?? 'none'} compiled`);
     console.error('packages/command-types/src/chain/code.json is stale: run `npx hardhat compile && node scripts/command/code-fingerprints.mjs` and commit it');
     process.exit(1);
   }
