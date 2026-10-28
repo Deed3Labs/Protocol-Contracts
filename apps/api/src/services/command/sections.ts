@@ -1,8 +1,8 @@
 import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PersonNote, type PosterRow, type WaitingRow } from '@clear/command-types';
 import type { Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
-import { SEE, TOTALS, type Level } from './levels.js';
-import { assurancePoolLive, bondVaultLive, bondsLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
+import { assurancePoolLive, bondVaultLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { creditLive, payoutsLive } from './credit.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
@@ -1336,12 +1336,13 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     }
   const { rows: ch } = await db.query<any>('SELECT * FROM command.contract_changes ORDER BY done, position');
   const change = (c: any) => ({ id: c.id, t: c.title, c: c.contract, ...(c.proposed_by ? { by: c.proposed_by } : {}), ...c.detail, ev: evAt(c.events, NOW) });
-  // live, the code changes are GitHub's (Phase 5c): commits since a release in flight, the commits before it what it shipped
+  // live, the code changes are GitHub's (Phase 5c): commits since a release in flight, the commits before it what it shipped;
+  // a contract whose deployed code is exactly dev's has nothing in flight, whatever the commits' dates
   const code = releases
     ? await codeChanges(db, codeConfig(), ctr.map((c) => {
         const n = onChain(c.name);
         return { name: c.name, deployed: n, deployedAt: n ? deployed!.get(n)!.deployedAt : null };
-      }), releases, NOW)
+      }), releases, NOW, o.chain ? await codeMatchLive(o.chain) : new Map())
     : { open: [], done: [] };
   const { rows: sg } = await db.query<any>('SELECT * FROM command.signers ORDER BY position');
   // live, the Code tab: GitHub's commits, pull requests, branches and contributors; at Totals, no names
@@ -1350,6 +1351,8 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
   const DEPLOYED = deployed ? ctr.filter((c) => onChain(c.name)).map((c) => c.id) : null;
   return {
     AGR, CTR, CTR_NOTE, REL, RELEASES, PENDING,
+    // Command's own records, whatever the provider: incidents, findings, audits (migration 0066)
+    ...(await buildRecords(db, o)),
     ...(DEPLOYED ? { DEPLOYED } : {}),
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     ...(CODE ? { CODE } : {}),
@@ -1362,6 +1365,53 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     },
     asOf: asOfFor(provider, o.now),
   };
+}
+
+/**
+ * Build's own records (migration 0066): incidents with their timelines, security findings and audits, and
+ * who can be given an incident (the team at Propose or more on Build). At Totals none of it carries a name
+ * or a note: only what happened, how bad, where, and when.
+ */
+async function buildRecords(db: Queryable, o: ReadOptions) {
+  const named = o.level > TOTALS;
+  const q = async (sql: string, p: unknown[] = []) => (await db.query<any>(sql, p)).rows;
+  const nameOf = `coalesce(nullif(p.name, ''), p.email, 'Someone')`;
+  const inc = await q(
+    `SELECT i.*, ${nameOf} AS owner_name FROM command.build_incidents i LEFT JOIN command.people p ON p.id = i.owner_id ORDER BY (i.resolved_at IS NULL) DESC, i.started_at DESC, i.id DESC LIMIT 200`,
+  );
+  const ups = inc.length
+    ? await q(`SELECT u.incident_id, u.at, u.line, ${nameOf} AS who, u.by_id FROM command.build_incident_updates u LEFT JOIN command.people p ON p.id = u.by_id WHERE u.incident_id = ANY($1) ORDER BY u.at, u.id`, [
+        inc.map((i) => i.id),
+      ])
+    : [];
+  const INCIDENTS = inc.map((i) => ({
+    id: i.id, t: i.title, sev: i.severity, area: i.area, contract: i.contract_id, reached: i.reached_members,
+    at: ms_(i.started_at), opened: ms_(i.opened_at), resolved: msOr(i.resolved_at),
+    owner: named && i.owner_id ? { id: i.owner_id, name: i.owner_name } : null,
+    note: named ? i.note : '', resolution: named ? i.resolution : '',
+    ev: named ? ups.filter((u) => u.incident_id === i.id).map((u) => [ms_(u.at), u.line, u.by_id ? u.who : '']) : [],
+  }));
+  const FINDINGS = (await q('SELECT * FROM command.build_findings ORDER BY found_at DESC, id DESC LIMIT 500')).map((f) => ({
+    id: f.id, t: f.title, sev: f.severity, contract: f.contract_id, where: f.area, st: f.state, found: ms_(f.found_at), stAt: msOr(f.state_at),
+    pr: f.fix_pr, change: f.fix_change,
+    by: named ? f.found_by : '', note: named ? f.note : '', stNote: named ? f.state_note : '',
+  }));
+  const AUDITS = (await q('SELECT * FROM command.build_audits ORDER BY on_day DESC, id DESC LIMIT 200')).map((a) => ({
+    id: a.id, kind: a.kind, contracts: a.contracts, scope: a.scope, on: ms_(a.on_day), report: a.report_url,
+    // an outside auditor is a firm; an internal one is the people who did it
+    auditor: named || a.kind === 'external' ? a.auditor : '', note: named ? a.note : '',
+  }));
+  const TEAM = named
+    ? await q(
+        `SELECT p.id, ${nameOf} AS name FROM command.people p
+           JOIN command.person_access a ON a.person_id = p.id LEFT JOIN command.groups g ON g.id = a.group_id
+          WHERE NOT a.off AND (a.expires_at IS NULL OR a.expires_at > $1)
+            AND coalesce((a.custom_levels ->> 'contracts')::int, (g.levels ->> 'contracts')::int, 0) >= ${PROPOSE}
+          ORDER BY lower(${nameOf})`,
+        [o.now],
+      )
+    : [];
+  return { INCIDENTS, FINDINGS, AUDITS, TEAM };
 }
 
 // ── Governance ──────────────────────────────────────────────────────────────

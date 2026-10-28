@@ -1558,7 +1558,191 @@ const contracts: Record<string, Action> = {
     },
     outbox: true,
   },
+  ...buildRecords(),
 };
+
+/*
+ * Build's own records (migration 0066): incidents and their timelines, security findings, and audits.
+ * Each is Command's own record at Propose. Accepting a critical finding (it won't be fixed) waits for a
+ * second person.
+ */
+function buildRecords(): Record<string, Action> {
+  const SEVERITY = z.enum(['low', 'medium', 'high', 'critical']);
+  const rid = z.number().int().positive();
+  /** A moment the asker gives (when it began, when it was found): never after now, and within a year. */
+  const when = (at: Date, ms: number | undefined) => {
+    if (ms == null) return at;
+    if (ms > at.getTime() + 5 * 60e3 || ms < at.getTime() - 366 * DAY) throw new ActionError(400, 'BAD_TIME', 'That time is in the future or over a year ago');
+    return new Date(Math.min(ms, at.getTime()));
+  };
+  const contract = async (tx: Queryable, c: string | null | undefined) => {
+    if (c) await must(tx, 'SELECT id FROM command.contracts WHERE id = $1', [c], 'contract');
+    return c || null;
+  };
+  /** Someone who can work on Build: on the team, not turned off, and at Propose or more on it. */
+  const builder = async (tx: Queryable, personId: string, at: Date) =>
+    must<{ id: string; name: string }>(
+      tx,
+      `SELECT p.id, coalesce(nullif(p.name, ''), p.email, 'Someone') AS name FROM command.people p
+         JOIN command.person_access a ON a.person_id = p.id LEFT JOIN command.groups g ON g.id = a.group_id
+        WHERE p.id = $1 AND NOT a.off AND (a.expires_at IS NULL OR a.expires_at > $2)
+          AND coalesce((a.custom_levels ->> 'contracts')::int, (g.levels ->> 'contracts')::int, 0) >= ${PROPOSE}`,
+      [personId, at],
+      'person on Build',
+    );
+  const incident = async (tx: Queryable, id: number) => {
+    const i = await must<{ resolved_at: Date | null }>(tx, 'SELECT resolved_at FROM command.build_incidents WHERE id = $1 FOR UPDATE', [id], 'incident');
+    if (i.resolved_at) throw new ActionError(409, 'WRONG_STATE', 'That incident is resolved');
+  };
+  const line = (tx: Queryable, id: number, at: Date, text: string, by: string | null) =>
+    tx.query('INSERT INTO command.build_incident_updates (incident_id, at, line, by_id) VALUES ($1, $2, $3, $4)', [id, at, text, by]);
+  const finding = (tx: Queryable, id: number) => must<{ state: string; severity: string }>(tx, 'SELECT state, severity FROM command.build_findings WHERE id = $1 FOR UPDATE', [id], 'finding');
+  const STATE: Record<string, string> = { open: 'open', fixing: 'fix in progress', fixed: 'fixed', accepted: 'accepted (won’t fix)' };
+  return {
+    'incident-open': {
+      body: z.object({
+        title: text(160).min(1),
+        severity: SEVERITY.default('low'),
+        area: text(80).default(''),
+        contract: id.optional(),
+        note: text(1000).default(''),
+        /** Who's on it (a team member at Propose on Build); nobody yet when left out. */
+        owner: z.string().uuid().optional(),
+        /** When it began (ms), if before now. */
+        at: z.number().int().optional(),
+        reached: z.boolean().default(false),
+      }),
+      summary: (b) => `Opened an incident · ${b.title}`,
+      apply: async ({ tx, person, at }, b) => {
+        const c = await contract(tx, b.contract);
+        const owner = b.owner ? await builder(tx, b.owner, at) : null;
+        const began = when(at, b.at);
+        const r = await one<{ id: number }>(
+          tx,
+          `INSERT INTO command.build_incidents (title, severity, area, contract_id, note, owner_id, reached_members, started_at, opened_by, opened_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [b.title, b.severity, b.area, c, b.note, owner?.id ?? null, b.reached, began, person.id, at],
+        );
+        if (began < at) await line(tx, r!.id, began, 'Began', null);
+        await line(tx, r!.id, at, `Opened by ${who(person)}${owner ? (owner.id === person.id ? ', who is on it' : ` · ${owner.name} is on it`) : ''}`, person.id);
+        return { id: r!.id };
+      },
+    },
+    'incident-update': {
+      body: z.object({ id: rid, line: text(500).min(1) }),
+      summary: (b) => `Added an update to incident I${b.id}`,
+      apply: async ({ tx, person, at }, b) => {
+        await incident(tx, b.id);
+        await line(tx, b.id, at, b.line, person.id);
+      },
+    },
+    'incident-assign': {
+      body: z.object({ id: rid, owner: z.string().uuid().nullable() }),
+      summary: (b) => (b.owner ? `Gave incident I${b.id} to someone on Build` : `Took incident I${b.id} off its owner`),
+      apply: async ({ tx, person, at }, b) => {
+        await incident(tx, b.id);
+        const owner = b.owner ? await builder(tx, b.owner, at) : null;
+        await tx.query('UPDATE command.build_incidents SET owner_id = $2 WHERE id = $1', [b.id, owner?.id ?? null]);
+        await line(tx, b.id, at, owner ? (owner.id === person.id ? `${who(person)} is on it` : `${who(person)} gave it to ${owner.name}`) : `${who(person)} took it off its owner`, person.id);
+      },
+    },
+    'incident-resolve': {
+      body: z.object({ id: rid, resolution: text(500).default(''), reached: z.boolean().optional() }),
+      summary: (b) => `Resolved incident I${b.id}`,
+      apply: async ({ tx, person, at }, b) => {
+        await incident(tx, b.id);
+        await tx.query('UPDATE command.build_incidents SET resolved_at = greatest($2::timestamptz, started_at), resolution = $3, reached_members = coalesce($4, reached_members) WHERE id = $1', [
+          b.id,
+          at,
+          b.resolution,
+          b.reached ?? null,
+        ]);
+        await line(tx, b.id, at, `Resolved by ${who(person)}${b.resolution ? ': ' + b.resolution : ''}`, person.id);
+      },
+    },
+    'finding-add': {
+      body: z.object({
+        title: text(160).min(1),
+        severity: SEVERITY,
+        contract: id.optional(),
+        area: text(160).default(''),
+        note: text(2000).default(''),
+        foundBy: text(80).min(1),
+        /** When it was found (ms), if before now. */
+        at: z.number().int().optional(),
+      }),
+      summary: (b) => `Recorded a ${b.severity} finding · ${b.title}`,
+      apply: async ({ tx, person, at }, b) => {
+        const c = await contract(tx, b.contract);
+        const r = await one<{ id: number }>(
+          tx,
+          `INSERT INTO command.build_findings (title, severity, contract_id, area, note, found_by, found_at, recorded_by, recorded_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          [b.title, b.severity, c, b.area, b.note, b.foundBy, when(at, b.at), person.id, at],
+        );
+        return { id: r!.id };
+      },
+    },
+    'finding-state': {
+      body: z
+        .object({ id: rid, state: z.enum(['open', 'fixing', 'fixed', 'accepted']), note: text(500).default('') })
+        .refine((b) => b.state !== 'accepted' || b.note.length > 0, { message: 'Say why it won’t be fixed', path: ['note'] }),
+      summary: (b) => `Marked finding F${b.id} ${STATE[b.state]}`,
+      // won't fix on a critical finding is two people's call
+      second: async (b, db) => b.state === 'accepted' && (await one<{ severity: string }>(db, 'SELECT severity FROM command.build_findings WHERE id = $1', [b.id]))?.severity === 'critical',
+      apply: async ({ tx, at }, b) => {
+        const f = await finding(tx, b.id);
+        if (f.state === b.state) throw new ActionError(409, 'WRONG_STATE', `That finding is ${STATE[b.state]} already`);
+        await tx.query('UPDATE command.build_findings SET state = $2, state_at = $3, state_note = $4 WHERE id = $1', [b.id, b.state, at, b.note]);
+      },
+    },
+    'finding-fix': {
+      body: z
+        .object({ id: rid, pr: z.number().int().positive().max(1e7).optional(), change: text(200).min(1).optional() })
+        .refine((b) => !(b.pr && b.change), { message: 'A pull request or a change, not both', path: ['change'] }),
+      summary: (b) => (b.pr ? `Linked #${b.pr} as finding F${b.id}’s fix` : b.change ? `Linked a change as finding F${b.id}’s fix` : `Took finding F${b.id}’s fix off`),
+      apply: async ({ tx, at }, b) => {
+        const f = await finding(tx, b.id);
+        // a fix linked to an open finding means one is in progress
+        const st = f.state === 'open' && (b.pr || b.change) ? 'fixing' : f.state;
+        await tx.query('UPDATE command.build_findings SET fix_pr = $2, fix_change = $3, state = $4, state_at = CASE WHEN state <> $4 THEN $5 ELSE state_at END WHERE id = $1', [
+          b.id,
+          b.pr ?? null,
+          b.change ?? null,
+          st,
+          at,
+        ]);
+        return { state: st };
+      },
+    },
+    audit: {
+      body: z.object({
+        kind: z.enum(['internal', 'external']),
+        auditor: text(120).min(1),
+        contracts: z.array(id).min(1).max(100),
+        scope: text(300).default(''),
+        /** The day it was done, or is booked for (YYYY-MM-DD). */
+        on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        report: z.string().trim().max(500).url().startsWith('https://').optional(),
+        note: text(1000).default(''),
+      }),
+      summary: (b) => `Recorded ${b.kind === 'external' ? 'an outside' : 'an internal'} audit · ${b.auditor} · ${b.contracts.length} ${b.contracts.length === 1 ? 'contract' : 'contracts'}`,
+      apply: async ({ tx, person, at }, b) => {
+        const ids = [...new Set(b.contracts)];
+        const { rows } = await tx.query<{ id: string }>('SELECT id FROM command.contracts WHERE id = ANY($1)', [ids]);
+        if (rows.length !== ids.length) throw new ActionError(404, 'NOT_FOUND', 'No such contract');
+        const day = new Date(b.on + 'T00:00:00Z');
+        if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== b.on || Math.abs(day.getTime() - at.getTime()) > 3 * 366 * DAY)
+          throw new ActionError(400, 'BAD_TIME', 'That day isn’t a day within three years');
+        const r = await one<{ id: number }>(
+          tx,
+          `INSERT INTO command.build_audits (kind, auditor, contracts, scope, on_day, report_url, note, recorded_by, recorded_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          [b.kind, b.auditor, ids, b.scope, b.on, b.report ?? null, b.note, person.id, at],
+        );
+        return { id: r!.id };
+      },
+    },
+  };
+}
 
 // ── Governance ──────────────────────────────────────────────────────────────
 

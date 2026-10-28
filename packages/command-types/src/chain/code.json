@@ -1,0 +1,547 @@
+{
+ "chainId": 84532,
+ "contracts": {
+  "AccessManager": {
+   "source": "contracts/peripherals/AccessManager.sol",
+   "sha256": "fb26be39f14b7de8b5957cf9c320b9272e855ba0298f846019ca82c13dd4f952",
+   "immutables": []
+  },
+  "AssuranceOracle": {
+   "source": "contracts/peripherals/AssuranceOracle.sol",
+   "sha256": "6519d41fc8cb80317b3620216623fe2787e757a54609be053654ec0f31d4f48c",
+   "immutables": [
+    [
+     2333,
+     32
+    ],
+    [
+     2518,
+     32
+    ],
+    [
+     3630,
+     32
+    ]
+   ]
+  },
+  "AssurancePool": {
+   "source": "contracts/peripherals/AssurancePool.sol",
+   "sha256": "e3cdec1f3cb051571c5b88060dfc4be3072536f85137601912acbcdbe6f6ca43",
+   "immutables": [
+    [
+     5901,
+     32
+    ],
+    [
+     6086,
+     32
+    ],
+    [
+     7880,
+     32
+    ]
+   ]
+  },
+  "BondValuer": {
+   "source": "contracts/peripherals/BondValuer.sol",
+   "sha256": "fa15cc70c5a3164276b087ab81a0472ff0fcf756eaca1b06b1397238c58538c7",
+   "immutables": [
+    [
+     72,
+     32
+    ],
+    [
+     237,
+     32
+    ]
+   ]
+  },
+  "BondVault": {
+   "source": "contracts/peripherals/BondVault.sol",
+   "sha256": "20116f3ceb66423aa311a8ca33b17b330311b4dcc4b2c6ad6f611484b81dbe2c",
+   "immutables": [
+    [
+     3069,
+     32
+    ],
+    [
+     3254,
+     32
+    ],
+    [
+     3734,
+     32
+    ]
+   ]
+  },
+  "BurnerBond": {
+   "source": "contracts/peripherals/BurnerBond.sol",
+   "sha256": "85bba47d002a0c42e6e752b496560bddc5b66df21127e68c9f68c0ffd021111c",
+   "immutables": []
+  },
+  "BurnerBondDeposit": {
+   "source": "contracts/peripherals/BurnerBondDeposit.sol",
+   "sha256": "942848f8b9f21ff11d641033c5df868b0f7231dd667e6a8c1b3e967780c44c9a",
+   "immutables": []
+  },
+  "BurnerBondFactory": {
+   "source": "contracts/core/factories/BurnerBondFactory.sol",
+   "sha256": "4bf0e01658690e5a55ec46e5e16384f839f9cd855b3f2520a3bd4f16af4c1fb9",
+   "immutables": [
+    [
+     927,
+     32
+    ],
+    [
+     1802,
+     32
+    ],
+    [
+     2930,
+     32
+    ],
+    [
+     3597,
+     32
+    ],
+    [
+     3880,
+     32
+    ],
+    [
+     3921,
+     32
+    ],
+    [
+     5525,
+     32
+    ]
+   ]
+  },
+  "ClaimEscrow": {
+   "source": "contracts/peripherals/ClaimEscrow.sol",
+   "sha256": "d2abc828223f2568bed30bb99e81dc8801267844a183ff0afd3bf0dbf125df03",
+   "immutables": [
+    [
+     1814,
+     32
+    ],
+    [
+     2271,
+     32
+    ],
+    [
+     3029,
+     32
+    ]
+   ]
+  },
+  "ClearCredit": {
+   "source": "contracts/core/ClearCredit.sol",
+   "sha256": "eeb99826b2964ab5059926a4b51141c7e65493075b52dfdf9053053039be1fa6",
+   "immutables": [
+    [
+     8293,
+     32
+    ],
+    [
+     9062,
+     32
+    ],
+    [
+     11480,
+     32
+    ]
+   ]
+  },
+  "ClearUSD": {
+   "source": "contracts/peripherals/ClearUSD.sol",
+   "sha256": "46e56248afd2be13c048490a725c2492cec56d57ca39be32b6930825f574c684",
+   "immutables": [
+    [
+     514,
+     32
+    ],
+    [
+     1875,
+     32
+    ],
+    [
+     2383,
+     32
+    ]
+   ]
+  },
+  "ClearUSDUpgradeable": {
+   "source": "contracts/peripherals/ClearUSDUpgradeable.sol",
+   "sha256": "702e7ac2d86f46b3e91c364e1ebf0bdf00c68244fc35c9605012fc05912b2443",
+   "immutables": [
+    [
+     4684,
+     32
+    ],
+    [
+     4849,
+     32
+    ]
+   ]
+  },
+  "CollateralRegistry": {
+   "source": "contracts/peripherals/CollateralRegistry.sol",
+   "sha256": "4fa4858a45e876c38aae0f89ebfc342f37bb2a40454db6024b7080faf61b4f2c",
+   "immutables": [
+    [
+     2817,
+     32
+    ],
+    [
+     3002,
+     32
+    ],
+    [
+     4041,
+     32
+    ]
+   ]
+  },
+  "Create2Deployer": {
+   "source": "contracts/peripherals/Create2Deployer.sol",
+   "sha256": "f3c177405f61fe5bff4bf54be9dbd1a6967b6a6fc1488f2f471b035bdba78240",
+   "immutables": []
+  },
+  "DeedNFT": {
+   "source": "contracts/core/DeedNFT.sol",
+   "sha256": "137bbadd3a9f06ebee3e0a1e8466b4763389519fe88da8e9582a4625287f3b64",
+   "immutables": [
+    [
+     3581,
+     32
+    ],
+    [
+     4657,
+     32
+    ],
+    [
+     5196,
+     32
+    ]
+   ]
+  },
+  "ESADepositVault": {
+   "source": "contracts/peripherals/ESADepositVault.sol",
+   "sha256": "fbf3899429d98d364483780f372f1b7b5255c23cbcedbb95c33203eecce323da",
+   "immutables": [
+    [
+     3766,
+     32
+    ],
+    [
+     3907,
+     32
+    ],
+    [
+     6327,
+     32
+    ]
+   ]
+  },
+  "FractionTokenFactory": {
+   "source": "contracts/core/factories/FractionTokenFactory.sol",
+   "sha256": "22a8d4cf3f448ceebd90ee50733f3ad097c7ff480e84211b1106c374a301dd31",
+   "immutables": [
+    [
+     1932,
+     32
+    ],
+    [
+     2073,
+     32
+    ],
+    [
+     2524,
+     32
+    ]
+   ]
+  },
+  "Fractionalize": {
+   "source": "contracts/extensions/Fractionalize.sol",
+   "sha256": "f4311bd8c52c96ec499a5e959a3a0373df760285502fe036d04f32eaa1402250",
+   "immutables": [
+    [
+     4144,
+     32
+    ],
+    [
+     5111,
+     32
+    ],
+    [
+     8300,
+     32
+    ]
+   ]
+  },
+  "FundManager": {
+   "source": "contracts/core/FundManager.sol",
+   "sha256": "9c3d62b30fb6c8b0a33a394f23d0a5cebf61eca22d1305291c7b8ff7ce766144",
+   "immutables": [
+    [
+     3924,
+     32
+    ],
+    [
+     4109,
+     32
+    ],
+    [
+     5067,
+     32
+    ]
+   ]
+  },
+  "LendingPool": {
+   "source": "contracts/peripherals/LendingPool.sol",
+   "sha256": "daddb9654c8911f786b0853cdcbac61f262097e2bdccd907cc07ccc3e58b9657",
+   "immutables": [
+    [
+     3652,
+     32
+    ],
+    [
+     3792,
+     32
+    ],
+    [
+     4838,
+     32
+    ]
+   ]
+  },
+  "LimitCalculator": {
+   "source": "contracts/peripherals/LimitCalculator.sol",
+   "sha256": "b240e11245d8744d66b0e90e3989e0462d9925c9d8e73a415380f7824a7f5431",
+   "immutables": [
+    [
+     2615,
+     32
+    ],
+    [
+     2800,
+     32
+    ],
+    [
+     3433,
+     32
+    ]
+   ]
+  },
+  "Liquidator": {
+   "source": "contracts/peripherals/Liquidator.sol",
+   "sha256": "f1ea6a0d6bab5d6feb299b1013bf6d54b31ca31270225da52a92708a5acd862d",
+   "immutables": [
+    [
+     4058,
+     32
+    ],
+    [
+     4243,
+     32
+    ],
+    [
+     6360,
+     32
+    ]
+   ]
+  },
+  "MembershipRegistry": {
+   "source": "contracts/peripherals/MembershipRegistry.sol",
+   "sha256": "139517eb6bdffba86a77d9c1fc5c561015646a521942bb071a5ebef4244cbe00",
+   "immutables": []
+  },
+  "MerchantRegistry": {
+   "source": "contracts/peripherals/MerchantRegistry.sol",
+   "sha256": "3f33cd417ca33ab6c098d2500d6bd798589cfeada14662c8b8bf0abbb043e5a8",
+   "immutables": [
+    [
+     2120,
+     32
+    ],
+    [
+     2305,
+     32
+    ],
+    [
+     2789,
+     32
+    ]
+   ]
+  },
+  "MetadataRenderer": {
+   "source": "contracts/core/MetadataRenderer.sol",
+   "sha256": "1cb191d76315cc7f1854ba60cc270c09430ea0a445fc1863cf56a3abeb6ee534",
+   "immutables": [
+    [
+     10032,
+     32
+    ],
+    [
+     10156,
+     32
+    ],
+    [
+     11486,
+     32
+    ]
+   ]
+  },
+  "NetworkRegistry": {
+   "source": "contracts/peripherals/NetworkRegistry.sol",
+   "sha256": "d8c3847897976b6eedbc88094baee315070567fd61280af8aa58221cccc22e0a",
+   "immutables": [
+    [
+     1798,
+     32
+    ],
+    [
+     1983,
+     32
+    ],
+    [
+     2642,
+     32
+    ]
+   ]
+  },
+  "PayoutPool": {
+   "source": "contracts/peripherals/PayoutPool.sol",
+   "sha256": "27593ab42726d39673e1b9ea620708d895f0b9101d3c0967b49d6c230b6c88d4",
+   "immutables": [
+    [
+     5553,
+     32
+    ],
+    [
+     5738,
+     32
+    ],
+    [
+     6910,
+     32
+    ]
+   ]
+  },
+  "RevolvingIssuer": {
+   "source": "contracts/peripherals/RevolvingIssuer.sol",
+   "sha256": "ba7ecb7f583014316dd2d75a7dea0fb8baf9594bb15bd0ebf2835728da2e4218",
+   "immutables": [
+    [
+     8143,
+     32
+    ],
+    [
+     8328,
+     32
+    ],
+    [
+     10160,
+     32
+    ]
+   ]
+  },
+  "SavingsIntentFactory": {
+   "source": "contracts/peripherals/SavingsIntentFactory.sol",
+   "sha256": "48745ac5e7cd967e8846a7d8e9a809a0b4e3e40928febe2279f8d813b0e9255d",
+   "immutables": [
+    [
+     1087,
+     32
+    ],
+    [
+     1669,
+     32
+    ],
+    [
+     3197,
+     32
+    ]
+   ]
+  },
+  "Subdivide": {
+   "source": "contracts/extensions/Subdivide.sol",
+   "sha256": "718d7efef8c176de551a5c8b1d7452a053ecf31fa1373b4718e4af74dce67a01",
+   "immutables": [
+    [
+     3928,
+     32
+    ],
+    [
+     5144,
+     32
+    ],
+    [
+     5413,
+     32
+    ]
+   ]
+  },
+  "TermIssuer": {
+   "source": "contracts/peripherals/TermIssuer.sol",
+   "sha256": "b380eb76a1ed05334e18f5358c6bdea831865b0dafd488551243d241d980b8b9",
+   "immutables": [
+    [
+     9819,
+     32
+    ],
+    [
+     10004,
+     32
+    ],
+    [
+     11171,
+     32
+    ]
+   ]
+  },
+  "TokenRegistry": {
+   "source": "contracts/peripherals/TokenRegistry.sol",
+   "sha256": "1733b1bc47b5860d64c9cef122a6c9a3f33e81f6103feef44ae01f1a99151214",
+   "immutables": []
+  },
+  "Validator": {
+   "source": "contracts/core/Validator.sol",
+   "sha256": "2a704960e9961aaeb7bd319302abe71a84765d1b41c552c0af62c33164216439",
+   "immutables": [
+    [
+     6922,
+     32
+    ],
+    [
+     7063,
+     32
+    ],
+    [
+     9088,
+     32
+    ]
+   ]
+  },
+  "ValidatorRegistry": {
+   "source": "contracts/core/ValidatorRegistry.sol",
+   "sha256": "852bd9610499daca8d7814accbf193f5baf56ef6ec5882845c077332aa76e8eb",
+   "immutables": [
+    [
+     4466,
+     32
+    ],
+    [
+     4607,
+     32
+    ],
+    [
+     5934,
+     32
+    ]
+   ]
+  }
+ }
+}
