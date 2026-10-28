@@ -6,7 +6,8 @@
  * row for someone with a Clear account. Turned off, or past an investor's expiry, it's nothing.
  */
 
-export const SECTIONS = ['home', 'growth', 'field', 'members', 'merchants', 'shop', 'money', 'contracts', 'governance', 'records', 'access'] as const;
+// contracts is the page called Build, access the one called Team (the redesign, migration 0056 added community and settings)
+export const SECTIONS = ['home', 'growth', 'field', 'members', 'merchants', 'shop', 'money', 'contracts', 'community', 'governance', 'records', 'access', 'settings'] as const;
 export type Section = (typeof SECTIONS)[number];
 export type Level = 0 | 1 | 2 | 3 | 4;
 export type Levels = Record<Section, Level>;

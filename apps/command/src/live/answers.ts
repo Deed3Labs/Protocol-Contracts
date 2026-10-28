@@ -20,7 +20,7 @@ const file = () =>
       throw e;
     }));
 
-const ALL = Object.fromEntries(['home', 'growth', 'field', 'members', 'merchants', 'shop', 'money', 'contracts', 'governance', 'records', 'access'].map((k) => [k, 4]));
+const ALL = Object.fromEntries(['home', 'growth', 'field', 'members', 'merchants', 'shop', 'money', 'contracts', 'community', 'governance', 'records', 'access', 'settings'].map((k) => [k, 4]));
 const ME = { id: 'answers', name: 'Saved answers', email: 'answers@localhost', levels: ALL, group: { key: 'admin', name: 'Admin', description: 'Runs the co-op day to day' }, terms: { required: false }, expiresAt: null };
 
 export async function answer(method: string, path: string): Promise<unknown> {
