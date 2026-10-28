@@ -1503,6 +1503,9 @@ export function startup() {
     }
     // a link to a tab on the redesigned Money (Home's timeline: pools:yield), as the reference has it
     if (t.dataset.go === 'money' && t.dataset.fp && !t.classList.contains('nav') && !t.classList.contains('tab')) pageModFor('money')?.setTab('money', t.dataset.fp);
+    // the redesigned Field and Merchants: a link lands on the tab it names (Home's route card: today), else the page's first, as the reference has it
+    if ((t.dataset.go === 'field' || t.dataset.go === 'merchants') && !t.classList.contains('nav') && !t.classList.contains('tab'))
+      pageModFor(t.dataset.go)?.setTab(t.dataset.go, t.dataset.fp || { field: 'today', merchants: 'overview' }[t.dataset.go]);
     if (t.dataset.go) return go(t.dataset.go);
     const seg = t.closest('[data-seg]');
     if (seg && t.dataset.v) {
