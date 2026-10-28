@@ -1,7 +1,8 @@
 import { createHash, createPublicKey, timingSafeEqual, verify, type JsonWebKey } from 'node:crypto';
 import type { Queryable } from '../../db/db.js';
 import { decryptWithEnvelope, encryptWithEnvelope, isEnvelopeEncryptionConfigured, type EncryptedPayload } from '../../utils/envelopeEncryption.js';
-import { costOrders } from './costing.js';
+import { costOrders, readBook } from './costing.js';
+import { costOverheads } from './shopModel.js';
 import { feedRows, type Feed, type FeedRow } from './feeds.js';
 import { siteFeed } from './siteFeed.js';
 
@@ -378,10 +379,11 @@ export function shopFeed(env: Env = process.env, f: typeof fetch = fetch): Feed 
             .map((m) => [m![1], ...variantParts(m![2]), Number(m![3])]);
           const ship = pi?.shipping ?? x.shipping_details ?? x.collected_information?.shipping_details ?? null;
           const r = await db.query(
-            `INSERT INTO command.shop_orders (id, paid_at, buyer, member, items, paid_with, fulfilment, pickup_at, state, city, source, stripe_session, payment_intent, total_cents)
-             VALUES (nextval('command.shop_order_number')::text, $1, $2, false, $3, 'card', 'ship', '', 'paid', $4, 'stripe', $5, $6, $7)
+            `INSERT INTO command.shop_orders (id, paid_at, buyer, member, items, paid_with, fulfilment, pickup_at, state, city, source, stripe_session, payment_intent, total_cents, shipping_cents)
+             VALUES (nextval('command.shop_order_number')::text, $1, $2, false, $3, 'card', 'ship', '', 'paid', $4, 'stripe', $5, $6, $7, $8)
              ON CONFLICT (stripe_session) DO NOTHING RETURNING 1`,
-            [new Date(x.created * 1000), maskBuyer(ship?.name ?? x.customer_details?.name), JSON.stringify(items), ship?.address?.city ?? x.customer_details?.address?.city ?? '', x.id, pi?.id ?? x.payment_intent ?? null, x.amount_total],
+            // the shipping the checkout charged, when it says (else Settings' flat `ship` stands in)
+            [new Date(x.created * 1000), maskBuyer(ship?.name ?? x.customer_details?.name), JSON.stringify(items), ship?.address?.city ?? x.customer_details?.address?.city ?? '', x.id, pi?.id ?? x.payment_intent ?? null, x.amount_total, x.shipping_cost?.amount_total ?? null],
           );
           orders += r.rows.length;
         }
@@ -395,8 +397,11 @@ export function shopFeed(env: Env = process.env, f: typeof fetch = fetch): Feed 
         await db.query(`UPDATE command.shop_orders SET refunded_cents = $2, state = CASE WHEN $2 >= coalesce(total_cents, 0) AND $2 > 0 THEN 'refund' ELSE state END WHERE payment_intent = $1`, [id, refunded]);
       }
       // what each order cost when it sold (Phase 10d): the new ones, and once, any from before
-      const costed = await costOrders(db, await productBySlug(db));
-      return { figures: { since: newest, orders, reserved, refunds: touched.length, costed } };
+      const book = await readBook(db);
+      const costed = await costOrders(db, await productBySlug(db), book);
+      // and what each cost once: its packing, the shipping charged, the card fee (the redesign)
+      const overheads = await costOverheads(db, book);
+      return { figures: { since: newest, orders, reserved, refunds: touched.length, costed, overheads } };
     },
   };
 }

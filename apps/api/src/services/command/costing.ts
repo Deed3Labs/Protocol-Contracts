@@ -8,6 +8,10 @@ import type { Queryable } from '../../db/db.js';
  * input's unit cost, and a cost per product ("$5.20 of embroidery") gives the amount. Any colour or
  * size can override a line. A product with no recipe yet keeps its four cost boxes.
  *
+ * The redesign (docs/ui-redesign-plan.md, decision 4): a stocked input's unit cost is the average of
+ * what's on hand, its last price paid kept beside it; an input can cost more in some sizes or colours
+ * (its extras); and a product can be costed at one flat cost instead, which wins over its recipe.
+ *
  * Money is cents throughout, with the fractions kept (1 ml at $0.0425 is 4.25¢): rounding to whole
  * cents happens only where money is shown (the payload) or stored on an order (shop_order_costs).
  *
@@ -28,7 +32,27 @@ export interface Input {
   note: string;
   archived: boolean;
   lastPurchase: { at: number; quantity: number; totalCents: number; supplier: string } | null;
+  /** Once per order: packing for the whole order, not each item. */
+  perOrder?: boolean;
+  /** A once-per-order input used on a pickup too (tissue), not only on a shipped order. */
+  onPickup?: boolean;
+  supplierId?: string | null;
+  /** The last price paid a unit; unitCostCents is the average for a stocked input. */
+  lastCostCents?: number | null;
+  /** What a size or a colour adds to one unit. */
+  extras?: Extra[];
 }
+
+/** One size's or one colour's extra on an input: the other is ''. */
+export interface Extra {
+  option: string;
+  size: string;
+  cents: number;
+}
+
+/** The reference's three kinds: kept on hand, made to order, once per order. */
+export type InputType = 'stock' | 'mto' | 'order';
+export const inputType = (i: Pick<Input, 'stocked' | 'perOrder'>): InputType => (i.perOrder ? 'order' : i.stocked ? 'stock' : 'mto');
 
 /** What was typed for a line or an override: an amount, a cost, or (amount wins) both. */
 export interface Entered {
@@ -60,6 +84,16 @@ export interface Product {
   /** The four boxes: blank or base, making, label, packing. Null for a deposit. */
   boxes: number[] | null;
   deposit: boolean;
+  /** One flat cost instead of materials: set, it's the product's cost. */
+  flatCents?: number | null;
+  flatEstimate?: boolean;
+  flatNote?: string;
+}
+/** A colour's or size's own flat cost ('' is any). */
+export interface FlatOverride {
+  option: string;
+  size: string;
+  costCents: number;
 }
 
 /** Everything the engine reads, loaded once a request. */
@@ -73,6 +107,8 @@ export interface Book {
   variants: Map<string, Variant[]>;
   /** Stocked inputs' on hand, from the ledger. */
   onHand: Map<string, number>;
+  /** Each flat-costed product's colour and size costs. */
+  flatOverrides?: Map<string, FlatOverride[]>;
 }
 
 // ── the arithmetic ──────────────────────────────────────────────────────────
@@ -84,6 +120,27 @@ export const purchaseUnitCost = (totalCents: number, quantity: number) => totalC
 export function unitCostOf(i: Pick<Input, 'unitCostCents' | 'lastPurchase'>): number | null {
   if (i.unitCostCents != null) return i.unitCostCents;
   return i.lastPurchase ? purchaseUnitCost(i.lastPurchase.totalCents, i.lastPurchase.quantity) : null;
+}
+
+/**
+ * The average after a buy is received: what's on hand at the old average, plus what was paid, over the
+ * new total. With nothing on hand (or less, after a run made short), or no average yet, it's the price paid.
+ */
+export function averageAfter(onHand: number, avgCents: number | null, quantity: number, paidCents: number): number {
+  if (onHand <= 1e-9 || avgCents == null) return paidCents / quantity;
+  return (onHand * avgCents + paidCents) / (onHand + quantity);
+}
+
+/** The last price paid a unit: as stored, else from the latest purchase. */
+export function lastPaidOf(i: Pick<Input, 'lastCostCents' | 'lastPurchase'>): number | null {
+  if (i.lastCostCents != null) return i.lastCostCents;
+  return i.lastPurchase ? purchaseUnitCost(i.lastPurchase.totalCents, i.lastPurchase.quantity) : null;
+}
+
+/** What a colour and size add to one unit of an input: its size's extra plus its colour's. */
+export function extraFor(i: Pick<Input, 'extras'> | undefined, v: Variant | null): number {
+  if (!v || !i?.extras?.length) return 0;
+  return i.extras.reduce((a, x) => a + ((x.size !== '' && x.size === v.size) || (x.option !== '' && x.option === v.option) ? x.cents : 0), 0);
 }
 
 /** A line worked out: both sides, which one was typed, and why a side is missing. */
@@ -125,6 +182,8 @@ export interface CostedLine extends Worked {
   inputId: string;
   /** Whether a colour's or size's override set it. */
   override: boolean;
+  /** What the input's extras added for this colour and size, in all (unrounded). */
+  extraCents?: number;
 }
 export interface Costed {
   /** Unrounded. */
@@ -132,23 +191,42 @@ export interface Costed {
   lines: CostedLine[];
 }
 
-/** A recipe's cost for a colour and size (null: the recipe as written), line by line. */
+/**
+ * A recipe's cost for a colour and size (null: the recipe as written), line by line. A product's
+ * override of a line wins; otherwise the input's extras for that colour and size are added to each unit
+ * (a line with no amount yet has no units to add them to).
+ */
 export function costRecipe(lines: Line[], overrides: Override[], inputs: Map<string, Input>, v: Variant | null = null): Costed {
   const out = lines.map((l): CostedLine => {
     const o = overrideFor(overrides, l.inputId, v);
     const input = inputs.get(l.inputId);
-    return { inputId: l.inputId, override: !!o, ...workLine(o ?? l, input ? unitCostOf(input) : null) };
+    const w = workLine(o ?? l, input ? unitCostOf(input) : null);
+    const extra = o || w.amount == null ? 0 : w.amount * extraFor(input, v);
+    return { inputId: l.inputId, override: !!o, ...w, ...(extra ? { costCents: w.costCents + extra, extraCents: extra } : {}) };
   });
   return { costCents: out.reduce((a, l) => a + l.costCents, 0), lines: out };
 }
 
-export type CostSource = 'recipe' | 'boxes' | 'none';
+export type CostSource = 'recipe' | 'boxes' | 'flat' | 'none';
+
+/** A flat-costed product's cost for a colour and size: colour and size, then size, then colour, then the flat cost. */
+export function flatFor(flatCents: number, list: FlatOverride[], v: Variant | null): number {
+  if (!v) return flatCents;
+  const o =
+    list.find((x) => x.option !== '' && x.size !== '' && x.option === v.option && x.size === v.size) ??
+    list.find((x) => x.option === '' && x.size !== '' && x.size === v.size) ??
+    list.find((x) => x.option !== '' && x.size === '' && x.option === v.option);
+  return o ? o.costCents : flatCents;
+}
 
 /**
- * A product's cost: its recipe's, with the variant's overrides, or with no recipe the sum of its
- * four boxes, so nothing changes until a recipe is filled in. A deposit has neither ('none').
+ * A product's cost: its flat cost when one is set (with the variant's own), else its recipe's, with the
+ * variant's overrides and extras, or with no recipe the sum of its four boxes, so nothing changes until
+ * a recipe is filled in. A deposit with none of them has 'none'.
  */
 export function productCost(book: Book, productId: string, v: Variant | null = null): Costed & { source: CostSource } {
+  const flat = book.products.get(productId)?.flatCents;
+  if (flat != null) return { costCents: flatFor(flat, book.flatOverrides?.get(productId) ?? [], v), lines: [], source: 'flat' };
   const lines = book.lines.get(productId) ?? [];
   if (lines.length) return { ...costRecipe(lines, book.overrides.get(productId) ?? [], book.inputs, v), source: 'recipe' };
   const boxes = book.products.get(productId)?.boxes;
@@ -215,20 +293,25 @@ const push = <K, V>(m: Map<K, V[]>, k: K, v: V) => (m.get(k) ?? m.set(k, []).get
 
 /** The library, the recipes, the products' prices and boxes, their variants and what's on hand. */
 export async function readBook(db: Queryable): Promise<Book> {
-  const [inputs, products, lines, overrides, variants, moves] = await Promise.all([
+  const [inputs, products, lines, overrides, variants, moves, extras, flats] = await Promise.all([
+    // the latest purchase received: one ordered or cancelled isn't a price paid
     db.query<any>(
       `SELECT i.*, p.at AS p_at, p.quantity AS p_quantity, p.total_cents AS p_total, p.supplier AS p_supplier
        FROM command.shop_inputs i
-       LEFT JOIN LATERAL (SELECT * FROM command.shop_input_purchases x WHERE x.input_id = i.id ORDER BY x.at DESC, x.id DESC LIMIT 1) p ON true
+       LEFT JOIN LATERAL (SELECT * FROM command.shop_input_purchases x WHERE x.input_id = i.id AND x.state = 'received' ORDER BY coalesce(x.received_at, x.at) DESC, x.id DESC LIMIT 1) p ON true
        ORDER BY i.archived_at IS NOT NULL, i.name`,
     ),
-    db.query<any>('SELECT id, price_cents, cost_cents, deposit FROM command.shop_products ORDER BY position'),
+    db.query<any>('SELECT id, price_cents, cost_cents, deposit, flat_cost_cents, cost_estimate, cost_note FROM command.shop_products ORDER BY position'),
     db.query<any>('SELECT * FROM command.shop_recipe_lines ORDER BY product_id, position, input_id'),
     db.query<any>('SELECT * FROM command.shop_recipe_overrides ORDER BY product_id, input_id, option, size'),
     db.query<any>('SELECT product_id, option, size FROM command.shop_stock ORDER BY product_id, option_pos, size_pos'),
     db.query<any>('SELECT input_id, sum(quantity) AS quantity FROM command.shop_input_moves GROUP BY input_id'),
+    db.query<any>('SELECT * FROM command.shop_input_extras ORDER BY input_id, size, option'),
+    db.query<any>('SELECT * FROM command.shop_flat_overrides ORDER BY product_id, option, size'),
   ]);
-  const book: Book = { inputs: new Map(), products: new Map(), lines: new Map(), overrides: new Map(), variants: new Map(), onHand: new Map() };
+  const book: Book = { inputs: new Map(), products: new Map(), lines: new Map(), overrides: new Map(), variants: new Map(), onHand: new Map(), flatOverrides: new Map() };
+  const extrasOf = new Map<string, Extra[]>();
+  for (const r of extras.rows) push(extrasOf, r.input_id, { option: r.option, size: r.size, cents: Number(r.extra_cents) });
   for (const r of inputs.rows)
     book.inputs.set(r.id, {
       id: r.id,
@@ -241,8 +324,23 @@ export async function readBook(db: Queryable): Promise<Book> {
       note: r.note,
       archived: r.archived_at != null,
       lastPurchase: r.p_at == null ? null : { at: new Date(r.p_at).getTime(), quantity: Number(r.p_quantity), totalCents: Number(r.p_total), supplier: r.p_supplier },
+      perOrder: r.per_order,
+      onPickup: r.on_pickup,
+      supplierId: r.supplier_id ?? null,
+      lastCostCents: num(r.last_cost_cents),
+      extras: extrasOf.get(r.id) ?? [],
     });
-  for (const r of products.rows) book.products.set(r.id, { id: r.id, priceCents: r.price_cents, boxes: r.cost_cents ? r.cost_cents.map(Number) : null, deposit: r.deposit });
+  for (const r of products.rows)
+    book.products.set(r.id, {
+      id: r.id,
+      priceCents: r.price_cents,
+      boxes: r.cost_cents ? r.cost_cents.map(Number) : null,
+      deposit: r.deposit,
+      flatCents: num(r.flat_cost_cents),
+      flatEstimate: r.cost_estimate,
+      flatNote: r.cost_note,
+    });
+  for (const r of flats.rows) push(book.flatOverrides!, r.product_id, { option: r.option, size: r.size, costCents: Number(r.cost_cents) });
   for (const r of lines.rows) push(book.lines, r.product_id, { productId: r.product_id, inputId: r.input_id, position: r.position, amount: num(r.amount), costCents: num(r.cost_cents), entered: r.entered });
   for (const r of overrides.rows)
     push(book.overrides, r.product_id, { productId: r.product_id, inputId: r.input_id, option: r.option, size: r.size, amount: num(r.amount), costCents: num(r.cost_cents), entered: r.entered });
@@ -263,7 +361,7 @@ export interface PurchaseRow {
 export interface MoveRow {
   at: number;
   quantity: number;
-  reason: 'purchase' | 'run' | 'adjust' | 'waste';
+  reason: 'purchase' | 'run' | 'adjust' | 'waste' | 'order';
   note: string;
   ref: number | null;
 }
@@ -279,6 +377,11 @@ export interface RunRow {
   short: boolean;
   who: string;
   uses: Array<{ inputId: string; quantity: number }>;
+  state?: 'planned' | 'done';
+  /** Locked when it was made; null for a run from before batches, or one still planned. */
+  unitCostCents?: number | null;
+  batch?: string | null;
+  plannedOn?: number | null;
 }
 export interface History {
   purchases: Map<string, PurchaseRow[]>;
@@ -295,7 +398,7 @@ export const noHistory = (): History => ({ purchases: new Map(), moves: new Map(
 export async function readHistory(db: Queryable): Promise<History> {
   const [purchases, moves, runs] = await Promise.all([
     db.query<any>(
-      `SELECT * FROM (SELECT p.*, row_number() OVER (PARTITION BY input_id ORDER BY at DESC, id DESC) AS n FROM command.shop_input_purchases p) x
+      `SELECT * FROM (SELECT p.*, row_number() OVER (PARTITION BY input_id ORDER BY at DESC, id DESC) AS n FROM command.shop_input_purchases p WHERE state = 'received') x
        WHERE n <= $1 ORDER BY input_id, at DESC, id DESC`,
       [HISTORY_CAPS.purchases],
     ),
@@ -304,7 +407,8 @@ export async function readHistory(db: Queryable): Promise<History> {
        WHERE n <= $1 ORDER BY input_id, at DESC, id DESC`,
       [HISTORY_CAPS.moves],
     ),
-    db.query<any>('SELECT * FROM command.shop_runs ORDER BY at DESC, id DESC LIMIT $1', [HISTORY_CAPS.runs]),
+    // the runs made, newest first; the planned ones are batches still to make (shopModel.ts)
+    db.query<any>(`SELECT * FROM command.shop_runs WHERE state = 'done' ORDER BY at DESC, id DESC LIMIT $1`, [HISTORY_CAPS.runs]),
   ]);
   const h = noHistory();
   for (const r of purchases.rows)
@@ -331,6 +435,10 @@ export async function readHistory(db: Queryable): Promise<History> {
     short: r.short,
     who: r.who,
     uses: uses.get(Number(r.id)) ?? [],
+    state: r.state,
+    unitCostCents: r.unit_cost_cents,
+    batch: r.batch_id,
+    plannedOn: r.planned_on ? new Date(r.planned_on).getTime() : null,
   }));
   return h;
 }
@@ -461,6 +569,16 @@ export function costingPayload(book: Book, priceOf: Map<string, number> = new Ma
       archived: i.archived,
       note: i.note,
       lastPurchase: i.lastPurchase ? { at: i.lastPurchase.at, quantity: i.lastPurchase.quantity, total: i.lastPurchase.totalCents / 100, supplier: i.lastPurchase.supplier } : null,
+      // the redesign's: its kind (kept on hand, made to order, once per order), the average and the last
+      // price paid (dollars, unrounded), its supplier, and its extras as the reference's `var`
+      type: inputType(i),
+      perOrder: !!i.perOrder,
+      onPickup: !!i.onPickup,
+      avg: u == null ? null : u / 100,
+      last: lastPaidOf(i) == null ? null : lastPaidOf(i)! / 100,
+      supplier: i.supplierId ?? null,
+      var: Object.fromEntries((i.extras ?? []).map((x) => [x.size || x.option, x.cents / 100])),
+      extras: (i.extras ?? []).map((x) => (x.size ? { size: x.size, extra: x.cents / 100 } : { option: x.option, extra: x.cents / 100 })),
       // the history (Phase 10c): purchases newest first, and the stock ledger of one kept on hand
       purchases: (history.purchases.get(i.id) ?? []).map((p) => ({ at: p.at, quantity: p.quantity, total: p.totalCents / 100, unitCost: purchaseUnitCost(p.totalCents, p.quantity) / 100, supplier: p.supplier, note: p.note })),
       moves: (history.moves.get(i.id) ?? []).map((m) => ({ at: m.at, quantity: m.quantity, reason: m.reason, note: m.note, ref: m.ref })),
@@ -524,12 +642,31 @@ export function costingPayload(book: Book, priceOf: Map<string, number> = new Ma
     short: r.short,
     who: r.who,
     uses: r.uses.map((u) => ({ input: u.inputId, quantity: u.quantity })),
+    batch: r.batch ?? `R-${r.id}`,
+    unitCost: r.unitCostCents == null ? null : r.unitCostCents / 100,
   }));
-  return { INPUTS, RECIPES, MATERIALS, RUNS };
+
+  // each product's cost and where it comes from; a flat-costed one's flat cost and its colours' and sizes'
+  const COST_BY: Record<string, CostSource> = {};
+  const FLAT: Record<string, unknown> = {};
+  for (const [pid, p] of book.products) {
+    COST_BY[pid] = productCost(book, pid).source;
+    if (p.flatCents == null) continue;
+    const price = Math.round((priceOf.get(pid) ?? p.priceCents / 100) * 100);
+    const m = margin(price, roundCents(p.flatCents));
+    FLAT[pid] = {
+      cost: shown(p.flatCents),
+      estimate: !!p.flatEstimate,
+      note: p.flatNote ?? '',
+      margin: { amount: m.cents / 100, share: m.share },
+      overrides: (book.flatOverrides?.get(pid) ?? []).map((o) => ({ option: o.option, size: o.size, cost: shown(o.costCents) })),
+    };
+  }
+  return { INPUTS, RECIPES, MATERIALS, RUNS, COST_BY, FLAT };
 }
 
 /** The same, empty: below See, the costing isn't sent. */
-export const noCosting = () => ({ INPUTS: [], RECIPES: {}, MATERIALS: { onHand: [], low: [], makes: {}, covers: {} }, RUNS: [] });
+export const noCosting = () => ({ INPUTS: [], RECIPES: {}, MATERIALS: { onHand: [], low: [], makes: {}, covers: {} }, RUNS: [], COST_BY: {}, FLAT: {} });
 
 /**
  * The stocked inputs at or under their low mark, for Home's alerts: one small read, so Home needs
