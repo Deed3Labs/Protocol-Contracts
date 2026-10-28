@@ -189,7 +189,7 @@ export async function settingsSection(db: Queryable, level: number): Promise<{ S
     `SELECT p.id, p.payload, p.approved_at, COALESCE(NULLIF(pp.name, ''), pp.email) AS by, COALESCE(NULLIF(pa.name, ''), pa.email) AS approver
        FROM command.proposals p JOIN command.people pp ON pp.id = p.proposed_by LEFT JOIN command.people pa ON pa.id = p.approved_by
       WHERE p.status = 'approved' AND p.kind = 'action' AND p.payload->>'section' = 'settings' AND p.payload->>'kind' = 'change'
-      ORDER BY p.approved_at, p.id`,
+      ORDER BY p.approved_at, p.created_at, p.id`,
   );
   const was = new Map<string, unknown>(Object.entries(FIRST));
   const HISTORY = done
