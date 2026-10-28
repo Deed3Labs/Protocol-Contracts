@@ -1,10 +1,14 @@
 // @ts-nocheck: ported from the redesign's BUILD2 module (design/command-center-ui) with scripts/port/module.cjs; its data is its own.
 import { Fragment } from 'react';
 import { attrs, css, hasHtml, html } from '../runtime/dom';
+import { LIVE as LIVE_APP, REAL } from '../live/env';
+import { reloadSection } from '../live/sections';
+import { buildLive } from './buildLive';
 import { CC } from './cc';
+import { openCFlow } from './contracts';
 import { LOG, S } from './data';
 import { registerPage, shadowHost } from './pageHost';
-import { openItem, toast, vLevel } from './shell';
+import { openItem, render as renderShell, toast, vLevel } from './shell';
 
 /*
  * Build (design/command-center-ui, the BUILD2 module): the code behind every app and the contracts it
@@ -12,6 +16,11 @@ import { openItem, toast, vLevel } from './shell';
  * change, a contract, a finding and an incident. It lives in its own shadow root (pageHost.tsx); its
  * inner module reads the root through a document stand-in (DOCP), as the reference has it. Links out
  * go through CC.go, so they land on the right page and pane.
+ *
+ * Live (REAL), its datasets are buildLive()'s (`LV`: named so, not L, as the module uses L for its own
+ * lists): the indexer's contracts and releases, the GitHub poller's commits and pull requests, and the
+ * Ops Safe's owners and queue. What nothing records yet (checks, the apps' deploys, reviews, findings,
+ * audits, incidents) says "Not real yet", and its buttons are hidden.
  */
 
 /** The page's skeleton: the reference template's markup. */
@@ -20,10 +29,13 @@ function skeleton() {
 }
 function makeBuild() {
   const { host, R: SR, W, into } = shadowHost('build', skeleton());
+  const LV = REAL ? buildLive() : null;
   const LIVE = () => host.isConnected && CC.route() === 'build';
   const RO = () => CC.viewing() && vLevel('build') < 3;
   const TOT = () => CC.viewing() && vLevel('build') === 1;
   const meKey = () => {
+    // live, the signed-in person (the prototype's view picks one of its demo people)
+    if (LV) return LV.me;
     const v = S.view;
     if (!v) return 'kai';
     return {
@@ -69,8 +81,8 @@ function makeBuild() {
        Demo "today" is Wed 21 Oct 2026, 14:00. 30 of 31 contracts live on Base Sepolia. AssurancePool v1.3 waits on Kai (Dana signed).
        Rosa's cap is in the 24-hour wait. RevolvingIssuer v1.3 went live today. */
     const DAY = 864e5,
-      TODAY = Date.UTC(2026, 9, 21),
-      NOW = TODAY + 14 * 3600e3;
+      TODAY = LV ? LV.TODAY : Date.UTC(2026, 9, 21),
+      NOW = LV ? LV.NOW : TODAY + 14 * 3600e3;
     const D = (m, d, y = 2026, h = 0) => Date.UTC(y, m - 1, d, h);
     const H = (m, d, h, mi = 0) => Date.UTC(2026, m - 1, d, h, mi);
     const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -97,7 +109,7 @@ function makeBuild() {
     const int = n => Math.round(n).toLocaleString('en-US');
 
     /* people: who writes code, who reviews, who signs */
-    const PPL = {
+    const PPL = LV ? LV.PPL : {
       kai: {
         n: 'Kai',
         ini: 'K',
@@ -137,7 +149,7 @@ function makeBuild() {
 
     /* every project. The contracts, both apps and the API and SDK share one monorepo (Protocol-Contracts, default branch dev),
        so they share one PR sequence and one Dependabot feed; checks run per folder, so a red member app blocks only changes that touch apps/member. */
-    const REPOS = [{
+    const REPOS = LV ? LV.REPOS : [{
       id: 'proto',
       name: 'Protocol-Contracts',
       org: 'Deed3Labs',
@@ -254,7 +266,7 @@ function makeBuild() {
     const MONO = REPOS.filter(r => r.path);
 
     /* changes: code (a pull request), upgrade (contract code that goes through the Ops Safe) and setting (an on-chain setting, no code) */
-    const CHANGES = [/* in progress */
+    const CHANGES = LV ? LV.CHANGES : [/* in progress */
     {
       id: 'c131',
       repo: 'proto',
@@ -573,17 +585,17 @@ function makeBuild() {
       opened: H(10, 9, 10)
     }];
     const CHG = Object.fromEntries(CHANGES.map(c => [c.id, c]));
-    const STAGES = [['draft', 'In progress', 'Drafts and work in progress'], ['review', 'In review', 'Needs a review and passing checks'], ['safe', 'Ops Safe', 'On-chain · 2 of 3 sign, then 24 hours'], ['shipped', 'Shipped', 'Last 7 days']];
+    const STAGES = LV ? [['draft', 'In progress', 'Drafts, and commits not released'], ['review', 'In review', 'Open pull requests'], ['safe', 'Ops Safe', LV.safe ? `On-chain · ${LV.threshold} of ${LV.safe.owners.length} sign` : 'On-chain · no Ops Safe yet'], ['shipped', 'Shipped', 'Last 7 days']] : [['draft', 'In progress', 'Drafts and work in progress'], ['review', 'In review', 'Needs a review and passing checks'], ['safe', 'Ops Safe', 'On-chain · 2 of 3 sign, then 24 hours'], ['shipped', 'Shipped', 'Last 7 days']];
 
     /* recent commits */
-    const COMMITS = [[H(10, 21, 13, 50), 'cc', 'kai', 'Build: change board and review panel', '3f9a1c2'], [H(10, 21, 12, 5), 'app', 'dana', 'Test: look for the Repay amount, not the word', 'e91b04d'], [H(10, 21, 11, 40), 'proto', 'dana', 'AssuranceOracle: observe() over a 30-minute window', 'b7c5a10'], [H(10, 21, 10, 30), 'sdk', 'dana', 'SDK: regenerate AssurancePool v1.3 types', 'd81c4f0'], [H(10, 21, 9, 20), 'app', 'kai', 'Term plans: split schedule preview', '4d2f8e6'], [H(10, 21, 9, 15), 'app', 'dana', 'Test: repro for the failing e2e', 'a03c771'], [H(10, 20, 21, 0), 'cc', 'kai', 'Field: route planner and the week strip', '71e0b5c'], [H(10, 20, 18, 40), 'app', 'kai', 'Move money: Repay $400.00 on the button', '7c2e9d1'], [H(10, 20, 16, 0), 'proto', 'dana', 'BurnerBond: ReentrancyGuard from utils', 'c4a8d02'], [H(10, 20, 11, 0), 'merchant', 'kai', 'Refunds: partial amount from the receipt', '52ff1e9'], [H(10, 19, 16, 20), 'merchant', 'kai', 'Counter: scan directions under the code', '08b6c3a'], [H(10, 19, 15, 0), 'proto', 'dana', 'RevolvingIssuer: repay most expensive tier first', '9c41e2a'], [H(10, 19, 10, 0), 'site', 'kai', 'Shops: enquiry form posts to the Command Center', 'e5d3a77'], [H(10, 18, 14, 0), 'proto', 'dana', 'Pin OpenZeppelin 5.0.2', '16af0b8'], [H(10, 18, 11, 0), 'proto', 'dana', 'AssurancePool: claims only through a role', 'fa31c9d'], [H(10, 17, 10, 10), 'site', 'kai', 'Home: cut the copy by half', '2b8e4f1'], [H(10, 17, 9, 0), 'cc', 'kai', 'Merchants: pipeline board', '6a90d3e']];
+    const COMMITS = LV ? LV.COMMITS : [[H(10, 21, 13, 50), 'cc', 'kai', 'Build: change board and review panel', '3f9a1c2'], [H(10, 21, 12, 5), 'app', 'dana', 'Test: look for the Repay amount, not the word', 'e91b04d'], [H(10, 21, 11, 40), 'proto', 'dana', 'AssuranceOracle: observe() over a 30-minute window', 'b7c5a10'], [H(10, 21, 10, 30), 'sdk', 'dana', 'SDK: regenerate AssurancePool v1.3 types', 'd81c4f0'], [H(10, 21, 9, 20), 'app', 'kai', 'Term plans: split schedule preview', '4d2f8e6'], [H(10, 21, 9, 15), 'app', 'dana', 'Test: repro for the failing e2e', 'a03c771'], [H(10, 20, 21, 0), 'cc', 'kai', 'Field: route planner and the week strip', '71e0b5c'], [H(10, 20, 18, 40), 'app', 'kai', 'Move money: Repay $400.00 on the button', '7c2e9d1'], [H(10, 20, 16, 0), 'proto', 'dana', 'BurnerBond: ReentrancyGuard from utils', 'c4a8d02'], [H(10, 20, 11, 0), 'merchant', 'kai', 'Refunds: partial amount from the receipt', '52ff1e9'], [H(10, 19, 16, 20), 'merchant', 'kai', 'Counter: scan directions under the code', '08b6c3a'], [H(10, 19, 15, 0), 'proto', 'dana', 'RevolvingIssuer: repay most expensive tier first', '9c41e2a'], [H(10, 19, 10, 0), 'site', 'kai', 'Shops: enquiry form posts to the Command Center', 'e5d3a77'], [H(10, 18, 14, 0), 'proto', 'dana', 'Pin OpenZeppelin 5.0.2', '16af0b8'], [H(10, 18, 11, 0), 'proto', 'dana', 'AssurancePool: claims only through a role', 'fa31c9d'], [H(10, 17, 10, 10), 'site', 'kai', 'Home: cut the copy by half', '2b8e4f1'], [H(10, 17, 9, 0), 'cc', 'kai', 'Merchants: pipeline board', '6a90d3e']];
 
     /* commits per repo per day, last 28 days (to 21 Oct) */
     const rnd = s => {
       let x = s;
       return () => (x = x * 16807 % 2147483647) / 2147483647;
     };
-    const ACT = Object.fromEntries(REPOS.map((r, i) => {
+    const ACT = LV ? LV.ACT : Object.fromEntries(REPOS.map((r, i) => {
       const R = rnd(97 + i * 31),
         base = {
           proto: 2.4,
@@ -604,7 +616,7 @@ function makeBuild() {
 
     /* where each repo runs */
     const ENVS = [['preview', 'Preview', 'Per pull request'], ['test', 'Testnet or sandbox', 'Base Sepolia · Lithic, Bridge and Plaid sandboxes'], ['prod', 'Production', 'Base mainnet · live providers']];
-    const ENV = {
+    const ENV = LV ? LV.ENV : {
       proto: {
         preview: ['Local fork', 'Each PR runs on a Base Sepolia fork', 'ok'],
         test: ['Base Sepolia', '30 of 31 contracts · RevolvingIssuer v1.3 today', 'ok'],
@@ -636,7 +648,7 @@ function makeBuild() {
         prod: ['Not launched', 'Goes live with the backend', 'no']
       }
     };
-    const DEPLOYS = [[H(10, 21, 10, 0), 'proto', 'test', 'RevolvingIssuer v1.3', 'Ops Safe', 'ok', 'Upgrade · 2 of 3 signed'], [H(10, 21, 9, 12), 'cc', 'test', '3f9a1c2', 'kai', 'ok', '1m 48s'], [H(10, 20, 18, 40), 'app', 'test', '#129 · 7c2e9d1', 'kai', 'warn', '2m 31s · e2e failing since'], [H(10, 19, 16, 20), 'merchant', 'test', '#127 · 08b6c3a', 'kai', 'ok', '1m 55s'], [H(10, 17, 10, 10), 'site', 'prod', '#40 · 2b8e4f1', 'kai', 'ok', '41s'], [H(10, 14, 16, 0), 'proto', 'test', 'LendingPool, BondVault, BondValuer v1.0', 'Ops Safe', 'ok', '3 contracts · 2 of 3 signed'], [H(10, 14, 11, 5), 'app', 'test', '#125 · 1f7d9a0', 'dana', 'back', 'Rolled back after 12 min · missing env var'], [H(10, 14, 11, 20), 'app', 'test', '#124 · 6b0e2c4', 'dana', 'ok', 'Restored'], [H(10, 8, 15, 0), 'proto', 'test', 'TermIssuer, Liquidator, SavingsIntent v1.0', 'Ops Safe', 'ok', '3 contracts'], [H(10, 6, 10, 0), 'proto', 'test', 'PayoutPool v0.9', 'Ops Safe', 'ok', 'Upgrade · oldest claim first']];
+    const DEPLOYS = LV ? LV.DEPLOYS : [[H(10, 21, 10, 0), 'proto', 'test', 'RevolvingIssuer v1.3', 'Ops Safe', 'ok', 'Upgrade · 2 of 3 signed'], [H(10, 21, 9, 12), 'cc', 'test', '3f9a1c2', 'kai', 'ok', '1m 48s'], [H(10, 20, 18, 40), 'app', 'test', '#129 · 7c2e9d1', 'kai', 'warn', '2m 31s · e2e failing since'], [H(10, 19, 16, 20), 'merchant', 'test', '#127 · 08b6c3a', 'kai', 'ok', '1m 55s'], [H(10, 17, 10, 10), 'site', 'prod', '#40 · 2b8e4f1', 'kai', 'ok', '41s'], [H(10, 14, 16, 0), 'proto', 'test', 'LendingPool, BondVault, BondValuer v1.0', 'Ops Safe', 'ok', '3 contracts · 2 of 3 signed'], [H(10, 14, 11, 5), 'app', 'test', '#125 · 1f7d9a0', 'dana', 'back', 'Rolled back after 12 min · missing env var'], [H(10, 14, 11, 20), 'app', 'test', '#124 · 6b0e2c4', 'dana', 'ok', 'Restored'], [H(10, 8, 15, 0), 'proto', 'test', 'TermIssuer, Liquidator, SavingsIntent v1.0', 'Ops Safe', 'ok', '3 contracts'], [H(10, 6, 10, 0), 'proto', 'test', 'PayoutPool v0.9', 'Ops Safe', 'ok', 'Upgrade · oldest claim first']];
 
     /* security */
     const SEV = {
@@ -645,7 +657,7 @@ function makeBuild() {
       medium: ['Medium', 'color-mix(in srgb,var(--fg) 60%,transparent)'],
       low: ['Low', 'var(--line)']
     };
-    const FINDINGS = [{
+    const FINDINGS = LV ? LV.FINDINGS : [{
       id: 'F1',
       sev: 'critical',
       t: 'Anyone can withdraw from the AssurancePool',
@@ -716,7 +728,7 @@ function makeBuild() {
       waiting: ['Fix waiting on a signature', 'var(--live)'],
       fixed: ['Fixed', 'var(--settled)']
     };
-    const INCIDENTS = [{
+    const INCIDENTS = LV ? LV.INCIDENTS : [{
       id: 'I1',
       t: 'Plaid sync 3 hours behind',
       st: 'open',
@@ -771,28 +783,30 @@ function makeBuild() {
       note: 'The RPC provider throttled reads. Moved to a second provider as a fallback.',
       ev: [[H(9, 30, 14), 'Reads failing'], [H(9, 30, 14, 40), 'Fallback provider added']]
     }];
-    const KEYS = [['Ops Safe', '2 of 3 · Kai, Dana Ruiz, Board signer', 'Admin and pause on every live contract'], ['Deployer key', 'Testnet only · hardware wallet · Dana Ruiz', 'Last used 14 Oct'], ['Provider keys', 'Lithic, Bridge and Plaid sandboxes · in Railway', 'Rotated 30 Sep'], ['GitHub', '3 repos · 2 maintainers · Kai, Dana Ruiz', 'dev and main need a review · CODEOWNERS per folder'], ['Keys in this app', 'None', 'Signing happens in the Ops Safe']];
+    const KEYS = LV ? LV.KEYS : [['Ops Safe', '2 of 3 · Kai, Dana Ruiz, Board signer', 'Admin and pause on every live contract'], ['Deployer key', 'Testnet only · hardware wallet · Dana Ruiz', 'Last used 14 Oct'], ['Provider keys', 'Lithic, Bridge and Plaid sandboxes · in Railway', 'Rotated 30 Sep'], ['GitHub', '3 repos · 2 maintainers · Kai, Dana Ruiz', 'dev and main need a review · CODEOWNERS per folder'], ['Keys in this app', 'None', 'Signing happens in the Ops Safe']];
 
     /* signers and the Ops Safe */
-    const SIGN_W = {
+    const SIGN_W = LV ? LV.SIGN_W : {
       K: [2, 3, 1, 1, 2, 2, 1, 3],
       DR: [3, 4, 2, 1, 1, 2, 1, 3],
       BS: [0, 1, 0, 1, 0, 0, 0, 0]
     };
-    const SIGNERS = [['kai', 'K', 'Kai', 'Admin', 3.1], ['dana', 'DR', 'Dana Ruiz', 'ClearLabs', 5.4], ['bs', 'BS', 'Board signer', 'Co-op board', 31.0]];
-    const CTR = [/* id, name, version, layer, status, address, what it does, x, y, band (c credit · d deeds) — addresses from deployments/base-sepolia on the dev branch */
+    const SIGNERS = LV ? LV.SIGNERS : [['kai', 'K', 'Kai', 'Admin', 3.1], ['dana', 'DR', 'Dana Ruiz', 'ClearLabs', 5.4], ['bs', 'BS', 'Board signer', 'Co-op board', 31.0]];
+    const CTR = LV ? LV.CTR : [/* id, name, version, layer, status, address, what it does, x, y, band (c credit · d deeds) — addresses from deployments/base-sepolia on the dev branch */
     ['am', 'AccessManager', 'v1.0', 0, 'live', '0x19aB…f207', 'Role-based access for the protocol. Admin is the Ops Safe.', 10, 13, 'c'], ['ms', 'MembershipRegistry', 'v1.0', 0, 'live', '0xE700…4dE8', 'Member entitlements on-chain, no personal data.', 10, 21, 'c'], ['nr', 'NetworkRegistry', 'v1.0', 0, 'live', '0x0a9F…3D7f', 'The parent registry every issuer is registered against.', 10, 37, 'c'], ['cr', 'CollateralRegistry', 'v1.0', 0, 'live', '0x62fB…52Cf', 'What each member has pledged, and what the AssurancePool would pay.', 10, 29, 'c'], ['mr', 'MerchantRegistry', 'v1.0', 0, 'live', '0x4172…f1f5', 'What each shop was promised: payout schedule, cap, fee, status.', 10, 45, 'c'], ['tr', 'TokenRegistry', 'v1.0', 0, 'live', '0x4B13…6a86', 'Which tokens count, with fallback prices.', 10, 53, 'c'], ['lc', 'LimitCalculator', 'v1.0', 1, 'live', '0xbA98…c0a7', 'Turns pledges and attestations into a member’s ceiling.', 30, 21, 'c'], ['ri', 'RevolvingIssuer', 'v1.3', 1, 'live', '0x7f15…6070', 'The tiered revolving line: savings-backed, asset-backed, income and Boost.', 30, 29, 'c'], ['ti', 'TermIssuer', 'v1.0', 1, 'live', '0xe467…3721', 'Term plans: partner credit, Clear Cash and the ELPA.', 30, 53, 'c'], ['lq', 'Liquidator', 'v1.0', 1, 'live', '0x8E2E…9593', 'Turns a defaulted member’s pledged savings into repayment of their own debt.', 30, 69, 'c'], ['cc', 'ClearCredit', 'v1.1', 2, 'live', '0x1d9f…928C', 'The co-op’s credit ledger, the deployable StableCredit. Only issuers mint.', 50, 39, 'c'], ['cu', 'ClearUSD', 'v1.1', 2, 'live', '0x2a11…D6D1', 'CLRUSD, upgradeable. Settles savings and bridges by CCIP.', 50, 69, 'c'], ['ao', 'AssuranceOracle', 'v1.0', 3, 'live', '0x2E52…Fe38', 'Prices reserve tokens.', 70, 13, 'c'], ['ap', 'AssurancePool', 'v1.2', 3, 'live', '0xf5E4…5840', 'Absorbs losses on unsecured credit. RTD reads it and nothing else.', 70, 21, 'c'], ['lp', 'LendingPool', 'v1.0', 3, 'live', '0x5840…ce23', 'Member money funding the unsecured tiers. Takes first loss. Holds $9,000.00 from 18 depositors.', 70, 29, 'c'], ['cp', 'CreditPool', '—', 3, 'later', '—', 'In the repo, not deployed. Members deposit credit for others to draw.', 70, 37, 'c'], ['pp', 'PayoutPool', 'v0.9', 3, 'live', '0xe9d1…7D66', 'Pays shops on the schedule they were promised, oldest claim first.', 70, 45, 'c'], ['esa', 'ESADepositVault', 'v1.1', 3, 'live', '0x8364…413b', 'Member savings, CLRUSD backed 1:1 by USDC.', 70, 69, 'c'], ['ce', 'ClaimEscrow', 'v1.0', 3, 'live', '0x24DA…c37D', 'Holds USDC sent by link until it’s claimed or refunded.', 70, 53, 'c'], ['si', 'SavingsIntent', 'v1.0', 3, 'live', '0xee28…C8Bc', 'One-transfer escrows that turn a deposit into savings.', 70, 61, 'c'], ['bb', 'BurnerBond', 'v1.0', 4, 'live', '0x4d96…c148', 'Zero-coupon bonds, one token each, with their factory and deposit. 6 issued.', 90, 21, 'c'], ['bv', 'BondVault', 'v1.0', 4, 'live', '0x9f31…A855', 'Where bond proceeds live, behind a redemption reserve. Holds $25,000.00 for 6 bonds.', 90, 29, 'c'], ['bvl', 'BondValuer', 'v1.0', 1, 'live', '0x64d5…0d2C', 'What a member’s pledged bonds are worth today, for CollateralRegistry.', 30, 61, 'c'], ['vr', 'ValidatorRegistry', 'v1.0', 0, 'live', '0x979E…bc91', 'Which validators may approve deeds, and for what.', 10, 84, 'd'], ['va', 'Validator', 'v1.0', 1, 'live', '0x18C5…79b9', 'Checks a deed’s title and papers before it’s minted. Made by the ValidatorFactory.', 30, 84, 'd'], ['mx', 'MetadataRenderer', 'v1.0', 1, 'live', '0x849e…70E5', 'Renders a deed’s features, condition and legal details.', 30, 93, 'd'], ['dn', 'DeedNFT', 'v1.1', 2, 'live', '0x1a4e…21E6', 'One token per property deed, with its traits and validation.', 50, 84, 'd'], ['sd', 'Subdivide', 'v1.0', 2, 'live', '0x3c94…923F', 'Splits a deed into units, like lots or rooms.', 50, 93, 'd'], ['fz', 'Fractionalize', 'v1.0', 3, 'live', '0xeC46…9823', 'Locks a deed or its units and issues shares against it.', 70, 84, 'd'], ['ft', 'FractionToken', 'v1.0', 4, 'live', '0x3E51…28dc', 'Shares in one property, made by the FractionTokenFactory.', 90, 84, 'd'], ['fm', 'FundManager', 'v1.0', 4, 'live', '0x73ea…401e', 'Money around deeds: commissions and payouts.', 90, 93, 'd']];
     const ctrOf = id => CTR.find(c => c[0] === id);
+    /* a contract's name; a change the map doesn't place (live: a Safe transaction to another address) says so */
+    const cname = id => (ctrOf(id) || [, 'Another contract'])[1];
     const LAYERS = ['Access', 'Issuance', 'Tokens', 'Pools and escrow', 'Capital'];
-    const REL = [/* from, to, kind (reads · money · mint), verb, label on the map (blank = drawn, unlabelled · null = panel only), label side for vertical lines */
+    const REL = LV ? LV.REL : [/* from, to, kind (reads · money · mint), verb, label on the map (blank = drawn, unlabelled · null = panel only), label side for vertical lines */
     ['ms', 'am', 'reads', 'checks members', ''], ['am', 'cc', 'reads', 'sets roles', null], ['nr', 'cr', 'reads', 'lists issuers', ''], ['nr', 'cc', 'reads', 'registers issuers', null], ['cr', 'lc', 'reads', 'pledges', ''], ['bvl', 'cr', 'reads', 'values bonds', ''], ['lc', 'ri', 'reads', 'limits', ''], ['lp', 'ri', 'money', 'funds unsecured credit', 'funds unsecured'], ['ri', 'cc', 'mint', 'mints credit', 'mints'], ['ti', 'cc', 'mint', 'mints credit', ''], ['cc', 'ap', 'money', 'claims on losses', ''], ['ao', 'ap', 'reads', 'prices reserves', ''], ['tr', 'ao', 'reads', 'token list', null], ['lp', 'ap', 'money', 'takes first loss', ''], ['cc', 'pp', 'money', 'pays merchant balances', ''], ['mr', 'pp', 'reads', 'payout terms', 'terms', 50], ['cc', 'cp', 'reads', 'credit deposits', ''], ['esa', 'cu', 'mint', 'mints against USDC', 'mints'], ['si', 'esa', 'money', 'deposits', ''], ['lq', 'cu', 'money', 'seizes pledged CLRUSD', 'seizes'], ['lq', 'esa', 'reads', 'redeems', null], ['lq', 'cc', 'reads', 'repays debt', null], ['bb', 'bv', 'money', 'bond proceeds', ''], ['vr', 'va', 'reads', 'lists validators', 'lists'], ['va', 'dn', 'reads', 'validates', 'checks'], ['mx', 'dn', 'reads', 'renders', ''], ['dn', 'sd', 'mint', 'splits into units', ''], ['dn', 'fz', 'money', 'locks deeds', 'locks'], ['sd', 'fz', 'money', 'locks units', ''], ['fz', 'ft', 'mint', 'issues shares', 'issues'], ['fm', 'dn', 'reads', 'commissions', null]];
-    const EDGES = REL.filter(r => r[4] !== null);
+    const EDGES = LV ? LV.EDGES : REL.filter(r => r[4] !== null);
     const RK = {
       reads: 'Reads from',
       money: 'Moves money',
       mint: 'Mints tokens'
     };
-    const RELEASES = {
+    const RELEASES = LV ? LV.RELEASES : {
       /* versions by contract, for the release lanes and panes */
       cc: [['v1.0', D(8, 2)], ['v1.1', D(9, 2)]],
       ri: [['v1.0', D(8, 2)], ['v1.1', D(9, 2)], ['v1.2', D(9, 30)], ['v1.3', D(10, 21)]],
@@ -893,16 +907,16 @@ function makeBuild() {
         return <span className={`bm-el ${k}`} style={css(`left:${x}%;top:${y}%`)}>{l}</span>;
       };
       const pend = mapPend();
-      return <><div className="bm" role="img" aria-label="How the contracts connect"><div className="bm-safe"><b>Ops Safe</b><span>2 of 3 · admin and pause on every live contract</span></div><div className="bm-in">{LAYERS.map((l, i) => <Fragment key={i}><span className="bm-lay" style={css(`left:${10 + i * 20}%`)}>{l}</span><i className="bm-drop" style={css(`left:${10 + i * 20}%`)} /></Fragment>)}<i className="bm-sep" style={css("top:7.5%")} /><span className="bm-band" style={css("top:7.5%")}>Credit and money</span><i className="bm-sep" style={css("top:77%")} /><span className="bm-band" style={css("top:77%")}>Deeds and real assets</span><svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">{EDGES.map(path)}</svg>{EDGES.map(lbl)}{CTR.map((c, __k) => <button key={__k} type="button" className={`bm-n ${c[4]}${pend[c[0]] && !['bb', 'lp', 'bv'].includes(c[0]) ? ' pend' : ''}${c[0] === 'ap' && mapPend().ap && mapPend().ap.includes('you') ? ' me' : ''}${['bb', 'lp', 'bv'].includes(c[0]) ? ' info' : ''}`} data-ctr={c[0]} style={css(`left:${c[7]}%;top:${c[8]}%`)}><span className="bm-h"><b>{c[1]}</b><span className="mono">{c[2]}</span></span>{pend[c[0]] ? <span className="bm-t">{pend[c[0]]}</span> : ''}</button>)}</div></div><div className="bm-list">{[['c', 'Credit and money'], ['d', 'Deeds and real assets']].map(([b, bn], __k) => <Fragment key={__k}><div className="bm-lb">{bn}</div>{LAYERS.map((l, i) => {
+      return <><div className="bm" role="img" aria-label="How the contracts connect"><div className="bm-safe"><b>Ops Safe</b><span>{LV ? LV.safe ? `${LV.threshold} of ${LV.safe.owners.length} · signs changes to the contracts` : 'Not connected here yet' : '2 of 3 · admin and pause on every live contract'}</span></div><div className="bm-in">{LAYERS.map((l, i) => <Fragment key={i}><span className="bm-lay" style={css(`left:${10 + i * 20}%`)}>{l}</span><i className="bm-drop" style={css(`left:${10 + i * 20}%`)} /></Fragment>)}<i className="bm-sep" style={css("top:7.5%")} /><span className="bm-band" style={css("top:7.5%")}>Credit and money</span><i className="bm-sep" style={css("top:77%")} /><span className="bm-band" style={css("top:77%")}>Deeds and real assets</span><svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">{EDGES.map(path)}</svg>{EDGES.map(lbl)}{(LV ? LV.MAPPED : CTR).map((c, __k) => <button key={__k} type="button" className={`bm-n ${c[4]}${LV ? nodeLive(c, pend) : `${pend[c[0]] && !['bb', 'lp', 'bv'].includes(c[0]) ? ' pend' : ''}${c[0] === 'ap' && mapPend().ap && mapPend().ap.includes('you') ? ' me' : ''}${['bb', 'lp', 'bv'].includes(c[0]) ? ' info' : ''}`}`} data-ctr={c[0]} style={css(`left:${c[7]}%;top:${c[8]}%`)}><span className="bm-h"><b>{c[1]}</b><span className="mono">{c[2]}</span></span>{pend[c[0]] ? <span className="bm-t">{pend[c[0]]}</span> : ''}</button>)}</div></div><div className="bm-list">{[['c', 'Credit and money'], ['d', 'Deeds and real assets']].map(([b, bn], __k) => <Fragment key={__k}><div className="bm-lb">{bn}</div>{LAYERS.map((l, i) => {
               const cs = CTR.filter(c => c[3] === i && c[9] === b);
               return cs.length ? <div key={i} className="bm-pc"><span className="lbl">{l}</span>{cs.map((c, __k) => <button key={__k} type="button" className="bm-pr" data-ctr={c[0]}>{(() => {
                     const pv = pend[c[0]] || '',
-                      k = /on you/.test(pv) ? 'me' : /in the wait|Waits/.test(pv) ? 'wt' : '';
+                      k = /on you/.test(pv) ? 'me' : /in the wait|Waits|in the Ops Safe/.test(pv) ? 'wt' : '';
                     return <><i className={`${c[4]} ${k}`} /><span>{c[1]}{pv ? <em className={k}>{pv}</em> : ''}</span></>;
                   })()}<span className="mono quiet">{c[2]}</span></button>)}</div> : '';
             })}</Fragment>)}</div></>;
     }
-    const mapKey = () => <div className="bm-keys">{mkey([['var(--fg)', 'Live on Base Sepolia'], ['var(--line)', 'In the repo, not deployed'], ['var(--underway)', 'Change in the wait'], ['var(--live)', 'Change waiting on you']])}<div className="mkey"><span><i className="lk reads" />Reads from</span><span><i className="lk money" />Moves money</span><span><i className="lk mint" />Mints tokens</span></div></div>;
+    const mapKey = () => <div className="bm-keys">{mkey(LV ? [['var(--fg)', `Found on ${LV.chain.network || 'the chain'}`], ['var(--line)', 'Not found on-chain'], ['var(--underway)', 'Change in the Ops Safe'], ['var(--live)', 'Change waiting on you']] : [['var(--fg)', 'Live on Base Sepolia'], ['var(--line)', 'In the repo, not deployed'], ['var(--underway)', 'Change in the wait'], ['var(--live)', 'Change waiting on you']])}<div className="mkey"><span><i className="lk reads" />Reads from</span><span><i className="lk money" />Moves money</span><span><i className="lk mint" />Mints tokens</span></div></div>;
 
     /* ══ Build — smart contracts and the code behind every app ══════════════════════════════════════════════════
        Overview (is anything blocked or waiting on you) · Changes (every pull request and on-chain change, by stage) ·
@@ -937,7 +951,9 @@ function makeBuild() {
     };
     const av = (k, cls = '') => <span className={`av sm ${cls}`} title={PPL[k] ? PPL[k].n : k}>{PPL[k] ? PPL[k].ini : '?'}</span>;
     const rtag = id => <span className="bd-rt">{RSHORT[id]}</span>;
-    const ref = c => c.repo ? `${RSHORT[c.repo]} · #${c.num}` : `${ctrOf(c.contract)[1]} · setting`;
+    const ref = c => c.repo ? `${RSHORT[c.repo]} · #${c.num}` : `${cname(c.contract)} · setting`;
+    /* who signs in the Ops Safe, in its order: live, its owners */
+    const SIGK = () => LV ? LV.SIGNER_KEYS : ['kai', 'dana', 'bs'];
     const CK = {
       pass: ['Checks pass', 'var(--settled)'],
       fail: ['Checks failing', 'var(--absent)'],
@@ -950,8 +966,39 @@ function makeBuild() {
     const need = c => c.st === 'review' && c.rev === B.me ? 'review' : c.st === 'safe' && !c.block && !c.wait && c.need === B.me ? 'sign' : null;
     const mine = () => CHANGES.filter(c => need(c));
     const sigCount = c => Object.keys(c.sigs || {}).length;
-    const stateTxt = c => c.st === 'draft' ? c.after && CHG[c.after].st !== 'shipped' ? `Draft · merges after ${CHG[c.after].t}` : c.checks === 'fail' ? 'Draft · checks failing' : 'Draft' : c.st === 'review' ? c.rev ? c.rev === B.me ? 'Waiting on your review' : `Waiting on ${who(c.rev)}` : c.revState === 'changes' ? `${who(c.reviewer)} asked for changes` : c.revState === 'ok' ? `Approved by ${who(c.reviewer)} · ready to merge` : 'Anyone can review' : c.st === 'safe' ? c.block ? c.block : c.wait ? `In the 24-hour wait · live ${WD(c.wait)} ${hm(c.wait)}` : c.need === B.me ? `Waiting on you · ${sigCount(c)} of 2` : `Waiting on ${who(c.need)} · ${sigCount(c)} of 2` : `Live ${/^(Today|Yesterday)$/.test(dayLbl(c.live)) ? dayLbl(c.live).toLowerCase() : dayLbl(c.live)}`;
+    const stateTxt = c => LV ? stateLive(c) : c.st === 'draft' ? c.after && CHG[c.after].st !== 'shipped' ? `Draft · merges after ${CHG[c.after].t}` : c.checks === 'fail' ? 'Draft · checks failing' : 'Draft' : c.st === 'review' ? c.rev ? c.rev === B.me ? 'Waiting on your review' : `Waiting on ${who(c.rev)}` : c.revState === 'changes' ? `${who(c.reviewer)} asked for changes` : c.revState === 'ok' ? `Approved by ${who(c.reviewer)} · ready to merge` : 'Anyone can review' : c.st === 'safe' ? c.block ? c.block : c.wait ? `In the 24-hour wait · live ${WD(c.wait)} ${hm(c.wait)}` : c.need === B.me ? `Waiting on you · ${sigCount(c)} of 2` : `Waiting on ${who(c.need)} · ${sigCount(c)} of 2` : `Live ${/^(Today|Yesterday)$/.test(dayLbl(c.live)) ? dayLbl(c.live).toLowerCase() : dayLbl(c.live)}`;
+    /* live: a change as the poller, the indexer or the Ops Safe has it (no review state, no timelock) */
+    const stateLive = c => {
+      const n = sigCount(c),
+        req = c.req || LV.threshold;
+      if (c.st === 'draft') return c.kind === 'upgrade' ? c.state || 'Commits not released' : 'Draft';
+      if (c.st === 'review') return 'Ready for review';
+      if (c.st === 'safe') return c.block ? c.block : c.outbox ? c.need === B.me ? 'Ready for you to sign and send' : 'Waiting for its first signature' : c.ready ? `Ready to execute · ${n} of ${req}` : c.need === B.me ? `Waiting on you · ${n} of ${req}` : `Waiting on the others · ${n} of ${req}`;
+      const d = dayLbl(c.live),
+        dd = /^(Today|Yesterday)$/.test(d) ? d.toLowerCase() : d;
+      return c.kind === 'code' ? `Merged into ${c.base} ${dd}` : c.released ? `Live ${dd}` : `Executed ${dd}`;
+    };
+    /* live: a map node's classes, from its note (pending changes, or the API's note) */
+    const nodeLive = (c, pend) => {
+      const pv = pend[c[0]] || '';
+      return `${/Ops Safe|waiting on/.test(pv) ? ' pend' : pv ? ' info' : ''}${/waiting on you/.test(pv) ? ' me' : ''}`;
+    };
     const mapPend = () => {
+      if (LV) {
+        const p = {
+          ...LV.CTR_NOTE
+        };
+        const n = {};
+        CHANGES.filter(c => c.st === 'safe' && c.contract && !c.block).forEach(c => {
+          const k = n[c.contract] = n[c.contract] || [0, 0];
+          k[0]++;
+          if (c.need === B.me) k[1]++;
+        });
+        Object.entries(n).forEach(([id, [all, me]]) => {
+          p[id] = me ? `${me} ${me === 1 ? 'change' : 'changes'} · waiting on you` : `${all} ${all === 1 ? 'change' : 'changes'} in the Ops Safe`;
+        });
+        return p;
+      }
       const p = {
         bb: '6 bonds',
         lp: '$9,000 held',
@@ -965,6 +1012,7 @@ function makeBuild() {
 
     /* ── header: one sentence, four vitals ── */
     function renderHdr() {
+      if (LV) return renderHdrLive();
       const m = mine(),
         fail = REPOS.filter(r => r.main === 'fail'),
         open = FINDINGS.filter(f => f.st !== 'fixed'),
@@ -984,6 +1032,7 @@ function makeBuild() {
 
     /* ══ Overview ══════════════════════════════════════════════════════════════════ */
     function renderOverview() {
+      if (LV) return renderOverviewLive();
       const m = mine(),
         open = INCIDENTS.filter(i => i.st === 'open');
       const NEED = [...m.map(c => [need(c) === 'sign' ? 'live' : 'underway', need(c) === 'sign' ? `Sign ${c.t}` : `Review #${c.num} · ${c.t}`, need(c) === 'sign' ? `Ops Safe · ${who(Object.keys(c.sigs)[0])} signed · ${c.finding ? 'closes the critical finding' : 'asked for in ' + (c.from || 'Build')}` : `${RSHORT[c.repo]} · ${who(c.by)} · fixes dev`, need(c) === 'sign' ? 'Now' : ago(c.upd).replace(' ago', ''), need(c) === 'sign' ? 'Your signature' : 'Your review', `data-bopen="${c.id}"`, 1]), ...(CHG.c130.revState === 'changes' ? [['line', 'BurnerBond: OpenZeppelin v5 paths', `Protocol · #128 · you asked for changes`, '1 d', 'Waiting on Dana', 'data-bopen="c130"']] : []), ...open.map(i => ['absent', i.t, `${i.area} · ${i.note.split('.')[0]}`, ago(i.at).replace(' ago', ''), i.who === 'auto' ? 'Automatic' : who(i.who).split(' ')[0] + ' is on it', `data-binc="${i.id}"`])];
@@ -1023,8 +1072,8 @@ function makeBuild() {
     function tile(c) {
       const n = need(c),
         s = c.sigs || {};
-      const sig = c.kind !== 'code' ? <span className="bd-sig">{['kai', 'dana', 'bs'].map((k, __k) => <i key={__k} className={s[k] ? 'on' : c.need === k ? 'me' : ''} title={`${PPL[k].n}${s[k] ? ' signed' : ''}`}>{PPL[k].ini}</i>)}</span> : '';
-      return <button className={`bd-t ${n ? 'me' : ''} ${c.block ? 'blk' : ''} ${c.wait ? 'wt' : ''}`} data-bopen={c.id}><span className="bd-t-h">{c.repo ? <>{rtag(c.repo)}{(c.also || []).map((r, __k) => <span key={__k} className="bd-rt">{"+ "}{RTINY[r]}</span>)}<span className="bd-t-n">#{c.num}</span></> : <><span className="bd-rt on">{c.from || 'On-chain'}</span><span className="bd-t-n">setting</span></>}{c.contract && c.kind === 'upgrade' ? <span className="bd-t-u">Upgrade</span> : ''}</span><b className="bd-t-t">{c.t}</b><span className={`bd-t-s ${n ? 'me' : ''}`}>{stateTxt(c)}</span><span className="bd-t-f">{av(c.by)}{c.kind === 'setting' ? <span>{ctrOf(c.contract)[1]}</span> : <span className="bd-t-ck">{ckDot(c.checks || 'none')}<span className="ad">+{int(c.plus)}</span><span className="rm">−{int(c.minus)}</span></span>}{sig}</span></button>;
+      const sig = c.kind !== 'code' && (!LV || c.kind === 'setting') ? <span className="bd-sig">{SIGK().map((k, __k) => <i key={__k} className={s[k] ? 'on' : c.need === k ? 'me' : ''} title={`${PPL[k].n}${s[k] ? ' signed' : ''}`}>{PPL[k].ini}</i>)}</span> : '';
+      return <button className={`bd-t ${n ? 'me' : ''} ${c.block ? 'blk' : ''} ${c.wait ? 'wt' : ''}`} data-bopen={c.id}><span className="bd-t-h">{c.repo ? <>{rtag(c.repo)}{(c.also || []).map((r, __k) => <span key={__k} className="bd-rt">{"+ "}{RTINY[r]}</span>)}{LV && !c.num ? <span className="bd-t-n">{plural((c.commits || []).length, 'commit', 'commits')}</span> : <span className="bd-t-n">#{c.num}</span>}</> : <><span className="bd-rt on">{c.from || 'On-chain'}</span><span className="bd-t-n">setting</span></>}{c.contract && c.kind === 'upgrade' ? <span className="bd-t-u">Upgrade</span> : ''}</span><b className="bd-t-t">{c.t}</b><span className={`bd-t-s ${n ? 'me' : ''}`}>{stateTxt(c)}</span><span className="bd-t-f">{av(c.by)}{c.kind === 'setting' || LV && !c.num ? <span>{c.contract || !LV ? cname(c.contract) : c.to ? shortA(c.to) : 'On-chain'}</span> : <span className="bd-t-ck">{ckDot(c.checks || 'none')}{LV ? <span>{plural(c.files, 'file', 'files')}</span> : <><span className="ad">+{int(c.plus)}</span><span className="rm">−{int(c.minus)}</span></>}</span>}{sig}</span></button>;
     }
     function renderChanges() {
       const F = [['all', 'All'], ...REPOS.map(r => [r.id, RSHORT[r.id]])],
@@ -1032,7 +1081,7 @@ function makeBuild() {
       const board = cell('s12', 'Every change', <div className="seg sm" role="group" aria-label="Repo">{F.map(([k, t], __k) => <button key={__k} data-brepo={k} aria-pressed={B.repo === k}>{t}</button>)}</div>, <><div className="bd-tabs">{STAGES.map(([k, t], __k) => <button key={__k} className={B.st === k ? 'on' : ''} data-bst={k}><b>{CHANGES.filter(c => c.st === k && ok(c)).length}</b><span>{t}</span></button>)}</div><div className="bd-bd">{STAGES.map(([k, t, s], __k) => {
             const L = CHANGES.filter(c => c.st === k && ok(c)).sort((a, b) => (need(b) ? 1 : 0) - (need(a) ? 1 : 0) || (b.upd || b.live || b.opened) - (a.upd || a.live || a.opened));
             return <section key={__k} className={`bd-c ${k} ${B.st === k ? 'on' : ''}`}><header className="bd-h"><span><b>{t}</b><span>{s}</span></span><b className="bd-k">{L.length}</b></header><div className="bd-b">{L.length ? L.map(tile) : <div className="bd-e">Nothing here</div>}</div></section>;
-          })}</div></>, <><span>{B.repo === 'all' ? 'Settings come from Merchants and Governance' : `${REPO[B.repo].path ? REPO[B.repo].name + ' · ' + REPO[B.repo].path : REPO[B.repo].org + '/' + REPO[B.repo].name}`}</span><button data-bgh="">GitHub ↗</button></>);
+          })}</div></>, <><span>{LV ? B.repo === 'all' ? 'On-chain changes come from Build, Merchants and Money' : `${REPO[B.repo].full || REPO[B.repo].name} · ${REPO[B.repo].path}` : B.repo === 'all' ? 'Settings come from Merchants and Governance' : `${REPO[B.repo].path ? REPO[B.repo].name + ' · ' + REPO[B.repo].path : REPO[B.repo].org + '/' + REPO[B.repo].name}`}</span><button data-bgh={LV && REPOS[0].url ? REPOS[0].url + '/pulls' : ''}>GitHub ↗</button></>);
       const L = COMMITS.filter(c => B.repo === 'all' || c[1] === B.repo),
         per = 8;
       B.cp = Math.min(B.cp, Math.max(0, Math.ceil(L.length / per) - 1));
@@ -1042,15 +1091,16 @@ function makeBuild() {
             h = dl !== prev ? <div className="bd-cm-d">{lbl(dl)}</div> : '';
           prev = dl;
           return <Fragment key={__k}>{h}<div className="bd-cm-r">{av(a)}<span className="bd-cm-k"><b>{msg}</b><span>{RSHORT[r]}{" · "}{who(a)}{" · "}{hm(t)}</span></span><span className="mono bd-cm-s">{sha}</span></div></Fragment>;
-        })}</div>, <><span>{L.length}{" commits this week"}</span>{pager(B.cp, L.length, per, 'bcp')}</>);
+        })}</div>, <><span>{L.length}{LV ? ' of the newest commits' : " commits this week"}</span>{pager(B.cp, L.length, per, 'bcp')}</>);
       const rv = [['kai', 'Kai', CHANGES.filter(c => c.rev === 'kai').length, '4.2 h', 11], ['dana', 'Dana Ruiz', CHANGES.filter(c => c.rev === 'dana').length, '6.8 h', 14]],
         rmx = 14;
       const reviews = cell('s5', 'Reviews', <span className="lbl">Last 30 days</span>, <div className="bd-rv"><div className="m-big">{"5.1 h "}<small>median time to a first review</small></div><div className="led bd-rv-l">{rv.map(([k, n, w, med, done], __k) => <div key={__k}><span className="bd-rv-p">{av(k)}<span><b>{k === B.me ? 'You' : n}</b><em>{w ? `${w} waiting on ${k === B.me ? 'you' : 'them'}` : 'Nothing waiting'}{" · median "}{med}</em></span></span><span className="bd-rv-b"><i style={css(`width:${done / rmx * 100}%`)} /></span><b>{done}</b></div>)}</div><div className="bd-dist">{lbl('Time to a first review')}{[['Under 1 h', 7], ['1 to 4 h', 6], ['4 to 24 h', 8], ['Over a day', 4]].map(([t, n], __k) => <div key={__k}><span>{t}</span><span className="bd-rv-b"><i style={css(`width:${n / 8 * 100}%`)} /></span><b>{n}</b></div>)}</div><p className="bd-n">Every change to dev or main needs one review and passing checks. Contract changes then need 2 of 3 signers in the Ops Safe.</p></div>, <><span>Branch rules are set in GitHub</span><span /></>);
-      html(document.getElementById('bv'), <>{band(board, 1)}{band(<>{commits}{reviews}</>)}</>);
+      html(document.getElementById('bv'), <>{band(board, 1)}{band(<>{commits}{LV ? notReal('s5', 'Reviews', 'Needs GitHub’s reviews: who’s asked to review each pull request, when they first did, and what they said.') : reviews}</>)}</>);
     }
 
     /* ══ Contracts ═════════════════════════════════════════════════════════════════ */
     function renderContracts() {
+      if (LV) return renderContractsLive();
       const map = cell('s12', 'The protocol', <span className="lbl">Base Sepolia · block 18,204,331</span>, <div className="bd-map">{protoMap()}</div>, <>{mapKey()}</>);
       const q = CHANGES.filter(c => c.st === 'safe');
       const safe = cell('s7', 'In the Ops Safe', <span className="lbl">2 of 3, then 24 h</span>, <div className="bd-q">{q.map((c, __k) => {
@@ -1078,6 +1128,7 @@ function makeBuild() {
 
     /* ══ Deploys ═══════════════════════════════════════════════════════════════════ */
     function renderDeploys() {
+      if (LV) return renderDeploysLive();
       const env = cell('s12', 'Where it runs', <span className="lbl">{REPOS.length}{" repos · 3 environments"}</span>, <div className="bd-en"><div className="bd-en-r bd-en-x"><span />{ENVS.map(([k, t, s], __k) => <span key={__k}><b>{t}</b><em>{s}</em></span>)}</div>{REPOS.map((r, __k) => <div key={__k} className="bd-en-r"><button className="bd-en-k" data-brepo={r.id}><b>{RSHORT[r.id]}</b><span>{r.path || r.name}{" · "}{r.lang}</span></button>{ENVS.map(([k], __k) => {
             const [v, s, st] = ENV[r.id][k];
             return <span key={__k} className={`bd-en-c ${st}`}><i /><span><b>{v}</b><em>{s}</em></span></span>;
@@ -1099,6 +1150,7 @@ function makeBuild() {
 
     /* ══ Security ══════════════════════════════════════════════════════════════════ */
     function renderSecurity() {
+      if (LV) return renderSecurityLive();
       const ord = {
           critical: 0,
           high: 1,
@@ -1117,6 +1169,145 @@ function makeBuild() {
       const keys = cell('s6', 'Keys and access', <span className="lbl">Who can change what</span>, <div className="led bd-ky">{KEYS.map(([k, v, s], __k) => <div key={__k}><span><b>{k}</b><em>{s}</em></span><b>{v}</b></div>)}</div>, <><span>Set in Permissions and GitHub</span><button data-bgo="team">Permissions →</button></>);
       const inc = cell('s6', 'Incidents', <span className="lbl">Last 30 days</span>, <div className="bd-il">{INCIDENTS.map((i, __k) => <button key={__k} className={`bd-ir ${i.st}`} data-binc={i.id}>{leaf(i.at)}<span><b>{i.t}</b><span>{i.area}{" · "}{i.st === 'open' ? 'open' : 'resolved in ' + i.dur}</span></span><span className={`fst ${i.st === 'open' ? 'warn2' : ''}`}>{i.st === 'open' ? 'Open' : 'Closed'}</span></button>)}</div>, <><span>None reached members</span><span /></>);
       html(document.getElementById('bv'), <>{band(<>{fnd}{aud}</>, 1)}{band(<>{keys}{inc}</>)}</>);
+    }
+
+    /* ══ Live (REAL): each tab from what the poller, the indexer and the Ops Safe have ═════════════ */
+    /* a cell with no real source yet: hatched, with what it needs (as Money's) */
+    const notReal = (cls, title, need, id = '') => cell(cls, title, lbl('Not real yet'), <><div className="bk-empty hatch" style={css("min-height:120px;opacity:.5")} /><div className="bk-empty">{need}</div></>, <span />, id);
+    const shortA = a => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    /** What waits in the Ops Safe, in a sentence. */
+    const safeLine = () => {
+      const m = mine(),
+        q = CHANGES.filter(c => c.st === 'safe');
+      if (!LV.safe && !q.length) return 'No Ops Safe is connected here yet.';
+      if (m.length) return <><a data-btab="contracts">{m.length === 1 ? '1 change waits' : `${m.length} changes wait`}</a>{" on your signature in the Ops Safe."}</>;
+      return q.length ? `${plural(q.length, 'change waits', 'changes wait')} in the Ops Safe.` : 'Nothing waits in the Ops Safe.';
+    };
+    const net = () => LV.chain.network || 'the chain';
+    const chainTxt = () => LV.chain.network ? `${LV.chain.network}${LV.chain.block ? ' · block ' + int(LV.chain.block) : ' · not indexed yet'}` : 'Not indexed yet';
+    function renderHdrLive() {
+      const m = mine(),
+        open = CHANGES.filter(c => c.st === 'draft' || c.st === 'review'),
+        next = CHANGES.find(c => c.kind === 'upgrade' && c.st === 'draft'),
+        n = CTR.length,
+        pct = n ? LV.deployed / n * 100 : 0;
+      const BR = {
+        overview: <>{safeLine()}{" "}{!REPOS[0].full ? 'GitHub isn’t connected yet.' : open.length ? `${plural(open.length, 'change is', 'changes are')} open on ${REPOS[0].full}.` : `Nothing is open on ${REPOS[0].full}.`}</>,
+        changes: `${CHANGES.filter(c => c.st === 'review').length} in review and ${CHANGES.filter(c => c.st === 'safe').length} in the Ops Safe. ${CHANGES.filter(c => c.st === 'shipped').length} shipped in the last 7 days.`,
+        contracts: <>{LV.chain.network ? `${LV.deployed} of ${n} contracts are found on ${net()}.` : 'The chain isn’t indexed yet.'}{" "}{next ? <><a data-bopen={next.id}>{next.t}</a>{" is next: "}{next.state}.</> : safeLine()}</>,
+        deploys: `${LV.chain.network ? `The contracts run on ${net()}.` : 'The chain isn’t indexed yet.'} Where the apps run (Railway and Vercel) isn’t read yet.`,
+        security: <>{"Findings, audits and incidents aren’t recorded here yet. "}{safeLine()}</>
+      }[B.tab];
+      html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{`Build · ${WD(NOW)} ${fmtD(NOW)}`}</span><p className="brief">{BR}</p><div className="strip"><div className="sc" data-btab="changes"><span className="lbl">Waiting on you</span><div className="sc-v">{m.length}{" "}<small>{m.length === 1 ? 'change' : 'changes'}</small></div><div className="mb">{m.map((c, i) => <i key={i} style={css(`left:${i * 100 / Math.max(2, m.length)}%;width:calc(${100 / Math.max(2, m.length)}% - 2px);background:var(--live)`)} />)}</div><div className="sc-s">{`${m.length} to sign · reviews aren’t read yet`}</div></div><div className="sc" data-btab="deploys"><span className="lbl">Checks</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · checks aren’t read</div></div><div className="sc" data-btab="contracts"><span className="lbl">{LV.chain.network === 'Base' ? 'On mainnet' : 'On testnet'}</span><div className="sc-v">{LV.deployed}{" "}<small>{"of "}{n}{" contracts"}</small></div><div className="mb"><i style={css(`width:${pct}%`)} /><span className="hroom" style={css(`left:${pct}%;right:0`)} /></div><div className="sc-s">{chainTxt()}</div></div><div className="sc" data-btab="security"><span className="lbl">Open findings</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · no findings are recorded</div></div></div></>);
+    }
+    function renderOverviewLive() {
+      const m = mine(),
+        ready = CHANGES.filter(c => c.ready);
+      const NEED = [...m.map(c => ['live', c.outbox ? `Sign and send · ${c.t}` : `Sign · ${c.t}`, `Ops Safe · ${sigCount(c)} of ${c.req || LV.threshold} signed${c.from ? ' · from ' + c.from : ''}`, ago(c.opened).replace(' ago', ''), 'Your signature', `data-bopen="${c.id}"`, 1]), ...ready.map(c => ['underway', `Execute · ${c.t}`, `Ops Safe · ${sigCount(c)} of ${c.req} signed · in Safe{Wallet}`, ago(c.opened).replace(' ago', ''), 'Anyone can', `data-bopen="${c.id}"`])];
+      const needs = cell('s5', 'Needs you', <span className="lbl">{plural(NEED.length, 'thing', 'things')}</span>, <div className="bd-nd">{NEED.length ? NEED.map(([sv, t, mm, age, own, at, me], __k) => <button key={__k} className="bd-nd-r" {...attrs(at)}><i style={css(`background:${{
+            underway: 'var(--underway)',
+            live: 'var(--live)'
+          }[sv]}`)} /><span className="bd-nd-k"><b>{t}</b><span>{mm}</span></span><span className="bd-nd-a"><span className={me ? 'me' : ''}>{own}</span><span className="mono">{age}</span></span></button>) : <div className="bd-e">Nothing needs you</div>}</div>, <><span>{LV.safe ? `Contract changes need ${LV.threshold} of ${LV.safe.owners.length} signers` : 'No Ops Safe is connected yet'}</span><button data-btab="changes">All changes →</button></>);
+      const repos = cell('s7', 'Every project', <span className="lbl">{plural(REPOS.length, 'project', 'projects')}{" · watched on GitHub"}</span>, <div className="bd-rp"><div className="bd-rp-r hd2"><span />{lbl('Project')}{lbl('Checks')}{lbl('Open')}{lbl('Last commit')}{lbl('Runs on')}</div>{REPOS.map((r, i) => {
+          const o = CHANGES.filter(c => c.repo === r.id && (c.st === 'draft' || c.st === 'review')).length;
+          return <Fragment key={i}><div className="bd-rp-g">{lbl(`${r.full || r.name} · ${r.branch}`)}</div><button className="bd-rp-r" data-brepo={r.id}><span className="bd-rp-k"><b>{RSHORT[r.id]}</b><span>{r.path}/</span></span><span className={`bd-st st-${r.main}`}>{ckDot(r.main)}Not read</span><b className="bd-rp-n">{o || '–'}</b><span className="bd-rp-l">{r.last ? ago(r.last) : '—'}</span><span className="bd-rp-e">{r.live}</span></button></Fragment>;
+        })}</div>, <><span>{CHANGES.filter(c => c.st === 'shipped').length}{" shipped in the last 7 days · the apps aren’t watched yet"}</span><button data-btab="deploys">Deploys →</button></>);
+      const cnt = st => CHANGES.filter(c => c.st === st).length;
+      const steps = STAGES.map(([k, t, s2]) => [k, t, cnt(k), s2]);
+      // the longest in its stage: since it was opened (a pull request, the first unreleased commit, the Safe's queue)
+      const since = c => c.opened || NOW;
+      const SN = Object.fromEntries(STAGES.map(([k, t]) => [k, t]));
+      const long = CHANGES.filter(c => c.st !== 'shipped').sort((a, b) => since(a) - since(b)).slice(0, 3).map(c => {
+        const d = Math.floor((NOW - since(c)) / DAY);
+        return [c.id, `${SN[c.st]} since ${fmtD(since(c))}`, d < 1 ? 'today' : plural(d, 'day', 'days')];
+      });
+      const flow = cell('s7', 'From change to live', <span className="lbl">{RSHORT.proto}{" and the Ops Safe"}</span>, <><div className="bd-fl">{steps.map(([k, t, n, s2], i) => <button key={i} className={`bd-fs ${k}`} data-btab="changes"><div className="bd-fh"><span className="bd-fn">{i + 1}</span><b>{t}</b>{i < 3 ? <span className="bd-fa"><i />{ICO.arrow}</span> : ''}</div><span className="m-big">{n}</span><span className="bd-ft">{s2}</span><div className="bd-fb">{CHANGES.filter(c => c.st === k).map((c, __k) => <i key={__k} className={need(c) ? 'me' : c.block || c.wait ? 'hx' : ''} title={c.t} />)}</div></button>)}</div><div className="bd-lw">{lbl('Longest in its stage')}{long.length ? long.map(([id, s2, d2], __k) => {
+            const c = CHG[id];
+            return <button key={__k} className="bd-lw-r" data-bopen={id}><span><b>{c.t}</b><em>{s2}{need(c) ? ' · waiting on you' : c.block ? ' · ' + c.block.toLowerCase() : ''}</em></span><b>{d2}</b></button>;
+          }) : <div className="bd-e">Nothing in flight</div>}</div><div className="bd-fk f-key"><span><i style={css("background:var(--fg)")} />A change</span><span><i style={css("background:var(--live)")} />Waiting on you</span><span><i className="hx" />Waiting on something else</span></div></>, <><span>Contract changes go through the Ops Safe</span><span /></>);
+      const inc = notReal('s5', 'Incidents', 'Needs an incident log: what happened, who’s on it, the timeline, and when it was resolved.');
+      const days = Array.from({
+          length: 28
+        }, (_, d) => TODAY - (27 - d) * DAY),
+        mx = Math.max(1, ...REPOS.flatMap(r => ACT[r.id]));
+      const act = cell('s12', 'Activity', <span className="lbl">Commits a day · last 4 weeks · of the newest commits</span>, <div className="bd-hm"><div className="bd-hm-r bd-hm-x"><span /><span className="bd-hm-c">{days.map((t, i) => <span key={i} className={i === 27 ? 'end' : ''}>{i % 7 === 0 || i === 27 ? fmtD(t) : ''}</span>)}</span><span>{lbl('Commits')}</span></div>{REPOS.map((r, __k) => <div key={__k} className="bd-hm-r"><span className="bd-hm-k"><b>{RSHORT[r.id]}</b></span><span className="bd-hm-c">{ACT[r.id].map((v, i) => <i key={i} style={css(`--v:${(v / mx).toFixed(2)}`)} className={`${v ? '' : 'z'} ${new Date(days[i]).getUTCDay() % 6 === 0 ? 'we' : ''}`} title={`${fmtD(days[i])} · ${v} commits`} />)}</span><b>{ACT[r.id].reduce((a, b) => a + b, 0)}</b></div>)}</div>, <><span className="f-key"><span><i className="bd-sq" style={css("--v:.15")} />Fewer</span><span><i className="bd-sq" style={css("--v:1")} />More</span><span><i className="bd-sq z" />None</span></span><button data-btab="changes">Commits →</button></>);
+      html(document.getElementById('bv'), <>{band(<>{needs}{repos}</>, 1)}{band(<>{flow}{inc}</>)}{band(act)}</>);
+    }
+    /* the foot of the Ops Safe's cells: who you sign as, linking your wallet, the Safe itself */
+    const safeFoot = () => <><span>{LV.wallet ? `Signing as ${shortA(LV.wallet)}` : 'Your own wallet signs · Command holds no key'}</span>{!LV.wallet && LIVE_APP ? <button data-blink="">Link your wallet →</button> : LV.safe ? <button data-bgh={LV.safe.link}>Open the Safe ↗</button> : <span />}</>;
+    function renderContractsLive() {
+      const map = cell('s12', 'The protocol', <span className="lbl">{chainTxt()}</span>, <div className="bd-map">{protoMap()}</div>, <>{mapKey()}</>);
+      const q = CHANGES.filter(c => c.st === 'safe'),
+        sf = LV.safe,
+        ks = SIGK();
+      const safe = cell('s7', 'In the Ops Safe', <span className="lbl">{sf ? `${sf.threshold} of ${sf.owners.length} sign` : 'Not connected'}</span>, <div className="bd-q">{q.length ? q.map((c, __k) => {
+          const s = c.sigs || {};
+          return <button key={__k} className={`bd-q-r ${need(c) ? 'me' : ''}`} data-bopen={c.id}><span className="bd-q-k"><b>{c.t}</b><span>{c.contract ? cname(c.contract) : c.to ? shortA(c.to) : 'On-chain'}{" · "}{c.hash ? 'nonce ' + c.nonce : 'not sent yet'}{c.from ? ' · from ' + c.from : ''}</span></span><span className="bd-q-s">{ks.map((k, __k) => <i key={__k} className={s[k] ? 'on' : c.need === k ? 'me' : ''} title={PPL[k].n}>{PPL[k].ini}</i>)}</span><span className={`bd-q-w ${c.block ? 'blk' : ''}`}>{c.block ? <><em className="hxw" />{c.block}</> : need(c) ? <b>{c.outbox ? 'Sign and send' : 'Your signature'}</b> : c.ready ? 'Ready to execute' : c.outbox ? 'Not sent yet' : `${sigCount(c)} of ${c.req}`}</span></button>;
+        }) : <div className="bd-e">{sf ? 'Nothing waits in the Ops Safe' : 'The Ops Safe isn’t connected here yet'}</div>}</div>, safeFoot());
+      /* signers: signatures a week, the last eight, and each one's median hours to sign */
+      const SW = k => SIGN_W[k] || [0, 0, 0, 0, 0, 0, 0, 0],
+        total = SIGNERS.reduce((a, s) => a + SW(s[1]).reduce((x, y) => x + y, 0), 0),
+        meRow = SIGNERS.find(s => s[0] === B.me),
+        meds = SIGNERS.map(s => s[4]).filter(v => v > 0).sort((a, b) => a - b),
+        med = meds.length ? meds[meds.length >> 1] : 0;
+      const wl = i => {
+        const t = LV.weekStart(i);
+        return i === 0 || new Date(t).getUTCMonth() !== new Date(LV.weekStart(i - 1)).getUTCMonth() ? fmtD(t) : String(new Date(t).getUTCDate());
+      };
+      const signers = cell('s5', 'Signers', <span className="lbl">Signatures a week</span>, SIGNERS.length ? <div className="bd-sg"><div className="m-big">{meRow && meRow[4] ? <>{meRow[4].toFixed(1)}{" h "}<small>your median time to sign</small></> : med ? <>{med.toFixed(1)}{" h "}<small>the signers’ median time to sign</small></> : <>{"— "}<small>no signatures to time yet</small></>}</div><div className="bd-sh"><div className="bd-sh-r bd-sh-x"><span />{[0, 1, 2, 3, 4, 5, 6, 7].map(i => <span key={i}>{wl(i)}</span>)}<span>Median</span></div>{SIGNERS.map(([k, sk, n, r, md], __k) => <div key={__k} className="bd-sh-r"><span className="bd-sh-k">{av(k)}<b>{k === B.me ? 'You' : n}</b></span>{SW(sk).map((v, __k) => <i key={__k} style={css(`--v:${Math.min(1, v / 4)}`)} className={v ? '' : 'z'}>{v || ''}</i>)}<b>{md ? `${md.toFixed(1)} h` : '—'}</b></div>)}</div><div className="led bd-sg-l">{[['Signatures in 8 weeks', String(total)], ['To pass', sf ? `${sf.threshold} of ${sf.owners.length}` : '—']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div> : <div className="bd-e">The Ops Safe isn’t connected here yet</div>, <><span>{sf ? `Ops Safe · ${sf.threshold} of ${sf.owners.length}` : 'Ops Safe · not connected'}</span><button data-btab="security">Keys →</button></>);
+      /* releases: the indexer's upgrades, the last three months */
+      const from = NOW - 90 * DAY,
+        to = NOW + 10 * DAY,
+        X = t => Math.max(0, Math.min(100, (t - from) / (to - from) * 100)).toFixed(2),
+        rows = Object.entries(RELEASES).filter(([k, v]) => ctrOf(k) && v && v.length).sort((a, b) => b[1].length - a[1].length || b[1][b[1].length - 1][1] - a[1][a[1].length - 1][1]).slice(0, 10);
+      const ticks = [0, 1, 2, 3, 4].map(i => from + i * 21 * DAY);
+      const rel = cell('s7', 'Releases', <span className="lbl">{`${MON[new Date(from).getUTCMonth()]} – ${MON[new Date(NOW).getUTCMonth()]}`}</span>, <div className="bd-rl"><div className="bd-rl-r bd-rl-x"><span /><span className="bd-rl-l">{ticks.map((t, i) => <span key={i} className={i % 2 ? 'odd' : ''} style={css(`left:${X(t)}%`)}>{fmtD(t)}</span>)}<span className="now" style={css(`left:${X(NOW)}%`)}>Today</span></span></div>{rows.length ? rows.map(([k, v], __k) => {
+          const c = ctrOf(k);
+          return <button key={__k} className="bd-rl-r" data-bctr={k}><span className="bd-rl-k"><b>{c[1]}</b><span>{c[2]}{" live"}</span></span><span className="bd-rl-l"><i className="g" style={css(`left:${X(NOW)}%`)} /><i className="ln" style={css(`left:${X(v[0][1])}%;right:${100 - X(NOW)}%`)} />{v.map(([ver, t], i) => <i key={i} className={`dot ${i === v.length - 1 ? 'cur' : ''}`} style={css(`left:${X(t)}%`)} title={`${ver} · ${fmtD(t)}`} />)}</span></button>;
+        }) : <div className="bd-e">No upgrades read from the chain yet</div>}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Live version</span><span><i className="bd-ko" />Earlier</span></span><span>{plural(Object.values(RELEASES).flat().length, 'release', 'releases')}</span></>);
+      /* who holds each AccessManager role, once it's read */
+      const kr = LV.roles;
+      const roles = kr ? cell('s5', 'Who can do what', <span className="lbl">AccessManager roles</span>, <div className="bd-ro"><div className="bd-ro-r bd-ro-x"><span />{kr.holders.map((t, __k) => <span key={__k}><em>{t}</em></span>)}</div>{kr.roles.map(([t, h], __k) => <div key={__k} className="bd-ro-r"><span>{t}</span>{kr.holders.map((_, j) => <i key={j} className={`${h[j] ? 'on' : ''} ${h[j] > 1 ? 'nx' : ''}`} />)}</div>)}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Holds it</span><span><i className="hx" />Not yet</span></span><span /></>) : notReal('s5', 'Who can do what', 'Needs AccessManager’s roles read from the chain: who may upgrade, pause, mint credit and claim from the AssurancePool.');
+      html(document.getElementById('bv'), <>{band(map, 1)}{band(<>{safe}{signers}</>)}{band(<>{rel}{roles}</>)}</>);
+    }
+    function renderDeploysLive() {
+      const env = cell('s12', 'Where it runs', <span className="lbl">{plural(REPOS.length, 'project', 'projects')}{" · 3 environments"}</span>, <div className="bd-en"><div className="bd-en-r bd-en-x"><span />{ENVS.map(([k, t, s], __k) => <span key={__k}><b>{t}</b><em>{k === 'test' ? LV.chain.network || 'Not indexed yet' : k === 'prod' ? 'Mainnet' : s}</em></span>)}</div>{REPOS.map((r, __k) => <div key={__k} className="bd-en-r"><button className="bd-en-k" data-brepo={r.id}><b>{RSHORT[r.id]}</b><span>{r.path}{" · "}{r.lang}</span></button>{ENVS.map(([k], __k) => {
+            const [v, s, st] = ENV[r.id][k];
+            return <span key={__k} className={`bd-en-c ${st}`}><i /><span><b>{v}</b><em>{s}</em></span></span>;
+          })}</div>)}</div>, <><span className="f-key"><span><i style={css("background:var(--settled)")} />Running</span><span><i style={css("box-shadow:inset 0 0 0 1px var(--hair)")} />Not read yet</span></span><span>The apps’ deploys (Railway, Vercel) aren’t read yet</span></>);
+      const checks = notReal('s7', 'Checks', 'Needs GitHub Actions’ runs on the default branch, per folder: pass rate, runs, time and coverage.');
+      const per = 6,
+        D2 = DEPLOYS;
+      B.dp = Math.max(0, Math.min(B.dp, Math.ceil(D2.length / per) - 1));
+      const hist = cell('s5', 'Deploys', <span className="lbl">Contract upgrades · newest first</span>, <div className="bd-dl">{D2.length ? D2.slice(B.dp * per, B.dp * per + per).map(([t, r, e, v, by, st, s], __k) => <div key={__k} className={`bd-dl-r ${st}`}>{leaf(t)}<span><b>{RSHORT[r]}{" · "}{v}</b><span>{LV.chain.network || 'The chain'}{" · "}{by}{" · "}{s}</span></span><span className="fst">Live</span></div>) : <div className="bd-e">No upgrades read from the chain yet</div>}</div>, <><span>From the chain’s Upgraded events</span>{pager(B.dp, D2.length, per, 'bdp')}</>);
+      html(document.getElementById('bv'), <>{band(env, 1)}{band(<>{checks}{hist}</>)}</>);
+    }
+    function renderSecurityLive() {
+      const fnd = notReal('s8', 'Findings', 'Needs a findings register: each finding’s severity, contract, state, and the change that fixes it.');
+      const aud = notReal('s4', 'Audits', 'Needs which contracts have been reviewed, internally and by an outside auditor.');
+      const keys = cell('s6', 'Keys and access', <span className="lbl">Who can change what</span>, <div className="led bd-ky">{KEYS.map(([k, v, s], __k) => <div key={__k}><span><b>{k}</b><em>{s}</em></span><b>{v}</b></div>)}</div>, <><span>Set in Team and GitHub</span><button data-bgo="team">Team →</button></>);
+      const inc = notReal('s6', 'Incidents', 'Needs an incident log: what happened, who’s on it, the timeline, and when it was resolved.');
+      html(document.getElementById('bv'), <>{band(<>{fnd}{aud}</>, 1)}{band(<>{keys}{inc}</>)}</>);
+    }
+    /* a change's panel, live: the pull request, the unreleased commits, or the Safe transaction */
+    function chPanelLive(c) {
+      const n = need(c),
+        s = c.sigs || {},
+        sf = LV.safe,
+        req = c.req || LV.threshold,
+        br = REPOS[0].branch;
+      const head = c.kind === 'code' ? 'Pull request' : c.kind === 'upgrade' ? c.st === 'shipped' ? 'Contract release' : 'Contract change in progress' : c.st === 'shipped' ? 'Ops Safe transaction' : 'In the Ops Safe';
+      const T = c.kind === 'code' ? ['Draft', 'Review', 'Merged'] : c.kind === 'upgrade' ? [`Commits on ${br}`, 'Released'] : ['Proposed', 'Ops Safe', 'Signed', 'Executed'];
+      const at = c.kind === 'code' ? {
+        draft: 0,
+        review: 1,
+        shipped: 3
+      }[c.st] : c.kind === 'upgrade' ? c.st === 'shipped' ? 2 : 0 : c.st === 'shipped' ? 4 : c.ready ? 2 : c.outbox || c.block ? 0 : 1;
+      const rows = [...(c.num ? [['Repo', `${REPOS[0].full} · #${c.num}`], ['Branch', `${c.head} → ${c.base}`], ['Checks', <span className="bd-ckt">{ckDot('none')}Not read yet</span>], ['Size', plural(c.files, 'file', 'files')]] : []), ...(c.commits ? [['Commits', `${(c.commits || []).length} on ${br}`]] : []), ...(c.from ? [['From', c.from]] : []), ...(c.contract ? [['Contract', <button className="lnk3" data-bctr={c.contract}>{cname(c.contract)}{" "}{(ctrOf(c.contract) || [])[2]}</button>]] : c.to ? [['To', <span className="mono">{shortA(c.to)}</span>]] : []), ...(c.method ? [['Call', c.method]] : []), ...(c.hash ? [['Nonce', String(c.nonce)]] : []), ...(c.kind === 'setting' && !c.block ? [['Signatures', <><span className="bd-sig">{SIGK().map((k, __k) => <i key={__k} className={s[k] ? 'on' : c.need === k ? 'me' : ''}>{PPL[k].ini}</i>)}</span>{" "}{sigCount(c)}{" of "}{req}</>]] : []), [c.kind === 'code' ? 'Opened' : c.kind === 'upgrade' ? 'First commit' : 'Proposed', `${fmtD(c.opened)}${c.by && c.by !== 'anon' ? ' by ' + who(c.by) : ''}`], ...(c.st === 'shipped' && c.live ? [[c.kind === 'code' ? 'Merged' : c.released ? 'Live' : 'Executed', fmtD(c.live)]] : [])];
+      const st = <span className="small quiet" style={css("margin-right:auto")}>{stateTxt(c)}</span>;
+      const ft = c.st === 'safe' && !c.block ? n === 'sign' && SIGNER() && LIVE_APP ? <><button className="btn" data-bclose="">Not now</button><button className="btn p" data-bsign={c.id}>{c.outbox ? 'Sign and send to the Safe' : 'Sign in the Ops Safe'}</button></> : c.ready && sf ? <>{st}<button className="btn p" data-bgh={sf.link}>{"Execute in Safe{Wallet} ↗"}</button></> : !LV.wallet && LIVE_APP && sf ? <>{st}<button className="btn" data-blink="">Link the wallet you sign with</button></> : st : <>{st}{c.url ? <button className="btn" data-bgh={c.url}>Open on GitHub ↗</button> : ''}</>;
+      return <>{phd(head, c.repo ? rtag(c.repo) : '')}<><div className="pn-b"><div><p className="bpn-t">{c.t}</p><p className={`bpn-s ${n ? 'me' : ''}`}>{stateTxt(c)}</p></div><div className="bd-tk">{T.map((t, i) => <span key={i} className={i < at ? 'done' : i === at ? c.block ? 'blk' : 'now' : ''}><i />{t}</span>)}</div>{c.note ? <p className="bpn-n">{c.note}</p> : ''}<div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{n === 'sign' ? <p className="bpn-w">{c.outbox ? <><b>Your wallet signs it first.</b>{" Then it’s in the Safe’s queue for the others."}</> : <><b>{`Your signature makes it ${sigCount(c) + 1} of ${req}.`}</b>{sigCount(c) + 1 >= req ? ' Then anyone can execute it in Safe{Wallet}.' : ' Then it waits for the others.'}</>}</p> : ''}</div><div className="pn-ft">{ft}</div></></>;
     }
 
     /* ══ Side panels ═══════════════════════════════════════════════════════════════ */
@@ -1155,6 +1346,7 @@ function makeBuild() {
       return <div className="bd-tk">{T.map((t, i) => <span key={i} className={i < at ? 'done' : i === at ? c.block ? 'blk' : 'now' : ''}><i />{t}</span>)}</div>;
     }
     function chPanel(c) {
+      if (LV) return chPanelLive(c);
       const n = need(c),
         f = c.finding && FINDINGS.find(x => x.id === c.finding),
         s = c.sigs || {},
@@ -1170,7 +1362,7 @@ function makeBuild() {
         outs = REL.filter(r => r[0] === id),
         ch = CHANGES.filter(x => x.contract === id && x.st !== 'shipped'),
         f = FINDINGS.filter(x => x.contract === id && x.st !== 'fixed');
-      return <>{phd(LAYERS[c[3]], <span className="fst" style={css("margin-left:8px")}>{c[4] === 'live' ? 'Live' : 'Not deployed'}</span>)}<><div className="pn-b"><div><p className="bpn-t">{c[1]}{" "}<span className="mono quiet" style={css("font-size:15px")}>{c[2]}</span></p><p className="bpn-s">{c[6]}</p></div><div className="led">{[['Address', <span className="mono">{c[5]}</span>], ['Admin and pause', 'Ops Safe · 2 of 3'], ...ins.map(r => [RK[r[2]], `${ctrOf(r[0])[1]} ${r[3]}`]).slice(0, 3), ...outs.map(r => [RK[r[2]], `${r[3]} → ${ctrOf(r[1])[1]}`]).slice(0, 3)].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{rel.length ? <div>{lbl('Releases')}<div className="bd-pr">{rel.slice().reverse().map(([v, t], i) => <div key={i}><span className="mono">{v}</span><span>{fmtD(t)}</span><span>{i === 0 ? 'Live' : ''}</span></div>)}</div></div> : ''}{ch.length ? <div>{lbl('In flight')}{ch.map((x, __k) => <button key={__k} className="bd-pl" data-bopen={x.id}><b>{x.t}</b><span>{stateTxt(x)}</span></button>)}</div> : ''}{f.length ? <div>{lbl('Open findings')}{f.map((x, __k) => <button key={__k} className="bd-pl" data-bfind={x.id}><b><span className={`bd-sev ${x.sev}`}>{SEV[x.sev][0]}</span>{" "}{x.t}</b><span>{FSTATE[x.st][0]}</span></button>)}</div> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>Changes start as a pull request</span>{c[4] === 'live' && SIGNER() ? <button className="btn dz" data-bpause={id}>Propose a pause</button> : ''}</div></></>;
+      return <>{phd(LAYERS[c[3]], <span className="fst" style={css("margin-left:8px")}>{c[4] === 'live' ? 'Live' : 'Not deployed'}</span>)}<><div className="pn-b"><div><p className="bpn-t">{c[1]}{" "}<span className="mono quiet" style={css("font-size:15px")}>{c[2]}</span></p><p className="bpn-s">{c[6]}</p></div><div className="led">{[['Address', <span className="mono">{c[5]}</span>], LV ? ['Changes signed in', LV.safe ? `Ops Safe · ${LV.threshold} of ${LV.safe.owners.length}` : 'No Ops Safe yet'] : ['Admin and pause', 'Ops Safe · 2 of 3'], ...ins.map(r => [RK[r[2]], `${ctrOf(r[0])[1]} ${r[3]}`]).slice(0, 3), ...outs.map(r => [RK[r[2]], `${r[3]} → ${ctrOf(r[1])[1]}`]).slice(0, 3)].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{rel.length ? <div>{lbl('Releases')}<div className="bd-pr">{rel.slice().reverse().map(([v, t], i) => <div key={i}><span className="mono">{v}</span><span>{fmtD(t)}</span><span>{i === 0 ? 'Live' : ''}</span></div>)}</div></div> : ''}{ch.length ? <div>{lbl('In flight')}{ch.map((x, __k) => <button key={__k} className="bd-pl" data-bopen={x.id}><b>{x.t}</b><span>{stateTxt(x)}</span></button>)}</div> : ''}{f.length ? <div>{lbl('Open findings')}{f.map((x, __k) => <button key={__k} className="bd-pl" data-bfind={x.id}><b><span className={`bd-sev ${x.sev}`}>{SEV[x.sev][0]}</span>{" "}{x.t}</b><span>{FSTATE[x.st][0]}</span></button>)}</div> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>Changes start as a pull request</span>{LV ? LIVE_APP && ENG() && !RO() ? <button className="btn p" data-bpropose={id}>Propose a change</button> : '' : c[4] === 'live' && SIGNER() ? <button className="btn dz" data-bpause={id}>Propose a pause</button> : ''}</div></></>;
     }
     function findPanel(f) {
       const fx = f.fix && CHG[f.fix],
@@ -1209,13 +1401,14 @@ function makeBuild() {
         B.panel = null;
       }
       const r = CHG['u-rosa'];
-      if (r.need && !S.waiting.some(w => w.id === 'chain')) {
+      if (r && r.need && !S.waiting.some(w => w.id === 'chain')) {
         r.sigs.kai = NOW;
         r.wait = NOW + DAY;
         delete r.need;
       }
     }
     const logIt = (what, detail, res) => {
+      if (LV) return;
       try {
         LOG.unshift(['x' + Date.now(), Date.UTC(2026, 9, 21, 14, 30), PPL[B.me].ini === 'K' ? 'K' : PPL[B.me].ini, 'chain', what, detail, 'Mac · Redlands', res, res === 'approved' ? 'Second signature' : '']);
       } catch (e) {}
@@ -1310,6 +1503,34 @@ function makeBuild() {
         B.rej = false;
         return render();
       }
+      // live: signing goes through your own wallet to the Ops Safe (live/safe.ts), then the section loads again
+      if (LV && (d.bsign || d.blink !== undefined)) {
+        if (!LIVE_APP) return toast('Nothing is signed in the preview');
+        const c = d.bsign && CHG[d.bsign];
+        t.disabled = true;
+        import('../live/safe').then(m => c ? c.outbox ? m.signAndSend(c.outbox) : m.signQueued(c.hash) : m.linkWallet()).then(r => {
+          toast(!c ? `Linked ${shortA(r)} · logged` : c.outbox ? 'In the Safe’s queue · 1 signature so far · logged' : `Signed · ${r.signatures} of ${r.required}${r.signatures >= r.required ? ' · ready to execute in Safe{Wallet}' : ''}`);
+          closeB();
+          return reloadSection('build').then(() => renderShell());
+        }, e => {
+          t.disabled = false;
+          toast(e.message);
+        });
+        return;
+      }
+      // live: proposing a change to a contract is the old page's flow, into the Ops Safe (contracts/propose)
+      if (LV && d.bpropose) {
+        closeB();
+        render();
+        return openCFlow('propose', d.bpropose);
+      }
+      // live: GitHub, the Safe and Safe{Wallet} open in a new tab; nothing else here acts without an API
+      if (LV && d.bgh !== undefined) {
+        if (!d.bgh) return toast('GitHub isn’t connected yet');
+        window.open(d.bgh, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      if (LV && (d.bapprove || d.brej || d.brejo !== undefined || d.bresolve || d.bpause)) return;
       if (d.bsign && d.bsign === 'u-rosa' && S.waiting.some(w => w.id === 'chain')) {
         closeB();
         render();
@@ -1408,4 +1629,4 @@ function makeBuild() {
     host
   };
 }
-registerPage(['build'], 'bx-slot', makeBuild);
+registerPage(['build'], 'bx-slot', makeBuild, { live: true });

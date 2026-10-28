@@ -1,0 +1,278 @@
+// @ts-nocheck: reads the section data the API fills, which is untyped, as the sections are.
+import { CH, CH_DONE, CHAIN, CODE, CTR, CTR_NOTE, DAY, KEY_ROLES, REL, RELEASES, SIGNERS, SIGN_W, TODAY, vars } from './data';
+
+/*
+ * Build's datasets, live (build2.tsx reads these in place of the reference's when REAL): built from what
+ * the API's contracts section sends (live/sections.ts fills ./data from it: the map and its releases from
+ * the indexer, the code changes and the Code tab's commits and pull requests from the GitHub poller) and
+ * the Ops Safe (GET /safe, GET /safe/outbox, loaded with the section). People are only who the data names:
+ * you, the Safe's owners, and the GitHub authors. What nothing records yet is empty, never the
+ * reference's: check runs, the apps' deploys, review state, findings, audits and incidents
+ * (docs/ui-redesign-plan.md, gaps).
+ */
+
+const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
+const initials = (n) =>
+  (n || '?')
+    .split(/[ @.,]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('') || '?';
+/** The section an on-chain act was asked for in, as the page names it. */
+/** A layer the map has a column for. */
+const LAYER_OK = (l) => Number.isInteger(l) && l >= 0 && l <= 4;
+const FROM = { merchants: 'Merchants', money: 'Money', contracts: 'Build', governance: 'Governance' };
+
+export function buildLive() {
+  const NOW = vars.contractsNow ?? Date.now();
+  const me = vars.me;
+  const meKey = me?.id ?? 'viewer';
+  const safe = vars.safe?.configured ? vars.safe : null;
+  const mine = safe?.owners.find((o) => o.you)?.address ?? null;
+
+  /* people: you, the Safe's owners, the GitHub authors; nobody else */
+  const PPL = {
+    [meKey]: me ? { n: me.name || me.email, ini: initials(me.name || me.email), role: 'You', eng: true, signer: !!mine } : { n: 'Viewer', ini: 'VW', role: 'Read-only' },
+    anon: { n: 'Someone', ini: '·' },
+  };
+  const byAddr = {};
+  const SIGNER_KEYS = (safe?.owners ?? []).map((o) => {
+    const k = o.you ? meKey : (o.person?.id ?? o.address);
+    if (!o.you) PPL[k] = { n: o.person?.name || short(o.address), ini: o.person ? initials(o.person.name) : '0x', role: o.person ? 'Signer' : 'Not linked to anyone here', signer: true };
+    byAddr[o.address.toLowerCase()] = k;
+    return k;
+  });
+  /** An address as a person: an owner's key, else the address itself. */
+  const addrKey = (a) => {
+    if (!a) return 'anon';
+    const k = byAddr[a.toLowerCase()];
+    if (k) return k;
+    PPL[a] ??= { n: short(a), ini: '0x' };
+    return a;
+  };
+  /** A name the data gives (a GitHub login, a commit's author, an outbox row's asker) as a person. */
+  const named = (n, login = '') => {
+    if (!n && !login) return 'anon';
+    if (me && (n === me.name || n === me.email)) return meKey;
+    const k = 'gh:' + (login || n);
+    PPL[k] ??= { n: n || login, ini: initials(n || login), role: 'GitHub', eng: true };
+    return k;
+  };
+  // a GitHub login's name, from the contributors (the poller keeps the commit's name beside its login)
+  const nameOf = Object.fromEntries((CODE.contributors ?? []).map((c) => [c.who, c.name]));
+
+  /* the map's contracts: the API's, live when the indexer found them deployed */
+  const dep = Array.isArray(vars.contractsDeployed) ? new Set(vars.contractsDeployed) : new Set();
+  // a contract the indexer hasn't found has no version or address of its own (the map's are the structure's)
+  const CT = CTR.map((c) => (dep.has(c[0]) ? [c[0], c[1], c[2], c[3], 'live', c[5], c[6], c[7], c[8], c[9]] : [c[0], c[1], '—', c[3], 'later', '—', c[6], c[7], c[8], c[9]]));
+  const byId = Object.fromEntries(CT.map((c) => [c[0], c]));
+  const known = new Set(Object.keys(byId));
+  const placed = (c) => !!c && Number.isFinite(c[7]) && Number.isFinite(c[8]) && c[7] > 0 && c[8] > 0 && LAYER_OK(c[3]);
+  const idOf = (name) => {
+    if (!name) return null;
+    const c = CTR.find((x) => x[1] === name) ?? CTR.find((x) => name.startsWith(x[1]) || x[1].startsWith(name));
+    return c ? c[0] : null;
+  };
+  /** The map contract at an address: the map keeps addresses shortened, so first six and last four. */
+  const atAddr = (a) => {
+    if (!a) return null;
+    const c = CTR.find((x) => x[5] && x[5].length > 8 && x[5].slice(0, 6).toLowerCase() === a.slice(0, 6).toLowerCase() && x[5].slice(-4).toLowerCase() === a.slice(-4).toLowerCase());
+    return c ? c[0] : null;
+  };
+
+  /* the one project the poller watches: the contracts' folder of the monorepo */
+  const [org = '', repoName = ''] = (CODE.repo || '').split('/');
+  const live = CT.filter((c) => c[4] === 'live').length;
+  const REPOS = [
+    {
+      id: 'proto',
+      name: repoName || 'GitHub isn’t connected',
+      org,
+      full: CODE.repo || '',
+      path: CODE.path || 'contracts',
+      what: 'Smart contracts',
+      lang: 'Solidity · Hardhat',
+      branch: CODE.poller?.branches?.[0] || 'dev',
+      main: 'none',
+      last: CODE.commits[0]?.at ?? null,
+      live: CHAIN.network ? `${CHAIN.network} · ${live} of ${CT.length}` : 'Not indexed yet',
+      url: CODE.repo ? `https://github.com/${CODE.repo}` : '',
+    },
+  ];
+
+  /* changes: pull requests, commits since a release, the Safe's queue, what shipped in 7 days */
+  const CHANGES = [];
+  const week = NOW - 7 * DAY;
+  for (const p of CODE.pulls ?? []) {
+    if (p.state === 'closed') continue;
+    if (p.state === 'merged' && (p.mergedAt ?? 0) < week) continue;
+    CHANGES.push({
+      id: 'pr' + p.number,
+      repo: 'proto',
+      num: p.number,
+      kind: 'code',
+      t: p.title,
+      by: named(nameOf[p.login] || p.login, p.login),
+      st: p.state === 'merged' ? 'shipped' : p.draft ? 'draft' : 'review',
+      checks: 'none',
+      files: p.files,
+      opened: p.createdAt,
+      upd: p.updatedAt,
+      live: p.mergedAt ?? undefined,
+      contract: (p.contracts ?? []).map(idOf).find(Boolean) ?? null,
+      head: p.head,
+      base: p.base,
+      url: p.url,
+    });
+  }
+  const evAt = (c, k) => c.ev?.find((e) => e[0] === k)?.[1];
+  // commits on the branch since a contract's last release: its next version, in progress
+  for (const c of CH.filter((x) => String(x.id).startsWith('code:')))
+    CHANGES.push({
+      id: c.id,
+      repo: 'proto',
+      kind: 'upgrade',
+      t: c.t,
+      by: named(c.by),
+      st: 'draft',
+      checks: 'none',
+      opened: evAt(c, 'draft') ?? NOW,
+      upd: c.commits?.at(-1)?.at ?? evAt(c, 'draft') ?? NOW,
+      contract: idOf(c.c),
+      note: c.d,
+      commits: c.commits ?? [],
+      state: c.state,
+      url: c.commits?.at(-1)?.url ?? '',
+    });
+  // released in the last 7 days (the indexer's upgrades, with the commits they shipped)
+  for (const c of CH_DONE.filter((x) => String(x.id).startsWith('rel:'))) {
+    const at = c.ev?.at(-1)?.[1] ?? 0;
+    if (at < week) continue;
+    CHANGES.push({ id: c.id, repo: 'proto', kind: 'upgrade', t: c.t, by: named(c.by === '—' ? '' : c.by), st: 'shipped', checks: 'none', opened: evAt(c, 'draft') ?? at, live: at, contract: idOf(c.c), note: c.d, commits: c.commits ?? [], released: 1 });
+  }
+  const outbox = vars.safeOutbox ?? [];
+  if (safe) {
+    const summaryOf = (h) => outbox.find((o) => o.safe_tx_hash === h)?.summary;
+    const nameIn = (s) => /on ([A-Z]\w+)\s*$/.exec(s || '')?.[1];
+    // asked for here, waiting for its first signature: any owner signs it and sends it to the Safe
+    for (const o of outbox.filter((x) => x.status === 'queued'))
+      CHANGES.push({
+        id: 'ob:' + o.id,
+        kind: 'setting',
+        t: o.summary,
+        by: named(o.requested_by),
+        st: 'safe',
+        outbox: o.id,
+        from: FROM[o.section] ?? o.section,
+        opened: Date.parse(o.created_at),
+        contract: idOf(nameIn(o.summary)),
+        sigs: {},
+        req: safe.threshold,
+        need: mine && me?.wallet ? meKey : null,
+      });
+    const tx = (t, st) => {
+      const sigs = Object.fromEntries(t.confirmations.map((c) => [addrKey(c.owner), Date.parse(c.at)]));
+      const ready = t.confirmations.length >= t.confirmationsRequired;
+      const signed = !!mine && t.confirmations.some((c) => c.owner.toLowerCase() === mine.toLowerCase());
+      const s = summaryOf(t.safeTxHash);
+      return {
+        id: 'tx:' + t.safeTxHash,
+        kind: 'setting',
+        t: s || t.method || 'A transaction',
+        by: t.proposer ? addrKey(t.proposer) : 'anon',
+        st,
+        hash: t.safeTxHash,
+        nonce: t.nonce,
+        to: t.to,
+        method: t.method,
+        sigs,
+        req: t.confirmationsRequired,
+        ready: st === 'safe' && ready,
+        need: st === 'safe' && !ready && mine && !signed ? meKey : null,
+        opened: Date.parse(t.submittedAt),
+        live: t.executedAt ? Date.parse(t.executedAt) : undefined,
+        contract: atAddr(t.to) ?? idOf(nameIn(s)),
+        from: s ? FROM[outbox.find((o) => o.safe_tx_hash === t.safeTxHash)?.section] : undefined,
+      };
+    };
+    for (const t of safe.pending) CHANGES.push(tx(t, 'safe'));
+    for (const t of safe.executed) if (t.executedAt && Date.parse(t.executedAt) >= week) CHANGES.push(tx(t, 'shipped'));
+  } else
+    // no Ops Safe yet: what was proposed here waits for one
+    for (const c of CH.filter((x) => !String(x.id).startsWith('code:')))
+      CHANGES.push({ id: c.id, kind: 'setting', t: c.t, by: named(c.by), st: 'safe', from: 'Build', opened: evAt(c, 'draft') ?? NOW, contract: idOf(c.c), note: c.d !== c.t ? c.d : '', sigs: {}, block: 'Waits for an Ops Safe' });
+
+  /* commits, newest first; and how many a day, the last four weeks */
+  const COMMITS = (CODE.commits ?? []).map((c) => [c.at, 'proto', named(c.author, c.login), c.message, c.sha, c.url]);
+  const days = Array(28).fill(0);
+  for (const c of COMMITS) {
+    const d = 27 - Math.floor((TODAY - Math.floor(c[0] / DAY) * DAY) / DAY);
+    if (d >= 0 && d < 28) days[d]++;
+  }
+
+  /* where the contracts run, and their releases as deploys, newest first */
+  const ENV = {
+    proto: {
+      preview: ['—', 'Not read yet', 'na'],
+      test: [CHAIN.network || 'Not indexed yet', `${live} of ${CT.length} contracts found on-chain`, live ? 'ok' : 'na'],
+      prod: ['—', 'Not read yet', 'na'],
+    },
+  };
+  const nameById = Object.fromEntries(CT.map((c) => [c[0], c[1]]));
+  const DEPLOYS = Object.entries(RELEASES)
+    .flatMap(([id, list]) => (list ?? []).map(([ver, at, impl]) => [at, 'proto', 'test', `${nameById[id] ?? id} ${ver}`, 'Read from the chain', 'ok', impl ? `Implementation ${short(impl)}` : 'Upgraded']))
+    .sort((a, b) => b[0] - a[0]);
+
+  /* the Ops Safe's signers: their signatures a week (loadSafe counts them) and median hours to sign */
+  const SIGN_ROWS = safe
+    ? safe.owners.map((o, i) => {
+        const row = SIGNERS[i] ?? [];
+        const k = SIGNER_KEYS[i];
+        return [k, row[0] ?? k, PPL[k].n, o.you ? 'You' : PPL[k].role, Number(row[3]) || 0];
+      })
+    : [];
+  const weekStart = (i) => TODAY + DAY - (8 - i) * 7 * DAY;
+
+  const thr = safe?.threshold ?? 0;
+  const KEYS = [
+    ['Ops Safe', safe ? `${thr} of ${safe.owners.length} · ${SIGNER_KEYS.map((k) => PPL[k].n).join(', ')}` : 'Not connected', safe ? 'Where contract changes are signed' : 'No Ops Safe is set for this app yet'],
+    ['GitHub', CODE.repo || 'Not connected', CODE.repo ? `Watching ${CODE.path || 'contracts'}/ on ${(CODE.poller?.branches ?? []).join(' and ') || 'dev'}` : 'The poller hasn’t read a repo yet'],
+    ['Keys in this app', 'None', 'Each signer signs with their own wallet'],
+  ];
+
+  return {
+    NOW,
+    TODAY,
+    me: meKey,
+    PPL,
+    SIGNER_KEYS,
+    REPOS,
+    CHANGES,
+    COMMITS,
+    ACT: { proto: days },
+    ENV,
+    DEPLOYS,
+    FINDINGS: [],
+    INCIDENTS: [],
+    SIGNERS: SIGN_ROWS,
+    SIGN_W: { ...SIGN_W },
+    /** The signers' eight weeks, each labelled by the day it starts. */
+    weekStart,
+    CTR: CT,
+    /** The contracts with a place on the map (one the indexer knows that the map doesn't place is listed, not drawn). */
+    MAPPED: CT.filter(placed),
+    REL: REL.filter((r) => known.has(r[0]) && known.has(r[1])),
+    EDGES: REL.filter((r) => r[4] !== null && placed(byId[r[0]]) && placed(byId[r[1]])),
+    RELEASES,
+    CTR_NOTE: { ...CTR_NOTE },
+    KEYS,
+    /** Who holds each AccessManager role, when it's been read (a figure nothing writes yet). */
+    roles: KEY_ROLES.roles?.length ? KEY_ROLES : null,
+    chain: { network: CHAIN.network || '', block: Number(CHAIN.block) || 0 },
+    deployed: live,
+    safe,
+    threshold: thr,
+    wallet: me?.wallet ?? null,
+  };
+}

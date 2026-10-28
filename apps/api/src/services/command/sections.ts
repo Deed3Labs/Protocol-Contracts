@@ -1174,8 +1174,11 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
   const { rows: sg } = await db.query<any>('SELECT * FROM command.signers ORDER BY position');
   // live, the Code tab: GitHub's commits, pull requests, branches and contributors; at Totals, no names
   const CODE = provider === 'live' ? await codeActivity(db, codeConfig(), NOW, o.level > TOTALS) : null;
+  // live, which of the map's contracts the indexer has found deployed (Build counts and draws these as live)
+  const DEPLOYED = deployed ? ctr.filter((c) => onChain(c.name)).map((c) => c.id) : null;
   return {
     AGR, CTR, CTR_NOTE, REL, RELEASES, PENDING,
+    ...(DEPLOYED ? { DEPLOYED } : {}),
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     ...(CODE ? { CODE } : {}),
     SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),

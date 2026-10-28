@@ -43,6 +43,16 @@ const DEMO = [
   'Highland Hardware',
   'Board signer',
   'CDTFA',
+  // Build's reference (build2.tsx): its bot, its changes and incidents, its block and its audit plan
+  'Dependabot',
+  'Term plans shelf',
+  'Partial refunds',
+  'Field route planner',
+  'Plaid sync',
+  'Rolled back after',
+  'Internal review',
+  '18,204,331',
+  'Phase 0 fixes',
 ];
 
 type Finding = { route: string; pane: string; after: string; kind: 'error' | 'demo' | 'garbage'; what: string };

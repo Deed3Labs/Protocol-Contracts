@@ -262,12 +262,29 @@ Filled in as each page is ported. Known before starting:
     move, and naming the second person;
   - actions: using BondVault's spare, paying a bill from operating cash and moving between accounts
     (hidden live: the API's `money/top` only funds the PayoutPool from the Ops Safe).
-- **Build** (ported): deploys by environment (Railway and Vercel history, plus Safe-executed releases);
-  security findings (severity, state, contract, fix PR, audit coverage); incidents (owner, timeline);
-  review state and simulation results on changes; a check state per monorepo folder; the contract map's
-  layout. Changes, commits, contracts, releases and the Ops Safe exist (the GitHub poller, the indexer,
-  `/safe`). Actions: sign in the Ops Safe, link a wallet, propose (into the Safe), GitHub reviews,
-  resolving an incident, proposing a pause.
+- **Build** (ported, live): live it draws the contracts section (`buildLive.ts`). The map's contracts are
+  the API's, drawn and counted as live when the indexer found them deployed (the section's `DEPLOYED`);
+  their releases (the indexer's `Upgraded` events) are the Releases lanes and the Deploys list. Changes
+  come from the GitHub poller (pull requests touching `contracts/`: drafts, open ones in review, merged in
+  the last 7 days; commits on dev since a contract's last release, as its next version; releases in the
+  last 7 days) and from the Ops Safe (`GET /safe`: the queue with each owner's signature, and what was
+  executed in 7 days; `GET /safe/outbox`: on-chain acts waiting for their first signature). Commits and
+  the 4-week activity are the poller's newest commits; the signers, their signatures a week and median
+  hours to sign are the Safe's. People are only you, the Safe's owners and the GitHub authors. Signing is
+  your own wallet (`safe.signQueued`, `safe.signAndSend`), linking it `safe.linkWallet`, and a contract's
+  panel proposes a change through the old page's flow (`contracts/propose`, into the Safe); GitHub, the
+  Safe and Safe{Wallet} open in a new tab. Still missing, and "Not real yet" live:
+  - check runs per monorepo folder (pass rate, runs, time, coverage) and each default branch's state;
+  - the other projects (the member and merchant apps, API and SDK, the site, this app): the poller
+    watches one path, so Build lists only the contracts; where the apps run and their deploys (Railway and
+    Vercel history);
+  - review state on pull requests (who's asked, approvals, changes asked for, time to a first review),
+    line counts (+/−) and simulation results;
+  - security findings (severity, state, contract, fix PR), audit coverage, and incidents (owner,
+    timeline, resolution);
+  - AccessManager's roles (`contracts.key_roles`, written by nothing live);
+  - actions: approving or asking for changes (GitHub reviews), resolving an incident and proposing a
+    pause are hidden live; executing a fully signed Safe transaction is done in Safe{Wallet}.
 - **Community** (ported; no backend, so the live app keeps the placeholder): forum categories, threads
   and posts with read counts, flags and a thread↔proposal link; a moderation queue (reports, automatic
   detection, hide or keep with a reason, telling the author, an audit entry); events and requests (town
@@ -301,4 +318,5 @@ Filled in as each page is ported. Known before starting:
   - order cost and margin.
 - **Growth:** Forms (the site's join form inbox).
 - **Home:** preview states (Empty, Loading, Error, All clear).
-- **Contracts:** the Code tab's contributors view; it folds into Build → Changes.
+- **Contracts:** the Code tab's contributors view; it folds into Build → Changes (not drawn yet: Build
+  live has the commits and pull requests, not the contributors).

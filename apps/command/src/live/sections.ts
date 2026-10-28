@@ -325,6 +325,8 @@ const apply = {
     // live only, the Code tab: GitHub's commits, pull requests, branches and contributors
     assign(CODE, d.CODE);
     vars.contractsNow = d.NOW;
+    // live, the map's contracts the indexer found deployed (null when the section isn't read from the chain)
+    vars.contractsDeployed = d.DEPLOYED ?? null;
     replace(SIGNERS, d.SIGNERS);
     const f = d.figures;
     assign(CHAIN, f['contracts.chain']);
