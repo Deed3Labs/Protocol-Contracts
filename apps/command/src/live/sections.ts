@@ -142,6 +142,9 @@ import { setFigures } from './figures';
  */
 export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records']);
 const ready = new Set<string>();
+let loads = 0;
+/** Counts the sections loaded: a redesigned page built from older data is built again (pageHost.tsx). */
+export const dataStamp = () => loads;
 
 /** The API's section a page reads: Build is Contracts' (the redesign renamed the page, not the section). */
 const sectionOf = (route: string) => (route === 'build' ? 'contracts' : route);
@@ -203,6 +206,7 @@ const apply = {
     vars.formNamesShown = d.names === 'shown';
     // the datasets Growth draws are stored figures; the derived ones are worked out again from them
     const f = d.figures;
+    vars.growthFigures = f;
     assign(RANGE, f['growth.range']);
     replace(W_JOIN, f['growth.weekly.joined']);
     replace(W_INV, f['growth.weekly.invited']);
@@ -404,6 +408,7 @@ export async function loadSection(page: string, opts: { reveal?: boolean } = {})
   // Contracts' signers and their queue come from the Ops Safe, when one is configured
   if (route === 'contracts') await import('./safe').then((m) => m.loadSafe().then(m.loadSafeQueue)).catch(() => undefined);
   ready.add(route);
+  loads++;
   // the feeds' health rides along with every section (Phase 6a)
   void import('./feeds').then((m) => m.loadFeeds()).catch(() => undefined);
 }

@@ -13,6 +13,8 @@ import { ROUTES, open } from './pages';
  */
 
 const EMPTY = 'http://localhost:5231/?preview=1&empty=1';
+/** A section's tabs: the old pages' pane tabs, or a redesigned page's (inside its shadow root, which locators reach). */
+const TABS = '#main .ptabs button, #main .gtabs button:not(.tabr)';
 const CLICKABLE = '#main button, #main [data-member], #main tr[data-merchant], #main tr[data-poster]';
 const PER_PANE = 40;
 /** People, shops and places only the prototype has: if one is drawn, demo data leaked. The entities
@@ -51,6 +53,8 @@ async function demoText(page: Page): Promise<string[]> {
   const text = await page.evaluate(() =>
     [document.querySelector('#main'), document.querySelector('#modalRoot'), document.querySelector('.rail-ft')]
       .map((n) => (n as HTMLElement | null)?.innerText ?? '')
+      // a redesigned page draws in its shadow root, which the page's own text doesn't include
+      .concat([...document.querySelectorAll('#main .g-host')].map((h) => (h.shadowRoot?.querySelector('.gw') as HTMLElement | null)?.innerText ?? ''))
       .join('\n'),
   );
   const bad = GARBAGE.exec(text);
@@ -66,10 +70,10 @@ for (const route of ROUTES) {
     page.on('pageerror', (e) => findings.push({ route, ...where, kind: 'error', what: e.message.slice(0, 200) }));
     try {
       await open(page, EMPTY, route);
-      const tabs = Math.max(1, await page.locator('#main .ptabs button').count());
+      const tabs = Math.max(1, await page.locator(TABS).count());
       for (let t = 0; t < tabs; t++) {
         if (t > 0) {
-          const label = (await page.locator('#main .ptabs button').nth(t).textContent())?.trim() ?? `tab ${t}`;
+          const label = (await page.locator(TABS).nth(t).textContent())?.trim() ?? `tab ${t}`;
           where = { pane: label, after: 'tab' };
           await page
             .locator('#main .ptabs button')

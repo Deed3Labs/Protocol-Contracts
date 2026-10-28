@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { APP, PROTO, REDESIGN } from '../playwright.config';
-import { ROUTES, canonical, open, paneTabs } from './pages';
+import { REDESIGNED, ROUTES, SHADOWED, SHADOW_TABS, canonical, open, paneTabs } from './pages';
 
 /**
  * The app's DOM is the prototype's DOM: every section and every pane tab, compared as canonical
@@ -9,8 +9,6 @@ import { ROUTES, canonical, open, paneTabs } from './pages';
  */
 test.beforeEach(({}, info) => test.skip(info.project.name !== 'wide', 'DOM parity runs at one width'));
 
-/** Pages ported to the redesign that it draws in light DOM, so their DOM is compared with it (docs/ui-redesign-plan.md). */
-const REDESIGNED = new Set(['home', 'waiting', 'more']);
 
 for (const route of ROUTES) {
   test(`DOM matches the prototype: ${route}`, async ({ browser }) => {
@@ -27,6 +25,21 @@ for (const route of ROUTES) {
     await shell.close();
     // Home's timeline labels are sized by measuring text on a canvas; the reference measures before its
     // fonts load and keeps the fallback's widths, the app measures again once they have. Positions still compare.
+    if (SHADOWED.has(route)) {
+      const ref = await browser.newPage();
+      await open(ref, REDESIGN, route);
+      expect(await canonical(app, 'shadow:.gw'), route).toBe(await canonical(ref, 'shadow:.gw'));
+      const labels = await ref.locator(SHADOW_TABS).allTextContents();
+      for (let i = 0; i < labels.length; i++) {
+        await ref.locator(SHADOW_TABS).nth(i).click();
+        await app.locator(SHADOW_TABS).nth(i).click();
+        expect(await canonical(app, 'shadow:.gw'), `${route} · ${labels[i]}`).toBe(await canonical(ref, 'shadow:.gw'));
+      }
+      await ref.close();
+      await proto.close();
+      await app.close();
+      return;
+    }
     const same = (dom: string) => (route === 'home' ? dom.replace(/(class="h-tg-lb[^"]*"[^>]*style="left: [\d.]+px; )width: [\d.]+px;/g, '$1') : dom);
     expect(same(await canonical(app, '#main')), `${route}`).toBe(same(await canonical(proto, '#main')));
     const tabs = await paneTabs(proto);

@@ -13,6 +13,8 @@ import { growthPage } from './growth';
 import { morePage, placeholder, stateError, stateLoading, syncPages, waitingPage } from './home';
 import { ibxCount } from './inbox';
 import { homeHub, homeMount } from './homeHub';
+import { mountPages, pageSlot } from './pageHost';
+import './growth2';
 import { membersPage } from './members';
 import { corridorMount, merchantsPage } from './merchants';
 import { moneyPage } from './money';
@@ -64,7 +66,7 @@ export function renderNav() {
         {id === 'waiting' && ibxCount() ? <span className="badge">{ibxCount()}</span> : ''}
       </button>
     )),
-  );  // the top bar's inbox: what needs you and the high alerts
+  ); // the top bar's inbox: what needs you and the high alerts
   const ib = $('#ibxBtn');
   if (ib) {
     const n = ibxCount();
@@ -228,33 +230,34 @@ export function render() {
     $('#main'),
     <>
       {vBar()}
-      {r === 'home'
-        ? homeHub()
-        : r === 'growth'
-          ? growthPage()
-          : r === 'members'
-            ? membersPage()
-            : r === 'merchants'
-              ? merchantsPage()
-              : r === 'field'
-                ? fieldPage()
-                : r === 'money'
-                  ? moneyPage()
-                  : r === 'build'
-                    ? contractsPage()
-                    : r === 'governance'
-                      ? governancePage()
-                      : r === 'records'
-                        ? recordsPage()
-                        : r === 'team'
-                          ? teamPage()
-                          : r === 'shop'
-                            ? shopPage()
-                            : r === 'waiting'
-                              ? waitingPage()
-                              : r === 'more'
-                                ? morePage()
-                                : placeholder(r)}
+      {pageSlot(r) ??
+        (r === 'home'
+          ? homeHub()
+          : r === 'growth'
+            ? growthPage()
+            : r === 'members'
+              ? membersPage()
+              : r === 'merchants'
+                ? merchantsPage()
+                : r === 'field'
+                  ? fieldPage()
+                  : r === 'money'
+                    ? moneyPage()
+                    : r === 'build'
+                      ? contractsPage()
+                      : r === 'governance'
+                        ? governancePage()
+                        : r === 'records'
+                          ? recordsPage()
+                          : r === 'team'
+                            ? teamPage()
+                            : r === 'shop'
+                              ? shopPage()
+                              : r === 'waiting'
+                                ? waitingPage()
+                                : r === 'more'
+                                  ? morePage()
+                                  : placeholder(r))}
     </>,
   );
   // the preview's simulation of a Totals view, as the prototype drew it; live, the API sends Totals nothing personal
@@ -262,6 +265,8 @@ export function render() {
   corridorMount();
   // Home's timeline is laid out for the width it gets, after it's drawn
   homeMount();
+  // the redesign's page modules: this route's mounts into its slot, the others let go
+  mountPages(r);
   requestAnimationFrame(syncPages);
   if (LIVE) logView();
 }
