@@ -48,7 +48,6 @@ import { closeModal, finish, go, openItem, render, runSteps, toast, vLevel, view
 import { openSFlow } from './shop';
 import { openCostFlow } from './costing';
 import { openCatFlow } from './catalog';
-import { pageModFor } from './pageHost';
 import { ibxPaneDraw, ibxRefresh } from './inbox';
 import { homeListeners } from './homeHub';
 import { sgnIn, sgnStep, sgnTimer, showLogin } from './signin';
