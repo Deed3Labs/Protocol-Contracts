@@ -369,6 +369,8 @@ const apply = {
     replace(MEETS, d.MEETS);
     replace(RP, d.RP);
     replace(MATTERS, d.MATTERS);
+    // each agreement's versions, and what the apps record as accepted (migration 0068; sections/governanceLive.ts)
+    vars.govVersions = { VERS: d.VERS ?? {}, TERMS: d.TERMS ?? [] };
     const f = d.figures;
     replace(PASTV, f['governance.past_votes']);
     assign(MEETINGS_HELD, f['governance.meetings_held']);
@@ -409,6 +411,9 @@ const apply = {
   settings(d) {
     vars.SETTINGS = d.SETTINGS ?? [];
     vars.SETTINGS_HISTORY = d.HISTORY ?? [];
+    // what Command records for Settings (migration 0068): each connection's last key swap, and the events worth a look
+    vars.SETTINGS_KEYS = d.KEYS ?? [];
+    vars.SETTINGS_WORTH = d.WORTH ?? [];
   },
   members(d) {
     replace(MEMBERS, d.MEMBERS);
@@ -417,6 +422,9 @@ const apply = {
     replace(B_OPEN, d.B_OPEN);
     vars.NEXT_BATCH = d.NEXT_BATCH;
     vars.namesShown = d.names === 'shown';
+    // Command's notes and tags on people, by masked number (migration 0068): none at Totals
+    vars.memberNotes = d.NOTES ?? {};
+    vars.memberTags = d.TAGS ?? {};
     // the redesigned page's own (sections/membersLive.ts): the waitlist's people, each batch, the join form
     vars.memberNames = d.names;
     vars.membersFigures = d.figures;

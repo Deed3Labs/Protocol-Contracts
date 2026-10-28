@@ -11,8 +11,12 @@ import { AGENDA, AGR, BODIES, ENT, ENTF, FILINGS, GBOARDS, MATTERS, MEETS, OWN, 
  *
  * People are only who the data names: you, and the names the API sends for seats, agenda items and
  * filings (members stay masked, as the API sends them). What nothing records yet is empty, never the
- * reference's: proposals as a lifecycle (drafts, co-signers, the check, tasks), the forum, agreement
- * versions and the Delegate Assembly (docs/ui-redesign-plan.md, gaps).
+ * reference's: proposals as a lifecycle (drafts, co-signers, the check, tasks), the forum and the
+ * Delegate Assembly (docs/ui-redesign-plan.md, gaps).
+ *
+ * Agreement versions are the governance section's (migration 0068): each agreement's, drafted by one
+ * person and adopted with a second, and what the apps record people accepting (TERMS: counts by
+ * document@version), joined to the versions linked to them.
  */
 
 const DAY = 864e5;
@@ -146,6 +150,30 @@ export function governanceLive() {
   const AG_LOADED = !needsData('contracts');
   const AGRL = AGR.map((a) => ({ id: a.id, name: a.name || 'Agreement', party: a.party || '—', type: a.type || 'provider', st: AST_OK.has(a.st) ? a.st : 'draft', a: a.a || null, b: a.b || null, ver: a.ver || '—', note: a.note || '', ...(a.sent ? { sent: a.sent } : {}), ...(a.roll ? { roll: 1 } : {}) }));
 
+  /* agreement versions: by agreement, oldest first, each [version, status, when, who adopts it, changes, terms, …] as
+     the reference's VERS has them (in · old · draft), with who asked, who approved and when it was replaced */
+  const gv = vars.govVersions ?? { VERS: {}, TERMS: [] };
+  const VST_OK = new Set(['in', 'old', 'draft']);
+  const VERSL = {};
+  for (const [id, list] of Object.entries(gv.VERS || {}))
+    if (Array.isArray(list) && list.length)
+      VERSL[id] = list.map((v) => ({
+        v: String(v.v || '—'),
+        st: VST_OK.has(v.st) ? v.st : 'draft',
+        at: Number(v.at) || NOW,
+        replaced: v.replaced || null,
+        by: v.by || '',
+        changes: Array.isArray(v.changes) ? v.changes.map(String) : [],
+        terms: v.terms || null,
+        adoptedBy: v.adoptedBy || '',
+        approvedBy: v.approvedBy || '',
+        draftedBy: v.draftedBy || '',
+      }));
+  /* what the apps record as accepted: document@version, how many, the first and last; and which version each is */
+  const TERMS = (Array.isArray(gv.TERMS) ? gv.TERMS : []).map((t) => ({ key: t.key, doc: t.doc, version: t.version, n: Number(t.n) || 0, first: t.first || null, last: t.last || null, who: t.who }));
+  const linked = new Set(Object.values(VERSL).flatMap((V) => V.map((v) => v.terms).filter(Boolean)));
+  const UNLINKED = TERMS.filter((t) => !linked.has(t.key));
+
   /* related-party deals: payer, payee, what, payments, amount, on an agenda */
   const RPL = RP.map((r, i) => ({ i, from: r[0], to: r[1], what: r[2], paid: Array.isArray(r[3]) ? r[3] : [], amt: Number(r[4]) || 0, agenda: r[5] || null }));
 
@@ -171,6 +199,9 @@ export function governanceLive() {
     VOTE: V,
     AGR: AGRL,
     AG_LOADED,
+    VERS: VERSL,
+    TERMS,
+    UNLINKED,
     RP: RPL,
     PEOPLE: PEOPLE.map(([n, b, note]) => [n, b || [], note || '']),
   };

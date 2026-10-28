@@ -20,3 +20,28 @@
 /* a hatched "Not real yet" bar or block: the n sheet makes .hatch a 10px swatch for its keys, which shrank them to squares */
 .mb.hatch{display:block;width:auto}
 .bk-empty.hatch{display:block;width:auto;height:auto}
+
+/* Settings → Organization: the profile's rows are the ledger's, as buttons that open each one's panel */
+.ad-led > .ad-pf{display:flex;justify-content:space-between;align-items:baseline;gap:16px;width:100%;padding:10px 0;border-bottom:1px solid var(--hair);font-size:14px;text-align:left;min-width:0}
+.ad-led > .ad-pf:last-child{border-bottom:0}
+.ad-led > .ad-pf:hover{background:color-mix(in srgb,var(--raised) 70%,transparent)}
+.ad-pf > span{color:var(--fg-70);flex:none}
+.ad-pf > b{font-weight:500;text-align:right;min-width:0;overflow-wrap:anywhere}
+.ad-pf > b.quiet{color:var(--fg-50,var(--fg-70));font-weight:400}
+.ad-pf .ad-pd{display:block;font-style:normal;font-size:12px;color:var(--underway)}
+/* Settings → Key age: a connection with no swap recorded says so where its bar would be */
+.ad-hb-r > .small.quiet{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Governance → an agreement's panel: adopting a draft, and starting a new version */
+.gt-vf{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.gt-vf .btn{align-self:flex-start}
+.gt-vfl{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;min-width:0}
+.gt-vfl > span{color:var(--fg-70);flex:none}
+.gt-vfl > .vin{flex:1 1 auto;min-width:0;max-width:62%}
+.gt-vfl.col{flex-direction:column;align-items:stretch}
+.gt-vfl.col > span{flex:initial}
+.gt-vfl.col > .vin{max-width:none}
+
+/* Members → a person's tags: each one comes off with its × */
+.tg3 .chip .untag{margin-left:6px;padding:0 2px;font:inherit;line-height:1;color:var(--fg-50);background:none;border:0;cursor:pointer}
+.tg3 .chip .untag:hover{color:var(--fg)}
