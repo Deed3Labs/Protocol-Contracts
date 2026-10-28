@@ -247,6 +247,13 @@ const apply = {
     replace(FLEET, d.FLEET);
     // last month's sales at each shop, paid now or on plans, and what members have repaid (null until the API reads the chain)
     vars.collected = d.COLLECTED ?? null;
+    // what Merchants keeps of its own (migration 0067): the payout runs, the refurb line, the pre-orders and the site's shop enquiries;
+    // and the PayoutPool's unpaid claims (null until the API reads the chain)
+    vars.merchantRuns = d.RUNS ?? [];
+    vars.payoutClaims = d.CLAIMS ?? null;
+    vars.refurb = d.REFURB ?? [];
+    vars.preorders = d.PREORDERS ?? [];
+    vars.enquiries = d.ENQ ?? [];
     // the board is built from BOARD the next time it's drawn
     XS.board = null;
   },

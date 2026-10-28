@@ -321,7 +321,8 @@ Filled in as each page is ported. Known before starting:
   - **Live now.** Overview's map, cities, stage counts, founding seats (`merchants.founding_seats`, else 5), what
     each shop cleared this month, and Needs you (signing shops, overdue follow-ups, Points offline or low).
     Pipeline is the cards, by stage; Partners the shops' terms, fees and this month's sales; Payouts the next
-    monthly run worked out from last month's sales at the NET-30 shops less their fees; Devices the Points.
+    monthly run worked out from last month's sales at the NET-30 shops less their fees; Devices the Points, the
+    refurb line and the pre-orders.
   - **Actions.** Moving a card (drag, or Move to) is `card-save` with a stage log line, and to Signing also records
     `send-agreement {id, party}` (for the outside system); Not a fit is `card-remove`; a note is a `note` log line;
     + Prospect is a new card; Log a visit as in Field; Raise the cap is `cap {id, cap}` (two-person; shown only when
@@ -331,12 +332,33 @@ Filled in as each page is ported. Known before starting:
     over it this week (the API logs each refusal in `charge_cap_hits`), in Caps to review and Partners' Caps; and
     what members have paid on last month's sales (the next run): paid at the counter, or repaid so far on each
     sale's TermIssuer plan (`COLLECTED`), in Payouts' Collected before it goes out.
+  - **Merchants' own records now (migration 0067):**
+    - *Payout runs.* Propose the run sends `run {total, shops, period, goes, lines}`; it's the proposal until a
+      second person approves it, then a `command.payout_runs` row (one a month: a second approval for the month
+      is refused, 409) and an outbox row for the Ops Safe. `RUNS` reads every run proposal with its record: waiting,
+      sent back or taken back (from the proposal), approved by whom, in the Safe (its outbox row proposed to the
+      Safe), and paid (`run-paid`, marked by hand once the Safe has executed it). The next run's state, Payouts'
+      "Payout runs" table and Needs you come from it; Approve and Send back are `/proposals/:id/approve|decline`.
+      A NET-30 run goes 30 days after its month's last day, or the weekday after (`runGoes`, the API's and the page's).
+    - *When money goes out* is the PayoutPool's unpaid NET-14 claims (`CLAIMS`, credit.ts `payoutsLive`: the
+      merchants route now passes the chain reader, which it hadn't, so caps and Collected weren't read either),
+      the approved runs not paid yet, and next month's run.
+    - *Refurb line* is `command.refurb_units` (`REFURB`): add a unit (`refurb-add`), move it a stage
+      (`refurb-move`; shipped only with a shop), and the shop and day it goes to (`refurb-assign`), in a
+      "Refurb units" table under the cell.
+    - *Pre-orders* already had a real source: the shop's Stripe reservations from useclear.org/shop
+      (`command.shop_live_preorders`, the shop feed). Its rows now keep the shop's id (its org wallet) and the
+      ship month the reservation carries (else the product's); `PREORDERS` reads them (seeded: the shop's fixtures).
+    - *Shop enquiries* already had a real source: the site's join form's "I run a shop" (`command.form_submissions`,
+      details from the form's fields). The note they wrote is now kept; `ENQ` sends the business, kind, city,
+      source, ticket and jobs a week, what they asked, and the state. Mark replied / Not a fit (with why) / Open
+      again are `enquiry`; Add to pipeline is `card-save` with `enquiry` (marks it added with the card); Show name is
+      `POST /merchants/enquiries/:id/reveal` (Approve, logged as a reveal).
   - **Still missing ("Not real yet" or hidden):** each shop's losses (so no raise-or-hold call on a cap);
-    how fast shops move between stages (the reference's conversion rates); shop enquiries with their details and
-    states (reply, not a fit, show name); the payout schedule, its history and whether a run is approved (a
-    proposed run shows as proposed only until the page is built again); what members repaid before a run; the
-    $10 redemptions owed; devices other than Points (readers, tablets, printers report nothing); the refurb line
-    and pre-orders; changing terms, handing a lead to someone else, planning a visit onto a route, undoing a move;
+    how fast shops move between stages (the reference's conversion rates); whether the Safe has executed a run
+    (paid is marked by hand); replying to an enquiry from Command (Mark replied records that someone did); the
+    $10 redemptions owed; devices other than Points (readers, tablets, printers report nothing); a refurb unit's
+    cost against a new one; changing terms, handing a lead to someone else, planning a visit onto a route, undoing a move;
     a shop the merchant app has but the pipeline doesn't is read-only (no card to log to); shops in a city off the
     drawn map aren't on it.
 - **Money** (ported, live): live it draws the money section (`moneyLive.ts`): the accounts with their

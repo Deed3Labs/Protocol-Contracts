@@ -480,11 +480,22 @@ export function commandRouter(deps: CommandDeps) {
   router.get('/sections/merchants', need('merchants', TOTALS), async (req, res) => {
     const c = req.command!;
     try {
-      res.json(await merchantsSection(c.db, { level: c.levels.merchants, reveal: false, now: now() }));
+      res.json(await merchantsSection(c.db, { level: c.levels.merchants, reveal: false, now: now(), chain: deps.chain }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
     }
+  });
+
+  /** A shop enquiry's contact (their name and email), shown for a reason: Merchants at Approve, logged as a reveal before it's sent. */
+  router.post('/merchants/enquiries/:id/reveal', limits.write, need('merchants', APPROVE), async (req, res) => {
+    const c = req.command!;
+    const id = Number(req.params.id);
+    const { rows } = Number.isInteger(id) && id > 0 ? await c.db.query<{ first_name: string; last_name: string; email: string }>(`SELECT first_name, last_name, email FROM command.form_submissions WHERE id = $1 AND form = 'Shop enquiry'`, [id]) : { rows: [] };
+    if (!rows[0]) return fail(res, 404, 'NOT_FOUND', 'No such shop enquiry');
+    if (!(await revealFrom(req, res, { section: 'merchants', subject: `enquiry ${id}`, field: 'name' }))) return;
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ id, first: rows[0].first_name, last: rows[0].last_name, email: rows[0].email });
   });
 
   router.get('/sections/money', need('money', TOTALS), async (req, res) => {
@@ -895,7 +906,7 @@ export function commandRouter(deps: CommandDeps) {
   async function runAction(tx: Queryable, p: ActionPayload, by: store.Person, approver: store.Person | null, proposalId: string | null) {
     const a = actionFor(p.section, p.kind) as Action;
     const at = actionTime(p.section, now());
-    const result = a.apply ? await a.apply({ tx, person: by, approver, at }, p.body) : undefined;
+    const result = a.apply ? await a.apply({ tx, person: by, approver, at, proposal: proposalId }, p.body) : undefined;
     const queued = typeof a.outbox === 'function' ? a.outbox(p.body) : !!a.outbox;
     if (queued) {
       await tx.query('INSERT INTO command.outbox (section, kind, summary, payload, requested_by, approved_by, proposal_id) VALUES ($1, $2, $3, $4, $5, $6, $7)', [

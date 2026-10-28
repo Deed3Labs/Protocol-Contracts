@@ -360,13 +360,19 @@ export function shopFeed(env: Env = process.env, f: typeof fetch = fetch): Feed 
         const pi = typeof x.payment_intent === 'object' ? x.payment_intent : null;
         if (x.metadata?.kind === 'reservation' && pi) {
           for (let n = 1; pi.metadata?.[`r${n}`]; n++) {
-            const [slug, variant, qty, , dep] = String(pi.metadata[`r${n}`]).split('/');
+            // slug/variant/qty/unit/deposit/ships (clearpath-website lib/shop/order.ts): the ship month is the rest
+            const [slug, variant, qty, , dep, ...ships] = String(pi.metadata[`r${n}`]).split('/');
             if (!slug || !Number(qty)) continue;
             const status = pi.metadata[`s${n}`] ?? 'reserved';
             const r = await db.query(
-              `INSERT INTO command.shop_live_preorders (payment_intent, line, shop, slug, variant, units, deposit_cents, state, placed_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (payment_intent, line) DO UPDATE SET state = $8 RETURNING (xmax = 0) AS added`,
-              [pi.id, n, String(pi.metadata.shop || pi.metadata.shop_id || 'A shop'), slug, variant, Number(qty), Number(dep) || 0, status === 'reserved' ? 'held' : status, new Date(x.created * 1000)],
+              `INSERT INTO command.shop_live_preorders (payment_intent, line, shop, slug, variant, units, deposit_cents, state, placed_at, shop_id, ships)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+               ON CONFLICT (payment_intent, line) DO UPDATE SET state = $8, shop_id = coalesce($10, command.shop_live_preorders.shop_id), ships = coalesce($11, command.shop_live_preorders.ships)
+               RETURNING (xmax = 0) AS added`,
+              [
+                pi.id, n, String(pi.metadata.shop || pi.metadata.shop_id || 'A shop'), slug, variant, Number(qty), Number(dep) || 0, status === 'reserved' ? 'held' : status, new Date(x.created * 1000),
+                pi.metadata.shop_id ? String(pi.metadata.shop_id).toLowerCase() : null, ships.join('/').trim() || null,
+              ],
             );
             if (r.rows[0]?.added) reserved++;
           }

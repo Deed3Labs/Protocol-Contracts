@@ -45,3 +45,16 @@
 /* Members → a person's tags: each one comes off with its × */
 .tg3 .chip .untag{margin-left:6px;padding:0 2px;font:inherit;line-height:1;color:var(--fg-50);background:none;border:0;cursor:pointer}
 .tg3 .chip .untag:hover{color:var(--fg)}
+
+/* Merchants: the refurb units' controls sit in their rows; on a phone the stage and shop stay (the ships day, cost and moved go) */
+.bt.mr-rf .vin{margin-top:0;height:32px;padding:0 8px}
+@media (max-width:760px){
+  .bt.mr-rf tr > :nth-child(2),.bt.mr-rf tr > :nth-child(3){display:table-cell}
+  .bt.mr-rf tr > :nth-child(4),.bt.mr-rf tr > :nth-child(5),.bt.mr-rf tr > :nth-child(6){display:none}
+  .bt.mr-rf td{padding-left:6px;padding-right:6px}
+  .bt.mr-rf{table-layout:fixed}
+  .bt.mr-rf td.tn b,.bt.mr-rf td.tn span{overflow-wrap:anywhere}
+  /* adding a unit: its three boxes and buttons one under the other */
+  .bt.mr-rf tr.mr-add{display:flex;flex-direction:column}
+  .bt.mr-rf tr.mr-add > td,.bt.mr-rf tr.mr-add > :nth-child(4){display:block;width:auto;border-bottom:0}
+}
