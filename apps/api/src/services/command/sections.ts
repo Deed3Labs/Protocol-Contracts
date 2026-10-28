@@ -2,7 +2,7 @@ import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, 
 import type { Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { SEE, TOTALS, type Level } from './levels.js';
-import { assurancePoolLive, bondVaultLive, bondsLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { assurancePoolLive, bondVaultLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { creditLive, payoutsLive } from './credit.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
@@ -1314,12 +1314,13 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     }
   const { rows: ch } = await db.query<any>('SELECT * FROM command.contract_changes ORDER BY done, position');
   const change = (c: any) => ({ id: c.id, t: c.title, c: c.contract, ...(c.proposed_by ? { by: c.proposed_by } : {}), ...c.detail, ev: evAt(c.events, NOW) });
-  // live, the code changes are GitHub's (Phase 5c): commits since a release in flight, the commits before it what it shipped
+  // live, the code changes are GitHub's (Phase 5c): commits since a release in flight, the commits before it what it shipped;
+  // a contract whose deployed code is exactly dev's has nothing in flight, whatever the commits' dates
   const code = releases
     ? await codeChanges(db, codeConfig(), ctr.map((c) => {
         const n = onChain(c.name);
         return { name: c.name, deployed: n, deployedAt: n ? deployed!.get(n)!.deployedAt : null };
-      }), releases, NOW)
+      }), releases, NOW, o.chain ? await codeMatchLive(o.chain) : new Map())
     : { open: [], done: [] };
   const { rows: sg } = await db.query<any>('SELECT * FROM command.signers ORDER BY position');
   // live, the Code tab: GitHub's commits, pull requests, branches and contributors; at Totals, no names

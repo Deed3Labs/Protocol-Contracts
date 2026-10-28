@@ -45,7 +45,8 @@ jobs:
             # apps/api counts: the member tests read API source.
             echo "apps=$(match "^(apps/(member|merchant|api|rewards|pay|command)|packages)/|^(turbo\.json|tsconfig\.json|\.npmrc)$|$root")"
             echo "api=$(match '^apps/api/')"
-            echo "contracts=$(match "^(contracts|test|deploy)/|^hardhat\.config\.ts$|$root")"
+            # and Build's code fingerprints: what each deployed contract compiles to (scripts/command/code-fingerprints.mjs)
+            echo "contracts=$(match "^(contracts|test|deploy|deployments/base-sepolia)/|^hardhat\.config\.ts$|^scripts/command/code-fingerprints\.mjs$|^packages/command-types/src/chain/code\.json$|$root")"
           } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
@@ -99,6 +100,8 @@ jobs:
           key: solc-${{ hashFiles('hardhat.config.ts') }}
       - run: npm ci --no-audit --no-fund
       - run: npx hardhat test
+      # Build compares each deployed contract with what dev compiles: the fingerprints must be this source's
+      - run: node scripts/command/code-fingerprints.mjs --check
 
   ci:
     name: ci

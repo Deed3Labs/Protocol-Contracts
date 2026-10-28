@@ -1,4 +1,6 @@
 import chain from '@clear/command-types/src/chain/base-sepolia.json';
+import FINGERPRINTS from '@clear/command-types/src/chain/code.json';
+import { createHash } from 'node:crypto';
 import { DAY } from '@clear/command-types';
 import { erc20Abi, getAddress, keccak256, toHex, type Abi, type Address } from 'viem';
 import type { Queryable } from '../../db/db.js';
@@ -26,11 +28,21 @@ export interface ChainCall {
 /** Reads from the deployed contracts, every call in one request. */
 export interface ChainReader {
   read(calls: ChainCall[]): Promise<unknown[]>;
+  /** The code running at an address: behind a proxy (EIP-1967), its implementation's. */
+  codeOf?(address: string): Promise<{ implementation: string; code: string }>;
 }
+
+// EIP-1967's implementation slot: keccak256('eip1967.proxy.implementation') - 1
+const IMPLEMENTATION_SLOT = toHex(BigInt(keccak256(toHex('eip1967.proxy.implementation'))) - 1n, { size: 32 });
 
 export function liveChainReader(chainId = chain.chainId): ChainReader {
   const ask = publicFirst(chainId);
   return {
+    codeOf: async (address) => {
+      const slot = (await ask((c) => c.getStorageAt({ address: getAddress(address), slot: IMPLEMENTATION_SLOT }))) as string | undefined;
+      const implementation = slot && BigInt(slot) ? getAddress(`0x${slot.slice(-40)}`) : getAddress(address);
+      return { implementation, code: ((await ask((c) => c.getCode({ address: implementation }))) as string | undefined) ?? '0x' };
+    },
     read: (calls) =>
       ask((c) =>
         c.multicall({
@@ -522,3 +534,48 @@ export async function keyRolesLive(db: Queryable, opsSafe: string | null): Promi
   };
 }
 const MAX_HOLDERS = 6;
+
+// ── Is it what dev compiles? ────────────────────────────────────────────────
+
+/** The masked sha256 of runtime bytecode, as scripts/command/code-fingerprints.mjs takes it: immutables zeroed, metadata cut off. */
+export function codeFingerprint(hex: string, immutables: Array<[number, number]>): string {
+  let b = Buffer.from(String(hex).replace(/^0x/, ''), 'hex');
+  for (const [start, length] of immutables) b.fill(0, start, start + length);
+  if (b.length >= 2) {
+    const meta = b.readUInt16BE(b.length - 2);
+    if (meta + 2 <= b.length) b = b.subarray(0, b.length - 2 - meta);
+  }
+  return createHash('sha256').update(b).digest('hex');
+}
+
+const CODE_TTL_MS = 10 * 60e3;
+let codeCache: { at: number; same: Map<string, boolean> } | null = null;
+
+/**
+ * Whether each deployed contract runs what this branch compiles: the chain's code (its implementation's,
+ * behind a proxy) against packages/command-types' code.json, made from dev's compile and kept current by
+ * CI. A contract with no fingerprint, or whose code can't be read, isn't in the answer. Kept ten minutes:
+ * code only changes with an upgrade.
+ */
+type Fingerprints = Record<string, { sha256: string; immutables: Array<[number, number]> }>;
+export async function codeMatchLive(reader: ChainReader, now = Date.now(), fingerprints = FINGERPRINTS.contracts as unknown as Fingerprints): Promise<Map<string, boolean>> {
+  if (codeCache && now - codeCache.at < CODE_TTL_MS) return codeCache.same;
+  const same = new Map<string, boolean>();
+  if (reader.codeOf)
+    for (const [name, fp] of Object.entries(fingerprints)) {
+      const address = C[name]?.address;
+      if (!address) continue;
+      try {
+        const { code } = await reader.codeOf(address);
+        if (code && code !== '0x') same.set(name, codeFingerprint(code, fp.immutables) === fp.sha256);
+      } catch {
+        // unread: neither the same nor different
+      }
+    }
+  codeCache = { at: now, same };
+  return same;
+}
+/** For tests: forget what was read. */
+export const forgetCodeMatch = () => {
+  codeCache = null;
+};
