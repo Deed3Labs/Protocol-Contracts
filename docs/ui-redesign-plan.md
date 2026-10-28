@@ -336,12 +336,15 @@ Filled in as each page is ported. Known before starting:
   days. Proposing a top-up is `money/top` (it waits for a second person); approving, sending back and
   taking back go through `/proposals/:id/approve|decline`; Sync now is `money/sync`, the reserve check
   `money/reserve`. Still missing, and "Not real yet" live:
-  - the next 30 days of payments in and out (`money.flows`, written by nothing live), which the runway,
-    Every movement, the 14-day gap, the weekly bars, the payout pool's claims and the 30-day vital are
-    worked out from; and the money owed to shops and due from members in 14 days (`money.payouts_due`);
-  - credit for the month: what was owed on the 1st, spent, repaid and on autopay; how late balances are
-    (aging); the losses (charge-offs) and what the AssurancePool paid; limits by size; how many members
-    are on autopay; the book's totals (`money.book`) are zero live;
+  - **Read from the chain now** (`services/command/credit.ts`): the next 30 days are the PayoutPool's
+    unpaid claims, due their shop's payout window after the shop redeemed (out), and members' plan
+    installments and revolving balances at their period's end (in); `M.owed14`, `M.dueMembers` and
+    `M.payout` (the pool's `held()`) follow. The Credit tab is ClearCredit's book: the month from the
+    events (owed on the 1st + spent + carry − repaid = owed now), how late each balance is (a plan
+    behind since its first missed installment, a revolving period ended unpaid), losses written off
+    and what the AssurancePool paid, limits by size and who's on autopay. Empty live is real: it says
+    nothing is owed or due rather than "Not real yet". What a shop has earned but not redeemed has no
+    due date yet, so it's counted (`M.unredeemed`), not scheduled;
   - the AssurancePool's and unsecured credit's weekly history and the co-op balance's weekly additions
     (stored figures, not written live);
   - moves that ran on their own (yield pool withdrawals, losses absorbed), declined moves, a note on a

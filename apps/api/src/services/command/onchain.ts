@@ -45,7 +45,7 @@ export function liveChainReader(chainId = chain.chainId): ChainReader {
   };
 }
 
-interface Ev {
+export interface Ev {
   contract: string;
   event: string;
   args: Record<string, string>;
@@ -53,7 +53,7 @@ interface Ev {
   tx: string;
 }
 
-async function events(db: Queryable, contracts: string[], names: string[]): Promise<Ev[]> {
+export async function events(db: Queryable, contracts: string[], names: string[]): Promise<Ev[]> {
   const { rows } = await db.query<{ contract: string; event: string; args: Record<string, string>; block_time: Date; tx_hash: string }>(
     `SELECT contract, event, args, block_time, tx_hash FROM command.chain_events
       WHERE chain_id = $1 AND contract = ANY($2) AND event = ANY($3) ORDER BY block_number, log_index`,

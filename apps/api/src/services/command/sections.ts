@@ -3,6 +3,7 @@ import type { Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { SEE, TOTALS, type Level } from './levels.js';
 import { assurancePoolLive, bondVaultLive, bondsLive, deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { creditLive, payoutsLive } from './credit.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
@@ -854,6 +855,9 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const bank = feeds ? await bankLive(db, feeds.get('plaid'), feeds.get('stripe'), o.now.getTime()) : null;
   // live, the AssurancePool's reserves are the contract's own
   const assurance = provider === 'live' ? await assurancePoolLive(chainOf(o, 'money')) : null;
+  // live, what the PayoutPool owes shops and when, and the credit book: the chain's, not the tables' sample
+  const payouts = provider === 'live' ? await payoutsLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
+  const credit = provider === 'live' ? await creditLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
 
   // the headline numbers, as the prototype's M
   const M: Record<string, number> = {
@@ -892,6 +896,20 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     M.rtd = assurance.rtd ?? 0;
     M.room = assurance.room;
   }
+  if (payouts) {
+    M.payout = payouts.held;
+    M.owed14 = payouts.owed14;
+    M.unredeemed = payouts.unredeemed;
+  }
+  if (credit) {
+    M.credit = credit.credit;
+    M.limits = credit.limits;
+    M.lost = credit.lost;
+    M.dueMembers = credit.due14;
+    M.autopay = credit.autopay;
+    // what isn't unsecured is backed by the members' own savings
+    M.savingsBacked = Math.max(0, Math.round((credit.credit - M.unsecured) * 100) / 100);
+  }
   M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
   // live, the gap is the PayoutPool's own shortfall, never the tables' sample against real cash
   Y.toPayout = Math.min(chainPool ? chainPool.payoutShort : M.short, Y.cash); Y.utilAfter = Y.assets ? (Y.lent + Y.toPayout) / Y.assets : 0; Y.apyAfter = apy(borrowBps(Y.utilAfter) * Y.utilAfter);
@@ -928,7 +946,17 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       ? { YD: chainPool.days.map(dayMon), Y_ASSETS: chainPool.assetsByDay, Y_LENT: chainPool.lentByDay }
       : { YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent] }),
     AP_BAL, UNSEC, AP_REQ: UNSEC.map((v) => v * M.floor), RTD_W: AP_BAL.map((v, i) => (UNSEC[i] ? v / UNSEC[i] : null)),
-    COOP_W: f['money.coop.weekly'] ?? [], FLOWS: f['money.flows'] ?? [], BONDS, ACCTS, ENTRIES,
+    COOP_W: f['money.coop.weekly'] ?? [],
+    FLOWS: payouts && credit ? [...payouts.out, ...credit.in].sort((a, b) => a[0] - b[0]) : (f['money.flows'] ?? []),
+    ...(credit
+      ? {
+          CREDIT: {
+            month: credit.month, start: credit.start, spent: credit.spent, carry: credit.carry, repaid: credit.repaid, aging: credit.aging, losses: credit.losses,
+            poolPaid: credit.poolPaid, limits: credit.limitSizes, shops: credit.shops, members: credit.members, late: credit.late, owing: credit.owing,
+          },
+        }
+      : {}),
+    BONDS, ACCTS, ENTRIES,
     TX: (await partnerRows(db)).TX,
     MEMBER_SUMMARY: { active: counts.active },
     // live, Lithic's card spend this month and what's moving through Bridge (null until they've synced)

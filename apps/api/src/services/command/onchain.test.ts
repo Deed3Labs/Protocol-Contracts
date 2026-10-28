@@ -58,6 +58,10 @@ const reader: ChainReader = {
       // the AssurancePool: all of it in the buffer reserve, as on Base Sepolia
       if (c.contract === 'AssurancePool')
         return c.fn === 'reserveToken' ? USDC : c.fn === 'bufferBalance' ? BigInt(usdc(125.03)) : c.fn === 'targetRTD' ? 800_000_000_000_000_000n : c.fn === 'hasValidRTD' ? true : 0n;
+      // the PayoutPool's claims, the registry's shops and the credit book: none here (credit.test.ts reads them)
+      if (c.contract === 'PayoutPool' && !(c.fn in views)) return c.fn === 'reserveToken' ? USDC : 0n;
+      if (c.contract === 'MerchantRegistry') return 0n;
+      if (c.contract === 'ClearCredit' && c.fn === 'decimals') return 6n;
       if (c.contract === 'ERC20') {
         expect([c.address, ...(c.fn === 'balanceOf' ? [c.args![0]] : [])]).toEqual([USDC, ...(c.fn === 'balanceOf' ? [getAddress(C.ESADepositVault.address)] : [])]);
         return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.vault));
