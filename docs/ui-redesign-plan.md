@@ -251,7 +251,14 @@ Filled in as each page is ported. Known before starting:
   resolving an incident, proposing a pause.
 - **Community:** everything (forum, live events, channel). There's no backend, so live shows empty
   states until it's decided what runs it.
-- **Governance:** agreement versions; proposals beyond meetings and votes.
+- **Governance** (ported): proposals as a lifecycle (draft, co-signing, check, voting, decided,
+  carried out; co-authors, co-signers and deadline, checker and check items, nominations, vote window,
+  daily cast and tally, board recommendation, result, tasks with owners) — today the API has only the
+  latest member vote; agreement versions, what changed and who's on which; per-seat resolution votes and
+  proposal links on agenda items; the boards' Assembly flag; entities, meetings and filings exist but in
+  other shapes. Actions: send back, check and open a vote, put on the board agenda, mark a task done,
+  remind non-voters, sign an agreement, new agreement version, filing checklist. The old page's filing,
+  formation, packet, minutes, agenda and decision actions have no control in the new page yet.
 - **Records:** the reveals and exports log.
 - **Settings:** the settings store; connections status exists (feeds).
 
