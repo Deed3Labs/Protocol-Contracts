@@ -342,7 +342,7 @@ const merchants: Record<string, Action> = {
   enquiry: {
     body: z.object({ id: enquiryId, state: z.enum(['replied', 'notfit', 'new']), why: text(200).default('') }),
     summary: (b) => (b.state === 'replied' ? `Answered shop enquiry #${b.id}` : b.state === 'notfit' ? `Turned down shop enquiry #${b.id}${b.why ? ` · ${b.why}` : ''}` : `Opened shop enquiry #${b.id} again`),
-    apply: async ({ tx, person, at }, b) => markEnquiry(tx, b.id, ENQUIRY_STATE[b.state], person, at, { why: b.state === 'notfit' ? b.why : '' }),
+    apply: async ({ tx, person, at }, b) => markEnquiry(tx, b.id, ENQUIRY_STATE[b.state as keyof typeof ENQUIRY_STATE], person, at, { why: b.state === 'notfit' ? b.why : '' }),
   },
   // ── the refurb line: Command's own record, so no second person (nothing here moves money)
   'refurb-add': {
