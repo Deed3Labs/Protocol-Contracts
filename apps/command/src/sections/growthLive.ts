@@ -1,5 +1,5 @@
 // @ts-nocheck: reads the section data the API fills, which is untyped, as the sections are.
-import { BOARDS, CITY_V, COHORTS, DESIGNS, LANDING, OTHERS, POSTERS, SHOPS, SRC30, W_ACT, W_INV, W_JOIN, W_SRC, vars } from './data';
+import { BOARDS, CITY_V, COHORTS, DESIGNS, HEAT, LANDING, OTHERS, POSTERS, SHOPS, SRC30, W_ACT, W_INV, W_JOIN, W_SRC, vars } from './data';
 
 /*
  * Growth's datasets, live (growth2.tsx reads these in place of the reference's when REAL): built from what
@@ -72,6 +72,10 @@ export function growthLive() {
     WAIT_NEXT: [],
     WAIT_NEW: [],
     LIVE_POOL: [],
-    waiting: W_JOIN.reduce((a, j, i) => a + j - (W_INV[i] ?? 0), 0),
+    // the waitlist now (the API counts it from command.waitlist); a median of null is no one invited yet
+    // each hour of the week's share of visits, Monday first; visitors per visit
+    HEAT: HEAT.map((x) => ({ d: x.d, v: [...x.v] })),
+    visitorsRatio: fig['growth.visitors_ratio'] ?? 0,
+    WL: { waiting: 0, joined: 0, medianDays: null, ...(fig['growth.waitlist'] ?? {}) },
   };
 }

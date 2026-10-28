@@ -280,10 +280,11 @@ export function go(r) {
         .map(([id]) => id)
         .find((id) => vLevel(id) > 0) || 'growth';
   S.route = r;
-  render();
+  // before drawing: a redesigned page adds its tab to the hash as it draws (#growth/traffic)
   try {
     history.replaceState(null, '', '#' + r);
   } catch (e) {}
+  render();
   window.scrollTo({
     top: 0,
   });

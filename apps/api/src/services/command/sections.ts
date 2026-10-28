@@ -362,6 +362,14 @@ async function designs(db: Queryable, list: PosterRow[]): Promise<GrowthPayload[
   return Object.fromEntries(rows.map((d) => [d.code, { name: d.name, posters: list.filter((p) => p.design === d.code).length, scans: f?.[d.code]?.scans ?? 0, joined: f?.[d.code]?.joined ?? 0 }]));
 }
 
+/** The middle value, rounded to a day; null with none. */
+const median = (xs: number[]) => {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return Math.round(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2);
+};
+
 /** Growth's live parts: the site feed's visits, and the 12 weeks of joins, invites and activations from the waitlist and members. */
 async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | null) {
   const now = o.now.getTime();
@@ -379,6 +387,12 @@ async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | 
       'growth.weekly.joined': per(wl.map((w) => ms_(w.joined_at))),
       'growth.weekly.invited': per(wl.filter((w) => w.invited_at).map((w) => ms_(w.invited_at!))),
       'growth.weekly.activated': per((members ?? []).filter((m) => m.activeAt != null).map((m) => m.activeAt!)),
+      // the waitlist now: who's waiting, everyone who joined it, and the median wait of those invited
+      'growth.waitlist': {
+        waiting: wl.filter((w) => !w.invited_at).length,
+        joined: wl.length,
+        medianDays: median(wl.filter((w) => w.invited_at).map((w) => (ms_(w.invited_at!) - ms_(w.joined_at)) / DAY)),
+      },
       ...(site ? { ...visits, 'growth.range': await liveRange(db, range, now, members) } : {}),
     },
   };

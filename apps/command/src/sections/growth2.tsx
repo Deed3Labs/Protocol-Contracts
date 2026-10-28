@@ -296,9 +296,25 @@ function makeGrowth() {
     Direct: ['a typed link']
   };
   const LV_CITY = ['Redlands', 'San Bernardino', 'Riverside', 'Fontana', 'Colton'];
+  /* live, Traffic's notes are worked out from the feed's rows rather than written for the reference's */
+  function tfChannelsFoot() {
+    const rate = c => c[1] ? c[3] : 0,
+      p = CHANNELS.find(c => c[0] === 'Posters'),
+      rest = CHANNELS.filter(c => c[0] !== 'Posters' && c[1]);
+    const all = CHANNELS.reduce((a, c) => a + c[1], 0);
+    if (!p || !p[1] || !all) return 'No visits counted by channel yet';
+    const others = rest.reduce((a, c) => a + c[1] * rate(c), 0) / (rest.reduce((a, c) => a + c[1], 0) || 1);
+    return `Posters bring ${Math.round(p[1] / all * 100)}% of visits${others ? ` and join at ${(rate(p) / others).toFixed(1)}× the rest` : ''}`;
+  }
+  function tfCityFoot(rows) {
+    const per = rows.filter(c => c.posters).map(c => [c.n, c.v / c.posters]).sort((a, b) => b[1] - a[1]);
+    return per.length ? `${per[0][0]} gets the most per poster` : 'No posters counted by city yet';
+  }
   function renderLive() {
     const el = $g('live');
     if (!el) return;
+    // the real-time view needs the site feed streamed, which it isn't yet
+    if (L) return html(el, <><div className="hd"><h2>Right now</h2><div className="r"><span className="lbl">Not real yet</span></div></div><div className="bk-empty hatch" style={css("min-height:96px;opacity:.5")} /><div className="bk-empty">Who's on the sites now needs the site feed streamed.</div></>);
     const n = LV.people.length,
       mx = Math.max(...LV.mins, n, 1);
     const groups = LV_PAGES.map(pg => [pg, LV.people.filter(p => p.page === pg)]).filter(g => g[1].length).sort((a, b) => b[1].length - a[1].length);
@@ -382,14 +398,16 @@ function makeGrowth() {
     pgSort: 'entries'
   };
   const secs = s => `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  // the 30-day visits every Traffic figure scales from: live, the site feed's
+  const VIS30 = L ? PROPS.reduce((a, p) => a + p[1], 0) : 36410;
   function tfScale() {
     const T = totals();
     return {
       T,
-      k: T[0] / 36410
+      k: T[0] / (VIS30 || 1)
     };
   }
-  const propShare = () => TS.prop === 'all' ? 1 : PROPS.find(p => p[0] === TS.prop)[1] / 36410;
+  const propShare = () => TS.prop === 'all' ? 1 : PROPS.find(p => p[0] === TS.prop)[1] / (VIS30 || 1);
   function renderTraffic() {
     const {
         T,
@@ -398,7 +416,8 @@ function makeGrowth() {
       ps = propShare(),
       V = T[0] * ps;
     const chRows = rowsFor('source').map(r => {
-      const c = CHANNELS.find(c => c[0] === r.n);
+      // a row with no channel (live: invites, which no source brought) has no bounce, rate or referrers
+      const c = CHANNELS.find(c => c[0] === r.n) ?? [r.n, 0, 0, 0, 0, []];
       return {
         n: r.n,
         v: r.v[0] * ps,
@@ -408,20 +427,35 @@ function makeGrowth() {
         refs: c[5]
       };
     });
-    const visitors = V * .69,
-      phone = .784,
+    const devAll = DEV.reduce((a, d) => a + d[1], 0),
+      devShare = n => devAll ? (DEV.find(d => d[0] === n)?.[1] ?? 0) / devAll : 0;
+    const ratio = L ? L.visitorsRatio : .69;
+    const visitors = V * ratio,
+      phone = L ? devShare('Phone') : .784,
       bounced = chRows.reduce((a, r) => a + r.v * r.bounce / 100, 0) / (V || 1);
-    const ig = CHANNELS[1][5][0];
+    const ig = CHANNELS[1]?.[5]?.[0];
+    // live, the busiest hour of the week by the site feed's share of visits
+    const busiest = L ? (() => {
+      let best = null,
+        top = 0;
+      L.HEAT.forEach(x => x.v.forEach((v, h) => {
+        if (v > top) {
+          top = v;
+          best = `${x.d} ${String(h).padStart(2, '0')}:00`;
+        }
+      }));
+      return best;
+    })() : null;
     // header
-    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Traffic · {L ? 'Plausible' : 'Umami, first-party · Demo data'}</span><p className="brief">{fmt(V)}{" visits from about "}{fmt(visitors)}{" people, "}{Math.round(phone * 100)}{"% on a phone. "}<a data-ref="tiktok.com">TikTok</a>{" is the fastest-growing referrer, and "}<a data-heatjump="">Sunday at noon</a>{" is the busiest hour. "}<span className="q">{perName()}{filterDesc() ? ' · ' + filterDesc() : ''}{TS.prop !== 'all' ? ' · ' + TS.prop : ''}.</span></p><div className="strip"><div className="sc"><span className="lbl">{"Visits · "}{perName()}</span><div className="sc-v">{fmt(V)}</div><div className="mb">{PROPS.reduce((acc, p, i) => {
-              const w = TS.prop === 'all' ? p[1] / 36410 * 100 : p[0] === TS.prop ? 100 : 0;
+    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Traffic · {L ? 'Plausible' : 'Umami, first-party · Demo data'}</span><p className="brief">{fmt(V)}{" visits from about "}{fmt(visitors)}{" people, "}{Math.round(phone * 100)}{"% on a phone. "}{L ? (busiest ? <><a data-heatjump="">{busiest}</a>{" is the busiest hour. "}</> : '') : <><a data-ref="tiktok.com">TikTok</a>{" is the fastest-growing referrer, and "}<a data-heatjump="">Sunday at noon</a>{" is the busiest hour. "}</>}<span className="q">{perName()}{filterDesc() ? ' · ' + filterDesc() : ''}{TS.prop !== 'all' ? ' · ' + TS.prop : ''}.</span></p><div className="strip"><div className="sc"><span className="lbl">{"Visits · "}{perName()}</span><div className="sc-v">{fmt(V)}</div><div className="mb">{PROPS.reduce((acc, p, i) => {
+              const w = TS.prop === 'all' ? p[1] / (VIS30 || 1) * 100 : p[0] === TS.prop ? 100 : 0;
               acc.h.push(<i key={i} style={css(`left:${acc.x}%;width:${w}%;background:${p[2]}`)} />);
               acc.x += w;
               return acc;
             }, {
               h: [],
               x: 0
-            }).h}</div><div className="sc-s">{TS.prop === 'all' ? 'Across 4 properties' : TS.prop}</div></div><div className="sc"><span className="lbl">Visitors · estimated</span><div className="sc-v">{fmt(visitors)}</div><div className="mb"><i style={css("width:69%")} /><i style={css("left:69%;width:31%;background:var(--land)")} /></div><div className="sc-s">31% came back more than once</div></div><div className="sc"><span className="lbl">On a phone</span><div className="sc-v">{Math.round(phone * 100)}%</div><div className="mb"><i style={css("width:78.4%")} /><i style={css("left:78.4%;width:18.1%;background:var(--land)")} /></div><div className="sc-s">Desktop 18% · tablet 4%</div></div><div className="sc"><span className="lbl">Bounced</span><div className="sc-v">{p1(bounced * 100)}</div><div className="mb"><i style={css(`width:${bounced * 100}%;background:var(--underway)`)} /></div><div className="sc-s">{"Left after one page · posters "}{CHANNELS[3][2]}%</div></div></div></>);
+            }).h}</div><div className="sc-s">{TS.prop === 'all' ? `Across ${PROPS.length === 1 ? 'one property' : `${PROPS.length} properties`}` : TS.prop}</div></div><div className="sc"><span className="lbl">Visitors · estimated</span><div className="sc-v">{fmt(visitors)}</div><div className="mb"><i style={css(`width:${Math.round(ratio * 100)}%`)} /><i style={css(`left:${Math.round(ratio * 100)}%;width:${100 - Math.round(ratio * 100)}%;background:var(--land)`)} /></div><div className="sc-s">{V ? `${100 - Math.round(ratio * 100)}% came back more than once` : 'No visits counted yet'}</div></div><div className="sc"><span className="lbl">On a phone</span><div className="sc-v">{Math.round(phone * 100)}%</div><div className="mb"><i style={css(`width:${+(phone * 100).toFixed(1)}%`)} /><i style={css(`left:${+(phone * 100).toFixed(1)}%;width:${+((L ? devShare('Desktop') : .181) * 100).toFixed(1)}%;background:var(--land)`)} /></div><div className="sc-s">{L ? `Desktop ${Math.round(devShare('Desktop') * 100)}% · tablet ${Math.round(devShare('Tablet') * 100)}%` : 'Desktop 18% · tablet 4%'}</div></div>{L ? <div className="sc"><span className="lbl">Bounced</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not measured yet</div></div> : <div className="sc"><span className="lbl">Bounced</span><div className="sc-v">{p1(bounced * 100)}</div><div className="mb"><i style={css(`width:${bounced * 100}%;background:var(--underway)`)} /></div><div className="sc-s">{"Left after one page · posters "}{CHANNELS[3][2]}%</div></div>}</div></>);
 
     // property switch (Traffic-only lens) + visits over time + live
     const el = $g('tf');
@@ -438,7 +472,7 @@ function makeGrowth() {
     const chShare = (ch, d) => {
       const w = wkOf(d),
         s = W_CH.Posters[w] + W_CH.Direct[w] + W_CH.Social[w] + W_CH.Search[w];
-      return W_CH[ch][w] / s;
+      return s ? (W_CH[ch]?.[w] ?? 0) / s : 0;
     };
     const visibleCh = chRows.map(r => r.n);
     const stacks = buckets.map(([x, y]) => {
@@ -503,7 +537,11 @@ function makeGrowth() {
 
     // when: 7×24 heatmap, Sunday noon and weekday evenings
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const hv = (d, h) => {
+    // live, each hour's share of visits from the site feed (Mon first); the reference draws a modelled week
+    const HEATL = L ? L.HEAT : null,
+      heatTop = HEATL ? Math.max(0, ...HEATL.flatMap(x => x.v)) : 0;
+    const hv = (d, h) => HEATL ? heatTop ? (HEATL[d]?.v[h] ?? 0) / heatTop * 1.3 : 0 : hvRef(d, h);
+    const hvRef = (d, h) => {
       const ev = Math.exp(-((h - 19.5) ** 2) / 6),
         noon = Math.exp(-((h - 12.5) ** 2) / 5),
         morn = Math.exp(-((h - 8) ** 2) / 3) * .35;
@@ -517,7 +555,7 @@ function makeGrowth() {
           length: 24
         }, (_, h) => {
           const v = Math.min(1, hv(d, h) / heatMax);
-          return <i key={h} className={hv(d, h) > 0.97 ? 'pk' : ''} style={css(`background:color-mix(in srgb,var(--fg) ${Math.round(4 + v * 86)}%,transparent)`)} title={`${dn} ${String(h).padStart(2, '0')}:00 · ${fmt(V / 7 / 24 * hv(d, h) / 0.42)} visits`} />;
+          return <i key={h} className={hv(d, h) > 0.97 ? 'pk' : ''} style={css(`background:color-mix(in srgb,var(--fg) ${Math.round(4 + v * 86)}%,transparent)`)} title={`${dn} ${String(h).padStart(2, '0')}:00 · ${HEATL ? `${((HEATL[d]?.v[h] ?? 0) * 100).toFixed(1)}% of visits` : `${fmt(V / 7 / 24 * hv(d, h) / 0.42)} visits`}`} />;
         })}</div>)}<div className="hmx-k"><span className="pkk"><i className="pk" />Busiest hours</span><span>Quiet</span>{[8, 30, 55, 80, 90].map((x, __k) => <i key={__k} style={css(`background:color-mix(in srgb,var(--fg) ${x}%,transparent)`)} />)}<span>Busy</span></div></div>;
 
     // devices + browsers
@@ -547,7 +585,7 @@ function makeGrowth() {
     pg.sort((x, y) => pgKey === 'bounce' ? y.b - x.b : pgKey === 'time' ? y.t - x.t : pgKey === 'joins' ? (y.j ?? -1) - (x.j ?? -1) : y.e - x.e);
     const pth = (k2, t) => <th data-pgsort={k2} className={TS.pgSort === k2 ? 's' : ''}>{t}{TS.pgSort === k2 ? ' ↓' : ''}</th>;
     const pages = <div className="bt-wrap"><table className="bt pg"><thead><tr><th className="c-nm">Page</th>{pth('entries', 'Entries')}{pth('bounce', 'Bounced')}{pth('time', 'Time on page')}{pth('joins', 'Joins started')}</tr></thead><tbody>{pg.map((p, __k) => <tr key={__k}><td className="tn c-nm"><b className="mono">{p.path}</b><span><i className="swt" style={css(`background:${PROPS.find(x => x[0] === p.prop)[2]}`)} />{p.prop}</span></td><td>{fmt(p.e)}</td><td className={p.b >= 50 ? 'warn' : ''}>{p.b}%</td><td>{secs(p.t)}</td><td>{p.j == null ? <span className="quiet small">—</span> : fmt(p.j)}</td></tr>)}</tbody></table></div>;
-    html(el, <>{props}<section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s8"><div className="hd"><h2>Visits over time</h2><div className="r"><span className="lbl">{"By "}{gran}</span><div className="seg sm" role="group" aria-label="Granularity">{[['auto', 'Auto'], ['day', 'Daily'], ['week', 'Weekly']].map(([k2, t], __k) => <button key={__k} data-gran={k2} aria-pressed={S.gran === k2}>{t}</button>)}</div></div></div>{chart}<div className="tr-k tf-k">{visibleCh.map((ch, __k) => <button key={__k} data-iso={ch} className={`${iso === ch ? 'on' : ''} ${iso && iso !== ch ? 'off' : ''}`}><i style={css(`background:${CH_COL[ch]};width:10px;height:10px`)} />{ch}</button>)}{prevTot ? <span className="gh-k"><i className="tf-gh-k" />{cmpName()}</span> : ''}{iso ? <button className="clear" data-iso="">Show all</button> : ''}</div></div><div className="cell s4" id="live" /></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Channels and referrers</h2><div className="r"><span className="lbl">Click a row to filter · + for referrers</span></div></div><div className="bt-wrap"><table className="bt ch"><thead><tr><th className="c-nm">Channel</th><th>Visits</th><th>Share</th><th>Bounced</th><th>Join rate</th><th>{cmpOn() ? 'Change' : ''}</th></tr></thead><tbody>{chTable}</tbody></table></div><div className="bk-ft"><span>{"Posters bring 13% of visits but convert "}<b>37×</b>{" better than every other channel combined"}</span><button data-tab="campaigns">Compare campaigns →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="heat"><div className="hd"><h2>When they visit</h2><div className="r"><span className="lbl">{"By hour · "}{perName()}</span></div></div>{heat}<div className="bk-ft"><span>{"Busiest: "}<b>Sunday 12:00–14:00</b>{" and "}<b>weekdays 18:00–21:00</b></span><button data-act="" data-newcamp="">Plan a campaign for those windows →</button></div></div><div className="cell s5"><div className="hd"><h2>Devices</h2><div className="r"><span className="lbl">{perName()}</span></div></div>{devices}<div className="bk-ft"><span>{"Poster scans are "}<b>99% phone</b></span><span /></div></div></div></section><section className="band"><div className="bento"><div className="cell s5"><div className="hd"><h2>Where they're from</h2><div className="r"><span className="lbl">City · visits per poster</span></div></div><div className="ct-l">{cities}</div><div className="bk-ft"><span>Riverside gets the most per poster</span><button data-go="field" data-gp="placement">Poster placement in Field →</button></div></div><div className="cell s7"><div className="hd"><h2>Pages</h2><div className="r"><span className="lbl">{"Where visits start · "}{TS.prop === 'all' ? 'all properties' : TS.prop}</span></div></div>{pages}<div className="bk-ft"><span>{"Pages with "}<b className="warn">50%+</b>{" bounced are worth a look"}</span><span /></div></div></div></section><div className="src-note"><span><b>Source:</b>{" Umami, first-party on our servers. No cookies, no ad trackers; visitor counts are estimates and nobody is followed across sites."}</span><button className="btn" style={css("height:32px")} data-act="">Add a data source</button></div></>);
+    html(el, <>{props}<section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s8"><div className="hd"><h2>Visits over time</h2><div className="r"><span className="lbl">{"By "}{gran}</span><div className="seg sm" role="group" aria-label="Granularity">{[['auto', 'Auto'], ['day', 'Daily'], ['week', 'Weekly']].map(([k2, t], __k) => <button key={__k} data-gran={k2} aria-pressed={S.gran === k2}>{t}</button>)}</div></div></div>{chart}<div className="tr-k tf-k">{visibleCh.map((ch, __k) => <button key={__k} data-iso={ch} className={`${iso === ch ? 'on' : ''} ${iso && iso !== ch ? 'off' : ''}`}><i style={css(`background:${CH_COL[ch]};width:10px;height:10px`)} />{ch}</button>)}{prevTot ? <span className="gh-k"><i className="tf-gh-k" />{cmpName()}</span> : ''}{iso ? <button className="clear" data-iso="">Show all</button> : ''}</div></div><div className="cell s4" id="live" /></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Channels and referrers</h2><div className="r"><span className="lbl">Click a row to filter · + for referrers</span></div></div><div className="bt-wrap"><table className="bt ch"><thead><tr><th className="c-nm">Channel</th><th>Visits</th><th>Share</th><th>Bounced</th><th>Join rate</th><th>{cmpOn() ? 'Change' : ''}</th></tr></thead><tbody>{chTable}</tbody></table></div><div className="bk-ft">{L ? <span>{tfChannelsFoot()}</span> : <span>{"Posters bring 13% of visits but convert "}<b>37×</b>{" better than every other channel combined"}</span>}<button data-tab="campaigns">Compare campaigns →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="heat"><div className="hd"><h2>When they visit</h2><div className="r"><span className="lbl">{"By hour · "}{perName()}</span></div></div>{heat}<div className="bk-ft">{L ? <span>{busiest ? <>{"Busiest: "}<b>{busiest}</b></> : 'No visits counted yet'}</span> : <span>{"Busiest: "}<b>Sunday 12:00–14:00</b>{" and "}<b>weekdays 18:00–21:00</b></span>}{L ? <span /> : <button data-act="" data-newcamp="">Plan a campaign for those windows →</button>}</div></div><div className="cell s5"><div className="hd"><h2>Devices</h2><div className="r"><span className="lbl">{perName()}</span></div></div>{devices}<div className="bk-ft">{L ? <span>By screen size, as Plausible counts it</span> : <span>{"Poster scans are "}<b>99% phone</b></span>}<span /></div></div></div></section><section className="band"><div className="bento"><div className="cell s5"><div className="hd"><h2>Where they're from</h2><div className="r"><span className="lbl">City · visits per poster</span></div></div><div className="ct-l">{cities}</div><div className="bk-ft">{L ? <span>{tfCityFoot(cityRows)}</span> : <span>Riverside gets the most per poster</span>}<button data-go="field" data-gp="placement">Poster placement in Field →</button></div></div><div className="cell s7"><div className="hd"><h2>Pages</h2><div className="r"><span className="lbl">{"Where visits start · "}{TS.prop === 'all' ? 'all properties' : TS.prop}</span></div></div>{pages}<div className="bk-ft"><span>{"Pages with "}<b className="warn">50%+</b>{" bounced are worth a look"}</span><span /></div></div></div></section><div className="src-note"><span><b>Source:</b>{L ? ' Plausible, on useclear.org. No cookies, no ad trackers; visitor counts are estimates and nobody is followed across sites.' : " Umami, first-party on our servers. No cookies, no ad trackers; visitor counts are estimates and nobody is followed across sites."}</span>{L ? null : <button className="btn" style={css("height:32px")} data-act="">Add a data source</button>}</div></>);
     renderLive();
     clearInterval(liveTimer);
     if (!L) liveTimer = setInterval(() => {
@@ -1246,7 +1284,7 @@ function makeGrowth() {
 
     /* issues: Home's list rule */
     const errs = ERRS.length ? <div className="isl"><div className="al">{ERRS.map((e, __k) => <div key={__k} className="alr"><div className="al-m"><div className="al-t"><i className="sv" style={css(`background:var(--${e.sev})`)} /><b>{e.t}</b><span className="age">{e.n}{" sessions"}</span></div><span className="m">{APPS[e.app].n}</span></div><div className={`own ${e.own ? '' : 'none'}`}><span className="who">{e.own || 'Nobody’s on it'}</span>{e.prog ? <span className="pg"><i><b style={css(`width:${e.prog[0] / e.prog[1] * 100}%`)} /></i>{e.prog[0]}/{e.prog[1]}</span> : e.own ? '' : <button className="lnk" data-act="">Assign →</button>}</div></div>)}</div></div> : <div className="bk-empty">No open issues.</div>;
-    html(el, <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s8"><div className="hd"><h2>Active each day</h2><div className="r"><span className="lbl">{gran === 'week' ? 'Daily average, by week' : 'By day'}</span><div className="seg sm" role="group" aria-label="Granularity">{[['auto', 'Auto'], ['day', 'Daily'], ['week', 'Weekly']].map(([k, t], __k) => <button key={__k} data-gran={k} aria-pressed={S.gran === k}>{t}</button>)}</div></div></div>{chart}<div className="tr-k"><span><i style={css("background:var(--fg);width:10px;height:10px")} />Members on the member app</span><span><i style={css("background:var(--land);width:10px;height:10px")} />Shops on the merchant app</span></div><button className="foot" data-tab="cohorts"><span>Grows with every batch that activates</span><span>Cohorts →</span></button></div><div className="cell s4" id="onb"><div className="hd"><h2>Onboarding</h2><div className="r"><span className="lbl">Member app · all invites</span></div></div>{onb}<button className="foot" data-go="members" data-gp="nudges:opened"><span>{fmt(64 * mult)}{" stuck at funding"}</span><span>Nudge in Members →</span></button></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="feat"><div className="hd"><h2>What they use</h2><div className="r"><div className="seg sm" role="group" aria-label="App">{Object.entries(APPS).map(([k, v], __k) => <button key={__k} data-afeat={k} aria-pressed={AS.feat === k}>{v.n}</button>)}</div></div></div>{feats}<div className="bk-ft"><span>{"Share of this week’s active "}{AS.feat === 'member' ? 'members' : 'shops'}{" who used each"}</span><span /></div></div><div className="cell s5"><div className="hd"><h2>Issues</h2><div className="r"><span className="lbl">{ERRS.length}{" open · "}{ERRS.filter(e => !e.own).length}{" with no owner"}</span></div></div>{errs}<button className="foot" data-go="records" data-gp="log"><span>Error log</span><span>→</span></button></div></div></section><div className="src-note"><span><b>Source:</b>{" first-party events from both apps (Umami custom events) and Clear’s own records. No session recording, nothing sold or shared."}</span><button className="btn" style={css("height:32px")} data-act="">Add a data source</button></div></>);
+    html(el, <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s8"><div className="hd"><h2>Active each day</h2><div className="r"><span className="lbl">{gran === 'week' ? 'Daily average, by week' : 'By day'}</span><div className="seg sm" role="group" aria-label="Granularity">{[['auto', 'Auto'], ['day', 'Daily'], ['week', 'Weekly']].map(([k, t], __k) => <button key={__k} data-gran={k} aria-pressed={S.gran === k}>{t}</button>)}</div></div></div>{chart}<div className="tr-k"><span><i style={css("background:var(--fg);width:10px;height:10px")} />Members on the member app</span><span><i style={css("background:var(--land);width:10px;height:10px")} />Shops on the merchant app</span></div><button className="foot" data-tab="cohorts"><span>Grows with every batch that activates</span><span>Cohorts →</span></button></div><div className="cell s4" id="onb"><div className="hd"><h2>Onboarding</h2><div className="r"><span className="lbl">Member app · all invites</span></div></div>{onb}<button className="foot" data-go="members" data-gp="nudges:opened"><span>{fmt(64 * mult)}{" stuck at funding"}</span><span>Nudge in Members →</span></button></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="feat"><div className="hd"><h2>What they use</h2><div className="r"><div className="seg sm" role="group" aria-label="App">{Object.entries(APPS).map(([k, v], __k) => <button key={__k} data-afeat={k} aria-pressed={AS.feat === k}>{v.n}</button>)}</div></div></div>{feats}<div className="bk-ft"><span>{"Share of this week’s active "}{AS.feat === 'member' ? 'members' : 'shops'}{" who used each"}</span><span /></div></div><div className="cell s5"><div className="hd"><h2>Issues</h2><div className="r"><span className="lbl">{ERRS.length}{" open · "}{ERRS.filter(e => !e.own).length}{" with no owner"}</span></div></div>{errs}<button className="foot" data-go="records" data-gp="log"><span>Error log</span><span>→</span></button></div></div></section><div className="src-note"><span><b>Source:</b>{" first-party events from both apps (Umami custom events) and Clear’s own records. No session recording, nothing sold or shared."}</span>{L ? null : <button className="btn" style={css("height:32px")} data-act="">Add a data source</button>}</div></>);
   }
 
   /* ── Time: every period is a day range on one daily series, so any range adds up ──
@@ -1402,8 +1440,13 @@ function makeGrowth() {
     const ratio = (W_JOIN[11] / W_INV[11]).toFixed(1);
     const posterRow = rowsFor('source').find(x => x.n === 'Posters'),
       pj = posterRow ? posterRow.v[1] : 0;
-    const sent = <><>{ratio}{" people join for every one we invite, and "}<a data-step={weak}>{STEP_LONG[weak]}</a>{" is the weakest step at "}{p1(r[weak])}{". "}</>{fd || S.per !== '30d' ? <span className="q">{"Showing "}{fd ? fd + ', ' : ''}{perName().toLowerCase() === 'today' ? 'today' : perName()}.</span> : <span className="q">{"Posters bring "}{Math.round(pct(pj, T[1]))}% of joins.</span>}</>;
-    html($g('hdr'), <><span className="when"><span className="dot" />Growth · {L ? 'Live' : 'Soft launch · day 78 · Demo data'}</span><p className="brief">{sent}</p><div className="strip"><div className="sc"><span className="lbl">{"Joined · "}{perName()}</span><div className="sc-v">{fmt(T[1])}</div><div className="mb"><i style={css(`width:${pct(pj, T[1])}%`)} /></div><div className="sc-s">{Math.round(pct(pj, T[1]))}% from posters</div></div><div className="sc"><span className="lbl">Waitlist · now</span><div className="sc-v">1,500</div><div className="mb"><i style={css("width:16.7%")} /><span className="hroom" style={css("left:16.7%;right:0")} /></div><div className="sc-s">300 of 1,800 invited · 16-day wait</div></div><div className="sc"><span className="lbl">{"Activated · "}{perName()}</span><div className="sc-v">{fmt(T[4])}{" "}<small>{p1(pct(T[4], T[2]))}</small></div><div className="mb"><i style={css(`width:${Math.min(100, pct(T[4], T[2]))}%`)} /><i style={css(`left:${Math.min(100, pct(T[4], T[2]))}%;width:${Math.max(0, Math.min(100 - pct(T[4], T[2]), pct(T[3] - T[4], T[2])))}%;background:var(--land)`)} /></div><div className="sc-s">{"of invited · "}{fmt(Math.max(0, T[3] - T[4]))}{" opened, not funded"}</div></div><div className="sc"><span className="lbl">First $10 spends</span><div className="sc-v">{fmt(T[5])}</div><div className="mb"><i style={css(`width:${Math.min(100, pct(T[5], T[4]))}%`)} /></div><div className="sc-s">{p1(pct(T[5], T[4]))}{" of active · $"}{fmt(T[5] * 10)}{" to shops"}</div></div></div></>);
+    // live, a week with no invites can't make a ratio: it says what happened instead
+    const lead = !L || W_INV[11] ? <>{ratio}{" people join for every one we invite, and "}</> : <>{fmt(W_JOIN[11])}{W_JOIN[11] === 1 ? ' person' : ' people'}{" joined this week and nobody was invited; "}</>;
+    const wl = L ? L.WL : { waiting: 1500, joined: 1800, medianDays: 16 },
+      wlInv = wl.joined - wl.waiting,
+      wlPct = wl.joined ? wlInv / wl.joined * 100 : 0;
+    const sent = <><>{lead}<a data-step={weak}>{STEP_LONG[weak]}</a>{" is the weakest step at "}{p1(r[weak])}{". "}</>{fd || S.per !== '30d' ? <span className="q">{"Showing "}{fd ? fd + ', ' : ''}{perName().toLowerCase() === 'today' ? 'today' : perName()}.</span> : <span className="q">{"Posters bring "}{Math.round(pct(pj, T[1]))}% of joins.</span>}</>;
+    html($g('hdr'), <><span className="when"><span className="dot" />Growth · {L ? 'Live' : 'Soft launch · day 78 · Demo data'}</span><p className="brief">{sent}</p><div className="strip"><div className="sc"><span className="lbl">{"Joined · "}{perName()}</span><div className="sc-v">{fmt(T[1])}</div><div className="mb"><i style={css(`width:${pct(pj, T[1])}%`)} /></div><div className="sc-s">{Math.round(pct(pj, T[1]))}% from posters</div></div><div className="sc"><span className="lbl">Waitlist · now</span><div className="sc-v">{fmt(wl.waiting)}</div><div className="mb"><i style={css(`width:${+wlPct.toFixed(1)}%`)} /><span className="hroom" style={css(`left:${+wlPct.toFixed(1)}%;right:0`)} /></div><div className="sc-s">{fmt(wlInv)}{" of "}{fmt(wl.joined)}{" invited · "}{wl.medianDays == null ? 'no one invited yet' : `${wl.medianDays}-day wait`}</div></div><div className="sc"><span className="lbl">{"Activated · "}{perName()}</span><div className="sc-v">{fmt(T[4])}{" "}<small>{p1(pct(T[4], T[2]))}</small></div><div className="mb"><i style={css(`width:${Math.min(100, pct(T[4], T[2]))}%`)} /><i style={css(`left:${Math.min(100, pct(T[4], T[2]))}%;width:${Math.max(0, Math.min(100 - pct(T[4], T[2]), pct(T[3] - T[4], T[2])))}%;background:var(--land)`)} /></div><div className="sc-s">{"of invited · "}{fmt(Math.max(0, T[3] - T[4]))}{" opened, not funded"}</div></div><div className="sc"><span className="lbl">First $10 spends</span><div className="sc-v">{fmt(T[5])}</div><div className="mb"><i style={css(`width:${Math.min(100, pct(T[5], T[4]))}%`)} /></div><div className="sc-s">{p1(pct(T[5], T[4]))}{" of active · $"}{fmt(T[5] * 10)}{" to shops"}</div></div></div></>);
   }
 
   /* ── control bar: desktop shows everything; phones get two buttons that open sheets ── */
@@ -1661,7 +1704,7 @@ function makeGrowth() {
   const WAIT_NEW = L ? L.WAIT_NEW : [['D', 'P', 'San Bernardino', 'Poster · Mesa Laundry', 2], ['T', 'B', 'Riverside', 'Search', 11], ['G', 'K', 'Redlands', 'Poster · Uptown Barber', 19], ['R', 'A', 'Redlands', "Poster · Rosa’s Panadería", 34], ['E', 'V', 'Fontana', 'Social · TikTok', 52], ['N', 'C', 'Redlands', 'Website · /join', 71]];
   const LIVE_POOL = L ? L.LIVE_POOL : [['B', 'S', 'Highland', 'Poster · Highland Hardware'], ['I', 'M', 'Redlands', 'Poster · State St. Books'], ['F', 'L', 'San Bernardino', 'Social · Instagram'], ['C', 'J', 'Rialto', 'Search']];
   let wlTimer = null,
-    wlCount = L ? L.waiting : 1500;
+    wlCount = L ? L.WL.waiting : 1500;
   const mask = (f, l) => <>{f}<span className="msk">•••••</span>{" "}{l}.</>;
   const daysSince = d => {
     const [dd, mm] = d.split(' ');
@@ -1670,6 +1713,8 @@ function makeGrowth() {
   };
   const ago = m => m < 60 ? `${m} min ago` : `${Math.floor(m / 60)}h ago`;
   function renderWl() {
+    // live, the people waiting are Members' to show (masked there); Growth says how many
+    if (L) return html($g('wl'), <><div className="wl-list"><div className="bk-empty">{L.WL.waiting ? `${fmt(L.WL.waiting)} ${L.WL.waiting === 1 ? 'person is' : 'people are'} waiting. Who they are shows in Members, masked.` : 'Nobody is waiting.'}</div></div><button className="foot" data-go="members" data-gp="waitlist">{`See the waitlist in Members`}{" "}<span>→</span></button></>);
     const tab = S.wl || 'next';
     const rows = tab === 'next' ? WAIT_NEXT.slice(0, 5).map((r, i) => {
       const w = daysSince(r[4]);
@@ -1694,6 +1739,8 @@ function makeGrowth() {
     }, 9000);
   }
   function renderMoves() {
+    // the moves are worked out from shop, design and city numbers the API doesn't have yet (docs/ui-redesign-plan.md, gaps)
+    if (L) return html($g('moves'), <div className="cell s12"><div className="hd"><h2>Next moves</h2><div className="r"><span className="lbl">Not real yet</span></div></div><div className="bk-empty">Worked out once joins and first spends are counted by shop, design and city.</div></div>);
     // each move: what to do, the evidence drawn as two bars, and what it should be worth
     const bars = (a, b, la, lb, max, fa) => <div className="mv-ev"><div><span>{la}</span><b>{fa(a)}</b></div><i className="mv-b"><i style={css(`width:${a / max * 100}%`)} /></i><div><span>{lb}</span><b>{fa(b)}</b></div><i className="mv-b q"><i style={css(`width:${b / max * 100}%`)} /></i></div>;
     const M = [{
@@ -1741,7 +1788,13 @@ function makeGrowth() {
       renderFunnel(T);
       renderBk();
       renderTrend();
-    } else if (S.tab === 'traffic') renderTraffic();else if (S.tab === 'campaigns') renderCampaigns();else if (S.tab === 'cohorts') renderCohorts();else if (S.tab === 'apps') renderApps();else {
+      if (L) {
+        const lbl = R.querySelector('#wlh .r .lbl'),
+          foot = R.querySelector('#ov .cell.s8 > .foot > span');
+        if (lbl) lbl.textContent = `${fmt(L.WL.waiting)} waiting${L.WL.medianDays == null ? '' : ` · ${L.WL.medianDays}-day median`}`;
+        if (foot) foot.textContent = W_INV[11] ? `${(W_JOIN[11] / W_INV[11]).toFixed(1)} joins for every invite this week · see how each invite week activates` : 'No invites this week · see how each invite week activates';
+      }
+    } else if (L && NOT_REAL[S.tab]) notReal(S.tab);else if (S.tab === 'traffic') renderTraffic();else if (S.tab === 'campaigns') renderCampaigns();else if (S.tab === 'cohorts') renderCohorts();else if (S.tab === 'apps') renderApps();else {
       const nm = {
         campaigns: 'Campaigns',
         cohorts: 'Cohorts',
@@ -1750,6 +1803,17 @@ function makeGrowth() {
       html($g('hdr'), <><span className="when"><span className="dot" />{"Growth · "}{nm}</span><p className="brief">{nm}{" is next. "}<span className="q">We're designing one tab at a time.</span></p></>);
       html($g('tp'), <div className="bento"><div className="cell s12"><div className="bk-empty">{nm}{" hasn't been designed yet."}</div></div></div>);
     }
+  }
+  /* live, a tab whose numbers the API doesn't have yet says so, hatched, and what it needs (docs/ui-redesign-plan.md, gaps) */
+  const NOT_REAL = {
+    campaigns: ['cp', 'Campaigns', 'Campaigns need tagged links (UTM) counted by the site feed, with what each cost and the $10 offers they carried.'],
+    cohorts: ['ch', 'Cohorts', 'Cohorts need each invite week’s activations by days since the invite, and who is still active and has spent their $10.'],
+    apps: ['ap', 'Apps', 'Apps need the member and merchant apps’ own events: who opens them each day, what they use, onboarding steps and errors.']
+  };
+  function notReal(tab) {
+    const [id, nm, need] = NOT_REAL[tab];
+    html($g('hdr'), <><span className="when"><span className="dot" />{"Growth · "}{nm}</span><p className="brief">{"Nothing to show yet. "}<span className="q">{need}</span></p></>);
+    html($g(id), <section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>{nm}</h2><div className="r"><span className="lbl">Not real yet</span></div></div><div className="bk-empty hatch" style={css("min-height:160px;opacity:.5")} /><div className="bk-empty">{need}</div></div></div></section>);
   }
   function closePanel() {
     CS.open = null;
@@ -2051,6 +2115,8 @@ function makeGrowth() {
   function mount() {
     // the slot is the shell's: the host goes inside it
     if (!into('g-slot')) return;
+    // the shell sets #growth as it goes; the tab shown goes after it, so a reload opens it again
+    setHash();
     W.classList.toggle('ro', CC.viewing() && CC.level('growth') < 3);
     if (!ready) {
       ready = true;
@@ -2094,4 +2160,4 @@ function makeGrowth() {
     host
   };
 }
-registerPage(['growth'], 'g-slot', makeGrowth);
+registerPage(['growth'], 'g-slot', makeGrowth, { live: true });

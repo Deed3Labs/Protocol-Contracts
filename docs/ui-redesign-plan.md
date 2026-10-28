@@ -199,10 +199,22 @@ Filled in as each page is ported. Known before starting:
   - reorder points ("lead time plus a week");
   - per-order costs (mailer, tissue, label, payment fee, the shipping gap);
   - pickup points.
-- **Members:** nudges (who's stuck at which step, and the message sent).
+- **Members** (ported; found while porting):
+  - per person: waitlist position for everyone waiting, Social and Search as sources (the API sends
+    Poster or Website), whether they have the app and a phone (they pick the nudge channel), notes,
+    tags, a history log, and how often they've been nudged;
+  - per batch: its size and how many spent; batch 13's list of people and city mix;
+  - each group's last nudge (when, channel, sent, opened, acted), the automatic follow-ups and which
+    channels are set up;
+  - actions: the batch "who goes first" modes (oldest, a set of cities, a set of poster shops, hand-picked;
+    the API has oldest, posters and Redlands), group nudges with a message, channel and schedule,
+    follow-ups on and off, notes and tags, extending the invite window, approving or sending back a
+    batch from the page.
+- **Growth** (ported): campaigns (tagged links, spend, offers), cohorts by days since the invite with who
+  stays active and spends, the apps' own events, bounce and time on page, browsers, the real-time view,
+  and invites, opens and first spends by source, city, shop and design. Live, Campaigns, Cohorts and Apps
+  say "Not real yet" with what they need; the waitlist count and median come from `command.waitlist`.
 - **Field:** visit plans and placement scoring beyond what's recorded today.
-- **Growth:** traffic by source and campaign, and the member app's install figures (the Apps tab).
-  Umami gives some of it.
 - **Money:** a Moves queue drawn from proposals (exists) and the cash-flow forecast.
 - **Build:** deploys (Railway and Vercel history) and security findings. Changes and Contracts exist
   (the GitHub poller and the indexer).

@@ -47,6 +47,7 @@ import { closeModal, finish, go, openItem, render, runSteps, toast, vLevel, view
 import { openSFlow } from './shop';
 import { openCostFlow } from './costing';
 import { openCatFlow } from './catalog';
+import { pageModFor } from './pageHost';
 import { ibxPaneDraw, ibxRefresh } from './inbox';
 import { homeListeners } from './homeHub';
 import { sgnIn, sgnStep, sgnTimer, showLogin } from './signin';
@@ -1685,7 +1686,10 @@ export function startup() {
       <b style={css('font-weight:600')}>Kai</b> <span className="quiet">· Admin</span>
     </>,
   );
-  const start = (location.hash || '').slice(1);
+  // a redesigned page keeps its tab in the hash (#growth/traffic): the page opens on that tab
+  const [hashRoute, hashTab] = (location.hash || '').slice(1).split('/');
+  const start = hashRoute === 'contracts' ? 'build' : hashRoute;
+  if (NAMES[start] && hashTab) pageModFor(start)?.setTab(start, hashTab);
   // the live app opens on sign-in, or on the page asked for when this browser is still signed in
   if (LIVE) return void live.liveBoot(NAMES[start] || start.startsWith('invite=') ? start : '');
   go(NAMES[start] ? start : 'home');
