@@ -57,24 +57,52 @@ It's the same design system the app was ported from (`docs/command-reference`), 
   - Home stays in light DOM, as the reference draws it, styled by the main sheet in `command.css`. That
     sheet now has the redesign's main-sheet rules added and is maintained by hand rather than
     regenerated. Each old page's rules leave it when that page is ported.
-- **Converter-assisted.** `scripts/port/convert.cjs` turns a page module's template strings into JSX
-  cleanly; only its old section split doesn't fit. Each page's module is taken from the stitched HTML
-  (between its `/* ══ <Page> ══` markers), converted, then hand-wired to live data and the app's
-  helpers.
+- **Converter-assisted.** Each page module is ported whole into a new file (`src/sections/<page>2.tsx`)
+  with `scripts/port/module.cjs`; the old page stays beside it until the new one is live (see the live
+  gate, below).
 - **Data:**
-  - In prototype and preview mode, a page draws from its reference fixtures. These come from that
-    page's `*-data.js`, kept in typed data modules, never inside components.
+  - In prototype and preview mode, a page draws from its reference fixtures, kept inside its module as
+    the reference has them.
   - Live, a page reads the API.
   - **Live never shows fixtures.** Kai, 2026-10-24: dev shows only real testnet data. Where a page
     needs data the API doesn't have yet, live shows that cell's empty state, and the gap is listed
     below.
+- **The live gate.** `registerPage(routes, slot, make, { live })`: until a redesigned page's live wiring
+  is done (its datasets from the API, its actions through the existing flows), the live app and the
+  empty preview keep the page from before. Dev never shows the reference's figures and loses nothing
+  it can do today. The prototype preview (`?preview=1`) always shows the redesign.
 - **Checks:**
-  - DOM parity (`e2e/parity.spec.ts`) compares the app with the old reference. As each page is ported,
-    its check moves to the new one: screenshots side by side at 1440, 1024 and 390, in light and dark.
-  - Plus structural checks: no horizontal overflow; headers and footers aligned within a band; no
-    doubled borders; hatch only where something is pending, estimated or empty.
-  - The empty crawl and every test suite run for each page.
+  - DOM parity (`e2e/parity.spec.ts`): a ported page is compared with the redesign. Light-DOM pages
+    (`REDESIGNED` in `e2e/pages.ts`) compare `#main`; shadow pages (`SHADOWED`) compare `.gw` inside
+    the shadow root, on every tab.
+  - Pixels (`e2e/visual.spec.ts`): the same pages against the redesign at 1500, 1100 and 390, in Paper
+    and Ink, every tab.
+  - The empty crawl reads shadow roots and clicks redesigned tabs; it covers a page once its gate is on.
   - The old reference is retired once the last page moves.
+
+### Porting a page (the recipe Growth set)
+
+1. `node scripts/port/module.cjs <MODULE> <template id> src/sections/<page>2.tsx` (Node 22 on PATH).
+   It cuts the module and its template's markup from the reference, converts both to JSX, and prints
+   the module's free variables and the lines the converter left as strings.
+2. Hand fixes, in the new file:
+   - The shadow host: replace the module's own `attachShadow` and `cloneNode` lines with
+     `const { host, R, W, into, $g } = shadowHost('<page>', skeleton());` (rename `SR`→`R` or alias it),
+     and its mount's slot lookup with `if (!into('<slot id>')) return;`.
+   - Turn the IIFE into `function make<Page>() { … return { mount, unmount, setTab: (route, sub) => …,
+     tab: () => S.tab, host }; }`, and end the file with `registerPage([routes], '<slot id>', make<Page>);`.
+   - String-built markup the converter left: `h += <x/>` becomes an array pushed and rendered;
+     `.join('')` on JSX goes; `'<span>'` splits become JSX; unclosed-tag fragments are rewritten whole.
+   - Free variables: `CC` (cc.ts) gives `go`, `route`, `level`, `viewing`, `scrub`. Map the
+     reference's other globals to the app's: `toast` (shell.tsx), `vLevel` (shell.tsx), `S.view`
+     (data.tsx `S`). Shared reference data a module reads (Field's `POSTERS`, `SHOPS`…) is ported into
+     the module's file or a `<page>Data.tsx` beside it, as the reference has it.
+3. Import the file from `shell.tsx` (beside `import './growth2'`), so it registers.
+4. `npx tsc -b`, then add the route(s) to `SHADOWED` in `e2e/pages.ts` and run
+   `npx playwright test e2e/parity.spec.ts e2e/visual.spec.ts -g <route>`: every tab must match.
+5. Live wiring is its own step: build the page's datasets from what `live/sections.ts` fills (as
+   `growthLive.ts` starts to), route its actions through the existing flows, then turn its gate on and
+   run the empty crawl for it.
 
 ## Decisions taken
 

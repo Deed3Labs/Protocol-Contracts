@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { APP } from '../playwright.config';
 import { ROUTES, open } from './pages';
 
 /*
@@ -12,7 +13,7 @@ import { ROUTES, open } from './pages';
  * e2e/.results/empty-report.json.
  */
 
-const EMPTY = 'http://localhost:5231/?preview=1&empty=1';
+const EMPTY = APP + '&empty=1';
 /** A section's tabs: the old pages' pane tabs, or a redesigned page's (inside its shadow root, which locators reach). */
 const TABS = '#main .ptabs button, #main .gtabs button:not(.tabr)';
 const CLICKABLE = '#main button, #main [data-member], #main tr[data-merchant], #main tr[data-poster]';
