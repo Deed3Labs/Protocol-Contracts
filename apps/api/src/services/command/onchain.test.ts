@@ -388,3 +388,41 @@ describe('who can do what, live', () => {
     expect(r.roles.every(([, h]) => h.length === 6)).toBe(true);
   });
 });
+
+describe('is it what dev compiles', () => {
+  test('a fingerprint masks the immutables and cuts the metadata off, so two deployments of one source match', async () => {
+    const { codeFingerprint } = await import('./onchain.js');
+    // 6080 | 2 immutable bytes | 60 00 | metadata a1 b2 (2 bytes long: 0002)
+    const one = '0x6080' + 'aaaa' + '6000' + 'a1b2' + '0002';
+    const two = '0x6080' + 'bbbb' + '6000' + 'c3d4' + '0002';
+    expect(codeFingerprint(one, [[2, 2]])).toBe(codeFingerprint(two, [[2, 2]]));
+    // a change anywhere else is a different fingerprint
+    expect(codeFingerprint('0x6080aaaa6001a1b20002', [[2, 2]])).not.toBe(codeFingerprint(one, [[2, 2]]));
+  });
+
+  test('each deployed contract’s code against its fingerprint: same, different, or left out when it can’t be read', async () => {
+    const { codeMatchLive, codeFingerprint, forgetCodeMatch } = await import('./onchain.js');
+    const deployed = '0x6080aaaa6000a1b20002';
+    const fingerprints = {
+      LendingPool: { sha256: codeFingerprint('0x6080bbbb6000c3d40002', [[2, 2]]), immutables: [[2, 2]] as Array<[number, number]> },
+      PayoutPool: { sha256: codeFingerprint('0x6080bbbb6001c3d40002', [[2, 2]]), immutables: [[2, 2]] as Array<[number, number]> },
+      ClearCredit: { sha256: 'x', immutables: [] },
+    };
+    forgetCodeMatch();
+    const asked: string[] = [];
+    const reader = {
+      read: async () => [],
+      codeOf: async (address: string) => {
+        asked.push(address);
+        if (address === C.ClearCredit.address) throw new Error('unreadable');
+        return { implementation: address, code: deployed };
+      },
+    };
+    const same = await codeMatchLive(reader as any, NOW.getTime(), fingerprints);
+    expect(Object.fromEntries(same)).toEqual({ LendingPool: true, PayoutPool: false });
+    // read once, then kept for ten minutes
+    await codeMatchLive(reader as any, NOW.getTime() + 60e3, fingerprints);
+    expect(asked).toHaveLength(3);
+    forgetCodeMatch();
+  });
+});

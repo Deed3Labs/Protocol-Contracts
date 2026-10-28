@@ -146,6 +146,18 @@ describe('commits on more than one branch', () => {
     expect(open.map((x) => [x.id, x.commits.map((y) => y.sha)])).toEqual([['code:LendingPool', [sha(1), sha(2)]]]);
   });
 
+  test('a contract whose deployed code is exactly dev’s has nothing in flight: its later commits went out with its release', async () => {
+    const at = Date.parse('2026-10-01T00:00:00Z');
+    const releases = new Map([['LendingPool', [{ version: 'v1.0', at, implementation: '' }]]]);
+    const map = [{ name: 'LendingPool', deployed: 'LendingPool', deployedAt: null }];
+    const same = await codeChanges(db, cfg, map, releases, NOW, new Map([['LendingPool', true]]));
+    expect(same.open).toEqual([]);
+    expect(same.done.find((d) => d.id === 'rel:LendingPool:v1.0')!.commits.map((y) => y.sha)).toEqual([sha(1), sha(2)]);
+    // different: still in flight, and it says why
+    const differs = await codeChanges(db, cfg, map, releases, NOW, new Map([['LendingPool', false]]));
+    expect(differs.open.map((x) => [x.id, x.state])).toEqual([['code:LendingPool', '2 commits on dev · differs from what’s deployed']]);
+  });
+
   test('the files budget holds across branches, the release branch’s commits first', async () => {
     hist.main.push(commit(4, '10-22T08:00:00', 'main a'), commit(5, '10-22T09:00:00', 'main b'));
     hist.dev.push(commit(6, '10-22T10:00:00', 'dev a'));
