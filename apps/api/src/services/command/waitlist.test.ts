@@ -211,6 +211,85 @@ describe('Members, live', () => {
     expect((f['members.next_batch.preview'] as any)[25]).toEqual({ wk: [1, 1, 0], src: [1, 1], city: [1, 1, 0] });
   });
 
+  test('the waitlist’s people, in line and masked, never at Totals; the invited keep their waitlist number', async () => {
+    const m = await read();
+    expect(m.WAITLIST!.map((w) => [w.pos, w.city, w.src])).toEqual([
+      [1, 'Redlands', 'Poster'],
+      [2, 'Riverside', 'Website'],
+    ]);
+    expect(m.WAITLIST!.every((w) => /^W-\d{4}$/.test(w.no) && w.id > 1_000_000 && w.first!.includes('•'))).toBe(true);
+    expect((await read(SEE, true)).WAITLIST!.map((w) => w.first)).toEqual(['Fy', 'Gu']);
+    // invited and not signed up: the number they had on the waitlist, and the same id
+    const cy = m.MEMBERS.find((x) => x.status === 'invited' && x.city === 'Riverside' && x.src === 'Poster')!;
+    const { rows } = await db.query<{ id: number }>(`SELECT id FROM command.waitlist WHERE email = 'cy@example.com'`);
+    expect([cy.id, cy.no]).toEqual([1_000_000 + rows[0].id, `W-${String(rows[0].id).padStart(4, '0')}`]);
+    const totals = await read(TOTALS);
+    expect([totals.WAITLIST, totals.FORMS]).toEqual([null, null]);
+    expect(JSON.stringify(totals)).not.toMatch(/W-\d|Fy|Gu|example\.com/);
+  });
+
+  test('each batch’s size and how far its people got, at every level', async () => {
+    const want = [
+      [1, 2, 1, 0, 0],
+      [2, 3, 1, 1, 1],
+    ];
+    for (const level of [SEE, TOTALS] as Level[]) expect((await read(level)).BATCHES.map((b) => [b.number, b.size, b.opened, b.active, b.spent])).toEqual(want);
+  });
+
+  test('the join form’s last 30 days, newest first, masked, and how many', async () => {
+    const m = await read();
+    // Ana asked twice (the second time from a Riverside ZIP): each answer is a row; the shop's isn't here
+    expect(m.FORMS!.map((f) => [f.type, f.city, f.st])).toEqual([
+      ['Waitlist', 'Riverside', 'Invited'],
+      ['Waitlist', 'Redlands', 'Invited'],
+    ]);
+    expect(m.FORMS![0].who[0]).toContain('•');
+    expect(m.FORMS![0].mail).not.toContain('ana@');
+    expect(m.figures['members.forms.month']).toBe(2);
+    expect((await read(TOTALS)).figures['members.forms.month']).toBe(2);
+  });
+
+  test('a proposed batch says who it would take, in its order, and they’re who it sends', async () => {
+    const { rows: pp } = await db.query<{ id: string }>(`INSERT INTO command.people (email, name) VALUES ('marcus@useclear.org', 'Marcus') RETURNING id`);
+    const body = { size: 5, order: 'cities', cities: ['Riverside'] };
+    await db.query(`INSERT INTO command.proposals (kind, area, summary, payload, proposed_by) VALUES ('action', 'members', 'x', $1, $2)`, [JSON.stringify({ section: 'members', kind: 'batch', body }), pp[0].id]);
+    const m = await read();
+    const gu = m.WAITLIST!.find((w) => w.city === 'Riverside')!;
+    expect(m.NEXT_BATCH).toMatchObject({ number: 3, size: 5, proposedBy: 'Marcus', order: 'cities', ids: [gu.id], fromPosters: 0, fromWebsite: 1, proposedAt: expect.any(Number) });
+    expect(m.figures['members.next_batch.number']).toBe(4);
+    // at Totals, how many, never who
+    expect((await read(TOTALS)).NEXT_BATCH).not.toHaveProperty('ids');
+    // what sends is the same: only Riverside, though Fy waited longer
+    await db.transaction(async (tx) => {
+      expect(await sendBatch(tx, 5, 'cities', 'Kai', NOW, { cities: ['Riverside'] })).toEqual({ number: 3, size: 1 });
+      expect((await tx.query<any>(`SELECT name FROM command.waitlist WHERE batch = 3`)).rows).toEqual([{ name: 'Gu' }]);
+      throw Object.assign(new Error('roll back'), { rollback: true });
+    }).catch((e) => expect(e.rollback).toBe(true));
+    await db.query(`DELETE FROM command.proposals WHERE proposed_by = $1`, [pp[0].id]);
+  });
+
+  test('a batch of shops’ posters or of people picked by hand takes only them', async () => {
+    const m = await read();
+    const fy = m.WAITLIST!.find((w) => w.city === 'Redlands')!;
+    await db.query(`UPDATE command.waitlist SET poster = 'P-003' WHERE name = 'Fy'`);
+    const a = actionFor('members', 'batch')!;
+    // the body says which: an empty list is refused
+    expect(a.body.safeParse({ size: 5, order: 'picked' }).success).toBe(false);
+    expect(a.body.safeParse({ size: 5, order: 'shops', posters: [] }).success).toBe(false);
+    expect(await a.summary(a.body.parse({ size: 5, order: 'cities', cities: ['Riverside', 'Colton'] }), db)).toBe('Send the next batch of 5 invites from Riverside, Colton');
+    const kai = { id: 'p1', privyId: null, name: 'Kai', email: null, title: '' };
+    for (const [b, who] of [
+      [{ size: 5, order: 'shops', posters: ['P-003'] }, ['Fy']],
+      [{ size: 5, order: 'picked', ids: [fy.id + 1, fy.id] }, ['Fy', 'Gu']],
+    ] as const) {
+      await db.transaction(async (tx) => {
+        await a.apply!({ tx, person: kai, approver: null, at: NOW }, a.body.parse(b));
+        expect((await tx.query<any>(`SELECT name FROM command.waitlist WHERE batch = 3 ORDER BY name`)).rows.map((r: any) => r.name)).toEqual([...who]);
+        throw Object.assign(new Error('roll back'), { rollback: true });
+      }).catch((e) => expect(e.rollback).toBe(true));
+    }
+  });
+
   test('live with no member source says so', async () => {
     await expect(membersSection(db, { level: SEE, reveal: false, now: NOW })).rejects.toThrow(/PROVIDER_MEMBERS=live reads the member app/);
   });

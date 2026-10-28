@@ -12,6 +12,20 @@ import { REAL } from '../live/env';
 export const vars = {};
 /* ── Icons: square, single weight ────────────────────────── */
 export const P = {
+  // the redesign's (design/command-center-ui): Build, Community, Settings
+  build: <path d="M7 6 3 10l4 4M13 6l4 4-4 4M11 4 9 16" />,
+  community: (
+    <>
+      <path d="M3 5.5h10v6H8l-3 2.5v-2.5H3z" />
+      <path d="M15 8.5h2v6h-1.5v2l-2.5-2H9" />
+    </>
+  ),
+  settings: (
+    <>
+      <path d="M7.78 4.10 8.37 1.96 11.63 1.96 12.22 4.10 12.60 4.26 14.53 3.17 16.83 5.47 15.74 7.40 15.90 7.78 18.04 8.37 18.04 11.63 15.90 12.22 15.74 12.60 16.83 14.53 14.53 16.83 12.60 15.74 12.22 15.90 11.63 18.04 8.37 18.04 7.78 15.90 7.40 15.74 5.47 16.83 3.17 14.53 4.26 12.60 4.10 12.22 1.96 11.63 1.96 8.37 4.10 7.78 4.26 7.40 3.17 5.47 5.47 3.17 7.40 4.26Z" />
+      <circle cx="10" cy="10" r="2.6" />
+    </>
+  ),
   home: (
     <>
       <path d="M3 9.5 10 4l7 5.5V17H3z" />
@@ -152,7 +166,8 @@ export const SECTIONS = [
   {
     group: 'Rules',
     items: [
-      ['contracts', 'Contracts'],
+      ['build', 'Build'],
+      ['community', 'Community'],
       ['governance', 'Governance'],
     ],
   },
@@ -160,12 +175,15 @@ export const SECTIONS = [
     group: 'Admin',
     items: [
       ['records', 'Records'],
-      ['team', 'Permissions'],
+      ['team', 'Team'],
+      ['settings', 'Settings'],
     ],
   },
 ];
 export const NAMES = Object.fromEntries(SECTIONS.flatMap((g) => g.items));
-NAMES.waiting = 'Waiting';
+// Contracts became Build in the redesign: an old #contracts link still goes there (shell.tsx go)
+NAMES.contracts = 'Build';
+NAMES.waiting = 'Inbox';
 NAMES.more = 'More';
 export const PLANNED = {
   growth: {
@@ -241,6 +259,23 @@ export const PLANNED = {
     panes: [
       ['Documents', 'Signed copies, minutes and filings.'],
       ['Audit log', 'Who did what, when, from where.'],
+    ],
+  },
+  community: {
+    line: 'Where members talk, meet and vote between meetings.',
+    panes: [
+      ['Forum', 'Threads, ideas and flags, by category.'],
+      ['Live', 'Events and live sessions, as a list or a month.'],
+      ['Channel', 'The co-op’s channel: the schedule and the library.'],
+    ],
+  },
+  settings: {
+    line: 'The rules and limits the co-op runs on. Every change needs a second person.',
+    panes: [
+      ['Rules and limits', 'The two-person limits, shop costing and stock, invites and votes.'],
+      ['Security', 'Sign-in, sessions and keys.'],
+      ['Connections', 'Plaid, Bridge, Lithic, Stripe and the rest, and how they’re syncing.'],
+      ['Organization', 'The co-op’s entities and profile.'],
     ],
   },
   team: {
@@ -400,11 +435,11 @@ export const WAITING0 = [
   {
     id: 'chain',
     kind: 'On-chain',
-    tag: '2/3 signed',
+    tag: '1 of 2 signed',
     title: 'Rosa’s cap',
     fig: '$150.00',
     figSub: 'per sale, up from $100.00',
-    meta: ['Dana Ruiz proposed'],
+    meta: ['Marcus Lee proposed · Dana Ruiz signed'],
     cta: 'Open in multisig',
     mode: 'multisig',
     ledger: [
@@ -419,7 +454,7 @@ export const WAITING0 = [
     ],
     primary: 'Open in multisig',
     steps: ['Prepared the transaction', 'Opened it in the multisig', 'Waiting for your signature there'],
-    done: ['Handed to the multisig.', 'It executes when the third signature lands.'],
+    done: ['Signed in the Ops Safe.', 'Live after the 24-hour wait, 22 Oct at 14:30.'],
   },
 ];
 /* Alerts carry how bad, where, how old, and what is already being done about it. */
@@ -437,9 +472,9 @@ export const ALERTS0 = [
   {
     t: 'Poster P-044 is sun-faded',
     sev: 'underway',
-    area: 'Growth',
+    area: 'Field',
     age: 'Mesa Laundry · 19 Oct',
-    go: 'growth',
+    go: 'field',
     fix: 'route',
   },
   {
@@ -474,6 +509,8 @@ export const S = {
   live: null,
   updates: null,
   payoutDone: false,
+  // the inbox's filter, and whether its updates were marked read
+  ibx: { f: 'all', read: false },
 };
 /* ── Theme ───────────────────────────────────────────────── */
 vars.themePref = 'light';
@@ -583,14 +620,14 @@ export const UPD0 = [
       ]),
     by: 'Dana Ruiz',
     when: 'Yesterday',
-    go: 'contracts',
+    go: 'build',
   },
 ];
 export const UPD_FROM = {
   payout: ['payout approved', 'merchants'],
   invite: ['invites sent', 'members'],
-  agreement: ['sent to e-signature', 'contracts'],
-  chain: ['sent to the multisig', 'contracts'],
+  agreement: ['sent to e-signature', 'governance'],
+  chain: ['sent to the multisig', 'build'],
 };
 export const W_ICON = {
   payout: 'money',
@@ -625,7 +662,6 @@ export const W_VIZ = {
     vizTrack(
       [
         ['DR', 1],
-        ['ML', 1],
         ['You', 0],
       ],
       true,
@@ -644,7 +680,7 @@ export const NEED = {
   chain: {
     order: 2,
     verb: 'Sign',
-    meta: 'Cap raise from $100.00 · 2/3 signed',
+    meta: 'Cap raise from $100.00 · 1 of 2 signed',
     fig: '$150.00',
   },
   invite: {
@@ -713,7 +749,32 @@ export const FEED0 = [
     ),
     by: 'Dana Ruiz',
     when: 'Yesterday',
-    go: 'contracts',
+    go: 'build',
+  },
+  {
+    what: (
+      <>
+        {'Board minutes draft shared for '}
+        <b>4 Nov</b>
+      </>
+    ),
+    by: 'Ana Ortiz',
+    when: '2 days ago',
+    go: 'governance',
+    old: true,
+  },
+  {
+    what: (
+      <>
+        {'Yield pool opened with '}
+        <b>$8,062.10</b>
+        {' from 14 members'}
+      </>
+    ),
+    by: 'LendingPool',
+    when: '15 Oct',
+    go: 'money',
+    old: true,
   },
 ];
 export const FEED_FROM = {
@@ -2996,17 +3057,17 @@ export const WHO = [
   ['SY', 'System'],
 ];
 export const LOG = [
-  /* id, time, who, area, action, detail, from, result, approver */
+  /* id, time, who, area, action, detail, from, result, approver: as the redesign has it (design/command-center-ui), which Records reads */
   [
-    'a1',
-    H2(10, 21, 14, 2),
-    'K',
-    'chain',
-    'Signed “Raise Rosa’s cap to $150.00”',
-    'Second of two signatures. Goes live 22 Oct, 12:00.',
-    'Mac · Redlands',
-    'approved',
-    'Marcus Lee proposed',
+    'n0',
+    H2(10, 21, 13, 40),
+    'DR',
+    'money',
+    'Proposed paying the Q3 sales tax',
+    '$351.58 from operating cash to CDTFA, due 31 Oct.',
+    'Laptop · Riverside',
+    'waiting',
+    'Needs a second person',
   ],
   [
     'a2',
@@ -3034,7 +3095,7 @@ export const LOG = [
   ['a4', H2(10, 21, 9, 12), 'ML', 'field', 'Replaced poster P-012 at Uptown Barber', 'Photo attached. Next swap 20 Dec.', 'iPhone · Redlands', 'done', ''],
   ['a5', H2(10, 21, 8, 40), 'SY', 'alert', 'Orange St. Point went offline', 'Counter device stopped reporting.', 'Device', 'alert', ''],
   ['a6', H2(10, 20, 22, 41), 'SY', 'system', 'Plaid re-sync started', '7 of 12 bank links refreshed so far.', 'Plaid', 'running', ''],
-  ['a7', H2(10, 20, 18, 0), 'ML', 'chain', 'Signed “Raise Rosa’s cap to $150.00”', 'First of two signatures.', 'iPhone · San Bernardino', 'signed', ''],
+  ['a7', H2(10, 20, 18, 0), 'DR', 'chain', 'Signed “Raise Rosa’s cap to $150.00”', 'First of two signatures. Waiting on you.', 'Laptop · Riverside', 'signed', 'Marcus Lee proposed'],
   ['a8', H2(10, 20, 16, 0), 'ML', 'field', 'Drafted “Add Inland Cycle Works”', 'Waits on the merchant agreement.', 'iPhone · Redlands', 'waiting', ''],
   ['s2', H2(10, 20, 11, 0), 'K', 'shop', 'Put Graphic Tee · Two Ten Overpass on the shelf', 'Photos, price and stock checked.', 'Mac · Redlands', 'done', ''],
   ['a9', H2(10, 20, 10, 0), 'K', 'chain', 'Signed RevolvingIssuer v1.3', 'Second of two signatures.', 'Mac · Redlands', 'approved', 'Dana Ruiz proposed'],

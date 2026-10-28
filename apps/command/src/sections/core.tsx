@@ -4,6 +4,7 @@ import { liveSignOut } from '../live/account';
 import { attrs, css, html } from '../runtime/dom';
 import { P, S, SG, TH_IC, TS, vars } from './data';
 import { stepFlow } from './kit';
+import { pageModFor } from './pageHost';
 import { modalShell, onKey, render } from './shell';
 import { showLogin } from './signin';
 export function ic(n, cls = '') {
@@ -186,6 +187,15 @@ export function closePf() {
 export function pfAct(k) {
   closePf();
   if (k === 'access') {
+    // the redesigned Team opens on People with your own panel, as the reference's ADMIN2.open does
+    const m = pageModFor('team');
+    if (m) {
+      m.open('team', 'people', 'p:K');
+      window.scrollTo({
+        top: 0,
+      });
+      return;
+    }
     if (typeof TS !== 'undefined') {
       TS.pane = 'people';
       TS.person = LIVE ? vars.meId : 'K';

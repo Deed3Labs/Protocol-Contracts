@@ -3,6 +3,7 @@ import { Fragment } from 'react';
 import { attrs, css, html } from '../runtime/dom';
 import { $, cell, compBar, head, ic, int, money, pct, segHtml, themeSwitch } from './core';
 import { LIVE, REAL } from '../live/env';
+import { ibxData, inboxCell } from './inbox';
 import { fig } from '../live/figures';
 import { feedChip, feedLabel, feedList, hasFeeds } from '../live/feeds';
 import {
@@ -63,7 +64,7 @@ const dayDate = (t) => `${DOW[new Date(t).getUTCDay()]} ${fmtD(t)}`;
 const pc = (a, b) => (b ? pct(a, b) : '0.0%');
 // the prototype's moving work and changes, which real data never draws (taken the first time Now draws)
 let PROTO = null;
-const real = (list) => {
+export const real = (list) => {
   PROTO ??= new Set([...S.live, ...S.updates.filter((u) => !u.mine)]);
   return REAL ? list.filter((x) => !PROTO.has(x)) : list;
 };
@@ -1357,20 +1358,22 @@ export function stateError(err?: Error) {
 }
 /* ── Waiting (phone tab) ─────────────────────────────────── */
 export function waitingPage() {
+  const { needs, alerts } = ibxData();
+  const words = ['', 'One thing needs', 'Two things need', 'Three things need', 'Four things need'];
   const h = head(
     <>
-      {'Waiting · '}
-      <b>{S.waiting.length}</b>
+      {'Inbox · '}
+      <b>{needs.length + alerts.length}</b>
     </>,
-    'Waiting on you',
+    needs.length ? `${words[needs.length] || needs.length + ' things need'} you.` : 'Nothing needs you.',
     '',
-    'Money and on-chain actions need a second person. Whoever proposes can’t approve.',
+    'Approvals and signatures first, then alerts, then updates. Whoever proposes can’t approve.',
   );
   return (
     <>
       {h}
-      <div className="group nowwrap">
-        <div className="bento sub now">{needZone(S.waiting, 's-12')}</div>
+      <div className="group">
+        <div className="bento sub">{inboxCell('s-12 ibx-c')}</div>
       </div>
     </>
   );

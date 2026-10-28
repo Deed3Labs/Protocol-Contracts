@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { APP, PROTO } from '../playwright.config';
-import { ROUTES, open } from './pages';
+import { APP, PROTO, REDESIGN } from '../playwright.config';
+import { ROUTES, SHADOWED, SHADOW_TABS, open, ported } from './pages';
 
 /**
  * Pixels against the prototype: every section and pane tab at 1500, 1100 and 390 px, in Paper and
@@ -18,13 +18,15 @@ for (const theme of ['light', 'dark'] as const) {
       const viewport = info.project.use.viewport!;
       const proto = await browser.newPage({ viewport });
       const app = await browser.newPage({ viewport });
-      await open(proto, PROTO, route, theme);
+      // a ported page is compared with the redesign (docs/ui-redesign-plan.md), and its tabs are the redesign's
+      await open(proto, ported(route) ? REDESIGN : PROTO, route, theme);
       await open(app, APP, route, theme);
-      const panes = Math.max(1, await proto.locator('#main .ptabs button').count());
+      const tabs = SHADOWED.has(route) ? SHADOW_TABS : '#main .ptabs button';
+      const panes = Math.max(1, await proto.locator(tabs).count());
       for (let pane = 0; pane < panes; pane++) {
         if (pane > 0) {
-          await proto.locator('#main .ptabs button').nth(pane).click();
-          await app.locator('#main .ptabs button').nth(pane).click();
+          await proto.locator(tabs).nth(pane).click();
+          await app.locator(tabs).nth(pane).click();
         }
         // a pane can use a weight or face the last one didn't, and the browser loads it on first use
         await Promise.all([proto, app].map((p) => p.evaluate(() => document.fonts.ready)));

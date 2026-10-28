@@ -139,6 +139,18 @@ describe('Merchants, live from the merchant app', () => {
     expect(totals.TX).toEqual(see.TX);
   });
 
+  test('every card keeps its owner, value, next step and flag, whatever its stage, so saving one whole loses none', async () => {
+    await db.query(`INSERT INTO command.merchant_stage (id, position, name, kind, city, stage, owner, per_month_cents, next_step, contact, source, address, notes, flag)
+      VALUES ('p1', 1, 'Inland Cycle Works', 'Bikes', 'Redlands', 'signing', 'Dana', 120000, 'Sign the agreement', '{}', 'Poster', '', '', true)`);
+    try {
+      const r = await read();
+      expect(r.BOARD.find((c) => c.id === 'p1')).toMatchObject({ stage: 'signing', owner: 'Dana', val: 1200, next: 'Sign the agreement', flag: true });
+      expect(r.BOARD.find((c) => c.id === 'p0')).toMatchObject({ stage: 'talking', owner: 'Marcus', val: 9000, next: 'Demo Thu' });
+    } finally {
+      await db.query(`DELETE FROM command.merchant_stage WHERE id = 'p1'`);
+    }
+  });
+
   test('PROVIDER_MERCHANTS=live reads it instead of throwing', async () => {
     process.env.PROVIDER_MERCHANTS = 'live';
     const r = await merchantsSection(db, { level: SEE, reveal: false, now: NOW, charges: db });

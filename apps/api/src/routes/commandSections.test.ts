@@ -67,6 +67,15 @@ const signIn = async (user: string) => {
   const r = await call({ user }, 'POST', '/sessions', { deviceKey: `device-${user.replace(/\W/g, '')}-00000000`, keep: true, method: 'email' });
   return { user, session: r.body.session?.id as string };
 };
+/** An export (migration 0064): Kai asks, the second admin approves, and the grant comes back. */
+const exportFor = async (asker: { user: string; session?: string }, section: string, reason: string) => {
+  const second = await signIn('did:second|second@useclear.org');
+  const r = await call(asker, 'POST', `/actions/${section}/export`, { reason });
+  expect(r.status).toBe(202);
+  const a = await call(second, 'POST', `/proposals/${r.body.proposal.id}/approve`);
+  expect(a.status).toBe(200);
+  return a.body.result.grant as string;
+};
 const all = (n: number): Levels => Object.fromEntries(SECTIONS.map((s) => [s, n])) as Levels;
 
 describe('the seed', () => {
@@ -97,7 +106,8 @@ describe('Members, as each level gets it', () => {
   });
 
   test('names in full, when asked for, are the prototype’s rows exactly, and the asking is logged', async () => {
-    const r = await call(kai, 'GET', '/sections/members?reveal=1');
+    const grant = await exportFor(kai, 'members', 'Checking batch 13');
+    const r = await call(kai, 'GET', `/sections/members?reveal=1&export=${grant}`);
     expect(r.status).toBe(200);
     expect(r.body.names).toBe('shown');
     expect(r.body.MEMBERS).toEqual(fixture.members);
@@ -107,7 +117,7 @@ describe('Members, as each level gets it', () => {
     expect(r.body.NEXT_BATCH).toEqual(fixture.proposed);
     expect(r.body.figures).toEqual(JSON.parse(JSON.stringify(MEMBERS_FIGURES)));
     const log = (await call(kai, 'GET', '/audit')).body.entries;
-    expect(log[0]).toMatchObject({ action: 'Showed member names', area: 'members', detail: '300 members' });
+    expect(log[0]).toMatchObject({ action: 'Showed names for 300 rows', area: 'members', detail: 'Reason: Checking batch 13' });
   });
 
   test('otherwise names leave the server masked, the way the page masks them', async () => {
@@ -162,7 +172,8 @@ describe('Growth and Field, as each level gets them', () => {
   });
 
   test('Growth with names: the prototype’s posters, designs, inbox and figures exactly; the asking is logged', async () => {
-    const r = await call(kai, 'GET', '/sections/growth?reveal=1');
+    const grant = await exportFor(kai, 'growth', 'Answering a form');
+    const r = await call(kai, 'GET', `/sections/growth?reveal=1&export=${grant}`);
     expect(r.status).toBe(200);
     expect(r.body.POSTERS).toEqual(growthFx.posters);
     expect(r.body.INBOX).toEqual(growthFx.forms);
@@ -175,7 +186,7 @@ describe('Growth and Field, as each level gets them', () => {
     expect(r.body.figures['members.waitlist.median_days']).toBe(24);
     expect(r.body.MEMBER_SUMMARY).toEqual({ invited: 300, opened: 64, active: 124, funded: { Bank: 71, $5: 38, Deposit: 15 } });
     expect(r.body.NEXT_BATCH).toEqual({ number: 13 });
-    expect((await call(kai, 'GET', '/audit')).body.entries[0]).toMatchObject({ action: 'Showed names on the forms', area: 'growth' });
+    expect((await call(kai, 'GET', '/audit')).body.entries[0]).toMatchObject({ action: expect.stringMatching(/^Showed form names for \d+ rows$/), area: 'growth' });
   });
 
   test('Growth without asking: names and emails masked the way the page masks them', async () => {

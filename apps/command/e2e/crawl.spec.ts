@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { APP, PROTO } from '../playwright.config';
-import { ROUTES, canonical, open } from './pages';
+import { NEW_ROUTES, ROUTES, canonical, open } from './pages';
 
 /**
  * The buttons on every page and pane, clicked once in the prototype and once in the app, from the
@@ -28,7 +28,8 @@ async function snapshot(page: Page) {
 async function at(page: Page, base: string, route: string, pane: number) {
   // a real reload: going to the same #hash again would keep whatever the last click opened
   await page.goto('about:blank');
-  await open(page, base, route);
+  // the old prototype only knows Build by its old name
+  await open(page, base, base === PROTO && route === 'build' ? 'contracts' : route);
   // the same clock and dice in both: the prototype reads Date.now() twice and makes up a time with Math.random()
   await page.evaluate(() => {
     Date.now = () => Date.UTC(2026, 9, 21, 21);
@@ -53,7 +54,8 @@ async function sample(page: Page): Promise<number[]> {
   });
 }
 
-for (const route of ROUTES) {
+// the crawl compares with the old prototype, which has no page for a route new in the redesign (Community, Settings)
+for (const route of ROUTES.filter((r) => !NEW_ROUTES.has(r))) {
   for (let pane = 0; pane < 8; pane++) {
     test(`clicks match the prototype: ${route} · pane ${pane}`, async ({ browser }) => {
       const proto = await browser.newPage();

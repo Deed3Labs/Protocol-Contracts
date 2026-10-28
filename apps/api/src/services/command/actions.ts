@@ -1,13 +1,16 @@
 import { DAY, SEED_TODAY } from '@clear/command-types';
 import { z } from 'zod';
 import type { Queryable } from '../../db/db.js';
-import { PROPOSE, type Level, type Section } from './levels.js';
+import { APPROVE, PROPOSE, type Level, type Section } from './levels.js';
 import { providerFor } from './sections.js';
 import { addToCatalog, adoptSiteProduct, deletePhoto, isProductPhoto, siteProductRow, type CatalogColour, type CatalogProduct, type CatalogVariant } from './catalog.js';
-import { productCost, readBook, runUses } from './costing.js';
+import { productCost, readBook, roundCents, runUses } from './costing.js';
+import { recordOverhead, type OrderRow } from './shopModel.js';
 import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
-import { sendBatch } from './waitlist.js';
+import { BATCH_ORDERS, sendBatch } from './waitlist.js';
+import { ActionError } from './actionError.js';
+import { overLimit, readSetting, settingsActions } from './settings.js';
 
 /*
  * Each section's own actions (docs/command-center-plan.md: the step after Phase 3).
@@ -16,7 +19,7 @@ import { sendBatch } from './waitlist.js';
  * - Command's own record (a scan, a board card, a filing's status): saved here, with an audit row.
  * - Something outside Command (pay, refund, sign on-chain, send for e-signature, message members):
  *   recorded in command.outbox and not carried out. Phases 4–7 connect the systems that do it.
- * - Either of those, when the action's own rule says so (money over $50, two of three signers, a
+ * - Either of those, when the action's own rule says so (money over its limit in Settings, two of three signers, a
  *   batch of invites), first waits for a second person as a proposal, and runs when they approve.
  */
 
@@ -62,22 +65,40 @@ const hhmm = (d: Date) => d.toISOString().slice(11, 16);
 /** How a person is written on a record: their name, as the audit log writes it. */
 const who = (p: Person) => p.name || p.email || 'Someone';
 
-export class ActionError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { ActionError };
 
 /** When a section's action happens: the prototype's 21 Oct, 14:00, while it reads seeded data. */
 export const actionTime = (section: Section, now: Date) => (providerFor(section) === 'seed' ? new Date(SEED_TODAY + 14 * 3600e3) : now);
 
 // ── Growth ──────────────────────────────────────────────────────────────────
 
+/** How long an approved export can be used: once, within a day of the approval. */
+export const EXPORT_HOURS = 24;
+
+/**
+ * Asking for a whole list with names (Settings → Data exports need a second person): Approve on the
+ * section to ask, always a second person, and the approval writes a grant only the asker can use, once.
+ */
+const exportAction = (section: 'members' | 'growth', what: string): Action => ({
+  level: APPROVE,
+  body: z.object({ reason: text(300).min(1) }),
+  summary: (b) => `Export ${what} with names · ${b.reason}`,
+  second: () => true,
+  apply: async ({ tx, person, approver }, b) => {
+    if (!approver) throw new ActionError(403, 'SECOND_PERSON', 'An export needs a second person');
+    // its day runs on the real clock, even where a seeded section dates its actions on the prototype's day
+    const at = new Date();
+    const { rows } = await tx.query<{ id: string }>(
+      `INSERT INTO command.export_grants (section, person_id, reason, approved_by, approved_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [section, person.id, b.reason, approver.id, at, new Date(at.getTime() + EXPORT_HOURS * 3600e3)],
+    );
+    return { grant: rows[0].id };
+  },
+});
+
 const growth: Record<string, Action> = {
+  export: exportAction('growth', 'the join forms'),
   'poster-replaced': {
     body: z.object({ n: z.number().int().positive() }),
     summary: (b) => `Replaced poster P-${String(b.n).padStart(3, '0')}`,
@@ -171,20 +192,32 @@ const field: Record<string, Action> = {
 
 const member = z.object({ id: z.number().int().positive() });
 const members: Record<string, Action> = {
+  export: exportAction('members', 'the member list'),
   resend: { body: member, summary: () => 'Resend a member’s invite', outbox: true },
   nudge: { body: member, summary: () => 'Nudge a member to finish joining', outbox: true },
   off: { body: member.extend({ reason: text(200).default('') }), summary: () => 'Turn off a member’s access', outbox: true },
   // live (Phase 7b): once a second person approves, the next people waiting get their codes and the
-  // emails are queued for the invite job; on the seed it's recorded, as before
+  // emails are queued for the invite job; on the seed it's recorded, as before. Who goes first: the old
+  // page's oldest, posters or city (Redlands first), or the redesign's cities, shops (their posters) or
+  // people picked by hand, which take no one else; `why` is what was said for skipping people who waited longer.
   batch: {
-    body: z.object({ size: z.number().int().positive().max(500), order: text(40).default('oldest') }),
-    summary: (b) => `Send the next batch of ${b.size} invites`,
+    body: z
+      .object({
+        size: z.number().int().positive().max(500),
+        order: text(40).default('oldest'),
+        cities: z.array(text(80).min(1)).max(50).optional(),
+        posters: z.array(text(120).min(1)).max(200).optional(),
+        ids: z.array(z.number().int().positive()).max(500).optional(),
+        why: text(300).default(''),
+      })
+      .refine((b) => (b.order !== 'cities' || b.cities?.length) && (b.order !== 'shops' || b.posters?.length) && (b.order !== 'picked' || b.ids?.length), 'Say which cities, shops or people the batch takes'),
+    summary: (b) => `Send the next batch of ${b.size} invites${BATCH_FROM[b.order as string]?.(b) ?? ''}`,
     second: () => true,
     apply: async ({ tx, person, at }, b) => {
       if (providerFor('members') !== 'live') return;
-      const order = (['oldest', 'posters', 'city'] as const).find((o) => o === b.order) ?? 'oldest';
+      const order = BATCH_ORDERS.find((o) => o === b.order) ?? 'oldest';
       try {
-        return await sendBatch(tx, b.size, order, who(person), at);
+        return await sendBatch(tx, b.size, order, who(person), at, { cities: b.cities, posters: b.posters, ids: b.ids });
       } catch (e: any) {
         if (e?.code === 'NOBODY_WAITING') throw new ActionError(409, e.code, e.message);
         throw e;
@@ -192,6 +225,12 @@ const members: Record<string, Action> = {
     },
     outbox: () => providerFor('members') !== 'live',
   },
+};
+/** What a limited batch says it takes, for the audit log and Needs you. */
+const BATCH_FROM: Record<string, (b: { cities?: string[]; posters?: string[]; ids?: number[] }) => string> = {
+  cities: (b) => ` from ${b.cities!.join(', ')}`,
+  shops: (b) => ` from ${b.posters!.length === 1 ? 'one poster' : `${b.posters!.length} posters`}`,
+  picked: (b) => `, picked by hand`,
 };
 
 // ── Merchants ───────────────────────────────────────────────────────────────
@@ -266,7 +305,6 @@ const merchants: Record<string, Action> = {
 
 // ── Shop ────────────────────────────────────────────────────────────────────
 
-const over50 = (amount: number) => amount > 50;
 /** A slug: lowercase letters, numbers and dashes. */
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 /** Live, a change to the catalog is made in Command's (Phase 11), not queued for the site; seeded, it's queued as before. */
@@ -348,12 +386,13 @@ const dropOption = async (tx: Queryable, pid: string, option: string) => {
   await tx.query('UPDATE command.shop_products SET options = array_remove(options, $2) WHERE id = $1', [pid, option]);
 };
 const order = z.object({ order: z.string().regex(/^[0-9]+$/) });
-const orderState = (to: string, from: string[], line: string, tell: boolean): Action => ({
+const orderState = (to: string, from: string[], line: string, tell: boolean, then?: (c: Ctx, order: string) => Promise<unknown>): Action => ({
   body: order,
   summary: (b) => `#${b.order} · ${line}`,
-  apply: async ({ tx }, b) => {
-    const r = await tx.query('UPDATE command.shop_orders SET state = $2 WHERE id = $1 AND state = ANY($3) RETURNING 1', [b.order, to, from]);
+  apply: async (c, b) => {
+    const r = await c.tx.query('UPDATE command.shop_orders SET state = $2 WHERE id = $1 AND state = ANY($3) RETURNING 1', [b.order, to, from]);
     if (!r.rows.length) throw new ActionError(409, 'WRONG_STATE', `Order #${b.order} can’t be ${line.toLowerCase()} from where it is`);
+    if (then) await then(c, b.order);
   },
   // telling the buyer, or buying the label, is the outside part
   outbox: tell,
@@ -376,11 +415,17 @@ const unitText = z
   .trim()
   .toLowerCase()
   .regex(/^[a-z]{1,12}$/, 'A unit is a short word: each, m, g, ml, h…');
-type InputRow = { id: string; name: string; kind: string; unit: string; stocked: boolean; unit_cost_cents: string | null; archived_at: Date | null };
+type InputRow = { id: string; name: string; kind: string; unit: string; stocked: boolean; unit_cost_cents: string | null; archived_at: Date | null; per_order: boolean; on_pickup: boolean; supplier_id: string | null };
 const inputRow = (db: Queryable, iid: string) => must<InputRow>(db, 'SELECT * FROM command.shop_inputs WHERE id = $1', [iid], 'input');
 const liveInput = async (db: Queryable, iid: string) => {
   const i = await inputRow(db, iid);
   if (i.archived_at) throw new ActionError(409, 'ARCHIVED', `${i.name} is archived: restore it first`);
+  return i;
+};
+/** An input a recipe can use: not archived, and not once per order (that's the order's, not an item's). */
+const recipeInput = async (db: Queryable, iid: string) => {
+  const i = await liveInput(db, iid);
+  if (i.per_order) throw new ActionError(409, 'PER_ORDER', `${i.name} is used once per order, not in a product`);
   return i;
 };
 /** A line or override as typed: the amount when there is one (it wins over a cost), else the cost. */
@@ -428,12 +473,395 @@ const inputBody = z
     unitCost: z.number().nonnegative().max(100_000).nullable().optional(),
     lowMark: z.number().nonnegative().max(1_000_000).nullable().default(null),
     note: text(500).default(''),
+    /** Once per order (packing for the whole order); left out keeps what it is. */
+    perOrder: z.boolean().optional(),
+    /** A once-per-order input a pickup uses too; left out keeps what it is. */
+    onPickup: z.boolean().optional(),
+    /** Its supplier's id; null clears it, left out keeps it. */
+    supplier: id.nullable().optional(),
   })
   .superRefine((b, ctx) => {
+    if (b.onPickup && b.perOrder === false) ctx.addIssue({ code: 'custom', message: 'Only a once-per-order input is used on a pickup' });
     if (b.kind === 'labour' && b.unit !== 'h') ctx.addIssue({ code: 'custom', message: 'Labour is costed by the hour (h)' });
     if (b.stocked && b.kind !== 'material') ctx.addIssue({ code: 'custom', message: 'Only a material is kept on hand' });
     if (b.lowMark != null && !b.stocked) ctx.addIssue({ code: 'custom', message: 'A low mark is for an input kept on hand' });
   });
+
+// ── Shop: the redesign's data model (docs/ui-redesign-plan.md, the Shop gaps) ─
+//
+// Suppliers, buys ordered and received, extras by size or colour, the three kinds, flat costs, batches,
+// pickup points and an order's own costs. Command's own records, at Propose; a buy over Settings'
+// `shopbuy` waits for a second person. The arithmetic is services/command/costing.ts and shopModel.ts.
+
+const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateOf = (d: string) => new Date(d + 'T00:00:00Z');
+const slugId = z.string().trim().regex(/^[a-z0-9][a-z0-9-]{0,47}$/);
+const idFrom = (name: string, fallback: string) => (name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || fallback) + '-' + Date.now().toString(36).slice(-4);
+/** The next batch's id: B-001, B-002… */
+const NEXT_BATCH = `'B-' || lpad(nextval('command.shop_batch_number')::text, 3, '0')`;
+const supplierOf = async (db: Queryable, sid: string | null | undefined) => (sid ? must<{ id: string; name: string; lead_days: number | null }>(db, 'SELECT * FROM command.shop_suppliers WHERE id = $1', [sid], 'supplier') : null);
+const onHandOf = async (db: Queryable, iid: string) => Number((await one<{ n: string }>(db, 'SELECT coalesce(sum(quantity), 0) AS n FROM command.shop_input_moves WHERE input_id = $1', [iid]))!.n);
+
+/**
+ * A buy received. Kept on hand: the stock comes in and the unit cost becomes the average of what's on
+ * hand (on hand at the old average, plus what was paid, over the new total; with nothing on hand, the
+ * price paid). Made to order: the unit cost is the price paid. Either way the newest buy received is the
+ * last price paid; one dated before it goes into the average but isn't the last price.
+ */
+async function receiveBuy(tx: Queryable, i: InputRow, pid: number, q: number, totalCents: number, at: Date, note: string) {
+  const newest = !(await one(tx, `SELECT 1 FROM command.shop_input_purchases WHERE input_id = $1 AND id <> $2 AND state = 'received' AND coalesce(received_at, at) > $3`, [i.id, pid, at]));
+  if (i.stocked) {
+    const on = await onHandOf(tx, i.id);
+    await tx.query(
+      `UPDATE command.shop_inputs SET unit_cost_cents = CASE WHEN $2::numeric <= 0 OR unit_cost_cents IS NULL THEN $3::numeric / $4::numeric
+         ELSE ($2::numeric * unit_cost_cents + $3::numeric) / ($2::numeric + $4::numeric) END WHERE id = $1`,
+      [i.id, on, totalCents, q],
+    );
+    await tx.query(`INSERT INTO command.shop_input_moves (input_id, at, quantity, reason, ref, note) VALUES ($1, $2, $3, 'purchase', $4, $5)`, [i.id, at, q, pid, note]);
+  } else if (newest) await tx.query('UPDATE command.shop_inputs SET unit_cost_cents = $2::numeric / $3::numeric WHERE id = $1', [i.id, totalCents, q]);
+  if (newest) await tx.query('UPDATE command.shop_inputs SET last_cost_cents = $2::numeric / $3::numeric WHERE id = $1', [i.id, totalCents, q]);
+  await pinLines(tx, i.id);
+  const avg = Number((await one<{ u: string }>(tx, 'SELECT unit_cost_cents AS u FROM command.shop_inputs WHERE id = $1', [i.id]))!.u);
+  return { unitCost: totalCents / q / 100, avg: avg / 100 };
+}
+
+/** Packing an order uses one of each once-per-order input counted on hand: all of them shipped, those marked for pickups picked up. */
+async function usePacking({ tx, at }: Ctx, order: string) {
+  const o = (await one<{ fulfilment: string }>(tx, 'SELECT fulfilment FROM command.shop_orders WHERE id = $1', [order]))!;
+  const { rows } = await tx.query<{ id: string }>(`SELECT id FROM command.shop_inputs WHERE per_order AND stocked AND archived_at IS NULL AND ($1 = 'ship' OR on_pickup) ORDER BY id`, [o.fulfilment]);
+  // never held up by a count that's off: on hand can go under nothing, as a run made short can
+  for (const r of rows) await tx.query(`INSERT INTO command.shop_input_moves (input_id, at, quantity, reason, ref) VALUES ($1, $2, -1, 'order', $3)`, [r.id, at, Number(order)]);
+}
+
+type RunRow = { id: number; product_id: string; option: string; size: string; units: number; state: string; batch_id: string };
+/** A batch's planned runs, or why it has none. */
+const plannedRuns = async (db: Queryable, batch: string) => {
+  const { rows } = await db.query<RunRow>('SELECT * FROM command.shop_runs WHERE batch_id = $1 ORDER BY id', [batch]);
+  if (!rows.length) throw new ActionError(404, 'NOT_FOUND', `No batch ${batch}`);
+  const planned = rows.filter((r) => r.state === 'planned');
+  if (!planned.length) throw new ActionError(409, 'WRONG_STATE', `Batch ${batch} is made already`);
+  return planned;
+};
+
+const shopModel: Record<string, Action> = {
+  supplier: {
+    body: z.object({
+      /** An existing supplier to edit (the whole record); left out, one is added. */
+      id: slugId.optional(),
+      name: text(120).min(1),
+      city: text(80).default(''),
+      sells: text(200).default(''),
+      leadDays: z.number().int().nonnegative().max(365).nullable().default(null),
+      terms: text(80).default(''),
+      minimum: text(80).default(''),
+      note: text(500).default(''),
+    }),
+    summary: async (b, db) => ((b.id && (await one(db, 'SELECT 1 FROM command.shop_suppliers WHERE id = $1', [b.id]))) ? `Updated supplier ${b.name}` : `Added supplier ${b.name}`),
+    apply: async ({ tx, at }, b) => {
+      const sid = b.id ?? idFrom(b.name, 'supplier');
+      await tx.query(
+        `INSERT INTO command.shop_suppliers (id, name, city, sells, lead_days, terms, minimum, note, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET name = $2, city = $3, sells = $4, lead_days = $5, terms = $6, minimum = $7, note = $8`,
+        [sid, b.name, b.city, b.sells, b.leadDays, b.terms, b.minimum, b.note, at],
+      );
+      return { id: sid };
+    },
+  },
+  'supplier-breaks': {
+    body: z.object({
+      supplier: id,
+      /** The whole list: from this many units, this much off (0.04 is 4%). Empty clears it. */
+      breaks: z
+        .array(z.object({ quantity: amount, discount: z.number().min(0).lt(1) }))
+        .max(12)
+        .refine((xs) => new Set(xs.map((x) => x.quantity)).size === xs.length, 'One break a quantity'),
+    }),
+    summary: async (b, db) => `Set ${(await supplierOf(db, b.supplier))!.name}’s price breaks · ${b.breaks.length}`,
+    apply: async ({ tx }, b) => {
+      await supplierOf(tx, b.supplier);
+      await tx.query('DELETE FROM command.shop_supplier_breaks WHERE supplier_id = $1', [b.supplier]);
+      for (const x of b.breaks) await tx.query('INSERT INTO command.shop_supplier_breaks (supplier_id, quantity, discount) VALUES ($1, $2, $3)', [b.supplier, qty(x.quantity), x.discount]);
+    },
+  },
+  'input-supplier': {
+    body: z.object({ input: id, supplier: id.nullable() }),
+    summary: async (b, db) => {
+      const i = await inputRow(db, b.input);
+      return b.supplier ? `${i.name} comes from ${(await supplierOf(db, b.supplier))!.name}` : `${i.name} has no supplier`;
+    },
+    apply: async ({ tx }, b) => {
+      await inputRow(tx, b.input);
+      await supplierOf(tx, b.supplier);
+      await tx.query('UPDATE command.shop_inputs SET supplier_id = $2 WHERE id = $1', [b.input, b.supplier]);
+    },
+  },
+  'input-extra': {
+    body: z
+      .object({ input: id, size: SIZE.default(''), option: text(40).default(''), extra: z.number().nonnegative().max(100_000).optional(), remove: z.boolean().default(false) })
+      .refine((b) => (b.size === '') !== (b.option === ''), 'Give a size or a colour, one of them')
+      .refine((b) => b.remove || b.extra != null, 'Give what it adds, in dollars'),
+    summary: async (b, db) => {
+      const i = await inputRow(db, b.input);
+      return b.remove ? `${i.name} costs the same in ${b.size || b.option}` : `${i.name} costs $${b.extra!.toFixed(2)} more in ${b.size || b.option}`;
+    },
+    apply: async ({ tx }, b) => {
+      const i = await inputRow(tx, b.input);
+      if (b.remove) {
+        const r = await tx.query('DELETE FROM command.shop_input_extras WHERE input_id = $1 AND option = $2 AND size = $3 RETURNING 1', [b.input, b.option, b.size]);
+        if (!r.rows.length) throw new ActionError(404, 'NOT_FOUND', `${i.name} has no extra for ${b.size || b.option}`);
+        return;
+      }
+      await tx.query(
+        'INSERT INTO command.shop_input_extras (input_id, option, size, extra_cents) VALUES ($1, $2, $3, $4) ON CONFLICT (input_id, option, size) DO UPDATE SET extra_cents = $4',
+        [b.input, b.option, b.size, fcents(b.extra!)],
+      );
+    },
+  },
+  'input-kind': {
+    body: z.object({
+      input: id,
+      /** Kept on hand, made to order, or once per order. */
+      kind: z.enum(['stock', 'mto', 'order']),
+      /** Once per order: whether it's also counted on hand (mailers are). Left out keeps what it is. */
+      stocked: z.boolean().optional(),
+      /** Once per order: whether a pickup uses it too. Left out keeps what it is. */
+      onPickup: z.boolean().optional(),
+    }),
+    summary: async (b, db) => `${(await inputRow(db, b.input)).name} is ${{ stock: 'kept on hand', mto: 'made to order', order: 'used once per order' }[b.kind as 'stock']}`,
+    apply: async ({ tx }, b) => {
+      const i = await inputRow(tx, b.input);
+      const stocked = b.kind === 'stock' ? true : b.kind === 'mto' ? false : (b.stocked ?? i.stocked);
+      if (stocked && i.kind !== 'material') throw new ActionError(409, 'NOT_MATERIAL', 'Only a material is kept on hand');
+      if (!stocked && i.stocked && Math.abs(await onHandOf(tx, i.id)) > 1e-9) throw new ActionError(409, 'ON_HAND', `${i.name} still has stock: use it up or adjust it to nothing first`);
+      if (b.kind === 'order') {
+        const n = (await one<{ n: number }>(tx, 'SELECT count(*)::int AS n FROM command.shop_recipe_lines WHERE input_id = $1', [i.id]))!.n;
+        if (n) throw new ActionError(409, 'IN_RECIPE', `${i.name} is in ${n} recipe${n === 1 ? '' : 's'}: take it out first`);
+      }
+      const perOrder = b.kind === 'order';
+      await tx.query('UPDATE command.shop_inputs SET stocked = $2, per_order = $3, on_pickup = $4, low_mark = CASE WHEN $2 THEN low_mark END WHERE id = $1', [
+        i.id,
+        stocked,
+        perOrder,
+        perOrder && (b.onPickup ?? i.on_pickup),
+      ]);
+    },
+  },
+  'order-in': {
+    body: z.object({
+      input: id,
+      quantity: amount,
+      /** What it will cost, in dollars. */
+      total: money,
+      /** Left out, the input's own supplier. */
+      supplierId: id.optional(),
+      /** When it's due; left out, the supplier's lead time from today. */
+      due: DATE.optional(),
+      note: text(500).default(''),
+    }),
+    summary: async (b, db) => {
+      const i = await inputRow(db, b.input);
+      return `Ordered ${qty(b.quantity)} ${i.unit} of ${i.name} · $${b.total.toFixed(2)}`;
+    },
+    second: (b, db) => overLimit(db, 'shopbuy', b.total),
+    // ordered, not here: stock and the average change when it's received
+    apply: async (c, b) => {
+      const i = await liveInput(c.tx, b.input);
+      const s = await supplierOf(c.tx, b.supplierId ?? i.supplier_id);
+      const due = b.due ? dateOf(b.due) : s?.lead_days != null ? new Date(c.at.getTime() + s.lead_days * DAY) : null;
+      const { id: pid } = (await one<{ id: number }>(
+        c.tx,
+        `INSERT INTO command.shop_input_purchases (input_id, at, quantity, total_cents, supplier, note, who, supplier_id, state, due_on) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ordered', $9) RETURNING id`,
+        [i.id, c.at, qty(b.quantity), cents(b.total), s?.name ?? '', b.note, who(c.person), s?.id ?? null, due],
+      ))!;
+      return { id: pid, due: due ? due.getTime() : null };
+    },
+  },
+  receive: {
+    body: z.object({
+      id: z.number().int().positive(),
+      /** What came and what it cost, when either differs from the order. */
+      quantity: amount.optional(),
+      total: money.optional(),
+      on: DATE.optional(),
+    }),
+    summary: async (b, db) => {
+      const p = await must<{ input_id: string; quantity: string }>(db, 'SELECT * FROM command.shop_input_purchases WHERE id = $1', [b.id], 'buy');
+      const i = await inputRow(db, p.input_id);
+      return `Received ${qty(b.quantity ?? Number(p.quantity))} ${i.unit} of ${i.name}`;
+    },
+    // what was approved was the order: only a higher price over the limit waits again
+    second: async (b, db) => {
+      if (b.total == null) return false;
+      const p = await one<{ total_cents: number }>(db, 'SELECT total_cents FROM command.shop_input_purchases WHERE id = $1', [b.id]);
+      return !!p && cents(b.total) > p.total_cents && (await overLimit(db, 'shopbuy', b.total));
+    },
+    apply: async (c, b) => {
+      const p = await must<{ input_id: string; quantity: string; total_cents: number; state: string; supplier: string }>(c.tx, 'SELECT * FROM command.shop_input_purchases WHERE id = $1', [b.id], 'buy');
+      if (p.state !== 'ordered') throw new ActionError(409, 'WRONG_STATE', `That buy is ${p.state} already`);
+      const i = await inputRow(c.tx, p.input_id);
+      const q = b.quantity != null ? qty(b.quantity) : Number(p.quantity);
+      const total = b.total != null ? cents(b.total) : p.total_cents;
+      const at = b.on ? dateOf(b.on) : c.at;
+      await c.tx.query(`UPDATE command.shop_input_purchases SET state = 'received', received_at = $2, quantity = $3, total_cents = $4 WHERE id = $1`, [b.id, at, q, total]);
+      return { id: b.id, ...(await receiveBuy(c.tx, i, b.id, q, total, at, p.supplier)) };
+    },
+  },
+  'order-cancel': {
+    body: z.object({ id: z.number().int().positive() }),
+    summary: (b) => `Cancelled buy ${b.id}`,
+    apply: async ({ tx }, b) => {
+      const r = await tx.query(`UPDATE command.shop_input_purchases SET state = 'cancelled' WHERE id = $1 AND state = 'ordered' RETURNING 1`, [b.id]);
+      if (!r.rows.length) throw new ActionError(409, 'WRONG_STATE', 'Only a buy still on order can be cancelled');
+    },
+  },
+  'flat-cost': {
+    body: z.object({
+      product: id,
+      /** One cost for the product, in dollars; null goes back to its materials (and drops its colours' and sizes' own). */
+      cost: money.nullable(),
+      estimate: z.boolean().default(false),
+      note: text(500).default(''),
+    }),
+    summary: async (b, db) => `${(await prod(db, b.product)).name} ${b.cost == null ? 'costed from its materials' : `costs $${b.cost.toFixed(2)}${b.estimate ? ' (estimate)' : ''}`}`,
+    apply: async (c, b) => {
+      await prod(c.tx, b.product, c);
+      await c.tx.query('UPDATE command.shop_products SET flat_cost_cents = $2, cost_estimate = $3, cost_note = $4 WHERE id = $1', [b.product, b.cost == null ? null : fcents(b.cost), b.cost != null && b.estimate, b.cost == null ? '' : b.note]);
+      if (b.cost == null) await c.tx.query('DELETE FROM command.shop_flat_overrides WHERE product_id = $1', [b.product]);
+      await history(c, b.product, b.cost == null ? 'Cost · from materials' : `Cost · flat $${b.cost.toFixed(2)}${b.estimate ? ', an estimate' : ''}`);
+    },
+  },
+  'flat-override': {
+    body: z
+      .object({ product: id, option: text(40).default(''), size: SIZE.default(''), cost: money.optional(), remove: z.boolean().default(false) })
+      .refine((b) => b.option !== '' || b.size !== '', 'Say which colour or size it’s for')
+      .refine((b) => b.remove || b.cost != null, 'Give its cost'),
+    summary: async (b, db) => `${b.remove ? 'Removed' : 'Set'} ${(await prod(db, b.product)).name}’s flat cost for ${ofVariant(b.option, b.size)}`,
+    apply: async (c, b) => {
+      await prod(c.tx, b.product, c);
+      if (b.remove) {
+        const r = await c.tx.query('DELETE FROM command.shop_flat_overrides WHERE product_id = $1 AND option = $2 AND size = $3 RETURNING 1', [b.product, b.option, b.size]);
+        if (!r.rows.length) throw new ActionError(404, 'NOT_FOUND', `No ${ofVariant(b.option, b.size)} cost to remove`);
+        return;
+      }
+      await must(c.tx, 'SELECT 1 FROM command.shop_products WHERE id = $1 AND flat_cost_cents IS NOT NULL', [b.product], 'flat cost on that product (set one first)');
+      await must(c.tx, `SELECT 1 FROM command.shop_stock WHERE product_id = $1 AND ($2 = '' OR option = $2) AND ($3 = '' OR size = $3) LIMIT 1`, [b.product, b.option, b.size], 'colour or size of that product');
+      await c.tx.query(
+        'INSERT INTO command.shop_flat_overrides (product_id, option, size, cost_cents) VALUES ($1, $2, $3, $4) ON CONFLICT (product_id, option, size) DO UPDATE SET cost_cents = $4',
+        [b.product, b.option, b.size, fcents(b.cost!)],
+      );
+      await history(c, b.product, `Cost · $${b.cost!.toFixed(2)} for ${ofVariant(b.option, b.size)}`);
+    },
+  },
+  'batch-plan': {
+    body: z.object({
+      product: id,
+      option: text(40).default(''),
+      /** How many of each size. */
+      units: z
+        .array(z.object({ size: SIZE, n: z.number().int().positive().max(10_000) }))
+        .min(1)
+        .max(7)
+        .refine((xs) => new Set(xs.map((x) => x.size)).size === xs.length, 'One line a size'),
+      on: DATE.optional(),
+      note: text(300).default(''),
+    }),
+    summary: async (b, db) => `Planned ${b.units.reduce((a: number, u: { n: number }) => a + u.n, 0)} ${(await prod(db, b.product)).name}${b.option ? ' · ' + b.option : ''}`,
+    // planned: nothing's used or added until it's made
+    apply: async (c, b) => {
+      await prod(c.tx, b.product, c);
+      for (const u of b.units) await must(c.tx, 'SELECT 1 FROM command.shop_stock WHERE product_id = $1 AND option = $2 AND size = $3', [b.product, b.option, u.size], 'colour and size of that product');
+      const { batch } = (await one<{ batch: string }>(c.tx, `SELECT ${NEXT_BATCH} AS batch`, []))!;
+      const on = b.on ? dateOf(b.on) : null;
+      for (const u of b.units)
+        await c.tx.query(`INSERT INTO command.shop_runs (product_id, option, size, units, at, note, who, state, batch_id, planned_on) VALUES ($1, $2, $3, $4, $5, $6, $7, 'planned', $8, $9)`, [
+          b.product,
+          b.option,
+          u.size,
+          u.n,
+          on ?? c.at,
+          b.note,
+          who(c.person),
+          batch,
+          on,
+        ]);
+      await history(c, b.product, `Planned batch ${batch}`);
+      return { batch };
+    },
+  },
+  'batch-done': {
+    body: z.object({ batch: z.string().regex(/^B-\d+$/), allowShort: z.boolean().default(false) }),
+    summary: (b) => `Made batch ${b.batch}`,
+    // as a run: the stocked inputs are used up, the units added, and each size's unit cost locked
+    apply: async (c, b) => {
+      const runs = await plannedRuns(c.tx, b.batch);
+      const book = await readBook(c.tx);
+      const need = new Map<string, number>();
+      const made = runs.map((r) => {
+        const costed = productCost(book, r.product_id, { option: r.option, size: r.size });
+        const { uses, unknown } = costed.source === 'recipe' ? runUses(costed, book.inputs, r.units) : { uses: [], unknown: [] };
+        if (unknown.length) throw new ActionError(409, 'NO_AMOUNT', `Can’t tell how much ${unknown.map((u) => book.inputs.get(u)?.name ?? u).join(', ')} a unit uses`);
+        for (const u of uses) need.set(u.inputId, (need.get(u.inputId) ?? 0) + u.quantity);
+        return { r, uses, cost: roundCents(costed.costCents) };
+      });
+      const short = [...need].filter(([iid, n]) => (book.onHand.get(iid) ?? 0) - qty(n) < -1e-9);
+      if (short.length && !b.allowShort)
+        throw new ActionError(409, 'SHORT', `Not enough on hand: ${short.map(([iid, n]) => `${book.inputs.get(iid)!.name} has ${qty(book.onHand.get(iid) ?? 0)} ${book.inputs.get(iid)!.unit}, the batch needs ${qty(n)}`).join('; ')}`);
+      for (const { r, uses, cost } of made) {
+        for (const u of uses) if (qty(u.quantity) > 0) await c.tx.query(`INSERT INTO command.shop_input_moves (input_id, at, quantity, reason, ref) VALUES ($1, $2, $3, 'run', $4)`, [u.inputId, c.at, -qty(u.quantity), r.id]);
+        await c.tx.query('UPDATE command.shop_stock SET on_hand = on_hand + $4 WHERE product_id = $1 AND option = $2 AND size = $3', [r.product_id, r.option, r.size, r.units]);
+        await c.tx.query(`UPDATE command.shop_runs SET state = 'done', at = $2, unit_cost_cents = $3, short = $4, who = $5 WHERE id = $1`, [r.id, c.at, cost, short.length > 0, who(c.person)]);
+      }
+      await history(c, runs[0].product_id, `Made batch ${b.batch} · ${runs.reduce((a, r) => a + r.units, 0)}`);
+      return { batch: b.batch, short: short.map(([iid]) => iid) };
+    },
+  },
+  'batch-cancel': {
+    body: z.object({ batch: z.string().regex(/^B-\d+$/) }),
+    summary: (b) => `Dropped planned batch ${b.batch}`,
+    apply: async (c, b) => {
+      const runs = await plannedRuns(c.tx, b.batch);
+      await c.tx.query(`DELETE FROM command.shop_runs WHERE batch_id = $1 AND state = 'planned'`, [b.batch]);
+      await history(c, runs[0].product_id, `Dropped planned batch ${b.batch}`);
+    },
+  },
+  'pickup-point': {
+    body: z.object({ id: slugId.optional(), name: text(120).min(1), city: text(80).default(''), active: z.boolean().default(true) }),
+    summary: async (b, db) => ((b.id && (await one(db, 'SELECT 1 FROM command.shop_pickup_points WHERE id = $1', [b.id]))) ? `Updated pickup point ${b.name}` : `Added pickup point ${b.name}`),
+    apply: async ({ tx, at }, b) => {
+      const pid = b.id ?? idFrom(b.name, 'point');
+      await tx.query(
+        `INSERT INTO command.shop_pickup_points (id, position, name, city, active, created_at) VALUES ($1, (SELECT coalesce(max(position), -1) + 1 FROM command.shop_pickup_points), $2, $3, $4, $5)
+         ON CONFLICT (id) DO UPDATE SET name = $2, city = $3, active = $4`,
+        [pid, b.name, b.city, b.active, at],
+      );
+      // an order held there shows the new name
+      await tx.query('UPDATE command.shop_orders SET pickup_at = $2 WHERE pickup_point = $1', [pid, b.name]);
+      return { id: pid };
+    },
+  },
+  'order-pickup': {
+    body: order.extend({ point: id }),
+    summary: async (b, db) => `#${b.order} · held at ${(await must<{ name: string }>(db, 'SELECT name FROM command.shop_pickup_points WHERE id = $1', [b.point], 'pickup point')).name}`,
+    apply: async ({ tx }, b) => {
+      const pt = await must<{ name: string; active: boolean }>(tx, 'SELECT * FROM command.shop_pickup_points WHERE id = $1', [b.point], 'pickup point');
+      if (!pt.active) throw new ActionError(409, 'INACTIVE', `${pt.name} isn’t holding orders now`);
+      const o = await must<{ fulfilment: string }>(tx, 'SELECT fulfilment FROM command.shop_orders WHERE id = $1', [b.order], 'order');
+      if (o.fulfilment !== 'pickup') throw new ActionError(409, 'SHIPPED', `Order #${b.order} is shipped, not picked up`);
+      await tx.query('UPDATE command.shop_orders SET pickup_point = $2, pickup_at = $3 WHERE id = $1', [b.order, b.point, pt.name]);
+    },
+  },
+  'order-label': {
+    body: order.extend({ cost: money }),
+    summary: (b) => `#${b.order} · label $${b.cost.toFixed(2)}`,
+    // what the postage label cost, beside the shipping charged; an order with no record of its own costs gets one now
+    apply: async ({ tx }, b) => {
+      const o = await must<OrderRow>(tx, 'SELECT id, items, paid_with, fulfilment, total_cents, shipping_cents FROM command.shop_orders WHERE id = $1', [b.order], 'order');
+      if (o.fulfilment !== 'ship') throw new ActionError(409, 'PICKUP', `Order #${b.order} is picked up: it has no label`);
+      if (!(await recordOverhead(tx, o, await readBook(tx), await readSetting<number>(tx, 'ship'), cents(b.cost))))
+        await tx.query('UPDATE command.shop_order_overheads SET label_cents = $2 WHERE order_id = $1', [b.order, cents(b.cost)]);
+    },
+  },
+};
 
 const costing: Record<string, Action> = {
   input: {
@@ -442,12 +870,17 @@ const costing: Record<string, Action> = {
     apply: async ({ tx, at }, b) => {
       const iid = b.id ?? (b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'input') + '-' + Date.now().toString(36).slice(-4);
       const cost = b.unitCost === undefined ? undefined : b.unitCost === null ? null : fcents(b.unitCost);
+      if (b.supplier) await must(tx, 'SELECT 1 FROM command.shop_suppliers WHERE id = $1', [b.supplier], 'supplier');
+      if (b.perOrder && (await one(tx, 'SELECT 1 FROM command.shop_recipe_lines WHERE input_id = $1 LIMIT 1', [iid]))) throw new ActionError(409, 'IN_RECIPE', `${b.name} is in a recipe: take it out first`);
       await tx.query(
-        `INSERT INTO command.shop_inputs (id, name, kind, unit, stocked, unit_cost_cents, low_mark, note, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO command.shop_inputs (id, name, kind, unit, stocked, unit_cost_cents, low_mark, note, created_at, per_order, on_pickup, supplier_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($11, false), coalesce($11, false) AND coalesce($12, false), $13)
          ON CONFLICT (id) DO UPDATE SET name = $2, kind = $3, unit = $4, stocked = $5, low_mark = $7, note = $8,
-           unit_cost_cents = CASE WHEN $10 THEN command.shop_inputs.unit_cost_cents ELSE $6 END`,
-        [iid, b.name, b.kind, b.unit, b.stocked, cost ?? null, b.lowMark, b.note, at, cost === undefined],
+           unit_cost_cents = CASE WHEN $10 THEN command.shop_inputs.unit_cost_cents ELSE $6 END,
+           per_order = coalesce($11, command.shop_inputs.per_order),
+           on_pickup = CASE WHEN coalesce($11, command.shop_inputs.per_order) THEN coalesce($12, command.shop_inputs.on_pickup) ELSE false END,
+           supplier_id = CASE WHEN $14 THEN command.shop_inputs.supplier_id ELSE $13 END`,
+        [iid, b.name, b.kind, b.unit, b.stocked, cost ?? null, b.lowMark, b.note, at, cost === undefined, b.perOrder ?? null, b.onPickup ?? null, b.supplier ?? null, b.supplier === undefined],
       );
       await pinLines(tx, iid);
       return { id: iid };
@@ -469,6 +902,8 @@ const costing: Record<string, Action> = {
       /** What was paid, in dollars. */
       total: money,
       supplier: text(120).default(''),
+      /** The supplier it came from; left out, the input's own. */
+      supplierId: id.optional(),
       note: text(500).default(''),
       on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }),
@@ -476,24 +911,19 @@ const costing: Record<string, Action> = {
       const i = await inputRow(db, b.input);
       return `Bought ${qty(b.quantity)} ${i.unit} of ${i.name} · $${b.total.toFixed(2)}`;
     },
+    // a buy over Settings' limit waits for a second person (the redesign's two-person rule)
+    second: (b, db) => overLimit(db, 'shopbuy', b.total),
     apply: async (c, b) => {
       const i = await liveInput(c.tx, b.input);
       const at = b.on ? new Date(b.on + 'T00:00:00Z') : c.at;
       const q = qty(b.quantity);
+      const s = await supplierOf(c.tx, b.supplierId ?? i.supplier_id);
       const { id: pid } = (await one<{ id: number }>(
         c.tx,
-        'INSERT INTO command.shop_input_purchases (input_id, at, quantity, total_cents, supplier, note, who) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-        [i.id, at, q, cents(b.total), b.supplier, b.note, who(c.person)],
+        `INSERT INTO command.shop_input_purchases (input_id, at, quantity, total_cents, supplier, note, who, supplier_id, state, received_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'received', $2) RETURNING id`,
+        [i.id, at, q, cents(b.total), b.supplier || s?.name || '', b.note, who(c.person), s?.id ?? null],
       ))!;
-      // the newest purchase sets the unit cost; one dated before it is history only
-      await c.tx.query(
-        `UPDATE command.shop_inputs SET unit_cost_cents = $2::numeric / $3::numeric
-         WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM command.shop_input_purchases WHERE input_id = $1 AND id <> $4 AND at > $5)`,
-        [i.id, cents(b.total), q, pid, at],
-      );
-      if (i.stocked) await c.tx.query(`INSERT INTO command.shop_input_moves (input_id, at, quantity, reason, ref, note) VALUES ($1, $2, $3, 'purchase', $4, $5)`, [i.id, at, q, pid, b.supplier]);
-      await pinLines(c.tx, i.id);
-      return { id: pid, unitCost: cents(b.total) / q / 100 };
+      return { id: pid, ...(await receiveBuy(c.tx, i, pid, q, cents(b.total), at, b.supplier || s?.name || '')) };
     },
   },
   'recipe-line': {
@@ -513,7 +943,7 @@ const costing: Record<string, Action> = {
         await history(c, b.product, `Recipe · took out ${i.name}`);
         return;
       }
-      const i = await liveInput(c.tx, b.input);
+      const i = await recipeInput(c.tx, b.input);
       await setLine(c.tx, b.product, b.input, pinned(entered(b), i.unit_cost_cents));
       await history(c, b.product, `Recipe · set ${i.name}`);
     },
@@ -595,7 +1025,7 @@ const costing: Record<string, Action> = {
     summary: async (b, db) => `Added ${(await inputRow(db, b.input)).name} to ${b.products.length} product${b.products.length === 1 ? '' : 's'}`,
     // a product that has the input already gets the new amount or cost
     apply: async (c, b) => {
-      const i = await liveInput(c.tx, b.input);
+      const i = await recipeInput(c.tx, b.input);
       const ps = [...new Set<string>(b.products)];
       for (const pid of ps) {
         await prod(c.tx, pid, c);
@@ -654,20 +1084,16 @@ const costing: Record<string, Action> = {
         .filter((u) => u.on - u.quantity < -1e-9);
       if (short.length && !b.allowShort)
         throw new ActionError(409, 'SHORT', `Not enough on hand: ${short.map((s) => `${s.input.name} has ${qty(s.on)} ${s.input.unit}, the run needs ${s.quantity}`).join('; ')}`);
-      const { id: rid } = (await one<{ id: number }>(c.tx, 'INSERT INTO command.shop_runs (product_id, option, size, units, at, note, who, short) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id', [
-        b.product,
-        b.option,
-        b.size,
-        b.units,
-        c.at,
-        b.note,
-        who(c.person),
-        short.length > 0,
-      ]))!;
+      // a batch of its own, its unit cost locked as it is now
+      const { id: rid, batch_id: batch } = (await one<{ id: number; batch_id: string }>(
+        c.tx,
+        `INSERT INTO command.shop_runs (product_id, option, size, units, at, note, who, short, state, unit_cost_cents, batch_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'done', $9, ${NEXT_BATCH}) RETURNING id, batch_id`,
+        [b.product, b.option, b.size, b.units, c.at, b.note, who(c.person), short.length > 0, roundCents(costed.costCents)],
+      ))!;
       for (const u of uses) if (qty(u.quantity) > 0) await c.tx.query(`INSERT INTO command.shop_input_moves (input_id, at, quantity, reason, ref) VALUES ($1, $2, $3, 'run', $4)`, [u.inputId, c.at, -qty(u.quantity), rid]);
       await c.tx.query('UPDATE command.shop_stock SET on_hand = on_hand + $4 WHERE product_id = $1 AND option = $2 AND size = $3', [b.product, b.option, b.size, b.units]);
       await history(c, b.product, `Made ${b.units} · ${ofVariant(b.option, b.size)}`);
-      return { id: rid, uses: uses.map((u) => ({ input: u.inputId, quantity: qty(u.quantity) })), short: short.map((s) => s.inputId) };
+      return { id: rid, batch, uses: uses.map((u) => ({ input: u.inputId, quantity: qty(u.quantity) })), short: short.map((s) => s.inputId) };
     },
   },
 };
@@ -1006,19 +1432,20 @@ const shop: Record<string, Action> = {
   restock: {
     body: z.object({ id, units: z.array(z.object({ option: text(40), size: SIZE, n: z.number().int().positive().max(10000) })).min(1).max(100), cost: money }),
     summary: async (b, db) => `Restock ${(await prod(db, b.id)).name} · ${b.units.reduce((a: number, u: { n: number }) => a + u.n, 0)} units`,
-    second: (b) => over50(b.cost),
+    second: (b, db) => overLimit(db, 'shopbuy', b.cost),
     outbox: true,
   },
-  pack: orderState('packed', ['paid'], 'Packed', true),
+  pack: orderState('packed', ['paid'], 'Packed', true, usePacking),
   ship: orderState('shipped', ['packed'], 'Shipped', true),
-  ready: orderState('ready', ['packed'], 'Ready for pickup', true),
+  // the pickup point's hold (Settings' `hold`) runs from here
+  ready: orderState('ready', ['packed'], 'Ready for pickup', true, ({ tx, at }, o) => tx.query('UPDATE command.shop_orders SET ready_at = $2 WHERE id = $1', [o, at])),
   picked: orderState('picked', ['ready'], 'Picked up', false),
   labels: { body: z.object({ orders: z.array(z.string().regex(/^[0-9]+$/)).min(1).max(100) }), summary: (b) => `Buy postage for ${b.orders.length} labels`, outbox: true },
   remind: { body: order, summary: (b) => `Remind the buyer of #${b.order}`, outbox: true },
   refund: {
     body: order.extend({ reason: z.enum(['Wrong size', 'Damaged in shipping', 'Changed their mind']), amount: money.positive() }),
     summary: (b) => `Refund #${b.order} · $${b.amount.toFixed(2)} · ${b.reason.toLowerCase()}`,
-    second: (b) => over50(b.amount),
+    second: (b, db) => overLimit(db, 'refund', b.amount),
     apply: async (c, b) => {
       const o = await must<{ items: Array<[string, string, string, number]> }>(c.tx, 'SELECT items FROM command.shop_orders WHERE id = $1', [b.order], 'order');
       const [pid, , size] = o.items[0];
@@ -1038,11 +1465,12 @@ const shop: Record<string, Action> = {
   'deposit-refund': {
     body: z.object({ id, amount: money.positive() }),
     summary: (b) => `Refund pre-order ${b.id}’s deposit · $${b.amount.toFixed(2)}`,
-    second: (b) => over50(b.amount),
+    second: (b, db) => overLimit(db, 'refund', b.amount),
     outbox: true,
   },
   'signup-link': { body: z.object({ id }), summary: (b) => `Send pre-order ${b.id} the merchant sign-up link`, outbox: true },
   ...costing,
+  ...shopModel,
 };
 
 // ── Money ───────────────────────────────────────────────────────────────────
@@ -1212,6 +1640,7 @@ export const ACTIONS: Partial<Record<Section, Record<string, Action>>> = {
   contracts,
   governance,
   records,
+  settings: settingsActions,
 };
 
 export const actionFor = (section: string, kind: string): Action | undefined => ACTIONS[section as Section]?.[kind];

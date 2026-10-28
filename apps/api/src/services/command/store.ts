@@ -373,12 +373,14 @@ export interface AuditEntry {
   after?: unknown;
   result: 'done' | 'waiting' | 'approved' | 'declined' | 'refused';
   approver?: string | null;
+  /** The entry this one corrects: a mistake is never edited, it's corrected by a new entry (migration 0058). */
+  corrects?: number | null;
 }
 
 export async function audit(db: Queryable, e: AuditEntry): Promise<void> {
   await db.query(
-    `INSERT INTO command.audit_log (person_id, who, area, action, detail, from_where, before, after, result, approver)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    `INSERT INTO command.audit_log (person_id, who, area, action, detail, from_where, before, after, result, approver, corrects)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       e.personId,
       e.who,
@@ -390,17 +392,108 @@ export async function audit(db: Queryable, e: AuditEntry): Promise<void> {
       e.after === undefined ? null : JSON.stringify(e.after),
       e.result,
       e.approver ?? null,
+      e.corrects ?? null,
     ],
   );
 }
 
 export async function auditLog(db: Queryable, limit = 200): Promise<Array<Record<string, unknown>>> {
   const { rows } = await db.query(
-    `SELECT a.id, a.at, a.who, a.area, a.action, a.detail, a.from_where, a.result, COALESCE(NULLIF(ap.name, ''), ap.email) AS approver
+    `SELECT a.id, a.seq, a.at, a.person_id, a.who, a.area, a.action, a.detail, a.from_where, a.result, COALESCE(NULLIF(ap.name, ''), ap.email) AS approver, a.corrects, a.hash, a.prev_hash
        FROM command.audit_log a LEFT JOIN command.people ap ON ap.id = a.approver
-      ORDER BY a.id DESC LIMIT $1`,
+      ORDER BY a.seq DESC LIMIT $1`,
     [limit],
   );
+  return rows;
+}
+
+/** Whether the audit log's chain holds (migration 0058): how many entries it has, and the first that doesn't follow, if any. */
+export async function auditChain(db: Queryable): Promise<{ ok: boolean; entries: number; brokenAt: number | null; head: string | null }> {
+  const { rows } = await db.query<{ broken: string | null; n: string; head: string | null }>(
+    'SELECT command.audit_verify() AS broken, (SELECT count(*) FROM command.audit_log) AS n, (SELECT hash FROM command.audit_log ORDER BY seq DESC LIMIT 1) AS head',
+  );
+  const r = rows[0];
+  return { ok: r.broken == null, entries: Number(r.n), brokenAt: r.broken == null ? null : Number(r.broken), head: r.head };
+}
+
+// ── reveals ─────────────────────────────────────────────────────────────────
+
+export interface Reveal {
+  person: Person;
+  section: string;
+  /** The row shown, or '*' for a whole list. */
+  subject: string;
+  field: string;
+  rows?: number;
+  reason: string;
+}
+
+/**
+ * Logs a reveal of personal details (migration 0059), and its audit entry. A reveal with no reason is
+ * refused when Settings asks for one and the person didn't say it was a rush; with `rush`, it's shown
+ * and flagged. Returns false when it's refused.
+ */
+export async function logReveal(db: Queryable, r: Reveal & { rush?: boolean; fromWhere?: string }): Promise<{ ok: boolean; flagged: boolean }> {
+  const reason = r.reason.trim();
+  const { rows } = await db.query<{ value: boolean }>(`SELECT value FROM command.settings WHERE id = 'reason'`);
+  const ask = rows[0]?.value !== false;
+  if (ask && !reason && !r.rush) return { ok: false, flagged: false };
+  const flagged = ask && !reason;
+  const who = r.person.name || r.person.email || 'Someone';
+  await db.query('INSERT INTO command.reveals (person_id, who, section, subject, field, rows, reason, flagged) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [
+    r.person.id,
+    who,
+    r.section,
+    r.subject,
+    r.field,
+    r.rows ?? 1,
+    reason,
+    flagged,
+  ]);
+  await audit(db, {
+    personId: r.person.id,
+    who,
+    area: r.section,
+    action: r.subject === '*' ? `Showed ${r.field} for ${r.rows ?? 0} rows` : `Showed ${r.field} for ${r.subject}`,
+    detail: reason ? `Reason: ${reason}` : 'No reason given: flagged',
+    fromWhere: r.fromWhere,
+    result: 'done',
+  });
+  return { ok: true, flagged };
+}
+
+// ── exports (migration 0064) ────────────────────────────────────────────────
+
+/**
+ * Uses an approved export: the asker's own, for this section, not used yet and not past its day. Marks
+ * it used in the same statement, so it can't be used twice. The reason it was approved for, or null.
+ */
+export async function useExport(db: Queryable, id: string, personId: string, section: string, at: Date): Promise<string | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const { rows } = await db.query<{ reason: string }>(
+    `UPDATE command.export_grants SET used_at = $4
+      WHERE id = $1 AND person_id = $2 AND section = $3 AND used_at IS NULL AND expires_at > $4
+      RETURNING reason`,
+    [id, personId, section, at],
+  );
+  return rows[0]?.reason ?? null;
+}
+
+/** Exports, newest first: everyone's (Records), or one person's (theirs to use). */
+export async function exports(db: Queryable, personId?: string): Promise<Array<Record<string, unknown>>> {
+  const { rows } = await db.query(
+    `SELECT g.id, g.section, g.reason, g.approved_at, g.expires_at, g.used_at, g.person_id,
+            COALESCE(NULLIF(p.name, ''), p.email) AS who, COALESCE(NULLIF(a.name, ''), a.email) AS approved_by
+       FROM command.export_grants g JOIN command.people p ON p.id = g.person_id JOIN command.people a ON a.id = g.approved_by
+      ${personId ? 'WHERE g.person_id = $1' : ''} ORDER BY g.approved_at DESC LIMIT 200`,
+    personId ? [personId] : [],
+  );
+  return rows;
+}
+
+/** Records → Reveals: every reveal, newest first. */
+export async function reveals(db: Queryable, limit = 200): Promise<Array<Record<string, unknown>>> {
+  const { rows } = await db.query('SELECT id, at, person_id, who, section, subject, field, rows, reason, flagged FROM command.reveals ORDER BY id DESC LIMIT $1', [limit]);
   return rows;
 }
 

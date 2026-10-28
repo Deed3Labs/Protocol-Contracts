@@ -40,6 +40,14 @@ export function App() {
               <span className="dot" />
               Testnet
             </span>
+            {/* the inbox (the redesign's): its count is kept by renderNav */}
+            <button className="ibx-btn" id="ibxBtn" type="button" data-ibx-open="" aria-haspopup="dialog" aria-label="Inbox">
+              <svg className="i " viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M3 4h14v12H3z" />
+                <path d="M3 11h4l1 2h4l1-2h4" />
+              </svg>
+              <span className="ibx-n" hidden />
+            </button>
             <button className="who" type="button" data-pf-open="" aria-haspopup="dialog" aria-expanded="false" aria-label="Your profile, settings and theme">
               <span className="av" aria-hidden="true">
                 KK

@@ -10,7 +10,19 @@ import { FEED_FROM, FIRST, LAST, NAMES, PEOPLE_T, ROLES, S, SECTIONS, UPD_FROM, 
 import { fieldPage } from './field';
 import { governancePage } from './governance';
 import { growthPage } from './growth';
-import { home, morePage, placeholder, stateError, stateLoading, syncPages, waitingPage } from './home';
+import { morePage, placeholder, stateError, stateLoading, syncPages, waitingPage } from './home';
+import { ibxCount } from './inbox';
+import { homeHub, homeMount } from './homeHub';
+import { mountPages, pageSlot } from './pageHost';
+import './growth2';
+import './members2';
+import './money2';
+import './build2';
+import './governance2';
+import './community2';
+import './admin2';
+import './shop2';
+import './fm2';
 import { membersPage } from './members';
 import { corridorMount, merchantsPage } from './merchants';
 import { moneyPage } from './money';
@@ -34,9 +46,9 @@ export function renderNav() {
             <button key={__k} className="nav" type="button" data-go={id} title={n} {...attrs(S.route === id ? 'aria-current="page"' : '')}>
               {ic(id)}
               <span>{n}</span>
-              {id === 'home' && S.waiting.length ? (
-                <span className="n" aria-label={`${S.waiting.length} waiting`}>
-                  {S.waiting.length}
+              {id === 'home' && ibxCount() ? (
+                <span className="n" aria-label={`${ibxCount()} need you`}>
+                  {ibxCount()}
                 </span>
               ) : (
                 ''
@@ -48,7 +60,7 @@ export function renderNav() {
   );
   const tabs = [
     ['home', 'Home'],
-    ['waiting', 'Waiting'],
+    ['waiting', 'Inbox'],
     ['field', 'Field'],
     ['more', 'More'],
   ].filter(([id]) => vLevel(id) > 0);
@@ -59,10 +71,18 @@ export function renderNav() {
       <button key={__k} className="tab" type="button" data-go={id} {...attrs(S.route === id || (id === 'more' && inMore) ? 'aria-current="page"' : '')}>
         {ic(id)}
         <span>{n}</span>
-        {id === 'waiting' && S.waiting.length ? <span className="badge">{S.waiting.length}</span> : ''}
+        {id === 'waiting' && ibxCount() ? <span className="badge">{ibxCount()}</span> : ''}
       </button>
     )),
-  );
+  ); // the top bar's inbox: what needs you and the high alerts
+  const ib = $('#ibxBtn');
+  if (ib) {
+    const n = ibxCount();
+    ib.setAttribute('aria-label', n ? `Inbox, ${n} need you` : 'Inbox');
+    const c = ib.querySelector('.ibx-n');
+    c.textContent = String(n);
+    c.hidden = !n;
+  }
 }
 /* ── views: what a group sees. S.view is set when a member signs in, or when an admin previews a group ── */
 export function vLevel(r) {
@@ -70,7 +90,9 @@ export function vLevel(r) {
   const a = S.view.levels || ROLES[S.view.g][2];
   if (r === 'more') return 1;
   if (r === 'waiting') return Math.max(...a) >= 3 ? a[0] : 0;
-  const i = VSEC.indexOf(r);
+  // the redesign's pages read an existing section's level: Build is Contracts', and until they get
+  // their own, Community reads Governance's and Settings Team's
+  const i = VSEC.indexOf(({ build: 'contracts', community: 'governance', settings: 'team' } as Record<string, string>)[r] ?? r);
   return i < 0 ? 1 : a[i];
 }
 export function vRO() {
@@ -216,42 +238,48 @@ export function render() {
     $('#main'),
     <>
       {vBar()}
-      {r === 'home'
-        ? home()
-        : r === 'growth'
-          ? growthPage()
-          : r === 'members'
-            ? membersPage()
-            : r === 'merchants'
-              ? merchantsPage()
-              : r === 'field'
-                ? fieldPage()
-                : r === 'money'
-                  ? moneyPage()
-                  : r === 'contracts'
-                    ? contractsPage()
-                    : r === 'governance'
-                      ? governancePage()
-                      : r === 'records'
-                        ? recordsPage()
-                        : r === 'team'
-                          ? teamPage()
-                          : r === 'shop'
-                            ? shopPage()
-                            : r === 'waiting'
-                              ? waitingPage()
-                              : r === 'more'
-                                ? morePage()
-                                : placeholder(r)}
+      {pageSlot(r) ??
+        (r === 'home'
+          ? homeHub()
+          : r === 'growth'
+            ? growthPage()
+            : r === 'members'
+              ? membersPage()
+              : r === 'merchants'
+                ? merchantsPage()
+                : r === 'field'
+                  ? fieldPage()
+                  : r === 'money'
+                    ? moneyPage()
+                    : r === 'build'
+                      ? contractsPage()
+                      : r === 'governance'
+                        ? governancePage()
+                        : r === 'records'
+                          ? recordsPage()
+                          : r === 'team'
+                            ? teamPage()
+                            : r === 'shop'
+                              ? shopPage()
+                              : r === 'waiting'
+                                ? waitingPage()
+                                : r === 'more'
+                                  ? morePage()
+                                  : placeholder(r))}
     </>,
   );
   // the preview's simulation of a Totals view, as the prototype drew it; live, the API sends Totals nothing personal
   if (!LIVE && S.view && vLevel(r) === 1) vScrub($('#main'));
   corridorMount();
+  // Home's timeline is laid out for the width it gets, after it's drawn
+  homeMount();
+  // the redesign's page modules: this route's mounts into its slot, the others let go
+  mountPages(r);
   requestAnimationFrame(syncPages);
   if (LIVE) logView();
 }
 export function go(r) {
+  if (r === 'contracts') r = 'build';
   if (!NAMES[r]) r = 'home';
   if (vLevel(r) <= 0)
     r =
@@ -259,10 +287,11 @@ export function go(r) {
         .map(([id]) => id)
         .find((id) => vLevel(id) > 0) || 'growth';
   S.route = r;
-  render();
+  // before drawing: a redesigned page adds its tab to the hash as it draws (#growth/traffic)
   try {
     history.replaceState(null, '', '#' + r);
   } catch (e) {}
+  render();
   window.scrollTo({
     top: 0,
   });

@@ -1,7 +1,12 @@
 import type { Page } from '@playwright/test';
 
-/** Every section, and the phone-only pages. */
-export const ROUTES = ['home', 'waiting', 'more', 'growth', 'field', 'members', 'merchants', 'shop', 'money', 'contracts', 'governance', 'records', 'team'] as const;
+/**
+ * Every section, and the phone-only pages. Build is `build`, as the redesign knows it (the app also takes `contracts`).
+ * Community and Settings are new in the redesign: the old prototype has no such pages, so only checks against the redesign take them.
+ */
+export const ROUTES = ['home', 'waiting', 'more', 'growth', 'field', 'members', 'merchants', 'shop', 'money', 'build', 'community', 'governance', 'records', 'team', 'settings'] as const;
+/** Routes the old prototype (docs/command-reference) doesn't have. */
+export const NEW_ROUTES = new Set(['community', 'settings']);
 
 /**
  * Both pages start the same way: the stored theme and menu width set, and map tiles and the CDN map
@@ -28,6 +33,16 @@ export async function open(page: Page, base: string, route: string, theme: 'ligh
   else await page.locator('#main > *').first().waitFor();
 }
 
+/** Pages ported to the redesign that it draws in light DOM (docs/ui-redesign-plan.md). */
+export const REDESIGNED = new Set(['home', 'waiting', 'more']);
+/** Ported pages the redesign draws in a shadow root: compared inside it, tab by tab. */
+export const SHADOWED = new Set(['growth', 'members', 'field', 'merchants', 'money', 'build', 'governance', 'community', 'records', 'team', 'settings', 'shop']);
+/** Whether a page is compared with the redesign rather than the old reference. */
+export const ported = (route: string) => REDESIGNED.has(route) || SHADOWED.has(route);
+
+/** A redesigned page's tabs (Overview, Traffic, …), inside its shadow root. */
+export const SHADOW_TABS = '.g-host >> .gtabs button:not(.tabr)';
+
 /** The section's pane tabs (Overview, Funnel, …), by label. */
 export async function paneTabs(page: Page): Promise<string[]> {
   return page.locator('#main .ptabs button').allTextContents();
@@ -42,7 +57,8 @@ export async function canonical(page: Page, selector: string): Promise<string> {
   // some drawing finishes on the next frame (the map lays its labels out then), so let it
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   return page.evaluate((sel) => {
-    const root = document.querySelector(sel);
+    // `shadow:<sel>` reads inside the redesigned page's shadow root (the page host, docs/ui-redesign-plan.md)
+    const root = sel.startsWith('shadow:') ? document.querySelector('.g-host')?.shadowRoot?.querySelector(sel.slice(7)) : document.querySelector(sel);
     if (!root) return '(missing)';
     const out: string[] = [];
     const walk = (n: Node, depth: number) => {

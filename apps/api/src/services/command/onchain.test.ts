@@ -244,6 +244,10 @@ describe('releases, live', () => {
     expect(row('am').slice(2, 6)).toEqual(['v1.0', 0, 'live', sh(C.AccessManager.address)]);
     // not deployed: as the map has it
     expect(row('cp').slice(2, 6)).toEqual(['—', 3, 'later', '—']);
+    // which map contracts the indexer found: CreditPool isn't one
+    expect(c.DEPLOYED).toContain('am');
+    expect(c.DEPLOYED).toContain('cu');
+    expect(c.DEPLOYED).not.toContain('cp');
   });
 
   test('a map name finds its deployed contract', () => {

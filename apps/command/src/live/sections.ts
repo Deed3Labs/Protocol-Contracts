@@ -140,10 +140,15 @@ import { setFigures } from './figures';
  * opened; until then the page shows the prototype's loading state. Sections not listed here still
  * draw the prototype's demo data.
  */
-export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records']);
+export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records', 'settings']);
 const ready = new Set<string>();
+let loads = 0;
+/** Counts the sections loaded: a redesigned page built from older data is built again (pageHost.tsx). */
+export const dataStamp = () => loads;
 
-export const needsData = (route: string) => LIVE && SERVED.has(route) && !ready.has(route);
+/** The API's section a page reads: Build is Contracts' (the redesign renamed the page, not the section). */
+const sectionOf = (route: string) => (route === 'build' ? 'contracts' : route);
+export const needsData = (route: string) => LIVE && SERVED.has(sectionOf(route)) && !ready.has(sectionOf(route));
 
 // what the API doesn't send yet (a figure nothing has written: no seed since Phase 9) empties the list
 const replace = (arr, rows) => arr.splice(0, arr.length, ...(rows ?? []));
@@ -201,6 +206,7 @@ const apply = {
     vars.formNamesShown = d.names === 'shown';
     // the datasets Growth draws are stored figures; the derived ones are worked out again from them
     const f = d.figures;
+    vars.growthFigures = f;
     assign(RANGE, f['growth.range']);
     replace(W_JOIN, f['growth.weekly.joined']);
     replace(W_INV, f['growth.weekly.invited']);
@@ -290,6 +296,21 @@ const apply = {
     // what the store shows of each catalog product (Phase 11b)
     for (const k of Object.keys(CATALOG)) delete CATALOG[k];
     Object.assign(CATALOG, d.CATALOG ?? {});
+    // the redesigned page's own (sections/shopLive.ts): how each product is costed, the flat costs, the
+    // suppliers, buys on order, reorders, batches, the once-per-order costs and the pickup points
+    vars.shopModel = {
+      NOW: d.NOW ?? null,
+      COST_BY: d.COST_BY ?? {},
+      FLAT: d.FLAT ?? {},
+      SUPPLIERS: d.SUPPLIERS ?? [],
+      ON_ORDER: d.ON_ORDER ?? [],
+      REORDER: d.REORDER ?? [],
+      BATCHES: d.BATCHES ?? [],
+      PER_ORDER: d.PER_ORDER ?? null,
+      ORDER_COSTS: d.ORDER_COSTS ?? {},
+      POINTS: d.POINTS ?? [],
+      PICKUP: d.PICKUP ?? {},
+    };
     const f = d.figures;
     replace(ORD_W, f['shop.orders_weekly']);
     assign(SHOP_COSTS, f['shop.costs']);
@@ -319,6 +340,8 @@ const apply = {
     // live only, the Code tab: GitHub's commits, pull requests, branches and contributors
     assign(CODE, d.CODE);
     vars.contractsNow = d.NOW;
+    // live, the map's contracts the indexer found deployed (null when the section isn't read from the chain)
+    vars.contractsDeployed = d.DEPLOYED ?? null;
     replace(SIGNERS, d.SIGNERS);
     const f = d.figures;
     assign(CHAIN, f['contracts.chain']);
@@ -378,6 +401,11 @@ const apply = {
     replace(ALERTS0, [...(f['home.alerts'] ?? []), ...(d.LOW_MATERIALS ?? []).map(lowAlert)]);
     if (f['growth.range']) assign(RANGE, f['growth.range']);
   },
+  // Settings → Rules and limits (the redesign's admin2.tsx, through sections/adminLive.ts): every rule, what waits, what changed
+  settings(d) {
+    vars.SETTINGS = d.SETTINGS ?? [];
+    vars.SETTINGS_HISTORY = d.HISTORY ?? [];
+  },
   members(d) {
     replace(MEMBERS, d.MEMBERS);
     replace(BATCH_DATE, d.BATCH_DATE);
@@ -385,22 +413,31 @@ const apply = {
     replace(B_OPEN, d.B_OPEN);
     vars.NEXT_BATCH = d.NEXT_BATCH;
     vars.namesShown = d.names === 'shown';
+    // the redesigned page's own (sections/membersLive.ts): the waitlist's people, each batch, the join form
+    vars.memberNames = d.names;
+    vars.membersFigures = d.figures;
+    vars.WAITLIST = d.WAITLIST ?? null;
+    vars.BATCHES = d.BATCHES ?? null;
+    vars.joinForm = d.FORMS ?? null;
   },
 };
 
 /** A section's answer from the API, written into the datasets the page draws from. */
 export function applySection(route: string, d) {
   apply[route](d);
-  setFigures(d.figures);
+  setFigures(d.figures ?? {});
   vars.asOf = d.asOf;
 }
 
-export async function loadSection(route: string, opts: { reveal?: boolean } = {}) {
-  const d = await api('GET', `/sections/${route}${opts.reveal ? '?reveal=1' : ''}`);
+/** Loads a section; with `exportId`, its names in full, through an export a second person approved (used once). */
+export async function loadSection(page: string, opts: { exportId?: string } = {}) {
+  const route = sectionOf(page);
+  const d = await api('GET', `/sections/${route}${opts.exportId ? `?reveal=1&export=${encodeURIComponent(opts.exportId)}` : ''}`);
   applySection(route, d);
   // Contracts' signers and their queue come from the Ops Safe, when one is configured
   if (route === 'contracts') await import('./safe').then((m) => m.loadSafe().then(m.loadSafeQueue)).catch(() => undefined);
   ready.add(route);
+  loads++;
   // the feeds' health rides along with every section (Phase 6a)
   void import('./feeds').then((m) => m.loadFeeds()).catch(() => undefined);
 }
@@ -409,7 +446,8 @@ export async function loadSection(route: string, opts: { reveal?: boolean } = {}
 export const forgetSections = () => ready.clear();
 
 /** Loads a section again after it changed, if it's one the API serves and it was already loaded. */
-export async function reloadSection(route: string) {
+export async function reloadSection(page: string) {
+  const route = sectionOf(page);
   if (!LIVE || !SERVED.has(route)) return;
   // a change shows elsewhere too (a poster on Home, a refund in Money): every other section loads afresh when next opened
   ready.clear();
