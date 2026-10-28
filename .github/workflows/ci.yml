@@ -100,7 +100,9 @@ jobs:
           key: solc-${{ hashFiles('hardhat.config.ts') }}
       - run: npm ci --no-audit --no-fund
       - run: npx hardhat test
-      # Build compares each deployed contract with what dev compiles: the fingerprints must be this source's
+      # Build compares each deployed contract with what dev compiles: the fingerprints must be this source's,
+      # as deployed. `hardhat test` keeps revert strings (hardhat.config.ts); a deploy's compile strips them
+      - run: npx hardhat compile
       - run: node scripts/command/code-fingerprints.mjs --check
 
   ci:
