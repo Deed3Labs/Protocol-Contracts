@@ -38,6 +38,13 @@ const DEMO = [
   'UR Commons',
   'Bo Chen',
   'batch 13',
+  // Members' reference (the redesign's MEMBERS2): its other poster shops, a tag and the made-up phone numbers
+  'State St. Books',
+  'La Michoacana',
+  'Arrowhead Nails',
+  'Orange St. Laundromat',
+  'Bank link issue',
+  '555-01',
 ];
 
 type Finding = { route: string; pane: string; after: string; kind: 'error' | 'demo' | 'garbage'; what: string };
@@ -77,8 +84,9 @@ for (const route of ROUTES) {
         if (t > 0) {
           const label = (await page.locator(TABS).nth(t).textContent())?.trim() ?? `tab ${t}`;
           where = { pane: label, after: 'tab' };
+          // the tab itself, the old pages' or the redesign's (counted with the same selector)
           await page
-            .locator('#main .ptabs button')
+            .locator(TABS)
             .nth(t)
             .click({ timeout: 3000 })
             .catch(() => undefined);

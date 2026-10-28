@@ -391,6 +391,12 @@ const apply = {
     replace(B_OPEN, d.B_OPEN);
     vars.NEXT_BATCH = d.NEXT_BATCH;
     vars.namesShown = d.names === 'shown';
+    // the redesigned page's own (sections/membersLive.ts): the waitlist's people, each batch, the join form
+    vars.memberNames = d.names;
+    vars.membersFigures = d.figures;
+    vars.WAITLIST = d.WAITLIST ?? null;
+    vars.BATCHES = d.BATCHES ?? null;
+    vars.joinForm = d.FORMS ?? null;
   },
 };
 
