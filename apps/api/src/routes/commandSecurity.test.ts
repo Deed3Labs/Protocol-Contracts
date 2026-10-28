@@ -183,6 +183,26 @@ describe('reveals', () => {
     expect((await call(kai, 'GET', '/audit')).body.entries[0]).toMatchObject({ area: 'members', detail: 'No reason given: flagged' });
   });
 
+  test('someone waiting is masked like a member, revealed one at a time for a reason, and never at Totals', async () => {
+    const { rows } = await db.query<{ id: number }>(`INSERT INTO command.waitlist (email, name, zip, city, source, joined_at) VALUES ('wren@example.com', 'Wren Ito', '92373', 'Redlands', 'website', '2026-10-20T15:00:00Z') RETURNING id`);
+    const no = `W-${String(rows[0].id).padStart(4, '0')}`;
+    const masked = await call(kai, 'GET', '/sections/members');
+    const w = masked.body.WAITLIST.find((x: any) => x.no === no);
+    expect(w).toMatchObject({ id: 1_000_000 + rows[0].id, pos: expect.any(Number), city: 'Redlands', src: 'Website', joined: Date.parse('2026-10-20T15:00:00Z') });
+    expect([w.first, w.last]).toEqual(['W•••', 'I••']);
+    expect(JSON.stringify(masked.body)).not.toMatch(/Wren|wren@/);
+    const r = await call(kai, 'POST', `/members/${w.id}/reveal`, { reason: 'Moving them up for the Redlands batch' });
+    expect(r.body).toEqual({ id: w.id, no, first: 'Wren', last: 'Ito' });
+    expect((await call(kai, 'GET', '/reveals')).body.reveals[0]).toMatchObject({ section: 'members', subject: no, field: 'name', reason: 'Moving them up for the Redlands batch' });
+    const totals = all(2);
+    totals.members = 1;
+    const t = await person('waittotals', totals);
+    const tr = await call(t, 'GET', '/sections/members');
+    expect([tr.body.WAITLIST, tr.body.FORMS]).toEqual([null, null]);
+    expect(JSON.stringify(tr.body)).not.toMatch(/Wren|W-\d/);
+    expect((await call(t, 'POST', `/members/${w.id}/reveal`, { reason: 'x' })).status).toBe(403);
+  });
+
   test('only at Approve: See gets the masked list whatever it asks, and can’t reveal one', async () => {
     const see = all(2);
     const p = await person('seeonly', see);

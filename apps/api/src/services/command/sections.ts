@@ -1,4 +1,4 @@
-import { DAY, SEED_TODAY, mask, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PosterRow } from '@clear/command-types';
+import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PosterRow, type WaitingRow } from '@clear/command-types';
 import type { Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { SEE, TOTALS, type Level } from './levels.js';
@@ -7,7 +7,7 @@ import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
 import type { MemberSource } from './memberSource.js';
-import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
+import { BATCH_ORDERS, WAITING_ID, WINDOW_DAYS, pickFrom, waitNo, waitlistFigures } from './waitlist.js';
 import { codeActivity, codeChanges, codeConfig } from './github.js';
 import { safeConfig } from './safe.js';
 import { costHistory, costingPayload, lowMaterials, noCosting, orderCosts, productCost, readBook, readHistory, roundCents, shown, type Book } from './costing.js';
@@ -74,6 +74,64 @@ function totalsOnly(m: MemberRow): MemberRow {
 }
 
 
+type Names = MembersPayload['names'];
+/** A name as this level gets it: none at Totals, masked unless asked for. */
+const nameFor = (names: Names) => (n: string | null) => (names === 'none' ? null : names === 'shown' ? n : n ? mask(n) : null);
+/** "Ana Maria Ruiz" is Ana and Maria Ruiz; a missing part is null. */
+const splitName = (n: string | null) => {
+  const [first, ...rest] = (n ?? '').trim().split(/\s+/);
+  return [first || null, rest.join(' ') || null] as const;
+};
+interface WaitlistDbRow {
+  id: number;
+  name: string;
+  city: string;
+  source: string;
+  poster: string | null;
+  joined_at: Date;
+  batch: number | null;
+  invite_code: string | null;
+  invited_at: Date | null;
+}
+const readWaitlist = async (db: Queryable) =>
+  (await db.query<WaitlistDbRow>('SELECT id, name, city, source, poster, joined_at, batch, invite_code, invited_at FROM command.waitlist ORDER BY joined_at, id')).rows;
+/** Everyone not invited yet, in line: never at Totals (a place in line and a join time point to one person). */
+function waitingRows(wl: WaitlistDbRow[], names: Names): WaitingRow[] | null {
+  if (names === 'none') return null;
+  const shown = nameFor(names);
+  return wl
+    .filter((w) => w.batch == null)
+    .map((w, i) => {
+      const [first, last] = splitName(w.name);
+      return { id: WAITING_ID + w.id, no: waitNo(w.id), first: shown(first), last: shown(last), pos: i + 1, joined: ms(w.joined_at)!, city: w.city, src: w.source === 'poster' ? 'Poster' : 'Website', poster: w.poster };
+    });
+}
+/** Each batch sent, and how far its people got, counted from the full rows. */
+const batchRows = (sent: { number: number; size: number; sent_at: Date | null }[], rows: MemberRow[]): BatchRow[] =>
+  sent.map((b) => {
+    const in_ = rows.filter((m) => m.batch === b.number);
+    return { number: b.number, sentAt: ms(b.sent_at)!, size: b.size, opened: in_.filter((m) => m.status !== 'invited').length, active: in_.filter((m) => m.status === 'active').length, spent: in_.filter((m) => m.spend != null || m.spentAt != null).length };
+  });
+/**
+ * The join form's last 30 days, newest first (20 of them, and how many in all): a list of people, so
+ * none at Totals, masked unless asked for.
+ */
+async function joinForm(db: Queryable, provider: Provider, names: Names, until: number): Promise<{ rows: FormRow[] | null; month: number }> {
+  const since = new Date(until - 30 * DAY);
+  const live = provider === 'live' ? ' AND live' : '';
+  const { rows: n } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM command.form_submissions WHERE form = 'Waitlist' AND received_at >= $1 AND received_at <= $2${live}`, [since, new Date(until)]);
+  if (names === 'none') return { rows: null, month: n[0].n };
+  const { rows } = await db.query<{ first_name: string; last_name: string; email: string; city: string; source: string; received_at: Date; status: string }>(
+    `SELECT first_name, last_name, email, city, source, received_at, status FROM command.form_submissions WHERE form = 'Waitlist' AND received_at >= $1 AND received_at <= $2${live} ORDER BY received_at DESC, id DESC LIMIT 20`,
+    [since, new Date(until)],
+  );
+  const shown = nameFor(names);
+  return {
+    rows: rows.map((r) => ({ who: [shown(r.first_name) ?? '', shown(r.last_name) ?? ''], mail: names === 'shown' ? r.email : maskMail(r.email), type: 'Waitlist', city: r.city, src: r.source, when: hhmm(r.received_at), st: r.status, at: ms(r.received_at)! })),
+    month: n[0].n,
+  };
+}
+
 export async function membersSection(db: Queryable, o: ReadOptions): Promise<MembersPayload> {
   const provider = providerFor('members');
   if (provider === 'live') return membersLive(db, o);
@@ -100,7 +158,7 @@ export async function membersSection(db: Queryable, o: ReadOptions): Promise<Mem
     last_seen_at: Date;
   }>('SELECT * FROM command.members ORDER BY id');
 
-  const MEMBERS: MemberRow[] = rows.map((r) => {
+  const full: MemberRow[] = rows.map((r) => {
     const invited = ms(r.invited_at)!;
     const m: MemberRow = {
       id: r.id,
@@ -123,8 +181,9 @@ export async function membersSection(db: Queryable, o: ReadOptions): Promise<Mem
     if (r.active_at) m.activeAt = ms(r.active_at);
     if (r.first_spend_shop) m.spend = r.first_spend_shop;
     if (r.first_spend_at) m.spentAt = ms(r.first_spend_at);
-    return names === 'none' ? totalsOnly(m) : m;
+    return m;
   });
+  const MEMBERS = names === 'none' ? full.map(totalsOnly) : full;
 
   const { rows: batches } = await db.query<{
     number: number;
@@ -140,6 +199,8 @@ export async function membersSection(db: Queryable, o: ReadOptions): Promise<Mem
   }>('SELECT * FROM command.batches ORDER BY number');
   const sent = batches.filter((b) => b.status === 'sent');
   const count = (n: number, s: string) => MEMBERS.filter((m) => m.batch === n && m.status === s).length;
+  // the seed's join form, as of the prototype's day
+  const form = await joinForm(db, provider, names, asOf + DAY);
   const p = batches.find((b) => b.status === 'proposed');
   const NEXT_BATCH: NextBatch | null = p
     ? {
@@ -161,6 +222,10 @@ export async function membersSection(db: Queryable, o: ReadOptions): Promise<Mem
     B_ACT: sent.map((b) => count(b.number, 'active')),
     B_OPEN: sent.map((b) => count(b.number, 'opened')),
     NEXT_BATCH,
+    WAITLIST: waitingRows(await readWaitlist(db), names),
+    BATCHES: batchRows(sent, full),
+    FORMS: form.rows,
+    // the seed's figures are the prototype's own, exactly: the join form's count is the rows'
     figures: await figures(db, 'members'),
     asOf,
     names,
@@ -182,22 +247,18 @@ async function membersLive(db: Queryable, o: ReadOptions, keep?: { rows?: Member
   const names: MembersPayload['names'] = o.level <= TOTALS ? 'none' : o.reveal && o.level >= SEE ? 'shown' : 'masked';
   const roster = await o.memberSource.roster({ names: names !== 'none' });
   const miles = await o.memberSource.milestones([...new Set(roster.flatMap((m) => m.wallets))]);
-  const { rows: wl } = await db.query<{ id: number; name: string; city: string; source: string; poster: string | null; joined_at: Date; batch: number | null; invite_code: string | null; invited_at: Date | null }>(
-    'SELECT id, name, city, source, poster, joined_at, batch, invite_code, invited_at FROM command.waitlist ORDER BY id',
-  );
+  // oldest first: the order the line is in
+  const wl = await readWaitlist(db);
   const invite = new Map(wl.filter((w) => w.invite_code).map((w) => [w.invite_code!, w]));
   const joinedCodes = new Set(roster.map((m) => m.inviteCode).filter(Boolean));
-  const shown = (n: string | null) => (names === 'none' ? null : names === 'shown' ? n : n == null ? null : mask(n));
-  const split = (n: string | null) => {
-    const [first, ...rest] = (n ?? '').trim().split(/\s+/);
-    return [first || null, rest.join(' ') || null] as const;
-  };
+  const shown = nameFor(names);
+  const split = splitName;
   const row = (m: Omit<MemberRow, 'left' | 'quiet'>): MemberRow => ({ ...m, left: WINDOW_DAYS - Math.round((asOf - m.invited) / DAY), quiet: m.status === 'invited' && (asOf - m.invited) / DAY >= 21 });
 
   // invited by a batch, and not signed up yet
   const waiting = wl.filter((w) => w.invite_code && !joinedCodes.has(w.invite_code)).map((w) => {
     const [first, last] = split(w.name);
-    return row({ id: 1_000_000 + w.id, no: '', first: shown(first), last: shown(last), batch: w.batch!, invited: ms(w.invited_at)!, joined: ms(w.joined_at)!, city: w.city, src: w.source === 'poster' ? 'Poster' : 'Website', status: 'invited', poster: w.poster, last_: ms(w.invited_at)! });
+    return row({ id: WAITING_ID + w.id, no: waitNo(w.id), first: shown(first), last: shown(last), batch: w.batch!, invited: ms(w.invited_at)!, joined: ms(w.joined_at)!, city: w.city, src: w.source === 'poster' ? 'Poster' : 'Website', status: 'invited', poster: w.poster, last_: ms(w.invited_at)! });
   });
   const members = roster.map((m) => {
     const w = m.inviteCode ? invite.get(m.inviteCode) : undefined;
@@ -229,29 +290,37 @@ async function membersLive(db: Queryable, o: ReadOptions, keep?: { rows?: Member
   const MEMBERS = names === 'none' ? all.map(totalsOnly) : all;
   if (keep) keep.rows = all;
 
-  const { rows: batches } = await db.query<{ number: number; sent_at: Date }>(`SELECT number, sent_at FROM command.batches WHERE live AND status = 'sent' ORDER BY number`);
+  const { rows: batches } = await db.query<{ number: number; size: number; sent_at: Date }>(`SELECT number, size, sent_at FROM command.batches WHERE live AND status = 'sent' ORDER BY number`);
   const count = (n: number, s: string) => all.filter((m) => m.batch === n && m.status === s).length;
-  // a batch someone proposed, waiting for a second person: who it would take, oldest first
-  const { rows: p } = await db.query<{ payload: { body: { size: number } }; who: string }>(
-    `SELECT p.payload, coalesce(nullif(pp.name, ''), pp.email) AS who FROM command.proposals p JOIN command.people pp ON pp.id = p.proposed_by
+  // a batch someone proposed, waiting for a second person: who it would take, in its order
+  const { rows: p } = await db.query<{ payload: { body: { size: number; order?: string; cities?: string[]; posters?: string[]; ids?: number[] } }; who: string; created_at: Date }>(
+    `SELECT p.payload, p.created_at, coalesce(nullif(pp.name, ''), pp.email) AS who FROM command.proposals p JOIN command.people pp ON pp.id = p.proposed_by
       WHERE p.kind = 'action' AND p.status = 'waiting' AND p.payload->>'section' = 'members' AND p.payload->>'kind' = 'batch' ORDER BY p.created_at DESC LIMIT 1`,
   );
+  // the next batch's number: after every batch, the seed's samples among them
+  const { rows: n } = await db.query<{ number: number }>('SELECT coalesce(max(number), 0) + 1 AS number FROM command.batches');
   let NEXT_BATCH: NextBatch | null = null;
   if (p.length) {
-    const size = Number(p[0].payload.body.size);
-    const take = wl.filter((w) => w.batch == null).sort((a, b) => ms(a.joined_at)! - ms(b.joined_at)!).slice(0, size);
-    const { rows: n } = await db.query<{ number: number }>('SELECT coalesce(max(number), 0) + 1 AS number FROM command.batches');
+    const body = p[0].payload.body;
+    const size = Number(body.size);
+    const order = BATCH_ORDERS.find((o) => o === body.order) ?? 'oldest';
+    const take = pickFrom(wl.filter((w) => w.batch == null), size, order, body);
     NEXT_BATCH = {
       number: n[0].number,
       size,
       proposedBy: p[0].who,
-      joinedFrom: take.length ? ms(take[0].joined_at)! : now,
-      joinedTo: take.length ? ms(take.at(-1)!.joined_at)! : now,
+      joinedFrom: take.length ? Math.min(...take.map((w) => ms(w.joined_at)!)) : now,
+      joinedTo: take.length ? Math.max(...take.map((w) => ms(w.joined_at)!)) : now,
       fromPosters: take.filter((w) => w.source === 'poster').length,
       fromWebsite: take.filter((w) => w.source !== 'poster').length,
       windowEnds: now + WINDOW_DAYS * DAY,
+      proposedAt: ms(p[0].created_at)!,
+      order,
+      // who, by the id their waitlist row has on the page: never at Totals
+      ...(names === 'none' ? {} : { ids: take.map((w) => WAITING_ID + w.id) }),
     };
   }
+  const form = await joinForm(db, 'live', names, now);
 
   // the 12 weeks' members figures, from the rows
   const week = Math.floor(now / (7 * DAY)) * 7 * DAY;
@@ -264,6 +333,8 @@ async function membersLive(db: Queryable, o: ReadOptions, keep?: { rows?: Member
     'members.weekly.first_spend_total': ends.map((end) => all.filter((m) => before(m.spentAt, end)).length),
     // no source says which first spends were a poster's $10 yet
     'members.first_spends.poster_ten': 0,
+    'members.next_batch.number': n[0].number + (NEXT_BATCH ? 1 : 0),
+    'members.forms.month': form.month,
   };
   return {
     MEMBERS,
@@ -271,6 +342,9 @@ async function membersLive(db: Queryable, o: ReadOptions, keep?: { rows?: Member
     B_ACT: batches.map((b) => count(b.number, 'active')),
     B_OPEN: batches.map((b) => count(b.number, 'opened')),
     NEXT_BATCH,
+    WAITLIST: waitingRows(wl, names),
+    BATCHES: batchRows(batches, all),
+    FORMS: form.rows,
     figures: { ...(await figures(db, 'members')), ...live },
     asOf,
     names,
