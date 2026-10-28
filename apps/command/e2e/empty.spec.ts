@@ -99,6 +99,26 @@ const DEMO = [
   'starter credit limit',
   'Holdings appointee',
   'Highland council',
+  // Community's reference (community2.tsx): its events, threads, flagged posts, channel and library
+  'Highland coffee hour',
+  'October town hall',
+  'September town hall',
+  'AssurancePool works',
+  'Poster walk',
+  'New members: ask anything',
+  'tool library',
+  'Saturday mornings',
+  'Which shops do term plans',
+  'move savings into Earn',
+  'buy a couch',
+  'Channel 4',
+  'Off · Dial only',
+  'Term plans, start to finish',
+  'Member stories',
+  'Shop spotlight',
+  '212 views',
+  'T-412',
+  'E-34',
 ];
 
 type Finding = { route: string; pane: string; after: string; kind: 'error' | 'demo' | 'garbage'; what: string };
@@ -123,7 +143,7 @@ async function demoText(page: Page): Promise<string[]> {
   return [...DEMO.filter((d) => text.includes(d)), ...(bad ? [`garbage: ${text.slice(Math.max(0, bad.index - 40), bad.index + 30).replace(/\s+/g, ' ')}`] : [])];
 }
 
-// Community has no backend yet: its live gate is off, so the empty preview shows its placeholder, which is checked as any page
+// Community has no backend yet, but its gate is on: its redesigned page draws empty (community2.tsx), checked as any page
 for (const route of ROUTES) {
   test(`renders empty: ${route}`, async ({ page }) => {
     // every tab and up to 40 controls on each: Growth and Contracts take longer than the default allows
