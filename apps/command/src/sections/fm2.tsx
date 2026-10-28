@@ -38,6 +38,8 @@ function skeleton() {
 const picked = (on) => (on ? { ref: (el) => el?.setAttribute('selected', '') } : {});
 /** Live: the other page's section being loaded, or that couldn't be (no access), so it's asked for once. */
 const OTHER = new Set<string>();
+/** Live: the route picked in Plan, kept while the module is built again from what the server now holds. */
+const KEEP = { sel: null };
 function makeFieldMerchants() {
   // field and merchants share one chain of sheets (g, fm), so one host draws both
   const { host, R: SR, W, into } = shadowHost('field', skeleton());
@@ -1310,8 +1312,8 @@ function makeFieldMerchants() {
       addSel: null,
       addTask: 'check',
       drag: null,
-      // live, no routes are planned ahead yet (docs/ui-redesign-plan.md, gaps)
-      routes: LV ? [] : [{
+      // live, the routes planned for the coming days (route_plans, migration 0069), in their saved order
+      routes: LV ? LV.ROUTES : [{
         id: 'r1',
         d: 1,
         who: 'marcus',
@@ -1358,6 +1360,13 @@ function makeFieldMerchants() {
         okAt: 'Tue 20 Oct'
       }]
     };
+    // live, the picked route outlasts the module being built again
+    if (LV) Object.defineProperty(R, 'sel', {
+      get: () => KEEP.sel,
+      set: v => {
+        KEEP.sel = v;
+      }
+    });
     const ME = () => TEAM[R.me],
       isAdmin = () => !RO() && !!ME().admin;
     const RT = id => R.routes.find(r => r.id === id);
@@ -1418,7 +1427,8 @@ function makeFieldMerchants() {
       }
       r.ids = out;
     }
-    R.routes.forEach(bestOrder);
+    // live, a route keeps the order it was saved in
+    LV || R.routes.forEach(bestOrder);
     const STATUS = {
       draft: ['Draft', ''],
       sent: ['Sent', 'tlv'],
@@ -1448,6 +1458,79 @@ function makeFieldMerchants() {
     };
     const STAGES_M = [['prospect', 'Prospect'], ['talking', 'Talking'], ['signing', 'Signing'], ['signed', 'Signed']];
     const tomorrowFor = who => R.routes.find(r => r.d === 1 && r.who === who) || R.routes.find(r => r.d === 1);
+    /* live: a route is saved whole as it changes (route-save), then the page is built again from what the server holds;
+       a new route is route-plan, sending it route-send, taking it back route-take-back, accepting it (or saving your own)
+       route-accept. Who can change what is the server's rule too: your own routes, or anyone's for an admin. */
+    const isoDay = t => new Date(t).toISOString().slice(0, 10);
+    const stopsBody = P => P.st.map((x, i) => ({
+      ref: x.id,
+      kind: x.kind,
+      shop: x.shop,
+      city: x.city || '',
+      what: x.what,
+      why: x.why || '',
+      mins: x.mins || 0,
+      n: x.n ?? null,
+      design: x.design ?? null,
+      eta: hhmm(P.times[i])
+    }));
+    const routeBody = r => {
+      const P = plan(r);
+      return {
+        id: +r.id,
+        who: LV.uidOf(r.who) || undefined,
+        start: r.start,
+        stops: stopsBody(P),
+        miles: P.miles,
+        minutes: P.mins,
+        backBy: P.back
+      };
+    };
+    const afterSave = msg => [() => {
+      if (msg) toast(msg);
+      renderShell();
+    }, err => {
+      toast(err.message);
+      renderShell();
+    }];
+    const saveRoutes = (rs, msg) => rs.reduce((p, r) => p.then(() => act('field', 'route-save', routeBody(r))), Promise.resolve()).then(...afterSave(msg));
+    /** Live: who a new route can be for, as the server has it: anyone with Field access for an admin, else yourself. */
+    const canPlanFor = w => !RO() && !!TEAM[w]?.field && !!LV.uidOf(w) && (isAdmin() || w === R.me);
+    /** Live: puts something that needs a visit on `who`'s next planned route (yours when it can't be theirs), starting one for the next working day when they have none. */
+    function toNextRoute(x, who) {
+      const w = who && canPlanFor(who) ? who : R.me;
+      if (!canPlanFor(w)) return toast('You can see routes but not plan them');
+      if (!POOLBY[x.id]) {
+        POOL.push(x);
+        POOLBY[x.id] = x;
+      }
+      const day = DAYS[0],
+        r = R.routes.filter(q => q.who === w && canEdit(q)).sort((a, b) => a.d - b.d)[0];
+      const whose = w === R.me ? 'your' : firstName(w) + '’s';
+      if (r) {
+        if (!r.ids.includes(x.id)) r.ids.push(x.id);
+        R.sel = r.id;
+        return saveRoutes([r], `${x.shop} added to ${whose} ${fmtWD(dayT(r.d)).slice(0, 3)} route`);
+      }
+      const q = {
+        id: 'new',
+        d: day,
+        who: w,
+        ids: [x.id],
+        status: 'draft',
+        by: R.me,
+        start: 'office'
+      };
+      act('field', 'route-plan', {
+        day: isoDay(dayT(day)),
+        who: LV.uidOf(w),
+        start: 'office',
+        ...routeBody(q),
+        id: undefined
+      }).then(res => {
+        R.sel = String(res.result.id);
+      }).then(...afterSave(`${x.shop} is on a new route for ${whose === 'your' ? 'you' : firstName(w)}, ${fmtWD(dayT(day))}`));
+    }
     /* the signed-in person comes from the app: Kai, or whoever this view belongs to */
     function renderMe() {
       const k = meKey();
@@ -1471,8 +1554,8 @@ function makeFieldMerchants() {
          how much of the team's field time is used, and the one thing that needs you. More than five people collapse into +N. */
       const fieldN = Object.values(TEAM).filter(t => t.field).length,
         CAP = Math.max(1, fieldN) * 300;
-      // live, nothing stores a route planned ahead, so none is started here
-      const canAddOn = d => !LV && (isAdmin() || !R.routes.some(x => x.d === d && x.who === me));
+      // live, a new route is yours (or anyone's, for an admin), so the + shows to whoever can plan one
+      const canAddOn = d => (LV ? !RO() && !!ME().field : true) && (isAdmin() || !R.routes.some(x => x.d === d && x.who === me));
       const av = x => <button className={`fwa ${x.status} ${R.sel === x.id ? 'on' : ''} ${x.who === me ? 'me' : ''}`} data-froute={x.id} aria-pressed={R.sel === x.id} title={`${x.who === me ? 'You' : TEAM[x.who].n} · ${STATUS[x.status][0]} · ${plan(x).st.length} stops`}>{TEAM[x.who].ini}</button>;
       const dayCol = (d, live) => {
         const rs = live ? [] : R.routes.filter(x => x.d === d),
@@ -1518,7 +1601,7 @@ function makeFieldMerchants() {
 
       /* the selected route */
       let builder;
-      if (!r && LV) builder = notReal('s7', 'Routes ahead', 'Needs routes planned for the coming days: who goes, which stops, and whether they’ve accepted. Today’s route comes from the phone.', 'froute');
+      if (!r && LV) builder = <div className="cell s7" id="froute"><div className="hd"><h2>No routes planned</h2></div><div className="fb"><div className="fb-empty" style={css("padding:28px 22px")}><b>Nothing is planned for the coming days</b><span>{!RO() && ME().field ? 'Add a route with + on a day in the week, then add its stops from Needs a visit.' : 'Routes show here once someone with Field access plans one.'}</span></div></div><div className="f-ft2"><span className="small quiet">A route accepted for today becomes today’s route</span><span /></div></div>;
       else if (!r) {
         builder = <div className="cell s7" id="froute"><div className="hd"><h2>No route picked</h2></div><div className="fb"><div className="fb-empty" style={css("padding:28px 22px")}><b>Pick a route in the week</b><span>{"Or add one with + "}{isAdmin() ? 'Route' : 'My route'}.</span></div></div><div className="f-ft2"><span /><span /></div></div>;
       } else {
@@ -1527,7 +1610,7 @@ function makeFieldMerchants() {
           field = Object.entries(TEAM).filter(([, t]) => t.field);
         const stopRow = (x, i) => <div className="fb-r" draggable={edit} data-fdrag={i}><span className="fb-h" aria-hidden="true">{edit ? '⠿' : ''}</span><span className="fb-n">{i + 1}</span><button className="fs-k" data-fitem={x.id}><b>{x.shop}</b><span>{KIND[x.kind]}{" · "}{x.what}</span></button><span className="fs-e">{hhmm(P.times[i])}</span>{edit ? <span className="fb-a"><button data-fmv={`${i}|-1`} {...attrs(i === 0 ? 'disabled' : '')} aria-label="Move up">↑</button><button data-fmv={`${i}|1`} {...attrs(i === P.st.length - 1 ? 'disabled' : '')} aria-label="Move down">↓</button><button data-fadd={x.id} aria-label={`Take ${x.shop} off`}>{ICO.x}</button></span> : ''}</div>;
         const whoCtl = isAdmin() ? <label className="fb-sel"><span className="lbl">Assigned to</span><select id="fwho" defaultValue={r.who}>{field.map(([k, t], __k) => <option key={__k} value={k} {...picked(r.who === k)}>{k === me ? 'Me (' + t.n + ')' : t.n}</option>)}</select></label> : <span className="lbl">{own ? 'Your route' : TEAM[r.who].n + '’s route · read-only'}</span>;
-        const foot = !edit ? <div className="f-ft2"><span className="small quiet">{"Planned by "}{r.by === r.who ? firstName(r.who) : firstName(r.by)}{" · only "}{firstName(r.who)}{" or an admin can change it"}</span><span /></div> : own ? <div className="f-ft2"><span className="small quiet">{r.status === 'accepted' ? `Saved · it’s on your phone${!isAdmin() ? ' and Kai can see it' : ''}` : r.changed ? 'Changed since you saved it' : 'Draft · save it to put it on your phone'}</span><button className="btn p" data-fsaveme="" {...attrs(!P.st.length || r.status === 'accepted' ? 'disabled' : '')}>{r.status === 'accepted' ? 'Saved ✓' : 'Save my route'}</button></div> : r.status === 'sent' ? <div className="f-ft2"><span className="small quiet">{"Sent "}{r.sentAt}{" · waiting for "}{firstName(r.who)}{" to accept"}</span><button className="lnk3" data-funsend="">Take it back</button></div> : r.status === 'accepted' ? <div className="f-ft2"><span className="small"><b className="ok">{firstName(r.who)}{" "}{r.by === r.who ? 'planned and saved it' : 'accepted'}</b>{" "}<span className="quiet">{"· "}{r.okAt}</span></span><span className="small quiet">Changing it sends it again</span></div> : <div className="f-ft2"><span className="small quiet">{r.changed ? 'Changed since it was sent' : 'Draft · only you can see it'}</span><button className="btn p" data-fsend="" {...attrs(!P.st.length ? 'disabled' : '')}>{"Send to "}{firstName(r.who)}</button></div>;
+        const foot = !edit ? <div className="f-ft2"><span className="small quiet">{"Planned by "}{r.by === r.who ? firstName(r.who) : firstName(r.by)}{" · only "}{firstName(r.who)}{" or an admin can change it"}</span><span /></div> : own ? <div className="f-ft2"><span className="small quiet">{r.status === 'accepted' ? LV ? `Saved · it’s your route${!isAdmin() ? ' and the admins can see it' : ''}` : `Saved · it’s on your phone${!isAdmin() ? ' and Kai can see it' : ''}` : r.changed ? 'Changed since you saved it' : LV ? 'Draft · save it to make it your route' : 'Draft · save it to put it on your phone'}</span><button className="btn p" data-fsaveme="" {...attrs(!P.st.length || r.status === 'accepted' ? 'disabled' : '')}>{r.status === 'accepted' ? 'Saved ✓' : 'Save my route'}</button></div> : r.status === 'sent' ? <div className="f-ft2"><span className="small quiet">{"Sent "}{r.sentAt}{" · waiting for "}{firstName(r.who)}{" to accept"}</span>{LV ? <span style={css("display:flex;gap:16px")}><button className="lnk3" data-fokay="">Mark accepted</button><button className="lnk3" data-funsend="">Take it back</button></span> : <button className="lnk3" data-funsend="">Take it back</button>}</div> : r.status === 'accepted' ? <div className="f-ft2"><span className="small"><b className="ok">{firstName(r.who)}{" "}{r.by === r.who ? 'planned and saved it' : 'accepted'}</b>{" "}<span className="quiet">{"· "}{r.okAt}</span></span><span className="small quiet">Changing it sends it again</span></div> : <div className="f-ft2"><span className="small quiet">{r.changed ? 'Changed since it was sent' : 'Draft · only you can see it'}</span><button className="btn p" data-fsend="" {...attrs(!P.st.length ? 'disabled' : '')}>{"Send to "}{firstName(r.who)}</button></div>;
         const sib = R.routes.filter(x => x.d === r.d);
         builder = <div className="cell s7" id="froute"><div className="hd"><h2>{fmtWD(dayT(r.d))}</h2>{statusChip(r)}<div className="r">{whoCtl}</div></div>{sib.length > 1 ? <div className="fsib" role="tablist" aria-label={`Routes on ${fmtWD(dayT(r.d))}`}>{sib.map((x, __k) => <button key={__k} role="tab" aria-selected={x.id === r.id} data-froute={x.id}><span className="av sm">{TEAM[x.who].ini}</span>{x.who === me ? 'You' : TEAM[x.who].n}<i className={`fsq ${x.status}`} /></button>)}</div> : ''}<div className="fb"><div className="fb-m" data-fit="plan">{fitMap('plan', a => routeMap('plan', P.st.map(x => ({
                 name: x.shop,
@@ -1539,7 +1622,7 @@ function makeFieldMerchants() {
 
     /* ── panels ── */
     const TASKS = [['check', 'Check the poster', 12, 'visit'], ['swap', 'Swap the poster', 18, 'poster'], ['new', 'Put up a new poster', 25, 'new'], ['walkin', 'Walk in and pitch', 15, 'merchant'], ['follow', 'Follow up', 20, 'merchant'], ['demo', 'Demo the merchant app', 40, 'merchant'], ['device', 'Fix a counter device', 20, 'device'], ['talk', 'Talk to the owner', 15, 'visit']];
-    const SHOPLIST = (() => {
+    const SHOPLIST = LV ? LV.SHOPLIST : (() => {
       const s = new Map();
       SHOPS.forEach(x => s.set(x[1], [x[7], 'Partner']));
       OTHER_SHOPS.forEach((n, i) => s.set(n, [OTHER_CITY[i], 'Partner']));
@@ -1560,7 +1643,7 @@ function makeFieldMerchants() {
           who = LV ? '–' : ['the owner', 'Luis', 'Kim', 'Ms. Tran', 'Hector', 'Sofia'][hashN(x.shop) % 6];
         const si = x.kind === 'merchant' ? STAGES_M.findIndex(s => s[0] === x.stage) : -1;
         const btn = !r || !canEdit(r) ? '' : on === r ? <button className="btn p" data-fadd={x.id}>{"Take off "}{dayName.slice(0, 3)}</button> : on && !canEdit(on) ? <span className="small quiet">{"On "}{firstName(on.who)}{"’s "}{fmtWD(dayT(on.d)).slice(0, 3)}{" route"}</span> : <button className="btn p" data-fadd={x.id} title={`${r.who === R.me ? 'Your' : firstName(r.who) + '’s'} ${dayName} route`}>{on ? 'Move' : 'Add'}{" to "}{dayName.slice(0, 3)}</button>;
-        html(pn, <><div className="pn-hd"><span className="lbl">{KIND[x.kind]}</span><i className="fl-sv" style={css(`background:${sevCol(x.sev)}`)} /><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top">{p ? designThumb(p.design, 48) : x.kind === 'device' ? batteryThumb(48, 1) : x.kind === 'merchant' ? <span className="fshop">{x.shop.split(' ').map(w => w[0]).slice(0, 2).join('')}</span> : designThumb(x.design || 'B', 48)}<div><h3>{x.shop}</h3><span className="small quiet">{x.city}</span></div></div><div className="fit"><b>{x.what}</b><span>{x.why}</span></div>{x.kind === 'merchant' ? <div><div className="w90-h"><span className="lbl">In the Merchants pipeline</span>{x.owner ? <b>{x.owner === R.me ? 'Your lead' : firstName(x.owner) + '’s lead'}</b> : ''}</div><div className="fpl">{STAGES_M.map(([k, t], i) => <span key={i} className={i < si ? 'past' : i === si ? 'now' : ''}>{t}</span>)}</div>{x.val ? <span className="small quiet">Could finance about ${int(x.val)}{" a month"}</span> : ''}</div> : ''}{p ? <div className="w90"><div className="w90-h"><span className="lbl">{"Poster "}{pid(p.n)}{" · 60-day life"}</span><b className={L.d < 0 || p.status !== 'up' ? 'warn' : ''}>{p.status === 'missing' ? 'Gone' : L.d < 0 ? `${-L.d} days late` : `${L.d} days left`}</b></div><span className={`wbar big ${L.d < 10 || p.status !== 'up' ? 'lo' : ''}`}><i style={css(`width:${L.pct * 100}%`)} /></span><span className="small quiet">{"Design "}{p.design}{" · "}{p.scans}{" scans in 30 days · hung "}{fmtD(p.hung)}</span></div> : ''}<div className="led"><div><span>Open until</span><b>{info}</b></div><div><span>Ask for</span><b>{who}</b></div><div><span>Takes about</span><b>{x.mins}{" min"}</b></div><div><span>Planned</span><b>{on ? `${fmtWD(dayT(on.d))} · ${on.who === R.me ? 'you' : firstName(on.who)}` : 'Not yet'}</b></div></div>{x.kind === 'merchant' ? <p className="small quiet" style={css("margin:0")}>Whatever happens on the visit gets logged back to this shop in Merchants.</p> : x.kind === 'device' ? <p className="small quiet" style={css("margin:0")}>From Merchants. Bring a spare battery and a receipt roll.</p> : x.kind === 'new' ? <p className="small quiet" style={css("margin:0")}>{"From Placement. The owner said yes; bring design "}{x.design}.</p> : ''}</div><div className="pn-ft mft">{btn}{x.kind === 'merchant' ? <button className="btn" data-fgo="merchants" data-fshop={x.shop}>In Merchants ↗</button> : ''}{LV ? '' : <div className="more3"><button className="btn" data-fmore="">More ▾</button><div className="mm3" hidden><button data-fsnooze={x.id}>{R.snoozed.has(x.id) ? 'Unsnooze' : 'Snooze a week'}{" "}<span>Hides it</span></button><button className="dz" data-fdrop={x.id}>{"Not needed "}<span>Logged</span></button></div></div>}</div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">{KIND[x.kind]}</span><i className="fl-sv" style={css(`background:${sevCol(x.sev)}`)} /><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top">{p ? designThumb(p.design, 48) : x.kind === 'device' ? batteryThumb(48, 1) : x.kind === 'merchant' ? <span className="fshop">{x.shop.split(' ').map(w => w[0]).slice(0, 2).join('')}</span> : designThumb(x.design || 'B', 48)}<div><h3>{x.shop}</h3><span className="small quiet">{x.city}</span></div></div><div className="fit"><b>{x.what}</b><span>{x.why}</span></div>{x.kind === 'merchant' ? <div><div className="w90-h"><span className="lbl">In the Merchants pipeline</span>{x.owner ? <b>{x.owner === R.me ? 'Your lead' : firstName(x.owner) + '’s lead'}</b> : ''}</div><div className="fpl">{STAGES_M.map(([k, t], i) => <span key={i} className={i < si ? 'past' : i === si ? 'now' : ''}>{t}</span>)}</div>{x.val ? <span className="small quiet">Could finance about ${int(x.val)}{" a month"}</span> : ''}</div> : ''}{p ? <div className="w90"><div className="w90-h"><span className="lbl">{"Poster "}{pid(p.n)}{" · 60-day life"}</span><b className={L.d < 0 || p.status !== 'up' ? 'warn' : ''}>{p.status === 'missing' ? 'Gone' : L.d < 0 ? `${-L.d} days late` : `${L.d} days left`}</b></div><span className={`wbar big ${L.d < 10 || p.status !== 'up' ? 'lo' : ''}`}><i style={css(`width:${L.pct * 100}%`)} /></span><span className="small quiet">{"Design "}{p.design}{" · "}{p.scans}{" scans in 30 days · hung "}{fmtD(p.hung)}</span></div> : ''}<div className="led"><div><span>Open until</span><b>{info}</b></div><div><span>Ask for</span><b>{who}</b></div><div><span>Takes about</span><b>{x.mins}{" min"}</b></div><div><span>Planned</span><b>{on ? `${fmtWD(dayT(on.d))} · ${on.who === R.me ? 'you' : firstName(on.who)}` : 'Not yet'}</b></div></div>{x.kind === 'merchant' ? <p className="small quiet" style={css("margin:0")}>Whatever happens on the visit gets logged back to this shop in Merchants.</p> : x.kind === 'device' ? <p className="small quiet" style={css("margin:0")}>From Merchants. Bring a spare battery and a receipt roll.</p> : x.kind === 'new' ? <p className="small quiet" style={css("margin:0")}>{LV && !x.design ? 'From Placement. The owner said yes; the design is picked when it goes up.' : <>{"From Placement. The owner said yes; bring design "}{x.design}.</>}</p> : ''}</div><div className="pn-ft mft">{btn}{x.kind === 'merchant' ? <button className="btn" data-fgo="merchants" data-fshop={x.shop}>In Merchants ↗</button> : ''}{LV ? '' : <div className="more3"><button className="btn" data-fmore="">More ▾</button><div className="mm3" hidden><button data-fsnooze={x.id}>{R.snoozed.has(x.id) ? 'Unsnooze' : 'Snooze a week'}{" "}<span>Hides it</span></button><button className="dz" data-fdrop={x.id}>{"Not needed "}<span>Logged</span></button></div></div>}</div></>);
         return;
       }
       if (P.k === 'add') {
@@ -1571,7 +1654,7 @@ function makeFieldMerchants() {
       }
       if (P.k === 'send') {
         const Pl = plan(r),
-          load = {
+          load = LV ? Object.fromEntries(Object.keys(DESIGNS).map(k => [k, 0])) : {
             A: 0,
             B: 0,
             C: 0
@@ -1584,13 +1667,38 @@ function makeFieldMerchants() {
           if (x.kind === 'merchant') mer++;
         });
         const nm = TEAM[r.who].n;
-        html(pn, <><div className="pn-hd"><span className="lbl">Send the route</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>{dayName}{" · "}{nm}</h3><div className="bx4">{[['Stops', Pl.st.length], ['About', hm(Pl.mins)], ['Miles', Pl.miles], ['Back by', Pl.back]].map(([t, v], __k) => <div key={__k}><span className="lbl">{t}</span><b style={css("font-size:16px;white-space:nowrap")}>{v}</b></div>)}</div><div><span className="lbl">The stops</span><div className="fsd">{Pl.st.map((x, i) => <div key={i}><span className="fb-n">{i + 1}</span><span><b>{x.shop}</b><span className="small quiet">{" · "}{x.what}</span></span><span>{hhmm(Pl.times[i])}</span></div>)}</div></div><div><span className="lbl">Bring</span><div className="fv fsl">{Object.entries(load).filter(([, v]) => v).map(([k, v], __k) => <div key={__k} className="fv-r">{designThumb(k, 20)}<span className="fv-k"><b>{v}{" × design "}{k}</b><span>{DESIGNS[k].name}</span></span></div>)}{dev ? <div className="fv-r">{batteryThumb(20)}<span className="fv-k"><b>{dev}{" spare batter"}{dev === 1 ? 'y' : 'ies'}{" and receipt rolls"}</b><span>For the counter device fixes</span></span></div> : ''}{mer ? <div className="fv-r"><span className="fshop sm">M</span><span className="fv-k"><b>Merchant kit</b><span>{"Agreements, a demo tablet and window stickers · "}{mer}{" merchant stop"}{mer === 1 ? '' : 's'}</span></span></div> : ''}</div></div><label><span className="lbl">{"Note for "}{firstName(r.who)}</span><textarea id="fsendnote" className="cmp" rows="3" placeholder="Anything they should know" /></label></div><div className="pn-ft"><span className="nx">{firstName(r.who)}{" gets it on the phone"}</span><button className="btn" data-fclose="">Not yet</button><button className="btn p" data-fsendgo="">Send</button></div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">Send the route</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>{dayName}{" · "}{nm}</h3><div className="bx4">{[['Stops', Pl.st.length], ['About', hm(Pl.mins)], ['Miles', Pl.miles], ['Back by', Pl.back]].map(([t, v], __k) => <div key={__k}><span className="lbl">{t}</span><b style={css("font-size:16px;white-space:nowrap")}>{v}</b></div>)}</div><div><span className="lbl">The stops</span><div className="fsd">{Pl.st.map((x, i) => <div key={i}><span className="fb-n">{i + 1}</span><span><b>{x.shop}</b><span className="small quiet">{" · "}{x.what}</span></span><span>{hhmm(Pl.times[i])}</span></div>)}</div></div><div><span className="lbl">Bring</span><div className="fv fsl">{Object.entries(load).filter(([, v]) => v).map(([k, v], __k) => <div key={__k} className="fv-r">{designThumb(k, 20)}<span className="fv-k"><b>{v}{" × design "}{k}</b><span>{DESIGNS[k].name}</span></span></div>)}{dev ? <div className="fv-r">{batteryThumb(20)}<span className="fv-k"><b>{dev}{" spare batter"}{dev === 1 ? 'y' : 'ies'}{" and receipt rolls"}</b><span>For the counter device fixes</span></span></div> : ''}{mer ? <div className="fv-r"><span className="fshop sm">M</span><span className="fv-k"><b>Merchant kit</b><span>{"Agreements, a demo tablet and window stickers · "}{mer}{" merchant stop"}{mer === 1 ? '' : 's'}</span></span></div> : ''}</div></div><label><span className="lbl">{"Note for "}{firstName(r.who)}</span><textarea id="fsendnote" className="cmp" rows="3" placeholder="Anything they should know" /></label></div><div className="pn-ft"><span className="nx">{LV ? `Recorded for ${firstName(r.who)}’s phone` : <>{firstName(r.who)}{" gets it on the phone"}</>}</span><button className="btn" data-fclose="">Not yet</button><button className="btn p" data-fsendgo="">Send</button></div></>);
+        return;
+      }
+      /* live: today's van load, a shop that said yes to a poster, and saying one did */
+      if (P.k === 'van' && LV) {
+        const V0 = LV.VAN,
+          now = new Date(),
+          at = V0 ? V0.loaded : `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const num = (id, v, label, sub, thumb) => <label className="fvl-r">{thumb}<span className="fv-k"><b>{label}</b><span>{sub}</span></span><input id={id} className="vin fvl-n" type="number" min="0" max="500" inputMode="numeric" defaultValue={String(v || 0)} aria-label={label} /></label>;
+        html(pn, <><div className="pn-hd"><span className="lbl">{"In the van · "}{fmtWD(TODAY)}</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>What went in the van</h3><div><span className="lbl">Posters</span><div className="fvl">{Object.keys(DESIGNS).length ? Object.keys(DESIGNS).map((k, __k) => <Fragment key={__k}>{num(`fvan-${k}`, V0?.posters[k], `Design ${k}`, DESIGNS[k].name, designThumb(k, 20))}</Fragment>) : <p className="small quiet" style={css("margin:6px 0 0")}>No designs yet.</p>}</div></div><div><span className="lbl">Spares</span><div className="fvl">{num('fvan-bat', V0?.batteries, 'Clear Point batteries', 'For the counter device fixes', batteryThumb(20))}{num('fvan-roll', V0?.rolls, 'Receipt rolls', 'For the shops’ printers', <span className="fshop sm">R</span>)}</div></div><label><span className="lbl">Loaded at</span><input id="fvan-at" className="vin" type="time" defaultValue={at} /></label><label><span className="lbl">Note</span><textarea id="fvan-note" className="cmp" rows="2" placeholder="Optional" defaultValue={V0?.note || ''} /></label></div><div className="pn-ft"><span className="nx">{V0 ? `Recorded ${V0.by ? 'by ' + V0.by : ''}` : 'Today’s load'}</span><button className="btn" data-fclose="">Cancel</button><button className="btn p" data-fvango="">Save the load</button></div></>);
+        return;
+      }
+      if (P.k === 'yes' && LV) {
+        const y = LV.YES.find(q => q.id === P.id);
+        if (!y) return;
+        const x = POOLBY['y:' + y.id],
+          on = x && routeOf(x.id),
+          sel = P.design || y.design || null;
+        html(pn, <><div className="pn-hd"><span className="lbl">Said yes to a poster</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top"><span className="fshop">{y.shop.split(' ').map(w => w[0]).slice(0, 2).join('')}</span><div><h3>{y.shop}</h3><span className="small quiet">{y.city}</span></div></div><div className="led"><div><span>Said yes</span><b>{fmtD(y.agreed)}</b></div><div><span>How</span><b>{y.source === 'visit' ? 'On a visit' : y.source === 'pipeline' ? 'From the pipeline' : 'Added by hand'}</b></div><div><span>Logged by</span><b>{y.by || '–'}</b></div><div><span>Planned</span><b>{on ? `${fmtWD(dayT(on.d))} · ${on.who === R.me ? 'you' : firstName(on.who)}` : 'Not yet'}</b></div></div>{y.note ? <div><span className="lbl">Note</span><p className="vnote">{y.note}</p></div> : ''}{RO() ? '' : <div><span className="lbl">The design that went up</span><div className="fad-t">{Object.keys(DESIGNS).map((k, __k) => <button key={__k} className={sel === k ? 'on' : ''} data-fyesd={k} aria-pressed={sel === k}><b>{"Design "}{k}</b><span>{DESIGNS[k].name}</span></button>)}</div></div>}</div><div className="pn-ft mft">{RO() ? <button className="btn" style={css("margin-left:auto")} data-fclose="">Close</button> : <>{x && !on ? <button className="btn" data-fnew={x.id}>Add to my next route</button> : ''}<button className="btn" data-fyesno={y.id}>Changed their mind</button><button className="btn p" style={css("margin-left:auto")} data-fyesup={y.id} {...attrs(!sel ? 'disabled' : '')}>It’s up</button></>}</div></>);
+        return;
+      }
+      if (P.k === 'yesadd' && LV) {
+        const q = R.q.trim().toLowerCase(),
+          list = SHOPLIST.filter(([n, [c]]) => !q || n.toLowerCase().includes(q) || c.toLowerCase().includes(q)).slice(0, 8),
+          typed = R.q.trim();
+        html(pn, <><div className="pn-hd"><span className="lbl">A shop said yes to a poster</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><span className="lbl">Shop</span><label className="msearch" style={css("margin-top:8px;max-width:none")}><svg className="i" viewBox="0 0 20 20"><circle cx="9" cy="9" r="5" /><path d="M13 13l4 4" /></svg><input id="faddq" placeholder="Search shops, or type a new one" defaultValue={R.q} autoComplete="off" /></label><div className="fad-l">{list.map(([n, [c, k]], __k) => <button key={__k} className={`fad-r ${R.addSel === n ? 'on' : ''}`} data-faddsel={n}><b>{n}</b><span>{c}{" · "}{k}</span></button>)}{typed && !list.some(([n]) => n.toLowerCase() === typed.toLowerCase()) ? <button className={`fad-r ${R.addSel === typed ? 'on' : ''}`} data-faddsel={typed}><b>{typed}</b><span>A shop not in Command yet</span></button> : ''}{!list.length && !typed ? <p className="small quiet" style={css("margin:8px 0")}>No shops yet.</p> : ''}</div></div>{R.addSel && !SHOPLIST.some(([n]) => n === R.addSel) ? <label><span className="lbl">City</span><input id="fyescity" className="vin" placeholder="Where it is" autoComplete="off" /></label> : ''}<label><span className="lbl">Note</span><textarea id="fyesnote" className="cmp" rows="2" placeholder="Who said yes, which window" /></label></div><div className="pn-ft"><span className="nx">{R.addSel ? R.addSel : 'Pick a shop'}</span><button className="btn" data-fclose="">Cancel</button><button className="btn p" data-fyesgo="" {...attrs(!R.addSel ? 'disabled' : '')}>Save the yes</button></div></>);
         return;
       }
       if (P.k === 'newroute') {
         const who = isAdmin() ? P.who : R.me,
           field = Object.entries(TEAM);
-        html(pn, <><div className="pn-hd"><span className="lbl">{isAdmin() ? 'New route' : 'Plan my route'}</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>{isAdmin() ? 'Who and when' : 'Pick a day'}</h3><div><span className="lbl">Day</span><div className="fad-t">{DAYS.concat([8, 9]).map((d, __k) => {
+        html(pn, <><div className="pn-hd"><span className="lbl">{isAdmin() ? 'New route' : 'Plan my route'}</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>{isAdmin() ? 'Who and when' : 'Pick a day'}</h3><div><span className="lbl">Day</span><div className="fad-t">{DAYS.concat(LV ? LV.MORE.filter(d => !DAYS.includes(d)) : [8, 9]).map((d, __k) => {
                   const taken = who && R.routes.some(x => x.d === d && x.who === who),
                     n = R.routes.filter(x => x.d === d).length;
                   return <button key={__k} className={P.d === d ? 'on' : ''} data-fnrday={d} {...attrs(taken ? 'disabled' : '')}><b>{d === 1 ? 'Tomorrow · ' : ''}{fmtWD(dayT(d))}</b><span>{taken ? (who === R.me ? 'You' : firstName(who)) + ' already have one' : n ? n + ' other route' + (n === 1 ? '' : 's') : 'Nothing planned'}</span></button>;
@@ -1675,6 +1783,8 @@ function makeFieldMerchants() {
         }
         dirty(r);
         if (R.panel && R.panel.k === 'item' && t.closest('.panel')) R.panel = null;
+        // live: a move takes it off the other route too
+        if (LV) saveRoutes(on && on !== r ? [on, r] : [r]);
         return done();
       }
       if (d.fmv) {
@@ -1683,13 +1793,42 @@ function makeFieldMerchants() {
           j = i + dir;
         [a[i], a[j]] = [a[j], a[i]];
         dirty(r);
+        if (LV) saveRoutes([r]);
         return done();
       }
       if (t.hasAttribute('data-fbest')) {
         bestOrder(r);
         dirty(r);
         toast('Stops put in the shortest order');
+        if (LV) saveRoutes([r]);
         return done();
+      }
+      if (t.hasAttribute('data-fsaveme') && LV) {
+        e.stopImmediatePropagation();
+        return fieldDo('route-accept', {
+          id: +r.id
+        }, `Saved · it’s your route for ${fmtWD(dayT(r.d))}`);
+      }
+      if (t.hasAttribute('data-fokay') && LV) {
+        e.stopImmediatePropagation();
+        return fieldDo('route-accept', {
+          id: +r.id
+        }, `Marked accepted for ${firstName(r.who)}`);
+      }
+      if (t.hasAttribute('data-fsendgo') && LV) {
+        e.stopImmediatePropagation();
+        R.panel = null;
+        render();
+        return fieldDo('route-send', {
+          id: +r.id,
+          note: ((document.getElementById('fsendnote') || {}).value || '').trim()
+        }, `Sent · recorded for ${TEAM[r.who].n}’s phone`);
+      }
+      if (t.hasAttribute('data-funsend') && LV) {
+        e.stopImmediatePropagation();
+        return fieldDo('route-take-back', {
+          id: +r.id
+        }, 'Taken back · it’s a draft again');
       }
       if (t.hasAttribute('data-fsaveme')) {
         r.status = 'accepted';
@@ -1740,7 +1879,8 @@ function makeFieldMerchants() {
       if (t.hasAttribute('data-faddgo')) {
         const task = TASKS.find(x => x[0] === R.addTask),
           [city, kd] = SHOPLIST.find(x => x[0] === R.addSel)[1],
-          id = 'a' + ++R.adhoc,
+          // live, a stop of its own keeps its id once saved
+          id = LV ? 'a:' + Date.now().toString(36) : 'a' + ++R.adhoc,
           note = (document.getElementById('faddnote') || {}).value || '';
         const x = {
           id,
@@ -1751,7 +1891,7 @@ function makeFieldMerchants() {
           why: note || (kd === 'Prospect' ? 'Prospect · added by hand' : 'Added by hand'),
           sev: 'line',
           mins: task[2],
-          design: task[3] === 'new' || task[3] === 'poster' ? 'B' : undefined,
+          design: LV ? undefined : task[3] === 'new' || task[3] === 'poster' ? 'B' : undefined,
           stage: kd === 'Prospect' ? 'prospect' : undefined
         };
         POOL.push(x);
@@ -1760,6 +1900,7 @@ function makeFieldMerchants() {
         dirty(r);
         R.panel = null;
         toast(`${R.addSel} added`);
+        if (LV) saveRoutes([r]);
         return done();
       }
       if (d.fnewroute !== undefined && t.hasAttribute('data-fnewroute')) {
@@ -1780,6 +1921,20 @@ function makeFieldMerchants() {
         if (R.routes.some(x => x.d === R.panel.d && x.who === d.fnrwho)) R.panel.d = null;
         e.stopImmediatePropagation();
         return renderPanel();
+      }
+      if (t.hasAttribute('data-fnrgo') && LV) {
+        const dd = R.panel.d,
+          who = isAdmin() ? R.panel.who : R.me;
+        e.stopImmediatePropagation();
+        R.panel = null;
+        render();
+        return act('field', 'route-plan', {
+          day: isoDay(dayT(dd)),
+          who: LV.uidOf(who),
+          start: 'office'
+        }).then(res => {
+          R.sel = String(res.result.id);
+        }).then(...afterSave(`${fmtWD(dayT(dd))} · route started for ${who === R.me ? 'you' : TEAM[who].n}`));
       }
       if (t.hasAttribute('data-fnrgo')) {
         const {
@@ -1822,6 +1977,100 @@ function makeFieldMerchants() {
         R.panel = null;
         return done();
       }
+      /* live: the van's load, and the shops that said yes to a poster */
+      if (LV && t.hasAttribute('data-fvan')) {
+        R.panel = {
+          k: 'van'
+        };
+        return done();
+      }
+      if (LV && t.hasAttribute('data-fvango')) {
+        const val = id => Math.max(0, Math.round(+((document.getElementById(id) || {}).value || 0)) || 0),
+          at = (document.getElementById('fvan-at') || {}).value || '';
+        const body = {
+          posters: Object.fromEntries(Object.keys(DESIGNS).map(k => [k, val(`fvan-${k}`)])),
+          batteries: val('fvan-bat'),
+          rolls: val('fvan-roll'),
+          note: ((document.getElementById('fvan-note') || {}).value || '').trim(),
+          ...(/^[0-2]\d:[0-5]\d$/.test(at) ? {
+            at
+          } : {})
+        };
+        R.panel = null;
+        e.stopImmediatePropagation();
+        render();
+        return fieldDo('van', body, 'The van’s load is recorded');
+      }
+      if (LV && d.fyes) {
+        R.panel = {
+          k: 'yes',
+          id: +d.fyes,
+          design: null
+        };
+        return done();
+      }
+      if (LV && d.fyesd) {
+        R.panel.design = d.fyesd;
+        e.stopImmediatePropagation();
+        return renderPanel();
+      }
+      if (LV && d.fyesup) {
+        const y = LV.YES.find(q => q.id === +d.fyesup),
+          design = R.panel.design || y.design;
+        R.panel = null;
+        e.stopImmediatePropagation();
+        render();
+        return run('field', 'poster-placed', {
+          id: y.id,
+          design
+        }, res => {
+          toast(`${pid(res.result.n)} is up at ${y.shop} · it’s in Posters`);
+          renderShell();
+        });
+      }
+      if (LV && d.fyesno) {
+        const y = LV.YES.find(q => q.id === +d.fyesno),
+          x = POOLBY['y:' + y.id],
+          on = x && routeOf(x.id);
+        R.panel = null;
+        e.stopImmediatePropagation();
+        render();
+        return act('field', 'poster-no', {
+          id: y.id,
+          reason: 'Changed their mind'
+        }).then(() => {
+          // it doesn't need a visit any more, so it comes off the route it was on
+          if (on && canEdit(on)) {
+            on.ids = on.ids.filter(q => q !== x.id);
+            return act('field', 'route-save', routeBody(on));
+          }
+        }).then(...afterSave(`${y.shop} is off the list`));
+      }
+      if (LV && t.hasAttribute('data-fyesadd')) {
+        R.panel = {
+          k: 'yesadd'
+        };
+        R.q = '';
+        R.addSel = null;
+        return done();
+      }
+      if (LV && t.hasAttribute('data-fyesgo')) {
+        const shop = R.addSel,
+          known = SHOPLIST.find(x => x[0] === shop),
+          m = LV.MS.find(x => x.name === shop && x.card),
+          city = known ? known[1][0] : ((document.getElementById('fyescity') || {}).value || '').trim();
+        const note = ((document.getElementById('fyesnote') || {}).value || '').trim();
+        R.panel = null;
+        e.stopImmediatePropagation();
+        render();
+        return fieldDo('poster-yes', {
+          shop,
+          city,
+          card: m ? m.card.id : null,
+          source: m ? 'pipeline' : 'hand',
+          note
+        }, `${shop} is waiting for a poster`);
+      }
       if (t.hasAttribute('data-fmore')) {
         const mm = t.parentElement.querySelector('.mm3');
         mm.hidden = !mm.hidden;
@@ -1835,6 +2084,7 @@ function makeFieldMerchants() {
         r.start = e.target.value;
         dirty(r);
         render();
+        if (LV) saveRoutes([r]);
       }
       if (e.target.id === 'fwho') {
         const w = e.target.value;
@@ -1848,6 +2098,7 @@ function makeFieldMerchants() {
         dirty(r);
         r.status = 'draft';
         render();
+        if (LV) saveRoutes([r], `Now ${TEAM[w].n}’s route`);
       }
     });
     document.addEventListener('input', e => {
@@ -1885,6 +2136,7 @@ function makeFieldMerchants() {
       R.drag = null;
       dirty(r);
       render();
+      if (LV) saveRoutes([r]);
     });
     document.addEventListener('dragend', () => {
       R.drag = null;
@@ -2089,7 +2341,7 @@ function makeFieldMerchants() {
           rt = leadRoute(l),
           hist = VLOG.filter(v => v.shop === l.shop),
           si = STAGES_M.findIndex(s => s[0] === l.stage);
-        html(pn, <><div className="pn-hd"><span className="lbl">{"Merchant · "}{STAGE_N[l.stage]}</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top"><span className="fshop">{l.shop.split(' ').map(w => w[0]).slice(0, 2).join('')}</span><div><h3>{l.shop}</h3><span className="small quiet">{l.city}{" · "}{l.owner === R.me ? 'your lead' : firstName(l.owner) + '’s lead'}</span></div></div><div className="fit"><b>{l.next}</b><span>{l.due == null ? l.last == null ? 'Never visited' : `Nobody’s been in ${l.last} days` : l.due < 0 ? `${-l.due} days overdue` : l.due === 0 ? 'Due today' : 'Due ' + fmtWD(dayT(l.due))}</span></div><div><span className="lbl">In the Merchants pipeline</span><div className="fpl">{STAGES_M.map(([k, t], i) => <span key={i} className={i < si ? 'past' : i === si ? 'now' : ''}>{t}</span>)}</div>{l.val ? <span className="small quiet">Could finance about ${int(l.val)}{" a month"}</span> : ''}</div><div><span className="lbl">Visits</span>{hist.length ? hist.map((v, __k) => <div key={__k} className="hs3"><b>{v.out}{v.to ? ' → ' + STAGE_N[v.to] : ''}</b><span>{vDay(v.d)}{" · "}{firstName(v.who)}</span></div>) : <p className="small quiet" style={css("margin:6px 0 0")}>No visits yet.</p>}</div></div><div className="pn-ft mft">{LV ? '' : rt ? <button className="btn" data-froute={rt.id} data-ftabgo="plan">{"On "}{firstName(rt.who)}{"’s "}{fmtWD(dayT(rt.d)).slice(0, 3)}{" route →"}</button> : <button className="btn" data-fleadroute={l.shop}>Add to a route</button>}{LV && RO() ? '' : <button className="btn p" data-flog={l.shop}>Log a visit</button>}</div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">{"Merchant · "}{STAGE_N[l.stage]}</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top"><span className="fshop">{l.shop.split(' ').map(w => w[0]).slice(0, 2).join('')}</span><div><h3>{l.shop}</h3><span className="small quiet">{l.city}{" · "}{l.owner === R.me ? 'your lead' : firstName(l.owner) + '’s lead'}</span></div></div><div className="fit"><b>{l.next}</b><span>{l.due == null ? l.last == null ? 'Never visited' : `Nobody’s been in ${l.last} days` : l.due < 0 ? `${-l.due} days overdue` : l.due === 0 ? 'Due today' : 'Due ' + fmtWD(dayT(l.due))}</span></div><div><span className="lbl">In the Merchants pipeline</span><div className="fpl">{STAGES_M.map(([k, t], i) => <span key={i} className={i < si ? 'past' : i === si ? 'now' : ''}>{t}</span>)}</div>{l.val ? <span className="small quiet">Could finance about ${int(l.val)}{" a month"}</span> : ''}</div><div><span className="lbl">Visits</span>{hist.length ? hist.map((v, __k) => <div key={__k} className="hs3"><b>{v.out}{v.to ? ' → ' + STAGE_N[v.to] : ''}</b><span>{vDay(v.d)}{" · "}{firstName(v.who)}</span></div>) : <p className="small quiet" style={css("margin:6px 0 0")}>No visits yet.</p>}</div></div><div className="pn-ft mft">{LV && RO() ? '' : rt ? <button className="btn" data-froute={rt.id} data-ftabgo="plan">{"On "}{firstName(rt.who)}{"’s "}{fmtWD(dayT(rt.d)).slice(0, 3)}{" route →"}</button> : <button className="btn" data-fleadroute={l.shop}>Add to a route</button>}{LV && RO() ? '' : <button className="btn p" data-flog={l.shop}>Log a visit</button>}</div></>);
         return;
       }
       if (P.k === 'log') {
@@ -2101,7 +2353,13 @@ function makeFieldMerchants() {
           sel = P.out,
           nxt = OUTC[sel] && OUTC[sel][2];
         const moves = sel && nxt && nxt !== l.stage && !(nxt === 'talking' && l.stage !== 'prospect');
-        html(pn, <><div className="pn-hd"><span className="lbl">Log a visit</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>{l.shop}</h3><div><span className="lbl">What happened</span><div className="fad-t">{['Not in', 'Not interested', 'Interested', 'Demo booked', 'Ready to sign', 'Signed'].map((k, __k) => <button key={__k} className={sel === k ? 'on' : ''} data-vout={k} aria-pressed={sel === k}><b>{k}</b><span>{OUTC[k][1]}</span></button>)}</div></div>{moves ? <div className="fnote">{"Moves "}{l.shop}{" from "}<b>{STAGE_N[l.stage]}</b>{" to "}<b>{STAGE_N[nxt]}</b>{" in Merchants."}</div> : ''}<div><span className="lbl">Next step</span><input id="vnext" className="vin" placeholder={sel === 'Demo booked' ? 'Demo the merchant app' : sel === 'Ready to sign' ? 'Sign the agreement' : sel === 'Not interested' ? 'No next step' : 'What happens next'} defaultValue={P.next || ''} /><div className="seg sm" style={css("margin-top:8px")} role="group" aria-label="When">{[['1', 'Tomorrow'], ['3', 'This week'], ['7', 'Next week'], ['', 'None']].map(([k, t], __k) => <button key={__k} data-vwhen={k} aria-pressed={(P.when ?? '3') === k}>{t}</button>)}</div></div><label><span className="lbl">Note</span><textarea id="vnote" className="cmp" rows="3" placeholder="Who you talked to, what they said" /></label></div><div className="pn-ft"><span className="nx">{sel ? 'Saved to Merchants and Records' : 'Pick what happened'}</span><button className="btn" data-fclose="">Cancel</button><button className="btn p" data-vsave="" {...attrs(!sel ? 'disabled' : '')}>Save the visit</button></div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">Log a visit</span><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>{l.shop}</h3><div><span className="lbl">What happened</span><div className="fad-t">{['Not in', 'Not interested', 'Interested', 'Demo booked', 'Ready to sign', 'Signed'].map((k, __k) => <button key={__k} className={sel === k ? 'on' : ''} data-vout={k} aria-pressed={sel === k}><b>{k}</b><span>{OUTC[k][1]}</span></button>)}</div></div>{moves ? <div className="fnote">{"Moves "}{l.shop}{" from "}<b>{STAGE_N[l.stage]}</b>{" to "}<b>{STAGE_N[nxt]}</b>{" in Merchants."}</div> : ''}{LV && !RO() ? (() => {
+              // live: a yes to a poster on the visit is kept with the shops that could take one (Placement)
+              const has = LV.YES.find(y => !y.placed && y.shop.toLowerCase() === l.shop.toLowerCase());
+              return <div><span className="lbl">A poster</span>{has ? <p className="small quiet" style={css("margin:6px 0 0")}>{"Said yes "}{fmtD(has.agreed)}{", waiting for one."}</p> : <div className="seg sm" style={css("margin-top:8px")} role="group" aria-label="A poster"><button data-vposter="1" aria-pressed={!!P.poster}>Said yes to one</button><button data-vposter="" aria-pressed={!P.poster}>Not this time</button></div>}</div>;
+            })() : ''}<div><span className="lbl">Next step</span><input id="vnext" className="vin" placeholder={sel === 'Demo booked' ? 'Demo the merchant app' : sel === 'Ready to sign' ? 'Sign the agreement' : sel === 'Not interested' ? 'No next step' : 'What happens next'} defaultValue={P.next || ''} /><div className="seg sm" style={css("margin-top:8px")} role="group" aria-label="When">{[['1', 'Tomorrow'], ['3', 'This week'], ['7', 'Next week'], ['', 'None']].map(([k, t], __k) => <button key={__k} data-vwhen={k} aria-pressed={(P.when ?? '3') === k}>{t}</button>)}</div></div><label><span className="lbl">Note</span><textarea id="vnote" className="cmp" rows="3" placeholder="Who you talked to, what they said" {...LV ? {
+              defaultValue: P.note || ''
+            } : {}} /></label></div><div className="pn-ft"><span className="nx">{sel ? 'Saved to Merchants and Records' : 'Pick what happened'}</span><button className="btn" data-fclose="">Cancel</button><button className="btn p" data-vsave="" {...attrs(!sel ? 'disabled' : '')}>Save the visit</button></div></>);
         return;
       }
     }
@@ -2202,6 +2460,26 @@ function makeFieldMerchants() {
         });
         return;
       }
+      if (d.fleadroute && LV) {
+        // live: onto the lead's owner's next route (yours, when it can't be theirs), as what needs a visit has it
+        const l = LEADS.find(x => x.shop === d.fleadroute);
+        R.panel = null;
+        e.stopImmediatePropagation();
+        render();
+        return toNextRoute(leadPool(l) || {
+          id: 'c:' + l.id,
+          kind: 'merchant',
+          shop: l.shop,
+          city: l.city,
+          what: l.next,
+          why: l.last == null ? 'Never visited' : `Last visit ${l.last} days ago`,
+          stage: l.stage,
+          owner: l.owner,
+          val: l.val,
+          mins: l.stage === 'prospect' ? 15 : 30,
+          sev: 'live'
+        }, l.owner);
+      }
       if (d.fleadroute) {
         const r = leadToRoute(d.fleadroute);
         R.panel = null;
@@ -2219,13 +2497,22 @@ function makeFieldMerchants() {
       if (d.vout) {
         R.panel.out = d.vout;
         R.panel.next = (document.getElementById('vnext') || {}).value || '';
+        if (LV) R.panel.note = (document.getElementById('vnote') || {}).value || '';
         if (d.vout === 'Not interested' || d.vout === 'Signed') R.panel.when = '';
+        e.stopImmediatePropagation();
+        return renderPanel();
+      }
+      if (d.vposter !== undefined && LV) {
+        R.panel.poster = !!d.vposter;
+        R.panel.next = (document.getElementById('vnext') || {}).value || '';
+        R.panel.note = (document.getElementById('vnote') || {}).value || '';
         e.stopImmediatePropagation();
         return renderPanel();
       }
       if (d.vwhen !== undefined) {
         R.panel.when = d.vwhen;
         R.panel.next = (document.getElementById('vnext') || {}).value || '';
+        if (LV) R.panel.note = (document.getElementById('vnote') || {}).value || '';
         e.stopImmediatePropagation();
         return renderPanel();
       }
@@ -2246,6 +2533,13 @@ function makeFieldMerchants() {
         }
         const c = m.card,
           closing = moves && nxt === 'closed';
+        if (P.poster) run('field', 'poster-yes', {
+          shop: m.name,
+          city: m.city || '',
+          card: c.id,
+          source: 'visit',
+          note
+        }, () => renderShell());
         cardSave(c, {
           stage: moves && !closing ? nxt : c.stage,
           next: next || (P.out === 'Demo booked' ? 'Demo the merchant app' : P.out === 'Ready to sign' ? 'Sign the agreement' : c.next || null),
@@ -2411,7 +2705,13 @@ function makeFieldMerchants() {
       const nextLate = cur ? (STOPS[STOPS.indexOf(cur) + 1]?.tasks || []).map(t => t.p).find(p => p && daysTo(p.swap) < 0) : null;
       const S = {
         today: !N ? <>{"Nobody is out on a route today. "}<a data-ftab="plan" data-fjump="fpool">{open}{open === 1 ? ' thing needs' : ' things need'}{" a visit"}</a>.</> : cur ? <><a data-ftab="today" data-fjump="fnow">{LV.ROUTE.staff || 'The route'}{" is at "}{cur.name}</a>{", stop "}{STOPS.indexOf(cur) + 1}{" of "}{N}{". Next is "}{STOPS[STOPS.indexOf(cur) + 1]?.name || 'the last stop'}{nextLate ? `, where ${pid(nextLate.n)} is ${-daysTo(nextLate.swap)} days past its swap.` : '.'}</> : 'Today’s route is done.',
-        plan: <>{"Routes for the coming days aren’t planned here yet. "}<a data-ftab="plan" data-fjump="fpool">{open}{open === 1 ? ' thing needs' : ' things need'}{" a visit"}</a>{`, ${mer} of them merchant visits.`}</>,
+        plan: (() => {
+          const rs = R.routes,
+            unsent = rs.filter(x => x.status === 'draft' && x.ids.length).length,
+            waiting = rs.filter(x => x.status === 'sent').length,
+            planned = POOL.filter(x => !R.dropped.has(x.id) && !R.snoozed.has(x.id) && !routeOf(x.id)).length;
+          return <>{rs.length ? `${rs.length} route${rs.length === 1 ? ' is' : 's are'} planned for the coming days${unsent ? `, ${unsent} not sent` : ''}${waiting ? `, ${waiting} waiting to be accepted` : ''}. ` : 'No routes are planned for the coming days. '}<a data-ftab="plan" data-fjump="fpool">{planned}{planned === 1 ? ' thing needs' : ' things need'}{" a visit"}</a>{rs.length ? ` and ${planned === 1 ? 'isn’t' : 'aren’t'} on a route yet.` : `, ${mer} of them merchant visits.`}</>;
+        })(),
         visits: (() => {
           const od = dueLeads().filter(l => l.due < 0),
             sg = VLOG.find(v => v.out === 'Signed' && v.d === 0);
@@ -2576,7 +2876,7 @@ function makeFieldMerchants() {
       html(document.getElementById('fv'), <>{PHONE() ? [now, list, map, van].map((c, i) => <section key={i} className="band" {...attrs(i ? '' : 'style="margin-top:0"')}><div className="bento">{swapClass(c, /cell s[57]/, 'cell s12')}</div></section>) : <><section className="band" style={css("margin-top:0")}><div className="bento">{now}{van}</div></section><section className="band"><div className="bento">{list}{map}</div></section></>}<section className="band"><div className="bento">{logged}</div></section><section className="band"><div className="bento">{lat}</div></section><div className="fbar"><button className="btn p" data-fscan="pick">{ICO.scan}Scan a poster</button></div></>);
     }
 
-    /* live: today's route as the phone has it, what was found on earlier checks, and no van (nothing records its load) */
+    /* live: today’s route (a route planned for today and accepted becomes it), the van’s load, and what was found on earlier checks */
     function renderTodayLive() {
       const N = STOPS.length,
         done = STOPS.filter(stopDone).length,
@@ -2588,7 +2888,7 @@ function makeFieldMerchants() {
         staff = LV.ROUTE.staff || 'Someone';
       const info = cur ? SHOP_INFO[cur.id] || ['', '', ''] : null;
       const sub = t => t.done ? `${t.out || 'Done'} at ${t.done}` : t.kind === 'poster' ? `Design ${t.p.design} · ${t.note || 'Scan the code to log it'}` : t.note || '';
-      const now = !N ? <div className="cell s7" id="fnow"><div className="hd"><h2>No route today</h2></div><div className="fn-top"><p className="fn-name">Nobody is out</p><span>A route shows here once the field team starts one on the phone.</span></div><div className="f-ft2"><span className="small quiet">Routes ahead aren’t planned here yet</span><button className="lnk3" data-ftab="plan">What needs a visit →</button></div></div> : cur ? <div className="cell s7" id="fnow"><div className="hd"><h2>{"Now · stop "}{ci + 1}{" of "}{N}</h2><div className="r"><span className="lbl">{cur.eta ? 'ETA ' + cur.eta : ''}</span></div></div><div className="fn-top"><p className="fn-name">{cur.name}</p><span>{[cur.where, cur.city].filter(Boolean).join(' · ')}</span></div><div className="fn-facts"><div><span className="lbl">Open until</span><b>{info[0] || '–'}</b></div><div><span className="lbl">Ask for</span><b>{info[1] || '–'}</b></div><div><span className="lbl">Last visit</span><b>{info[2] || '–'}</b></div></div><div className="fn-tasks">{cur.tasks.map((t, i) => <div key={i} className={`fn-t ${t.done ? 'done' : ''}`}><span className="fn-c">{t.done ? ICO.chk : ''}</span><span className="fn-k"><b>{t.t}</b><span>{sub(t)}</span></span>{t.done ? '' : t.kind === 'poster' ? <button className="btn sm-b" data-fscan={t.p.n}>{ICO.scan}Scan</button> : <button className="btn sm-b" data-fdev={i}>Mark done</button>}</div>)}</div><div className="f-ft2"><button className="lnk3" data-fskip="">Skip{nx ? ` · next is ${nx.name}` : ''}</button><a className="lnk3" href={`https://maps.google.com/?q=${encodeURIComponent(cur.name + ' ' + cur.city)}`} target="_blank" rel="noopener">Directions ↗</a></div></div> : <div className="cell s7" id="fnow"><div className="hd"><h2>Route done</h2></div><div className="fn-top"><p className="fn-name">{"All "}{N}{" stops logged"}</p><span>Anything left over goes back to what needs a visit.</span></div><div className="f-ft2"><span className="small quiet">{LV.ROUTE.backBy ? 'Back by ' + LV.ROUTE.backBy : ''}</span><button className="lnk3" data-ftab="plan">What needs a visit →</button></div></div>;
+      const now = !N ? <div className="cell s7" id="fnow"><div className="hd"><h2>No route today</h2></div><div className="fn-top"><p className="fn-name">Nobody is out</p><span>A route planned for today shows here once it’s accepted.</span></div><div className="f-ft2"><span className="small quiet">{R.routes.length ? `${R.routes.length} route${R.routes.length === 1 ? '' : 's'} planned ahead` : 'No routes planned ahead'}</span><button className="lnk3" data-ftab="plan">Plan a route →</button></div></div> : cur ? <div className="cell s7" id="fnow"><div className="hd"><h2>{"Now · stop "}{ci + 1}{" of "}{N}</h2><div className="r"><span className="lbl">{cur.eta ? 'ETA ' + cur.eta : ''}</span></div></div><div className="fn-top"><p className="fn-name">{cur.name}</p><span>{[cur.where, cur.city].filter(Boolean).join(' · ')}</span></div><div className="fn-facts"><div><span className="lbl">Open until</span><b>{info[0] || '–'}</b></div><div><span className="lbl">Ask for</span><b>{info[1] || '–'}</b></div><div><span className="lbl">Last visit</span><b>{info[2] || '–'}</b></div></div><div className="fn-tasks">{cur.tasks.map((t, i) => <div key={i} className={`fn-t ${t.done ? 'done' : ''}`}><span className="fn-c">{t.done ? ICO.chk : ''}</span><span className="fn-k"><b>{t.t}</b><span>{sub(t)}</span></span>{t.done ? '' : t.kind === 'poster' ? <button className="btn sm-b" data-fscan={t.p.n}>{ICO.scan}Scan</button> : <button className="btn sm-b" data-fdev={i}>Mark done</button>}</div>)}</div><div className="f-ft2"><button className="lnk3" data-fskip="">Skip{nx ? ` · next is ${nx.name}` : ''}</button><a className="lnk3" href={`https://maps.google.com/?q=${encodeURIComponent(cur.name + ' ' + cur.city)}`} target="_blank" rel="noopener">Directions ↗</a></div></div> : <div className="cell s7" id="fnow"><div className="hd"><h2>Route done</h2></div><div className="fn-top"><p className="fn-name">{"All "}{N}{" stops logged"}</p><span>Anything left over goes back to what needs a visit.</span></div><div className="f-ft2"><span className="small quiet">{LV.ROUTE.backBy ? 'Back by ' + LV.ROUTE.backBy : ''}</span><button className="lnk3" data-ftab="plan">What needs a visit →</button></div></div>;
       const map = <div className="cell s5"><div className="hd"><h2>The route</h2><div className="r"><span className="lbl">{LV.ROUTE.miles ? int(LV.ROUTE.miles) + ' mi · ' : ''}{N}{N === 1 ? ' stop' : ' stops'}</span></div></div><div className="fm-wrap" data-fit="today">{fitMap('today', a => routeMap('today', STOPS, ci, a), .86)}</div><div className="bk-ft"><span><b>{done}{" of "}{N}</b>{" done"}{per ? ` · about ${Math.floor(leftMins / 60)} h ${leftMins % 60} min left` : ''}</span><span className="f-key"><i className="k-done" />{"Done "}<i className="k-now" />{"Now "}<i className="k-next" />Next</span></div></div>;
       const groups = [];
       STOPS.forEach((s, i) => {
@@ -2601,9 +2901,24 @@ function makeFieldMerchants() {
       const list = <div className="cell s7"><div className="hd"><h2>Stops</h2><div className="r"><span className="lbl">{staff}{LV.ROUTE.started ? ' · started ' + LV.ROUTE.started : ''}</span></div></div><div className="fs-l">{groups.map((g, __k) => <Fragment key={__k}><div className="fs-g"><span className="lbl">{g.city}</span><span>{g.stops.filter(([s]) => stopDone(s)).length}{" of "}{g.stops.length}</span></div>{g.stops.map(([s, i], __k) => {
               const d = stopDone(s),
                 isNow = s === cur;
-              return <div key={__k} className={`fs-r ${d ? 'done' : ''} ${isNow ? 'now' : ''}`}>{stopMark(i, d ? 'done' : isNow ? 'now' : 'next')}<span className="fs-k"><b>{s.name}</b><span>{s.where}</span></span><span className="fs-t">{s.tasks.map((t, i) => <Fragment key={i}>{chip(t.kind === 'poster' ? pid(t.p.n) : 'Device', t.done ? 'ok' : '')}</Fragment>)}</span><span className="fs-e">{d ? s.tasks[s.tasks.length - 1].done : isNow ? <b className="warn">Now</b> : s.eta}</span></div>;
+              return <div key={__k} className={`fs-r ${d ? 'done' : ''} ${isNow ? 'now' : ''}`}>{stopMark(i, d ? 'done' : isNow ? 'now' : 'next')}<span className="fs-k"><b>{s.name}</b><span>{s.where}</span></span><span className="fs-t">{s.tasks.map((t, i) => <Fragment key={i}>{chip(t.kind === 'poster' ? pid(t.p.n) : t.kind === 'visit' ? 'Visit' : 'Device', t.done ? 'ok' : '')}</Fragment>)}</span><span className="fs-e">{d ? s.tasks[s.tasks.length - 1].done : isNow ? <b className="warn">Now</b> : s.eta}</span></div>;
             })}</Fragment>)}</div><div className="bk-ft"><span>{LV.ROUTE.backBy ? `Back by ${LV.ROUTE.backBy} if nothing runs long` : ''}</span><button data-ftab="plan">What needs a visit →</button></div></div>;
-      const van = notReal('s5', 'In the van', 'Needs what was loaded into the van this morning: posters by design, spare batteries and receipt rolls.');
+      // the van: what was recorded as loaded this morning, against what today's route still needs
+      const VL = LV.VAN,
+        need = {};
+      STOPS.forEach(s => s.tasks.forEach(t => {
+        if (t.kind === 'poster' && t.p && !t.done && /^(Swap|Replace)/.test(t.t)) need[t.p.design] = (need[t.p.design] || 0) + 1;
+      }));
+      const needN = Object.values(need).reduce((a, b) => a + b, 0),
+        devAt = STOPS.filter(s => s.tasks.some(t => t.kind === 'device' && !t.done)),
+        pips = (n, k) => <span className="fv-u">{Array.from({
+            length: Math.min(n, 12)
+          }, (_, i) => <i key={i} className={i < k ? 'need' : ''} />)}</span>;
+      const vKeys = [...new Set([...Object.keys(VL ? VL.posters : {}), ...Object.keys(need)])].sort();
+      const van = <div className="cell s5"><div className="hd"><h2>In the van</h2><div className="r"><span className="lbl">{VL ? 'Loaded ' + VL.loaded : 'Not recorded today'}</span></div></div><div className="fv">{VL ? <>{vKeys.map((k, __k) => {
+              const n = VL.posters[k] || 0;
+              return <div key={__k} className="fv-r">{designThumb(k, 22)}<span className="fv-k"><b>{"Design "}{k}</b><span>{need[k] || 0}{" still to put up · "}{n}{" loaded"}{(need[k] || 0) > n ? ' · not enough' : ''}</span></span>{pips(n, need[k] || 0)}</div>;
+            })}<div className="fv-r">{batteryThumb(22)}<span className="fv-k"><b>Clear Point batteries</b><span>{devAt.length ? `${devAt.length} for ${devAt.map(s => s.name).join(', ')} · ` : ''}{VL.batteries}{" loaded"}</span></span>{pips(VL.batteries, devAt.length)}</div><div className="fv-r"><span className="fshop sm">R</span><span className="fv-k"><b>Receipt rolls</b><span>{VL.rolls}{" loaded"}</span></span>{pips(VL.rolls, 0)}</div></> : <p className="small quiet" style={css("padding:16px 22px;margin:0")}>{"Nothing’s recorded as loaded today. "}{needN || devAt.length ? `Today’s route needs ${[needN ? `${needN} poster${needN === 1 ? '' : 's'}` : '', devAt.length ? `${devAt.length} spare batter${devAt.length === 1 ? 'y' : 'ies'}` : ''].filter(Boolean).join(' and ')}.` : 'Record the posters by design, spare batteries and receipt rolls as they go in.'}</p>}</div><div className="bk-ft"><span><b>{needN}</b>{needN === 1 ? ' poster' : ' posters'}{" still to put up today"}</span>{RO() ? <span /> : <button data-fvan="">{VL ? 'Change the load' : 'Record the load'}</button>}</div></div>;
       const log = [];
       STOPS.forEach(s => s.tasks.forEach(t => {
         if (t.done) log.push({
@@ -2613,10 +2928,10 @@ function makeFieldMerchants() {
       }));
       log.sort((a, b) => b.t.done.localeCompare(a.t.done));
       const cnt = k => log.filter(l => l.t.kind === 'poster' && l.t.out === k).length,
-        devN = log.filter(l => l.t.kind !== 'poster').length,
+        devN = log.filter(l => l.t.kind === 'device').length,
         tone = l => l.t.kind === 'poster' ? (OUT[l.t.out] || ['settled'])[0] : 'settled';
       const tiles = [...Object.keys(OUT).map(k => [k, cnt(k), OUT[k][1], OUT[k][0]]), ['Devices', devN, 'Fixed', 'settled']];
-      const logged = <div className="cell s12"><div className="hd"><h2>Logged today</h2><div className="r"><span className="lbl">{log.length}{" things · "}{log.filter(l => l.t.photo).length}{" with a photo"}</span></div></div><div className="fl-tiles">{tiles.map(([k, n, s, c], __k) => <div key={__k} className={`fl-t ${n ? '' : 'z'}`}><span className="lbl">{k}</span><b style={css(n ? `color:var(--${c === 'settled' ? 'fg' : c})` : '')}>{n}</b><span>{s}</span></div>)}</div><div className="fl-l">{log.length ? log.map((l, __k) => <div key={__k} className="fl-r"><span className="fl-tm">{l.t.done}</span><i className="fl-sv" style={css(`background:var(--${tone(l)})`)} /><span className="fl-k"><b>{l.t.kind === 'poster' ? `${l.t.out} ${pid(l.t.p.n)}` : l.t.kind === 'device' ? 'Fixed the counter device' : l.t.t}</b><span>{l.s.name}{l.t.note ? ' · ' + l.t.note : ''}</span></span><span className="fl-d">{l.t.kind === 'poster' ? <>{designThumb(l.t.p.design, 16)}{" Design "}{l.t.p.design}</> : 'Counter device'}</span><span className="fl-ph">{l.t.photo ? <>{ICO.cam}Photo</> : <span className="quiet">No photo</span>}</span></div>) : <p className="small quiet" style={css("padding:18px 22px;margin:0")}>Scans show up here as they happen.</p>}</div><div className="bk-ft"><span>Every scan is logged with the time</span><button data-fgo="records">Audit log · Records →</button></div></div>;
+      const logged = <div className="cell s12"><div className="hd"><h2>Logged today</h2><div className="r"><span className="lbl">{log.length}{" things · "}{log.filter(l => l.t.photo).length}{" with a photo"}</span></div></div><div className="fl-tiles">{tiles.map(([k, n, s, c], __k) => <div key={__k} className={`fl-t ${n ? '' : 'z'}`}><span className="lbl">{k}</span><b style={css(n ? `color:var(--${c === 'settled' ? 'fg' : c})` : '')}>{n}</b><span>{s}</span></div>)}</div><div className="fl-l">{log.length ? log.map((l, __k) => <div key={__k} className="fl-r"><span className="fl-tm">{l.t.done}</span><i className="fl-sv" style={css(`background:var(--${tone(l)})`)} /><span className="fl-k"><b>{l.t.kind === 'poster' ? `${l.t.out} ${pid(l.t.p.n)}` : l.t.kind === 'device' ? 'Fixed the counter device' : l.t.t}</b><span>{l.s.name}{l.t.note ? ' · ' + l.t.note : ''}</span></span><span className="fl-d">{l.t.kind === 'poster' ? <>{designThumb(l.t.p.design, 16)}{" Design "}{l.t.p.design}</> : l.t.kind === 'visit' ? 'Visit' : 'Counter device'}</span><span className="fl-ph">{l.t.photo ? <>{ICO.cam}Photo</> : <span className="quiet">No photo</span>}</span></div>) : <p className="small quiet" style={css("padding:18px 22px;margin:0")}>Scans show up here as they happen.</p>}</div><div className="bk-ft"><span>Every scan is logged with the time</span><button data-fgo="records">Audit log · Records →</button></div></div>;
       const later = LV.LATER;
       const lat = <div className="cell s12"><div className="hd"><h2>Found on earlier checks</h2><div className="r"><span className="lbl">Not on today’s route</span></div></div><div className="fw-l">{later.length ? later.map((x, __k) => <div key={__k} className="fw-r"><i className="fl-sv" style={css(`background:${sevCol(x.sev)}`)} /><span className="fw-k"><b>{x.shop}</b><span>{x.city}</span></span><span className="fw-w"><b>{x.what}</b><span>{x.why}</span></span><span className="fw-m">{x.mins ? `+${x.mins} min` : ''}</span>{N && !RO() ? <button className="btn sm-b" data-flater={x.shop}>Add to today</button> : <span />}</div>) : <p className="small quiet" style={css("padding:18px 22px;margin:0")}>Shops land here when a check finds a problem.</p>}</div><div className="bk-ft"><span>{later.length && N ? `Adding all ${later.length} makes today about ${later.reduce((s, x) => s + x.mins, 0)} min longer` : later.length ? 'They can join a route once one is out today' : ''}</span><span /></div></div>;
       const top = N ? [now, list, map, van] : [now, van];
@@ -2813,7 +3128,19 @@ function makeFieldMerchants() {
       const rows = C.filter(c => c.posters || c.waiting || c.live).sort((a, b) => b.posters - a.posters),
         cmx = Math.max(1, ...C.map(c => c.per));
       const table = <div className="cell s12"><div className="hd"><h2>Cities</h2><div className="r"><span className="lbl">Last 30 days</span></div></div><div className="bt-wrap"><table className="bt fc"><colgroup><col style={css("width:17%")} /><col style={css("width:9%")} /><col style={css("width:24%")} /><col style={css("width:10%")} /><col style={css("width:10%")} /><col style={css("width:13%")} /><col style={css("width:17%")} /></colgroup><thead><tr><th className="c-nm">City</th><th>Posters</th><th style={css("text-align:left")}>Scans a poster</th><th>Waiting</th><th>Shops live</th><th>Suggest</th><th /></tr></thead><tbody>{rows.length ? rows.map((c, __k) => <tr key={__k} className={sel === c.city ? 'sel' : ''}><td className="tn"><b>{c.city}</b></td><td>{c.posters}</td><td style={css("text-align:left")}><span className="fi-sc l"><span className="fi-sb"><i style={css(`width:${c.per / cmx * 100}%`)} /><s style={css(`left:${Math.min(100, avg / cmx * 100)}%`)} /></span><b>{c.per}</b></span></td><td>{known && c.waiting ? int(c.waiting) : <span className="quiet">–</span>}</td><td>{c.live || <span className="quiet">None</span>}</td><td><span className="quiet">Not yet</span></td><td><button className="lnk4" data-fplace={c.city}>See on the map</button></td></tr>) : <tr><td colSpan="7" className="tn"><span className="quiet">No posters or shops yet.</span></td></tr>}</tbody></table></div><div className="bk-ft"><span>{known ? 'The line in each bar is the average' : 'The line in each bar is the average. People waiting show once Members has loaded.'}</span><button data-fgo="growth">Scans by shop · Growth →</button></div></div>;
-      const shops = notReal('s7', 'Shops that could take a poster', 'Needs the shops that said yes to a poster, from a visit or the pipeline, with when they agreed.');
+      // the shops that said yes to a poster (poster_yes, migration 0069): on a visit, from the pipeline, or by hand
+      const yes = LV.YES.filter(y => !y.placed),
+        placedN = LV.YES.length - yes.length,
+        HOW = {
+          visit: 'on a visit',
+          pipeline: 'from the pipeline',
+          hand: ''
+        };
+      const shops = <div className="cell s7"><div className="hd"><h2>Shops that could take a poster</h2><div className="r"><span className="lbl">{yes.length}{yes.length === 1 ? ' shop' : ' shops'}</span></div></div><div className="fw-l">{yes.length ? yes.map((y, __k) => {
+            const x = POOLBY['y:' + y.id],
+              on = x && routeOf(x.id);
+            return <div key={__k} className="fw-r c"><button className="fw-k" data-fyes={y.id} style={css("text-align:left")}><b>{y.shop}</b><span>{y.city}</span></button><span className="fw-w"><span>{[`Said yes ${fmtD(y.agreed)}`, HOW[y.source], y.by].filter(Boolean).join(' · ')}</span></span>{RO() ? <span /> : <button className={`btn sm-b ${on ? 'on' : ''}`} data-fnew={'y:' + y.id}>{on ? 'On route ✓' : 'Add to route'}</button>}</div>;
+          }) : <p className="small quiet" style={css("padding:16px 22px;margin:0")}>No shop is waiting for a poster. When one says yes on a visit, or you hear it another way, it shows here.</p>}</div><div className="bk-ft"><span>{placedN ? `${placedN} put up in the last 30 days · ` : ''}A shop has to say yes before a poster goes up</span>{RO() ? <button data-fgo="merchants/pipeline">Prospects · Merchants →</button> : <button data-fyesadd="">+ A shop said yes</button>}</div></div>;
       const dv = Object.entries(DESIGNS).map(([k, d]) => [k, d, d.posters ? Math.round(d.scans / d.posters) : 0, d.scans ? Math.round(d.joined / d.scans * 100) : 0]),
         dmx = Math.max(1, ...dv.map(x => x[2])),
         topD = dv.slice().sort((a, b) => b[2] - a[2])[0];
@@ -2851,7 +3178,7 @@ function makeFieldMerchants() {
       const smx = Math.max(...sp, 1),
         onRoute = STOPS.some(s => s.tasks.some(t => t.p && t.p.n === p.n)),
         planned = dayOf('p' + p.n) != null ? [dayOf('p' + p.n)] : null;
-      html(pn, <><div className="pn-hd"><span className="lbl">{pid(p.n)}</span>{chip(ST[p.status][1], p.status === 'up' ? 'ok' : p.status === 'missing' ? 'bad' : 'warn')}<button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top">{designThumb(p.design, 56)}<div><h3>{p.shop}</h3><span className="small quiet">{p.city}{" · design "}{p.design}{", "}{DESIGNS[p.design].name}</span></div></div><div className="w90"><div className="w90-h"><span className="lbl">Life · 60 days</span><b className={L.d < 0 || p.status !== 'up' ? 'warn' : ''}>{p.status === 'missing' ? 'Gone from the window' : L.d < 0 ? `${-L.d} days late` : `${L.d} days left`}</b></div><span className={`wbar big ${L.d < 10 || p.status !== 'up' ? 'lo' : ''}`}><i style={css(`width:${L.pct * 100}%`)} /></span><span className="small quiet">{"Hung "}{fmtD(p.hung)}{" · swap by "}{fmtD(p.swap)}</span></div>{LV ? <div><div className="w90-h"><span className="lbl">Scans</span><b>{p.scans}{" in 30 days"}</b></div><span className="small quiet">Scans by day aren’t kept yet</span></div> : <div><div className="w90-h"><span className="lbl">Scans · last 14 days</span><b>{p.scans}{" in 30 days"}</b></div><div className="fpr-sp">{sp.map((v, __k) => <i key={__k} style={css(`height:${v / smx * 100}%`)} />)}</div></div>}<div className="led"><div><span>Last checked</span><b>{fmtD(p.checked)}</b></div><div><span>Code</span><b>useclear.org/s/{p.shopId}</b></div><div><span>Route</span><b>{onRoute ? LV ? `Today, ${LV.ROUTE.staff || 'on the route'}` : 'Today, Marcus Lee' : planned ? fmtWD(dayT(+planned[0])) : 'Not on a route'}</b></div></div><div><span className="lbl">History</span><div className="hs3"><b>{"Hung, design "}{p.design}</b><span>{fmtD(p.hung)}</span></div><div className="hs3"><b>Checked · up and fine</b><span>{fmtD(Math.max(p.hung + DAY, p.checked))}</span></div>{p.status !== 'up' ? <div className="hs3"><b className="warn">{ST[p.status][1]}</b><span>{fmtD(p.checked)}</span></div> : ''}</div></div><div className="pn-ft mft">{!LV && (!onRoute && !planned && p.status !== 'up' || !onRoute && !planned && L.d <= 14) ? <button className="btn p" data-fputroute={p.n}>Add to tomorrow’s route</button> : ''}<button className="btn" data-fscan={p.n}>{ICO.scan}Log a check</button><button className="btn" style={css("margin-left:auto")} data-fclose="">Close</button></div></>);
+      html(pn, <><div className="pn-hd"><span className="lbl">{pid(p.n)}</span>{chip(ST[p.status][1], p.status === 'up' ? 'ok' : p.status === 'missing' ? 'bad' : 'warn')}<button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top">{designThumb(p.design, 56)}<div><h3>{p.shop}</h3><span className="small quiet">{p.city}{" · design "}{p.design}{", "}{DESIGNS[p.design].name}</span></div></div><div className="w90"><div className="w90-h"><span className="lbl">Life · 60 days</span><b className={L.d < 0 || p.status !== 'up' ? 'warn' : ''}>{p.status === 'missing' ? 'Gone from the window' : L.d < 0 ? `${-L.d} days late` : `${L.d} days left`}</b></div><span className={`wbar big ${L.d < 10 || p.status !== 'up' ? 'lo' : ''}`}><i style={css(`width:${L.pct * 100}%`)} /></span><span className="small quiet">{"Hung "}{fmtD(p.hung)}{" · swap by "}{fmtD(p.swap)}</span></div>{LV ? <div><div className="w90-h"><span className="lbl">Scans</span><b>{p.scans}{" in 30 days"}</b></div><span className="small quiet">Scans by day aren’t kept yet</span></div> : <div><div className="w90-h"><span className="lbl">Scans · last 14 days</span><b>{p.scans}{" in 30 days"}</b></div><div className="fpr-sp">{sp.map((v, __k) => <i key={__k} style={css(`height:${v / smx * 100}%`)} />)}</div></div>}<div className="led"><div><span>Last checked</span><b>{fmtD(p.checked)}</b></div><div><span>Code</span><b>useclear.org/s/{p.shopId}</b></div><div><span>Route</span><b>{onRoute ? LV ? `Today, ${LV.ROUTE.staff || 'on the route'}` : 'Today, Marcus Lee' : planned ? fmtWD(dayT(+planned[0])) : 'Not on a route'}</b></div></div><div><span className="lbl">History</span><div className="hs3"><b>{"Hung, design "}{p.design}</b><span>{fmtD(p.hung)}</span></div><div className="hs3"><b>Checked · up and fine</b><span>{fmtD(Math.max(p.hung + DAY, p.checked))}</span></div>{p.status !== 'up' ? <div className="hs3"><b className="warn">{ST[p.status][1]}</b><span>{fmtD(p.checked)}</span></div> : ''}</div></div><div className="pn-ft mft">{(LV ? !RO() && ME().field : true) && (!onRoute && !planned && p.status !== 'up' || !onRoute && !planned && L.d <= 14) ? <button className="btn p" data-fputroute={p.n}>{LV ? 'Add to my next route' : 'Add to tomorrow’s route'}</button> : ''}<button className="btn" data-fscan={p.n}>{ICO.scan}Log a check</button><button className="btn" style={css("margin-left:auto")} data-fclose="">Close</button></div></>);
     }
     function scanSheet(pn) {
       const p = F.scan === 'pick' ? null : POSTERS.find(x => x.n === F.scan);
@@ -3043,7 +3370,24 @@ function makeFieldMerchants() {
         closeP();
         return render();
       }
-      if (d.fputroute && LV) return;
+      if (d.fputroute && LV) {
+        const p = POSTERS.find(x => x.n === +d.fputroute),
+          dd = daysTo(p.swap);
+        closeP();
+        render();
+        return toNextRoute(POOLBY['p' + p.n] || {
+          id: 'p' + p.n,
+          kind: 'poster',
+          shop: p.shop,
+          city: p.city,
+          what: `Swap ${pid(p.n)}`,
+          why: dd < 0 ? `${-dd} days late` : `Due ${fmtD(p.swap)}`,
+          design: p.design,
+          sev: 'line',
+          mins: 18,
+          n: p.n
+        }, R.me);
+      }
       if (d.fputroute) {
         const r = tomorrowFor('marcus');
         r.ids.push('p' + d.fputroute);
@@ -3074,7 +3418,19 @@ function makeFieldMerchants() {
         });
         return;
       }
-      if (d.fnew && LV) return;
+      if (d.fnew && LV) {
+        // live: a shop that said yes goes on your next route, or comes off the one it's on
+        const x = POOLBY[d.fnew],
+          on = x && routeOf(x.id);
+        if (!x) return;
+        closeP();
+        render();
+        if (!on) return toNextRoute(x, R.me);
+        if (!canEdit(on)) return toast(`It’s on ${firstName(on.who)}’s ${fmtWD(dayT(on.d)).slice(0, 3)} route`);
+        on.ids = on.ids.filter(q => q !== x.id);
+        dirty(on);
+        return saveRoutes([on], 'Taken off its route');
+      }
       if (d.fnew) {
         const on = routeOf(d.fnew),
           r = on || tomorrowFor('marcus');

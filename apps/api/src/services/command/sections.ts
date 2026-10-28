@@ -1,5 +1,5 @@
 import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PersonNote, type PosterRow, type WaitingRow } from '@clear/command-types';
-import type { Queryable } from '../../db/db.js';
+import type { Db, Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
 import { assurancePoolLive, bondVaultLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
@@ -542,10 +542,89 @@ export async function growthSection(db: Queryable, o: ReadOptions): Promise<Grow
   };
 }
 
+/**
+ * A route planned for `day` and accepted becomes that day's route (command.routes, its stops and tasks, as the seed's
+ * day has them), when the day has none yet: the first accepted, as the table keeps one route a day. A planned poster
+ * is a poster task, a device fix a device task, anything else (a merchant visit, a first poster) a visit to mark done.
+ * True when it started one.
+ */
+export async function startPlannedRoute(db: Queryable, day: string): Promise<boolean> {
+  if ((await db.query('SELECT 1 FROM command.routes WHERE day = $1', [day])).rows.length) return false;
+  const { rows: plans } = await db.query<{ id: number; person_id: string; who: string; miles: number; minutes: number; back_by: string | null }>(
+    `SELECT r.id, r.person_id, coalesce(nullif(p.name, ''), split_part(p.email, '@', 1), 'Someone') AS who, r.miles, r.minutes, r.back_by
+       FROM command.route_plans r JOIN command.people p ON p.id = r.person_id
+      WHERE r.day = $1 AND r.status = 'accepted' AND EXISTS (SELECT 1 FROM command.route_plan_stops s WHERE s.plan_id = r.id)
+      ORDER BY r.accepted_at, r.id LIMIT 1`,
+    [day],
+  );
+  const p = plans[0];
+  if (!p) return false;
+  const { rows: stops } = await db.query<{ position: number; kind: string; shop: string; city: string; what: string; why: string; poster: number | null; eta: string | null }>(
+    'SELECT * FROM command.route_plan_stops WHERE plan_id = $1 ORDER BY position',
+    [p.id],
+  );
+  const started = await db.query(
+    `INSERT INTO command.routes (day, staff, staff_key, loaded_at, started_at, miles, back_by, minutes_per_stop, plan_id)
+     VALUES ($1, $2, $3, (SELECT loaded_at FROM command.van_loads WHERE day = $1), NULL, $4, $5, $6, $7) ON CONFLICT (day) DO NOTHING RETURNING day`,
+    [day, p.who, p.person_id, p.miles, p.back_by ?? '', Math.round(p.minutes / stops.length), p.id],
+  );
+  if (!started.rows.length) return false;
+  for (const [i, s] of stops.entries()) {
+    const sid = `r${p.id}-${i}`;
+    await db.query(`INSERT INTO command.route_stops (day, id, position, name, city, street, eta) VALUES ($1, $2, $3, $4, $5, '', $6)`, [day, sid, i, s.shop, s.city, s.eta ?? '']);
+    const kind = s.kind === 'device' ? 'device' : s.kind === 'poster' && s.poster != null ? 'poster' : 'visit';
+    await db.query('INSERT INTO command.route_tasks (day, stop_id, position, kind, poster, title, note) VALUES ($1, $2, 0, $3, $4, $5, $6)', [day, sid, kind, kind === 'poster' ? s.poster : null, s.what, s.why || null]);
+  }
+  return true;
+}
+
+const isoDay = (t: number) => new Date(t).toISOString().slice(0, 10);
+/** A team person as Field shows them: their name, else the start of their email. */
+const personName = (alias: string) => `coalesce(nullif(${alias}.name, ''), split_part(${alias}.email, '@', 1), 'Someone')`;
+
+/** The routes planned for the days after today (Plan), each with its stops in order. A note can name someone, so it's off Totals. */
+async function routePlans(db: Queryable, o: ReadOptions, asOf: number): Promise<NonNullable<FieldPayload['PLANS']>> {
+  const { rows } = await db.query<{ id: number; day: Date; person_id: string; who: string; planned_by: string; by: string; start: string; status: 'draft' | 'sent' | 'accepted'; changed: boolean; miles: number; minutes: number; back_by: string | null; note: string | null; sent_at: Date | null; accepted_at: Date | null }>(
+    `SELECT r.*, ${personName('p')} AS who, ${personName('b')} AS by FROM command.route_plans r
+       JOIN command.people p ON p.id = r.person_id JOIN command.people b ON b.id = r.planned_by
+      WHERE r.day > $1 ORDER BY r.day, r.id`,
+    [isoDay(asOf)],
+  );
+  const { rows: stops } = rows.length
+    ? await db.query<{ plan_id: number; ref: string; kind: string; shop: string; city: string; what: string; why: string; mins: number; poster: number | null; design: string | null; eta: string | null }>(
+        'SELECT * FROM command.route_plan_stops WHERE plan_id = ANY($1) ORDER BY plan_id, position',
+        [rows.map((r) => r.id)],
+      )
+    : { rows: [] };
+  return rows.map((r) => ({
+    id: r.id,
+    day: ms(r.day)!,
+    who: r.person_id,
+    whoName: r.who,
+    by: r.planned_by,
+    byName: r.by,
+    start: r.start,
+    status: r.status,
+    changed: r.changed,
+    miles: r.miles,
+    minutes: r.minutes,
+    backBy: r.back_by,
+    note: o.level <= TOTALS ? null : r.note,
+    sentAt: ms(r.sent_at) ?? null,
+    okAt: ms(r.accepted_at) ?? null,
+    stops: stops
+      .filter((s) => s.plan_id === r.id)
+      .map((s) => ({ ref: s.ref, kind: s.kind as 'poster' | 'new' | 'merchant' | 'device' | 'visit', shop: s.shop, city: s.city, what: s.what, why: s.why, mins: s.mins, n: s.poster, design: s.design, eta: s.eta })),
+  }));
+}
+
 export async function fieldSection(db: Queryable, o: ReadOptions): Promise<FieldPayload> {
   const provider = providerFor('field');
   const asOf = asOfFor(provider, o.now);
-  const { rows: rr } = await db.query<{ day: Date; staff: string; staff_key: string; loaded_at: string; started_at: string; miles: number; back_by: string; minutes_per_stop: number }>(
+  // a route planned for today and accepted is today's route from the first read of the day
+  const start = (tx: Queryable) => startPlannedRoute(tx, isoDay(asOf));
+  await ('transaction' in db ? (db as Db).transaction(start) : start(db));
+  const { rows: rr } = await db.query<{ day: Date; staff: string; staff_key: string; loaded_at: string | null; started_at: string | null; miles: number; back_by: string; minutes_per_stop: number }>(
     'SELECT * FROM command.routes WHERE day <= $1 ORDER BY day DESC LIMIT 1',
     [new Date(asOf).toISOString()],
   );
@@ -554,9 +633,20 @@ export async function fieldSection(db: Queryable, o: ReadOptions): Promise<Field
   const tasks = r ? (await db.query<{ stop_id: string; kind: 'poster' | 'device'; poster: number | null; title: string; note: string | null; done_at: string | null; outcome: string | null; photo: boolean }>('SELECT * FROM command.route_tasks WHERE day = $1 ORDER BY stop_id, position', [r.day])).rows : [];
   const later = (await db.query<Record<string, string>>('SELECT * FROM command.route_later ORDER BY id')).rows;
   const list = await posters(db);
+  const van = (
+    await db.query<{ day: Date; loaded_at: string; posters: Record<string, number>; batteries: number; rolls: number; note: string | null; by: string | null }>(
+      `SELECT v.*, ${personName('p')} AS by FROM command.van_loads v LEFT JOIN command.people p ON p.id = v.recorded_by WHERE v.day = $1`,
+      [isoDay(asOf)],
+    )
+  ).rows[0];
+  const { rows: yes } = await db.query<{ id: number; shop: string; city: string; card_id: string | null; source: 'visit' | 'pipeline' | 'hand'; agreed_on: Date; by: string | null; design: string | null; note: string | null; placed_on: Date | null; poster: number | null }>(
+    `SELECT y.*, ${personName('p')} AS by FROM command.poster_yes y LEFT JOIN command.people p ON p.id = y.agreed_by
+      WHERE y.dropped_at IS NULL AND (y.placed_on IS NULL OR y.placed_on > $1::date - 30) ORDER BY y.agreed_on DESC, y.id DESC`,
+    [isoDay(asOf)],
+  );
   return {
     ROUTE: r
-      ? { staff: r.staff, staffKey: r.staff_key, day: ms(r.day)!, loaded: r.loaded_at, started: r.started_at, miles: r.miles, backBy: r.back_by, minutesPerStop: r.minutes_per_stop }
+      ? { staff: r.staff, staffKey: r.staff_key, day: ms(r.day)!, loaded: r.loaded_at ?? van?.loaded_at ?? '', started: r.started_at ?? '', miles: r.miles, backBy: r.back_by, minutesPerStop: r.minutes_per_stop }
       : { staff: '', staffKey: '', day: asOf, loaded: '', started: '', miles: 0, backBy: '', minutesPerStop: 0 },
     STOPS: stops.map((s) => ({
       id: s.id,
@@ -581,6 +671,12 @@ export async function fieldSection(db: Queryable, o: ReadOptions): Promise<Field
     SHOP_INFO: Object.fromEntries(stops.map((s) => [s.id, [s.closes ?? '', o.level <= TOTALS ? '' : (s.contact ?? ''), s.last_visit ? dayMon(ms(s.last_visit)!) : '']])) as FieldPayload['SHOP_INFO'],
     POSTERS: list,
     DESIGNS: await designs(db, list),
+    PLANS: await routePlans(db, o, asOf),
+    VAN: van
+      ? { day: ms(van.day)!, loaded: van.loaded_at, posters: van.posters ?? {}, batteries: van.batteries, rolls: van.rolls, note: o.level <= TOTALS ? null : van.note, by: van.by }
+      : null,
+    // the shops that said yes and are waiting for a poster, and those put up in the last 30 days
+    POSTER_YES: yes.map((y) => ({ id: y.id, shop: y.shop, city: y.city, card: y.card_id, source: y.source, agreed: ms(y.agreed_on)!, by: y.by, design: y.design, note: o.level <= TOTALS ? null : y.note, placed: ms(y.placed_on) ?? null, n: y.poster })),
     asOf,
   };
 }

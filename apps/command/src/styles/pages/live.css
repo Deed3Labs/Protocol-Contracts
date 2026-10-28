@@ -58,3 +58,11 @@
   .bt.mr-rf tr.mr-add{display:flex;flex-direction:column}
   .bt.mr-rf tr.mr-add > td,.bt.mr-rf tr.mr-add > :nth-child(4){display:block;width:auto;border-bottom:0}
 }
+
+/* Field: the van's load, a row a thing with its count (the reference draws no such form) */
+.fvl{display:flex;flex-direction:column;margin-top:4px}
+.fvl-r{display:grid;grid-template-columns:24px minmax(0,1fr) 88px;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--hair)}
+.fvl-r:first-child{border-top:0}
+.fvl-r .vin{margin-top:0;text-align:right;font-variant-numeric:tabular-nums}
+/* a shop's name that opens its record, in a list row */
+button.fw-k{text-align:left;cursor:pointer}

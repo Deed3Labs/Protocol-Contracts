@@ -234,6 +234,10 @@ const apply = {
     replace(LATER, d.LATER);
     assign(SHOP_INFO, d.SHOP_INFO);
     vars.ROUTE = d.ROUTE;
+    // Field's own records (migration 0069): the routes planned ahead, today's van, the shops that said yes to a poster
+    vars.PLANS = d.PLANS ?? [];
+    vars.VAN = d.VAN ?? null;
+    vars.POSTER_YES = d.POSTER_YES ?? [];
   },
   merchants(d) {
     replace(TX, d.TX);

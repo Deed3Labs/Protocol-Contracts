@@ -308,12 +308,36 @@ Filled in as each page is ported. Known before starting:
     (`task-done {stop, position}`), skip a stop (`skip`), add a shop found earlier to today (`add-later {shop}`),
     and log a merchant visit (`card-save` with a `visit` log line and the stage, next step and due date it sets;
     Not interested takes the card off with `card-remove`).
-  - **Still missing ("Not real yet" or hidden):** routes planned for the coming days (who, which stops, sent and
-    accepted), so Plan's route builder, new routes, Add/Move to a route, Best order, Send and Save are hidden and
-    the week shows only today; the van's load; placement scoring (suggested posters per city) and the shops that
-    said yes to a poster; daily scans per poster; a shop's hours and contact outside today's stops; snoozing or
-    dropping something that needs a visit; the visit log before today for posters and devices (only today's route
-    is sent); visit history per person beyond the cards' logs; photos shown back on a visit.
+  - **Field's own records (migration 0069).**
+    - *Routes ahead* (`command.route_plans`, `route_plan_stops`; the section's `PLANS`): one person's stops on one
+      day, in order, each the ref of what needs a visit it came from (`p12`, `c:<card>`, `d:<shop>`, `y:<id>`) or a
+      stop of its own (`a:…`), with the page's estimate (miles, minutes, back by). Plan's week, route builder, new
+      routes, Add/Move to a route, ↑↓ and drag, Best order, + Add a stop, Send, Take it back and Save my route are
+      live: `route-plan {day, who, start, stops}`, `route-save {id, who, start, stops, …}` (the route whole; a sent or
+      accepted route goes back to a draft, marked changed), `route-send {id, note}` (also in the outbox, for the
+      phone), `route-take-back {id}`, `route-accept {id}` (the person's own Save, or an admin's Mark accepted). Your
+      own routes, or anyone's with Approve on Field (the server checks). The lead panel's and a poster's "Add to a
+      route" and Placement's "Add to route" put it on that person's next route, starting one for the next weekday.
+    - *Today's route from a plan:* the first read of the field section on a day starts that day's accepted route as
+      today's (`startPlannedRoute`: command.routes, its stops and tasks, as the seed's day has them; `routes.plan_id`
+      says which), and accepting a route for today does it at once. A planned poster is a poster task (a scan marks
+      it), a device fix a device task, anything else a `visit` task (a new kind) marked done. command.routes keeps
+      one route a day, so a second accepted route on the same day stays a plan, and changes to a plan after its day
+      has started don't reach today's route.
+    - *In the van* (`command.van_loads`; `VAN`): today's load, posters by design, spare Point batteries and receipt
+      rolls, recorded (and recorded again, replacing it) with `van {posters, batteries, rolls, note, at}`; it sets
+      today's route's loaded time. The cell weighs it against what today's route still needs.
+    - *Shops that could take a poster* (`command.poster_yes`; `POSTER_YES`): a yes logged on a merchant visit (the
+      visit panel's "Said yes to one", `poster-yes` with the card), from the pipeline or by hand (+ A shop said yes),
+      with when; waiting ones are also "Put up a first poster" in Needs a visit. `poster-placed {id, design}` puts the
+      poster up (it joins the posters, as Growth's `poster-add`); `poster-no {id}` takes a shop that changed its mind
+      off.
+  - **Still missing ("Not real yet" or hidden):** placement scoring (suggested posters per city); daily scans per
+    poster; a shop's hours and contact outside today's stops; snoozing or dropping something that needs a visit; the
+    visit log before today for posters and devices (only today's route is sent); visit history per person beyond the
+    cards' logs; photos shown back on a visit; what was used from the van (it's weighed against today's tasks, not
+    recorded); where a person starts from other than the office (only the office is a start live); a yes read from
+    poster scans (a scan is of a poster already up, so it says nothing about a new shop); a route deleted outright.
 - **Merchants** (live, the same module): the merchant app's shops (`TX`, `SIGNED`), the pipeline's cards (`BOARD`)
   and the Points (`FLEET`). A shop the merchant app has and its card are one record (the card's `m`, else the same
   name); the other cards are the pipeline's own shops. Live, the API sends every card's owner, value, next step and flag whatever its
