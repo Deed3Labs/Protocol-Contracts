@@ -3729,6 +3729,8 @@ function makeFieldMerchants() {
         open: null,
         pf: 'all',
         bq: '',
+        // live: how many cards each Pipeline column shows
+        kmore: {},
         note: {},
         enqSt: {},
         approvals: []
@@ -4041,9 +4043,11 @@ function makeFieldMerchants() {
         const sub = (k, a) => k === 'prospect' || k === 'talking' ? `${money(sumVal(a)).replace('.00', '')} a month` : k === 'signing' ? a.some(m => m.founding) && !LV ? 'Founding seat 4 of 5' : `${a.length} agreement${a.length === 1 ? '' : 's'} out` : LV ? 'Not taking cards yet' : 'Posters and $10 only';
         const board = <div className="cell s12"><div className="hd"><h2>Pipeline</h2><div className="r"><label className="msearch sm"><svg className="i" viewBox="0 0 20 20"><circle cx="9" cy="9" r="5" /><path d="M13 13l4 4" /></svg><input id="xbq" placeholder="Find a shop" defaultValue={X.bq} /></label>{LV && RO() ? '' : <button className="btn p sm-b" data-xadd="">+ Prospect</button>}</div></div><div className="kb-tabs" id="kbtabs" role="tablist" aria-label="Stage">{KCOL.map(([k, t], __k) => <button key={__k} className={`kb-tab ${X.kst === k ? 'on' : ''}`} data-ktab={k} role="tab" aria-selected={X.kst === k}><b>{MS.filter(m => m.stage === k && hit(m)).length}</b><span>{t}</span></button>)}</div><div className="kb" id="kb">{KCOL.map(([k, t], __k) => {
               const all = MS.filter(m => m.stage === k && hit(m)).sort(ord),
-                cap = k === 'signed' && !X.allSigned && !q ? 6 : 99,
+                // live: every column shows its first 6, then a dozen more at a time (a search shows every match)
+                cap = LV ? q ? 99 : X.kmore[k] || 6 : k === 'signed' && !X.allSigned && !q ? 6 : 99,
                 a = all.slice(0, cap);
-              return <section key={__k} className={`kb-c ${X.kst === k ? 'on' : ''}`} data-kcol={k}><header className="kb-h"><span><b>{t}</b><span>{sub(k, all)}</span></span><b className="kb-k">{all.length}</b><span className="kb-hint">{all.length}{" shop"}{all.length === 1 ? '' : 's'}</span></header><div className="kb-b">{a.map((x, i) => <Fragment key={i}>{kTile(x, i)}</Fragment>)}{all.length > cap ? <button className="kb-more" data-xsigned="">{"Show "}{all.length - cap}{" more"}</button> : k === 'signed' && X.allSigned && !q ? <button className="kb-more" data-xsigned="">Show fewer</button> : ''}{all.length ? '' : <div className="kb-e">{q ? 'No matches' : 'Drop a shop here'}</div>}</div></section>;
+              const more = LV ? all.length > cap ? <button className="kb-more" data-xkmore={k}>{"Show "}{Math.min(12, all.length - cap)}{" more · "}{all.length - cap}{" not shown"}</button> : cap > 6 && cap < 99 ? <button className="kb-more" data-xkmore={k} data-less="">Show fewer</button> : '' : all.length > cap ? <button className="kb-more" data-xsigned="">{"Show "}{all.length - cap}{" more"}</button> : k === 'signed' && X.allSigned && !q ? <button className="kb-more" data-xsigned="">Show fewer</button> : '';
+              return <section key={__k} className={`kb-c ${X.kst === k ? 'on' : ''}`} data-kcol={k}><header className="kb-h"><span><b>{t}</b><span>{sub(k, all)}</span></span><b className="kb-k">{all.length}</b><span className="kb-hint">{all.length}{" shop"}{all.length === 1 ? '' : 's'}</span></header><div className="kb-b">{a.map((x, i) => <Fragment key={i}>{kTile(x, i)}</Fragment>)}{more}{all.length ? '' : <div className="kb-e">{q ? 'No matches' : 'Drop a shop here'}</div>}</div></section>;
             })}</div><div className="bk-ft"><span><span className="kb-fd">{LV ? 'Drag a shop to move it. Every move is logged.' : isAdmin() ? 'Drag a shop to move it. Every move is logged and can be undone.' : 'Drag your own leads to move them. Every move is logged.'}</span><span className="kb-fm">Hold a shop, then drop it on a stage above</span></span><button data-xtab="partners">Partners →</button></div></div>;
         /* shop enquiries */
         const es = e => X.enqSt[e.id] || e.st;
@@ -4499,6 +4503,10 @@ function makeFieldMerchants() {
         }
         if (d.xsigned !== undefined) {
           X.allSigned = !X.allSigned;
+          return render();
+        }
+        if (d.xkmore) {
+          X.kmore[d.xkmore] = d.less !== undefined ? 6 : (X.kmore[d.xkmore] || 6) + 12;
           return render();
         }
         if (d.xapprove && LV) return settleRun(d.xapprove, 'approve');

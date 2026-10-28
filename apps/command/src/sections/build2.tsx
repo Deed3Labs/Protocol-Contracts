@@ -934,8 +934,18 @@ function makeBuild() {
       me: 'kai',
       cp: 0,
       dp: 0,
-      rej: false
+      rej: false,
+      // live: how many cards each board column shows (the first CARDS, then more), and when you last cleared Shipped
+      more: {},
+      cleared: (() => {
+        try {
+          return +localStorage.getItem('cc-build-cleared') || 0;
+        } catch {
+          return 0;
+        }
+      })()
     };
+    const CARDS = 6;
     const ME = () => PPL[B.me],
       ENG = () => !!ME().eng,
       SIGNER = () => !!ME().signer;
@@ -1081,10 +1091,16 @@ function makeBuild() {
     }
     function renderChanges() {
       const F = [['all', 'All'], ...REPOS.map(r => [r.id, RSHORT[r.id]])],
-        ok = c => B.repo === 'all' || c.repo === B.repo || (c.also || []).includes(B.repo) || !c.repo && B.repo === 'proto';
-      const board = cell('s12', 'Every change', <div className="seg sm" role="group" aria-label="Repo">{F.map(([k, t], __k) => <button key={__k} data-brepo={k} aria-pressed={B.repo === k}>{t}</button>)}</div>, <><div className="bd-tabs">{STAGES.map(([k, t], __k) => <button key={__k} className={B.st === k ? 'on' : ''} data-bst={k}><b>{CHANGES.filter(c => c.st === k && ok(c)).length}</b><span>{t}</span></button>)}</div><div className="bd-bd">{STAGES.map(([k, t, s], __k) => {
-            const L = CHANGES.filter(c => c.st === k && ok(c)).sort((a, b) => (need(b) ? 1 : 0) - (need(a) ? 1 : 0) || (b.upd || b.live || b.opened) - (a.upd || a.live || a.opened));
-            return <section key={__k} className={`bd-c ${k} ${B.st === k ? 'on' : ''}`}><header className="bd-h"><span><b>{t}</b><span>{s}</span></span><b className="bd-k">{L.length}</b></header><div className="bd-b">{L.length ? L.map(tile) : <div className="bd-e">Nothing here</div>}</div></section>;
+        ok = c => B.repo === 'all' || c.repo === B.repo || (c.also || []).includes(B.repo) || !c.repo && B.repo === 'proto',
+        gone = c => LV && c.st === 'shipped' && B.cleared && (c.live || c.upd || c.opened) <= B.cleared;
+      const board = cell('s12', 'Every change', <div className="seg sm" role="group" aria-label="Repo">{F.map(([k, t], __k) => <button key={__k} data-brepo={k} aria-pressed={B.repo === k}>{t}</button>)}</div>, <><div className="bd-tabs">{STAGES.map(([k, t], __k) => <button key={__k} className={B.st === k ? 'on' : ''} data-bst={k}><b>{CHANGES.filter(c => c.st === k && ok(c) && !gone(c)).length}</b><span>{t}</span></button>)}</div><div className="bd-bd">{STAGES.map(([k, t, s], __k) => {
+            const L = CHANGES.filter(c => c.st === k && ok(c) && !gone(c)).sort((a, b) => (need(b) ? 1 : 0) - (need(a) ? 1 : 0) || (b.upd || b.live || b.opened) - (a.upd || a.live || a.opened));
+            if (!LV) return <section key={__k} className={`bd-c ${k} ${B.st === k ? 'on' : ''}`}><header className="bd-h"><span><b>{t}</b><span>{s}</span></span><b className="bd-k">{L.length}</b></header><div className="bd-b">{L.length ? L.map(tile) : <div className="bd-e">Nothing here</div>}</div></section>;
+            // live: the first CARDS, then a dozen more at a time; Shipped clears for you (what shipped since still shows)
+            const cap = B.more[k] || CARDS,
+              rest = L.length - cap,
+              hid = k === 'shipped' ? CHANGES.filter(c => c.st === k && ok(c) && gone(c)).length : 0;
+            return <section key={__k} className={`bd-c ${k} ${B.st === k ? 'on' : ''}`}><header className="bd-h"><span><b>{t}</b><span>{k === 'shipped' && B.cleared ? `Since you cleared it ${fmtD(B.cleared)}` : s}</span></span><b className="bd-k">{L.length}</b></header><div className="bd-b">{L.length ? L.slice(0, cap).map(tile) : <div className="bd-e">{hid ? 'Nothing shipped since you cleared it' : 'Nothing here'}</div>}{rest > 0 ? <button className="bd-more" data-bkmore={k}>{"Show "}{Math.min(12, rest)}{" more · "}{rest}{" not shown"}</button> : cap > CARDS ? <button className="bd-more" data-bkmore={k} data-less="">Show fewer</button> : ''}{k === 'shipped' && (L.length || hid) ? <button className="bd-more" data-bkclear={L.length ? 'clear' : 'back'}>{L.length ? 'Clear shipped · just for you' : `Bring back the ${plural(hid, 'cleared change', 'cleared changes')}`}</button> : ''}</div></section>;
           })}</div></>, <><span>{LV ? B.repo === 'all' ? 'On-chain changes come from Build, Merchants and Money' : `${REPO[B.repo].full || REPO[B.repo].name} · ${REPO[B.repo].path}` : B.repo === 'all' ? 'Settings come from Merchants and Governance' : `${REPO[B.repo].path ? REPO[B.repo].name + ' · ' + REPO[B.repo].path : REPO[B.repo].org + '/' + REPO[B.repo].name}`}</span><button data-bgh={LV && REPOS[0].url ? REPOS[0].url + '/pulls' : ''}>GitHub ↗</button></>);
       const L = COMMITS.filter(c => B.repo === 'all' || c[1] === B.repo),
         per = 8;
@@ -1733,6 +1749,20 @@ function makeBuild() {
       }
       if (d.bst) {
         B.st = d.bst;
+        return render();
+      }
+      if (d.bkmore) {
+        B.more[d.bkmore] = d.less !== undefined ? CARDS : (B.more[d.bkmore] || CARDS) + 12;
+        return render();
+      }
+      // clearing Shipped is yours alone: this browser remembers when, and what ships after still shows
+      if (d.bkclear) {
+        B.cleared = d.bkclear === 'clear' ? Date.now() : 0;
+        B.more.shipped = CARDS;
+        try {
+          if (B.cleared) localStorage.setItem('cc-build-cleared', String(B.cleared));
+          else localStorage.removeItem('cc-build-cleared');
+        } catch {}
         return render();
       }
       if (d.bcp) {
