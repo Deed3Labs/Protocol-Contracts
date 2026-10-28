@@ -98,7 +98,7 @@ It's the same design system the app was ported from (`docs/command-reference`), 
      (data.tsx `S`). Shared reference data a module reads (Field's `POSTERS`, `SHOPS`…) is ported into
      the module's file or a `<page>Data.tsx` beside it, as the reference has it.
 3. Import the file from `shell.tsx` (beside `import './growth2'`), so it registers.
-4. `npx tsc -b`, then add the route(s) to `SHADOWED` in `e2e/pages.ts` and run
+4. `npx tsc -b` and `npx vite build` (tsc doesn't see errors in `@ts-nocheck` files, such as a duplicate import), then add the route(s) to `SHADOWED` in `e2e/pages.ts` and run
    `npx playwright test e2e/parity.spec.ts e2e/visual.spec.ts -g <route>`: every tab must match.
 5. Live wiring is its own step (below).
 
