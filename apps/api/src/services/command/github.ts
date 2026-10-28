@@ -669,6 +669,8 @@ export async function codeChanges(
   map: Array<{ name: string; deployed: string | null; deployedAt: number | null }>,
   releases: Map<string, Release[]>,
   now: number,
+  /** Whether each deployed contract runs what dev compiles (codeMatchLive), by its deployed name: when it does, commits dated after its last release went out with it. */
+  same: Map<string, boolean> = new Map(),
 ): Promise<{ open: CodeChange[]; done: CodeChange[] }> {
   const { rows } = await db.query<{ sha: string; committed_at: Date; author: string; author_email: string | null; message: string; url: string; pr: number | null; contracts: string[] }>(
     'SELECT sha, committed_at, author, author_email, message, url, pr, contracts FROM command.code_commits WHERE repo = $1 AND $2 = ANY(branches) AND contracts IS NOT NULL ORDER BY committed_at',
@@ -698,10 +700,17 @@ export async function codeChanges(
     const mine = commits.filter((x) => x.contracts.some((k) => keys.has(k)));
     const rel = (m.deployed && releases.get(m.deployed)) || (m.deployedAt != null ? [{ version: 'v1.0', at: m.deployedAt, implementation: '' }] : []);
     const shipped: Array<typeof commits> = rel.map(() => []);
-    const after: typeof commits = [];
+    let after: typeof commits = [];
     for (const x of mine) {
       const i = rel.findIndex((r) => r.at >= x.at);
       (i < 0 ? after : shipped[i]).push(x);
+    }
+    // the chain runs exactly what dev compiles: what's dated after the release went out with it (deployed
+    // from its branch before it merged), so nothing is waiting
+    const match = m.deployed ? same.get(m.deployed) : undefined;
+    if (match === true && rel.length) {
+      shipped[rel.length - 1].push(...after);
+      after = [];
     }
     rel.forEach((r, i) => {
       if (r.at < now - 30 * DAY) return;
@@ -725,7 +734,7 @@ export async function codeChanges(
         c: m.name,
         by: by(after),
         stage: 0,
-        state: `${plural(after.length)} on ${c.branch} · not released`,
+        state: `${plural(after.length)} on ${c.branch} · ${match === false ? 'differs from what’s deployed' : 'not released'}`,
         d: said(after),
         short: after.at(-1)!.message,
         ev: [['seg', 'open', after[0].at, now], ['draft', after[0].at]],
