@@ -2,6 +2,7 @@
 import { Fragment } from 'react';
 import { attrs, css, hasHtml, html } from '../runtime/dom';
 import { LIVE as LIVE_APP, REAL } from '../live/env';
+import { run } from '../live/actions';
 import { loadSection, needsData } from '../live/sections';
 import { CC } from './cc';
 import { openCFlow } from './contracts';
@@ -1091,7 +1092,26 @@ function makeGovernance() {
         ents = Object.entries(ENTF).filter(([k, f]) => f.agr.includes(id)).map(([k]) => k);
       const rows = [['With', a.party], ['Kind', (AGR_T.find(t => t[0] === a.type) || [, a.type])[1]], ['Version', a.ver], ['Status', AST[a.st][0]], ...(a.a ? [['Signed', fmtD(a.a) + (LG && new Date(a.a).getUTCFullYear() !== Y0 ? ' ' + new Date(a.a).getUTCFullYear() : '')]] : []), ...(a.sent ? [['Sent', fmtD(a.sent)]] : []), ['Runs to', a.b ? fmtD(a.b) + ' ' + new Date(a.b).getUTCFullYear() : a.roll ? 'Month to month' : 'No end date'], ...(ents.length ? [['Our side', ents.map((k, i) => <Fragment key={i}>{i ? ', ' : ''}<button className="lnk3" data-gent={k}>{ENTO[k][1]}</button></Fragment>)]] : []), ...(a.prop ? [['The vote', <button className="lnk3" data-gopen={a.prop}>{a.prop}{" · voting now"}</button>]] : [])];
       const ft = LG ? STAFF() && a.st === 'out' ? <><button className="btn" data-gclose="">Not now</button><button className="btn p" data-gsign={a.id}>Sign it</button></> : STAFF() && a.st === 'renew' ? <><button className="btn" data-gclose="">Not now</button><button className="btn p" data-grenew={a.id}>Start the renewal</button></> : <><span className="small quiet" style={css("margin-right:auto")}>{AST[a.st][0]}</span><button className="btn" data-gclose="">Close</button></> : a.st === 'out' && STAFF() ? <><button className="btn" data-gclose="">Not now</button><button className="btn p" data-gsign={a.id}>Sign it</button></> : VERS[a.id] && STAFF() ? <><button className="btn" data-gcompare={a.id}>Compare versions</button><button className="btn p" data-gdraft={a.id}>Start a new version</button></> : <><span className="small quiet" style={css("margin-right:auto")}>{AST[a.st][0]}</span><button className="btn" data-gclose="">Close</button></>;
-      return <><div className="pn-hd"><span className="lbl">Agreement</span><button className="x" data-gclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="bpn-t">{a.name}</p><p className={`bpn-s ${a.st === 'out' ? 'me' : ''}`}>{a.party}</p></div><p className="bpn-n">{a.note}</p><div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{a.st === 'out' ? LG && a.type !== 'merchant' ? <p className="bpn-w"><b>Your signature makes it final.</b>{" You sign in the e-signature tool, and it comes back here marked signed."}</p> : <p className="bpn-w"><b>Your signature makes it final.</b>{" Then the shop is added to MerchantRegistry through the Ops Safe, in Build."}</p> : ''}{VERS[a.id] ? <div className="gt-vh">{lbl(`Versions · ${VERS[a.id].length}`)}{VERS[a.id].slice().reverse().map((v, i) => <div key={i} className={`gt-vh-r ${v[2]}`}><span className="gt-vh-d"><i /></span><span className="gt-vh-k"><span className="gt-vh-t"><b className="mono">{v[0]}</b><span className="gt-st" style={css(`--c:${VST[v[2]][1]}`)}>{VST[v[2]][0]}</span><span className="quiet">{v[2] === 'in' || v[2] === 'old' ? fmtD(v[1]) + (new Date(v[1]).getUTCFullYear() < 2026 ? ' ' + new Date(v[1]).getUTCFullYear() : '') : v[2] === 'vote' ? 'Closes ' + fmtD(v[1]) : 'For ' + fmtD(v[1])}</span></span><em>{v[3]}</em><ul className="gt-chg">{v[4].map((c, __k) => <li key={__k} className={c[0] === '+' ? 'add' : c[0] === '~' ? 'chg' : 'del'}><span>{c[0] === '+' ? '+' : c[0] === '~' ? '~' : '−'}</span>{c.slice(2)}</li>)}</ul></span></div>)}</div> : ''}</div><div className="pn-ft">{ft}</div></>;
+      return <><div className="pn-hd"><span className="lbl">Agreement</span><button className="x" data-gclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="bpn-t">{a.name}</p><p className={`bpn-s ${a.st === 'out' ? 'me' : ''}`}>{a.party}</p></div><p className="bpn-n">{a.note}</p><div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{a.st === 'out' ? LG && a.type !== 'merchant' ? <p className="bpn-w"><b>Your signature makes it final.</b>{" You sign in the e-signature tool, and it comes back here marked signed."}</p> : <p className="bpn-w"><b>Your signature makes it final.</b>{" Then the shop is added to MerchantRegistry through the Ops Safe, in Build."}</p> : ''}{LG ? verPanelLive(a) : ''}{VERS[a.id] ? <div className="gt-vh">{lbl(`Versions · ${VERS[a.id].length}`)}{VERS[a.id].slice().reverse().map((v, i) => <div key={i} className={`gt-vh-r ${v[2]}`}><span className="gt-vh-d"><i /></span><span className="gt-vh-k"><span className="gt-vh-t"><b className="mono">{v[0]}</b><span className="gt-st" style={css(`--c:${VST[v[2]][1]}`)}>{VST[v[2]][0]}</span><span className="quiet">{v[2] === 'in' || v[2] === 'old' ? fmtD(v[1]) + (new Date(v[1]).getUTCFullYear() < 2026 ? ' ' + new Date(v[1]).getUTCFullYear() : '') : v[2] === 'vote' ? 'Closes ' + fmtD(v[1]) : 'For ' + fmtD(v[1])}</span></span><em>{v[3]}</em><ul className="gt-chg">{v[4].map((c, __k) => <li key={__k} className={c[0] === '+' ? 'add' : c[0] === '~' ? 'chg' : 'del'}><span>{c[0] === '+' ? '+' : c[0] === '~' ? '~' : '−'}</span>{c.slice(2)}</li>)}</ul></span></div>)}</div> : ''}</div><div className="pn-ft">{ft}</div></>;
+    }
+    /* live: an agreement's versions, newest first, with who asked and who approved; a draft can be adopted (a second
+       person approves it) and a new one started, its changes a line each */
+    function verPanelLive(a) {
+      const V = LG.VERS[a.id] || [],
+        nx = V.find(v => v.st === 'draft'),
+        last = V[V.length - 1];
+      const nextNo = () => {
+        const m = /^v?(\d+)\.(\d+)/.exec((last || {}).v || a.ver || '');
+        return m ? `v${m[1]}.${+m[2] + 1}` : 'v1.0';
+      };
+      const when = v => v.st === 'draft' ? v.at > NOW ? `For ${fmtD(v.at)}${new Date(v.at).getUTCFullYear() !== Y0 ? ' ' + new Date(v.at).getUTCFullYear() : ''}` : 'Drafting' : fmtD(v.at) + (new Date(v.at).getUTCFullYear() !== Y0 ? ' ' + new Date(v.at).getUTCFullYear() : '');
+      const line = v => [v.by, v.st === 'draft' ? v.draftedBy ? `drafted by ${v.draftedBy}` : '' : v.approvedBy ? `${v.adoptedBy || 'Someone'} asked, ${v.approvedBy} approved` : '', v.terms ? termsOf(v.terms) ? `${termsOf(v.terms).n} accepted in the app` : 'none accepted in the app yet' : '', v.replaced ? `replaced ${fmtD(v.replaced)}` : ''].filter(Boolean).join(' · ');
+      const hist = V.length ? <div className="gt-vh">{lbl(`Versions · ${V.length}`)}{V.slice().reverse().map((v, i) => <div key={i} className={`gt-vh-r ${v.st}`}><span className="gt-vh-d"><i /></span><span className="gt-vh-k"><span className="gt-vh-t"><b className="mono">{v.v}</b><span className="gt-st" style={css(`--c:${VST[v.st][1]}`)}>{VST[v.st][0]}</span><span className="quiet">{when(v)}</span></span>{line(v) ? <em>{line(v)}</em> : ''}{v.changes.length ? <ul className="gt-chg">{v.changes.map((c, __k) => <li key={__k} className={c[0] === '+' ? 'add' : c[0] === '~' ? 'chg' : 'del'}><span>{c[0] === '+' ? '+' : c[0] === '~' ? '~' : '−'}</span>{c.slice(2)}</li>)}</ul> : ''}</span></div>)}</div> : <p className="bpn-n">No versions are recorded for it yet.</p>;
+      if (!STAFF()) return hist;
+      const today = new Date(NOW).toISOString().slice(0, 10);
+      const adopt = nx ? <div className="gt-vf">{lbl(`Adopt ${nx.v}`)}<p className="bpn-n">{"It’s in force from the day it was adopted"}{nx.by ? ` (${nx.by})` : ''}{" once a second person approves it here. The version in force now is replaced that day."}</p><label className="gt-vfl"><span>In force from</span><input className="vin" type="date" id="gvon" max={today} defaultValue={today} /></label><button className="btn" data-gvadopt={`${a.id}|${nx.v}`}>{"Propose adopting "}{nx.v}</button></div> : '';
+      const draft = G.vd === a.id ? <div className="gt-vf">{lbl('A new version')}<label className="gt-vfl"><span>Version</span><input className="vin" id="gvver" defaultValue={nextNo()} /></label><label className="gt-vfl"><span>Who adopts it</span><input className="vin" id="gvby" placeholder={a.type === 'member' ? 'A member vote' : a.type === 'company' ? 'Both companies’ boards' : 'The co-op board'} /></label><label className="gt-vfl col"><span>What changed · a line each, starting + added, ~ changed or - removed</span><textarea className="vin" id="gvchg" rows="4" placeholder={'+ Hardship pause, one cycle\n~ Fees move to a schedule'} /></label>{LG.TERMS.length ? <label className="gt-vfl"><span>Accepted in the app as</span><select className="vin" id="gvterms" defaultValue=""><option value="">Not linked</option>{LG.TERMS.map((t, __k) => <option key={__k} value={t.key}>{t.key}</option>)}</select></label> : ''}<button className="btn p" data-gvsave={a.id}>Save the draft</button></div> : nx ? '' : <button className="btn" data-gvdraft={a.id}>Start a new version</button>;
+      return <>{hist}{adopt}{draft}</>;
     }
     function mtPanel(id) {
       if (LG) return mtPanelLive(id);
@@ -1536,7 +1556,7 @@ function makeGovernance() {
       html(document.getElementById('gv'), <>{band(map, 1)}{band(<>{forming}{res}</>)}{band(rp)}</>);
     }
 
-    /* ══ Agreements: Build's section's; their versions aren't kept yet ══ */
+    /* ══ Agreements: Build's section's; their versions the governance section's ══ */
     function renderAgreementsLive() {
       const F = [['all', 'All'], ['wait', 'Waiting'], ['renew', 'Renewing'], ['signed', 'Signed']];
       const wt = a => ['out', 'sent', 'draft'].includes(a.st);
@@ -1560,8 +1580,50 @@ function makeGovernance() {
       }))) : <div className="gv-e"><span>Nothing is up for renewal</span></div>, <><span>Renewals go to the board when terms change</span><span /></>);
       const Wt = AGR.filter(wt);
       const wait = cell('s5', 'Waiting on someone', <span className="lbl">{plural(Wt.length, 'agreement', 'agreements')}</span>, Wt.length ? <div className="gt-wl">{Wt.map((a, __k) => <button key={__k} className={`gt-wr st-${a.st}`} data-gagr={a.id}><i style={css(`background:${AST[a.st][1]}`)} /><span className="gt-ck"><b>{a.party}</b><span>{a.name}{" "}{a.ver}</span></span><span className="gt-wn">{a.st === 'out' ? 'You' : a.st === 'sent' ? 'The other side' : 'Being drafted'}</span></button>)}</div> : <div className="gv-e"><span>Nothing waits on anyone</span></div>, <><span>Signing happens in the e-signature tool</span><span /></>);
-      const vers = notReal('s12', 'Versions', 'Needs each agreement’s versions: when each was adopted or replaced, what changed, who approved it, and who has accepted which.');
+      const vers = versionsLive();
       html(document.getElementById('gv'), <>{band(list, 1)}{band(vers)}{band(<>{renew}{wait}</>)}</>);
+    }
+
+    /* ── live: each agreement's versions on one timeline (the governance section's, migration 0068), and who's on
+       which: what the apps record as accepted, counted, for a version linked to it; what no version is linked to
+       is listed after, so nothing the apps record is left out ── */
+    const TERMS_N = {
+      'membership_terms': 'Member terms · the member app',
+      'data-room': 'Data room terms · Command'
+    };
+    const termsOf = key => LG.TERMS.find(t => t.key === key);
+    function versionsLive() {
+      const fam = AGR.filter(a => LG.VERS[a.id]);
+      const at = [...fam.flatMap(a => LG.VERS[a.id].map(v => v.at)), ...LG.UNLINKED.map(t => t.first).filter(Boolean)];
+      // from the first month on record (at least ten months back) to three months ahead, or the furthest draft
+      const t0d = new Date(Math.min(TODAY - 300 * DAY, ...at)),
+        t0 = Date.UTC(t0d.getUTCFullYear(), t0d.getUTCMonth(), 1),
+        t1e = new Date(Math.max(TODAY + 90 * DAY, ...at)),
+        t1 = Date.UTC(t1e.getUTCFullYear(), t1e.getUTCMonth() + 1, 1),
+        X = t => (Math.max(0, Math.min(1, (t - t0) / (t1 - t0))) * 100).toFixed(2);
+      const months = Math.round((t1 - t0) / (30.44 * DAY)),
+        step = Math.max(1, Math.ceil(months / 7)),
+        ticks = Array.from({
+          length: Math.floor(months / step) + 1
+        }, (_, i) => Date.UTC(new Date(t0).getUTCFullYear(), new Date(t0).getUTCMonth() + i * step, 1)).filter(t => t <= t1);
+      const yr = t => new Date(t).getUTCFullYear() !== Y0 ? ` ’${String(new Date(t).getUTCFullYear()).slice(2)}` : '';
+      const hd = <div className="gt-vr hd2"><span>{lbl('Agreement')}</span><span className="gt-vt">{ticks.map((t, __k) => <span key={__k} style={css(`left:${X(t)}%`)}>{MON[new Date(t).getUTCMonth()]}{new Date(t).getUTCMonth() === 0 ? yr(t) : ''}</span>)}<span className="now" style={css(`left:${X(NOW)}%`)}>Today</span></span>{lbl('In force')}{lbl('Who’s on it')}</div>;
+      const usage = (a, V, cur) => {
+        const U = V.filter(v => v.terms && termsOf(v.terms)).map(v => [v.v, termsOf(v.terms).n]);
+        if (U.length) return <><span className="gt-vb">{U.map((u, i) => <i key={i} style={css(`flex:${Math.max(1, u[1])};background:${cur && u[0] === cur.v ? 'var(--fg)' : 'color-mix(in srgb,var(--fg) 30%,transparent)'}`)} title={`${u[0]} · ${u[1]}`} />)}</span><em>{U.map(u => `${u[1]} on ${u[0]}`).join(' · ')}</em></>;
+        return <em>{a.type === 'company' ? 'Both companies sign each version' : V.some(v => v.terms) ? 'No one has accepted it in the app yet' : a.type === 'member' ? 'Not linked to what the app records' : 'Who accepted it isn’t recorded'}</em>;
+      };
+      const rows = fam.map((a, __k) => {
+        const V = LG.VERS[a.id],
+          cur = V.filter(v => v.st === 'in').pop(),
+          nx = V.find(v => v.st === 'draft'),
+          first = V.find(v => v.st !== 'draft') || V[0];
+        return <button key={__k} className="gt-vr" data-gagr={a.id}><span className="gt-ck"><b>{a.name}</b><span>{a.party}</span></span><span className="gt-vt"><i className="g" style={css(`left:${X(NOW)}%`)} />{cur ? <i className="ln" style={css(`left:${X(first.at)}%;right:${100 - X(NOW)}%`)} /> : ''}{nx && nx.at > NOW ? <i className="ln f" style={css(`left:${X(NOW)}%;right:${100 - X(nx.at)}%`)} /> : ''}{V.map((v, __k) => <i key={__k} className={`dot ${v.st}`} style={css(`left:${X(v.at)}%`)} title={`${v.v} · ${VST[v.st][0]}`}><em>{v.v}</em></i>)}</span><span className="gt-vc"><b className="mono">{cur ? cur.v : '—'}</b><em>{nx ? `${nx.v} · ${VST.draft[0].toLowerCase()}` : 'No changes planned'}</em></span><span className="gt-vu">{usage(a, V, cur)}</span></button>;
+      });
+      // what the apps record that no version is linked to: each version accepted, at its first acceptance
+      const loose = LG.UNLINKED.reduce((m, t) => m.set(t.doc, [...(m.get(t.doc) || []), t]), new Map());
+      const lrows = [...loose].map(([doc, T], __k) => <div key={__k} className="gt-vr"><span className="gt-ck"><b>{TERMS_N[doc] || doc}</b><span>{T[0].who === 'team' ? 'Accepted on Command' : 'Accepted in the app'}{" · no version linked"}</span></span><span className="gt-vt"><i className="g" style={css(`left:${X(NOW)}%`)} />{T.map((t, __k) => t.first ? <i key={__k} className="dot old" style={css(`left:${X(t.first)}%`)} title={`${t.version} · first accepted ${fmtD(t.first)}${yr(t.first)}`}><em>{t.version}</em></i> : '')}</span><span className="gt-vc"><b className="mono">{T[T.length - 1].version}</b><em>{T[T.length - 1].last ? `Last accepted ${fmtD(T[T.length - 1].last)}${yr(T[T.length - 1].last)}` : '—'}</em></span><span className="gt-vu"><span className="gt-vb">{T.map((t, i) => <i key={i} style={css(`flex:${Math.max(1, t.n)};background:${i === T.length - 1 ? 'var(--fg)' : 'color-mix(in srgb,var(--fg) 30%,transparent)'}`)} title={`${t.version} · ${t.n}`} />)}</span><em>{T.map(t => `${t.n} on ${t.version}`).join(' · ')}</em></span></div>);
+      return cell('s12', 'Versions', <span className="lbl">{plural(fam.length, 'agreement', 'agreements')}{" with versions"}</span>, <div className="gt-vl">{rows.length || lrows.length ? <>{hd}{rows}{lrows}</> : <div className="gv-e"><span>{AGR.length ? 'No versions recorded yet · start one from an agreement’s panel' : 'No agreements are recorded yet, so no versions'}</span></div>}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />In force</span><span><i className="gt-ko" />Replaced</span><span><i className="hx" />In draft</span></span><span>A version is in force once a second person approves it</span></>);
     }
 
     /* ── a meeting: the next one's agenda and its flows (the item, the packet, the minutes), or a held one's record ── */
@@ -1633,6 +1695,39 @@ function makeGovernance() {
         if (d.gmatter) return openVFlow('matter', d.gmatter);
         if (d.gsign) return openCFlow('esign', d.gsign);
         if (d.grenew) return openCFlow('renew', d.grenew);
+        if (d.gvdraft) {
+          G.vd = d.gvdraft;
+          return render();
+        }
+        if (d.gvsave) {
+          const v = id => ((document.getElementById(id) || {}).value || '').trim();
+          const changes = v('gvchg').split('\n').map(l => l.trim()).filter(Boolean).map(l => /^[+~-] /.test(l) ? l : /^[+~-]\S/.test(l) ? `${l[0]} ${l.slice(1).trim()}` : `+ ${l}`);
+          const body = {
+            agreement: d.gvsave,
+            version: v('gvver'),
+            changes,
+            decidedBy: v('gvby'),
+            ...(v('gvterms') ? {
+              terms: v('gvterms')
+            } : {})
+          };
+          if (!body.version) return toast('Give it a version, like v2.2');
+          return run('governance', 'version-draft', body, () => {
+            G.vd = null;
+            toast(`Drafted ${body.version} · logged in Records`);
+          });
+        }
+        if (d.gvadopt) {
+          const [agreement, version] = d.gvadopt.split('|'),
+            onDay = ((document.getElementById('gvon') || {}).value || '').trim();
+          return run('governance', 'version-adopt', {
+            agreement,
+            version,
+            ...(onDay ? {
+              onDay
+            } : {})
+          });
+        }
       }
       if (d.gtab) {
         G.tab = d.gtab;

@@ -17,8 +17,12 @@ import { COVER, DCOUNT, DOCS, ENT, ENTF, ROLES, VSEC, vars } from './data';
  *   Records   the records section (documents, counts, coverage), GET /audit (the log, its seq, hash and
  *             the chain's state) and GET /reveals (every reveal; a whole list is an export).
  *
- * What none of them has (connection history and keys, alerts, devices' trust, worth a look, the org
- * profile, backups) is empty here and "Not real yet" on the page; docs/ui-redesign-plan.md lists it.
+ * Settings also carries what Command records for it (migration 0068): the organization's profile (the
+ * settings of `sec: 'org'`, kept out of Rules and limits), each connection's last recorded key swap
+ * (KEYS) and the sign-in and reveal events worth a look (WORTH).
+ *
+ * What none of them has (connection history, alerts, devices' trust, backups) is empty here and
+ * "Not real yet" on the page; docs/ui-redesign-plan.md lists it.
  *
  * The datasets are made once and refilled in place (`fill`, before every draw; `load` fetches first), so
  * the module's consts stay the ones drawn.
@@ -86,6 +90,8 @@ const money = (n) => (n < 0 ? '−' : '') + '$' + Math.abs(n).toLocaleString('en
 const words = (s, v) =>
   v == null
     ? '—'
+    : v === '' && (s.kind === 'text' || s.kind === 'choice')
+      ? 'Not set'
     : s.kind === 'money'
       ? money(num(v))
       : s.kind === 'pct'
@@ -139,7 +145,9 @@ export function adminLive() {
     SETO: {},
     PEND: [],
     SET_HIST: [],
+    PROF: [],
     CONN: [],
+    WORTH: [],
     ENT: [],
     ENTO: {},
     DOCS: [],
@@ -321,7 +329,7 @@ export function adminLive() {
 
     // settings
     const sets = vars.SETTINGS ?? null;
-    const SETS = (sets ?? []).map((s) => ({
+    const ALLSETS = (sets ?? []).map((s) => ({
       id: s.id,
       sec: s.sec,
       t: s.t,
@@ -335,7 +343,10 @@ export function adminLive() {
       used: s.used ?? [],
       enforced: s.enforced ?? null,
     }));
-    const SETO = Object.fromEntries(SETS.map((s) => [s.id, s]));
+    // the organization's profile is Settings too (changed the same way), drawn in Organization, not Rules and limits
+    const SETS = ALLSETS.filter((s) => s.sec !== 'org');
+    const PROF = ALLSETS.filter((s) => s.sec === 'org');
+    const SETO = Object.fromEntries(ALLSETS.map((s) => [s.id, s]));
     const PEND = (sets ?? [])
       .filter((s) => s.pending && SETO[s.id])
       .map((s) => {
@@ -356,8 +367,10 @@ export function adminLive() {
       .filter((h) => SETO[h.set])
       .map((h) => [h.id.slice(0, 8), ms(h.at), h.set, words(SETO[h.set], onOff(SETO[h.set], h.from)), words(SETO[h.set], onOff(SETO[h.set], h.to)), keyOfName(h.by), keyOfName(h.approvedBy)]);
 
-    // connections: the feeds' health now; no hourly history, no keys
+    // connections: the feeds' health now, and each one's last key swap as Command recorded it (no hourly history)
+    const KEYS = Object.fromEntries((vars.SETTINGS_KEYS ?? []).map((k) => [k.connection, k]));
     const CONN = feedList().map((f) => {
+      const k = KEYS[f.id];
       const st = f.health === 'synced' ? 'ok' : f.health === 'behind' || f.health === 'failing' ? 'behind' : 'off';
       const age =
         f.behindMs == null
@@ -387,11 +400,32 @@ export function adminLive() {
         last: f.syncedAt ?? f.asOf ?? null,
         by: '',
         key: '',
-        keyNote: f.health === 'off' ? 'Not set up' : 'Key kept on the server',
+        keyNote: f.health === 'off' ? 'Not set up' : k ? `Key swapped ${Math.max(0, Math.floor((NOW - ms(k.at)) / DAY))} d ago` : 'Key kept on the server',
+        // the key's last recorded swap: when, who and why, and how many are recorded; none is "Never recorded"
+        keyAt: k ? ms(k.at) : null,
+        keyAge: k ? Math.max(0, Math.floor((NOW - ms(k.at)) / DAY)) : null,
+        keyBy: k ? keyOfName(k.by) : '',
+        keyWhy: k?.note ?? '',
+        keyN: num(k?.n),
         used: FEED[f.id]?.[1] ?? [],
         hrs: [],
         idle: 0,
       };
+    });
+
+    // worth a look (Settings → Security): the API's events of the last 30 days, as the reference's rows
+    // [when, what, detail, what it opens, colour, status]; someone not on the team opens nothing
+    const QUIET = 7;
+    const WORTH = (vars.SETTINGS_WORTH ?? []).map((w) => {
+      const who = w.who || 'Someone',
+        whose = `${who}’${/s$/.test(who) ? '' : 's'}`,
+        p = w.personId ? keyOf(w.personId, w.who) : '',
+        open = p && PEOPLE.some((x) => x.id === p) ? `p:${p}` : '';
+      const at = ms(w.at);
+      if (w.kind === 'join') return [at, `${who} joined`, `${w.what} · ${w.method === 'passkey' ? 'passkey' : 'emailed code'}`, open, 'var(--line)', 'Joined'];
+      if (w.kind === 'device') return [at, `${whose} new device`, `${w.what} · nothing confirms new devices yet`, open, 'var(--underway)', 'Not confirmed'];
+      if (w.kind === 'noreason') return [at, 'A reveal with no reason', `${who} showed ${w.what}`, 'x:reveals', 'var(--absent)', 'Look'];
+      return [at, `${whose} ${w.what} went quiet`, `Not seen since ${new Date(at - QUIET * DAY).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`, open, 'var(--underway)', 'Quiet'];
     });
 
     // the co-op's entities (its structure) and their papers
@@ -483,7 +517,9 @@ export function adminLive() {
     into(L.SETO, SETO);
     into(L.PEND, PEND);
     into(L.SET_HIST, SET_HIST);
+    into(L.PROF, PROF);
     into(L.CONN, CONN);
+    into(L.WORTH, WORTH);
     into(L.ENT, ENTS);
     into(L.ENTO, ENTO);
     into(L.DOCS, DOCS2);
@@ -524,6 +560,8 @@ export function adminLive() {
     if (settings?.SETTINGS) {
       vars.SETTINGS = settings.SETTINGS;
       vars.SETTINGS_HISTORY = settings.HISTORY ?? [];
+      vars.SETTINGS_KEYS = settings.KEYS ?? [];
+      vars.SETTINGS_WORTH = settings.WORTH ?? [];
     }
     if (audit) {
       RAW.audit = audit.entries ?? [];
@@ -548,6 +586,8 @@ export const adminApi = {
   access: (uid, body) => api('PATCH', `/people/${uid}/access`, body),
   resend: (uid) => api('POST', `/invites/${uid}/resend`),
   signOut: (uid) => api('POST', `/people/${uid}/sign-out`),
+  /** A connection's key swapped, recorded: the day (YYYY-MM-DD, else today) and a note. */
+  keyRotated: (connection, on, note) => api('POST', '/actions/settings/key-rotated', { connection, ...(on ? { on } : {}), note }),
   /** A setting's new value: always waits for a second person (202). */
   setting: (id, value, why) => api('POST', '/actions/settings/change', { id, value, why }),
   settle: (id, how) => api('POST', `/proposals/${id}/${how}`),

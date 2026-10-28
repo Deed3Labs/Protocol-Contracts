@@ -22,11 +22,21 @@ export interface Milestones {
   funded?: { at: number; with: 'bank' | 'deposit' };
   spend?: { at: number; shop: string };
 }
+/** How many members accepted one version of a document the app has them accept (counts only, never who). */
+export interface TermsCount {
+  doc: string;
+  version: string;
+  n: number;
+  first: number;
+  last: number;
+}
 export interface MemberSource {
   /** Everyone with an account; their names and cities only when asked (decrypted from the private profile). */
   roster(o: { names: boolean }): Promise<RosterMember[]>;
   /** Each wallet's first deposit and first spend. */
   milestones(wallets: string[]): Promise<Map<string, Milestones>>;
+  /** Governance's agreement versions: each document version members accepted in the app, counted. */
+  terms?(): Promise<TermsCount[]>;
 }
 
 const ms = (d: Date | string | null) => (d == null ? null : new Date(d).getTime());
@@ -94,6 +104,21 @@ export function liveMemberSource(where: Where = LIVE): MemberSource {
         for (const c of charges) if (!out.get(c.wallet)?.spend || out.get(c.wallet)!.spend!.at > ms(c.at)!) set(c.wallet, { spend: { at: ms(c.at)!, shop: c.shop } });
       }
       return out;
+    },
+    async terms() {
+      const pool = where.main();
+      if (!pool) return [];
+      // the member app makes the table when it starts (memberStore); before then there's nothing to count
+      const { rows } = await pool
+        .query<{ doc: string; version: string; n: number; first: Date; last: Date }>(
+          `SELECT document_type AS doc, document_version AS version, count(DISTINCT member_id)::int AS n, min(accepted_at) AS first, max(accepted_at) AS last
+             FROM member_terms_acceptances GROUP BY document_type, document_version ORDER BY document_type, min(accepted_at)`,
+        )
+        .catch((e: { code?: string }) => {
+          if (e?.code === '42P01') return { rows: [] as { doc: string; version: string; n: number; first: Date; last: Date }[] };
+          throw e;
+        });
+      return rows.map((r) => ({ doc: r.doc, version: r.version, n: r.n, first: ms(r.first)!, last: ms(r.last)! }));
     },
   };
 }
