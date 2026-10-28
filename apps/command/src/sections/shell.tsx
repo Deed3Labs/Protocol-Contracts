@@ -16,6 +16,7 @@ import { homeHub, homeMount } from './homeHub';
 import { mountPages, pageSlot } from './pageHost';
 import './growth2';
 import './members2';
+import './money2';
 import { membersPage } from './members';
 import { corridorMount, merchantsPage } from './merchants';
 import { moneyPage } from './money';
