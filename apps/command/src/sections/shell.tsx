@@ -11,6 +11,7 @@ import { fieldPage } from './field';
 import { governancePage } from './governance';
 import { growthPage } from './growth';
 import { home, morePage, placeholder, stateError, stateLoading, syncPages, waitingPage } from './home';
+import { ibxCount } from './inbox';
 import { membersPage } from './members';
 import { corridorMount, merchantsPage } from './merchants';
 import { moneyPage } from './money';
@@ -35,7 +36,7 @@ export function renderNav() {
               {ic(id)}
               <span>{n}</span>
               {id === 'home' && S.waiting.length ? (
-                <span className="n" aria-label={`${S.waiting.length} waiting`}>
+                <span className="n" aria-label={`${S.waiting.length} need you`}>
                   {S.waiting.length}
                 </span>
               ) : (
@@ -48,7 +49,7 @@ export function renderNav() {
   );
   const tabs = [
     ['home', 'Home'],
-    ['waiting', 'Waiting'],
+    ['waiting', 'Inbox'],
     ['field', 'Field'],
     ['more', 'More'],
   ].filter(([id]) => vLevel(id) > 0);
@@ -62,7 +63,15 @@ export function renderNav() {
         {id === 'waiting' && S.waiting.length ? <span className="badge">{S.waiting.length}</span> : ''}
       </button>
     )),
-  );
+  );  // the top bar's inbox: what needs you and the high alerts
+  const ib = $('#ibxBtn');
+  if (ib) {
+    const n = ibxCount();
+    ib.setAttribute('aria-label', n ? `Inbox, ${n} need you` : 'Inbox');
+    const c = ib.querySelector('.ibx-n');
+    c.textContent = String(n);
+    c.hidden = !n;
+  }
 }
 /* ── views: what a group sees. S.view is set when a member signs in, or when an admin previews a group ── */
 export function vLevel(r) {
@@ -70,7 +79,9 @@ export function vLevel(r) {
   const a = S.view.levels || ROLES[S.view.g][2];
   if (r === 'more') return 1;
   if (r === 'waiting') return Math.max(...a) >= 3 ? a[0] : 0;
-  const i = VSEC.indexOf(r);
+  // the redesign's pages read an existing section's level: Build is Contracts', and until they get
+  // their own, Community reads Governance's and Settings Team's
+  const i = VSEC.indexOf(({ build: 'contracts', community: 'governance', settings: 'team' } as Record<string, string>)[r] ?? r);
   return i < 0 ? 1 : a[i];
 }
 export function vRO() {
@@ -228,7 +239,7 @@ export function render() {
                 ? fieldPage()
                 : r === 'money'
                   ? moneyPage()
-                  : r === 'contracts'
+                  : r === 'build'
                     ? contractsPage()
                     : r === 'governance'
                       ? governancePage()
@@ -252,6 +263,7 @@ export function render() {
   if (LIVE) logView();
 }
 export function go(r) {
+  if (r === 'contracts') r = 'build';
   if (!NAMES[r]) r = 'home';
   if (vLevel(r) <= 0)
     r =

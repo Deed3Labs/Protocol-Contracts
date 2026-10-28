@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { APP, PROTO } from '../playwright.config';
+import { APP, PROTO, REDESIGN } from '../playwright.config';
 import { ROUTES, canonical, open, paneTabs } from './pages';
 
 /**
@@ -13,10 +13,14 @@ for (const route of ROUTES) {
   test(`DOM matches the prototype: ${route}`, async ({ browser }) => {
     const proto = await browser.newPage();
     const app = await browser.newPage();
+    const shell = await browser.newPage();
     await open(proto, PROTO, route);
     await open(app, APP, route);
-    expect(await canonical(app, '#railNav'), 'menu').toBe(await canonical(proto, '#railNav'));
-    expect(await canonical(app, '#tabs'), 'phone tabs').toBe(await canonical(proto, '#tabs'));
+    // the shell is the redesign's; a page is compared with the old reference until it's ported (docs/ui-redesign-plan.md)
+    await open(shell, REDESIGN, route === 'contracts' ? 'build' : route);
+    expect(await canonical(app, '#railNav'), 'menu').toBe(await canonical(shell, '#railNav'));
+    expect(await canonical(app, '#tabs'), 'phone tabs').toBe(await canonical(shell, '#tabs'));
+    await shell.close();
     expect(await canonical(app, '#main'), `${route}`).toBe(await canonical(proto, '#main'));
     const tabs = await paneTabs(proto);
     for (let i = 0; i < tabs.length; i++) {

@@ -47,6 +47,7 @@ import { closeModal, finish, go, openItem, render, runSteps, toast, vLevel, view
 import { openSFlow } from './shop';
 import { openCostFlow } from './costing';
 import { openCatFlow } from './catalog';
+import { ibxPaneDraw, ibxRefresh } from './inbox';
 import { sgnIn, sgnStep, sgnTimer, showLogin } from './signin';
 import { accOf, openTFlow } from './team';
 
@@ -1077,7 +1078,7 @@ export function startup() {
       CS.pane = t.dataset.cpane;
       CS.ag = null;
       CS.ct = null;
-      if (S.route !== 'contracts') S.route = 'contracts';
+      if (S.route !== 'build') S.route = 'build';
       render();
       window.scrollTo({
         top: 0,
@@ -1406,6 +1407,24 @@ export function startup() {
     if (t.dataset.pfa) return pfAct(t.dataset.pfa);
     if (t.dataset.themeSet) return setTheme(t.dataset.themeSet);
     if (t.dataset.railTog !== undefined) return setRail(document.documentElement.dataset.rail === 'min' ? 'full' : 'min');
+    // the inbox (the redesign's): open or close its pane, filter it, mark updates read
+    if (t.dataset.ibxOpen !== undefined) {
+      if (document.querySelector('.pane.ibx')) {
+        t.setAttribute('aria-expanded', 'false');
+        return closeModal();
+      }
+      t.setAttribute('aria-expanded', 'true');
+      return ibxPaneDraw();
+    }
+    if (t.dataset.ibxf) {
+      S.ibx.f = t.dataset.ibxf;
+      return ibxRefresh();
+    }
+    if (t.dataset.ibxRead !== undefined) {
+      S.ibx.read = true;
+      for (const u of S.updates || []) u.seen = true;
+      return ibxRefresh();
+    }
     if (t.dataset.open) return openItem(t.dataset.open);
     if (t.dataset.goStep) return runSteps(t.dataset.goStep);
     if (t.dataset.finish) return finish(t.dataset.finish);

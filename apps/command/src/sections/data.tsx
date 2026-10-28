@@ -12,6 +12,20 @@ import { REAL } from '../live/env';
 export const vars = {};
 /* ── Icons: square, single weight ────────────────────────── */
 export const P = {
+  // the redesign's (design/command-center-ui): Build, Community, Settings
+  build: <path d="M7 6 3 10l4 4M13 6l4 4-4 4M11 4 9 16" />,
+  community: (
+    <>
+      <path d="M3 5.5h10v6H8l-3 2.5v-2.5H3z" />
+      <path d="M15 8.5h2v6h-1.5v2l-2.5-2H9" />
+    </>
+  ),
+  settings: (
+    <>
+      <path d="M7.78 4.10 8.37 1.96 11.63 1.96 12.22 4.10 12.60 4.26 14.53 3.17 16.83 5.47 15.74 7.40 15.90 7.78 18.04 8.37 18.04 11.63 15.90 12.22 15.74 12.60 16.83 14.53 14.53 16.83 12.60 15.74 12.22 15.90 11.63 18.04 8.37 18.04 7.78 15.90 7.40 15.74 5.47 16.83 3.17 14.53 4.26 12.60 4.10 12.22 1.96 11.63 1.96 8.37 4.10 7.78 4.26 7.40 3.17 5.47 5.47 3.17 7.40 4.26Z" />
+      <circle cx="10" cy="10" r="2.6" />
+    </>
+  ),
   home: (
     <>
       <path d="M3 9.5 10 4l7 5.5V17H3z" />
@@ -152,7 +166,8 @@ export const SECTIONS = [
   {
     group: 'Rules',
     items: [
-      ['contracts', 'Contracts'],
+      ['build', 'Build'],
+      ['community', 'Community'],
       ['governance', 'Governance'],
     ],
   },
@@ -160,12 +175,15 @@ export const SECTIONS = [
     group: 'Admin',
     items: [
       ['records', 'Records'],
-      ['team', 'Permissions'],
+      ['team', 'Team'],
+      ['settings', 'Settings'],
     ],
   },
 ];
 export const NAMES = Object.fromEntries(SECTIONS.flatMap((g) => g.items));
-NAMES.waiting = 'Waiting';
+// Contracts became Build in the redesign: an old #contracts link still goes there (shell.tsx go)
+NAMES.contracts = 'Build';
+NAMES.waiting = 'Inbox';
 NAMES.more = 'More';
 export const PLANNED = {
   growth: {
@@ -241,6 +259,23 @@ export const PLANNED = {
     panes: [
       ['Documents', 'Signed copies, minutes and filings.'],
       ['Audit log', 'Who did what, when, from where.'],
+    ],
+  },
+  community: {
+    line: 'Where members talk, meet and vote between meetings.',
+    panes: [
+      ['Forum', 'Threads, ideas and flags, by category.'],
+      ['Live', 'Events and live sessions, as a list or a month.'],
+      ['Channel', 'The co-op’s channel: the schedule and the library.'],
+    ],
+  },
+  settings: {
+    line: 'The rules and limits the co-op runs on. Every change needs a second person.',
+    panes: [
+      ['Rules and limits', 'The two-person limits, shop costing and stock, invites and votes.'],
+      ['Security', 'Sign-in, sessions and keys.'],
+      ['Connections', 'Plaid, Bridge, Lithic, Stripe and the rest, and how they’re syncing.'],
+      ['Organization', 'The co-op’s entities and profile.'],
     ],
   },
   team: {
@@ -474,6 +509,8 @@ export const S = {
   live: null,
   updates: null,
   payoutDone: false,
+  // the inbox's filter, and whether its updates were marked read
+  ibx: { f: 'all', read: false },
 };
 /* ── Theme ───────────────────────────────────────────────── */
 vars.themePref = 'light';

@@ -143,7 +143,9 @@ import { setFigures } from './figures';
 export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records']);
 const ready = new Set<string>();
 
-export const needsData = (route: string) => LIVE && SERVED.has(route) && !ready.has(route);
+/** The API's section a page reads: Build is Contracts' (the redesign renamed the page, not the section). */
+const sectionOf = (route: string) => (route === 'build' ? 'contracts' : route);
+export const needsData = (route: string) => LIVE && SERVED.has(sectionOf(route)) && !ready.has(sectionOf(route));
 
 // what the API doesn't send yet (a figure nothing has written: no seed since Phase 9) empties the list
 const replace = (arr, rows) => arr.splice(0, arr.length, ...(rows ?? []));
@@ -395,7 +397,8 @@ export function applySection(route: string, d) {
   vars.asOf = d.asOf;
 }
 
-export async function loadSection(route: string, opts: { reveal?: boolean } = {}) {
+export async function loadSection(page: string, opts: { reveal?: boolean } = {}) {
+  const route = sectionOf(page);
   const d = await api('GET', `/sections/${route}${opts.reveal ? '?reveal=1' : ''}`);
   applySection(route, d);
   // Contracts' signers and their queue come from the Ops Safe, when one is configured
@@ -409,7 +412,8 @@ export async function loadSection(route: string, opts: { reveal?: boolean } = {}
 export const forgetSections = () => ready.clear();
 
 /** Loads a section again after it changed, if it's one the API serves and it was already loaded. */
-export async function reloadSection(route: string) {
+export async function reloadSection(page: string) {
+  const route = sectionOf(page);
   if (!LIVE || !SERVED.has(route)) return;
   // a change shows elsewhere too (a poster on Home, a refund in Money): every other section loads afresh when next opened
   ready.clear();

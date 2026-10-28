@@ -10,6 +10,8 @@ import { defineConfig } from '@playwright/test';
 // the preview: the prototype's simulated sign-in and demo team, which is what the checks compare
 export const APP = 'http://localhost:5231/?preview=1';
 export const PROTO = 'http://localhost:5233/clear-command-center.html';
+/** The redesign (design/command-center-ui, docs/ui-redesign-plan.md): the shell, and each page once it's ported. */
+export const REDESIGN = 'http://localhost:5234/command-center.html';
 export const WIDTHS = { wide: 1500, laptop: 1100, phone: 390 } as const;
 
 export default defineConfig({
@@ -40,6 +42,11 @@ export default defineConfig({
     {
       command: 'node ../../node_modules/vite/bin/vite.js ../../docs/command-reference --port 5233 --strictPort',
       url: PROTO,
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: 'node ../../node_modules/vite/bin/vite.js ../../design/command-center-ui --port 5234 --strictPort',
+      url: REDESIGN,
       reuseExistingServer: !process.env.CI,
     },
   ],
