@@ -1,10 +1,15 @@
 // @ts-nocheck: ported from the redesign's GOV2 module (design/command-center-ui) with scripts/port/module.cjs; its data is its own.
 import { Fragment } from 'react';
 import { attrs, css, hasHtml, html } from '../runtime/dom';
+import { LIVE as LIVE_APP, REAL } from '../live/env';
+import { loadSection, needsData } from '../live/sections';
 import { CC } from './cc';
+import { openCFlow } from './contracts';
 import { LOG, S } from './data';
+import { nextBoard, openVFlow } from './governance';
+import { governanceLive } from './governanceLive';
 import { registerPage, shadowHost } from './pageHost';
-import { openItem, toast } from './shell';
+import { openItem, render as renderShell, toast } from './shell';
 
 /*
  * Governance (design/command-center-ui, the GOV2 module): proposals from a member's draft to the thing
@@ -12,6 +17,15 @@ import { openItem, toast } from './shell';
  * calendar, in six tabs. It lives in its own shadow root (pageHost.tsx) with the g, fm, n, bx and vx
  * sheets adopted. The reference's module body runs against a stand-in `document` (DOCP) that points into
  * the shadow root, as it does there. Links out go through CC.go, so they land on the right page and pane.
+ *
+ * Live (REAL), its datasets are governanceLive()'s (`LG`: the module has its own L, R and W): the entities,
+ * the boards' seats, the meetings, the agenda, the resolutions, the reserved matters, the filings, the
+ * related-party log and the latest member vote from the governance section, and the agreements from
+ * Build's (contracts), which the page loads beside its own. Proposals as a lifecycle, the forum, tasks and
+ * agreement versions aren't kept by the API: those cells say "Not real yet". Changes go through the old
+ * page's flows (openVFlow: filings, formation steps, the agenda, the packet, the minutes, decisions,
+ * related-party payments, reserved matters, reminders) and Contracts' (openCFlow: signing and renewing an
+ * agreement), which save through the API; the reference's own actions with no API are hidden.
  */
 
 /** The page's skeleton: the reference template's markup, drawn once into the shadow root. */
@@ -20,10 +34,13 @@ function skeleton() {
 }
 function makeGovernance() {
   const { host, R: SR, W, into } = shadowHost('governance', skeleton());
+  const LG = REAL ? governanceLive() : null;
   const LIVE = () => host.isConnected && CC.route() === 'governance';
   const RO = () => CC.viewing() && CC.level('governance') < 3;
   const TOT = () => CC.viewing() && CC.level('governance') === 1;
   const meKey = () => {
+    // live, the signed-in person (the prototype's view picks one of its demo people)
+    if (LG) return LG.me;
     const v = S.view;
     if (!v) return 'kai';
     return {
@@ -67,12 +84,17 @@ function makeGovernance() {
        Demo "today" is Wed 21 Oct 2026, 14:00. 188 members can vote. A proposal reaches a vote once 10 members co-sign it
        (2% of members or 10, whichever is more). Member ballots are sealed until the vote closes; board votes are on the record. */
     const DAY = 864e5,
-      TODAY = Date.UTC(2026, 9, 21),
-      NOW = TODAY + 14 * 3600e3;
+      TODAY = LG ? LG.TODAY : Date.UTC(2026, 9, 21),
+      NOW = LG ? LG.NOW : TODAY + 14 * 3600e3;
+    /* the calendar's first month and the year dates are written without: the reference's October 2026, live today's */
+    const Y0 = LG ? new Date(TODAY).getUTCFullYear() : 2026,
+      M0 = LG ? new Date(TODAY).getUTCMonth() : 9;
     const D = (m, d, y = 2026) => Date.UTC(y, m - 1, d);
     const H = (m, d, h, mi = 0) => Date.UTC(2026, m - 1, d, h, mi);
     const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const fmtD = t => `${new Date(t).getUTCDate()} ${MON[new Date(t).getUTCMonth()]}`;
+    /* a date, or the API's words for one ("Before the co-op") */
+    const fD = t => typeof t === 'number' ? fmtD(t) : t;
     const WD = t => new Date(t).toLocaleDateString('en-US', {
       weekday: 'short',
       timeZone: 'UTC'
@@ -93,11 +115,11 @@ function makeGovernance() {
     };
     const int = n => Math.round(n).toLocaleString('en-US');
     const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
-    const MEMBERS = 188,
+    const MEMBERS = LG ? LG.VOTE ? LG.VOTE.elig : 0 : 188,
       SPONSORS = Math.max(10, Math.ceil(MEMBERS * 0.02));
 
     /* people. Members are masked here as everywhere in the Command Center; the forum in the app shows the name each member picks. */
-    const PPL = {
+    const PPL = LG ? LG.PPL : {
       kai: {
         n: 'Kai',
         ini: 'K',
@@ -204,7 +226,7 @@ function makeGovernance() {
     const PETITION = 'Members can take any board decision to a member vote with the same 10 co-signers.';
 
     /* proposals. st: draft | sponsor | check | vote | decided | done | withdrawn | expired */
-    const PROPS = [{
+    const PROPS = LG ? [] : [{
       id: 'P-012',
       type: 'bylaw',
       t: 'Adopt member agreement v2.2',
@@ -370,7 +392,7 @@ function makeGovernance() {
     const PROP = Object.fromEntries(PROPS.map(p => [p.id, p]));
 
     /* the forum. Posts belong to a proposal (or to Ideas, before there is one). */
-    const POSTS = [{
+    const POSTS = LG ? [] : [{
       p: 'P-012',
       by: 'kai',
       at: H(10, 21, 12, 40),
@@ -412,10 +434,10 @@ function makeGovernance() {
       t: 'Draft is up. Saturday 10am, with the stream kept for anyone who can’t come.',
       r: 4
     }];
-    const IDEAS = 23;
+    const IDEAS = LG ? 0 : 23;
 
     /* ── entities: who owns what. The Foundation sits outside the tree and answers to no one. ── */
-    const ENT = [/* id, name, kind, status, what it does */
+    const ENT = LG ? LG.ENT : [/* id, name, kind, status, what it does */
     ['coop', 'Clear Co-op', 'Wyoming LLC · co-op', 'formed', 'The parent. One member, one vote. Taxed as a corporation.'], ['fin', 'Clear Financial Co.', 'Wyoming LLC', 'formed', 'Runs the card and money programs. Holds member funds for their benefit.'], ['dt', 'The Deed & Title Co.', 'Wyoming LLC', 'forming', 'Keeps title records and will review deeds as a validator. Does not hold escrow.'], ['hold', 'Clear Capital Holdings', 'Wyoming C-corp', 'formed', 'Holds the economics of both funds. The co-op holds its governance class.'], ['labs', 'ClearLabs Inc.', 'Wyoming C-corp', 'formed', 'Research and development. Maintains the protocol for the Foundation.'], ['mgr', 'Manager LLC', 'Wyoming LLC', 'forming', 'Manages both funds and holds a small share of Clear Properties Co. Owned by Holdings.'], ['prop', 'Clear Properties Co.', 'Wyoming LLC · partnership', 'planned', 'Takes property contributions for OP units.'], ['lend', 'Clear Lending Co.', 'Wyoming LLC', 'planned', 'The credit book, bond series and pool shares.'], ['fdn', 'Clear Foundation', 'Wyoming foundation', 'forming', 'Holds the protocol. Ownerless, outside the tree.']];
     const ENTO = Object.fromEntries(ENT.map(e => [e[0], e]));
     const EST = {
@@ -423,7 +445,7 @@ function makeGovernance() {
       forming: ['Forming', 'var(--underway)'],
       planned: ['Planned', 'var(--line)']
     };
-    const PARENT = {
+    const PARENT = LG ? LG.PARENT : {
       coop: null,
       fin: 'coop',
       dt: 'coop',
@@ -434,7 +456,7 @@ function makeGovernance() {
       prop: 'hold',
       fdn: null
     };
-    const OWN = {
+    const OWN = LG ? LG.OWN : {
       fin: '100%',
       dt: '100%',
       hold: '100%',
@@ -443,7 +465,7 @@ function makeGovernance() {
       lend: '100%',
       prop: 'Majority, shrinking as contributors join'
     };
-    const ENTF = {
+    const ENTF = LG ? LG.ENTF : {
       coop: {
         formed: D(6, 12),
         tax: 'Corporation, by election',
@@ -501,7 +523,7 @@ function makeGovernance() {
         agr: ['pma']
       }
     };
-    const RESERVED = [['Selling or transferring land', 'Needs a member vote'], ['New share classes, or the co-op under its 25% floor', 'Needs a member vote'], ['Changing the charter or its purpose', 'Co-op board'], ['Selling, merging or closing Holdings', 'Co-op board'], ['Replacing the Manager', 'Co-op board'], ['Related-party deals over $25,000.00', 'Co-op board'], ['Borrowing over $250,000.00', 'Co-op board']];
+    const RESERVED = LG ? LG.RESERVED : [['Selling or transferring land', 'Needs a member vote'], ['New share classes, or the co-op under its 25% floor', 'Needs a member vote'], ['Changing the charter or its purpose', 'Co-op board'], ['Selling, merging or closing Holdings', 'Co-op board'], ['Replacing the Manager', 'Co-op board'], ['Related-party deals over $25,000.00', 'Co-op board'], ['Borrowing over $250,000.00', 'Co-op board']];
 
     /* ── boards: seats as fractions, terms, meetings, resolutions ── */
     const SEATC = {
@@ -514,18 +536,18 @@ function makeGovernance() {
       f: ['Open seat', 'var(--line)'],
       t: ['Team', 'color-mix(in srgb,var(--fg) 45%,transparent)']
     };
-    const GBOARDS = [/* id, name, who it answers to, seats: [class, holder, from, to, note] */
+    const GBOARDS = LG ? LG.GBOARDS : [/* id, name, who it answers to, seats: [class, holder, from, to, note] */
     ['coop', 'Co-op board', 'Member-elected · the Assembly elects a third once it’s switched on', [['m', 'kai', D(6, 12), Date.UTC(2028, 0, 15)], ['m', 'm1', D(8, 20), Date.UTC(2028, 0, 15)], ['m', 'm2', D(8, 20), Date.UTC(2027, 0, 15)], ['m', null, 0, 0, 'Elected 15 Jan'], ['m', null, 0, 0, 'Elected 15 Jan']]], ['hold', 'Holdings board', 'The co-op holds reserved seats, the chair and a veto on reserved matters', [['c', null, 0, 0, 'Elected directly'], ['r', 'kai', D(7, 20), Date.UTC(2028, 6, 20)], ['r', null, 0, 0, 'P-009 · pick is late'], ['i', null, 0, 0, 'After the financial class sells'], ['i', null, 0, 0, 'After the financial class sells'], ['n', null, 0, 0, 'Picked jointly'], ['f', null, 0, 0, 'Open to anyone']]], ['labs', 'ClearLabs board', 'Majority owned by the co-op', [['r', 'kai', D(8, 5), Date.UTC(2028, 7, 5)], ['r', 'dana', D(8, 5), Date.UTC(2028, 7, 5)], ['t', null, 0, 0, 'When a protocol lead joins']]], ['asm', 'Delegate Assembly', 'Council chairs · switches on at 5 communities', [['a', null, 0, 0, 'Highland council'], ['a', null, 0, 0, 'Switches on at 5'], ['a', null, 0, 0, 'Switches on at 5'], ['a', null, 0, 0, 'Switches on at 5'], ['a', null, 0, 0, 'Switches on at 5']], true]];
-    const MEETINGS = [/* id, board, when, kind, status, minutes */
+    const MEETINGS = LG ? LG.MEETINGS : [/* id, board, when, kind, status, minutes */
     ['M-14', 'coop', H(11, 4, 18), 'Open session · broadcast in Community', 'next', null], ['M-13', 'coop', H(10, 7, 18), 'Open session', 'held', 'approve'], ['M-12', 'hold', H(9, 16, 17), 'First meeting', 'held', 'approved'], ['M-11', 'labs', H(10, 7, 16), 'Regular', 'held', 'approved'], ['M-10', 'coop', H(9, 2, 18), 'Open session', 'held', 'approved']];
-    const AGENDA = [/* item, minutes, owner, kind, link */
+    const AGENDA = LG ? LG.AGENDA : [/* item, minutes, owner, kind, link */
     ['Approve the 7 Oct minutes', 5, 'kai', 'vote'], ['P-016 · raise the starter credit limit', 15, 'kai', 'vote', 'P-016'], ['Result of the vote on agreement v2.2', 10, 'kai', 'report', 'P-012'], ['Q3 money review', 15, 'dana', 'report'], ['Intercompany pricing policy', 15, 'kai', 'vote'], ['Pick the Holdings appointee', 10, 'kai', 'vote', 'P-009'], ['Open seats and the annual meeting', 10, 'kai', 'discuss', 'P-014']];
     const AK = {
       vote: ['Vote', 'var(--fg)'],
       report: ['Report', 'var(--land)'],
       discuss: ['Discuss', 'var(--line)']
     };
-    const RESOS = [/* date, board, title, votes by seat, proposal */
+    const RESOS = LG ? LG.RESOS : [/* date, board, title, votes by seat, proposal */
     [D(10, 12), 'coop', 'Register The Deed & Title Co. as a validator', ['y', 'y', 'y'], 'P-013'], [D(10, 7), 'coop', 'Member fee schedule', ['y', 'y', 'y']], [D(10, 7), 'labs', 'Protocol maintenance terms', ['r', 'y']], [D(10, 2), 'coop', 'Name the second reserved Holdings seat', ['y', 'y', 'y'], 'P-009'], [D(9, 16), 'hold', 'Adopt the bylaws', ['y']], [D(9, 10), 'coop', 'Adopt the hardship pause', ['y', 'y', 'y'], 'P-007'], [D(9, 2), 'coop', 'Issue ClearLabs shares to the co-op', ['r', 'y', 'y']]];
     const VOTEC = {
       y: ['Yes', 'var(--fg)'],
@@ -536,7 +558,7 @@ function makeGovernance() {
 
     /* ── agreements: moved here from Contracts ── */
     const AGR_T = [['company', 'Between our companies'], ['provider', 'Providers'], ['member', 'Members'], ['merchant', 'Shops']];
-    const AGR = [{
+    const AGR = LG ? LG.AGR : [{
       id: 'coop-oa',
       name: 'Cooperative operating agreement',
       party: 'Clear Co-op',
@@ -670,9 +692,11 @@ function makeGovernance() {
       out: ['Waiting on you', 'var(--live)'],
       vote: ['Being voted on', 'var(--live)']
     };
+    // live, Contracts' renewals go out for signature (contracts/renew)
+    if (LG) AST.sent = ['Out for signature', 'var(--underway)'];
 
     /* ── the calendar: filings, meetings and votes across every entity ── */
-    const FILINGS = [/* id, entity, title, due, status, owner */
+    const FILINGS = LG ? LG.FILINGS : [/* id, entity, title, due, status, owner */
     ['f1', 'labs', 'Annual report', D(11, 1), 'ready', 'kai'], ['f2', 'coop', 'Board minutes · 7 Oct', D(11, 4), 'draft', 'kai'], ['f3', 'coop', 'Statement of Information', D(11, 15), 'none', 'Accountant'], ['f4', 'dt', 'Formation filing', D(11, 30), 'draft', 'Accountant'], ['f5', 'fdn', 'Foundation charter', D(12, 15), 'draft', 'Counsel'], ['f6', 'fin', 'Program review', D(12, 31), 'none', 'dana'], ['f16', 'coop', 'Sales tax return · Q3', D(10, 31), 'ready', 'dana'], ['f7', 'coop', 'Annual member meeting', Date.UTC(2027, 0, 15), 'none', 'kai'], ['f15', 'coop', 'Sales tax return · Q4', Date.UTC(2027, 0, 31), 'later', 'Accountant'], ['f8', 'fin', 'Annual report', Date.UTC(2027, 2, 1), 'later', 'Accountant'], ['f9', 'fin', 'Program review', Date.UTC(2027, 2, 31), 'later', 'dana'], ['f10', 'coop', 'Federal return', Date.UTC(2027, 3, 15), 'later', 'Accountant'], ['f11', 'hold', 'Federal return', Date.UTC(2027, 3, 15), 'later', 'Accountant'], ['f12', 'labs', 'Federal return', Date.UTC(2027, 3, 15), 'later', 'Accountant'], ['f13', 'coop', 'Annual report', Date.UTC(2027, 5, 1), 'later', 'Accountant'], ['f14', 'hold', 'Annual report', Date.UTC(2027, 6, 1), 'later', 'Accountant'], ['f0', 'coop', 'Board minutes · 2 Sep', D(9, 30), 'done', 'kai'], ['f00', 'hold', 'Bylaws filed', D(9, 30), 'done', 'Accountant']];
     const FST = {
       ready: ['Ready to file', 'var(--settled)'],
@@ -694,7 +718,7 @@ function makeGovernance() {
     };
 
     /* ── versions of the standard agreements. st: in (in force) · old (replaced) · vote · draft. Changes: + added · ~ changed · − removed ── */
-    const VERS = {
+    const VERS = LG ? {} : {
       'coop-oa': [['v1.0', D(6, 12), 'in', 'Founding members', ['+ One member, one vote', '+ Taxed as a corporation, by election', '+ Changes need a member vote']], ['v1.1', Date.UTC(2027, 0, 15), 'draft', 'Goes to a member vote at the annual meeting', ['+ The Delegate Assembly, switched on at 5 communities', '+ Members can take a board decision to a vote with 10 co-signers', '~ Board seats written as fractions, not counts']]],
       'mem21': [['v1.0', D(3, 1), 'old', 'Clear Financial Co., before the co-op', ['+ Savings account and card', '+ Bank links through Plaid']], ['v2.0', D(6, 12), 'old', 'Adopted with the co-op', ['~ Members join the co-op, not a company', '+ One member, one vote', '+ Savings reserved 1 : 1']], ['v2.1', D(8, 14), 'in', 'Co-op board · 12 Aug', ['+ Savings-backed credit', '+ Clear Pay at partner shops', '~ Fees move to a schedule the board sets']], ['v2.2', H(10, 29, 23, 59), 'vote', 'P-012 · member vote, closes 29 Oct', ['+ Hardship pause, one cycle (from P-007)', '+ 90 days to activate a new account', '+ How member votes are counted, sealed until the close', '~ Sections 1 to 6 rewritten in plain language', '− The paper statement fee']]],
       'shops': [['v1.0', D(8, 3), 'old', 'Standard terms · Kai', ['+ NET-30 payouts', '+ A fee of up to 2.5%', '+ A cap per sale']], ['v1.1', D(9, 15), 'in', 'Co-op board · 2 Sep', ['+ NET-14 for small tickets', '+ Clear Pay at the counter', '~ Founding partner terms written in']]],
@@ -703,7 +727,7 @@ function makeGovernance() {
       'ics': [['v0.3', D(11, 4), 'draft', 'On the 4 Nov board agenda', ['+ Prices for shared staff and systems', '+ An arm’s-length test, checked every year', '~ Related-party deals over $25,000.00 go to the co-op board']]]
     };
     /* who is on which version, where people accept it one by one */
-    const VUSE = {
+    const VUSE = LG ? {} : {
       'mem21': [['v2.1', 188]],
       'shops': [['v1.0', 3], ['v1.1', 9]]
     };
@@ -719,6 +743,7 @@ function makeGovernance() {
     const ownerName = k => PPL[k] ? who(k) : /^[0-9a-f]{2}$/.test(k) ? mm(k) : k;
     /* every dated thing across governance: filings, meetings, votes, tasks and renewals */
     function calItems() {
+      if (LG) return calItemsLive();
       const out = [];
       FILINGS.forEach(f => out.push({
         t: f[3],
@@ -815,14 +840,15 @@ function makeGovernance() {
     };
     function seatChips(b, small) {
       return <span className={`gt-seats ${small ? 'sm' : ''}`}>{b[3].map((s, __k) => {
-          const C = SEATC[s[0]];
-          return <span key={__k} className={`gt-seat ${s[1] ? '' : 'open'}`} style={css(`--c:${C[1]}`)} title={`${C[0]}${s[1] ? ' · ' + who(s[1]) : ''}`}>{small ? '' : <><i /><b>{s[1] ? s[1] === 'kai' ? 'Kai' : who(s[1]).replace('Member ', '') : 'Open'}</b><em>{s[1] ? `to ${MON[new Date(s[3]).getUTCMonth()]} ${new Date(s[3]).getUTCFullYear()}` : s[4] || C[0]}</em></>}</span>;
+          const C = SEATC[s[0]] || SEATC.f;
+          return <span key={__k} className={`gt-seat ${s[1] ? '' : 'open'}`} style={css(`--c:${C[1]}`)} title={`${C[0]}${s[1] ? ' · ' + who(s[1]) : ''}`}>{small ? '' : <><i /><b>{s[1] ? s[1] === 'kai' ? 'Kai' : who(s[1]).replace('Member ', '') : 'Open'}</b><em>{s[1] ? s[3] ? `to ${MON[new Date(s[3]).getUTCMonth()]} ${new Date(s[3]).getUTCFullYear()}` : 'No end date' : s[4] || C[0]}</em></>}</span>;
         })}</span>;
     }
     const votesDots = v => <span className="gt-vd">{v.map((x, __k) => <i key={__k} className={x} title={VOTEC[x][0]} />)}</span>;
 
     /* ══ Overview ══════════════════════════════════════════════════════════════════════════════════════════════ */
     function renderOverview() {
+      if (LG) return renderOverviewLive();
       const ORD = {
         vote: 0,
         check: 1,
@@ -851,11 +877,13 @@ function makeGovernance() {
       const b = GBOARDS.find(x => x[0] === r[1]),
         y = r[3].filter(x => x === 'y').length,
         n = r[3].filter(x => x === 'n').length;
-      return <div className="gt-rr">{leaf(r[0])}<span className="gt-rk"><b>{r[2]}</b><span>{b[1]}{r[4] ? <>{" · "}<button className="lnk3 mono" data-gopen={r[4]}>{r[4]}</button></> : ''}</span></span><span className="gt-rv">{votesDots(r[3])}<em>{y}{" yes"}{n ? ` · ${n} no` : ''}{r[3].includes('r') ? ' · 1 recused' : ''}</em></span></div>;
+      // live, a board's resolution opens the old page's record of it (who voted how), by its place in the API's list
+      return <div className="gt-rr" {...attrs(LG && b ? `data-greso="${r[5]}" role="button" tabindex="0"` : '')}>{leaf(r[0])}<span className="gt-rk"><b>{r[2]}</b><span>{b ? b[1] : r[1]}{r[4] ? <>{" · "}<button className="lnk3 mono" data-gopen={r[4]}>{r[4]}</button></> : ''}</span></span><span className="gt-rv">{votesDots(r[3])}<em>{LG && !r[3].length ? 'Not recorded by seat' : <>{y}{" yes"}{n ? ` · ${n} no` : ''}{r[3].includes('r') ? LG ? ` · ${r[3].filter(x => x === 'r').length} recused` : ' · 1 recused' : ''}</>}</em></span></div>;
     }
 
     /* ══ Boards ════════════════════════════════════════════════════════════════════════════════════════════════ */
     function renderBoards() {
+      if (LG) return renderBoardsLive();
       const seats = cell('s12', 'Every seat', <span className="lbl">{GBOARDS.filter(b => !b[4]).reduce((a, b) => a + b[3].length, 0)}{" seats · 3 boards"}</span>, <div className="gt-sl">{GBOARDS.map((b, __k) => <div key={__k} className={`gt-sr ${b[4] ? 'off' : ''}`}><span className="gt-sk"><b>{b[1]}</b><em>{b[2]}</em></span>{seatChips(b)}<span className="gt-sn"><b>{b[4] ? '0' : b[3].filter(s => s[1]).length}</b><em>{"of "}{b[3].length}</em></span></div>)}</div>, <><span className="f-key">{['m', 'r', 'c', 'i', 'n'].map((k, __k) => <span key={__k}><i style={css(`background:${SEATC[k][1]}`)} />{SEATC[k][0]}</span>)}<span><i className="hx" />Open</span></span><span /></>);
       const M = MEETINGS[0],
         tot = AGENDA.reduce((a, x) => a + x[1], 0);
@@ -883,7 +911,7 @@ function makeGovernance() {
     function entFoot(id) {
       const e = ENTO[id],
         F = ENTF[id];
-      const r = e[3] === 'formed' ? `Since ${fmtD(F.formed)}` : F.steps ? `${F.steps.filter(x => x[1]).length} of ${F.steps.length} steps${F.due ? ' · ' + fmtD(F.due) : ''}` : '';
+      const r = e[3] === 'formed' ? F.formed ? typeof F.formed === 'number' ? `Since ${fmtD(F.formed)}` : F.formed : 'Date not recorded' : F.steps ? `${F.steps.filter(x => x[1]).length} of ${F.steps.length} steps${F.due ? ' · ' + fmtD(F.due) : ''}` : '';
       return <span className="gt-nf"><em style={css(`--c:${EST[e[3]][1]}`)}>{EST[e[3]][0]}</em><span>{e[3] === 'planned' && !F.due ? 'When needed' : r}</span></span>;
     }
     function entMap() {
@@ -897,7 +925,7 @@ function makeGovernance() {
         return <button className={`gt-n ${e[3]} ${id === 'fdn' ? 'own0' : ''}`} style={css(`left:${x}%;top:${y}%`)} data-gent={id}><span className="gt-nh"><b>{e[1]}</b><span className="gt-nk"><span>{e[2]}</span>{seatsOf(id)}</span></span>{entFoot(id)}</button>;
       };
       const H = 9.6; /* half a box's height (46px of 480), in % of the map */
-      const lines = Object.entries(PARENT).filter(([k, p]) => p).map(([k, p], __k) => {
+      const lines = Object.entries(PARENT).filter(([k, p]) => p && ENTXY[k] && ENTXY[p]).map(([k, p], __k) => {
         const [x1, y1] = ENTXY[p],
           [x2, y2] = ENTXY[k],
           my = (y1 + H + y2 - H) / 2;
@@ -907,18 +935,19 @@ function makeGovernance() {
         [mx] = ENTXY.mgr,
         my2 = ENTXY.mgr[1] + H;
       const manages = <path className="gt-ln mg" d={`M${mx} ${my2} V${bus} H${ENTXY.lend[0]} V${my2} M${ENTXY.prop[0]} ${bus} V${my2}`} />;
-      const labels = Object.entries(OWN).map(([k, v], __k) => {
+      const labels = Object.entries(OWN).filter(([k]) => ENTXY[k]).map(([k, v], __k) => {
         const [x, y] = ENTXY[k];
         return <span key={__k} className="gt-own" style={css(`left:${x}%;top:${y - H - 1.2}%`)}>{v.split(',')[0]}</span>;
       });
       const cx = ENTXY.fdn[0] - 6;
-      return <><div className="gt-map"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">{lines}{manages}<path className="gt-ln ct" d={`M${cx} ${ENTXY.fdn[1] + H} V${ENTXY.labs[1] - H}`} /></svg>{labels}<span className="gt-own gt-tl" style={css(`left:${ENTXY.coop[0]}%;top:${ENTXY.coop[1] - H - 1.5}%`)}>Owned by the members</span><span className="gt-own gt-tl" style={css(`left:${ENTXY.fdn[0]}%;top:${ENTXY.fdn[1] - H - 1.5}%`)}>Outside the tree</span><span className="gt-own ct" style={css(`left:${cx}%;top:${(ENTXY.fdn[1] + ENTXY.labs[1]) / 2}%`)}>Maintains for</span><span className="gt-own ct mg" style={css(`left:${(ENTXY.prop[0] + ENTXY.lend[0]) / 2}%;top:${bus}%`)}>Manages</span>{Object.keys(ENTXY).map(box)}</div><div className="gt-mapl">{['coop', 'fin', 'dt', 'hold', 'mgr', 'prop', 'lend', 'labs', 'fdn'].map(k => ENTO[k]).map((e, __k) => {
+      return <><div className="gt-map"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">{lines}{manages}<path className="gt-ln ct" d={`M${cx} ${ENTXY.fdn[1] + H} V${ENTXY.labs[1] - H}`} /></svg>{labels}<span className="gt-own gt-tl" style={css(`left:${ENTXY.coop[0]}%;top:${ENTXY.coop[1] - H - 1.5}%`)}>Owned by the members</span><span className="gt-own gt-tl" style={css(`left:${ENTXY.fdn[0]}%;top:${ENTXY.fdn[1] - H - 1.5}%`)}>Outside the tree</span><span className="gt-own ct" style={css(`left:${cx}%;top:${(ENTXY.fdn[1] + ENTXY.labs[1]) / 2}%`)}>Maintains for</span><span className="gt-own ct mg" style={css(`left:${(ENTXY.prop[0] + ENTXY.lend[0]) / 2}%;top:${bus}%`)}>Manages</span>{Object.keys(ENTXY).filter(k => ENTO[k]).map(box)}</div><div className="gt-mapl">{['coop', 'fin', 'dt', 'hold', 'mgr', 'prop', 'lend', 'labs', 'fdn'].map(k => ENTO[k]).filter(Boolean).map((e, __k) => {
             const depth = e[0] === 'coop' || e[0] === 'fdn' ? 0 : ['fin', 'dt', 'hold', 'labs'].includes(e[0]) ? 1 : 2;
             const b = GBOARDS.find(x => x[0] === e[0]);
-            return <button key={__k} className={`gt-ml-r d${depth} ${e[3]}`} data-gent={e[0]}><i /><span><b>{e[1]}</b><em>{e[0] === 'fdn' ? 'Outside the tree · ownerless · ClearLabs maintains for it' : e[0] === 'mgr' ? '100% owned by Clear Capital Holdings · manages both funds' : PARENT[e[0]] ? `${OWN[e[0]].split(',')[0]} owned by ${ENTO[PARENT[e[0]]][1]}` : e[2]}</em></span>{b ? <span className="gt-ns">{b[3].map((st, __k) => <i key={__k} className={st[1] ? 'on' : ''} />)}</span> : <span />}<span className="gt-st" style={css(`--c:${EST[e[3]][1]}`)}>{EST[e[3]][0]}</span></button>;
+            return <button key={__k} className={`gt-ml-r d${depth} ${e[3]}`} data-gent={e[0]}><i /><span><b>{e[1]}</b><em>{e[0] === 'fdn' ? 'Outside the tree · ownerless · ClearLabs maintains for it' : e[0] === 'mgr' && !LG ? '100% owned by Clear Capital Holdings · manages both funds' : PARENT[e[0]] ? `${OWN[e[0]].split(',')[0]} owned by ${ENTO[PARENT[e[0]]][1]}` : e[2]}</em></span>{b ? <span className="gt-ns">{b[3].map((st, __k) => <i key={__k} className={st[1] ? 'on' : ''} />)}</span> : <span />}<span className="gt-st" style={css(`--c:${EST[e[3]][1]}`)}>{EST[e[3]][0]}</span></button>;
           })}</div></>;
     }
     function renderEntities() {
+      if (LG) return renderEntitiesLive();
       const map = cell('s12', 'Who owns what', <span className="lbl">{ENT.filter(e => e[3] === 'formed').length}{" of "}{ENT.length}{" formed"}</span>, <div className="gt-mapw">{entMap()}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Formed</span><span><i style={css("background:var(--underway)")} />Forming</span><span><i className="hx" />Planned</span><span><i className="gt-dash" />Ownerless</span></span><span>The co-op owns everything inside the tree</span></>);
       const F = ENT.filter(e => e[3] !== 'formed');
       const forming = cell('s7', 'Forming', <span className="lbl">{F.length}{" entities"}</span>, <div className="gt-fl">{F.map((e, __k) => {
@@ -939,6 +968,7 @@ function makeGovernance() {
       return (VERS[a.id] || []).find(v => v[2] === 'vote' || v[2] === 'draft');
     }
     function renderAgreements() {
+      if (LG) return renderAgreementsLive();
       const F = [['all', 'All'], ['wait', 'Waiting'], ['renew', 'Renewing'], ['signed', 'Signed']];
       const ok = a => G.ag === 'all' || (G.ag === 'wait' ? waitOf(a) : a.st === G.ag);
       const L = AGR.filter(ok);
@@ -977,7 +1007,7 @@ function makeGovernance() {
 
     /* ── a month as a grid: Monday first, today marked, up to three things a day ── */
     function monthGrid(items, mo, col, more) {
-      const base = Date.UTC(2026, 9 + mo, 1),
+      const base = Date.UTC(Y0, M0 + mo, 1),
         d0 = new Date(base),
         y = d0.getUTCFullYear(),
         m = d0.getUTCMonth(),
@@ -998,7 +1028,7 @@ function makeGovernance() {
       return <div className="gm"><div className="gm-h">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((x, __k) => <span key={__k}>{x}</span>)}</div><div className="gm-g">{cells}</div></div>;
     }
     const monthName = mo => {
-      const d = new Date(Date.UTC(2026, 9 + mo, 1));
+      const d = new Date(Date.UTC(Y0, M0 + mo, 1));
       return `${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][d.getUTCMonth()]} ${d.getUTCFullYear()}`;
     };
     const viewSeg = (key, v) => <div className="seg sm gm-sw" role="group" aria-label="View"><button {...{ [`data-${key}`]: 'list' }} aria-pressed={v === 'list'}>List</button><button {...{ [`data-${key}`]: 'month' }} aria-pressed={v === 'month'}>Month</button></div>;
@@ -1007,10 +1037,10 @@ function makeGovernance() {
     /* ══ Calendar ══════════════════════════════════════════════════════════════════════════════════════════════ */
     function renderCalendar() {
       const E = [['all', 'All'], ['coop', 'Co-op'], ['fin', 'Financial'], ['hold', 'Holdings'], ['labs', 'ClearLabs'], ['dt', 'D&T Co.'], ['fdn', 'Foundation']];
-      const all = calItems().filter(c => c.t >= D(10, 1) && (G.cal === 'all' || c.ent === G.cal));
+      const all = calItems().filter(c => c.t >= Date.UTC(Y0, M0, 1) && (G.cal === 'all' || c.ent === G.cal));
       const months = Array.from({
         length: 12
-      }, (_, i) => Date.UTC(2026, 9 + i, 1));
+      }, (_, i) => Date.UTC(Y0, M0 + i, 1));
       const colOf = c => c.kind === 'filing' ? [FST[c.st][1], c.st === 'later' ? 'later' : ''] : c.st === 'late' ? ['var(--absent)'] : [CALK[c.kind][1]];
       const strip = <div className="gt-ms">{months.map((m, i) => {
           const n = Date.UTC(new Date(m).getUTCFullYear(), new Date(m).getUTCMonth() + 1, 1),
@@ -1042,7 +1072,7 @@ function makeGovernance() {
         F = ENTF[id],
         kids = Object.keys(PARENT).filter(k => PARENT[k] === id),
         fil = FILINGS.filter(f => f[1] === id && f[4] !== 'done');
-      const rows = [['Kind', e[2]], ['Status', EST[e[3]][0]], ['Owned by', id === 'fdn' ? 'No one · it’s ownerless' : PARENT[id] ? `${ENTO[PARENT[id]][1]} · ${OWN[id]}` : 'Its members · one member, one vote'], ...(kids.length ? [['Owns', kids.map((k, i) => <Fragment key={i}>{i ? ', ' : ''}<button className="lnk3" data-gent={k}>{ENTO[k][1]}</button></Fragment>)]] : []), ['Taxed as', F.tax], ...(F.formed ? [['Formed', fmtD(F.formed)], ['EIN', F.ein], ['Officers', F.officers]] : [])];
+      const rows = [['Kind', e[2]], ['Status', EST[e[3]][0]], ['Owned by', id === 'fdn' ? 'No one · it’s ownerless' : PARENT[id] ? `${ENTO[PARENT[id]][1]} · ${OWN[id]}` : 'Its members · one member, one vote'], ...(kids.length ? [['Owns', kids.map((k, i) => <Fragment key={i}>{i ? ', ' : ''}<button className="lnk3" data-gent={k}>{ENTO[k][1]}</button></Fragment>)]] : []), ['Taxed as', F.tax], ...(F.formed ? [['Formed', fD(F.formed)], ['EIN', F.ein], ['Officers', F.officers]] : [])];
       return <><div className="pn-hd"><span className="lbl">Entity</span><button className="x" data-gclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="bpn-t">{e[1]}</p><p className="bpn-s">{e[4]}</p></div><div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{F.steps ? <div>{lbl(`Forming${F.due ? ` · due ${fmtD(F.due)}` : ''}`)}<div className="led gv-cl">{F.steps.map(([k, ok], __k) => <div key={__k}><span><i className={ok ? 'ok' : ''} />{k}</span><b>{ok ? 'Done' : 'To do'}</b></div>)}</div></div> : ''}{F.agr.length ? <div>{lbl('Agreements')}<div className="led">{F.agr.map((a, __k) => {
                 const x = AGR.find(y => y.id === a);
                 return x ? <div key={__k}><span><button className="lnk3" data-gagr={x.id}>{x.name}</button></span><b>{AST[x.st][0]}</b></div> : '';
@@ -1054,16 +1084,17 @@ function makeGovernance() {
               st: f[4],
               owner: f[5],
               at: `data-gfile="${f[0]}"`
-            })), 'pn')}</div> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>Documents are kept in Records</span><button className="btn" data-gclose="">Close</button></div></>;
+            })), 'pn')}</div> : ''}</div><div className="pn-ft">{LG && STAFF() ? <>{F.steps && F.steps.some(s => !s[1]) ? <span className="small quiet" style={css("margin-right:auto")}>{"Next: "}{F.steps.find(s => !s[1])[0].toLowerCase()}</span> : <span className="small quiet" style={css("margin-right:auto")}>Documents are kept in Records</span>}<button className="btn" data-gflow="log" data-gid={id}>Log a decision</button>{F.steps && F.steps.some(s => !s[1]) ? <button className="btn p" data-gflow="form" data-gid={id}>Mark it done</button> : ''}</> : <><span className="small quiet" style={css("margin-right:auto")}>Documents are kept in Records</span><button className="btn" data-gclose="">Close</button></>}</div></>;
     }
     function agrPanel(id) {
       const a = AGR.find(x => x.id === id),
         ents = Object.entries(ENTF).filter(([k, f]) => f.agr.includes(id)).map(([k]) => k);
-      const rows = [['With', a.party], ['Kind', AGR_T.find(t => t[0] === a.type)[1]], ['Version', a.ver], ['Status', AST[a.st][0]], ...(a.a ? [['Signed', fmtD(a.a)]] : []), ...(a.sent ? [['Sent', fmtD(a.sent)]] : []), ['Runs to', a.b ? fmtD(a.b) + ' ' + new Date(a.b).getUTCFullYear() : a.roll ? 'Month to month' : 'No end date'], ...(ents.length ? [['Our side', ents.map((k, i) => <Fragment key={i}>{i ? ', ' : ''}<button className="lnk3" data-gent={k}>{ENTO[k][1]}</button></Fragment>)]] : []), ...(a.prop ? [['The vote', <button className="lnk3" data-gopen={a.prop}>{a.prop}{" · voting now"}</button>]] : [])];
-      const ft = a.st === 'out' && STAFF() ? <><button className="btn" data-gclose="">Not now</button><button className="btn p" data-gsign={a.id}>Sign it</button></> : VERS[a.id] && STAFF() ? <><button className="btn" data-gcompare={a.id}>Compare versions</button><button className="btn p" data-gdraft={a.id}>Start a new version</button></> : <><span className="small quiet" style={css("margin-right:auto")}>{AST[a.st][0]}</span><button className="btn" data-gclose="">Close</button></>;
-      return <><div className="pn-hd"><span className="lbl">Agreement</span><button className="x" data-gclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="bpn-t">{a.name}</p><p className={`bpn-s ${a.st === 'out' ? 'me' : ''}`}>{a.party}</p></div><p className="bpn-n">{a.note}</p><div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{a.st === 'out' ? <p className="bpn-w"><b>Your signature makes it final.</b>{" Then the shop is added to MerchantRegistry through the Ops Safe, in Build."}</p> : ''}{VERS[a.id] ? <div className="gt-vh">{lbl(`Versions · ${VERS[a.id].length}`)}{VERS[a.id].slice().reverse().map((v, i) => <div key={i} className={`gt-vh-r ${v[2]}`}><span className="gt-vh-d"><i /></span><span className="gt-vh-k"><span className="gt-vh-t"><b className="mono">{v[0]}</b><span className="gt-st" style={css(`--c:${VST[v[2]][1]}`)}>{VST[v[2]][0]}</span><span className="quiet">{v[2] === 'in' || v[2] === 'old' ? fmtD(v[1]) + (new Date(v[1]).getUTCFullYear() < 2026 ? ' ' + new Date(v[1]).getUTCFullYear() : '') : v[2] === 'vote' ? 'Closes ' + fmtD(v[1]) : 'For ' + fmtD(v[1])}</span></span><em>{v[3]}</em><ul className="gt-chg">{v[4].map((c, __k) => <li key={__k} className={c[0] === '+' ? 'add' : c[0] === '~' ? 'chg' : 'del'}><span>{c[0] === '+' ? '+' : c[0] === '~' ? '~' : '−'}</span>{c.slice(2)}</li>)}</ul></span></div>)}</div> : ''}</div><div className="pn-ft">{ft}</div></>;
+      const rows = [['With', a.party], ['Kind', (AGR_T.find(t => t[0] === a.type) || [, a.type])[1]], ['Version', a.ver], ['Status', AST[a.st][0]], ...(a.a ? [['Signed', fmtD(a.a) + (LG && new Date(a.a).getUTCFullYear() !== Y0 ? ' ' + new Date(a.a).getUTCFullYear() : '')]] : []), ...(a.sent ? [['Sent', fmtD(a.sent)]] : []), ['Runs to', a.b ? fmtD(a.b) + ' ' + new Date(a.b).getUTCFullYear() : a.roll ? 'Month to month' : 'No end date'], ...(ents.length ? [['Our side', ents.map((k, i) => <Fragment key={i}>{i ? ', ' : ''}<button className="lnk3" data-gent={k}>{ENTO[k][1]}</button></Fragment>)]] : []), ...(a.prop ? [['The vote', <button className="lnk3" data-gopen={a.prop}>{a.prop}{" · voting now"}</button>]] : [])];
+      const ft = LG ? STAFF() && a.st === 'out' ? <><button className="btn" data-gclose="">Not now</button><button className="btn p" data-gsign={a.id}>Sign it</button></> : STAFF() && a.st === 'renew' ? <><button className="btn" data-gclose="">Not now</button><button className="btn p" data-grenew={a.id}>Start the renewal</button></> : <><span className="small quiet" style={css("margin-right:auto")}>{AST[a.st][0]}</span><button className="btn" data-gclose="">Close</button></> : a.st === 'out' && STAFF() ? <><button className="btn" data-gclose="">Not now</button><button className="btn p" data-gsign={a.id}>Sign it</button></> : VERS[a.id] && STAFF() ? <><button className="btn" data-gcompare={a.id}>Compare versions</button><button className="btn p" data-gdraft={a.id}>Start a new version</button></> : <><span className="small quiet" style={css("margin-right:auto")}>{AST[a.st][0]}</span><button className="btn" data-gclose="">Close</button></>;
+      return <><div className="pn-hd"><span className="lbl">Agreement</span><button className="x" data-gclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="bpn-t">{a.name}</p><p className={`bpn-s ${a.st === 'out' ? 'me' : ''}`}>{a.party}</p></div><p className="bpn-n">{a.note}</p><div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{a.st === 'out' ? LG && a.type !== 'merchant' ? <p className="bpn-w"><b>Your signature makes it final.</b>{" You sign in the e-signature tool, and it comes back here marked signed."}</p> : <p className="bpn-w"><b>Your signature makes it final.</b>{" Then the shop is added to MerchantRegistry through the Ops Safe, in Build."}</p> : ''}{VERS[a.id] ? <div className="gt-vh">{lbl(`Versions · ${VERS[a.id].length}`)}{VERS[a.id].slice().reverse().map((v, i) => <div key={i} className={`gt-vh-r ${v[2]}`}><span className="gt-vh-d"><i /></span><span className="gt-vh-k"><span className="gt-vh-t"><b className="mono">{v[0]}</b><span className="gt-st" style={css(`--c:${VST[v[2]][1]}`)}>{VST[v[2]][0]}</span><span className="quiet">{v[2] === 'in' || v[2] === 'old' ? fmtD(v[1]) + (new Date(v[1]).getUTCFullYear() < 2026 ? ' ' + new Date(v[1]).getUTCFullYear() : '') : v[2] === 'vote' ? 'Closes ' + fmtD(v[1]) : 'For ' + fmtD(v[1])}</span></span><em>{v[3]}</em><ul className="gt-chg">{v[4].map((c, __k) => <li key={__k} className={c[0] === '+' ? 'add' : c[0] === '~' ? 'chg' : 'del'}><span>{c[0] === '+' ? '+' : c[0] === '~' ? '~' : '−'}</span>{c.slice(2)}</li>)}</ul></span></div>)}</div> : ''}</div><div className="pn-ft">{ft}</div></>;
     }
     function mtPanel(id) {
+      if (LG) return mtPanelLive(id);
       const m = MEETINGS.find(x => x[0] === id),
         b = GBOARDS.find(x => x[0] === m[1]);
       return <><div className="pn-hd"><span className="lbl">{b[1]}{" · meeting"}</span><button className="x" data-gclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="bpn-t">{WD(m[2])}{" "}{fmtD(m[2])}{" · "}{hm(m[2])}</p><p className="bpn-s">{m[3]}</p></div>{m[4] === 'next' ? <><div>{lbl('Agenda')}<div className="led">{AGENDA.map((x, __k) => <div key={__k}><span>{x[0]}</span><b>{x[1]}{" min · "}{AK[x[3]][0]}</b></div>)}</div></div><p className="bpn-n">Members can watch the open session live in Community. Private items, like a named member’s account, are taken in closed session and left out.</p></> : <div className="led">{[['Minutes', m[5] === 'approve' ? 'Drafted · approved at the next meeting' : 'Approved and filed in Records'], ['Seats present', `${b[3].filter(s => s[1]).length} of ${b[3].filter(s => s[1]).length}`], ['Decided', `${RESOS.filter(r => r[1] === m[1] && Math.abs(r[0] - Date.UTC(new Date(m[2]).getUTCFullYear(), new Date(m[2]).getUTCMonth(), new Date(m[2]).getUTCDate())) < DAY).length} resolutions`]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>}</div><div className="pn-ft">{m[4] === 'next' ? <><button className="btn" data-gcomm="">Broadcast · Community</button><button className="btn p" data-gclose="">Done</button></> : <><span className="small quiet" style={css("margin-right:auto")}>{m[5] === 'approve' ? 'Minutes to approve' : 'Minutes approved'}</span><button className="btn" data-gclose="">Close</button></>}</div></>;
@@ -1101,7 +1132,7 @@ function makeGovernance() {
     };
     const av = k => <span className="av sm" title={PPL[k] ? PPL[k].n : mm(k)}>{PPL[k] ? PPL[k].ini : k.toUpperCase()}</span>;
     const byName = k => PPL[k] ? who(k) : mm(k);
-    const STAFF = () => !RO() && !!PPL[G.me] && (PPL[G.me].staff || PPL[G.me].board);
+    const STAFF = () => LG ? !RO() && LG.can() : !RO() && !!PPL[G.me] && (PPL[G.me].staff || PPL[G.me].board);
 
     /* where a proposal stands */
     const tasksOpen = p => (p.tasks || []).filter(t => t[4] !== 'done');
@@ -1147,6 +1178,7 @@ function makeGovernance() {
 
     /* ── header ── */
     function renderHdr() {
+      if (LG) return renderHdrLive();
       const v = PROPS.filter(p => p.st === 'vote' && !p.board),
         v0 = v[0],
         pipe = PROPS.filter(p => ['draft', 'sponsor', 'check'].includes(p.st)),
@@ -1176,6 +1208,7 @@ function makeGovernance() {
 
     /* ── needs you: shared by Overview and Proposals ── */
     function needsCell() {
+      if (LG) return needsLive();
       const v = PROPS.find(p => p.st === 'vote' && !p.board);
       const N = !STAFF() ? [['live', `Vote on ${v.id}`, `${v.t} · you haven’t voted yet`, left(v.voteClose).replace('in ', ''), 'Vote in the app', `data-gopen="${v.id}"`], ['underway', 'Co-sign P-015', 'Reprint the window posters · 3 more co-signers needed', fmtD(PROP['P-015'].sponsorBy), 'Your call', 'data-gopen="P-015"'], ['line', 'Comment on P-017', 'Hold the annual meeting on a Saturday · a draft', '2 d', 'Draft', 'data-gopen="P-017"']] : [['live', `Vote on ${v.id}`, `${v.t} · you haven’t voted yet`, left(v.voteClose).replace('in ', ''), 'Vote in the app', `data-gopen="${v.id}"`], ...PROPS.filter(p => p.st === 'check' && p.checker === G.me).map(p => ['underway', `Check ${p.id}`, `${p.t} · ${p.checks.filter(c => !c[2]).length} checks left`, WD(p.checkDue), 'You check it', `data-gopen="${p.id}"`]), ...PROPS.flatMap(p => (p.tasks || []).filter(t => t[4] === 'late' && t[2] === G.me).map(t => ['absent', t[0], `${p.id} passed ${fmtD(p.decidedAt)} · due ${fmtD(t[3])}`, `${Math.round((NOW - t[3]) / DAY)} d late`, 'Your task', `data-gopen="${p.id}"`])), ...AGR.filter(x => x.st === 'out').map(x => ['live', `Sign: ${x.party}`, `${x.name} · they signed ${fmtD(x.sent + 2 * DAY)}`, '1 d', 'Your signature', `data-gagr="${x.id}"`]), ['line', 'A post was hidden in P-012', 'Dana Ruiz · it shared another member’s address', '1 d', 'Logged', `data-gopen="P-012" data-gthread="1"`]];
       return cell('s5', 'Needs you', <span className="lbl">{N.length}{" things"}</span>, <div className="gv-nd">{N.map(([sv, t, m, age, own, at], __k) => <button key={__k} className="gv-nd-r" {...attrs(at)}><i style={css(`background:${{
@@ -1188,6 +1221,7 @@ function makeGovernance() {
 
     /* ══ Proposals ══════════════════════════════════════════════════════════════════════════════════════════════ */
     function renderProposals() {
+      if (LG) return renderProposalsLive();
       const ORD = {
           vote: 0,
           check: 1,
@@ -1271,6 +1305,12 @@ function makeGovernance() {
         document.body.classList.remove('pn');
         return;
       }
+      // live, a panel for something the data doesn't have (a proposal, from an old link) doesn't open
+      if (LG && (P.id || P.ent && !ENTO[P.ent] || P.agr && !AGR.find(x => x.id === P.agr) || P.mt && !MEETINGS.find(x => x[0] === P.mt))) {
+        G.panel = null;
+        document.body.classList.remove('pn');
+        return;
+      }
       document.body.classList.add('pn');
       html(pn, P.id ? propPanel(PROP[P.id]) : P.ent ? entPanel(P.ent) : P.agr ? agrPanel(P.agr) : P.mt ? mtPanel(P.mt) : '');
       if (P.thread) {
@@ -1308,6 +1348,231 @@ function makeGovernance() {
       return <><div className="pn-hd"><span className="lbl">{p.id}{" · "}{R.t}</span><button className="x" data-gclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="bpn-t">{p.t}</p><p className={`bpn-s ${p.st === 'vote' ? 'me' : ''}`}>{stateTxt(p)}</p></div>{track(p)}<p className="bpn-n">{p.sum}</p><div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{block}{thread}</div><div className="pn-ft">{ft}</div></>;
     }
 
+    /* ══ Live (REAL): what the API has, in the reference's cells; what it doesn't says "Not real yet" ══════════════ */
+    const notReal = (cls, title, need) => cell(cls, title, lbl('Not real yet'), <><div className="bk-empty hatch" style={css("min-height:120px;opacity:.5")} /><div className="bk-empty">{need}</div></>, <span />);
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    const usd = n => '$' + Number(n).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    const bname = id => (GBOARDS.find(b => b[0] === id) || [, id])[1];
+    const bLow = s => String(s).replace(/^Co-op/, 'co-op');
+    const vq = v => Math.ceil(v.elig * v.q);
+    const mtWhen = t => `${WD(t)} ${fmtD(t)}${hm(t) !== '00:00' ? ' · ' + hm(t) : ''}`;
+    /* the old page's agenda, packet and minutes flows are the co-op board's next meeting's */
+    const coopNext = m => !!m && m === LG.NEXT && m[1] === 'coop' && !!nextBoard();
+    const NEED_PROPS = 'Needs proposals kept from draft to done: the draft and its co-authors, co-signers and their deadline, the check and who does it, the vote window and the result, and the tasks once it passes. Today the API keeps only the latest member vote.';
+
+    /* every dated thing the API has: filings, the boards' next meetings, the members' own, the vote's close, renewals */
+    function calItemsLive() {
+      const out = [];
+      FILINGS.forEach(f => out.push({
+        t: f[3],
+        kind: f[2].startsWith('Annual member') ? 'meeting' : 'filing',
+        title: f[2],
+        ent: f[1],
+        st: f[4],
+        owner: f[5],
+        at: `data-gfile="${f[0]}"`
+      }));
+      MEETINGS.filter(m => m[4] === 'next').forEach(m => out.push({
+        t: m[2],
+        kind: 'meeting',
+        title: `${bname(m[1])} meets`,
+        ent: m[1],
+        st: 'next',
+        owner: 'The board',
+        at: `data-gmt="${m[0]}"`
+      }));
+      LG.MEMBER_EVENTS.forEach(x => out.push({
+        t: x.t,
+        kind: 'meeting',
+        title: x.title,
+        ent: 'coop',
+        st: 'next',
+        owner: 'Members',
+        at: 'data-gtab="boards"'
+      }));
+      const v = LG.VOTE;
+      if (v && !v.closed) out.push({
+        t: v.close,
+        kind: 'vote',
+        title: `Member vote closes · ${v.t}`,
+        ent: 'coop',
+        st: 'next',
+        owner: 'Members',
+        at: 'data-gvote=""'
+      });
+      AGR.filter(a => a.st === 'renew' && a.b).forEach(a => out.push({
+        t: a.b,
+        kind: 'renew',
+        title: `${a.name} renews · ${a.party}`,
+        ent: a.type === 'company' ? 'coop' : 'fin',
+        st: 'next',
+        owner: a.party,
+        at: `data-gagr="${a.id}"`
+      }));
+      return out.filter(c => c.t).sort((a, b) => a.t - b.t);
+    }
+
+    /* ── header ── */
+    function renderHdrLive() {
+      const v = LG.VOTE,
+        M = LG.NEXT,
+        n = AGENDA.length;
+      const formed = ENT.filter(e => e[3] === 'formed').length,
+        fdue = ENT.filter(e => e[3] !== 'formed' && ENTF[e[0]].due).sort((a, b) => ENTF[a[0]].due - ENTF[b[0]].due)[0];
+      const soon = calItems().filter(c => c.t >= TODAY && c.t < TODAY + 25 * DAY && c.kind === 'filing' && c.st !== 'done'),
+        ready = soon.filter(c => c.st === 'ready').length;
+      const out = AGR.filter(a => a.st === 'out'),
+        ren = AGR.filter(a => a.st === 'renew' && a.b && a.b < TODAY + 60 * DAY);
+      const openSeats = GBOARDS.reduce((a, b) => a + b[3].filter(s => !s[1]).length, 0);
+      const voteTxt = !v ? 'No member vote has been held yet.' : v.closed ? <>{"The last member vote, "}<a data-gvote="">{v.t}</a>{`, closed ${fmtD(v.close)}: ${v.yes} yes and ${v.no} no.`}</> : <>{"Members are voting on "}<a data-gvote="">{v.t}</a>{v.cast >= vq(v) ? ', and enough have voted for it to count.' : `: ${v.cast} of ${v.elig} have voted, and ${vq(v) - v.cast} more ${vq(v) - v.cast === 1 ? 'is' : 'are'} needed for it to count.`}</>;
+      const mtTxt = M ? <>{`The ${bLow(bname(M[1]))} meets `}<a data-gmt={M[0]}>{WD(M[2])}{" "}{fmtD(M[2])}</a>{` with ${plural(n, 'item', 'items')} on the agenda.`}</> : 'No board meeting is set.';
+      const brief = {
+        overview: <>{voteTxt}{" "}{mtTxt}</>,
+        proposals: <>{"Proposals from a draft to a vote aren’t kept here yet. "}{voteTxt}</>,
+        boards: <>{mtTxt}{` ${plural(openSeats, 'seat is', 'seats are')} open across ${plural(GBOARDS.length, 'board', 'boards')}.`}</>,
+        entities: <>{`${formed} of ${plural(ENT.length, 'entity is', 'entities are')} formed.`}{fdue ? <>{" "}<a data-gent={fdue[0]}>{fdue[1]}</a>{` files to form by ${fmtD(ENTF[fdue[0]].due)}.`}</> : ''}</>,
+        agreements: !LG.AG_LOADED ? 'The agreements are Build’s, and they haven’t loaded.' : !AGR.length ? 'No agreements are recorded yet.' : <>{out.length ? <><a data-gagr={out[0].id}>{out[0].party}</a>{out.length > 1 ? ` and ${plural(out.length - 1, 'other waits', 'others wait')} on your signature. ` : ' waits on your signature. '}</> : 'Nothing waits on your signature. '}{`${plural(ren.length, 'agreement renews', 'agreements renew')} in the next 60 days.`}</>,
+        calendar: `${plural(soon.length, 'filing is', 'filings are')} due by ${fmtD(TODAY + 25 * DAY)}. ${ready} ${ready === 1 ? 'is' : 'are'} ready to file.`
+      }[G.tab];
+      const segs = (arr, col) => arr.map((x, i) => <i key={i} style={css(`left:${i / Math.max(6, arr.length) * 100}%;width:calc(${100 / Math.max(6, arr.length)}% - 2px);background:${col(x)}`)} />);
+      const recent = RESOS.filter(r => r[0] >= TODAY - 90 * DAY);
+      html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{`Governance · ${WD(NOW)} ${fmtD(NOW)}`}</span><p className="brief">{brief}</p><div className="strip"><div className="sc" data-gtab="proposals"><span className="lbl">{v && v.closed ? 'Last vote' : 'Voting now'}</span>{v ? <><div className="sc-v">{v.cast}{" "}<small>{"of "}{v.elig}{" voted"}</small></div><div className="mb"><i style={css(`width:${v.elig ? Math.min(100, v.cast / v.elig * 100) : 0}%;background:var(--live)`)} />{v.q ? <s className="nflr" style={css(`left:${v.q * 100}%`)} /> : ''}</div><div className="sc-s">{v.closed ? `${v.yes} yes · ${v.no} no · closed ${fmtD(v.close)}` : `needs ${vq(v)} · closes ${fmtD(v.close)}`}</div></> : <><div className="sc-v">0{" "}<small>open</small></div><div className="mb" /><div className="sc-s">No member vote yet</div></>}</div><div className="sc" data-gtab="boards"><span className="lbl">Board agenda</span><div className="sc-v">{n}{" "}<small>{n === 1 ? 'item' : 'items'}</small></div><div className="mb">{segs(AGENDA, x => AK[x[3]][1])}</div><div className="sc-s">{M ? `${bname(M[1])} · ${WD(M[2])} ${fmtD(M[2])}` : 'No meeting set'}</div></div><div className="sc" data-gtab="boards"><span className="lbl">Decided</span><div className="sc-v">{recent.length}{" "}<small>in 90 days</small></div><div className="mb">{segs(recent, () => 'var(--fg)')}</div><div className="sc-s">{`${plural(RESOS.length, 'resolution', 'resolutions')} on the record`}</div></div><div className="sc"><span className="lbl">In the forum</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · needs Community’s forum</div></div></div></>);
+    }
+
+    /* ── needs you: what the data says is due or waiting ── */
+    function needsLive() {
+      const v = LG.VOTE,
+        M = LG.NEXT,
+        N = [];
+      AGR.filter(a => a.st === 'out').forEach(a => N.push(['live', `Sign: ${a.party}`, `${a.name}${a.sent ? ` · sent ${fmtD(a.sent)}` : ''}`, a.sent ? ago(a.sent).replace(' ago', '') : '—', 'Your signature', `data-gagr="${a.id}"`]));
+      FILINGS.filter(f => f[4] !== 'done' && f[4] !== 'later' && f[3] < TODAY + 30 * DAY).sort((a, b) => a[3] - b[3]).forEach(f => N.push([f[3] < TODAY ? 'absent' : f[4] === 'ready' ? 'underway' : f[4] === 'none' ? 'absent' : 'line', `${f[4] === 'ready' ? 'File' : f[4] === 'none' ? 'Start' : 'Finish'}: ${f[2]}`, `${ESHORT[f[1]] || f[1]} · ${ownerName(f[5])} · due ${fmtD(f[3])}`, f[3] < TODAY ? `${Math.round((TODAY - f[3]) / DAY)} d late` : left(f[3]).replace('in ', ''), FST[f[4]][0], `data-gfile="${f[0]}"`]));
+      if (v && !v.closed) N.push(['live', `Member vote: ${v.t}`, `${v.cast} of ${v.elig} voted · ${v.cast >= vq(v) ? 'enough to count' : `${vq(v)} needed`}`, left(v.close).replace('in ', ''), 'Members vote', 'data-gvote=""']);
+      if (M && M[2] < TODAY + 14 * DAY) N.push(['line', `${bname(M[1])} meets ${WD(M[2])} ${fmtD(M[2])}`, `${plural(AGENDA.length, 'item', 'items')} on the agenda`, left(M[2]).replace('in ', ''), 'The meeting', `data-gmt="${M[0]}"`]);
+      LG.DECIDES.filter(m => m.open).forEach(m => N.push(['underway', m.d, m.open, '—', 'Reserved matter', `data-gmatter="${m.i}"`]));
+      return cell('s5', 'Needs you', <span className="lbl">{plural(N.length, 'thing', 'things')}</span>, <div className="gv-nd">{N.length ? N.map(([sv, t, m, age, own, at], __k) => <button key={__k} className="gv-nd-r" {...attrs(at)}><i style={css(`background:${{
+            underway: 'var(--underway)',
+            live: 'var(--live)',
+            absent: 'var(--absent)',
+            line: 'var(--line)'
+          }[sv]}`)} /><span className="gv-nd-k"><b>{t}</b><span>{m}</span></span><span className="gv-nd-a"><span className={sv === 'live' ? 'me' : sv === 'absent' ? 'bad' : ''}>{own}</span><span className="mono">{age}</span></span></button>) : <div className="gv-e"><span>Nothing needs you right now</span></div>}</div>, <><span>Signatures, filings due in 30 days, the vote and the next meeting</span><span /></>);
+    }
+
+    /* ══ Overview ══ */
+    function renderOverviewLive() {
+      const v = LG.VOTE,
+        M = LG.NEXT;
+      const DL = [...(v && !v.closed ? [['vote', 'Voting', v.t, `Members · ${v.cast} of ${v.elig} voted`, ['Closes', v.close], 'data-gvote=""']] : []), ...AGENDA.filter(x => x[3] === 'vote').map(x => ['check', 'Board vote', x[0], `${M ? bname(M[1]) : 'The board'} · ${who(x[2])}`, M ? ['Meets', M[2]] : null, M ? `data-gmt="${M[0]}"` : 'data-gtab="boards"'])];
+      const deciding = cell('s7', 'Being decided', <span className="lbl">{plural(DL.length, 'vote', 'votes')}{" coming"}</span>, <div className="gt-dl">{DL.length ? DL.map(([st, sl, t, sub, nx, at], __k) => <button key={__k} className="gt-dr" {...attrs(at)}><span className={`gt-sg ${st}`}>{sl}</span><span className="gt-dk"><b>{t}</b><span>{sub}</span></span>{nx ? <span className="gv-n">{lbl(nx[0])}<b>{WD(nx[1])}{" "}{fmtD(nx[1])}</b></span> : <span />}</button>) : <div className="gv-e"><span>Nothing is being voted on</span></div>}</div>, <><span>The member vote and the board’s agenda · proposals aren’t kept yet</span><button data-gtab="proposals">Proposals →</button></>);
+      const up = calItems().filter(c => c.t >= TODAY && c.st !== 'done').slice(0, 7);
+      const coming = cell('s7', 'Coming up', <span className="lbl">{up.length ? `Next ${Math.max(1, Math.ceil((up[up.length - 1].t - TODAY) / DAY))} days` : 'Nothing dated'}</span>, up.length ? calList(up) : <div className="gv-e"><span>Nothing is due</span></div>, <><span>Filings, meetings, votes and renewals</span><button data-gtab="calendar">Calendar →</button></>);
+      const boards = cell('s5', 'Boards', <span className="lbl">Seats filled</span>, <div className="gt-bl">{GBOARDS.map((b, __k) => <button key={__k} className="gt-br" data-gtab="boards"><span className="gt-bk"><b>{b[1]}</b><span>{`${b[3].filter(s => s[1]).length} of ${b[3].length} seats filled`}</span></span>{seatChips(b, 1)}</button>)}</div>, <><span>{M ? `Next: ${bLow(bname(M[1]))}, ${WD(M[2])} ${fmtD(M[2])}` : 'No board meeting is set'}</span><button data-gtab="boards">Boards →</button></>);
+      const recent = cell('s7', 'Recently decided', <span className="lbl">Every vote on the record</span>, RESOS.length ? <div className="gt-rl">{RESOS.slice(0, 5).map(r => resoRow(r))}</div> : <div className="gv-e"><span>No resolutions are on the record yet</span></div>, <><span>Board votes are on the record by seat</span><button data-gtab="boards">Resolutions →</button></>);
+      const f = ENT.filter(e => e[3] === 'formed').length,
+        fg = ENT.filter(e => e[3] === 'forming'),
+        pl = ENT.filter(e => e[3] === 'planned').length,
+        nf = ENT.filter(e => e[3] !== 'formed');
+      const ents = cell('s5', 'Entities', <span className="lbl">{f}{" of "}{ENT.length}{" formed"}</span>, <div className="gt-eo"><div className="gt-eb">{ENT.map((e, __k) => <i key={__k} className={e[3]} title={`${e[1]} · ${EST[e[3]][0]}`} />)}</div><div className="gt-el">{nf.map((e, __k) => {
+            const S = ENTF[e[0]].steps || [],
+              d = S.filter(s => s[1]).length;
+            return <button key={__k} className={`gt-er ${e[3]}`} data-gent={e[0]}><span><b>{e[1]}</b><em>{S.length ? `${d} of ${S.length} steps · ` : 'No steps recorded · '}{ENTF[e[0]].due ? 'due ' + fmtD(ENTF[e[0]].due) : 'when it’s needed'}</em></span><span className="gt-steps">{S.map((s, __k) => <i key={__k} className={s[1] ? 'on' : ''} />)}</span></button>;
+          })}</div></div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />{"Formed "}{f}</span><span><i style={css("background:var(--underway)")} />{"Forming "}{fg.length}</span><span><i className="hx" />{"Planned "}{pl}</span></span><span /></>);
+      html(document.getElementById('gv'), <>{band(<>{deciding}{needsCell()}</>, 1)}{band(<>{coming}{boards}</>)}{band(<>{recent}{ents}</>)}</>);
+    }
+
+    /* ══ Proposals: the latest member vote is real; the lifecycle around it isn't kept yet ══ */
+    function voteLive(v) {
+      const q = vq(v),
+        days = v.days,
+        span = Math.max(1, Math.round((v.close - v.open) / DAY)),
+        today = Math.min(span, Math.max(1, days.length)),
+        dmx = Math.max(days.length ? days[days.length - 1] : 0, q, 1) * 1.1,
+        rest = Math.max(0, Math.ceil((v.close - NOW) / DAY));
+      return cell('s7', v.closed ? 'Last vote' : 'Voting now', <span className="lbl">{v.closed ? 'Closed' : 'Closes'}{" "}{WD(v.close)}{" "}{fmtD(v.close)}</span>, <div className="gv-v"><div className="gv-vh"><div className="m-big">{v.cast}{" "}<small>{"of "}{v.elig}{" members have voted · "}{pct(v.cast, v.elig)}</small></div>{q && v.cast >= q ? <span className="fst">Enough voted</span> : ''}</div><div className="gv-vc">{Array.from({
+            length: span
+          }, (_, i) => {
+            const n = days[i];
+            return <div key={i} className={`${i < today ? '' : 'f'} ${i === today - 1 && !v.closed ? 'now' : ''}`}><i style={css(`height:${n != null ? n / dmx * 100 : 0}%`)} /><s>{i === 0 ? fmtD(v.open) : i === today - 1 && !v.closed ? 'Today' : i === span - 1 ? fmtD(v.close) : ''}</s></div>;
+          })}{q ? <span className="gv-q" style={css(`bottom:${q / dmx * 100}%`)}><em>{q}{" needed to count · "}{Math.round(v.q * 100)}%</em></span> : ''}</div><div className="led gv-vl">{[['The vote', v.t], [v.closed ? 'Result' : 'So far', `${v.yes} yes · ${v.no} no · ${v.abs} abstained`], ['Opened', `${WD(v.open)} ${fmtD(v.open)}`], ['Turnout to count', v.q ? `${Math.round(v.q * 100)}% · ${q} of ${v.elig} members` : 'Not set']].map(([k, x], __k) => <div key={__k}><span>{k}</span><b>{x}</b></div>)}</div></div>, <><span>{v.closed ? `${v.elig - v.cast} didn’t vote` : `${v.elig - v.cast} haven’t voted · ${plural(rest, 'day', 'days')} left`}</span>{!v.closed && STAFF() ? <button data-gflow="remind">Remind them →</button> : <button data-gvote="">The ballot →</button>}</>);
+    }
+    function renderProposalsLive() {
+      const v = LG.VOTE;
+      const list = notReal('s12', 'Every proposal', NEED_PROPS);
+      const vote = v ? voteLive(v) : cell('s7', 'Voting now', lbl('None open'), <div className="gv-e"><span>No member vote has been held yet</span></div>, <><span>Member votes are kept as they’re held</span><span /></>);
+      const talk = notReal('s7', 'Discussion', 'Needs Community’s forum: the posts and replies on each proposal, ideas before there’s one, and what moderators hid.');
+      const done = notReal('s5', 'Carried out', 'Needs each passed decision’s tasks: what’s to be done, who owns it, when it’s due and whether it’s done.');
+      const D2 = LG.DECIDES;
+      const rules = cell('s12', 'Who decides what', <span className="lbl">Reserved matters</span>, <div className="gv-rt"><div className="gv-rt-r hd2">{lbl('Decision')}{lbl('Decides')}{lbl('Must approve')}{lbl('Is told')}{lbl('Open now')}</div>{D2.length ? D2.map((m, __k) => <div key={__k} className="gv-rt-r"><span className="gv-rt-k"><b>{m.d}</b></span><span>{m.decides.join(', ') || <span className="quiet">No one</span>}</span><span>{m.approve.join(', ') || <span className="quiet">No one</span>}</span><span>{m.told.join(', ') || <span className="quiet">No one</span>}</span><span>{m.open || <span className="quiet">Nothing</span>}</span></div>) : <div className="gv-e"><span>No reserved matters are recorded</span></div>}</div>, <><span>Who decides, who must approve and who’s told, for each reserved matter</span><span /></>);
+      html(document.getElementById('gv'), <>{band(list, 1)}{band(<>{vote}{needsCell()}</>)}{band(<>{talk}{done}</>)}{band(rules)}</>);
+    }
+
+    /* ══ Boards ══ */
+    function renderBoardsLive() {
+      const seats = cell('s12', 'Every seat', <span className="lbl">{plural(GBOARDS.reduce((a, b) => a + b[3].length, 0), 'seat', 'seats')}{" · "}{plural(GBOARDS.length, 'board', 'boards')}</span>, GBOARDS.length ? <div className="gt-sl">{GBOARDS.map((b, __k) => <div key={__k} className="gt-sr"><span className="gt-sk"><b>{b[1]}</b><em>{b[2]}</em></span>{seatChips(b)}<span className="gt-sn"><b>{b[3].filter(s => s[1]).length}</b><em>{"of "}{b[3].length}</em></span></div>)}</div> : <div className="gv-e"><span>No boards are recorded</span></div>, <><span className="f-key">{['m', 'r', 'c', 'i', 'n'].map((k, __k) => <span key={__k}><i style={css(`background:${SEATC[k][1]}`)} />{SEATC[k][0]}</span>)}<span><i className="hx" />Open</span></span><span /></>);
+      const M = LG.NEXT,
+        tot = AGENDA.reduce((a, x) => a + x[1], 0);
+      const next = cell('s7', 'Next meeting', <span className="lbl">{M ? `${bname(M[1])} · ${mtWhen(M[2])}` : 'None set'}</span>, AGENDA.length ? <div className="gt-ag"><div className="gt-ag-b">{AGENDA.map((x, __k) => <i key={__k} style={css(`flex:${Math.max(1, x[1])};background:${AK[x[3]][1]}`)} title={x[0]} />)}</div><div className="gt-ag-l">{AGENDA.map((x, i) => <div key={i} className="gt-ag-r"><span className="mono">{i + 1}</span><span className="gt-ag-k"><b>{x[0]}</b><em>{who(x[2])}{" · "}{x[1]}{" min"}</em></span><span /><span className="gt-st" style={css(`--c:${AK[x[3]][1]}`)}>{AK[x[3]][0]}</span></div>)}</div></div> : <div className="gv-e"><span>{M ? 'Nothing is on the agenda yet' : 'No board meeting is set'}</span></div>, <><span>{AGENDA.length ? `${tot} min · ${plural(AGENDA.length, 'item', 'items')}` : 'Items are added one by one'}</span>{STAFF() && coopNext(M) ? <button data-gflow="item">Add an item →</button> : <span />}</>);
+      const mtgs = cell('s5', 'Meetings', <span className="lbl">Minutes and records</span>, MEETINGS.length ? <div className="gt-ml">{MEETINGS.map((m, __k) => <button key={__k} className={`gt-mr ${m[4]}`} data-gmt={m[0]}>{leaf(m[2])}<span className="gt-ck"><b>{bname(m[1])}</b><span>{m[3]}</span></span><span className="gt-st" style={css(`--c:${m[4] === 'next' ? 'var(--live)' : m[5] === 'approve' ? 'var(--underway)' : 'var(--fg)'}`)}>{m[4] === 'next' ? 'Next' : m[5] === 'approve' ? 'Minutes to approve' : 'Held'}</span></button>)}</div> : <div className="gv-e"><span>No meetings are recorded yet</span></div>, <><span>Minutes are filed in Records once approved</span><span /></>);
+      const resos = cell('s12', 'Resolutions', <span className="lbl">{RESOS.length}{" on the record"}</span>, RESOS.length ? <div className="gt-rl wide">{RESOS.map(r => resoRow(r))}</div> : <div className="gv-e"><span>No resolutions are on the record yet</span></div>, <><span className="f-key">{['y', 'n', 'r'].map((k, __k) => <span key={__k}><i style={css(`background:${VOTEC[k][1]}`)} />{VOTEC[k][0]}</span>)}<span><i className="gt-ab" />Absent</span></span>{STAFF() ? <button data-gflow="log">Log a decision →</button> : <span>Every board vote is on the record by seat</span>}</>);
+      html(document.getElementById('gv'), <>{band(seats, 1)}{band(<>{next}{mtgs}</>)}{band(resos)}</>);
+    }
+
+    /* ══ Entities ══ */
+    function renderEntitiesLive() {
+      const map = cell('s12', 'Who owns what', <span className="lbl">{ENT.filter(e => e[3] === 'formed').length}{" of "}{ENT.length}{" formed"}</span>, <div className="gt-mapw">{entMap()}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Formed</span><span><i style={css("background:var(--underway)")} />Forming</span><span><i className="hx" />Planned</span><span><i className="gt-dash" />Ownerless</span></span><span>The co-op owns everything inside the tree</span></>);
+      const F = ENT.filter(e => e[3] !== 'formed');
+      const forming = cell('s7', 'Forming', <span className="lbl">{plural(F.length, 'entity', 'entities')}</span>, F.length ? <div className="gt-fl">{F.map((e, __k) => {
+          const S = ENTF[e[0]].steps || [],
+            d = S.filter(s => s[1]).length,
+            nx = S.find(s => !s[1]);
+          return <button key={__k} className={`gt-fr ${e[3]}`} data-gent={e[0]}><span className="gt-ck"><b>{e[1]}</b><span>{!S.length ? 'No formation steps recorded' : nx ? `Next: ${nx[0].toLowerCase()}` : 'Done'}{ENTF[e[0]].due ? ` · due ${fmtD(ENTF[e[0]].due)}` : ' · when it’s needed'}</span></span><span className="gt-fs">{S.map((s, i) => <i key={i} className={s[1] ? 'on' : i === d ? 'nx' : ''} title={s[0]} />)}</span><span className="gt-fn">{S.length ? `${d} of ${S.length}` : '–'}</span></button>;
+        })}</div> : <div className="gv-e"><span>Every entity is formed</span></div>, <><span>Planned entities form when they’re needed, not before</span><span /></>);
+      const res = cell('s5', 'Reserved matters', <span className="lbl">Who decides</span>, RESERVED.length ? <div className="gt-rm">{RESERVED.map(([t, w], i) => <div key={i} data-gmatter={String(i)} role="button" tabIndex={0}><span>{t}</span><b className={/member/.test(w) ? 'mv' : ''}>{w}</b></div>)}</div> : <div className="gv-e"><span>No reserved matters are recorded</span></div>, <><span>Open one for who must approve and who’s told</span><span /></>);
+      const rp = cell('s12', 'Between our companies', <span className="lbl">{plural(LG.RP.length, 'related-party deal', 'related-party deals')}</span>, LG.RP.length ? <div className="gt-fl">{LG.RP.map((r, __k) => <button key={__k} className="gt-fr" data-gflow="rp" data-gid={String(r.i)}><span className="gt-ck"><b>{r.what}</b><span>{`${(ENTO[r.from] || [, r.from])[1]} → ${(ENTO[r.to] || [, r.to])[1]}`}{r.agenda ? ` · on the agenda ${fmtD(r.agenda)}` : r.paid.length ? ` · last paid ${fmtD(r.paid[r.paid.length - 1])}` : ' · nothing paid yet'}</span></span><span className="gt-fs" /><span className="gt-fn">{r.amt ? usd(r.amt) : '–'}</span></button>)}</div> : <div className="gv-e"><span>No related-party deals are recorded</span></div>, <><span>Each payment is logged by hand · a new deal goes to the board</span><span /></>);
+      html(document.getElementById('gv'), <>{band(map, 1)}{band(<>{forming}{res}</>)}{band(rp)}</>);
+    }
+
+    /* ══ Agreements: Build's section's; their versions aren't kept yet ══ */
+    function renderAgreementsLive() {
+      const F = [['all', 'All'], ['wait', 'Waiting'], ['renew', 'Renewing'], ['signed', 'Signed']];
+      const wt = a => ['out', 'sent', 'draft'].includes(a.st);
+      const ok = a => G.ag === 'all' || (G.ag === 'wait' ? wt(a) : a.st === G.ag);
+      const Ls = AGR.filter(ok);
+      const yr = t => new Date(t).getUTCFullYear() !== Y0 ? ' ' + new Date(t).getUTCFullYear() : '';
+      const TY = [...AGR_T, ...[...new Set(Ls.map(a => a.type))].filter(k => !AGR_T.some(t => t[0] === k)).map(k => [k, k])];
+      const list = cell('s12', 'Every agreement', <div className="seg sm" role="group" aria-label="Which agreements">{F.map(([k, t], __k) => <button key={__k} data-gag={k} aria-pressed={G.ag === k}>{t}{" "}{k === 'all' ? AGR.length : AGR.filter(a => k === 'wait' ? wt(a) : a.st === k).length}</button>)}</div>, <div className="gt-al">{!LG.AG_LOADED ? <div className="gv-e"><span>The agreements are Build’s, and they haven’t loaded</span></div> : Ls.length ? TY.map(([k, t], __k) => {
+          const A = Ls.filter(a => a.type === k);
+          return A.length ? <Fragment key={__k}><div className="gv-g">{lbl(`${t} · ${A.length}`)}</div>{A.map((a, __k) => <button key={__k} className={`gt-ar st-${a.st}`} data-gagr={a.id}><span className="gt-ck"><b>{a.name}</b><span>{a.party}</span></span><span className="gt-avw"><span className="mono gt-av">{a.ver}</span></span><span className="gt-ad">{a.st === 'out' || a.st === 'sent' ? a.sent ? `Sent ${fmtD(a.sent)}${yr(a.sent)}` : 'Not signed yet' : a.a ? `Signed ${fmtD(a.a)}${yr(a.a)}` : 'Not signed'}<em>{a.b ? `${a.st === 'renew' ? 'Renews' : 'Runs to'} ${fmtD(a.b)}${yr(a.b)}` : a.roll ? 'Month to month' : a.st === 'signed' ? 'No end date' : ''}</em></span><span className="gt-st" style={css(`--c:${AST[a.st][1]}`)}>{AST[a.st][0]}</span><span className="gv-go">{ICO.chev}</span></button>)}</Fragment> : '';
+        }) : <div className="gv-e"><span>{AGR.length ? 'Nothing here right now' : 'No agreements are recorded yet'}</span></div>}</div>, <><span>Signed copies come back from the e-signature tool and are kept in Records</span><span className="quiet">{plural(Ls.length, 'agreement', 'agreements')}</span></>);
+      const R = AGR.filter(a => a.st === 'renew' && a.b).sort((a, b) => a.b - b.b);
+      const renew = cell('s7', 'Renewing', <span className="lbl">By renewal date</span>, R.length ? calList(R.map(a => ({
+        t: a.b,
+        kind: 'renew',
+        title: `${a.name} · ${a.party}`,
+        ent: a.type === 'company' ? 'coop' : 'fin',
+        st: 'next',
+        owner: (AGR_T.find(t => t[0] === a.type) || [, a.type])[1],
+        at: `data-gagr="${a.id}"`
+      }))) : <div className="gv-e"><span>Nothing is up for renewal</span></div>, <><span>Renewals go to the board when terms change</span><span /></>);
+      const Wt = AGR.filter(wt);
+      const wait = cell('s5', 'Waiting on someone', <span className="lbl">{plural(Wt.length, 'agreement', 'agreements')}</span>, Wt.length ? <div className="gt-wl">{Wt.map((a, __k) => <button key={__k} className={`gt-wr st-${a.st}`} data-gagr={a.id}><i style={css(`background:${AST[a.st][1]}`)} /><span className="gt-ck"><b>{a.party}</b><span>{a.name}{" "}{a.ver}</span></span><span className="gt-wn">{a.st === 'out' ? 'You' : a.st === 'sent' ? 'The other side' : 'Being drafted'}</span></button>)}</div> : <div className="gv-e"><span>Nothing waits on anyone</span></div>, <><span>Signing happens in the e-signature tool</span><span /></>);
+      const vers = notReal('s12', 'Versions', 'Needs each agreement’s versions: when each was adopted or replaced, what changed, who approved it, and who has accepted which.');
+      html(document.getElementById('gv'), <>{band(list, 1)}{band(vers)}{band(<>{renew}{wait}</>)}</>);
+    }
+
+    /* ── a meeting: the next one's agenda and its flows (the item, the packet, the minutes), or a held one's record ── */
+    function mtPanelLive(id) {
+      const m = MEETINGS.find(x => x[0] === id),
+        b = GBOARDS.find(x => x[0] === m[1]) || [m[1], m[1], '', []];
+      const filled = b[3].filter(s => s[1]).length,
+        day = Math.floor(m[2] / DAY) * DAY,
+        dec = RESOS.filter(r => r[1] === m[1] && Math.abs(r[0] - day) < DAY).length,
+        flows = STAFF() && coopNext(m);
+      return <><div className="pn-hd"><span className="lbl">{b[1]}{" · meeting"}</span><button className="x" data-gclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="bpn-t">{mtWhen(m[2])}</p><p className="bpn-s">{m[3]}</p></div>{m === LG.NEXT ? AGENDA.length ? <div>{lbl('Agenda')}<div className="led">{AGENDA.map((x, __k) => <div key={__k}><span>{x[0]}</span><b>{x[1]}{" min · "}{AK[x[3]][0]}</b></div>)}</div></div> : <p className="bpn-n">Nothing is on the agenda yet.</p> : m[4] === 'next' ? <p className="bpn-n">The agenda kept here is the next meeting’s, the {bLow(bname(LG.NEXT[1]))} on {fmtD(LG.NEXT[2])}.</p> : <div className="led">{[['Minutes', m[5] === 'approve' ? 'Drafted · approved at the next meeting' : 'In Records once approved'], ['Seats filled', `${filled} of ${b[3].length}`], ['Decided that day', plural(dec, 'resolution', 'resolutions')]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>}</div><div className="pn-ft">{flows ? <><button className="btn" data-gflow="item">Add an item</button><button className="btn" data-gflow="minutes">Start the minutes</button><button className="btn p" data-gflow="packet">Send the packet</button></> : m[4] === 'held' && STAFF() ? <><span className="small quiet" style={css("margin-right:auto")}>{m[5] === 'approve' ? 'Minutes to approve' : 'Held'}</span><button className="btn p" data-gflow="log">Log a decision</button></> : <><span className="small quiet" style={css("margin-right:auto")}>{m[4] === 'next' ? 'Next' : m[5] === 'approve' ? 'Minutes to approve' : 'Held'}</span><button className="btn" data-gclose="">Close</button></>}</div></>;
+    }
+
     /* ══ render + events ════════════════════════════════════════════════════════════════════════════════════════ */
     function render() {
       document.querySelectorAll('.gtabs [data-gtab]').forEach(b => b.setAttribute('aria-current', b.dataset.gtab === G.tab ? 'page' : 'false'));
@@ -1335,7 +1600,7 @@ function makeGovernance() {
         G.panel = null;
       }
       const a = AGR.find(x => x.id === 'icw');
-      if (a.st === 'out' && !S.waiting.some(w => w.id === 'agreement')) {
+      if (!LG && a.st === 'out' && !S.waiting.some(w => w.id === 'agreement')) {
         a.st = 'signed';
         a.a = NOW;
       }
@@ -1354,9 +1619,19 @@ function makeGovernance() {
         closeG();
         return render();
       }
-      const t = e.target.closest('button,a,[data-gopen],[data-gst],[data-gjump],[data-gent],[data-gagr],[data-gmt],[data-gmo]');
+      const t = e.target.closest('button,a,[data-gopen],[data-gst],[data-gjump],[data-gent],[data-gagr],[data-gmt],[data-gmo],[data-gtab],[data-gvote],[data-greso],[data-gmatter]');
       if (!t) return;
       const d = t.dataset;
+      // live, changes go through the old page's flows and Contracts' (they save through the API, then the page is built again)
+      if (LG) {
+        if (d.gvote !== undefined) return LG.VOTE ? openVFlow('ballot') : undefined;
+        if (d.gflow) return openVFlow(d.gflow, d.gid || undefined);
+        if (d.gfile) return openVFlow('filing', d.gfile);
+        if (d.greso) return openVFlow('reso', d.greso);
+        if (d.gmatter) return openVFlow('matter', d.gmatter);
+        if (d.gsign) return openCFlow('esign', d.gsign);
+        if (d.grenew) return openCFlow('renew', d.grenew);
+      }
       if (d.gtab) {
         G.tab = d.gtab;
         closeG();
@@ -1555,9 +1830,21 @@ function makeGovernance() {
       }
     };
   })(DOCP);
+  // live, the agreements are Build's (the contracts section): loaded beside the page's own, once, then the shell draws again
+  let loadingAgr = false;
   function mount() {
     // the slot is the shell's: the host goes inside it
     if (!into('vx-slot')) return;
+    if (LG && LIVE_APP && needsData('contracts') && !loadingAgr) {
+      loadingAgr = true;
+      loadSection('contracts').then(
+        () => {
+          loadingAgr = false;
+          if (CC.route() === 'governance') renderShell();
+        },
+        () => undefined,
+      );
+    }
     API.render();
   }
   function unmount() {
@@ -1591,4 +1878,4 @@ function makeGovernance() {
     host
   };
 }
-registerPage(['governance'], 'vx-slot', makeGovernance);
+registerPage(['governance'], 'vx-slot', makeGovernance, { live: true });

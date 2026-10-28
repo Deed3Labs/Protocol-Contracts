@@ -365,14 +365,38 @@ Filled in as each page is ported. Known before starting:
   halls, spaces, hearings, board meetings: hosts, RSVPs, hands, questions, recordings) with a live
   provider (Dial or Opencast) for presence and Q&A; the channel (schedule, library, viewers by hour), all
   from Dial's station API; members taking part each week across forum, events and channel.
-- **Governance** (ported): proposals as a lifecycle (draft, co-signing, check, voting, decided,
-  carried out; co-authors, co-signers and deadline, checker and check items, nominations, vote window,
-  daily cast and tally, board recommendation, result, tasks with owners) — today the API has only the
-  latest member vote; agreement versions, what changed and who's on which; per-seat resolution votes and
-  proposal links on agenda items; the boards' Assembly flag; entities, meetings and filings exist but in
-  other shapes. Actions: send back, check and open a vote, put on the board agenda, mark a task done,
-  remind non-voters, sign an agreement, new agreement version, filing checklist. The old page's filing,
-  formation, packet, minutes, agenda and decision actions have no control in the new page yet.
+- **Governance** (live: `governance2.tsx` + `governanceLive.ts`, its gate on). The page loads Build's (contracts)
+  section beside its own, once, for the agreements.
+  - **Live now.** Entities, who owns what (the API's `OWN`, else what `UNDER` says), their facts (a formed date or the
+    API's words for it, tax, EIN, officers) and formation steps when the API has them; the three boards and their seats
+    (`GBOARDS`, keyed by the entity each governs; the board's note is who it answers to); meetings from `MEETS` (each
+    board's held and next; a held meeting's minutes are "to approve" when the API marks minutes due after it; the
+    members' own next meetings go on the calendar); the next meeting's agenda; resolutions (by seat; a logged decision
+    with no seat votes says so); the reserved matters, as Entities' Reserved matters and Proposals' "Who decides what"
+    (decides, must approve, is told, what's open); filings; the related-party log (a new Entities cell, "Between our
+    companies"); the latest member vote (`VOTE`: turnout by day, quorum, the tally so far); and Build's agreements (with
+    `sent`, Contracts' "Out for signature"). The vitals are the vote, the board's agenda, resolutions in 90 days, and the
+    forum ("Not real yet"). Needs you is the data's: agreements waiting on your signature, filings due in 30 days or
+    late, the open vote, a board meeting within 14 days, and open reserved matters. Dates and the calendar run from today.
+  - **Actions** (each opens the old page's flow, `openVFlow`, or Contracts', `openCFlow`, which save through the API and
+    build the page again): a filing's next step from any filing row (`filing-start`, `filing-ready`, `filing-filed`); an
+    entity panel's Mark it done (`formation-step`) and Log a decision (`decision`); the next co-op board meeting's panel:
+    Add an item (`agenda-item`, also in Boards' Next meeting), Start the minutes (`minutes`), Send the packet (`packet`);
+    a held meeting's panel and Boards' Resolutions: Log a decision; a related-party deal: Log a payment or Put it on the
+    agenda (`rp-payment`, `rp-agenda`); a reserved matter: Start the approval (`matter`, two-person); the vote: Remind
+    them (`remind`) and its ballot; a resolution opens who voted how; an agreement waiting on you: Sign it
+    (`contracts/esign`), one renewing: Start the renewal (`contracts/renew`). The old flows' reference-only words (the
+    ballot's summary, "Logged by Kai", "Kai, secretary", "v2.2") are the data's, or left out, under REAL.
+  - **Still missing ("Not real yet" or hidden live):** proposals as a lifecycle (draft, co-signing, check, voting,
+    decided, carried out; co-authors, co-signers and deadline, checker and check items, nominations, vote window per
+    proposal, board recommendation, result, tasks with owners), so Every proposal, Carried out and the proposal panel are
+    "Not real yet" and send back, check and open a vote, mark a task done, share the co-sign link and vote in the app are
+    hidden; the forum (Discussion, ideas, hidden posts: Community has no backend); agreement versions, what changed and
+    who's on which (Versions is "Not real yet"; compare and start a new version are hidden); per-seat names on agenda
+    items and proposal links on agenda items and resolutions; the boards' Assembly and its "off" flag (live shows the
+    three boards the API has); meeting times (the API keeps dates) and whether a held meeting's minutes were approved;
+    the member vote isn't sealed (the API sends the running tally, shown as "So far"); a filing checklist beyond the old
+    flow's stages; who signs for which entity and a related-party deal's conflicts ("Not recorded").
 - **Records, Team and Settings** (ported, live: `admin2.tsx` + `adminLive.ts`, the gate on). One module
   draws the three; live, every dataset is the API's and the reference's people, dates and figures never show.
   - **Records, live now.** Documents, counts and papers by entity are the records section's. The log is
