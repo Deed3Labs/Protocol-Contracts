@@ -930,6 +930,8 @@ export function startup() {
     if (t.dataset.tpane) {
       TS.pane = t.dataset.tpane;
       TS.person = null;
+      // the redesigned Team opens that tab (admin2.tsx), as the reference's shell does
+      pageModFor('team')?.setTab('team', t.dataset.tpane);
       if (S.route !== 'team') S.route = 'team';
       render();
       window.scrollTo({
@@ -942,6 +944,8 @@ export function startup() {
       return render();
     }
     if (t.dataset.person) {
+      const m = pageModFor('team');
+      if (m) return m.open('team', 'people', 'p:' + t.dataset.person);
       TS.person = t.dataset.person;
       render();
       const x = document.querySelector('.pane .x');
@@ -974,6 +978,8 @@ export function startup() {
     if (t.dataset.rpane) {
       RS.pane = t.dataset.rpane;
       RS.doc = null;
+      // the redesigned Records opens that tab (admin2.tsx), as the reference's shell does
+      pageModFor('records')?.setTab('records', t.dataset.rpane);
       if (S.route !== 'records') S.route = 'records';
       render();
       window.scrollTo({
@@ -986,6 +992,8 @@ export function startup() {
       return render();
     }
     if (t.dataset.doc) {
+      const m = pageModFor('records');
+      if (m) return m.open('records', 'docs', 'd:' + t.dataset.doc);
       RS.doc = t.dataset.doc;
       render();
       const x = document.querySelector('.pane .x');
@@ -993,6 +1001,10 @@ export function startup() {
       return;
     }
     if (t.dataset.rdf) {
+      if (pageModFor('records')) {
+        pageModFor('records').setTab('records', 'docs');
+        return go('records');
+      }
       RS.df = t.dataset.rdf;
       RS.pane = 'docs';
       render();
@@ -1004,6 +1016,8 @@ export function startup() {
       return;
     }
     if (t.dataset.rentry) {
+      const m = pageModFor('records');
+      if (m) return m.open('records', 'log', 'l:' + t.dataset.rentry);
       return openRFlow('entry', t.dataset.rentry);
     }
     if (t.dataset.rflow) {

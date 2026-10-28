@@ -54,7 +54,7 @@ async function sample(page: Page): Promise<number[]> {
   });
 }
 
-// the crawl compares with the old prototype, which has no page for a route new in the redesign (Community)
+// the crawl compares with the old prototype, which has no page for a route new in the redesign (Community, Settings)
 for (const route of ROUTES.filter((r) => !NEW_ROUTES.has(r))) {
   for (let pane = 0; pane < 8; pane++) {
     test(`clicks match the prototype: ${route} · pane ${pane}`, async ({ browser }) => {

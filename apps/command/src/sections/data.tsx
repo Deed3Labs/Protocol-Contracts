@@ -3057,17 +3057,17 @@ export const WHO = [
   ['SY', 'System'],
 ];
 export const LOG = [
-  /* id, time, who, area, action, detail, from, result, approver */
+  /* id, time, who, area, action, detail, from, result, approver: as the redesign has it (design/command-center-ui), which Records reads */
   [
-    'a1',
-    H2(10, 21, 14, 2),
-    'K',
-    'chain',
-    'Signed “Raise Rosa’s cap to $150.00”',
-    'Second of two signatures. Goes live 22 Oct, 12:00.',
-    'Mac · Redlands',
-    'approved',
-    'Marcus Lee proposed',
+    'n0',
+    H2(10, 21, 13, 40),
+    'DR',
+    'money',
+    'Proposed paying the Q3 sales tax',
+    '$351.58 from operating cash to CDTFA, due 31 Oct.',
+    'Laptop · Riverside',
+    'waiting',
+    'Needs a second person',
   ],
   [
     'a2',
@@ -3095,7 +3095,7 @@ export const LOG = [
   ['a4', H2(10, 21, 9, 12), 'ML', 'field', 'Replaced poster P-012 at Uptown Barber', 'Photo attached. Next swap 20 Dec.', 'iPhone · Redlands', 'done', ''],
   ['a5', H2(10, 21, 8, 40), 'SY', 'alert', 'Orange St. Point went offline', 'Counter device stopped reporting.', 'Device', 'alert', ''],
   ['a6', H2(10, 20, 22, 41), 'SY', 'system', 'Plaid re-sync started', '7 of 12 bank links refreshed so far.', 'Plaid', 'running', ''],
-  ['a7', H2(10, 20, 18, 0), 'ML', 'chain', 'Signed “Raise Rosa’s cap to $150.00”', 'First of two signatures.', 'iPhone · San Bernardino', 'signed', ''],
+  ['a7', H2(10, 20, 18, 0), 'DR', 'chain', 'Signed “Raise Rosa’s cap to $150.00”', 'First of two signatures. Waiting on you.', 'Laptop · Riverside', 'signed', 'Marcus Lee proposed'],
   ['a8', H2(10, 20, 16, 0), 'ML', 'field', 'Drafted “Add Inland Cycle Works”', 'Waits on the merchant agreement.', 'iPhone · Redlands', 'waiting', ''],
   ['s2', H2(10, 20, 11, 0), 'K', 'shop', 'Put Graphic Tee · Two Ten Overpass on the shelf', 'Photos, price and stock checked.', 'Mac · Redlands', 'done', ''],
   ['a9', H2(10, 20, 10, 0), 'K', 'chain', 'Signed RevolvingIssuer v1.3', 'Second of two signatures.', 'Mac · Redlands', 'approved', 'Dana Ruiz proposed'],
