@@ -211,14 +211,15 @@ tested in `routes/commandSecurity.test.ts`:
 
 Filled in as each page is ported. Known before starting:
 
-- **Shop:**
-  - suppliers, with lead times, price breaks and payment terms (today a supplier is free text on a
-    purchase);
-  - the "once per order" material kind;
-  - average cost and last price paid;
-  - reorder points ("lead time plus a week");
-  - per-order costs (mailer, tissue, label, payment fee, the shipping gap);
-  - pickup points.
+- **Shop:** the data model is built (migrations 0060–0063, `services/command/shopModel.ts`): the three
+  material kinds, average cost and last price paid, extras by size or colour, suppliers with lead times
+  and price breaks, orders in and received, reorder suggestions (lead time plus the `buffer` setting),
+  flat costs with an estimate flag and overrides, batches (planned, short, done, cost locked), per-order
+  costs (supplies, shipping charged against the label, the card fee) and pickup points with the `hold`
+  setting. Recorded buys over the `shopbuy` limit now wait for a second person. Still not modelled: the
+  printer's bill for a batch, enforced supplier minimums, the real Stripe fee and label prices (entered
+  by hand), messaging a member when a pickup hold runs out, a list of cost changes of its own (purchases
+  are the history), and the shop's fixed costs (samples, photos, software).
 - **Members** (ported; found while porting):
   - per person: waitlist position for everyone waiting, Social and Search as sources (the API sends
     Poster or Website), whether they have the app and a phone (they pick the nudge channel), notes,
