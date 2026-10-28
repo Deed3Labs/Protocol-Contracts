@@ -245,6 +245,8 @@ const apply = {
     // the board is the API's from now on, even when it's empty
     vars.boardLoaded = true;
     replace(FLEET, d.FLEET);
+    // last month's sales at each shop, paid now or on plans, and what members have repaid (null until the API reads the chain)
+    vars.collected = d.COLLECTED ?? null;
     // the board is built from BOARD the next time it's drawn
     XS.board = null;
   },

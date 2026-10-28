@@ -200,6 +200,17 @@ async function ensureTables(): Promise<void> {
     ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS refund_shop_tx TEXT;
     ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS refund_clear_tx TEXT;
   `);
+  // a sale refused for being over its shop's cap (MerchantRegistry): Command's Merchants counts them ("Caps to review")
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS charge_cap_hits (
+      id BIGSERIAL PRIMARY KEY,
+      merchant_address TEXT NOT NULL,
+      amount_cents BIGINT NOT NULL,
+      cap_cents BIGINT NOT NULL,
+      at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS charge_cap_hits_merchant ON charge_cap_hits (merchant_address, at DESC);
+  `);
   ensured = true;
 }
 
@@ -258,6 +269,18 @@ const COLUMNS = `code, merchant_address, merchant_name, member_wallet, amount_ce
 export const chargeStore = {
   isConfigured(): boolean {
     return !!getPostgresPool();
+  },
+
+  /** A sale refused for being over its shop's cap. Best effort: the refusal stands whether or not it's recorded. */
+  async recordCapHit(merchantAddress: string, amountCents: number, capCents: number): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    try {
+      await ensureTables();
+      await pool.query('INSERT INTO charge_cap_hits (merchant_address, amount_cents, cap_cents) VALUES ($1, $2, $3)', [normalizeWallet(merchantAddress), amountCents, capCents]);
+    } catch (error) {
+      console.error('[charge] a cap hit wasn’t recorded:', error instanceof Error ? error.message : error);
+    }
   },
 
   async create(input: {

@@ -268,6 +268,8 @@ export function fmLive() {
     FLEET: FLEET_M,
     seats: fig('merchants.founding_seats') ?? 5,
     schedule: fig('merchants.payouts.schedule') ?? null,
+    /** Last month's sales at each shop, paid now or on plans, and what members repaid (TermIssuer); null until the API reads the chain. */
+    collected: vars.collected ?? null,
     newest: fig('merchants.newest_partner') ?? null,
   };
 }
