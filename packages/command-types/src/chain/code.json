@@ -247,7 +247,7 @@
   },
   "FractionTokenFactory": {
    "source": "contracts/core/factories/FractionTokenFactory.sol",
-   "sha256": "a4915753f9494e280ebee3798f57913143fb3cac4b6f886ac6629cbb40414cd1",
+   "sha256": "22a8d4cf3f448ceebd90ee50733f3ad097c7ff480e84211b1106c374a301dd31",
    "immutables": [
     [
      1932,

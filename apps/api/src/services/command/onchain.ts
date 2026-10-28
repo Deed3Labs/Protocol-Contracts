@@ -537,7 +537,8 @@ const MAX_HOLDERS = 6;
 
 // ── Is it what dev compiles? ────────────────────────────────────────────────
 
-/** The masked sha256 of runtime bytecode, as scripts/command/code-fingerprints.mjs takes it: immutables zeroed, metadata cut off. */
+const NESTED_META = Buffer.from('a264697066735822', 'hex');
+/** The masked sha256 of runtime bytecode, as scripts/command/code-fingerprints.mjs takes it: immutables zeroed, metadata cut off (and zeroed in any contract it creates). */
 export function codeFingerprint(hex: string, immutables: Array<[number, number]>): string {
   let b = Buffer.from(String(hex).replace(/^0x/, ''), 'hex');
   for (const [start, length] of immutables) b.fill(0, start, start + length);
@@ -545,6 +546,10 @@ export function codeFingerprint(hex: string, immutables: Array<[number, number]>
     const meta = b.readUInt16BE(b.length - 2);
     if (meta + 2 <= b.length) b = b.subarray(0, b.length - 2 - meta);
   }
+  // and the metadata of any contract it creates (its creation code is inside): solc's 53-byte block,
+  // a2 64 'ipfs' 58 22 <34-byte hash> 64 'solc' 43 <version> 00 33, zeroed wherever it is
+  b = Buffer.from(b);
+  for (let i = b.indexOf(NESTED_META); i >= 0; i = b.indexOf(NESTED_META, i + 53)) b.fill(0, i, Math.min(b.length, i + 53));
   return createHash('sha256').update(b).digest('hex');
 }
 
