@@ -66,3 +66,7 @@
 .fvl-r .vin{margin-top:0;text-align:right;font-variant-numeric:tabular-nums}
 /* a shop's name that opens its record, in a list row */
 button.fw-k{text-align:left;cursor:pointer}
+
+/* Build → Every change: a column's Show more, Show fewer and Clear shipped rows, as the Pipeline's .kb-more */
+.bd-more{height:48px;flex:none;padding:0 18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--hair);text-align:left;font-size:13px;font-weight:500;color:var(--fg-70);width:100%;background-color:var(--ground)}
+.bd-more:hover{background:color-mix(in srgb,var(--raised) 70%,var(--ground));color:var(--fg)}
