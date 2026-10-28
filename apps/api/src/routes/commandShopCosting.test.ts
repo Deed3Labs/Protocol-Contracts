@@ -22,6 +22,8 @@ let db: Db;
 beforeAll(async () => {
   ({ db } = await testDb());
   await seedCommand(db);
+  // the buys here are under the limit: a buy over Settings' `shopbuy` waits for a second person (commandShopModel.test.ts)
+  await db.query(`UPDATE command.settings SET value = '1000' WHERE id = 'shopbuy'`);
   const identify = (req: Request, res: Response, next: NextFunction) => {
     const [id, email] = String(req.header('x-test-user') ?? '').split('|');
     if (!id) return res.status(401).end();
@@ -107,15 +109,17 @@ describe('the inputs library', () => {
     expect(audit.result).toBe('done');
   });
 
-  test('a purchase sets the unit cost, and a stocked input gets the stock', async () => {
+  test('a purchase sets the unit cost (the average of what’s on hand), and a stocked input gets the stock', async () => {
     const r = await act(kai, 'purchase', { input: 'blank', quantity: 20, total: 164, supplier: 'Blanks Co' });
     expect(r.status).toBe(200);
     expect(r.body.result.unitCost).toBe(8.2);
     expect(Number((await q(`SELECT unit_cost_cents FROM command.shop_inputs WHERE id = 'blank'`))[0].unit_cost_cents)).toBe(820);
     expect(await onHand('blank')).toBe(20);
-    // one dated before the newest is history: it doesn't set the cost
+    // one dated before the newest still comes into stock, so into the average (20 at $8.20 and 10 at
+    // $10.00 is $8.80), but the last price paid stays the newest's
     expect((await act(kai, 'purchase', { input: 'blank', quantity: 10, total: 100, on: '2026-01-01' })).status).toBe(200);
-    expect(Number((await q(`SELECT unit_cost_cents FROM command.shop_inputs WHERE id = 'blank'`))[0].unit_cost_cents)).toBe(820);
+    const blank = (await q(`SELECT unit_cost_cents, last_cost_cents FROM command.shop_inputs WHERE id = 'blank'`))[0];
+    expect([Number(blank.unit_cost_cents), Number(blank.last_cost_cents)]).toEqual([880, 820]);
     expect(await onHand('blank')).toBe(30);
     // made to order: the cost changes, no stock
     expect((await act(kai, 'purchase', { input: 'embroidery', quantity: 10, total: 26 })).status).toBe(200);
@@ -158,10 +162,10 @@ describe('recipes', () => {
     expect((await act(kai, 'recipe-override', { product: 'gcm', input: 'mailer', size: 'M', amount: 1 })).status).toBe(404);
     expect((await act(kai, 'recipe-override', { product: 'gcm', input: 'blank', amount: 1 })).status).toBe(400);
     const r = (await call(kai, 'GET', '/sections/shop')).body.RECIPES.gcm;
-    // 820 blank + 60 thread + 520 embroidery + 500 labour
-    expect(r.cost).toBe(19);
+    // 880 blank (the average) + 60 thread + 520 embroidery + 500 labour
+    expect(r.cost).toBe(19.6);
     expect(r.variants.find((v: any) => v.option === 'Black' && v.size === 'XXL').cost).toBe(20.6);
-    expect(r.variants.find((v: any) => v.option === 'Cobalt' && v.size === 'M').cost).toBe(19.4);
+    expect(r.variants.find((v: any) => v.option === 'Cobalt' && v.size === 'M').cost).toBe(20);
     expect((await act(kai, 'recipe-override', { product: 'gcm', input: 'thread', option: 'Cobalt', remove: true })).status).toBe(200);
   });
 
@@ -277,10 +281,10 @@ describe('levels and the payload', () => {
 
   test('the page gets the recipe’s cost as the product’s, and the materials on hand', async () => {
     const d = (await call(kai, 'GET', '/sections/shop')).body;
-    // 820 blank + 60 thread + 520 embroidery + 500 labour + 80 for two mailers
+    // 880 blank + 60 thread + 520 embroidery + 500 labour + 80 for two mailers
     const gcm = d.PR.find((p: any) => p.id === 'gcm');
-    expect(gcm.c).toEqual([19.8, 0, 0, 0]);
-    expect(d.RECIPES.gcm.margin).toEqual({ amount: 24.2, share: 2420 / 4400 });
+    expect(gcm.c).toEqual([20.4, 0, 0, 0]);
+    expect(d.RECIPES.gcm.margin).toEqual({ amount: 23.6, share: 2360 / 4400 });
     expect(d.PR.find((p: any) => p.id === 'hd').c).toEqual([26.8, 6.4, 1.2, 1.6]);
     expect(d.MATERIALS.low).toEqual(['blank']);
     // the mailers ran short: none until more come

@@ -11,6 +11,7 @@ import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
 import { codeActivity, codeChanges, codeConfig } from './github.js';
 import { safeConfig } from './safe.js';
 import { costHistory, costingPayload, lowMaterials, noCosting, orderCosts, productCost, readBook, readHistory, roundCents, shown, type Book } from './costing.js';
+import { shopModelPayload } from './shopModel.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -880,19 +881,20 @@ const reserveRatio = (usdc: number, clrusd: number) => (clrusd === 0 ? (usdc ===
 
 
 /**
- * The catalog as Command keeps it. A product with a recipe (Phase 10) sends its recipe's cost as the
- * first of its four boxes, so the page's unitCost(), which sums them, uses it unchanged.
+ * The catalog as Command keeps it. A product with a recipe (Phase 10) or a flat cost (the redesign)
+ * sends that cost as the first of its four boxes, so the page's unitCost(), which sums them, uses it unchanged.
  */
 async function shopProducts(db: Queryable, f: Record<string, unknown>, book?: Book): Promise<ShopProduct[]> {
   const units = (f['shop.units_weekly'] ?? {}) as Record<string, number[]>;
   const b = book ?? (await readBook(db));
-  const boxes = (r: { id: string; cost_cents: number[] | null }) => (b.lines.get(r.id)?.length ? [shown(productCost(b, r.id).costCents), 0, 0, 0] : r.cost_cents?.map((c) => c / 100));
+  const flat = (id: string) => b.products.get(id)?.flatCents != null;
+  const boxes = (r: { id: string; cost_cents: number[] | null }) => (flat(r.id) || b.lines.get(r.id)?.length ? [shown(productCost(b, r.id).costCents), 0, 0, 0] : r.cost_cents?.map((c) => c / 100));
   const { rows } = await db.query<{ id: string; name: string; variant: string; line: string; glyph: string; price_cents: number; cost_cents: number[] | null; status: string; options: string[]; lead_weeks: number | null; slug: string; why: string | null; deposit: boolean }>(
     'SELECT * FROM command.shop_products ORDER BY position',
   );
   return rows.map((r) => ({
     id: r.id, n: r.name, v: r.variant, line: r.line, g: r.glyph, price: r.price_cents / 100,
-    ...(r.cost_cents ? { c: boxes(r) } : {}),
+    ...(r.cost_cents || flat(r.id) ? { c: boxes(r) } : {}),
     ...(r.deposit ? { dep: 1 } : {}),
     st: r.status, cols: r.options, wk: units[r.id] ?? [],
     ...(r.lead_weeks != null ? { lead: r.lead_weeks } : {}),
@@ -949,10 +951,11 @@ export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record
   for (const id of PR.map((p) => p.id)) for (const e of shelf.filter((e) => e.product_id === id)) (SHELF_EV[id] ??= []).push([e.state, at(e.starts_at), at(e.ends_at)]);
 
   const { rows: hist } = await db.query<{ product_id: string; at: Date; what: string; who: string }>('SELECT * FROM command.shop_history ORDER BY id DESC');
-  const SHIST: Record<string, unknown[]> = {};
-  for (const id of PR.map((p) => p.id)) for (const h of hist.filter((h) => h.product_id === id)) (SHIST[id] ??= []).push([ms_(h.at), h.what, h.who]);
-
   const totals = o.level <= TOTALS;
+  // who did it is a name: not at Totals
+  const SHIST: Record<string, unknown[]> = {};
+  for (const id of PR.map((p) => p.id)) for (const h of hist.filter((h) => h.product_id === id)) (SHIST[id] ??= []).push([ms_(h.at), h.what, totals ? '' : h.who]);
+
   const { rows: ord } = await db.query<{ id: string; paid_at: Date; buyer: string; member: boolean; items: unknown[]; paid_with: string; fulfilment: string; pickup_at: string; state: string; city: string }>(
     'SELECT * FROM command.shop_orders ORDER BY id DESC',
   );
@@ -978,7 +981,9 @@ export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record
 
   // what goes into each product (Phase 10): the inputs and their history, the recipes, the materials on hand and the runs, from See
   const costing = o.level >= SEE ? costingPayload(book, undefined, await readHistory(db)) : noCosting();
-  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, NOW, figures: f, asOf };
+  // the redesign's (shopModel.ts): suppliers, buys on order, reorders, batches, per-order costs, pickup points
+  const model = await shopModelPayload(db, book, { now: NOW, sees: o.level >= SEE });
+  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, ...model, NOW, figures: f, asOf };
 }
 
 // ── Shop, live (Phase 7a) ───────────────────────────────────────────────────
@@ -1037,10 +1042,10 @@ async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, u
   const SHELF_EV: Record<string, unknown[]> = {};
   for (const e of shelf) (SHELF_EV[e.product_id] ??= []).push([e.state, e.starts_at ? ms_(e.starts_at) : NOW, e.ends_at ? ms_(e.ends_at) : NOW]);
   const { rows: hist } = await db.query<{ product_id: string; at: Date; what: string; who: string }>('SELECT * FROM command.shop_history ORDER BY id DESC');
-  const SHIST: Record<string, unknown[]> = {};
-  for (const h of hist) (SHIST[h.product_id] ??= []).push([ms_(h.at), h.what, h.who]);
-
   const totals = o.level <= TOTALS;
+  const SHIST: Record<string, unknown[]> = {};
+  for (const h of hist) (SHIST[h.product_id] ??= []).push([ms_(h.at), h.what, totals ? '' : h.who]);
+
   // what each line cost when it sold (Phase 10d), from See: a line not costed yet has null
   const recorded = await orderCosts(db);
   const sees = o.level >= SEE;
@@ -1091,7 +1096,8 @@ async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, u
   const COST_HIST = sees ? await costHistory(db) : {};
   // what the store shows of each product in Command's catalog (Phase 11b): public, so at any level
   const CATALOG = await catalogPayload(db);
-  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, COST_HIST, CATALOG, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
+  const model = await shopModelPayload(db, book, { now: NOW, sees });
+  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, ...costing, ...model, COST_HIST, CATALOG, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
 }
 
 // ── Contracts ───────────────────────────────────────────────────────────────
