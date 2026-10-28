@@ -1012,6 +1012,8 @@ export function startup() {
     if (t.dataset.entGo) {
       VS.pane = 'entities';
       VS.ent = t.dataset.entGo;
+      // the redesigned page, where it's shown (preview): the entity's panel on Entities
+      pageModFor('governance')?.setTab('governance', 'ent:' + t.dataset.entGo);
       S.route = 'governance';
       render();
       window.scrollTo({
@@ -1022,6 +1024,7 @@ export function startup() {
     if (t.dataset.vpane) {
       VS.pane = t.dataset.vpane;
       VS.ent = null;
+      pageModFor('governance')?.setTab('governance', t.dataset.vpane);
       if (S.route !== 'governance') S.route = 'governance';
       render();
       window.scrollTo({

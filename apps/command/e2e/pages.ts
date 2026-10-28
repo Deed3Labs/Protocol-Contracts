@@ -31,7 +31,7 @@ export async function open(page: Page, base: string, route: string, theme: 'ligh
 /** Pages ported to the redesign that it draws in light DOM (docs/ui-redesign-plan.md). */
 export const REDESIGNED = new Set(['home', 'waiting', 'more']);
 /** Ported pages the redesign draws in a shadow root: compared inside it, tab by tab. */
-export const SHADOWED = new Set(['growth', 'members', 'money', 'build']);
+export const SHADOWED = new Set(['growth', 'members', 'money', 'build', 'governance']);
 /** Whether a page is compared with the redesign rather than the old reference. */
 export const ported = (route: string) => REDESIGNED.has(route) || SHADOWED.has(route);
 
