@@ -359,12 +359,23 @@ Filled in as each page is ported. Known before starting:
   - AccessManager's roles (`contracts.key_roles`, written by nothing live);
   - actions: approving or asking for changes (GitHub reviews), resolving an incident and proposing a
     pause are hidden live; executing a fully signed Safe transaction is done in Safe{Wallet}.
-- **Community** (ported; no backend, so the live app keeps the placeholder): forum categories, threads
-  and posts with read counts, flags and a thread↔proposal link; a moderation queue (reports, automatic
-  detection, hide or keep with a reason, telling the author, an audit entry); events and requests (town
-  halls, spaces, hearings, board meetings: hosts, RSVPs, hands, questions, recordings) with a live
-  provider (Dial or Opencast) for presence and Q&A; the channel (schedule, library, viewers by hour), all
-  from Dial's station API; members taking part each week across forum, events and channel.
+- **Community** (live: `community2.tsx` + `communityLive.ts`, its gate on, with no backend yet). Live draws the
+  redesign's four tabs with nothing in them; the backend is to be discussed.
+  - **Live now.** The layout, empty: "No threads yet" (Every thread, Busiest in the forum, its categories still
+    pick), "Nothing flagged", "No events scheduled" (Every event, its list and month views from this month, Coming
+    up), "Nothing on air right now", "Nothing needs you", "Nothing on the channel yet" (On the channel today, Today on
+    the channel with the hours and Now), "Nothing in the library yet"; each foot says "Not real yet · needs …". The
+    header's four figures are "—", hatched, with what each needs; Taking part's "of N members" is Home's active
+    members when it has loaded, else "—". Who hosts what (the co-op's rule) shows as the reference has it.
+  - **"Not real yet", hatched:** Who's taking part, Posts a week, The last hearing, Watching.
+  - **Hidden live** (nothing to act on, and no API): approve or decline a request to host, keep or hide a flagged
+    post, end a space, remind members, open in Dial, schedule or add to the schedule, open a thread in the app, watch
+    a recording; panels open only for a record that exists, so a link to an event or a thread opens nothing.
+  - **Still missing:** forum categories, threads and posts with read counts, flags and a thread↔proposal link; a
+    moderation queue (reports, automatic detection, hide or keep with a reason, telling the author, an audit entry);
+    events and requests (town halls, spaces, hearings, board meetings: hosts, RSVPs, hands, questions, recordings)
+    with a live provider (Dial or Opencast) for presence and Q&A; the channel (schedule, library, viewers by hour),
+    all from Dial's station API; members taking part each week across forum, events and channel.
 - **Governance** (live: `governance2.tsx` + `governanceLive.ts`, its gate on). The page loads Build's (contracts)
   section beside its own, once, for the agreements.
   - **Live now.** Entities, who owns what (the API's `OWN`, else what `UNDER` says), their facts (a formed date or the
@@ -389,9 +400,11 @@ Filled in as each page is ported. Known before starting:
     ballot's summary, "Logged by Kai", "Kai, secretary", "v2.2") are the data's, or left out, under REAL.
   - **Still missing ("Not real yet" or hidden live):** proposals as a lifecycle (draft, co-signing, check, voting,
     decided, carried out; co-authors, co-signers and deadline, checker and check items, nominations, vote window per
-    proposal, board recommendation, result, tasks with owners), so Every proposal, Carried out and the proposal panel are
-    "Not real yet" and send back, check and open a vote, mark a task done, share the co-sign link and vote in the app are
-    hidden; the forum (Discussion, ideas, hidden posts: Community has no backend); agreement versions, what changed and
+    proposal, board recommendation, result, tasks with owners). Proposals draws the redesign's layout empty: Every
+    proposal has its six steps (all 0, still filtering) and Open, Closed and All, with "No proposals yet"; Carried out
+    says "Nothing carried out yet"; each foot says "Not real yet · needs …". The proposal panel, send back, check and
+    open a vote, mark a task done, share the co-sign link and vote in the app are hidden. The forum (Discussion says
+    "No discussion yet"; ideas and hidden posts: Community has no backend); agreement versions, what changed and
     who's on which (Versions is "Not real yet"; compare and start a new version are hidden); per-seat names on agenda
     items and proposal links on agenda items and resolutions; the boards' Assembly and its "off" flag (live shows the
     three boards the API has); meeting times (the API keeps dates) and whether a held meeting's minutes were approved;

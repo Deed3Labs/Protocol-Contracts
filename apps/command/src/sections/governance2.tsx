@@ -1361,7 +1361,6 @@ function makeGovernance() {
     const mtWhen = t => `${WD(t)} ${fmtD(t)}${hm(t) !== '00:00' ? ' · ' + hm(t) : ''}`;
     /* the old page's agenda, packet and minutes flows are the co-op board's next meeting's */
     const coopNext = m => !!m && m === LG.NEXT && m[1] === 'coop' && !!nextBoard();
-    const NEED_PROPS = 'Needs proposals kept from draft to done: the draft and its co-authors, co-signers and their deadline, the check and who does it, the vote window and the result, and the tasks once it passes. Today the API keeps only the latest member vote.';
 
     /* every dated thing the API has: filings, the boards' next meetings, the members' own, the vote's close, renewals */
     function calItemsLive() {
@@ -1499,10 +1498,13 @@ function makeGovernance() {
     }
     function renderProposalsLive() {
       const v = LG.VOTE;
-      const list = notReal('s12', 'Every proposal', NEED_PROPS);
+      // the redesign's list, with nothing in it: the API keeps no proposals yet, only the latest member vote
+      const STL = STAGES.map(st => st[0] === 'sponsor' ? [st[0], st[1], 'Co-signers bring it to a vote'] : st);
+      const rail = <div className="gv-rail">{STL.map(([k, t, s], i) => <button key={i} className={`gv-rs ${k} ${G.st === k ? 'on' : ''} z`} data-gst={k} aria-pressed={G.st === k}><span className="gv-rh"><span className="gv-rn">{i + 1}</span><b>{t}</b>{i < 5 ? <span className="gv-ra"><i />{ICO.arrow}</span> : ''}</span><span className="gv-rc">0</span><span className="gv-rd">{s}</span></button>)}</div>;
+      const list = cell('s12', 'Every proposal', <div className="seg sm" role="group" aria-label="Which proposals">{[['open', 'Open'], ['closed', 'Closed'], ['all', 'All']].map(([k, t], __k) => <button key={__k} data-gset={k} aria-pressed={!G.st && G.set === k}>{t}{" 0"}</button>)}</div>, <>{rail}<div className="gv-l"><div className="gv-e"><span>{G.st ? `Nothing is in ${STG[G.st][1].toLowerCase()}` : 'No proposals yet'}</span></div></div></>, <><span>{G.st ? <>{"Showing "}{STG[G.st][1].toLowerCase()}{" · "}<button className="lnk3" data-gset={G.set}>Show every step</button></> : 'Not real yet · needs proposals, draft to done'}</span><span className="quiet">0 proposals</span></>);
       const vote = v ? voteLive(v) : cell('s7', 'Voting now', lbl('None open'), <div className="gv-e"><span>No member vote has been held yet</span></div>, <><span>Member votes are kept as they’re held</span><span /></>);
-      const talk = notReal('s7', 'Discussion', 'Needs Community’s forum: the posts and replies on each proposal, ideas before there’s one, and what moderators hid.');
-      const done = notReal('s5', 'Carried out', 'Needs each passed decision’s tasks: what’s to be done, who owns it, when it’s due and whether it’s done.');
+      const talk = cell('s7', 'Discussion', <span className="lbl">From Community · latest first</span>, <div className="gv-f" id="gv-talk"><div className="gv-e"><span>No discussion yet</span></div></div>, <><span>Not real yet · needs the forum</span><button data-gforum="">Community →</button></>);
+      const done = cell('s5', 'Carried out', <span className="lbl">Passed, then done</span>, <div className="gv-d" id="gv-done"><div className="gv-e"><span>Nothing carried out yet</span></div></div>, <><span>Not real yet · needs each decision’s tasks</span><span /></>);
       const D2 = LG.DECIDES;
       const rules = cell('s12', 'Who decides what', <span className="lbl">Reserved matters</span>, <div className="gv-rt"><div className="gv-rt-r hd2">{lbl('Decision')}{lbl('Decides')}{lbl('Must approve')}{lbl('Is told')}{lbl('Open now')}</div>{D2.length ? D2.map((m, __k) => <div key={__k} className="gv-rt-r"><span className="gv-rt-k"><b>{m.d}</b></span><span>{m.decides.join(', ') || <span className="quiet">No one</span>}</span><span>{m.approve.join(', ') || <span className="quiet">No one</span>}</span><span>{m.told.join(', ') || <span className="quiet">No one</span>}</span><span>{m.open || <span className="quiet">Nothing</span>}</span></div>) : <div className="gv-e"><span>No reserved matters are recorded</span></div>}</div>, <><span>Who decides, who must approve and who’s told, for each reserved matter</span><span /></>);
       html(document.getElementById('gv'), <>{band(list, 1)}{band(<>{vote}{needsCell()}</>)}{band(<>{talk}{done}</>)}{band(rules)}</>);

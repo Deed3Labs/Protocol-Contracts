@@ -1,7 +1,9 @@
 // @ts-nocheck: ported from the redesign's COMM2 module (design/command-center-ui) with scripts/port/module.cjs; its data is its own.
 import { Fragment } from 'react';
 import { attrs, css, hasHtml, html } from '../runtime/dom';
+import { REAL } from '../live/env';
 import { CC } from './cc';
+import { communityLive } from './communityLive';
 import { LOG, S } from './data';
 import { registerPage, shadowHost } from './pageHost';
 import { toast } from './shell';
@@ -10,8 +12,13 @@ import { toast } from './shell';
  * Community (design/command-center-ui, the COMM2 module): where members talk, meet and watch, in four
  * tabs (Overview, Forum, Live, Channel), with side panels for an event and a thread. It lives in its own
  * shadow root (pageHost.tsx); its inner module reads the root through a document stand-in (DOCP), as the
- * reference has it. Links out go through CC.go. There's no backend for it yet, so it's registered with
- * the live gate off: the live app keeps the placeholder, and the prototype preview shows this.
+ * reference has it. Links out go through CC.go.
+ *
+ * Live (REAL), there's no backend for it yet (communityLive.ts, `LC`): the page draws the redesign's
+ * layout with every list empty ("No threads yet", "No events scheduled") and every figure that needs the
+ * forum, events or Dial's channel as "Not real yet", hatched, naming what it needs. Nothing that would
+ * change something (approve, hide, remind, go live, schedule) is drawn live. The prototype preview keeps
+ * the reference's data.
  */
 
 /** The page's skeleton: the reference template's markup. */
@@ -20,10 +27,12 @@ function skeleton() {
 }
 function makeCommunity() {
   const { host, R: SR, W, into } = shadowHost('community', skeleton());
+  const LC = REAL ? communityLive() : null;
   const LIVE = () => host.isConnected && CC.route() === 'community';
   const RO = () => CC.viewing() && CC.level('community') < 3;
   const TOT = () => CC.viewing() && CC.level('community') === 1;
   const meKey = () => {
+    if (LC) return LC.me;
     const v = S.view;
     if (!v) return 'kai';
     return {
@@ -66,8 +75,11 @@ function makeCommunity() {
        Demo "today" is Wed 21 Oct 2026, 14:00. Community is where members talk, meet and watch; Governance tracks what
        gets decided. Members are masked here as everywhere in the Command Center; the app shows the name each one picks. */
     const DAY = 864e5,
-      TODAY = Date.UTC(2026, 9, 21),
-      NOW = TODAY + 14 * 3600e3;
+      TODAY = LC ? LC.TODAY : Date.UTC(2026, 9, 21),
+      NOW = LC ? LC.NOW : TODAY + 14 * 3600e3;
+    /* the month the month grids start from: the reference's October 2026, live this month */
+    const Y0 = LC ? new Date(TODAY).getUTCFullYear() : 2026,
+      M0 = LC ? new Date(TODAY).getUTCMonth() : 9;
     const D = (m, d, y = 2026) => Date.UTC(y, m - 1, d);
     const H = (m, d, h, mi = 0) => Date.UTC(2026, m - 1, d, h, mi);
     const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -88,8 +100,8 @@ function makeCommunity() {
     };
     const int = n => Math.round(n).toLocaleString('en-US');
     const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
-    const MEMBERS = 188;
-    const PPL = {
+    const MEMBERS = LC ? LC.MEMBERS : 188;
+    const PPL = LC ? LC.PPL : {
       kai: {
         n: 'Kai',
         ini: 'K',
@@ -123,7 +135,7 @@ function makeCommunity() {
     /* the forum */
     const CATS = [['all', 'All'], ['proposals', 'Proposals'], ['ideas', 'Ideas'], ['places', 'Neighborhoods'], ['help', 'Questions'], ['shops', 'Shops'], ['news', 'From Clear']];
     const CAT = Object.fromEntries(CATS);
-    const THREADS = [/* id, cat, title, by, replies, readers, last post, flags: pin | hot | answered | locked | staff, proposal */
+    const THREADS = LC ? [] : [/* id, cat, title, by, replies, readers, last post, flags: pin | hot | answered | locked | staff, proposal */
     {
       id: 'T-412',
       cat: 'proposals',
@@ -244,12 +256,12 @@ function makeCommunity() {
       last: H(10, 20, 15, 20),
       locked: 1
     }];
-    const POSTS_WK = [118, 142, 131, 164, 189, 176, 214],
+    const POSTS_WK = LC ? [] : [118, 142, 131, 164, 189, 176, 214],
       WEEKS = ['7 Sep', '14 Sep', '21 Sep', '28 Sep', '5 Oct', '12 Oct', '19 Oct'];
-    const IDEAS = 23;
+    const IDEAS = LC ? 0 : 23;
 
     /* what moderators see. Nothing is deleted: hiding is logged with a reason, and the author is told why. */
-    const FLAGS = [{
+    const FLAGS = LC ? [] : [{
       id: 'F-88',
       thread: 'T-412',
       by: 'b8',
@@ -307,7 +319,7 @@ function makeCommunity() {
       board: ['Board meeting', 'Open session · the record is in Governance'],
       annual: ['Annual meeting', 'Live · votes are signed in the app']
     };
-    const EVENTS = [{
+    const EVENTS = LC ? [] : [{
       id: 'E-33',
       kind: 'space',
       t: 'Highland coffee hour',
@@ -434,12 +446,12 @@ function makeCommunity() {
     }];
     const EV = Object.fromEntries(EVENTS.map(e => [e.id, e]));
     /* the live space, minute by minute */
-    const LIVE_CURVE = [4, 7, 11, 14, 17, 19, 22, 24, 23, 21, 20, 19, 18, 18];
+    const LIVE_CURVE = LC ? [] : [4, 7, 11, 14, 17, 19, 22, 24, 23, 21, 20, 19, 18, 18];
     /* last town hall: how many were in the room, minute by minute */
-    const TH_CURVE = [12, 31, 44, 49, 52, 51, 50, 48, 47, 46, 44, 41, 38];
+    const TH_CURVE = LC ? [] : [12, 31, 44, 49, 52, 51, 50, 48, 47, 46, 44, 41, 38];
 
     /* the channel: Clear on Dial. One station now; a station per community once there are councils. */
-    const CH = {
+    const CH = LC ? null : {
       name: 'Clear',
       num: 'Channel 4',
       call: 'CLR',
@@ -448,13 +460,13 @@ function makeCommunity() {
       comments: 96,
       relay: 'Off · Dial only'
     };
-    const SCHED = [/* start hour, length in hours, title, kind: loop | live | replay | show | off */
+    const SCHED = LC ? [] : [/* start hour, length in hours, title, kind: loop | live | replay | show | off */
     [0, 6, 'Off air', 'off'], [6, 3, 'How Clear works', 'loop', 'Five explainers on repeat'], [9, 3, 'Shop spotlights', 'show', 'Rosa’s, Uptown Barber, Highland Hardware'], [12, 1.3, 'Member stories', 'show', 'Three members, three neighborhoods'], [13.3, 1.2, 'Highland coffee hour', 'live', 'From the Space · audio with captions'], [14.5, 1.5, 'Hearing: agreement v2.2', 'replay', 'Recorded Mon 19 Oct'], [16, 2, 'Shop spotlights', 'show', 'Repeat'], [18, 1, 'How the AssurancePool works', 'replay', 'Preview of Tue’s talk'], [19, 3, 'How Clear works', 'loop', 'Five explainers on repeat'], [22, 2, 'Off air', 'off']];
-    const LIB = [['Hearing: member agreement v2.2', 'Recording · 55 min', 212, H(10, 19, 19)], ['September town hall', 'Recording · 70 min', 390, H(9, 24, 19)], ['Term plans, start to finish', 'Presentation · 35 min', 148, H(10, 13, 19)], ['How Clear works', 'Explainers · 5 parts', 1240, D(9, 1)], ['Shop spotlight: Rosa’s Panadería', 'Story · 6 min', 301, D(10, 2)], ['Member stories: Highland', 'Story · 12 min', 176, D(10, 9)]];
-    const VIEW_HR = [0, 0, 0, 0, 0, 0, 4, 7, 9, 8, 10, 12, 14, 21, 23]; /* viewers by hour, today */
+    const LIB = LC ? [] : [['Hearing: member agreement v2.2', 'Recording · 55 min', 212, H(10, 19, 19)], ['September town hall', 'Recording · 70 min', 390, H(9, 24, 19)], ['Term plans, start to finish', 'Presentation · 35 min', 148, H(10, 13, 19)], ['How Clear works', 'Explainers · 5 parts', 1240, D(9, 1)], ['Shop spotlight: Rosa’s Panadería', 'Story · 6 min', 301, D(10, 2)], ['Member stories: Highland', 'Story · 12 min', 176, D(10, 9)]];
+    const VIEW_HR = LC ? [] : [0, 0, 0, 0, 0, 0, 4, 7, 9, 8, 10, 12, 14, 21, 23]; /* viewers by hour, today */
 
     /* who takes part, by week: wrote in the forum, came to something live, watched the channel (members, not views) */
-    const PART = {
+    const PART = LC ? null : {
       posted: [31, 36, 34, 41, 47, 44, 52],
       came: [18, 0, 29, 22, 0, 29, 46],
       watched: [22, 25, 27, 30, 33, 38, 44],
@@ -470,7 +482,7 @@ function makeCommunity() {
       tp: 0,
       ep: 0,
       panel: null,
-      me: 'kai',
+      me: LC ? LC.me : 'kai',
       ev: 'list',
       mo: 0
     };
@@ -491,7 +503,7 @@ function makeCommunity() {
     };
     const pagerOr = (p, n, per, key, noun) => n > per ? pager(p, n, per, key) : <span className="quiet">{n}{" "}{noun}</span>;
     const av = k => <span className="av sm" title={who(k)}>{PPL[k] ? PPL[k].ini : k.toUpperCase()}</span>;
-    const STAFF = () => !RO() && !!PPL[C.me] && PPL[C.me].staff;
+    const STAFF = () => LC ? !RO() && LC.can() : !RO() && !!PPL[C.me] && PPL[C.me].staff;
     const kindTag = e => <span className={`cm-kt ${e.kind}`}>{KIND[e.kind][0]}</span>;
     const hrs = n => {
       const h = Math.floor(n),
@@ -505,6 +517,7 @@ function makeCommunity() {
 
     /* ── header ── */
     function renderHdr() {
+      if (LC) return renderHdrLive();
       const L = live(),
         wk = EVENTS.filter(e => e.st !== 'past' && e.at >= NOW - DAY && e.at < NOW + 7 * DAY),
         part = PART.any[PART.any.length - 1];
@@ -545,6 +558,7 @@ function makeCommunity() {
 
     /* ══ Overview ══════════════════════════════════════════════════════════════════════════════════════════════ */
     function renderOverview() {
+      if (LC) return renderOverviewLive();
       const L = live(),
         mins = Math.round((NOW - L.at) / 6e4);
       const on = cell('s7', 'On air now', <span className="lbl">{KIND[L.kind][0]}{" · "}{mins}{" min in"}</span>, <div className="cm-live"><div className="cm-live-h"><span className="cm-dot" /><div><b>{L.t}</b><span>{who(L.host)}{" hosts · "}{L.co.map(who).join(', ')}{" moderates · approved request"}</span></div></div><div className="cm-live-f"><div className="m-big">{L.live}{" "}<small>{"listening now · peak "}{L.peak}</small></div>{curve(LIVE_CURVE, L.peak * 1.1, 'red')}</div><div className="led cm-live-l">{[['Hands raised', `${L.hands} waiting to speak`], ['On the channel', 'Airing live on Channel 4, with captions'], ['Recording', 'Saved to the library when it ends']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span>Run it from Dial’s master control</span><button data-cdial="">Open in Dial ↗</button></>);
@@ -570,6 +584,7 @@ function makeCommunity() {
 
     /* ══ Forum ═════════════════════════════════════════════════════════════════════════════════════════════════ */
     function renderForum() {
+      if (LC) return renderForumLive();
       const L = THREADS.filter(t => C.cat === 'all' || t.cat === C.cat).sort((a, b) => (b.pin || 0) - (a.pin || 0) || b.last - a.last),
         per = 8;
       C.tp = Math.min(C.tp, Math.max(0, Math.ceil(L.length / per) - 1));
@@ -584,7 +599,7 @@ function makeCommunity() {
     /* ── a month as a grid, shared with Governance's calendar ── */
     const MONL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     function monthGrid(items, mo, col) {
-      const base = Date.UTC(2026, 9 + mo, 1),
+      const base = Date.UTC(Y0, M0 + mo, 1),
         d0 = new Date(base),
         next = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1);
       const lead = (d0.getUTCDay() + 6) % 7,
@@ -603,14 +618,21 @@ function makeCommunity() {
       return <div className="gm"><div className="gm-h">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((x, __k) => <span key={__k}>{x}</span>)}</div><div className="gm-g">{cells}</div></div>;
     }
     const monthName = mo => {
-      const d = new Date(Date.UTC(2026, 9 + mo, 1));
+      const d = new Date(Date.UTC(Y0, M0 + mo, 1));
       return `${MONL[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
     };
     const viewSeg = (key, v) => <div className="seg sm gm-sw" role="group" aria-label="View"><button {...attrs(`data-${key}="list"`)} aria-pressed={v === 'list'}>List</button><button {...attrs(`data-${key}="month"`)} aria-pressed={v === 'month'}>Month</button></div>;
     const monthNav = (key, mo, min, max) => <span className="pg2"><span>{monthName(mo)}</span>{mo ? <button className="gm-today" {...attrs(`data-${key}="0"`)}>Today</button> : ''}<button {...attrs(`data-${key}="${mo - 1}"${mo <= min ? ' disabled' : ''}`)} aria-label="Previous month">{ICO.back}</button><button {...attrs(`data-${key}="${mo + 1}"${mo >= max ? ' disabled' : ''}`)} aria-label="Next month">{ICO.chev}</button></span>;
 
+    /* who hosts which kind of event: the co-op's rule, the same in the preview and live */
+    function hostRules() {
+      const R = [['Town hall', 'Staff and board', 'Video, questions sorted ahead'], ['Space', 'Any member, by request', 'Audio, hands raised'], ['Presentation', 'Staff, board or a member by request', 'Slides and video'], ['Hearing', 'Staff, for a proposal', 'During its discussion step'], ['Board meeting', 'The board', 'Open session; private items left out'], ['Annual meeting', 'The board', 'Live; votes signed in the app']];
+      return cell('s5', 'Who hosts what', <span className="lbl">Every kind of event</span>, <div className="cm-hr">{R.map(([k, h, s], __k) => <div key={__k}><span><b>{k}</b><em>{s}</em></span><b>{h}</b></div>)}</div>, <><span>Requests go to staff and board to approve</span><span /></>);
+    }
+
     /* ══ Live ══════════════════════════════════════════════════════════════════════════════════════════════════ */
     function renderLive() {
+      if (LC) return renderLiveLive();
       const G = [['live', 'Live now'], ['request', 'Asked to host'], ['next', 'Coming up'], ['past', 'Past']];
       const L = G.flatMap(([st]) => EVENTS.filter(e => e.st === st).sort((a, b) => st === 'past' ? b.at - a.at : a.at - b.at));
       const colOf = e => e.st === 'live' ? ['var(--absent)'] : e.st === 'request' ? ['var(--underway)', 'req'] : e.st === 'past' ? ['var(--fg-50)'] : ['var(--fg)'];
@@ -622,8 +644,8 @@ function makeCommunity() {
       }));
       const key = <span className="f-key"><span><i style={css("background:var(--absent)")} />Live</span><span><i style={css("background:var(--fg)")} />Coming up</span><span><i className="cm-req" />Asked to host</span><span><i style={css("background:var(--fg-50)")} />Past</span></span>;
       const all = C.ev === 'month' ? cell('s12', monthName(C.mo), viewSeg('cev', C.ev), <>{monthGrid(items, C.mo, x => colOf(x.e))}<div className="gm-list"><div className="cm-evl">{(ms => ms.length ? ms.map(e => <Fragment key={e.id}>{evRow(e)}</Fragment>) : <div className="gv-e"><span>Nothing this month</span></div>)(EVENTS.filter(e => {
-              const m = Date.UTC(2026, 9 + C.mo, 1),
-                n = Date.UTC(2026, 10 + C.mo, 1);
+              const m = Date.UTC(Y0, M0 + C.mo, 1),
+                n = Date.UTC(Y0, M0 + 1 + C.mo, 1);
               return e.at >= m && e.at < n;
             }).sort((a, b) => a.at - b.at))}</div></div></>, <>{key}{monthNav('cmo', C.mo, -1, 3)}</>) : cell('s12', 'Every event', <div className="gt-cr-h">{viewSeg('cev', C.ev)}<span className="lbl">{EVENTS.length}{" events"}</span></div>, <div className="cm-evl">{G.map(([st, t], __k) => {
           const E = L.filter(e => e.st === st);
@@ -632,19 +654,66 @@ function makeCommunity() {
       const H1 = EV['E-31'],
         mx = Math.max(...TH_CURVE) * 1.1;
       const last = cell('s7', 'The last hearing', <span className="lbl">{H1.prop}{" · "}{WD(H1.at)}{" "}{fmtD(H1.at)}</span>, <div className="cm-lh"><div className="m-big">{H1.came}{" "}<small>{"members came · peak "}{H1.peak}{" at once · "}{H1.len}{" min"}</small></div>{curve(TH_CURVE, mx)}<div className="cm-lh-x"><span>{hm(H1.at)}</span><span>{hrs(18 + H1.len / 60)}</span></div><div className="led cm-live-l">{[['Questions', `${H1.qAns} of ${H1.q} answered on air`], ['The rest', 'Answered in the thread by staff'], ['Recording', H1.rec], ['The proposal', `${H1.prop} · voting now, in Governance`]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span>A hearing runs during a proposal’s discussion step</span><button data-cgov={H1.prop}>Governance →</button></>);
-      const R = [['Town hall', 'Staff and board', 'Video, questions sorted ahead'], ['Space', 'Any member, by request', 'Audio, hands raised'], ['Presentation', 'Staff, board or a member by request', 'Slides and video'], ['Hearing', 'Staff, for a proposal', 'During its discussion step'], ['Board meeting', 'The board', 'Open session; private items left out'], ['Annual meeting', 'The board', 'Live; votes signed in the app']];
-      const rules = cell('s5', 'Who hosts what', <span className="lbl">Every kind of event</span>, <div className="cm-hr">{R.map(([k, h, s], __k) => <div key={__k}><span><b>{k}</b><em>{s}</em></span><b>{h}</b></div>)}</div>, <><span>Requests go to staff and board to approve</span><span /></>);
+      const rules = hostRules();
       html(document.getElementById('cv'), <>{band(all, 1)}{band(<>{last}{rules}</>)}</>);
     }
 
     /* ══ Channel ═══════════════════════════════════════════════════════════════════════════════════════════════ */
     function renderChannel() {
+      if (LC) return renderChannelLive();
       const vmx = Math.max(...VIEW_HR) * 1.15;
       const day = cell('s12', `Today on ${CH.name}`, <span className="lbl">{CH.num}{" · call sign "}{CH.call}</span>, <div className="cm-day"><div className="cm-day-v">{Array.from({
             length: 24
           }, (_, h) => <i key={h} style={css(`height:${VIEW_HR[h] != null ? VIEW_HR[h] / vmx * 100 : 0}%`)} className={h < VIEW_HR.length ? '' : 'f'} />)}</div><div className="cm-day-b">{SCHED.map((s, __k) => <button key={__k} className={`cm-blk ${s[3]} ${s[0] <= nowH && nowH < s[0] + s[1] ? 'on' : ''}`} style={css(`left:${s[0] / 24 * 100}%;width:${s[1] / 24 * 100}%`)} data-cblk={s[2]} title={`${hrs(s[0])} · ${s[2]}`}><b>{s[2]}</b>{s[1] >= 1.5 ? <em>{hrs(s[0])}</em> : ''}</button>)}<span className="cm-now" style={css(`left:${nowH / 24 * 100}%`)}><em>Now</em></span></div><div className="cm-day-x">{[0, 3, 6, 9, 12, 15, 18, 21].map((h, __k) => <span key={__k} style={css(`left:${h / 24 * 100}%`)}>{hrs(h)}</span>)}</div></div>, <><span className="f-key"><span><i style={css("background:var(--absent)")} />Live</span><span><i style={css("background:var(--fg)")} />Show</span><span><i style={css("background:color-mix(in srgb,var(--fg) 45%,transparent)")} />Replay</span><span><i style={css("background:color-mix(in srgb,var(--fg) 18%,transparent)")} />Loop</span><span><i className="cm-off" />Off air</span></span><button data-cdial="">Schedule in Dial ↗</button></>);
       const lib = cell('s7', 'Library', <span className="lbl">Recordings and shows</span>, <div className="cm-lib">{LIB.map(([t, s, v, at], __k) => <div key={__k} className="cm-lib-r">{leaf(at)}<span><b>{t}</b><em>{s}</em></span><span className="cm-n">{ICO.eye}{int(v)}</span><button className="btn sm-b" data-cadd={t}>Add to schedule</button></div>)}</div>, <><span>Every town hall, hearing and talk lands here when it ends</span><span /></>);
       const viewers = cell('s5', 'Watching', <span className="lbl">This week</span>, <div className="cm-pt"><div className="m-big">{CH.viewers}{" "}<small>{"watching now · "}{PART.watched[6]}{" members this week"}</small></div><div className="led cm-pt-l2">{[['Watch hours', `${CH.wk} this week`], ['Comments', `${CH.comments} today`], ['Most watched', 'September town hall'], ['Relays', CH.relay], ['Ads', 'None · it’s the co-op’s channel']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div><p className="bpn-n">One channel for now. Each community gets its own, like a local station, once there are regional councils.</p></div>, <><span>Runs on Dial</span><button data-cdial="">Master control ↗</button></>);
+      html(document.getElementById('cv'), <>{band(day, 1)}{band(<>{lib}{viewers}</>)}</>);
+    }
+
+    /* ══ Live (REAL): the redesign's layout with nothing in it. No backend yet, so every list is empty and every
+       figure that needs one says "Not real yet", hatched, with what it needs (docs/ui-redesign-plan.md, gaps). ══ */
+    const empty = (t, style) => <div className="gv-e" style={style ? css(style) : undefined}><span>{t}</span></div>;
+    const notReal = (cls, title, need, id) => cell(cls, title, lbl('Not real yet'), <><div className="bk-empty hatch" id={id} style={css("display:block;width:auto;height:auto;min-height:120px;opacity:.5")} /><div className="bk-empty">{need}</div></>, <span />);
+    /* the n sheet's .hatch is a 10px key swatch: as a bar it's sized as .mb is */
+    const HB = 'display:block;width:auto;height:10px';
+    const nrFoot = need => <span>{"Not real yet · needs "}{need}</span>;
+    function renderHdrLive() {
+      const B = {
+        overview: 'Nothing’s on air and nothing’s coming up. The forum, events and the channel aren’t kept here yet.',
+        forum: 'No threads yet. The forum and what moderators see aren’t kept here yet.',
+        live: 'No events scheduled, and no one has asked to host. Events aren’t kept here yet.',
+        channel: 'Nothing on the channel yet. Clear’s station on Dial isn’t connected here.'
+      }[C.tab];
+      const nr = (k, sub, at) => <div className="sc" {...attrs(at || '')}><span className="lbl">{k}</span><div className="sc-v">—</div><div className="mb hatch" style={css(HB)} /><div className="sc-s">{sub}</div></div>;
+      html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{`Community · ${WD(NOW)} ${fmtD(NOW)}`}</span><p className="brief">{B}</p><div className="strip">{nr('On air now', 'Not real yet · needs Dial')}{nr('Next 7 days', 'Not real yet · needs events', 'data-ctab="live"')}{nr('Forum this week', 'Not real yet · needs the forum', 'data-ctab="forum"')}<div className="sc" data-cjump="cm-part"><span className="lbl">Taking part</span><div className="sc-v">{"— "}<small>{"of "}{MEMBERS == null ? '—' : int(MEMBERS)}{" members"}</small></div><div className="mb hatch" style={css(HB)} /><div className="sc-s">Not real yet · needs who took part</div></div></div></>);
+    }
+    function renderOverviewLive() {
+      const on = cell('s7', 'On air now', lbl('Nothing live'), empty('Nothing on air right now'), <>{nrFoot('Dial’s live feed')}<span /></>);
+      const needs = cell('s5', 'Needs you', lbl('0 things'), <div className="gv-nd">{empty('Nothing needs you')}</div>, <>{nrFoot('requests and flags')}<span /></>);
+      const coming = cell('s7', 'Coming up', lbl('0 scheduled'), <div className="cm-evl">{empty('No events scheduled')}</div>, <>{nrFoot('events')}<button data-ctab="live">Every event →</button></>);
+      const sch = cell('s5', 'On the channel today', lbl('Not connected'), <div className="cm-sl">{empty('Nothing on the channel yet')}</div>, <>{nrFoot('Dial’s schedule')}<button data-ctab="channel">Channel →</button></>);
+      const forum = cell('s7', 'Busiest in the forum', lbl('This week'), <div className="cm-thl">{empty('No threads yet')}</div>, <>{nrFoot('the forum')}<button data-ctab="forum">Forum →</button></>);
+      const part = notReal('s5', 'Who’s taking part', 'Needs who takes part each week, counted once per member: who wrote in the forum, came to something live or watched the channel.', 'cm-part');
+      html(document.getElementById('cv'), <>{band(<>{on}{needs}</>, 1)}{band(<>{coming}{sch}</>)}{band(<>{forum}{part}</>)}</>);
+    }
+    function renderForumLive() {
+      const list = cell('s12', 'Every thread', <div className="seg sm" role="group" aria-label="Category">{CATS.map(([k, t], __k) => <button key={__k} data-ccat={k} aria-pressed={C.cat === k}>{t}</button>)}</div>, <div className="cm-thl"><div className="cm-th hd2"><span>{lbl('Thread')}</span>{lbl('Replies')}{lbl('Readers')}{lbl('Last post')}</div>{empty(C.cat === 'all' ? 'No threads yet' : 'No threads here yet')}</div>, <>{nrFoot('the forum’s threads')}<span className="quiet">0 threads</span></>);
+      const flags = cell('s7', 'Flagged', lbl('None waiting'), <div className="cm-fg" id="cm-flags">{empty('Nothing flagged')}</div>, <>{nrFoot('reports and moderation')}<span /></>);
+      const pace = notReal('s5', 'Posts a week', 'Needs the forum’s posts by week, how many questions are answered, the first reply’s wait, open ideas and what was hidden.');
+      html(document.getElementById('cv'), <>{band(list, 1)}{band(<>{flags}{pace}</>)}</>);
+    }
+    function renderLiveLive() {
+      const key = <span className="f-key"><span><i style={css("background:var(--absent)")} />Live</span><span><i style={css("background:var(--fg)")} />Coming up</span><span><i className="cm-req" />Asked to host</span><span><i style={css("background:var(--fg-50)")} />Past</span></span>;
+      const all = C.ev === 'month' ? cell('s12', monthName(C.mo), viewSeg('cev', C.ev), <>{monthGrid([], C.mo, () => ['var(--fg)'])}<div className="gm-list"><div className="cm-evl">{empty('Nothing this month')}</div></div></>, <>{key}{monthNav('cmo', C.mo, -1, 3)}</>) : cell('s12', 'Every event', <div className="gt-cr-h">{viewSeg('cev', C.ev)}<span className="lbl">0 events</span></div>, <div className="cm-evl">{empty('No events scheduled')}</div>, <>{nrFoot('events and RSVPs')}<span className="quiet">0 events</span></>);
+      const last = notReal('s7', 'The last hearing', 'Needs events kept as they’re held: who came, minute by minute, and the questions asked and answered on air.');
+      html(document.getElementById('cv'), <>{band(all, 1)}{band(<>{last}{hostRules()}</>)}</>);
+    }
+    function renderChannelLive() {
+      const day = cell('s12', 'Today on the channel', lbl('Not connected'), <div className="cm-day"><div className="cm-day-v">{Array.from({
+            length: 24
+          }, (_, h) => <i key={h} className="f" />)}</div><div className="cm-day-b">{empty('Nothing on the channel yet', 'min-height:0;height:100%')}<span className="cm-now" style={css(`left:${nowH / 24 * 100}%`)}><em>Now</em></span></div><div className="cm-day-x">{[0, 3, 6, 9, 12, 15, 18, 21].map((h, __k) => <span key={__k} style={css(`left:${h / 24 * 100}%`)}>{hrs(h)}</span>)}</div></div>, <>{nrFoot('Clear’s station on Dial')}<span /></>);
+      const lib = cell('s7', 'Library', lbl('Recordings and shows'), <div className="cm-lib">{empty('Nothing in the library yet')}</div>, <>{nrFoot('Dial’s library')}<span /></>);
+      const viewers = notReal('s5', 'Watching', 'Needs Clear’s station on Dial: who’s watching now, members watching this week, watch hours and comments.');
       html(document.getElementById('cv'), <>{band(day, 1)}{band(<>{lib}{viewers}</>)}</>);
     }
 
@@ -670,8 +739,15 @@ function makeCommunity() {
         document.body.classList.remove('pn');
         return;
       }
+      const rec = P.ev ? EV[P.ev] : THREADS.find(t => t.id === P.th);
+      // a link to an event or a thread there's no record of (live, there are none yet): no panel
+      if (!rec) {
+        C.panel = null;
+        document.body.classList.remove('pn');
+        return;
+      }
       document.body.classList.add('pn');
-      html(pn, P.ev ? evPanel(EV[P.ev]) : thPanel(THREADS.find(t => t.id === P.th)));
+      html(pn, P.ev ? evPanel(rec) : thPanel(rec));
     }
     const phd = k => <div className="pn-hd"><span className="lbl">{k}</span><button className="x" data-cclose="" aria-label="Close">{ICO.x}</button></div>;
     function evPanel(e) {
@@ -793,6 +869,8 @@ function makeCommunity() {
         C.tp += +d.ctp;
         return render();
       }
+      // live there's no backend: nothing that changes something is drawn, and none of these runs
+      if (LC && (d.chide || d.ckeep || d.capprove || d.cdecline || d.cend || d.cremind || d.cdial !== undefined || d.capp !== undefined || d.cwatch !== undefined || d.cadd || d.cblk)) return;
       if (d.chide) {
         const f = FLAGS.find(x => x.id === d.chide);
         logIt(`Hid a post in ${f.thread}`, f.why, 'done');
@@ -898,4 +976,4 @@ function makeCommunity() {
     host
   };
 }
-registerPage(['community'], 'cx-slot', makeCommunity);
+registerPage(['community'], 'cx-slot', makeCommunity, { live: true });
