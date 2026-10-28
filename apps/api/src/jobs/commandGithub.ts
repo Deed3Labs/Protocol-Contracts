@@ -64,5 +64,5 @@ export function startCommandGithub(): void {
   setInterval(() => void tick('scheduled'), minutes() * 60_000);
   void tick('boot');
   const c = codeConfig();
-  console.log(`[github] ${c.repo}@${c.branches.join(',')}/${c.path} and its pull requests every ${minutes()} min, and on demand${process.env.GITHUB_TOKEN ? '' : ' (no GITHUB_TOKEN: 60 requests an hour)'}`);
+  console.log(`[github] ${c.repo}@${c.branches.join(',')}${c.watch ? '/' + c.watch : ''} and its pull requests every ${minutes()} min, and on demand${process.env.GITHUB_TOKEN ? '' : ' (no GITHUB_TOKEN: 60 requests an hour)'}`);
 }

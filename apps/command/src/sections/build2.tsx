@@ -263,6 +263,8 @@ function makeBuild() {
       site: 'Site',
       cc: 'CC'
     };
+    // live, a project's names are the API's (every project in the monorepo)
+    if (LV) Object.assign(RSHORT, LV.RSHORT), Object.assign(RTINY, LV.RTINY);
     const MONO = REPOS.filter(r => r.path);
 
     /* changes: code (a pull request), upgrade (contract code that goes through the Ops Safe) and setting (an on-chain setting, no code) */
@@ -1212,7 +1214,7 @@ function makeBuild() {
       const repos = cell('s7', 'Every project', <span className="lbl">{plural(REPOS.length, 'project', 'projects')}{" · watched on GitHub"}</span>, <div className="bd-rp"><div className="bd-rp-r hd2"><span />{lbl('Project')}{lbl('Checks')}{lbl('Open')}{lbl('Last commit')}{lbl('Runs on')}</div>{REPOS.map((r, i) => {
           const o = CHANGES.filter(c => c.repo === r.id && (c.st === 'draft' || c.st === 'review')).length;
           return <Fragment key={i}><div className="bd-rp-g">{lbl(`${r.full || r.name} · ${r.branch}`)}</div><button className="bd-rp-r" data-brepo={r.id}><span className="bd-rp-k"><b>{RSHORT[r.id]}</b><span>{r.path}/</span></span><span className={`bd-st st-${r.main}`}>{ckDot(r.main)}Not read</span><b className="bd-rp-n">{o || '–'}</b><span className="bd-rp-l">{r.last ? ago(r.last) : '—'}</span><span className="bd-rp-e">{r.live}</span></button></Fragment>;
-        })}</div>, <><span>{CHANGES.filter(c => c.st === 'shipped').length}{" shipped in the last 7 days · the apps aren’t watched yet"}</span><button data-btab="deploys">Deploys →</button></>);
+        })}</div>, <><span>{CHANGES.filter(c => c.st === 'shipped').length}{" shipped in the last 7 days"}</span><button data-btab="deploys">Deploys →</button></>);
       const cnt = st => CHANGES.filter(c => c.st === st).length;
       const steps = STAGES.map(([k, t, s2]) => [k, t, cnt(k), s2]);
       // the longest in its stage: since it was opened (a pull request, the first unreleased commit, the Safe's queue)
