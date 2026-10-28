@@ -2381,8 +2381,7 @@ body.signed-out .app,body.signed-out #pfRoot{display:none}
 /* the city list beside the map */
 .cm-g + .cm-g{margin-top:6px}
 /* shops waiting for a visit */
-/* profile button and panel */
-.who{border:0;padding:4px 8px 4px 4px;color:var(--fg);transition:background var(--hover) var(--ease)}
+/* profile button and panel: its rule is the shell's (above), so the phone rule that trims its padding still wins */
 @media (max-width:760px){ .arow{grid-template-columns:8px minmax(0,1fr)} .arow > :last-child{grid-column:2;justify-self:start} .tl .dt{display:none} .orow{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"k v" "p p";row-gap:4px} .orow .k{grid-area:k} .orow b{grid-area:v} .opips{grid-area:p} }
 .alist{display:flex;flex-direction:column}
 .arow{display:grid;align-items:center;gap:var(--s2);padding:var(--s1) 0;border-top:1px solid var(--hair);min-height:56px}
