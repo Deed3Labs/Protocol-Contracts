@@ -172,17 +172,20 @@ Built once, before any page, following `kit.tsx` and `core.tsx` conventions:
   segmented control; legend (`f-key`); toast that says what happens next and where it's logged.
 - **Calendar** with a List/Month switch, open arrowheads, and a "stops here" line.
 
-## Security: what the server does today, and what changes
+## Security: what the server does
 
-| Rule | Today | Change |
-|---|---|---|
-| Levels checked on every request | Yes (`need(section, level)` on each route) | Add `community` and `settings`. Add tests that every new route checks its level. |
-| Totals carries no names, emails or accounts | Yes for Members, Growth, Shop and Merchants (tested) | Extend to every new payload, with a test per page. |
-| Details masked by default, every reveal logged with a reason | Masked by default. A reveal is logged **in bulk** ("Showed member names"), **with no reason** | Reveals become per person and per field, with a reason. A missing reason is flagged. Records' Reveals tab reads them. |
-| Two-person rule in the API, nobody approves their own | Yes (proposals; own approval refused in the API and by a CHECK) | Limits come from Settings instead of code ($50 refunds and buys today). |
-| Limits from Settings; changing a setting needs a second person | No settings store | A new `command.settings` table plus change proposals. Locked settings link to where they're decided. |
-| Audit log append-only and chained | Append-only (trigger), **not chained**, no corrections | Each entry gets the previous entry's hash; corrections are new entries pointing back. Add a chain check and its test. |
-| Kept 7 years | Not enforced | A retention note plus a check that nothing deletes rows (the trigger already refuses). |
+Built on this branch (migrations 0057–0059, `services/command/settings.ts`, `store.ts`, `routes/command.ts`),
+tested in `routes/commandSecurity.test.ts`:
+
+| Rule | How |
+|---|---|
+| Levels checked on every request | `need(section, level)` on each route; `community` and `settings` are sections of their own (0056). Tested: None refuses every section, the log, the reveals and every action. |
+| Totals carries no names, emails or accounts | As before for each section (tested per section); Settings at Totals carries no staff names. |
+| Details masked by default, every reveal logged with a reason | Reveals need **Approve** on the section (Settings → Who can reveal) and a reason; a blank one is allowed as a rush (`rush=1`) and flagged, or refused with `REASON_NEEDED`. Each is a row in `command.reveals` (append-only) and an audit entry. Per member: `POST /members/:id/reveal`; whole lists: `?reveal=1&reason=…`; an order's address: reason "To pack it" unless another is given. `GET /reveals` is Records → Reveals. |
+| Two-person rule in the API, nobody approves their own | As before (proposals, refused in the API and by a CHECK). |
+| Limits from Settings; changing a setting needs a second person | `command.settings` holds every editable rule, first set to what the code enforced (refunds and shop buys over $50). Refunds and buys read their limit from it. A change is the `settings/change` action, which always waits for a second person; locks (set by a vote, the bylaws, the law) can't be changed, only shown with where they're decided. A CHECK refuses a change approved by its maker. |
+| Audit log append-only and chained | Append-only (trigger, as before). Each entry has a `seq`, the previous entry's hash and its own (`command.audit_hash`), set by a trigger under a lock held to commit, so the chain follows commit order. `command.audit_verify()` finds the first entry that doesn't follow; `GET /audit` returns it as `chain`. Corrections are new entries with `corrects` pointing back (`POST /audit/:id/correct`). |
+| Kept 7 years | Shown as a lock in Settings; nothing can delete log or reveal rows (triggers). |
 
 ## Gaps: data the reference needs that the API doesn't have
 

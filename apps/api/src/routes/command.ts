@@ -21,6 +21,7 @@ import {
 import { NotLiveYet, fieldSection, growthSection, membersSection, merchantsSection, moneySection, shopSection, contractsSection, governanceSection, recordsSection, homeSection } from '../services/command/sections.js';
 import * as store from '../services/command/store.js';
 import { ActionError, actionFor, actionTime, levelFor, type Action } from '../services/command/actions.js';
+import { settingsSection } from '../services/command/settings.js';
 import { liveSafeReader, safeAppUrl, safeConfig, SafeServiceError, type SafeConfig, type SafeReader } from '../services/command/safe.js';
 import { getAddress, isAddress, recoverTypedDataAddress, verifyMessage, type Hex } from 'viem';
 import { BUILDERS, BuildError, onChain, safeTxFor, safeTxHash, typedDataFor, type SafeTxData } from '../services/command/safeTx.js';
@@ -262,6 +263,20 @@ export function commandRouter(deps: CommandDeps) {
     await store.audit(db, { ...e, personId: c.person.id, who: c.person.name || c.person.email || 'Someone', fromWhere: await store.whereFrom(db, c.sessionId) });
   };
 
+  /**
+   * A reveal of personal details (migration 0059): only at Approve on the section (Settings → Who can
+   * reveal), with a reason (`reason`), or flagged when skipped in a rush (`rush=1`) if Settings allows.
+   * Logged before anything is shown; false (and a 400 sent) when it isn't allowed.
+   */
+  const revealFrom = async (req: Request, res: Response, r: Omit<store.Reveal, 'person' | 'reason'>) => {
+    const c = req.command!;
+    const reason = String(req.query.reason ?? req.body?.reason ?? '').slice(0, 500);
+    const rush = req.query.rush === '1' || req.body?.rush === true;
+    const out = await store.logReveal(c.db, { ...r, person: c.person, reason, rush, fromWhere: await store.whereFrom(c.db, c.sessionId) });
+    if (!out.ok) fail(res, 400, 'REASON_NEEDED', 'Say why you need to see this');
+    return out.ok;
+  };
+
   // ── you ──────────────────────────────────────────────────────────────────
 
   router.get('/me', (req, res) => {
@@ -334,25 +349,65 @@ export function commandRouter(deps: CommandDeps) {
     res.json({ proposals: (await Promise.all(areas.map((a) => store.proposals(c.db, a)))).flat() });
   });
 
+  /** The audit log, newest first, and whether its chain holds (migration 0058). */
   router.get('/audit', need('records', SEE), async (req, res) => {
-    res.json({ entries: await store.auditLog(req.command!.db) });
+    const db = req.command!.db;
+    res.json({ entries: await store.auditLog(db), chain: await store.auditChain(db) });
+  });
+
+  /** A correction: a new entry pointing back at the one it corrects. Nothing in the log is ever edited. */
+  router.post('/audit/:id/correct', limits.write, need('records', PROPOSE), async (req, res) => {
+    const c = req.command!;
+    const id = Number(req.params.id);
+    const note = z.string().trim().min(1).max(500).safeParse(req.body?.note);
+    if (!note.success) return fail(res, 400, 'BAD_REQUEST', 'Say what was wrong and what’s right');
+    const { rows } = await c.db.query<{ area: string; action: string }>('SELECT area, action FROM command.audit_log WHERE id = $1', [Number.isSafeInteger(id) ? id : -1]);
+    if (!rows[0]) return fail(res, 404, 'NOT_FOUND', 'No such entry');
+    await auditFrom(req, { area: rows[0].area, action: `Corrected: ${rows[0].action}`, detail: note.data, result: 'done', corrects: id });
+    res.json({ done: true });
+  });
+
+  /** Records → Reveals: who saw whose details, and why. */
+  router.get('/reveals', need('records', SEE), async (req, res) => {
+    res.json({ reveals: await store.reveals(req.command!.db) });
+  });
+
+  /** Settings → Rules and limits: every rule's value, and any change waiting for a second person. */
+  router.get('/sections/settings', need('settings', TOTALS), async (req, res) => {
+    res.json(await settingsSection(req.command!.db, req.command!.levels.settings));
   });
 
   // ── the sections' data ───────────────────────────────────────────────────
 
   /**
    * A section's rows and figures. Level 0 is refused by `need`; Totals gets what the server built for
-   * Totals (no names, nothing that points to one person). Names in full (?reveal=1) need See, and
-   * every time they're asked for is logged.
+   * Totals (no names, nothing that points to one person). Names in full (?reveal=1) need Approve and a
+   * reason, and every time they're asked for is logged as a reveal.
    */
   router.get('/sections/members', need('members', TOTALS), async (req, res) => {
     const c = req.command!;
     const level = c.levels.members;
-    const reveal = req.query.reveal === '1' && level >= SEE;
+    const reveal = req.query.reveal === '1' && level >= APPROVE;
     try {
       const data = await membersSection(c.db, { level, reveal, now: now(), memberSource: deps.memberSource });
-      if (reveal) await auditFrom(req, { area: 'members', action: 'Showed member names', detail: `${data.MEMBERS.length} members`, result: 'done' });
+      if (reveal && !(await revealFrom(req, res, { section: 'members', subject: '*', field: 'names', rows: data.MEMBERS.length }))) return;
       res.json(data);
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
+  /** One member's name, shown for a reason: Members at Approve, logged as a reveal before it's sent. */
+  router.post('/members/:id/reveal', limits.write, need('members', APPROVE), async (req, res) => {
+    const c = req.command!;
+    try {
+      const data = await membersSection(c.db, { level: c.levels.members, reveal: true, now: now(), memberSource: deps.memberSource });
+      const m = data.MEMBERS.find((x) => String(x.id) === req.params.id || x.no === req.params.id);
+      if (!m) return fail(res, 404, 'NOT_FOUND', 'No such member');
+      if (!(await revealFrom(req, res, { section: 'members', subject: m.no ?? String(m.id), field: 'name' }))) return;
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json({ id: m.id, no: m.no, first: m.first, last: m.last });
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
@@ -362,10 +417,10 @@ export function commandRouter(deps: CommandDeps) {
   router.get('/sections/growth', need('growth', TOTALS), async (req, res) => {
     const c = req.command!;
     const level = c.levels.growth;
-    const reveal = req.query.reveal === '1' && level >= SEE;
+    const reveal = req.query.reveal === '1' && level >= APPROVE;
     try {
       const data = await growthSection(c.db, { level, reveal, now: now(), memberSource: deps.memberSource });
-      if (reveal) await auditFrom(req, { area: 'growth', action: 'Showed names on the forms', detail: `${data.INBOX?.length ?? 0} forms`, result: 'done' });
+      if (reveal && !(await revealFrom(req, res, { section: 'growth', subject: '*', field: 'form names', rows: data.INBOX?.length ?? 0 }))) return;
       res.json(data);
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
@@ -469,7 +524,9 @@ export function commandRouter(deps: CommandDeps) {
     const db = req.command!.db;
     const a = await (deps.shopAddress ?? shopAddress)(db, req.params.id);
     if (!a) return fail(res, 404, 'NOT_FOUND', 'No live order with that number');
-    await auditFrom(req, { area: 'shop', action: `Showed the address for order #${req.params.id}`, detail: 'To pack it', result: 'done' });
+    // packing is the reason unless another is given
+    if (!req.query.reason && !req.query.rush) req.query.reason = 'To pack it';
+    if (!(await revealFrom(req, res, { section: 'shop', subject: `#${req.params.id}`, field: 'address' }))) return;
     res.setHeader('Cache-Control', 'private, no-store');
     res.json(a);
   });

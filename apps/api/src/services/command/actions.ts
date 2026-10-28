@@ -8,6 +8,8 @@ import { productCost, readBook, runUses } from './costing.js';
 import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
 import { sendBatch } from './waitlist.js';
+import { ActionError } from './actionError.js';
+import { overLimit, settingsActions } from './settings.js';
 
 /*
  * Each section's own actions (docs/command-center-plan.md: the step after Phase 3).
@@ -16,7 +18,7 @@ import { sendBatch } from './waitlist.js';
  * - Command's own record (a scan, a board card, a filing's status): saved here, with an audit row.
  * - Something outside Command (pay, refund, sign on-chain, send for e-signature, message members):
  *   recorded in command.outbox and not carried out. Phases 4–7 connect the systems that do it.
- * - Either of those, when the action's own rule says so (money over $50, two of three signers, a
+ * - Either of those, when the action's own rule says so (money over its limit in Settings, two of three signers, a
  *   batch of invites), first waits for a second person as a proposal, and runs when they approve.
  */
 
@@ -62,15 +64,7 @@ const hhmm = (d: Date) => d.toISOString().slice(11, 16);
 /** How a person is written on a record: their name, as the audit log writes it. */
 const who = (p: Person) => p.name || p.email || 'Someone';
 
-export class ActionError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+export { ActionError };
 
 /** When a section's action happens: the prototype's 21 Oct, 14:00, while it reads seeded data. */
 export const actionTime = (section: Section, now: Date) => (providerFor(section) === 'seed' ? new Date(SEED_TODAY + 14 * 3600e3) : now);
@@ -266,7 +260,6 @@ const merchants: Record<string, Action> = {
 
 // ── Shop ────────────────────────────────────────────────────────────────────
 
-const over50 = (amount: number) => amount > 50;
 /** A slug: lowercase letters, numbers and dashes. */
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 /** Live, a change to the catalog is made in Command's (Phase 11), not queued for the site; seeded, it's queued as before. */
@@ -1006,7 +999,7 @@ const shop: Record<string, Action> = {
   restock: {
     body: z.object({ id, units: z.array(z.object({ option: text(40), size: SIZE, n: z.number().int().positive().max(10000) })).min(1).max(100), cost: money }),
     summary: async (b, db) => `Restock ${(await prod(db, b.id)).name} · ${b.units.reduce((a: number, u: { n: number }) => a + u.n, 0)} units`,
-    second: (b) => over50(b.cost),
+    second: (b, db) => overLimit(db, 'shopbuy', b.cost),
     outbox: true,
   },
   pack: orderState('packed', ['paid'], 'Packed', true),
@@ -1018,7 +1011,7 @@ const shop: Record<string, Action> = {
   refund: {
     body: order.extend({ reason: z.enum(['Wrong size', 'Damaged in shipping', 'Changed their mind']), amount: money.positive() }),
     summary: (b) => `Refund #${b.order} · $${b.amount.toFixed(2)} · ${b.reason.toLowerCase()}`,
-    second: (b) => over50(b.amount),
+    second: (b, db) => overLimit(db, 'refund', b.amount),
     apply: async (c, b) => {
       const o = await must<{ items: Array<[string, string, string, number]> }>(c.tx, 'SELECT items FROM command.shop_orders WHERE id = $1', [b.order], 'order');
       const [pid, , size] = o.items[0];
@@ -1038,7 +1031,7 @@ const shop: Record<string, Action> = {
   'deposit-refund': {
     body: z.object({ id, amount: money.positive() }),
     summary: (b) => `Refund pre-order ${b.id}’s deposit · $${b.amount.toFixed(2)}`,
-    second: (b) => over50(b.amount),
+    second: (b, db) => overLimit(db, 'refund', b.amount),
     outbox: true,
   },
   'signup-link': { body: z.object({ id }), summary: (b) => `Send pre-order ${b.id} the merchant sign-up link`, outbox: true },
@@ -1212,6 +1205,7 @@ export const ACTIONS: Partial<Record<Section, Record<string, Action>>> = {
   contracts,
   governance,
   records,
+  settings: settingsActions,
 };
 
 export const actionFor = (section: string, kind: string): Action | undefined => ACTIONS[section as Section]?.[kind];

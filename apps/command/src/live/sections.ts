@@ -401,9 +401,11 @@ export function applySection(route: string, d) {
   vars.asOf = d.asOf;
 }
 
-export async function loadSection(page: string, opts: { reveal?: boolean } = {}) {
+/** Loads a section; with `reveal`, its names in full, for the reason given (an empty one is a rush, which the server flags). */
+export async function loadSection(page: string, opts: { reveal?: boolean; reason?: string } = {}) {
   const route = sectionOf(page);
-  const d = await api('GET', `/sections/${route}${opts.reveal ? '?reveal=1' : ''}`);
+  const why = opts.reason?.trim() ? `&reason=${encodeURIComponent(opts.reason.trim())}` : '&rush=1';
+  const d = await api('GET', `/sections/${route}${opts.reveal ? `?reveal=1${why}` : ''}`);
   applySection(route, d);
   // Contracts' signers and their queue come from the Ops Safe, when one is configured
   if (route === 'contracts') await import('./safe').then((m) => m.loadSafe().then(m.loadSafeQueue)).catch(() => undefined);
