@@ -211,21 +211,44 @@ tested in `routes/commandSecurity.test.ts`:
 
 Filled in as each page is ported. Known before starting:
 
-- **Shop:** the data model is built (migrations 0060–0063, `services/command/shopModel.ts`): the three
-  material kinds, average cost and last price paid, extras by size or colour, suppliers with lead times
-  and price breaks, orders in and received, reorder suggestions (lead time plus the `buffer` setting),
-  flat costs with an estimate flag and overrides, batches (planned, short, done, cost locked), per-order
-  costs (supplies, shipping charged against the label, the card fee) and pickup points with the `hold`
-  setting. Recorded buys over the `shopbuy` limit now wait for a second person. Still not modelled: the
-  printer's bill for a batch, enforced supplier minimums, the real Stripe fee and label prices (entered
-  by hand), messaging a member when a pickup hold runs out, a list of cost changes of its own (purchases
-  are the history), and the shop's fixed costs (samples, photos, software).
-  The page is ported. Live it maps onto the API's payload (PR, STK, SUPPLIERS, INPUTS with type/avg/last/var,
-  ON_ORDER, REORDER, BATCHES, PER_ORDER, ORDER_COSTS, POINTS, PICKUP); still missing for it: weekly order
-  counts, cost changes as a list (derivable from purchases), "on the way" items that aren't materials.
-  Before its gate goes on, the new page needs controls (or the old "On the store" section kept beside it)
-  for Phase 11's catalog editing and photos, the order flows (ship, ready, picked, remind, refund, labels,
-  deposit refunds, the address reveal) and Phase 10's recipe overrides, stock counts and cost at sale.
+- **Shop** (live: `shop2.tsx` + `shopLive.ts`, its gate on). The data model is migrations 0060–0063
+  (`services/command/shopModel.ts`): the three material kinds, average cost and last price paid, extras by
+  size or colour, suppliers with lead times and price breaks, orders in and received, reorder suggestions
+  (lead time plus the `buffer` setting), flat costs with an estimate flag and overrides, batches (planned,
+  short, done, cost locked), per-order costs (supplies, shipping charged against the label, the card fee) and
+  pickup points with the `hold` setting. Recorded buys over the `shopbuy` limit wait for a second person.
+  - **Live now.** Products are the store's catalog with Command's costs (`COST_BY`: a recipe, one flat cost,
+    the old per-item boxes, or "Not costed yet"); each margin is the API's cost for the colour and size
+    (overrides and extras). Materials are the inputs library (`type`, `avg`, `last`, `var`, `supplier`, on
+    hand, `ON_ORDER`, the purchases as buys), archived ones in a group of their own; reorder is `REORDER`;
+    suppliers `SUPPLIERS`; batches `BATCHES` (with what a planned one needs); orders the Stripe orders with
+    `ORDER_COSTS` (estimated at today's costs where none is recorded) and `PICKUP`/`POINTS`; cost changes are
+    worked out from the purchases; On the way is `ON_ORDER` and `INCOMING`. `PER_ORDER` now also carries the
+    Settings the page needs: `margin` (the target), `buffer`, `shopbuy` and `refund`.
+  - **Actions.** Save costs (`recipe-line` per line, `flat-cost`; back to materials is `flat-cost` with no
+    cost), the price and "Use $X" (`product-edit`, waits for a second person while on the shelf), "Add to it"
+    (`input-apply`), "Record the buy" (`purchase`), a made-to-order price (`input`), "Order more" (`order-in`,
+    asks how many), a received or cancelled buy (`receive`, `order-cancel`), a material's supplier
+    (`input-supplier`), make a batch (`batch-plan` then `batch-done`), a planned batch made, made short or
+    dropped (`batch-done`, `allowShort`, `batch-cancel`), "Mark packed" (`pack`), and the address for packing
+    (`GET /shop/orders/:id/address`, a reveal logged "To pack it").
+  - **Kept from the old page, opened from the new panels** (its flows in `#modalRoot`; the panel steps aside
+    and comes back when the page is built again, as `tab()` carries it): the catalog's (Edit on the store,
+    photos: add, first, describe, take off; colours, options, a variant, keep selling at 0; Add a product),
+    the costing's (each line in full, a colour's or size's own line, copy a recipe, add a material, edit,
+    archive and restore one, add to products, a buy with its date and note, count stock, write off) and the
+    shop's (on and off the shelf, archive, restore, restock, the name and price of one not in the catalog,
+    pre-orders' deposit refund and sign-up link, print labels, shipped, ready, picked up, remind, refund, see
+    a refund). Cost at sale (Phase 10d) and each order's cost and margin are in the panels.
+  - **Still missing**, "Not real yet" or empty live: the shop's fixed costs (samples, photos, software: the
+    overview's "Running the line"); the printer's bill for a batch; enforced supplier minimums; the real
+    Stripe fee and label prices (a label's cost is the `order-label` action, which has no control yet);
+    messaging a member when a pickup hold runs out; a list of cost changes of its own (purchases stand in);
+    "on the way" items beyond buys on order and Command's incoming rows. With an API and no control in the
+    reference (hidden live): adding or editing a supplier and its price breaks (`supplier`,
+    `supplier-breaks`), a material's extras and kind (`input-extra`, `input-kind`), a product's flat cost by
+    colour or size (`flat-override`, shown read-only), pickup points (`pickup-point`, `order-pickup`) and a
+    label's cost (`order-label`). Stock sizes are read as XS to XXL in order, as the old page read them.
 - **Members** (live: `members2.tsx` + `membersLive.ts`, its gate on).
   - **Live now.** People is the API's members plus the waitlist's people (the members section's new
     `WAITLIST`: masked like members, never at Totals, with their place in line, join time, city, source and
@@ -322,7 +345,7 @@ Filled in as each page is ported. Known before starting:
 
 ## Kept from today that the reference lacks
 
-- **Shop:**
+- **Shop** (all in the new page's panels, live):
   - "On the store" (catalog edits, photos, sold out from stock), Phase 11;
   - cost at sale and its history, Phase 10d;
   - order cost and margin.

@@ -59,6 +59,18 @@ const DEMO = [
   'Internal review',
   '18,204,331',
   'Phase 0 fixes',
+  // Shop's reference (shop2.tsx): its suppliers, designs, buyers and batch
+  'Westcoast Blanks',
+  'Heavyweight Supply',
+  'Inland Screen Print',
+  'Stitch House',
+  'Patchworks Co.',
+  'Redlands Label Co.',
+  'Pacific Packaging',
+  'Carousel Mall',
+  'Two Ten Overpass',
+  'Theo B.',
+  'B-017',
 ];
 
 type Finding = { route: string; pane: string; after: string; kind: 'error' | 'demo' | 'garbage'; what: string };
