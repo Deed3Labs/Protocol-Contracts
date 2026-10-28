@@ -2257,7 +2257,8 @@ export function openVFlow(kind, id) {
       t: 'Ballot',
       lbl: `Member vote · ${fmtD(v.open)} – ${fmtD(v.close)}`,
       h: v.t,
-      p: 'Adds the term-plan terms to the member agreement. Members accept it in the app once it passes.',
+      // live, the vote is the API's: the prototype's summary of it isn't
+      p: REAL ? null : 'Adds the term-plan terms to the member agreement. Members accept it in the app once it passes.',
       pre: (
         <>
           <div className="ablock">
@@ -2339,7 +2340,7 @@ export function openVFlow(kind, id) {
       rows: [
         ['Result', `Passed ${v.filter((x) => x === 'y').length}–${v.filter((x) => x === 'n').length}`],
         ['Recorded in', `The ${fmtD(d)} minutes`],
-        ['Signed by', 'Kai, secretary', 1],
+        ['Signed by', REAL ? 'The secretary' : 'Kai, secretary', 1],
       ],
       btn: 'Open the minutes',
       ext: 1,
@@ -2359,7 +2360,7 @@ export function openVFlow(kind, id) {
               <span className="ev-d">{fmtD(t)}</span>
               <span className="pn-k">
                 <b>{w}</b>
-                <span className="small quiet">Logged by Kai</span>
+                <span className="small quiet">{REAL ? 'Logged' : 'Logged by Kai'}</span>
               </span>
               <b className="num">{amt ? money(amt) : '—'}</b>
             </div>
@@ -2372,7 +2373,7 @@ export function openVFlow(kind, id) {
         ['Priced', open ? 'Pricing policy in draft' : amt ? 'Against two outside quotes' : 'At the last valuation'],
         ['Approved by', open ? `${rpBoard(RP[id])}, ${fmtD(open)}` : rpBoard(RP[id])],
         ['Total this year', amt ? money(amt * ds.length) : '—'],
-        ['Conflict', a === 'coop' && b === 'labs' ? 'Kai recused' : 'None', 1],
+        ['Conflict', REAL ? 'Not recorded' : a === 'coop' && b === 'labs' ? 'Kai recused' : 'None', 1],
       ],
       btn: open ? `Put it on the ${fmtD(open)} agenda` : 'Log a payment',
       steps: open ? ['Added it to the Holdings board agenda', 'Attached the draft pricing policy'] : ['Logged the payment', 'Attached the invoice'],
@@ -2442,7 +2443,7 @@ export function openVFlow(kind, id) {
       t: 'Remind members',
       h: `${n} members`,
       rows: [
-        ['Who', 'Haven’t voted on v2.2'],
+        ['Who', REAL ? `Haven’t voted on ${VOTE.t}` : 'Haven’t voted on v2.2'],
         ['Where', 'In the Clear app'],
         ['Sent by', 'Clear, not a person'],
         ['Vote closes', fmtD(VOTE.close), 1],
@@ -2457,12 +2458,13 @@ export function openVFlow(kind, id) {
       h: `Co-op board · ${fmtD(nextBoard())}`,
       rows: [
         ['Agenda', `${AGENDA.length} items, ${AGENDA.reduce((a, x) => a + x[1], 0)} minutes`],
-        ['Attached', MEETING.attached.join(', ')],
+        // what's attached, when it's recorded (live, nothing may be yet)
+        ['Attached', MEETING.attached.filter(Boolean).join(', ') || 'Nothing yet'],
         ['To', `${seatedBoard().length} seated board members`],
         ['Sent by', 'You', 1],
       ],
       btn: 'Send it',
-      steps: ['Built the packet from the agenda', `Attached the ${MEETING.attached[0]}`, `Sent it to ${seatedBoard().length} board members`],
+      steps: ['Built the packet from the agenda', ...MEETING.attached.filter(Boolean).slice(0, 1).map((x) => `Attached the ${x}`), `Sent it to ${seatedBoard().length} board members`],
       done: ['Packet sent.', 'It’s filed with the meeting in Records.'],
     };
   } else if (kind === 'minutes') {

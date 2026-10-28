@@ -79,6 +79,14 @@ const DEMO = [
   'Magnolia Laundry',
   'Sierra Lakes Barber',
   'Brockton Coffee',
+  // Governance's reference (governance2.tsx): its printer, its proposals and the Assembly's first council
+  'Inland Print Co.',
+  'Cajon Blvd',
+  'youth soccer',
+  'hardship pause',
+  'starter credit limit',
+  'Holdings appointee',
+  'Highland council',
 ];
 
 type Finding = { route: string; pane: string; after: string; kind: 'error' | 'demo' | 'garbage'; what: string };
