@@ -105,7 +105,7 @@ const words = (s, v) =>
 const onOff = (s, v) => (s.kind === 'on' ? (v ? 1 : 0) : v);
 
 /** What the API last answered, kept across the module being built again. */
-const RAW = { audit: null, chain: null, reveals: null, waiting: null, approved: null };
+const RAW = { audit: null, chain: null, reveals: null, exports: null, waiting: null, approved: null };
 
 /** Fills an array or object the module holds, in place. */
 function into(target, src) {
@@ -272,12 +272,15 @@ export function adminLive() {
       ['invites', 'Invite batches', 'Each batch, oldest on the waitlist first', 'members', (p) => kindOf(p) === 'batch', 'batch'],
       ['access', 'Access changes', 'Giving Approve anywhere, or a change from below Approve on Team', 'access', () => true, 'access'],
       ['settings', 'Settings changes', 'Any number on the Settings page', 'settings', () => true, 'settings'],
+      ['exports', 'Data exports', 'Any whole list with names: Members’ people, Growth’s join forms', ['members', 'growth'], (p) => kindOf(p) === 'export', 'exports'],
     ];
+    // a rule's area is one section, or the sections it covers
+    const inArea = (area, a) => [].concat(area).includes(a);
     const RULES = RULE.map(([id, t, c, area, mine, set]) => {
-      const done = approved.filter((p) => p.area === area && mine(p));
-      return { id, t, c, who: can(routeOf(area), 4), n30: done.length, med: median(done.map(hrs)), set, area, mine };
+      const done = approved.filter((p) => inArea(area, p.area) && mine(p));
+      return { id, t, c, who: can(routeOf([].concat(area)[0]), 4), n30: done.length, med: median(done.map(hrs)), set, area, mine };
     });
-    const ruleOf = (p) => RULES.find((r) => r.area === p.area && r.mine(p));
+    const ruleOf = (p) => RULES.find((r) => inArea(r.area, p.area) && r.mine(p));
     const lvMe = (sec) => num(me?.levels?.[apiKey(sec)]);
     const WAITING = waiting.map((p) => {
       const by = keyOf(p.proposedBy),
@@ -436,17 +439,27 @@ export function adminLive() {
     const REVEALS = (RAW.reveals ?? [])
       .filter((r) => !whole(r))
       .map((r) => [ms(r.at), keyOf(r.person_id, r.who), r.subject, field(r.field), r.reason || '', PAGE[routeOf(r.section)] ?? r.section, r.flagged]);
-    const EXPORTS = (RAW.reveals ?? [])
-      .filter(whole)
-      .map((r) => [
-        ms(r.at),
-        keyOf(r.person_id, r.who),
-        `${PAGE[routeOf(r.section)] ?? r.section} · ${r.field} for the whole list${r.reason ? ` · “${r.reason}”` : ' · no reason given'}`,
-        num(r.rows),
-        '',
-        'done',
-        'None yet · not asked for',
-      ]);
+    // exports (migration 0064): each asked for, waiting on a second person, approved for a day, used once
+    const LIST = { members: 'Members · names for the whole list', growth: 'Growth · names on the join forms' };
+    const usedRows = (g) => {
+      const at = ms(g.used_at);
+      const r = (RAW.reveals ?? []).find((x) => whole(x) && x.person_id === g.person_id && Math.abs(ms(x.at) - at) < 120e3);
+      return r ? num(r.rows) : 0;
+    };
+    const EXPORTS = [
+      ...waiting
+        .filter((p) => kindOf(p) === 'export')
+        .map((p) => [ms(p.createdAt), keyOf(p.proposedBy), `${LIST[p.area] ?? p.area} · “${p.payload?.body?.reason ?? ''}”`, 0, '', 'waiting', 'Waiting on a second person']),
+      ...(RAW.exports ?? []).map((g) => [
+        ms(g.used_at ?? g.approved_at),
+        keyOf(g.person_id, g.who),
+        `${LIST[g.section] ?? g.section} · “${g.reason}”`,
+        g.used_at ? usedRows(g) : 0,
+        keyOfName(g.approved_by),
+        g.used_at ? 'done' : ms(g.expires_at) > NOW ? 'approved' : 'lapsed',
+        g.used_at ? '' : ms(g.expires_at) > NOW ? 'Theirs to use once, within a day' : 'Lapsed unused',
+      ]),
+    ];
 
     const PPL = Object.fromEntries(PEOPLE.map((p) => [p.id, p]));
     into(L.GROUPS, GROUPS);
@@ -495,12 +508,13 @@ export function adminLive() {
     const lv = (k) => num(vars.me?.levels?.[k]);
     const get = (ok, path) => (ok ? api('GET', path).catch(() => null) : Promise.resolve(null));
     const any = Object.values(vars.me?.levels ?? {}).some((v) => v >= 2);
-    const [groups, people, settings, audit, reveals, waiting, approved] = await Promise.all([
+    const [groups, people, settings, audit, reveals, exports, waiting, approved] = await Promise.all([
       get(lv('access') >= 2, '/groups'),
       get(lv('access') >= 2, '/people'),
       get(lv('settings') >= 1, '/sections/settings'),
       get(lv('records') >= 2, '/audit'),
       get(lv('records') >= 2, '/reveals'),
+      get(lv('records') >= 2, '/exports'),
       get(any, '/proposals?area=all'),
       get(any, '/proposals?area=all&approved=30'),
       hasFeeds() ? null : loadFeeds().catch(() => undefined),
@@ -516,6 +530,7 @@ export function adminLive() {
       RAW.chain = audit.chain ?? null;
     }
     if (reveals) RAW.reveals = reveals.reveals ?? [];
+    if (exports) RAW.exports = exports.exports ?? [];
     if (waiting) RAW.waiting = waiting.proposals ?? [];
     if (approved) RAW.approved = approved.proposals ?? [];
     fill();

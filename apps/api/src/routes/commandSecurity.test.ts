@@ -178,15 +178,55 @@ describe('levels on every request', () => {
 });
 
 describe('reveals', () => {
-  test('names in full need a reason: without one nothing is shown, with one it’s shown and logged', async () => {
-    const refused = await call(kai, 'GET', '/sections/members?reveal=1');
-    expect(refused.status).toBe(400);
-    expect(JSON.stringify(refused.body)).not.toContain('MEMBERS');
-    const r = await call(kai, 'GET', '/sections/members?reveal=1&reason=Calling%20about%20a%20failed%20transfer');
+  test('a whole list with names is an export: without an approved one nothing is shown', async () => {
+    for (const q of ['?reveal=1', '?reveal=1&reason=Calling%20about%20a%20failed%20transfer', '?reveal=1&export=00000000-0000-0000-0000-000000000000']) {
+      const refused = await call(kai, 'GET', `/sections/members${q}`);
+      expect(refused.status, q).toBe(403);
+      expect(JSON.stringify(refused.body)).not.toContain('MEMBERS');
+    }
+  });
+
+  test('an export waits for a second person, then works once, for its asker, and is logged with its reason', async () => {
+    const asked = await call(kai, 'POST', '/actions/members/export', { reason: 'Calling about a failed transfer' });
+    expect(asked.status).toBe(202);
+    // not before it's approved, and never by the person who asked
+    expect((await call(kai, 'GET', '/exports/mine')).body.exports).toEqual([]);
+    expect((await call(kai, 'POST', `/proposals/${asked.body.proposal.id}/approve`)).status).toBe(403);
+    const ok = await call(dana, 'POST', `/proposals/${asked.body.proposal.id}/approve`);
+    expect(ok.status).toBe(200);
+    const grant = ok.body.result.grant;
+    // only the asker can use it: not the approver
+    expect((await call(dana, 'GET', `/sections/members?reveal=1&export=${grant}`)).status).toBe(403);
+    const r = await call(kai, 'GET', `/sections/members?reveal=1&export=${grant}`);
     expect(r.status).toBe(200);
     expect(r.body.names).toBe('shown');
     const log = (await call(kai, 'GET', '/reveals')).body.reveals;
-    expect(log[0]).toMatchObject({ section: 'members', subject: '*', field: 'names', rows: r.body.MEMBERS.length, reason: 'Calling about a failed transfer', flagged: false, who: expect.any(String), person_id: expect.any(String) });
+    expect(log[0]).toMatchObject({ section: 'members', subject: '*', field: 'names', rows: r.body.MEMBERS.length, reason: 'Calling about a failed transfer', flagged: false, person_id: expect.any(String) });
+    // once
+    expect((await call(kai, 'GET', `/sections/members?reveal=1&export=${grant}`)).status).toBe(403);
+    const mine = (await call(kai, 'GET', '/exports/mine')).body.exports;
+    expect(mine[0]).toMatchObject({ id: grant, section: 'members', reason: 'Calling about a failed transfer', used_at: expect.any(String) });
+    expect((await call(kai, 'GET', '/exports')).body.exports[0]).toMatchObject({ id: grant, approved_by: expect.any(String) });
+  });
+
+  test('an export is for its own section, can’t be asked for without a reason or below Approve, and lapses after a day', async () => {
+    expect((await call(kai, 'POST', '/actions/members/export', {})).status).toBe(400);
+    const see = all(2);
+    const p = await person('seeexport', see);
+    expect((await call(p, 'POST', '/actions/members/export', { reason: 'x' })).status).toBe(403);
+    const asked = await call(kai, 'POST', '/actions/growth/export', { reason: 'Answering a form' });
+    const grant = (await call(dana, 'POST', `/proposals/${asked.body.proposal.id}/approve`)).body.result.grant;
+    expect((await call(kai, 'GET', `/sections/members?reveal=1&export=${grant}`)).status).toBe(403);
+    // past its day: the route's clock is fixed at 23 Oct, so date the grant before it
+    await db.query(`UPDATE command.export_grants SET approved_at = '2026-10-21T12:00:00Z', expires_at = '2026-10-22T12:00:00Z' WHERE id = $1`, [grant]);
+    expect((await call(kai, 'GET', `/sections/growth?reveal=1&export=${grant}`)).status).toBe(403);
+  });
+
+  test('the database refuses an export approved by the person who asked', async () => {
+    const { rows } = await db.query<{ id: string }>(`SELECT id FROM command.people WHERE email = 'kai@useclear.org'`);
+    await expect(
+      db.query(`INSERT INTO command.export_grants (section, person_id, reason, approved_by, approved_at, expires_at) VALUES ('members', $1, 'x', $1, now(), now() + interval '1 day')`, [rows[0].id]),
+    ).rejects.toThrow(/export_grants_second_person/);
   });
 
   test('one member’s name, for a reason; skipped in a rush it’s shown and flagged', async () => {
@@ -224,7 +264,7 @@ describe('reveals', () => {
   test('only at Approve: See gets the masked list whatever it asks, and can’t reveal one', async () => {
     const see = all(2);
     const p = await person('seeonly', see);
-    const r = await call(p, 'GET', '/sections/members?reveal=1&reason=x');
+    const r = await call(p, 'GET', '/sections/members?reveal=1&export=00000000-0000-0000-0000-000000000000');
     expect(r.status).toBe(200);
     expect(r.body.names).toBe('masked');
     expect((await call(p, 'POST', '/members/1/reveal', { reason: 'x' })).status).toBe(403);

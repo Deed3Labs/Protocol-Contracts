@@ -233,7 +233,7 @@ describe('Members, live', () => {
       [1, 2, 1, 0, 0],
       [2, 3, 1, 1, 1],
     ];
-    for (const level of [SEE, TOTALS]) expect((await read(level)).BATCHES.map((b) => [b.number, b.size, b.opened, b.active, b.spent])).toEqual(want);
+    for (const level of [SEE, TOTALS] as Level[]) expect((await read(level)).BATCHES.map((b) => [b.number, b.size, b.opened, b.active, b.spent])).toEqual(want);
   });
 
   test('the join form’s last 30 days, newest first, masked, and how many', async () => {

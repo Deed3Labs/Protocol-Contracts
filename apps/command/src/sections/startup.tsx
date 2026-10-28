@@ -1268,10 +1268,14 @@ export function startup() {
     if (t.dataset.mreveal !== undefined) {
       MS.reveal = !MS.reveal;
       if (LIVE && MS.reveal && !vars.namesShown) {
-        // every reveal is logged with its reason (Settings); cancelling shows nothing, a blank answer is logged as a rush and flagged
-        const reason = window.prompt('Why do you need to see members’ names? This is logged.');
-        if (reason === null) return void ((MS.reveal = false), render());
-        return void live.loadSection('members', { reveal: true, reason }).then(render, (e) => ((MS.reveal = false), render(), toast(e.message)));
+        // a whole list with names is an export: asked for with a reason, it waits for a second person (Settings)
+        const reason = window.prompt('Why do you need the whole list with names? A second person approves it, and it is logged.');
+        MS.reveal = false;
+        if (!reason?.trim()) return void render();
+        return void acts.act('members', 'export', { reason: reason.trim() }).then(
+          () => (toast('Asked for · it waits for a second person'), render()),
+          (e) => (render(), toast(e.message)),
+        );
       }
       return render();
     }

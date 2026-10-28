@@ -462,6 +462,35 @@ export async function logReveal(db: Queryable, r: Reveal & { rush?: boolean; fro
   return { ok: true, flagged };
 }
 
+// ── exports (migration 0064) ────────────────────────────────────────────────
+
+/**
+ * Uses an approved export: the asker's own, for this section, not used yet and not past its day. Marks
+ * it used in the same statement, so it can't be used twice. The reason it was approved for, or null.
+ */
+export async function useExport(db: Queryable, id: string, personId: string, section: string, at: Date): Promise<string | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const { rows } = await db.query<{ reason: string }>(
+    `UPDATE command.export_grants SET used_at = $4
+      WHERE id = $1 AND person_id = $2 AND section = $3 AND used_at IS NULL AND expires_at > $4
+      RETURNING reason`,
+    [id, personId, section, at],
+  );
+  return rows[0]?.reason ?? null;
+}
+
+/** Exports, newest first: everyone's (Records), or one person's (theirs to use). */
+export async function exports(db: Queryable, personId?: string): Promise<Array<Record<string, unknown>>> {
+  const { rows } = await db.query(
+    `SELECT g.id, g.section, g.reason, g.approved_at, g.expires_at, g.used_at, g.person_id,
+            COALESCE(NULLIF(p.name, ''), p.email) AS who, COALESCE(NULLIF(a.name, ''), a.email) AS approved_by
+       FROM command.export_grants g JOIN command.people p ON p.id = g.person_id JOIN command.people a ON a.id = g.approved_by
+      ${personId ? 'WHERE g.person_id = $1' : ''} ORDER BY g.approved_at DESC LIMIT 200`,
+    personId ? [personId] : [],
+  );
+  return rows;
+}
+
 /** Records → Reveals: every reveal, newest first. */
 export async function reveals(db: Queryable, limit = 200): Promise<Array<Record<string, unknown>>> {
   const { rows } = await db.query('SELECT id, at, person_id, who, section, subject, field, rows, reason, flagged FROM command.reveals ORDER BY id DESC LIMIT $1', [limit]);

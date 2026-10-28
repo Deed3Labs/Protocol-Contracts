@@ -1,7 +1,7 @@
 import { DAY, SEED_TODAY } from '@clear/command-types';
 import { z } from 'zod';
 import type { Queryable } from '../../db/db.js';
-import { PROPOSE, type Level, type Section } from './levels.js';
+import { APPROVE, PROPOSE, type Level, type Section } from './levels.js';
 import { providerFor } from './sections.js';
 import { addToCatalog, adoptSiteProduct, deletePhoto, isProductPhoto, siteProductRow, type CatalogColour, type CatalogProduct, type CatalogVariant } from './catalog.js';
 import { productCost, readBook, roundCents, runUses } from './costing.js';
@@ -72,7 +72,33 @@ export const actionTime = (section: Section, now: Date) => (providerFor(section)
 
 // ── Growth ──────────────────────────────────────────────────────────────────
 
+/** How long an approved export can be used: once, within a day of the approval. */
+export const EXPORT_HOURS = 24;
+
+/**
+ * Asking for a whole list with names (Settings → Data exports need a second person): Approve on the
+ * section to ask, always a second person, and the approval writes a grant only the asker can use, once.
+ */
+const exportAction = (section: 'members' | 'growth', what: string): Action => ({
+  level: APPROVE,
+  body: z.object({ reason: text(300).min(1) }),
+  summary: (b) => `Export ${what} with names · ${b.reason}`,
+  second: () => true,
+  apply: async ({ tx, person, approver }, b) => {
+    if (!approver) throw new ActionError(403, 'SECOND_PERSON', 'An export needs a second person');
+    // its day runs on the real clock, even where a seeded section dates its actions on the prototype's day
+    const at = new Date();
+    const { rows } = await tx.query<{ id: string }>(
+      `INSERT INTO command.export_grants (section, person_id, reason, approved_by, approved_at, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [section, person.id, b.reason, approver.id, at, new Date(at.getTime() + EXPORT_HOURS * 3600e3)],
+    );
+    return { grant: rows[0].id };
+  },
+});
+
 const growth: Record<string, Action> = {
+  export: exportAction('growth', 'the join forms'),
   'poster-replaced': {
     body: z.object({ n: z.number().int().positive() }),
     summary: (b) => `Replaced poster P-${String(b.n).padStart(3, '0')}`,
@@ -166,6 +192,7 @@ const field: Record<string, Action> = {
 
 const member = z.object({ id: z.number().int().positive() });
 const members: Record<string, Action> = {
+  export: exportAction('members', 'the member list'),
   resend: { body: member, summary: () => 'Resend a member’s invite', outbox: true },
   nudge: { body: member, summary: () => 'Nudge a member to finish joining', outbox: true },
   off: { body: member.extend({ reason: text(200).default('') }), summary: () => 'Turn off a member’s access', outbox: true },

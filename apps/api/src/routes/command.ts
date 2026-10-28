@@ -268,13 +268,25 @@ export function commandRouter(deps: CommandDeps) {
    * reveal), with a reason (`reason`), or flagged when skipped in a rush (`rush=1`) if Settings allows.
    * Logged before anything is shown; false (and a 400 sent) when it isn't allowed.
    */
-  const revealFrom = async (req: Request, res: Response, r: Omit<store.Reveal, 'person' | 'reason'>) => {
+  const revealFrom = async (req: Request, res: Response, r: Omit<store.Reveal, 'person' | 'reason'> & { why?: string }) => {
     const c = req.command!;
-    const reason = String(req.query.reason ?? req.body?.reason ?? '').slice(0, 500);
+    const reason = (r.why ?? String(req.query.reason ?? req.body?.reason ?? '')).slice(0, 500);
     const rush = req.query.rush === '1' || req.body?.rush === true;
     const out = await store.logReveal(c.db, { ...r, person: c.person, reason, rush, fromWhere: await store.whereFrom(c.db, c.sessionId) });
     if (!out.ok) fail(res, 400, 'REASON_NEEDED', 'Say why you need to see this');
     return out.ok;
+  };
+
+  /**
+   * A whole list with names is an export (migration 0064): it needs an approved export of the asker's own
+   * (`export=<grant>`), which a second person gave. Used once; logged as a reveal with the reason it was
+   * approved for. False (and a 403 sent) without one.
+   */
+  const exportFrom = async (req: Request, res: Response, section: 'members' | 'growth') => {
+    const c = req.command!;
+    const why = await store.useExport(c.db, String(req.query.export ?? ''), c.person.id, section, now());
+    if (why == null) fail(res, 403, 'EXPORT_NEEDS_SECOND', 'A whole list with names needs a second person: ask for an export');
+    return why;
   };
 
   // ── you ──────────────────────────────────────────────────────────────────
@@ -372,6 +384,16 @@ export function commandRouter(deps: CommandDeps) {
     res.json({ reveals: await store.reveals(req.command!.db) });
   });
 
+  /** Records → exports: every approved export, who asked, who approved, and whether it was used. */
+  router.get('/exports', need('records', SEE), async (req, res) => {
+    res.json({ exports: await store.exports(req.command!.db) });
+  });
+
+  /** Your own approved exports: the ones you can still use, and the ones you have. */
+  router.get('/exports/mine', async (req, res) => {
+    res.json({ exports: await store.exports(req.command!.db, req.command!.person.id) });
+  });
+
   /** Settings → Rules and limits: every rule's value, and any change waiting for a second person. */
   router.get('/sections/settings', need('settings', TOTALS), async (req, res) => {
     res.json(await settingsSection(req.command!.db, req.command!.levels.settings));
@@ -381,16 +403,18 @@ export function commandRouter(deps: CommandDeps) {
 
   /**
    * A section's rows and figures. Level 0 is refused by `need`; Totals gets what the server built for
-   * Totals (no names, nothing that points to one person). Names in full (?reveal=1) need Approve and a
-   * reason, and every time they're asked for is logged as a reveal.
+   * Totals (no names, nothing that points to one person). Names in full (?reveal=1) are an export: Approve,
+   * and an approved export of the asker's own (`export=<grant>`); each use is logged as a reveal.
    */
   router.get('/sections/members', need('members', TOTALS), async (req, res) => {
     const c = req.command!;
     const level = c.levels.members;
     const reveal = req.query.reveal === '1' && level >= APPROVE;
     try {
+      const why = reveal ? await exportFrom(req, res, 'members') : null;
+      if (reveal && why == null) return;
       const data = await membersSection(c.db, { level, reveal, now: now(), memberSource: deps.memberSource });
-      if (reveal && !(await revealFrom(req, res, { section: 'members', subject: '*', field: 'names', rows: data.MEMBERS.length }))) return;
+      if (reveal && !(await revealFrom(req, res, { section: 'members', subject: '*', field: 'names', rows: data.MEMBERS.length, why: why! }))) return;
       res.json(data);
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
@@ -419,8 +443,10 @@ export function commandRouter(deps: CommandDeps) {
     const level = c.levels.growth;
     const reveal = req.query.reveal === '1' && level >= APPROVE;
     try {
+      const why = reveal ? await exportFrom(req, res, 'growth') : null;
+      if (reveal && why == null) return;
       const data = await growthSection(c.db, { level, reveal, now: now(), memberSource: deps.memberSource });
-      if (reveal && !(await revealFrom(req, res, { section: 'growth', subject: '*', field: 'form names', rows: data.INBOX?.length ?? 0 }))) return;
+      if (reveal && !(await revealFrom(req, res, { section: 'growth', subject: '*', field: 'form names', rows: data.INBOX?.length ?? 0, why: why! }))) return;
       res.json(data);
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);

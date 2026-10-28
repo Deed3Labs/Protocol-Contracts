@@ -1254,9 +1254,11 @@ function makeAdmin() {
       const ESt = {
         done: ['Done', 'var(--fg)'],
         approved: ['Approved', 'var(--settled)'],
-        waiting: ['Waiting', 'var(--underway)']
+        waiting: ['Waiting', 'var(--underway)'],
+        // live only: an approved export its asker didn't use within its day
+        lapsed: ['Lapsed', 'var(--line)']
       };
-      const ex = cell('s12', 'Exports', <span className="lbl">Every list that left the app</span>, <div className="ad-xl"><div className="ad-xr hd2"><span />{lbl('List')}{lbl('Rows')}{lbl('Second person')}{lbl('Status')}</div>{EXPORTS.slice().sort((a, b) => b[0] - a[0]).map(([t, w, what, n, ok, st, note], __k) => <div key={__k} className={`ad-xr ${st === 'waiting' ? 'pend' : ''}`}>{leaf(t)}<span className="gt-ck"><b>{what}</b><span>{pName(w)}{" · "}{hm(t)}</span></span><b className="num">{int(n)}</b><span className="ad-xo">{ok ? <>{sq(ok)}<em>{pName(ok)}</em></> : <em>{note}</em>}</span><span className="gt-st" style={css(`--c:${ESt[st][1]}`)}>{ESt[st][0]}</span></div>)}</div>, <><span>{AL ? 'A whole list needs Approve on its page and a reason · no second person yet' : 'Lists with names, emails or phone numbers need a second person'}</span><button data-ago="settings/rules">The rule →</button></>);
+      const ex = cell('s12', 'Exports', <span className="lbl">Every list that left the app</span>, <div className="ad-xl"><div className="ad-xr hd2"><span />{lbl('List')}{lbl('Rows')}{lbl('Second person')}{lbl('Status')}</div>{EXPORTS.slice().sort((a, b) => b[0] - a[0]).map(([t, w, what, n, ok, st, note], __k) => <div key={__k} className={`ad-xr ${st === 'waiting' ? 'pend' : ''}`}>{leaf(t)}<span className="gt-ck"><b>{what}</b><span>{pName(w)}{" · "}{hm(t)}</span></span><b className="num">{int(n)}</b><span className="ad-xo">{ok ? <>{sq(ok)}<em>{pName(ok)}</em></> : <em>{note}</em>}</span><span className="gt-st" style={css(`--c:${ESt[st][1]}`)}>{ESt[st][0]}</span></div>)}</div>, <><span>{AL ? 'A whole list needs a second person · its asker can use it once, within a day' : 'Lists with names, emails or phone numbers need a second person'}</span><button data-ago="settings/rules">The rule →</button></>);
       return <>{band(<>{rv}{bp}</>, 1)}{band(ex)}</>;
     }
 
