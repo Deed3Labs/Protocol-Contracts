@@ -100,9 +100,29 @@ It's the same design system the app was ported from (`docs/command-reference`), 
 3. Import the file from `shell.tsx` (beside `import './growth2'`), so it registers.
 4. `npx tsc -b`, then add the route(s) to `SHADOWED` in `e2e/pages.ts` and run
    `npx playwright test e2e/parity.spec.ts e2e/visual.spec.ts -g <route>`: every tab must match.
-5. Live wiring is its own step: build the page's datasets from what `live/sections.ts` fills (as
-   `growthLive.ts` starts to), route its actions through the existing flows, then turn its gate on and
-   run the empty crawl for it.
+5. Live wiring is its own step (below).
+
+### Wiring a page live (the recipe Growth set)
+
+1. **A live builder beside the page** (`<page>Live.ts`, like `growthLive.ts`): one function that returns
+   every dataset the module declares, built from what `live/sections.ts` filled from the API (the old
+   page's datasets in `data.tsx`, `vars`, and `vars.<page>Figures` for the raw figures). What the API
+   doesn't have is zero or empty, never the reference's figures, and is listed under gaps below.
+2. **In the module:** `const L = REAL ? <page>Live() : null;` at the top of `make<Page>()`, and each
+   fixture declaration becomes `const X = L ? L.X : <fixture>`. The module is built after its section
+   has loaded and built again when it reloads (pageHost's `dataStamp`), so a const is enough.
+3. **Day indexes:** the reference counts days from a fixed start (Growth: 4 Aug, today is day 78). Live,
+   `L` gives the start and today's index (Growth: twelve weeks back), and quick picks anchored to the
+   reference's events are left out.
+4. **Copy written for the reference's numbers** (a sentence, a foot, a strip) is worked out from the rows
+   live, or says what's missing. Search the module for literal numbers, names and dates.
+5. **Simulations** (timers that invent arrivals, modelled curves) don't run live. A tab or cell with no
+   real source says "Not real yet", hatched, with what it needs (Growth's `notReal`); buttons into it are
+   hidden.
+6. **Actions:** every button that changes something goes through `live()` (`POST /actions/<section>/<kind>`),
+   with the old page's flows as the reference for bodies; one with no API is hidden live, and listed.
+7. **Turn the gate on** (`registerPage(…, { live: true })`), then run the empty crawl for the route
+   (`e2e/empty.spec.ts -g <route>`), parity and pixels (the prototype must not change), and the API tests.
 
 ## Decisions taken
 
@@ -215,7 +235,13 @@ Filled in as each page is ported. Known before starting:
   and invites, opens and first spends by source, city, shop and design. Live, Campaigns, Cohorts and Apps
   say "Not real yet" with what they need; the waitlist count and median come from `command.waitlist`.
 - **Field:** visit plans and placement scoring beyond what's recorded today.
-- **Money:** a Moves queue drawn from proposals (exists) and the cash-flow forecast.
+- **Money** (ported): balances by account with their source and seven weeks of history; how fresh each
+  source is; credit for the month (opening, spent, aging buckets, losses, limits by size, spend by shop);
+  the yield pool (assets, principal, lent, depositors masked, pledged, queued withdrawals, cycle, rate
+  curve); bonds (face, issued, matures, rate, holder kind); the next 30 days of payments in and out
+  (which the 30-day totals, weekly bars and the payout queue are worked out from); sales tax held and
+  pre-order deposits; the Ops Safe signers; moves waiting and done (the proposals exist). Actions:
+  propose, approve and sign, reject and withdraw a move, Plaid sync, the reserve check.
 - **Build:** deploys (Railway and Vercel history) and security findings. Changes and Contracts exist
   (the GitHub poller and the indexer).
 - **Community:** everything (forum, live events, channel). There's no backend, so live shows empty
