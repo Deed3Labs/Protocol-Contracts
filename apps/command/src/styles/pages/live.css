@@ -1,0 +1,22 @@
+/*
+ * Kept by hand, not copied from the reference (scripts/port/sheets.cjs leaves it alone): fixes for what
+ * real data draws that the reference's own data never did. Adopted last by every page's shadow root.
+ */
+
+/* Shop: the shelf drew its lines by position, so a last row that isn't full was left open. Each tile draws
+   its right and bottom line instead, and the shelf clips the outer edge's */
+.sx-shf{overflow:hidden}
+.sx-t,.sx-t:nth-child(n){border-left:0;border-top:0;border-right:1px solid var(--hair);border-bottom:1px solid var(--hair);margin:0 -1px -1px 0}
+
+/* Records: a long name or email in the week grid is cut, not run into the days (the full text is its title) */
+.ad-wk-p{min-width:0}
+.ad-wk-p > *{flex:none}
+.ad-wk-p b{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* a cell's right-hand label gives way to its title instead of running past a narrow cell (Team's at 1100) */
+.hd .r{min-width:0}
+.hd .r > .lbl{min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+/* a hatched "Not real yet" bar or block: the n sheet makes .hatch a 10px swatch for its keys, which shrank them to squares */
+.mb.hatch{display:block;width:auto}
+.bk-empty.hatch{display:block;width:auto;height:auto}

@@ -7,6 +7,7 @@ import m from '../styles/pages/m.css?raw';
 import n from '../styles/pages/n.css?raw';
 import sx from '../styles/pages/sx.css?raw';
 import vx from '../styles/pages/vx.css?raw';
+import live from '../styles/pages/live.css?raw';
 import { REAL } from '../live/env';
 import { dataStamp } from '../live/sections';
 import { html } from '../runtime/dom';
@@ -23,7 +24,7 @@ import type { ReactNode } from 'react';
  * reach the document listeners retargeted to the host; startup.tsx's evTarget reads the real target.
  */
 
-const CSS: Record<string, string> = { g, m, fm, n, bx, vx, cx, sx, ax };
+const CSS: Record<string, string> = { g, m, fm, n, bx, vx, cx, sx, ax, live };
 
 /** Each page's chain of sheets, in the order the reference's shadow roots hold them. */
 export const CHAIN: Record<string, string[]> = {
@@ -40,6 +41,12 @@ export const CHAIN: Record<string, string[]> = {
   team: ['g', 'fm', 'n', 'bx', 'vx', 'ax'],
   settings: ['g', 'fm', 'n', 'bx', 'vx', 'ax'],
 };
+
+/**
+ * A page's sheets as its root adopts them: its chain, then, live only, live.css: the hand-kept fixes for
+ * what real data draws that the reference's data never did (the preview stays the reference, pixel for pixel).
+ */
+const chainOf = (page: string) => [...(CHAIN[page] ?? ['g']), ...(REAL ? ['live'] : [])];
 
 /** One constructed sheet per template, shared by every root that adopts it. */
 const sheets = new Map<string, CSSStyleSheet>();
@@ -62,7 +69,7 @@ export function pageRoot(page: string): ShadowRoot | null {
   if (!host) return null;
   if (!host.shadowRoot) {
     const root = host.attachShadow({ mode: 'open' });
-    root.adoptedStyleSheets = (CHAIN[page] ?? ['g']).map(sheet);
+    root.adoptedStyleSheets = chainOf(page).map(sheet);
     // React draws into an element: this one takes no part in layout, so the sheets see the page as the reference has it
     const mount = document.createElement('div');
     mount.className = 'g-mount';
@@ -157,7 +164,7 @@ export function shadowHost(page: string, skeleton: ReactNode) {
   host.className = 'g-host';
   host.dataset.page = page;
   const R = host.attachShadow({ mode: 'open' });
-  R.adoptedStyleSheets = (CHAIN[page] ?? ['g']).map(sheet);
+  R.adoptedStyleSheets = chainOf(page).map(sheet);
   const mount = document.createElement('div');
   mount.className = 'g-mount';
   mount.style.display = 'contents';

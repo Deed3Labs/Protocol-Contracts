@@ -1155,7 +1155,7 @@ function makeAdmin() {
             const c = cellOf(w, t);
             return a + c.keys.length + c.evs.length;
           }, 0);
-          return <div key={__k} className="ad-wk-r"><span className="ad-wk-p">{sq(w)}<b>{n}</b></span>{days.map((t, i) => {
+          return <div key={__k} className="ad-wk-r"><span className="ad-wk-p">{sq(w)}<b title={AL ? n : undefined}>{n}</b></span>{days.map((t, i) => {
               const {
                   keys,
                   evs

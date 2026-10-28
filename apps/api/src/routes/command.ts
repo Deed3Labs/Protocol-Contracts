@@ -52,6 +52,8 @@ export interface CommandDeps {
   identify: RequestHandler;
   /** Has a Clear account, so gets the Members row. */
   isMember: (auth: NonNullable<Request['auth']>) => Promise<boolean>;
+  /** The name a member chose to be seen by in Clear (display name, else @username), if they're one. */
+  memberName?: (auth: NonNullable<Request['auth']>) => Promise<string | null>;
   mail: (m: { to: string; subject: string; text: string }) => Promise<void>;
   /** Emails that become Admin on first sign-in (COMMAND_ADMIN_EMAILS): how the first admin gets in. */
   adminEmails: () => string[];
@@ -174,6 +176,8 @@ export function commandRouter(deps: CommandDeps) {
     const emails = (auth.emails ?? []).map((e) => e.toLowerCase());
     const t = now();
     const member = await deps.isMember(auth);
+    // someone with no name yet is named as they are in Clear, else by their social login's name
+    const knownName = member ? ((await deps.memberName?.(auth).catch(() => null)) ?? auth.name ?? null) : (auth.name ?? null);
 
     const result = await db.transaction(async (tx) => {
       let person = await store.personByPrivy(tx, privyId);
@@ -204,6 +208,8 @@ export function commandRouter(deps: CommandDeps) {
           person = await store.createPerson(tx, { privyId, email: emails[0] ?? null });
         } else return { code: 'NO_ACCOUNT' as const };
       }
+
+      if (!person.name.trim() && knownName) person = await store.namePerson(tx, person.id, knownName);
 
       // An investor invited "for 30 days after first sign-in": the clock starts now.
       const access = await store.accessOf(tx, person.id);
@@ -291,9 +297,16 @@ export function commandRouter(deps: CommandDeps) {
 
   // ── you ──────────────────────────────────────────────────────────────────
 
-  router.get('/me', (req, res) => {
+  router.get('/me', async (req, res) => {
     const c = req.command!;
-    res.json({ me: me(c.person, c) });
+    // someone signed in before names were filled at sign-in gets theirs on their next load
+    let person = c.person;
+    if (!person.name.trim()) {
+      const auth = req.auth!;
+      const name = (c.member ? await deps.memberName?.(auth).catch(() => null) : null) ?? auth.name ?? null;
+      if (name) person = await store.namePerson(c.db, person.id, name);
+    }
+    res.json({ me: me(person, c) });
   });
 
   router.post('/terms', limits.write, async (req, res) => {

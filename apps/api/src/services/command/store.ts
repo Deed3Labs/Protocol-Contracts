@@ -82,6 +82,15 @@ export async function createPerson(db: Queryable, p: { privyId?: string | null; 
   return person(rows[0]);
 }
 
+/** Gives someone with no name one (only while they have none: a name set on the team stays). */
+export async function namePerson(db: Queryable, personId: string, name: string): Promise<Person> {
+  const { rows } = await db.query<PersonRow>(
+    `UPDATE command.people SET name = $2, updated_at = now() WHERE id = $1 AND btrim(name) = '' RETURNING id, privy_id, name, email, title, wallet_address`,
+    [personId, name.trim().slice(0, 80)],
+  );
+  return rows[0] ? person(rows[0]) : (await personById(db, personId))!;
+}
+
 export async function accessOf(db: Queryable, personId: string): Promise<Access | null> {
   const { rows } = await db.query<{ group_id: string | null; custom_levels: unknown; off: boolean; expires_at: Date | null; expires_after_days: number | null }>(
     'SELECT group_id, custom_levels, off, expires_at, expires_after_days FROM command.person_access WHERE person_id = $1',
