@@ -14,7 +14,9 @@ import { commandRouter } from './command.js';
 let base = '';
 let db: Db;
 let clock = new Date('2026-10-21T17:00:00Z');
-const members = new Set(['did:member', 'did:kai', 'did:dana', 'did:marcus']);
+const members = new Set(['did:member', 'did:kai', 'did:dana', 'did:marcus', 'did:named', 'did:social']);
+// the names members chose in Clear (their public display name or @username)
+const memberNames = new Map([['did:named', 'Ana Ruiz']]);
 const mail: Array<{ to: string; subject: string; text: string }> = [];
 
 beforeAll(async () => {
@@ -22,8 +24,8 @@ beforeAll(async () => {
   const identify = (req: Request, res: Response, next: NextFunction) => {
     const u = req.header('x-test-user');
     if (!u) return res.status(401).json({ code: 'AUTH_TOKEN_MISSING' });
-    const [id, email] = u.split('|');
-    req.auth = { walletAddress: '', profileUuid: id, email, emails: email ? [email] : [], token: 't', sessionId: `ps_${id}` };
+    const [id, email, name] = u.split('|');
+    req.auth = { walletAddress: '', profileUuid: id, email, emails: email ? [email] : [], name: name || undefined, token: 't', sessionId: `ps_${id}` };
     next();
   };
   const app = express();
@@ -34,6 +36,7 @@ beforeAll(async () => {
       db: async () => db,
       identify,
       isMember: async (a) => members.has(a.profileUuid!),
+      memberName: async (a) => memberNames.get(a.profileUuid!) ?? null,
       mail: async (m) => void mail.push(m),
       adminEmails: () => ['kai@useclear.org', 'second@useclear.org'],
       appUrl: () => 'https://command.test',
@@ -104,6 +107,29 @@ describe('signing in', () => {
     const me = ppl.find((p: any) => p.email === 'kai@useclear.org');
     expect(me.signIns[0]).toMatchObject({ device: 'Device', city: 'Redlands', newDevice: false });
     expect(me.signIns.at(-1).newDevice).toBe(true);
+  });
+});
+
+describe('a name for someone who has none', () => {
+  test('is the name they chose in Clear, else their social login’s, and a name already set stays', async () => {
+    const named = await signIn('did:named|ana@example.com|Ana from Google');
+    expect(named.status).toBe(201);
+    expect(named.me.name).toBe('Ana Ruiz');
+    const social = await signIn('did:social|sam@example.com|Sam Lee');
+    expect(social.me.name).toBe('Sam Lee');
+    memberNames.set('did:social', 'Samuel');
+    const again = await signIn('did:social|sam@example.com|Sam Lee');
+    expect(again.me.name).toBe('Sam Lee');
+  });
+
+  test('fills on the next load for someone signed in before', async () => {
+    const who = await signIn('did:member|m@example.com');
+    const before = (await call(who, 'GET', '/me')).body.me.name;
+    await db.query(`UPDATE command.people SET name = '' WHERE privy_id = 'did:member'`);
+    memberNames.set('did:member', '@mem');
+    expect((await call(who, 'GET', '/me')).body.me.name).toBe('@mem');
+    memberNames.delete('did:member');
+    if (before) await db.query(`UPDATE command.people SET name = $1 WHERE privy_id = 'did:member'`, [before]);
   });
 });
 

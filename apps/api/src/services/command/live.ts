@@ -49,6 +49,15 @@ export function liveCommandRouter() {
         email: auth.email,
         phone: auth.phone,
       })),
+    memberName: (auth) =>
+      memberStore.publicNameForAuth({
+        authSubject: auth.profileUuid,
+        profileUuid: auth.profileUuid,
+        walletAddress: auth.walletAddress || null,
+        walletAddresses: auth.addresses,
+        email: auth.email,
+        phone: auth.phone,
+      }),
     mail: sendMail,
     indexer: { catchUp: indexerCatchUp },
     code: { catchUp: githubCatchUp },

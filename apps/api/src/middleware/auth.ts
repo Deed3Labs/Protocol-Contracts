@@ -19,6 +19,8 @@ type AuthenticatedWallet = {
   smartWallet?: string; // the Privy smart wallet — the CANONICAL primary (where funds live)
   addresses?: string[]; // ALL verified addresses for this user (primary + smart + linked), normalized
   phone?: string; // the Privy account phone (login identity), if any
+  /** A name from a social login on the account (Google, Apple, GitHub…), if one carries it. */
+  name?: string;
   /** The Privy sign-in session this token belongs to: what the server-side lock is kept per. */
   sessionId?: string;
   token: string;
@@ -36,7 +38,7 @@ function getPrivy(): PrivyClient | null {
 }
 
 // userId(DID) -> resolved wallets. Cached so we don't call getUser on every request (rate-limited).
-type UserWallets = { addresses: Set<string>; smartWallet?: string; email?: string; emails: Set<string>; phone?: string; expiresAt: number };
+type UserWallets = { addresses: Set<string>; smartWallet?: string; email?: string; emails: Set<string>; phone?: string; name?: string; expiresAt: number };
 const userCache = new Map<string, UserWallets>();
 
 declare global {
@@ -79,6 +81,7 @@ type CollectedWallets = {
   email?: string;
   emails: Set<string>;
   phone?: string;
+  name?: string;
   hasEmbeddedEoa: boolean;
   hasExternalWallet: boolean;
 };
@@ -91,6 +94,7 @@ function collectWallets(user: { linkedAccounts?: unknown[] }): CollectedWallets 
   let smartWallet: string | undefined;
   let email: string | undefined;
   let phone: string | undefined;
+  let name: string | undefined;
   let hasEmbeddedEoa = false;
   let hasExternalWallet = false;
 
@@ -101,7 +105,7 @@ function collectWallets(user: { linkedAccounts?: unknown[] }): CollectedWallets 
   };
 
   for (const account of user.linkedAccounts ?? []) {
-    const acct = account as { type?: string; address?: string; number?: string; chainType?: string; walletClientType?: string; email?: string };
+    const acct = account as { type?: string; address?: string; number?: string; chainType?: string; walletClientType?: string; email?: string; name?: string | null; username?: string | null };
     const isEvmWallet =
       (acct.type === 'wallet' || acct.type === 'smart_wallet') &&
       typeof acct.address === 'string' &&
@@ -121,11 +125,14 @@ function collectWallets(user: { linkedAccounts?: unknown[] }): CollectedWallets 
     }
     // Social logins (google_oauth, apple_oauth, github_oauth, …) carry their own verified email —
     // any of them may be the address the user already onboarded to Bridge with.
-    if (typeof acct.type === 'string' && acct.type.endsWith('_oauth')) addEmail(acct.email);
+    if (typeof acct.type === 'string' && acct.type.endsWith('_oauth')) {
+      addEmail(acct.email);
+      name ??= acct.name?.trim() || acct.username?.trim() || undefined;
+    }
     if (acct.type === 'phone' && typeof acct.number === 'string') phone = acct.number;
   }
 
-  return { addresses, smartWallet, email, emails, phone, hasEmbeddedEoa, hasExternalWallet };
+  return { addresses, smartWallet, email, emails, phone, name, hasEmbeddedEoa, hasExternalWallet };
 }
 
 async function loadUserWallets(privy: PrivyClient, userId: string): Promise<UserWallets> {
@@ -168,6 +175,7 @@ async function loadUserWallets(privy: PrivyClient, userId: string): Promise<User
     email: c.email,
     emails: c.emails,
     phone: c.phone,
+    name: c.name,
     expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
   };
   userCache.set(userId, entry);
@@ -205,7 +213,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const { addresses, smartWallet, email, emails, phone } = await loadUserWallets(privy, userId);
+    const { addresses, smartWallet, email, emails, phone, name } = await loadUserWallets(privy, userId);
 
     // Trust the frontend's active address only if it belongs to the verified user; else fall back to
     // the smart wallet (email/social funds) or the first linked wallet.
@@ -217,7 +225,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return sendUnauthorized(res, 'No wallet linked to this account', 'AUTH_NO_WALLET');
     }
 
-    req.auth = { walletAddress, profileUuid: userId, email, emails: [...emails], phone, smartWallet, addresses: [...addresses], sessionId, token };
+    req.auth = { walletAddress, profileUuid: userId, email, emails: [...emails], phone, name, smartWallet, addresses: [...addresses], sessionId, token };
     // Idle past the lock: refused until Face ID or a fresh sign-in opens it (middleware/sessionLock).
     if (!(await sessionOpen(req, res))) return;
     return next();
@@ -256,8 +264,8 @@ export async function requireIdentity(req: Request, res: Response, next: NextFun
     return sendUnauthorized(res, 'Invalid or expired authentication token', 'AUTH_TOKEN_INVALID');
   }
   try {
-    const { addresses, smartWallet, email, emails, phone } = await loadUserWallets(privy, userId);
-    req.auth = { walletAddress: smartWallet ?? [...addresses][0] ?? '', profileUuid: userId, email, emails: [...emails], phone, smartWallet, addresses: [...addresses], sessionId, token };
+    const { addresses, smartWallet, email, emails, phone, name } = await loadUserWallets(privy, userId);
+    req.auth = { walletAddress: smartWallet ?? [...addresses][0] ?? '', profileUuid: userId, email, emails: [...emails], phone, name, smartWallet, addresses: [...addresses], sessionId, token };
     return next();
   } catch (error) {
     console.error('Authentication error (user lookup):', error);

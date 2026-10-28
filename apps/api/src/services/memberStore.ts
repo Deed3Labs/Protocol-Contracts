@@ -2479,6 +2479,19 @@ export class MemberStore {
    * Returns null when they have opted out of notifications. Not an empty contact — the caller
    * should be able to tell "we have no way to reach them" apart from "they asked us not to".
    */
+  /** The name a signed-in member chose to be seen by (their public display name, else @username), or null. */
+  async publicNameForAuth(input: ResolveMemberAuthInput): Promise<string | null> {
+    await this.ensureReady();
+    const member = await this.resolveMemberByAuthInput(input);
+    if (!member) return null;
+    const { rows } = await this.mustPool().query<{ display_name: string | null; username: string | null }>(
+      `SELECT display_name, username FROM ${TABLE_PROFILE_PUBLIC} WHERE member_id = $1`,
+      [member.id],
+    );
+    const r = rows[0];
+    return r?.display_name?.trim() || (r?.username?.trim() ? `@${r.username.trim()}` : null);
+  }
+
   /** The names members chose to be seen by, for these wallets (memberPublicNames below). */
   async publicNamesForWallets(wallets: string[]): Promise<Map<string, string>> {
     await this.ensureReady();
