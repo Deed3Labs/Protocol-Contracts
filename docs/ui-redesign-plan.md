@@ -251,7 +251,47 @@ Filled in as each page is ported. Known before starting:
   stays active and spends, the apps' own events, bounce and time on page, browsers, the real-time view,
   and invites, opens and first spends by source, city, shop and design. Live, Campaigns, Cohorts and Apps
   say "Not real yet" with what they need; the waitlist count and median come from `command.waitlist`.
-- **Field:** visit plans and placement scoring beyond what's recorded today.
+- **Field** (live: `fm2.tsx` + `fmLive.ts`, one module with Merchants, its gate on). Each page loads the other's
+  section too (they share the pipeline and the route), once, and is built again with it.
+  - **Live now.** Today is the field section's route (`ROUTE`, `STOPS` with their tasks and `SHOP_INFO`), with
+    what was found on earlier checks (`LATER`); Posters and Placement are its `POSTERS` and `DESIGNS` (a design
+    the API doesn't name is "No name yet"). Visits are today's finished route tasks plus the merchant visits logged
+    on the pipeline's cards (a card log line of kind `visit`: the outcome, the stage it moved, the note, written
+    and read by `fmLive.ts`'s `visitText`). Follow-ups are the cards' next steps and due dates. Needs a visit is
+    the posters due within 12 days or worse, the cards in Prospect, Talking or Signing, and the Points offline or
+    low (from Merchants' fleet). People are the signed-in person, Team's people (when loaded) with Field access
+    (edit on Field), and whoever the data names; waiting by city is Members' waitlist when that section has loaded.
+  - **Actions.** Scan a poster (`scan {n, outcome, note, photo}`, the photo through `addFile`), mark a task done
+    (`task-done {stop, position}`), skip a stop (`skip`), add a shop found earlier to today (`add-later {shop}`),
+    and log a merchant visit (`card-save` with a `visit` log line and the stage, next step and due date it sets;
+    Not interested takes the card off with `card-remove`).
+  - **Still missing ("Not real yet" or hidden):** routes planned for the coming days (who, which stops, sent and
+    accepted), so Plan's route builder, new routes, Add/Move to a route, Best order, Send and Save are hidden and
+    the week shows only today; the van's load; placement scoring (suggested posters per city) and the shops that
+    said yes to a poster; daily scans per poster; a shop's hours and contact outside today's stops; snoozing or
+    dropping something that needs a visit; the visit log before today for posters and devices (only today's route
+    is sent); visit history per person beyond the cards' logs; photos shown back on a visit.
+- **Merchants** (live, the same module): the merchant app's shops (`TX`, `SIGNED`), the pipeline's cards (`BOARD`)
+  and the Points (`FLEET`). A shop the merchant app has and its card are one record (the card's `m`, else the same
+  name); the other cards are the pipeline's own shops. Live, the API sends every card's owner, value, next step and flag whatever its
+  stage (`merchantBoard(…, full)`), so saving a signing or signed card whole keeps them.
+  - **Live now.** Overview's map, cities, stage counts, founding seats (`merchants.founding_seats`, else 5), what
+    each shop cleared this month, and Needs you (signing shops, overdue follow-ups, Points offline or low).
+    Pipeline is the cards, by stage; Partners the shops' terms, fees and this month's sales; Payouts the next
+    monthly run worked out from last month's sales at the NET-30 shops less their fees; Devices the Points.
+  - **Actions.** Moving a card (drag, or Move to) is `card-save` with a stage log line, and to Signing also records
+    `send-agreement {id, party}` (for the outside system); Not a fit is `card-remove`; a note is a `note` log line;
+    + Prospect is a new card; Log a visit as in Field; Raise the cap is `cap {id, cap}` (two-person; shown only when
+    the cap is known); Pause payments is `off {id}`; Propose the run is `run {total, shops}` (two-person). The
+    board's order isn't saved (`board-order` is unused: the redesign orders by due date).
+  - **Still missing ("Not real yet" or hidden):** each shop's cap and cap hits (MerchantRegistry) and its losses;
+    how fast shops move between stages (the reference's conversion rates); shop enquiries with their details and
+    states (reply, not a fit, show name); the payout schedule, its history and whether a run is approved (a
+    proposed run shows as proposed only until the page is built again); what members repaid before a run; the
+    $10 redemptions owed; devices other than Points (readers, tablets, printers report nothing); the refurb line
+    and pre-orders; changing terms, handing a lead to someone else, planning a visit onto a route, undoing a move;
+    a shop the merchant app has but the pipeline doesn't is read-only (no card to log to); shops in a city off the
+    drawn map aren't on it.
 - **Money** (ported, live): live it draws the money section (`moneyLive.ts`): the accounts with their
   sources' freshness (the feeds), the reserve check, the credit gate (the AssurancePool's target, exposure
   and room), the yield pool and its depositors (LendingPool), the bonds (BurnerBond) and what BondVault
