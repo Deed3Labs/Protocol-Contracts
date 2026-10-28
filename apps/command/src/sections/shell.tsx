@@ -306,10 +306,14 @@ export function closeModal() {
 export function onKey(e) {
   if (e.key === 'Escape') closeModal();
 }
-export function modalShell(title, body, foot) {
+/**
+ * Draws a modal flow into #modalRoot. `sheet` draws it as the redesigned pages' side panel instead of a
+ * centred dialog (command.css, "Flows as sheets"): same markup, so every flow's lookups are unchanged.
+ */
+export function modalShell(title, body, foot, sheet = false) {
   html(
     $('#modalRoot'),
-    <div className="scrim" data-scrim="">
+    <div className={sheet ? 'scrim sheet' : 'scrim'} data-scrim="">
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="mt">
         <header className="m-hd">
           <span className="sub" id="mt" />

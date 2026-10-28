@@ -233,23 +233,35 @@ Filled in as each page is ported. Known before starting:
     (`input-supplier`), make a batch (`batch-plan` then `batch-done`), a planned batch made, made short or
     dropped (`batch-done`, `allowShort`, `batch-cancel`), "Mark packed" (`pack`), and the address for packing
     (`GET /shop/orders/:id/address`, a reveal logged "To pack it").
-  - **Kept from the old page, opened from the new panels** (its flows in `#modalRoot`; the panel steps aside
+  - **Controls the reference has no drawing for, in its panels** (live, staff only): add or edit a supplier and
+    its price breaks (Materials → Suppliers, "Add a supplier", a supplier's Edit: `supplier` then
+    `supplier-breaks`); a material's kind, whether a once-per-order one is counted on hand and used on pickups
+    (`input-kind`), and what it costs more in a size or colour (`input-extra`, add and take off), in its panel's
+    "In the library" and "Costs more in"; one cost's own figure for a colour or size (`flat-override`, add and
+    take off, once the one cost is saved); pickup points (Orders → Waiting for pickup: "Add a pickup point", a
+    point's row to rename it, move it or stop it holding: `pickup-point`) and where a pickup order is held (its
+    panel's Pickup, `order-pickup`); and what a shipped order's label cost (its panel's What it cost,
+    `order-label`). Each saves through the page's `send()`, so the section loads again and the page is drawn
+    from what the server holds; a supplier saved opens its panel.
+  - **The old page's flows, drawn as the redesign's sheets** (opened from the new panels; the panel steps aside
     and comes back when the page is built again, as `tab()` carries it): the catalog's (Edit on the store,
     photos: add, first, describe, take off; colours, options, a variant, keep selling at 0; Add a product),
     the costing's (each line in full, a colour's or size's own line, copy a recipe, add a material, edit,
     archive and restore one, add to products, a buy with its date and note, count stock, write off) and the
     shop's (on and off the shelf, archive, restore, restock, the name and price of one not in the catalog,
     pre-orders' deposit refund and sign-up link, print labels, shipped, ready, picked up, remind, refund, see
-    a refund). Cost at sale (Phase 10d) and each order's cost and margin are in the panels.
+    a refund). Their markup, ids, `#modalRoot` lookups and API calls are unchanged: `vModal` marks a Shop flow
+    (`s:`, `c:`, `k:`) and `modalShell` draws it as `.scrim.sheet`, which command.css ("Flows as sheets")
+    draws as the page's own side panel (`.panel.spanel`): docked right, 560px (the whole width on a phone),
+    the panel's header, labels, inputs, ledgers, notes and buttons, its footer kept in view. Every other
+    modal is still the centred dialog. Cost at sale (Phase 10d) and each order's cost and margin are in the
+    panels.
   - **Still missing**, "Not real yet" or empty live: the shop's fixed costs (samples, photos, software: the
     overview's "Running the line"); the printer's bill for a batch; enforced supplier minimums; the real
-    Stripe fee and label prices (a label's cost is the `order-label` action, which has no control yet);
-    messaging a member when a pickup hold runs out; a list of cost changes of its own (purchases stand in);
-    "on the way" items beyond buys on order and Command's incoming rows. With an API and no control in the
-    reference (hidden live): adding or editing a supplier and its price breaks (`supplier`,
-    `supplier-breaks`), a material's extras and kind (`input-extra`, `input-kind`), a product's flat cost by
-    colour or size (`flat-override`, shown read-only), pickup points (`pickup-point`, `order-pickup`) and a
-    label's cost (`order-label`). Stock sizes are read as XS to XXL in order, as the old page read them.
+    Stripe fee and label prices bought from a carrier (a label's cost is typed in, `order-label`); messaging a
+    member when a pickup hold runs out; a list of cost changes of its own (purchases stand in); "on the way"
+    items beyond buys on order and Command's incoming rows. Stock sizes are read as XS to XXL in order, as the
+    old page read them.
 - **Members** (live: `members2.tsx` + `membersLive.ts`, its gate on).
   - **Live now.** People is the API's members plus the waitlist's people (the members section's new
     `WAITLIST`: masked like members, never at Totals, with their place in line, join time, city, source and

@@ -58,6 +58,8 @@ export function shopLive() {
     last: s.lastOrder ?? null,
     note: s.note || '',
     inputs: s.inputs ?? [],
+    // as the API sent it, for editing (the fields above say "—" where it has nothing)
+    raw: s,
   }));
   const SUP = Object.fromEntries(SUPPLIERS.map((s) => [s.id, s]));
   SUP[''] = { id: '', n: 'No supplier set', city: '', what: 'No supplier set', lead: null, terms: '—', min: '—', breaks: [], last: null, none: 1, inputs: [] };
