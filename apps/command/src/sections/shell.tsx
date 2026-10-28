@@ -19,6 +19,7 @@ import './members2';
 import './money2';
 import './build2';
 import './governance2';
+import './community2';
 import { membersPage } from './members';
 import { corridorMount, merchantsPage } from './merchants';
 import { moneyPage } from './money';

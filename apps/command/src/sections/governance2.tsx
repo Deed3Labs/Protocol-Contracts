@@ -1522,7 +1522,7 @@ function makeGovernance() {
       if (d.gforum !== undefined) {
         const id = G.panel && G.panel.id;
         closeG();
-        // the reference opens this proposal's own thread there (COMM2.openFor); that comes with Community's port
+        // the reference's COMM2.openFor: Community opens this proposal's own thread
         return CC.go('community', id ? `forum:${id}` : 'forum');
       }
     });
@@ -1577,6 +1577,10 @@ function makeGovernance() {
     if (PANES[k] && x) {
       API.setTab(PANES[k]);
       API.open(k, x);
+    } else if (k === 'proposals' && x) {
+      // Community links a proposal as proposals:P-012: its tab with its panel open
+      API.setTab('proposals');
+      API.open('id', x);
     } else API.setTab(k);
   }
   return {

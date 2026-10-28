@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { APP, PROTO } from '../playwright.config';
-import { ROUTES, canonical, open } from './pages';
+import { NEW_ROUTES, ROUTES, canonical, open } from './pages';
 
 /**
  * The buttons on every page and pane, clicked once in the prototype and once in the app, from the
@@ -54,7 +54,8 @@ async function sample(page: Page): Promise<number[]> {
   });
 }
 
-for (const route of ROUTES) {
+// the crawl compares with the old prototype, which has no page for a route new in the redesign (Community)
+for (const route of ROUTES.filter((r) => !NEW_ROUTES.has(r))) {
   for (let pane = 0; pane < 8; pane++) {
     test(`clicks match the prototype: ${route} · pane ${pane}`, async ({ browser }) => {
       const proto = await browser.newPage();

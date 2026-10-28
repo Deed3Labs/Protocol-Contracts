@@ -1,7 +1,12 @@
 import type { Page } from '@playwright/test';
 
-/** Every section, and the phone-only pages. Build is `build`, as the redesign knows it (the app also takes `contracts`). */
-export const ROUTES = ['home', 'waiting', 'more', 'growth', 'field', 'members', 'merchants', 'shop', 'money', 'build', 'governance', 'records', 'team'] as const;
+/**
+ * Every section, and the phone-only pages. Build is `build`, as the redesign knows it (the app also takes `contracts`).
+ * Community is new in the redesign: the old prototype has no such page, so only checks against the redesign take it.
+ */
+export const ROUTES = ['home', 'waiting', 'more', 'growth', 'field', 'members', 'merchants', 'shop', 'money', 'build', 'community', 'governance', 'records', 'team'] as const;
+/** Routes the old prototype (docs/command-reference) doesn't have. */
+export const NEW_ROUTES = new Set(['community']);
 
 /**
  * Both pages start the same way: the stored theme and menu width set, and map tiles and the CDN map
@@ -31,7 +36,7 @@ export async function open(page: Page, base: string, route: string, theme: 'ligh
 /** Pages ported to the redesign that it draws in light DOM (docs/ui-redesign-plan.md). */
 export const REDESIGNED = new Set(['home', 'waiting', 'more']);
 /** Ported pages the redesign draws in a shadow root: compared inside it, tab by tab. */
-export const SHADOWED = new Set(['growth', 'members', 'money', 'build', 'governance']);
+export const SHADOWED = new Set(['growth', 'members', 'money', 'build', 'governance', 'community']);
 /** Whether a page is compared with the redesign rather than the old reference. */
 export const ported = (route: string) => REDESIGNED.has(route) || SHADOWED.has(route);
 
