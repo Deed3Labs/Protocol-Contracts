@@ -10,9 +10,11 @@ import { vLevel } from './shell';
  * Field's follow-ups and visits come from the Merchants pipeline, and Merchants' devices from today's route.
  *
  * Names are only the data's: the signed-in person, the team, the route's staff, the pipeline's owners and
- * the shops. What nothing records yet is empty, never the reference's (docs/ui-redesign-plan.md, gaps):
- * routes planned ahead, the van's load, placement scoring, enquiry details, cap hits and losses, payout
- * history and approvals, devices other than Points, the refurb line and pre-orders.
+ * the shops. Field's own records (migration 0069) are the routes planned for the coming days (`ROUTES`, their
+ * stops joining what needs a visit), today's van load (`VAN`) and the shops that said yes to a poster (`YES`).
+ * What nothing records yet is empty, never the reference's (docs/ui-redesign-plan.md, gaps): placement
+ * scoring, enquiry details, cap hits and losses, payout history and approvals, devices other than Points,
+ * the refurb line and pre-orders.
  */
 
 const DAY = 864e5;
@@ -76,14 +78,14 @@ export function fmLive() {
     if (f && !byName.has(f)) byName.set(f, k);
   };
   const meName = me ? me.name || me.email || 'You' : 'You';
-  TEAM[meK] = { n: meName, ini: initials(meName), role: me?.group?.name || (lvl >= 4 ? 'Admin' : 'You'), field: lvl >= 3, admin: lvl >= 4 };
+  TEAM[meK] = { n: meName, ini: initials(meName), role: me?.group?.name || (lvl >= 4 ? 'Admin' : 'You'), field: lvl >= 3, admin: lvl >= 4, uid: me?.id ?? null };
   index(meK, meName);
   const FI = VSEC.indexOf('field');
   for (const p of PEOPLE_T) {
     if (p.off || p.role === 'investors') continue;
     if (me && (p.uid === me.id || p.id === meK)) continue;
     const lv = (p.custom || ROLES[p.role]?.[2] || [])[FI] ?? 0;
-    TEAM[p.id] = { n: p.n, ini: initials(p.n), role: p.custom ? 'Custom' : (ROLES[p.role]?.[0] ?? ''), field: lv >= 3 };
+    TEAM[p.id] = { n: p.n, ini: initials(p.n), role: p.custom ? 'Custom' : (ROLES[p.role]?.[0] ?? ''), field: lv >= 3, uid: p.uid ?? null };
     index(p.id, p.n);
   }
   // who the data names but the team doesn't list: shown by name, never offered as someone to give work to
@@ -99,6 +101,10 @@ export function fmLive() {
     if (!(nk in TEAM)) hidden(nk, { n, ini: initials(n), role: '', field: false });
     return nk;
   };
+  /** A team person by their id (routes name people so), else by the name the data gives. */
+  const keyOfId = (uid, n) => Object.keys(TEAM).find((k) => uid && TEAM[k].uid === uid) ?? keyOf(n);
+  /** The id a route is saved with: the person's, from Team (or the signed-in person's own). */
+  const uidOf = (k) => TEAM[k]?.uid ?? null;
 
   /* ── Field: today's route, the posters, what was found earlier ── */
   // every design a poster wears has a name (the API sends the designs it has; one it doesn't is named by its code)
@@ -233,22 +239,58 @@ export function fmLive() {
   const LIVE_BY_CITY = tally(MS.filter((m) => m.stage === 'transacting'), (m) => m.city);
   const SIGNING_BY_CITY = tally(MS.filter((m) => m.stage === 'signing'), (m) => m.city);
 
-  /* ── dates: the next five weekdays (the reference's Thu, Fri, Mon, Tue, Wed after its Wednesday) ── */
+  /* ── dates: the next five weekdays (the reference's Thu, Fri, Mon, Tue, Wed after its Wednesday), the two after
+     them a new route can also go on, and any day a route is planned for ── */
+  const weekday = (d) => ![0, 6].includes(new Date(TODAY + d * DAY).getUTCDay());
   const DAYS = [];
-  for (let d = 1; DAYS.length < 5 && d < 14; d++) {
-    const wd = new Date(TODAY + d * DAY).getUTCDay();
-    if (wd !== 0 && wd !== 6) DAYS.push(d);
-  }
+  for (let d = 1; DAYS.length < 5 && d < 14; d++) if (weekday(d)) DAYS.push(d);
+  const MORE = [];
+  for (let d = DAYS[DAYS.length - 1] + 1; MORE.length < 2 && d < 21; d++) if (weekday(d)) MORE.push(d);
+
+  /* ── Field's own records: the shops that said yes to a poster, the routes planned ahead, today's van ── */
+  const YES = (vars.POSTER_YES ?? []).map((y) => ({ ...y }));
+  // a yes waiting for its poster is a first poster to put up
+  for (const y of YES.filter((y) => !y.placed))
+    POOL.push({ id: 'y:' + y.id, kind: 'new', shop: y.shop, city: y.city, what: 'Put up a first poster', why: `From Placement · said yes ${fmtD(y.agreed)}`, sev: 'live', mins: 25, design: y.design || undefined, yes: y.id });
+  const KINDS = new Set(['poster', 'new', 'merchant', 'device', 'visit']);
+  const when = (t) => {
+    if (t == null) return '';
+    const d = new Date(t);
+    return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}, ${hhmm(t)}`;
+  };
+  const ROUTES = (vars.PLANS ?? []).map((p) => {
+    const d = Math.round((midnight(p.day) - TODAY) / DAY);
+    // a planned stop is what needs a visit it came from, while that still needs one; else the stop as it was planned
+    for (const s of p.stops)
+      if (!POOL.some((x) => x.id === s.ref))
+        POOL.push({ id: s.ref, kind: KINDS.has(s.kind) ? s.kind : 'visit', shop: s.shop, city: s.city, what: s.what, why: s.why, mins: s.mins, n: s.n ?? undefined, design: s.design ?? undefined, sev: 'line' });
+    if (d > 0 && !DAYS.includes(d)) DAYS.push(d);
+    return { id: String(p.id), d, who: keyOfId(p.who, p.whoName), by: keyOfId(p.by, p.byName), ids: p.stops.map((s) => s.ref), status: p.status, changed: p.changed, start: p.start || 'office', sentAt: when(p.sentAt), okAt: when(p.okAt), note: p.note || '' };
+  });
+  DAYS.sort((a, b) => a - b);
+  const VAN = vars.VAN ?? null;
+
+  /* ── a stop can be any shop: the merchant app's and the pipeline's, and where the posters are ── */
+  const SHOPLIST = new Map();
+  for (const m of MS) if (m.stage !== 'closed') SHOPLIST.set(m.name, [m.city, ['transacting', 'signed'].includes(m.stage) ? 'Partner' : 'Prospect']);
+  for (const p of POSTERS) if (!SHOPLIST.has(p.shop)) SHOPLIST.set(p.shop, [p.city, 'Poster']);
+
   const now = new Date(TODAY);
   const month = { long: MONTH[now.getUTCMonth()], short: MON[now.getUTCMonth()], last: MONTH[(now.getUTCMonth() + 11) % 12], lastShort: MON[(now.getUTCMonth() + 11) % 12] };
 
   return {
     TODAY,
     DAYS,
+    MORE,
     month,
     TEAM,
     meK,
     keyOf,
+    uidOf,
+    ROUTES,
+    VAN,
+    YES,
+    SHOPLIST: [...SHOPLIST.entries()].sort((a, b) => a[0].localeCompare(b[0])),
     POSTERS,
     DESIGNS: designs,
     ROUTE,

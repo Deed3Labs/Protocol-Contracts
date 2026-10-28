@@ -49,7 +49,8 @@ export interface GrowthPayload {
 }
 
 export interface RouteTask {
-  kind: 'poster' | 'device';
+  /** A visit is a planned stop with nothing to scan: a merchant visit, a first poster (migration 0069). */
+  kind: 'poster' | 'device' | 'visit';
   n?: number;
   t: string;
   note?: string;
@@ -66,7 +67,33 @@ export interface FieldPayload {
   SHOP_INFO: Record<string, [string, string, string]>;
   POSTERS: PosterRow[];
   DESIGNS: GrowthPayload['DESIGNS'];
+  /** Routes planned for the days after today, each one person's stops in order (Plan). */
+  PLANS?: PlannedRoute[];
+  /** What went in the van today, once it's recorded. */
+  VAN?: { day: number; loaded: string; posters: Record<string, number>; batteries: number; rolls: number; note: string | null; by: string | null } | null;
+  /** Shops that said yes to a poster: waiting for one, or put up in the last 30 days (`placed`, with the poster `n`). */
+  POSTER_YES?: Array<{ id: number; shop: string; city: string; card: string | null; source: 'visit' | 'pipeline' | 'hand'; agreed: number; by: string | null; design: string | null; note: string | null; placed: number | null; n: number | null }>;
   asOf: number;
+}
+
+export interface PlannedRoute {
+  id: number;
+  day: number;
+  /** The person whose route it is, and who planned it (team people's ids). */
+  who: string;
+  whoName: string;
+  by: string;
+  byName: string;
+  start: string;
+  status: 'draft' | 'sent' | 'accepted';
+  changed: boolean;
+  miles: number;
+  minutes: number;
+  backBy: string | null;
+  note: string | null;
+  sentAt: number | null;
+  okAt: number | null;
+  stops: Array<{ ref: string; kind: 'poster' | 'new' | 'merchant' | 'device' | 'visit'; shop: string; city: string; what: string; why: string; mins: number; n: number | null; design: string | null; eta: string | null }>;
 }
 
 /** Marcus Lee's route on the prototype's day, as Field draws it. */

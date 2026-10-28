@@ -865,7 +865,7 @@ export function commandRouter(deps: CommandDeps) {
         return res.status(202).json({ proposal, needs: 'a second person' });
       }
       const out = await c.db.transaction(async (tx) => {
-        const r = await runAction(tx, payload, c.person, null, null);
+        const r = await runAction(tx, payload, c.person, null, null, c.levels);
         await auditFrom(req, { area: section, action: summary, detail: r.queued ? 'Recorded for the outside system; nothing sent yet' : '', after: b.data, result: 'done' }, tx);
         return r;
       });
@@ -884,10 +884,10 @@ export function commandRouter(deps: CommandDeps) {
   }
 
   /** Runs an action as the person who asked for it (and the second person, when approved). */
-  async function runAction(tx: Queryable, p: ActionPayload, by: store.Person, approver: store.Person | null, proposalId: string | null) {
+  async function runAction(tx: Queryable, p: ActionPayload, by: store.Person, approver: store.Person | null, proposalId: string | null, levels?: Levels) {
     const a = actionFor(p.section, p.kind) as Action;
     const at = actionTime(p.section, now());
-    const result = a.apply ? await a.apply({ tx, person: by, approver, at }, p.body) : undefined;
+    const result = a.apply ? await a.apply({ tx, person: by, approver, at, levels }, p.body) : undefined;
     const queued = typeof a.outbox === 'function' ? a.outbox(p.body) : !!a.outbox;
     if (queued) {
       await tx.query('INSERT INTO command.outbox (section, kind, summary, payload, requested_by, approved_by, proposal_id) VALUES ($1, $2, $3, $4, $5, $6, $7)', [

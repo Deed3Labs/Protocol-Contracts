@@ -1,8 +1,8 @@
 import { DAY, SEED_TODAY } from '@clear/command-types';
 import { z } from 'zod';
 import type { Queryable } from '../../db/db.js';
-import { APPROVE, PROPOSE, type Level, type Section } from './levels.js';
-import { providerFor } from './sections.js';
+import { APPROVE, PROPOSE, type Level, type Levels, type Section } from './levels.js';
+import { providerFor, startPlannedRoute } from './sections.js';
 import { addToCatalog, adoptSiteProduct, deletePhoto, isProductPhoto, siteProductRow, type CatalogColour, type CatalogProduct, type CatalogVariant } from './catalog.js';
 import { productCost, readBook, roundCents, runUses } from './costing.js';
 import { recordOverhead, type OrderRow } from './shopModel.js';
@@ -30,6 +30,8 @@ export interface Ctx {
   approver: Person | null;
   /** When it happened: the prototype's day and time for a seeded section, else now. */
   at: Date;
+  /** The asker's levels, when they asked for it themselves (not from an approval): Field's routes are their own unless they approve there. */
+  levels?: Levels;
 }
 
 export interface Action<B = any> {
@@ -129,6 +131,57 @@ const growth: Record<string, Action> = {
 
 // ── Field ───────────────────────────────────────────────────────────────────
 
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const hhmmOf = z.string().regex(/^[0-2]\d:[0-5]\d$/);
+const isoOf = (d: Date) => d.toISOString().slice(0, 10);
+const WDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const dayName = (day: string) => {
+  const d = new Date(day + 'T00:00:00Z');
+  return `${WDAY[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+};
+/** A stop on a planned route, as the Plan tab has it: what needs a visit it came from (`ref`), or one of its own. */
+const planStop = z.object({
+  ref: z.string().trim().min(1).max(80),
+  kind: z.enum(['poster', 'new', 'merchant', 'device', 'visit']),
+  shop: text(120).min(1),
+  city: text(80).default(''),
+  what: text(120).min(1),
+  why: text(200).default(''),
+  mins: z.number().int().min(0).max(600),
+  n: z.number().int().positive().nullable().default(null),
+  design: z.string().regex(/^[A-Z]$/).nullable().default(null),
+  eta: hhmmOf.nullable().default(null),
+});
+/** The page's estimate for the route as it stands. */
+const planFigures = { miles: z.number().int().min(0).max(2000).default(0), minutes: z.number().int().min(0).max(24 * 60).default(0), backBy: hhmmOf.nullable().default(null) };
+const nameOf = async (db: Queryable, id: string) => (await one<{ n: string }>(db, `SELECT coalesce(nullif(name, ''), split_part(email, '@', 1), 'Someone') AS n FROM command.people WHERE id = $1`, [id]))?.n ?? 'Someone';
+/** An admin on Field (Approve) plans anyone's routes; anyone else with Field access plans their own. */
+const fieldAdmin = (c: Ctx) => (c.levels?.field ?? 0) >= APPROVE;
+async function canPlan(c: Ctx, who: string, day: string | Date) {
+  if (who !== c.person.id && !fieldAdmin(c)) throw new ActionError(403, 'NOT_YOURS', 'You can plan your own routes. To plan for someone else, ask an admin.');
+  await must(c.tx, 'SELECT id FROM command.people WHERE id = $1', [who], 'person');
+  if (new Date(day).getTime() < dayStart(c.at).getTime()) throw new ActionError(400, 'PAST_DAY', 'Routes are planned for today or the days ahead');
+}
+/** A planned route the asker can change: their own, or anyone's for an admin. */
+async function planOf(c: Ctx, id: number) {
+  const r = await must<{ id: number; day: Date; person_id: string; start: string; status: string }>(c.tx, 'SELECT id, day, person_id, start, status FROM command.route_plans WHERE id = $1', [id], 'planned route');
+  if (r.person_id !== c.person.id && !fieldAdmin(c)) throw new ActionError(403, 'NOT_YOURS', 'Only the person whose route it is, or an admin, can change it');
+  return r;
+}
+/** A route's stops, replaced in the order given (a poster the list doesn't have is kept as the stop's own words). */
+async function putStops(tx: Queryable, plan: number, stops: z.infer<typeof planStop>[]) {
+  if (new Set(stops.map((s) => s.ref)).size !== stops.length) throw new ActionError(400, 'BAD_REQUEST', 'A stop is on the route twice');
+  const ns = stops.map((s) => s.n).filter((n): n is number => n != null);
+  const known = new Set(ns.length ? (await tx.query<{ n: number }>('SELECT n FROM command.posters WHERE n = ANY($1)', [ns])).rows.map((r) => r.n) : []);
+  await tx.query('DELETE FROM command.route_plan_stops WHERE plan_id = $1', [plan]);
+  for (const [i, s] of stops.entries())
+    await tx.query(
+      'INSERT INTO command.route_plan_stops (plan_id, position, ref, kind, shop, city, what, why, mins, poster, design, eta) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
+      [plan, i, s.ref, s.kind, s.shop, s.city, s.what, s.why, s.mins, s.n != null && known.has(s.n) ? s.n : null, s.design, s.eta],
+    );
+}
+
 const OUT = { checked: 'up', damaged: 'faded', replaced: 'up', missing: 'missing' } as const;
 const field: Record<string, Action> = {
   scan: {
@@ -184,6 +237,133 @@ const field: Record<string, Action> = {
         `${l.state === 'missing' ? 'Replace' : 'Swap'} ${l.poster}`,
         l.state === 'missing' ? 'Missing' : 'Faded',
       ]);
+    },
+  },
+  // Routes planned for the coming days (Plan): a draft, sent to the person whose route it is, then accepted. Changing a
+  // route someone already has makes it a draft again, so it goes again. Accepted for today, it becomes today's route.
+  'route-plan': {
+    body: z.object({ day: isoDay, who: z.string().uuid(), start: text(40).default('office'), stops: z.array(planStop).max(40).default([]), ...planFigures }),
+    summary: async (b, db) => `Planned a route for ${await nameOf(db, b.who)} on ${dayName(b.day)}`,
+    apply: async (c, b) => {
+      await canPlan(c, b.who, b.day);
+      const r = await one<{ id: number }>(
+        c.tx,
+        `INSERT INTO command.route_plans (day, person_id, start, miles, minutes, back_by, planned_by) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (day, person_id) DO NOTHING RETURNING id`,
+        [b.day, b.who, b.start || 'office', b.miles, b.minutes, b.backBy, c.person.id],
+      );
+      if (!r) throw new ActionError(409, 'TAKEN', `${await nameOf(c.tx, b.who)} already has a route that day`);
+      await putStops(c.tx, r.id, b.stops);
+      return { id: r.id };
+    },
+  },
+  'route-save': {
+    body: z.object({ id: z.number().int().positive(), who: z.string().uuid().optional(), start: text(40).optional(), stops: z.array(planStop).max(40), ...planFigures }),
+    summary: () => 'Changed a planned route',
+    apply: async (c, b) => {
+      const r = await planOf(c, b.id);
+      const to = b.who ?? r.person_id;
+      if (to !== r.person_id) {
+        await canPlan(c, to, r.day);
+        if (await one(c.tx, 'SELECT 1 FROM command.route_plans WHERE day = $1 AND person_id = $2 AND id <> $3', [r.day, to, r.id]))
+          throw new ActionError(409, 'TAKEN', `${await nameOf(c.tx, to)} already has a route that day`);
+      }
+      // a route that's been sent or saved goes again once it's changed
+      await c.tx.query(
+        `UPDATE command.route_plans SET person_id = $2, start = $3, miles = $4, minutes = $5, back_by = $6,
+           changed = (status <> 'draft') OR changed, status = 'draft' WHERE id = $1`,
+        [r.id, to, b.start || r.start, b.miles, b.minutes, b.backBy],
+      );
+      await putStops(c.tx, r.id, b.stops);
+    },
+  },
+  'route-send': {
+    body: z.object({ id: z.number().int().positive(), note: text(500).default('') }),
+    summary: () => 'Sent a planned route',
+    // Command keeps the route; putting it on their phone is the outside system's
+    outbox: true,
+    apply: async (c, b) => {
+      const r = await planOf(c, b.id);
+      if (!(await one(c.tx, 'SELECT 1 FROM command.route_plan_stops WHERE plan_id = $1', [r.id]))) throw new ActionError(400, 'NO_STOPS', 'Add a stop before sending the route');
+      await c.tx.query(`UPDATE command.route_plans SET status = 'sent', changed = false, sent_at = $2, sent_by = $3, note = nullif($4, '') WHERE id = $1`, [r.id, c.at, c.person.id, b.note]);
+    },
+  },
+  'route-take-back': {
+    body: z.object({ id: z.number().int().positive() }),
+    summary: () => 'Took back a sent route',
+    apply: async (c, b) => {
+      const r = await planOf(c, b.id);
+      if (r.status !== 'sent') throw new ActionError(409, 'NOT_SENT', 'That route isn’t waiting to be accepted');
+      await c.tx.query(`UPDATE command.route_plans SET status = 'draft' WHERE id = $1`, [r.id]);
+    },
+  },
+  // the person accepting their route (or saving their own), or an admin marking it accepted on their word
+  'route-accept': {
+    body: z.object({ id: z.number().int().positive() }),
+    summary: () => 'Accepted a planned route',
+    apply: async (c, b) => {
+      const r = await planOf(c, b.id);
+      if (!(await one(c.tx, 'SELECT 1 FROM command.route_plan_stops WHERE plan_id = $1', [r.id]))) throw new ActionError(400, 'NO_STOPS', 'A route needs a stop before it’s accepted');
+      await c.tx.query(`UPDATE command.route_plans SET status = 'accepted', changed = false, accepted_at = $2, accepted_by = $3 WHERE id = $1`, [r.id, c.at, c.person.id]);
+      // accepted for today, it's today's route (when there isn't one already)
+      return { today: await startPlannedRoute(c.tx, isoOf(dayStart(c.at))) };
+    },
+  },
+  // the van's load this morning (Today): posters by design, spare batteries and receipt rolls; recorded again, it's replaced
+  van: {
+    body: z.object({
+      posters: z.record(z.string().regex(/^[A-Z]$/), z.number().int().min(0).max(500)).default({}),
+      batteries: z.number().int().min(0).max(100).default(0),
+      rolls: z.number().int().min(0).max(200).default(0),
+      note: text(300).default(''),
+      at: hhmmOf.optional(),
+    }),
+    summary: (b) => `Loaded the van · ${Object.values(b.posters).reduce((s: number, n) => s + (n as number), 0)} posters, ${b.batteries} batteries, ${b.rolls} receipt rolls`,
+    apply: async ({ tx, at, person }, b) => {
+      const d = dayStart(at),
+        when = b.at ?? hhmm(at);
+      const posters = Object.fromEntries(Object.entries(b.posters as Record<string, number>).filter(([, n]) => n > 0));
+      await tx.query(
+        `INSERT INTO command.van_loads (day, loaded_at, posters, batteries, rolls, note, recorded_by, recorded_at) VALUES ($1, $2, $3, $4, $5, nullif($6, ''), $7, $8)
+         ON CONFLICT (day) DO UPDATE SET loaded_at = EXCLUDED.loaded_at, posters = EXCLUDED.posters, batteries = EXCLUDED.batteries, rolls = EXCLUDED.rolls, note = EXCLUDED.note, recorded_by = EXCLUDED.recorded_by, recorded_at = EXCLUDED.recorded_at`,
+        [d, when, JSON.stringify(posters), b.batteries, b.rolls, b.note, person.id, at],
+      );
+      // today's route says when the van was loaded
+      await tx.query('UPDATE command.routes SET loaded_at = $2 WHERE day = $1', [d, when]);
+    },
+  },
+  // a shop said yes to a poster (Placement): on a visit, from the pipeline, or by hand
+  'poster-yes': {
+    body: z.object({ shop: text(120).min(1), city: text(80).default(''), card: id.nullable().default(null), source: z.enum(['visit', 'pipeline', 'hand']).default('hand'), design: z.string().regex(/^[A-Z]$/).nullable().default(null), note: text(300).default('') }),
+    summary: (b) => `${b.shop} said yes to a poster`,
+    apply: async ({ tx, at, person }, b) => {
+      if (b.design) await must(tx, 'SELECT code FROM command.poster_designs WHERE code = $1', [b.design], 'design');
+      const r = await one<{ id: number }>(
+        tx,
+        `INSERT INTO command.poster_yes (shop, city, card_id, source, agreed_on, agreed_by, design, note) VALUES ($1, $2, $3, $4, $5, $6, $7, nullif($8, ''))
+         ON CONFLICT (lower(shop), lower(city)) WHERE placed_on IS NULL AND dropped_at IS NULL DO NOTHING RETURNING id`,
+        [b.shop, b.city, b.card, b.source, dayStart(at), person.id, b.design, b.note],
+      );
+      if (!r) throw new ActionError(409, 'ALREADY', `${b.shop} has already said yes`);
+      return { id: r.id };
+    },
+  },
+  // the poster is up: it joins the posters (as Growth's poster-add puts one up), and the shop is placed
+  'poster-placed': {
+    body: z.object({ id: z.number().int().positive(), design: z.string().regex(/^[A-Z]$/) }),
+    summary: () => 'Put up a first poster at a shop that said yes',
+    apply: async (c, b) => {
+      const y = await must<{ id: number; shop: string; city: string }>(c.tx, 'SELECT id, shop, city FROM command.poster_yes WHERE id = $1 AND placed_on IS NULL AND dropped_at IS NULL', [b.id], 'shop waiting for a poster');
+      const { n } = (await growth['poster-add'].apply!(c, { place: y.shop, city: y.city || '–', design: b.design })) as { n: number };
+      await c.tx.query('UPDATE command.poster_yes SET placed_on = $2, poster = $3, design = $4 WHERE id = $1', [y.id, dayStart(c.at), n, b.design]);
+      return { n };
+    },
+  },
+  'poster-no': {
+    body: z.object({ id: z.number().int().positive(), reason: text(200).default('') }),
+    summary: (b) => `A shop no longer wants a poster${b.reason ? ` · ${b.reason}` : ''}`,
+    apply: async ({ tx, at }, b) => {
+      const r = await tx.query('UPDATE command.poster_yes SET dropped_at = $2 WHERE id = $1 AND placed_on IS NULL AND dropped_at IS NULL RETURNING 1', [b.id, at]);
+      if (!r.rows.length) throw new ActionError(404, 'NOT_FOUND', 'No such shop waiting for a poster');
     },
   },
 };
