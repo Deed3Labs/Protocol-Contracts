@@ -15,7 +15,8 @@ for (const route of ROUTES) {
     const proto = await browser.newPage();
     const app = await browser.newPage();
     const shell = await browser.newPage();
-    await open(proto, REDESIGNED.has(route) ? REDESIGN : PROTO, route);
+    // a shadowed page is compared with the redesign only (below), and a new one has no old page to open
+    if (!SHADOWED.has(route)) await open(proto, REDESIGNED.has(route) ? REDESIGN : PROTO, route);
     await open(app, APP, route);
     // the shell is the redesign's; a page is compared with the old reference until it's ported (docs/ui-redesign-plan.md)
     await open(shell, REDESIGN, route);
