@@ -11,8 +11,8 @@ import { vLevel } from './shell';
  *
  * Names are only the data's: the signed-in person, the team, the route's staff, the pipeline's owners and
  * the shops. What nothing records yet is empty, never the reference's (docs/ui-redesign-plan.md, gaps):
- * routes planned ahead, the van's load, placement scoring, enquiry details, cap hits and losses, payout
- * history and approvals, devices other than Points, the refurb line and pre-orders.
+ * routes planned ahead, the van's load, placement scoring, losses, and devices other than Points. The payout runs,
+ * the refurb line, the pre-orders and the shop enquiries are the API's (migration 0067, and the shop's reservations).
  */
 
 const DAY = 864e5;
@@ -270,6 +270,18 @@ export function fmLive() {
     schedule: fig('merchants.payouts.schedule') ?? null,
     /** Last month's sales at each shop, paid now or on plans, and what members repaid (TermIssuer); null until the API reads the chain. */
     collected: vars.collected ?? null,
+    /** The monthly payout runs, newest first: each one's proposal, and its record once a second person approved it. */
+    runs: vars.merchantRuns ?? [],
+    /** The PayoutPool's unpaid claims (each NET-14 shop's payouts, as the chain schedules them); null until the API reads the chain. */
+    claims: vars.payoutClaims ?? null,
+    /** The refurb line's units, oldest first. */
+    refurb: vars.refurb ?? [],
+    /** The shops' hardware pre-orders, from the shop's reservations. */
+    preorders: vars.preorders ?? [],
+    /** The site's shop enquiries, newest first, their contacts masked. */
+    enquiries: vars.enquiries ?? [],
+    /** The signed-in person's id, as a run's proposer is named (nobody approves their own). */
+    meId: me?.id ?? null,
     newest: fig('merchants.newest_partner') ?? null,
   };
 }

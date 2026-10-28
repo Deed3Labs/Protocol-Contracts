@@ -66,9 +66,10 @@ export async function join(db: Queryable, j: Join, now: Date): Promise<void> {
   const [first, ...rest] = j.name.trim().split(/\s+/);
   const source = j.poster ? 'Poster' : 'Website';
   await db.query(
-    `INSERT INTO command.form_submissions (first_name, last_name, email, form, city, source, received_at, status, zip, details, live)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'New', $8, $9, true)`,
-    [first ?? '', rest.join(' '), email, FORM[j.as], city, source, now, zip || null, j.details && Object.keys(j.details).length ? JSON.stringify(j.details) : null],
+    `INSERT INTO command.form_submissions (first_name, last_name, email, form, city, source, received_at, status, zip, details, note, live)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'New', $8, $9, $10, true)`,
+    // the note is what they asked (a shop enquiry's question, read on Merchants); a waitlist place keeps its own too
+    [first ?? '', rest.join(' '), email, FORM[j.as], city, source, now, zip || null, j.details && Object.keys(j.details).length ? JSON.stringify(j.details) : null, (j.note ?? '').trim()],
   );
   if (j.as !== 'member') return;
   await db.query(

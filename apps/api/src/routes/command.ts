@@ -480,11 +480,22 @@ export function commandRouter(deps: CommandDeps) {
   router.get('/sections/merchants', need('merchants', TOTALS), async (req, res) => {
     const c = req.command!;
     try {
-      res.json(await merchantsSection(c.db, { level: c.levels.merchants, reveal: false, now: now() }));
+      res.json(await merchantsSection(c.db, { level: c.levels.merchants, reveal: false, now: now(), chain: deps.chain }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
     }
+  });
+
+  /** A shop enquiry's contact (their name and email), shown for a reason: Merchants at Approve, logged as a reveal before it's sent. */
+  router.post('/merchants/enquiries/:id/reveal', limits.write, need('merchants', APPROVE), async (req, res) => {
+    const c = req.command!;
+    const id = Number(req.params.id);
+    const { rows } = Number.isInteger(id) && id > 0 ? await c.db.query<{ first_name: string; last_name: string; email: string }>(`SELECT first_name, last_name, email FROM command.form_submissions WHERE id = $1 AND form = 'Shop enquiry'`, [id]) : { rows: [] };
+    if (!rows[0]) return fail(res, 404, 'NOT_FOUND', 'No such shop enquiry');
+    if (!(await revealFrom(req, res, { section: 'merchants', subject: `enquiry ${id}`, field: 'name' }))) return;
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ id, first: rows[0].first_name, last: rows[0].last_name, email: rows[0].email });
   });
 
   router.get('/sections/money', need('money', TOTALS), async (req, res) => {
@@ -805,6 +816,7 @@ export function commandRouter(deps: CommandDeps) {
   /** The second person. Never the proposer: refused here, and by a CHECK in the database. */
   router.post('/proposals/:id/approve', limits.write, async (req, res) => {
     const c = req.command!;
+    // an action can refuse at approval (a month's payout run approved already): nothing is settled then
     const out = await c.db.transaction(async (tx) => {
       const p = await store.proposalForUpdate(tx, req.params.id);
       if (!p || p.status !== 'waiting') return { status: 404, code: 'NO_PROPOSAL', message: 'Nothing waiting with that id' };
@@ -816,6 +828,9 @@ export function commandRouter(deps: CommandDeps) {
       await auditFrom(req, { area: p.area, action: p.summary, detail: 'Approved by a second person', after: p.payload, result: 'approved', approver: c.person.id }, tx);
       const ap = p.payload as unknown as ActionPayload;
       return { status: 200, result, kind: p.kind, section: ap.section, actionKind: ap.kind, body: ap.body };
+    }).catch((e) => {
+      if (e instanceof ActionError) return { status: e.status, code: e.code, message: e.message };
+      throw e;
     });
     if (out.status !== 200) return fail(res, out.status, out.code!, out.message!);
     if (out.kind === 'action') afterAction(actionFor(out.section!, out.actionKind!) as Action, out.body);
@@ -887,7 +902,7 @@ export function commandRouter(deps: CommandDeps) {
   async function runAction(tx: Queryable, p: ActionPayload, by: store.Person, approver: store.Person | null, proposalId: string | null) {
     const a = actionFor(p.section, p.kind) as Action;
     const at = actionTime(p.section, now());
-    const result = a.apply ? await a.apply({ tx, person: by, approver, at }, p.body) : undefined;
+    const result = a.apply ? await a.apply({ tx, person: by, approver, at, proposal: proposalId }, p.body) : undefined;
     const queued = typeof a.outbox === 'function' ? a.outbox(p.body) : !!a.outbox;
     if (queued) {
       await tx.query('INSERT INTO command.outbox (section, kind, summary, payload, requested_by, approved_by, proposal_id) VALUES ($1, $2, $3, $4, $5, $6, $7)', [

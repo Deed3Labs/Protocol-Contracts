@@ -28,6 +28,8 @@ export interface Ctx {
   person: Person;
   /** The second person, when it ran from an approval. */
   approver: Person | null;
+  /** The proposal it ran from, when it did. */
+  proposal?: string | null;
   /** When it happened: the prototype's day and time for a seeded section, else now. */
   at: Date;
 }
@@ -254,7 +256,40 @@ const card = z.object({
   flag: z.boolean().default(false),
   /** Log lines added since it was last saved, oldest first. */
   log: z.array(z.object({ text: text(500).min(1), type: z.enum(['note', 'call', 'visit', 'demo', 'stage', 'edit']) })).max(50).default([]),
+  /** The shop enquiry it was added from (a form submission): marked added, with this card. */
+  enquiry: z.number().int().positive().optional(),
 });
+/** A shop enquiry from the site's join form, by its id. */
+const enquiryId = z.number().int().positive();
+const ENQUIRY_STATE = { replied: 'Replied', notfit: 'Not a fit', new: 'New' } as const;
+const markEnquiry = async (tx: Queryable, eid: number, status: string, by: Person, at: Date, extra: { card?: string; why?: string } = {}) => {
+  const r = await tx.query(
+    `UPDATE command.form_submissions SET status = $2, card_id = $3, why = $4, handled_by = $5, handled_at = $6 WHERE id = $1 AND form = 'Shop enquiry' RETURNING 1`,
+    [eid, status, extra.card ?? null, extra.why ?? '', status === 'New' ? null : who(by), status === 'New' ? null : at],
+  );
+  if (!r.rows.length) throw new ActionError(404, 'NOT_FOUND', 'No such shop enquiry');
+};
+
+/** A payout run's month of sales ('2026-09'), and the line each shop has in it, as the page drew them. */
+const PERIOD = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+const ISO_DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const runLine = z.object({ id, name: text(200), sales: money, fee: money, red: money, total: money });
+/** The month before `at`'s, as a period. */
+const lastPeriod = (at: Date) => new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+/**
+ * When a NET-30 run for a month's sales goes: 30 days after the month's last day, or the weekday after
+ * when that's a weekend. The page sends what it showed; this is the same rule, for a run sent without.
+ */
+export const runGoes = (period: string) => {
+  const [y, m] = period.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m, 0) + 30 * DAY);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+
+/** The refurb line's stages, in order. */
+export const REFURB_STAGES = ['bought', 'repair', 'testing', 'ready', 'shipped'] as const;
+const refurbUnit = (db: Queryable, uid: number) => must<{ id: number; model: string; stage: string; shop_name: string | null }>(db, 'SELECT id, model, stage, shop_name FROM command.refurb_units WHERE id = $1', [uid], 'refurb unit');
 const merchants: Record<string, Action> = {
   'card-save': {
     body: card,
@@ -271,6 +306,43 @@ const merchants: Record<string, Action> = {
         [b.id, pos, b.name, b.kind, b.city, b.stage, b.owner, b.val == null ? null : cents(b.val), b.next, b.due == null ? null : new Date(b.due), JSON.stringify(b.contact), b.source, b.addr, b.note, b.flag, touched ? dayStart(at) : null, at],
       );
       for (const l of b.log) await tx.query('INSERT INTO command.merchant_activity (stage_id, at, kind, text, who) VALUES ($1, $2, $3, $4, $5)', [b.id, at, l.type, l.text, who(person)]);
+      if (b.enquiry) await markEnquiry(tx, b.enquiry, 'Added', person, at, { card: b.id });
+    },
+  },
+  // ── shop enquiries (the site's join form, "I run a shop"): answered, or turned down; added is card-save's
+  enquiry: {
+    body: z.object({ id: enquiryId, state: z.enum(['replied', 'notfit', 'new']), why: text(200).default('') }),
+    summary: (b) => (b.state === 'replied' ? `Answered shop enquiry #${b.id}` : b.state === 'notfit' ? `Turned down shop enquiry #${b.id}${b.why ? ` · ${b.why}` : ''}` : `Opened shop enquiry #${b.id} again`),
+    apply: async ({ tx, person, at }, b) => markEnquiry(tx, b.id, ENQUIRY_STATE[b.state], person, at, { why: b.state === 'notfit' ? b.why : '' }),
+  },
+  // ── the refurb line: Command's own record, so no second person (nothing here moves money)
+  'refurb-add': {
+    body: z.object({ model: text(120).min(1), serial: text(80).default(''), cost: money.nullable().default(null), note: text(500).default('') }),
+    summary: (b) => `Added a ${b.model} to the refurb line`,
+    apply: async ({ tx, person, at }, b) => {
+      const { rows } = await tx.query<{ id: number }>(
+        'INSERT INTO command.refurb_units (model, serial, cost_cents, note, added_by, added_at, moved_at) VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING id',
+        [b.model, b.serial, b.cost == null ? null : cents(b.cost), b.note, who(person), at],
+      );
+      return { id: rows[0].id };
+    },
+  },
+  'refurb-move': {
+    body: z.object({ id: z.number().int().positive(), stage: z.enum(REFURB_STAGES) }),
+    summary: (b) => `Moved refurb unit #${b.id} to ${b.stage}`,
+    apply: async ({ tx, at }, b) => {
+      const u = await refurbUnit(tx, b.id);
+      if (b.stage === 'shipped' && !u.shop_name) throw new ActionError(409, 'NO_SHOP', 'Say which shop it goes to first');
+      await tx.query(`UPDATE command.refurb_units SET stage = $2, moved_at = $3, shipped_at = CASE WHEN $2 = 'shipped' THEN coalesce(shipped_at, $3) END WHERE id = $1`, [b.id, b.stage, at]);
+    },
+  },
+  'refurb-assign': {
+    body: z.object({ id: z.number().int().positive(), shop: id.nullable(), name: text(200).default(''), ships: ISO_DAY.nullable().default(null) }),
+    summary: (b) => (b.shop ? `Refurb unit #${b.id} goes to ${b.name || b.shop}` : `Refurb unit #${b.id} isn’t going to a shop`),
+    apply: async ({ tx }, b) => {
+      const u = await refurbUnit(tx, b.id);
+      if (u.stage === 'shipped' && !b.shop) throw new ActionError(409, 'SHIPPED', 'It’s shipped: move it back a stage first');
+      await tx.query('UPDATE command.refurb_units SET shop_id = $2, shop_name = $3, ships_on = $4 WHERE id = $1', [b.id, b.shop, b.shop ? b.name || b.shop : null, b.shop ? b.ships : null]);
     },
   },
   'board-order': {
@@ -300,7 +372,36 @@ const merchants: Record<string, Action> = {
   cap: { body: z.object({ id, cap: money.positive() }), summary: (b) => `Raise ${b.id}’s cap to $${b.cap.toFixed(2)}`, second: () => true, outbox: true },
   off: { body: z.object({ id, reason: text(200).default('') }), summary: (b) => `Turn off payments for ${b.id}`, outbox: true },
   on: { body: z.object({ id }), summary: (b) => `Turn on Clear payments for ${b.id}`, outbox: true },
-  run: { body: z.object({ total: money, shops: z.number().int().nonnegative() }), summary: (b) => `Monthly payout run · ${b.shops} shops · $${b.total.toFixed(2)}`, second: () => true, outbox: true },
+  /**
+   * The monthly (NET-30) run: always a second person. Approved, it's recorded as the month's run (one a
+   * month) and goes to the outbox for the Ops Safe; waiting or sent back, it's only its proposal.
+   */
+  run: {
+    body: z.object({ total: money, shops: z.number().int().nonnegative(), period: PERIOD.optional(), goes: ISO_DAY.optional(), lines: z.array(runLine).max(500).default([]) }),
+    summary: (b) => `Monthly payout run${b.period ? ` for ${b.period}` : ''} · ${b.shops} shops · $${b.total.toFixed(2)}`,
+    second: () => true,
+    apply: async ({ tx, person, approver, at, proposal }, b) => {
+      if (!approver || !proposal) throw new ActionError(403, 'SECOND_PERSON', 'A payout run needs a second person');
+      const period = b.period ?? lastPeriod(at);
+      if (await one(tx, 'SELECT 1 FROM command.payout_runs WHERE period = $1', [period])) throw new ActionError(409, 'RUN_DONE', `${period}’s run is already approved`);
+      const p = (await one<{ created_at: Date }>(tx, 'SELECT created_at FROM command.proposals WHERE id = $1', [proposal]))!;
+      await tx.query(
+        `INSERT INTO command.payout_runs (proposal_id, period, goes_on, lines, total_cents, shops, proposed_by, proposed_at, approved_by, approved_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [proposal, period, b.goes ?? runGoes(period), JSON.stringify(b.lines), cents(b.total), b.shops, person.id, p.created_at, approver.id, at],
+      );
+    },
+    outbox: true,
+  },
+  /** A run the Ops Safe has executed: marked paid (Command doesn't hear the Safe's execution yet). */
+  'run-paid': {
+    body: z.object({ run: z.string().uuid() }),
+    summary: async (b, db) => `Marked ${(await one<{ period: string }>(db, 'SELECT period FROM command.payout_runs WHERE proposal_id = $1', [b.run]))?.period ?? 'a'} payout run paid`,
+    apply: async ({ tx, person, at }, b) => {
+      const r = await must<{ paid_at: Date | null }>(tx, 'SELECT paid_at FROM command.payout_runs WHERE proposal_id = $1 FOR UPDATE', [b.run], 'approved run');
+      if (r.paid_at) throw new ActionError(409, 'PAID', 'That run is marked paid already');
+      await tx.query('UPDATE command.payout_runs SET paid_at = $2, paid_by = $3 WHERE proposal_id = $1', [b.run, at, person.id]);
+    },
+  },
 };
 
 // ── Shop ────────────────────────────────────────────────────────────────────
