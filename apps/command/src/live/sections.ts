@@ -140,7 +140,7 @@ import { setFigures } from './figures';
  * opened; until then the page shows the prototype's loading state. Sections not listed here still
  * draw the prototype's demo data.
  */
-export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records']);
+export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records', 'settings']);
 const ready = new Set<string>();
 let loads = 0;
 /** Counts the sections loaded: a redesigned page built from older data is built again (pageHost.tsx). */
@@ -386,6 +386,11 @@ const apply = {
     replace(ALERTS0, [...(f['home.alerts'] ?? []), ...(d.LOW_MATERIALS ?? []).map(lowAlert)]);
     if (f['growth.range']) assign(RANGE, f['growth.range']);
   },
+  // Settings → Rules and limits (the redesign's admin2.tsx, through sections/adminLive.ts): every rule, what waits, what changed
+  settings(d) {
+    vars.SETTINGS = d.SETTINGS ?? [];
+    vars.SETTINGS_HISTORY = d.HISTORY ?? [];
+  },
   members(d) {
     replace(MEMBERS, d.MEMBERS);
     replace(BATCH_DATE, d.BATCH_DATE);
@@ -405,7 +410,7 @@ const apply = {
 /** A section's answer from the API, written into the datasets the page draws from. */
 export function applySection(route: string, d) {
   apply[route](d);
-  setFigures(d.figures);
+  setFigures(d.figures ?? {});
   vars.asOf = d.asOf;
 }
 

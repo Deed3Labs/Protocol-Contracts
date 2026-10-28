@@ -399,7 +399,7 @@ export async function audit(db: Queryable, e: AuditEntry): Promise<void> {
 
 export async function auditLog(db: Queryable, limit = 200): Promise<Array<Record<string, unknown>>> {
   const { rows } = await db.query(
-    `SELECT a.id, a.seq, a.at, a.who, a.area, a.action, a.detail, a.from_where, a.result, COALESCE(NULLIF(ap.name, ''), ap.email) AS approver, a.corrects, a.hash, a.prev_hash
+    `SELECT a.id, a.seq, a.at, a.person_id, a.who, a.area, a.action, a.detail, a.from_where, a.result, COALESCE(NULLIF(ap.name, ''), ap.email) AS approver, a.corrects, a.hash, a.prev_hash
        FROM command.audit_log a LEFT JOIN command.people ap ON ap.id = a.approver
       ORDER BY a.seq DESC LIMIT $1`,
     [limit],
@@ -464,7 +464,7 @@ export async function logReveal(db: Queryable, r: Reveal & { rush?: boolean; fro
 
 /** Records → Reveals: every reveal, newest first. */
 export async function reveals(db: Queryable, limit = 200): Promise<Array<Record<string, unknown>>> {
-  const { rows } = await db.query('SELECT id, at, who, section, subject, field, rows, reason, flagged FROM command.reveals ORDER BY id DESC LIMIT $1', [limit]);
+  const { rows } = await db.query('SELECT id, at, person_id, who, section, subject, field, rows, reason, flagged FROM command.reveals ORDER BY id DESC LIMIT $1', [limit]);
   return rows;
 }
 

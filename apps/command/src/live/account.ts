@@ -232,6 +232,8 @@ const ago = (iso) => {
  */
 export async function loadTeam() {
   const [{ groups }, { people }] = await Promise.all([api('GET', '/groups'), api('GET', '/people')]);
+  // as the API sends them, every section's level included, for the redesigned Team (sections/adminLive.ts)
+  vars.teamRaw = { groups, people };
   for (const k of Object.keys(ROLES)) delete ROLES[k];
   for (const g of groups) ROLES[g.key] = g.auto ? [g.name, g.description, levelsArray(g.levels), 1] : [g.name, g.description, levelsArray(g.levels)];
   vars.TEAMG = groups.filter((g) => !g.auto).map((g) => g.key);

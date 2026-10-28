@@ -59,6 +59,15 @@ const DEMO = [
   'Internal review',
   '18,204,331',
   'Phase 0 fixes',
+  // Records, Team and Settings' reference (admin2.tsx): its outside people, devices, members revealed and setting change
+  'Harbor Capital',
+  'Ledgerline',
+  'Outside accountant',
+  'Laptop · Riverside',
+  'Old iPhone',
+  'M-0412',
+  'M-0044',
+  'C-07',
 ];
 
 type Finding = { route: string; pane: string; after: string; kind: 'error' | 'demo' | 'garbage'; what: string };
