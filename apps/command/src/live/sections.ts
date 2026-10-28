@@ -347,6 +347,8 @@ const apply = {
     // live, the map's contracts the indexer found deployed (null when the section isn't read from the chain)
     vars.contractsDeployed = d.DEPLOYED ?? null;
     replace(SIGNERS, d.SIGNERS);
+    // Build's own records (migration 0066): incidents, findings, audits, and who can be given an incident
+    vars.buildRecords = { incidents: d.INCIDENTS ?? [], findings: d.FINDINGS ?? [], audits: d.AUDITS ?? [], team: d.TEAM ?? [] };
     const f = d.figures;
     assign(CHAIN, f['contracts.chain']);
     assign(KEY_ROLES, f['contracts.key_roles']);

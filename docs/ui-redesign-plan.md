@@ -366,7 +366,22 @@ Filled in as each page is ported. Known before starting:
   hours to sign are the Safe's. People are only you, the Safe's owners and the GitHub authors. Signing is
   your own wallet (`safe.signQueued`, `safe.signAndSend`), linking it `safe.linkWallet`, and a contract's
   panel proposes a change through the old page's flow (`contracts/propose`, into the Safe); GitHub, the
-  Safe and Safe{Wallet} open in a new tab. Still missing, and "Not real yet" live:
+  Safe and Safe{Wallet} open in a new tab.
+  - **Command's own records now (migration 0066):** incidents, security findings and audits, read with the
+    section (`INCIDENTS`, `FINDINGS`, `AUDITS`, and `TEAM`: who can be given an incident, the team at Propose
+    or more on Build) and written from Build. Overview's and Security's Incidents list the open ones and those
+    of the last 30 days (open, who's on it, resolved in how long, how many reached members), and open ones that
+    are yours or nobody's are in Needs you; an incident's panel has its timeline, gives it to someone, takes an
+    update and resolves it (`incident-open`, `incident-update`, `incident-assign`, `incident-resolve`).
+    Findings is the register (severity, where, state, its fix as a pull request or a change Build lists; a fix
+    whose change waits in the Ops Safe shows as waiting on a signature), paged six at a time; a finding's panel
+    links a fix (`finding-fix`: an open finding goes to in progress) and changes its state (`finding-state`:
+    open, fixing, fixed, accepted with why; accepting a critical one waits for a second person). Audits counts
+    the contracts an audit has covered (an outside auditor's or internal), lists the audits (a day still to
+    come is booked) with their report links, and records one (`audit`). The header's Open findings tile is
+    the open and fixing ones by severity, with the newest outside audit. All at Propose; at Totals the API
+    sends no names, notes or timelines.
+  Still missing, and "Not real yet" live:
   - **Who can do what is read now:** replayed from every contract's RoleGranted/RoleRevoked, owners,
     NetworkRegistry's issuers and the AssurancePool's allowed callers (`keyRolesLive`); six holders at most,
     the rest sharing one column;
@@ -376,11 +391,9 @@ Filled in as each page is ported. Known before starting:
     Vercel history);
   - review state on pull requests (who's asked, approvals, changes asked for, time to a first review),
     line counts (+/−) and simulation results;
-  - security findings (severity, state, contract, fix PR), audit coverage, and incidents (owner,
-    timeline, resolution);
+  - findings from outside tools (Dependabot, code scanning) aren't read in: each is recorded by hand;
   - AccessManager's roles (`contracts.key_roles`, written by nothing live);
-  - actions: approving or asking for changes (GitHub reviews), resolving an incident and proposing a
-    pause are hidden live; executing a fully signed Safe transaction is done in Safe{Wallet}.
+  - actions: approving or asking for changes (GitHub reviews) and proposing a pause are hidden live; executing a fully signed Safe transaction is done in Safe{Wallet}.
 - **Community** (live: `community2.tsx` + `communityLive.ts`, its gate on, with no backend yet). Live draws the
   redesign's four tabs with nothing in them; the backend is to be discussed.
   - **Live now.** The layout, empty: "No threads yet" (Every thread, Busiest in the forum, its categories still
