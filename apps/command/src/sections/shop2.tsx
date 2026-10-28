@@ -1022,7 +1022,7 @@ function makeShop() {
       const sup = cell('s7', 'Suppliers', <span className="lbl">{LV ? plural(SUPPLIERS.length, 'supplier', 'suppliers') : <>{SUPPLIERS.length}{" suppliers"}</>}</span>, <div className="sx-sl">{LV && !SUPPLIERS.length ? <div className="gv-e"><span>No suppliers yet</span></div> : ''}{SUPPLIERS.map((s, __k) => {
           const ms = INPUTS.filter(i => i.sup === s.id);
           return <button key={__k} className="sx-sr" data-sopen={`s:${s.id}`}><span className="gt-ck"><b>{s.n}</b><span>{s.what}{" · "}{s.city}</span></span><span className="sx-sm"><b>{leadT(s)}</b><em>{s.terms}</em></span><span className="sx-sm"><b>{ms.length}</b><em>material{ms.length > 1 ? 's' : ''}</em></span><span className="sx-sm"><b>{s.breaks.length > 1 ? `−${Math.round(s.breaks[s.breaks.length - 1][1] * 100)}%` : '—'}</b><em>{s.breaks.length > 1 ? `at ${s.breaks[s.breaks.length - 1][0]}+` : 'no breaks'}</em></span></button>;
-        })}{rest()}</div>, <><span>Price breaks apply per order with that supplier</span><span /></>);
+        })}{rest()}</div>, <><span>Price breaks apply per order with that supplier</span>{LV && STAFF() ? <button data-sopen="se:">Add a supplier</button> : <span />}</>);
       html(document.getElementById('sv'), <>{band(list, 1)}{band(<>{sup}{reorder}</>)}</>);
     }
 
@@ -1113,7 +1113,7 @@ function makeShop() {
       const pk = cell('s5', 'Waiting for pickup', <span className="lbl">{"Held "}{HOLD_DAYS}{" days"}</span>, <div className="gt-cl sx-wl">{pick.map((o, __k) => {
           const dd = Math.round((NOW - (LV ? LV.PICKUP[o[0]]?.readyAt ?? o[1] : o[1])) / DAY);
           return <button key={o[0]} className="gt-cr sx-wr" data-sopen={`o:${o[0]}`}>{leaf(o[1])}<span className="gt-ck"><b>#{o[0]}{" · "}{cust(o)}</b><span>{ptName(o)}{" · "}{o[4].map(([pid,, sz, q]) => `${q > 1 ? q + ' × ' : ''}${shortN(PRO[pid])}${sz ? ' · ' + sz : ''}`).join(', ')}</span></span><span className="sx-hold"><b>{dd}{" of "}{HOLD_DAYS}{" days"}</b><span className="sx-hold-b"><i style={css(`width:${Math.min(100, dd / Math.max(1, HOLD_DAYS) * 100)}%`)} /></span></span></button>;
-        })}<div className="gv-g">{lbl('Pickup points · 4 weeks')}</div>{Object.entries(POINTS).map(([k, x], __k) => <button key={__k} className="sx-pp" {...(LV ? {} : { 'data-sgo': `merchants/shop:${k}` })}><span className="gt-ck"><b>{x.n}</b><span>{x.city}{" · partner shop"}</span></span><span className="sx-pp-b"><i style={css(`width:${x.wk4 / pmx * 100}%`)} /></span><b>{x.wk4}</b></button>)}{rest()}</div>, <><span>{"Pickups saved "}{money(saved)}{" in mailers, labels and shipping"}</span><span /></>);
+        })}<div className="gv-g">{lbl('Pickup points · 4 weeks')}</div>{LV && !Object.keys(POINTS).length ? <div className="gv-e"><span>No pickup points yet</span></div> : ''}{Object.entries(POINTS).map(([k, x], __k) => <button key={__k} className="sx-pp" {...(LV ? STAFF() ? { 'data-sopen': `pt:${k}` } : {} : { 'data-sgo': `merchants/shop:${k}` })}><span className="gt-ck"><b>{x.n}</b><span>{LV ? [x.city, x.active === false ? 'not holding orders' : 'partner shop'].filter(Boolean).join(' · ') : <>{x.city}{" · partner shop"}</>}</span></span><span className="sx-pp-b"><i style={css(`width:${x.wk4 / pmx * 100}%`)} /></span><b>{x.wk4}</b></button>)}{rest()}</div>, <><span>{"Pickups saved "}{money(saved)}{" in mailers, labels and shipping"}</span>{LV && STAFF() ? <button data-sopen="pt:">Add a pickup point</button> : <span />}</>);
       html(document.getElementById('sv'), <>{band(list, 1)}{band(<>{per}{pk}</>)}</>);
     }
 
@@ -1141,7 +1141,7 @@ function makeShop() {
       }
       document.body.classList.add('pn');
       const [k, id] = P.split(':');
-      html(pn, k === 'p' ? prodPanel(PRO[id]) : k === 'm' ? matPanel(INP[id]) : k === 's' ? supPanel(SUP[id]) : k === 'b' ? batchPanel(id) : k === 'mk' ? makePanel(id) : k === 'o' ? ordPanel(id) : '');
+      html(pn, k === 'p' ? prodPanel(PRO[id]) : k === 'm' ? matPanel(INP[id]) : k === 's' ? supPanel(SUP[id]) : k === 'b' ? batchPanel(id) : k === 'mk' ? makePanel(id) : k === 'o' ? ordPanel(id) : LV && k === 'se' ? supEdit(id) : LV && k === 'pt' ? pointPanel(id) : '');
       if (k === 'p') refreshProd();
       if (k === 'm') refreshBuy();
       if (k === 'mk') refreshMake();
@@ -1181,6 +1181,23 @@ function makeShop() {
       signup: 'Needs sign-up',
       agreement: 'Needs agreement'
     };
+    /** Live, one cost's own figure for a colour or size (`flat-override`): set once the product has its one cost saved. */
+    function flatX(p, fl, ed) {
+      const ov = fl?.overrides ?? [],
+        saved = p.src === 'flat' && !!fl;
+      const cols = Object.keys(STK[p.id] || {}).filter(Boolean),
+        sized = !p.one,
+        can = cols.length > 1 || sized;
+      if (!ov.length && !(ed && can)) return '';
+      if (!saved) return <div>{lbl('One cost, by colour or size')}<p className="bpn-n" style={css('margin-top:8px')}>Save the one cost first, then a colour or size can have its own.</p></div>;
+      const vname = o => [o.option, o.size].filter(Boolean).join(' · ');
+      return <div>{lbl(`One cost, by colour or size · ${ov.length}`)}<div className="led">{ov.length ? ov.map((o, k) => <div key={k}><span>{vname(o)}</span><b>{money(o.cost)}{ed ? <>{" "}<button className="lnk3" data-za="flat-override" data-zbody={JSON.stringify({
+              product: p.id,
+              option: o.option || '',
+              size: o.size || '',
+              remove: true
+            })} data-zsaid={`${vname(o)} costs ${money(fl.cost)} again, as the rest`}>Take off</button></> : ''}</b></div>) : ledRow(`Every colour and size costs ${money(fl.cost)}`, '')}</div>{ed && can ? acts(cols.length > 1 ? <select className="vin" id="sfocol" style={css('flex:1;min-width:110px;margin-top:0')} defaultValue=""><option value="">Any colour</option>{cols.map(c => <option key={c} value={c}>{c}</option>)}</select> : '', sized ? <select className="vin" id="sfosize" style={css('flex:1;min-width:90px;margin-top:0')} defaultValue=""><option value="">Any size</option>{SIZES.map(z => <option key={z} value={z}>{z}</option>)}</select> : '', <label className="sx-f sm" style={css('width:84px')}><input className="vin sx-in" id="sfocost" inputMode="decimal" placeholder="0.00" style={css('margin-top:0')} aria-label="Its cost" /></label>, <button className="btn sm-b" data-sfoadd={p.id}>Add</button>) : ''}</div>;
+    }
     function prodLive(p, d) {
       const c = LV.CATALOG[p.id],
         ed = STAFF() && p.st !== 'arch',
@@ -1214,7 +1231,7 @@ function makeShop() {
                 'data-zcid': o.input,
                 'data-zopt': o.option,
                 'data-zsize': o.size
-              })}>{INP[o.input]?.n ?? o.input}</button> : INP[o.input]?.n ?? o.input}{` · ${[o.option, o.size].filter(Boolean).join(' ')}`}</span><b>{o.amount == null ? 'No amount' : `${qn(o.amount)} ${INP[o.input]?.unit ?? ''}`}{" · "}{money(o.cost ?? 0)}</b></div>) : ledRow('Every colour and size uses the recipe', '')}</div>{ed ? acts(zbtn(zc('override'), 'For a colour or size'), zbtn(zc('copy'), 'Copy to other products')) : ''}</div> : d.mode === 'flat' && fl?.overrides?.length ? <div>{lbl(`One cost, by colour or size · ${fl.overrides.length}`)}<div className="led">{fl.overrides.map((o, k) => ledRow([o.option, o.size].filter(Boolean).join(' '), money(o.cost), k))}</div></div> : '';
+              })}>{INP[o.input]?.n ?? o.input}</button> : INP[o.input]?.n ?? o.input}{` · ${[o.option, o.size].filter(Boolean).join(' ')}`}</span><b>{o.amount == null ? 'No amount' : `${qn(o.amount)} ${INP[o.input]?.unit ?? ''}`}{" · "}{money(o.cost ?? 0)}</b></div>) : ledRow('Every colour and size uses the recipe', '')}</div>{ed ? acts(zbtn(zc('override'), 'For a colour or size'), zbtn(zc('copy'), 'Copy to other products')) : ''}</div> : d.mode === 'flat' ? flatX(p, fl, ed) : '';
       const atSale = ch.length ? <div>{lbl('Cost at sale')}<div className="led">{ledRow('Now', money(costOf(p)))}{ch.slice(0, 8).map(w => ledRow(fmtD(w.week), `${w.low === w.high ? money(w.low) : `${money(w.low)}–${money(w.high)}`} · ${w.units} sold${w.later ? ' · costed later' : ''}`, w.week))}</div></div> : '';
       const shows = p.st === 'on' ? p.dep ? 'Pre-order' : c?.ships && c?.sellPastStock ? `Pre-order · ships ${c.ships}` : 'In stock' : p.st === 'off' ? 'Back soon' : p.st === 'draft' ? 'Hidden' : 'Removed';
       const shelf = <div>{lbl('On the shelf')}<div className="led">{ledRow('Page', `useclear.org/shop/${p.slug || ''}`)}{ledRow('Shows as', shows)}{p.why ? ledRow('Why', p.why) : ''}</div>{STAFF() ? acts(p.st === 'arch' ? zbtn(zs('restore'), 'Restore as a draft') : p.st === 'on' ? zbtn(zs('shelf-off'), 'Take off the shelf') : zbtn(zs('shelf-on'), 'Put on the shelf'), p.st !== 'arch' ? zbtn(zs('archive'), 'Archive') : '', p.st !== 'arch' && !c ? zbtn(zs('edit'), 'Edit the name and price') : '') : ''}</div>;
@@ -1258,11 +1275,20 @@ function makeShop() {
         'data-zc': k,
         'data-zcid': i.id
       });
+      // what it costs more in a size or a colour (`input-extra`): not for once-per-order supplies, which no recipe uses
+      const ex = r.extras ?? [],
+        cols = [...new Set(PR.flatMap(p => p.cols).filter(c => c && c !== 'One size'))];
+      const extras = i.kind === 'order' ? '' : <div>{lbl(`Costs more in · ${ex.length}`)}<div className="led">{ex.length ? ex.map(x => <div key={x.size || x.option}><span>{x.size || x.option}</span><b>{`+${money(x.extra)}`}{ed && !i.archived ? <>{" "}<button className="lnk3" data-za="input-extra" data-zbody={JSON.stringify({
+              input: i.id,
+              size: x.size || '',
+              option: x.option || '',
+              remove: true
+            })} data-zsaid={`${i.n} costs the same in ${x.size || x.option} now`}>Take off</button></> : ''}</b></div>) : ledRow('The same in every size and colour', '')}</div>{ed && !i.archived ? acts(<select className="vin" id="sxfor" style={css('flex:1;min-width:120px;margin-top:0')} defaultValue=""><option value="">A size or colour…</option><optgroup label="Size">{SIZES.filter(z => !ex.some(x => x.size === z)).map(z => <option key={z} value={`s:${z}`}>{z}</option>)}</optgroup>{cols.length ? <optgroup label="Colour">{cols.filter(c => !ex.some(x => x.option === c)).map(c => <option key={c} value={`o:${c}`}>{c}</option>)}</optgroup> : ''}</select>, <label className="sx-f sm" style={css('width:84px')}><input className="vin sx-in" id="sxamt" inputMode="decimal" placeholder="+0.00" style={css('margin-top:0')} aria-label="What it adds" /></label>, <button className="btn sm-b" data-sxadd={i.id}>Add</button>) : ''}</div>;
       return <>{oo.length ? <div>{lbl(`On order · ${oo.length}`)}<div className="led">{oo.map(o => <div key={o.id}><span>{fmtD(o.orderedAt)}{` · ${qn(o.quantity)} ${i.unit} · ${o.supplierName || 'No supplier'}`}</span><b>{money(o.total)}{o.due ? ` · due ${fmtD(o.due)}` : ''}</b></div>)}</div>{ed ? oo.map(o => <Fragment key={o.id}>{acts(<button className="btn sm-b p" data-za="receive" data-zbody={JSON.stringify({
               id: o.id
             })} data-zsaid="Received · on hand and the average updated">{oo.length > 1 ? `Received · ordered ${fmtD(o.orderedAt)}` : 'Mark it received'}</button>, <button className="btn sm-b" data-za="order-cancel" data-zbody={JSON.stringify({
               id: o.id
-            })} data-zsaid="Cancelled">{oo.length > 1 ? 'Cancel that one' : 'Cancel the order'}</button>)}</Fragment>) : ''}</div> : ''}{r.stocked ? <div>{lbl('Stock ledger')}<div className="led">{moves.length ? moves.map((m, k) => ledRow(fmtD(m.at), `${REASON[m.reason] ?? m.reason} · ${m.quantity > 0 ? '+' : '−'}${qn(Math.abs(m.quantity))} ${i.unit}`, k)) : ledRow('No moves yet', '')}</div>{ed && !i.archived ? acts(zbtn(zc('count'), 'Count stock'), zbtn(zc('waste'), 'Write off')) : ''}</div> : ''}{ed ? <div>{lbl('In the library')}<div className="led"><div><span>Supplier</span><b>{SUPPLIERS.length ? <select className="vin" data-zsup={i.id} defaultValue={i.sup}><option value="">None</option>{SUPPLIERS.map(x => <option key={x.id} value={x.id}>{x.n}</option>)}</select> : 'No suppliers yet'}</b></div></div>{acts(zbtn(zc('input'), 'Edit'), !i.archived && i.kind !== 'mto' ? zbtn(zc('purchase'), 'A buy with its date and note…') : '', !i.archived ? zbtn(zc('apply'), 'Add to products…') : '', zbtn(zc('archive'), i.archived ? 'Restore' : 'Archive'))}</div> : ''}</>;
+            })} data-zsaid="Cancelled">{oo.length > 1 ? 'Cancel that one' : 'Cancel the order'}</button>)}</Fragment>) : ''}</div> : ''}{r.stocked ? <div>{lbl('Stock ledger')}<div className="led">{moves.length ? moves.map((m, k) => ledRow(fmtD(m.at), `${REASON[m.reason] ?? m.reason} · ${m.quantity > 0 ? '+' : '−'}${qn(Math.abs(m.quantity))} ${i.unit}`, k)) : ledRow('No moves yet', '')}</div>{ed && !i.archived ? acts(zbtn(zc('count'), 'Count stock'), zbtn(zc('waste'), 'Write off')) : ''}</div> : ''}{extras}{ed ? <div>{lbl('In the library')}<div className="led"><div><span>Supplier</span><b>{SUPPLIERS.length ? <select className="vin" data-zsup={i.id} defaultValue={i.sup}><option value="">None</option>{SUPPLIERS.map(x => <option key={x.id} value={x.id}>{x.n}</option>)}</select> : 'No suppliers yet'}</b></div>{!i.archived ? <div><span>Kind</span><b><select className="vin" data-zkind={i.id} defaultValue={i.kind}>{Object.keys(KIND).map(k => <option key={k} value={k} disabled={k === 'stock' && r.kind !== 'material'}>{KIND[k][0]}</option>)}</select></b></div> : ''}{!i.archived && i.kind === 'order' ? <><div><span>Counted on hand</span><b><label className="sx-chk"><input type="checkbox" data-zkst={i.id} defaultChecked={!!r.stocked} /></label></b></div><div><span>Pickups use one too</span><b><label className="sx-chk"><input type="checkbox" data-zkpk={i.id} defaultChecked={!!r.onPickup} /></label></b></div></> : ''}</div>{acts(zbtn(zc('input'), 'Edit'), !i.archived && i.kind !== 'mto' ? zbtn(zc('purchase'), 'A buy with its date and note…') : '', !i.archived ? zbtn(zc('apply'), 'Add to products…') : '', zbtn(zc('archive'), i.archived ? 'Restore' : 'Archive'))}</div> : ''}</>;
     }
     function draftCost(size = 'M', col) {
       const d = SP.draft,
@@ -1305,7 +1331,7 @@ function makeShop() {
         paid: '',
         per: fx(i.last)
       };
-      const rows = [['Kind', KIND[i.kind][0]], ['Supplier', <><button className="lnk3" data-sopen={`s:${s.id}`}>{s.n}</button>{" · "}{leadT(s)}</>], ['Average cost', `${money(i.avg)} per ${i.unit}`], ['Last paid', money(i.last)], ...(i.var ? [['Costs more', Object.entries(i.var).map(([k, v]) => `${k} +${money(v)}`).join(' · ')]] : []), ...(i.kind !== 'mto' ? [['On hand', `${int(i.hand)} · uses ${useWk(i).toFixed(1)} a week`], ['Lasts', lastsW(i) === null ? '—' : `${lastsW(i).toFixed(1)} weeks · reorder under ${needW(i).toFixed(1)}`]] : [])];
+      const rows = [['Kind', KIND[i.kind][0]], ['Supplier', <><button className="lnk3" data-sopen={`s:${s.id}`}>{s.n}</button>{" · "}{leadT(s)}</>], ['Average cost', `${money(i.avg)} per ${i.unit}`], ['Last paid', money(i.last)], ...(i.var && !LV ? [['Costs more', Object.entries(i.var).map(([k, v]) => `${k} +${money(v)}`).join(' · ')]] : []), ...(i.kind !== 'mto' ? [['On hand', `${int(i.hand)} · uses ${useWk(i).toFixed(1)} a week`], ['Lasts', lastsW(i) === null ? '—' : `${lastsW(i).toFixed(1)} weeks · reorder under ${needW(i).toFixed(1)}`]] : [])];
       const others = PR.filter(p => p.recipe && !p.recipe.some(r => r[0] === i.id) && p.st !== 'arch');
       return <>{phd(`Material · ${KIND[i.kind][0]}`)}<><div className="pn-b"><div><p className="bpn-t">{i.n}</p><p className="bpn-s">{i.note || s.what}</p></div><div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div><div>{lbl(i.kind === 'mto' ? 'New price' : 'Record a buy')}<div className="sx-buy">{i.kind === 'mto' ? '' : <><label className="sx-f">{lbl('Paid')}{numIn('bpaid', SP.buy.paid, `data-bpaid ${ro} placeholder="0.00"`)}</label><span className="sx-x">÷</span><label className="sx-f">{lbl('Units')}{numIn('bunits', SP.buy.units, `data-bunits ${ro} placeholder="0"`)}</label><span className="sx-x">=</span></>}<label className="sx-f">{lbl('Each')}{numIn('bper', SP.buy.per, `data-bper ${ro}`)}</label></div><div id="sbprev" /></div><div>{lbl(`Used in · ${ps.length}`)}<div className="led sx-ui">{ps.length ? ps.map((p, __k) => {
                   const q = p.recipe.find(r => r[0] === i.id)[1];
@@ -1345,7 +1371,48 @@ function makeShop() {
     }
     function supPanel(s) {
       const ms = INPUTS.filter(i => i.sup === s.id);
-      return <>{phd('Supplier')}<><div className="pn-b"><div><p className="bpn-t">{s.n}</p><p className="bpn-s">{s.what}{" · "}{s.city}</p></div><div className="led">{[['Lead time', leadT(s)], ['Terms', s.terms], ['Minimum', s.min], ['Last order', s.last ? fmtD(s.last) : '—']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div><div>{lbl('Price breaks')}<div className="sx-brk">{LV && !s.breaks.length ? <span><b>None</b><em>List price</em></span> : ''}{s.breaks.map(([q, d], __k) => <span key={__k}><b>{q}+</b><em>{d ? `−${Math.round(d * 100)}%` : 'List price'}</em></span>)}</div></div><div>{lbl(`What we buy · ${ms.length}`)}<div className="led">{ms.map((i, __k) => <div key={__k}><span><button className="lnk3" data-sopen={`m:${i.id}`}>{i.n}</button></span><b>{money(i.avg)}{" per "}{i.unit}</b></div>)}</div></div></div><div className="pn-ft"><button className="btn" data-sclose="">Close</button></div></></>;
+      return <>{phd('Supplier')}<><div className="pn-b"><div><p className="bpn-t">{s.n}</p><p className="bpn-s">{s.what}{" · "}{s.city}</p></div><div className="led">{[['Lead time', leadT(s)], ['Terms', s.terms], ['Minimum', s.min], ['Last order', s.last ? fmtD(s.last) : '—']].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div><div>{lbl('Price breaks')}<div className="sx-brk">{LV && !s.breaks.length ? <span><b>None</b><em>List price</em></span> : ''}{s.breaks.map(([q, d], __k) => <span key={__k}><b>{q}+</b><em>{d ? `−${Math.round(d * 100)}%` : 'List price'}</em></span>)}</div></div><div>{lbl(`What we buy · ${ms.length}`)}<div className="led">{ms.map((i, __k) => <div key={__k}><span><button className="lnk3" data-sopen={`m:${i.id}`}>{i.n}</button></span><b>{money(i.avg)}{" per "}{i.unit}</b></div>)}</div></div></div><div className="pn-ft"><button className="btn" data-sclose="">Close</button>{LV && STAFF() && !s.none ? <button className="btn p" data-sopen={`se:${s.id}`}>Edit</button> : ''}</div></></>;
+    }
+    /* ── live: a supplier added or edited (`supplier`), with its price breaks (`supplier-breaks`) ── */
+    const grid = (cols, kids) => <div style={css(`display:grid;grid-template-columns:${cols};gap:10px;align-items:end`)}>{kids}</div>;
+    const txtIn = (label, key, v, more = {}) => <label className="sx-f wide">{lbl(label)}<input className="vin sx-in" defaultValue={v ?? ''} autoComplete="off" {...key} {...more} /></label>;
+    function supEdit(id) {
+      const s = id ? SUP[id] : null,
+        raw = s?.raw;
+      if (!SP.se || SP.se.id !== id) SP.se = {
+        id,
+        name: raw?.name ?? '',
+        city: raw?.city ?? '',
+        sells: raw?.sells ?? '',
+        lead: raw?.leadDays ?? '',
+        terms: raw?.terms ?? '',
+        minimum: raw?.minimum ?? '',
+        note: raw?.note ?? '',
+        breaks: (s?.breaks ?? []).map(([q, d]) => [String(q), String(Math.round(d * 10000) / 100)])
+      };
+      const e = SP.se,
+        f = (label, k, more) => txtIn(label, { 'data-sef': k }, e[k], more);
+      return <>{phd(id ? 'Supplier · edit' : 'Supplier · new')}<><div className="pn-b"><div><p className="bpn-t">{id ? s.n : 'Add a supplier'}</p><p className="bpn-s">{id ? 'Its details and price breaks. Every material it sells uses them.' : 'Who sells us materials. Its lead time sets when to reorder; its price breaks what a bigger order costs.'}</p></div>{grid('minmax(0,1fr) minmax(0,1fr)', <>{f('Name', 'name')}{f('City', 'city')}</>)}{f('What they sell', 'sells')}{grid('minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)', <>{f('Lead time · days', 'lead', { inputMode: 'numeric' })}{f('Terms', 'terms')}{f('Minimum', 'minimum')}</>)}{f('Note', 'note')}<div>{lbl('Price breaks')}<div className="sx-rc">{e.breaks.length ? e.breaks.map(([q, d], ix) => <div key={ix} className="sx-rc-r" style={css('grid-template-columns:minmax(0,1fr) minmax(0,1fr) 28px')}><label className="sx-f">{lbl('From · units')}<input className="vin sx-in" inputMode="decimal" defaultValue={q} data-sbq={ix} /></label><label className="sx-f">{lbl('Off · %')}<input className="vin sx-in" inputMode="decimal" defaultValue={d} data-sbd={ix} /></label><button className="sx-rm" data-sbrm={ix} aria-label="Take this break off">{ICO.x}</button></div>) : <div className="sx-rc-r" style={css('grid-template-columns:minmax(0,1fr)')}><span className="bpn-n">None: list price at any quantity.</span></div>}<div className="sx-rc-add"><button className="btn sm-b" data-sbadd="">Add a break</button></div></div></div><p className="bpn-n">A break takes its percentage off a whole order of that many or more.</p></div><div className="pn-ft"><button className="btn" {...(id ? { 'data-sopen': `s:${id}` } : { 'data-sclose': '' })}>Cancel</button><button className="btn p" data-sesave="">{id ? 'Save' : 'Add the supplier'}</button></div></></>;
+    }
+    /** What's typed in the supplier's panel, kept as it's typed so adding a break doesn't lose it. */
+    function seRead() {
+      const pn = document.getElementById('spanel');
+      if (!pn || !SP.se) return;
+      pn.querySelectorAll('[data-sef]').forEach(x => SP.se[x.dataset.sef] = x.value);
+      pn.querySelectorAll('[data-sbq]').forEach(x => SP.se.breaks[+x.dataset.sbq][0] = x.value);
+      pn.querySelectorAll('[data-sbd]').forEach(x => SP.se.breaks[+x.dataset.sbd][1] = x.value);
+    }
+    /* ── live: a pickup point added or edited (`pickup-point`) ── */
+    function pointPanel(id) {
+      const x = id ? POINTS[id] : null;
+      if (!SP.pt || SP.pt.id !== id) SP.pt = {
+        id,
+        name: x?.n ?? '',
+        city: x?.city ?? '',
+        active: x ? x.active !== false : true
+      };
+      const e = SP.pt;
+      return <>{phd(id ? 'Pickup point · edit' : 'Pickup point · new')}<><div className="pn-b"><div><p className="bpn-t">{id ? x.n : 'Add a pickup point'}</p><p className="bpn-s">{`A partner shop that holds orders for ${HOLD_DAYS ? plural(HOLD_DAYS, 'day', 'days') : 'Settings’ hold'} until they’re picked up.`}</p></div>{grid('minmax(0,1fr) minmax(0,1fr)', <>{txtIn('Name', { 'data-ptf': 'name' }, e.name)}{txtIn('City', { 'data-ptf': 'city' }, e.city)}</>)}<label className="sx-chk"><input type="checkbox" data-ptf="active" defaultChecked={e.active} />{" Holding orders now"}</label>{x ? <div className="led">{ledRow('Holding now', plural(x.held ?? 0, 'order', 'orders'))}{ledRow('Last 4 weeks', plural(x.wk4 ?? 0, 'order', 'orders'))}</div> : ''}<p className="bpn-n">{id ? 'A new name shows on every order held there. One that isn’t holding orders keeps the ones it has.' : 'It shows as a choice for each order picked up.'}</p></div><div className="pn-ft"><button className="btn" data-sclose="">Cancel</button><button className="btn p" data-sptsave="">{id ? 'Save' : 'Add the point'}</button></div></></>;
     }
     function batchPanel(id) {
       if (LV) return batchPanelLive(id);
@@ -1449,7 +1516,7 @@ function makeShop() {
       return <>{phd(`Order #${o[0]}`)}<><div className="pn-b"><div><p className="bpn-t">{cust(o)}</p><p className="bpn-s">{o[3] ? 'Member · ' : ''}{PAY[o[5]] || o[5] || 'Paid'}{" · "}{ship ? 'Shipping' : `Pickup at ${ptName(o)}`}{" · "}{OST[st][0]}{o[1] ? ` · ${fmtD(o[1])}, ${hm(o[1])}` : ''}</p></div><div className="led">{o[4].map(([pid, col, sz, q], k) => {
               const pp = PRO[pid];
               return <div key={k}><span>{q}{" × "}{pp.n}{pp.v ? ' · ' + pp.v : ''}{col && !pp.one ? ' · ' + col : ''}{sz ? ' · ' + sz : ''}</span><b>{money(pp.price * q)}</b></div>;
-            })}</div><div>{lbl('What it cost')}<div className="led">{[['Materials', `${money(c)}${bare ? ` · ${bare === 1 ? 'a line' : `${bare} lines`} at today’s cost` : ''}`], [ship ? 'Mailer, tissue and label' : 'Packing', `${money(sup)}${oc ? '' : ' · at today’s costs'}`], ['Payment fee', `${money(fee)}${oc ? '' : ' · worked out'}`], ...(ship ? [['Shipping gap', gap == null ? 'The label’s cost isn’t recorded' : money(gap)]] : [])].map(([k, v]) => ledRow(k, v))}<div className="tot"><span>Kept</span><b>{money(kept)}{" · "}{share(kept, t)}</b></div></div></div>{ship && !TOT() ? <div>{lbl('Ship to')}<div className="led">{ledRow('Address', addr ?? (ext.city ? `${ext.city} · the rest shows when you ask` : 'Shows when you ask'))}</div>{STAFF() && !addr && ['paid', 'packed'].includes(st) ? acts(<button className="btn sm-b" data-zaddr={o[0]}>Show the address</button>, <span className="small quiet">Read from Stripe for this order, and logged as a reveal: to pack it</span>) : ''}</div> : ''}{!ship ? <div>{lbl('Pickup')}<div className="led">{ledRow('At', ptName(o))}{pk?.holdUntil ? ledRow('Held until', `${fmtD(pk.holdUntil)}${pk.overdue ? ' · past the hold' : ''}`) : ''}</div></div> : ''}{st === 'refund' && ret ? <p className="bpn-w"><b>{ret.refundedAt ? `${money(ret.amount ?? t)} refund recorded ${fmtD(ret.refundedAt)}.` : `The ${money(ret.amount ?? t)} refund is waiting on ${ret.second || 'a second person'}.`}</b>{` ${ret.reason}.`}{LV.REFUNDCAP != null ? ` Refunds over ${money(LV.REFUNDCAP)} need a second person.` : ''}</p> : ''}</div><div className="pn-ft">{foot}</div></></>;
+            })}</div><div>{lbl('What it cost')}<div className="led">{[['Materials', `${money(c)}${bare ? ` · ${bare === 1 ? 'a line' : `${bare} lines`} at today’s cost` : ''}`], [ship ? 'Mailer, tissue and label' : 'Packing', `${money(sup)}${oc ? '' : ' · at today’s costs'}`], ['Payment fee', `${money(fee)}${oc ? '' : ' · worked out'}`], ...(ship ? [['Shipping gap', gap == null ? 'The label’s cost isn’t recorded' : money(gap)]] : [])].map(([k, v]) => ledRow(k, v))}<div className="tot"><span>Kept</span><b>{money(kept)}{" · "}{share(kept, t)}</b></div></div>{ship && STAFF() ? acts(<span className="small quiet" style={css('margin-right:auto')}>{oc?.label != null ? 'The label’s cost, as recorded' : 'What the label cost'}</span>, <label className="sx-f sm" style={css('width:84px')}><input className="vin sx-in" id="slabel" inputMode="decimal" placeholder="0.00" defaultValue={oc?.label != null ? fx(oc.label) : ''} style={css('margin-top:0')} aria-label="What the label cost" /></label>, <button className="btn sm-b" data-zlabel={o[0]}>{oc?.label != null ? 'Change it' : 'Record it'}</button>) : ''}</div>{ship && !TOT() ? <div>{lbl('Ship to')}<div className="led">{ledRow('Address', addr ?? (ext.city ? `${ext.city} · the rest shows when you ask` : 'Shows when you ask'))}</div>{STAFF() && !addr && ['paid', 'packed'].includes(st) ? acts(<button className="btn sm-b" data-zaddr={o[0]}>Show the address</button>, <span className="small quiet">Read from Stripe for this order, and logged as a reveal: to pack it</span>) : ''}</div> : ''}{!ship ? <div>{lbl('Pickup')}<div className="led">{STAFF() && ['paid', 'packed', 'ready'].includes(st) && Object.values(POINTS).some(x => x.active !== false) ? <div><span>At</span><b><select className="vin" data-zpick={o[0]} defaultValue={PICKUP_AT[o[0]] || ''} aria-label="Where it’s held">{PICKUP_AT[o[0]] ? '' : <option value="">{o[8]?.pickup || 'Pick a point…'}</option>}{Object.entries(POINTS).filter(([k, x]) => x.active !== false || k === PICKUP_AT[o[0]]).map(([k, x]) => <option key={k} value={k}>{x.n}{x.city ? ` · ${x.city}` : ''}</option>)}</select></b></div> : ledRow('At', ptName(o))}{pk?.holdUntil ? ledRow('Held until', `${fmtD(pk.holdUntil)}${pk.overdue ? ' · past the hold' : ''}`) : ''}</div></div> : ''}{st === 'refund' && ret ? <p className="bpn-w"><b>{ret.refundedAt ? `${money(ret.amount ?? t)} refund recorded ${fmtD(ret.refundedAt)}.` : `The ${money(ret.amount ?? t)} refund is waiting on ${ret.second || 'a second person'}.`}</b>{` ${ret.reason}.`}{LV.REFUNDCAP != null ? ` Refunds over ${money(LV.REFUNDCAP)} need a second person.` : ''}</p> : ''}</div><div className="pn-ft">{foot}</div></></>;
     }
     /** Live, shows a shipping address for packing: read from Stripe for this order only, never kept, logged as a reveal. */
     function showAddr(id) {
@@ -1564,6 +1631,126 @@ function makeShop() {
       send(calls, `Saved · ${shortN(p)}`);
     }
 
+    /** Live, the controls the reference has no drawing for, in its panels: suppliers and their breaks, a material's extras, one cost by colour or size, pickup points, a label's cost. */
+    function liveForm(t, d) {
+      const keys = ['sbadd', 'sbrm', 'sesave', 'sptsave', 'sxadd', 'sfoadd', 'zlabel'];
+      if (!keys.some(k => d[k] !== undefined)) return false;
+      if (!STAFF()) {
+        toast('Read-only');
+        return true;
+      }
+      const pn = document.getElementById('spanel'),
+        val = id => (pn?.querySelector('#' + id)?.value ?? '').trim(),
+        amt = v => v === '' ? NaN : Number(String(v).replace(/[^0-9.]/g, ''));
+      if (d.sbadd !== undefined || d.sbrm !== undefined) {
+        seRead();
+        if (d.sbadd !== undefined) SP.se.breaks.push(['', '']);else SP.se.breaks.splice(+d.sbrm, 1);
+        renderPanel();
+        return true;
+      }
+      if (d.sesave !== undefined) {
+        seRead();
+        const e = SP.se,
+          name = String(e.name).trim(),
+          lt = String(e.lead).trim(),
+          lead = lt === '' ? null : Number(lt);
+        if (!name) return toast('Give the supplier a name'), true;
+        if (lead != null && !(Number.isInteger(lead) && lead >= 0 && lead <= 365)) return toast('The lead time is a whole number of days'), true;
+        const breaks = [];
+        for (const [q, o] of e.breaks) {
+          if (String(q).trim() === '' && String(o).trim() === '') continue;
+          const n = amt(q),
+            off = amt(o);
+          if (!(n > 0)) return toast('Each break starts from a number of units'), true;
+          if (!(off >= 0 && off < 100)) return toast('Each break takes 0 to 99% off'), true;
+          breaks.push({
+            quantity: n,
+            discount: Math.round(off * 100) / 10000
+          });
+        }
+        if (new Set(breaks.map(b => b.quantity)).size !== breaks.length) return toast('One break a quantity'), true;
+        const was = JSON.stringify((e.id ? SUP[e.id].breaks : []).map(([q, x]) => [q, x])),
+          now = JSON.stringify(breaks.map(b => [b.quantity, b.discount]));
+        const calls = [['supplier', {
+          ...(e.id ? {
+            id: e.id
+          } : {}),
+          name,
+          city: String(e.city).trim(),
+          sells: String(e.sells).trim(),
+          leadDays: lead,
+          terms: String(e.terms).trim(),
+          minimum: String(e.minimum).trim(),
+          note: String(e.note).trim()
+        }]];
+        if (was !== now) calls.push(['supplier-breaks', rs => ({
+          supplier: rs[0].result.id,
+          breaks
+        })]);
+        send(calls, e.id ? `Saved · ${name}` : `Added ${name} to the suppliers`, rs => {
+          SP.se = null;
+          SP.panel = 's:' + (rs[0]?.result?.id ?? e.id);
+        });
+        return true;
+      }
+      if (d.sptsave !== undefined) {
+        const e = SP.pt,
+          f = k => pn?.querySelector(`[data-ptf="${k}"]`),
+          name = (f('name')?.value ?? '').trim();
+        if (!name) return toast('Give the pickup point a name'), true;
+        send([['pickup-point', {
+          ...(e.id ? {
+            id: e.id
+          } : {}),
+          name,
+          city: (f('city')?.value ?? '').trim(),
+          active: !!f('active')?.checked
+        }]], e.id ? `Saved · ${name}` : `Added ${name} as a pickup point`, () => closeS());
+        return true;
+      }
+      if (d.sxadd !== undefined) {
+        const i = INP[d.sxadd],
+          fr = val('sxfor'),
+          x = amt(val('sxamt'));
+        if (!fr) return toast('Pick a size or a colour'), true;
+        if (!(x > 0)) return toast('Type what it adds, in dollars'), true;
+        const size = fr.startsWith('s:') ? fr.slice(2) : '',
+          option = fr.startsWith('o:') ? fr.slice(2) : '';
+        send([['input-extra', {
+          input: i.id,
+          size,
+          option,
+          extra: x
+        }]], `${i.n} costs ${money(x)} more in ${size || option}`);
+        return true;
+      }
+      if (d.sfoadd !== undefined) {
+        const p = PRO[d.sfoadd],
+          option = val('sfocol'),
+          size = val('sfosize'),
+          c = amt(val('sfocost'));
+        if (!option && !size) return toast('Pick a colour or a size'), true;
+        if (!(c >= 0)) return toast('Type its cost'), true;
+        send([['flat-override', {
+          product: p.id,
+          option,
+          size,
+          cost: c
+        }]], `${[option, size].filter(Boolean).join(' · ')} costs ${money(c)}`);
+        return true;
+      }
+      if (d.zlabel !== undefined) {
+        const c = amt(val('slabel'));
+        if (!(c >= 0)) return toast('Type what the label cost'), true;
+        send([['order-label', {
+          order: d.zlabel,
+          cost: c
+        }]], `#${d.zlabel} · label ${money(c)} · its shipping gap is worked out`);
+        return true;
+      }
+      return false;
+    }
+
     /* ══ render + events ═══════════════════════════════════════════════════════════════════════════════════════════ */
     function render() {
       document.querySelectorAll('.gtabs [data-stab]').forEach(b => b.setAttribute('aria-current', b.dataset.stab === SP.tab ? 'page' : 'false'));
@@ -1606,6 +1793,8 @@ function makeShop() {
       SP.draft = null;
       SP.buy = null;
       SP.mk = null;
+      SP.se = null;
+      SP.pt = null;
     };
     document.addEventListener('click', e => {
       if (e.target.id === 'sscrim') {
@@ -1617,6 +1806,7 @@ function makeShop() {
       if (!t) return;
       const d = t.dataset;
       if (LV && liveClick(t, d)) return;
+      if (LV && liveForm(t, d)) return;
       if (d.stab) {
         SP.reopen = null;
         SP.tab = d.stab;
@@ -1632,6 +1822,8 @@ function makeShop() {
         if (SP.panel !== d.sopen) {
           SP.draft = null;
           SP.buy = null;
+          SP.se = null;
+          SP.pt = null;
         }
         SP.panel = d.sopen;
         return render();
@@ -1917,6 +2109,30 @@ function makeShop() {
       if (LV && t.dataset.zphotos !== undefined) return void addPhotos(prOf(t.dataset.zphotos) || {
         id: t.dataset.zphotos
       }, t);
+      if (LV && (t.dataset.zkind !== undefined || t.dataset.zkst !== undefined || t.dataset.zkpk !== undefined)) {
+        const i = INP[t.dataset.zkind ?? t.dataset.zkst ?? t.dataset.zkpk];
+        if (!i || !STAFF()) return;
+        const b = t.dataset.zkind !== undefined ? {
+          input: i.id,
+          kind: t.value
+        } : t.dataset.zkst !== undefined ? {
+          input: i.id,
+          kind: 'order',
+          stocked: t.checked
+        } : {
+          input: i.id,
+          kind: 'order',
+          onPickup: t.checked
+        };
+        return send([['input-kind', b]], t.dataset.zkind !== undefined ? `${i.n} is ${KIND[t.value][0].toLowerCase()} now` : t.dataset.zkst !== undefined ? t.checked ? `${i.n} is counted on hand` : `${i.n} isn’t counted on hand` : t.checked ? `Pickups use ${i.n.toLowerCase()} too` : `Only shipped orders use ${i.n.toLowerCase()}`);
+      }
+      if (LV && t.dataset.zpick !== undefined) {
+        if (!t.value || !STAFF()) return;
+        return send([['order-pickup', {
+          order: t.dataset.zpick,
+          point: t.value
+        }]], `#${t.dataset.zpick} · held at ${POINTS[t.value]?.n ?? 'the point'}`);
+      }
       if (LV && t.dataset.zsup !== undefined) return send([['input-supplier', {
         input: t.dataset.zsup,
         supplier: t.value || null
