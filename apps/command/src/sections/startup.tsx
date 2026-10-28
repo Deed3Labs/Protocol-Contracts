@@ -49,6 +49,14 @@ import { openCostFlow } from './costing';
 import { openCatFlow } from './catalog';
 import { ibxPaneDraw, ibxRefresh } from './inbox';
 import { sgnIn, sgnStep, sgnTimer, showLogin } from './signin';
+
+/**
+ * What an event happened on. The redesign's pages draw inside shadow roots (sections/pageHost.tsx),
+ * and an event leaving one reaches these document listeners retargeted to the page's host; the first
+ * node on its composed path is what was really clicked or typed in. Outside a shadow root it's
+ * e.target.
+ */
+const evTarget = (e: Event): any => (e.composedPath?.()[0] as any) ?? (e.target as any);
 import { accOf, openTFlow } from './team';
 
 /** Live, a confirmed flow with an API call runs it, then its steps; a failure shows and the button comes back. */
@@ -90,7 +98,7 @@ export function startup() {
   document.addEventListener(
     'scroll',
     (e) => {
-      if (e.target.id === 'strip') {
+      if (evTarget(e).id === 'strip') {
         cancelAnimationFrame(vars.pageRaf);
         vars.pageRaf = requestAnimationFrame(syncPages);
       }
@@ -101,12 +109,12 @@ export function startup() {
   document.addEventListener(
     'click',
     (e) => {
-      if (!e.target.closest('.dd')) ddClose();
+      if (!evTarget(e).closest('.dd')) ddClose();
     },
     true,
   );
   document.addEventListener('keydown', (e) => {
-    const dd = e.target.closest && e.target.closest('.dd');
+    const dd = evTarget(e).closest && evTarget(e).closest('.dd');
     if (!dd) return;
     const l = dd.querySelector('.dd-list'),
       items = [...l.querySelectorAll('[role="option"]')],
@@ -341,7 +349,7 @@ export function startup() {
       },
     );
     document.addEventListener('pointerdown', (e) => {
-      const el = e.target.closest('#kboard .kc[data-kc]');
+      const el = evTarget(e).closest('#kboard .kc[data-kc]');
       if (!el || e.button > 0 || (S.view && vLevel('merchants') < 3)) return;
       D = {
         el,
@@ -371,7 +379,7 @@ export function startup() {
   document.addEventListener(
     'keydown',
     (e) => {
-      if (e.key === 'Enter' && e.target.matches && e.target.matches('#kboard .kc[data-kc]')) openKc(e.target.dataset.kc);
+      if (e.key === 'Enter' && evTarget(e).matches && evTarget(e).matches('#kboard .kc[data-kc]')) openKc(evTarget(e).dataset.kc);
       if (e.key === 'Escape' && vars.KE && vars.KE.ownerOpen) {
         vars.KE.ownerOpen = false;
         e.stopPropagation();
@@ -382,7 +390,7 @@ export function startup() {
   );
   document.addEventListener('input', (e) => {
     if (!vars.KE) return;
-    const t = e.target;
+    const t = evTarget(e);
     if (t.matches('[data-kownq]')) {
       vars.KE.ownerQ = t.value;
       return kcDraw();
@@ -410,7 +418,7 @@ export function startup() {
   /* existing shops save when a field is left */
   document.addEventListener('change', (e) => {
     if (!vars.KE || !vars.KE.id) return;
-    const t = e.target,
+    const t = evTarget(e),
       k = t.dataset && t.dataset.kf;
     if (!k) return;
     const c = kcItem();
@@ -452,18 +460,18 @@ export function startup() {
     kcSaved();
   });
   document.addEventListener('click', (e) => {
-    const card = e.target.closest('#kboard .kc[data-kc]');
-    if (card && !e.target.closest('button')) return openKc(card.dataset.kc);
-    if (!vars.KE || !e.target.closest('.pane.kce')) {
-      if (vars.KE && vars.KE.ownerOpen && !e.target.closest('.kown')) {
+    const card = evTarget(e).closest('#kboard .kc[data-kc]');
+    if (card && !evTarget(e).closest('button')) return openKc(card.dataset.kc);
+    if (!vars.KE || !evTarget(e).closest('.pane.kce')) {
+      if (vars.KE && vars.KE.ownerOpen && !evTarget(e).closest('.kown')) {
         vars.KE.ownerOpen = false;
         kcDraw();
       }
       return;
     }
-    const b = e.target.closest('button');
+    const b = evTarget(e).closest('button');
     if (!b || b.disabled) {
-      if (vars.KE.ownerOpen && !e.target.closest('.kown')) {
+      if (vars.KE.ownerOpen && !evTarget(e).closest('.kown')) {
         vars.KE.ownerOpen = false;
         kcDraw();
       }
@@ -672,20 +680,20 @@ export function startup() {
   AGR.push(...merchantAgreements());
   document.addEventListener('input', (e) => {
     if (!TS.edit) return;
-    if (e.target.id === 'tg-name') TS.edit.name = e.target.value;
-    if (e.target.id === 'tg-desc') TS.edit.desc = e.target.value;
+    if (evTarget(e).id === 'tg-name') TS.edit.name = evTarget(e).value;
+    if (evTarget(e).id === 'tg-desc') TS.edit.desc = evTarget(e).value;
   });
   document.addEventListener(
     'click',
     (e) => {
-      const x = e.target.closest('[data-viewexit]');
+      const x = evTarget(e).closest('[data-viewexit]');
       if (x) {
         e.preventDefault();
         e.stopPropagation();
         return viewExit();
       }
       if (!S.view || vLevel(S.route) >= 3) return;
-      const el = e.target.closest('button,[role="button"],[data-member]');
+      const el = evTarget(e).closest('button,[role="button"],[data-member]');
       if (!el || el.closest('#pfRoot,#loginRoot')) return;
       if (vLevel(S.route) === 1 && el.closest('[data-member]')) {
         e.preventDefault();
@@ -708,7 +716,7 @@ export function startup() {
   document.addEventListener(
     'click',
     (e) => {
-      const b = e.target.closest('.ptabs button');
+      const b = evTarget(e).closest('.ptabs button');
       if (!b) return;
       const y0 = window.scrollY;
       requestAnimationFrame(() => {
@@ -726,20 +734,20 @@ export function startup() {
   );
   /* ── Events ──────────────────────────────────────────────── */
   document.addEventListener('click', (e) => {
-    const opt = e.target.closest('[data-ddv]');
+    const opt = evTarget(e).closest('[data-ddv]');
     if (opt) return ddPick(opt.closest('.dd'), opt.dataset.ddv);
-    const ddb = e.target.closest('.dd-btn');
+    const ddb = evTarget(e).closest('.dd-btn');
     if (ddb) {
       const dd = ddb.closest('.dd');
       return dd.querySelector('.dd-list').hidden ? ddOpen(dd) : ddClose();
     }
-    const t = e.target.closest(
+    const t = evTarget(e).closest(
       'button,[data-closenpane],[data-pf-close],[data-scrim],[data-poster],[data-closepane],[data-member],[data-closempane],[data-merchant],[data-cmcity],[data-closexpane],[data-fclose],[data-agr],[data-ctr],[data-closecpane],[data-ent],[data-closevpane],[data-doc],[data-rentry],[data-closerpane],[data-person],[data-closetpane],[data-product],[data-order],[data-closespane],[data-sinput]',
     );
     if (!t) return;
-    if (t.matches('[data-scrim]') && e.target === t) return closeModal();
+    if (t.matches('[data-scrim]') && evTarget(e) === t) return closeModal();
     if (t.dataset.close !== undefined) return closeModal();
-    if (t.matches('[data-fclose]') && (e.target === t || t.tagName === 'BUTTON')) {
+    if (t.matches('[data-fclose]') && (evTarget(e) === t || t.tagName === 'BUTTON')) {
       FS.scan = null;
       FS.outcome = null;
       return render();
@@ -1473,10 +1481,10 @@ export function startup() {
     }
   });
   document.addEventListener('change', (e) => {
-    if (e.target.id === 'f-photo' && e.target.files.length) {
+    if (evTarget(e).id === 'f-photo' && evTarget(e).files.length) {
       const l = document.getElementById('f-photo-l');
       if (l) l.textContent = 'Photo added';
-      e.target.parentElement.querySelector('.fphoto').classList.add('on');
+      evTarget(e).parentElement.querySelector('.fphoto').classList.add('on');
     }
   });
   document.addEventListener('keydown', (e) => {
@@ -1517,23 +1525,23 @@ export function startup() {
       render();
       return;
     }
-    if (e.key === 'Enter' && e.target.matches && e.target.matches('tr[data-merchant]')) {
-      XS.merchant = e.target.dataset.merchant;
+    if (e.key === 'Enter' && evTarget(e).matches && evTarget(e).matches('tr[data-merchant]')) {
+      XS.merchant = evTarget(e).dataset.merchant;
       render();
       return;
     }
-    if (e.key === 'Enter' && e.target.matches && e.target.matches('tr[data-member]')) {
-      MS.member = Number(e.target.dataset.member);
+    if (e.key === 'Enter' && evTarget(e).matches && evTarget(e).matches('tr[data-member]')) {
+      MS.member = Number(evTarget(e).dataset.member);
       render();
       return;
     }
-    if (e.key === 'Enter' && e.target.matches && e.target.matches('tr[data-sinput]')) {
-      SS.input = e.target.dataset.sinput;
+    if (e.key === 'Enter' && evTarget(e).matches && evTarget(e).matches('tr[data-sinput]')) {
+      SS.input = evTarget(e).dataset.sinput;
       render();
       return;
     }
-    if (e.key === 'Enter' && e.target.matches && e.target.matches('tr[data-poster]')) {
-      GS.poster = Number(e.target.dataset.poster);
+    if (e.key === 'Enter' && evTarget(e).matches && evTarget(e).matches('tr[data-poster]')) {
+      GS.poster = Number(evTarget(e).dataset.poster);
       render();
       return;
     }
@@ -1552,7 +1560,7 @@ export function startup() {
   (() => {
     const root = document.getElementById('loginRoot');
     root.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-sgn]');
+      const b = evTarget(e).closest('[data-sgn]');
       if (!b) return;
       const k = b.dataset.sgn;
       if (LIVE) {
@@ -1586,7 +1594,7 @@ export function startup() {
       }
     });
     root.addEventListener('change', (e) => {
-      if (e.target.id === 'sgnKeep') SG.keep = e.target.checked;
+      if (evTarget(e).id === 'sgnKeep') SG.keep = evTarget(e).checked;
     });
     root.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -1623,7 +1631,7 @@ export function startup() {
       sgnStep('code');
     });
     root.addEventListener('input', (e) => {
-      const t = e.target;
+      const t = evTarget(e);
       if (t.id === 'sgnEmail') {
         document.getElementById('sgnIn').classList.remove('bad');
         return;
@@ -1652,7 +1660,7 @@ export function startup() {
       }
     });
     root.addEventListener('keydown', (e) => {
-      const t = e.target;
+      const t = evTarget(e);
       if (!t.closest || !t.closest('#sgnCode') || e.key !== 'Backspace' || t.value) return;
       const ins = [...root.querySelectorAll('#sgnCode input')],
         i = ins.indexOf(t);
