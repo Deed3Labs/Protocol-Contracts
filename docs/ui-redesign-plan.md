@@ -220,6 +220,12 @@ Filled in as each page is ported. Known before starting:
   printer's bill for a batch, enforced supplier minimums, the real Stripe fee and label prices (entered
   by hand), messaging a member when a pickup hold runs out, a list of cost changes of its own (purchases
   are the history), and the shop's fixed costs (samples, photos, software).
+  The page is ported. Live it maps onto the API's payload (PR, STK, SUPPLIERS, INPUTS with type/avg/last/var,
+  ON_ORDER, REORDER, BATCHES, PER_ORDER, ORDER_COSTS, POINTS, PICKUP); still missing for it: weekly order
+  counts, cost changes as a list (derivable from purchases), "on the way" items that aren't materials.
+  Before its gate goes on, the new page needs controls (or the old "On the store" section kept beside it)
+  for Phase 11's catalog editing and photos, the order flows (ship, ready, picked, remind, refund, labels,
+  deposit refunds, the address reveal) and Phase 10's recipe overrides, stock counts and cost at sale.
 - **Members** (ported; found while porting):
   - per person: waitlist position for everyone waiting, Social and Search as sources (the API sends
     Poster or Website), whether they have the app and a phone (they pick the nudge channel), notes,
