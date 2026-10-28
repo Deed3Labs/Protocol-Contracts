@@ -1,10 +1,17 @@
 // @ts-nocheck: ported from the redesign's ADMIN2 module (design/command-center-ui) with scripts/port/module.cjs; its data is its own.
 import { Fragment } from 'react';
 import { attrs, css, html } from '../runtime/dom';
+import { loadTeam, loadWaiting } from '../live/account';
+import { saveDownload } from '../live/api';
+import { REAL } from '../live/env';
+import { loadFeeds } from '../live/feeds';
+import { adminApi, adminLive } from './adminLive';
 import { CC } from './cc';
-import { LOG, S } from './data';
+import { LOG as LOG_D, S } from './data';
 import { pageModFor, registerPage, shadowHost } from './pageHost';
+import { openRFlow } from './records';
 import { toast, vLevel } from './shell';
+import { openTFlow } from './team';
 
 /*
  * Records, Team and Settings (design/command-center-ui, the ADMIN2 module): one module draws the three
@@ -22,11 +29,14 @@ function skeleton() {
 function makeAdmin() {
   // records, team and settings share their chain of sheets (pageHost's CHAIN)
   const { host, R: SR, W, into } = shadowHost('records', skeleton());
+  // live, every dataset comes from the API (adminLive.ts); the reference's stay for the prototype
+  const AL = REAL ? adminLive() : null;
   const LIVE = () => host.isConnected && ['records', 'team', 'settings'].includes(CC.route());
   let API = null;
   const RO = () => CC.viewing() && vLevel(API ? API.page() : CC.route()) < 3;
   const TOT = () => CC.viewing() && vLevel(API ? API.page() : CC.route()) === 1;
   const meKey = () => {
+    if (AL) return AL.ME;
     const v = S.view;
     if (!v) return 'K';
     return {
@@ -87,8 +97,8 @@ function makeAdmin() {
        Demo "today" is Wed 21 Oct 2026, 14:00. Permissions are set per group, never per person. Settings hold the numbers
        every page enforces; changing one needs a second person and lands in the audit log. */
     const DAY = 864e5,
-      TODAY = Date.UTC(2026, 9, 21),
-      NOW = TODAY + 14 * 3600e3;
+      TODAY = AL ? AL.TODAY : Date.UTC(2026, 9, 21),
+      NOW = AL ? AL.NOW : TODAY + 14 * 3600e3;
     const D = (m, d, y = 2026) => Date.UTC(y, m - 1, d);
     const H = (m, d, h, mi = 0) => Date.UTC(2026, m - 1, d, h, mi),
       H2 = H;
@@ -101,6 +111,7 @@ function makeAdmin() {
     const hm = t => new Date(t).toISOString().slice(11, 16);
     const leaf = t => <span className="leaf"><span>{WD(t)}</span><b>{new Date(t).getUTCDate()}</b><span>{MON[new Date(t).getUTCMonth()]}</span></span>;
     const ago = t => {
+      if (AL && !t) return 'Not yet';
       const m = Math.round((NOW - t) / 6e4);
       if (m < 60) return `${Math.max(1, m)} min ago`;
       const h = Math.round(m / 60);
@@ -122,7 +133,7 @@ function makeAdmin() {
     const SECS = [['home', 'Home'], ['growth', 'Growth'], ['field', 'Field'], ['members', 'Members'], ['merchants', 'Merchants'], ['shop', 'Shop'], ['money', 'Money'], ['build', 'Build'], ['community', 'Community'], ['governance', 'Governance'], ['records', 'Records'], ['team', 'Team'], ['settings', 'Settings']];
     const SEC_GROUP = [['Grow', 0, 5], ['Hold', 6, 6], ['Rules', 7, 9], ['Admin', 10, 12]];
     const LV = [['None', 'Not in their menu'], ['Totals', 'Co-op numbers, no names or personal details'], ['See', 'Everything on the page, can’t change it'], ['Propose', 'Can start a change · someone else approves'], ['Approve', 'Can be the second person']];
-    const GROUPS = {
+    const GROUPS = AL ? AL.GROUPS : {
       /* name, who it's for, a level per section, everyone */
       members: ['Members', 'Everyone with a Clear account', [0, 1, 0, 0, 1, 1, 1, 2, 2, 2, 2, 0, 0], 1],
       admin: ['Admin', 'Runs the co-op day to day', [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]],
@@ -132,8 +143,8 @@ function makeAdmin() {
       outside: ['Outside', 'Read-only, for an accountant or counsel', [0, 1, 0, 0, 1, 2, 2, 2, 0, 2, 2, 0, 0]],
       investors: ['Investors', 'Data room for investors, lenders and property contributors', [0, 1, 0, 0, 1, 1, 2, 2, 0, 2, 2, 0, 0]]
     };
-    const GKEYS = Object.keys(GROUPS).filter(k => !GROUPS[k][3]);
-    const PEOPLE = [{
+    const GKEYS = AL ? AL.GKEYS : Object.keys(GROUPS).filter(k => !GROUPS[k][3]);
+    const PEOPLE = AL ? AL.PEOPLE : [{
       id: 'K',
       email: 'kai@useclear.org',
       n: 'Kai',
@@ -201,7 +212,7 @@ function makeAdmin() {
       until: D(11, 21),
       dev: [['Laptop · Irvine', H(10, 20, 11, 5), 1]]
     }];
-    const INVITES = [{
+    const INVITES = AL ? AL.INVITES : [{
       id: 'PS',
       n: 'Priya Shah',
       email: 'priya@useclear.org',
@@ -212,14 +223,17 @@ function makeAdmin() {
       by: 'K',
       ok: 'DR'
     }];
-    const PPL = Object.fromEntries(PEOPLE.map(p => [p.id, p]));
-    const pName = id => id === 'SY' ? 'System' : (PPL[id] || INVITES.find(i => i.id === id) || {
+    const PPL = AL ? AL.PPL : Object.fromEntries(PEOPLE.map(p => [p.id, p]));
+    const pName = id => id === 'SY' ? 'System' : AL && AL.NAMES[id] ? AL.NAMES[id] : (PPL[id] || INVITES.find(i => i.id === id) || {
       n: id
     }).n;
-    const MEMBERS_N = 188;
+    /** Who something waits on: you, a first name, or (live, when it isn't you) a second person. */
+    const onWho = (id, full) => id === A.me ? 'you' : AL && !PPL[id] && !AL.NAMES[id] ? 'a second person' : full ? pName(id) : pName(id).split(' ')[0];
+    const NUMW = n => NUM[n] ?? String(n);
+    const MEMBERS_N = AL ? AL.MEMBERS_N : 188;
 
     /* ── what: the rules every page enforces. Team shows who can approve each; Settings holds the numbers ─────────────── */
-    const RULES = [/* id, rule, what it covers, approvers (groups at Approve), last 30 days, median hours to a second person, setting it reads */
+    const RULES = AL ? AL.RULES : [/* id, rule, what it covers, approvers (groups at Approve), last 30 days, median hours to a second person, setting it reads */
     {
       id: 'money',
       t: 'Money moves',
@@ -285,9 +299,9 @@ function makeAdmin() {
       med: 6.5,
       set: 'settings'
     }];
-    const CAN = [/* things a person does, not approves: who can */
+    const CAN = AL ? AL.CAN : [/* things a person does, not approves: who can */
     ['Start a money move', ['K', 'DR']], ['Sign in the Ops Safe', ['K', 'DR', 'BS']], ['Deploy a contract', ['DR']], ['Reveal personal details', ['K', 'DR']], ['Sign agreements for the co-op', ['K']], ['File for an entity', ['K']], ['Invite or turn off a person', ['K']], ['Confirm a new device', ['K', 'DR']]];
-    const APPR = {
+    const APPR = AL ? AL.APPR : {
       /* proposer → approver, last 30 days */K: {
         DR: 6,
         BS: 1
@@ -301,12 +315,12 @@ function makeAdmin() {
         DR: 4
       }
     };
-    const WAITING = [/* what, from, proposed by, waiting on, hours, usual hours, rule */
+    const WAITING = AL ? AL.WAITING : [/* what, from, proposed by, waiting on, hours, usual hours, rule */
     ['PayoutPool top-up · $1,116.89', 'Money', 'K', 'DR', 20, 4.2, 'money'], ['AssurancePool v1.3', 'Build', 'DR', 'K', 30, 7.8, 'chain'], ['Refund · order #1079 · $98.00', 'Shop', 'K', 'DR', 3, 1.6, 'refund'], ['Shop buys over $500.00', 'Settings', 'K', 'DR', 5, 6.5, 'settings']];
 
     /* ── settings ───────────────────────────────────────────────────────────────────────────────────────────────────── */
     /* kind: money | num | pct | hours | days | choice | on | lock. lock: set somewhere else (a vote, the bylaws, the law) */
-    const SETS = [{
+    const SETS = AL ? AL.SETS : [{
       id: 'money',
       sec: 'money',
       t: 'Second person on money moves',
@@ -528,7 +542,7 @@ function makeAdmin() {
       opts: ['06:00', '07:00', '08:00', 'Off'],
       used: ['home']
     }];
-    const SETO = Object.fromEntries(SETS.map(s => [s.id, s]));
+    const SETO = AL ? AL.SETO : Object.fromEntries(SETS.map(s => [s.id, s]));
     const SEC_T = {
       money: ['Money', 'Second person and spending'],
       chain: ['On-chain', 'The Ops Safe and the wait'],
@@ -540,7 +554,7 @@ function makeAdmin() {
       records: ['Records', 'How long things are kept'],
       notify: ['Notifications', 'Who hears about what']
     };
-    const PEND = [/* setting changes waiting on a second person */
+    const PEND = AL ? AL.PEND : [/* setting changes waiting on a second person */
     {
       id: 'C-07',
       set: 'shopbuy',
@@ -552,12 +566,12 @@ function makeAdmin() {
       why: 'Blank orders for the holiday run are mostly $300 to $900, so every one waits.',
       need: 'DR'
     }];
-    const SET_HIST = [/* id, when, setting, from, to, by, approved by */
+    const SET_HIST = AL ? AL.SET_HIST : [/* id, when, setting, from, to, by, approved by */
     ['C-06', H(10, 9, 15, 0), 'cap', '$75.00', '$100.00', 'DR', 'K'], ['C-05', H(10, 2, 10, 30), 'margin', '55%', '60%', 'K', 'DR'], ['C-04', H(9, 28, 9, 0), 'hold', '10 days', '14 days', 'K', 'DR'], ['C-03', H(9, 14, 11, 0), 'session', '24 hours', '12 hours', 'DR', 'K'], ['C-02', H(9, 1, 12, 0), 'batch', '20 people', '25 people', 'K', 'DR']];
-    const ALERTS = [/* alert, when, who hears it */['Something is waiting on you', 'As soon as it’s yours to approve', []], ['A connection falls behind', 'Over an hour behind', ['K', 'DR']], ['A device goes offline', 'A Clear Point stops reporting', ['ML', 'K']], ['A reveal without a reason', 'Within the hour', ['K']], ['A sign-in from a new device', 'Until someone confirms it', ['K', 'DR']]];
+    const ALERTS = AL ? [] : [/* alert, when, who hears it */['Something is waiting on you', 'As soon as it’s yours to approve', []], ['A connection falls behind', 'Over an hour behind', ['K', 'DR']], ['A device goes offline', 'A Clear Point stops reporting', ['ML', 'K']], ['A reveal without a reason', 'Within the hour', ['K']], ['A sign-in from a new device', 'Until someone confirms it', ['K', 'DR']]];
 
     /* connections: status ok | behind | off; hourly health for the last 24 hours (1 ok, 0.5 slow, 0 down) */
-    const CONN = [{
+    const CONN = AL ? AL.CONN : [{
       id: 'plaid',
       n: 'Plaid',
       what: 'Bank data · 12 bank links',
@@ -678,9 +692,9 @@ function makeAdmin() {
     }];
 
     /* organization */
-    const ENT = [/* id, name, kind, status, tax id last 4, state filed */
+    const ENT = AL ? AL.ENT : [/* id, name, kind, status, tax id last 4, state filed */
     ['coop', 'Clear Co-op', 'Wyoming LLC · co-op', 'formed', '4417'], ['fin', 'Clear Financial Co.', 'Wyoming LLC', 'formed', '8820'], ['dt', 'The Deed & Title Co.', 'Wyoming LLC', 'forming', ''], ['hold', 'Clear Capital Holdings', 'Wyoming C-corp', 'formed', '3051'], ['labs', 'ClearLabs Inc.', 'Wyoming C-corp', 'formed', '6602'], ['mgr', 'Manager LLC', 'Wyoming LLC', 'forming', ''], ['fdn', 'Clear Foundation', 'Wyoming foundation', 'forming', '']];
-    const ENTO = Object.fromEntries(ENT.map(e => [e[0], e]));
+    const ENTO = AL ? AL.ENTO : Object.fromEntries(ENT.map(e => [e[0], e]));
     const PROFILE = [['Name', 'Clear Co-op'], ['Website', 'useclear.org'], ['Help email', 'help@useclear.org'], ['Time zone', 'Pacific · Los Angeles'], ['Fiscal year', 'January to December'], ['Currency', 'US dollars']];
 
     /* ── records: documents ─────────────────────────────────────────────────────────────────────────────────────────── */
@@ -699,9 +713,9 @@ function makeAdmin() {
       waiting: ['Waiting on a signature', 'var(--live)'],
       final: ['Final', 'var(--fg)']
     };
-    const DOCS = [/* id, title, type, entity, date, status, version, by, pages, governance link */
+    const DOCS = AL ? AL.DOCS : [/* id, title, type, entity, date, status, version, by, pages, governance link */
     ['d1', 'Merchant partner agreement · Inland Cycle Works', 'agreement', 'coop', D(10, 20), 'waiting', 'v1.1', 'Inland Cycle Works', 6, 'icw'], ['d2', 'Minutes · Co-op board, 7 Oct', 'minutes', 'coop', D(10, 8), 'draft', 'v0.2', 'Kai', 4], ['d19', 'Shop returns and refunds · policy', 'policy', 'coop', D(9, 28), 'final', 'v1.0', 'Kai', 2], ['d3', 'RevolvingIssuer v1.3 · audit notes', 'policy', 'labs', D(10, 19), 'final', 'v1.0', 'Dana Ruiz', 9], ['d4', 'Merchant partner agreement · Uptown Barber', 'agreement', 'coop', D(10, 20), 'signed', 'v1.1', 'Uptown Barber · Kai', 6], ['d5', 'Bond certificate · BB-0006', 'bond', 'hold', D(10, 15), 'signed', 'v1.0', 'Kai · Dana Ruiz', 2], ['d6', 'Payout report · September', 'report', 'fin', D(10, 2), 'final', 'v1.0', 'System', 3], ['d7', 'Minutes · ClearLabs board, 7 Oct', 'minutes', 'labs', D(10, 8), 'signed', 'v1.0', 'Kai', 3], ['d8', 'Annual report · ClearLabs Inc.', 'filing', 'labs', D(10, 16), 'draft', 'v1.0', 'Kai', 2], ['d9', 'Intercompany pricing policy', 'policy', 'hold', D(10, 12), 'draft', 'v0.3', 'Kai', 5], ['d10', 'Program services agreement', 'agreement', 'fin', D(1, 1), 'signed', 'v1.0', 'Kai', 14, 'psa'], ['d11', 'Minutes · Holdings board, 16 Sep', 'minutes', 'hold', D(9, 17), 'signed', 'v1.0', 'Kai', 5], ['d12', 'Holdings bylaws', 'policy', 'hold', D(9, 16), 'final', 'v1.0', 'Holdings board', 22], ['d13', 'Cooperative operating agreement', 'agreement', 'coop', D(6, 12), 'signed', 'v1.0', 'Founding members', 31, 'coop-oa'], ['d14', 'Articles of organization · Manager LLC', 'filing', 'mgr', D(10, 9), 'filed', 'v1.0', 'Accountant', 3], ['d15', 'Two-person rule', 'policy', 'coop', D(8, 1), 'final', 'v1.2', 'Co-op board', 4]];
-    const DCOUNT = {
+    const DCOUNT = AL ? AL.DCOUNT : {
       agreement: 41,
       minutes: 12,
       filing: 7,
@@ -710,7 +724,7 @@ function makeAdmin() {
       report: 14
     };
     const COVER_K = ['Formation papers', 'Operating rules', 'EIN letter', 'Board minutes', 'Annual report', 'Bank resolution'];
-    const COVER = {
+    const COVER = AL ? AL.COVER : {
       /* f on file · d draft · m missing · n not needed yet */
       coop: ['f', 'f', 'f', 'd', 'n', 'f'],
       fin: ['f', 'f', 'f', 'n', 'f', 'f'],
@@ -739,10 +753,13 @@ function makeAdmin() {
       system: ['System', 'var(--line)'],
       alert: ['Alert', 'var(--absent)']
     };
-    const WHO = [['K', 'Kai'], ['DR', 'Dana Ruiz'], ['ML', 'Marcus Lee'], ['SY', 'System']];
+    // live, Records' own entries (adding a document, accepting the data room's terms) have their own colour
+    if (AL) AREAS.records = ['Records', 'color-mix(in srgb,var(--fg) 70%,transparent)'];
+    const LOG = AL ? AL.LOG : LOG_D;
+    const WHO = AL ? AL.WHO : [['K', 'Kai'], ['DR', 'Dana Ruiz'], ['ML', 'Marcus Lee'], ['SY', 'System']];
     const LOG0 = [/* id, time, who, area, action, detail, from, result, approver */
     ['n0', H2(10, 21, 13, 40), 'DR', 'money', 'Proposed paying the Q3 sales tax', '$351.58 from operating cash to CDTFA, due 31 Oct.', 'Laptop · Riverside', 'waiting', 'Needs a second person'], ['a2', H2(10, 21, 13, 10), 'K', 'money', 'Drafted the PayoutPool top-up', '$1,116.89 from operating cash, due 30 Oct.', 'Mac · Redlands', 'waiting', 'Needs a second person'], ['s1', H2(10, 21, 11, 20), 'K', 'shop', 'Proposed a refund on order #1079', '$98.00 · Hoodie, wrong size. Needs a second person.', 'Mac · Redlands', 'waiting', 'Needs a second person'], ['a3', H2(10, 21, 10, 0), 'SY', 'chain', 'RevolvingIssuer v1.3 went live', 'After the 24-hour wait. Signed by Dana Ruiz and Kai.', 'Ops Safe', 'done', ''], ['c7', H2(10, 21, 9, 10), 'K', 'team', 'Proposed raising shop buys to $500.00', 'Setting C-07 · from $250.00. Blank orders for the holiday run are mostly $300 to $900.', 'Mac · Redlands', 'waiting', 'Needs a second person'], ['a4', H2(10, 21, 9, 12), 'ML', 'field', 'Replaced poster P-012 at Uptown Barber', 'Photo attached. Next swap 20 Dec.', 'iPhone · Redlands', 'done', ''], ['a5', H2(10, 21, 8, 40), 'SY', 'alert', 'Orange St. Point went offline', 'Counter device stopped reporting.', 'Device', 'alert', ''], ['a6', H2(10, 20, 22, 41), 'SY', 'system', 'Plaid re-sync started', '7 of 12 bank links refreshed so far.', 'Plaid', 'running', ''], ['a7', H2(10, 20, 18, 0), 'DR', 'chain', 'Signed “Raise Rosa’s cap to $150.00”', 'First of two signatures. Waiting on you.', 'Laptop · Riverside', 'signed', 'Marcus Lee proposed'], ['a8', H2(10, 20, 16, 0), 'ML', 'field', 'Drafted “Add Inland Cycle Works”', 'Waits on the merchant agreement.', 'iPhone · Redlands', 'waiting', ''], ['s2', H2(10, 20, 11, 0), 'K', 'shop', 'Put Graphic Tee · Two Ten Overpass on the shelf', 'Photos, price and stock checked.', 'Mac · Redlands', 'done', ''], ['a9', H2(10, 20, 10, 0), 'K', 'chain', 'Signed RevolvingIssuer v1.3', 'Second of two signatures.', 'Mac · Redlands', 'approved', 'Dana Ruiz proposed'], ['a10', H2(10, 20, 9, 0), 'DR', 'chain', 'Signed AssurancePool v1.3', 'First of two. Waiting on you.', 'Laptop · Riverside', 'signed', ''], ['t2', H2(10, 19, 10, 5), 'DR', 'team', 'Approved inviting Priya Shah to Field', 'Kai proposed. The invite expires 26 Oct.', 'Laptop · Riverside', 'approved', 'Kai proposed'], ['a11', H2(10, 19, 12, 0), 'DR', 'field', 'Approved “Add Uptown Barber”', 'Second signature on Marcus Lee’s change.', 'Laptop · Riverside', 'approved', 'Marcus Lee proposed'], ['a12', H2(10, 19, 9, 30), 'ML', 'system', 'Signed in from a new device', 'iPhone. Confirmed by Kai at 09:41.', 'iPhone · Redlands', 'confirmed', ''], ['a13', H2(10, 18, 15, 0), 'K', 'gov', 'Sent the Inland Cycle Works agreement', 'Out for signature in the e-signature tool.', 'Mac · Redlands', 'done', ''], ['a14', H2(10, 18, 11, 0), 'DR', 'members', 'Approved invite batch 12', '25 people, oldest first. Kai proposed.', 'Laptop · Riverside', 'approved', 'Kai proposed'], ['a15', H2(10, 15, 9, 0), 'K', 'gov', 'Opened the member vote on v2.2', '188 members can vote until 29 Oct.', 'Mac · Redlands', 'done', ''], ['a16', H2(10, 14, 18, 0), 'DR', 'money', 'Approved issuing BB-0006', '$5,000.00 face value. Kai proposed.', 'Laptop · Riverside', 'approved', 'Kai proposed']];
-    LOG0.forEach(x => {
+    if (!AL) LOG0.forEach(x => {
       if (!LOG.some(y => y[0] === x[0])) LOG.push(x);
     });
     const RESULT = {
@@ -754,8 +771,13 @@ function makeAdmin() {
       signed: ['Signed', 'var(--fg)'],
       confirmed: ['Confirmed', 'var(--fg)']
     };
+    // the API's results the reference doesn't have
+    if (AL) Object.assign(RESULT, {
+      declined: ['Declined', 'var(--line)'],
+      refused: ['Refused', 'var(--absent)']
+    });
     /* everyday actions, so the week reads true to life */
-    const WEEK = (() => {
+    const WEEK = AL ? AL.WEEK : (() => {
       const r = rng(2026),
         out = [],
         prof = {
@@ -777,9 +799,9 @@ function makeAdmin() {
     })();
 
     /* reveals and exports: personal details are masked; every reveal and every list that leaves is here */
-    const REVEALS = [/* time, who, member, what, reason, where */
+    const REVEALS = AL ? AL.REVEALS : [/* time, who, member, what, reason, where */
     [H(10, 21, 12, 5), 'K', 'M-0412', 'Email', 'Their card was declined twice; writing back about the hold', 'Members'], [H(10, 21, 10, 40), 'DR', 'M-0388', 'Phone', 'Confirming a payout to a new bank link', 'Members'], [H(10, 20, 15, 20), 'K', 'M-0157', 'Email and phone', 'Hardship pause request, from the help inbox', 'Members'], [H(10, 20, 9, 55), 'K', 'Rosa’s Panadería', 'Owner phone', 'Cap raise call, before signing', 'Merchants'], [H(10, 19, 17, 30), 'DR', 'M-0921', 'Address', 'Returned card, checking where it was sent', 'Members'], [H(10, 19, 11, 10), 'K', 'M-0044', 'Email', '', 'Members'], [H(10, 17, 14, 0), 'K', 'Inland Cycle Works', 'Owner email', 'Sending the agreement for signature', 'Merchants']];
-    const EXPORTS = [/* time, who, what, rows, approved by, state */
+    const EXPORTS = AL ? AL.EXPORTS : [/* time, who, what, rows, approved by, state */
     [H(10, 21, 8, 15), 'K', 'Members who can vote on v2.2 · ids only', 188, '', 'done', 'Ids only · not needed'], [H(10, 19, 16, 0), 'K', 'Waitlist · Redlands, for poster batch 14', 312, 'DR', 'approved', ''], [H(10, 16, 10, 0), 'AC', 'Payout report · September', 3, '', 'done', 'Totals only'], [H(10, 12, 9, 30), 'DR', 'Bondholders · BB-0001 to BB-0006', 6, 'K', 'approved', ''], [H(10, 21, 13, 50), 'ML', 'Shop owners on the Riverside route · phone numbers', 14, '', 'waiting', 'Needs a second person']];
 
     /* ══ Team, Settings and Records ═════════════════════════════════════════════════════════════════════════════════════
@@ -827,7 +849,7 @@ function makeAdmin() {
     const sq = (id, cls = '') => <i className={`ad-av ${id === A.me ? 'me' : ''} ${id === 'SY' ? 'sys' : ''} ${cls}`} title={pName(id)}>{id}</i>;
     const lvSq = v => <i className={`ad-lv lv${v}`} title={LV[v][0]} />;
     const secIx = k => SECS.findIndex(s => s[0] === k);
-    const lvlOf = (id, sec) => PPL[id] ? GROUPS[PPL[id].g][2][secIx(sec)] : 0;
+    const lvlOf = (id, sec) => AL && id === A.me ? AL.myLevel(sec) : PPL[id] ? GROUPS[PPL[id].g][2][secIx(sec)] : 0;
     const CAN_ACT = () => !RO() && lvlOf(A.me, A.page) >= 3;
     const GCOL = {
       admin: 'var(--fg)',
@@ -873,13 +895,15 @@ function makeAdmin() {
     const fmtV = (s, v = s.v) => s.kind === 'money' ? money(v) : s.kind === 'pct' ? v + '%' : s.kind === 'hours' ? v + ' hours' : s.kind === 'days' ? v + ' days' : s.kind === 'num' ? `${v} ${v === 1 || /le$/.test(s.unit) ? s.unit : s.unit + 's'}` : s.kind === 'on' ? v ? 'On' : 'Off' : v;
     const pendOf = id => PEND.find(p => p.set === id);
     const ruleNum = r => {
+      // live: a change in Team waits for a second admin when it gives Approve somewhere new (or comes from below Approve)
+      if (AL && r.set === 'access') return 'When it gives Approve';
       const s = SETO[r.set];
       if (!s) return 'Every change';
       return {
         money: 'Every amount',
         shopbuy: `Over ${money(s.v)}`,
         refund: `Over ${money(s.v)}`,
-        safe: '2 of 3 in the Ops Safe',
+        safe: AL ? AL.SAFE ? `${AL.SAFE.threshold} of ${AL.SAFE.owners} in the Ops Safe` : 'In the Ops Safe' : '2 of 3 in the Ops Safe',
         batch: `Every batch of ${s.v}`,
         exports: 'Every list'
       }[r.set] || fmtV(s);
@@ -888,13 +912,26 @@ function makeAdmin() {
 
     /* ── header ─────────────────────────────────────────────────────────────────────────────────────────────────────── */
     const sc = (go, k, v, small, bar, sub) => <div className="sc" {...attrs(go)}><span className="lbl">{k}</span><div className="sc-v">{v}{" "}<small>{small}</small></div><div className="mb">{bar}</div><div className="sc-s">{sub}</div></div>;
-    const weekN = () => LOG.filter(l => l[1] >= H2(10, 15, 0)).length + WEEK.length;
-    const noReason = () => REVEALS.filter(r => !r[4]);
+    const weekN = () => LOG.filter(l => l[1] >= (AL ? days7()[0] : H2(10, 15, 0))).length + WEEK.length;
+    /** The reveals of the last 7 days (the reference's are all this week). */
+    const weekRv = () => AL ? REVEALS.filter(r => r[0] >= days7()[0]) : REVEALS;
+    const noReason = () => weekRv().filter(r => !r[4]);
     function renderHdr() {
       const P = A.page;
       let brief = '',
         strip = '';
-      if (P === 'team') {
+      if (P === 'team' && AL) {
+        // live: worked out from the team, the invites and what's waiting
+        const ones = CAN.filter(c => c[1].length === 1),
+          inv = INVITES.slice().sort((a, b) => a.exp - b.exp)[0],
+          wmax = Math.max(0, ...WAITING.map(w => w[4])),
+          nopk = PEOPLE.filter(p => !p.passkey),
+          sg = PEOPLE.filter(p => p.signer),
+          ro2 = nopk.filter(p => !GROUPS[p.g][2].some(v => v >= 3)),
+          left = inv ? Math.round((inv.exp - TODAY) / DAY) : 0;
+        brief = <>{ones.length ? <>{NUMW(ones.length)}{ones.length === 1 ? ' thing only one person can do.' : ' things only one person can do.'}</> : 'Nothing rests on one person alone.'}{inv ? <>{" "}<a data-aopen={`i:${inv.id}`}>{inv.n}’s invite</a>{" to "}{GROUPS[inv.g][0]}{left > 0 ? ` expires in ${left} day${left === 1 ? '' : 's'}.` : ' expires today.'}</> : ''}</>;
+        strip = <>{sc('data-atab="people"', 'On the team', PEOPLE.length, `+${INVITES.length} invited`, segs(PEOPLE, p => GCOL[p.g] || 'var(--line)'), MEMBERS_N ? `${MEMBERS_N} members get the read-only view` : 'Every member gets the read-only view')}{AL.SAFE ? sc('data-atab="rule"', 'Safe signers', sg.length, `of ${AL.SAFE.owners}`, segs(sg, () => 'var(--fg)', AL.SAFE.owners), sg.length ? sg.map(p => p.n.split(' ')[0]).join(', ') : 'None linked to anyone here') : sc('data-atab="rule"', 'Safe signers', '—', 'not read', segs([], () => 'var(--fg)', 3), 'The Ops Safe isn’t read yet')}{sc('data-atab="people"', 'Without a passkey', nopk.length, nopk.length ? `${ro2.length} read-only` : 'everyone has one', segs(PEOPLE, p => p.passkey ? 'var(--fg)' : 'var(--underway)'), nopk.length ? nopk.map(p => p.n).join(', ') : 'Every sign-in used a passkey')}{sc('data-atab="overview"', 'Waiting on a second person', WAITING.length, WAITING.length ? `longest ${wmax} h` : 'nothing', segs(WAITING, w => w[5] && w[4] > w[5] * 2 ? 'var(--underway)' : 'var(--live)'), `${WAITING.filter(w => w[3] === A.me).length} on you`)}</>;
+      } else if (P === 'team') {
         const ones = CAN.filter(c => c[1].length < 2),
           inv = INVITES[0],
           wmax = Math.max(...WAITING.map(w => w[4])),
@@ -902,7 +939,16 @@ function makeAdmin() {
         brief = <>{NUM[ones.length]}{" things only one person can do. "}<a data-aopen={`i:${inv.id}`}>{inv.n}’s invite</a>{" to "}{GROUPS[inv.g][0]}{" expires in "}{Math.round((inv.exp - TODAY) / DAY)}{" days."}</>;
         strip = <>{sc('data-atab="people"', 'On the team', PEOPLE.length, `+${INVITES.length} invited`, segs(PEOPLE, p => GCOL[p.g]), `${MEMBERS_N} members get the read-only view`)}{sc('data-atab="rule"', 'Safe signers', PEOPLE.filter(p => p.signer).length, 'of 3', segs(PEOPLE.filter(p => p.signer), () => 'var(--fg)', 3), PEOPLE.filter(p => p.signer).map(p => p.n.split(' ')[0]).join(', '))}{sc('data-atab="people"', 'Without a passkey', nopk.length, 'both read-only', segs(PEOPLE, p => p.passkey ? 'var(--fg)' : 'var(--underway)'), nopk.map(p => p.n).join(', '))}{sc('data-atab="overview"', 'Waiting on a second person', WAITING.length, `longest ${wmax} h`, segs(WAITING, w => w[4] > w[5] * 2 ? 'var(--underway)' : 'var(--live)'), `${WAITING.filter(w => w[3] === A.me).length} on you`)}</>;
       }
-      if (P === 'settings') {
+      if (P === 'settings' && AL) {
+        // live: the API's rules, what waits on each, the approved changes and the feeds
+        const ok = CONN.filter(c => c.st === 'ok').length,
+          p = PEND[0],
+          lock = SETS.filter(s => s.kind === 'lock').length,
+          last = SET_HIST[0],
+          behind = CONN.filter(c => c.st !== 'ok');
+        brief = <>Every change here needs a second person and lands in Records.{p ? <>{" "}<a data-aopen={`s:${p.set}`}>{`Changing ${SETO[p.set].t.toLowerCase()} to ${fmtV(SETO[p.set], p.to)}`}</a>{" is waiting on "}{onWho(p.need, 1)}.</> : ''}</>;
+        strip = <>{sc('data-atab="rules"', 'Settings', SETS.length, `${lock} set elsewhere`, segs(SETS, s => s.kind === 'lock' ? 'var(--line)' : 'var(--fg)'), 'Locked ones follow a vote, the bylaws or the law')}{sc('data-atab="rules"', 'Waiting', PEND.length, PEND.length === 1 ? 'change' : 'changes', segs(PEND, () => 'var(--underway)', 4), PEND.length ? `On ${[...new Set(PEND.map(x => onWho(x.need, 1)))].join(', ')}` : 'Nothing waiting')}{sc('data-atab="connections"', 'Connections', CONN.length ? `${ok} of ${CONN.length}` : '—', CONN.length ? 'healthy' : 'not read yet', segs(CONN, c => c.st === 'behind' ? 'var(--underway)' : c.st === 'off' ? 'var(--line)' : 'var(--fg)'), CONN.length ? behind.length > 2 ? `${behind.length} not synced or behind · ${behind.slice(0, 2).map(c => c.n).join(', ')}…` : behind.map(c => `${c.n} is ${c.note.split(' · ')[0].toLowerCase()}`).join(', ') || 'All synced' : 'The feeds haven’t answered')}{last ? sc('data-atab="rules"', 'Last change', fmtD(last[1]), last[0], segs(SET_HIST.slice(0, 6), (_, i) => `color-mix(in srgb,var(--fg) ${90 - i * 14}%,transparent)`, 6), `${SETO[last[2]].t} · ${last[3]} → ${last[4]}`) : sc('data-atab="rules"', 'Last change', '—', 'none yet', segs([], () => 'var(--fg)', 6), 'Every rule is at its first value')}</>;
+      } else if (P === 'settings') {
         const ok = CONN.filter(c => c.st === 'ok' || c.idle).length,
           p = PEND[0],
           lock = SETS.filter(s => s.kind === 'lock').length,
@@ -910,7 +956,20 @@ function makeAdmin() {
         brief = <>Every change here needs a second person and lands in Records.{p ? <>{" "}<a data-aopen={`s:${p.set}`}>{p.label || `Changing ${SETO[p.set].t.toLowerCase()} to ${fmtV(SETO[p.set], p.to)}`}</a>{" is waiting on "}{p.need === A.me ? 'you' : pName(p.need)}.</> : ''}</>;
         strip = <>{sc('data-atab="rules"', 'Settings', SETS.length, `${lock} set elsewhere`, segs(SETS, s => s.kind === 'lock' ? 'var(--line)' : 'var(--fg)'), 'Locked ones follow a vote, the bylaws or the law')}{sc('data-atab="rules"', 'Waiting', PEND.length, PEND.length === 1 ? 'change' : 'changes', segs(PEND, () => 'var(--underway)', 4), PEND.length ? `On ${PEND.map(x => x.need === A.me ? 'you' : pName(x.need)).join(', ')}` : 'Nothing waiting')}{sc('data-atab="connections"', 'Connections', `${ok} of ${CONN.length}`, 'healthy', segs(CONN, c => c.st === 'behind' ? 'var(--underway)' : c.st === 'off' && !c.idle ? 'var(--absent)' : c.idle ? 'var(--line)' : 'var(--fg)'), CONN.filter(c => c.st === 'behind').map(c => `${c.n} is ${c.note.split(' · ')[0]}`).join(', ') || 'All synced')}{sc('data-atab="rules"', 'Last change', fmtD(last[1]), last[0], segs(SET_HIST, (_, i) => `color-mix(in srgb,var(--fg) ${90 - i * 14}%,transparent)`, 6), `${SETO[last[2]].t} · ${last[3]} → ${last[4]}`)}</>;
       }
-      if (P === 'records') {
+      if (P === 'records' && AL) {
+        // live: the log, the papers on file and the reveals, counted from their rows
+        const miss = Object.values(COVER).flat().filter(x => x === 'm').length,
+          wait = LOG.filter(l => l[7] === 'waiting'),
+          nr = noReason(),
+          rv = weekRv(),
+          onfile = Object.values(DCOUNT).reduce((a, b) => a + b, 0),
+          worst = Object.entries(COVER).map(([id, c]) => [id, c.filter(x => x === 'm').length]).sort((a, b) => b[1] - a[1])[0],
+          days = days7(),
+          dn = days.map(t => LOG.filter(l => l[1] >= t && l[1] < t + DAY).length),
+          dm = Math.max(1, ...dn);
+        brief = <>{miss ? <>{NUMW(miss)}{miss === 1 ? ' document is missing' : ' documents are missing'}{worst && worst[1] && worst[1] < miss ? <>{", "}{NUMW(worst[1]).toLowerCase()}{" for "}<a data-adoc-ent={worst[0]}>{ENTO[worst[0]][1]}</a></> : worst && worst[1] ? <>{", for "}<a data-adoc-ent={worst[0]}>{ENTO[worst[0]][1]}</a></> : ''}{worst && worst[1] && /\.$/.test(ENTO[worst[0]][1]) ? '' : '.'}</> : 'No papers are marked missing.'}{nr.length ? <>{" "}{NUMW(nr.length)}{nr.length === 1 ? ' reveal this week has ' : ' reveals this week have '}<a data-atab="reveals">no reason</a>.</> : ''}</>;
+        strip = <>{sc('data-atab="log"', 'Actions this week', weekN(), `${fmtD(days[0])}–${fmtD(days[6])}`, segs(dn, v => `color-mix(in srgb,var(--fg) ${Math.round(25 + v / dm * 65)}%,transparent)`), `${LOG.length} in the log${AL.CHAIN ? AL.CHAIN.ok ? ' · the chain holds' : ' · the chain is broken' : ''}`)}{sc('data-atab="log"', 'Waiting on a second person', wait.length, 'in the log', segs(wait, () => 'var(--underway)', 6), wait.length ? `Oldest ${ago(Math.min(...wait.map(l => l[1])))}` : 'Nothing waiting')}{sc('data-atab="docs"', 'Documents', onfile, 'on file', segs(Object.keys(DCOUNT), k => DT[k][1]), `${miss} missing · ${Object.values(COVER).flat().filter(x => x === 'd').length} in draft`)}{sc('data-atab="reveals"', 'Reveals this week', rv.length, `${nr.length} without a reason`, segs(rv, r => r[4] ? 'var(--fg)' : 'var(--absent)'), `${EXPORTS.length} ${EXPORTS.length === 1 ? 'list' : 'lists'} shown in full`)}</>;
+      } else if (P === 'records') {
         const miss = Object.values(COVER).flat().filter(x => x === 'm').length,
           wait = LOG.filter(l => l[7] === 'waiting'),
           nr = noReason(),
@@ -927,7 +986,8 @@ function makeAdmin() {
             team: 'Team · who can do what',
             settings: 'Settings · admin only',
             records: 'Records · kept seven years'
-          }[P]}{" · Demo data"}</span><p className="brief">{brief}</p><div className="strip">{strip}</div></>);
+          }[P]}{AL ? '' : " · Demo data"}</span><p className="brief">{brief}</p><div className="strip">{strip}</div></>);
+
       html(document.getElementById('atabs'), TABS[P].map(([k, t], __k) => <button key={__k} data-atab={k} aria-current={A.tab[P] === k ? 'page' : 'false'}>{t}</button>));
       document.getElementById('atabs').setAttribute('aria-label', `${PAGE_N[P]} views`);
     }
@@ -939,8 +999,8 @@ function makeAdmin() {
     function teamOverview() {
       const rows = <>{mxRow('data-aopen="g:members"', <i className="ad-av grp">{MEMBERS_N}</i>, 'Every member', 'Read-only, with a Clear account', GROUPS.members[2], 'all')}{PEOPLE.map(p => <Fragment key={p.id}>{mxRow(`data-aopen="p:${p.id}"`, sq(p.id), p.n + (p.id === A.me ? ' · you' : ''), `${GROUPS[p.g][0]} · ${p.title}`, GROUPS[p.g][2])}</Fragment>)}{INVITES.map(i => <Fragment key={i.id}>{mxRow(`data-aopen="i:${i.id}"`, sq(i.id, 'dash'), i.n, `Invited · ${GROUPS[i.g][0]} · until ${fmtD(i.exp)}`, GROUPS[i.g][2], 'inv')}</Fragment>)}</>;
       const mx = cell('s12', 'Who can do what', <span className="lbl">Set per group, never per person</span>, <div className="ad-mx">{mxHead()}{rows}</div>, <>{lvKey()}<button data-ainvite="">Invite someone</button></>);
-      const wmax = Math.max(...WAITING.map(w => w[4]));
-      const wait = cell('s7', 'Waiting on a second person', <span className="lbl">{WAITING.length}{" now"}</span>, <div className="ad-wl">{WAITING.slice().sort((a, b) => b[4] - a[4]).map(([t, from, by, on, h, u, r], __k) => <button key={__k} className="ad-wr" {...attrs(from === 'Settings' ? `data-aopen="s:${PEND[0] ? PEND[0].set : 'shopbuy'}"` : `data-aout="${from}"`)}><span className="gt-ck"><b>{t}</b><span>{from}{" · "}{pName(by)}{" proposed"}</span></span><span className="ad-wb"><span className="ad-wb-t"><i className={h > u * 2 ? 'late' : ''} style={css(`width:${h / wmax * 100}%`)} /><s style={css(`left:${u / wmax * 100}%`)} /></span></span><span className="ad-wo"><b>{h}{" h"}</b><em>{on === A.me ? 'on you' : 'on ' + pName(on).split(' ')[0]}</em></span></button>)}{rest()}</div>, <><span className="f-key"><span><i style={css("background:var(--live)")} />Hours waiting</span><span><i style={css("background:var(--underway)")} />Over twice the usual</span><span><i className="ad-tick" />Usual wait</span></span><button data-atab="rule">Two-person rule →</button></>);
+      const wmax = Math.max(1, ...WAITING.map(w => w[4]));
+      const wait = cell('s7', 'Waiting on a second person', <span className="lbl">{WAITING.length}{" now"}</span>, <div className="ad-wl">{WAITING.slice().sort((a, b) => b[4] - a[4]).map(([t, from, by, on, h, u, r], __k) => <button key={__k} className="ad-wr" {...attrs(from === 'Settings' ? `data-aopen="s:${PEND[0] ? PEND[0].set : 'shopbuy'}"` : `data-aout="${from}"`)}><span className="gt-ck"><b>{t}</b><span>{from}{" · "}{pName(by)}{" proposed"}</span></span><span className="ad-wb"><span className="ad-wb-t"><i className={u && h > u * 2 ? 'late' : ''} style={css(`width:${h / wmax * 100}%`)} /><s style={css(`left:${u / wmax * 100}%`)} /></span></span><span className="ad-wo"><b>{h}{" h"}</b><em>{'on ' + onWho(on)}</em></span></button>)}{rest()}</div>, <><span className="f-key"><span><i style={css("background:var(--live)")} />Hours waiting</span><span><i style={css("background:var(--underway)")} />Over twice the usual</span><span><i className="ad-tick" />Usual wait</span></span><button data-atab="rule">Two-person rule →</button></>);
       const one = cell('s5', 'Only one person can do it', <span className="lbl">Worth a backup</span>, <div className="ad-cl">{CAN.slice().sort((a, b) => a[1].length - b[1].length).map(([t, ids], __k) => <div key={__k} className={`ad-cr ${ids.length < 2 ? 'one' : ''}`}><span>{t}</span><span className="ad-avs">{ids.map(id => sq(id))}{Array.from({
               length: Math.max(0, 3 - ids.length)
             }, (_, __k) => <i key={__k} className="ad-av none" />)}</span></div>)}{rest()}</div>, <><span className="f-key"><span><i style={css("background:var(--underway)")} />Only one person</span></span><button data-atab="groups">Groups →</button></>);
@@ -949,17 +1009,15 @@ function makeAdmin() {
     function teamPeople() {
       const pRow = p => {
         const d = p.dev.filter(x => x[2]).length;
-        return <button className="ad-pr" data-aopen={`p:${p.id}`}>{sq(p.id)}<span className="gt-ck"><b>{p.n}{p.id === A.me ? ' · you' : ''}</b><span>{p.title}</span></span><span className="ad-pg"><i style={css(`background:${GCOL[p.g]}`)} />{GROUPS[p.g][0]}</span><span className="mono ad-em">{p.email}</span><span className={`ad-pk ${p.passkey ? '' : 'no'}`}><b>{p.passkey ? 'Passkey' : 'Emailed code'}</b><em>{d}{" trusted device"}{d === 1 ? '' : 's'}</em></span><span className="ad-pl"><b>{ago(p.last)}</b><em>{p.until ? `Access ends ${fmtD(p.until)}` : `Since ${fmtD(p.since)}`}</em></span><span className="gv-go">{ICO.chev}</span></button>;
+        return <button className="ad-pr" data-aopen={`p:${p.id}`}>{sq(p.id)}<span className="gt-ck"><b>{p.n}{p.id === A.me ? ' · you' : ''}</b><span>{p.title}</span></span><span className="ad-pg"><i style={css(`background:${GCOL[p.g] || 'var(--line)'}`)} />{GROUPS[p.g][0]}</span><span className="mono ad-em">{p.email}</span><span className={`ad-pk ${p.passkey ? '' : 'no'}`}><b>{p.passkey ? 'Passkey' : 'Emailed code'}</b><em>{d}{AL ? " device" : " trusted device"}{d === 1 ? '' : 's'}</em></span><span className="ad-pl"><b>{ago(p.last)}</b><em>{p.until ? `Access ends ${fmtD(p.until)}` : `Since ${fmtD(p.since)}`}</em></span><span className="gv-go">{ICO.chev}</span></button>;
       };
       const order = PEOPLE.slice().sort((a, b) => GKEYS.indexOf(a.g) - GKEYS.indexOf(b.g));
-      const list = <>{secRow('On the team', `${PEOPLE.length} people · ${PEOPLE.filter(p => !p.passkey).length} read-only`)}{order.map(pRow)}{secRow('Invited', `${INVITES.length} waiting to accept`)}{INVITES.map((i, __k) => <button key={__k} className="ad-pr inv" data-aopen={`i:${i.id}`}>{sq(i.id, 'dash')}<span className="gt-ck"><b>{i.n}</b><span>{i.title}</span></span><span className="ad-pg"><i style={css(`background:${GCOL[i.g]}`)} />{GROUPS[i.g][0]}</span><span className="mono ad-em">{i.email}</span><span className="ad-pk"><b>Not set up</b><em>Passkey on first sign-in</em></span><span className="ad-pl"><b>{"Sent "}{fmtD(i.sent)}</b><em>{"Expires "}{fmtD(i.exp)}</em></span><span className="gv-go">{ICO.chev}</span></button>)}</>;
-      const people = cell('s12', 'Everyone with access', <span className="lbl">{PEOPLE.length}{" people · "}{INVITES.length}{" invited"}</span>, <div className="ad-pl-l"><div className="ad-pr hd2"><span />{lbl('Person')}{lbl('Group')}{lbl('Email')}{lbl('Sign-in')}{lbl('Last active')}<span /></div>{list}</div>, <><span>Inviting, turning someone off or changing a group needs a second person</span><button data-ainvite="">Invite someone</button></>);
-      const ends = [[INVITES[0].exp, `${INVITES[0].n}’s invite expires`, 'Resend it, or it lapses', 'i:PS'], [PPL.LP.until, 'Lena Park’s data room access ends', 'Harbor Capital · investor', 'p:LP'], [D(1, 2, 2027), 'Quarterly access review', 'Every person and group, with a second person', 'g:outside']];
-      const end = cell('s7', 'Access that ends', <span className="lbl">Next 90 days</span>, <div className="gt-cl">{ends.map(([t, a, b, o], __k) => <button key={__k} className="gt-cr" data-aopen={o}>{leaf(t)}<span className="gt-ck"><b>{a}</b><span>{b}</span></span><span className="gt-st" style={css(`--c:${(t - TODAY) / DAY < 7 ? 'var(--underway)' : 'var(--line)'}`)}>{Math.round((t - TODAY) / DAY)}{" days"}</span></button>)}{rest()}</div>, <><span>Read-only access for outside people always has an end date</span><span /></>);
-      const days = Array.from({
-          length: 7
-        }, (_, d) => H2(10, 15 + d, 0)),
-        SI = {
+      const list = <>{secRow('On the team', `${PEOPLE.length} people · ${PEOPLE.filter(p => !p.passkey).length} ${AL ? 'without a passkey' : 'read-only'}`)}{order.map(pRow)}{secRow('Invited', `${INVITES.length} waiting to accept`)}{INVITES.map((i, __k) => <button key={__k} className="ad-pr inv" data-aopen={`i:${i.id}`}>{sq(i.id, 'dash')}<span className="gt-ck"><b>{i.n}</b><span>{i.title}</span></span><span className="ad-pg"><i style={css(`background:${GCOL[i.g] || 'var(--line)'}`)} />{GROUPS[i.g][0]}</span><span className="mono ad-em">{i.email}</span><span className="ad-pk"><b>Not set up</b><em>Passkey on first sign-in</em></span><span className="ad-pl"><b>{"Sent "}{fmtD(i.sent)}</b><em>{"Expires "}{fmtD(i.exp)}</em></span><span className="gv-go">{ICO.chev}</span></button>)}</>;
+      const people = cell('s12', 'Everyone with access', <span className="lbl">{PEOPLE.length}{" people · "}{INVITES.length}{" invited"}</span>, <div className="ad-pl-l"><div className="ad-pr hd2"><span />{lbl('Person')}{lbl('Group')}{lbl('Email')}{lbl('Sign-in')}{lbl('Last active')}<span /></div>{list}</div>, <><span>{AL ? 'Giving someone Approve needs a second admin · every change is logged' : 'Inviting, turning someone off or changing a group needs a second person'}</span><button data-ainvite="">Invite someone</button></>);
+      const ends = AL ? AL.ENDS : [[INVITES[0].exp, `${INVITES[0].n}’s invite expires`, 'Resend it, or it lapses', 'i:PS'], [PPL.LP.until, 'Lena Park’s data room access ends', 'Harbor Capital · investor', 'p:LP'], [D(1, 2, 2027), 'Quarterly access review', 'Every person and group, with a second person', 'g:outside']];
+      const end = cell('s7', 'Access that ends', <span className="lbl">Next 90 days</span>, <div className="gt-cl">{ends.map(([t, a, b, o], __k) => <button key={__k} className="gt-cr" data-aopen={o}>{leaf(t)}<span className="gt-ck"><b>{a}</b><span>{b}</span></span><span className="gt-st" style={css(`--c:${(t - TODAY) / DAY < 7 ? 'var(--underway)' : 'var(--line)'}`)}>{Math.round((t - TODAY) / DAY)}{" days"}</span></button>)}{rest()}</div>, <><span>{AL ? 'Invites last 7 days · investors’ access ends 30 days after their first sign-in' : 'Read-only access for outside people always has an end date'}</span><span /></>);
+      const days = days7(),
+        SI = AL ? AL.SI : {
           K: [3, 2, 1, 1, 4, 3, 3],
           DR: [2, 2, 0, 0, 3, 2, 2],
           ML: [2, 3, 2, 2, 3, 1, 2],
@@ -967,17 +1025,19 @@ function makeAdmin() {
           AC: [0, 1, 0, 0, 1, 1, 0],
           LP: [0, 0, 0, 0, 1, 1, 0]
         },
-        smx = 4;
-      const si = cell('s5', 'Sign-ins', <span className="lbl">Last 7 days</span>, <div className="ad-si">{PEOPLE.map((p, __k) => <div key={__k} className="ad-si-r"><span>{p.n}</span><span className="ad-si-b">{SI[p.id].map((v, i) => <i key={i} className={i === 6 ? 'now' : ''} style={css(`height:${v ? Math.max(12, v / smx * 100) : 0}%`)} />)}</span><b>{SI[p.id].reduce((a, b) => a + b, 0)}</b></div>)}<div className="ad-si-r ad-si-x"><span /><span className="ad-si-b">{days.map((t, i) => <span key={i}>{i === 6 ? 'Today' : WD(t)}</span>)}</span><b /></div></div>, <><span>A new device needs a confirmation</span><button data-ago="settings/security">Security →</button></>);
+        si0 = [0, 0, 0, 0, 0, 0, 0],
+        smx = AL ? Math.max(1, ...Object.values(SI).flat()) : 4;
+      const si = cell('s5', 'Sign-ins', <span className="lbl">Last 7 days</span>, <div className="ad-si">{PEOPLE.map((p, __k) => <div key={__k} className="ad-si-r"><span>{p.n}</span><span className="ad-si-b">{(SI[p.id] || si0).map((v, i) => <i key={i} className={i === 6 ? 'now' : ''} style={css(`height:${v ? Math.max(12, v / smx * 100) : 0}%`)} />)}</span><b>{(SI[p.id] || si0).reduce((a, b) => a + b, 0)}</b></div>)}<div className="ad-si-r ad-si-x"><span /><span className="ad-si-b">{days.map((t, i) => <span key={i}>{i === 6 ? 'Today' : WD(t)}</span>)}</span><b /></div></div>, <><span>{AL ? 'By passkey or an emailed code, each day' : 'A new device needs a confirmation'}</span><button data-ago="settings/security">Security →</button></>);
       return <>{band(people, 1)}{band(<>{end}{si}</>)}</>;
     }
     function teamGroups() {
       const rows = [['members', <i className="ad-av grp">{MEMBERS_N}</i>]].concat(GKEYS.map((g, __k) => [g, <span className="ad-avs">{PEOPLE.filter(p => p.g === g).map(p => sq(p.id))}{INVITES.filter(i => i.g === g).map(i => sq(i.id, 'dash'))}</span>]));
-      const gl = cell('s12', 'Groups', <span className="lbl">{GKEYS.length}{" groups, and every member"}</span>, <div className="ad-mx ad-gx">{mxHead('Group')}{rows.map(([g, av], __k) => <button key={__k} className={`ad-mx-r ${g === 'members' ? 'all' : ''}`} data-aopen={`g:${g}`}><span className="ad-mx-k ad-gk"><span className="gt-ck"><b>{GROUPS[g][0]}</b><span>{GROUPS[g][1]}</span></span>{av}</span>{GROUPS[g][2].map((v, __k) => <span key={__k} className="ad-mx-c">{lvSq(v)}</span>)}</button>)}</div>, <>{lvKey()}<span>Changing a group needs a second person</span></>);
-      const EX = ['Not in their menu at all', 'Members see co-op totals on Money', 'Outside sees Money and Records', 'Field proposes a new shop', 'Dana approves an invite batch'];
+      const gl = cell('s12', 'Groups', <span className="lbl">{GKEYS.length}{" groups, and every member"}</span>, <div className="ad-mx ad-gx">{mxHead('Group')}{rows.map(([g, av], __k) => <button key={__k} className={`ad-mx-r ${g === 'members' ? 'all' : ''}`} data-aopen={`g:${g}`}><span className="ad-mx-k ad-gk"><span className="gt-ck"><b>{GROUPS[g][0]}</b><span>{GROUPS[g][1]}</span></span>{av}</span>{GROUPS[g][2].map((v, __k) => <span key={__k} className="ad-mx-c">{lvSq(v)}</span>)}</button>)}</div>, <>{lvKey()}<span>{AL ? 'Giving a group Approve somewhere new needs a second admin' : 'Changing a group needs a second person'}</span></>);
+      // live, each level's example is a real group at that level somewhere
+      const EX = AL ? LV.map((_, i) => ['members', ...GKEYS].flatMap(g => SECS.map(([, t], j) => GROUPS[g][2][j] === i ? `${GROUPS[g][0]} on ${t}` : null)).find(Boolean) || '') : ['Not in their menu at all', 'Members see co-op totals on Money', 'Outside sees Money and Records', 'Field proposes a new shop', 'Dana approves an invite batch'];
       const lv = cell('s7', 'What each level means', <span className="lbl">The same five on every page</span>, <div className="ad-lvl">{LV.map(([t, d], i) => <div key={i} className="ad-lvr">{lvSq(i)}<span className="gt-ck"><b>{t}</b><span>{d}</span></span><em>{EX[i]}</em></div>)}</div>, <><span>The server checks the level on every request, not just the menu</span><span /></>);
       const rv = GKEYS.filter(g => GROUPS[g][2][secIx('members')] === 4);
-      const who = cell('s5', 'Who can reveal personal details', <span className="lbl">Approve on Members</span>, <div className="ad-cl">{rv.map((g, __k) => <div key={__k} className="ad-cr"><span>{GROUPS[g][0]}</span><span className="ad-avs">{PEOPLE.filter(p => p.g === g).map(p => sq(p.id))}</span></div>)}<div className="ad-cr q"><span>Everyone else</span><span className="ad-avs"><em>Sees masked details only</em></span></div>{rest()}</div>, <><span>Every reveal needs a reason</span><button data-ago="records/reveals">Reveals →</button></>);
+      const who = cell('s5', 'Who can reveal personal details', <span className="lbl">Approve on Members</span>, <div className="ad-cl">{rv.map((g, __k) => <div key={__k} className="ad-cr"><span>{GROUPS[g][0]}</span><span className="ad-avs">{PEOPLE.filter(p => p.g === g).map(p => sq(p.id))}</span></div>)}<div className="ad-cr q"><span>Everyone else</span><span className="ad-avs"><em>Sees masked details only</em></span></div>{rest()}</div>, <><span>{AL && SETO.reason && !SETO.reason.v ? 'Reveals don’t ask for a reason right now' : 'Every reveal needs a reason'}</span><button data-ago="records/reveals">Reveals →</button></>);
       return <>{band(gl, 1)}{band(<>{lv}{who}</>)}</>;
     }
     function teamRule() {
@@ -985,9 +1045,10 @@ function makeAdmin() {
           const p = pendOf(r.set);
           return <button key={__k} className="ad-rr" data-aopen={`r:${r.id}`}><span className="gt-ck"><b>{r.t}</b><span>{r.c}</span></span><span className="ad-rn"><b>{ruleNum(r)}</b>{p ? <em className="ad-pd">{fmtV(SETO[p.set], p.to)}{" waiting"}</em> : SETO[r.set] && SETO[r.set].kind !== 'lock' ? <em>Set in Settings</em> : <em>Always</em>}</span><span className="ad-avs">{r.who.map(id => sq(id))}</span><b className="num">{r.n30}</b><span className="num">{r.med ? r.med.toFixed(1) + ' h' : '–'}</span><span className="gv-go">{ICO.chev}</span></button>;
         })}</div>, <><span>Team sets who can be the second person · Settings sets the numbers</span><button data-ago="settings/rules">Settings →</button></>);
-      const ppl = [['K', 'Kai'], ['DR', 'Dana Ruiz'], ['ML', 'Marcus Lee']],
-        appr = [['K', 'Kai'], ['DR', 'Dana'], ['ML', 'Marcus'], ['BS', 'Board']],
-        mxv = 6;
+      // live, the people who proposed and approved in 30 days
+      const ppl = AL ? AL.APPR_ROWS : [['K', 'Kai'], ['DR', 'Dana Ruiz'], ['ML', 'Marcus Lee']],
+        appr = AL ? AL.APPR_COLS : [['K', 'Kai'], ['DR', 'Dana'], ['ML', 'Marcus'], ['BS', 'Board']],
+        mxv = AL ? Math.max(1, ...Object.values(APPR).flatMap(r => Object.values(r))) : 6;
       const am = cell('s7', 'Who approves whom', <span className="lbl">Last 30 days</span>, <div className="ad-am"><div className="ad-am-r hd2"><span>{lbl('Proposed by')}</span>{appr.map(a => lbl(a[1]))}{lbl('Total')}</div>{ppl.map(([p, n], __k) => {
           const row = APPR[p] || {},
             tot = Object.values(row).reduce((a, b) => a + b, 0);
@@ -995,16 +1056,21 @@ function makeAdmin() {
         })}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />More approvals</span><span><i className="ad-self" />Can’t approve your own</span></span><span /></>);
       const rs = RULES.filter(r => r.n30),
         mx = Math.max(...rs.map(r => r.med));
-      const sp = cell('s5', 'How long a second person takes', <span className="lbl">Usual wait</span>, <div className="ad-hb">{rs.sort((a, b) => b.med - a.med).map((r, __k) => <button key={__k} className="ad-hb-r" data-aopen={`r:${r.id}`}><span>{r.t}</span><span className="ad-hb-b"><i style={css(`width:${r.med / mx * 100}%`)} /></span><b>{r.med.toFixed(1)}{" h"}</b></button>)}</div>, <><span>Over a day, the app nudges the second person</span><span /></>);
+      const sp = cell('s5', 'How long a second person takes', <span className="lbl">Usual wait</span>, <div className="ad-hb">{rs.sort((a, b) => b.med - a.med).map((r, __k) => <button key={__k} className="ad-hb-r" data-aopen={`r:${r.id}`}><span>{r.t}</span><span className="ad-hb-b"><i style={css(`width:${r.med / mx * 100}%`)} /></span><b>{r.med.toFixed(1)}{" h"}</b></button>)}</div>, <><span>{AL ? 'From proposed to approved, last 30 days' : 'Over a day, the app nudges the second person'}</span><span /></>);
+
       return <>{band(list, 1)}{band(<>{am}{sp}</>)}</>;
     }
 
     /* ══ Settings ═════════════════════════════════════════════════════════════════════════════════════════════════════ */
     const usedTxt = s => s.used.map(k => PAGE_N[k]).join(', ');
+    /** Where a setting shows: live, a stored one nothing enforces yet says so. */
+    const usedLine = s => AL && s.enforced === false ? 'Stored · nothing enforces it yet' : `Used in ${usedTxt(s)}`;
+    /** A cell with no source yet: hatched, with what it needs (docs/ui-redesign-plan.md, gaps). */
+    const notReal = (cls, title, need) => cell(cls, title, lbl('Not real yet'), <><div className="bk-empty hatch" style={css("min-height:120px;opacity:.5")} /><div className="bk-empty">{need}</div></>, <span />);
     function setRow(s) {
       const p = pendOf(s.id),
         lock = s.kind === 'lock';
-      return <button className={`ad-sr ${lock ? 'lock' : ''}`} data-aopen={`s:${s.id}`}><span className="gt-ck"><b>{s.t}</b><span>{s.d}</span></span><span className="ad-sv">{lock ? <><b>{ICO.lock}{s.v}</b><em>{s.why}</em></> : <><b>{fmtV(s)}</b>{p ? <em className="ad-pd">{"→ "}{fmtV(s, p.to)}{" · waiting on "}{p.need === A.me ? 'you' : pName(p.need).split(' ')[0]}</em> : <em>{"Used in "}{usedTxt(s)}</em>}</>}</span><span className="gv-go">{ICO.chev}</span></button>;
+      return <button className={`ad-sr ${lock ? 'lock' : ''}`} data-aopen={`s:${s.id}`}><span className="gt-ck"><b>{s.t}</b><span>{s.d}</span></span><span className="ad-sv">{lock ? <><b>{ICO.lock}{s.v}</b><em>{s.why}</em></> : <><b>{fmtV(s)}</b>{p ? <em className="ad-pd">{"→ "}{fmtV(s, p.to)}{" · waiting on "}{onWho(p.need)}</em> : <em>{usedLine(s)}</em>}</>}</span><span className="gv-go">{ICO.chev}</span></button>;
     }
     const setCell = (sec, w, foot) => {
       const L = SETS.filter(s => s.sec === sec);
@@ -1013,8 +1079,8 @@ function makeAdmin() {
     function setRules() {
       const hist = cell('s12', 'Changes', <span className="lbl">Each one had a second person</span>, <div className="gt-cl">{PEND.map((p, __k) => {
           const s = SETO[p.set];
-          return <button key={__k} className="gt-cr ad-pend" data-aopen={`s:${s.id}`}>{leaf(p.at)}<span className="gt-ck"><b>{s.t}</b><span>{fmtV(s, p.from)}{" → "}{fmtV(s, p.to)}{" · "}{pName(p.by)}{" proposed"}</span></span><span className="gt-st" style={css("--c:var(--underway)")}>{"Waiting on "}{p.need === A.me ? 'you' : pName(p.need).split(' ')[0]}</span></button>;
-        })}{SET_HIST.map(([id, t, k, a, b, by, ok], __k) => <button key={__k} className="gt-cr" data-aopen={`s:${k}`}>{leaf(t)}<span className="gt-ck"><b>{SETO[k].t}</b><span>{a}{" → "}{b}{" · "}{pName(by).split(' ')[0]}{" and "}{pName(ok).split(' ')[0]}</span></span><span className="mono ad-id">{id}</span></button>)}{rest()}</div>, <><span>Every change is in the audit log</span><button data-ago="records/log">Audit log →</button></>);
+          return <button key={__k} className="gt-cr ad-pend" data-aopen={`s:${s.id}`}>{leaf(p.at)}<span className="gt-ck"><b>{s.t}</b><span>{fmtV(s, p.from)}{" → "}{fmtV(s, p.to)}{" · "}{pName(p.by)}{" proposed"}</span></span><span className="gt-st" style={css("--c:var(--underway)")}>{"Waiting on "}{onWho(p.need)}</span></button>;
+        })}{SET_HIST.map(([id, t, k, a, b, by, ok], __k) => <button key={__k} className="gt-cr" data-aopen={`s:${k}`}>{leaf(t)}<span className="gt-ck"><b>{SETO[k].t}</b><span>{a}{" → "}{b}{" · "}{by ? pName(by).split(' ')[0] : 'Someone'}{" and "}{ok ? pName(ok).split(' ')[0] : 'someone else'}</span></span><span className="mono ad-id">{id}</span></button>)}{rest()}</div>, <><span>Every change is in the audit log</span><button data-ago="records/log">Audit log →</button></>);
       return <>{band(<>{setCell('money', 's6')}{setCell('shop', 's6')}</>, 1)}{band(<>{setCell('chain', 's4')}{setCell('members', 's4')}{setCell('gov', 's4')}</>)}{band(hist)}</>;
     }
     function setSecurity() {
@@ -1023,49 +1089,53 @@ function makeAdmin() {
         d,
         i
       }))).sort((a, b) => b.d[1] - a.d[1]);
-      const dv = cell('s7', 'Devices', <span className="lbl">{devs.filter(x => x.d[2]).length}{" trusted"}</span>, <div className="ad-dl">{devs.map(({
+      const dv = cell('s7', 'Devices', <span className="lbl">{AL ? `${devs.length} seen` : `${devs.filter(x => x.d[2]).length} trusted`}</span>, <div className="ad-dl">{devs.map(({
           p,
           d,
           i
-        }, __k) => <div key={__k} className={`ad-dr ${NOW - d[1] > 7 * DAY ? 'stale' : ''}`}>{sq(p.id)}<span className="gt-ck"><b>{d[0]}</b><span>{p.n}{NOW - d[1] > 7 * DAY ? ` · not seen in ${Math.round((NOW - d[1]) / DAY)} days` : ''}</span></span><span className="ad-dt"><b>{ago(d[1])}</b><em>{p.passkey ? 'Passkey' : 'Emailed code'}</em></span>{CAN_ACT() ? <button className={`ad-so ${NOW - d[1] > 7 * DAY ? 'on' : ''}`} data-asignout={`${p.id}:${i}`}>Sign out</button> : <span />}</div>)}{rest()}</div>, <><span>Signing a device out ends its session right away</span><span /></>);
+        }, __k) => <div key={__k} className={`ad-dr ${NOW - d[1] > 7 * DAY ? 'stale' : ''}`}>{sq(p.id)}<span className="gt-ck"><b>{d[0]}</b><span>{p.n}{NOW - d[1] > 7 * DAY ? ` · not seen in ${Math.round((NOW - d[1]) / DAY)} days` : ''}</span></span><span className="ad-dt"><b>{ago(d[1])}</b><em>{p.passkey ? 'Passkey' : 'Emailed code'}</em></span>{CAN_ACT() && !AL ? <button className={`ad-so ${NOW - d[1] > 7 * DAY ? 'on' : ''}`} data-asignout={`${p.id}:${i}`}>Sign out</button> : <span />}</div>)}{rest()}</div>, <><span>{AL ? 'Signing someone out everywhere is in their panel in Team' : 'Signing a device out ends its session right away'}</span><span /></>);
       const ev = [[H(10, 19, 9, 41), 'Marcus Lee’s new iPhone, confirmed', 'Kai confirmed it 11 minutes after', 'p:ML', 'var(--fg)', 'Confirmed'], [H(10, 19, 11, 10), 'A reveal with no reason', 'Kai showed M-0044’s email', 'x:reveals', 'var(--absent)', 'Look'], [H(10, 12, 18, 0), 'Marcus Lee’s old iPhone went quiet', 'Still trusted · sign it out', 'p:ML', 'var(--underway)', 'Sign out'], [H(10, 2, 9, 0), 'The outside accountant joined', 'Read-only, emailed code', 'p:AC', 'var(--line)', 'Read-only']];
       const se = cell('s5', 'Worth a look', <span className="lbl">Last 30 days</span>, <div className="gt-cl">{ev.map(([t, a, b, o, c, s], __k) => <button key={__k} className="gt-cr" {...attrs(o === 'x:reveals' ? 'data-ago="records/reveals"' : `data-aopen="${o}"`)}>{leaf(t)}<span className="gt-ck"><b>{a}</b><span>{b}</span></span><span className="gt-st" style={css(`--c:${c}`)}>{s}</span></button>)}{rest()}</div>, <><span>Alerts go to Kai and Dana Ruiz</span><span /></>);
-      return <>{band(<>{setCell('signin', 's6')}{setCell('privacy', 's6')}</>, 1)}{band(<>{dv}{se}</>)}</>;
+      const se2 = AL ? notReal('s5', 'Worth a look', 'Needs the sign-in and reveal events marked for a look: a new device and who confirmed it, a reveal with no reason, a device gone quiet, someone new joining. Records → Reveals has the reveals.') : se;
+      return <>{band(<>{setCell('signin', 's6')}{setCell('privacy', 's6')}</>, 1)}{band(<>{dv}{se2}</>)}</>;
     }
-    const keyTxt = c => c.key === '@rpc' ? 'Public RPC' : c.key === '@safe' ? 'Signers’ own keys' : c.key ? `Key ••••${c.key}` : 'No key';
+    const keyTxt = c => c.keyNote != null ? c.keyNote : c.key === '@rpc' ? 'Public RPC' : c.key === '@safe' ? 'Signers’ own keys' : c.key ? `Key ••••${c.key}` : 'No key';
     function connHrs(c, big) {
       return <span className={`ad-hr ${big ? 'big' : ''}`}>{c.hrs.map((h, i) => <i key={i} className={h === 1 ? '' : h === 0 ? c.idle ? 'idle' : 'down' : 'slow'} title={`${24 - i} h ago`} />)}</span>;
     }
-    const CST = c => c.st === 'behind' ? ['Behind', 'var(--underway)'] : c.idle ? ['Asleep', 'var(--line)'] : c.st === 'off' ? ['Down', 'var(--absent)'] : ['Healthy', 'var(--settled)'];
+    const CST = c => c.st === 'behind' ? ['Behind', 'var(--underway)'] : AL && c.stLabel ? [c.stLabel, 'var(--line)'] : c.idle ? ['Asleep', 'var(--line)'] : c.st === 'off' && AL ? ['Off', 'var(--line)'] : c.st === 'off' ? ['Down', 'var(--absent)'] : ['Healthy', 'var(--settled)'];
     function setConnections() {
-      const list = cell('s12', 'Connections', <span className="lbl">{CONN.length}{" services"}</span>, <div className="ad-cn"><div className="ad-cnr hd2"><span>{lbl('Service')}</span>{lbl('Last 24 hours')}{lbl('Last heard')}{lbl('Status')}<span /></div>{CONN.map((c, __k) => <button key={__k} className="ad-cnr" data-aopen={`c:${c.id}`}><span className="gt-ck"><b>{c.n}</b><span>{c.what}{" · "}{c.note}</span></span>{connHrs(c)}<span className="ad-dt"><b>{ago(c.last)}</b><em>{keyTxt(c)}</em></span><span className="gt-st" style={css(`--c:${CST(c)[1]}`)}>{CST(c)[0]}</span><span className="gv-go">{ICO.chev}</span></button>)}</div>, <><span className="f-key"><span><i style={css("background:color-mix(in srgb,var(--fg) 38%,transparent)")} />Working</span><span><i style={css("background:var(--underway)")} />Slow or behind</span><span><i style={css("background:var(--absent)")} />Down</span><span><i className="ad-idle" />Asleep</span></span><span>Keys are never shown, only their last four</span></>);
+      const list = cell('s12', 'Connections', <span className="lbl">{CONN.length}{" services"}</span>, <div className="ad-cn"><div className="ad-cnr hd2"><span>{lbl('Service')}</span>{lbl('Last 24 hours')}{lbl('Last heard')}{lbl('Status')}<span /></div>{CONN.map((c, __k) => <button key={__k} className="ad-cnr" data-aopen={`c:${c.id}`}><span className="gt-ck"><b>{c.n}</b><span>{c.what}{" · "}{c.note}</span></span>{connHrs(c)}<span className="ad-dt"><b>{ago(c.last)}</b><em>{keyTxt(c)}</em></span><span className="gt-st" style={css(`--c:${CST(c)[1]}`)}>{CST(c)[0]}</span><span className="gv-go">{ICO.chev}</span></button>)}</div>, <><span className="f-key"><span><i style={css("background:color-mix(in srgb,var(--fg) 38%,transparent)")} />Working</span><span><i style={css("background:var(--underway)")} />Slow or behind</span><span><i style={css("background:var(--absent)")} />Down</span><span><i className="ad-idle" />Asleep</span></span><span>{AL ? 'No hourly history yet · keys stay on the server' : 'Keys are never shown, only their last four'}</span></>);
       const pages = ['home', 'members', 'merchants', 'shop', 'money', 'build', 'community', 'governance', 'records'];
       const use = cell('s7', 'Where each one is used', <span className="lbl">If it goes down, these pages notice</span>, <div className="ad-ux"><div className="ad-ux-r hd2"><span />{pages.map((k, __k) => <span key={__k} title={PAGE_N[k]}><b>{LAB[k] || PAGE_N[k]}</b><i>{SHORT[k]}</i></span>)}</div>{CONN.map((c, __k) => <div key={__k} className="ad-ux-r"><span>{c.n}</span>{pages.map((k, __k) => <span key={__k}>{c.used.includes(k) ? <i className={c.st === 'behind' ? 'warn' : ''} /> : ''}</span>)}</div>)}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Used here</span><span><i style={css("background:var(--underway)")} />Behind right now</span></span><span /></>);
-      const rot = SETO.rotate.v,
+      const rot = SETO.rotate ? SETO.rotate.v : 90,
         ks = CONN.filter(c => c.rot).sort((a, b) => b.rot - a.rot),
         rmx = Math.max(rot * 1.15, ...ks.map(c => c.rot));
       const keys = cell('s5', 'Key age', <span className="lbl">{"Rotate every "}{rot}{" days"}</span>, <div className="ad-hb">{ks.map((c, __k) => <button key={__k} className="ad-hb-r" data-aopen={`c:${c.id}`}><span>{c.n}</span><span className="ad-hb-b ad-kb"><i className={c.rot > rot ? 'late' : c.rot > rot - 14 ? 'soon' : ''} style={css(`width:${c.rot / rmx * 100}%`)} /><s style={css(`left:${rot / rmx * 100}%`)} /></span><b className={c.rot > rot ? 'bad' : ''}>{c.rot}{" d"}</b></button>)}</div>, <><span className="f-key"><span><i style={css("background:var(--underway)")} />Due in two weeks</span><span><i style={css("background:var(--absent)")} />Overdue</span></span><span /></>);
-      return <>{band(list, 1)}{band(<>{use}{keys}</>)}</>;
+      const keys2 = AL ? notReal('s5', 'Key age', 'Needs when each connection’s key was set and who swapped it last: the keys are kept on the server, which doesn’t record their age.') : keys;
+      return <>{band(list, 1)}{band(<>{use}{keys2}</>)}</>;
     }
     function setOrg() {
-      const prof = cell('s6', 'Profile', <span className="lbl">Shown to members</span>, <><div className="led ad-led">{PROFILE.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{rest()}</>, <><span>Changes here need a second person too</span><span /></>);
-      const net = cell('s6', 'Network', <span className="lbl">Where the contracts run</span>, <div className="ad-net"><div className="ad-net-r on"><span className="gt-ck"><b>Base Sepolia · testnet</b><span>Every contract, pool and payout today. Test money only.</span></span><span className="gt-st" style={css("--c:var(--settled)")}>Now</span></div><div className="ad-net-r next"><span className="gt-ck"><b>Base · mainnet</b><span>Real money. Needs the audits closed, a board vote, then the Ops Safe.</span></span><span className="gt-st" style={css("--c:var(--line)")}>Not yet</span></div><div className="ad-net-c">{[['Audits closed', '2 of 3', 'labs'], ['Board vote', 'Not started', 'gov'], ['Ops Safe', 'After the vote', 'safe']].map(([a, b], __k) => <span key={__k}><b>{a}</b><em>{b}</em></span>)}</div></div>, <><span>{ICO.lock}{" Set by a board vote, not here"}</span><button data-aout="Governance">Governance →</button></>);
+      const prof = AL ? notReal('s6', 'Profile', 'Needs the organization’s profile kept in the API: its name, website, help email, time zone, fiscal year and currency.') : cell('s6', 'Profile', <span className="lbl">Shown to members</span>, <><div className="led ad-led">{PROFILE.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{rest()}</>, <><span>Changes here need a second person too</span><span /></>);
+      const net = cell('s6', 'Network', <span className="lbl">Where the contracts run</span>, <div className="ad-net"><div className="ad-net-r on"><span className="gt-ck"><b>Base Sepolia · testnet</b><span>Every contract, pool and payout today. Test money only.</span></span><span className="gt-st" style={css("--c:var(--settled)")}>Now</span></div><div className="ad-net-r next"><span className="gt-ck"><b>Base · mainnet</b><span>Real money. Needs the audits closed, a board vote, then the Ops Safe.</span></span><span className="gt-st" style={css("--c:var(--line)")}>Not yet</span></div>{AL ? '' : <div className="ad-net-c">{[['Audits closed', '2 of 3', 'labs'], ['Board vote', 'Not started', 'gov'], ['Ops Safe', 'After the vote', 'safe']].map(([a, b], __k) => <span key={__k}><b>{a}</b><em>{b}</em></span>)}</div>}</div>, <><span>{ICO.lock}{" Set by a board vote, not here"}</span><button data-aout="Governance">Governance →</button></>);
       const ent = cell('s12', 'Entities', <span className="lbl">{ENT.length}{" entities · tax IDs masked"}</span>, <div className="ad-en"><div className="ad-enr hd2"><span>{lbl('Entity')}</span>{lbl('Tax ID')}{lbl('Papers on file')}{lbl('Status')}<span /></div>{ENT.map(([id, n, k, st, tax], __k) => {
           const c = COVER[id] || [],
             f = c.filter(x => x === 'f').length,
             need = c.filter(x => x !== 'n').length,
             m = c.filter(x => x === 'm').length;
-          return <button key={__k} className="ad-enr" data-adoc-ent={id}><span className="gt-ck"><b>{n}</b><span>{k}</span></span>{tax ? <span className="mono ad-tax">••-•••{tax}</span> : <span className="ad-tax q">Applied for</span>}<span className="ad-pp"><span className="ad-pp-b">{c.map((x, __k) => <i key={__k} className={x} title={CV[x][0]} />)}</span><em className={m ? 'bad' : ''}>{f}{" of "}{need}{m ? ` · ${m} missing` : ''}</em></span><span className="gt-st" style={css(`--c:${st === 'formed' ? 'var(--settled)' : 'var(--underway)'}`)}>{st === 'formed' ? 'Formed' : 'Forming'}</span><span className="gv-go">{ICO.chev}</span></button>;
+          return <button key={__k} className="ad-enr" data-adoc-ent={id}><span className="gt-ck"><b>{n}</b><span>{k}</span></span>{tax ? <span className="mono ad-tax">••-•••{tax}</span> : <span className="ad-tax q">{AL ? 'Not on file' : 'Applied for'}</span>}<span className="ad-pp"><span className="ad-pp-b">{c.map((x, __k) => <i key={__k} className={x} title={CV[x][0]} />)}</span><em className={m ? 'bad' : ''}>{f}{" of "}{need}{m ? ` · ${m} missing` : ''}</em></span><span className="gt-st" style={css(`--c:${st === 'formed' ? 'var(--settled)' : AL && st === 'planned' ? 'var(--line)' : 'var(--underway)'}`)}>{st === 'formed' ? 'Formed' : AL && st === 'planned' ? 'Planned' : 'Forming'}</span><span className="gv-go">{ICO.chev}</span></button>;
         })}</div>, <><span className="f-key"><span><i style={css("background:color-mix(in srgb,var(--fg) 30%,transparent)")} />On file</span><span><i style={css("background:color-mix(in srgb,var(--underway) 55%,transparent)")} />Draft</span><span><i style={css("background:var(--absent)")} />Missing</span><span><i className="ad-nn" />Not needed yet</span></span><button data-aout="Governance">Entities in Governance →</button></>);
-      const rec = cell('s6', 'Records', <span className="lbl">How things are kept</span>, <div className="ad-sl">{setRow(SETO.retain)}<div className="ad-sr st"><span className="gt-ck"><b>The audit log can’t be edited</b><span>Each entry is chained to the one before it</span></span><span className="ad-sv"><b>{ICO.lock}Always</b><em>Checked nightly</em></span><span /></div><div className="ad-sr st"><span className="gt-ck"><b>Backups</b><span>Documents, the log and settings</span></span><span className="ad-sv"><b>Nightly</b><em>Last at 02:00 today</em></span><span /></div>{rest()}</div>, <><span>Exports need a second person</span><button data-ago="records/reveals">Exports →</button></>);
-      const nt = cell('s6', 'Notifications', <span className="lbl">Who hears about what</span>, <div className="ad-sl">{ALERTS.map(([a, b, ids], __k) => <div key={__k} className="ad-sr st"><span className="gt-ck"><b>{a}</b><span>{b}</span></span><span className="ad-avs">{ids.length ? ids.map(id => sq(id)) : <em>Whoever it’s waiting on</em>}</span><span /></div>)}{setRow(SETO.digest)}{rest()}</div>, <><span>Each person can mute their own, not anyone else’s</span><span /></>);
+      // live: the chain's state as GET /audit checks it; no backup is recorded, so it isn't drawn
+      const ch = AL ? AL.CHAIN : null;
+      const rec = cell('s6', 'Records', <span className="lbl">How things are kept</span>, <div className="ad-sl">{SETO.retain ? setRow(SETO.retain) : ''}<div className="ad-sr st"><span className="gt-ck"><b>The audit log can’t be edited</b><span>Each entry is chained to the one before it</span></span><span className="ad-sv"><b>{ICO.lock}Always</b><em>{AL ? ch ? ch.ok ? `The chain holds · ${ch.entries} entries` : `Broken at entry #${ch.brokenAt}` : 'The chain isn’t read yet' : 'Checked nightly'}</em></span><span /></div>{AL ? '' : <div className="ad-sr st"><span className="gt-ck"><b>Backups</b><span>Documents, the log and settings</span></span><span className="ad-sv"><b>Nightly</b><em>Last at 02:00 today</em></span><span /></div>}{rest()}</div>, <><span>{AL ? 'Whole lists need Approve and a reason · no second person yet' : 'Exports need a second person'}</span><button data-ago="records/reveals">Exports →</button></>);
+      const nt = cell('s6', 'Notifications', <span className="lbl">Who hears about what</span>, <div className="ad-sl">{AL ? <div className="ad-sr st"><span className="gt-ck"><b>Alerts</b><span>Who hears about what isn’t stored yet</span></span><span className="ad-sv"><b>Not real yet</b><em>Needs alert rules and who each goes to</em></span><span /></div> : ''}{ALERTS.map(([a, b, ids], __k) => <div key={__k} className="ad-sr st"><span className="gt-ck"><b>{a}</b><span>{b}</span></span><span className="ad-avs">{ids.length ? ids.map(id => sq(id)) : <em>Whoever it’s waiting on</em>}</span><span /></div>)}{SETO.digest ? setRow(SETO.digest) : ''}{rest()}</div>, <><span>{AL ? 'Needs you shows what’s waiting on each person' : 'Each person can mute their own, not anyone else’s'}</span><span /></>);
       return <>{band(<>{prof}{nt}</>, 1)}{band(<>{net}{rec}</>)}{band(ent)}</>;
     }
 
     /* ══ Records ══════════════════════════════════════════════════════════════════════════════════════════════════════ */
     const days7 = () => Array.from({
       length: 7
-    }, (_, d) => H2(10, 15 + d, 0));
+    }, (_, d) => AL ? TODAY - (6 - d) * DAY : H2(10, 15 + d, 0));
     function lanes() {
       const days = days7(),
         order = Object.keys(AREAS);
@@ -1076,7 +1146,7 @@ function makeAdmin() {
           evs: WEEK.filter(x => x[1] === w && x[0] >= t && x[0] < e)
         };
       };
-      const max = Math.max(...WHO.flatMap(([w]) => days.map(t => {
+      const max = Math.max(1, ...WHO.flatMap(([w]) => days.map(t => {
         const c = cellOf(w, t);
         return c.keys.length + c.evs.length;
       })));
@@ -1098,13 +1168,13 @@ function makeAdmin() {
     }
     const resChip = r => <span className="gt-st" style={css(`--c:${RESULT[r][1]}`)}>{RESULT[r][0]}</span>;
     function recOverview() {
-      const wk = cell('s12', 'This week', <span className="lbl">{"15–21 Oct · "}{weekN()}{" actions"}</span>, lanes(), <><span className="f-key"><span><i className="ad-shade" />Darker is busier</span><span><i className="ad-kk" />A key action</span><span><i className="ad-mixk" />The strip is the kind of work, coloured as below</span></span><button data-atab="log">Audit log →</button></>);
+      const wk = cell('s12', 'This week', <span className="lbl">{AL ? `${fmtD(days7()[0])}–${fmtD(days7()[6])} · ` : "15–21 Oct · "}{weekN()}{" actions"}</span>, lanes(), <><span className="f-key"><span><i className="ad-shade" />Darker is busier</span><span><i className="ad-kk" />A key action</span><span><i className="ad-mixk" />The strip is the kind of work, coloured as below</span></span><button data-atab="log">Audit log →</button></>);
       const keys = cell('s7', 'Key actions', <span className="lbl">Newest first</span>, <div className="ad-ll">{LOG.slice().sort((a, b) => b[1] - a[1]).slice(0, 7).map(logRow)}</div>, <><span>{LOG.filter(l => l[7] === 'waiting').length}{" still waiting on someone"}</span><button data-atab="log">{"All "}{LOG.length}{" →"}</button></>);
       const from = days7()[0],
         order = Object.keys(AREAS),
         by = order.map(a => [a, WEEK.filter(e => e[2] === a).length + LOG.filter(l => l[3] === a && l[1] >= from).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]),
-        bm = by[0][1];
-      const kind = cell('s5', 'Kind of work', <span className="lbl">This week</span>, <div className="ad-hb">{by.map(([a, v], __k) => <button key={__k} className="ad-hb-r" data-alr-area={a}><span>{AREAS[a][0]}</span><span className="ad-hb-b"><i style={css(`width:${v / bm * 100}%;background:${AREAS[a][1]}`)} /></span><b>{v}</b></button>)}</div>, <><span>{Math.round(by[0][1] / weekN() * 100)}{"% was "}{AREAS[by[0][0]][0].toLowerCase()}</span><span /></>);
+        bm = by.length ? by[0][1] : 1;
+      const kind = cell('s5', 'Kind of work', <span className="lbl">This week</span>, <div className="ad-hb">{by.map(([a, v], __k) => <button key={__k} className="ad-hb-r" data-alr-area={a}><span>{AREAS[a][0]}</span><span className="ad-hb-b"><i style={css(`width:${v / bm * 100}%;background:${AREAS[a][1]}`)} /></span><b>{v}</b></button>)}</div>, <><span>{by.length ? <>{Math.round(by[0][1] / weekN() * 100)}{"% was "}{AREAS[by[0][0]][0].toLowerCase()}</> : 'Nothing in the log this week'}</span><span /></>);
       return <>{band(wk, 1)}{band(<>{keys}{kind}</>)}{band(paperCell())}</>;
     }
     function paperCell() {
@@ -1125,7 +1195,10 @@ function makeAdmin() {
     const DF = [['all', 'All'], ['agreement', 'Agreements'], ['minutes', 'Minutes'], ['filing', 'Filings'], ['policy', 'Policies'], ['bond', 'Bonds'], ['report', 'Reports']];
     function recDocs() {
       const L = DOCS.filter(d => A.df === 'all' || d[2] === A.df).sort((a, b) => b[4] - a[4]);
-      const monOf = t => t >= D(10, 1) ? 'October' : t >= D(9, 1) ? 'September' : 'Earlier this year';
+      const monOf = t => AL ? new Date(t).getUTCFullYear() === new Date(TODAY).getUTCFullYear() ? new Date(t).toLocaleString('en-US', {
+        month: 'long',
+        timeZone: 'UTC'
+      }) : String(new Date(t).getUTCFullYear()) : t >= D(10, 1) ? 'October' : t >= D(9, 1) ? 'September' : 'Earlier this year';
       const docRow = d => <button className="gt-cr ad-dcr" data-aopen={`d:${d[0]}`}>{leaf(d[4])}<span className="gt-ck"><b>{d[1]}</b><span>{ENTO[d[3]][1]}{" · "}{d[6]}{" · "}{d[7]}{" · "}{d[8]}{" pages"}</span></span><span className="ad-dk">{DONE1[d[2]]}</span><span className="gt-st" style={css(`--c:${DSTAT[d[5]][1]}`)}>{DSTAT[d[5]][0]}</span></button>;
       const list = cell('s12', 'Documents', seg('adf', DF, A.df, 'Which documents'), <div className="gt-cl flat"><div className="gt-cr ad-dcr hd2">{lbl('Filed')}{lbl('Document')}{lbl('Kind')}{lbl('Status')}</div>{(() => {
           let last = null;
@@ -1136,7 +1209,7 @@ function makeAdmin() {
             return <Fragment key={__k}>{h}{docRow(d)}</Fragment>;
           });
         })()}{L.length ? '' : <div className="gv-e"><span>Nothing here</span></div>}</div>, <><span>{"The "}{L.length}{" newest · "}{A.df === 'all' ? Object.values(DCOUNT).reduce((a, b) => a + b, 0) : DCOUNT[A.df]}{" on file"}</span><button data-aadd="">Add a document</button></>);
-      const mx = Math.max(...Object.values(DCOUNT));
+      const mx = Math.max(1, ...Object.values(DCOUNT));
       const kinds = cell('s7', 'On file by kind', <span className="lbl">{Object.values(DCOUNT).reduce((a, b) => a + b, 0)}{" documents"}</span>, <div className="ad-hb">{Object.keys(DCOUNT).map((k, __k) => {
           const dr = DOCS.filter(d => d[2] === k && d[5] === 'draft').length,
             wt = DOCS.filter(d => d[2] === k && d[5] === 'waiting').length,
@@ -1144,19 +1217,20 @@ function makeAdmin() {
           return <button key={__k} className="ad-hb-r" data-adf={k}><span>{DT[k][0]}</span><span className="ad-hb-b ad-stk"><i style={css(`width:${done / mx * 100}%;background:${DT[k][1]}`)} />{dr ? <i style={css(`width:${dr / mx * 100}%;background:var(--underway)`)} /> : ''}{wt ? <i className="hx" style={css(`width:${wt / mx * 100}%`)} /> : ''}</span><b>{DCOUNT[k]}</b></button>;
         })}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Final or signed</span><span><i style={css("background:var(--underway)")} />Draft</span><span><i className="hx" />Waiting on a signature</span></span><span /></>);
       const miss = Object.entries(COVER).flatMap(([id, c]) => c.map((x, i) => x === 'm' ? [id, i] : null).filter(Boolean));
-      const ms = cell('s5', 'Missing', <span className="lbl">{miss.length}{" papers"}</span>, <div className="ad-cl">{miss.map(([id, i], __k) => <button key={__k} className="ad-cr one" data-amiss={`${id}:${i}`}><span className="gt-ck"><b>{COVER_K[i]}</b><span>{ENTO[id][1]}</span></span><span className="lnk3">Add it</span></button>)}{rest()}</div>, <><span>Both entities are still forming</span><button data-atab="overview">Paperwork →</button></>);
+      const ms = cell('s5', 'Missing', <span className="lbl">{miss.length}{" papers"}</span>, <div className="ad-cl">{miss.map(([id, i], __k) => <button key={__k} className="ad-cr one" data-amiss={`${id}:${i}`}><span className="gt-ck"><b>{COVER_K[i]}</b><span>{ENTO[id][1]}</span></span><span className="lnk3">Add it</span></button>)}{rest()}</div>, <><span>{AL ? miss.length ? `Across ${new Set(miss.map(m => m[0])).size} of ${ENT.length} entities` : 'Nothing marked missing' : 'Both entities are still forming'}</span><button data-atab="overview">Paperwork →</button></>);
       return <>{band(list, 1)}{band(<>{kinds}{ms}</>)}</>;
     }
     function logRow(l) {
       return <button className="ad-lr" data-aopen={`l:${l[0]}`}><span className="mono ad-lt">{hm(l[1])}</span>{sq(l[2])}<span className="gt-ck"><b>{l[4]}</b><span>{l[5]}</span></span><span className="ad-la">{AREAS[l[3]][0]}</span>{resChip(l[7])}</button>;
     }
-    const LW = [['all', 'Everyone'], ['K', 'Kai'], ['DR', 'Dana'], ['ML', 'Marcus'], ['SY', 'System']],
+    const LW = AL ? AL.LW : [['all', 'Everyone'], ['K', 'Kai'], ['DR', 'Dana'], ['ML', 'Marcus'], ['SY', 'System']],
+
       LR = [['all', 'All'], ['waiting', 'Waiting'], ['approved', 'Approved'], ['alert', 'Alerts']];
     function recLog() {
       const L = LOG.filter(l => (A.lw === 'all' || l[2] === A.lw) && (A.lr === 'all' || l[7] === A.lr) && (!A.la || l[3] === A.la)).sort((a, b) => b[1] - a[1]),
         per = 10,
         pg = L.slice(A.lp * per, A.lp * per + per);
-      const dayOf = t => Date.UTC(2026, new Date(t).getUTCMonth(), new Date(t).getUTCDate());
+      const dayOf = t => Date.UTC(new Date(t).getUTCFullYear(), new Date(t).getUTCMonth(), new Date(t).getUTCDate());
       let last = null;
       const rows = pg.map((l, __k) => {
         const d = dayOf(l[1]);
@@ -1165,22 +1239,24 @@ function makeAdmin() {
         last = d;
         return <Fragment key={__k}>{h}{logRow(l)}</Fragment>;
       });
-      const list = cell('s12', 'Audit log', <div className="ad-segs">{seg('alw', LW, A.lw, 'Who')}{seg('alr', LR, A.lr, 'Result')}</div>, <div className="ad-ll"><div className="ad-lr hd2">{lbl('Time')}<span />{lbl('Action')}{lbl('Area')}{lbl('Result')}</div>{A.la ? <div className="ad-fl"><span>{"Only "}{AREAS[A.la][0]}</span><button className="lnk3" data-alr-area="">Show everything</button></div> : ''}{rows.length ? rows : <div className="gv-e"><span>Nothing matches</span></div>}</div>, <><span>{ICO.lock}{" Can’t be edited or deleted · kept 7 years"}</span>{pager(A.lp, L.length, per, 'alp')}</>);
+      const list = cell('s12', 'Audit log', <div className="ad-segs">{seg('alw', LW, A.lw, 'Who')}{seg('alr', LR, A.lr, 'Result')}</div>, <div className="ad-ll"><div className="ad-lr hd2">{lbl('Time')}<span />{lbl('Action')}{lbl('Area')}{lbl('Result')}</div>{A.la ? <div className="ad-fl"><span>{"Only "}{AREAS[A.la][0]}</span><button className="lnk3" data-alr-area="">Show everything</button></div> : ''}{rows.length ? rows : <div className="gv-e"><span>Nothing matches</span></div>}</div>, <><span>{ICO.lock}{" Can’t be edited or deleted · kept 7 years"}{AL && AL.CHAIN ? AL.CHAIN.ok ? ` · chain holds, ${AL.CHAIN.entries} entries` : ` · chain broken at #${AL.CHAIN.brokenAt}` : ''}</span>{pager(A.lp, L.length, per, 'alp')}</>);
       return band(list, 1);
     }
     function recReveals() {
-      const rv = cell('s7', 'Reveals', <span className="lbl">{"This week · "}{REVEALS.length}</span>, <div className="gt-cl">{REVEALS.map(([t, w, m, what, why, where], __k) => <div key={__k} className={`gt-cr ad-rvr ${why ? '' : 'bad'}`}>{leaf(t)}<span className="gt-ck"><b>{pName(w)}{" showed "}{m}{"’s "}{what.toLowerCase()}</b><span className={why ? '' : 'bad'}>{why || 'No reason given'}</span></span><span className="ad-dt"><b>{hm(t)}</b><em>{where}</em></span></div>)}{rest()}</div>, <><span>{ICO.lock}{" Details stay masked until someone reveals them with a reason"}</span><button data-ago="settings/security">Privacy →</button></>);
-      const by = ['K', 'DR'].map(id => [id, REVEALS.filter(r => r[1] === id).length, REVEALS.filter(r => r[1] === id && !r[4]).length]),
-        bm = Math.max(...by.map(b => b[1]));
-      const KINDS = [['Email', r => /email/i.test(r[3])], ['Phone', r => /phone/i.test(r[3])], ['Address', r => /address/i.test(r[3])]].map(([k, f]) => [k, REVEALS.filter(f).length]),
-        km = Math.max(...KINDS.map(k => k[1]));
-      const bp = cell('s5', 'Who and what', <span className="lbl">Only Admin and Protocol can</span>, <>{secRow('Who revealed', `${REVEALS.length} this week`)}<div className="ad-hb ad-up">{by.map(([id, n, bad], __k) => <div key={__k} className="ad-hb-r"><span>{pName(id)}</span><span className="ad-hb-b ad-stk"><i style={css(`width:${(n - bad) / bm * 100}%`)} />{bad ? <i style={css(`width:${bad / bm * 100}%;background:var(--absent)`)} /> : ''}</span><b>{n}</b></div>)}</div>{secRow('What was shown', `${REVEALS.filter(r => r[5] === 'Members').length} members · ${REVEALS.filter(r => r[5] === 'Merchants').length} shop owners`)}<div className="ad-hb ad-up">{KINDS.map(([k, n], __k) => <div key={__k} className="ad-hb-r"><span>{k}</span><span className="ad-hb-b"><i style={css(`width:${n / km * 100}%;background:color-mix(in srgb,var(--fg) 45%,transparent)`)} /></span><b>{n}</b></div>)}</div>{rest()}</>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />With a reason</span><span><i style={css("background:var(--absent)")} />Without</span></span><span /></>);
+      const rv = cell('s7', 'Reveals', <span className="lbl">{AL ? 'Newest first · ' : "This week · "}{REVEALS.length}</span>, <div className="gt-cl">{REVEALS.map(([t, w, m, what, why, where], __k) => <div key={__k} className={`gt-cr ad-rvr ${why ? '' : 'bad'}`}>{leaf(t)}<span className="gt-ck"><b>{pName(w)}{" showed "}{m}{"’s "}{what.toLowerCase()}</b><span className={why ? '' : 'bad'}>{why || 'No reason given'}</span></span><span className="ad-dt"><b>{hm(t)}</b><em>{where}</em></span></div>)}{rest()}</div>, <><span>{ICO.lock}{" Details stay masked until someone reveals them with a reason"}</span><button data-ago="settings/security">Privacy →</button></>);
+      const by = (AL ? [...new Set(REVEALS.map(r => r[1]))] : ['K', 'DR']).map(id => [id, REVEALS.filter(r => r[1] === id).length, REVEALS.filter(r => r[1] === id && !r[4]).length]),
+        bm = Math.max(1, ...by.map(b => b[1]));
+      const KINDS = (AL ? [['Name', r => /name/i.test(r[3])], ['Email', r => /email/i.test(r[3])], ['Phone', r => /phone/i.test(r[3])], ['Address', r => /address/i.test(r[3])]] : [['Email', r => /email/i.test(r[3])], ['Phone', r => /phone/i.test(r[3])], ['Address', r => /address/i.test(r[3])]]).map(([k, f]) => [k, REVEALS.filter(f).length]),
+        km = Math.max(1, ...KINDS.map(k => k[1]));
+      const rvg = GKEYS.filter(g => GROUPS[g][2][secIx('members')] === 4).map(g => GROUPS[g][0]);
+      const bp = cell('s5', 'Who and what', <span className="lbl">{AL ? rvg.length ? `Only ${rvg.join(' and ')} can` : 'Approve on the section' : 'Only Admin and Protocol can'}</span>, <>{secRow('Who revealed', `${REVEALS.length} ${AL ? 'in all' : 'this week'}`)}
+<div className="ad-hb ad-up">{by.map(([id, n, bad], __k) => <div key={__k} className="ad-hb-r"><span>{pName(id)}</span><span className="ad-hb-b ad-stk"><i style={css(`width:${(n - bad) / bm * 100}%`)} />{bad ? <i style={css(`width:${bad / bm * 100}%;background:var(--absent)`)} /> : ''}</span><b>{n}</b></div>)}</div>{secRow('What was shown', `${REVEALS.filter(r => r[5] === 'Members').length} members · ${REVEALS.filter(r => r[5] === 'Merchants').length} shop owners`)}<div className="ad-hb ad-up">{KINDS.map(([k, n], __k) => <div key={__k} className="ad-hb-r"><span>{k}</span><span className="ad-hb-b"><i style={css(`width:${n / km * 100}%;background:color-mix(in srgb,var(--fg) 45%,transparent)`)} /></span><b>{n}</b></div>)}</div>{rest()}</>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />With a reason</span><span><i style={css("background:var(--absent)")} />Without</span></span><span /></>);
       const ESt = {
         done: ['Done', 'var(--fg)'],
         approved: ['Approved', 'var(--settled)'],
         waiting: ['Waiting', 'var(--underway)']
       };
-      const ex = cell('s12', 'Exports', <span className="lbl">Every list that left the app</span>, <div className="ad-xl"><div className="ad-xr hd2"><span />{lbl('List')}{lbl('Rows')}{lbl('Second person')}{lbl('Status')}</div>{EXPORTS.slice().sort((a, b) => b[0] - a[0]).map(([t, w, what, n, ok, st, note], __k) => <div key={__k} className={`ad-xr ${st === 'waiting' ? 'pend' : ''}`}>{leaf(t)}<span className="gt-ck"><b>{what}</b><span>{pName(w)}{" · "}{hm(t)}</span></span><b className="num">{int(n)}</b><span className="ad-xo">{ok ? <>{sq(ok)}<em>{pName(ok)}</em></> : <em>{note}</em>}</span><span className="gt-st" style={css(`--c:${ESt[st][1]}`)}>{ESt[st][0]}</span></div>)}</div>, <><span>Lists with names, emails or phone numbers need a second person</span><button data-ago="settings/rules">The rule →</button></>);
+      const ex = cell('s12', 'Exports', <span className="lbl">Every list that left the app</span>, <div className="ad-xl"><div className="ad-xr hd2"><span />{lbl('List')}{lbl('Rows')}{lbl('Second person')}{lbl('Status')}</div>{EXPORTS.slice().sort((a, b) => b[0] - a[0]).map(([t, w, what, n, ok, st, note], __k) => <div key={__k} className={`ad-xr ${st === 'waiting' ? 'pend' : ''}`}>{leaf(t)}<span className="gt-ck"><b>{what}</b><span>{pName(w)}{" · "}{hm(t)}</span></span><b className="num">{int(n)}</b><span className="ad-xo">{ok ? <>{sq(ok)}<em>{pName(ok)}</em></> : <em>{note}</em>}</span><span className="gt-st" style={css(`--c:${ESt[st][1]}`)}>{ESt[st][0]}</span></div>)}</div>, <><span>{AL ? 'A whole list needs Approve on its page and a reason · no second person yet' : 'Lists with names, emails or phone numbers need a second person'}</span><button data-ago="settings/rules">The rule →</button></>);
       return <>{band(<>{rv}{bp}</>, 1)}{band(ex)}</>;
     }
 
@@ -1226,6 +1302,22 @@ function makeAdmin() {
         A.panel = null;
         return;
       }
+      // live, what a panel was opened on can go (someone turned off, a change approved): it closes
+      const has = AL && {
+        p: () => PPL[id],
+        i: () => INVITES.find(x => x.id === id),
+        g: () => GROUPS[id],
+        r: () => RULES.find(x => x.id === id),
+        s: () => SETO[id],
+        c: () => CONN.find(x => x.id === id),
+        d: () => DOCS.find(x => x[0] === id),
+        l: () => LOG.find(x => x[0] === id)
+      }[k];
+      if (has && !has()) {
+        A.panel = null;
+        document.body.classList.remove('pn');
+        return;
+      }
       document.body.classList.add('pn');
       html(pn, fn(id));
     }
@@ -1233,12 +1325,12 @@ function makeAdmin() {
       const p = PPL[id],
         G = GROUPS[p.g];
       const can = SECS.map(([k, t], i) => [t, G[2][i]]).filter(x => x[1] >= 3);
-      return <>{phd(`Team · ${G[0]}`)}<div className="pn-b"><div className="ad-ph">{sq(p.id, 'lg')}<div><p className="bpn-t">{p.n}</p><p className="bpn-s">{p.title}{" · "}<span className="mono">{p.email}</span></p></div></div><div className="led">{[['Group', `${G[0]} · ${G[1]}`], ['Sign-in', p.passkey ? 'Passkey' : 'Emailed code · read-only'], ['Signer in the Ops Safe', p.signer ? 'Yes' : 'No'], ['On the team since', fmtD(p.since)], ['Last active', ago(p.last)], ...(p.until ? [['Access ends', fmtD(p.until)]] : [])].map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div><div>{lbl('Their level on each page')}<div className="ad-lvs">{SECS.map(([k, t], i) => <span key={i} title={`${t} · ${LV[G[2][i]][0]}`}>{lvSq(G[2][i])}<em>{SHORT[k]}</em></span>)}</div><p className="bpn-n">{can.length ? `Can propose or approve on ${can.map(x => x[0]).join(', ')}.` : 'Read-only everywhere.'}{" Levels come from the group, so changing them changes everyone in "}{G[0]}.</p></div><div>{lbl(`Devices · ${p.dev.length}`)}<div className="led">{p.dev.map((d, i) => <div key={i}><span>{d[0]}{d[2] ? '' : ' · not trusted'}</span><b>{ago(d[1])}{CAN_ACT() ? <>{" · "}<button className="lnk3" data-asignout={`${p.id}:${i}`}>Sign out</button></> : ''}</b></div>)}</div></div>{CAN_ACT() ? <div>{lbl('Move to another group')}<div className="ad-mv"><select className="vin" id="agsel" defaultValue={p.g}>{GKEYS.map((g, __k) => <option key={__k} value={g}>{GROUPS[g][0]}</option>)}</select><button className="btn sm-b" data-achg={p.id}>Propose</button></div></div> : ''}<button className="lnk3 ad-out" data-alog={p.id}>Their actions in the audit log →</button></div>{foot(<>{p.id !== A.me ? <button className="btn" data-aoff={p.id}>Turn off access</button> : ''}<button className="btn p" data-aclose="">Done</button></>)}</>;
+      return <>{phd(`Team · ${G[0]}`)}<div className="pn-b"><div className="ad-ph">{sq(p.id, 'lg')}<div><p className="bpn-t">{p.n}</p><p className="bpn-s">{p.title}{" · "}<span className="mono">{p.email}</span></p></div></div><div className="led">{[['Group', `${G[0]} · ${G[1]}`], ['Sign-in', p.passkey ? 'Passkey' : AL ? 'Emailed code' : 'Emailed code · read-only'], ['Signer in the Ops Safe', AL && !AL.SAFE ? 'The Ops Safe isn’t read yet' : p.signer ? 'Yes' : 'No'], ['On the team since', fmtD(p.since)], ['Last active', ago(p.last)], ...(p.until ? [['Access ends', fmtD(p.until)]] : [])].map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div><div>{lbl('Their level on each page')}<div className="ad-lvs">{SECS.map(([k, t], i) => <span key={i} title={`${t} · ${LV[G[2][i]][0]}`}>{lvSq(G[2][i])}<em>{SHORT[k]}</em></span>)}</div><p className="bpn-n">{can.length ? `Can propose or approve on ${can.map(x => x[0]).join(', ')}.` : 'Read-only everywhere.'}{AL && p.g.startsWith('~') ? ' These levels are set for them alone.' : <>{" Levels come from the group, so changing them changes everyone in "}{G[0]}.</>}</p></div><div>{lbl(`Devices · ${p.dev.length}`)}<div className="led">{p.dev.map((d, i) => <div key={i}><span>{d[0]}{d[2] ? '' : ' · not trusted'}</span><b>{ago(d[1])}{CAN_ACT() && !AL ? <>{" · "}<button className="lnk3" data-asignout={`${p.id}:${i}`}>Sign out</button></> : ''}</b></div>)}</div></div>{CAN_ACT() ? <div>{lbl('Move to another group')}<div className="ad-mv"><select className="vin" id="agsel" defaultValue={p.g}>{GKEYS.map((g, __k) => <option key={__k} value={g}>{GROUPS[g][0]}</option>)}</select><button className="btn sm-b" data-achg={p.id}>Propose</button></div></div> : ''}<button className="lnk3 ad-out" data-alog={p.id}>Their actions in the audit log →</button></div>{foot(<>{AL && p.id !== A.me ? <button className="btn" data-asignall={p.id}>Sign out everywhere</button> : ''}{p.id !== A.me ? <button className="btn" data-aoff={p.id}>Turn off access</button> : ''}<button className="btn p" data-aclose="">Done</button></>)}</>;
     }
     function invitePanel(id) {
       const v = INVITES.find(x => x.id === id),
         G = GROUPS[v.g];
-      return <>{phd('Invite')}<div className="pn-b"><div className="ad-ph">{sq(v.id, 'lg dash')}<div><p className="bpn-t">{v.n}</p><p className="bpn-s">{v.title}{" · "}<span className="mono">{v.email}</span></p></div></div><div className="ad-tl">{[['Kai invited them', fmtD(v.sent), 1], ['Dana Ruiz approved it', fmtD(v.sent), 1], [`${v.n.split(' ')[0]} accepts and sets a passkey`, `by ${fmtD(v.exp)}`, 0], ['A device is confirmed', 'after that', 0]].map(([a, b, d], __k) => <div key={__k} className={d ? 'done' : 'next'}><i /><span><b>{a}</b><em>{b}</em></span></div>)}</div><div className="led">{[['Group', G[0]], ['Expires', `${fmtD(v.exp)} · ${Math.round((v.exp - TODAY) / DAY)} days`]].map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div><p className="bpn-n">{"Until they accept, the invite shows what "}{G[0]}{" can do but grants nothing."}</p></div>{foot(<><button className="btn" data-acancel={v.id}>Cancel the invite</button><button className="btn p" data-aresend={v.id}>Resend it</button></>)}</>;
+      return <>{phd('Invite')}<div className="pn-b"><div className="ad-ph">{sq(v.id, 'lg dash')}<div><p className="bpn-t">{v.n}</p><p className="bpn-s">{v.title}{" · "}<span className="mono">{v.email}</span></p></div></div><div className="ad-tl">{(AL ? [['Invited', fmtD(v.sent), 1], [`${v.n.split(/[ @]/)[0]} accepts and signs in`, `by ${fmtD(v.exp)}`, 0]] : [['Kai invited them', fmtD(v.sent), 1], ['Dana Ruiz approved it', fmtD(v.sent), 1], [`${v.n.split(' ')[0]} accepts and sets a passkey`, `by ${fmtD(v.exp)}`, 0], ['A device is confirmed', 'after that', 0]]).map(([a, b, d], __k) => <div key={__k} className={d ? 'done' : 'next'}><i /><span><b>{a}</b><em>{b}</em></span></div>)}</div><div className="led">{[['Group', G[0]], ['Expires', `${fmtD(v.exp)} · ${Math.round((v.exp - TODAY) / DAY)} days`]].map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div><p className="bpn-n">{"Until they accept, the invite shows what "}{G[0]}{" can do but grants nothing."}</p></div>{foot(<>{AL ? '' : <button className="btn" data-acancel={v.id}>Cancel the invite</button>}<button className="btn p" data-aresend={v.id}>Resend it</button></>)}</>;
     }
     function groupPanel(g) {
       const G = GROUPS[g];
@@ -1252,7 +1344,7 @@ function makeAdmin() {
       return <>{phd(g === 'members' ? 'Every member' : 'Group')}<div className="pn-b"><div><p className="bpn-t">{G[0]}</p><p className="bpn-s">{G[1]}{g === 'members' ? ` · ${MEMBERS_N} members` : ppl.length ? ` · ${ppl.map(p => p.n).join(', ')}` : ''}</p></div><div className="ad-ge">{SEC_GROUP.map(([gn, a, b], __k) => <div key={__k} className="ad-geg">{lbl(gn)}{SECS.slice(a, b + 1).map(([k, t], j) => {
                 const i = a + j;
                 return <div key={j} className={`ad-ger ${d.lv[i] !== G[2][i] ? 'chg' : ''}`}><span>{t}</span><div className="ad-lvp" role="group" aria-label={t}>{LV.map(([n], v) => <button key={v} data-agl={`${i}:${v}`} aria-pressed={d.lv[i] === v} title={n} {...attrs(ro())} {...attrs(g === 'members' && v > 2 ? 'disabled' : '')}>{lvSq(v)}</button>)}</div><em>{LV[d.lv[i]][0]}</em></div>;
-              })}</div>)}</div><p className="bpn-n">{g === 'members' ? 'Members never go above See: they act in the Clear app, not here.' : 'A change applies to everyone in the group once a second person approves it.'}</p></div>{foot(<><button className="btn" data-agreset="" {...attrs(changed ? '' : 'disabled')}>Undo</button><button className="btn p" data-agprop={g} {...attrs(changed ? '' : 'disabled')}>Propose the change</button></>)}</>;
+              })}</div>)}</div><p className="bpn-n">{g === 'members' ? 'Members never go above See: they act in the Clear app, not here.' : AL ? 'It applies to everyone in the group: at once, or once a second admin approves it if it gives Approve somewhere new.' : 'A change applies to everyone in the group once a second person approves it.'}</p></div>{foot(<><button className="btn" data-agreset="" {...attrs(changed ? '' : 'disabled')}>Undo</button><button className="btn p" data-agprop={g} {...attrs(changed ? '' : 'disabled')}>Propose the change</button></>)}</>;
     }
     function rulePanel(id) {
       const r = RULES.find(x => x.id === id),
@@ -1266,24 +1358,41 @@ function makeAdmin() {
         lock = s.kind === 'lock',
         hist = SET_HIST.filter(h => h[2] === id);
       const input = s.kind === 'on' ? <div className="seg sm" role="group">{[[1, 'On'], [0, 'Off']].map(([v, t], __k) => <button key={__k} data-asv={v} aria-pressed={(A.sv ?? s.v) == v} {...attrs(ro())}>{t}</button>)}</div> : s.kind === 'choice' ? <select className="vin" id="asnew" defaultValue={s.v} {...attrs(ro())}>{s.opts.map((o, __k) => <option key={__k}>{o}</option>)}</select> : <><input className="vin ad-in" id="asnew" inputMode="decimal" defaultValue={s.v} {...attrs(ro())} /><span className="ad-u">{s.kind === 'money' ? 'dollars' : s.kind === 'pct' ? 'percent' : s.kind === 'hours' ? 'hours' : s.kind === 'days' ? 'days' : unitOf(s)}</span></>;
-      return <>{phd(`Settings · ${SEC_T[s.sec][0]}`)}<div className="pn-b"><div><p className="bpn-t">{s.t}</p><p className="bpn-s">{s.d}</p></div><div className="ad-big"><span><b>{lock ? ICO.lock : ''}{fmtV(s)}</b><em>{lock ? s.why : `Now · used in ${usedTxt(s)}`}</em></span></div>{p ? <div className="ad-pc"><div className="ad-pc-h">{lbl(`Change ${p.id} · waiting`)}<span className="gt-st" style={css("--c:var(--underway)")}>{"On "}{p.need === A.me ? 'you' : pName(p.need)}</span></div><p><b>{fmtV(s, p.from)}{" → "}{fmtV(s, p.to)}</b>{" · "}{pName(p.by)}{" proposed "}{ago(p.at)}</p><p className="bpn-n">“{p.why}”</p></div> : ''}{lock ? <p className="bpn-n">{"This one isn’t set here. "}{s.where.startsWith('governance') ? 'It changes with a proposal in Governance.' : s.where.startsWith('team') ? 'It follows the Members column in Team.' : 'The policy is in Records.'}</p> : !p ? <div>{lbl('Change it to')}<div className="ad-ni">{input}</div><label className="ad-why">{lbl('Why')}<textarea className="vin" id="aswhy" rows="2" placeholder="Shown to the second person and kept in the log" {...attrs(ro())} /></label></div> : ''}{hist.length ? <div>{lbl('Before')}<div className="led">{hist.map(([hid, t,, a, b, by, ok], __k) => <div key={__k}><span>{fmtD(t)}{" · "}{a}{" → "}{b}</span><b>{pName(by).split(' ')[0]}{", approved by "}{pName(ok).split(' ')[0]}</b></div>)}</div></div> : ''}</div>{lock ? <div className="pn-ft">{s.where ? <button className="btn" data-ago={s.where}>{s.where.startsWith('governance') ? 'Governance' : s.where.startsWith('team') ? 'Team' : 'Records'}{" →"}</button> : ''}<button className="btn p" data-aclose="">Done</button></div> : p ? foot(p.need === A.me ? <><button className="btn" data-adecline={p.id}>Decline</button><button className="btn p" data-aapprove={p.id}>Approve</button></> : p.by === A.me ? <><button className="btn" data-awithdraw={p.id}>Withdraw</button><button className="btn p" data-aclose="">Done</button></> : <button className="btn p" data-aclose="">Done</button>) : foot(<><button className="btn" data-aclose="">Cancel</button><button className="btn p" data-apropose={s.id}>Propose the change</button></>)}</>;
+      return <>{phd(`Settings · ${SEC_T[s.sec][0]}`)}<div className="pn-b"><div><p className="bpn-t">{s.t}</p><p className="bpn-s">{s.d}</p></div><div className="ad-big"><span><b>{lock ? ICO.lock : ''}{fmtV(s)}</b><em>{lock ? s.why : AL && s.enforced === false ? 'Now · stored, nothing enforces it yet' : `Now · used in ${usedTxt(s)}`}</em></span></div>{p ? <div className="ad-pc"><div className="ad-pc-h">{lbl(AL ? 'Change · waiting' : `Change ${p.id} · waiting`)}<span className="gt-st" style={css("--c:var(--underway)")}>{"On "}{onWho(p.need, 1)}</span></div><p><b>{fmtV(s, p.from)}{" → "}{fmtV(s, p.to)}</b>{" · "}{p.by === A.me && AL ? 'You' : pName(p.by)}{" proposed "}{ago(p.at)}</p>{AL && !p.why ? '' : <p className="bpn-n">“{p.why}”</p>}{AL ? <p className="bpn-n">{p.by === A.me ? 'You proposed it, so someone else has to approve it.' : p.need === A.me ? 'You can be the second person.' : 'It needs someone at Approve on Settings.'}</p> : ''}</div> : ''}{lock ? <p className="bpn-n">{"This one isn’t set here. "}{s.where.startsWith('governance') ? 'It changes with a proposal in Governance.' : s.where.startsWith('team') ? 'It follows the Members column in Team.' : 'The policy is in Records.'}</p> : !p ? <div>{lbl('Change it to')}<div className="ad-ni">{input}</div><label className="ad-why">{lbl('Why')}<textarea className="vin" id="aswhy" rows="2" placeholder="Shown to the second person and kept in the log" {...attrs(ro())} /></label></div> : ''}{hist.length ? <div>{lbl('Before')}<div className="led">{hist.map(([hid, t,, a, b, by, ok], __k) => <div key={__k}><span>{fmtD(t)}{" · "}{a}{" → "}{b}</span><b>{pName(by).split(' ')[0]}{", approved by "}{pName(ok).split(' ')[0]}</b></div>)}</div></div> : ''}</div>{lock ? <div className="pn-ft">{s.where ? <button className="btn" data-ago={s.where}>{s.where.startsWith('governance') ? 'Governance' : s.where.startsWith('team') ? 'Team' : 'Records'}{" →"}</button> : ''}<button className="btn p" data-aclose="">Done</button></div> : p ? foot(p.need === A.me ? <><button className="btn" data-adecline={p.id}>Decline</button><button className="btn p" data-aapprove={p.id}>Approve</button></> : p.by === A.me ? <><button className="btn" data-awithdraw={p.id}>Withdraw</button><button className="btn p" data-aclose="">Done</button></> : <button className="btn p" data-aclose="">Done</button>) : foot(<><button className="btn" data-aclose="">Cancel</button><button className="btn p" data-apropose={s.id}>Propose the change</button></>)}</>;
     }
     function connPanel(id) {
       const c = CONN.find(x => x.id === id);
-      return <>{phd(`Connection · ${CST(c)[0]}`)}<div className="pn-b"><div><p className="bpn-t">{c.n}</p><p className="bpn-s">{c.what}{" · "}{c.note}</p></div><div>{lbl('Last 24 hours')}{connHrs(c, true)}<div className="ad-hr-x"><span>24 h ago</span><span>Now</span></div></div><div className="led">{[['Used in', usedTxt(c)], ['Connected by', pName(c.by)], ['Key', c.rot ? `${keyTxt(c)} · ${c.rot} days old` : keyTxt(c)], ['Last heard', `${fmtD(c.last)}, ${hm(c.last)}`]].map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div>{c.st === 'behind' ? <p className="bpn-w"><b>{c.note}.</b>{" Balances on Money may be up to 3 hours old until it catches up."}</p> : ''}<p className="bpn-n">Swapping a key or disconnecting needs a second person. The old key keeps working until they approve.</p></div>{foot(<>{c.rot ? <button className="btn" data-arotate={c.id}>Swap the key</button> : ''}<button className="btn p" data-async={c.id}>{c.idle ? 'Wake it' : 'Check now'}</button></>)}</>;
+      return <>{phd(`Connection · ${CST(c)[0]}`)}<div className="pn-b"><div><p className="bpn-t">{c.n}</p><p className="bpn-s">{c.what}{" · "}{c.note}</p></div><div>{lbl('Last 24 hours')}{connHrs(c, true)}<div className="ad-hr-x"><span>24 h ago</span><span>Now</span></div></div><div className="led">{(AL ? [['Used in', usedTxt(c) || '—'], ['Status', c.note], ['Key', keyTxt(c)], ['Last heard', c.last ? `${fmtD(c.last)}, ${hm(c.last)}` : 'Not yet']] : [['Used in', usedTxt(c)], ['Connected by', pName(c.by)], ['Key', c.rot ? `${keyTxt(c)} · ${c.rot} days old` : keyTxt(c)], ['Last heard', `${fmtD(c.last)}, ${hm(c.last)}`]]).map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div>{c.st === 'behind' ? <p className="bpn-w"><b>{c.note}.</b>{AL ? ' What it feeds is as old as its last sync until it catches up.' : " Balances on Money may be up to 3 hours old until it catches up."}</p> : ''}<p className="bpn-n">{AL ? 'Its keys are set on the server and never shown here.' : 'Swapping a key or disconnecting needs a second person. The old key keeps working until they approve.'}</p></div>{foot(<>{c.rot ? <button className="btn" data-arotate={c.id}>Swap the key</button> : ''}<button className="btn p" data-async={c.id}>{c.idle ? 'Wake it' : 'Check now'}</button></>)}</>;
     }
     function docPanel(id) {
       const d = DOCS.find(x => x[0] === id);
-      return <>{phd(`Records · ${DONE1[d[2]]}`)}<><div className="pn-b"><div><p className="bpn-t">{d[1]}</p><p className="bpn-s">{DSTAT[d[5]][0]}{" · "}{d[6]}</p></div><div className="led">{[['Entity', ENTO[d[3]][1]], ['Date', fmtD(d[4])], ['By', d[7]], ['Pages', d[8]], ['Kept until', `${fmtD(d[4]).replace(/\d{4}/, '')} ${new Date(d[4]).getUTCFullYear() + 7}`]].map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div>{d[9] ? <p className="bpn-n">This is the filed copy. Versions, redlines and who signed which one are in Governance.</p> : ''}{d[5] === 'waiting' ? <p className="bpn-w"><b>Waiting on Inland Cycle Works’ signature.</b>{" It files itself here once they sign."}</p> : ''}</div><div className="pn-ft">{d[9] ? <button className="btn" data-aout="Governance">Versions in Governance →</button> : ''}<button className="btn p" data-adl={d[0]}>Download</button></div></></>;
+      return <>{phd(`Records · ${DONE1[d[2]]}`)}<><div className="pn-b"><div><p className="bpn-t">{d[1]}</p><p className="bpn-s">{DSTAT[d[5]][0]}{" · "}{d[6]}</p></div><div className="led">{[['Entity', ENTO[d[3]][1]], ['Date', fmtD(d[4])], ['By', d[7]], ['Pages', d[8]], ['Kept until', `${fmtD(d[4]).replace(/\d{4}/, '')} ${new Date(d[4]).getUTCFullYear() + 7}`]].map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div>{d[9] ? <p className="bpn-n">This is the filed copy. Versions, redlines and who signed which one are in Governance.</p> : ''}{d[5] === 'waiting' ? AL ? <p className="bpn-w"><b>Waiting on a signature.</b></p> : <p className="bpn-w"><b>Waiting on Inland Cycle Works’ signature.</b>{" It files itself here once they sign."}</p> : ''}</div><div className="pn-ft">{d[9] ? <button className="btn" data-aout="Governance">Versions in Governance →</button> : ''}{AL && CAN_ACT() ? <><button className="btn" data-ashare={d[0]}>Share a link</button><button className="btn" data-aversion={d[0]}>New version</button></> : ''}<button className="btn p" data-adl={d[0]}>Download</button></div></></>;
     }
     function logPanel(id) {
       const l = LOG.find(x => x[0] === id);
-      return <>{phd(`Audit log · ${AREAS[l[3]][0]}`)}<><div className="pn-b"><div><p className="bpn-t">{l[4]}</p><p className="bpn-s">{l[5]}</p></div><div className="led">{[['Who', pName(l[2])], ['When', `${WD(l[1])} ${fmtD(l[1])}, ${hm(l[1])}`], ['From', l[6]], ['Result', RESULT[l[7]][0]], ...(l[8] ? [['Second person', l[8]]] : []), ['Entry', `#${id} · chained to the one before`]].map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div><p className="bpn-n">{ICO.lock}{" Entries can’t be edited or deleted. A correction is a new entry that points back to this one."}</p></div><div className="pn-ft"><button className="btn p" data-aclose="">Done</button></div></></>;
+      return <>{phd(`Audit log · ${AREAS[l[3]][0]}`)}<><div className="pn-b"><div><p className="bpn-t">{l[4]}</p><p className="bpn-s">{l[5]}</p></div><div className="led">{[['Who', pName(l[2])], ['When', `${WD(l[1])} ${fmtD(l[1])}, ${hm(l[1])}`], ['From', l[6]], ['Result', RESULT[l[7]][0]], ...(l[8] ? [['Second person', l[8]]] : []), ...(AL ? entRows(id) : [['Entry', `#${id} · chained to the one before`]])].map(([a, b], __k) => <div key={__k}><span>{a}</span><b>{b}</b></div>)}</div>{AL && CAN_ACT() ? <label className="ad-why">{lbl('What was wrong, and what’s right')}<textarea className="vin" id="acnote" rows="2" placeholder="Kept as a new entry that points back to this one" /></label> : ''}<p className="bpn-n">{ICO.lock}{" Entries can’t be edited or deleted. A correction is a new entry that points back to this one."}</p></div><div className="pn-ft">{AL && CAN_ACT() ? <button className="btn" data-acorrect={id}>Correct it</button> : ''}<button className="btn p" data-aclose="">Done</button></div></></>;
+    }
+    /** Live, an entry's place in the chain: its seq and hash, the one before, and what it corrects. */
+    function entRows(id) {
+      const e = AL.ENTRY[id];
+      if (!e) return [];
+      const c = e.corrects != null ? AL.ENTRY[String(e.corrects)] : null;
+      return [['Entry', `#${e.seq} · ${e.hash.slice(0, 12)}`], ['Chained to', e.prev ? `#${e.seq - 1} · ${e.prev.slice(0, 12)}` : 'Nothing: it’s the first'], ...(e.corrects != null ? [['Corrects', c ? `#${c.seq}` : `Entry ${e.corrects}`]] : []), ...(AL.CHAIN ? [['The chain', AL.CHAIN.ok ? `Holds · ${AL.CHAIN.entries} entries` : `Broken at #${AL.CHAIN.brokenAt}`]] : [])];
     }
 
+
     /* ══ render + events ══════════════════════════════════════════════════════════════════════════════════════════════ */
+    let loaded = false;
     function render() {
       if (!LIVE()) return;
+      if (AL) {
+        AL.fill();
+        // the first draw fetches the log, the reveals, Settings and what's waiting, then draws again
+        if (!loaded) {
+          loaded = true;
+          AL.load().then(() => render(), () => undefined);
+        }
+      }
       sync();
       W.classList.toggle('ro', !CAN_ACT());
       W.classList.toggle('tot', TOT());
@@ -1373,6 +1482,7 @@ function makeAdmin() {
       const t = e.target.closest('button,a,[data-atab],[data-aopen]');
       if (!t) return;
       const d = t.dataset;
+      if (AL && liveAct(d)) return;
       if (d.apage) {
         closeA();
         A.page = d.apage;
@@ -1409,7 +1519,7 @@ function makeAdmin() {
         }
         if (k === 's' && A.page !== 'settings') {
           A.page = 'settings';
-          A.tab.settings = ['signin', 'privacy'].includes(SETO[d.aopen.slice(2)].sec) ? 'security' : ['records', 'notify'].includes(SETO[d.aopen.slice(2)].sec) ? 'org' : 'rules';
+          A.tab.settings = ['signin', 'privacy'].includes((SETO[d.aopen.slice(2)] || {}).sec) ? 'security' : ['records', 'notify'].includes((SETO[d.aopen.slice(2)] || {}).sec) ? 'org' : 'rules';
           return CC.go('settings');
         }
         return renderPanel();
@@ -1598,6 +1708,105 @@ function makeAdmin() {
         return toast('Downloaded · logged in Records');
       }
     });
+    /* ── live: the page's actions, through the API (adminLive.ts's adminApi and the old pages' flows) ─────────────────── */
+    /** Loads what changed (the team, or what's waiting), then this page's data, and draws it. */
+    async function refresh(team) {
+      if (team) await loadTeam().catch(() => undefined);else await loadWaiting().catch(() => undefined);
+      await AL.load().catch(() => undefined);
+      render();
+    }
+    /** Sends a change; on its answer, says what happened (a proposal waits for a second person), closes the panel unless kept, and loads again. */
+    function send(pr, msg, team, keep) {
+      pr.then(r => {
+        toast(typeof msg === 'function' ? msg(r || {}) : msg);
+        if (!keep) closeA();
+        return refresh(team);
+      }, e => toast(e.message));
+      return true;
+    }
+    const waits = (r, then, now) => r.proposal ? `Sent for a second admin · ${then}` : now;
+    function liveAct(d) {
+      const ro = () => (toast('You can see this but not change it'), true);
+      if (d.ainvite !== undefined) {
+        if (!CAN_ACT()) return ro();
+        openTFlow('invite');
+        return true;
+      }
+      if (d.aadd !== undefined || d.amiss) {
+        if (RO() || lvlOf(A.me, 'records') < 3) return ro();
+        openRFlow('upload');
+        return true;
+      }
+      if (d.ashare) return openRFlow('share', d.ashare), true;
+      if (d.aversion) return openRFlow('version', d.aversion), true;
+      if (d.adl) {
+        const doc = DOCS.find(x => x[0] === d.adl);
+        saveDownload(`/documents/${d.adl}/file`, doc ? doc[1] : 'Document').then(() => (toast('Downloaded · logged in Records'), refresh()), e => toast(e.message));
+        return true;
+      }
+      if (d.agprop) {
+        const g = d.agprop;
+        return send(adminApi.group(g, A.gd.lv.slice()), r => waits(r, `${GROUPS[g][0]} changes once they approve`, `${GROUPS[g][0]} changed · logged in Records`), 1);
+      }
+      if (d.achg) {
+        const p = PPL[d.achg],
+          g = document.getElementById('agsel').value;
+        if (g === p.g) return toast('Pick a different group'), true;
+        return send(adminApi.access(p.uid, {
+          group: g
+        }), r => waits(r, `${p.n} moves to ${GROUPS[g][0]} once they approve`, `${p.n} is in ${GROUPS[g][0]} now · logged in Records`), 1);
+      }
+      if (d.aoff) {
+        const p = PPL[d.aoff];
+        return send(adminApi.access(p.uid, {
+          off: true
+        }), r => waits(r, `${p.n}’s access turns off once they approve`, `${p.n}’s access is off · logged in Records`), 1);
+      }
+      if (d.asignall) {
+        const p = PPL[d.asignall];
+        return send(adminApi.signOut(p.uid), r => `Signed ${p.n} out everywhere · ${r.ended ?? 0} session${r.ended === 1 ? '' : 's'} ended · logged in Records`, 1);
+      }
+      if (d.aresend) {
+        const v = INVITES.find(x => x.id === d.aresend);
+        return send(adminApi.resend(v.uid), 'Sent again · the link works for 7 days', 1);
+      }
+      // no API yet: cancelling an invite, signing out one device, swapping a key (hidden live; docs/ui-redesign-plan.md)
+      if (d.acancel || d.asignout || d.arotate) return true;
+      if (d.apropose) {
+        const s = SETO[d.apropose],
+          el = document.getElementById('asnew'),
+          why = ((document.getElementById('aswhy') || {}).value || '').trim();
+        const v = s.kind === 'on' ? A.sv ?? s.v : s.kind === 'choice' ? el.value : parseFloat(el.value);
+        if (s.kind !== 'choice' && s.kind !== 'on' && (isNaN(v) || v < 0)) return toast('Enter a number'), true;
+        if (v === s.v) return toast('That’s what it is now'), true;
+        if (!why) return toast('Add a reason · the second person sees it'), true;
+        return send(adminApi.setting(s.id, s.kind === 'on' ? !!v : v, why), () => `Proposed · ${s.t.toLowerCase()} becomes ${fmtV(s, v)} once someone else approves · logged in Records`, 0, 1);
+      }
+      if (d.aapprove) {
+        const p = PEND.find(x => x.id === d.aapprove),
+          s = SETO[p.set];
+        return send(adminApi.settle(p.id, 'approve'), () => `Approved · ${s.t} is ${fmtV(s, p.to)} now · logged in Records`, 0, 1);
+      }
+      if (d.adecline || d.awithdraw) {
+        const p = PEND.find(x => x.id === (d.adecline || d.awithdraw)),
+          s = SETO[p.set];
+        return send(adminApi.settle(p.id, 'decline'), () => `${d.adecline ? 'Declined' : 'Withdrawn'} · ${s.t} stays ${fmtV(s)}`, 0, 1);
+      }
+      if (d.async) {
+        loadFeeds().then(() => refresh()).then(() => {
+          const c = CONN.find(x => x.id === d.async);
+          toast(c ? `${c.n} · ${c.note}` : 'Checked');
+        }, e => toast(e.message));
+        return true;
+      }
+      if (d.acorrect) {
+        const note = ((document.getElementById('acnote') || {}).value || '').trim(),
+          en = AL.ENTRY[d.acorrect];
+        if (!note) return toast('Say what was wrong and what’s right'), true;
+        return send(adminApi.correct(en.id, note), 'Corrected · a new entry points back to this one');
+      }
+      return false;
+    }
     document.addEventListener('keydown', e => {
       if (!LIVE()) return;
       if (e.key === 'Escape' && A.panel && !document.querySelector('.modal')) {
@@ -1637,9 +1846,12 @@ function makeAdmin() {
       open(k) {
         A.panel = k;
       },
-      setting: id => SETO[id].v,
+      setting: id => SETO[id]?.v,
       addReveal(m, what) {
-        REVEALS.unshift([Date.now() > NOW ? NOW + 10 * 60e3 : Date.now(), meKey(), m, what || 'Contact details', '', 'Members']);
+        // live, the server logged it: the page loads its reveals again
+        if (AL) return void AL.load().then(() => render(), () => undefined);
+        REVEALS.unshift(
+[Date.now() > NOW ? NOW + 10 * 60e3 : Date.now(), meKey(), m, what || 'Contact details', '', 'Members']);
       }
     };
   })(DOCP);
@@ -1672,9 +1884,10 @@ function makeAdmin() {
     host
   };
 }
-registerPage(['records', 'team', 'settings'], 'ax-slot', makeAdmin);
+registerPage(['records', 'team', 'settings'], 'ax-slot', makeAdmin, { live: true });
 
-/* What other pages call on the reference's ADMIN2. Undefined live while the gate is off (the old pages show). */
+/* What other pages call on the reference's ADMIN2: live, the real values and the real log. */
+
 const admin = () => pageModFor('records');
 /** Logs a reveal in Records → Reveals (Members' "Show" calls it, as the reference's ADMIN2.addReveal). */
 export function addReveal(member: string, what?: string) {

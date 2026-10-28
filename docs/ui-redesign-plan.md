@@ -309,16 +309,45 @@ Filled in as each page is ported. Known before starting:
   other shapes. Actions: send back, check and open a vote, put on the board agenda, mark a task done,
   remind non-voters, sign an agreement, new agreement version, filing checklist. The old page's filing,
   formation, packet, minutes, agenda and decision actions have no control in the new page yet.
-- **Records** (ported): documents come as today; the log is `GET /audit` (its `seq`, hash and chain
-  status belong in the entry panel and the log's foot), corrections need a "Correct" button calling
-  `POST /audit/:id/correct`; reveals are `GET /reveals`. Exports have no approver or waiting state yet.
-- **Team** (ported): people, invites, groups, approvals and waiting come from today's endpoints; missing
-  are who signs on the Ops Safe per person, per-device last seen and trusted, access end dates and a
-  quarterly review date, cancelling an invite, signing out one device, turning someone back on.
-- **Settings** (ported): rules and limits are `GET /sections/settings` (pending changes included), a
-  change is `settings/change`; its history needs the old value (from the audit entries or a history
-  endpoint). No source yet for connections (status, health, key age, rotation), alerts, devices,
-  "worth a look" events and the organisation profile.
+- **Records, Team and Settings** (ported, live: `admin2.tsx` + `adminLive.ts`, the gate on). One module
+  draws the three; live, every dataset is the API's and the reference's people, dates and figures never show.
+  - **Records, live now.** Documents, counts and papers by entity are the records section's. The log is
+    `GET /audit` (its entries now carry `person_id`, so a person has one key across the page): each entry's
+    panel shows its `seq`, its hash, the entry it's chained to, what it corrects and whether the chain holds
+    (also in the log's foot, the header and Settings → Organization). "Correct it" (`POST /audit/:id/correct`,
+    at Propose on Records) adds an entry pointing back. Reveals are `GET /reveals` (now with `person_id`):
+    one person's details are Reveals, a whole list (`*`, or more than one row) is an export; a reveal with
+    no reason is flagged. Download (`GET /documents/:id/file`), share a link and a new version (the old
+    page's flows) and Add a document (`document-add`) are in the document panel and the paperwork table.
+  - **Team, live now.** People, invites, groups (all thirteen sections' levels, from `vars.teamRaw`, which
+    `loadTeam` keeps as `GET /groups` and `/people` send them), sign-ins per day, access that ends (invites
+    and end dates), what waits for a second person (`GET /proposals?area=all`), who approved whom and the
+    usual wait (`&approved=30`), the Ops Safe's owners (`GET /safe`) for who signs. The two-person rules are
+    the API's: money, shop buys, refunds, on-chain changes, invite batches, access changes (only when they
+    give Approve, or come from below Approve on Team) and settings. Someone with custom levels is a group of
+    their own, not listed in Groups. Actions: invite (the old page's flow), resend, move to a group, turn
+    off, sign out everywhere, and a group's levels (`PATCH /groups/:key` with all thirteen); the toast says
+    when it went to a second admin.
+  - **Settings, live now.** Rules and limits are `GET /sections/settings` (now a served section): each value,
+    the change waiting on it and, new, `HISTORY`: each approved change with its old value (worked back from
+    the values migration 0057 stored, `FIRST` in `services/command/settings.ts`), who proposed it and who
+    approved it. Each row also says whether the server enforces it (`enforced`, new): only shop buys,
+    refunds, shipping, the reorder buffer, the pickup hold and asking for a reveal's reason are read where
+    they apply; the others say "Stored · nothing enforces it yet". A change is `settings/change` and always
+    waits for a second person; you can't approve your own (the panel says so and offers Withdraw), and
+    approve and decline are `/proposals/:id/approve|decline`. Connections are the feeds' health now
+    (`GET /feeds`); Check now reads it again. `adminSetting(id)` returns the real value live, and Members'
+    `addReveal` loads the reveals again.
+  - **Still missing, "Not real yet" or hidden live:** connections' hourly history, keys and key age (and
+    swapping a key); alerts and who hears what; devices' trust and signing out one device (sign out
+    everywhere is there); "worth a look" events; the organization's profile; backups; who each person
+    signs for on the Ops Safe beyond its owners; a quarterly access review; cancelling an invite; turning
+    someone back on (turned-off people aren't listed); exports' second person (a whole list needs Approve
+    on its page and a reason, nothing more; the Settings lock "Data exports need a second person" is the
+    API's own words and isn't enforced yet); the entities' tax ids unless Governance has loaded. Settings
+    that are stored but not enforced: the wait before a change goes live, a new shop's starting cap, the
+    batch size, the target margin, the discussion period, passkeys, session length, asking again, key
+    rotation, new-device confirmation and the digest.
 
 ## Kept from today that the reference lacks
 

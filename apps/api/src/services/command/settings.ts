@@ -63,6 +63,14 @@ export const SETTINGS: SettingDef[] = [
 
 const DEF = new Map(SETTINGS.map((s) => [s.id, s]));
 
+/**
+ * The stored settings the server reads where they apply: the shop's buy and refund limits (actions.ts),
+ * shipping, the reorder buffer and the pickup hold (shopModel.ts), and asking for a reveal's reason
+ * (store.ts, logReveal). The others are stored and can be changed, but nothing enforces them yet, so
+ * the page says so rather than claiming a page uses them.
+ */
+export const ENFORCED = new Set(['shopbuy', 'refund', 'ship', 'buffer', 'hold', 'reason']);
+
 /** What a setting of each kind may be set to. */
 const VALUE: Record<Exclude<SettingKind, 'lock' | 'choice'>, z.ZodType<number | boolean>> = {
   money: z.number().nonnegative().max(100_000),
@@ -131,6 +139,8 @@ export const settingsActions: Record<string, Action> = {
 export interface SettingRow extends SettingDef {
   /** The stored value; a lock's is its words. */
   value: number | boolean | string;
+  /** Whether the server reads it where it applies (null for a lock, which is decided elsewhere). */
+  enforced: boolean | null;
   changedAt: number | null;
   changedBy: string | null;
   approvedBy: string | null;
@@ -138,8 +148,30 @@ export interface SettingRow extends SettingDef {
   pending: { id: string; to: unknown; by: string; why: string; at: number } | null;
 }
 
+/**
+ * Each stored setting's first value, as migration 0057 set it. Every change since is an approved
+ * proposal, so a change's old value is the one before it, back to this.
+ */
+export const FIRST: Record<string, number | boolean | string> = {
+  shopbuy: 50, refund: 50, wait: 24, cap: 100, batch: 25, margin: 60, buffer: 1, hold: 14, ship: 6, quiet: 7,
+  passkey: true, session: 12, again: true, rotate: 90, newdev: true, reason: true, digest: '07:00',
+};
+
+/** A change a second person approved: from what, to what, who proposed it and who approved it. */
+export interface SettingChange {
+  /** The proposal's id. */
+  id: string;
+  set: string;
+  at: number;
+  from: unknown;
+  to: unknown;
+  by: string | null;
+  approvedBy: string | null;
+  why: string;
+}
+
 /** Settings' page: every rule with its value, who last changed it, and any change waiting. At Totals, no one's name. */
-export async function settingsSection(db: Queryable, level: number): Promise<{ SETTINGS: SettingRow[] }> {
+export async function settingsSection(db: Queryable, level: number): Promise<{ SETTINGS: SettingRow[]; HISTORY: SettingChange[] }> {
   const named = level > 1;
   const { rows } = await db.query<{ id: string; value: unknown; changed_at: Date; changed_by: string | null; approved_by: string | null }>(
     `SELECT s.id, s.value, s.changed_at, COALESCE(NULLIF(c.name, ''), c.email) AS changed_by, COALESCE(NULLIF(a.name, ''), a.email) AS approved_by
@@ -152,13 +184,32 @@ export async function settingsSection(db: Queryable, level: number): Promise<{ S
       WHERE p.status = 'waiting' AND p.kind = 'action' AND p.payload->>'section' = 'settings' AND p.payload->>'kind' = 'change'
       ORDER BY p.created_at`,
   );
+  // the changes a second person approved, oldest first, so each one's old value is the one before it
+  const { rows: done } = await db.query<{ id: string; payload: { body: { id: string; value: unknown; why?: string } }; approved_at: Date; by: string; approver: string | null }>(
+    `SELECT p.id, p.payload, p.approved_at, COALESCE(NULLIF(pp.name, ''), pp.email) AS by, COALESCE(NULLIF(pa.name, ''), pa.email) AS approver
+       FROM command.proposals p JOIN command.people pp ON pp.id = p.proposed_by LEFT JOIN command.people pa ON pa.id = p.approved_by
+      WHERE p.status = 'approved' AND p.kind = 'action' AND p.payload->>'section' = 'settings' AND p.payload->>'kind' = 'change'
+      ORDER BY p.approved_at, p.id`,
+  );
+  const was = new Map<string, unknown>(Object.entries(FIRST));
+  const HISTORY = done
+    .map((p) => {
+      const b = p.payload.body;
+      const from = was.get(b.id) ?? null;
+      was.set(b.id, b.value);
+      return { id: p.id, set: b.id, at: p.approved_at.getTime(), from, to: b.value, by: named ? p.by : null, approvedBy: named ? p.approver : null, why: b.why ?? '' };
+    })
+    .reverse()
+    .slice(0, 50);
   return {
+    HISTORY,
     SETTINGS: SETTINGS.map((s) => {
       const r = stored.get(s.id);
       const w = waiting.find((p) => p.payload.body.id === s.id);
       return {
         ...s,
         value: s.kind === 'lock' ? s.v! : (r?.value as number | boolean | string),
+        enforced: s.kind === 'lock' ? null : ENFORCED.has(s.id),
         // the first value was there before anyone set it: no one changed it
         changedAt: r?.changed_by ? r.changed_at.getTime() : null,
         changedBy: named ? (r?.changed_by ?? null) : null,

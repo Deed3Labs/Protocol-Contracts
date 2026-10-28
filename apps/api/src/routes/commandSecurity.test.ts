@@ -5,6 +5,7 @@ import type { Db } from '../db/db.js';
 import { testDb } from '../db/testDb.js';
 import { SECTIONS, type Levels } from '../services/command/levels.js';
 import { seedCommand } from '../services/command/seed.js';
+import { FIRST } from '../services/command/settings.js';
 import { commandRouter } from './command.js';
 
 /*
@@ -83,6 +84,12 @@ describe('Settings', () => {
     expect(by.shopbuy.value).toBe(50);
     expect(by.reason.value).toBe(true);
     expect(by.retain).toMatchObject({ kind: 'lock', value: '7 years', where: 'records/docs' });
+    // a change's old value is worked back to these, so they must be what migration 0057 stored
+    for (const [id, v] of Object.entries(FIRST)) expect(by[id].value).toEqual(v);
+    expect(Object.keys(FIRST).sort()).toEqual(r.body.SETTINGS.filter((s: any) => s.kind !== 'lock').map((s: any) => s.id).sort());
+    expect(r.body.HISTORY).toEqual([]);
+    // which ones the server reads where they apply, and which are only stored so far
+    expect([by.refund.enforced, by.shopbuy.enforced, by.reason.enforced, by.wait.enforced, by.retain.enforced]).toEqual([true, true, true, false, null]);
   });
 
   test('changing one waits for a second person, who isn’t the proposer, and then it applies', async () => {
@@ -98,6 +105,9 @@ describe('Settings', () => {
     const after = await setting('refund');
     expect(after).toMatchObject({ value: 100, pending: null, approvedBy: expect.any(String) });
     expect(after.changedBy).not.toBe(after.approvedBy);
+    // its history: from the old value to the new one, who proposed it and who approved it
+    const h = (await call(kai, 'GET', '/sections/settings')).body.HISTORY;
+    expect(h[0]).toMatchObject({ id: pid, set: 'refund', from: 50, to: 100, by: after.changedBy, approvedBy: after.approvedBy, why: 'Hoodie returns are mostly $60 to $90' });
   });
 
   test('a locked rule, an unknown one or a value out of range is refused before it waits for anyone', async () => {
@@ -120,6 +130,12 @@ describe('Settings', () => {
     expect((await call(dana, 'POST', `/proposals/${r.body.proposal.id}/approve`)).status).toBe(200);
     expect((await restock(60)).status).toBe(200);
     expect((await restock(300)).status).toBe(202);
+    // the second change's old value is the one before it: 50, then 250
+    const h = (await call(kai, 'GET', '/sections/settings')).body.HISTORY;
+    expect(h.map((x: any) => [x.set, x.from, x.to])).toEqual([
+      ['shopbuy', 50, 250],
+      ['refund', 50, 100],
+    ]);
   });
 
   test('Settings is a section with its own level: none of it at None', async () => {
@@ -139,6 +155,8 @@ describe('Settings', () => {
     const refund = r.body.SETTINGS.find((s: any) => s.id === 'refund');
     expect(refund.value).toBe(100);
     expect([refund.changedBy, refund.approvedBy]).toEqual([null, null]);
+    expect(r.body.HISTORY.length).toBeGreaterThan(0);
+    for (const h of r.body.HISTORY) expect([h.by, h.approvedBy]).toEqual([null, null]);
   });
 });
 
@@ -168,7 +186,7 @@ describe('reveals', () => {
     expect(r.status).toBe(200);
     expect(r.body.names).toBe('shown');
     const log = (await call(kai, 'GET', '/reveals')).body.reveals;
-    expect(log[0]).toMatchObject({ section: 'members', subject: '*', field: 'names', rows: r.body.MEMBERS.length, reason: 'Calling about a failed transfer', flagged: false, who: expect.any(String) });
+    expect(log[0]).toMatchObject({ section: 'members', subject: '*', field: 'names', rows: r.body.MEMBERS.length, reason: 'Calling about a failed transfer', flagged: false, who: expect.any(String), person_id: expect.any(String) });
   });
 
   test('one member’s name, for a reason; skipped in a rush it’s shown and flagged', async () => {
@@ -238,6 +256,8 @@ describe('the audit log', () => {
       expect(e[i].prev_hash).toBe(e[i + 1].hash);
     }
     expect(r.body.chain).toMatchObject({ ok: true, brokenAt: null, head: e[0].hash });
+    // who did it, by id as well as by name, so the page shows the same person everywhere
+    expect(e.find((x: any) => x.who !== 'System' && x.person_id)).toBeTruthy();
   });
 
   test('a mistake is corrected by a new entry pointing back; the old one is untouched', async () => {
