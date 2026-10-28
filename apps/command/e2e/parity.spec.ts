@@ -18,7 +18,7 @@ for (const route of ROUTES) {
     await open(proto, REDESIGNED.has(route) ? REDESIGN : PROTO, route);
     await open(app, APP, route);
     // the shell is the redesign's; a page is compared with the old reference until it's ported (docs/ui-redesign-plan.md)
-    await open(shell, REDESIGN, route === 'contracts' ? 'build' : route);
+    await open(shell, REDESIGN, route);
     // soft, so a shell difference is reported without hiding the page's own check below
     expect.soft(await canonical(app, '#railNav'), 'menu').toBe(await canonical(shell, '#railNav'));
     expect.soft(await canonical(app, '#tabs'), 'phone tabs').toBe(await canonical(shell, '#tabs'));

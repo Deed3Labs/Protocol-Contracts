@@ -28,7 +28,8 @@ async function snapshot(page: Page) {
 async function at(page: Page, base: string, route: string, pane: number) {
   // a real reload: going to the same #hash again would keep whatever the last click opened
   await page.goto('about:blank');
-  await open(page, base, route);
+  // the old prototype only knows Build by its old name
+  await open(page, base, base === PROTO && route === 'build' ? 'contracts' : route);
   // the same clock and dice in both: the prototype reads Date.now() twice and makes up a time with Math.random()
   await page.evaluate(() => {
     Date.now = () => Date.UTC(2026, 9, 21, 21);
