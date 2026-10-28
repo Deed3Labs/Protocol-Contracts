@@ -44,9 +44,23 @@ It's the same design system the app was ported from (`docs/command-reference`), 
 - **`scripts/port` isn't run in place.** It deletes every `.tsx` in `src/sections` before writing,
   which would wipe Phases 9–11. It also expects the old single-script layout, while the new pages are
   separate modules. Pages are ported by hand from `pages/*.js` and the HTML.
-- **CSS:** each page's stylesheet is scoped under its page class, the way the shadow root scoped it in
-  the reference. The shared rules go in `command.css`, which from now on is maintained by hand rather
-  than regenerated.
+- **Pages in shadow roots, as the reference has them.**
+  - Each page except Home is a module drawn into its own open shadow root (`main > .g-host`). The
+    shadow root holds that page's chain of `<template>` sheets, copied verbatim: Growth's `g-tpl` is the
+    base, and each page stacks its own on top (Money is `g`, `fm`, `n`; Shop and the Admin pages stack
+    six).
+  - Theme tokens inherit through the host; nothing else crosses in either direction. That matters
+    because the page sheets reuse names the app's global CSS also has (`.cell`, `.bento`, `.lbl`,
+    `.dot`, `.strip`) with different rules. In light DOM both would apply.
+  - The app's global click delegation reads `e.composedPath()[0]`, so the `data-*` actions keep working
+    inside a shadow root. A page's own lookups go through its root, not `document`.
+  - Home stays in light DOM, as the reference draws it, styled by the main sheet in `command.css`. That
+    sheet now has the redesign's main-sheet rules added and is maintained by hand rather than
+    regenerated. Each old page's rules leave it when that page is ported.
+- **Converter-assisted.** `scripts/port/convert.cjs` turns a page module's template strings into JSX
+  cleanly; only its old section split doesn't fit. Each page's module is taken from the stitched HTML
+  (between its `/* ══ <Page> ══` markers), converted, then hand-wired to live data and the app's
+  helpers.
 - **Data:**
   - In prototype and preview mode, a page draws from its reference fixtures. These come from that
     page's `*-data.js`, kept in typed data modules, never inside components.
