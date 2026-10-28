@@ -15,10 +15,19 @@ if (!NAME || !TPL || !OUT) throw new Error('usage: node module.cjs <MODULE> <tem
 const REF = path.resolve(__dirname, '../../../../design/command-center-ui/command-center.html');
 const lines = fs.readFileSync(REF, 'utf8').split('\n');
 
-// the module: `const NAME = (() => {` to the first `})();` at the start of a line after it
+// the module: `const NAME = (() => {` to the first `})();` at the start of a line after it that closes it
+// (a module can hold IIFEs of its own written flush left, as MEMBERS2's PEOPLE is: those don't parse as the end)
 const start = lines.findIndex((l) => l.startsWith(`const ${NAME} = (() => {`));
 if (start < 0) throw new Error(`no module ${NAME}`);
-const end = lines.findIndex((l, i) => i > start && /^\}\)\(\);/.test(l));
+const closes = (i) => {
+  try {
+    parser.parse(lines.slice(start, i + 1).join('\n'), { sourceType: 'script' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+const end = lines.findIndex((l, i) => i > start && /^\}\)\(\);/.test(l) && closes(i));
 const mod = lines.slice(start, end + 1).join('\n');
 
 // the template's markup: everything in it after its <style>
