@@ -3,7 +3,7 @@ import chain from '@clear/command-types/src/chain/base-sepolia.json';
 import { getAddress } from 'viem';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
-import { codeConfig, codeStatus, contractsOf, pollOnce, type GithubSource, type ListedCommit } from './github.js';
+import { codeConfig, codeStatus, contractsOf, pollOnce, projectsOf, type GithubSource, type ListedCommit } from './github.js';
 import { syncInventory } from './indexer.js';
 import { TOTALS } from './levels.js';
 import { contractsSection } from './sections.js';
@@ -64,6 +64,19 @@ describe('reading a commit’s files', () => {
         'contracts',
       ),
     ).toEqual(['ClearUSDUpgradeable', 'LendingPool']);
+  });
+});
+
+describe('which project a file is in', () => {
+  test('by its folder: the contracts, each app with its kit, the API with the SDKs, the Command Center with its docs', () => {
+    expect(projectsOf(['contracts/core/ClearUSD.sol'])).toEqual(['proto']);
+    expect(projectsOf(['apps/member/src/x.tsx', 'packages/member-kit/a.ts'])).toEqual(['app']);
+    expect(projectsOf(['apps/api/src/x.ts', 'packages/clear-js/src/y.ts', 'apps/command/src/z.tsx'])).toEqual(['sdk', 'cc']);
+    expect(projectsOf(['docs/ui-redesign-plan.md'])).toEqual(['cc']);
+    // the one with the most files first: it's the one the commit is shown under
+    expect(projectsOf(['apps/api/src/a.ts', 'apps/command/src/b.tsx', 'apps/command/src/c.tsx'])).toEqual(['cc', 'sdk']);
+    // a folder's name as the start of another's isn't it
+    expect(projectsOf(['apps/members-old/x.ts', 'contracts-old/a.sol', 'README.md'])).toEqual([]);
   });
 });
 

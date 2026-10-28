@@ -12,13 +12,11 @@ import { CH, CH_DONE, CHAIN, CODE, CTR, CTR_NOTE, DAY, KEY_ROLES, REL, RELEASES,
  */
 
 const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
-const initials = (n) =>
-  (n || '?')
-    .split(/[ @.,]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join('') || '?';
+// the first and last word's first letters; quotes and other marks aren't words (Isaiah "KyngKai" Litt is IL)
+const initials = (n) => {
+  const w = (n || '').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  return (w.length > 1 ? [w[0], w.at(-1)] : w).map((x) => x[0].toUpperCase()).join('') || '?';
+};
 /** The section an on-chain act was asked for in, as the page names it. */
 /** A layer the map has a column for. */
 const LAYER_OK = (l) => Number.isInteger(l) && l >= 0 && l <= 4;
@@ -81,25 +79,31 @@ export function buildLive() {
     return c ? c[0] : null;
   };
 
-  /* the one project the poller watches: the contracts' folder of the monorepo */
+  /* the monorepo's projects the poller watches (the API's PROJECTS); an API that sends none watches the contracts only */
   const [org = '', repoName = ''] = (CODE.repo || '').split('/');
   const live = CT.filter((c) => c[4] === 'live').length;
-  const REPOS = [
-    {
-      id: 'proto',
-      name: repoName || 'GitHub isn’t connected',
-      org,
-      full: CODE.repo || '',
-      path: CODE.path || 'contracts',
-      what: 'Smart contracts',
-      lang: 'Solidity · Hardhat',
-      branch: CODE.poller?.branches?.[0] || 'dev',
-      main: 'none',
-      last: CODE.commits[0]?.at ?? null,
-      live: CHAIN.network ? `${CHAIN.network} · ${live} of ${CT.length}` : 'Not indexed yet',
-      url: CODE.repo ? `https://github.com/${CODE.repo}` : '',
-    },
-  ];
+  const PROJ = CODE.projects?.length
+    ? CODE.projects
+    : [{ id: 'proto', name: 'Protocol', tiny: 'Contracts', what: 'Smart contracts', lang: 'Solidity · Hardhat', path: CODE.path || 'contracts', lastAt: CODE.commits[0]?.at ?? null }];
+  const REPOS = PROJ.map((p) => ({
+    id: p.id,
+    name: repoName || 'GitHub isn’t connected',
+    org,
+    full: CODE.repo || '',
+    path: p.path,
+    what: p.what,
+    lang: p.lang,
+    branch: CODE.poller?.branches?.[0] || 'dev',
+    main: 'none',
+    last: p.lastAt ?? null,
+    live: p.id === 'proto' ? (CHAIN.network ? `${CHAIN.network} · ${live} of ${CT.length}` : 'Not indexed yet') : 'Not read yet',
+    url: CODE.repo ? `https://github.com/${CODE.repo}` : '',
+  }));
+  const RSHORT = Object.fromEntries(PROJ.map((p) => [p.id, p.name]));
+  const RTINY = Object.fromEntries(PROJ.map((p) => [p.id, p.tiny]));
+  // a commit or PR is shown under its first project, the others beside it; one in none (docs only) isn't a project's
+  const projIds = new Set(PROJ.map((p) => p.id));
+  const inProjects = (x) => (x.projects?.length ? x.projects : x.contracts?.length || !CODE.projects?.length ? ['proto'] : []).filter((id) => projIds.has(id));
 
   /* changes: pull requests, commits since a release, the Safe's queue, what shipped in 7 days */
   const CHANGES = [];
@@ -107,9 +111,12 @@ export function buildLive() {
   for (const p of CODE.pulls ?? []) {
     if (p.state === 'closed') continue;
     if (p.state === 'merged' && (p.mergedAt ?? 0) < week) continue;
+    const [repo, ...also] = inProjects(p);
+    if (!repo) continue;
     CHANGES.push({
       id: 'pr' + p.number,
-      repo: 'proto',
+      repo,
+      also,
       num: p.number,
       kind: 'code',
       t: p.title,
@@ -204,21 +211,28 @@ export function buildLive() {
       CHANGES.push({ id: c.id, kind: 'setting', t: c.t, by: named(c.by), st: 'safe', from: 'Build', opened: evAt(c, 'draft') ?? NOW, contract: idOf(c.c), note: c.d !== c.t ? c.d : '', sigs: {}, block: 'Waits for an Ops Safe' });
 
   /* commits, newest first; and how many a day, the last four weeks */
-  const COMMITS = (CODE.commits ?? []).map((c) => [c.at, 'proto', named(c.author, c.login), c.message, c.sha, c.url]);
-  const days = Array(28).fill(0);
-  for (const c of COMMITS) {
-    const d = 27 - Math.floor((TODAY - Math.floor(c[0] / DAY) * DAY) / DAY);
-    if (d >= 0 && d < 28) days[d]++;
+  const COMMITS = (CODE.commits ?? []).flatMap((c) => {
+    const [repo] = inProjects(c);
+    return repo ? [[c.at, repo, named(c.author, c.login), c.message, c.sha, c.url]] : [];
+  });
+  // a commit counts in every project it touches
+  const ACT = Object.fromEntries(PROJ.map((p) => [p.id, Array(28).fill(0)]));
+  for (const c of CODE.commits ?? []) {
+    const d = 27 - Math.floor((TODAY - Math.floor(c.at / DAY) * DAY) / DAY);
+    if (d >= 0 && d < 28) for (const id of inProjects(c)) ACT[id][d]++;
   }
 
   /* where the contracts run, and their releases as deploys, newest first */
-  const ENV = {
-    proto: {
-      preview: ['—', 'Not read yet', 'na'],
-      test: [CHAIN.network || 'Not indexed yet', `${live} of ${CT.length} contracts found on-chain`, live ? 'ok' : 'na'],
-      prod: ['—', 'Not read yet', 'na'],
-    },
-  };
+  const ENV = Object.fromEntries(
+    PROJ.map((p) => [
+      p.id,
+      {
+        preview: ['—', 'Not read yet', 'na'],
+        test: p.id === 'proto' ? [CHAIN.network || 'Not indexed yet', `${live} of ${CT.length} contracts found on-chain`, live ? 'ok' : 'na'] : ['—', 'Not read yet', 'na'],
+        prod: ['—', 'Not read yet', 'na'],
+      },
+    ]),
+  );
   const nameById = Object.fromEntries(CT.map((c) => [c[0], c[1]]));
   const DEPLOYS = Object.entries(RELEASES)
     .flatMap(([id, list]) => (list ?? []).map(([ver, at, impl]) => [at, 'proto', 'test', `${nameById[id] ?? id} ${ver}`, 'Read from the chain', 'ok', impl ? `Implementation ${short(impl)}` : 'Upgraded']))
@@ -237,7 +251,13 @@ export function buildLive() {
   const thr = safe?.threshold ?? 0;
   const KEYS = [
     ['Ops Safe', safe ? `${thr} of ${safe.owners.length} · ${SIGNER_KEYS.map((k) => PPL[k].n).join(', ')}` : 'Not connected', safe ? 'Where contract changes are signed' : 'No Ops Safe is set for this app yet'],
-    ['GitHub', CODE.repo || 'Not connected', CODE.repo ? `Watching ${CODE.path || 'contracts'}/ on ${(CODE.poller?.branches ?? []).join(' and ') || 'dev'}` : 'The poller hasn’t read a repo yet'],
+    [
+      'GitHub',
+      CODE.repo || 'Not connected',
+      CODE.repo
+        ? `Watching ${CODE.projects?.length ? (CODE.watch ? `${CODE.watch}/` : 'every project') : `${CODE.path || 'contracts'}/`} on ${(CODE.poller?.branches ?? []).join(' and ') || 'dev'}`
+        : 'The poller hasn’t read a repo yet',
+    ],
     ['Keys in this app', 'None', 'Each signer signs with their own wallet'],
   ];
 
@@ -250,7 +270,9 @@ export function buildLive() {
     REPOS,
     CHANGES,
     COMMITS,
-    ACT: { proto: days },
+    ACT,
+    RSHORT,
+    RTINY,
     ENV,
     DEPLOYS,
     FINDINGS: [],

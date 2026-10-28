@@ -191,8 +191,16 @@ describe('pull requests', () => {
       [8, false, []],
       [7, true, []],
     ]);
-    // one that touches nothing under the path keeps no files
+    // one that touches no project (docs only) keeps no files
     expect(rows.find((x) => x.number === 8)!.files).toEqual([]);
+    // each is in the projects its files are in
+    const { rows: pj } = await db.query<{ number: number; projects: string[] }>('SELECT number, projects FROM command.code_pulls ORDER BY number DESC');
+    expect(pj.map((x) => [x.number, x.projects])).toEqual([
+      [10, ['proto', 'sdk']],
+      [9, ['proto']],
+      [8, []],
+      [7, ['proto']],
+    ]);
   });
 
   test('a quiet run reuses the list’s ETag, is one ask, and reads no files', async () => {
@@ -271,7 +279,7 @@ describe('Contracts’ Code payload', () => {
   test('live, the commits, pull requests, branches, contributors and how fresh it is', async () => {
     process.env.PROVIDER_CONTRACTS = 'live';
     const { CODE } = await read(SEE);
-    expect(Object.keys(CODE).sort()).toEqual(['branches', 'commits', 'contributors', 'names', 'path', 'people', 'poller', 'pulls', 'repo']);
+    expect(Object.keys(CODE).sort()).toEqual(['branches', 'commits', 'contributors', 'names', 'path', 'people', 'poller', 'projects', 'pulls', 'repo', 'watch']);
     expect(CODE.names).toBe('shown');
     // newest first, across branches, the branches it's on in the watched order
     expect(CODE.commits.map((x: any) => x.sha)).toEqual([6, 5, 4, 3, 2, 1].map((n) => sha(n).slice(0, 7)));
@@ -285,6 +293,7 @@ describe('Contracts’ Code payload', () => {
       at: Date.parse('2026-10-10T10:00:00Z'),
       pr: 700,
       contracts: ['LendingPool'],
+      projects: ['proto'],
     });
     // only the PRs that touch the path, open or lately merged or closed; newest first
     const nums = CODE.pulls.map((p: any) => p.number);
@@ -306,6 +315,7 @@ describe('Contracts’ Code payload', () => {
       url: `https://github.com/${cfg.repo}/pull/9`,
       files: 2,
       contracts: ['RevolvingIssuer'],
+      projects: ['proto'],
     });
     expect(CODE.branches).toEqual([
       { name: 'dev', commits30: 3, lastAt: Date.parse('2026-10-22T10:00:00Z') },
@@ -342,5 +352,28 @@ describe('Contracts’ Code payload', () => {
     await recordPullError(db, cfg, new Error('GitHub 403 (rate limit spent): API rate limit exceeded'));
     const c = await codeActivity(db, cfg, NOW, true);
     expect(c.poller.error).toBe('pull requests: GitHub 403 (rate limit spent): API rate limit exceeded');
+  });
+});
+
+describe('every project, not just the contracts', () => {
+  test('a commit that touches only an app is listed, in its project, and the project counts it', async () => {
+    hist.dev = [...hist.dev, commit(40, '10-23T09:00:00', 'Member: Savings ladder (#711)')];
+    filesOf[sha(40)] = ['apps/member/src/pages/Savings.tsx', 'packages/member-kit/src/index.ts'];
+    await pollOnce(db, src, cfg);
+    const c = await codeActivity(db, cfg, NOW, true);
+    expect(c.commits[0]).toMatchObject({ sha: sha(40).slice(0, 7), contracts: [], projects: ['app'] });
+    expect(c.projects.map((p) => p.id)).toEqual(['proto', 'app', 'merchant', 'sdk', 'pay', 'rewards', 'cc']);
+    expect(c.projects.find((p) => p.id === 'app')).toMatchObject({ name: 'Member app', path: 'apps/member', commits30: 1, lastAt: Date.parse('2026-10-23T09:00:00Z') });
+    expect(c.projects.find((p) => p.id === 'pay')).toMatchObject({ commits30: 0, lastAt: null });
+    // the release lanes still read only the contracts' commits
+    const { rows } = await db.query<{ contracts: string[] }>('SELECT contracts FROM command.code_commits WHERE sha = $1', [sha(40)]);
+    expect(rows[0].contracts).toEqual([]);
+  });
+
+  test('the first listing of a branch reaches back 90 days, not the whole history', async () => {
+    const seen: Array<string | null> = [];
+    const fresh: GithubSource = { ...src, list: async (c, since, page, etag) => (seen.push(since), src.list(c, since, page, etag)) };
+    await pollOnce(db, fresh, { ...cfg, branches: ['release-x'], branch: 'release-x' }, { now: NOW });
+    expect(seen).toEqual([new Date(NOW - 90 * 24 * 3600e3).toISOString()]);
   });
 });

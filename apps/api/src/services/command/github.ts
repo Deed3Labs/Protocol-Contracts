@@ -2,12 +2,13 @@ import type { Queryable } from '../../db/db.js';
 import type { Release } from './onchain.js';
 
 /*
- * Changes from GitHub (docs/command-center-plan.md, Phase 5c): the commits on `dev` that touch the
- * contracts, polled, and turned into Contracts' changes. A contract's commits since its last
+ * Changes from GitHub (docs/command-center-plan.md, Phase 5c): the commits on `dev`, polled, and
+ * those that touch the contracts turned into Contracts' changes. A contract's commits since its last
  * release are a change in flight; the commits before each release are what that release shipped.
  *
- * The Code tab reads more: the commits on each watched branch (`dev` and `main`), and the pull
- * requests that touch the contracts, open and lately merged or closed.
+ * The Code tab reads more: every commit on each watched branch (`dev` and `main`) and every pull
+ * request, open and lately merged or closed, each tagged with the projects its files are in (the
+ * contracts, the apps, the API and SDK, the Command Center: PROJECTS).
  *
  * Cheap by design. The list is asked for with the ETag of the last answer, and an unchanged answer
  * (304) costs nothing against the token's rate limit. Each new commit's files are asked for once.
@@ -21,7 +22,10 @@ export interface CodeConfig {
   branch: string;
   /** Every branch whose commits are polled, the release branch first. */
   branches: string[];
+  /** The contracts' folder: a commit's contracts are its Solidity files under it. */
   path: string;
+  /** The folder whose commits are listed: the whole repo when empty. */
+  watch: string;
 }
 export const codeConfig = (env: Record<string, string | undefined> = process.env): CodeConfig => {
   const branch = env.COMMAND_GITHUB_BRANCH || 'dev';
@@ -31,8 +35,46 @@ export const codeConfig = (env: Record<string, string | undefined> = process.env
     branch,
     branches: [...new Set([branch, ...more])],
     path: (env.COMMAND_GITHUB_PATH || 'contracts').replace(/^\/+|\/+$/g, ''),
+    watch: (env.COMMAND_GITHUB_WATCH || '').replace(/^\/+|\/+$/g, ''),
   };
 };
+
+/** The monorepo's projects, by the folders that are theirs; a commit or PR is in each project a file of it is under. */
+export const PROJECTS = [
+  { id: 'proto', name: 'Protocol', tiny: 'Contracts', what: 'Smart contracts', lang: 'Solidity · Hardhat', paths: ['contracts'] },
+  { id: 'app', name: 'Member app', tiny: 'App', what: 'Member app', lang: 'TypeScript · PWA', paths: ['apps/member', 'packages/member-kit'] },
+  { id: 'merchant', name: 'Merchant app', tiny: 'Merchant', what: 'Merchant app', lang: 'TypeScript · tablet PWA', paths: ['apps/merchant', 'packages/merchant-contracts'] },
+  {
+    id: 'sdk',
+    name: 'API and SDK',
+    tiny: 'SDK',
+    what: 'API and SDK',
+    lang: 'TypeScript · Railway',
+    paths: ['apps/api', 'packages/clear-js', 'packages/clear-node', 'packages/clear-mcp', 'packages/contracts-sdk', 'packages/public-api-contracts', 'packages/domain', 'packages/tokens'],
+  },
+  { id: 'pay', name: 'Pay with Clear', tiny: 'Pay', what: 'Pay with Clear', lang: 'TypeScript', paths: ['apps/pay', 'packages/pay-docs'] },
+  { id: 'rewards', name: 'Rewards', tiny: 'Rewards', what: 'Rewards app', lang: 'TypeScript', paths: ['apps/rewards'] },
+  {
+    id: 'cc',
+    name: 'Command Center',
+    tiny: 'CC',
+    what: 'This app',
+    lang: 'TypeScript · Vercel',
+    paths: ['apps/command', 'packages/command-types', 'scripts/command', 'design/command-center-ui', 'docs/ui-redesign', 'docs/ui-redesign-plan.md', 'docs/command-center-plan.md', 'docs/command-reference'],
+  },
+] as const;
+
+/** The projects a commit's or PR's files are in, the one with the most files first (the one it's shown under), ties in PROJECTS' order. */
+export function projectsOf(files: string[]): string[] {
+  const n = PROJECTS.map((p) => files.filter((f) => p.paths.some((d) => f === d || f.startsWith(`${d}/`))).length);
+  return PROJECTS.map((p, i) => ({ id: p.id, n: n[i], i }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n || a.i - b.i)
+    .map((x) => x.id);
+}
+
+/** How far back the first listing of a branch reaches: the commits before it aren't read. */
+const HISTORY_MS = 90 * 24 * 3600e3;
 
 export interface ListedCommit {
   sha: string;
@@ -63,7 +105,7 @@ export interface ListedPull {
 export type PullsAnswer = { notModified: true; remaining: number | null } | { notModified: false; etag: string | null; pulls: ListedPull[]; more: boolean; remaining: number | null };
 
 export interface GithubSource {
-  /** One page of the branch's commits touching the path, newest first, since a time if given. */
+  /** One page of the branch's commits (touching the watched folder, if one), newest first, since a time if given. */
   list(c: CodeConfig, since: string | null, page: number, etag: string | null): Promise<ListAnswer>;
   /** The files one commit changed. */
   files(repo: string, sha: string): Promise<{ files: string[]; remaining: number | null }>;
@@ -98,7 +140,7 @@ export function liveGithub(token = process.env.GITHUB_TOKEN?.trim() || '', f: ty
   return {
     authorized: !!token,
     async list(c, since, page, etag) {
-      const q = new URLSearchParams({ sha: c.branch, path: c.path, per_page: '100', page: String(page), ...(since ? { since } : {}) });
+      const q = new URLSearchParams({ sha: c.branch, ...(c.watch ? { path: c.watch } : {}), per_page: '100', page: String(page), ...(since ? { since } : {}) });
       const r = await f(`https://api.github.com/repos/${c.repo}/commits?${q}`, { headers: headers(etag) });
       if (r.status === 304) return { notModified: true, remaining: remaining(r) };
       if (!r.ok) throw await fail(r);
@@ -201,9 +243,10 @@ export interface PollResult {
 }
 
 /** One branch's list: the commits since the newest one held on it, a new one inserted, one already held (from another branch) marked as on this one too. */
-async function listBranch(db: Queryable, src: GithubSource, c: CodeConfig, maxPages: number) {
-  const { rows: cur } = await db.query<{ since: Date | null; etag: string | null }>('SELECT since, etag FROM command.code_cursor WHERE repo = $1 AND branch = $2 AND path = $3', [c.repo, c.branch, c.path]);
-  const since = cur[0]?.since ? new Date(cur[0].since).toISOString() : null;
+async function listBranch(db: Queryable, src: GithubSource, c: CodeConfig, maxPages: number, now: number) {
+  const { rows: cur } = await db.query<{ since: Date | null; etag: string | null }>('SELECT since, etag FROM command.code_cursor WHERE repo = $1 AND branch = $2 AND path = $3', [c.repo, c.branch, c.watch]);
+  // the first time, the last 90 days; after, since the newest commit held there
+  const since = cur.length ? (cur[0].since ? new Date(cur[0].since).toISOString() : null) : new Date(now - HISTORY_MS).toISOString();
   let etag = cur[0]?.etag ?? null,
     listed = 0,
     added = 0,
@@ -235,11 +278,14 @@ async function listBranch(db: Queryable, src: GithubSource, c: CodeConfig, maxPa
  * first time); then the files of those that don't have them, as far as the budget goes. A commit
  * on two branches is one row, its files asked for once.
  */
-export async function pollOnce(db: Queryable, src: GithubSource, c: CodeConfig, o: { maxPages?: number; filesBudget?: number } = {}): Promise<PollResult> {
+export async function pollOnce(db: Queryable, src: GithubSource, c: CodeConfig, o: { maxPages?: number; filesBudget?: number; now?: number } = {}): Promise<PollResult> {
   const maxPages = o.maxPages ?? 10;
   const budget = o.filesBudget ?? (src.authorized ? 200 : 20);
   const lists: Array<{ branch: string } & Awaited<ReturnType<typeof listBranch>>> = [];
-  for (const branch of c.branches) lists.push({ branch, ...(await listBranch(db, src, { ...c, branch }, maxPages)) });
+  for (const branch of c.branches) lists.push({ branch, ...(await listBranch(db, src, { ...c, branch }, maxPages, o.now ?? Date.now())) });
+  // the projects of commits whose files were read before projects were (migration 0065)
+  const { rows: old } = await db.query<{ sha: string; files: string[] }>('SELECT sha, files FROM command.code_commits WHERE repo = $1 AND files IS NOT NULL AND projects IS NULL', [c.repo]);
+  for (const r of old) await db.query('UPDATE command.code_commits SET projects = $3 WHERE repo = $1 AND sha = $2', [c.repo, r.sha, projectsOf(r.files)]);
 
   // the files of each commit not yet asked about, while the rate limit lasts: the release branch's first, oldest first
   const { rows: todo } = await db.query<{ sha: string }>('SELECT sha FROM command.code_commits WHERE repo = $1 AND files IS NULL ORDER BY ($2 = ANY(branches)) DESC, committed_at LIMIT $3', [
@@ -250,7 +296,7 @@ export async function pollOnce(db: Queryable, src: GithubSource, c: CodeConfig, 
   let filled = 0;
   for (const { sha } of todo) {
     const r = await src.files(c.repo, sha);
-    await db.query('UPDATE command.code_commits SET files = $3, contracts = $4 WHERE repo = $1 AND sha = $2', [c.repo, sha, r.files, contractsOf(r.files, c.path)]);
+    await db.query('UPDATE command.code_commits SET files = $3, contracts = $4, projects = $5 WHERE repo = $1 AND sha = $2', [c.repo, sha, r.files, contractsOf(r.files, c.path), projectsOf(r.files)]);
     filled++;
     if (r.remaining != null && r.remaining < 5) break;
   }
@@ -262,7 +308,7 @@ export async function pollOnce(db: Queryable, src: GithubSource, c: CodeConfig, 
     await db.query(
       `INSERT INTO command.code_cursor (repo, branch, path, since, etag, ran_at, error) VALUES ($1, $2, $3, $4, $5, now(), NULL)
        ON CONFLICT (repo, branch, path) DO UPDATE SET since = $4, etag = $5, ran_at = now(), error = NULL`,
-      [c.repo, l.branch, c.path, next, next === l.since ? l.etag : null],
+      [c.repo, l.branch, c.watch, next, next === l.since ? l.etag : null],
     );
   }
   const { rows: w } = await db.query<{ waiting: number }>('SELECT count(*)::int AS waiting FROM command.code_commits WHERE repo = $1 AND files IS NULL', [c.repo]);
@@ -281,7 +327,7 @@ export async function recordCodeError(db: Queryable, c: CodeConfig, error: unkno
     await db.query(
       `INSERT INTO command.code_cursor (repo, branch, path, ran_at, error) VALUES ($1, $2, $3, now(), $4)
        ON CONFLICT (repo, branch, path) DO UPDATE SET ran_at = now(), error = $4`,
-      [c.repo, branch, c.path, String((error as Error)?.message ?? error).slice(0, 500)],
+      [c.repo, branch, c.watch, String((error as Error)?.message ?? error).slice(0, 500)],
     );
 }
 
@@ -303,8 +349,8 @@ export interface PullPollResult {
 /**
  * The pull requests: the list, most lately updated first, asked for with the last answer's ETag
  * and read until a PR older than the window; then the files of each new PR, and of each whose head
- * moved since its files were read, as far as the budget goes. A PR that changes nothing under the
- * path is marked so and never shown.
+ * moved since its files were read, as far as the budget goes. A PR that changes nothing in a project
+ * (only docs, say) is marked so and never shown.
  */
 export async function pollPulls(db: Queryable, src: GithubSource, c: CodeConfig, o: { maxPages?: number; filesBudget?: number; now?: number } = {}): Promise<PullPollResult> {
   const maxPages = o.maxPages ?? 5;
@@ -347,15 +393,17 @@ export async function pollPulls(db: Queryable, src: GithubSource, c: CodeConfig,
     if (used >= budget) break;
     const r = await src.pullFiles(c.repo, p.number);
     used += Math.max(1, r.requests);
-    const touches = r.files.some((f) => f.startsWith(`${c.path}/`));
-    // a PR that touches nothing under the path keeps only that answer, not its files
-    await db.query('UPDATE command.code_pulls SET files = $3, contracts = $4, touches = $5, files_sha = $6 WHERE repo = $1 AND number = $2', [
+    const projects = projectsOf(r.files);
+    const touches = projects.length > 0;
+    // a PR that touches no project keeps only that answer, not its files
+    await db.query('UPDATE command.code_pulls SET files = $3, contracts = $4, touches = $5, files_sha = $6, projects = $7 WHERE repo = $1 AND number = $2', [
       c.repo,
       p.number,
       touches ? r.files : [],
       touches ? contractsOf(r.files, c.path) : [],
       touches,
       p.head_sha,
+      projects,
     ]);
     read++;
     if (r.remaining != null && r.remaining < 5) break;
@@ -386,7 +434,7 @@ export async function codeStatus(db: Queryable, c: CodeConfig = codeConfig()) {
             (SELECT max(committed_at) FROM command.code_commits WHERE repo = $1 AND $2 = ANY(branches)) AS newest,
             k.ran_at, k.error
        FROM (SELECT 1) one LEFT JOIN command.code_cursor k ON k.repo = $1 AND k.branch = $2 AND k.path = $3`,
-    [c.repo, c.branch, c.path],
+    [c.repo, c.branch, c.watch],
   );
   const r = rows[0];
   const byBranch = [];
@@ -394,7 +442,7 @@ export async function codeStatus(db: Queryable, c: CodeConfig = codeConfig()) {
     const { rows: b } = await db.query<any>(
       `SELECT (SELECT count(*)::int FROM command.code_commits WHERE repo = $1 AND $2 = ANY(branches)) AS commits, k.ran_at, k.error
          FROM (SELECT 1) one LEFT JOIN command.code_cursor k ON k.repo = $1 AND k.branch = $2 AND k.path = $3`,
-      [c.repo, branch, c.path],
+      [c.repo, branch, c.watch],
     );
     byBranch.push({ branch, commits: b[0].commits, ranAt: b[0].ran_at, error: b[0].error });
   }
@@ -423,11 +471,15 @@ export async function codeStatus(db: Queryable, c: CodeConfig = codeConfig()) {
 export interface CodePayload {
   repo: string;
   path: string;
+  /** The folder whose commits are listed: '' for the whole repo. */
+  watch: string;
+  /** The repo's projects (PROJECTS, without their folders' full list): what the commits and PRs are tagged with. */
+  projects: Array<{ id: string; name: string; tiny: string; what: string; lang: string; path: string; lastAt: number | null; commits30: number }>;
   /** 'none' at Totals: no author names or logins, contributors only counted. */
   names: 'none' | 'shown';
-  /** The newest 60 commits touching the path, on any watched branch. */
-  commits: Array<{ sha: string; url: string; branches: string[]; author: string; login: string; message: string; at: number; pr: number | null; contracts: string[] }>;
-  /** The PRs touching the path: open, and merged or closed in the window. Newest first (by update). */
+  /** The newest commits on any watched branch: every one in the window, at least 60, at most 400. */
+  commits: Array<{ sha: string; url: string; branches: string[]; author: string; login: string; message: string; at: number; pr: number | null; contracts: string[]; projects: string[] }>;
+  /** The PRs touching a project: open, and merged or closed in the window. Newest first (by update). */
   pulls: Array<{
     number: number;
     title: string;
@@ -443,10 +495,11 @@ export interface CodePayload {
     url: string;
     files: number;
     contracts: string[];
+    projects: string[];
   }>;
   branches: Array<{ name: string; commits30: number; lastAt: number | null }>;
   /** Who's contributed in the window, by GitHub login (else the commit's name); empty at Totals. */
-  /** Everyone in the stored history (commits and PRs touching the path), with their last 30 days too. */
+  /** Everyone in the stored history (commits, and PRs touching a project), with their last 30 days too. */
   contributors: Array<{ who: string; name: string; commits: number; pulls: number; commits30: number; pulls30: number; lastAt: number }>;
   /** How many people contributed in the window: the one figure Totals keeps. */
   people: number;
@@ -459,12 +512,14 @@ const msOf = (d: Date | string | null) => (d == null ? null : new Date(d).getTim
 export async function codeActivity(db: Queryable, c: CodeConfig, now: number, names: boolean): Promise<CodePayload> {
   const cutoff = new Date(now - CODE_WINDOW_MS).toISOString();
   const { rows: cm } = await db.query<any>(
-    `SELECT sha, branches, author, login, message, committed_at, url, pr, contracts FROM command.code_commits
-      WHERE repo = $1 AND branches && $2::text[] ORDER BY committed_at DESC, sha LIMIT 60`,
-    [c.repo, c.branches],
+    `SELECT * FROM (SELECT sha, branches, author, login, message, committed_at, url, pr, contracts, projects,
+              row_number() OVER (ORDER BY committed_at DESC, sha) AS n
+         FROM command.code_commits WHERE repo = $1 AND branches && $2::text[]) x
+      WHERE n <= 60 OR (committed_at >= $3 AND n <= 400) ORDER BY n`,
+    [c.repo, c.branches, cutoff],
   );
   const { rows: pl } = await db.query<any>(
-    `SELECT number, title, state, draft, login, head, base, created_at, updated_at, merged_at, closed_at, url, files, contracts FROM command.code_pulls
+    `SELECT number, title, state, draft, login, head, base, created_at, updated_at, merged_at, closed_at, url, files, contracts, projects FROM command.code_pulls
       WHERE repo = $1 AND touches AND (state = 'open' OR coalesce(merged_at, closed_at) >= $2) ORDER BY updated_at DESC, number DESC`,
     [c.repo, cutoff],
   );
@@ -502,13 +557,30 @@ export async function codeActivity(db: Queryable, c: CodeConfig, now: number, na
     [p.pulls, p.pulls30] = [r.n, r.n30];
     p.lastAt = Math.max(p.lastAt, msOf(r.last)!);
   }
+  // each project's newest commit, and its commits in the window
+  const { rows: pj } = await db.query<{ id: string; last: Date | null; n: number }>(
+    `SELECT p AS id, max(committed_at) AS last, count(*) FILTER (WHERE committed_at >= $3)::int AS n
+       FROM command.code_commits, unnest(projects) AS p WHERE repo = $1 AND branches && $2::text[] GROUP BY p`,
+    [c.repo, c.branches, cutoff],
+  );
+  const pjOf = new Map(pj.map((r) => [r.id, r]));
+  const projects = PROJECTS.map((p) => ({
+    id: p.id,
+    name: p.name,
+    tiny: p.tiny,
+    what: p.what,
+    lang: p.lang,
+    path: p.paths[0],
+    lastAt: msOf(pjOf.get(p.id)?.last ?? null),
+    commits30: pjOf.get(p.id)?.n ?? 0,
+  }));
   const contributors = [...people.values()].sort((a, b) => b.commits + b.pulls - (a.commits + a.pulls) || b.lastAt - a.lastAt || a.who.localeCompare(b.who));
 
   // how fresh: the last run of any part of the poller, and the first error any part has
   const { rows: runs } = await db.query<{ ran_at: Date; error: string | null; part: string }>(
     `SELECT ran_at, error, branch AS part FROM command.code_cursor WHERE repo = $1 AND path = $2 AND branch = ANY($3::text[])
      UNION ALL SELECT ran_at, error, 'pull requests' AS part FROM command.code_pull_cursor WHERE repo = $1`,
-    [c.repo, c.path, c.branches],
+    [c.repo, c.watch, c.branches],
   );
   const failed = runs.find((r) => r.error);
   const { rows: w } = await db.query<{ n: number }>(
@@ -519,6 +591,8 @@ export async function codeActivity(db: Queryable, c: CodeConfig, now: number, na
   return {
     repo: c.repo,
     path: c.path,
+    watch: c.watch,
+    projects,
     names: names ? 'shown' : 'none',
     commits: cm.map((r) => ({
       sha: String(r.sha).slice(0, 7),
@@ -530,6 +604,7 @@ export async function codeActivity(db: Queryable, c: CodeConfig, now: number, na
       at: msOf(r.committed_at)!,
       pr: r.pr,
       contracts: r.contracts ?? [],
+      projects: r.projects ?? [],
     })),
     pulls: pl.map((r) => ({
       number: r.number,
@@ -546,6 +621,7 @@ export async function codeActivity(db: Queryable, c: CodeConfig, now: number, na
       url: r.url,
       files: (r.files ?? []).length,
       contracts: r.contracts ?? [],
+      projects: r.projects ?? [],
     })),
     branches,
     contributors: names ? contributors : [],
