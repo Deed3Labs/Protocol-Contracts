@@ -242,8 +242,12 @@ Filled in as each page is ported. Known before starting:
   (which the 30-day totals, weekly bars and the payout queue are worked out from); sales tax held and
   pre-order deposits; the Ops Safe signers; moves waiting and done (the proposals exist). Actions:
   propose, approve and sign, reject and withdraw a move, Plaid sync, the reserve check.
-- **Build:** deploys (Railway and Vercel history) and security findings. Changes and Contracts exist
-  (the GitHub poller and the indexer).
+- **Build** (ported): deploys by environment (Railway and Vercel history, plus Safe-executed releases);
+  security findings (severity, state, contract, fix PR, audit coverage); incidents (owner, timeline);
+  review state and simulation results on changes; a check state per monorepo folder; the contract map's
+  layout. Changes, commits, contracts, releases and the Ops Safe exist (the GitHub poller, the indexer,
+  `/safe`). Actions: sign in the Ops Safe, link a wallet, propose (into the Safe), GitHub reviews,
+  resolving an incident, proposing a pause.
 - **Community:** everything (forum, live events, channel). There's no backend, so live shows empty
   states until it's decided what runs it.
 - **Governance:** agreement versions; proposals beyond meetings and votes.
