@@ -249,8 +249,12 @@ Filled in as each page is ported. Known before starting:
   layout. Changes, commits, contracts, releases and the Ops Safe exist (the GitHub poller, the indexer,
   `/safe`). Actions: sign in the Ops Safe, link a wallet, propose (into the Safe), GitHub reviews,
   resolving an incident, proposing a pause.
-- **Community:** everything (forum, live events, channel). There's no backend, so live shows empty
-  states until it's decided what runs it.
+- **Community** (ported; no backend, so the live app keeps the placeholder): forum categories, threads
+  and posts with read counts, flags and a thread↔proposal link; a moderation queue (reports, automatic
+  detection, hide or keep with a reason, telling the author, an audit entry); events and requests (town
+  halls, spaces, hearings, board meetings: hosts, RSVPs, hands, questions, recordings) with a live
+  provider (Dial or Opencast) for presence and Q&A; the channel (schedule, library, viewers by hour), all
+  from Dial's station API; members taking part each week across forum, events and channel.
 - **Governance** (ported): proposals as a lifecycle (draft, co-signing, check, voting, decided,
   carried out; co-authors, co-signers and deadline, checker and check items, nominations, vote window,
   daily cast and tally, board recommendation, result, tasks with owners) — today the API has only the
@@ -259,8 +263,16 @@ Filled in as each page is ported. Known before starting:
   other shapes. Actions: send back, check and open a vote, put on the board agenda, mark a task done,
   remind non-voters, sign an agreement, new agreement version, filing checklist. The old page's filing,
   formation, packet, minutes, agenda and decision actions have no control in the new page yet.
-- **Records:** the reveals and exports log.
-- **Settings:** the settings store; connections status exists (feeds).
+- **Records** (ported): documents come as today; the log is `GET /audit` (its `seq`, hash and chain
+  status belong in the entry panel and the log's foot), corrections need a "Correct" button calling
+  `POST /audit/:id/correct`; reveals are `GET /reveals`. Exports have no approver or waiting state yet.
+- **Team** (ported): people, invites, groups, approvals and waiting come from today's endpoints; missing
+  are who signs on the Ops Safe per person, per-device last seen and trusted, access end dates and a
+  quarterly review date, cancelling an invite, signing out one device, turning someone back on.
+- **Settings** (ported): rules and limits are `GET /sections/settings` (pending changes included), a
+  change is `settings/change`; its history needs the old value (from the audit entries or a history
+  endpoint). No source yet for connections (status, health, key age, rotation), alerts, devices,
+  "worth a look" events and the organisation profile.
 
 ## Kept from today that the reference lacks
 
