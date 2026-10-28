@@ -68,6 +68,17 @@ const DEMO = [
   'M-0412',
   'M-0044',
   'C-07',
+  // Field and Merchants' reference (fm2.tsx): its route's shops, its prospects and its Placement candidates
+  'Mission Auto Care',
+  'Tri-City Transmission',
+  'Sun Valley HVAC',
+  'Kingston Vet',
+  'Valley Shoe Repair',
+  'Brookside Pet Wash',
+  'Sixth St. Tailor',
+  'Magnolia Laundry',
+  'Sierra Lakes Barber',
+  'Brockton Coffee',
 ];
 
 type Finding = { route: string; pane: string; after: string; kind: 'error' | 'demo' | 'garbage'; what: string };

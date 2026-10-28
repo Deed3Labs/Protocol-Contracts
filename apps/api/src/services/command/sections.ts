@@ -614,8 +614,12 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
   return { TX, SIGNED, PROSPECTS, OWED, BOARD, FLEET, figures: await figures(db, 'merchants'), asOf: asOfFor(provider, o.now) };
 }
 
-/** The pipeline board and its prospects: Command's own CRM, read the same way seed or live. */
-async function merchantBoard(db: Queryable, o: ReadOptions, OWED: Record<string, number>) {
+/**
+ * The pipeline board and its prospects: Command's own CRM, read the same way seed or live. `full` (live) sends
+ * every card's owner, value, next step and flag whatever its stage, so a page that saves a signing or signed card
+ * whole (card-save) keeps them; the seed keeps the prototype's shape.
+ */
+async function merchantBoard(db: Queryable, o: ReadOptions, OWED: Record<string, number>, full = false) {
   const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; flag: boolean; founding: boolean; posters: number | null; notes: string }>(
     'SELECT * FROM command.merchant_stage WHERE removed_at IS NULL ORDER BY position',
   );
@@ -628,6 +632,7 @@ async function merchantBoard(db: Queryable, o: ReadOptions, OWED: Record<string,
     if (c.stage === 'prospect' || c.stage === 'talking') Object.assign(base, { val: dollars(c.per_month_cents), owner: c.owner, next: c.next_step, stage: c.stage, flag: c.flag });
     else if (c.stage === 'signing') Object.assign(base, { stage: c.stage, founding: c.founding ? 1 : 0, m: c.merchant_id });
     else Object.assign(base, { stage: c.stage, m: c.merchant_id, posters: c.posters, owed: OWED[c.merchant_id ?? ''] ?? 0 });
+    if (full) Object.assign(base, { val: dollars(c.per_month_cents), owner: c.owner, next: c.next_step, flag: c.flag });
     return Object.assign(base, {
       due: c.due_on ? ms_(c.due_on) : null,
       last: c.last_contact_at ? ms_(c.last_contact_at) : null,
@@ -734,7 +739,7 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
     else SIGNED.push(s.signer ? [id, s.name, s.kind, s.city] : [id, s.name, s.kind, s.city, 'signing']);
   }
   const OWED: Record<string, number> = {};
-  const { BOARD, PROSPECTS } = await merchantBoard(db, o, OWED);
+  const { BOARD, PROSPECTS } = await merchantBoard(db, o, OWED, true);
 
   const { rows: points } = await db.query<{ merchant: string; name: string; placement: string | null; health: { batteryPercent?: number; pluggedIn?: boolean } | string | null; last_seen_at: Date | string | null }>(
     `SELECT h.merchant, h.name, h.settings->>'placement' AS placement, k.health, k.last_seen_at
