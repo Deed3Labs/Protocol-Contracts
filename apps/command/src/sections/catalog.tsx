@@ -235,7 +235,7 @@ const MAX_PHOTO = 4 * 1024 * 1024;
  * Uploads the photos picked, one after another (each stored in the site's Blob store, then added to the
  * catalog), and says how it went. One too big or of the wrong kind is skipped, and said so.
  */
-async function addPhotos(p, input) {
+export async function addPhotos(p, input) {
   const files = [...(input.files || [])];
   input.value = '';
   if (!files.length || !LIVE) return;

@@ -228,7 +228,7 @@ export async function shopModelPayload(db: Queryable, book: Book, o: { now: numb
   const POINTS = points.rows.map((r) => ({ id: r.id, name: r.name, city: r.city, active: r.active, held: r.held, last4w: r.last4w }));
   if (!o.sees) return { SUPPLIERS: [], ON_ORDER: [], REORDER: [], BATCHES: [], PER_ORDER: null, ORDER_COSTS: {}, POINTS, PICKUP: {} };
 
-  const [suppliers, onOrder, usage, buffer, hold, ship, shopbuy] = await Promise.all([
+  const [suppliers, onOrder, usage, buffer, hold, ship, shopbuy, marginTarget, refund] = await Promise.all([
     readSuppliers(db),
     readOnOrder(db),
     readUsage(db, new Date(o.now - USAGE_WEEKS * WEEK)),
@@ -236,6 +236,8 @@ export async function shopModelPayload(db: Queryable, book: Book, o: { now: numb
     readSetting<number>(db, 'hold'),
     readSetting<number>(db, 'ship'),
     readSetting<number>(db, 'shopbuy'),
+    readSetting<number>(db, 'margin'),
+    readSetting<number>(db, 'refund'),
   ]);
   const inputs = [...book.inputs.values()];
 
@@ -364,6 +366,12 @@ export async function shopModelPayload(db: Queryable, book: Book, o: { now: numb
     // what labels have cost lately: null until one's recorded
     label: avgLabel.rows[0]?.avg == null ? null : shown(Number(avgLabel.rows[0].avg)),
     hold,
+    // the Settings the page works its figures out with: the target margin (a percentage), the reorder
+    // buffer (weeks), and the amounts over which a buy or a refund waits for a second person (dollars)
+    margin: marginTarget,
+    buffer,
+    shopbuy,
+    refund,
   };
 
   const { rows: oh } = await db.query<any>('SELECT * FROM command.shop_order_overheads');

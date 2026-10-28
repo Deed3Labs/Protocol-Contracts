@@ -296,6 +296,21 @@ const apply = {
     // what the store shows of each catalog product (Phase 11b)
     for (const k of Object.keys(CATALOG)) delete CATALOG[k];
     Object.assign(CATALOG, d.CATALOG ?? {});
+    // the redesigned page's own (sections/shopLive.ts): how each product is costed, the flat costs, the
+    // suppliers, buys on order, reorders, batches, the once-per-order costs and the pickup points
+    vars.shopModel = {
+      NOW: d.NOW ?? null,
+      COST_BY: d.COST_BY ?? {},
+      FLAT: d.FLAT ?? {},
+      SUPPLIERS: d.SUPPLIERS ?? [],
+      ON_ORDER: d.ON_ORDER ?? [],
+      REORDER: d.REORDER ?? [],
+      BATCHES: d.BATCHES ?? [],
+      PER_ORDER: d.PER_ORDER ?? null,
+      ORDER_COSTS: d.ORDER_COSTS ?? {},
+      POINTS: d.POINTS ?? [],
+      PICKUP: d.PICKUP ?? {},
+    };
     const f = d.figures;
     replace(ORD_W, f['shop.orders_weekly']);
     assign(SHOP_COSTS, f['shop.costs']);

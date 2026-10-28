@@ -421,7 +421,7 @@ describe('orders: packing, pickup points and what each costs once', () => {
     // a second label replaces the first
     expect((await act(kai, 'order-label', { order: '1093', cost: 8 })).status).toBe(200);
     expect((await shop()).ORDER_COSTS['1093'].gap).toBe(2);
-    expect((await shop()).PER_ORDER).toMatchObject({ ship: { inputs: ['mail', 'tis'] }, pickup: { inputs: ['tis'] }, fee: { pct: 0.029, fixed: 0.3 }, charged: 6, label: 8, hold: 14 });
+    expect((await shop()).PER_ORDER).toMatchObject({ ship: { inputs: ['mail', 'tis'] }, pickup: { inputs: ['tis'] }, fee: { pct: 0.029, fixed: 0.3 }, charged: 6, label: 8, hold: 14, margin: 60, buffer: 1, shopbuy: 50, refund: 50 });
   });
 });
 
