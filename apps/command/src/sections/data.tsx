@@ -435,11 +435,11 @@ export const WAITING0 = [
   {
     id: 'chain',
     kind: 'On-chain',
-    tag: '2/3 signed',
+    tag: '1 of 2 signed',
     title: 'Rosa’s cap',
     fig: '$150.00',
     figSub: 'per sale, up from $100.00',
-    meta: ['Dana Ruiz proposed'],
+    meta: ['Marcus Lee proposed · Dana Ruiz signed'],
     cta: 'Open in multisig',
     mode: 'multisig',
     ledger: [
@@ -454,7 +454,7 @@ export const WAITING0 = [
     ],
     primary: 'Open in multisig',
     steps: ['Prepared the transaction', 'Opened it in the multisig', 'Waiting for your signature there'],
-    done: ['Handed to the multisig.', 'It executes when the third signature lands.'],
+    done: ['Signed in the Ops Safe.', 'Live after the 24-hour wait, 22 Oct at 14:30.'],
   },
 ];
 /* Alerts carry how bad, where, how old, and what is already being done about it. */
@@ -472,9 +472,9 @@ export const ALERTS0 = [
   {
     t: 'Poster P-044 is sun-faded',
     sev: 'underway',
-    area: 'Growth',
+    area: 'Field',
     age: 'Mesa Laundry · 19 Oct',
-    go: 'growth',
+    go: 'field',
     fix: 'route',
   },
   {
@@ -620,14 +620,14 @@ export const UPD0 = [
       ]),
     by: 'Dana Ruiz',
     when: 'Yesterday',
-    go: 'contracts',
+    go: 'build',
   },
 ];
 export const UPD_FROM = {
   payout: ['payout approved', 'merchants'],
   invite: ['invites sent', 'members'],
-  agreement: ['sent to e-signature', 'contracts'],
-  chain: ['sent to the multisig', 'contracts'],
+  agreement: ['sent to e-signature', 'governance'],
+  chain: ['sent to the multisig', 'build'],
 };
 export const W_ICON = {
   payout: 'money',
@@ -662,7 +662,6 @@ export const W_VIZ = {
     vizTrack(
       [
         ['DR', 1],
-        ['ML', 1],
         ['You', 0],
       ],
       true,
@@ -681,7 +680,7 @@ export const NEED = {
   chain: {
     order: 2,
     verb: 'Sign',
-    meta: 'Cap raise from $100.00 · 2/3 signed',
+    meta: 'Cap raise from $100.00 · 1 of 2 signed',
     fig: '$150.00',
   },
   invite: {
@@ -750,7 +749,32 @@ export const FEED0 = [
     ),
     by: 'Dana Ruiz',
     when: 'Yesterday',
-    go: 'contracts',
+    go: 'build',
+  },
+  {
+    what: (
+      <>
+        {'Board minutes draft shared for '}
+        <b>4 Nov</b>
+      </>
+    ),
+    by: 'Ana Ortiz',
+    when: '2 days ago',
+    go: 'governance',
+    old: true,
+  },
+  {
+    what: (
+      <>
+        {'Yield pool opened with '}
+        <b>$8,062.10</b>
+        {' from 14 members'}
+      </>
+    ),
+    by: 'LendingPool',
+    when: '15 Oct',
+    go: 'money',
+    old: true,
   },
 ];
 export const FEED_FROM = {

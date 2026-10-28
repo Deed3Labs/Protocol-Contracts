@@ -48,6 +48,7 @@ import { openSFlow } from './shop';
 import { openCostFlow } from './costing';
 import { openCatFlow } from './catalog';
 import { ibxPaneDraw, ibxRefresh } from './inbox';
+import { homeListeners } from './homeHub';
 import { sgnIn, sgnStep, sgnTimer, showLogin } from './signin';
 
 /**
@@ -79,6 +80,8 @@ function hungOn(v) {
   return i < 0 ? {} : { hungOn: new Date(Date.UTC(new Date(TODAY).getUTCFullYear(), i, Number(m[1]))).toISOString().slice(0, 10) };
 }
 export function startup() {
+  // Home's own: its queue filter, review panel and timeline highlights (homeHub.tsx)
+  homeListeners();
   try {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (vars.themePref === 'auto') setTheme('auto');

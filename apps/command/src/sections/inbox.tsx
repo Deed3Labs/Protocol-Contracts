@@ -2,7 +2,7 @@
 import { css, html } from '../runtime/dom';
 import { $, ic } from './core';
 import { ALERTS0, NEED, S, W_ICON, vars } from './data';
-import { segs } from './home';
+import { real, segs } from './home';
 import { onKey, render } from './shell';
 
 /*
@@ -17,7 +17,8 @@ export function ibxData() {
   const clear = S.preview === 'clear';
   const needs = clear ? [] : S.waiting.slice().sort((a, b) => (NEED[a.id]?.order ?? 99) - (NEED[b.id]?.order ?? 99));
   const alerts = clear ? [] : ALERTS0.slice().sort((a, b) => (a.sev === 'absent' ? 0 : 1) - (b.sev === 'absent' ? 0 : 1));
-  const ups = S.updates || [];
+  // live, only updates that really happened: the prototype's samples never show
+  const ups = real(S.updates || []);
   const unread = S.ibx.read ? ups.filter((u) => u.mine && !u.seen).length : ups.filter((u) => !u.old).length;
   return { needs, alerts, ups, unread };
 }
@@ -272,4 +273,33 @@ export function ibxPaneDraw() {
 export function ibxRefresh() {
   render();
   if (document.querySelector('.pane.ibx')) ibxPaneDraw();
+}
+
+/** The inbox as a cell: the phone's Inbox page (span s-12, with updates) and Home's queue. */
+export function inboxCell(span = 's-8 ibx-c') {
+  const { needs, alerts } = ibxData();
+  const tag =
+    needs.length || alerts.length ? (
+      `${needs.length} need you · ${alerts.length} alert${alerts.length === 1 ? '' : 's'}`
+    ) : (
+      <>
+        <span className="dot" style={css('color:var(--settled)')} />
+        All clear
+      </>
+    );
+  return (
+    <section className={`cell ${span}`}>
+      <header className="c-hd">
+        <span className="lbl">Inbox</span>
+        <span className="tag">{tag}</span>
+      </header>
+      <div className="c-fig" />
+      <div className="ib-body">{ibxList(span.indexOf('s-12') >= 0)}</div>
+      <div className="c-ft">
+        <div className="row">
+          <span className="t">Whoever proposes can’t approve · money and on-chain changes need a second person</span>
+        </div>
+      </div>
+    </section>
+  );
 }

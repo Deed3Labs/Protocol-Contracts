@@ -10,8 +10,9 @@ import { FEED_FROM, FIRST, LAST, NAMES, PEOPLE_T, ROLES, S, SECTIONS, UPD_FROM, 
 import { fieldPage } from './field';
 import { governancePage } from './governance';
 import { growthPage } from './growth';
-import { home, morePage, placeholder, stateError, stateLoading, syncPages, waitingPage } from './home';
+import { morePage, placeholder, stateError, stateLoading, syncPages, waitingPage } from './home';
 import { ibxCount } from './inbox';
+import { homeHub, homeMount } from './homeHub';
 import { membersPage } from './members';
 import { corridorMount, merchantsPage } from './merchants';
 import { moneyPage } from './money';
@@ -35,9 +36,9 @@ export function renderNav() {
             <button key={__k} className="nav" type="button" data-go={id} title={n} {...attrs(S.route === id ? 'aria-current="page"' : '')}>
               {ic(id)}
               <span>{n}</span>
-              {id === 'home' && S.waiting.length ? (
-                <span className="n" aria-label={`${S.waiting.length} need you`}>
-                  {S.waiting.length}
+              {id === 'home' && ibxCount() ? (
+                <span className="n" aria-label={`${ibxCount()} need you`}>
+                  {ibxCount()}
                 </span>
               ) : (
                 ''
@@ -60,7 +61,7 @@ export function renderNav() {
       <button key={__k} className="tab" type="button" data-go={id} {...attrs(S.route === id || (id === 'more' && inMore) ? 'aria-current="page"' : '')}>
         {ic(id)}
         <span>{n}</span>
-        {id === 'waiting' && S.waiting.length ? <span className="badge">{S.waiting.length}</span> : ''}
+        {id === 'waiting' && ibxCount() ? <span className="badge">{ibxCount()}</span> : ''}
       </button>
     )),
   );  // the top bar's inbox: what needs you and the high alerts
@@ -228,7 +229,7 @@ export function render() {
     <>
       {vBar()}
       {r === 'home'
-        ? home()
+        ? homeHub()
         : r === 'growth'
           ? growthPage()
           : r === 'members'
@@ -259,6 +260,8 @@ export function render() {
   // the preview's simulation of a Totals view, as the prototype drew it; live, the API sends Totals nothing personal
   if (!LIVE && S.view && vLevel(r) === 1) vScrub($('#main'));
   corridorMount();
+  // Home's timeline is laid out for the width it gets, after it's drawn
+  homeMount();
   requestAnimationFrame(syncPages);
   if (LIVE) logView();
 }
