@@ -6,8 +6,8 @@ import { BATCH_DATE, B_ACT, B_OPEN, INBOX, MEMBERS, POSTERS, RANGE, vars } from 
  * what the API's members section sends (live/sections.ts fills ./data and vars from it). The reference's
  * people, batches, dates and staff never show: what the API doesn't have is zero, empty or absent, and
  * docs/ui-redesign-plan.md lists each gap: Social and Search as sources, who has the app or a phone,
- * notes, tags, history and nudge counts per person, which shops are live in each city, nudge history,
- * follow-ups and channels.
+ * history and nudge counts per person, which shops are live in each city, nudge history, follow-ups and
+ * channels. Notes and tags are Command's own (migration 0068), by the person's masked number.
  *
  * Days are counted as the reference counts them, from a start (its 4 Aug, so today is its day 78).
  * Live the start is 1 Jan 2020, before Clear: every real date is a day after it, never day 0, which the
@@ -41,6 +41,9 @@ export function membersLive() {
   };
   const names = vars.memberNames ?? 'masked';
   const nameOf = (r) => [r.first, r.last].filter(Boolean).join(' ') || r.no || 'No name yet';
+  // Command's notes and tags, by masked number (none at Totals); a note's day is counted like the others
+  const NOTES = vars.memberNotes ?? {};
+  const TAGS = vars.memberTags ?? {};
   const base = (r, i) => ({
     id: r.no || `#${i + 1}`,
     apiId: r.id,
@@ -54,11 +57,11 @@ export function membersLive() {
     shop: r.src === 'Poster' ? shopOf(r.poster) || 'Unknown poster' : null,
     joined: dayOf(r.joined),
     jt: jtOf(r.joined),
-    // no source says who has the app, a phone, notes, tags or a history yet
+    // no source says who has the app, a phone or a history yet
     app: false,
     phone: false,
-    notes: [],
-    tags: [],
+    notes: ((r.no && NOTES[r.no]) || []).map((n) => ({ t: n.t, by: n.by || 'Someone', at: dayOf(n.at) })),
+    tags: (r.no && TAGS[r.no]) || [],
     log: [],
     nudges: 0,
   });

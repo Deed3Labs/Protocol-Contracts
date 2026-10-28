@@ -275,9 +275,16 @@ Filled in as each page is ported. Known before starting:
     each taking no one else, and a batch that skips people asks why). Approving or sending a batch back
     stays in Needs you. Showing a name is one person at a time, with a reason (`POST /members/:id/reveal`,
     W- numbers too), and logs in Records' Reveals when that page is live.
+  - **Notes and tags** (migration 0068) are Command's own, keyed by the masked number the page shows
+    (M-0001, W-0001), never a name: the section's `NOTES` (each note's text, who wrote it, when) and `TAGS`,
+    none at Totals. A person's panel adds a note (`note {subject, text}`), tags them (`tag`, asked by prompt)
+    and takes a tag off (its ×, `untag`). The API refuses a note or tag holding an email or a phone number.
+    Someone waiting who is invited and opens an account changes number (W- to M-), so their notes stay
+    on the W- number.
   - **Still missing:** Social and Search as sources (the API sends Poster or Website); whether someone has
     the app or a phone (so "best channel" and the channel mix); contact details on reveal (the endpoint
-    returns the name); notes, tags, a history log and nudge counts per person; which shops are live in
+    returns the name); a history log and nudge counts per person; notes following someone from the
+    waitlist (W-) to their account (M-); which shops are live in
     each city (the Waitlist table shows "—"); each group's last nudge (when, channel, sent, opened, acted),
     group nudges with a message, channel and time, the automatic follow-ups and which channels are set up
     (the Nudges tab's lower half says "Not real yet"); extending the invite window and closing an account
@@ -388,7 +395,22 @@ Filled in as each page is ported. Known before starting:
   hours to sign are the Safe's. People are only you, the Safe's owners and the GitHub authors. Signing is
   your own wallet (`safe.signQueued`, `safe.signAndSend`), linking it `safe.linkWallet`, and a contract's
   panel proposes a change through the old page's flow (`contracts/propose`, into the Safe); GitHub, the
-  Safe and Safe{Wallet} open in a new tab. Still missing, and "Not real yet" live:
+  Safe and Safe{Wallet} open in a new tab.
+  - **Command's own records now (migration 0066):** incidents, security findings and audits, read with the
+    section (`INCIDENTS`, `FINDINGS`, `AUDITS`, and `TEAM`: who can be given an incident, the team at Propose
+    or more on Build) and written from Build. Overview's and Security's Incidents list the open ones and those
+    of the last 30 days (open, who's on it, resolved in how long, how many reached members), and open ones that
+    are yours or nobody's are in Needs you; an incident's panel has its timeline, gives it to someone, takes an
+    update and resolves it (`incident-open`, `incident-update`, `incident-assign`, `incident-resolve`).
+    Findings is the register (severity, where, state, its fix as a pull request or a change Build lists; a fix
+    whose change waits in the Ops Safe shows as waiting on a signature), paged six at a time; a finding's panel
+    links a fix (`finding-fix`: an open finding goes to in progress) and changes its state (`finding-state`:
+    open, fixing, fixed, accepted with why; accepting a critical one waits for a second person). Audits counts
+    the contracts an audit has covered (an outside auditor's or internal), lists the audits (a day still to
+    come is booked) with their report links, and records one (`audit`). The header's Open findings tile is
+    the open and fixing ones by severity, with the newest outside audit. All at Propose; at Totals the API
+    sends no names, notes or timelines.
+  Still missing, and "Not real yet" live:
   - **Who can do what is read now:** replayed from every contract's RoleGranted/RoleRevoked, owners,
     NetworkRegistry's issuers and the AssurancePool's allowed callers (`keyRolesLive`); six holders at most,
     the rest sharing one column;
@@ -398,11 +420,9 @@ Filled in as each page is ported. Known before starting:
     Vercel history);
   - review state on pull requests (who's asked, approvals, changes asked for, time to a first review),
     line counts (+/−) and simulation results;
-  - security findings (severity, state, contract, fix PR), audit coverage, and incidents (owner,
-    timeline, resolution);
+  - findings from outside tools (Dependabot, code scanning) aren't read in: each is recorded by hand;
   - AccessManager's roles (`contracts.key_roles`, written by nothing live);
-  - actions: approving or asking for changes (GitHub reviews), resolving an incident and proposing a
-    pause are hidden live; executing a fully signed Safe transaction is done in Safe{Wallet}.
+  - actions: approving or asking for changes (GitHub reviews) and proposing a pause are hidden live; executing a fully signed Safe transaction is done in Safe{Wallet}.
 - **Community** (live: `community2.tsx` + `communityLive.ts`, its gate on, with no backend yet). Live draws the
   redesign's four tabs with nothing in them; the backend is to be discussed.
   - **Live now.** The layout, empty: "No threads yet" (Every thread, Busiest in the forum, its categories still
@@ -442,14 +462,28 @@ Filled in as each page is ported. Known before starting:
     them (`remind`) and its ballot; a resolution opens who voted how; an agreement waiting on you: Sign it
     (`contracts/esign`), one renewing: Start the renewal (`contracts/renew`). The old flows' reference-only words (the
     ballot's summary, "Logged by Kai", "Kai, secretary", "v2.2") are the data's, or left out, under REAL.
+  - **Agreement versions** (migration 0068, the governance section's `VERS` and `TERMS`). Versions draws every
+    agreement that has versions on one timeline (from the first on record, at least ten months back, to three
+    months ahead): each version's dot (in force, replaced, draft), the one in force, the next draft, and
+    who's on which. Who has accepted which is read where the apps record it, counted, never who: the member
+    app's `member_terms_acceptances` (by document@version, when Members is live) and the data room's terms
+    (`command.terms_acceptances`); a version links to one with `terms`, and what no version is linked to is
+    drawn after the agreements, so nothing recorded is left out. An agreement's panel lists its versions
+    (what changed, who adopts it, who asked and who approved, when it was replaced, how many accepted it),
+    starts a new one (`version-draft {agreement, version, changes, decidedBy, terms}`, a line per change
+    starting +, ~ or -) and proposes adopting a draft from a day (`version-adopt {agreement, version,
+    onDay}`): always a second person, and the database refuses one in force without a second person who
+    isn't the one who asked. Adopting replaces the version in force that day and sets the agreement's version.
   - **Still missing ("Not real yet" or hidden live):** proposals as a lifecycle (draft, co-signing, check, voting,
     decided, carried out; co-authors, co-signers and deadline, checker and check items, nominations, vote window per
     proposal, board recommendation, result, tasks with owners). Proposals draws the redesign's layout empty: Every
     proposal has its six steps (all 0, still filtering) and Open, Closed and All, with "No proposals yet"; Carried out
     says "Nothing carried out yet"; each foot says "Not real yet · needs …". The proposal panel, send back, check and
     open a vote, mark a task done, share the co-sign link and vote in the app are hidden. The forum (Discussion says
-    "No discussion yet"; ideas and hidden posts: Community has no backend); agreement versions, what changed and
-    who's on which (Versions is "Not real yet"; compare and start a new version are hidden); per-seat names on agenda
+    "No discussion yet"; ideas and hidden posts: Community has no backend); comparing two versions side by side
+    (the version's own text isn't kept, only what changed); a version on a member vote (a draft is adopted once
+    the vote is decided outside Command); which shops accepted which merchant agreement (the merchant app records
+    no acceptance) and which members accepted which version when the member database isn't reachable; per-seat names on agenda
     items and proposal links on agenda items and resolutions; the boards' Assembly and its "off" flag (live shows the
     three boards the API has); meeting times (the API keeps dates) and whether a held meeting's minutes were approved;
     the member vote isn't sealed (the API sends the running tally, shown as "So far"); a filing checklist beyond the old
@@ -481,11 +515,22 @@ Filled in as each page is ported. Known before starting:
     they apply; the others say "Stored · nothing enforces it yet". A change is `settings/change` and always
     waits for a second person; you can't approve your own (the panel says so and offers Withdraw), and
     approve and decline are `/proposals/:id/approve|decline`. Connections are the feeds' health now
-    (`GET /feeds`); Check now reads it again. `adminSetting(id)` returns the real value live, and Members'
+    (`GET /feeds`); Check now reads it again.
+  - **Settings, recorded by Command** (migration 0068, in `GET /sections/settings`). Organization's Profile is
+    six more settings (`sec: 'org'`: name, website, help email, time zone, fiscal year start, currency),
+    unset until someone sets them, each opened from its row and changed like any other (`settings/change`,
+    a second person; each is checked for what it is: a web address, an email, a time zone and currency
+    the runtime knows); they're kept out of Rules and limits and its count. Key age is `KEYS`: each
+    connection's last recorded key swap (when, by whom, the note, how many), as days against the rotate
+    setting, "Never recorded" for one with none; a connection's panel records a swap (`settings/key-rotated
+    {connection, on, note}`, a day today or before), since the keys are env vars the server can't date.
+    Worth a look is `WORTH`, read from what's kept (no new table): someone's first sign-in, a sign-in from a
+    device they hadn't used, a reveal with no reason, and a device not seen for 7 days, in the last 30. `adminSetting(id)` returns the real value live, and Members'
     `addReveal` loads the reveals again.
-  - **Still missing, "Not real yet" or hidden live:** connections' hourly history, keys and key age (and
-    swapping a key); alerts and who hears what; devices' trust and signing out one device (sign out
-    everywhere is there); "worth a look" events; the organization's profile; backups; who each person
+  - **Still missing, "Not real yet" or hidden live:** connections' hourly history; swapping a key from here
+    (it's done in Railway, then recorded); alerts and who hears what (Worth a look is drawn, nothing sends
+    it); devices' trust, confirming a new device (Worth a look says nothing confirms them) and signing out one
+    device (sign out everywhere is there); showing the profile to members (it's kept, nothing reads it yet); backups; who each person
     signs for on the Ops Safe beyond its owners; a quarterly access review; cancelling an invite; turning
     someone back on (turned-off people aren't listed); exports' second person (a whole list needs Approve
     on its page and a reason, nothing more; the Settings lock "Data exports need a second person" is the

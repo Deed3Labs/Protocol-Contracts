@@ -193,8 +193,37 @@ const field: Record<string, Action> = {
 // ── Members ─────────────────────────────────────────────────────────────────
 
 const member = z.object({ id: z.number().int().positive() });
+/** A person on Members, by the masked number the page shows: M-0001 for a member, W-0001 for someone waiting. */
+const subject = z.string().trim().regex(/^[MW]-\d{4,9}$/, 'A member number, like M-0001');
+/** A note or tag holds no contact details: they stay masked, and a reveal is the only way to see them. */
+const noContact = (v: string) => !/[^\s@]+@[^\s@]+\.[a-z]{2,}/i.test(v) && !/(\d[\s().-]*){7,}/.test(v);
+const NO_CONTACT = 'Leave out emails and phone numbers: they stay masked, and Show name is the way to see them';
+
 const members: Record<string, Action> = {
   export: exportAction('members', 'the member list'),
+  // notes and tags, Command's own record of a person (migration 0068), by their masked number
+  note: {
+    body: z.object({ subject, text: text(1000).min(1).refine(noContact, NO_CONTACT) }),
+    summary: (b) => `Added a note on ${b.subject}`,
+    apply: async ({ tx, person, at }, b) => {
+      await tx.query('INSERT INTO command.member_notes (subject, body, person_id, at) VALUES ($1, $2, $3, $4)', [b.subject, b.text, person.id, at]);
+    },
+  },
+  tag: {
+    body: z.object({ subject, tag: text(40).min(1).refine(noContact, NO_CONTACT) }),
+    summary: (b) => `Tagged ${b.subject} “${b.tag}”`,
+    apply: async ({ tx, person, at }, b) => {
+      await tx.query('INSERT INTO command.member_tags (subject, tag, person_id, at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING', [b.subject, b.tag, person.id, at]);
+    },
+  },
+  untag: {
+    body: z.object({ subject, tag: text(40).min(1) }),
+    summary: (b) => `Took the tag “${b.tag}” off ${b.subject}`,
+    apply: async ({ tx }, b) => {
+      const r = await tx.query('DELETE FROM command.member_tags WHERE subject = $1 AND tag = $2 RETURNING 1', [b.subject, b.tag]);
+      if (!r.rows.length) throw new ActionError(404, 'NOT_FOUND', 'That tag isn’t on them');
+    },
+  },
   resend: { body: member, summary: () => 'Resend a member’s invite', outbox: true },
   nudge: { body: member, summary: () => 'Nudge a member to finish joining', outbox: true },
   off: { body: member.extend({ reason: text(200).default('') }), summary: () => 'Turn off a member’s access', outbox: true },
@@ -1630,7 +1659,191 @@ const contracts: Record<string, Action> = {
     },
     outbox: true,
   },
+  ...buildRecords(),
 };
+
+/*
+ * Build's own records (migration 0066): incidents and their timelines, security findings, and audits.
+ * Each is Command's own record at Propose. Accepting a critical finding (it won't be fixed) waits for a
+ * second person.
+ */
+function buildRecords(): Record<string, Action> {
+  const SEVERITY = z.enum(['low', 'medium', 'high', 'critical']);
+  const rid = z.number().int().positive();
+  /** A moment the asker gives (when it began, when it was found): never after now, and within a year. */
+  const when = (at: Date, ms: number | undefined) => {
+    if (ms == null) return at;
+    if (ms > at.getTime() + 5 * 60e3 || ms < at.getTime() - 366 * DAY) throw new ActionError(400, 'BAD_TIME', 'That time is in the future or over a year ago');
+    return new Date(Math.min(ms, at.getTime()));
+  };
+  const contract = async (tx: Queryable, c: string | null | undefined) => {
+    if (c) await must(tx, 'SELECT id FROM command.contracts WHERE id = $1', [c], 'contract');
+    return c || null;
+  };
+  /** Someone who can work on Build: on the team, not turned off, and at Propose or more on it. */
+  const builder = async (tx: Queryable, personId: string, at: Date) =>
+    must<{ id: string; name: string }>(
+      tx,
+      `SELECT p.id, coalesce(nullif(p.name, ''), p.email, 'Someone') AS name FROM command.people p
+         JOIN command.person_access a ON a.person_id = p.id LEFT JOIN command.groups g ON g.id = a.group_id
+        WHERE p.id = $1 AND NOT a.off AND (a.expires_at IS NULL OR a.expires_at > $2)
+          AND coalesce((a.custom_levels ->> 'contracts')::int, (g.levels ->> 'contracts')::int, 0) >= ${PROPOSE}`,
+      [personId, at],
+      'person on Build',
+    );
+  const incident = async (tx: Queryable, id: number) => {
+    const i = await must<{ resolved_at: Date | null }>(tx, 'SELECT resolved_at FROM command.build_incidents WHERE id = $1 FOR UPDATE', [id], 'incident');
+    if (i.resolved_at) throw new ActionError(409, 'WRONG_STATE', 'That incident is resolved');
+  };
+  const line = (tx: Queryable, id: number, at: Date, text: string, by: string | null) =>
+    tx.query('INSERT INTO command.build_incident_updates (incident_id, at, line, by_id) VALUES ($1, $2, $3, $4)', [id, at, text, by]);
+  const finding = (tx: Queryable, id: number) => must<{ state: string; severity: string }>(tx, 'SELECT state, severity FROM command.build_findings WHERE id = $1 FOR UPDATE', [id], 'finding');
+  const STATE: Record<string, string> = { open: 'open', fixing: 'fix in progress', fixed: 'fixed', accepted: 'accepted (won’t fix)' };
+  return {
+    'incident-open': {
+      body: z.object({
+        title: text(160).min(1),
+        severity: SEVERITY.default('low'),
+        area: text(80).default(''),
+        contract: id.optional(),
+        note: text(1000).default(''),
+        /** Who's on it (a team member at Propose on Build); nobody yet when left out. */
+        owner: z.string().uuid().optional(),
+        /** When it began (ms), if before now. */
+        at: z.number().int().optional(),
+        reached: z.boolean().default(false),
+      }),
+      summary: (b) => `Opened an incident · ${b.title}`,
+      apply: async ({ tx, person, at }, b) => {
+        const c = await contract(tx, b.contract);
+        const owner = b.owner ? await builder(tx, b.owner, at) : null;
+        const began = when(at, b.at);
+        const r = await one<{ id: number }>(
+          tx,
+          `INSERT INTO command.build_incidents (title, severity, area, contract_id, note, owner_id, reached_members, started_at, opened_by, opened_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [b.title, b.severity, b.area, c, b.note, owner?.id ?? null, b.reached, began, person.id, at],
+        );
+        if (began < at) await line(tx, r!.id, began, 'Began', null);
+        await line(tx, r!.id, at, `Opened by ${who(person)}${owner ? (owner.id === person.id ? ', who is on it' : ` · ${owner.name} is on it`) : ''}`, person.id);
+        return { id: r!.id };
+      },
+    },
+    'incident-update': {
+      body: z.object({ id: rid, line: text(500).min(1) }),
+      summary: (b) => `Added an update to incident I${b.id}`,
+      apply: async ({ tx, person, at }, b) => {
+        await incident(tx, b.id);
+        await line(tx, b.id, at, b.line, person.id);
+      },
+    },
+    'incident-assign': {
+      body: z.object({ id: rid, owner: z.string().uuid().nullable() }),
+      summary: (b) => (b.owner ? `Gave incident I${b.id} to someone on Build` : `Took incident I${b.id} off its owner`),
+      apply: async ({ tx, person, at }, b) => {
+        await incident(tx, b.id);
+        const owner = b.owner ? await builder(tx, b.owner, at) : null;
+        await tx.query('UPDATE command.build_incidents SET owner_id = $2 WHERE id = $1', [b.id, owner?.id ?? null]);
+        await line(tx, b.id, at, owner ? (owner.id === person.id ? `${who(person)} is on it` : `${who(person)} gave it to ${owner.name}`) : `${who(person)} took it off its owner`, person.id);
+      },
+    },
+    'incident-resolve': {
+      body: z.object({ id: rid, resolution: text(500).default(''), reached: z.boolean().optional() }),
+      summary: (b) => `Resolved incident I${b.id}`,
+      apply: async ({ tx, person, at }, b) => {
+        await incident(tx, b.id);
+        await tx.query('UPDATE command.build_incidents SET resolved_at = greatest($2::timestamptz, started_at), resolution = $3, reached_members = coalesce($4, reached_members) WHERE id = $1', [
+          b.id,
+          at,
+          b.resolution,
+          b.reached ?? null,
+        ]);
+        await line(tx, b.id, at, `Resolved by ${who(person)}${b.resolution ? ': ' + b.resolution : ''}`, person.id);
+      },
+    },
+    'finding-add': {
+      body: z.object({
+        title: text(160).min(1),
+        severity: SEVERITY,
+        contract: id.optional(),
+        area: text(160).default(''),
+        note: text(2000).default(''),
+        foundBy: text(80).min(1),
+        /** When it was found (ms), if before now. */
+        at: z.number().int().optional(),
+      }),
+      summary: (b) => `Recorded a ${b.severity} finding · ${b.title}`,
+      apply: async ({ tx, person, at }, b) => {
+        const c = await contract(tx, b.contract);
+        const r = await one<{ id: number }>(
+          tx,
+          `INSERT INTO command.build_findings (title, severity, contract_id, area, note, found_by, found_at, recorded_by, recorded_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          [b.title, b.severity, c, b.area, b.note, b.foundBy, when(at, b.at), person.id, at],
+        );
+        return { id: r!.id };
+      },
+    },
+    'finding-state': {
+      body: z
+        .object({ id: rid, state: z.enum(['open', 'fixing', 'fixed', 'accepted']), note: text(500).default('') })
+        .refine((b) => b.state !== 'accepted' || b.note.length > 0, { message: 'Say why it won’t be fixed', path: ['note'] }),
+      summary: (b) => `Marked finding F${b.id} ${STATE[b.state]}`,
+      // won't fix on a critical finding is two people's call
+      second: async (b, db) => b.state === 'accepted' && (await one<{ severity: string }>(db, 'SELECT severity FROM command.build_findings WHERE id = $1', [b.id]))?.severity === 'critical',
+      apply: async ({ tx, at }, b) => {
+        const f = await finding(tx, b.id);
+        if (f.state === b.state) throw new ActionError(409, 'WRONG_STATE', `That finding is ${STATE[b.state]} already`);
+        await tx.query('UPDATE command.build_findings SET state = $2, state_at = $3, state_note = $4 WHERE id = $1', [b.id, b.state, at, b.note]);
+      },
+    },
+    'finding-fix': {
+      body: z
+        .object({ id: rid, pr: z.number().int().positive().max(1e7).optional(), change: text(200).min(1).optional() })
+        .refine((b) => !(b.pr && b.change), { message: 'A pull request or a change, not both', path: ['change'] }),
+      summary: (b) => (b.pr ? `Linked #${b.pr} as finding F${b.id}’s fix` : b.change ? `Linked a change as finding F${b.id}’s fix` : `Took finding F${b.id}’s fix off`),
+      apply: async ({ tx, at }, b) => {
+        const f = await finding(tx, b.id);
+        // a fix linked to an open finding means one is in progress
+        const st = f.state === 'open' && (b.pr || b.change) ? 'fixing' : f.state;
+        await tx.query('UPDATE command.build_findings SET fix_pr = $2, fix_change = $3, state = $4, state_at = CASE WHEN state <> $4 THEN $5 ELSE state_at END WHERE id = $1', [
+          b.id,
+          b.pr ?? null,
+          b.change ?? null,
+          st,
+          at,
+        ]);
+        return { state: st };
+      },
+    },
+    audit: {
+      body: z.object({
+        kind: z.enum(['internal', 'external']),
+        auditor: text(120).min(1),
+        contracts: z.array(id).min(1).max(100),
+        scope: text(300).default(''),
+        /** The day it was done, or is booked for (YYYY-MM-DD). */
+        on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        report: z.string().trim().max(500).url().startsWith('https://').optional(),
+        note: text(1000).default(''),
+      }),
+      summary: (b) => `Recorded ${b.kind === 'external' ? 'an outside' : 'an internal'} audit · ${b.auditor} · ${b.contracts.length} ${b.contracts.length === 1 ? 'contract' : 'contracts'}`,
+      apply: async ({ tx, person, at }, b) => {
+        const ids = [...new Set(b.contracts)];
+        const { rows } = await tx.query<{ id: string }>('SELECT id FROM command.contracts WHERE id = ANY($1)', [ids]);
+        if (rows.length !== ids.length) throw new ActionError(404, 'NOT_FOUND', 'No such contract');
+        const day = new Date(b.on + 'T00:00:00Z');
+        if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== b.on || Math.abs(day.getTime() - at.getTime()) > 3 * 366 * DAY)
+          throw new ActionError(400, 'BAD_TIME', 'That day isn’t a day within three years');
+        const r = await one<{ id: number }>(
+          tx,
+          `INSERT INTO command.build_audits (kind, auditor, contracts, scope, on_day, report_url, note, recorded_by, recorded_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          [b.kind, b.auditor, ids, b.scope, b.on, b.report ?? null, b.note, person.id, at],
+        );
+        return { id: r!.id };
+      },
+    },
+  };
+}
 
 // ── Governance ──────────────────────────────────────────────────────────────
 
@@ -1667,6 +1880,61 @@ const governance: Record<string, Action> = {
       if (!steps || i < 0) throw new ActionError(409, 'WRONG_STATE', 'Every formation step is done');
       steps[i][1] = 1;
       await tx.query(`UPDATE command.entities SET facts = $2, status = CASE WHEN $3 THEN 'formed' ELSE status END WHERE id = $1`, [b.entity, JSON.stringify({ ...e.facts, steps }), steps.every((s) => s[1])]);
+    },
+  },
+  /**
+   * Agreements → Versions: a new version of an agreement, as a draft. What changed is a line each, starting
+   * '+' (added), '~' (changed) or '-' (removed); `decidedBy` is who adopts it (the board, a member vote);
+   * `terms` links it to what the apps record acceptances under (document@version), so who has accepted it is read.
+   */
+  'version-draft': {
+    body: z.object({
+      agreement: id,
+      version: z.string().trim().regex(/^v?\d{1,3}(\.\d{1,3}){0,2}$/, 'A version like v2.2'),
+      changes: z.array(z.string().trim().regex(/^[+~-] \S/, 'Start each change with +, ~ or -, then a space').max(300)).max(40).default([]),
+      decidedBy: text(120).default(''),
+      forDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      terms: z.string().trim().regex(/^[a-z0-9_-]{1,64}@[A-Za-z0-9._-]{1,40}$/, 'The document and version the app records, like membership_terms@2026-03').optional(),
+    }),
+    summary: (b) => `Drafted ${b.version} of agreement ${b.agreement}`,
+    apply: async ({ tx, person, at }, b) => {
+      await must(tx, 'SELECT id FROM command.agreements WHERE id = $1', [b.agreement], 'agreement');
+      const v = b.version.startsWith('v') ? b.version : `v${b.version}`;
+      if (await one(tx, 'SELECT 1 FROM command.agreement_versions WHERE agreement_id = $1 AND version = $2', [b.agreement, v]))
+        throw new ActionError(409, 'EXISTS', `${v} is already recorded for this agreement`);
+      await tx.query(
+        `INSERT INTO command.agreement_versions (agreement_id, version, decided_by, changes, terms, planned_for, drafted_by, drafted_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [b.agreement, v, b.decidedBy, JSON.stringify(b.changes), b.terms ?? null, b.forDay ? new Date(`${b.forDay}T12:00:00Z`) : null, person.id, at],
+      );
+      return { version: v };
+    },
+  },
+  /**
+   * A drafted version adopted: always a second person. It's in force from the day given (the day it was
+   * adopted outside Command, never one to come) or the approval's; the version in force before it is
+   * replaced that day, and the agreement shows the new version.
+   */
+  'version-adopt': {
+    body: z.object({ agreement: id, version: z.string().trim().min(1).max(20), onDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
+    summary: (b) => `Adopt ${b.version} of agreement ${b.agreement}${b.onDay ? `, in force from ${b.onDay}` : ''}`,
+    second: async (b, db) => {
+      // one that couldn't be adopted is refused before it waits for anyone
+      const v = await must<{ status: string }>(db, 'SELECT status FROM command.agreement_versions WHERE agreement_id = $1 AND version = $2', [b.agreement, b.version], 'version');
+      if (v.status !== 'draft') throw new ActionError(409, 'WRONG_STATE', `${b.version} isn’t a draft`);
+      return true;
+    },
+    apply: async ({ tx, person, approver, at }, b) => {
+      if (!approver) throw new ActionError(403, 'SECOND_PERSON', 'Adopting a version needs a second person');
+      const v = await must<{ id: number; status: string }>(tx, 'SELECT id, status FROM command.agreement_versions WHERE agreement_id = $1 AND version = $2 FOR UPDATE', [b.agreement, b.version], 'version');
+      if (v.status !== 'draft') throw new ActionError(409, 'WRONG_STATE', `${b.version} isn’t a draft any more`);
+      const when = b.onDay ? new Date(`${b.onDay}T12:00:00Z`) : at;
+      if (when.getTime() > at.getTime() + DAY) throw new ActionError(400, 'BAD_DATE', 'A version is in force from today or a day before, never one to come');
+      const cur = await one<{ id: number; adopted_at: Date }>(tx, `SELECT id, adopted_at FROM command.agreement_versions WHERE agreement_id = $1 AND status = 'in' FOR UPDATE`, [b.agreement]);
+      if (cur && cur.adopted_at.getTime() > when.getTime()) throw new ActionError(409, 'WRONG_ORDER', 'The version in force now was adopted after that day');
+      if (cur) await tx.query(`UPDATE command.agreement_versions SET status = 'old', replaced_at = $2 WHERE id = $1`, [cur.id, when]);
+      await tx.query(`UPDATE command.agreement_versions SET status = 'in', adopted_at = $2, adopted_by = $3, approved_by = $4 WHERE id = $1`, [v.id, when, person.id, approver.id]);
+      await tx.query('UPDATE command.agreements SET version = $2 WHERE id = $1', [b.agreement, b.version]);
+      return { replaced: cur ? cur.id : null };
     },
   },
   remind: { body: z.object({}).default({}), summary: () => 'Remind members who haven’t voted', outbox: true },

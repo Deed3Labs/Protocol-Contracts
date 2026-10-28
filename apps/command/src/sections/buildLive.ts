@@ -7,8 +7,8 @@ import { CH, CH_DONE, CHAIN, CODE, CTR, CTR_NOTE, DAY, KEY_ROLES, REL, RELEASES,
  * the indexer, the code changes and the Code tab's commits and pull requests from the GitHub poller) and
  * the Ops Safe (GET /safe, GET /safe/outbox, loaded with the section). People are only who the data names:
  * you, the Safe's owners, and the GitHub authors. What nothing records yet is empty, never the
- * reference's: check runs, the apps' deploys, review state, findings, audits and incidents
- * (docs/ui-redesign-plan.md, gaps).
+ * reference's: check runs, the apps' deploys and review state (docs/ui-redesign-plan.md, gaps). Incidents,
+ * findings and audits are Command's own records (migration 0066), written from Build itself.
  */
 
 const short = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '');
@@ -261,6 +261,71 @@ export function buildLive() {
     ['Keys in this app', 'None', 'Each signer signs with their own wallet'],
   ];
 
+  /* Build's own records (migration 0066): incidents, findings and audits, in the reference's shapes */
+  const rec = vars.buildRecords ?? { incidents: [], findings: [], audits: [], team: [] };
+  /** A team member the records name, as a person (the key is their id, as yours is). */
+  const teamKey = (p) => {
+    if (!p) return 'none';
+    PPL[p.id] ??= { n: p.name, ini: initials(p.name), role: 'Build', eng: true };
+    return p.id;
+  };
+  const TEAM = rec.team.map((p) => [teamKey(p), p.name]);
+  const span = (ms) => {
+    const m = Math.max(1, Math.round(ms / 6e4));
+    if (m < 60) return `${m} min`;
+    const h = Math.round(m / 60);
+    if (h < 48) return `${h} ${h === 1 ? 'hour' : 'hours'}`;
+    return `${Math.round(h / 24)} days`;
+  };
+  const INCIDENTS = rec.incidents.map((i) => ({
+    id: 'I' + i.id,
+    n: i.id,
+    t: i.t,
+    st: i.resolved == null ? 'open' : 'closed',
+    sev: i.sev,
+    at: i.at,
+    opened: i.opened,
+    resolved: i.resolved,
+    area: [i.area, i.contract ? (nameById[i.contract] ?? i.contract) : ''].filter(Boolean).join(' · ') || 'No area given',
+    contract: i.contract,
+    who: teamKey(i.owner),
+    dur: i.resolved != null ? span(i.resolved - i.at) : '',
+    note: i.note,
+    resolution: i.resolution,
+    reached: !!i.reached,
+    ev: i.ev,
+  }));
+  const CHG_IDS = new Set(CHANGES.map((c) => c.id));
+  const FINDINGS = rec.findings.map((f) => {
+    // its fix: a pull request (shown as the change when Build lists it) or a change on Build
+    const fix = f.pr ? (CHG_IDS.has('pr' + f.pr) ? 'pr' + f.pr : null) : f.change && CHG_IDS.has(f.change) ? f.change : null;
+    const waiting = f.st === 'fixing' && fix && CHANGES.find((c) => c.id === fix)?.st === 'safe';
+    return {
+      id: 'F' + f.id,
+      n: f.id,
+      sev: f.sev,
+      t: f.t,
+      contract: f.contract && byId[f.contract] ? f.contract : null,
+      where: f.where || (f.contract ? (nameById[f.contract] ?? f.contract) : '') || 'Not placed',
+      found: f.found,
+      by: f.by,
+      st: waiting ? 'waiting' : f.st,
+      state: f.st,
+      stAt: f.stAt,
+      stNote: f.stNote,
+      fixedAt: f.st === 'fixed' ? f.stAt : undefined,
+      fix,
+      pr: f.pr,
+      change: f.change,
+      prUrl: f.pr && CODE.repo ? `https://github.com/${CODE.repo}/pull/${f.pr}` : '',
+      note: f.note,
+    };
+  });
+  // which contracts have been reviewed (an audit's day has come), and by whom
+  const AUDITS = rec.audits.map((a) => ({ ...a, id: 'A' + a.id, done: a.on <= NOW, names: a.contracts.map((c) => nameById[c] ?? c) }));
+  const reviewed = { internal: new Set(), external: new Set() };
+  for (const a of AUDITS) if (a.done) for (const c of a.contracts) if (byId[c]) reviewed[a.kind].add(c);
+
   return {
     NOW,
     TODAY,
@@ -275,8 +340,13 @@ export function buildLive() {
     RTINY,
     ENV,
     DEPLOYS,
-    FINDINGS: [],
-    INCIDENTS: [],
+    FINDINGS,
+    INCIDENTS,
+    AUDITS,
+    /** The contracts an audit has covered: internally, by an outside auditor, either. */
+    reviewed: { internal: reviewed.internal, external: reviewed.external, any: new Set([...reviewed.internal, ...reviewed.external]) },
+    /** Who can be given an incident: [key, name], the team at Propose or more on Build. */
+    TEAM,
     SIGNERS: SIGN_ROWS,
     SIGN_W: { ...SIGN_W },
     /** The signers' eight weeks, each labelled by the day it starts. */

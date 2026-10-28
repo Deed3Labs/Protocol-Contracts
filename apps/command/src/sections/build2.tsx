@@ -2,6 +2,7 @@
 import { Fragment } from 'react';
 import { attrs, css, hasHtml, html } from '../runtime/dom';
 import { LIVE as LIVE_APP, REAL } from '../live/env';
+import { act } from '../live/actions';
 import { reloadSection } from '../live/sections';
 import { buildLive } from './buildLive';
 import { CC } from './cc';
@@ -19,8 +20,9 @@ import { openItem, render as renderShell, toast, vLevel } from './shell';
  *
  * Live (REAL), its datasets are buildLive()'s (`LV`: named so, not L, as the module uses L for its own
  * lists): the indexer's contracts and releases, the GitHub poller's commits and pull requests, and the
- * Ops Safe's owners and queue. What nothing records yet (checks, the apps' deploys, reviews, findings,
- * audits, incidents) says "Not real yet", and its buttons are hidden.
+ * Ops Safe's owners and queue, and Command's own records of incidents, findings and audits (written from
+ * here). What nothing records yet (checks, the apps' deploys, reviews) says "Not real yet", and its buttons
+ * are hidden.
  */
 
 /** The page's skeleton: the reference template's markup. */
@@ -1178,6 +1180,238 @@ function makeBuild() {
     const notReal = (cls, title, need, id = '') => cell(cls, title, lbl('Not real yet'), <><div className="bk-empty hatch" style={css("min-height:120px;opacity:.5")} /><div className="bk-empty">{need}</div></>, <span />, id);
     const shortA = a => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '';
     const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    /* ── Build's own records, live (migration 0066): incidents, findings and audits, written from here ── */
+    // who may write them: Propose or more on Build, in the live app (the empty preview saves nothing)
+    const CANW = () => LIVE_APP && !RO() && !TOT();
+    const FST = {
+      ...FSTATE,
+      accepted: ['Accepted · won’t fix', 'var(--line)']
+    };
+    const SEV_ORD = {
+      critical: 0,
+      high: 1,
+      medium: 2,
+      low: 3
+    };
+    const openF = f => f.state === 'open' || f.state === 'fixing';
+    const PER = 6;
+    /** Findings, then incidents, in a sentence (the Security tab's brief). */
+    const secLine = () => {
+      const fo = FINDINGS.filter(openF),
+        cr = fo.filter(f => f.sev === 'critical').length,
+        io = INCIDENTS.filter(i => i.st === 'open').length;
+      return `${!FINDINGS.length ? 'No findings are recorded yet.' : fo.length ? `${plural(fo.length, 'finding is', 'findings are')} open${cr ? `, ${cr} critical` : ''}.` : 'Every finding is fixed or accepted.'} ${io ? `${plural(io, 'incident is', 'incidents are')} open.` : 'No incident is open.'}`;
+    };
+    /** The newest outside audit, done or booked (the header's tile). */
+    const audLine = () => {
+      const ext = LV.AUDITS.filter(a => a.kind === 'external'),
+        done = ext.find(a => a.done),
+        booked = ext.filter(a => !a.done).at(-1);
+      return done ? `Outside audit ${fmtD(done.on)}${done.auditor ? ' · ' + done.auditor : ''}` : booked ? `Outside audit booked for ${fmtD(booked.on)}` : 'No outside audit yet';
+    };
+    /** The incidents a cell lists: every open one, then those that began or were resolved in the last 30 days. */
+    function incCell(cls, max, more) {
+      const L2 = INCIDENTS.filter(i => i.st === 'open' || Math.max(i.at, i.resolved ?? 0) >= NOW - 30 * DAY),
+        op = L2.filter(i => i.st === 'open').length,
+        rch = L2.filter(i => i.reached).length,
+        pages = Math.ceil(L2.length / max),
+        p = Math.max(0, Math.min(B.ip || 0, pages - 1)),
+        paged = more && L2.length > max;
+      B.ip = p;
+      const rows = L2.slice(more ? p * max : 0, (more ? p * max : 0) + max);
+      return cell(cls, 'Incidents', paged ? pager(p, L2.length, max, 'bip') : <span className="lbl">{L2.length > max ? `${max} of ${L2.length} · ` : ''}Open, and the last 30 days</span>, <div className="bd-il">{rows.length ? rows.map((i, __k) => <button key={__k} className={`bd-ir ${i.st}`} data-binc={i.id}>{leaf(i.at)}<span><b>{i.t}</b><span>{i.area}{" · "}{i.st === 'open' ? i.who === 'none' ? 'open · nobody on it' : `open · ${who(i.who)}` : 'resolved in ' + i.dur}</span></span><span className={`fst ${i.st === 'open' ? 'warn2' : ''}`}>{i.st === 'open' ? 'Open' : 'Closed'}</span></button>) : <div className="bd-e">{INCIDENTS.length ? 'None in the last 30 days' : 'No incidents yet'}</div>}</div>, <><span>{op}{" open · "}{rch ? `${rch} reached members` : 'none reached members'}</span>{more || <span />}</>);
+    }
+    /** The findings register: open first, then by severity, newest first; paged. */
+    function fndCell() {
+      const F = FINDINGS.slice().sort((a, b) => !openF(a) - !openF(b) || SEV_ORD[a.sev] - SEV_ORD[b.sev] || b.found - a.found),
+        open = F.filter(openF).length,
+        fixed = F.filter(f => f.state === 'fixed').length,
+        acc = F.length - open - fixed,
+        pages = Math.ceil(F.length / PER),
+        p = Math.max(0, Math.min(B.fp || 0, pages - 1)),
+        by = [...new Set(F.map(f => f.by).filter(Boolean))];
+      B.fp = p;
+      const row = (f, k) => {
+        const fx = f.fix && CHG[f.fix],
+          em = f.state === 'fixed' ? `Fixed ${fmtD(f.stAt)}` : f.state === 'accepted' ? `${fmtD(f.stAt)}${f.stNote ? ' · ' + f.stNote : ''}` : fx ? `${fx.repo ? '#' + fx.num : fx.t} · ${stateTxt(fx).toLowerCase()}` : f.pr ? `#${f.pr}` : f.change ? 'A change on Build' : 'No fix yet';
+        return <button key={k} className={`bd-fd-r ${f.st}`} data-bfind={f.id}><span className={`bd-sev ${f.sev}`}>{SEV[f.sev][0]}</span><span className="bd-fd-k"><b>{f.t}</b><span>{f.where}</span></span><span className="bd-fd-s"><i style={css(`background:${FST[f.st][1]}`)} /><span><b>{FST[f.st][0]}</b><em>{em}</em></span></span></button>;
+      };
+      const right = F.length > PER && CANW() ? pager(p, F.length, PER, 'bfp') : <span className="lbl">{open}{" open · "}{fixed}{" fixed"}{acc ? ` · ${acc} accepted` : ''}</span>;
+      const foot = CANW() ? <button data-bnew="finding">Add a finding</button> : F.length > PER ? pager(p, F.length, PER, 'bfp') : <span />;
+      return cell('s8', 'Findings', right, <div className="bd-fd">{F.length ? F.slice(p * PER, p * PER + PER).map(row) : <div className="bd-e">No findings recorded yet</div>}</div>, <><span>{by.length ? `Found by ${by.slice(0, 2).join(' and ')}${by.length > 2 ? ` and ${by.length - 2} more` : ''}` : 'Each one is recorded here'}</span>{foot}</>);
+    }
+    /** Which contracts have been reviewed, and the audits themselves, newest first. */
+    function audCell() {
+      const tot = CTR.length,
+        R = LV.reviewed,
+        rv = R.any.size,
+        ext = R.external.size,
+        A = LV.AUDITS,
+        last = A.find(a => a.kind === 'external' && a.done);
+      const name = a => a.auditor || (a.kind === 'external' ? 'An outside auditor' : 'Internal review');
+      return cell('s4', 'Audits', <span className="lbl">{plural(tot, 'contract', 'contracts')}</span>, <div className="bd-au"><div className="m-big">{rv}{" "}<small>{"of "}{tot}{" contracts reviewed"}</small></div><div className="bd-au-b"><i style={css(`width:${tot ? rv / tot * 100 : 0}%`)} /><i className="hx" style={css(`width:${tot ? (tot - rv) / tot * 100 : 100}%`)} /></div><div className="led bd-au-k">{[['Reviewed', `${ext} by an outside auditor · ${rv - ext} internally`], ['Not yet', plural(tot - rv, 'contract', 'contracts')]].map(([k, v], i) => <div key={i}><span><i className={i ? 'hx' : ''} />{k}</span><b>{v}</b></div>)}</div><div className="bd-au-l">{lbl('Audits')}<div className="led">{A.length ? A.slice(0, 4).map((a, __k) => <div key={__k} title={[a.names.join(', '), a.scope].filter(Boolean).join(' · ')}><span>{name(a)}{" · "}{a.names.length === 1 ? a.names[0] : plural(a.names.length, 'contract', 'contracts')}</span><b className={a.done ? '' : 'wt'}>{a.done ? fmtD(a.on) : `Booked · ${fmtD(a.on)}`}{a.report ? <>{" · "}<button className="lnk3" data-bgh={a.report}>Report ↗</button></> : ''}</b></div>) : <div><span>No audits recorded yet</span><b /></div>}</div></div></div>, <><span>{last ? `Last outside audit ${fmtD(last.on)}` : 'No outside audit yet'}</span>{CANW() ? <button data-bnew="audit">Record an audit</button> : <span />}</>);
+    }
+    /* the panels' fields: the reference's .vin inputs, each with its label */
+    const fld = (label, input) => <label style={css('display:block')}>{lbl(label)}{input}</label>;
+    const two = (a, b) => <div style={css('display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px')}>{a}{b}</div>;
+    const row2 = (a, b) => <div style={css('display:flex;gap:8px;align-items:center;margin-top:8px')}>{a}{b}</div>;
+    const sevSel = (id, v) => <select className="vin" id={id} defaultValue={v}>{Object.keys(SEV_ORD).map(k => <option key={k} value={k}>{SEV[k][0]}</option>)}</select>;
+    const ctrSel = id => <select className="vin" id={id} defaultValue=""><option value="">None</option>{CTR.map(c => <option key={c[0]} value={c[0]}>{c[1]}</option>)}</select>;
+    const today = () => new Date(NOW - new Date(NOW).getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+    const teamOpts = cur => <><option value="">Nobody yet</option>{LV.TEAM.map(([k, n]) => <option key={k} value={k}>{k === B.me ? `You · ${n}` : n}</option>)}{cur !== 'none' && !LV.TEAM.some(([k]) => k === cur) ? <option value={cur}>{who(cur)}</option> : ''}</>;
+    /** A form for a new incident, finding or audit, in the side panel. */
+    function formLive(k) {
+      const foot = (save, txt) => <div className="pn-ft"><button className="btn" data-bclose="">Cancel</button><button className="btn p" data-bsave={save}>{txt}</button></div>;
+      if (k === 'incident') return <>{phd('Incident · new')}<><div className="pn-b"><div><p className="bpn-t">Open an incident</p><p className="bpn-s">Something went wrong: a sync behind, a deploy rolled back, a contract that paused. Its timeline starts here.</p></div>{fld('What happened', <input className="vin" id="bf-t" autoComplete="off" maxLength={160} />)}{two(fld('How bad', sevSel('bf-sev', 'low')), fld('Where', <select className="vin" id="bf-area" defaultValue=""><option value="">Not sure yet</option>{[...new Set([...REPOS.map(r => RSHORT[r.id]), 'Money', 'Providers', 'Command'])].map(a => <option key={a} value={a}>{a}</option>)}</select>))}{two(fld('Contract', ctrSel('bf-c')), fld('Who’s on it', <select className="vin" id="bf-own" defaultValue={LV.TEAM.some(([x]) => x === B.me) ? B.me : ''}>{teamOpts('none')}</select>))}{fld('When it began · if before now', <input className="vin" type="datetime-local" id="bf-at" />)}{fld('What we know', <textarea className="vin" id="bf-n" rows="3" maxLength={1000} />)}<label style={css('display:flex;gap:8px;align-items:center;font-size:13px')}><input type="checkbox" id="bf-r" />{" It reached members"}</label></div>{foot('incident', 'Open the incident')}</></>;
+      if (k === 'finding') return <>{phd('Finding · new')}<><div className="pn-b"><div><p className="bpn-t">Add a finding</p><p className="bpn-s">A security finding: how bad it is, where, and who found it. Link its fix once there is one.</p></div>{fld('What it is', <input className="vin" id="bf-t" autoComplete="off" maxLength={160} />)}{two(fld('How bad', sevSel('bf-sev', 'medium')), fld('Contract', ctrSel('bf-c')))}{fld('Where · a function or a folder', <input className="vin" id="bf-w" autoComplete="off" maxLength={160} />)}{two(fld('Found by', <input className="vin" id="bf-by" defaultValue="Internal review" autoComplete="off" maxLength={80} />), fld('Found on', <input className="vin" type="date" id="bf-on" defaultValue={today()} max={today()} />))}{fld('What it means', <textarea className="vin" id="bf-n" rows="4" maxLength={2000} />)}</div>{foot('finding', 'Add the finding')}</></>;
+      if (k === 'audit') return <>{phd('Audit · new')}<><div className="pn-b"><div><p className="bpn-t">Record an audit</p><p className="bpn-s">Which contracts were reviewed, internally or by an outside auditor. A day still to come is one that’s booked.</p></div>{two(fld('Kind', <select className="vin" id="bf-k" defaultValue="internal"><option value="internal">Internal review</option><option value="external">An outside auditor</option></select>), fld('Day', <input className="vin" type="date" id="bf-on" defaultValue={today()} />))}{fld('Who did it', <input className="vin" id="bf-by" autoComplete="off" maxLength={120} />)}<div>{lbl('Contracts')}<div style={css('display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px 12px;margin-top:8px;max-height:240px;overflow:auto;font-size:13px')}>{CTR.map(c => <label key={c[0]} style={css('display:flex;gap:6px;align-items:center;min-width:0')}><input type="checkbox" data-bfc={c[0]} /><span style={css('overflow:hidden;text-overflow:ellipsis;white-space:nowrap')}>{c[1]}</span></label>)}</div></div>{fld('Scope · a version, a commit, what was left out', <input className="vin" id="bf-sc" autoComplete="off" maxLength={300} />)}{fld('Report · a link', <input className="vin" type="url" id="bf-rp" placeholder="https://" autoComplete="off" maxLength={500} />)}{fld('Note', <textarea className="vin" id="bf-n" rows="2" maxLength={1000} />)}</div>{foot('audit', 'Record the audit')}</></>;
+      return '';
+    }
+    /** An incident, live: its timeline, who's on it, and (to someone on Build) an update, a new owner or resolving it. */
+    function incPanelLive(i) {
+      const open = i.st === 'open',
+        w = CANW() && open,
+        on = i.who === 'none' ? 'nobody is on it yet' : i.who === B.me ? 'you’re on it' : `${who(i.who)} is on it`;
+      const rows = [['How bad', <span className={`bd-sev ${i.sev}`}>{SEV[i.sev][0]}</span>], ['Began', `${fmtD(i.at)} ${hm(i.at)}`], ...(i.contract && ctrOf(i.contract) ? [['Contract', <button className="lnk3" data-bctr={i.contract}>{ctrOf(i.contract)[1]}</button>]] : []), ['Reached members', i.reached ? 'Yes' : 'No'], ...(open ? [] : [['Resolved', `${fmtD(i.resolved)} ${hm(i.resolved)}`], ...(i.resolution ? [['What resolved it', i.resolution]] : [])])];
+      return <>{phd('Incident', <span className={`fst ${open ? 'warn2' : ''}`} style={css("margin-left:8px")}>{open ? 'Open' : 'Closed'}</span>)}<><div className="pn-b"><div><p className="bpn-t">{i.t}</p><p className="bpn-s">{i.area}{" · "}{open ? on : 'resolved in ' + i.dur}</p></div>{i.note ? <p className="bpn-n">{i.note}</p> : ''}<div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div><div>{lbl('What happened')}<div className="bd-tl">{(i.ev.length ? i.ev : [[i.at, 'Began', '']]).map(([t, s2, by], __k) => <div key={__k}><span className="mono">{fmtD(t)}{" "}{hm(t)}</span><span>{s2}{by && !s2.includes(by) ? ` · ${by}` : ''}</span></div>)}</div></div>{w ? <div>{lbl('Who’s on it')}{row2(<select className="vin" id="bown" defaultValue={i.who === 'none' ? '' : i.who} style={css('flex:1;margin-top:0')}>{teamOpts(i.who)}</select>, <button className="btn" data-bassign={i.id}>Give it</button>)}</div> : ''}{w ? fld('An update, or what resolved it', <textarea className="vin" id="bupd" rows="3" maxLength={500} />) : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>{open ? 'Open ' + ago(i.at) : 'Resolved in ' + i.dur}</span>{w ? <><button className="btn" data-bincup={i.id}>Add the update</button><button className="btn p" data-bresolve={i.id}>Mark resolved</button></> : ''}</div></></>;
+    }
+    /** A finding, live: where it is, its fix, and (to someone on Build) linking a fix or changing its state. */
+    function findPanelLive(f) {
+      const fx = f.fix && CHG[f.fix],
+        acc = f.state === 'accepted',
+        w = CANW(),
+        steps = acc ? ['Found', 'Accepted · won’t fix'] : ['Found', 'Fix in progress', 'Fix waiting on a signature', 'Fixed'],
+        at = acc ? 1 : ['open', 'fixing', 'waiting', 'fixed'].indexOf(f.st);
+      const fixV = fx ? <button className="lnk3" data-bopen={fx.id}>{fx.repo ? '#' + fx.num + ' · ' : ''}{fx.t}</button> : f.pr ? f.prUrl ? <button className="lnk3" data-bgh={f.prUrl}>{`#${f.pr} ↗`}</button> : `#${f.pr}` : f.change ? <span className="mono">{f.change}</span> : 'None linked yet';
+      const rows = [['Found', `${fmtD(f.found)}${f.by ? ' · ' + f.by : ''}`], ...(f.contract ? [['Contract', <button className="lnk3" data-bctr={f.contract}>{ctrOf(f.contract)[1]}</button>]] : []), ['Fix', fixV], ...(fx ? [['Where it is', stateTxt(fx)]] : []), ...(f.state === 'fixed' || acc ? [[acc ? 'Accepted' : 'Fixed', fmtD(f.stAt)]] : []), ...(acc && f.stNote ? [['Why', f.stNote]] : [])];
+      // a fix is a pull request (by its number) or a change Build lists
+      const cur = f.pr ? 'pr:' + f.pr : f.change ? 'ch:' + f.change : '';
+      const opts = CHANGES.map(c => [c.repo && c.num ? 'pr:' + c.num : 'ch:' + c.id, `${c.repo && c.num ? '#' + c.num : c.kind === 'upgrade' ? 'Next release' : 'Ops Safe'} · ${c.t}`]);
+      // one Build no longer lists (merged over a week ago, executed) keeps its own option
+      if (cur && !opts.some(o => o[0] === cur)) opts.unshift([cur, f.pr ? `#${f.pr}` : f.change]);
+      const edit = w ? <><div>{lbl('Its fix')}{row2(<select className="vin" id="bfixc" defaultValue={cur} style={css('flex:1;min-width:0;margin-top:0')}><option value="">None</option>{opts.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>, <input className="vin" id="bfixn" inputMode="numeric" placeholder="or #PR" aria-label="A pull request’s number" style={css('width:90px;margin-top:0')} />)}{row2(<span className="small quiet" style={css('flex:1')}>Linking a fix to an open finding puts it in progress</span>, <button className="btn" data-bfix={f.id}>Link the fix</button>)}</div><div>{lbl('Its state')}{row2(<select className="vin" id="bfsts" defaultValue={f.state} style={css('flex:1;margin-top:0')}>{[['open', 'Open'], ['fixing', 'Fix in progress'], ['fixed', 'Fixed'], ['accepted', 'Accepted · won’t fix']].map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>, <button className="btn" data-bfst={f.id}>Change it</button>)}<input className="vin" id="bfstn" autoComplete="off" maxLength={500} placeholder={f.sev === 'critical' ? 'Why it won’t be fixed · a second person approves' : 'Why, if it won’t be fixed'} /></div></> : '';
+      return <>{phd('Finding', <span className={`bd-sev ${f.sev}`} style={css("margin-left:8px")}>{SEV[f.sev][0]}</span>)}<><div className="pn-b"><div><p className="bpn-t">{f.t}</p><p className="bpn-s">{f.where}</p></div><div className="bd-tk">{steps.map((t, i) => <span key={i} className={i < at ? 'done' : i === at ? 'now' : ''}><i />{t}</span>)}</div>{f.note ? <p className="bpn-n">{f.note}</p> : ''}<div className="led">{rows.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{edit}</div><div className="pn-ft">{fx && need(fx) ? <button className="btn p" data-bopen={fx.id}>{need(fx) === 'sign' ? 'Sign the fix' : 'Review the fix'}</button> : <span className="small quiet" style={css("margin-right:auto")}>{FST[f.st][0]}</span>}</div></></>;
+    }
+    const val = id => (document.getElementById(id)?.value ?? '').trim();
+    /** Saves a record from its panel or form (POST /actions/contracts/…); the page is built again from the answer, the panel kept. */
+    function saveLive(t, d) {
+      if (!LIVE_APP) return toast('Nothing is saved in the preview');
+      const inc = id => INCIDENTS.find(i => i.id === id),
+        fnd = id => FINDINGS.find(f => f.id === id);
+      let kind, body, then, said;
+      if (d.bsave === 'incident') {
+        body = {
+          title: val('bf-t'),
+          severity: val('bf-sev') || 'low',
+          area: val('bf-area'),
+          note: val('bf-n'),
+          reached: !!document.getElementById('bf-r')?.checked
+        };
+        if (!body.title) return toast('Say what happened');
+        if (val('bf-c')) body.contract = val('bf-c');
+        if (val('bf-own')) body.owner = val('bf-own');
+        if (val('bf-at')) body.at = Date.parse(val('bf-at'));
+        [kind, said, then] = ['incident-open', 'Incident opened · logged in Records', r => ({
+          inc: 'I' + r.result.id
+        })];
+      } else if (d.bsave === 'finding') {
+        body = {
+          title: val('bf-t'),
+          severity: val('bf-sev') || 'medium',
+          area: val('bf-w'),
+          note: val('bf-n'),
+          foundBy: val('bf-by')
+        };
+        if (!body.title) return toast('Say what the finding is');
+        if (!body.foundBy) return toast('Say who found it');
+        if (val('bf-c')) body.contract = val('bf-c');
+        if (val('bf-on') && val('bf-on') !== today()) body.at = Date.parse(val('bf-on'));
+        [kind, said, then] = ['finding-add', 'Finding recorded · logged in Records', r => ({
+          find: 'F' + r.result.id
+        })];
+      } else if (d.bsave === 'audit') {
+        const cs = [...document.querySelectorAll('[data-bfc]')].filter(x => x.checked).map(x => x.dataset.bfc);
+        body = {
+          kind: val('bf-k') || 'internal',
+          auditor: val('bf-by'),
+          contracts: cs,
+          scope: val('bf-sc'),
+          on: val('bf-on'),
+          note: val('bf-n')
+        };
+        if (!body.auditor) return toast('Say who did it');
+        if (!cs.length) return toast('Pick the contracts it covered');
+        if (!body.on) return toast('Pick the day');
+        if (val('bf-rp')) {
+          if (!/^https:\/\//.test(val('bf-rp'))) return toast('The report’s link starts with https://');
+          body.report = val('bf-rp');
+        }
+        [kind, said, then] = ['audit', 'Audit recorded · logged in Records', () => null];
+      } else if (d.bincup || d.bresolve) {
+        const i = inc(d.bincup || d.bresolve);
+        if (!i) return;
+        if (d.bincup && !val('bupd')) return toast('Write the update first');
+        [kind, body, said] = d.bincup ? ['incident-update', {
+          id: i.n,
+          line: val('bupd')
+        }, 'Update added'] : ['incident-resolve', {
+          id: i.n,
+          resolution: val('bupd')
+        }, 'Marked resolved · logged in Records'];
+        then = () => ({
+          inc: i.id
+        });
+      } else if (d.bassign) {
+        const i = inc(d.bassign);
+        if (!i) return;
+        const o = val('bown') || null;
+        if ((o || 'none') === i.who) return toast(o ? `${who(o)} is on it already` : 'Nobody is on it already');
+        [kind, body, said, then] = ['incident-assign', {
+          id: i.n,
+          owner: o
+        }, o ? `Given to ${who(o)}` : 'Taken off its owner', () => ({
+          inc: i.id
+        })];
+      } else if (d.bfst) {
+        const f = fnd(d.bfst);
+        if (!f) return;
+        const st = val('bfsts');
+        if (st === f.state) return toast(`It’s ${FST[st][0].toLowerCase()} already`);
+        if (st === 'accepted' && !val('bfstn')) return toast('Say why it won’t be fixed');
+        [kind, body, said, then] = ['finding-state', {
+          id: f.n,
+          state: st,
+          note: val('bfstn')
+        }, `Marked ${FST[st][0].toLowerCase()}`, () => ({
+          find: f.id
+        })];
+      } else if (d.bfix) {
+        const f = fnd(d.bfix);
+        if (!f) return;
+        const n = val('bfixn').replace(/^#/, ''),
+          c = val('bfixc');
+        if (n && !/^[1-9]\d{0,6}$/.test(n)) return toast('A pull request’s number, like 132');
+        body = {
+          id: f.n
+        };
+        if (n) body.pr = +n;else if (c.startsWith('pr:')) body.pr = +c.slice(3);else if (c.startsWith('ch:')) body.change = c.slice(3);
+        if (!body.pr && !body.change && !f.pr && !f.change) return toast('Pick the change that fixes it, or type its pull request’s number');
+        [kind, said, then] = ['finding-fix', body.pr || body.change ? 'Fix linked' : 'Fix taken off', () => ({
+          find: f.id
+        })];
+      } else return;
+      t.disabled = true;
+      act('contracts', kind, body).then(r => {
+        toast(r.proposal ? 'Sent for a second person · it changes once someone else approves it in Needs you' : said);
+        const P = then?.(r);
+        B.panel = r.proposal ? B.panel : P;
+        B.rej = false;
+        renderShell();
+      }, e => {
+        t.disabled = false;
+        toast(e.message);
+      });
+    }
     /** What waits in the Ops Safe, in a sentence. */
     const safeLine = () => {
       const m = mine(),
@@ -1199,17 +1433,20 @@ function makeBuild() {
         changes: `${CHANGES.filter(c => c.st === 'review').length} in review and ${CHANGES.filter(c => c.st === 'safe').length} in the Ops Safe. ${CHANGES.filter(c => c.st === 'shipped').length} shipped in the last 7 days.`,
         contracts: <>{LV.chain.network ? `${LV.deployed} of ${n} contracts are found on ${net()}.` : 'The chain isn’t indexed yet.'}{" "}{next ? <><a data-bopen={next.id}>{next.t}</a>{" is next: "}{next.state}.</> : safeLine()}</>,
         deploys: `${LV.chain.network ? `The contracts run on ${net()}.` : 'The chain isn’t indexed yet.'} Where the apps run (Railway and Vercel) isn’t read yet.`,
-        security: <>{"Findings, audits and incidents aren’t recorded here yet. "}{safeLine()}</>
+        security: <>{secLine()}{" "}{safeLine()}</>
       }[B.tab];
-      html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{`Build · ${WD(NOW)} ${fmtD(NOW)}`}</span><p className="brief">{BR}</p><div className="strip"><div className="sc" data-btab="changes"><span className="lbl">Waiting on you</span><div className="sc-v">{m.length}{" "}<small>{m.length === 1 ? 'change' : 'changes'}</small></div><div className="mb">{m.map((c, i) => <i key={i} style={css(`left:${i * 100 / Math.max(2, m.length)}%;width:calc(${100 / Math.max(2, m.length)}% - 2px);background:var(--live)`)} />)}</div><div className="sc-s">{`${m.length} to sign · reviews aren’t read yet`}</div></div><div className="sc" data-btab="deploys"><span className="lbl">Checks</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · checks aren’t read</div></div><div className="sc" data-btab="contracts"><span className="lbl">{LV.chain.network === 'Base' ? 'On mainnet' : 'On testnet'}</span><div className="sc-v">{LV.deployed}{" "}<small>{"of "}{n}{" contracts"}</small></div><div className="mb"><i style={css(`width:${pct}%`)} /><span className="hroom" style={css(`left:${pct}%;right:0`)} /></div><div className="sc-s">{chainTxt()}</div></div><div className="sc" data-btab="security"><span className="lbl">Open findings</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · no findings are recorded</div></div></div></>);
+      const fo = FINDINGS.filter(openF),
+        fcrit = fo.filter(f => f.sev === 'critical').length;
+      html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{`Build · ${WD(NOW)} ${fmtD(NOW)}`}</span><p className="brief">{BR}</p><div className="strip"><div className="sc" data-btab="changes"><span className="lbl">Waiting on you</span><div className="sc-v">{m.length}{" "}<small>{m.length === 1 ? 'change' : 'changes'}</small></div><div className="mb">{m.map((c, i) => <i key={i} style={css(`left:${i * 100 / Math.max(2, m.length)}%;width:calc(${100 / Math.max(2, m.length)}% - 2px);background:var(--live)`)} />)}</div><div className="sc-s">{`${m.length} to sign · reviews aren’t read yet`}</div></div><div className="sc" data-btab="deploys"><span className="lbl">Checks</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · checks aren’t read</div></div><div className="sc" data-btab="contracts"><span className="lbl">{LV.chain.network === 'Base' ? 'On mainnet' : 'On testnet'}</span><div className="sc-v">{LV.deployed}{" "}<small>{"of "}{n}{" contracts"}</small></div><div className="mb"><i style={css(`width:${pct}%`)} /><span className="hroom" style={css(`left:${pct}%;right:0`)} /></div><div className="sc-s">{chainTxt()}</div></div><div className="sc" data-btab="security"><span className="lbl">Open findings</span><div className="sc-v">{fo.length}{" "}<small>{fcrit}{" critical"}</small></div><div className="mb">{fo.map((f, i) => <i key={i} style={css(`left:${i / Math.max(5, fo.length) * 100}%;width:calc(${100 / Math.max(5, fo.length)}% - 2px);background:${SEV[f.sev][1]}`)} />)}</div><div className="sc-s">{audLine()}</div></div></div></>);
     }
     function renderOverviewLive() {
       const m = mine(),
         ready = CHANGES.filter(c => c.ready);
-      const NEED = [...m.map(c => ['live', c.outbox ? `Sign and send · ${c.t}` : `Sign · ${c.t}`, `Ops Safe · ${sigCount(c)} of ${c.req || LV.threshold} signed${c.from ? ' · from ' + c.from : ''}`, ago(c.opened).replace(' ago', ''), 'Your signature', `data-bopen="${c.id}"`, 1]), ...ready.map(c => ['underway', `Execute · ${c.t}`, `Ops Safe · ${sigCount(c)} of ${c.req} signed · in Safe{Wallet}`, ago(c.opened).replace(' ago', ''), 'Anyone can', `data-bopen="${c.id}"`])];
+      const NEED = [...m.map(c => ['live', c.outbox ? `Sign and send · ${c.t}` : `Sign · ${c.t}`, `Ops Safe · ${sigCount(c)} of ${c.req || LV.threshold} signed${c.from ? ' · from ' + c.from : ''}`, ago(c.opened).replace(' ago', ''), 'Your signature', `data-bopen="${c.id}"`, 1]), ...ready.map(c => ['underway', `Execute · ${c.t}`, `Ops Safe · ${sigCount(c)} of ${c.req} signed · in Safe{Wallet}`, ago(c.opened).replace(' ago', ''), 'Anyone can', `data-bopen="${c.id}"`]), ...INCIDENTS.filter(i => i.st === 'open' && (i.who === B.me || i.who === 'none')).map(i => ['absent', i.t, `${i.area} · ${SEV[i.sev][0]}`, ago(i.at).replace(' ago', ''), i.who === B.me ? 'You’re on it' : 'Nobody is on it', `data-binc="${i.id}"`, i.who === B.me ? 1 : 0])];
       const needs = cell('s5', 'Needs you', <span className="lbl">{plural(NEED.length, 'thing', 'things')}</span>, <div className="bd-nd">{NEED.length ? NEED.map(([sv, t, mm, age, own, at, me], __k) => <button key={__k} className="bd-nd-r" {...attrs(at)}><i style={css(`background:${{
             underway: 'var(--underway)',
-            live: 'var(--live)'
+            live: 'var(--live)',
+            absent: 'var(--absent)'
           }[sv]}`)} /><span className="bd-nd-k"><b>{t}</b><span>{mm}</span></span><span className="bd-nd-a"><span className={me ? 'me' : ''}>{own}</span><span className="mono">{age}</span></span></button>) : <div className="bd-e">Nothing needs you</div>}</div>, <><span>{LV.safe ? `Contract changes need ${LV.threshold} of ${LV.safe.owners.length} signers` : 'No Ops Safe is connected yet'}</span><button data-btab="changes">All changes →</button></>);
       const repos = cell('s7', 'Every project', <span className="lbl">{plural(REPOS.length, 'project', 'projects')}{" · watched on GitHub"}</span>, <div className="bd-rp"><div className="bd-rp-r hd2"><span />{lbl('Project')}{lbl('Checks')}{lbl('Open')}{lbl('Last commit')}{lbl('Runs on')}</div>{REPOS.map((r, i) => {
           const o = CHANGES.filter(c => c.repo === r.id && (c.st === 'draft' || c.st === 'review')).length;
@@ -1228,7 +1465,7 @@ function makeBuild() {
             const c = CHG[id];
             return <button key={__k} className="bd-lw-r" data-bopen={id}><span><b>{c.t}</b><em>{s2}{need(c) ? ' · waiting on you' : c.block ? ' · ' + c.block.toLowerCase() : ''}</em></span><b>{d2}</b></button>;
           }) : <div className="bd-e">Nothing in flight</div>}</div><div className="bd-fk f-key"><span><i style={css("background:var(--fg)")} />A change</span><span><i style={css("background:var(--live)")} />Waiting on you</span><span><i className="hx" />Waiting on something else</span></div></>, <><span>Contract changes go through the Ops Safe</span><span /></>);
-      const inc = notReal('s5', 'Incidents', 'Needs an incident log: what happened, who’s on it, the timeline, and when it was resolved.');
+      const inc = incCell('s5', 5, <button data-btab="security">Security →</button>);
       const days = Array.from({
           length: 28
         }, (_, d) => TODAY - (27 - d) * DAY),
@@ -1286,10 +1523,10 @@ function makeBuild() {
       html(document.getElementById('bv'), <>{band(env, 1)}{band(<>{checks}{hist}</>)}</>);
     }
     function renderSecurityLive() {
-      const fnd = notReal('s8', 'Findings', 'Needs a findings register: each finding’s severity, contract, state, and the change that fixes it.');
-      const aud = notReal('s4', 'Audits', 'Needs which contracts have been reviewed, internally and by an outside auditor.');
+      const fnd = fndCell();
+      const aud = audCell();
       const keys = cell('s6', 'Keys and access', <span className="lbl">Who can change what</span>, <div className="led bd-ky">{KEYS.map(([k, v, s], __k) => <div key={__k}><span><b>{k}</b><em>{s}</em></span><b>{v}</b></div>)}</div>, <><span>Set in Team and GitHub</span><button data-bgo="team">Team →</button></>);
-      const inc = notReal('s6', 'Incidents', 'Needs an incident log: what happened, who’s on it, the timeline, and when it was resolved.');
+      const inc = incCell('s6', 6, CANW() ? <button data-bnew="incident">Open an incident</button> : null);
       html(document.getElementById('bv'), <>{band(<>{fnd}{aud}</>, 1)}{band(<>{keys}{inc}</>)}</>);
     }
     /* a change's panel, live: the pull request, the unreleased commits, or the Safe transaction */
@@ -1334,7 +1571,14 @@ function makeBuild() {
         document.body.classList.remove('pn');
         return;
       }
+      // live, a form for a new record; a record that's gone (after a reload) closes its panel
+      if (LV && (P.inc && !INCIDENTS.some(i => i.id === P.inc) || P.find && !FINDINGS.some(f => f.id === P.find))) {
+        B.panel = null;
+        document.body.classList.remove('pn');
+        return;
+      }
       document.body.classList.add('pn');
+      if (LV && P.form) return html(pn, formLive(P.form));
       html(pn, P.ch ? chPanel(CHG[P.ch]) : P.ctr ? ctrPanel(P.ctr) : P.find ? findPanel(FINDINGS.find(f => f.id === P.find)) : P.inc ? incPanel(INCIDENTS.find(i => i.id === P.inc)) : '');
     }
     const phd = (k, x = '') => <div className="pn-hd"><span className="lbl">{k}</span>{x}<button className="x" data-bclose="" aria-label="Close">{ICO.x}</button></div>;
@@ -1363,16 +1607,18 @@ function makeBuild() {
         ins = REL.filter(r => r[1] === id),
         outs = REL.filter(r => r[0] === id),
         ch = CHANGES.filter(x => x.contract === id && x.st !== 'shipped'),
-        f = FINDINGS.filter(x => x.contract === id && x.st !== 'fixed');
+        f = FINDINGS.filter(x => x.contract === id && x.st !== 'fixed' && x.st !== 'accepted');
       return <>{phd(LAYERS[c[3]], <span className="fst" style={css("margin-left:8px")}>{c[4] === 'live' ? 'Live' : 'Not deployed'}</span>)}<><div className="pn-b"><div><p className="bpn-t">{c[1]}{" "}<span className="mono quiet" style={css("font-size:15px")}>{c[2]}</span></p><p className="bpn-s">{c[6]}</p></div><div className="led">{[['Address', <span className="mono">{c[5]}</span>], LV ? ['Changes signed in', LV.safe ? `Ops Safe · ${LV.threshold} of ${LV.safe.owners.length}` : 'No Ops Safe yet'] : ['Admin and pause', 'Ops Safe · 2 of 3'], ...ins.map(r => [RK[r[2]], `${ctrOf(r[0])[1]} ${r[3]}`]).slice(0, 3), ...outs.map(r => [RK[r[2]], `${r[3]} → ${ctrOf(r[1])[1]}`]).slice(0, 3)].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>{rel.length ? <div>{lbl('Releases')}<div className="bd-pr">{rel.slice().reverse().map(([v, t], i) => <div key={i}><span className="mono">{v}</span><span>{fmtD(t)}</span><span>{i === 0 ? 'Live' : ''}</span></div>)}</div></div> : ''}{ch.length ? <div>{lbl('In flight')}{ch.map((x, __k) => <button key={__k} className="bd-pl" data-bopen={x.id}><b>{x.t}</b><span>{stateTxt(x)}</span></button>)}</div> : ''}{f.length ? <div>{lbl('Open findings')}{f.map((x, __k) => <button key={__k} className="bd-pl" data-bfind={x.id}><b><span className={`bd-sev ${x.sev}`}>{SEV[x.sev][0]}</span>{" "}{x.t}</b><span>{FSTATE[x.st][0]}</span></button>)}</div> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>Changes start as a pull request</span>{LV ? LIVE_APP && ENG() && !RO() ? <button className="btn p" data-bpropose={id}>Propose a change</button> : '' : c[4] === 'live' && SIGNER() ? <button className="btn dz" data-bpause={id}>Propose a pause</button> : ''}</div></></>;
     }
     function findPanel(f) {
+      if (LV) return findPanelLive(f);
       const fx = f.fix && CHG[f.fix],
         order = ['open', 'fixing', 'waiting', 'fixed'],
         at = order.indexOf(f.st);
       return <>{phd('Finding', <span className={`bd-sev ${f.sev}`} style={css("margin-left:8px")}>{SEV[f.sev][0]}</span>)}<><div className="pn-b"><div><p className="bpn-t">{f.t}</p><p className="bpn-s">{f.where}</p></div><div className="bd-tk">{['Found', 'Fix in progress', 'Fix waiting on a signature', 'Fixed'].map((t, i) => <span key={i} className={i < at ? 'done' : i === at ? 'now' : ''}><i />{t}</span>)}</div><p className="bpn-n">{f.note}</p><div className="led">{[['Found', `${fmtD(f.found)} · ${f.by}`], ...(f.contract ? [['Contract', <button className="lnk3" data-bctr={f.contract}>{ctrOf(f.contract)[1]}</button>]] : []), ...(fx ? [['Fix', <button className="lnk3" data-bopen={fx.id}>{fx.repo ? '#' + fx.num + ' · ' : ''}{fx.t}</button>], ['Where it is', stateTxt(fx)]] : []), ...(f.fixedAt ? [['Fixed', fmtD(f.fixedAt)]] : [])].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div><div className="pn-ft">{fx && need(fx) ? <button className="btn p" data-bopen={fx.id}>{need(fx) === 'sign' ? 'Sign the fix' : 'Review the fix'}</button> : <span className="small quiet" style={css("margin-right:auto")}>{FSTATE[f.st][0]}</span>}</div></></>;
     }
     function incPanel(i) {
+      if (LV) return incPanelLive(i);
       const fx = i.fix && CHG[i.fix];
       return <>{phd('Incident', <span className={`fst ${i.st === 'open' ? 'warn2' : ''}`} style={css("margin-left:8px")}>{i.st === 'open' ? 'Open' : 'Closed'}</span>)}<><div className="pn-b"><div><p className="bpn-t">{i.t}</p><p className="bpn-s">{i.area}{" · "}{i.who === 'auto' ? 'handled automatically' : who(i.who) + (i.st === 'open' ? ' is on it' : '')}</p></div><p className="bpn-n">{i.note}</p><div>{lbl('What happened')}<div className="bd-tl">{i.ev.map(([t, s], __k) => <div key={__k}><span className="mono">{fmtD(t)}{" "}{hm(t)}</span><span>{s}</span></div>)}</div></div>{fx ? <div className="led"><div><span>Fix</span><b><button className="lnk3" data-bopen={fx.id}>#{fx.num}{" · "}{fx.t}</button></b></div><div><span>Where it is</span><b>{stateTxt(fx)}</b></div></div> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>{i.st === 'open' ? 'Open ' + ago(i.at) : 'Resolved in ' + i.dur}</span>{i.st === 'open' && ENG() ? <button className="btn" data-bresolve={i.id}>Mark resolved</button> : ''}</div></></>;
     }
@@ -1532,6 +1778,18 @@ function makeBuild() {
         window.open(d.bgh, '_blank', 'noopener,noreferrer');
         return;
       }
+      // live: Build's own records (incidents, findings, audits): a form, a page of a list, or a save
+      if (LV && d.bnew) {
+        B.panel = {
+          form: d.bnew
+        };
+        return render();
+      }
+      if (LV && (d.bfp || d.bip)) {
+        if (d.bfp) B.fp = (B.fp || 0) + +d.bfp;else B.ip = (B.ip || 0) + +d.bip;
+        return render();
+      }
+      if (LV && (d.bsave || d.bincup || d.bassign || d.bresolve || d.bfst || d.bfix)) return saveLive(t, d);
       if (LV && (d.bapprove || d.brej || d.brejo !== undefined || d.bresolve || d.bpause)) return;
       if (d.bsign && d.bsign === 'u-rosa' && S.waiting.some(w => w.id === 'chain')) {
         closeB();
@@ -1610,7 +1868,9 @@ function makeBuild() {
         B.panel = {
           [k]: id
         };
-      }
+      },
+      /** Live, the open incident or finding, as `inc:I3`, to open again when the page is built again. */
+      keep: () => LV && B.panel && (B.panel.inc || B.panel.find) ? B.panel.inc ? 'inc:' + B.panel.inc : 'find:' + B.panel.find : ''
     };
   })(DOCP);
   function mount() {
@@ -1623,11 +1883,20 @@ function makeBuild() {
     API.close();
     W.classList.remove('pn');
   }
+  /** A tab, and after a comma the panel to open on it (`security,inc:I3`, as tab() gives it when the page is built again). */
+  function setTab(p) {
+    const c = String(p ?? '').indexOf(',');
+    if (c < 0) return API.setTab(p);
+    API.setTab(String(p).slice(0, c));
+    const q = String(p).slice(c + 1),
+      j = q.indexOf(':');
+    if (j > 0) API.open(q.slice(0, j), q.slice(j + 1));
+  }
   return {
     mount,
     unmount,
-    setTab: (_r, sub) => API.setTab(sub),
-    tab: () => API.tab(),
+    setTab: (_r, sub) => setTab(sub),
+    tab: () => API.tab() + (API.keep() ? ',' + API.keep() : ''),
     host
   };
 }

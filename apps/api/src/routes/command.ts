@@ -409,7 +409,7 @@ export function commandRouter(deps: CommandDeps) {
 
   /** Settings → Rules and limits: every rule's value, and any change waiting for a second person. */
   router.get('/sections/settings', need('settings', TOTALS), async (req, res) => {
-    res.json(await settingsSection(req.command!.db, req.command!.levels.settings));
+    res.json(await settingsSection(req.command!.db, req.command!.levels.settings, now().getTime()));
   });
 
   // ── the sections' data ───────────────────────────────────────────────────
@@ -534,7 +534,7 @@ export function commandRouter(deps: CommandDeps) {
   router.get('/sections/governance', need('governance', TOTALS), async (req, res) => {
     const c = req.command!;
     try {
-      res.json(await governanceSection(c.db, { level: c.levels.governance, reveal: false, now: now() }));
+      res.json(await governanceSection(c.db, { level: c.levels.governance, reveal: false, now: now(), memberSource: deps.memberSource }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
@@ -816,8 +816,7 @@ export function commandRouter(deps: CommandDeps) {
   /** The second person. Never the proposer: refused here, and by a CHECK in the database. */
   router.post('/proposals/:id/approve', limits.write, async (req, res) => {
     const c = req.command!;
-    // an action can refuse at approval (a month's payout run approved already): nothing is settled then
-    const out = await c.db.transaction(async (tx) => {
+    const settle = () => c.db.transaction(async (tx) => {
       const p = await store.proposalForUpdate(tx, req.params.id);
       if (!p || p.status !== 'waiting') return { status: 404, code: 'NO_PROPOSAL', message: 'Nothing waiting with that id' };
       if (c.levels[p.area as Section] < APPROVE) return { status: 403, code: 'FORBIDDEN', message: 'You can’t approve here' };
@@ -828,10 +827,15 @@ export function commandRouter(deps: CommandDeps) {
       await auditFrom(req, { area: p.area, action: p.summary, detail: 'Approved by a second person', after: p.payload, result: 'approved', approver: c.person.id }, tx);
       const ap = p.payload as unknown as ActionPayload;
       return { status: 200, result, kind: p.kind, section: ap.section, actionKind: ap.kind, body: ap.body };
-    }).catch((e) => {
-      if (e instanceof ActionError) return { status: e.status, code: e.code, message: e.message };
-      throw e;
     });
+    let out: Awaited<ReturnType<typeof settle>>;
+    try {
+      out = await settle();
+    } catch (e) {
+      // an action that can't run any more (it changed while it waited) says why, and nothing is approved
+      if (e instanceof ActionError) return fail(res, e.status, e.code, e.message);
+      throw e;
+    }
     if (out.status !== 200) return fail(res, out.status, out.code!, out.message!);
     if (out.kind === 'action') afterAction(actionFor(out.section!, out.actionKind!) as Action, out.body);
     res.json({ done: true, ...out.result });
