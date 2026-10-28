@@ -57,6 +57,8 @@ async function sample(page: Page): Promise<number[]> {
 for (const route of ROUTES) {
   for (let pane = 0; pane < 8; pane++) {
     test(`clicks match the prototype: ${route} · pane ${pane}`, async ({ browser }) => {
+      // the old prototype has no Settings page to click through
+      test.skip(route === 'settings', 'Settings is new in the redesign');
       const proto = await browser.newPage();
       const app = await browser.newPage();
       await at(proto, PROTO, route, 0);
