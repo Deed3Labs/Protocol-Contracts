@@ -1,8 +1,8 @@
-import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PosterRow, type WaitingRow } from '@clear/command-types';
+import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PersonNote, type PosterRow, type WaitingRow } from '@clear/command-types';
 import type { Db, Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
-import { SEE, TOTALS, type Level } from './levels.js';
-import { assurancePoolLive, bondVaultLive, bondsLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
+import { assurancePoolLive, bondVaultLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { creditLive, payoutsLive } from './credit.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
@@ -134,6 +134,28 @@ async function joinForm(db: Queryable, provider: Provider, names: Names, until: 
 }
 
 export async function membersSection(db: Queryable, o: ReadOptions): Promise<MembersPayload> {
+  const data = await membersRows(db, o);
+  return { ...data, ...(await notesAndTags(db, data.names)) };
+}
+
+/**
+ * Command's notes and tags on people (migration 0068), by the masked number the page shows. Nothing in
+ * them is contact details (actions.ts refuses those); at Totals none are sent, since each is about one person.
+ */
+async function notesAndTags(db: Queryable, names: MembersPayload['names']): Promise<Pick<MembersPayload, 'NOTES' | 'TAGS'>> {
+  if (names === 'none') return { NOTES: null, TAGS: null };
+  const { rows: notes } = await db.query<{ subject: string; body: string; by: string | null; at: Date }>(
+    `SELECT n.subject, n.body, COALESCE(NULLIF(p.name, ''), p.email) AS by, n.at FROM command.member_notes n LEFT JOIN command.people p ON p.id = n.person_id ORDER BY n.at, n.id`,
+  );
+  const { rows: tags } = await db.query<{ subject: string; tag: string }>('SELECT subject, tag FROM command.member_tags ORDER BY subject, at, tag');
+  const NOTES: Record<string, PersonNote[]> = {};
+  for (const n of notes) (NOTES[n.subject] ??= []).push({ t: n.body, by: n.by ?? 'Someone', at: n.at.getTime() });
+  const TAGS: Record<string, string[]> = {};
+  for (const t of tags) (TAGS[t.subject] ??= []).push(t.tag);
+  return { NOTES, TAGS };
+}
+
+async function membersRows(db: Queryable, o: ReadOptions): Promise<MembersPayload> {
   const provider = providerFor('members');
   if (provider === 'live') return membersLive(db, o);
   const asOf = asOfFor(provider, o.now);
@@ -670,8 +692,86 @@ export interface MerchantsPayload {
   FLEET: unknown[][];
   /** Live, for last month's sales at each shop (the next monthly run): what was paid now, what went on plans and what members have repaid on them (TermIssuer). */
   COLLECTED?: Record<string, { now: number; plans: number; repaid: number; count: number }>;
+  /** The monthly payout runs, newest first: each one's proposal, and its record once approved (migration 0067). */
+  RUNS: PayoutRun[];
+  /** Live, the PayoutPool's unpaid claims (each shop's payouts as the chain schedules them); null until the chain is read. */
+  CLAIMS: Array<{ id: number; shop: string; name: string; amount: number; due: number; net: number }> | null;
+  /** The refurb line's units, in the order they were added. */
+  REFURB: RefurbUnit[];
+  /** The shops' hardware pre-orders (the shop's reservations), oldest first. */
+  PREORDERS: Preorder[];
+  /** The site's shop enquiries (its join form's "I run a shop"), newest first. Contacts are masked; one is shown by POST /merchants/enquiries/:id/reveal. */
+  ENQ: Enquiry[];
   figures: Record<string, unknown>;
   asOf: number;
+}
+export interface PayoutRun {
+  /** The proposal's id: the run's, from proposing it to paying it. */
+  id: string;
+  status: 'waiting' | 'approved' | 'declined' | 'withdrawn';
+  period: string | null;
+  goes: number | null;
+  total: number;
+  shops: number;
+  lines: Array<{ id: string; name: string; sales: number; fee: number; red: number; total: number }>;
+  proposedBy: string;
+  proposedById: string;
+  proposedAt: number;
+  approvedBy: string | null;
+  approvedAt: number | null;
+  /** When it was proposed to the Ops Safe (its outbox row sent). */
+  sentAt: number | null;
+  paidAt: number | null;
+  paidBy: string | null;
+}
+export interface RefurbUnit {
+  id: number;
+  model: string;
+  serial: string;
+  stage: string;
+  cost: number | null;
+  shop: string | null;
+  shopName: string | null;
+  ships: number | null;
+  note: string;
+  addedBy: string;
+  addedAt: number;
+  movedAt: number;
+  shippedAt: number | null;
+}
+export interface Preorder {
+  id: string;
+  shop: string;
+  /** The shop's org wallet (its merchant id), when the reservation names it. */
+  shopId: string | null;
+  product: string;
+  variant: string;
+  units: number;
+  /** The deposit for each unit. */
+  deposit: number;
+  state: string;
+  placed: number;
+  /** The month it ships, as shown ("Jan 2027"), or null when nobody's said. */
+  ships: string | null;
+}
+export interface Enquiry {
+  id: number;
+  /** The contact's first and last name, masked (nothing at Totals). */
+  who: string[];
+  business: string;
+  kind: string;
+  city: string;
+  from: string;
+  at: number;
+  /** What they asked (nothing at Totals). */
+  msg: string;
+  ticket: [number, number] | null;
+  jobs: number | null;
+  st: 'new' | 'replied' | 'added' | 'notfit';
+  why: string;
+  card: string | null;
+  by: string | null;
+  handledAt: number | null;
 }
 
 const dollars = (c: number | string | null) => (c == null ? null : Number(c) / 100);
@@ -693,6 +793,100 @@ async function partnerRows(db: Queryable) {
   return { ms, TX };
 }
 
+/**
+ * What Merchants keeps of its own (migration 0067), read the same seeded or live: the payout runs (each
+ * one's proposal, its record once a second person approved it, and whether it's gone to the Ops Safe and
+ * been paid), the refurb line, and the site's shop enquiries; and the shops' pre-orders, from the shop's
+ * reservations (Stripe, live) or its seeded pre-orders. Who did what is a name, so it's blank at Totals.
+ */
+async function merchantRecords(db: Queryable, o: ReadOptions): Promise<Pick<MerchantsPayload, 'RUNS' | 'REFURB' | 'PREORDERS' | 'ENQ'>> {
+  const totals = o.level <= TOTALS;
+  const at = (d: Date | string | null) => (d == null ? null : new Date(d).getTime());
+  const { rows: runs } = await db.query<any>(
+    `SELECT p.id, p.status, p.payload->'body' AS body, p.created_at, p.proposed_by, coalesce(nullif(pp.name, ''), pp.email) AS proposer, p.approved_at, coalesce(nullif(ap.name, ''), ap.email) AS approver,
+            r.period, r.goes_on, r.total_cents, r.shops, r.lines, r.paid_at, coalesce(nullif(pd.name, ''), pd.email) AS payer, o.status AS out_status, sp.proposed_at AS sent_at
+       FROM command.proposals p
+       JOIN command.people pp ON pp.id = p.proposed_by
+       LEFT JOIN command.people ap ON ap.id = p.approved_by
+       LEFT JOIN command.payout_runs r ON r.proposal_id = p.id
+       LEFT JOIN command.people pd ON pd.id = r.paid_by
+       LEFT JOIN command.outbox o ON o.proposal_id = p.id
+       LEFT JOIN LATERAL (SELECT proposed_at FROM command.safe_proposals s WHERE s.outbox_id = o.id AND s.status = 'proposed' ORDER BY s.proposed_at DESC LIMIT 1) sp ON true
+      WHERE p.kind = 'action' AND p.area = 'merchants' AND p.payload->>'kind' = 'run'
+      ORDER BY p.created_at DESC LIMIT 60`,
+  );
+  const RUNS: PayoutRun[] = runs.map((r) => {
+    const b = r.body ?? {};
+    const period = r.period ?? b.period ?? null;
+    return {
+      id: r.id,
+      status: r.status,
+      period,
+      goes: r.goes_on ? at(r.goes_on) : b.goes ? Date.parse(b.goes + 'T00:00:00Z') : null,
+      total: r.total_cents != null ? Number(r.total_cents) / 100 : Number(b.total ?? 0),
+      shops: r.shops ?? Number(b.shops ?? 0),
+      lines: r.lines ?? b.lines ?? [],
+      proposedBy: totals ? '' : r.proposer || 'Someone',
+      proposedById: totals ? '' : r.proposed_by,
+      proposedAt: at(r.created_at)!,
+      approvedBy: totals ? null : (r.approver ?? null),
+      approvedAt: at(r.approved_at),
+      sentAt: r.out_status === 'sent' || r.out_status === 'done' ? (at(r.sent_at) ?? at(r.approved_at)) : null,
+      paidAt: at(r.paid_at),
+      paidBy: totals ? null : (r.payer ?? null),
+    };
+  });
+
+  const { rows: units } = await db.query<any>('SELECT * FROM command.refurb_units ORDER BY id');
+  const REFURB: RefurbUnit[] = units.map((u) => ({
+    id: u.id, model: u.model, serial: totals ? '' : u.serial, stage: u.stage, cost: u.cost_cents == null ? null : u.cost_cents / 100, shop: u.shop_id, shopName: u.shop_name,
+    ships: at(u.ships_on), note: totals ? '' : u.note, addedBy: totals ? '' : u.added_by, addedAt: at(u.added_at)!, movedAt: at(u.moved_at)!, shippedAt: at(u.shipped_at),
+  }));
+
+  // live, the shop's reservations through Stripe (each line with its deposit a unit); seeded, its fixtures, the deposit the price as Money counts it
+  const PREORDERS: Preorder[] =
+    providerFor('shop') === 'live'
+      ? (
+          await db.query<any>(
+            `SELECT o.*, coalesce(p.title, p.name) AS product_name, p.ships AS product_ships FROM command.shop_live_preorders o LEFT JOIN command.shop_products p ON p.slug = o.slug ORDER BY o.placed_at, o.payment_intent, o.line`,
+          )
+        ).rows.map((r) => ({
+          id: `${r.payment_intent.slice(-6)}-${r.line}`, shop: r.shop, shopId: r.shop_id ?? null, product: r.product_name ?? r.slug, variant: variantParts(r.variant)[0] ?? '',
+          units: r.units, deposit: r.deposit_cents / 100, state: r.state, placed: at(r.placed_at)!, ships: r.ships ?? r.product_ships ?? null,
+        }))
+      : (
+          await db.query<any>(`SELECT o.*, p.name AS product_name, p.price_cents, p.ships FROM command.shop_preorders o JOIN command.shop_products p ON p.id = o.product_id ORDER BY o.placed_at, o.id`)
+        ).rows.map((r) => ({ id: r.id, shop: r.shop, shopId: null, product: r.product_name, variant: r.option, units: r.units, deposit: r.price_cents / 100, state: r.state, placed: at(r.placed_at)!, ships: r.ships ?? null }));
+
+  const live = providerFor('merchants') === 'live';
+  const { rows: enq } = await db.query<any>(`SELECT * FROM command.form_submissions WHERE form = 'Shop enquiry'${live ? ' AND live' : ''} ORDER BY received_at DESC, id DESC LIMIT 200`);
+  const ST: Record<string, Enquiry['st']> = { New: 'new', Replied: 'replied', Added: 'added', 'Not a fit': 'notfit' };
+  const num = (v: unknown) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+  const ENQ: Enquiry[] = enq.map((r) => {
+    const d = (typeof r.details === 'string' ? JSON.parse(r.details) : r.details) ?? {};
+    const lo = num(d.ticketLow),
+      hi = num(d.ticketHigh);
+    return {
+      id: r.id,
+      who: totals ? [] : [mask(r.first_name), r.last_name ? mask(r.last_name) : ''].filter(Boolean),
+      business: d.business ?? '',
+      kind: d.industry ?? '',
+      city: r.city,
+      from: r.source,
+      at: at(r.received_at)!,
+      msg: totals ? '' : (r.note ?? ''),
+      ticket: lo != null && hi != null ? [lo, hi] : null,
+      jobs: num(d.jobsPerWeek),
+      st: ST[r.status] ?? 'new',
+      why: r.why ?? '',
+      card: r.card_id ?? null,
+      by: totals ? null : (r.handled_by ?? null),
+      handledAt: at(r.handled_at),
+    };
+  });
+  return { RUNS, REFURB, PREORDERS, ENQ };
+}
+
 export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<MerchantsPayload> {
   const provider = providerFor('merchants');
   if (provider === 'live') return merchantsLive(db, o);
@@ -710,7 +904,7 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
     return [c.merchant_id, kinds, c.issue, c.last_seen];
   });
 
-  return { TX, SIGNED, PROSPECTS, OWED, BOARD, FLEET, figures: await figures(db, 'merchants'), asOf: asOfFor(provider, o.now) };
+  return { TX, SIGNED, PROSPECTS, OWED, BOARD, FLEET, ...(await merchantRecords(db, o)), CLAIMS: null, figures: await figures(db, 'merchants'), asOf: asOfFor(provider, o.now) };
 }
 
 /**
@@ -914,6 +1108,10 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
     });
   }
 
+  // each shop's payouts as the PayoutPool schedules them: its unpaid claims, due their payout window after the shop redeemed
+  const pay = o.chain ? await payoutsLive(db, o.chain, now).catch(() => null) : null;
+  const CLAIMS = pay ? pay.claims.map((c) => ({ id: c.id, shop: c.merchant, name: c.name, amount: c.amount, due: c.dueBy, net: Math.round((c.dueBy - c.claimedAt) / DAY) })) : null;
+
   return {
     TX,
     SIGNED,
@@ -922,6 +1120,8 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
     BOARD,
     FLEET,
     ...(o.chain ? { COLLECTED } : {}),
+    ...(await merchantRecords(db, o)),
+    CLAIMS,
     figures: { ...(await figures(db, 'merchants')), 'merchants.newest_partner': newest ? { name: newest.name, joined: Number(newest.joined_ms) } : null },
     asOf: asOfFor('live', o.now),
   };
@@ -1410,12 +1610,13 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     }
   const { rows: ch } = await db.query<any>('SELECT * FROM command.contract_changes ORDER BY done, position');
   const change = (c: any) => ({ id: c.id, t: c.title, c: c.contract, ...(c.proposed_by ? { by: c.proposed_by } : {}), ...c.detail, ev: evAt(c.events, NOW) });
-  // live, the code changes are GitHub's (Phase 5c): commits since a release in flight, the commits before it what it shipped
+  // live, the code changes are GitHub's (Phase 5c): commits since a release in flight, the commits before it what it shipped;
+  // a contract whose deployed code is exactly dev's has nothing in flight, whatever the commits' dates
   const code = releases
     ? await codeChanges(db, codeConfig(), ctr.map((c) => {
         const n = onChain(c.name);
         return { name: c.name, deployed: n, deployedAt: n ? deployed!.get(n)!.deployedAt : null };
-      }), releases, NOW)
+      }), releases, NOW, o.chain ? await codeMatchLive(o.chain) : new Map())
     : { open: [], done: [] };
   const { rows: sg } = await db.query<any>('SELECT * FROM command.signers ORDER BY position');
   // live, the Code tab: GitHub's commits, pull requests, branches and contributors; at Totals, no names
@@ -1424,6 +1625,8 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
   const DEPLOYED = deployed ? ctr.filter((c) => onChain(c.name)).map((c) => c.id) : null;
   return {
     AGR, CTR, CTR_NOTE, REL, RELEASES, PENDING,
+    // Command's own records, whatever the provider: incidents, findings, audits (migration 0066)
+    ...(await buildRecords(db, o)),
     ...(DEPLOYED ? { DEPLOYED } : {}),
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     ...(CODE ? { CODE } : {}),
@@ -1436,6 +1639,53 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     },
     asOf: asOfFor(provider, o.now),
   };
+}
+
+/**
+ * Build's own records (migration 0066): incidents with their timelines, security findings and audits, and
+ * who can be given an incident (the team at Propose or more on Build). At Totals none of it carries a name
+ * or a note: only what happened, how bad, where, and when.
+ */
+async function buildRecords(db: Queryable, o: ReadOptions) {
+  const named = o.level > TOTALS;
+  const q = async (sql: string, p: unknown[] = []) => (await db.query<any>(sql, p)).rows;
+  const nameOf = `coalesce(nullif(p.name, ''), p.email, 'Someone')`;
+  const inc = await q(
+    `SELECT i.*, ${nameOf} AS owner_name FROM command.build_incidents i LEFT JOIN command.people p ON p.id = i.owner_id ORDER BY (i.resolved_at IS NULL) DESC, i.started_at DESC, i.id DESC LIMIT 200`,
+  );
+  const ups = inc.length
+    ? await q(`SELECT u.incident_id, u.at, u.line, ${nameOf} AS who, u.by_id FROM command.build_incident_updates u LEFT JOIN command.people p ON p.id = u.by_id WHERE u.incident_id = ANY($1) ORDER BY u.at, u.id`, [
+        inc.map((i) => i.id),
+      ])
+    : [];
+  const INCIDENTS = inc.map((i) => ({
+    id: i.id, t: i.title, sev: i.severity, area: i.area, contract: i.contract_id, reached: i.reached_members,
+    at: ms_(i.started_at), opened: ms_(i.opened_at), resolved: msOr(i.resolved_at),
+    owner: named && i.owner_id ? { id: i.owner_id, name: i.owner_name } : null,
+    note: named ? i.note : '', resolution: named ? i.resolution : '',
+    ev: named ? ups.filter((u) => u.incident_id === i.id).map((u) => [ms_(u.at), u.line, u.by_id ? u.who : '']) : [],
+  }));
+  const FINDINGS = (await q('SELECT * FROM command.build_findings ORDER BY found_at DESC, id DESC LIMIT 500')).map((f) => ({
+    id: f.id, t: f.title, sev: f.severity, contract: f.contract_id, where: f.area, st: f.state, found: ms_(f.found_at), stAt: msOr(f.state_at),
+    pr: f.fix_pr, change: f.fix_change,
+    by: named ? f.found_by : '', note: named ? f.note : '', stNote: named ? f.state_note : '',
+  }));
+  const AUDITS = (await q('SELECT * FROM command.build_audits ORDER BY on_day DESC, id DESC LIMIT 200')).map((a) => ({
+    id: a.id, kind: a.kind, contracts: a.contracts, scope: a.scope, on: ms_(a.on_day), report: a.report_url,
+    // an outside auditor is a firm; an internal one is the people who did it
+    auditor: named || a.kind === 'external' ? a.auditor : '', note: named ? a.note : '',
+  }));
+  const TEAM = named
+    ? await q(
+        `SELECT p.id, ${nameOf} AS name FROM command.people p
+           JOIN command.person_access a ON a.person_id = p.id LEFT JOIN command.groups g ON g.id = a.group_id
+          WHERE NOT a.off AND (a.expires_at IS NULL OR a.expires_at > $1)
+            AND coalesce((a.custom_levels ->> 'contracts')::int, (g.levels ->> 'contracts')::int, 0) >= ${PROPOSE}
+          ORDER BY lower(${nameOf})`,
+        [o.now],
+      )
+    : [];
+  return { INCIDENTS, FINDINGS, AUDITS, TEAM };
 }
 
 // ── Governance ──────────────────────────────────────────────────────────────
@@ -1465,9 +1715,69 @@ export async function governanceSection(db: Queryable, o: ReadOptions): Promise<
     MEETS: (await q('SELECT * FROM command.meetings ORDER BY position')).map((m) => [m.body, m.events]),
     RP: (await q('SELECT * FROM command.related_party ORDER BY position')).map((r) => [r.payer, r.payee, r.what, r.paid_on.map((d: Date) => ms_(d)), r.amount_cents / 100, ...(r.opens_on ? [ms_(r.opens_on)] : [])]),
     MATTERS: (await q('SELECT * FROM command.reserved_matters ORDER BY position')).map((m) => [m.decision, m.roles, ...(m.open ? [m.open] : [])]),
+    ...(await agreementVersions(db, o)),
     figures: await figures(db, 'governance'),
     asOf: asOfFor(provider, o.now),
   };
+}
+
+/** One version of an agreement, as Governance → Agreements → Versions draws it. */
+interface VersionRow {
+  v: string;
+  /** draft, in (in force) or old (replaced). */
+  st: 'draft' | 'in' | 'old';
+  /** In force from (adopted), else the day a draft is for, else when it was drafted. */
+  at: number;
+  replaced: number | null;
+  /** Who adopts it outside Command (the board, a member vote). */
+  by: string;
+  changes: string[];
+  /** What the apps record acceptances under (document@version), if it's linked. */
+  terms: string | null;
+  /** Who asked for its adoption here and the second person who approved it; who drafted it. Not at Totals. */
+  adoptedBy: string | null;
+  approvedBy: string | null;
+  draftedBy: string | null;
+}
+
+/**
+ * Governance → Agreements → Versions (migration 0068): every agreement's versions, and who has accepted
+ * which, read where the apps record it, counted: the member app's acceptances (`member_terms_acceptances`,
+ * when Members is live) and the data room's terms (command.terms_acceptances). Each is keyed as
+ * document@version; a version linked to one (`terms`) shows its count, and the ones no version is linked
+ * to are listed too, so nothing the apps record is missing. At Totals, no one's name.
+ */
+async function agreementVersions(db: Queryable, o: ReadOptions): Promise<{ VERS: Record<string, VersionRow[]>; TERMS: Array<{ key: string; doc: string; version: string; n: number; first: number; last: number; who: 'members' | 'team' }> }> {
+  const named = o.level > TOTALS;
+  const name = (a: string) => `COALESCE(NULLIF(${a}.name, ''), ${a}.email)`;
+  const { rows } = await db.query<any>(
+    `SELECT v.*, ${name('a')} AS adopter, ${name('b')} AS approver, ${name('d')} AS drafter
+       FROM command.agreement_versions v LEFT JOIN command.people a ON a.id = v.adopted_by LEFT JOIN command.people b ON b.id = v.approved_by LEFT JOIN command.people d ON d.id = v.drafted_by
+      ORDER BY v.agreement_id, coalesce(v.adopted_at, v.planned_for, v.drafted_at), v.id`,
+  );
+  const VERS: Record<string, VersionRow[]> = {};
+  for (const r of rows)
+    (VERS[r.agreement_id] ??= []).push({
+      v: r.version,
+      st: r.status,
+      at: ms_(r.adopted_at ?? r.planned_for ?? r.drafted_at),
+      replaced: msOr(r.replaced_at),
+      by: r.decided_by,
+      changes: r.changes,
+      terms: r.terms,
+      adoptedBy: named ? r.adopter : null,
+      approvedBy: named ? r.approver : null,
+      draftedBy: named ? r.drafter : null,
+    });
+  const members = providerFor('members') === 'live' && o.memberSource?.terms ? await o.memberSource.terms() : [];
+  const { rows: room } = await db.query<{ version: string; n: number; first: Date; last: Date }>(
+    'SELECT version, count(*)::int AS n, min(accepted_at) AS first, max(accepted_at) AS last FROM command.terms_acceptances GROUP BY version ORDER BY min(accepted_at)',
+  );
+  const TERMS = [
+    ...members.map((t) => ({ key: `${t.doc}@${t.version}`, doc: t.doc, version: t.version, n: t.n, first: t.first, last: t.last, who: 'members' as const })),
+    ...room.map((t) => ({ key: `data-room@${t.version}`, doc: 'data-room', version: t.version, n: t.n, first: ms_(t.first), last: ms_(t.last), who: 'team' as const })),
+  ];
+  return { VERS, TERMS };
 }
 
 // ── Records ─────────────────────────────────────────────────────────────────

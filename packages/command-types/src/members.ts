@@ -74,6 +74,13 @@ export interface NextBatch {
   ids?: number[];
 }
 
+/** A note on a person: what it says, who wrote it (their name on the team) and when. */
+export interface PersonNote {
+  t: string;
+  by: string;
+  at: number;
+}
+
 export interface MembersPayload {
   MEMBERS: MemberRow[];
   /** Per sent batch, oldest first: when it went, how many are active, how many opened but not funded. */
@@ -87,6 +94,9 @@ export interface MembersPayload {
   BATCHES: BatchRow[];
   /** The join form's last 30 days (the newest 20), masked unless names were asked for: null at Totals. */
   FORMS: FormRow[] | null;
+  /** Command's notes and tags on a person, by their masked number (M-0001, W-0001): null at Totals. */
+  NOTES?: Record<string, PersonNote[]> | null;
+  TAGS?: Record<string, string[]> | null;
   figures: Record<string, unknown>;
   /** The day it was read for (epoch ms), and whether names are in it. */
   asOf: number;

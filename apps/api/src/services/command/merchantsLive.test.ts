@@ -104,13 +104,36 @@ describe('Merchants, live from the merchant app', () => {
       ),
     };
     const r = await merchantsLive(db, { level: SEE as any, reveal: false, now: NOW, charges: db, chain });
-    expect(asked.filter((c: any) => c.contract === 'MerchantRegistry').every((c: any) => c.fn === 'approvalCapOf')).toBe(true);
+    // (the PayoutPool's claims list its shops too: merchantCount and merchantAt)
+    expect(asked.filter((c: any) => c.contract === 'MerchantRegistry' && !['merchantCount', 'merchantAt'].includes(c.fn)).every((c: any) => c.fn === 'approvalCapOf')).toBe(true);
     expect(asked.filter((c: any) => c.contract === 'TermIssuer').map((c: any) => [c.fn, c.args[0]])).toEqual([['planAt', 4n]]);
     // A: $2,000 and two refused in the last 7 days (the third is older); D: no cap, none refused
     expect(r.TX.map((t: any) => [t[0], t[7], t[8]])).toEqual([[A, 2000, 2], [D, null, 0]]);
     // last month's sales (the next run): what went on plans and what members repaid on them
     expect(r.COLLECTED).toEqual({ [A]: { now: 0, plans: 40, repaid: 25, count: 1 } });
     await db.query('DROP TABLE charge_cap_hits');
+  });
+
+  test('each shop’s payouts are the PayoutPool’s unpaid claims, with their payout window; none read without the chain', async () => {
+    const sec = (t: string) => BigInt(Date.parse(t) / 1000);
+    // claim 0 is paid; 1 is Rosa’s NET-14, claimed on the 20th; 2 is Tire & Lube’s NET-30
+    const claims = [
+      [A, 5_000_000n, sec('2026-10-01T00:00:00Z'), sec('2026-10-15T00:00:00Z'), true],
+      [A, 41_260_000n, sec('2026-10-20T00:00:00Z'), sec('2026-11-03T00:00:00Z'), false],
+      [D, 794_000_000n, sec('2026-10-12T00:00:00Z'), sec('2026-11-11T00:00:00Z'), false],
+    ];
+    const chain = {
+      read: async (calls: any[]) =>
+        calls.map((c) =>
+          ({ claimCount: 3n, nextUnpaid: 1n, held: 0n, queuedTotal: 0n, shortfall: 0n, reserveToken: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', merchantCount: 0n, decimals: 6n, claimAt: c.args ? claims[Number(c.args[0])] : undefined })[c.fn as string] ?? 0n,
+        ),
+    };
+    const r = await merchantsLive(db, { level: SEE as any, reveal: false, now: NOW, charges: db, chain });
+    expect(r.CLAIMS).toEqual([
+      { id: 1, shop: A, name: 'Rosa’s Panadería', amount: 41.26, due: Date.parse('2026-11-03T00:00:00Z'), net: 14 },
+      { id: 2, shop: D, name: 'Redlands Tire & Lube', amount: 794, due: Date.parse('2026-11-11T00:00:00Z'), net: 30 },
+    ]);
+    expect((await read()).CLAIMS).toBeNull();
   });
 
   test('a shop with no Clear sale yet is signed, or signing while Clear’s signer isn’t on its wallet', async () => {

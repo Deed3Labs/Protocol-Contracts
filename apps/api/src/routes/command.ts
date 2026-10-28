@@ -409,7 +409,7 @@ export function commandRouter(deps: CommandDeps) {
 
   /** Settings → Rules and limits: every rule's value, and any change waiting for a second person. */
   router.get('/sections/settings', need('settings', TOTALS), async (req, res) => {
-    res.json(await settingsSection(req.command!.db, req.command!.levels.settings));
+    res.json(await settingsSection(req.command!.db, req.command!.levels.settings, now().getTime()));
   });
 
   // ── the sections' data ───────────────────────────────────────────────────
@@ -480,11 +480,22 @@ export function commandRouter(deps: CommandDeps) {
   router.get('/sections/merchants', need('merchants', TOTALS), async (req, res) => {
     const c = req.command!;
     try {
-      res.json(await merchantsSection(c.db, { level: c.levels.merchants, reveal: false, now: now() }));
+      res.json(await merchantsSection(c.db, { level: c.levels.merchants, reveal: false, now: now(), chain: deps.chain }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
     }
+  });
+
+  /** A shop enquiry's contact (their name and email), shown for a reason: Merchants at Approve, logged as a reveal before it's sent. */
+  router.post('/merchants/enquiries/:id/reveal', limits.write, need('merchants', APPROVE), async (req, res) => {
+    const c = req.command!;
+    const id = Number(req.params.id);
+    const { rows } = Number.isInteger(id) && id > 0 ? await c.db.query<{ first_name: string; last_name: string; email: string }>(`SELECT first_name, last_name, email FROM command.form_submissions WHERE id = $1 AND form = 'Shop enquiry'`, [id]) : { rows: [] };
+    if (!rows[0]) return fail(res, 404, 'NOT_FOUND', 'No such shop enquiry');
+    if (!(await revealFrom(req, res, { section: 'merchants', subject: `enquiry ${id}`, field: 'name' }))) return;
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ id, first: rows[0].first_name, last: rows[0].last_name, email: rows[0].email });
   });
 
   router.get('/sections/money', need('money', TOTALS), async (req, res) => {
@@ -523,7 +534,7 @@ export function commandRouter(deps: CommandDeps) {
   router.get('/sections/governance', need('governance', TOTALS), async (req, res) => {
     const c = req.command!;
     try {
-      res.json(await governanceSection(c.db, { level: c.levels.governance, reveal: false, now: now() }));
+      res.json(await governanceSection(c.db, { level: c.levels.governance, reveal: false, now: now(), memberSource: deps.memberSource }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
@@ -805,7 +816,7 @@ export function commandRouter(deps: CommandDeps) {
   /** The second person. Never the proposer: refused here, and by a CHECK in the database. */
   router.post('/proposals/:id/approve', limits.write, async (req, res) => {
     const c = req.command!;
-    const out = await c.db.transaction(async (tx) => {
+    const settle = () => c.db.transaction(async (tx) => {
       const p = await store.proposalForUpdate(tx, req.params.id);
       if (!p || p.status !== 'waiting') return { status: 404, code: 'NO_PROPOSAL', message: 'Nothing waiting with that id' };
       if (c.levels[p.area as Section] < APPROVE) return { status: 403, code: 'FORBIDDEN', message: 'You can’t approve here' };
@@ -817,6 +828,14 @@ export function commandRouter(deps: CommandDeps) {
       const ap = p.payload as unknown as ActionPayload;
       return { status: 200, result, kind: p.kind, section: ap.section, actionKind: ap.kind, body: ap.body };
     });
+    let out: Awaited<ReturnType<typeof settle>>;
+    try {
+      out = await settle();
+    } catch (e) {
+      // an action that can't run any more (it changed while it waited) says why, and nothing is approved
+      if (e instanceof ActionError) return fail(res, e.status, e.code, e.message);
+      throw e;
+    }
     if (out.status !== 200) return fail(res, out.status, out.code!, out.message!);
     if (out.kind === 'action') afterAction(actionFor(out.section!, out.actionKind!) as Action, out.body);
     res.json({ done: true, ...out.result });
@@ -887,7 +906,7 @@ export function commandRouter(deps: CommandDeps) {
   async function runAction(tx: Queryable, p: ActionPayload, by: store.Person, approver: store.Person | null, proposalId: string | null, levels?: Levels) {
     const a = actionFor(p.section, p.kind) as Action;
     const at = actionTime(p.section, now());
-    const result = a.apply ? await a.apply({ tx, person: by, approver, at, levels }, p.body) : undefined;
+    const result = a.apply ? await a.apply({ tx, person: by, approver, at, proposal: proposalId, levels }, p.body) : undefined;
     const queued = typeof a.outbox === 'function' ? a.outbox(p.body) : !!a.outbox;
     if (queued) {
       await tx.query('INSERT INTO command.outbox (section, kind, summary, payload, requested_by, approved_by, proposal_id) VALUES ($1, $2, $3, $4, $5, $6, $7)', [

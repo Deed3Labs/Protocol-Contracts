@@ -251,6 +251,13 @@ const apply = {
     replace(FLEET, d.FLEET);
     // last month's sales at each shop, paid now or on plans, and what members have repaid (null until the API reads the chain)
     vars.collected = d.COLLECTED ?? null;
+    // what Merchants keeps of its own (migration 0067): the payout runs, the refurb line, the pre-orders and the site's shop enquiries;
+    // and the PayoutPool's unpaid claims (null until the API reads the chain)
+    vars.merchantRuns = d.RUNS ?? [];
+    vars.payoutClaims = d.CLAIMS ?? null;
+    vars.refurb = d.REFURB ?? [];
+    vars.preorders = d.PREORDERS ?? [];
+    vars.enquiries = d.ENQ ?? [];
     // the board is built from BOARD the next time it's drawn
     XS.board = null;
   },
@@ -351,6 +358,8 @@ const apply = {
     // live, the map's contracts the indexer found deployed (null when the section isn't read from the chain)
     vars.contractsDeployed = d.DEPLOYED ?? null;
     replace(SIGNERS, d.SIGNERS);
+    // Build's own records (migration 0066): incidents, findings, audits, and who can be given an incident
+    vars.buildRecords = { incidents: d.INCIDENTS ?? [], findings: d.FINDINGS ?? [], audits: d.AUDITS ?? [], team: d.TEAM ?? [] };
     const f = d.figures;
     assign(CHAIN, f['contracts.chain']);
     assign(KEY_ROLES, f['contracts.key_roles']);
@@ -373,6 +382,8 @@ const apply = {
     replace(MEETS, d.MEETS);
     replace(RP, d.RP);
     replace(MATTERS, d.MATTERS);
+    // each agreement's versions, and what the apps record as accepted (migration 0068; sections/governanceLive.ts)
+    vars.govVersions = { VERS: d.VERS ?? {}, TERMS: d.TERMS ?? [] };
     const f = d.figures;
     replace(PASTV, f['governance.past_votes']);
     assign(MEETINGS_HELD, f['governance.meetings_held']);
@@ -413,6 +424,9 @@ const apply = {
   settings(d) {
     vars.SETTINGS = d.SETTINGS ?? [];
     vars.SETTINGS_HISTORY = d.HISTORY ?? [];
+    // what Command records for Settings (migration 0068): each connection's last key swap, and the events worth a look
+    vars.SETTINGS_KEYS = d.KEYS ?? [];
+    vars.SETTINGS_WORTH = d.WORTH ?? [];
   },
   members(d) {
     replace(MEMBERS, d.MEMBERS);
@@ -421,6 +435,9 @@ const apply = {
     replace(B_OPEN, d.B_OPEN);
     vars.NEXT_BATCH = d.NEXT_BATCH;
     vars.namesShown = d.names === 'shown';
+    // Command's notes and tags on people, by masked number (migration 0068): none at Totals
+    vars.memberNotes = d.NOTES ?? {};
+    vars.memberTags = d.TAGS ?? {};
     // the redesigned page's own (sections/membersLive.ts): the waitlist's people, each batch, the join form
     vars.memberNames = d.names;
     vars.membersFigures = d.figures;

@@ -1,9 +1,10 @@
 // @ts-nocheck: ported from the redesign's FM2 module (design/command-center-ui) with scripts/port/module.cjs; its data is its own.
 import { Fragment } from 'react';
 import { act, addFile, run } from '../live/actions';
+import { api } from '../live/api';
 import { LIVE as LIVE_APP, REAL } from '../live/env';
 import { mapRequest, mapStyle } from '../live/map';
-import { loadSection, needsData } from '../live/sections';
+import { loadSection, needsData, reloadSection } from '../live/sections';
 import { attrs, css, hasHtml, html, swapClass } from '../runtime/dom';
 import { CC } from './cc';
 import { S } from './data';
@@ -3672,8 +3673,34 @@ function makeFieldMerchants() {
       };
     };
     /* shop enquiries: the app's own form inbox (useclear.org/shops), masked until shown */
-    // live, the site's shop enquiries don't come with their details yet: the cell says so
-    const ENQ = LV ? [] : INBOX.filter(x => x.type === 'Shop enquiry').map((x, i) => ({
+    /** A time's day (UTC, as TODAY is), and its hour and minute where you are. */
+    const midnightOf = t => {
+      const d = new Date(t);
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    };
+    const hhmmOf = t => {
+      const d = new Date(t);
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+    // live, the site's shop enquiries as the API keeps them (the join form's "I run a shop"): the business, what they asked, and what was done
+    const ENQ = LV ? LV.enquiries.map(e => ({
+      id: 'e' + e.id,
+      api: e.id,
+      business: e.business,
+      mask: e.who.join(' ') || 'Someone',
+      city: e.city,
+      kind: e.kind,
+      from: e.from,
+      at: e.at,
+      when: midnightOf(e.at) === TODAY ? 'Today ' + hhmmOf(e.at) : fmtD(e.at),
+      msg: e.msg,
+      ticket: e.ticket,
+      jobs: e.jobs,
+      st: e.st,
+      why: e.why,
+      card: e.card,
+      by: e.by
+    })) : INBOX.filter(x => x.type === 'Shop enquiry').map((x, i) => ({
       id: 'e' + (i + 1),
       name: x.who.join(' '),
       mask: x.who.map(mask).join(' '),
@@ -3876,6 +3903,29 @@ function makeFieldMerchants() {
         ...payOf(m)
       }));
       const owedOnly = () => MS.filter(m => m.stage !== 'transacting' && m.owed);
+      /** The month of sales the next run pays ('2026-09': last month), and when a NET-30 run for a month goes: 30 days after its last day, or the weekday after (the API's runGoes). */
+      const runPeriod = () => new Date(Date.UTC(new Date(TODAY).getUTCFullYear(), new Date(TODAY).getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+      const runGoes = period => {
+        const [y, m] = period.split('-').map(Number);
+        let t = Date.UTC(y, m, 0) + 30 * DAY;
+        while ([0, 6].includes(new Date(t).getUTCDay())) t += DAY;
+        return t;
+      };
+      /** A run, by its month of sales: the one that counts (waiting or approved), else the latest. */
+      const runFor = period => {
+        const all = LV.runs.filter(r => r.period === period);
+        return all.find(r => r.status === 'approved') || all.find(r => r.status === 'waiting') || all[0] || null;
+      };
+      /** Whether you can approve a run: Approve on Merchants, and not your own. */
+      const canApprove = r => !RO() && vLevel('merchants') >= 4 && r.status === 'waiting' && r.proposedById !== LV.meId;
+      const monthOf = period => {
+        const [y, m] = period.split('-').map(Number);
+        return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-US', {
+          month: 'long',
+          year: 'numeric',
+          timeZone: 'UTC'
+        });
+      };
       const runTotal = () => +(runLines().reduce((a, l) => a + l.total, 0) + owedOnly().reduce((a, m) => a + m.owed, 0)).toFixed(2);
       const owedAll = () => MS.reduce((a, m) => a + (m.owed || 0), 0);
       const fleetBad = () => Object.entries(FLEET).filter(([, f]) => {
@@ -3918,7 +3968,7 @@ function makeFieldMerchants() {
           overview: !all ? 'No partner shops yet. They show here as they join in the merchant app.' : `${LV.newest ? `${LV.newest.name} joined ${fmtD(LV.newest.joined)}. ` : ''}${tx} of ${plural(all, 'partner', 'partners')} take card payments.`,
           pipeline: <>{plural(talks.length, 'shop is', 'shops are')}{" talking, worth "}{money(sumVal(talks)).replace('.00', '')}{" a month in financed work. "}{od.length ? <><a data-xopen={od[0].id}>{od.length}{" follow-up"}{od.length === 1 ? ' is' : 's are'}{" overdue"}</a>.</> : 'No follow-ups are overdue.'}</>,
           partners: !all ? 'No partner shops yet.' : `${tx} of ${plural(all, 'partner', 'partners')} take card payments.${sd ? sd === 1 ? ' One has signed but doesn’t take them yet.' : ` ${sd} have signed but don’t take them yet.` : ''}`,
-          payouts: lines.length ? `The monthly run comes to ${money(run)} for ${plural(lines.length, 'NET-30 shop', 'NET-30 shops')}, from ${MO().last}’s sales. It goes once a second person approves it.` : `No NET-30 shop has ${MO().last} sales to pay out.`,
+          payouts: lines.length ? `The monthly run comes to ${money(run)} for ${plural(lines.length, 'NET-30 shop', 'NET-30 shops')}, from ${MO().last}’s sales. ${(r => r?.paidAt ? 'It’s paid.' : r?.status === 'approved' ? `It’s approved and goes ${fmtWD(r.goes ?? runGoes(runPeriod()))}.` : r?.status === 'waiting' ? 'It’s proposed, waiting for a second person.' : 'It goes once a second person approves it.')(runFor(runPeriod()))}` : `No NET-30 shop has ${MO().last} sales to pay out.`,
           devices: bad.length ? `${plural(bad.length, 'shop needs', 'shops need')} a device visit.${onRt ? ` ${onRt.name} is on ${staffFirst()}’s route today.` : ''}` : Object.keys(FLEET).length ? 'Every Point is online.' : 'No Points have checked in yet.'
         }[X.tab];
         html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{`Merchants · ${fmtWD(TODAY)}`}</span><p className="brief">{S}</p><div className="strip"><div className="sc"><span className="lbl">Transacting</span><div className="sc-v">{tx}{" "}<small>{"of "}{all}{all === 1 ? ' partner' : ' partners'}</small></div><div className="mb"><i style={css(`width:${tx / A * 100}%`)} /><i style={css(`left:${tx / A * 100}%;width:${sg / A * 100}%;background:var(--live)`)} /><span className="hroom" style={css(`left:${(tx + sg) / A * 100}%;right:0`)} /></div><div className="sc-s">{sg}{" signing · "}{sd}{" not taking cards yet"}</div></div><div className="sc"><span className="lbl">In talks</span><div className="sc-v">{talks.length}{" "}<small>{money(sumVal(talks)).replace('.00', '')}/mo</small></div><div className="mb"><i style={css(`width:${talks.length / Math.max(1, open) * 100}%;background:color-mix(in srgb,var(--fg) 45%,transparent)`)} /></div><div className="sc-s">{plural(MS.filter(m => m.stage === 'prospect').length, 'prospect', 'prospects')}{" in the pipeline"}</div></div><div className="sc"><span className="lbl">{"Cleared · "}{MO().long}</span><div className="sc-v">{money(oct).replace(/\.\d+$/, '')}<small className="ct">{cts(oct)}</small></div><div className="mb"><i style={css(`width:${oct ? topO / oct * 100 : 0}%`)} /><i style={css(`left:${oct ? topO / oct * 100 : 0}%;width:${oct ? (oct - topO) / oct * 100 : 0}%;background:color-mix(in srgb,var(--fg) 40%,transparent)`)} /></div><div className="sc-s">{plural(sales, 'sale', 'sales')}{" · losses aren’t recorded yet"}</div></div><div className="sc"><span className="lbl">Next payout run</span><div className="sc-v">{money(run).replace(/\.\d+$/, '')}<small className="ct">{cts(run)}</small></div><div className="mb"><i style={css(`width:${fees / RF * 100}%;background:var(--absent)`)} /><i style={css(`left:${fees / RF * 100}%;width:${run / RF * 100}%`)} /></div><div className="sc-s">{money(owedAll())}{" in $10 redemptions owed"}</div></div></div></>);
@@ -3932,6 +3982,10 @@ function makeFieldMerchants() {
         const NEED = [];
         MS.filter(m => m.stage === 'signing').forEach(m => NEED.push(['underway', `Sign ${m.name}`, `${m.next || 'Finish onboarding'} · ${m.owner === 'none' ? 'no owner yet' : m.owner === R.me ? 'you' : TEAM[m.owner].n}`, m.due != null ? dueTxtM(m) : '', <><span className="who">{m.owner === R.me ? 'You’re on it' : m.owner === 'none' ? 'Nobody’s on it' : `${firstName(m.owner)} is on it`}</span><button className="lnk" data-xopen={m.id}>Open →</button></>, m.owner === 'none']));
         MS.filter(m => m.due != null && m.due < 0 && ['prospect', 'talking'].includes(m.stage)).sort((a, b) => a.due - b.due).forEach(m => NEED.push(['absent', `${m.name} is ${plural(-m.due, 'day', 'days')} overdue`, `${m.next || 'No next step'} · ${m.owner === 'none' ? 'no owner yet' : m.owner === R.me ? 'your lead' : firstName(m.owner) + '’s lead'}`, `${-m.due}d`, <><span className="who none">Not on a route</span><button className="lnk" data-xopen={m.id}>Open →</button></>, true]));
+        // a payout run waiting for you (someone else proposed it), and the site's enquiries nobody's answered
+        LV.runs.filter(canApprove).forEach(r => NEED.push(['live', `Approve the ${r.period ? monthOf(r.period).split(' ')[0] : 'monthly'} run · ${money(r.total)}`, `NET-30 · ${plural(r.shops, 'shop', 'shops')} · proposed by ${r.proposedBy.split(/[ @]/)[0]}`, r.goes ? fmtD(r.goes) : '', <><span className="who">Needs a second person</span><button className="lnk" data-xtab="payouts">Review →</button></>, false]));
+        const newEnq = ENQ.filter(e => e.st === 'new').length;
+        if (newEnq) NEED.push(['line', `${plural(newEnq, 'new shop enquiry', 'new shop enquiries')}`, 'From useclear.org/join', '', <button className="lnk" data-xtab="pipeline" data-xjump="menq">Triage →</button>, false]);
         fleetBad().forEach(([id, f]) => {
           const m = MSBY[id],
             st = devFix(m);
@@ -3998,13 +4052,26 @@ function makeFieldMerchants() {
                 shown = X.reveal && X.reveal.has(e.id);
               return <div key={__k} className={`me-r ${s}`}><div className="me-t"><i className="sv" style={css(`background:${s === 'new' ? 'var(--live)' : 'var(--line)'}`)} /><b className={shown ? '' : 'msk'}>{shown ? e.name : e.mask}</b><span className="age">{e.when}</span></div><span className="me-m">{e.kind}{" · "}{e.city}{" · "}{e.from}</span><p className="me-q">“{e.msg}”</p><div className="me-a">{s === 'new' ? <>{e.known ? <><span className="me-k">Already a partner · posters only</span><button className="lnk" data-xopen={e.known}>Open the shop →</button></> : <><button className="btn sm-b p" data-xenq={`add|${e.id}`}>Add to pipeline</button><button className="btn sm-b" data-xenq={`reply|${e.id}`}>Reply</button><button className="lnk3" data-xenq={`no|${e.id}`}>Not a fit</button></>}{!shown ? <button className="lnk3 me-show" data-xreveal={e.id}>Show name</button> : ''}</> : s === 'added' ? <span className="ok me-k">Added to the pipeline</span> : s === 'replied' ? <span className="me-k quiet">Replied</span> : <span className="me-k quiet">Not a fit{e.why ? ' · ' + e.why : ''}</span>}</div></div>;
             })}</div><div className="bk-ft"><span>From useclear.org/shops · names masked, showing one is logged</span><span /></div></div>;
+        /* live: the site's enquiries as the API keeps them; the business shows, its contact is masked until shown for a reason (logged) */
+        const enqLive = () => {
+          const fresh = ENQ.filter(e => e.st === 'new').length,
+            canShow = !RO() && vLevel('merchants') >= 4,
+            // a shop already on the board or taking Clear, by its name
+            known = e => e.card ? MS.find(m => m.card?.id === e.card || m.id === e.card) : e.business ? MS.find(m => m.name.trim().toLowerCase() === e.business.trim().toLowerCase()) : null;
+          const asked = e => [e.kind, e.city, e.from, e.ticket ? `${money(e.ticket[0]).replace('.00', '')}–${money(e.ticket[1]).replace('.00', '')} a job` : '', e.jobs ? `about ${e.jobs} jobs a week` : ''].filter(Boolean).join(' · ');
+          return <div className="cell s7" id="menq"><div className="hd"><h2>Shop enquiries</h2><div className="r"><span className="lbl">{ENQ.length ? `${fresh} new` : 'None yet'}</span></div></div><div className="me-l">{ENQ.length ? ENQ.map((e, __k) => {
+                const shown = X.shownEnq?.[e.id],
+                  k = known(e);
+                return <div key={__k} className={`me-r ${e.st}`}><div className="me-t"><i className="sv" style={css(`background:${e.st === 'new' ? 'var(--live)' : 'var(--line)'}`)} /><b>{e.business || 'No business name'}</b><span className="age">{e.when}</span></div><span className="me-m"><span className={shown ? '' : 'msk'}>{shown ? shown.name : e.mask}</span>{shown?.email ? ` · ${shown.email}` : ''}{asked(e) ? ' · ' + asked(e) : ''}</span>{e.msg ? <p className="me-q">“{e.msg}”</p> : ''}<div className="me-a">{e.st === 'new' ? <>{k ? <><span className="me-k">{k.stage === 'transacting' ? 'Already a partner' : `Already on the board · ${STGN[k.stage] || k.stage}`}</span><button className="lnk" data-xopen={k.id}>Open the shop →</button>{RO() ? '' : <button className="lnk3" data-xenq={`reply|${e.id}`}>Mark replied</button>}</> : RO() ? <span className="me-k quiet">New</span> : <><button className="btn sm-b p" data-xenq={`add|${e.id}`}>Add to pipeline</button><button className="btn sm-b" data-xenq={`reply|${e.id}`}>Mark replied</button><button className="lnk3" data-xenq={`no|${e.id}`}>Not a fit</button></>}</> : e.st === 'added' ? <><span className="ok me-k">{`Added to the pipeline${e.by ? ' · ' + e.by.split(/[ @]/)[0] : ''}`}</span>{k ? <button className="lnk" data-xopen={k.id}>Open the shop →</button> : ''}</> : <><span className="me-k quiet">{e.st === 'replied' ? `Replied${e.by ? ' · ' + e.by.split(/[ @]/)[0] : ''}` : `Not a fit${e.why ? ' · ' + e.why : ''}`}</span>{RO() ? '' : <button className="lnk3" data-xenq={`new|${e.id}`}>Open again</button>}</>}{canShow && !shown ? <button className="lnk3 me-show" data-xreveal={e.id}>Show name</button> : ''}</div></div>;
+              }) : <div className="bk-empty">No shop has written in from the site yet. Enquiries from useclear.org/join land here.</div>}</div><div className="bk-ft"><span>From useclear.org/join · names masked, showing one is logged</span><span /></div></div>;
+        };
         /* where leads come from, and who owns them */
         const open = MS.filter(m => ['prospect', 'talking', 'signing'].includes(m.stage)),
           srcs = Object.keys(SRC).map(k => [k, open.filter(m => m.source === k)]),
           smx = Math.max(...srcs.map(x => x[1].length), 1);
         const own = Object.entries(TEAM).filter(([, t]) => t.field).map(([k, t]) => [k, t, open.filter(m => m.owner === k)]);
         const src = <div className="cell s5"><div className="hd"><h2>Where leads come from</h2><div className="r"><span className="lbl">{open.length}{" open"}</span></div></div><div className="ms">{srcs.map(([k, a], __k) => <div key={__k} className="ms-r"><span>{SRC[k]}</span><span className="ms-b"><i style={css(`width:${a.length / smx * 100}%`)} /></span><b>{a.length}</b><span className="ms-s">{a.filter(m => m.stage === 'talking' || m.stage === 'signing').length}{" talking"}</span></div>)}</div><div className="ms ms2"><span className="lbl">Who owns them</span>{own.map(([k, t, a], __k) => <div key={__k} className="ms-r"><span className="ms-p"><span className="av sm">{t.ini}</span>{k === R.me ? 'You' : t.n}</span><span className="ms-b"><i style={css(`width:${a.length / Math.max(1, open.length) * 100}%;background:color-mix(in srgb,var(--fg) 55%,transparent)`)} /></span><b>{a.length}</b><span className="ms-s">{money(sumVal(a)).replace('.00', '')}/mo</span></div>)}</div><div className="bk-ft"><span>Field walk-ins become prospects straight from the phone</span><span /></div></div>;
-        html(document.getElementById('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento">{board}</div></section><section className="band"><div className="bento">{LV ? notReal('s7', 'Shop enquiries', 'Needs the site’s shop enquiries with their details: the kind of shop, what they asked, and whether they’ve been answered, added or turned down.', 'menq') : enq}{src}</div></section></>);
+        html(document.getElementById('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento">{board}</div></section><section className="band"><div className="bento">{LV ? enqLive() : enq}{src}</div></section></>);
       }
 
       /* ══ Partners ══ */
@@ -4113,7 +4180,7 @@ function makeFieldMerchants() {
         html(document.getElementById('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento">{fleet}</div></section><section className="band"><div className="bento">{ref}{pre}</div></section></>);
       }
 
-      /* live: the next run worked out from last month's sales; the schedule, what members repaid and the run's approval aren't recorded yet */
+      /* live: the next run worked out from last month's sales, its approval from its proposal; the schedule from the runs and the PayoutPool's claims */
       function renderPayoutsLive() {
         const lines = runLines(),
           extra = owedOnly(),
@@ -4123,12 +4190,13 @@ function makeFieldMerchants() {
           red = lines.reduce((a, l) => a + l.red, 0) + extra.reduce((a, m) => a + m.owed, 0);
         const W = Math.max(1, sales, run),
           x = v => (v / W * 100).toFixed(2),
-          prop = X.approvals.includes('run'),
-          when = LV.schedule?.monthly ? fmtWD(LV.schedule.monthly) : null,
+          cur = runFor(runPeriod()),
+          prop = cur && ['waiting', 'approved'].includes(cur.status) ? cur : null,
+          when = fmtWD(prop?.goes ?? runGoes(runPeriod())),
           shops = lines.length + extra.length,
           RN = Math.max(1, run);
         const steps = [['Sales cleared', 0, sales, 'var(--fg)', money(sales)], ['Fees', sales - fees, sales, 'var(--absent)', '−' + money(fees)], ['$10 redemptions', sales - fees, sales - fees + red, 'var(--land)', '+' + money(red)], ['Payout', 0, run, 'var(--fg)', money(run)]];
-        const wf = <div className="cell s7"><div className="hd"><h2>The next run</h2><div className="r"><span className="lbl">{MO().last}{" · NET-30"}</span></div></div><div className="xw-top"><div className="m-big">{money(run)}</div><span>{`to ${plural(shops, 'shop', 'shops')}${when ? ' on ' + when : ''}`}</span></div><div className="xw">{steps.map(([k, a, b, c, t], i) => <div key={i} className={`xw-r ${i === 3 ? 'tot' : ''}`}><span>{k}</span><span className="xw-t"><i style={css(`left:${x(a)}%;width:${x(b - a)}%;background:${c}`)} /></span><b>{t}</b></div>)}</div><div className="f-ft2"><span className="small quiet">{prop ? 'Proposed · waiting for a second person' : 'Payouts need two people: you propose, someone else approves'}</span>{prop ? <span className="fst tlv">Proposed</span> : run && !RO() ? <button className="btn p" data-xprop="run">Propose the run</button> : <span />}</div></div>;
+        const wf = <div className="cell s7"><div className="hd"><h2>The next run</h2><div className="r"><span className="lbl">{MO().last}{" · NET-30"}</span></div></div><div className="xw-top"><div className="m-big">{money(run)}</div><span>{`to ${plural(shops, 'shop', 'shops')}${when ? ' on ' + when : ''}`}</span></div><div className="xw">{steps.map(([k, a, b, c, t], i) => <div key={i} className={`xw-r ${i === 3 ? 'tot' : ''}`}><span>{k}</span><span className="xw-t"><i style={css(`left:${x(a)}%;width:${x(b - a)}%;background:${c}`)} /></span><b>{t}</b></div>)}</div><div className="f-ft2"><span className="small quiet">{prop ? prop.status === 'approved' ? `Approved${prop.approvedBy ? ' by ' + prop.approvedBy.split(/[ @]/)[0] : ''}${prop.paidAt ? ' · paid' : prop.sentAt ? ' · in the Ops Safe' : ' · for the Ops Safe'}` : `Proposed${prop.proposedBy ? ' by ' + (prop.proposedById === LV.meId ? 'you' : prop.proposedBy.split(/[ @]/)[0]) : ''} · waiting for a second person` : 'Payouts need two people: you propose, someone else approves'}</span>{prop ? canApprove(prop) ? <button className="btn p" data-xapprove={prop.id}>Approve</button> : <span className={`fst ${prop.status === 'approved' ? 'ok' : 'tlv'}`}>{prop.status === 'approved' ? 'Approved' : 'Proposed'}</span> : run && !RO() ? <button className="btn p" data-xprop="run">Propose the run</button> : <span />}</div></div>;
         // what members have paid on the run's sales: paid at the counter, or repaid so far on their plans (TermIssuer)
         const CO = LV.collected,
           got = lines.reduce((a, l) => {
@@ -4136,11 +4204,37 @@ function makeFieldMerchants() {
             return c ? { sold: a.sold + c.now + c.plans, paid: a.paid + c.now + c.repaid } : a;
           }, { sold: 0, paid: 0 });
         const cl = !CO ? notReal('s5', 'Collected before it goes out', 'Needs what members have repaid on the sales in this run, and what’s still due from them.') : <div className="cell s5"><div className="hd"><h2>Collected before it goes out</h2><div className="r"><span className="lbl">For this run</span></div></div><div className="xc"><div className="xc-r"><i style={css(`width:${got.sold ? got.paid / got.sold * 100 : 0}%`)} /></div><div className="m-big">{got.sold ? `${(got.paid / got.sold * 100).toFixed(1)}% ` : '— '}<small>{got.sold ? 'paid by members' : `no sales in ${MO().last}`}</small></div></div><div className="led xc-l"><div><span>Collected</span><b>{money(got.paid)}</b></div><div><span>Still due from members</span><b>{money(Math.max(0, got.sold - got.paid))}</b></div>{when ? <div><span>Run on</span><b>{when}</b></div> : ''}</div><div className="bk-ft"><span>If members are late, the pool covers the gap</span><button data-xgo="money">Money →</button></div></div>;
-        const cal = notReal('s12', 'When money goes out', 'Needs the payout schedule: when each NET-14 and NET-30 payout goes, and whether a second person has approved it.');
+        /* when money goes out: each NET-14 claim the PayoutPool holds (it pays them claim by claim), the monthly NET-30 runs not paid
+           yet (an approved one waits for the Ops Safe), and next month's run, its state from its proposal */
+        const rel = d => d === 0 ? 'today' : d === 1 ? 'tomorrow' : d < 0 ? `${plural(-d, 'day', 'days')} late` : `in ${d} days`,
+          dOf = t => Math.round((midnightOf(t) - TODAY) / DAY);
+        const UP = [];
+        for (const c of LV.claims || []) if (c.net < 30 && dOf(c.due) <= 30) UP.push([dOf(c.due), c.name, `NET-${c.net} · claim #${c.id}`, c.amount, MSBY[c.shop] ? c.shop : null, dOf(c.due) < 0 ? 'Overdue' : 'Scheduled', null]);
+        const runSt = r => r.paidAt ? 'Paid' : r.status === 'approved' ? r.sentAt ? 'In the Ops Safe' : 'Approved' : canApprove(r) ? 'Needs a second person' : 'Proposed';
+        for (const r of LV.runs.filter(r => r.status === 'approved' && !r.paidAt && r.period !== runPeriod() && r.goes != null)) UP.push([dOf(r.goes), 'Monthly run', `NET-30 · ${monthOf(r.period).split(' ')[0]} · ${plural(r.shops, 'shop', 'shops')}`, r.total, null, runSt(r), r]);
+        if (run || cur) UP.push([dOf(prop?.goes ?? runGoes(runPeriod())), 'Monthly run', `NET-30 · ${MO().last} · ${plural(prop ? prop.shops : shops, 'shop', 'shops')}`, prop ? prop.total : run, null, prop ? runSt(prop) : 'Not proposed yet', prop]);
+        UP.sort((a, b) => a[0] - b[0]);
+        const umx = Math.max(1, ...UP.map(u => u[3])),
+          MON = d => new Date(dayT(d)).toLocaleDateString('en-US', {
+            month: 'long',
+            timeZone: 'UTC'
+          });
+        const rows = UP.map(([d, n, s, v, id, st, r], i) => {
+          const same = i && UP[i - 1][0] === d,
+            newM = !i || MON(UP[i - 1][0]) !== MON(d);
+          const mt = UP.filter(u => MON(u[0]) === MON(d)),
+            band = newM ? <div className="xq-m"><span className="lbl">{MON(d)}</span><span className="xq-mt">{plural(mt.length, 'payout', 'payouts')}{" · "}<b>{money(mt.reduce((a, u) => a + u[3], 0))}</b></span></div> : '';
+          const grp = UP[i + 1] && UP[i + 1][0] === d;
+          return <Fragment key={i}>{band}<div className={`xq-r ${same ? 'same' : ''} ${grp ? 'grp' : ''} ${d <= 1 ? 'soon' : ''}`}><span className="xq-d leaf">{same ? <><i className="tie" aria-hidden="true" /><span className="sr">Same day</span></> : <><span>{fmtWD(dayT(d)).slice(0, 3)}</span><b>{new Date(dayT(d)).getUTCDate()}</b></>}</span><span className="xq-k">{id ? <button data-xopen={id}><b>{n}</b></button> : <b>{n}</b>}<span>{s}{" · "}{same ? 'same day' : rel(d)}</span></span><span className="xq-b"><i style={css(`width:${v / umx * 100}%`)} /></span><b className="xq-v">{money(v)}</b><span className={`xq-s ${['Needs a second person', 'Overdue'].includes(st) ? 'warn' : st === 'Proposed' ? 'tlv' : ['Approved', 'In the Ops Safe', 'Paid'].includes(st) ? 'ok' : ''}`}>{st === 'Needs a second person' ? <span className="xq-a"><span>{`Proposed by ${r.proposedBy.split(/[ @]/)[0]}`}</span><button className="btn sm-b p" data-xapprove={r.id}>Approve</button></span> : st}</span></div></Fragment>;
+        });
+        const cal = <div className="cell s12" id="mcal"><div className="hd"><h2>When money goes out</h2><div className="r"><span className="lbl">Next 30 days</span></div></div>{rows.length ? <div className="xq">{rows}</div> : <div className="bk-empty">Nothing goes out in the next 30 days.</div>}<div className="bk-ft"><span>{LV.claims ? 'NET-14 shops are paid claim by claim by the PayoutPool · NET-30 shops in the monthly run' : 'NET-14 claims aren’t read from the chain here · NET-30 shops are paid in the monthly run'}</span><span /></div></div>;
+        /* every run so far: proposed, approved, in the Ops Safe and paid, newest first */
+        const who1 = n => n ? n.split(/[ @]/)[0] : '';
+        const runsT = <div className="cell s12" id="mruns"><div className="hd"><h2>Payout runs</h2><div className="r"><span className="lbl">{LV.runs.length ? plural(LV.runs.length, 'run', 'runs') : 'None yet'}</span></div></div><div className="bt-wrap"><table className="bt xl"><colgroup><col style={css("width:18%")} /><col style={css("width:11%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:16%")} /><col style={css("width:12%")} /><col style={css("width:16%")} /></colgroup><thead><tr><th className="c-nm">Sales month</th><th>Goes</th><th>Total</th><th style={css("text-align:left")}>Proposed</th><th style={css("text-align:left")}>Approved</th><th>In the Safe</th><th>Paid</th></tr></thead><tbody>{LV.runs.length ? LV.runs.map((r, __k) => <tr key={__k} className={r.status === 'declined' || r.status === 'withdrawn' ? 'quiet' : ''}><td className="tn"><b>{r.period ? monthOf(r.period) : 'A month'}</b><span>{plural(r.shops, 'shop', 'shops')}</span></td><td>{r.goes ? fmtD(r.goes) : '–'}</td><td><b>{money(r.total)}</b></td><td style={css("text-align:left")}>{`${r.proposedById === LV.meId ? 'You' : who1(r.proposedBy) || 'Someone'} · ${fmtD(r.proposedAt)}`}</td><td style={css("text-align:left")}>{r.status === 'approved' ? `${who1(r.approvedBy) || 'Someone'} · ${fmtD(r.approvedAt)}` : r.status === 'declined' ? 'Sent back' : r.status === 'withdrawn' ? 'Taken back' : canApprove(r) ? <span className="xq-a"><button className="btn sm-b p" data-xapprove={r.id}>Approve</button><button className="lnk3" data-xrundecline={r.id}>Send back</button></span> : r.proposedById === LV.meId && !RO() ? <span className="xq-a"><span className="quiet">Waiting</span><button className="lnk3" data-xrundecline={r.id}>Take back</button></span> : <span className="quiet">Waiting</span>}</td><td>{r.sentAt ? fmtD(r.sentAt) : <span className="quiet">–</span>}</td><td>{r.paidAt ? `${fmtD(r.paidAt)}${r.paidBy ? ' · ' + who1(r.paidBy) : ''}` : r.status === 'approved' && !RO() ? <button className="lnk4" data-xrunpaid={r.id}>Mark paid</button> : <span className="quiet">–</span>}</td></tr>) : <tr><td colSpan="7" className="tn"><span className="quiet">No run has been proposed yet. The first is proposed above, from last month’s sales.</span></td></tr>}</tbody></table></div><div className="bk-ft"><span>Approved, a run goes to the outbox for the Ops Safe · mark it paid once the Safe has sent it</span><span /></div></div>;
         const tbl = <div className="cell s12"><div className="hd"><h2>The monthly run, line by line</h2><div className="r"><span className="lbl">{when || `${MO().last}’s sales`}</span></div></div><div className="bt-wrap"><table className="bt xl"><colgroup><col style={css("width:26%")} /><col style={css("width:14%")} /><col style={css("width:12%")} /><col style={css("width:14%")} /><col style={css("width:14%")} /><col style={css("width:20%")} /></colgroup><thead><tr><th className="c-nm">Shop</th><th>Sales cleared</th><th>Fee</th><th>$10 redemptions</th><th>Payout</th><th style={css("text-align:left")}>Share of run</th></tr></thead><tbody>{lines.sort((a, b) => b.total - a.total).map((l, __k) => <tr key={__k} data-xopen={l.m.id}><td className="tn"><b>{l.m.name}</b></td><td>{money(l.sales)}</td><td>{l.fee ? '−' + money(l.fee) : 'Free'}</td><td>{l.red ? money(l.red) : <span className="quiet">–</span>}</td><td><b>{money(l.total)}</b></td><td style={css("text-align:left")}><span className="xp-o"><span className="xp-ob"><i style={css(`width:${l.total / RN * 100}%`)} /></span><span>{(l.total / RN * 100).toFixed(1)}%</span></span></td></tr>)}{extra.map((m, __k) => <tr key={__k} data-xopen={m.id}><td className="tn"><b>{m.name}</b><span>Not taking cards · redemptions</span></td><td><span className="quiet">–</span></td><td><span className="quiet">–</span></td><td>{money(m.owed)}</td><td><b>{money(m.owed)}</b></td><td style={css("text-align:left")}><span className="xp-o"><span className="xp-ob"><i style={css(`width:${m.owed / RN * 100}%`)} /></span><span>{(m.owed / RN * 100).toFixed(1)}%</span></span></td></tr>)}{shops ? '' : <tr><td colSpan="6" className="tn"><span className="quiet">{`No NET-30 shop has ${MO().last} sales to pay out.`}</span></td></tr>}<tr className="tot"><td className="tn"><b>Run total</b></td><td><b>{money(sales)}</b></td><td><b>−{money(fees)}</b></td><td><b>{money(red)}</b></td><td><b>{money(run)}</b></td><td /></tr></tbody></table></div><div className="bk-ft"><span>Proposed by one person, approved by another</span><span /></div></div>;
-        html(document.getElementById('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento">{wf}{cl}</div></section><section className="band"><div className="bento">{cal}</div></section><section className="band"><div className="bento">{tbl}</div></section></>);
+        html(document.getElementById('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento">{wf}{cl}</div></section><section className="band"><div className="bento">{cal}</div></section><section className="band"><div className="bento">{tbl}</div></section><section className="band"><div className="bento">{runsT}</div></section></>);
       }
-      /* live: the shops' Points as the merchant app hears them; the refurb line and pre-orders aren't recorded here yet */
+      /* live: the shops' Points as the merchant app hears them, the refurb line (Command's own) and the shops' pre-orders (the shop's reservations) */
       function renderDevicesLive() {
         const rows = Object.entries(FLEET).map(([id, f]) => ({
           m: MSBY[id],
@@ -4159,9 +4253,36 @@ function makeFieldMerchants() {
                   const st = devFix(m);
                   return <tr key={__k} data-xopen={m.id} className={bad}><td className="tn"><b>{m.name}</b><span className={bad ? 'warn' : ''}>{bad ? f.note : m.city}</span><span className="xd-mq">{DTYPE.filter(([k]) => f[k]).map(([k, t], __k) => <span key={__k}>{t.replace('Clear ', '')}<span className="xd-q">{f[k].map((x, __k) => <i key={__k} className={x} />)}</span></span>)}{bad && st ? onRoute(st) : ''}</span></td>{DTYPE.map(([k], __k) => <td key={__k} style={css("text-align:left")}>{f[k] ? <span className="xd-q">{f[k].map((s, __k) => <i key={__k} className={s} />)}</span> : <span className="quiet">–</span>}</td>)}<td>{f.seen}</td><td style={css("text-align:left")}>{bad ? st ? onRoute(st) : <span className="quiet">Not on a route</span> : <span className="quiet">All online</span>}</td></tr>;
                 }) : <tr><td colSpan="7" className="tn"><span className="quiet">No Points have checked in yet.</span></td></tr>}</tbody></table></div><div className="bk-ft"><span className="f-key"><i style={css("background:var(--fg)")} />{"Online "}<i style={css("background:var(--underway)")} />{"Battery low "}<i className="koff" />Offline</span><span className="small quiet">A Point is offline after ten minutes unheard. Readers, tablets and printers don’t report in yet.</span></div></div>;
-        const ref = notReal('s7', 'Refurb line', 'Needs the refurb line’s units: bought, in repair, testing, ready and shipped, and which shop each goes to.');
-        const pre = notReal('s5', 'Pre-orders', 'Needs the shops’ device pre-orders, with their deposits and when each ships.');
-        html(document.getElementById('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento">{fleet}</div></section><section className="band"><div className="bento">{ref}{pre}</div></section></>);
+        /* the refurb line: each unit's stage, and the shop and day it goes to (Command's own record) */
+        const U = LV.refurb,
+          RFS = [['bought', 'Bought', 'Awaiting repair'], ['repair', 'Repairing', 'In repair'], ['testing', 'Testing', 'Being tested'], ['ready', 'Ready', 'Ready to ship'], ['shipped', 'Shipped', 'At shops']],
+          RFN = Object.fromEntries(RFS.map(([k, t]) => [k, t])),
+          nOf = k => U.filter(u => u.stage === k).length;
+        const going = U.filter(u => u.shop && u.stage !== 'shipped'),
+          days = [...new Set(going.map(u => u.ships ?? 0))].sort((a, b) => (a || Infinity) - (b || Infinity));
+        const SHIP = days.map(t => {
+          const a = going.filter(u => (u.ships ?? 0) === t),
+            by = [...new Set(a.map(u => u.shopName))].map(n => [n, a.filter(u => u.shopName === n).length]);
+          return [t, by, a.every(u => u.stage === 'ready') ? 'ready' : 'line', a.length];
+        });
+        const costed = U.filter(u => u.cost != null),
+          avg = costed.length ? costed.reduce((a, u) => a + u.cost, 0) / costed.length : null;
+        const ref = <div className="cell s7"><div className="hd"><h2>Refurb line</h2><div className="r"><span className="lbl">{U.length ? plural(U.length, 'unit', 'units') : 'No units yet'}</span></div></div><div className="xr"><div className="m-big">{nOf('ready')}{" "}<small>{`ready to ship · ${nOf('repair') + nOf('testing')} still in repair or testing`}</small></div><div className="xr-b">{RFS.map(([k], i) => <i key={i} style={css(`flex:${nOf(k)};background:${['color-mix(in srgb,var(--fg) 22%,transparent)', 'color-mix(in srgb,var(--fg) 35%,transparent)', 'color-mix(in srgb,var(--fg) 50%,transparent)', 'var(--fg)', 'var(--land)'][i]}`)} />)}</div><div className="xr-s">{RFS.map(([k, t, sub], __k) => <div key={__k}><span className="lbl">{t}</span><b>{nOf(k)}</b><span>{sub}</span></div>)}</div></div><div className="xs"><div className="xs-h lbl">Where they go</div>{SHIP.length ? SHIP.map(([t, who, st, n], __k) => <div key={__k} className={`xs-r ${st}`}><span className="leaf">{t ? <><span>{fmtWD(t).split(' ')[0]}</span><b>{fmtWD(t).split(' ')[1]}</b><span>{fmtWD(t).split(' ')[2]}</span></> : <><span>No</span><b>–</b><span>day</span></>}</span><span className="xs-u"><b>{n}</b>{" unit"}{n > 1 ? 's' : ''}</span><span className="xs-w">{who.map(([s, u], __k) => <Fragment key={__k}>{__k ? ' · ' : ''}{s}{" "}<span className="quiet">{u}</span></Fragment>)}</span><span className="xs-s">{st === 'ready' ? 'Ready' : 'On the line'}</span></div>) : <p className="small quiet" style={css("padding:12px 0 0;margin:0")}>No unit is going to a shop yet.</p>}</div><div className="bk-ft"><span>{avg != null ? `A repaired unit costs ${money(avg)} on average` : 'No unit’s cost is recorded yet'}</span>{RO() ? <span /> : <button data-xrfadd="">+ Add a unit</button>}</div></div>;
+        /* the shops' pre-orders: the shop's reservations through Stripe, each line's deposit a unit, and the month it ships */
+        const P = LV.preorders.slice().sort((a, b) => (a.state === 'held' ? 0 : 1) - (b.state === 'held' ? 0 : 1) || a.placed - b.placed),
+          held = P.filter(p => p.state === 'held'),
+          dep = held.reduce((a, p) => a + p.deposit * p.units, 0),
+          devs = held.reduce((a, p) => a + p.units, 0);
+        const shopOf = p => p.shopId && MSBY[p.shopId] ? p.shopId : MS.find(m => m.name === p.shop)?.id;
+        const pre = <div className="cell s5"><div className="hd"><h2>Pre-orders</h2><div className="r"><span className="lbl">From the shop’s reservations</span></div></div><div className="xo-top"><div className="m-big">{money(dep)}</div><span>{`in deposits for ${plural(devs, 'device', 'devices')}`}</span></div><div className="xo">{P.length ? P.map((p, __k) => {
+              const id = shopOf(p);
+              return <button key={__k} className="xo-r" {...attrs(id ? `data-xopen="${id}"` : '')}><b>{p.shop}</b><span>{`${p.units} ${p.product}${p.variant ? ' ' + p.variant : ''} · ${p.state === 'held' ? p.ships ? 'ships ' + p.ships : 'no ship month yet' : p.state[0].toUpperCase() + p.state.slice(1)}`}</span><b>{money(p.deposit * p.units)}</b></button>;
+            }) : <p className="small quiet" style={css("padding:12px 22px;margin:0")}>No shop has pre-ordered a device yet. Reservations from useclear.org/shop land here.</p>}</div><div className="bk-ft"><span>Deposits are held on the shop’s Stripe until the device ships</span><span /></div></div>;
+        /* every unit on the line, to add one, move it a stage, and say which shop it goes to and when */
+        const shopsAZ = MS.slice().sort((a, b) => a.name.localeCompare(b.name));
+        const iso = t => new Date(t).toISOString().slice(0, 10);
+        const units = <div className="cell s12" id="mrefurb"><div className="hd"><h2>Refurb units</h2><div className="r"><span className="lbl">{`${nOf('shipped')} shipped · ${U.length - nOf('shipped')} on the line`}</span></div></div><div className="bt-wrap"><table className="bt xl mr-rf"><colgroup><col style={css("width:24%")} /><col style={css("width:16%")} /><col style={css("width:24%")} /><col style={css("width:14%")} /><col style={css("width:10%")} /><col style={css("width:12%")} /></colgroup><thead><tr><th className="c-nm">Unit</th><th style={css("text-align:left")}>Stage</th><th style={css("text-align:left")}>Goes to</th><th style={css("text-align:left")}>Ships</th><th>Cost</th><th>Moved</th></tr></thead><tbody>{X.rfAdd && !RO() ? <tr className="mr-add"><td className="tn"><input id="xrfm" className="vin" placeholder="What it is: Galaxy Tab A9" aria-label="What the unit is" /></td><td style={css("text-align:left")}><input id="xrfs" className="vin" placeholder="Serial" aria-label="Its serial" /></td><td style={css("text-align:left")}><input id="xrfc" className="vin" inputMode="decimal" placeholder="What it cost, $" aria-label="What it cost" /></td><td colSpan="3" style={css("text-align:left")}><span className="xq-a"><button className="btn sm-b p" data-xrfsave="">Add it</button><button className="lnk3" data-xrfcancel="">Cancel</button></span></td></tr> : ''}{U.map((u, __k) => <tr key={__k}><td className="tn"><b>{u.model}</b><span>{u.serial || 'No serial'}{u.note ? ' · ' + u.note : ''}</span></td><td style={css("text-align:left")}>{RO() ? RFN[u.stage] : <select className="vin" data-xrfst={u.id} aria-label={`${u.model}’s stage`}>{RFS.map(([k, t], __k) => <option key={__k} value={k} {...picked(u.stage === k)}>{t}</option>)}</select>}</td><td style={css("text-align:left")}>{RO() ? u.shopName || <span className="quiet">Not yet</span> : <select className="vin" data-xrfto={u.id} aria-label={`Which shop ${u.model} goes to`}><option value="" {...picked(!u.shop)}>Not yet</option>{u.shop && !MSBY[u.shop] ? <option value={u.shop} {...picked(true)}>{u.shopName}</option> : ''}{shopsAZ.map((m, __k) => <option key={__k} value={m.id} {...picked(u.shop === m.id)}>{m.name}</option>)}</select>}</td><td style={css("text-align:left")}>{RO() || !u.shop ? u.ships ? fmtD(u.ships) : <span className="quiet">–</span> : <input type="date" className="vin" data-xrfday={u.id} defaultValue={u.ships ? iso(u.ships) : ''} aria-label={`When ${u.model} ships`} />}</td><td>{u.cost != null ? money(u.cost) : <span className="quiet">–</span>}</td><td>{fmtD(u.movedAt)}</td></tr>)}{U.length || X.rfAdd ? '' : <tr><td colSpan="6" className="tn"><span className="quiet">No units on the refurb line yet. Add one when it’s bought.</span></td></tr>}</tbody></table></div><div className="bk-ft"><span>A unit ships only once it has a shop · every move is logged</span>{RO() ? <span /> : <button data-xrfadd="">+ Add a unit</button>}</div></div>;
+        html(document.getElementById('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento">{fleet}</div></section><section className="band"><div className="bento">{ref}{pre}</div></section><section className="band"><div className="bento">{units}</div></section></>);
       }
 
       /* ══ The shop record (side panel) and adding a prospect ══ */
@@ -4252,7 +4373,7 @@ function makeFieldMerchants() {
       function addPanel(pn) {
         const A = X.add,
           who = isAdmin() ? A.owner : R.me;
-        html(pn, <><div className="pn-hd"><span className="lbl">New prospect</span><button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>Add a prospect</h3><label><span className="lbl">Shop name</span><input id="xan" className="vin" defaultValue={A.name || ''} placeholder="Rancho Cucamonga Auto" /></label><div className="xa2"><label><span className="lbl">Kind of shop</span><input id="xak" className="vin" defaultValue={A.kind || ''} placeholder="Auto repair" /></label><label><span className="lbl">City</span><select id="xac" className="vin" defaultValue={A.city}>{Object.keys(GEO).map((c, __k) => <option key={__k} {...picked(A.city === c)}>{c}</option>)}</select></label></div><div className="xa-f"><span className="lbl">Came from</span><div className="seg sm" role="group">{Object.entries(SRC).map(([k, t], __k) => <button key={__k} data-xasrc={k} aria-pressed={A.source === k}>{t.replace('Next to a poster shop', 'Poster shop')}</button>)}</div></div>{isAdmin() ? <div className="xa-f"><span className="lbl">Whose lead</span><div className="seg sm" role="group">{Object.entries(TEAM).filter(([, t]) => t.field).map(([k, t], __k) => <button key={__k} data-xaown={k} aria-pressed={who === k}>{k === R.me ? 'Me' : t.n}</button>)}</div></div> : <p className="small quiet" style={css("margin:0")}>It’ll be your lead.</p>}<div className="xa2"><label><span className="lbl">Next step</span><input id="xanx" className="vin" defaultValue="Walk in" /></label><label><span className="lbl">Could finance a month</span><input id="xav" className="vin" inputMode="numeric" placeholder="$5,000" /></label></div>{A.from ? <p className="small quiet" style={css("margin:0")}>From a shop enquiry. It’s marked added there.</p> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>Lands in Field’s Needs a visit</span><button className="btn" data-xclose="">Cancel</button><button className="btn p" data-xasave="">Add the prospect</button></div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">New prospect</span><button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>Add a prospect</h3><label><span className="lbl">Shop name</span><input id="xan" className="vin" defaultValue={A.name || ''} placeholder="Rancho Cucamonga Auto" /></label><div className="xa2"><label><span className="lbl">Kind of shop</span><input id="xak" className="vin" defaultValue={A.kind || ''} placeholder="Auto repair" /></label><label><span className="lbl">City</span><select id="xac" className="vin" defaultValue={A.city}>{(A.city && !GEO[A.city] ? [A.city, ...Object.keys(GEO)] : Object.keys(GEO)).map((c, __k) => <option key={__k} {...picked(A.city === c)}>{c}</option>)}</select></label></div><div className="xa-f"><span className="lbl">Came from</span><div className="seg sm" role="group">{Object.entries(SRC).map(([k, t], __k) => <button key={__k} data-xasrc={k} aria-pressed={A.source === k}>{t.replace('Next to a poster shop', 'Poster shop')}</button>)}</div></div>{isAdmin() ? <div className="xa-f"><span className="lbl">Whose lead</span><div className="seg sm" role="group">{Object.entries(TEAM).filter(([, t]) => t.field).map(([k, t], __k) => <button key={__k} data-xaown={k} aria-pressed={who === k}>{k === R.me ? 'Me' : t.n}</button>)}</div></div> : <p className="small quiet" style={css("margin:0")}>It’ll be your lead.</p>}<div className="xa2"><label><span className="lbl">Next step</span><input id="xanx" className="vin" defaultValue="Walk in" /></label><label><span className="lbl">Could finance a month</span><input id="xav" className="vin" inputMode="numeric" placeholder="$5,000" /></label></div>{A.from ? <p className="small quiet" style={css("margin:0")}>From a shop enquiry. It’s marked added there.</p> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>Lands in Field’s Needs a visit</span><button className="btn" data-xclose="">Cancel</button><button className="btn p" data-xasave="">Add the prospect</button></div></>);
       }
 
       /* ── render + events ── */
@@ -4271,6 +4392,40 @@ function makeFieldMerchants() {
         fmMountAll();
         requestAnimationFrame(fmLayoutDrawn);
       }
+      /** Live: approves or sends back (your own: takes back) a run waiting for a second person, then loads Merchants again. */
+      const settleRun = async (id, how) => {
+        try {
+          await api('POST', `/proposals/${id}/${how}`);
+          await reloadSection('merchants');
+          await import('../live/account').then(m => m.loadWaiting()).catch(() => undefined);
+          toast(how === 'approve' ? 'Approved · the run is recorded for the Ops Safe' : 'Sent back · logged');
+          renderShell();
+        } catch (e) {
+          toast(e.message);
+        }
+      };
+      /** Live: who sent an enquiry, for a reason (POST /merchants/enquiries/:id/reveal: Approve, logged); a blank reason is a rush, flagged. */
+      const revealEnq = async id => {
+        const en = ENQ.find(x => x.id === id);
+        if (!en) return;
+        const why = window.prompt('Why do you need to see who sent this? This is logged.');
+        if (why == null) return;
+        try {
+          const r = await api('POST', `/merchants/enquiries/${en.api}/reveal`, why.trim() ? {
+            reason: why.trim()
+          } : {
+            rush: true
+          });
+          (X.shownEnq ||= {})[id] = {
+            name: [r.first, r.last].filter(Boolean).join(' ') || 'No name given',
+            email: r.email
+          };
+          toast(why.trim() ? 'Shown · logged in Records with your reason' : 'Shown · logged in Records as a rush, without a reason');
+          render();
+        } catch (e) {
+          toast(e.message);
+        }
+      };
       const closeX = () => {
         X.open = null;
         X.add = null;
@@ -4346,7 +4501,42 @@ function makeFieldMerchants() {
           X.allSigned = !X.allSigned;
           return render();
         }
-        if (d.xapprove && LV) return;
+        if (d.xapprove && LV) return settleRun(d.xapprove, 'approve');
+        if (d.xrundecline && LV) return settleRun(d.xrundecline, 'decline');
+        if (d.xrunpaid && LV) return run('merchants', 'run-paid', {
+          run: d.xrunpaid
+        }, () => {
+          toast('Marked paid · logged');
+          renderShell();
+        });
+        /* live: the refurb line (Command's own record: merchants/refurb-*) */
+        if (t.hasAttribute('data-xrfadd') && LV) {
+          X.rfAdd = true;
+          render();
+          return document.getElementById('xrfm')?.focus();
+        }
+        if (t.hasAttribute('data-xrfcancel') && LV) {
+          X.rfAdd = false;
+          return render();
+        }
+        if (t.hasAttribute('data-xrfsave') && LV) {
+          const model = document.getElementById('xrfm').value.trim(),
+            serial = document.getElementById('xrfs').value.trim(),
+            c = document.getElementById('xrfc').value.replace(/[^0-9.]/g, '');
+          if (!model) {
+            toast('Say what the unit is');
+            return;
+          }
+          return run('merchants', 'refurb-add', {
+            model,
+            serial,
+            cost: c ? +c : null
+          }, () => {
+            X.rfAdd = false;
+            toast(`${model} added to the refurb line`);
+            renderShell();
+          });
+        }
         if (d.xapprove === 'rosas-pay' && S.waiting.some(w => w.id === 'payout')) return openItem('payout');
         if (d.xapprove) {
           X.approvals.push(d.xapprove);
@@ -4485,14 +4675,67 @@ function makeFieldMerchants() {
         }
         if (d.xprop && LV) return run('merchants', 'run', {
           total: runTotal(),
-          shops: runLines().length + owedOnly().length
+          shops: runLines().length + owedOnly().length,
+          period: runPeriod(),
+          goes: new Date(runGoes(runPeriod())).toISOString().slice(0, 10),
+          lines: [...runLines().map(l => ({
+            id: l.m.id,
+            name: l.m.name,
+            sales: l.sales,
+            fee: l.fee,
+            red: l.red,
+            total: l.total
+          })), ...owedOnly().map(m => ({
+            id: m.id,
+            name: m.name,
+            sales: 0,
+            fee: 0,
+            red: m.owed,
+            total: m.owed
+          }))]
         }, () => renderShell());
         if (d.xprop) {
           X.approvals.push(d.xprop);
           toast('Monthly run proposed · Dana approves it in Needs you');
           return render();
         }
-        if ((d.xreveal || d.xenq) && LV) return;
+        if (d.xreveal && LV) return revealEnq(d.xreveal);
+        if (d.xenq && LV) {
+          // live: answered and turned down are the enquiry's own (merchants/enquiry); added is the card saved with it
+          const [a, id] = d.xenq.split('|'),
+            en = ENQ.find(x => x.id === id);
+          if (!en || RO()) return;
+          if (a === 'add') {
+            X.add = {
+              name: en.business,
+              kind: en.kind,
+              city: en.city,
+              source: 'enquiry',
+              owner: R.me,
+              from: en.api
+            };
+            return render();
+          }
+          const state = {
+            reply: 'replied',
+            no: 'notfit',
+            new: 'new'
+          }[a];
+          if (!state) return;
+          let why = '';
+          if (state === 'notfit') {
+            why = window.prompt('Why isn’t it a fit? It’s kept with the enquiry.', '');
+            if (why == null) return;
+          }
+          return run('merchants', 'enquiry', {
+            id: en.api,
+            state,
+            why: why.trim()
+          }, () => {
+            toast(state === 'replied' ? 'Marked replied · logged' : state === 'notfit' ? 'Marked not a fit · logged' : 'Opened again');
+            renderShell();
+          });
+        }
         if (d.xreveal) {
           (X.reveal ||= new Set()).add(d.xreveal);
           toast('Shown · logged in Records');
@@ -4562,8 +4805,10 @@ function makeFieldMerchants() {
             next: document.getElementById('xanx').value.trim() || 'Walk in',
             due: null,
             source: SRC_OUT[A.source] || ''
-          }, {}, [{
-            text: 'Added to the board',
+          }, A.from ? {
+            enquiry: A.from
+          } : {}, [{
+            text: A.from ? 'Added to the board from a shop enquiry' : 'Added to the board',
             type: 'edit'
           }], null, `${name} added · ${owner === R.me ? 'your' : (on ? on.n : 'nobody') + '’s'} lead`);
         }
@@ -4598,6 +4843,28 @@ function makeFieldMerchants() {
           return render();
         }
         if (d.xgo || d.fgo) return goOut(t);
+      });
+      // live: a refurb unit's stage, its shop and the day it ships, changed in its row
+      document.addEventListener('change', e => {
+        if (PAGE !== 'merchants' || !LV || RO()) return;
+        const d = e.target.dataset || {};
+        if (d.xrfst) return run('merchants', 'refurb-move', {
+          id: +d.xrfst,
+          stage: e.target.value
+        }, () => renderShell());
+        if (d.xrfto || d.xrfday) {
+          const id = +(d.xrfto || d.xrfday),
+            sel = document.querySelector(`select[data-xrfto="${id}"]`),
+            day = document.querySelector(`input[data-xrfday="${id}"]`),
+            shop = sel?.value || null,
+            u = LV.refurb.find(x => x.id === id);
+          return run('merchants', 'refurb-assign', {
+            id,
+            shop,
+            name: shop ? MSBY[shop]?.name || (u?.shop === shop ? u.shopName : '') || '' : '',
+            ships: shop && day?.value ? day.value : null
+          }, () => renderShell());
+        }
       });
       document.addEventListener('input', e => {
         if (PAGE !== 'merchants') return;
