@@ -2878,3 +2878,81 @@ body.h-pn .h-panel{transform:none;visibility:visible}
   .h-pn-ft{flex-wrap:wrap} .h-pn-ft .nx{width:100%;margin:0 0 4px}
   .h-pn-ft .h-btn{flex:1}
 }
+
+/* ── Flows as sheets ─────────────────────────────────────────
+ * The redesigned Shop's flows (shop.tsx, costing.tsx, catalog.tsx) keep their markup and their #modalRoot
+ * lookups, and are drawn as the page's own side panel (.panel.spanel in the shop sheets: g, fm, bx, sx),
+ * docked right: its header, body and footer, its labels, inputs, ledgers, notes and buttons. modalShell
+ * marks them (.scrim.sheet); every other modal stays a centred dialog. */
+#modalRoot .scrim.sheet{place-items:stretch end;padding:0;animation:sheet-fade .2s var(--ease)}
+#modalRoot .sheet .modal{position:relative;width:min(560px,100vw);height:100%;max-height:none;overflow:hidden;border:0;border-left:1px solid var(--line);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);animation:sheet-in .28s var(--ease)}
+@keyframes sheet-in{from{transform:translateX(100%)}to{transform:none}}
+@keyframes sheet-fade{from{opacity:0}to{opacity:1}}
+#modalRoot .sheet .m-hd{flex:none;height:60px;min-height:60px;gap:12px;padding:0 24px}
+#modalRoot .sheet .m-hd #mt{font:400 11px/1.3 var(--f-mono);text-transform:uppercase;letter-spacing:.1em;color:var(--fg-50);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#modalRoot .sheet .m-hd .x{flex:none;margin-left:auto;width:32px;height:32px;border-radius:0;border:1px solid var(--line);color:var(--fg)}
+#modalRoot .sheet .m-hd .x:hover{background:none;border-color:var(--fg)}
+#modalRoot .sheet .m-hd .x .i{width:14px;height:14px}
+#modalRoot .sheet .m-mn{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:24px;gap:20px;font-size:14px}
+#modalRoot .sheet .m-ft{flex:none;min-height:40px;padding:0 24px;border-top:1px solid var(--hair);font:400 11px/1.3 var(--f-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--fg-50)}
+/* the title block: a label, the name (.bpn-t) and a line under it (.bpn-s) */
+#modalRoot .sheet .m-mn .lbl{font:400 11px/1.3 var(--f-mono);letter-spacing:.1em;color:var(--fg-50)}
+#modalRoot .sheet .m-mn .h2{font:700 24px/1.15 var(--f-display);letter-spacing:-.02em;margin-top:6px !important}
+#modalRoot .sheet .m-mn .h2 + .quiet{font-size:13px;line-height:1.5;margin-top:6px !important}
+#modalRoot .sheet .m-mn .quiet{color:var(--fg-70)}
+#modalRoot .sheet .m-mn .small{font-size:13px;line-height:1.55}
+/* a ledger (.led) */
+#modalRoot .sheet .ledger{border-top:1px solid var(--line)}
+#modalRoot .sheet .ledger .r{align-items:baseline;gap:16px;padding:10px 0;border-top:0;border-bottom:1px solid var(--hair);font-size:14px}
+#modalRoot .sheet .ledger .r:last-child{border-bottom:0}
+#modalRoot .sheet .ledger .r .k{color:var(--fg-70);flex:none;max-width:50%}
+#modalRoot .sheet .ledger .r .v{font-weight:500;text-align:right;white-space:normal;min-width:0}
+#modalRoot .sheet .ledger .r.total{border-top:1px solid var(--fg)}
+#modalRoot .sheet .ledger .r.total .v{font-weight:600}
+/* fields (.sx-f, .vin) and choices (.sh-chips) */
+#modalRoot .sheet .field{gap:0;min-width:0}
+#modalRoot .sheet .field input:not([type=checkbox]):not([type=radio]):not([type=file]),#modalRoot .sheet .field select,#modalRoot .sheet .m-mn > select{width:100%;height:36px;margin-top:8px;padding:0 12px;background:var(--raised);border:1px solid var(--line);border-radius:0;font:inherit;font-size:13.5px;color:var(--fg)}
+#modalRoot .sheet .field textarea{min-height:88px;margin-top:8px;padding:8px 12px;font-size:13.5px;line-height:1.5}
+#modalRoot .sheet .field input:focus,#modalRoot .sheet .field select:focus,#modalRoot .sheet .field textarea:focus{outline:2px solid var(--fg);outline-offset:-1px}
+#modalRoot .sheet .field input[readonly]{color:var(--fg-70)}
+#modalRoot .sheet .f2{gap:10px}
+#modalRoot .sheet .rs-g{gap:6px}
+#modalRoot .sheet .rs-f input{text-align:center;padding:0 4px}
+#modalRoot .sheet .seg2{gap:6px}
+#modalRoot .sheet .m-mn > .lbl + .seg2,#modalRoot .sheet .m-mn > .lbl + .pn-list{margin-top:-10px}
+#modalRoot .sheet .seg2 button{height:34px;padding:0 14px;border:1px solid var(--line);border-radius:999px;font-size:13.5px;font-weight:400;color:var(--fg)}
+#modalRoot .sheet .seg2 button:not([aria-pressed="true"]):hover{border-color:var(--fg)}
+#modalRoot .sheet .seg2 button[aria-pressed="true"]{background:var(--fg);color:var(--ground);border-color:var(--fg)}
+#modalRoot .sheet .dd-btn{height:36px;padding:0 12px;border-radius:0;background:var(--raised);font-size:13.5px}
+#modalRoot .sheet .dd-list{border-radius:0}
+/* a list inside a flow: the panel's ledger rows, links as its underlined ones (.lnk3) */
+#modalRoot .sheet .pn-list{border-top:1px solid var(--line)}
+#modalRoot .sheet .pn-r{min-height:44px;gap:12px;padding:6px 0;border-top:0;border-bottom:1px solid var(--hair);font-size:13px}
+#modalRoot .sheet .pn-list > .pn-r:last-child{border-bottom:0}
+#modalRoot .sheet .pn-k b{font-weight:500}
+#modalRoot .sheet .pn-link{font:500 13px/1.3 var(--f-text);text-transform:none;letter-spacing:0;color:var(--fg);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
+#modalRoot .sheet .pn-link:hover{text-decoration-color:var(--fg)}
+#modalRoot .sheet .ablock + .ablock{padding-top:20px}
+/* a note (.bpn-w): the live-tinted aside, no icon */
+#modalRoot .sheet .note{gap:10px;padding:12px 14px;font-size:12.5px;line-height:1.5;color:var(--fg-70);background:color-mix(in srgb,var(--live) 7%,transparent);box-shadow:inset 3px 0 0 var(--live)}
+#modalRoot .sheet .note > .i{display:none}
+#modalRoot .sheet .note b{color:var(--fg);font-weight:600}
+/* working through it: the steps as ledger rows */
+#modalRoot .sheet .steps{border-top:1px solid var(--line)}
+#modalRoot .sheet .step{padding:10px 0;border-top:0;border-bottom:1px solid var(--hair);font-size:14px}
+#modalRoot .sheet .step:last-child{border-bottom:0}
+/* the buttons: the panel's footer (.pn-ft), kept in view at the bottom, the main one last */
+#modalRoot .sheet .m-mn > .acts{position:sticky;bottom:-24px;z-index:2;flex-direction:row-reverse;justify-content:flex-start;gap:10px;margin:auto -24px -24px;padding:16px 24px;border-top:1px solid var(--line);background:var(--ground)}
+#modalRoot .sheet .btn{height:34px;padding:0 16px;gap:8px;font-size:14px;font-weight:500;border:1px solid var(--line);background:none;color:var(--fg)}
+#modalRoot .sheet .btn:hover{border-color:var(--fg);opacity:1}
+#modalRoot .sheet .btn-p{background:var(--fg);color:var(--ground);border-color:var(--fg)}
+#modalRoot .sheet .btn .i{width:14px;height:14px}
+#modalRoot .sheet .btn.sm,#modalRoot .sheet .btn-s{height:30px;padding:0 12px;gap:6px;font-size:12.5px}
+#modalRoot .sheet .btn:disabled{opacity:.4;cursor:default}
+@media (max-width:760px){
+  #modalRoot .sheet .m-hd{padding:0 16px}
+  #modalRoot .sheet .m-mn{padding:20px 16px}
+  #modalRoot .sheet .m-mn > .acts{bottom:-20px;margin:auto -16px -20px;padding:12px 16px}
+  #modalRoot .sheet .m-ft{padding:0 16px}
+  #modalRoot .sheet .f2{grid-template-columns:minmax(0,1fr)}
+}

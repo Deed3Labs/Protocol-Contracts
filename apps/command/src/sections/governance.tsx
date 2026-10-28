@@ -2099,6 +2099,8 @@ export function meetingPane() {
 }
 
 /* ── modals ───────────────────────────────────────────────────────────── */
+/** The redesigned Shop's flows (shop.tsx `s:`, costing.tsx `c:`, catalog.tsx `k:`) open as its side sheets. */
+const SHEET = /^[sck]:/;
 export function vModal(f, kind) {
   modalShell(
     f.t,
@@ -2146,6 +2148,7 @@ export function vModal(f, kind) {
       </div>
     </>,
     f.foot || 'Every change is logged',
+    SHEET.test(kind),
   );
   document.addEventListener('keydown', onKey);
   openVFlow.f = f;
