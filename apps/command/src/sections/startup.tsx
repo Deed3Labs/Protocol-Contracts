@@ -42,6 +42,7 @@ import { ddClose, ddOpen, ddPick, stepFlow } from './kit';
 import { openMemberFlow } from './members';
 import { cmSelect, kcDraw, kcItem, kcLog, kcMove, kcNew, kcSaved, openKc, openXFlow } from './merchants';
 import { openNFlow } from './money';
+import { pageModFor } from './pageHost';
 import { openRFlow } from './records';
 import { closeModal, finish, go, openItem, render, runSteps, toast, vLevel, viewExit } from './shell';
 import { openSFlow } from './shop';
@@ -1169,6 +1170,8 @@ export function startup() {
     if (t.dataset.npane) {
       NS.pane = t.dataset.npane;
       NS.acct = null;
+      // the redesigned Money opens the tab the old pane name stands for (money2.tsx's MAP)
+      pageModFor('money')?.setTab('money', t.dataset.npane);
       if (S.route !== 'money') S.route = 'money';
       render();
       window.scrollTo({
@@ -1474,6 +1477,8 @@ export function startup() {
       render();
       return;
     }
+    // a link to a tab on the redesigned Money (Home's timeline: pools:yield), as the reference has it
+    if (t.dataset.go === 'money' && t.dataset.fp && !t.classList.contains('nav') && !t.classList.contains('tab')) pageModFor('money')?.setTab('money', t.dataset.fp);
     if (t.dataset.go) return go(t.dataset.go);
     const seg = t.closest('[data-seg]');
     if (seg && t.dataset.v) {
