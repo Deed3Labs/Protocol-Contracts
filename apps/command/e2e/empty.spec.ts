@@ -38,6 +38,11 @@ const DEMO = [
   'UR Commons',
   'Bo Chen',
   'batch 13',
+  // Money's reference (money2.tsx): its shops, signer and payee
+  'Arrowhead Nails',
+  'Highland Hardware',
+  'Board signer',
+  'CDTFA',
 ];
 
 type Finding = { route: string; pane: string; after: string; kind: 'error' | 'demo' | 'garbage'; what: string };
@@ -78,7 +83,7 @@ for (const route of ROUTES) {
           const label = (await page.locator(TABS).nth(t).textContent())?.trim() ?? `tab ${t}`;
           where = { pane: label, after: 'tab' };
           await page
-            .locator('#main .ptabs button')
+            .locator(TABS)
             .nth(t)
             .click({ timeout: 3000 })
             .catch(() => undefined);
@@ -96,7 +101,19 @@ for (const route of ROUTES) {
           // a click that loads the page again without `empty=1` would draw the prototype's data from then on
           if (!page.url().includes('empty=1')) findings.push({ route, ...where, kind: 'error', what: `left the empty preview: ${page.url()}` });
           // back to the tab if a click navigated away
-          if (!page.url().includes(`#${route}`) || !page.url().includes('empty=1')) await open(page, EMPTY, route);
+          // then loaded again: going to the same URL with only its hash changed doesn't load the page, so it would stay where the click took it
+          if (!page.url().includes(`#${route}`) || !page.url().includes('empty=1')) {
+            await open(page, EMPTY, route);
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await page.locator('#main > *').first().waitFor();
+            // and back to the tab being crawled
+            if (t > 0)
+              await page
+                .locator(TABS)
+                .nth(t)
+                .click({ timeout: 3000 })
+                .catch(() => undefined);
+          }
         }
       }
     } finally {

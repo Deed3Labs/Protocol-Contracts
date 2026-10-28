@@ -242,13 +242,26 @@ Filled in as each page is ported. Known before starting:
   and invites, opens and first spends by source, city, shop and design. Live, Campaigns, Cohorts and Apps
   say "Not real yet" with what they need; the waitlist count and median come from `command.waitlist`.
 - **Field:** visit plans and placement scoring beyond what's recorded today.
-- **Money** (ported): balances by account with their source and seven weeks of history; how fresh each
-  source is; credit for the month (opening, spent, aging buckets, losses, limits by size, spend by shop);
-  the yield pool (assets, principal, lent, depositors masked, pledged, queued withdrawals, cycle, rate
-  curve); bonds (face, issued, matures, rate, holder kind); the next 30 days of payments in and out
-  (which the 30-day totals, weekly bars and the payout queue are worked out from); sales tax held and
-  pre-order deposits; the Ops Safe signers; moves waiting and done (the proposals exist). Actions:
-  propose, approve and sign, reject and withdraw a move, Plaid sync, the reserve check.
+- **Money** (ported, live): live it draws the money section (`moneyLive.ts`): the accounts with their
+  sources' freshness (the feeds), the reserve check, the credit gate (the AssurancePool's target, exposure
+  and room), the yield pool and its depositors (LendingPool), the bonds (BurnerBond) and what BondVault
+  keeps back, the shop's set-asides, Lithic's card spend by shop, the Ops Safe's owners and threshold
+  (`GET /safe`), and the moves: waiting from `GET /proposals?area=money`, done from the approvals in 30
+  days. Proposing a top-up is `money/top` (it waits for a second person); approving, sending back and
+  taking back go through `/proposals/:id/approve|decline`; Sync now is `money/sync`, the reserve check
+  `money/reserve`. Still missing, and "Not real yet" live:
+  - the next 30 days of payments in and out (`money.flows`, written by nothing live), which the runway,
+    Every movement, the 14-day gap, the weekly bars, the payout pool's claims and the 30-day vital are
+    worked out from; and the money owed to shops and due from members in 14 days (`money.payouts_due`);
+  - credit for the month: what was owed on the 1st, spent, repaid and on autopay; how late balances are
+    (aging); the losses (charge-offs) and what the AssurancePool paid; limits by size; how many members
+    are on autopay; the book's totals (`money.book`) are zero live;
+  - the AssurancePool's and unsecured credit's weekly history and the co-op balance's weekly additions
+    (stored figures, not written live);
+  - moves that ran on their own (yield pool withdrawals, losses absorbed), declined moves, a note on a
+    move, and naming the second person;
+  - actions: using BondVault's spare, paying a bill from operating cash and moving between accounts
+    (hidden live: the API's `money/top` only funds the PayoutPool from the Ops Safe).
 - **Build** (ported): deploys by environment (Railway and Vercel history, plus Safe-executed releases);
   security findings (severity, state, contract, fix PR, audit coverage); incidents (owner, timeline);
   review state and simulation results on changes; a check state per monorepo folder; the contract map's

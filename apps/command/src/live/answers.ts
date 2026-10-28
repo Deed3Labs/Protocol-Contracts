@@ -33,6 +33,8 @@ export async function answer(method: string, path: string): Promise<unknown> {
     if (d.__error) throw new ApiError(500, 'ERROR', d.__error);
     return d;
   }
+  // any other answer the file holds by its path (GET /proposals?area=money, GET /safe…)
+  if (f[path]) return f[path];
   if (path === '/me') return { me: f.me ?? ME };
   if (path === '/groups')
     return (
