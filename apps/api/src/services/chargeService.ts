@@ -208,6 +208,7 @@ export async function raiseCharge(input: {
     // The cap is in token units (6dp); the charge is in cents. Compare in cents.
     const capCents = Number(capRaw / 10_000n);
     if (capCents > 0 && input.amountCents > capCents) {
+      await chargeStore.recordCapHit(recovered, input.amountCents, capCents);
       return { ok: false, reason: 'amount is over this merchant’s approval cap' };
     }
 
@@ -281,6 +282,7 @@ export async function raiseChargeFromDevice(input: {
 
     const capCents = Number(capRaw / 10_000n);
     if (capCents > 0 && input.amountCents > capCents) {
+      await chargeStore.recordCapHit(merchant, input.amountCents, capCents);
       return { ok: false, reason: 'amount is over this merchant’s approval cap' };
     }
     payoutCents = input.amountCents - Math.floor((input.amountCents * Number(discountBps)) / 10_000);

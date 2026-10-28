@@ -1,6 +1,6 @@
 import chain from '@clear/command-types/src/chain/base-sepolia.json';
 import { DAY } from '@clear/command-types';
-import { erc20Abi, getAddress, type Abi, type Address } from 'viem';
+import { erc20Abi, getAddress, keccak256, toHex, type Abi, type Address } from 'viem';
 import type { Queryable } from '../../db/db.js';
 import { publicFirst } from './indexer.js';
 
@@ -45,7 +45,7 @@ export function liveChainReader(chainId = chain.chainId): ChainReader {
   };
 }
 
-interface Ev {
+export interface Ev {
   contract: string;
   event: string;
   args: Record<string, string>;
@@ -53,7 +53,7 @@ interface Ev {
   tx: string;
 }
 
-async function events(db: Queryable, contracts: string[], names: string[]): Promise<Ev[]> {
+export async function events(db: Queryable, contracts: string[], names: string[]): Promise<Ev[]> {
   const { rows } = await db.query<{ contract: string; event: string; args: Record<string, string>; block_time: Date; tx_hash: string }>(
     `SELECT contract, event, args, block_time, tx_hash FROM command.chain_events
       WHERE chain_id = $1 AND contract = ANY($2) AND event = ANY($3) ORDER BY block_number, log_index`,
@@ -452,3 +452,73 @@ export async function inventory(db: Queryable): Promise<Map<string, { address: A
 }
 
 export { short as shortAddress };
+
+// ── Who can do what ─────────────────────────────────────────────────────────
+
+/** Who holds each power over the contracts, as Build's grid draws it: its holders, and a row a power (1 holds it). */
+export interface KeyRoles {
+  holders: string[];
+  roles: Array<[string, number[]]>;
+}
+
+const ADMIN_ROLE = `0x${'0'.repeat(64)}`;
+const roleId = (name: string) => keccak256(toHex(name));
+// AccessManager's operator role is the bytes32 of "OPERATOR", not a hash (AccessManager.sol)
+const AM_OPERATOR = toHex('OPERATOR', { size: 32 });
+
+/**
+ * Who can do what, replayed from the events the indexer keeps: every contract's role grants and
+ * revokes (OpenZeppelin AccessControl has no list of members to read), owners, NetworkRegistry's
+ * issuers and the AssurancePool's allowed callers. A holder is named as the contract it is, the Ops
+ * Safe, or its address shortened.
+ */
+export async function keyRolesLive(db: Queryable, opsSafe: string | null): Promise<KeyRoles> {
+  const ev = await events(db, Object.keys(C), ['RoleGranted', 'RoleRevoked', 'OwnershipTransferred', 'IssuerRegistered', 'IssuerDeregistered', 'WithdrawalCallerUpdated']);
+  const name = await names(db);
+  // what each address holds now, per contract and role
+  const held = new Map<string, Set<string>>();
+  const set = (key: string, who: string, on: boolean) => {
+    const s = held.get(key) ?? new Set<string>();
+    if (on) s.add(who.toLowerCase());
+    else s.delete(who.toLowerCase());
+    held.set(key, s);
+  };
+  for (const e of ev) {
+    const a = e.args;
+    if (e.event === 'RoleGranted' || e.event === 'RoleRevoked') set(`${e.contract}|${String(a.role).toLowerCase()}`, a.account, e.event === 'RoleGranted');
+    else if (e.event === 'OwnershipTransferred') {
+      held.set(`${e.contract}|owner`, new Set());
+      if (a.newOwner && a.newOwner !== ZERO) set(`${e.contract}|owner`, a.newOwner, true);
+    } else if (e.event === 'IssuerRegistered' || e.event === 'IssuerDeregistered') set('issuers', a.issuer, e.event === 'IssuerRegistered');
+    else if (e.event === 'WithdrawalCallerUpdated') set('assurance-callers', a.caller, String(a.allowed) === 'true');
+  }
+  const who = (pick: (contract: string, role: string) => boolean) => {
+    const out = new Set<string>();
+    for (const [key, s] of held) {
+      const [contract, role] = key.split('|');
+      if (pick(contract, role ?? '')) for (const x of s) out.add(x);
+    }
+    return out;
+  };
+  const ROWS: Array<[string, Set<string>]> = [
+    ['Upgrade and admin', who((c, r) => r === ADMIN_ROLE || r === 'owner')],
+    ['Pause', who((c, r) => r === roleId('PAUSER_ROLE') || (r === 'owner' && (c === 'RevolvingIssuer' || c === 'TermIssuer')))],
+    ['Mint credit', who((c) => c === 'issuers')],
+    ['Run credit operations', who((c, r) => c === 'AccessManager' && r === AM_OPERATOR.toLowerCase())],
+    ['Set shop terms', who((c, r) => c === 'MerchantRegistry' && r === roleId('OPERATOR_ROLE'))],
+    ['Claim from AssurancePool', who((c) => c === 'assurance-callers')],
+  ];
+  const label = (a: string) => (opsSafe && a === opsSafe.toLowerCase() ? 'Ops Safe' : (name.get(a) ?? short(getAddress(a))));
+  // holders by how many powers they hold, the Ops Safe first
+  const count = new Map<string, number>();
+  for (const [, s] of ROWS) for (const a of s) count.set(a, (count.get(a) ?? 0) + 1);
+  const addrs = [...count.keys()].sort((a, b) => Number(label(b) === 'Ops Safe') - Number(label(a) === 'Ops Safe') || count.get(b)! - count.get(a)! || label(a).localeCompare(label(b)));
+  // the grid (bx.css .bd-ro-r) has room for six: past that, the holders with fewest powers share one column
+  const shown = addrs.length > MAX_HOLDERS ? addrs.slice(0, MAX_HOLDERS - 1) : addrs,
+    rest = addrs.slice(shown.length);
+  return {
+    holders: [...shown.map(label), ...(rest.length ? [`${rest.length} others`] : [])],
+    roles: ROWS.map(([t, s]) => [t, [...shown.map((a) => (s.has(a) ? 1 : 0)), ...(rest.length ? [rest.some((a) => s.has(a)) ? 1 : 0] : [])]]),
+  };
+}
+const MAX_HOLDERS = 6;

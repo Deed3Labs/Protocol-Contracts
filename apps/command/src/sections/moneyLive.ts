@@ -55,8 +55,9 @@ export function moneyLive() {
   // BondVault's balance is the chain's (M.vault), else its account's
   MM.bv = M.vault != null ? num(M.vault) : num(bond?.[5]);
   MM.members = num(vars.memberSummary?.active);
-  // autopay isn't counted yet
-  MM.autopay = null;
+  // how many members repay on autopay: the chain's (RevolvingIssuer), once the API reads the credit book
+  MM.autopay = M.autopay != null ? num(M.autopay) : null;
+  const cb = vars.credit;
 
   const curve = Y.curve && Y.curve.kink > 0 ? { ...Y.curve } : { base: 0, s1: 0, s2: 0, kink: 1 };
   const YY = {
@@ -123,8 +124,24 @@ export function moneyLive() {
       ['Pre-order deposits', num(vars.setAside?.preorderDeposits), 'Hardware · refundable until made'],
     ],
     SRC,
-    // credit for the month: only where it was spent, from Lithic's card spend; the rest isn't recorded yet
-    CR: {
+    // credit for the month: the chain's book (spent, carry, repaid, how late, losses, limits), with where cards were used from Lithic
+    CR: cb
+      ? {
+          start: num(cb.start),
+          spent: num(cb.spent),
+          carry: num(cb.carry),
+          repaid: num(cb.repaid),
+          aging: (cb.aging ?? []).map(([k, v]) => [k, num(v)]),
+          losses: (cb.losses ?? []).map(([d, n, id, v]) => [num(d), n, id, num(v)]),
+          limits: (cb.limits ?? []).map(([k, v]) => [k, num(v)]),
+          shops: [...(cb.shops ?? []).map(([n, v, l]) => [n, num(v), l]), ...(sp?.merchants ?? []).map((m) => [`${m.name} · card`, num(m.amount), 0])].sort((a, b) => b[1] - a[1]),
+          month: cb.month,
+          members: num(cb.members),
+          late: num(cb.late),
+          owing: num(cb.owing),
+          poolPaid: num(cb.poolPaid),
+        }
+      : {
       start: 0,
       spent: num(sp?.spent),
       aging: [],
@@ -133,6 +150,8 @@ export function moneyLive() {
       shops: (sp?.merchants ?? []).map((m) => [m.name, num(m.amount), 0]),
       month: sp?.month ? new Date(`${sp.month}-01T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' }) : null,
     },
+    /** Whether the credit book is the chain's: the API read it (it may be all zeros, which is real). */
+    creditReal: !!cb,
     Y_DEP: Y_DEP.map(([id, w, since, pl]) => {
       const e = YY.assets ? (num(w) * YY.earned) / YY.assets : 0;
       return { id, w: num(w), since, pl: num(pl), e, d: num(w) - e };
@@ -147,8 +166,8 @@ export function moneyLive() {
     // the Ops Safe: its owners and how many must sign, once GET /safe has answered
     safe: null,
     signers: [],
-    /** Whether the 30-day schedule has anything: nothing records it live yet (docs/ui-redesign-plan.md, gaps). */
-    flowsReal: FLOWS.length > 0,
+    /** Whether the 30-day schedule is read: the PayoutPool's claims and members' repayments, sent with the credit book (empty is real). */
+    flowsReal: !!cb || FLOWS.length > 0,
     /** Loads what waits in Money and what was approved in 30 days, and the Ops Safe's signers. */
     async load() {
       if (!LIVE) return;

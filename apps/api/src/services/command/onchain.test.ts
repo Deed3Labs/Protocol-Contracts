@@ -58,6 +58,10 @@ const reader: ChainReader = {
       // the AssurancePool: all of it in the buffer reserve, as on Base Sepolia
       if (c.contract === 'AssurancePool')
         return c.fn === 'reserveToken' ? USDC : c.fn === 'bufferBalance' ? BigInt(usdc(125.03)) : c.fn === 'targetRTD' ? 800_000_000_000_000_000n : c.fn === 'hasValidRTD' ? true : 0n;
+      // the PayoutPool's claims, the registry's shops and the credit book: none here (credit.test.ts reads them)
+      if (c.contract === 'PayoutPool' && !(c.fn in views)) return c.fn === 'reserveToken' ? USDC : 0n;
+      if (c.contract === 'MerchantRegistry') return 0n;
+      if (c.contract === 'ClearCredit' && c.fn === 'decimals') return 6n;
       if (c.contract === 'ERC20') {
         expect([c.address, ...(c.fn === 'balanceOf' ? [c.args![0]] : [])]).toEqual([USDC, ...(c.fn === 'balanceOf' ? [getAddress(C.ESADepositVault.address)] : [])]);
         return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.vault));
@@ -343,5 +347,44 @@ describe('the feeds in Money, live (6b)', () => {
     const m: any = await moneySection(db, read());
     expect(m.CARD_SPEND).toEqual({ month: '2026-10', spent: 40, count: 3, merchants: [{ name: 'Rosa’s Tacos', amount: 20, count: 2 }] });
     expect(m.DEPOSIT_RAIL).toEqual({ count: 2, amount: 60 });
+  });
+});
+
+describe('who can do what, live', () => {
+  test('replayed from the grants and revokes: admins and owners, pausers, issuers, shop-terms operators and the AssurancePool’s callers', async () => {
+    const SAFE = '0x00000000000000000000000000000000000005af',
+      EOA = '0x00000000000000000000000000000000000000ee';
+    const { keccak256, toHex } = await import('viem');
+    const ADMIN = `0x${'0'.repeat(64)}`;
+    await put('ClearCredit', 'RoleGranted', { role: ADMIN, account: SAFE, sender: EOA }, '01T09:00:00');
+    await put('RevolvingIssuer', 'OwnershipTransferred', { previousOwner: ZERO, newOwner: SAFE }, '01T09:00:00');
+    // an operator granted and then revoked holds nothing
+    await put('MerchantRegistry', 'RoleGranted', { role: keccak256(toHex('OPERATOR_ROLE')), account: EOA, sender: SAFE }, '02T09:00:00');
+    await put('MerchantRegistry', 'RoleGranted', { role: keccak256(toHex('OPERATOR_ROLE')), account: SAFE, sender: SAFE }, '02T09:00:00');
+    await put('MerchantRegistry', 'RoleRevoked', { role: keccak256(toHex('OPERATOR_ROLE')), account: EOA, sender: SAFE }, '03T09:00:00');
+    await put('NetworkRegistry', 'IssuerRegistered', { issuer: C.RevolvingIssuer.address, stableCredit: C.ClearCredit.address, assurancePool: ZERO, assuranceOracle: ZERO }, '03T09:00:00');
+    await put('AssurancePool', 'WithdrawalCallerUpdated', { caller: C.ClearCredit.address, allowed: 'true' }, '04T09:00:00');
+    const { keyRolesLive } = await import('./onchain.js');
+    const r = await keyRolesLive(db, SAFE);
+    expect(r.holders).toEqual(['Ops Safe', 'ClearCredit', 'RevolvingIssuer']);
+    expect(Object.fromEntries(r.roles)).toEqual({
+      'Upgrade and admin': [1, 0, 0],
+      // the Safe owns RevolvingIssuer, so it can pause it
+      Pause: [1, 0, 0],
+      'Mint credit': [0, 0, 1],
+      'Run credit operations': [0, 0, 0],
+      'Set shop terms': [1, 0, 0],
+      'Claim from AssurancePool': [0, 1, 0],
+    });
+  });
+
+  test('past six holders, the ones with fewest powers share a column', async () => {
+    const { keyRolesLive } = await import('./onchain.js');
+    const ADMIN = `0x${'0'.repeat(64)}`;
+    for (let i = 1; i <= 7; i++) await put('BondVault', 'RoleGranted', { role: ADMIN, account: `0x${String(i).padStart(40, '7')}`, sender: ZERO }, '05T09:00:00');
+    const r = await keyRolesLive(db, null);
+    expect(r.holders).toHaveLength(6);
+    expect(r.holders.at(-1)).toMatch(/^\d+ others$/);
+    expect(r.roles.every(([, h]) => h.length === 6)).toBe(true);
   });
 });

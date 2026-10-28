@@ -245,6 +245,8 @@ const apply = {
     // the board is the API's from now on, even when it's empty
     vars.boardLoaded = true;
     replace(FLEET, d.FLEET);
+    // last month's sales at each shop, paid now or on plans, and what members have repaid (null until the API reads the chain)
+    vars.collected = d.COLLECTED ?? null;
     // the board is built from BOARD the next time it's drawn
     XS.board = null;
   },
@@ -271,6 +273,8 @@ const apply = {
     if (d.SET_ASIDE) vars.setAside = d.SET_ASIDE;
     // live, Lithic's card spend and what's moving through Bridge (Phase 6b)
     vars.cardSpend = d.CARD_SPEND ?? null;
+    // the chain's credit book (Money's Credit tab); null until the API reads it
+    vars.credit = d.CREDIT ?? null;
     vars.depositRail = d.DEPOSIT_RAIL ?? null;
   },
   shop(d) {

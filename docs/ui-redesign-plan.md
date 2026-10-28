@@ -320,7 +320,11 @@ Filled in as each page is ported. Known before starting:
     + Prospect is a new card; Log a visit as in Field; Raise the cap is `cap {id, cap}` (two-person; shown only when
     the cap is known); Pause payments is `off {id}`; Propose the run is `run {total, shops}` (two-person). The
     board's order isn't saved (`board-order` is unused: the redesign orders by due date).
-  - **Still missing ("Not real yet" or hidden):** each shop's cap and cap hits (MerchantRegistry) and its losses;
+  - **Read from the chain now:** each shop's cap per sale (MerchantRegistry `approvalCapOf`) and the sales refused
+    over it this week (the API logs each refusal in `charge_cap_hits`), in Caps to review and Partners' Caps; and
+    what members have paid on last month's sales (the next run): paid at the counter, or repaid so far on each
+    sale's TermIssuer plan (`COLLECTED`), in Payouts' Collected before it goes out.
+  - **Still missing ("Not real yet" or hidden):** each shop's losses (so no raise-or-hold call on a cap);
     how fast shops move between stages (the reference's conversion rates); shop enquiries with their details and
     states (reply, not a fit, show name); the payout schedule, its history and whether a run is approved (a
     proposed run shows as proposed only until the page is built again); what members repaid before a run; the
@@ -336,12 +340,15 @@ Filled in as each page is ported. Known before starting:
   days. Proposing a top-up is `money/top` (it waits for a second person); approving, sending back and
   taking back go through `/proposals/:id/approve|decline`; Sync now is `money/sync`, the reserve check
   `money/reserve`. Still missing, and "Not real yet" live:
-  - the next 30 days of payments in and out (`money.flows`, written by nothing live), which the runway,
-    Every movement, the 14-day gap, the weekly bars, the payout pool's claims and the 30-day vital are
-    worked out from; and the money owed to shops and due from members in 14 days (`money.payouts_due`);
-  - credit for the month: what was owed on the 1st, spent, repaid and on autopay; how late balances are
-    (aging); the losses (charge-offs) and what the AssurancePool paid; limits by size; how many members
-    are on autopay; the book's totals (`money.book`) are zero live;
+  - **Read from the chain now** (`services/command/credit.ts`): the next 30 days are the PayoutPool's
+    unpaid claims, due their shop's payout window after the shop redeemed (out), and members' plan
+    installments and revolving balances at their period's end (in); `M.owed14`, `M.dueMembers` and
+    `M.payout` (the pool's `held()`) follow. The Credit tab is ClearCredit's book: the month from the
+    events (owed on the 1st + spent + carry − repaid = owed now), how late each balance is (a plan
+    behind since its first missed installment, a revolving period ended unpaid), losses written off
+    and what the AssurancePool paid, limits by size and who's on autopay. Empty live is real: it says
+    nothing is owed or due rather than "Not real yet". What a shop has earned but not redeemed has no
+    due date yet, so it's counted (`M.unredeemed`), not scheduled;
   - the AssurancePool's and unsecured credit's weekly history and the co-op balance's weekly additions
     (stored figures, not written live);
   - moves that ran on their own (yield pool withdrawals, losses absorbed), declined moves, a note on a
@@ -360,6 +367,9 @@ Filled in as each page is ported. Known before starting:
   your own wallet (`safe.signQueued`, `safe.signAndSend`), linking it `safe.linkWallet`, and a contract's
   panel proposes a change through the old page's flow (`contracts/propose`, into the Safe); GitHub, the
   Safe and Safe{Wallet} open in a new tab. Still missing, and "Not real yet" live:
+  - **Who can do what is read now:** replayed from every contract's RoleGranted/RoleRevoked, owners,
+    NetworkRegistry's issuers and the AssurancePool's allowed callers (`keyRolesLive`); six holders at most,
+    the rest sharing one column;
   - check runs per monorepo folder (pass rate, runs, time, coverage) and each default branch's state;
   - the other projects (the member and merchant apps, API and SDK, the site, this app): the poller
     watches one path, so Build lists only the contracts; where the apps run and their deploys (Railway and

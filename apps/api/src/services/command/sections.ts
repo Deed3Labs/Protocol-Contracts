@@ -2,7 +2,8 @@ import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, 
 import type { Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { SEE, TOTALS, type Level } from './levels.js';
-import { assurancePoolLive, bondVaultLive, bondsLive, deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { assurancePoolLive, bondVaultLive, bondsLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { creditLive, payoutsLive } from './credit.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
@@ -571,6 +572,8 @@ export interface MerchantsPayload {
   OWED: Record<string, number>;
   BOARD: Array<Record<string, unknown>>;
   FLEET: unknown[][];
+  /** Live, for last month's sales at each shop (the next monthly run): what was paid now, what went on plans and what members have repaid on them (TermIssuer). */
+  COLLECTED?: Record<string, { now: number; plans: number; repaid: number; count: number }>;
   figures: Record<string, unknown>;
   asOf: number;
 }
@@ -729,13 +732,28 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
       return n === 0 ? [] : [n === 1 ? label : `${n} ${label}s`];
     }).join(' · ');
 
+  // each shop's cap per sale, MerchantRegistry's (none is no cap); and the sales refused for going over it this week
+  const capRaw = o.chain && ids.length ? await o.chain.read(ids.map((a) => ({ contract: 'MerchantRegistry', fn: 'approvalCapOf', args: [a] }))).catch(() => null) : null;
+  const capOf = new Map(ids.map((id, i) => [id, capRaw && BigInt(String(capRaw[i] ?? 0)) > 0n ? Number(BigInt(String(capRaw[i])) / 10_000n) / 100 : null]));
+  const hitsOf = new Map<string, number>();
+  if (ids.length)
+    try {
+      const { rows: hits } = await charges.query<{ merchant: string; n: string | number }>(
+        'SELECT lower(merchant_address) AS merchant, count(*) AS n FROM charge_cap_hits WHERE lower(merchant_address) = ANY($1) AND at >= $2 GROUP BY 1',
+        [ids, iso(now - 7 * DAY)],
+      );
+      for (const h of hits) hitsOf.set(h.merchant, Number(h.n));
+    } catch {
+      // no sale has been refused anywhere yet: the table comes with the first
+    }
+
   const TX: unknown[][] = [];
   const SIGNED: string[][] = [];
   for (const s of shops) {
     const id = s.merchant.toLowerCase();
     const c = saleOf.get(id);
     if (c && Number(c.ever) > 0)
-      TX.push([id, s.name, s.kind, s.city, s.founding ? 1 : 0, s.over_time_bps == null ? 0 : s.over_time_bps / 100, (s.terms ?? '').toUpperCase(), null, 0, Number(c.plans), 0, dollars(c.this_cents), Number(c.this_n), dollars(c.last_cents), hardware(id)]);
+      TX.push([id, s.name, s.kind, s.city, s.founding ? 1 : 0, s.over_time_bps == null ? 0 : s.over_time_bps / 100, (s.terms ?? '').toUpperCase(), capOf.get(id) ?? null, hitsOf.get(id) ?? 0, Number(c.plans), 0, dollars(c.this_cents), Number(c.this_n), dollars(c.last_cents), hardware(id)]);
     else SIGNED.push(s.signer ? [id, s.name, s.kind, s.city] : [id, s.name, s.kind, s.city, 'signing']);
   }
   const OWED: Record<string, number> = {};
@@ -775,6 +793,31 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
     .map((f) => f.row);
 
   const newest = shops.at(-1);
+  // last month's sales (the next monthly run): paid now, or on a plan whose repayments TermIssuer keeps
+  const COLLECTED: NonNullable<MerchantsPayload['COLLECTED']> = {};
+  if (ids.length) {
+    const { rows: sold } = await charges.query<{ merchant: string; amount_cents: string | number; plan_id: string | number | null }>(
+      `SELECT lower(merchant_address) AS merchant, amount_cents, plan_id FROM charge_requests
+        WHERE lower(merchant_address) = ANY($1) AND status = 'approved' AND coalesce(resolved_at, created_at) >= $2 AND coalesce(resolved_at, created_at) < $3`,
+      [ids, iso(lastMonth), iso(thisMonth)],
+    );
+    const planned = sold.filter((r) => r.plan_id != null);
+    const reads = o.chain && planned.length ? await o.chain.read(planned.map((r) => ({ contract: 'TermIssuer', fn: 'planAt', args: [BigInt(String(r.plan_id))] }))).catch(() => null) : null;
+    sold.forEach((r) => {
+      const c = (COLLECTED[r.merchant] ??= { now: 0, plans: 0, repaid: 0, count: 0 });
+      const amount = Number(r.amount_cents) / 100;
+      c.count++;
+      if (r.plan_id == null) {
+        c.now = Math.round((c.now + amount) * 100) / 100;
+        return;
+      }
+      c.plans = Math.round((c.plans + amount) * 100) / 100;
+      const p = reads?.[planned.indexOf(r)] as [string, bigint, bigint, bigint] | undefined;
+      // what the member has repaid on it, never more than the sale (carry is on top)
+      if (p) c.repaid = Math.round((c.repaid + Math.min(amount, Number(p[3]) / 1e6)) * 100) / 100;
+    });
+  }
+
   return {
     TX,
     SIGNED,
@@ -782,6 +825,7 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
     OWED,
     BOARD,
     FLEET,
+    ...(o.chain ? { COLLECTED } : {}),
     figures: { ...(await figures(db, 'merchants')), 'merchants.newest_partner': newest ? { name: newest.name, joined: Number(newest.joined_ms) } : null },
     asOf: asOfFor('live', o.now),
   };
@@ -854,6 +898,9 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const bank = feeds ? await bankLive(db, feeds.get('plaid'), feeds.get('stripe'), o.now.getTime()) : null;
   // live, the AssurancePool's reserves are the contract's own
   const assurance = provider === 'live' ? await assurancePoolLive(chainOf(o, 'money')) : null;
+  // live, what the PayoutPool owes shops and when, and the credit book: the chain's, not the tables' sample
+  const payouts = provider === 'live' ? await payoutsLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
+  const credit = provider === 'live' ? await creditLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
 
   // the headline numbers, as the prototype's M
   const M: Record<string, number> = {
@@ -892,6 +939,20 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     M.rtd = assurance.rtd ?? 0;
     M.room = assurance.room;
   }
+  if (payouts) {
+    M.payout = payouts.held;
+    M.owed14 = payouts.owed14;
+    M.unredeemed = payouts.unredeemed;
+  }
+  if (credit) {
+    M.credit = credit.credit;
+    M.limits = credit.limits;
+    M.lost = credit.lost;
+    M.dueMembers = credit.due14;
+    M.autopay = credit.autopay;
+    // what isn't unsecured is backed by the members' own savings
+    M.savingsBacked = Math.max(0, Math.round((credit.credit - M.unsecured) * 100) / 100);
+  }
   M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
   // live, the gap is the PayoutPool's own shortfall, never the tables' sample against real cash
   Y.toPayout = Math.min(chainPool ? chainPool.payoutShort : M.short, Y.cash); Y.utilAfter = Y.assets ? (Y.lent + Y.toPayout) / Y.assets : 0; Y.apyAfter = apy(borrowBps(Y.utilAfter) * Y.utilAfter);
@@ -928,7 +989,17 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       ? { YD: chainPool.days.map(dayMon), Y_ASSETS: chainPool.assetsByDay, Y_LENT: chainPool.lentByDay }
       : { YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent] }),
     AP_BAL, UNSEC, AP_REQ: UNSEC.map((v) => v * M.floor), RTD_W: AP_BAL.map((v, i) => (UNSEC[i] ? v / UNSEC[i] : null)),
-    COOP_W: f['money.coop.weekly'] ?? [], FLOWS: f['money.flows'] ?? [], BONDS, ACCTS, ENTRIES,
+    COOP_W: f['money.coop.weekly'] ?? [],
+    FLOWS: payouts && credit ? [...payouts.out, ...credit.in].sort((a, b) => a[0] - b[0]) : (f['money.flows'] ?? []),
+    ...(credit
+      ? {
+          CREDIT: {
+            month: credit.month, start: credit.start, spent: credit.spent, carry: credit.carry, repaid: credit.repaid, aging: credit.aging, losses: credit.losses,
+            poolPaid: credit.poolPaid, limits: credit.limitSizes, shops: credit.shops, members: credit.members, late: credit.late, owing: credit.owing,
+          },
+        }
+      : {}),
+    BONDS, ACCTS, ENTRIES,
     TX: (await partnerRows(db)).TX,
     MEMBER_SUMMARY: { active: counts.active },
     // live, Lithic's card spend this month and what's moving through Bridge (null until they've synced)
@@ -1261,7 +1332,13 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     ...(CODE ? { CODE } : {}),
     SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),
-    NOW, figures: { ...(await figures(db, 'contracts')), ...(provider === 'live' ? { 'contracts.chain': await chainHeader(db) } : {}) }, asOf: asOfFor(provider, o.now),
+    NOW,
+    figures: {
+      ...(await figures(db, 'contracts')),
+      // live, the chain's header and who holds each power over the contracts (replayed from their events)
+      ...(provider === 'live' ? { 'contracts.chain': await chainHeader(db), 'contracts.key_roles': await keyRolesLive(db, safeConfig()?.address ?? null) } : {}),
+    },
+    asOf: asOfFor(provider, o.now),
   };
 }
 

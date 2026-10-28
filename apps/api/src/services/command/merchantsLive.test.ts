@@ -86,10 +86,31 @@ describe('Merchants, live from the merchant app', () => {
     const r = await read();
     expect(r.TX).toEqual([
       // Oct: 1000 + 2500 + 300 (raised in Sept, approved in Oct); the refund and the pending code aren't sales; Sept: 4000
-      // cap is on chain, cap hits and losses aren't recorded: empty
+      // with no chain reader the cap isn't known; losses aren't recorded: empty
       [A, 'Rosa’s Panadería', 'Bakery', 'Redlands', 1, 2, 'NET-14', null, 0, 6, 0, 38, 3, 40, 'Point · 2 Table Points · Tap · Counter · Printer'],
       [D, 'Redlands Tire & Lube', 'Auto and tires', 'Redlands', 0, 2.5, 'NET-30', null, 0, 1, 0, 794, 1, 0, 'Point'],
     ]);
+  });
+
+  test('each shop’s cap is MerchantRegistry’s, none when it has none; its hits are the sales refused over it this week', async () => {
+    await db.query(`CREATE TABLE IF NOT EXISTS charge_cap_hits (id BIGSERIAL PRIMARY KEY, merchant_address TEXT NOT NULL, amount_cents BIGINT NOT NULL, cap_cents BIGINT NOT NULL, at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+    const day = (d: number) => new Date(NOW.getTime() - d * 86400e3).toISOString();
+    await db.query('INSERT INTO charge_cap_hits (merchant_address, amount_cents, cap_cents, at) VALUES ($1, 250000, 200000, $2), ($1, 210000, 200000, $3), ($1, 300000, 200000, $4)', [A.toUpperCase(), day(1), day(6), day(9)]);
+    const asked: unknown[] = [];
+    // MerchantRegistry's caps; TermIssuer's plan 4 (September's $40 sale) has $25 of it repaid
+    const chain = {
+      read: async (calls: any[]) => (
+        asked.push(...calls), calls.map((c) => (c.fn === 'planAt' ? [A, 40_000_000n, 15_000_000n, 25_000_000n] : c.args[0] === A ? 2_000_000_000n : 0n))
+      ),
+    };
+    const r = await merchantsLive(db, { level: SEE as any, reveal: false, now: NOW, charges: db, chain });
+    expect(asked.filter((c: any) => c.contract === 'MerchantRegistry').every((c: any) => c.fn === 'approvalCapOf')).toBe(true);
+    expect(asked.filter((c: any) => c.contract === 'TermIssuer').map((c: any) => [c.fn, c.args[0]])).toEqual([['planAt', 4n]]);
+    // A: $2,000 and two refused in the last 7 days (the third is older); D: no cap, none refused
+    expect(r.TX.map((t: any) => [t[0], t[7], t[8]])).toEqual([[A, 2000, 2], [D, null, 0]]);
+    // last month's sales (the next run): what went on plans and what members repaid on them
+    expect(r.COLLECTED).toEqual({ [A]: { now: 0, plans: 40, repaid: 25, count: 1 } });
+    await db.query('DROP TABLE charge_cap_hits');
   });
 
   test('a shop with no Clear sale yet is signed, or signing while Clear’s signer isn’t on its wallet', async () => {
