@@ -28,6 +28,10 @@ for (const route of ROUTES) {
     if (SHADOWED.has(route)) {
       const ref = await browser.newPage();
       await open(ref, REDESIGN, route);
+      // Merchants' corridor map places its city tags by measuring them, on the first frame; the reference's first frame
+      // comes before its page has settled, so one tag sits a fraction of a pixel off. A resize places them
+      // again, in both, as the page's own resize handler does.
+      if (route === 'merchants') for (const p of [app, ref]) await p.evaluate(() => dispatchEvent(new Event('resize')));
       expect(await canonical(app, 'shadow:.gw'), route).toBe(await canonical(ref, 'shadow:.gw'));
       const labels = await ref.locator(SHADOW_TABS).allTextContents();
       for (let i = 0; i < labels.length; i++) {

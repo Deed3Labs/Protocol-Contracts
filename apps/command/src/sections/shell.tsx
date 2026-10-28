@@ -18,6 +18,7 @@ import './growth2';
 import './members2';
 import './money2';
 import './build2';
+import './fm2';
 import { membersPage } from './members';
 import { corridorMount, merchantsPage } from './merchants';
 import { moneyPage } from './money';
