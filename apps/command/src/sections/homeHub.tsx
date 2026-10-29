@@ -2,6 +2,7 @@
 import { Fragment } from 'react';
 import { LIVE, REAL } from '../live/env';
 import { feedList } from '../live/feeds';
+import { fig } from '../live/figures';
 import { loadSection, needsData } from '../live/sections';
 import { css, html } from '../runtime/dom';
 import { ic, int, money } from './core';
@@ -171,7 +172,7 @@ function liveModel() {
     notes,
     feeds,
     feedBad: bad.length ? (bad.length === 1 ? `${bad[0].n} is ${bad[0].why}` : `${bad.length} feeds aren’t synced`) : '',
-    money: null,
+    money: liveVitals(),
     heads: ALERTS0.map((a) => ({ sv: a.sev, t: a.t, age: a.age, m: a.area, go: a.go, own: a.fix === 'resync' && a.progress ? ['resync', 'Re-syncing', Math.round((a.progress[0] / a.progress[1]) * 100), `${a.progress[0]}/${a.progress[1]}`] : null })),
     tiles: null,
     start,
@@ -251,15 +252,15 @@ function header(M) {
           <span className="h-lbl">Reserve</span>
           {M.money ? (
             <>
-              <span className="h-sc-v">{M.money.reserve}</span>
+              <span className="h-sc-v">{M.money.reserve ?? '—'}</span>
               <span className="h-mb">
-                <i style={css('width:100%;background:var(--settled)')} />
+                <i style={css(`width:${M.money.backed ?? 100}%;background:var(--settled)`)} />
               </span>
             </>
           ) : (
             notYet
           )}
-          <span className="h-sc-s">{M.money ? 'Member savings fully backed' : 'Opens Money'}</span>
+          <span className="h-sc-s">{M.money ? (M.money.reserveS ?? 'Member savings fully backed') : 'Opens Money'}</span>
         </button>
         <button type="button" className="h-sc" data-npane="overview">
           <span className="h-lbl">Free to spend</span>
@@ -267,7 +268,7 @@ function header(M) {
             <>
               <span className="h-sc-v">{cents(M.money.free)}</span>
               <span className="h-mb">
-                <i style={css(`width:${((M.money.free / M.money.operating) * 100).toFixed(1)}%`)} />
+                <i style={css(`width:${M.money.operating ? ((Math.max(0, M.money.free) / M.money.operating) * 100).toFixed(1) : 0}%`)} />
               </span>
             </>
           ) : (
@@ -583,6 +584,25 @@ function liveFunnel() {
   if (!loaded('growth')) return null;
   const T = growthLive().D.source.rows.reduce((a, r) => a.map((v, i) => v + (r.f[i] ?? 0)), [0, 0, 0, 0, 0, 0]);
   return ['Visits', 'Joined', 'Invited', 'Opened', 'Active', 'Spent'].map((n, i) => [n, T[i]]);
+}
+/** The header's three money vitals, as Money's header and Overview work them out. */
+function liveVitals() {
+  if (!loaded('money')) return null;
+  const { M, ASIDE } = moneyLive();
+  const r = fig('money.reserve');
+  // "1 : 1": what backs the members' savings, against what they hold
+  const [a, b] = String(r?.ratio ?? '').split(':').map(Number);
+  const backed = r && b ? Math.min(100, (a / b) * 100) : 0;
+  const used = M.unsecured + M.room ? (M.unsecured / (M.unsecured + M.room)) * 100 : 100;
+  return {
+    reserve: r?.ratio ?? null,
+    backed,
+    reserveS: !r ? 'The reserve isn’t read yet' : backed >= 100 ? 'Member savings fully backed' : `Member savings reserved ${r.ratio}`,
+    free: M.cash - ASIDE.reduce((t, x) => t + x[1], 0),
+    operating: M.cash,
+    credit: M.room,
+    creditUsed: used.toFixed(1),
+  };
 }
 /** Partner shops: transacting, signing, signed and idle (Merchants' own list). */
 function liveShops() {
