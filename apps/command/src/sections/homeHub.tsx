@@ -1,12 +1,16 @@
 // @ts-nocheck: reads the sections' untyped data (src/sections/data.tsx), as the other section files do.
 import { Fragment } from 'react';
-import { REAL } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import { feedList } from '../live/feeds';
+import { loadSection, needsData } from '../live/sections';
 import { css, html } from '../runtime/dom';
 import { ic, int, money } from './core';
+import { buildLive } from './buildLive';
 import { ALERTS0, DEADLINES, ENT, FUNNEL, MON, NEED, S, W_ICON, vars } from './data';
+import { fmLive } from './fmLive';
 import { HOME_DEMO, HOME_QV } from './homeData';
-import { finish, go, render, toast, vRO } from './shell';
+import { moneyLive } from './moneyLive';
+import { finish, go, render, toast, vLevel, vRO } from './shell';
 
 /*
  * Home (design/command-center-ui, the HOME module): a brief and four vitals, what needs you beside the
@@ -547,6 +551,86 @@ const hatched = (
     ))}
   </div>
 );
+/*
+ * Live, the Merchants, Money and Build tiles draw from those pages' own sections (their datasets, as the
+ * pages build them), loaded beside Home's once each; until one arrives, or for someone who can't see the
+ * page, its tile is hatched and still opens it.
+ */
+const SIDE = ['merchants', 'money', 'build'];
+const sideLoading = new Set();
+function sideLoad() {
+  if (!LIVE) return;
+  for (const r of SIDE) {
+    if (!needsData(r) || sideLoading.has(r) || vLevel(r) < 1) continue;
+    sideLoading.add(r);
+    loadSection(r).then(
+      () => {
+        sideLoading.delete(r);
+        if (S.route === 'home') render();
+      },
+      // left marked: a section it can't load isn't asked for again
+      () => undefined,
+    );
+  }
+}
+const loaded = (r) => !LIVE || !needsData(r);
+/** "$42.4k" */
+const kMoney = (v) => (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(1)}k` : money(v));
+const signed = (v) => `${v < 0 ? '−' : '+'}${money(Math.abs(v))}`;
+/** Partner shops: transacting, signing, signed and idle (Merchants' own list). */
+function liveShops() {
+  if (!loaded('merchants')) return null;
+  const P = fmLive().MS.filter((m) => ['transacting', 'signing', 'signed'].includes(m.stage));
+  const n = (st) => P.filter((m) => m.stage === st).length;
+  const cities = new Set(P.map((m) => m.city).filter(Boolean)).size;
+  return { live: n('transacting'), signing: n('signing'), of: P.length, s: `partner shops transacting${cities ? ` · ${cities} ${cities === 1 ? 'city' : 'cities'}` : ''}` };
+}
+/** What's held, by whose it is, and this week's change (Money's accounts). */
+function liveMoney() {
+  if (!loaded('money')) return null;
+  const GR = [
+    ['members', 'Members’'],
+    ['coop', 'Co-op’s'],
+    ['set', 'Set aside', 1],
+  ];
+  // id, name, what, group, source, balance, weeks, colour, weeks it really has
+  const A = GR.flatMap(([g]) => moneyLive().ACCTS.filter((a) => a[3] === g));
+  if (!A.length) return null;
+  const held = A.reduce((t, a) => t + a[5], 0);
+  const wk = (a) => (a[8] >= 2 ? a[5] - a[6][a[6].length - 2] : 0);
+  const moved = A.reduce((t, a) => t + wk(a), 0);
+  const top = A.reduce((b, a) => (Math.abs(wk(a)) > Math.abs(b ? wk(b) : 0) ? a : b), null);
+  const lc = (n) => (/^[A-Z][a-z]/.test(n) ? n[0].toLowerCase() + n.slice(1) : n);
+  return {
+    held,
+    s: `held across ${A.length} ${A.length === 1 ? 'account' : 'accounts'}${moved ? ` · ${signed(moved)} this week` : ''}`,
+    groups: GR.map(([g, n, rt]) => {
+      const v = A.filter((a) => a[3] === g).reduce((t, a) => t + a[5], 0);
+      return [n, kMoney(v), held ? (v / held) * 100 : 1, rt];
+    }),
+    parts: A.map((a) => [held ? a[5] : 1, a[7]]),
+    names: A.map((a) => a[1]).join(' · '),
+    key: top ? `Biggest mover: ${lc(top[1])}, ${signed(wk(top))} this week` : 'Nothing moved this week',
+  };
+}
+/** The contracts by layer, deeds apart: live, pending in the Ops Safe, waiting on you, not deployed (Build's map). */
+function liveBuild() {
+  if (!loaded('build')) return null;
+  const B = buildLive();
+  if (!B.CTR.length) return null;
+  const pend = {};
+  for (const c of B.CHANGES) if (c.st === 'safe' && c.contract && !c.block) pend[c.contract] = c.need === B.me ? 'w' : (pend[c.contract] ?? 'c');
+  const cls = (c) => (c[4] !== 'live' ? 'x' : (pend[c[0]] ?? ''));
+  const LAY = ['Access', 'Issue', 'Tokens', 'Pools', 'Capital'];
+  const groups = [...LAY.map((n, i) => [n, B.CTR.filter((c) => c[9] !== 'd' && c[3] === i).map(cls)]), ['Deeds', B.CTR.filter((c) => c[9] === 'd').map(cls)]];
+  const flight = B.CHANGES.filter((c) => c.contract && c.st !== 'shipped').length;
+  return {
+    f: B.deployed,
+    of: B.CTR.length,
+    s: `live${B.chain.network ? ` on ${B.chain.network}` : ''} · ${flight ? `${flight} ${flight === 1 ? 'change' : 'changes'} in flight` : 'nothing in flight'}`,
+    groups,
+  };
+}
 function tiles(M) {
   const D = M.tiles;
   const F = FUNNEL.map(([n, v]) => [{ Activated: 'Active', 'First spend': 'Spent' }[n] || n, v]);
@@ -561,7 +645,9 @@ function tiles(M) {
       op = m.opened ?? 0;
     for (let i = 0; i < Math.max(inv, 1); i++) units.push(i < act ? 'h-u-a' : i < act + op ? 'h-u-o' : 'h-u-n');
   }
-  const shops = D ? D.merchants : { live: (vars.shopNames ?? []).length, of: (vars.shopNames ?? []).length, signing: 0, s: 'partner shops transacting' };
+  const shops = D ? D.merchants : liveShops();
+  const mo = D ? null : liveMoney();
+  const bd = D ? null : liveBuild();
   const formed = ENT.filter((e) => e[3] === 'formed').length;
   return [
     {
@@ -607,15 +693,17 @@ function tiles(M) {
     {
       go: 'merchants',
       n: 'Merchants',
-      f: String(shops.live),
-      fs: ` of ${shops.of}`,
-      s: shops.s,
-      viz: (
+      f: shops ? String(shops.live) : '—',
+      fs: shops ? ` of ${shops.of}` : '',
+      s: shops ? shops.s : 'Opens Merchants',
+      viz: shops ? (
         <div className="h-units" style={css('grid-template-columns:repeat(15,1fr);gap:3px')}>
           {Array.from({ length: Math.max(shops.of, 1) }, (_, i) => (
             <i key={i} className={i < shops.live ? 'h-u-a' : i < shops.live + shops.signing ? 'h-hatch' : 'h-u-n'} />
           ))}
         </div>
+      ) : (
+        hatched
       ),
       key: (
         <>
@@ -637,12 +725,12 @@ function tiles(M) {
     {
       go: 'money',
       n: 'Money',
-      f: D ? money(D.money.held) : '—',
-      s: D ? D.money.s : 'Opens Money',
-      viz: D ? (
+      f: D ? money(D.money.held) : mo ? money(mo.held) : '—',
+      s: D ? D.money.s : mo ? mo.s : 'Opens Money',
+      viz: D || mo ? (
         <>
           <div className="h-mz">
-            {D.money.groups.map(([n, v, flex, rt]) => (
+            {(D ? D.money : mo).groups.map(([n, v, flex, rt]) => (
               <div key={n} className={`h-mz-g${rt ? ' h-rt' : ''}`} style={css(`flex:${flex}`)}>
                 <span>{n}</span>
                 <b>{v}</b>
@@ -650,8 +738,8 @@ function tiles(M) {
               </div>
             ))}
           </div>
-          <div className="h-comp" title="Savings · Yield pool · Operating · Co-op balance · Payout pool · AssurancePool">
-            {D.money.parts.map(([flex, bg], i) => (
+          <div className="h-comp" title={D ? 'Savings · Yield pool · Operating · Co-op balance · Payout pool · AssurancePool' : mo.names}>
+            {(D ? D.money : mo).parts.map(([flex, bg], i) => (
               <Fragment key={i}>{sw(`flex:${flex};background:${bg}`)}</Fragment>
             ))}
           </div>
@@ -659,18 +747,18 @@ function tiles(M) {
       ) : (
         hatched
       ),
-      key: <span>{D ? D.money.key : 'Not in Home’s figures yet'}</span>,
+      key: <span>{D ? D.money.key : mo ? mo.key : 'Not in Home’s figures yet'}</span>,
     },
     {
       go: 'build',
       n: 'Build',
       chip: !vRO() && S.waiting.some((w) => w.id === 'chain') ? ['live', '1 on you'] : null,
-      f: D ? D.build.f : '—',
-      fs: D ? ` of ${D.build.of}` : '',
-      s: D ? D.build.s : 'Opens Build',
-      viz: D ? (
+      f: D ? D.build.f : bd ? String(bd.f) : '—',
+      fs: D ? ` of ${D.build.of}` : bd ? ` of ${bd.of}` : '',
+      s: D ? D.build.s : bd ? bd.s : 'Opens Build',
+      viz: D || bd ? (
         <div className="h-pc">
-          {D.build.groups.map(([n, a], i) => (
+          {(D ? D.build : bd).groups.map(([n, a], i) => (
             <div key={n} className={`h-pc-c ${i === 5 ? 'h-dd' : ''}`}>
               <div className="h-pc-s">
                 {a.map((c, j) => (
@@ -1327,6 +1415,7 @@ export function homeHub() {
     document.body.classList.remove('h-pn');
   }
   const M = model();
+  sideLoad();
   return (
     <div className="h-home">
       {header(M)}
