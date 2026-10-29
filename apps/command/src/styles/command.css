@@ -310,7 +310,7 @@ button.cm-li:hover{background:var(--raised)} button.cm-li .num{font-weight:500}
 .figsub{font-size:13px;line-height:1.45;color:var(--fg-70);font-variant-numeric:tabular-nums}
 .c-ft{border-top:1px solid var(--hair);display:grid;grid-template-columns:minmax(0,1fr)}
 .c-ft.split{grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr);align-items:center}
-.c-ft .rule{width:1px;height:24px;background:var(--hair)}
+.c-ft .rule{width:1px;height:auto;align-self:stretch;background:var(--hair)}
 .c-ft > button,.c-ft > div.row{display:flex;align-items:center;justify-content:space-between;gap:var(--s1);min-height:48px;padding:0 var(--s3);color:var(--fg-70);font-size:14px;min-width:0;transition:color var(--hover) var(--ease),background var(--hover) var(--ease)}
 .c-ft > button:hover{color:var(--fg);background:var(--raised)}
 .c-ft span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2082,7 +2082,7 @@ button.hb:hover .hb-k{text-decoration:underline;text-underline-offset:3px}
 .pf{margin-left:0;padding:0 var(--s3);gap:var(--s3)}
 .cell > .p-ft{grid-row:auto}
 .p-ft{display:grid;grid-template-columns:minmax(0,1fr) 1px auto;align-items:center;min-height:56px;border-top:1px solid var(--line)}
-.p-ft .rule{width:1px;height:24px;background:var(--hair)}
+.p-ft .rule{width:1px;height:auto;align-self:stretch;background:var(--hair)}
 .flt{display:flex;gap:var(--s3);overflow-x:auto;scrollbar-width:none;min-width:0}
 .flt::-webkit-scrollbar{display:none}
 .flt button{display:inline-flex;align-items:center;gap:var(--s1);height:32px;font:400 11.5px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.1em;color:var(--fg-50);border-bottom:1px solid transparent;white-space:nowrap;transition:color var(--hover) var(--ease),border-color var(--hover) var(--ease)}
