@@ -618,6 +618,8 @@ function makeMoney() {
     };
     /* live, the ClearCredit the Ops Safe holds: a claim on cash the AssurancePool already holds, so shown but not counted in the balance */
     const coopSub = () => <div className="nh-r sub"><span /><span className="nh-k"><b>ClearCredit claim</b><span>Paid from the AssurancePool’s cash · not added to the balance</span></span><span /><span /><span className="nh-ch">Not counted</span><b className="nh-v">{money(L.COOP.credit)}</b></div>;
+    /* live, the offers line's cap: a change goes to the Ops Safe to sign, as OffersIssuer.setCap */
+    const offersCapForm = () => <div>{lbl('Offers cap')}<div className="npf"><label>{lbl('New cap, $')}<input id="noffcap" className="vin" inputMode="decimal" defaultValue={L.OFFERS.cap.toFixed(2)} /></label></div><p className="small quiet">{`Room for ${Math.max(0, Math.floor((L.OFFERS.cap - L.OFFERS.owed) / 10))} more $10 offers now. Paying the line down makes room too.`}</p><button className="btn" data-noffcap="">Propose to the Ops Safe</button></div>;
     /* live, what the co-op owes for $10 offers on their own line: owed, not taken from the balance */
     const offersSub = () => <div className="nh-r sub"><span /><span className="nh-k"><b>Offers owed</b><span>{`$10 offers, ${money(L.OFFERS.unspent)} not yet spent · paid down from the Safe`}</span></span><span /><span /><span className="nh-ch">Owed</span><b className="nh-v">{money(L.OFFERS.owed)}</b></div>;
     function holdingsCell() {
@@ -915,7 +917,7 @@ function makeMoney() {
         ap: <button className="btn" data-npool="ap">AssurancePool →</button>,
         coop: <button className="btn" data-ngo="governance">Propose a use · Governance</button>
       }[id];
-      return <><div className="pn-hd"><span className="lbl">{GROUPS[g][0]}</span><span className={`nsrc ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="npn-t">{n}</p><p className="npn-s">{why}</p></div><div><div className="m-big">{money(bal)}</div><svg className="npn-ch" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d={`M${pts} L100,40 L0,40 Z`} className="ar" style={css(`fill:color-mix(in srgb,${col} 18%,transparent)`)} /><path d={`M${pts}`} className="ln" style={css(`stroke:${col}`)} /></svg><div className="npn-ax"><span>{L ? acctOf(id)[8] > 1 ? dayD(-7 * (wk.length - 1)) : 'Now' : NW[0]}</span><span>{L ? 'Now' : NW[NW.length - 1]}</span></div></div><div>{lbl('Facts')}<div className="led">{facts.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div></div><div className="pn-ft">{CAN() || !/propose/.test(act) ? act : <span className="small quiet">Read-only for you</span>}</div></>;
+      return <><div className="pn-hd"><span className="lbl">{GROUPS[g][0]}</span><span className={`nsrc ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="npn-t">{n}</p><p className="npn-s">{why}</p></div><div><div className="m-big">{money(bal)}</div><svg className="npn-ch" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d={`M${pts} L100,40 L0,40 Z`} className="ar" style={css(`fill:color-mix(in srgb,${col} 18%,transparent)`)} /><path d={`M${pts}`} className="ln" style={css(`stroke:${col}`)} /></svg><div className="npn-ax"><span>{L ? acctOf(id)[8] > 1 ? dayD(-7 * (wk.length - 1)) : 'Now' : NW[0]}</span><span>{L ? 'Now' : NW[NW.length - 1]}</span></div></div><div>{lbl('Facts')}<div className="led">{facts.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>{id === 'coop' && L && L.OFFERS && CAN() ? offersCapForm() : ''}</div><div className="pn-ft">{CAN() || !/propose/.test(act) ? act : <span className="small quiet">Read-only for you</span>}</div></>;
     }
     function proposePanel(P) {
       if (L) {
@@ -994,6 +996,20 @@ function makeMoney() {
       const t = e.target.closest('button,a,select,input');
       if (!t) return;
       const d = t.dataset;
+      // the offers line's new cap, proposed to the Ops Safe; never below what the line already owes
+      if (d.noffcap !== undefined && L && L.OFFERS) {
+        const cap = parseFloat((document.getElementById('noffcap')?.value || '').replace(/[$,\s]/g, ''));
+        if (!(cap > 0)) return toast('Enter the new cap');
+        if (cap < L.OFFERS.owed) return toast(`The line already owes ${money(L.OFFERS.owed)}; the cap can’t go under it`);
+        if (Math.abs(cap - L.OFFERS.cap) < 0.005) return toast('That’s the cap already');
+        t.disabled = true;
+        return run('contracts', 'propose', {
+          contract: 'OffersIssuer',
+          what: `Set the $10 offers cap to ${money(cap)}`,
+          fn: 'setCap',
+          args: [String(Math.round(cap * 100) * 10000)]
+        }, () => toast('Sent to the Ops Safe to sign'));
+      }
       if (d.ntab) {
         N.tab = d.ntab;
         if (d.npool) N.pool = d.npool;

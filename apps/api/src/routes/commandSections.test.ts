@@ -88,7 +88,7 @@ describe('the seed', () => {
     expect(rows[0].n).toBe(Object.keys(MEMBERS_FIGURES).length);
     const all = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM command.figures');
     expect(all.rows[0].n).toBe(Object.keys(SEED_FIGURES).length);
-    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops', '30 merchants', '32 board cards', '6 accounts', '6 bonds', '18 yield positions', '13 products', '19 orders', '6 pre-orders', '41 agreements', '31 contracts', '11 changes', '9 entities', '16 filings', '3 boards', '16 documents']));
+    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops', '30 merchants', '32 board cards', '6 accounts', '6 bonds', '18 yield positions', '13 products', '19 orders', '6 pre-orders', '41 agreements', '32 contracts', '11 changes', '9 entities', '16 filings', '3 boards', '16 documents']));
   });
 
   test('never overwrites a figure a live job wrote', async () => {

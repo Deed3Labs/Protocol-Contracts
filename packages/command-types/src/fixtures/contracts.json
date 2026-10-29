@@ -626,6 +626,18 @@
    "c"
   ],
   [
+   "oi",
+   "OffersIssuer",
+   "v1.0",
+   1,
+   "live",
+   "0x150E…841c",
+   "The co-op’s $10 to each new member, on a capped line of its own. The Safe pays it down.",
+   30,
+   37,
+   "c"
+  ],
+  [
    "lq",
    "Liquidator",
    "v1.0",
@@ -967,6 +979,13 @@
    "cc",
    "mint",
    "mints credit",
+   ""
+  ],
+  [
+   "oi",
+   "cc",
+   "mint",
+   "gives $10 offers",
    ""
   ],
   [

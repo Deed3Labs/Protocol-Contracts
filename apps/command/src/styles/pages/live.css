@@ -110,3 +110,7 @@ button.fw-k{text-align:left;cursor:pointer}
 .led [data-ccost-rm]:hover{color:var(--fg)}
 .cc-f{display:flex;flex-direction:column;gap:10px}
 .cc-f > .btn{align-self:flex-start}
+
+/* a row whose cells end in both kinds of footer (Growth › Apps: What they use's note, Issues' Error log): the
+   button footer is 44px and the note 52, so side by side their lines missed by 8px. The button takes the note's height */
+.bento:has(> .cell > .bk-ft) > .cell > .foot{min-height:52px}
