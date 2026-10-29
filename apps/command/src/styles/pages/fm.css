@@ -1277,7 +1277,7 @@ button.fwa:hover{transform:translateY(-2px)}
 .mo-r b{font-weight:600;font-size:13.5px}
 .mo-r span span{font-size:12px;color:var(--fg-50)}
 .mo-n{flex:none !important;font-size:12.5px;color:var(--fg-70) !important;white-space:nowrap}
-.mo-n b{font-size:15px}
+.mo-n b{font-size:inherit;font-weight:600;color:var(--fg)}
 .mo-c{display:flex;flex-direction:column}
 .mo-ch{display:flex;justify-content:space-between;align-items:center;padding:12px 22px;border-bottom:1px solid var(--hair);background:color-mix(in srgb,var(--fg) 4%,transparent)}
 .mo-ch b{font-weight:600;font-size:15px}
