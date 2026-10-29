@@ -1056,7 +1056,7 @@ function makeAdmin() {
         })}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />More approvals</span><span><i className="ad-self" />Can’t approve your own</span></span><span /></>);
       const rs = RULES.filter(r => r.n30),
         mx = Math.max(...rs.map(r => r.med));
-      const sp = cell('s5', 'How long a second person takes', <span className="lbl">Usual wait</span>, <div className="ad-hb">{rs.sort((a, b) => b.med - a.med).map((r, __k) => <button key={__k} className="ad-hb-r" data-aopen={`r:${r.id}`}><span>{r.t}</span><span className="ad-hb-b"><i style={css(`width:${r.med / mx * 100}%`)} /></span><b>{r.med.toFixed(1)}{" h"}</b></button>)}</div>, <><span>{AL ? 'From proposed to approved, last 30 days' : 'Over a day, the app nudges the second person'}</span><span /></>);
+      const sp = cell('s5', 'How long a second person takes', <span className="lbl">Usual wait</span>, AL && !rs.length ? <div className="lv-e"><span>Nothing has waited on a second person in the last 30 days</span></div> : <div className="ad-hb">{rs.sort((a, b) => b.med - a.med).map((r, __k) => <button key={__k} className="ad-hb-r" data-aopen={`r:${r.id}`}><span>{r.t}</span><span className="ad-hb-b"><i style={css(`width:${r.med / mx * 100}%`)} /></span><b>{r.med.toFixed(1)}{" h"}</b></button>)}</div>, <><span>{AL ? 'From proposed to approved, last 30 days' : 'Over a day, the app nudges the second person'}</span><span /></>);
 
       return <>{band(list, 1)}{band(<>{am}{sp}</>)}</>;
     }
@@ -1074,10 +1074,10 @@ function makeAdmin() {
     }
     const setCell = (sec, w, foot) => {
       const L = SETS.filter(s => s.sec === sec);
-      return cell(w, SEC_T[sec][0], lbl(SEC_T[sec][1]), <div className="ad-sl">{L.map(setRow)}{rest()}</div>, foot || <><span>{L.filter(s => s.kind !== 'lock').length}{" you can change · "}{L.filter(s => s.kind === 'lock').length}{" set elsewhere"}</span><span /></>);
+      return cell(w, SEC_T[sec][0], lbl(SEC_T[sec][1]), AL && !L.length ? <div className="lv-e"><span>No rules recorded here yet</span></div> : <div className="ad-sl">{L.map(setRow)}{rest()}</div>, foot || <><span>{L.filter(s => s.kind !== 'lock').length}{" you can change · "}{L.filter(s => s.kind === 'lock').length}{" set elsewhere"}</span><span /></>);
     };
     function setRules() {
-      const hist = cell('s12', 'Changes', <span className="lbl">Each one had a second person</span>, <div className="gt-cl">{PEND.map((p, __k) => {
+      const hist = cell('s12', 'Changes', <span className="lbl">Each one had a second person</span>, AL && !PEND.length && !SET_HIST.length ? <div className="lv-e"><span>No setting has changed yet</span></div> : <div className="gt-cl">{PEND.map((p, __k) => {
           const s = SETO[p.set];
           return <button key={__k} className="gt-cr ad-pend" data-aopen={`s:${s.id}`}>{leaf(p.at)}<span className="gt-ck"><b>{s.t}</b><span>{fmtV(s, p.from)}{" → "}{fmtV(s, p.to)}{" · "}{pName(p.by)}{" proposed"}</span></span><span className="gt-st" style={css("--c:var(--underway)")}>{"Waiting on "}{onWho(p.need)}</span></button>;
         })}{SET_HIST.map(([id, t, k, a, b, by, ok], __k) => <button key={__k} className="gt-cr" data-aopen={`s:${k}`}>{leaf(t)}<span className="gt-ck"><b>{SETO[k].t}</b><span>{a}{" → "}{b}{" · "}{by ? pName(by).split(' ')[0] : 'Someone'}{" and "}{ok ? pName(ok).split(' ')[0] : 'someone else'}</span></span><span className="mono ad-id">{id}</span></button>)}{rest()}</div>, <><span>Every change is in the audit log</span><button data-ago="records/log">Audit log →</button></>);
@@ -1177,12 +1177,12 @@ function makeAdmin() {
     const resChip = r => <span className="gt-st" style={css(`--c:${RESULT[r][1]}`)}>{RESULT[r][0]}</span>;
     function recOverview() {
       const wk = cell('s12', 'This week', <span className="lbl">{AL ? `${fmtD(days7()[0])}–${fmtD(days7()[6])} · ` : "15–21 Oct · "}{weekN()}{" actions"}</span>, lanes(), <><span className="f-key"><span><i className="ad-shade" />Darker is busier</span><span><i className="ad-kk" />A key action</span><span><i className="ad-mixk" />The strip is the kind of work, coloured as below</span></span><button data-atab="log">Audit log →</button></>);
-      const keys = cell('s7', 'Key actions', <span className="lbl">Newest first</span>, <div className="ad-ll">{LOG.slice().sort((a, b) => b[1] - a[1]).slice(0, 7).map(logRow)}</div>, <><span>{LOG.filter(l => l[7] === 'waiting').length}{" still waiting on someone"}</span><button data-atab="log">{"All "}{LOG.length}{" →"}</button></>);
+      const keys = cell('s7', 'Key actions', <span className="lbl">Newest first</span>, AL && !LOG.length ? <div className="lv-e"><span>Nothing in the log yet</span></div> : <div className="ad-ll">{LOG.slice().sort((a, b) => b[1] - a[1]).slice(0, 7).map(logRow)}</div>, <><span>{LOG.filter(l => l[7] === 'waiting').length}{" still waiting on someone"}</span><button data-atab="log">{"All "}{LOG.length}{" →"}</button></>);
       const from = days7()[0],
         order = Object.keys(AREAS),
         by = order.map(a => [a, WEEK.filter(e => e[2] === a).length + LOG.filter(l => l[3] === a && l[1] >= from).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]),
         bm = by.length ? by[0][1] : 1;
-      const kind = cell('s5', 'Kind of work', <span className="lbl">This week</span>, <div className="ad-hb">{by.map(([a, v], __k) => <button key={__k} className="ad-hb-r" data-alr-area={a}><span>{AREAS[a][0]}</span><span className="ad-hb-b"><i style={css(`width:${v / bm * 100}%;background:${AREAS[a][1]}`)} /></span><b>{v}</b></button>)}</div>, <><span>{by.length ? <>{Math.round(by[0][1] / weekN() * 100)}{"% was "}{AREAS[by[0][0]][0].toLowerCase()}</> : 'Nothing in the log this week'}</span><span /></>);
+      const kind = cell('s5', 'Kind of work', <span className="lbl">This week</span>, AL && !by.length ? <div className="lv-e"><span>Nothing in the log this week</span></div> : <div className="ad-hb">{by.map(([a, v], __k) => <button key={__k} className="ad-hb-r" data-alr-area={a}><span>{AREAS[a][0]}</span><span className="ad-hb-b"><i style={css(`width:${v / bm * 100}%;background:${AREAS[a][1]}`)} /></span><b>{v}</b></button>)}</div>, <><span>{by.length ? <>{Math.round(by[0][1] / weekN() * 100)}{"% was "}{AREAS[by[0][0]][0].toLowerCase()}</> : 'Nothing in the log this week'}</span><span /></>);
       return <>{band(wk, 1)}{band(<>{keys}{kind}</>)}{band(paperCell())}</>;
     }
     function paperCell() {
