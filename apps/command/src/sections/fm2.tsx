@@ -1275,10 +1275,16 @@ function makeFieldMerchants() {
     function fmRestyle() {
       Object.entries(FM.slots).forEach(([slot, s]) => {
         if (!s.map || !s.ok || !FM.raw) return;
-        s.map.setStyle(fmStyle());
+        // listen first: a diffed setStyle can send its styledata before it returns
         s.map.once('styledata', () => fmApply(slot));
+        s.map.setStyle(fmStyle());
       });
     }
+    // the theme switch (and the system's, under Auto) only changes <html data-theme>, so watch that
+    new MutationObserver(fmRestyle).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme']
+    });
 
     /* ══ Plan: everyone's routes for the coming days ═════════════════════════════════════════════
        The week is shared: every route, for everyone, by day. A route belongs to one person on one day.
