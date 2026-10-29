@@ -102,3 +102,6 @@ button.fw-k{text-align:left;cursor:pointer}
 /* Build → Who can do what: a holder's name, turned on its side, stays inside its 80px column head (its
    long names, RevolvingIssuerV1, ran up into the cell's header); the full name is on hover */
 .bd-ro-x em{max-width:78px;overflow:hidden;text-overflow:ellipsis}
+/* Growth's Next moves with fewer than three: the slots no move fills are hatched, not blank */
+.mv.mv-x{background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+@media (max-width:1024px){.mv.mv-x{display:none}}
