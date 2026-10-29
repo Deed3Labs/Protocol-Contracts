@@ -86,6 +86,7 @@ import { startMonthlyStatements } from './jobs/monthlyStatements.js';
 import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startTermLimitReviewer } from './jobs/termLimitReviewer.js';
+import { startOffersGranter } from './jobs/offersGranter.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
 import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
@@ -434,6 +435,8 @@ async function startServer() {
     startCreditPeriodRenewer();
     // Nothing else sets a term limit: without this a member's split plans all revert at zero.
     startTermLimitReviewer();
+    // Nothing else gives a new member the co-op's $10, or takes an unspent one back.
+    startOffersGranter();
 
     startReconciler().catch((error) => {
       console.error('Failed to start reconciler:', error);

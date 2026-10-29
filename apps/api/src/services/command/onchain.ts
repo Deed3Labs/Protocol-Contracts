@@ -442,6 +442,42 @@ export async function assurancePoolLive(reader: ChainReader): Promise<AssuranceP
   };
 }
 
+/** OffersIssuer's address, lower-cased, once it's deployed and in the chain record; null before. */
+export const offersAddress = (): string | null => C.OffersIssuer?.address?.toLowerCase() ?? null;
+
+export interface OffersLive {
+  /** What the co-op owes for $10 offers now: the line's balance, in dollars. */
+  owed: number;
+  /** The most it can owe at once. */
+  cap: number;
+  /** Offers given and not yet spent or expired. */
+  unspent: number;
+  /** All time: given, taken back unspent, and paid down by the Safe. */
+  granted: number;
+  expired: number;
+  settled: number;
+}
+
+/**
+ * The $10 offers' own line (OffersIssuer): what the co-op owes for them, apart from the Safe and from
+ * members' credit. Not exposure: the AssurancePool doesn't reserve against the co-op owing itself, so
+ * Money shows it as its own figure. Null until the contract is deployed.
+ */
+export async function offersLive(reader: ChainReader): Promise<OffersLive | null> {
+  if (!C.OffersIssuer) return null;
+  const [owed, cap, unspent, granted, expired, settled, decimals] = await reader.read([
+    { contract: 'OffersIssuer', fn: 'owed' },
+    { contract: 'OffersIssuer', fn: 'cap' },
+    { contract: 'OffersIssuer', fn: 'totalUnspent' },
+    { contract: 'OffersIssuer', fn: 'totalGranted' },
+    { contract: 'OffersIssuer', fn: 'totalExpired' },
+    { contract: 'OffersIssuer', fn: 'totalSettled' },
+    { contract: 'ClearCredit', fn: 'decimals' },
+  ]);
+  const usd = (v: unknown) => Math.round((Number(big(v)) / 10 ** Number(decimals)) * 100) / 100;
+  return { owed: usd(owed), cap: usd(cap), unspent: usd(unspent), granted: usd(granted), expired: usd(expired), settled: usd(settled) };
+}
+
 export interface BondVaultLive {
   /** What it holds: the bond buyers' money. */
   held: number;

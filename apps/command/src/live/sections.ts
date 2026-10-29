@@ -276,6 +276,7 @@ const apply = {
     replace(RTD_W, d.RTD_W);
     replace(COOP_W, d.COOP_W);
     vars.coop = d.COOP ?? null;
+    vars.offers = d.OFFERS ?? null;
     replace(FLOWS, d.FLOWS);
     replace(BONDS, d.BONDS);
     replace(ACCTS, d.ACCTS);

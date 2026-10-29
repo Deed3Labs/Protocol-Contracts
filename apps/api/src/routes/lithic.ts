@@ -8,6 +8,7 @@ import {
   type ProvisionKycInput,
 } from '../services/lithic/provisioningService.js';
 import { grantStarterLimit } from '../services/credit/termLimitService.js';
+import { grantOffer } from '../services/credit/offersService.js';
 import { lithicStore } from '../services/lithic/lithicStore.js';
 
 const router = express.Router();
@@ -120,9 +121,12 @@ router.post('/account', async (req: Request, res: Response) => {
       },
     });
 
-    // Verified on the spot: give them their starter term limit now rather than at the next hourly
-    // review. Fire-and-forget -- it waits for a transaction, and never throws.
-    if (result.record?.status === 'ACCEPTED') void grantStarterLimit(wallet);
+    // Verified on the spot: give them their starter term limit and the co-op's $10 now rather than
+    // at the next hourly pass. Fire-and-forget -- each waits for a transaction, and never throws.
+    if (result.record?.status === 'ACCEPTED') {
+      void grantStarterLimit(wallet);
+      void grantOffer(wallet);
+    }
 
     res.json({
       status: result.status,

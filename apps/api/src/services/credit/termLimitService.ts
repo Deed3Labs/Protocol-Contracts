@@ -6,6 +6,7 @@ import { lithicStore } from '../lithic/lithicStore.js';
 import { getLithic } from '../lithic/lithicClient.js';
 import { estimateMonthlyDeposit } from '../lithic/snapshotService.js';
 import { termLimitSkip, termLimitTarget } from './termLimitRule.js';
+import { asOperator } from '../chain/operatorQueue.js';
 
 /*
  * Setting term limits without an operator at a terminal.
@@ -124,7 +125,7 @@ async function ensureTables(): Promise<void> {
 }
 
 /** Every member wallet -- from the main database, which holds `members`; the Pay one does not. */
-async function memberWallets(): Promise<string[]> {
+export async function memberWallets(): Promise<string[]> {
   const pool = getPostgresPool();
   if (!pool) return [];
   const { rows } = await pool.query<{ primary_wallet: string }>(
@@ -142,7 +143,7 @@ async function memberWallets(): Promise<string[]> {
  * member who was PENDING_DOCUMENT and then cleared review still reads PENDING_* here forever. So a
  * pending row is checked with Lithic itself. Read-only -- the row is the provisioning flow's to keep.
  */
-async function verified(wallet: string): Promise<boolean> {
+export async function verified(wallet: string): Promise<boolean> {
   const record = await lithicStore.get(wallet);
   if (!record) return false;
   if (record.status === 'ACCEPTED') return true;
@@ -257,17 +258,12 @@ export const realTermLimitDeps: TermLimitDeps = {
 // ---------------------------------------------------------------------------------------------
 
 /*
- * One member at a time, server-wide. The reviewer and a member finishing joining can arrive
- * together, and two transactions from the operator key at once would race for the same nonce. It
- * also means the limit is read again after any write ahead of it, so the same raise is never sent
- * twice.
+ * One member at a time, server-wide, and in the same queue as everything else the operator key
+ * sends (operatorQueue.ts). The reviewer and a member finishing joining can arrive together, and two
+ * transactions from the operator key at once would race for the same nonce. It also means the limit
+ * is read again after any write ahead of it, so the same raise is never sent twice.
  */
-let queue: Promise<unknown> = Promise.resolve();
-function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
-  const run = queue.then(work, work);
-  queue = run.catch(() => undefined);
-  return run;
-}
+const oneAtATime = asOperator;
 
 async function evaluate(wallet: string, deps: TermLimitDeps): Promise<ReviewResult> {
   if (!(await deps.verified(wallet))) return { wallet, action: 'unverified' };

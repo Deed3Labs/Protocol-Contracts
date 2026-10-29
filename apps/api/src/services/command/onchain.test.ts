@@ -4,7 +4,7 @@ import { getAddress } from 'viem';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
 import { syncInventory } from './indexer.js';
-import { assurancePoolLive, bondsLive, coopLive, deployedName, type ChainCall, type ChainReader } from './onchain.js';
+import { assurancePoolLive, bondsLive, coopLive, deployedName, offersAddress, offersLive, type ChainCall, type ChainReader } from './onchain.js';
 import { contractsSection, moneySection } from './sections.js';
 import { seedCommand } from './seed.js';
 import { TOTALS } from './levels.js';
@@ -363,6 +363,17 @@ describe('the co-op’s balance, live', () => {
     } finally {
       if (was != null) process.env.COMMAND_SAFE_ADDRESS = was;
     }
+  });
+});
+
+describe('the $10 offers’ line, live', () => {
+  test('reads nothing, and asks the chain nothing, until OffersIssuer is deployed', async () => {
+    const before = asked.length;
+    expect(offersAddress()).toBeNull();
+    expect(await offersLive(reader)).toBeNull();
+    expect(asked.length).toBe(before);
+    const m: any = await moneySection(db, read());
+    expect(m.OFFERS).toBeNull();
   });
 });
 
