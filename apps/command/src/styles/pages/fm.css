@@ -1650,6 +1650,16 @@ select.vin{appearance:auto}
   .xd-mq .xd-on{flex-basis:100%;color:var(--settled)}
 }
 
+/* devices: the shop note wraps instead of running under the next column; between phone and desktop the device columns fold into the shop cell */
+.bt.xd td.tn > span{white-space:normal} .bt.xd td.tn{padding-right:20px}
+@media (max-width:1320px) and (min-width:761px){
+  .bt.xd colgroup{display:none} .bt.xd{table-layout:auto}
+  .bt.xd tr > :nth-child(2),.bt.xd tr > :nth-child(3),.bt.xd tr > :nth-child(4),.bt.xd tr > :nth-child(5){display:none}
+  .bt.xd td.tn .xd-mq{display:flex !important;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:11.5px;color:var(--fg-50)}
+  .bt.xd td.tn .xd-mq > span{display:inline-flex;align-items:center;gap:6px;margin:0}
+  .bt.xd td.tn .xd-mq .xd-q{display:inline-flex;gap:2px;margin:0}
+  .bt.xd td.tn .xd-mq .xd-on{display:none}
+}
 @media (max-width:760px){ .bt.xd td.tn .xd-mq > span{display:inline-flex !important;align-items:center;gap:6px;margin:0} .bt.xd td.tn .xd-mq .xd-q{display:inline-flex !important;gap:2px;margin:0} .bt.xd td.tn .xd-mq .xd-on{display:block !important} }
 
 .xq-a > span{white-space:nowrap}
