@@ -16,7 +16,7 @@ beforeAll(async () => {
 describe('the structure', () => {
   test('writes the contracts, entities, boards and who decides, once', async () => {
     const first = await structureCommand(db);
-    expect(first).toEqual(['31 contracts', '7 accounts', '9 entities', '3 boards']);
+    expect(first).toEqual(['32 contracts', '7 accounts', '9 entities', '3 boards']);
     // a second start leaves it alone
     expect(await structureCommand(db)).toEqual([]);
   });
@@ -44,7 +44,7 @@ describe('the structure', () => {
 
   test('the contracts keep their map, without the prototype’s notes', async () => {
     const { rows } = await db.query<{ n: number; notes: number }>('SELECT count(*)::int AS n, count(note)::int AS notes FROM command.contracts');
-    expect(rows[0]).toEqual({ n: 31, notes: 0 });
+    expect(rows[0]).toEqual({ n: 32, notes: 0 });
     const { rows: links } = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM command.contract_links');
     expect(links[0].n).toBeGreaterThan(0);
     for (const t of ['agreements', 'contract_changes', 'contract_releases', 'signers', 'filings', 'board_people', 'resolutions', 'member_votes', 'account_snapshots', 'account_entries', 'figures']) {
@@ -96,7 +96,7 @@ describe('Contracts with only the structure', () => {
       await db.query('INSERT INTO command.chain_cursor (chain_id, indexed_to) VALUES (84532, 49815448)');
       const c: any = await contractsSection(db, { level: TOTALS, reveal: false, now: new Date() });
       expect(c.figures['contracts.chain']).toEqual({ network: 'Base Sepolia', block: 49815448, safe: 'No Ops Safe yet', threshold: 0, delayHours: 0 });
-      expect(c.CTR).toHaveLength(31);
+      expect(c.CTR).toHaveLength(32);
     } finally {
       env.p == null ? delete process.env.PROVIDER_CONTRACTS : (process.env.PROVIDER_CONTRACTS = env.p);
       if (env.s != null) process.env.COMMAND_SAFE_ADDRESS = env.s;
