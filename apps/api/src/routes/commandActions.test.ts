@@ -82,6 +82,23 @@ describe('Command’s own records, saved straight away', () => {
     expect((await q(`SELECT action, result FROM command.audit_log WHERE action = 'Replaced poster P-044'`))[0].result).toBe('done');
   });
 
+  test('a campaign’s cost is recorded and removed, each with its own log line', async () => {
+    const r = await call(kai, 'POST', '/actions/growth/campaign-cost', { campaign: 'design:A', kind: 'print', amount: 28.8, spentOn: '2026-10-20', note: '12 posters' });
+    expect(r.status).toBe(200);
+    const [c] = await q(`SELECT id, campaign, kind, amount_cents, spent_on, note FROM command.campaign_costs WHERE id = $1`, [r.body.result.id]);
+    expect([c.campaign, c.kind, c.amount_cents, new Date(c.spent_on).toISOString().slice(0, 10), c.note]).toEqual(['design:A', 'print', 2880, '2026-10-20', '12 posters']);
+    expect(await q(`SELECT 1 FROM command.audit_log WHERE action = 'Recorded $28.80 of printing for poster design A'`)).toHaveLength(1);
+    // not a campaign, not a kind, nothing spent
+    expect((await call(kai, 'POST', '/actions/growth/campaign-cost', { campaign: 'A', kind: 'print', amount: 1, spentOn: '2026-10-20' })).status).toBe(400);
+    expect((await call(kai, 'POST', '/actions/growth/campaign-cost', { campaign: 'utm:fall', kind: 'coffee', amount: 1, spentOn: '2026-10-20' })).status).toBe(400);
+    expect((await call(kai, 'POST', '/actions/growth/campaign-cost', { campaign: 'utm:fall', kind: 'ads', amount: 0, spentOn: '2026-10-20' })).status).toBe(400);
+    const gone = await call(kai, 'POST', '/actions/growth/campaign-cost-remove', { id: Number(c.id) });
+    expect(gone.status).toBe(200);
+    expect(await q(`SELECT 1 FROM command.campaign_costs WHERE id = $1`, [c.id])).toHaveLength(0);
+    expect(await q(`SELECT 1 FROM command.audit_log WHERE action = 'Removed $28.80 of printing from poster design A'`)).toHaveLength(1);
+    expect((await call(kai, 'POST', '/actions/growth/campaign-cost-remove', { id: Number(c.id) })).status).toBe(404);
+  });
+
   test('a field scan updates the poster and today’s route task', async () => {
     const [t] = await q(`SELECT poster FROM command.route_tasks WHERE kind = 'poster' AND poster IS NOT NULL LIMIT 1`);
     const r = await call(kai, 'POST', '/actions/field/scan', { n: t.poster, outcome: 'missing', note: 'Board taken down' });

@@ -101,6 +101,10 @@ const exportAction = (section: 'members' | 'growth', what: string): Action => ({
   },
 });
 
+const COST_KIND: Record<string, string> = { print: 'printing', ads: 'ads', offer: '$10 offers', credit: 'referral credit' };
+/** A campaign as people say it: "poster design A", or the tagged link's name. */
+const campaignName = (c: string) => (c.startsWith('design:') ? `poster design ${c.slice(7)}` : c.slice(4));
+
 const growth: Record<string, Action> = {
   export: exportAction('growth', 'the join forms'),
   'poster-replaced': {
@@ -129,6 +133,34 @@ const growth: Record<string, Action> = {
   swap: { body: z.object({ shop: text(120).min(1), design: z.string().regex(/^[A-Z]$/).optional() }), summary: (b) => `Planned a poster swap at ${b.shop}`, outbox: true },
   nudge: { body: z.object({ who: z.enum(['opened', 'invited']).default('opened'), count: z.number().int().nonnegative() }), summary: (b) => `Nudge ${b.count} members to finish joining`, outbox: true },
   pace: { body: z.object({ perBatch: z.number().int().positive().max(500) }), summary: (b) => `Raise the invite pace to ${b.perBatch} a batch`, second: () => true, outbox: true },
+  // what a campaign cost, as someone records it: Command's own record, nothing is paid from here
+  'campaign-cost': {
+    body: z.object({
+      campaign: z.string().trim().regex(/^(design|utm):.+$/).max(140),
+      kind: z.enum(['print', 'ads', 'offer', 'credit']),
+      amount: money.positive(),
+      spentOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      note: text(200).default(''),
+    }),
+    summary: (b) => `Recorded $${b.amount.toFixed(2)} of ${COST_KIND[b.kind]} for ${campaignName(b.campaign)}`,
+    apply: async ({ tx, person }, b) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `INSERT INTO command.campaign_costs (campaign, kind, amount_cents, spent_on, note, recorded_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [b.campaign, b.kind, cents(b.amount), b.spentOn, b.note, person.id],
+      );
+      return { id: Number(rows[0].id) };
+    },
+  },
+  'campaign-cost-remove': {
+    body: z.object({ id: z.number().int().positive() }),
+    summary: async (b, db) => {
+      const c = await one<{ campaign: string; kind: string; amount_cents: number }>(db, 'SELECT campaign, kind, amount_cents FROM command.campaign_costs WHERE id = $1', [b.id]);
+      return c ? `Removed $${(c.amount_cents / 100).toFixed(2)} of ${COST_KIND[c.kind]} from ${campaignName(c.campaign)}` : `Removed campaign cost ${b.id}`;
+    },
+    apply: async ({ tx }, b) => {
+      await must(tx, 'DELETE FROM command.campaign_costs WHERE id = $1 RETURNING id', [b.id], 'campaign cost');
+    },
+  },
 };
 
 // ── Field ───────────────────────────────────────────────────────────────────

@@ -178,23 +178,34 @@ describe('Growth and Home, live', () => {
     expect(listed.INBOX).toHaveLength(5);
   });
 
+  test('what campaigns cost, as recorded: who and why only above Totals', async () => {
+    const [p] = (await db.query<{ id: string }>(`INSERT INTO command.people (name, email) VALUES ('Dana', 'dana@useclear.test') RETURNING id`)).rows;
+    await db.query(`INSERT INTO command.campaign_costs (campaign, kind, amount_cents, spent_on, note, recorded_by) VALUES ('utm:fall-market', 'ads', 15000, '2026-10-10', 'Instagram boost', $1)`, [p.id]);
+    const shown: any = await growthSection(db, { level: 2 as any, reveal: false, now: new Date(NOW) });
+    expect(shown.figures['growth.campaign_costs']).toEqual([{ id: expect.any(Number), campaign: 'utm:fall-market', kind: 'ads', cents: 15000, on: Date.parse('2026-10-10T00:00:00Z'), note: 'Instagram boost', who: 'Dana' }]);
+    const totals = await read();
+    expect(totals.figures['growth.campaign_costs'][0]).toMatchObject({ cents: 15000, note: '', who: '' });
+    await db.query('DELETE FROM command.campaign_costs');
+  });
+
   test('each poster design is a campaign: its posters, scans, the joins its posters brought, and what came after', async () => {
     const g = await read();
     // the seed's designs, each with the posters wearing it
     expect(g.figures['growth.poster_campaigns'].length).toBeGreaterThan(0);
     expect(g.figures['growth.poster_campaigns'][0]).toMatchObject({ code: expect.any(String), posters: expect.any(Number), invited: null });
-    const P = (n: number, design: string, scans: number, hung: number) => ({ n, design, scans, hung, shop: '', shopId: '', city: '', checked: 0, swap: 0, status: 'up' as const });
+    const P = (n: number, design: string, scans: number, hung: number) => ({ n, design, scans, hung, shop: `Shop ${n}`, shopId: '', city: '', checked: 0, swap: 0, status: 'up' as const });
     const list = [P(1, 'A', 30, NOW - 20 * 86_400_000), P(2, 'A', 10, NOW - 9 * 86_400_000), P(3, 'B', 5, NOW - 2 * 86_400_000)];
     const names = [{ code: 'A', name: 'The neighbor' }, { code: 'B', name: '$10 on us' }, { code: 'C', name: 'The map' }];
     const wl = [{ poster: 'P-1', joined_at: new Date(NOW - 86_400_000) }, { poster: 'P-2', joined_at: new Date(NOW - 40 * 86_400_000) }, { poster: null, joined_at: new Date(NOW) }];
     const m = (poster: string | null, extra: object) => ({ poster, ...extra }) as any;
-    const members = [m('P-1', { opened: 1, activeAt: 2, spentAt: 3 }), m('P-2', { opened: 1 }), m('P-2', {}), m(null, { opened: 1, activeAt: 2 })];
+    // a first spend at the poster's own shop is its $10 offer; one at another shop isn't
+    const members = [m('P-1', { opened: 1, activeAt: 2, spentAt: 3, spend: ' shop 1' }), m('P-2', { opened: 1, activeAt: 4, spentAt: 5, spend: 'Shop 9' }), m('P-2', {}), m(null, { opened: 1, activeAt: 2 })];
     // C wears no poster: not a campaign; the join 40 days ago is outside the 30
     expect(posterCampaigns(list, names, wl, members, NOW)).toEqual([
-      { code: 'A', name: 'The neighbor', posters: 2, first: NOW - 20 * 86_400_000, visits: 40, joins: 1, invited: 3, opened: 2, active: 1, spent: 1 },
-      { code: 'B', name: '$10 on us', posters: 1, first: NOW - 2 * 86_400_000, visits: 5, joins: 0, invited: 0, opened: 0, active: 0, spent: 0 },
+      { code: 'A', name: 'The neighbor', posters: 2, first: NOW - 20 * 86_400_000, visits: 40, joins: 1, invited: 3, opened: 2, active: 2, spent: 2, offers: [3] },
+      { code: 'B', name: '$10 on us', posters: 1, first: NOW - 2 * 86_400_000, visits: 5, joins: 0, invited: 0, opened: 0, active: 0, spent: 0, offers: [] },
     ]);
-    expect(posterCampaigns(list, names, wl, null, NOW)[0]).toMatchObject({ invited: null, active: null });
+    expect(posterCampaigns(list, names, wl, null, NOW)[0]).toMatchObject({ invited: null, active: null, offers: null });
   });
 
   test('the weeks of joins are the waitlist’s', async () => {
