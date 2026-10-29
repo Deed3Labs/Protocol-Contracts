@@ -65,10 +65,11 @@ afterAll(() => {
 });
 
 describe('the shop’s key', () => {
-  test('only a restricted key: a full secret key, even a live one, is refused', () => {
-    expect(shopFeed({ COMMAND_SHOP_STRIPE_KEY: 'sk_live_full' }).off()).toBe('the shop’s key must be a restricted, read-only key (rk_…)');
-    expect(shopFeed({}).off()).toBe('COMMAND_SHOP_STRIPE_KEY isn’t set');
+  test('its own restricted key, else the site’s secret key the API already holds; anything else is off', () => {
     expect(shopFeed(env).off()).toBeNull();
+    expect(shopFeed({ SHOP_STRIPE_SECRET_KEY: 'sk_live_site' }).off()).toBeNull();
+    expect(shopFeed({}).off()).toBe('Neither COMMAND_SHOP_STRIPE_KEY nor SHOP_STRIPE_SECRET_KEY is set');
+    expect(shopFeed({ COMMAND_SHOP_STRIPE_KEY: 'pk_live_public' }).off()).toBe('the shop’s key isn’t a Stripe key (rk_… or sk_…)');
   });
 
   test('names and variants as the page shows them', () => {
@@ -133,7 +134,15 @@ describe('the shop feed', () => {
   test('packing reads the address from Stripe for that order, and nothing else', async () => {
     expect(await shopAddress(db, '1001', env, shop.f)).toEqual({ name: 'Ana Ruiz', lines: ['12 Orange St', 'Redlands, CA 92373'] });
     expect(await shopAddress(db, '1094', env, shop.f)).toBeNull();
-    await expect(shopAddress(db, '1001', { COMMAND_SHOP_STRIPE_KEY: 'sk_live_full' }, shop.f)).rejects.toThrow(/restricted/);
+    await expect(shopAddress(db, '1001', {}, shop.f)).rejects.toThrow(/Neither/);
+  });
+
+  test('with the site’s secret key it still only reads', async () => {
+    const before = shop.asked.length;
+    expect(await runFeed(db, shopFeed({ SHOP_STRIPE_SECRET_KEY: 'sk_live_site' }, shop.f))).toBe('ok');
+    const asked = shop.asked.slice(before);
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((a) => a.method === 'GET' && a.auth === 'Bearer sk_live_site')).toBe(true);
   });
 });
 
