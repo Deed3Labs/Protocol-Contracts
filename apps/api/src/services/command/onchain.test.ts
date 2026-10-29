@@ -490,4 +490,29 @@ describe('is it what dev compiles', () => {
     expect(asked).toHaveLength(3);
     forgetCodeMatch();
   });
+
+  test('a clone (EIP-1167) is compared by what it forwards to, not its own 45 bytes', async () => {
+    const { codeMatchLive, codeFingerprint, cloneTarget, forgetCodeMatch } = await import('./onchain.js');
+    const impl = getAddress('0xe7f9884e921372bb5161c2adf5ca95c8e4b4488b');
+    const clone = `0x363d3d373d3d3d363d73${impl.slice(2).toLowerCase()}5af43d82803e903d91602b57fd5bf3`;
+    expect(cloneTarget(clone)).toBe(impl);
+    expect(cloneTarget('0x6080aaaa6000a1b20002')).toBeNull();
+    const compiled = '0x6080bbbb6000c3d40002';
+    const fingerprints = {
+      BurnerBond: { sha256: codeFingerprint(compiled, [[2, 2]]), immutables: [[2, 2]] as Array<[number, number]> },
+      BurnerBondDeposit: { sha256: codeFingerprint(compiled, [[2, 2]]), immutables: [[2, 2]] as Array<[number, number]> },
+    };
+    forgetCodeMatch();
+    const reader = {
+      read: async () => [],
+      // BurnerBond's clone forwards to code dev compiles; BurnerBondDeposit's to something else
+      codeOf: async (address: string) =>
+        address === impl ? { implementation: address, code: '0x6080aaaa6000a1b20002' }
+        : address === C.BurnerBond.address ? { implementation: address, code: clone }
+        : { implementation: address, code: `0x363d3d373d3d3d363d73${'11'.repeat(20)}5af43d82803e903d91602b57fd5bf3` },
+    };
+    const same = await codeMatchLive(reader as any, NOW.getTime(), fingerprints);
+    expect(Object.fromEntries(same)).toEqual({ BurnerBond: true, BurnerBondDeposit: false });
+    forgetCodeMatch();
+  });
 });
