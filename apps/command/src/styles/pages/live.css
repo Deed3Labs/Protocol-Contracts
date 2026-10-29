@@ -89,3 +89,16 @@ button.fw-k{text-align:left;cursor:pointer}
 .gv-g{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;padding:0 22px;background:color-mix(in srgb,var(--fg) 4%,transparent);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
 .gv-g .lbl{font-size:10px;letter-spacing:.1em;color:var(--fg-50);padding:0}
 .ad-mx-g > span:not(:first-child){display:flex;align-items:center;height:32px;padding:0 10px;margin:0 1px;font:400 10px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--fg-50);background:color-mix(in srgb,var(--fg) 4%,transparent);border-bottom:1px solid var(--hair);box-shadow:none}
+/* lists (the style guide's product list): rows keep their natural height, and the space under a short
+   list takes the hatch, edge to edge, never stretched rows. Each list's rows stop growing and a filler
+   after the last row takes what's left (nothing, when the list is full). Not a fixed ladder that is meant
+   to fill its cell: Money's Claims in order, Members' funnel in Where people stop, Governance's Reserved
+   matters, Build's Who can do what. The lists that grow with the data: Merchants' cities, Needs you */
+.mo-r.city,.al > .alr{flex:none}
+.mo-s::after,.al::after{content:'';flex:1 1 0;min-height:0;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+.al:has(> .lv-e)::after,.mo-s:has(> .lv-e)::after{display:none}
+/* an empty state that is all a block holds fills the cell edge to edge, not inside the block's padding */
+.cell :has(> .lv-e:only-child){padding:0 !important;display:flex;flex-direction:column;flex:1 1 auto}
+/* Build → Who can do what: a holder's name, turned on its side, stays inside its 80px column head (its
+   long names, RevolvingIssuerV1, ran up into the cell's header); the full name is on hover */
+.bd-ro-x em{max-width:78px;overflow:hidden;text-overflow:ellipsis}
