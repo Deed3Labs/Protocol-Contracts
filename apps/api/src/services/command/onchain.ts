@@ -293,6 +293,37 @@ export async function reserveLive(db: Queryable, reader: ChainReader, now: numbe
   };
 }
 
+export interface CoopLive {
+  /** Where the co-op's fee on each financed sale is credited: TermIssuer's fee recipient, else its carry treasury. */
+  recipient: string;
+  /** Its ClearCredit balance, in dollars: the fees the co-op holds, spent only by a member vote. */
+  balance: number;
+  /** The balance at the end of each of the last six weeks, then now. */
+  weeks: number[];
+}
+
+/**
+ * The co-op's balance: the ClearCredit its fee recipient holds. A financed sale pays the shop the price
+ * less its fee and credits the co-op the difference, at TermIssuer's fee recipient (the Ops Safe since
+ * 28 Oct; the deployer before). Weeks from the indexer's transfers to and from that address.
+ */
+export async function coopLive(db: Queryable, reader: ChainReader, now: number): Promise<CoopLive> {
+  const [fee, treasury, decimals] = await reader.read([
+    { contract: 'TermIssuer', fn: 'feeRecipient' },
+    { contract: 'TermIssuer', fn: 'carryTreasury' },
+    { contract: 'ClearCredit', fn: 'decimals' },
+  ]);
+  const recipient = getAddress(String(fee) === ZERO ? String(treasury) : String(fee));
+  const [held] = await reader.read([{ contract: 'ClearCredit', fn: 'balanceOf', args: [recipient] }]);
+  const dollars = (v: bigint) => Math.round((Number(v) / 10 ** Number(decimals)) * 100) / 100;
+  const me = recipient.toLowerCase();
+  const moves = (await events(db, ['ClearCredit'], ['Transfer'])).filter((e) => String(e.args.to).toLowerCase() === me || String(e.args.from).toLowerCase() === me);
+  const today = Math.floor(now / DAY) * DAY;
+  const at = (t: number) => moves.filter((e) => e.at < t).reduce((s, e) => s + (String(e.args.to).toLowerCase() === me ? big(e.args.value) : -big(e.args.value)), 0n);
+  const balance = dollars(big(held));
+  return { recipient, balance, weeks: [...[6, 5, 4, 3, 2, 1].map((k) => Math.max(0, dollars(at(today + DAY - k * 7 * DAY)))), balance] };
+}
+
 // ── Bonds ───────────────────────────────────────────────────────────────────
 
 export interface BondLive {
