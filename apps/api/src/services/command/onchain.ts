@@ -387,11 +387,13 @@ export interface AssurancePoolLive {
   target: number;
   /** The pool's exposure, in the reserve token: what it would pay if every member defaulted. */
   exposure: number;
+  /** Bond face due inside BondVault's window that neither the vault nor the treasury can pay: the part of bondholders' money the pool backs as the last resort. */
+  bonds: number;
   /** Primary reserve ÷ exposure, as a fraction; null with nothing out, when the contract calls it undefined. */
   rtd: number | null;
   /** Whether the pool is reserved to its target: always, with nothing out. */
   valid: boolean;
-  /** Primary reserve less what the target needs against the exposure: above it when positive, below when negative. */
+  /** Primary reserve less what the target needs against the exposure and the bond gap: above it when positive, below when negative. */
   gap: number;
   /** More exposure the primary reserve could take before RTD falls under the target. */
   room: number;
@@ -417,9 +419,13 @@ export async function assurancePoolLive(reader: ChainReader): Promise<AssuranceP
     { contract: 'ERC20', address: String(token), fn: 'decimals' },
     { contract: 'AssurancePool', fn: 'convertStableCreditToReserveToken', args: [big(exposure)] },
   ]);
+  // the bond gap the pool backs, already in reserve tokens; an AssurancePool from before the bond backstop has none
+  const [bondGap] = await reader.read([{ contract: 'AssurancePool', fn: 'bondExposure' }]).catch(() => [0n]);
   const usd = (v: unknown) => Math.round((Number(big(v)) / 10 ** Number(decimals)) * 100) / 100;
   const frac = (v: unknown) => Number(big(v)) / 1e18;
-  const [p, b, e, x] = [usd(primary), usd(buffer), usd(excess), usd(exposureReserve)];
+  const [p, b, e, x, bonds] = [usd(primary), usd(buffer), usd(excess), usd(exposureReserve), usd(bondGap)];
+  // the RTD's denominator: members' exposure and the bond gap together, as the contract divides
+  const all = Math.round((x + bonds) * 100) / 100;
   const t = frac(target);
   return {
     total: Math.round((p + b + e) * 100) / 100,
@@ -428,10 +434,11 @@ export async function assurancePoolLive(reader: ChainReader): Promise<AssuranceP
     excess: e,
     target: t,
     exposure: x,
-    rtd: x ? frac(rtd) : null,
+    bonds,
+    rtd: all ? frac(rtd) : null,
     valid: valid === true || valid === 'true',
-    gap: Math.round((p - t * x) * 100) / 100,
-    room: t ? Math.max(0, Math.round((p / t - x) * 100) / 100) : 0,
+    gap: Math.round((p - t * all) * 100) / 100,
+    room: t ? Math.max(0, Math.round((p / t - all) * 100) / 100) : 0,
   };
 }
 

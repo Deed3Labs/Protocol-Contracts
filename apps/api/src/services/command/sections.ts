@@ -1297,6 +1297,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   if (assurance) {
     M.floor = assurance.target;
     M.unsecured = assurance.exposure;
+    // the near-term bond gap it backs as the last resort, counted in its RTD
+    M.bondGap = assurance.bonds;
     M.rtd = assurance.rtd ?? 0;
     M.room = assurance.room;
   }
@@ -1386,7 +1388,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       // live, the reserve as the vault stands now: its USDC to each CLRUSD, read with this page
       ...(reserve ? { 'money.reserve': { ratio: reserveRatio(reserve.usdc, reserve.clrusd), checked: 'just now' } } : {}),
       // live, what BondVault keeps back for bondholders and what the Safe may take for the co-op's use
-      ...(assurance ? { 'money.rtd': { target: assurance.target, rtd: assurance.rtd, exposure: assurance.exposure, primary: assurance.primary, buffer: assurance.buffer, excess: assurance.excess, valid: assurance.valid, gap: assurance.gap, room: assurance.room } } : {}),
+      ...(assurance ? { 'money.rtd': { target: assurance.target, rtd: assurance.rtd, exposure: assurance.exposure, bonds: assurance.bonds, primary: assurance.primary, buffer: assurance.buffer, excess: assurance.excess, valid: assurance.valid, gap: assurance.gap, room: assurance.room } } : {}),
       ...(vault ? { 'money.bondvault': { required: vault.required, deployable: vault.deployable, floorPct: vault.floorPct, windowDays: vault.windowDays } } : {}),
     },
     asOf: asOfFor(provider, o.now),

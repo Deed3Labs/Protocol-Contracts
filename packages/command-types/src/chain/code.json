@@ -26,18 +26,18 @@
   },
   "AssurancePool": {
    "source": "contracts/peripherals/AssurancePool.sol",
-   "sha256": "940e3d2a7130a3e06c0ba0fa1888429e4c0757eed95d65570713044ac35951e3",
+   "sha256": "e8faf2d8f3844bd3d9331a72286996bee90368914f45cbc5be440167ab63a97e",
    "immutables": [
     [
-     6406,
+     7283,
      32
     ],
     [
-     6591,
+     7468,
      32
     ],
     [
-     8449,
+     9326,
      32
     ]
    ]
@@ -58,18 +58,18 @@
   },
   "BondVault": {
    "source": "contracts/peripherals/BondVault.sol",
-   "sha256": "20116f3ceb66423aa311a8ca33b17b330311b4dcc4b2c6ad6f611484b81dbe2c",
+   "sha256": "021b4d1fdfeea8a0e5b60e091a2e5a9d78afe4b8546c6d401b29f8c4c1df93e4",
    "immutables": [
     [
-     3069,
+     3333,
      32
     ],
     [
-     3254,
+     3683,
      32
     ],
     [
-     3734,
+     4263,
      32
     ]
    ]
@@ -414,18 +414,18 @@
   },
   "PayoutPool": {
    "source": "contracts/peripherals/PayoutPool.sol",
-   "sha256": "27593ab42726d39673e1b9ea620708d895f0b9101d3c0967b49d6c230b6c88d4",
+   "sha256": "524a7a75578ecd8d350b45a1e1abe5891f7ed0705360457a7994028067b84c6f",
    "immutables": [
     [
-     5553,
+     5661,
      32
     ],
     [
-     5738,
+     5846,
      32
     ],
     [
-     6910,
+     7000,
      32
     ]
    ]

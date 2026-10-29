@@ -283,7 +283,7 @@ describe('the savings reserve, live (6b)', () => {
 
 describe('the AssurancePool, live', () => {
   // a pool reading what it's told: its reserves, target, exposure (credit decimals 18, reserve 6)
-  const pool = (v: { primary: number; buffer?: number; target: number; exposure: number }): ChainReader => ({
+  const pool = (v: { primary: number; buffer?: number; target: number; exposure: number; bonds?: number }): ChainReader => ({
     read: async (calls) =>
       calls.map((c) => {
         if (c.fn === 'reserveToken') return USDC;
@@ -295,6 +295,11 @@ describe('the AssurancePool, live', () => {
         if (c.fn === 'convertStableCreditToReserveToken') return (c.args![0] as bigint) / 10n ** 12n;
         if (c.fn === 'RTD') return v.exposure ? (BigInt(usdc(v.primary)) * 10n ** 18n) / BigInt(usdc(v.exposure)) : 0n;
         if (c.fn === 'hasValidRTD') return !v.exposure || v.primary / v.exposure >= v.target;
+        if (c.fn === 'bondExposure') {
+          // a pool from before the bond backstop has no such function
+          if (v.bonds == null) throw new Error('no bondExposure');
+          return BigInt(usdc(v.bonds));
+        }
         return 0n;
       }),
   });
@@ -309,6 +314,13 @@ describe('the AssurancePool, live', () => {
     expect(above).toMatchObject({ rtd: 2, valid: true, gap: 120, room: 150 });
     const below = await assurancePoolLive(pool({ primary: 40, target: 0.8, exposure: 100 }));
     expect(below).toMatchObject({ rtd: 0.4, valid: false, gap: -40, room: 0 });
+  });
+
+  test('the bond gap it backs counts beside members’ exposure, and a pool without it reads none', async () => {
+    const a = await assurancePoolLive(pool({ primary: 200, target: 0.8, exposure: 100, bonds: 50 }));
+    // 0.8 × (100 + 50) = 120 needed of the 200: 80 above, room for 100 more
+    expect(a).toMatchObject({ exposure: 100, bonds: 50, gap: 80, room: 100 });
+    expect((await assurancePoolLive(pool({ primary: 200, target: 0.8, exposure: 100 }))).bonds).toBe(0);
   });
 
   test('what it holds is the contract’s: primary, buffer and excess reserves together', async () => {

@@ -12,6 +12,7 @@ import "../core/interfaces/stable-credit/IStableCredit.sol";
 import "../core/interfaces/stable-credit/IAssurancePool.sol";
 import "../core/interfaces/stable-credit/IAssuranceOracle.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
+import "./interfaces/IBondBackstop.sol";
 
 /// @title AssurancePool
 /// @notice Stores and manages reserve tokens according to pool
@@ -32,6 +33,9 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     event PayoutPoolUpdated(address indexed pool);
     event LentToPayoutPool(uint256 amount, uint256 outstanding);
     event RepaidFromPayoutPool(uint256 amount, uint256 outstanding);
+    event BondVaultUpdated(address indexed vault);
+    event LentToBondVault(uint256 amount, uint256 outstanding);
+    event RepaidFromBondVault(uint256 amount, uint256 outstanding);
     /// @notice emitted when an operator moves buffer reserve into the primary reserve.
     event BufferMovedToPrimary(uint256 amount, uint256 primaryReserve);
     /// @notice emitted when held tokens are repriced: what the tiers accounted, and what is held now.
@@ -118,6 +122,12 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     uint256 public lentToPayoutPool;
     /// @dev How much of that came out of the buffer, so repayment restores the cushion first.
     uint256 public bufferOwed;
+    /// @notice the bond vault this reserve backs as the last resort for a maturing bond.
+    address public bondVault;
+    /// @notice reserve tokens out with the bond vault, waiting on new proceeds to come back.
+    uint256 public lentToBondVault;
+    /// @dev How much of that came out of the buffer, restored first on the way back.
+    uint256 public bondBufferOwed;
 
     /* ========== INITIALIZER ========== */
 
@@ -161,6 +171,23 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         return exposure > totalDebt ? totalDebt : exposure;
     }
 
+    /// @notice face value maturing inside the bond vault's window that neither the vault nor the
+    /// treasury's allowance to it can pay, in reserve tokens.
+    /// @dev The part of bondholders' money this pool now backs as the last resort, so the RTD
+    /// measures it rather than backing it unmeasured. Only the near-term gap: a bond years out is
+    /// the vault's to fund from its own proceeds first, and counting all of it would hold reserve
+    /// against money that may never be missing.
+    function bondExposure() public view returns (uint256) {
+        if (bondVault == address(0)) return 0;
+        return IBondVaultGap(bondVault).uncoveredNearTerm();
+    }
+
+    /// @dev Everything the primary reserve stands behind, in reserve tokens: members' exposure,
+    /// converted, and the bond gap, which is already in them.
+    function _exposureInReserve() private view returns (uint256) {
+        return convertStableCreditToReserveToken(poolExposure()) + bondExposure();
+    }
+
     /// @notice returns the ratio of primary reserve to pool exposure, where 1 ether == 100%.
     /// @dev The numerator is this contract's own primary balance and nothing else. No other
     /// reserve enters it: the LendingPool residual absorbs loss ahead of this pool rather than
@@ -175,10 +202,10 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         // if primary balance is empty return 0% RTD ratio
         if (primaryBalance() == 0) return 0;
         // if there is no exposure the ratio is undefined
-        uint256 exposure = poolExposure();
+        uint256 exposure = _exposureInReserve();
         if (exposure == 0) return 0;
-        // return primary balance amount divided by pool exposure amount
-        return (primaryBalance() * 1 ether) / convertStableCreditToReserveToken(exposure);
+        // return primary balance amount divided by what it stands behind
+        return (primaryBalance() * 1 ether) / exposure;
     }
 
     /// @notice returns the target RTD for the AssurancePool.
@@ -193,7 +220,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @return true if the primary reserve is greater than or equal to the target RTD.
     function hasValidRTD() public view returns (bool) {
         // no exposure means nothing to reserve against, at any balance
-        if (poolExposure() == 0) return true;
+        if (_exposureInReserve() == 0) return true;
         // if current RTD is greater than target RTD, return false
         return RTD() >= targetRTD();
     }
@@ -203,14 +230,14 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev the returned amount is denominated in the reserve token
     /// @return amount of reserve tokens needed for the primary reserve to reach the target RTD.
     function neededReserves() public view returns (uint256) {
-        uint256 exposure = poolExposure();
+        uint256 exposure = _exposureInReserve();
         // Asserted rather than derived. With only savings-backed credit live the correct reserve
         // requirement is exactly zero, and that must not depend on a division happening to round
         // there.
         if (exposure == 0) return 0;
         if (hasValidRTD()) return 0;
-        // (target RTD - current RTD) * pool exposure amount
-        return ((targetRTD() - RTD()) * convertStableCreditToReserveToken(exposure)) / 1 ether;
+        // (target RTD - current RTD) * what the primary reserve stands behind
+        return ((targetRTD() - RTD()) * exposure) / 1 ether;
     }
 
     /// @notice converts the stable credit amount to the reserve token denomination.
@@ -638,6 +665,60 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         emit PayoutPoolUpdated(pool);
     }
 
+    /// @notice lends to the bond vault for a bond it cannot pay, after the treasury.
+    /// @dev The last resort for a bondholder, on the same terms as the payout pool: excess first,
+    /// then the buffer only while the primary reserve is at target, never the primary reserve. A
+    /// bond going unpaid is worse than a merchant waiting, but the primary reserve is what the RTD
+    /// is measured on, and spending it would report the co-op under-reserved for every member at
+    /// once. The vault repays it from new proceeds before the Safe can take anything.
+    /// @param amount what the vault is short.
+    /// @return lent what this pool could put up, which may be nothing.
+    function lendToBondVault(uint256 amount) external nonReentrant returns (uint256 lent) {
+        require(bondVault != address(0) && _msgSender() == bondVault, "AssurancePool: not the bond vault");
+
+        uint256 fromExcess = excessBalance() < amount ? excessBalance() : amount;
+        if (fromExcess > 0) {
+            excessReserve[address(reserveToken)] -= fromExcess;
+            lent = fromExcess;
+        }
+        uint256 short = amount - lent;
+        if (short > 0 && hasValidRTD()) {
+            uint256 fromBuffer = bufferBalance() < short ? bufferBalance() : short;
+            if (fromBuffer > 0) {
+                bufferReserve[address(reserveToken)] -= fromBuffer;
+                bondBufferOwed += fromBuffer;
+                lent += fromBuffer;
+            }
+        }
+        if (lent > 0) {
+            lentToBondVault += lent;
+            reserveToken.safeTransfer(bondVault, lent);
+            emit LentToBondVault(lent, lentToBondVault);
+        }
+    }
+
+    /// @notice takes back what the bond vault borrowed, the buffer first.
+    function repayFromBondVault(uint256 amount) external nonReentrant {
+        reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
+        uint256 owed = lentToBondVault < amount ? lentToBondVault : amount;
+        lentToBondVault -= owed;
+
+        uint256 toBuffer = amount < bondBufferOwed ? amount : bondBufferOwed;
+        if (toBuffer > 0) {
+            bondBufferOwed -= toBuffer;
+            bufferReserve[address(reserveToken)] += toBuffer;
+        }
+        uint256 rest = amount - toBuffer;
+        if (rest > 0) excessReserve[address(reserveToken)] += rest;
+        emit RepaidFromBondVault(amount, lentToBondVault);
+    }
+
+    /// @notice names the bond vault this reserve backs.
+    function setBondVault(address vault) external onlyOperator {
+        bondVault = vault;
+        emit BondVaultUpdated(vault);
+    }
+
     /// @notice moves buffer reserve into the primary reserve, where the RTD counts it.
     /// @dev Nothing else can: the rebalance only moves buffer up to what the target needs against
     /// exposure already out, so with none out the primary reserve stays empty and the pool reports
@@ -779,10 +860,9 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     
     /// @notice Internal function to rebalance reserves from primary when RTD is above target
     function _rebalanceFromPrimary() internal {
-        uint256 exposure = poolExposure();
-        if (exposure == 0) return;
+        uint256 debtInReserve = _exposureInReserve();
+        if (debtInReserve == 0) return;
 
-        uint256 debtInReserve = convertStableCreditToReserveToken(exposure);
         uint256 currentPrimary = primaryBalance();
         uint256 targetPrimary = (targetRTD() * debtInReserve) / 1 ether;
 

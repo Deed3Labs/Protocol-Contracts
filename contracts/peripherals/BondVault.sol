@@ -5,6 +5,7 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "./interfaces/IBondBackstop.sol";
 
 /// @title BondVault
 /// @notice Where bond proceeds live, and what keeps them senior.
@@ -67,7 +68,22 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     uint256 public constant MIN_RESERVE_FLOOR_BPS = 2_000;
     uint256 public constant MAX_RESERVE_FLOOR_BPS = 10_000;
 
-    uint256[42] private __gap;
+    /* ========== ADDED AFTER DEPLOYMENT: five slots from the gap ========== */
+
+    /// @notice The co-op's treasury, the Safe. Pays a bond the vault cannot, up to the allowance it
+    /// has given this vault, before the AssurancePool is asked.
+    address public treasury;
+    /// @notice The reserve of last resort for a bond neither the vault nor the treasury can pay.
+    address public assurancePool;
+    /// @notice The payout pool, which may borrow the deployable excess for a claim that has come due.
+    address public payoutPool;
+    /// @notice Reserve tokens out with the payout pool, repaid with carry.
+    uint256 public lentToPayoutPool;
+    /// @notice What the AssurancePool lent for a bond, repaid from new proceeds before the Safe
+    /// can take anything.
+    uint256 public owedToReserve;
+
+    uint256[37] private __gap;
 
     error BondVaultInvalidAddress();
     error BondVaultUnknownBond(uint256 bondId);
@@ -91,6 +107,12 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     );
     event DeployableWithdrawn(address indexed to, uint256 amount);
     event ReserveTermsUpdated(uint64 window, uint256 minReserveBps);
+    event BackstopsUpdated(address indexed treasury, address indexed assurancePool, address indexed payoutPool);
+    event DrewFromTreasury(uint256 amount);
+    event DrewFromReserve(uint256 amount, uint256 owed);
+    event RepaidReserve(uint256 amount, uint256 owed);
+    event LentToPayoutPool(uint256 amount, uint256 outstanding);
+    event RepaidFromPayoutPool(uint256 amount, uint256 outstanding);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -150,10 +172,29 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice what the Safe may take.
+    /// @dev What the AssurancePool lent for a bond comes off first: it is going back there, and
+    /// the Safe taking it would leave the reserve holding the bondholders' shortfall.
     function deployableExcess() public view returns (uint256) {
         uint256 balance = held();
-        uint256 reserve = requiredReserve();
+        uint256 reserve = requiredReserve() + owedToReserve;
         return balance > reserve ? balance - reserve : 0;
+    }
+
+    /// @notice what the treasury can put up for a bond right now: its allowance to this vault,
+    /// capped at what it holds.
+    function treasuryAvailable() public view returns (uint256) {
+        if (treasury == address(0)) return 0;
+        uint256 allowed = reserveToken.allowance(treasury, address(this));
+        uint256 balance = reserveToken.balanceOf(treasury);
+        return allowed < balance ? allowed : balance;
+    }
+
+    /// @notice face value due inside the window that neither the vault nor the treasury can pay.
+    /// @dev What the AssurancePool backs as the last resort, and so what its RTD counts.
+    function uncoveredNearTerm() external view returns (uint256) {
+        uint256 due = faceDueWithin(reserveWindow);
+        uint256 have = held() + treasuryAvailable();
+        return due > have ? due - have : 0;
     }
 
     /// @notice whether the vault can pay everything due inside the window.
@@ -186,16 +227,16 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice pays a matured bond.
-    /// @dev Paid out of the vault's own holdings and nothing else. A bondholder is not exposed to
-    /// how the credit book is performing, which is what being senior means.
+    /// @dev Paid out of the vault's own holdings first, then the treasury, then the AssurancePool as
+    /// the last resort. A bondholder is still not exposed to how the credit book performs: the
+    /// reserve only lends from what it holds above the primary cover, and the vault pays it back.
     function settle(uint256 bondId, address to) external onlyRole(BOND_ROLE) returns (uint256) {
         Obligation storage obligation = obligations[bondId];
         if (obligation.faceValue == 0) revert BondVaultUnknownBond(bondId);
         if (obligation.settled) revert BondVaultAlreadySettled(bondId);
 
         uint256 faceValue = obligation.faceValue;
-        uint256 balance = held();
-        if (balance < faceValue) revert BondVaultInsufficientFunds(balance, faceValue);
+        _cover(faceValue);
 
         obligation.settled = true;
         totalFaceOutstanding -= faceValue;
@@ -225,8 +266,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         if (obligation.faceValue == 0) revert BondVaultUnknownBond(bondId);
         if (obligation.settled) revert BondVaultAlreadySettled(bondId);
 
-        uint256 balance = held();
-        if (balance < presentValue) revert BondVaultInsufficientFunds(balance, presentValue);
+        _cover(presentValue);
 
         uint256 faceValue = obligation.faceValue;
         obligation.settled = true;
@@ -281,6 +321,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// vault and the redemption reserve is restored afterwards.
     function withdrawDeployable(uint256 amount, address to) external onlyRole(TREASURY_ROLE) {
         if (to == address(0)) revert BondVaultInvalidAddress();
+        _repayReserve();
         uint256 deployable = deployableExcess();
         if (amount > deployable) revert BondVaultWouldBreachReserve(deployable, amount);
 
@@ -288,7 +329,88 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         emit DeployableWithdrawn(to, amount);
     }
 
+    /* ========== BACKSTOPS ========== */
+
+    /// @dev Makes sure the vault holds `amount` before it pays a bondholder: its own holdings, then
+    /// the treasury up to its allowance, then the AssurancePool. Reverts only when all three together
+    /// cannot, and then nothing has moved.
+    function _cover(uint256 amount) private {
+        uint256 balance = held();
+        if (balance >= amount) return;
+        uint256 short = amount - balance;
+
+        uint256 fromTreasury = treasuryAvailable();
+        if (fromTreasury > short) fromTreasury = short;
+        if (fromTreasury > 0) {
+            reserveToken.safeTransferFrom(treasury, address(this), fromTreasury);
+            short -= fromTreasury;
+            emit DrewFromTreasury(fromTreasury);
+        }
+        if (short > 0 && assurancePool != address(0)) {
+            uint256 lent = IBondReserve(assurancePool).lendToBondVault(short);
+            if (lent > 0) {
+                owedToReserve += lent;
+                short -= lent;
+                emit DrewFromReserve(lent, owedToReserve);
+            }
+        }
+        balance = held();
+        if (balance < amount) revert BondVaultInsufficientFunds(balance, amount);
+    }
+
+    /// @notice pays the AssurancePool back from what the vault does not owe soon.
+    /// @dev Permissionless: new proceeds arriving should restore the reserve without anybody having
+    /// to remember. The treasury is not repaid here; what it put in comes back as deployable excess,
+    /// which the Safe takes in the ordinary way.
+    function repayReserve() external returns (uint256 paid) {
+        return _repayReserve();
+    }
+
+    function _repayReserve() private returns (uint256 paid) {
+        if (owedToReserve == 0 || assurancePool == address(0)) return 0;
+        uint256 balance = held();
+        uint256 reserve = requiredReserve();
+        uint256 spare = balance > reserve ? balance - reserve : 0;
+        paid = spare < owedToReserve ? spare : owedToReserve;
+        if (paid == 0) return 0;
+        owedToReserve -= paid;
+        reserveToken.approve(assurancePool, paid);
+        IBondReserve(assurancePool).repayFromBondVault(paid);
+        emit RepaidReserve(paid, owedToReserve);
+    }
+
+    /// @notice lends the deployable excess for a payout claim that has come due.
+    /// @dev After the yield pool and before the treasury. Only the excess, never the redemption
+    /// reserve, so a bondholder is no worse off for it; and it comes back with carry.
+    /// @param amount what the payout pool is short.
+    /// @return lent what the vault could put up, which may be nothing.
+    function lendToPayoutPool(uint256 amount) external returns (uint256 lent) {
+        if (payoutPool == address(0) || _msgSender() != payoutPool) revert BondVaultInvalidAddress();
+        uint256 deployable = deployableExcess();
+        lent = amount < deployable ? amount : deployable;
+        if (lent == 0) return 0;
+        lentToPayoutPool += lent;
+        reserveToken.safeTransfer(payoutPool, lent);
+        emit LentToPayoutPool(lent, lentToPayoutPool);
+    }
+
+    /// @notice takes back what the payout pool borrowed, and any carry on it.
+    function repayFromPayoutPool(uint256 amount) external {
+        reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
+        uint256 principal = lentToPayoutPool < amount ? lentToPayoutPool : amount;
+        lentToPayoutPool -= principal;
+        emit RepaidFromPayoutPool(amount, lentToPayoutPool);
+    }
+
     /* ========== RESTRICTED ========== */
+
+    /// @notice names the treasury, the reserve of last resort, and the payout pool.
+    function setBackstops(address _treasury, address _assurancePool, address _payoutPool) external onlyRole(OPERATOR_ROLE) {
+        treasury = _treasury;
+        assurancePool = _assurancePool;
+        payoutPool = _payoutPool;
+        emit BackstopsUpdated(_treasury, _assurancePool, _payoutPool);
+    }
 
     /// @notice sets how far ahead the reserve looks and the floor beneath it.
     /// @dev Bounded rather than free. The floor is a risk parameter, and one an operator could

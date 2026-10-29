@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-/// @title The two places the payout pool draws on when a claim has come due.
-/// @dev Both are repaid in reserve tokens rather than handed the position they paid for. The yield
+/// @title The lenders the payout pool draws on when a claim has come due.
+/// @dev The yield pool, the bond vault and the reserve are all repaid in reserve tokens rather than handed the position they paid for. The yield
 /// pool's share price is cash plus what is out on loan; the reserve's cover is denominated in
 /// reserve tokens. A credit claim sitting in either would read as a hole in their books until
 /// somebody redeemed it, so what they put up comes back as what they put up. The co-op funding the
