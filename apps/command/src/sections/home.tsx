@@ -1229,8 +1229,13 @@ export function stateLoading() {
         <section className="cell s-4">
           <header className="c-hd">
             <span className="lbl">Sources</span>
-            {/* a source that's off never syncs, so it isn't counted: 7/8 with one off read as stuck */}
-            <span className="tag">{real ? `${real.filter((r) => r[1] === 'settled').length}/${real.filter((r) => r[2] !== 'Off').length}` : '2/5'}</span>
+            {/* out of every source, as the heading counts them; one that's off never syncs, so it's named
+                rather than left reading as stuck (8/9 · 1 off) */}
+            <span className="tag">
+              {real
+                ? `${real.filter((r) => r[1] === 'settled').length}/${real.length}${real.some((r) => r[2] === 'Off') ? ` · ${real.filter((r) => r[2] === 'Off').length} off` : ''}`
+                : '2/5'}
+            </span>
           </header>
           <div className="c-mn">
             <div className="rows srcs">

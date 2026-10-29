@@ -690,7 +690,9 @@ function makeShop() {
       panel: null,
       me: LV ? LV.ME : 'kai',
       draft: null,
-      buy: null
+      buy: null,
+      // the shelf's rows showing: two, then one more at a time
+      rows: 2
     };
     const ICO = {
       chev: <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>,
@@ -908,14 +910,14 @@ function makeShop() {
     /* ══ Overview ══════════════════════════════════════════════════════════════════════════════════════════════════ */
     function shelfCell() {
       const list = PR.filter(p => p.st !== 'arch');
-      return cell('s12', 'What’s for sale', <span className="lbl">{PR.filter(p => p.st === 'on').length}{" on the shelf · "}{PR.filter(p => p.st !== 'on').length}{" not"}</span>, LV && !list.length ? <div className="gv-e"><span>No products yet · add one from Products</span></div> : <div className="sx-shf">{list.map((p, __k) => {
+      return cell('s12', 'What’s for sale', <span className="lbl">{PR.filter(p => p.st === 'on').length}{" on the shelf · "}{PR.filter(p => p.st !== 'on').length}{" not"}</span>, <>{LV && !list.length ? <div className="gv-e"><span>No products yet · add one from Products</span></div> : <div className="sx-shf">{list.map((p, __k) => {
           const h = onHand(p.id),
             w = coverW(p),
             m = marginOf(p),
             out = h === 0 && p.st !== 'draft' && !p.dep,
             low = !p.dep && p.st === 'on' && w !== null && w < 3;
           return <button key={__k} className={`sx-t ${p.st}`} data-sopen={`p:${p.id}`}>{glyph(p)}<span className="sx-tk"><b>{shortN(p)}</b><span>{money(p.price).replace('.00', '')}{p.dep ? ' deposit' : ''}{" "}{p.dep ? '' : <>{" · "}<span className={`${m < TARGET ? 'bad' : ''} ${p.est ? 'est' : ''}`}>{mTxt(p)}</span></>}</span></span><span className="sx-tu"><b>{u4(p)}</b><span>{p.dep ? 'pre-ordered' : 'sold'}</span></span><span className="sx-tm"><i className={`${out ? 'out' : low ? 'low' : ''} ${p.dep || p.st === 'draft' ? 'na' : ''}`} style={css(`width:${p.dep || p.st === 'draft' ? 100 : Math.min(100, (w || 0) / 12 * 100)}%`)} /></span><span className={`sx-ts ${out ? 'out' : low ? 'low' : ''}`}>{p.dep ? 'Pre-order' : p.st === 'draft' ? 'Not stocked' : out ? 'Out' : `${h} on hand`}</span>{p.st !== 'on' ? <span className="sx-chip">{SHELF[p.st][0]}</span> : ''}</button>;
-        })}</div>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Weeks of stock, full at 12</span><span><i style={css("background:var(--underway)")} />Under 3 weeks</span><span><i className="hx" />Not stocked</span></span><span>Sold is the last 4 weeks</span></>);
+        })}</div>}{LV && !list.length ? '' : <button className="sx-more" data-sxmore="" hidden />}</>, <><span className="f-key"><span><i style={css("background:var(--fg)")} />Weeks of stock, full at 12</span><span><i style={css("background:var(--underway)")} />Under 3 weeks</span><span><i className="hx" />Not stocked</span></span><span>Sold is the last 4 weeks</span></>);
     }
     function dollarCell() {
       const S = SHOPN,
@@ -953,7 +955,31 @@ function makeShop() {
     }
     function renderOverview() {
       html(document.getElementById('sv'), <>{band(shelfCell(), 1)}{band(<>{dollarCell()}{sellsCell()}</>)}{band(ladderCell())}</>);
+      fitShelf();
     }
+    /* the shelf shows its first two rows, however many tiles a row holds at this width (6, 4 or 2), and a
+       row more at a time, as the Pipeline's and Build's boards do */
+    function fitShelf() {
+      const g = document.querySelector('.sx-shf'),
+        b = document.querySelector('[data-sxmore]');
+      if (!g || !b) return;
+      const tiles = [...g.children],
+        cols = Math.max(1, getComputedStyle(g).gridTemplateColumns.split(' ').filter(Boolean).length),
+        shown = cols * SP.rows,
+        rest = tiles.length - shown;
+      tiles.forEach((t, i) => (t.hidden = i >= shown));
+      b.hidden = rest <= 0 && SP.rows <= 2;
+      if (rest > 0) {
+        b.textContent = `Show ${Math.min(cols, rest)} more · ${rest} not shown`;
+        delete b.dataset.less;
+      } else {
+        b.textContent = 'Show fewer';
+        b.dataset.less = '';
+      }
+    }
+    addEventListener('resize', () => {
+      if (SP.tab === 'overview') fitShelf();
+    });
 
     /* ══ Products ══════════════════════════════════════════════════════════════════════════════════════════════════ */
     function renderProducts() {
@@ -1804,6 +1830,10 @@ function makeShop() {
       }
       const t = e.target.closest('button,a,[data-stab],[data-sopen]');
       if (!t) return;
+      if (t.hasAttribute('data-sxmore')) {
+        SP.rows = t.hasAttribute('data-less') ? 2 : SP.rows + 1;
+        return fitShelf();
+      }
       const d = t.dataset;
       if (LV && liveClick(t, d)) return;
       if (LV && liveForm(t, d)) return;
