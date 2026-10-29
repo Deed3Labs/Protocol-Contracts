@@ -113,7 +113,7 @@ export function moneyLive() {
     UNSEC: UNSEC.map(num),
     RTD_W: RTD_W.map((v) => (v == null ? null : num(v))),
     COOP_W: COOP_W.map(num),
-    // where the co-op's balance is held (the Ops Safe, else TermIssuer's fee recipient), and its USDC and CLRUSD; null until the chain is read
+    // the co-op's balance: the Ops Safe, its USDC, and the ClearCredit claim it holds (not counted); null without a Safe or until the chain is read
     COOP: vars.coop ?? null,
     // the next 30 days, from today
     FLOWS: FLOWS.filter((f) => f[0] >= 0 && f[0] <= 30)

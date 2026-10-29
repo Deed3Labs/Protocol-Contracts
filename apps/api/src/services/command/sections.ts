@@ -1259,8 +1259,9 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   // live, what the PayoutPool owes shops and when, and the credit book: the chain's, not the tables' sample
   const payouts = provider === 'live' ? await payoutsLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
   const credit = provider === 'live' ? await creditLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
-  // live, the co-op's balance is what the Ops Safe holds on chain (its USDC and ClearCredit), not the table's
-  const coop = provider === 'live' ? await coopLive(db, chainOf(o, 'money'), o.now.getTime(), safeConfig()?.address ?? null).catch(() => null) : null;
+  // live, the co-op's balance is the USDC the Ops Safe holds on chain, not the table's
+  const safe = safeConfig()?.address ?? null;
+  const coop = provider === 'live' && safe ? await coopLive(chainOf(o, 'money'), safe).catch(() => null) : null;
 
   // the headline numbers, as the prototype's M
   const M: Record<string, number> = {
@@ -1334,10 +1335,10 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       : a.id === 'coop' && coop ? coop.weeks
       : [...w.slice(0, -1), now];
     // the USDC behind savings is in the vault, not at Bridge: Bridge is how it arrives
-    // the co-op's balance is what the Ops Safe holds: its USDC, and its fees on financed sales as ClearCredit
+    // the co-op's balance is the Ops Safe's USDC (its ClearCredit is a claim on the AssurancePool's cash, shown apart)
     const [purpose, source] =
       a.id === 'sav' && reserve ? ['CLRUSD, backed 1:1 by USDC in the savings vault', 'protocol']
-      : a.id === 'coop' && coop ? [safeConfig()?.address === coop.holder ? 'USDC and fees in the Ops Safe, spent by a member vote' : 'The co-op’s fee on each financed sale, held for a vote', 'protocol']
+      : a.id === 'coop' && coop ? ['USDC in the Ops Safe, spent by a member vote', 'protocol']
       : [a.purpose, a.source];
     return [a.id, a.name, purpose, a.owner_group, source, now, series, a.swatch];
   });
@@ -1346,7 +1347,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   for (const e of ent) (ENTRIES[e.account_id] ??= []).push({ at: ms_(e.at), what: e.what, detail: e.detail, amount: Number(e.amount_cents) / 100 });
   if (chainPool) ENTRIES.yld = chainPool.entries;
   if (bank) ENTRIES.ops = bank.entries;
-  const COOP = coop ? { recipient: coop.recipient, holder: coop.holder, safe: safeConfig()?.address === coop.holder, usdc: coop.usdc, clrusd: coop.clrusd } : null;
+  const COOP = coop ? { holder: coop.holder, safe: true, usdc: coop.usdc, credit: coop.credit } : null;
 
   const counts = await memberCounts(db, o);
   return {
