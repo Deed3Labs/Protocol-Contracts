@@ -33,6 +33,7 @@ These are the rules the redesign settled on. `command-center.html` is the visual
 - **Body:** whatever the cell needs.
 - **Footer:** 56px, one line, with a full-width divider above it. A note or legend sits left and one action link sits right.
 - **Alignment:** headers and footers in the same band line up exactly.
+- **Dividers inside a cell** run the full height between the header line and the footer line, never a short floating rule. The October cell on Money → Credit is the example.
 
 ## Lists
 

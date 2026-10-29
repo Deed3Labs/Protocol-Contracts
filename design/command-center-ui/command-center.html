@@ -226,7 +226,7 @@ svg.i.sm{width:16px;height:16px}
 .figsub{font-size:13px;line-height:1.45;color:var(--fg-70);font-variant-numeric:tabular-nums}
 .c-ft{border-top:1px solid var(--hair);display:grid;grid-template-columns:minmax(0,1fr)}
 .c-ft.split{grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr);align-items:center}
-.c-ft .rule{width:1px;height:24px;background:var(--hair)}
+.c-ft .rule{width:1px;height:auto;align-self:stretch;background:var(--hair)}
 .c-ft > button,.c-ft > div.row{display:flex;align-items:center;justify-content:space-between;gap:var(--s1);min-height:48px;padding:0 var(--s3);color:var(--fg-70);font-size:14px;min-width:0;transition:color var(--hover) var(--ease),background var(--hover) var(--ease)}
 .c-ft > button:hover{color:var(--fg);background:var(--raised)}
 .c-ft span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1908,7 +1908,7 @@ button.hb:hover .hb-k{text-decoration:underline;text-underline-offset:3px}
 .pf{margin-left:0;padding:0 var(--s3);gap:var(--s3)}
 .cell > .p-ft{grid-row:auto}
 .p-ft{display:grid;grid-template-columns:minmax(0,1fr) 1px auto;align-items:center;min-height:56px;border-top:1px solid var(--line)}
-.p-ft .rule{width:1px;height:24px;background:var(--hair)}
+.p-ft .rule{width:1px;height:auto;align-self:stretch;background:var(--hair)}
 .flt{display:flex;gap:var(--s3);overflow-x:auto;scrollbar-width:none;min-width:0}
 .flt::-webkit-scrollbar{display:none}
 .flt button{display:inline-flex;align-items:center;gap:var(--s1);height:32px;font:400 11.5px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.1em;color:var(--fg-50);border-bottom:1px solid transparent;white-space:nowrap;transition:color var(--hover) var(--ease),border-color var(--hover) var(--ease)}
@@ -2271,10 +2271,10 @@ button.h-al-t:hover b{text-decoration:underline;text-decoration-color:var(--line
 .h-gt{display:block;overflow:visible}
 .h-gt text{font:400 9.5px var(--f-mono);fill:var(--fg-50);letter-spacing:.06em;text-transform:uppercase}
 .h-gt .h-ln{stroke:var(--line);stroke-width:1;fill:none;shape-rendering:crispEdges}
-.h-gt .n{fill:var(--fg)}
-.h-gt .f{fill:var(--ground);stroke:var(--underway);stroke-width:1.5;stroke-dasharray:3 2}
-.h-gt .p{fill:none;stroke:var(--fg-50);stroke-width:1;stroke-dasharray:2 2}
-.h-gt .h-due{fill:var(--underway)}
+
+.h-gt .bx{fill:var(--ground);stroke:var(--fg);stroke-width:1}.h-gt .ing .bx{stroke:var(--underway)}.h-gt .pl .bx{fill:url(#hgt-h);stroke:var(--line)}.h-gt .out .bx{stroke:var(--fg);stroke-dasharray:3 2}.h-gt .nm{stroke:var(--fg-70);stroke-width:2}.h-gt .pl .nm{stroke:var(--fg-50)}.h-gt .ft{stroke:var(--hair);stroke-width:1;shape-rendering:crispEdges}.h-gt .st{fill:var(--fg)}.h-gt .ing .st{fill:var(--underway)}.h-gt .pl .st{fill:var(--fg-50)}.h-gt .dt{stroke:var(--fg-50);stroke-width:1;stroke-dasharray:2 2;fill:none;shape-rendering:crispEdges}
+
+
 .h-gt .dv{stroke:var(--hair);stroke-dasharray:2 3;shape-rendering:crispEdges}
 
 /* timeline: one lane per section on a shared day grid. Squares happened, rails running, markers due. */
@@ -5160,7 +5160,7 @@ button.fwa:hover{transform:translateY(-2px)}
 .mo-r b{font-weight:600;font-size:13.5px}
 .mo-r span span{font-size:12px;color:var(--fg-50)}
 .mo-n{flex:none !important;font-size:12.5px;color:var(--fg-70) !important;white-space:nowrap}
-.mo-n b{font-size:15px}
+.mo-n b{font-size:inherit;font-weight:600;color:var(--fg)}
 .mo-c{display:flex;flex-direction:column}
 .mo-ch{display:flex;justify-content:space-between;align-items:center;padding:12px 22px;border-bottom:1px solid var(--hair);background:color-mix(in srgb,var(--fg) 4%,transparent)}
 .mo-ch b{font-weight:600;font-size:15px}
@@ -5533,6 +5533,16 @@ select.vin{appearance:auto}
   .xd-mq .xd-on{flex-basis:100%;color:var(--settled)}
 }
 
+/* devices: the shop note wraps instead of running under the next column; between phone and desktop the device columns fold into the shop cell */
+.bt.xd td.tn > span{white-space:normal} .bt.xd td.tn{padding-right:20px}
+@media (max-width:1320px) and (min-width:761px){
+  .bt.xd colgroup{display:none} .bt.xd{table-layout:auto}
+  .bt.xd tr > :nth-child(2),.bt.xd tr > :nth-child(3),.bt.xd tr > :nth-child(4),.bt.xd tr > :nth-child(5){display:none}
+  .bt.xd td.tn .xd-mq{display:flex !important;flex-wrap:wrap;gap:4px 14px;margin-top:6px;font-size:11.5px;color:var(--fg-50)}
+  .bt.xd td.tn .xd-mq > span{display:inline-flex;align-items:center;gap:6px;margin:0}
+  .bt.xd td.tn .xd-mq .xd-q{display:inline-flex;gap:2px;margin:0}
+  .bt.xd td.tn .xd-mq .xd-on{display:none}
+}
 @media (max-width:760px){ .bt.xd td.tn .xd-mq > span{display:inline-flex !important;align-items:center;gap:6px;margin:0} .bt.xd td.tn .xd-mq .xd-q{display:inline-flex !important;gap:2px;margin:0} .bt.xd td.tn .xd-mq .xd-on{display:block !important} }
 
 .xq-a > span{white-space:nowrap}
@@ -5724,7 +5734,7 @@ button.nh-r:hover,.nh-r.on{background:color-mix(in srgb,var(--raised) 70%,transp
 .ncr-h{display:flex;flex-direction:column;gap:6px} .ncr-h > span{font-size:12px;color:var(--fg-50)}
 .ncr-t{display:flex;height:14px;background:var(--hair)} .ncr-t i{display:block;height:100%;background:var(--fg)} .ncr-t i.s{background:color-mix(in srgb,var(--fg) 40%,transparent)}
 .ncr .f-key b{font-weight:600;margin-left:4px;font-variant-numeric:tabular-nums}
-.ncr-eq{align-self:center;padding-left:28px;border-left:1px solid var(--hair)}
+.ncr-eq{align-self:stretch;align-content:center;margin-block:-20px;padding:20px 0 20px 28px;border-left:1px solid var(--hair)}
 .ncb,.npd{flex:1;display:flex;flex-direction:column;gap:16px;padding:20px 22px}
 .ncb .m-big small,.npd .m-big small,.nrun .m-big small,.ngt .m-big small{display:block;font-size:13px;font-weight:400;color:var(--fg-70);letter-spacing:0;margin-top:6px}
 .ncb-bar{display:flex;gap:2px;height:14px} .ncb-bar i{display:block;background:var(--fg)}
@@ -5825,7 +5835,7 @@ select.vin{appearance:auto}
 @media (max-width:1180px){ .nh-r{grid-template-columns:12px minmax(0,1.5fr) 120px 80px 96px 104px} .nmv-r{grid-template-columns:44px minmax(0,1fr) 100px 200px} }
 @media (max-width:1024px){
   .s3{grid-column:span 6} .npt:nth-child(odd){border-left:0}
-  .ncr{grid-template-columns:1fr} .ncr-eq{padding-left:0;border-left:0;padding-top:20px;border-top:1px solid var(--hair)}
+  .ncr{grid-template-columns:1fr} .ncr-eq{margin-block:0;padding:20px 0 0;border-left:0;border-top:1px solid var(--hair)}
   .nlo{grid-template-columns:1fr} .nlo-g + .nlo-g{border-left:0;border-top:1px solid var(--hair)}
   .nh-r{grid-template-columns:12px minmax(0,1fr) 110px 96px 104px} .nh-r > .nh-sp,.nh-r.nh-hd > :nth-child(4){display:none}
 }
@@ -8373,16 +8383,19 @@ const HOME = (() => {
   const units = (() => { const u = []; for (let b=0;b<12;b++){ const a=[13,13,12,11,11,10,10,10,9,9,8,8][b], o=[6,6,6,5,5,6,6,5,5,5,5,4][b]; for (let i=0;i<25;i++) u.push(i<a?'h-u-a':i<a+o?'h-u-o':'h-u-n'); } return u; })();
   const CG = [['Access',['','','','','c','']],['Issue',['','','','','']],['Tokens',['','']],['Pools',['','','','','x','f','w','']],['Capital',['f','']],['Deeds',['','','','','','','','c']]];
   const tree = (() => {
-    const W=24, H=11, L=[0,20,40,60], cx=170, xs=[98,146,194,242];
-    const node = (x,y,c,due) => `<rect class="${c}" x="${x-W/2+.5}" y="${y+.5}" width="${W-1}" height="${H-1}"/>${due?`<rect class="h-due" x="${x+W/2-2}" y="${y-3}" width="5" height="5"/>`:''}`;
-    const ln = d => `<path class="h-ln" d="${d}"/>`; let g = '';
-    ['Co-op','Subs','Manager','Holdings'].forEach((t,i)=>{ g += `<text x="0" y="${L[i]+9}">${t}</text>`; });
-    g += ln(`M${cx} ${L[0]+H}V${L[1]-4.5}M${xs[0]} ${L[1]-4.5}H${xs[3]}`+xs.map(x=>`M${x} ${L[1]-4.5}V${L[1]}`).join(''));
-    g += ln(`M${xs[2]} ${L[1]+H}V${L[2]}`);
-    g += ln(`M${xs[2]} ${L[2]+H}V${L[3]-4.5}M${xs[2]-24} ${L[3]-4.5}H${xs[2]+24}M${xs[2]-24} ${L[3]-4.5}V${L[3]}M${xs[2]+24} ${L[3]-4.5}V${L[3]}`);
-    g += node(cx,L[0],'n',1) + node(xs[0],L[1],'n') + node(xs[1],L[1],'f') + node(xs[2],L[1],'n') + node(xs[3],L[1],'n',1) + node(xs[2],L[2],'f') + node(xs[2]-24,L[3],'p') + node(xs[2]+24,L[3],'p');
-    g += `<path class="dv" d="M282.5 0V71"/>` + node(316,L[0],'f') + `<text x="316" y="${L[1]+9}" text-anchor="middle">Outside</text>`;
-    return `<svg class="h-gt" width="100%" height="72" viewBox="0 0 342 72" preserveAspectRatio="xMinYMid meet" aria-hidden="true">${g}</svg>`;
+    /* the same tree as Governance → Entities, drawn small: each box is a card (name, footer rule, status square) */
+    const W=60, H=20, X=[43,128,214,299], CO=171, Y=[12,42,72];
+    const card = (x,y,c,t) => `<g class="${c}"><rect class="bx" x="${x-W/2+.5}" y="${y+.5}" width="${W-1}" height="${H-1}"/><path class="nm" d="M${x-W/2+6} ${y+6.5}H${x-W/2+6+t}"/><path class="ft" d="M${x-W/2+1} ${y+13.5}H${x+W/2-1}"/><rect class="st" x="${x-W/2+5}" y="${y+15}" width="3" height="3"/></g>`;
+    const ln = (d,c='h-ln') => `<path class="${c}" d="${d}"/>`;
+    let g = `<defs><pattern id="hgt-h" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0V4" style="stroke:var(--line);stroke-width:1"/></pattern></defs>`;
+    g += `<text x="${X[0]}" y="7" text-anchor="middle">Outside</text><text x="${CO}" y="7" text-anchor="middle">Members</text>`;
+    g += ln(`M${CO} ${Y[0]+H}V${Y[1]-5}M${X[0]} ${Y[1]-5}H${X[3]}`+X.map(x=>`M${x} ${Y[1]-5}V${Y[1]}`).join(''));
+    g += ln(`M${X[2]} ${Y[1]+H}V${Y[2]-5}M${X[1]} ${Y[2]-5}H${X[3]}`+X.slice(1).map(x=>`M${x} ${Y[2]-5}V${Y[2]}`).join(''));
+    g += ln(`M${X[0]-18} ${Y[0]+H}V${Y[1]}`,'dt') + ln(`M${X[1]} ${Y[2]+H}V${Y[2]+H+5}H${X[3]}V${Y[2]+H}M${X[2]} ${Y[2]+H}V${Y[2]+H+5}`,'dt');
+    g += card(X[0],Y[0],'out ing',34) + card(CO,Y[0],'',26);
+    g += card(X[0],Y[1],'',32) + card(X[1],Y[1],'',38) + card(X[2],Y[1],'',40) + card(X[3],Y[1],'ing',36);
+    g += card(X[1],Y[2],'ing',28) + card(X[2],Y[2],'pl',38) + card(X[3],Y[2],'pl',32);
+    return `<svg class="h-gt" width="100%" height="100" viewBox="0 0 342 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${g}</svg>`;
   })();
   const sw = (s) => `<i style="${s}"></i>`;
   const TILES = () => [
@@ -8401,7 +8414,7 @@ const HOME = (() => {
      viz:`<div class="h-pc">${CG.map(([n,a],i)=>`<div class="h-pc-c ${i===5?'h-dd':''}"><div class="h-pc-s">${a.map(c=>`<i class="${c}"></i>`).join('')}</div><s>${n}</s></div>`).join('')}</div>`,
      key:`<span>${sw('box-shadow:inset 0 0 0 2px var(--live)')}On you</span><span>${sw('box-shadow:inset 0 0 0 2px var(--underway)')}Pending</span><span><i class="h-hatch"></i>Not funded</span><span>${sw('outline:1px dashed var(--fg-50);outline-offset:-1px')}Not deployed</span>`},
     {go:'governance', n:'Governance', chip:['under','3 due'], f:'4', fs:' of 9', s:'entities formed · 6 of 15 board seats filled', viz:tree,
-     key:`<span>${sw('background:var(--fg)')}Formed</span><span>${sw('outline:1.5px dashed var(--underway);outline-offset:-1.5px')}Forming</span><span>${sw('outline:1px dashed var(--fg-50);outline-offset:-1px')}Planned</span><span>${sw('background:var(--underway);width:6px;height:6px')}Filing due</span>`}
+     key:`<span>${sw('background:var(--fg)')}Formed</span><span>${sw('background:var(--underway)')}Forming</span><span>${sw('background:repeating-linear-gradient(45deg,var(--fg-50) 0 1px,transparent 1px 3px);outline:1px solid var(--line);outline-offset:-1px')}Planned</span><span>${sw('outline:1px dashed var(--fg);outline-offset:-1px')}Ownerless</span>`}
   ];
   const pulse = () => `<div class="h-bento">${TILES().map(t=>`<button type="button" class="h-cell h-s4 h-pt" data-go="${t.go}" aria-label="${t.n}: open the section"><span class="h-pt-in">
     <span class="h-pt-h">${ic(t.go)}<b>${t.n}</b>${t.chip?`<span class="h-chip ${t.chip[0]}">${t.chip[1]}</span>`:''}</span>
@@ -14384,7 +14397,7 @@ function renderDevices(){
   const rows = Object.entries(FLEET).map(([id,f])=>({ m:MSBY[id], f, bad: Object.values(f).flat().includes('off') ? 'off' : Object.values(f).flat().includes('low') ? 'low' : '' })).sort((a,b)=>(b.bad?1:0)-(a.bad?1:0));
   const all = rows.flatMap(r=>DTYPE.flatMap(([k])=>r.f[k]||[])), off = all.filter(x=>x==='off').length, low = all.filter(x=>x==='low').length;
   const fleet = `<div class="cell s12"><div class="hd"><h2>Devices at shops</h2><div class="r"><span class="lbl">${all.length} devices · ${off} offline · ${low} battery low</span></div></div>
-      <div class="bt-wrap"><table class="bt xd"><colgroup><col style="width:22%"><col style="width:10%"><col style="width:16%"><col style="width:10%"><col style="width:10%"><col style="width:12%"><col style="width:20%"></colgroup>
+      <div class="bt-wrap"><table class="bt xd"><colgroup><col style="width:28%"><col style="width:10%"><col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:19%"></colgroup>
         <thead><tr><th class="c-nm">Shop</th>${DTYPE.map(([k,t])=>`<th style="text-align:left">${t}</th>`).join('')}<th>Checked in</th><th style="text-align:left">What’s next</th></tr></thead><tbody>
         ${rows.map(({m,f,bad})=>{ const st = devFix(m), di = st ? STOPS.indexOf(st)+1 : 0;
           return `<tr data-xopen="${m.id}" class="${bad}"><td class="tn"><b>${m.name}</b><span class="${bad?'warn':''}">${bad ? f.note : m.city}</span>
