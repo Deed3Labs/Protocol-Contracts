@@ -635,12 +635,22 @@ export function codeFingerprint(hex: string, immutables: Array<[number, number]>
   return createHash('sha256').update(b).digest('hex');
 }
 
+/**
+ * The contract an EIP-1167 minimal proxy (a clone) forwards to, or null if this isn't one. BurnerBond and
+ * BurnerBondDeposit are clones of an implementation the factory made: their own 45 bytes never match a
+ * compile, so it's what they forward to that's compared.
+ */
+export function cloneTarget(code: string): string | null {
+  const m = /^0x363d3d373d3d3d363d73([0-9a-f]{40})5af43d82803e903d91602b57fd5bf3$/i.exec(String(code));
+  return m ? getAddress(`0x${m[1]}`) : null;
+}
+
 const CODE_TTL_MS = 10 * 60e3;
 let codeCache: { at: number; same: Map<string, boolean> } | null = null;
 
 /**
  * Whether each deployed contract runs what this branch compiles: the chain's code (its implementation's,
- * behind a proxy) against packages/command-types' code.json, made from dev's compile and kept current by
+ * behind a proxy, and what it forwards to, as a clone) against packages/command-types' code.json, made from dev's compile and kept current by
  * CI. A contract with no fingerprint, or whose code can't be read, isn't in the answer. Kept ten minutes:
  * code only changes with an upgrade.
  */
@@ -653,7 +663,10 @@ export async function codeMatchLive(reader: ChainReader, now = Date.now(), finge
       const address = C[name]?.address;
       if (!address) continue;
       try {
-        const { code } = await reader.codeOf(address);
+        let { code } = await reader.codeOf(address);
+        // a clone's own code is the same 45 bytes whatever it forwards to: compare what it forwards to
+        const target = cloneTarget(code);
+        if (target) code = (await reader.codeOf(target)).code;
         if (code && code !== '0x') same.set(name, codeFingerprint(code, fp.immutables) === fp.sha256);
       } catch {
         // unread: neither the same nor different
