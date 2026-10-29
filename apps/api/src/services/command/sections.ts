@@ -469,11 +469,48 @@ const median = (xs: number[]) => {
   return Math.round(s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2);
 };
 
+/**
+ * Each poster design as a campaign (Growth · Campaigns): the posters wearing it and when the first went up,
+ * their scans in the 30 days, the waitlist joins its posters brought in the 30 days, and, of everyone its
+ * posters brought, how many were invited, opened the app, became active and spent at a shop. The steps
+ * after joining are null when Members isn't live. What a design cost isn't recorded, so nothing says it.
+ */
+export function posterCampaigns(
+  list: PosterRow[],
+  names: Array<{ code: string; name: string }>,
+  wl: Array<{ poster: string | null; joined_at: Date }>,
+  members: MemberRow[] | null,
+  now: number,
+) {
+  return names.flatMap((d) => {
+    const up = list.filter((p) => p.design === d.code);
+    if (!up.length) return [];
+    const codes = new Set(up.map((p) => `P-${p.n}`));
+    const brought = (members ?? []).filter((m) => m.poster && codes.has(m.poster));
+    const step = (k: (m: MemberRow) => unknown) => (members ? brought.filter(k).length : null);
+    return [
+      {
+        code: d.code,
+        name: d.name,
+        posters: up.length,
+        first: Math.min(...up.map((p) => p.hung)),
+        visits: up.reduce((a, p) => a + p.scans, 0),
+        joins: wl.filter((w) => w.poster && codes.has(w.poster) && ms_(w.joined_at) >= now - 30 * DAY).length,
+        invited: step(() => true),
+        opened: step((m) => m.opened != null),
+        active: step((m) => m.activeAt != null),
+        spent: step((m) => m.spentAt != null),
+      },
+    ];
+  });
+}
+
 /** Growth's live parts: the site feed's visits, and the 12 weeks of joins, invites and activations from the waitlist and members. */
-async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | null) {
+async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | null, list: PosterRow[]) {
   const now = o.now.getTime();
   const site = (await feedRows(db)).get('site')?.figures as Record<string, any> | null | undefined;
-  const { rows: wl } = await db.query<{ joined_at: Date; invited_at: Date | null; batch: number | null }>('SELECT joined_at, invited_at, batch FROM command.waitlist');
+  const { rows: wl } = await db.query<{ joined_at: Date; invited_at: Date | null; batch: number | null; poster: string | null }>('SELECT joined_at, invited_at, batch, poster FROM command.waitlist');
+  const { rows: designNames } = await db.query<{ code: string; name: string }>('SELECT code, name FROM command.poster_designs ORDER BY code');
   const week = Math.floor(now / (7 * DAY)) * 7 * DAY;
   const weeks = Array.from({ length: 12 }, (_, i) => week - (11 - i) * 7 * DAY);
   const per = (times: number[]) => weeks.map((w) => times.filter((t) => t >= w && t < w + 7 * DAY).length);
@@ -495,6 +532,7 @@ async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | 
       // each invite week: who activated how soon, who stays and who spent (counts only)
       ...(members ? { 'growth.invite_weeks': cohortsOf(members, now) } : {}),
       ...(site ? { ...visits, 'growth.range': await liveRange(db, range, now, members) } : {}),
+      'growth.poster_campaigns': posterCampaigns(list, designNames, wl, members, now),
     },
   };
 }
@@ -526,7 +564,7 @@ export async function growthSection(db: Queryable, o: ReadOptions): Promise<Grow
   const fig = await figures(db, 'growth');
   const median = await db.query<{ value: unknown }>(`SELECT value FROM command.figures WHERE key = 'members.waitlist.median_days'`);
   // live, the visits are the site's from Plausible, and the weeks of joins, invites and activations Command's own (Phase 7c)
-  const live = provider === 'live' ? await growthLive(db, o, counts.rows) : null;
+  const live = provider === 'live' ? await growthLive(db, o, counts.rows, list) : null;
 
   return {
     POSTERS: list,

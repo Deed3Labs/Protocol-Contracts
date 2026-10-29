@@ -290,10 +290,14 @@ Filled in as each page is ported. Known before starting:
     (the Nudges tab's lower half says "Not real yet"); extending the invite window and closing an account
     (hidden live; turning off access is there); the join form's whole-list reveal (hidden: one person at a
     time from People); only the newest waiting batch proposal shows when there are two.
-- **Growth** (ported): campaigns (tagged links, spend, offers), the apps' own events, bounce and time on page,
-  browsers, and invites, opens and first spends by source, city, shop and design. Live, Campaigns and Apps
-  say "Not real yet" with what they need; the waitlist count and median come from `command.waitlist`.
-  Traffic's Right now is Umami's real-time view (`GET /growth/now`, kept 15 seconds, read every 20).
+- **Growth** (ported): what campaigns cost (printing, ads, offers, credit) and who a tagged link brought past
+  joining, the apps' own events, bounce and time on page, browsers, and invites, opens and first spends by
+  source, city, shop and design. Live, Apps says "Not real yet" with what it needs; the waitlist count and
+  median come from `command.waitlist`. Traffic's Right now is Umami's real-time view (`GET /growth/now`, kept
+  15 seconds, read every 20).
+  Campaigns is live: each poster design (Command's posters, the waitlist joins they brought and, with Members
+  live, who was invited, opened, activated and spent) and each `utm_campaign` the site feed counted (visits,
+  joins, its source and medium, the days it ran); spend says "Spend isn't recorded".
   Cohorts is live from Members' rows (`growth.invite_weeks`, `cohorts.ts`): each invite week's activations
   and first spends by week since the invite, who is still active (seen in 14 days), how fast and how they
   funded. Still active is only known now, so the grid shows it in each week's latest cell. Next moves are

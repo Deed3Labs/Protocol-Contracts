@@ -22,6 +22,18 @@ const SEARCH = /google|bing|duckduckgo|yahoo|ecosia|brave|baidu|yandex|startpage
 const SOCIAL = /instagram|facebook|fb\b|tiktok|nextdoor|twitter|^x$|x\.com|t\.co|reddit|linkedin|youtube|threads|pinterest|snapchat|whatsapp|bluesky/i;
 /** A visit's source, as the prototype groups them. */
 export const sourceOf = (s: string) => (/poster/i.test(s) ? 'Posters' : SEARCH.test(s) ? 'Search' : SOCIAL.test(s) ? 'Social' : 'Direct');
+/** A tagged campaign's type, from its utm_source and utm_medium: posters, paid ads, referrals, social, or other. */
+export const campaignType = (source: string, medium: string) => {
+  const both = `${source} ${medium}`;
+  if (/poster|\bqr\b/i.test(both)) return 'Posters';
+  if (/paid|cpc|ppc|\bads?\b|display|sponsored/i.test(medium)) return 'Ads';
+  if (/referr|refer|invite/i.test(both)) return 'Referrals';
+  if (SOCIAL.test(source) || /social/i.test(medium)) return 'Social';
+  return 'Other';
+};
+/** The most campaigns read each sync: each costs three more calls. */
+const CAMPAIGNS = 12;
+
 /** The page's three cities, then everyone else. */
 export const TOP_CITIES = ['Redlands', 'San Bernardino', 'Riverside'];
 
@@ -178,6 +190,33 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
       const visitors = n(agg.visitors),
         visits = n(agg.visits);
 
+      // the tagged campaigns of the last 12 weeks (utm_campaign): each one's 30-day visitors and joins, where it
+      // was shared (its commonest source and medium), and the first and last day it brought anyone
+      const [from84, to84] = back(84);
+      const [named, named30, namedJoins] = await Promise.all([
+        metrics('utmCampaign', from84, to84, { limit: CAMPAIGNS }),
+        metrics('utmCampaign', from30, to30),
+        metrics('utmCampaign', from30, to30, JOIN),
+      ]);
+      const v30 = new Map(named30.map((r) => [r.x, n(r.y)]));
+      const j30 = new Map(namedJoins.map((r) => [r.x, n(r.y)]));
+      const campaigns = await Promise.all(
+        named
+          .filter((r) => r.x)
+          .map(async (r) => {
+            const tag = { utmCampaign: r.x! };
+            const [src, med, ran] = await Promise.all([
+              metrics('utmSource', from84, to84, { ...tag, limit: 1 }),
+              metrics('utmMedium', from84, to84, { ...tag, limit: 1 }),
+              get<{ sessions: XY[] }>('pageviews', { ...span(from84, to84), unit: 'day', timezone: 'UTC', ...tag }).then((x) => x.sessions.filter((p) => n(p.y) > 0).map((p) => String(p.x).slice(0, 10)).sort()),
+            ]);
+            const source = src[0]?.x ?? '',
+              medium = med[0]?.x ?? '';
+            return { name: r.x!, source, medium, type: campaignType(source, medium), visits: v30.get(r.x) ?? 0, joins: j30.get(r.x) ?? 0, first: ran[0] ?? null, last: ran[ran.length - 1] ?? null };
+          }),
+      );
+      const joins30 = sum(srcJoins);
+
       return {
         figures: {
           range,
@@ -194,6 +233,9 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
           'growth.returning': [['New', visitors], ['Returning', Math.max(0, visits - visitors)]],
           'growth.visitors_ratio': visits ? Math.round((visitors / visits) * 100) / 100 : 0,
           'growth.site.pages': pages.map((r) => [r.x ?? '/', n(r.y)]),
+          'growth.campaigns': campaigns,
+          // everyone the campaigns don't account for, as visitors and joins in the 30 days
+          'growth.untagged': [Math.max(0, visitors - sum(campaigns.map((c) => c.visits))), Math.max(0, joins30 - sum(campaigns.map((c) => c.joins)))],
         },
       };
     },
