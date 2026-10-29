@@ -275,6 +275,7 @@ const apply = {
     replace(AP_REQ, d.AP_REQ);
     replace(RTD_W, d.RTD_W);
     replace(COOP_W, d.COOP_W);
+    vars.coop = d.COOP ?? null;
     replace(FLOWS, d.FLOWS);
     replace(BONDS, d.BONDS);
     replace(ACCTS, d.ACCTS);

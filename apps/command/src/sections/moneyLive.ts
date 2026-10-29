@@ -113,6 +113,8 @@ export function moneyLive() {
     UNSEC: UNSEC.map(num),
     RTD_W: RTD_W.map((v) => (v == null ? null : num(v))),
     COOP_W: COOP_W.map(num),
+    // where the co-op's balance is held (TermIssuer's fee recipient) and whether that's the Ops Safe; null until the chain is read
+    COOP: vars.coop ?? null,
     // the next 30 days, from today
     FLOWS: FLOWS.filter((f) => f[0] >= 0 && f[0] <= 30)
       .map((f) => [num(f[0]), f[1], num(f[2]), f[3] ?? '', f[4] ?? ''])

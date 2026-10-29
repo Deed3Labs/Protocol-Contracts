@@ -4,7 +4,7 @@ import { getAddress } from 'viem';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
 import { syncInventory } from './indexer.js';
-import { assurancePoolLive, bondsLive, deployedName, type ChainCall, type ChainReader } from './onchain.js';
+import { assurancePoolLive, bondsLive, coopLive, deployedName, type ChainCall, type ChainReader } from './onchain.js';
 import { contractsSection, moneySection } from './sections.js';
 import { seedCommand } from './seed.js';
 import { TOTALS } from './levels.js';
@@ -46,6 +46,9 @@ const asked: ChainCall[][] = [];
 // the savings reserve: CLRUSD in issue, and the USDC the vault holds (50 cents short)
 const USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
 const reserve = { clrusd: 900, vault: 899.5 };
+// the co-op's fee recipient (the Ops Safe) and the ClearCredit it holds
+const SAFE = getAddress('0x52e6102b7c22eec7a68b11dd71fac7d6d9aecf50');
+let feeTo = SAFE;
 const reader: ChainReader = {
   read: async (calls) => {
     asked.push(calls);
@@ -62,6 +65,8 @@ const reader: ChainReader = {
       if (c.contract === 'PayoutPool' && !(c.fn in views)) return c.fn === 'reserveToken' ? USDC : 0n;
       if (c.contract === 'MerchantRegistry') return 0n;
       if (c.contract === 'ClearCredit' && c.fn === 'decimals') return 6n;
+      if (c.contract === 'TermIssuer') return c.fn === 'feeRecipient' ? feeTo : c.fn === 'carryTreasury' ? payout : 0n;
+      if (c.contract === 'ClearCredit' && c.fn === 'balanceOf') return BigInt(usdc(c.args![0] === SAFE ? 3.25 : c.args![0] === payout ? 9 : 0));
       if (c.contract === 'ERC20') {
         expect([c.address, ...(c.fn === 'balanceOf' ? [c.args![0]] : [])]).toEqual([USDC, ...(c.fn === 'balanceOf' ? [getAddress(C.ESADepositVault.address)] : [])]);
         return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.vault));
@@ -310,6 +315,42 @@ describe('the AssurancePool, live', () => {
     // the weekly series ends on it, and RTD has no unsecured credit to divide by
     expect(m.AP_BAL.at(-1)).toBe(125.03);
     expect(Number.isFinite(m.M.rtd)).toBe(true);
+  });
+});
+
+describe('the co-op’s balance, live', () => {
+  test('is the ClearCredit its fee recipient holds, the Ops Safe, with its weeks from the transfers', async () => {
+    await put('ClearCredit', 'Transfer', { from: ZERO, to: SAFE, value: usdc(1) }, '05T10:00:00');
+    await put('ClearCredit', 'Transfer', { from: ZERO, to: SAFE, value: usdc(2.25) }, '20T10:00:00');
+    const c = await coopLive(db, reader, NOW.getTime());
+    expect(c.recipient).toBe(SAFE);
+    expect(c.balance).toBe(3.25);
+    // weeks end on the 3rd, 10th and 17th: nothing, then the 1.00, then still 1.00; the 2.25 of the 20th shows now
+    expect(c.weeks.slice(-4)).toEqual([0, 1, 1, 3.25]);
+  });
+
+  test('with no fee recipient set, the fee goes to the carry treasury, as the contract pays it', async () => {
+    feeTo = getAddress(ZERO);
+    try {
+      expect((await coopLive(db, reader, NOW.getTime())).recipient).toBe(payout);
+    } finally {
+      feeTo = SAFE;
+    }
+  });
+
+  test('Money reads it: the account, its purpose, and that the Ops Safe holds it', async () => {
+    const was = process.env.COMMAND_SAFE_ADDRESS;
+    process.env.COMMAND_SAFE_ADDRESS = SAFE;
+    try {
+      const m: any = await moneySection(db, read());
+      expect(m.M.coop).toBe(3.25);
+      const row = m.ACCTS.find((a: any[]) => a[0] === 'coop');
+      expect([row[2], row[4], row[5], row[6].at(-1)]).toEqual(['The co-op’s fee on each financed sale, held for a vote', 'protocol', 3.25, 3.25]);
+      expect(m.COOP).toEqual({ recipient: SAFE, safe: true });
+    } finally {
+      if (was == null) delete process.env.COMMAND_SAFE_ADDRESS;
+      else process.env.COMMAND_SAFE_ADDRESS = was;
+    }
   });
 });
 

@@ -2,7 +2,7 @@ import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, 
 import type { Db, Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
-import { assurancePoolLive, bondVaultLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { assurancePoolLive, bondVaultLive, coopLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { creditLive, payoutsLive } from './credit.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
@@ -1197,10 +1197,12 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   // live, what the PayoutPool owes shops and when, and the credit book: the chain's, not the tables' sample
   const payouts = provider === 'live' ? await payoutsLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
   const credit = provider === 'live' ? await creditLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
+  // live, the co-op's balance is its fee recipient's ClearCredit (the Ops Safe), not the table's
+  const coop = provider === 'live' ? await coopLive(db, chainOf(o, 'money'), o.now.getTime()).catch(() => null) : null;
 
   // the headline numbers, as the prototype's M
   const M: Record<string, number> = {
-    savings: reserve ? reserve.usdc : bal('sav'), cash: bank ? bank.balance : bal('ops'), payout: bal('pay'), assurance: assurance ? assurance.total : bal('ap'), coop: bal('coop'),
+    savings: reserve ? reserve.usdc : bal('sav'), cash: bank ? bank.balance : bal('ops'), payout: bal('pay'), assurance: assurance ? assurance.total : bal('ap'), coop: coop ? coop.balance : bal('coop'),
     ...book, ...due, bonds: BONDS.reduce((a, b) => a + (b[1] as number), 0), floor,
   };
   // the yield pool, as the prototype's Y: assets and pledges are the depositors'; it lends to unsecured credit
@@ -1258,7 +1260,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   // live, BondVault's balance is the chain's: the bond buyers' money, held to pay them at maturity
   const vault = provider === 'live' ? await bondVaultLive(chainOf(o, 'money')) : null;
   if (vault) M.vault = vault.held;
-  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}), ...(vault ? { bond: vault.held } : {}) };
+  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}), ...(vault ? { bond: vault.held } : {}), ...(coop ? { coop: coop.balance } : {}) };
   const ACCTS = accts.map((a) => {
     const w = weeks(a.id);
     const now = live[a.id] ?? w.at(-1) ?? 0;
@@ -1267,9 +1269,14 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       : a.id === 'yld' && chainPool ? chainPool.cashWeeks
       : a.id === 'sav' && reserve ? [...reserve.weeks.slice(0, -1), now]
       : a.id === 'ops' && bank ? bank.weeks
+      : a.id === 'coop' && coop ? coop.weeks
       : [...w.slice(0, -1), now];
     // the USDC behind savings is in the vault, not at Bridge: Bridge is how it arrives
-    const [purpose, source] = a.id === 'sav' && reserve ? ['CLRUSD, backed 1:1 by USDC in the savings vault', 'protocol'] : [a.purpose, a.source];
+    // the co-op's balance is its fee on financed sales, held by the Ops Safe (not a discount members get)
+    const [purpose, source] =
+      a.id === 'sav' && reserve ? ['CLRUSD, backed 1:1 by USDC in the savings vault', 'protocol']
+      : a.id === 'coop' && coop ? ['The co-op’s fee on each financed sale, held for a vote', 'protocol']
+      : [a.purpose, a.source];
     return [a.id, a.name, purpose, a.owner_group, source, now, series, a.swatch];
   });
   const { rows: ent } = await db.query<{ account_id: string; at: Date; what: string; detail: string; amount_cents: string }>('SELECT * FROM command.account_entries ORDER BY at DESC, id');
@@ -1277,10 +1284,13 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   for (const e of ent) (ENTRIES[e.account_id] ??= []).push({ at: ms_(e.at), what: e.what, detail: e.detail, amount: Number(e.amount_cents) / 100 });
   if (chainPool) ENTRIES.yld = chainPool.entries;
   if (bank) ENTRIES.ops = bank.entries;
+  const COOP = coop ? { recipient: coop.recipient, safe: safeConfig()?.address === coop.recipient } : null;
 
   const counts = await memberCounts(db, o);
   return {
     M, Y, Y_DEP,
+    // where the co-op's balance is held, and whether that's the Ops Safe
+    COOP,
     ...(chainPool
       ? { YD: chainPool.days.map(dayMon), Y_ASSETS: chainPool.assetsByDay, Y_LENT: chainPool.lentByDay }
       : { YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent] }),
