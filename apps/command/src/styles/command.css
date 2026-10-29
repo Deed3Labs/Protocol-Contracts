@@ -2953,3 +2953,17 @@ body.h-pn .h-panel{transform:none;visibility:visible}
   #modalRoot .sheet .m-ft{padding:0 16px}
   #modalRoot .sheet .f2{grid-template-columns:minmax(0,1fr)}
 }
+
+/* live (.h-live on Home): the rules every other page keeps (styles/pages/live.css). An empty cell is
+   hatched (Needs you, Heads-up, the Timeline's columns); the Timeline's columns head their lists with the
+   style guide's tinted band (10px mono on a 4% tint, a hairline under it); and a short list keeps its rows'
+   height, the space under it hatched */
+.h-live .h-qempty{background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+.h-live .h-tl-col{padding:0}
+.h-live .h-tl-col > .h-lbl{display:flex;align-items:center;min-height:32px;padding:0 22px;font-size:10px;letter-spacing:.1em;color:var(--fg-50);background:color-mix(in srgb,var(--fg) 4%,transparent);border-bottom:1px solid var(--hair)}
+.h-live .h-tl-col > .h-qempty{min-height:160px}
+.h-live .h-tl-col::after{content:'';flex:1 1 0;min-height:0;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
+.h-live .h-tl-col:has(> .h-qempty)::after{display:none}
+@media (max-width:760px){
+.h-live .h-tl-col > .h-lbl{padding:0 16px}
+}
