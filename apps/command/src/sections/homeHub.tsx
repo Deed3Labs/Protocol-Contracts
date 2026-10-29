@@ -276,21 +276,33 @@ function header(M) {
           )}
           <span className="h-sc-s">{M.money ? `Of ${money(M.money.operating)} operating cash` : 'Opens Money'}</span>
         </button>
-        <button type="button" className="h-sc" data-npane="credit">
-          <span className="h-lbl">Credit headroom</span>
-          {M.money ? (
-            <>
-              <span className="h-sc-v">{cents(M.money.credit)}</span>
-              <span className="h-mb">
-                <i style={css(`width:${M.money.creditUsed}%`)} />
-                <span className="hroom" style={css(`left:${M.money.creditUsed}%;right:0`)} />
-              </span>
-            </>
-          ) : (
-            notYet
-          )}
-          <span className="h-sc-s">{M.money ? 'Before the credit gate shuts' : 'Opens Money'}</span>
-        </button>
+        {M.money?.cover ? (
+          // live, loss cover: the AssurancePool backstops what gets past members' collateral and the yield pool, and stops nothing issuing
+          <button type="button" className="h-sc" data-npane="credit">
+            <span className="h-lbl">Loss cover</span>
+            <span className="h-sc-v">{M.money.cover.v}</span>
+            <span className="h-mb">
+              <i style={css(`width:${M.money.cover.w}%;background:var(--settled)`)} />
+            </span>
+            <span className="h-sc-s">{M.money.cover.s}</span>
+          </button>
+        ) : (
+          <button type="button" className="h-sc" data-npane="credit">
+            <span className="h-lbl">Credit headroom</span>
+            {M.money ? (
+              <>
+                <span className="h-sc-v">{cents(M.money.credit)}</span>
+                <span className="h-mb">
+                  <i style={css(`width:${M.money.creditUsed}%`)} />
+                  <span className="hroom" style={css(`left:${M.money.creditUsed}%;right:0`)} />
+                </span>
+              </>
+            ) : (
+              notYet
+            )}
+            <span className="h-sc-s">{M.money ? 'Before the credit gate shuts' : 'Opens Money'}</span>
+          </button>
+        )}
       </div>
     </header>
   );
@@ -594,6 +606,12 @@ function liveVitals() {
   const [a, b] = String(r?.ratio ?? '').split(':').map(Number);
   const backed = r && b ? Math.min(100, (a / b) * 100) : 0;
   const used = M.unsecured + M.room ? (M.unsecured / (M.unsecured + M.room)) * 100 : 100;
+  // loss cover: the primary reserve against the unsecured exposure that could reach it, as Money's own cell has it
+  const cover = {
+    v: M.unsecured ? `${(M.rtd * 100).toFixed(1)}%` : 'Covered',
+    w: M.unsecured && M.floor ? Math.min(100, (M.rtd / M.floor) * 100).toFixed(1) : 100,
+    s: `Covers ${money(M.room)} more unsecured`,
+  };
   return {
     reserve: r?.ratio ?? null,
     backed,
@@ -602,6 +620,7 @@ function liveVitals() {
     operating: M.cash,
     credit: M.room,
     creditUsed: used.toFixed(1),
+    cover,
   };
 }
 /** Partner shops: transacting, signing, signed and idle (Merchants' own list). */

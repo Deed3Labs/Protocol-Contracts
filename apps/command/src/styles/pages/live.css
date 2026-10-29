@@ -70,3 +70,5 @@ button.fw-k{text-align:left;cursor:pointer}
 /* Build → Every change: a column's Show more, Show fewer and Clear shipped rows, as the Pipeline's .kb-more */
 .bd-more{height:48px;flex:none;padding:0 18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid var(--hair);text-align:left;font-size:13px;font-weight:500;color:var(--fg-70);width:100%;background-color:var(--ground)}
 .bd-more:hover{background:color-mix(in srgb,var(--raised) 70%,var(--ground));color:var(--fg)}
+/* Money → Loss cover: who takes a loss, in order, kept to the cell's small type */
+.ngt-wf div{font-size:12.5px;padding:7px 0;min-width:0} .ngt-wf div span{white-space:nowrap} .ngt-wf div b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
