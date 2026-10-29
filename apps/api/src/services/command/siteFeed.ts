@@ -33,7 +33,12 @@ const dayMon = (t: number) => `${new Date(t).getUTCDate()} ${MON[new Date(t).get
 const dowDay = (t: number) => `${DOW[new Date(t).getUTCDay()]} ${new Date(t).getUTCDate()}`;
 const pctDelta = (now: number, prev: number, on: string) => (prev ? `${now >= prev ? '+' : '−'}${Math.abs(((now - prev) / prev) * 100).toFixed(1)}% on ${on}` : `No visits ${on} to compare`);
 
-export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = () => Date.now()): Feed {
+/**
+ * Command's view-only sign-in to Umami (UMAMI_API_URL, UMAMI_USERNAME, UMAMI_PASSWORD) for the site
+ * UMAMI_WEBSITE_ID, shared by the feed and the real-time view: `get` reads any API path, `website` one of
+ * the website's own (`website('metrics', …)` is /api/websites/<id>/metrics).
+ */
+export function umamiClient(env: Env = process.env, f: typeof fetch = fetch) {
   const base = (env.UMAMI_API_URL?.trim() || '').replace(/\/+$/, '');
   const site = env.UMAMI_WEBSITE_ID?.trim();
   const user = env.UMAMI_USERNAME?.trim();
@@ -56,7 +61,7 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
         if (token === signedIn) token = null;
         throw e;
       });
-      const r = await f(`${base}/api/websites/${site}/${path}?${qs}`, { headers: { Authorization: `Bearer ${t}` } });
+      const r = await f(`${base}${path}?${qs}`, { headers: { Authorization: `Bearer ${t}` } });
       if (r.status === 401 && again) {
         if (token === signedIn) token = null;
         continue;
@@ -65,6 +70,17 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
       return (await r.json()) as T;
     }
   };
+  return {
+    site,
+    off: () => (!base || !site ? 'UMAMI_API_URL and UMAMI_WEBSITE_ID aren’t set' : !user || !pass ? 'UMAMI_USERNAME and UMAMI_PASSWORD aren’t set' : null),
+    get,
+    website: <T>(path: string, params: Record<string, string | number | undefined>) => get<T>(`/api/websites/${site}/${path}`, params),
+  };
+}
+
+export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = () => Date.now()): Feed {
+  const umami = umamiClient(env, f);
+  const get = umami.website;
   const n = (v: number | string | undefined) => Number(v ?? 0) || 0;
   const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
   // [from, to): whole UTC days, the end exclusive
@@ -89,7 +105,7 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
   return {
     id: 'site',
     everyMs: (Number(env.COMMAND_SITE_MINUTES) > 0 ? Number(env.COMMAND_SITE_MINUTES) : 15) * 60_000,
-    off: () => (!base || !site ? 'UMAMI_API_URL and UMAMI_WEBSITE_ID aren’t set' : !user || !pass ? 'UMAMI_USERNAME and UMAMI_PASSWORD aren’t set' : null),
+    off: umami.off,
     async sync() {
       const t = now();
       const today = Math.floor(t / DAY) * DAY;

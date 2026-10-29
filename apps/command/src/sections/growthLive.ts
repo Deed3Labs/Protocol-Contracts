@@ -6,8 +6,8 @@ import { BOARDS, CITY_V, COHORTS, DESIGNS, HEAT, LANDING, OTHERS, POSTERS, SHOPS
  * the API's growth section sends (live/sections.ts fills ./data from it). What the API doesn't measure yet
  * is zero or empty, never the reference's figures; docs/ui-redesign-plan.md lists each gap:
  * invites, opens and first spends by source, city, shop and design; weekly opens and first spends;
- * bounce and time on page; browsers; campaigns; the apps' usage and errors; the
- * real-time view; the waitlist's people.
+ * bounce and time on page; browsers; campaigns; the apps' usage and errors; the waitlist's people.
+ * Traffic's Right now reads GET /growth/now itself (growth2.tsx, pollNow).
  */
 
 /** The days the page draws: twelve weeks to today, as the API's weekly figures count them. */
