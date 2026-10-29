@@ -114,3 +114,10 @@ button.fw-k{text-align:left;cursor:pointer}
 /* a row whose cells end in both kinds of footer (Growth › Apps: What they use's note, Issues' Error log): the
    button footer is 44px and the note 52, so side by side their lines missed by 8px. The button takes the note's height */
 .bento:has(> .cell > .bk-ft) > .cell > .foot{min-height:52px}
+
+/* Shop › What's for sale: the shelf shows two rows, then a row at a time, as the Pipeline's .kb-more; a tile
+   past the rows showing is hidden */
+.sx-shf > [hidden]{display:none !important}
+.sx-more{display:block;height:48px;padding:0 22px;border-top:1px solid var(--hair);text-align:left;font-size:13px;font-weight:500;color:var(--fg-70);width:100%;background:none;cursor:pointer}
+.sx-more:hover{background:color-mix(in srgb,var(--raised) 70%,var(--ground));color:var(--fg)}
+.sx-more[hidden]{display:none}
