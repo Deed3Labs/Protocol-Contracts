@@ -163,7 +163,13 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev Sixteen slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders,
     /// advancedOf, advancedTotal, carriers, inFlight, yieldPool, reserve, borrowedFromYield,
     /// borrowedFromReserve, carryEarned, refundOwedTo, refundees, refundsOwed.
-    uint256[27] private __gap;
+    /// @notice the bond vault, which lends its deployable excess after the yield pool.
+    address public bondVault;
+    /// @notice what the pool owes the bond vault.
+    uint256 public borrowedFromVault;
+
+    /// @dev Two more slots from the gap: bondVault, borrowedFromVault.
+    uint256[25] private __gap;
 
 
     error PayoutPoolInvalidAddress();
@@ -190,6 +196,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     event DrewFromReserve(uint256 amount);
     event RepaidYieldPool(uint256 amount);
     event RepaidReserve(uint256 amount);
+    event DrewFromBondVault(uint256 amount);
+    event DrewFromTreasury(uint256 amount);
+    event RepaidBondVault(uint256 amount);
+    event BondVaultUpdated(address indexed bondVault);
     event InterestPaid(address indexed lender, uint256 amount);
     event PositionSettled(uint256 amount);
     event PositionAdvanced(address indexed funder, uint256 amount);
@@ -334,16 +344,33 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         emit LendersUpdated(yieldPool_, reserve_);
     }
 
-    /// @notice what the pool owes the two of them.
+    /// @notice what the pool owes its lenders.
     function borrowed() public view returns (uint256) {
-        return borrowedFromYield + borrowedFromReserve;
+        return borrowedFromYield + borrowedFromVault + borrowedFromReserve;
+    }
+
+    /// @notice names the bond vault the pool may borrow from.
+    function setBondVault(address vault) external onlyRole(OPERATOR_ROLE) {
+        bondVault = vault;
+        emit BondVaultUpdated(vault);
+    }
+
+    /// @notice what the treasury can put up for a claim right now: its allowance to this pool,
+    /// capped at what it holds.
+    function treasuryAvailable() public view returns (uint256) {
+        uint256 allowed = reserveToken.allowance(coopTreasury, address(this));
+        uint256 balance = reserveToken.balanceOf(coopTreasury);
+        return allowed < balance ? allowed : balance;
     }
 
     /// @notice finds the money for a claim whose turn has come and whose terms have run out.
     /// @dev Nothing decides to pay anybody early: this is only ever for a claim already past its
     /// window with nothing here to pay it. The yield pool first, because lending is what its
-    /// depositors are here for and they are paid for it; the reserve second, because covering this
-    /// is one of the things a reserve is for but not the first thing.
+    /// depositors are here for and they are paid for it; then the bond vault's deployable excess,
+    /// which earns carry toward what bondholders are owed and never touches their redemption
+    /// reserve; then the treasury, up to the allowance the Safe has given this pool, as capital that
+    /// holds the position it pays for; and the reserve last, because covering this is one of the
+    /// things a reserve is for but not the first thing.
     ///
     /// Permissionless. A merchant owed money and past their terms should not also be waiting on
     /// somebody remembering to run this.
@@ -370,6 +397,30 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
                 emit DrewFromYieldPool(take);
             }
         }
+        if (short > 0 && bondVault != address(0)) {
+            uint256 lent = IAssuranceLender(bondVault).lendToPayoutPool(short);
+            if (lent > 0) {
+                borrowedFromVault += lent;
+                drawn += lent;
+                short -= lent;
+                emit DrewFromBondVault(lent);
+            }
+        }
+        if (short > 0) {
+            // The co-op's own money, so it is capital rather than a loan: the treasury holds the
+            // position this pays for and earns its carry, as it does when the Safe funds by hand.
+            uint256 take = treasuryAvailable();
+            if (take > short) take = short;
+            if (take > 0) {
+                reserveToken.safeTransferFrom(coopTreasury, address(this), take);
+                if (capitalOf[coopTreasury] == 0) funders.push(coopTreasury);
+                capitalOf[coopTreasury] += take;
+                drawn += take;
+                short -= take;
+                emit DrewFromTreasury(take);
+                emit Funded(coopTreasury, take);
+            }
+        }
         if (short > 0 && reserve != address(0)) {
             uint256 lent = IAssuranceLender(reserve).lendToPayoutPool(short);
             if (lent > 0) {
@@ -391,26 +442,38 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// settles the principal carries the interest in the same cash; all this does is hand it on and
     /// burn the claim it stood for.
     function _repayLenders(uint256 available) private returns (uint256 left) {
+        // Shares as they stood before this repayment: a lender repaid in full by it still bore its
+        // part of the float the carry was charged for.
+        uint256 owed = borrowed();
+        uint256 fromVault = borrowedFromVault;
+        uint256 fromReserve = borrowedFromReserve;
         left = _repayPrincipal(available);
         if (left == 0 || carryEarned == 0) return left;
 
         uint256 interest = carryEarned < left ? carryEarned : left;
-        // Split between them as the principal was, so each is paid for what it actually bore.
-        uint256 owed = borrowed();
-        uint256 toYield = owed == 0 ? interest : (interest * borrowedFromYield) / owed;
-        uint256 toReserve = interest - toYield;
+        // Split between them as the principal was, so each is paid for what it actually bore. The
+        // division's remainder goes to the yield pool, as all of it does when nothing was owed, so a
+        // lender that put up nothing is never handed dust.
+        uint256 toVault = owed == 0 ? 0 : (interest * fromVault) / owed;
+        uint256 toReserve = owed == 0 ? 0 : (interest * fromReserve) / owed;
+        uint256 toYield = interest - toVault - toReserve;
 
         if (toYield > 0 && yieldPool != address(0)) {
             reserveToken.approve(yieldPool, toYield);
             ILendingPool(yieldPool).repay(toYield);
             emit InterestPaid(yieldPool, toYield);
         }
+        if (toVault > 0 && bondVault != address(0)) {
+            reserveToken.approve(bondVault, toVault);
+            IAssuranceLender(bondVault).repayFromPayoutPool(toVault);
+            emit InterestPaid(bondVault, toVault);
+        }
         if (toReserve > 0 && reserve != address(0)) {
             reserveToken.approve(reserve, toReserve);
             IAssuranceLender(reserve).repayFromPayoutPool(toReserve);
             emit InterestPaid(reserve, toReserve);
         }
-        uint256 handed = toYield + toReserve;
+        uint256 handed = toYield + toVault + toReserve;
         if (handed > 0) {
             carryEarned -= handed;
             left -= handed;
@@ -430,6 +493,16 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
                 reserveToken.approve(yieldPool, pay);
                 ILendingPool(yieldPool).repay(pay);
                 emit RepaidYieldPool(pay);
+            }
+        }
+        if (borrowedFromVault > 0 && bondVault != address(0) && left > 0) {
+            uint256 pay = borrowedFromVault < left ? borrowedFromVault : left;
+            if (pay > 0) {
+                borrowedFromVault -= pay;
+                left -= pay;
+                reserveToken.approve(bondVault, pay);
+                IAssuranceLender(bondVault).repayFromPayoutPool(pay);
+                emit RepaidBondVault(pay);
             }
         }
         if (borrowedFromReserve > 0 && reserve != address(0) && left > 0) {

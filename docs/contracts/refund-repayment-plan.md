@@ -227,11 +227,15 @@ their own money — which is the same timing gap as the payout queue, pointed th
 have run out. It refuses a claim that is not due (`PayoutPoolClaimNotDue`), so nothing in it can be
 used to pay anybody early — a funded pool already does that, and an unfunded one is a wait.
 
-The yield pool's unlent cash first, then `AssurancePool.lendToPayoutPool`: excess, then buffer while
-`hasValidRTD()` holds, never the primary reserve. Repayment restores the cushion before anything is
-called spare again.
+The yield pool's unlent cash first; then `BondVault.lendToPayoutPool`, its deployable excess only,
+never the redemption reserve; then the treasury (the Safe) up to the USDC allowance it has given the
+pool, taken as capital so the Safe holds the position it pays for, as when it funds by hand; then
+`AssurancePool.lendToPayoutPool`: excess, then buffer while `hasValidRTD()` holds, never the primary
+reserve (order added 2026-10-29). Repayment restores the cushion before anything is called spare
+again. The yield pool, the vault and the reserve split the carry by what each put up, measured before
+the repayment that returns their principal; the division's remainder goes to the yield pool.
 
-**Both are repaid rather than handed the position**, which is where this departs from the co-op
+**The lenders are repaid rather than handed the position**, which is where this departs from the co-op
 funding directly. The yield pool's share price is cash plus what is out on loan; the reserve's cover
 is counted in reserve tokens. A credit claim sitting in either reads as a hole in their books until
 somebody redeems it, so what they put up comes back as what they put up. Members' repayments

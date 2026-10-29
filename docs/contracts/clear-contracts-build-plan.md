@@ -326,6 +326,8 @@ ERC-4626, utilization-priced. Standard interface so it is auditable and composab
 
 Allocation target: ~70% deployable / ~30% reserve, with the reserve share rising as maturities approach. Parameterised with bounds, not an operator decision.
 
+**When the vault is short at maturity** (built 2026-10-29): `settle` pays from the vault's own holdings, then the treasury (the Safe) up to the USDC allowance its owners have given the vault, then `AssurancePool.lendToBondVault` as the last resort — excess, then buffer while `hasValidRTD()` holds, never the primary reserve. It reverts only when all three together cannot pay, and then nothing has moved. The reserve is repaid from new proceeds before the Safe can withdraw anything (`deployableExcess` subtracts `owedToReserve`, `withdrawDeployable` repays first, `repayReserve()` is permissionless). The treasury is not repaid as a loan: what it put in comes back as deployable excess. The AssurancePool's RTD counts the part it backs, `bondExposure()`: face due inside the window that neither the vault nor the treasury's allowance can pay.
+
 **Auto-roll on maturity** should be the default (with opt-out) for bonds pledged as collateral — otherwise the limit contracts hard the day a bond matures if the member already spent the proceeds.
 
 ### Phase 4 — Wire it together

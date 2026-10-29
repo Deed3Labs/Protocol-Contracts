@@ -336,6 +336,109 @@ describe("a purchase, from the shop to the money", function () {
       // Only what is left over is members' money for settling claims.
       expect(await pool.memberFunded()).to.equal(purchase - payout);
     });
+
+    describe("after the yield pool: the bond vault, then the treasury, then the reserve", function () {
+      let vault: any;
+      const MONTH = 30 * DAY;
+
+      beforeEach(async function () {
+        const BondVault = await ethers.getContractFactory("BondVault");
+        vault = await upgrades.deployProxy(BondVault, [ctx.admin.address, await ctx.usdc.getAddress(), 3 * MONTH], { kind: "uups" });
+        await vault.grantRole(await vault.BOND_ROLE(), ctx.admin.address);
+        await vault.setBackstops(ethers.ZeroAddress, ethers.ZeroAddress, await pool.getAddress());
+        await pool.connect(ctx.admin).setBondVault(await vault.getAddress());
+      });
+
+      /// Bond proceeds of `held` against `face` a year out: 30% of the face is kept back.
+      async function bondProceeds(held: bigint, face: bigint) {
+        await ctx.usdc.mint(await vault.getAddress(), held);
+        const at = BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
+        await vault.recordPurchase(1, held, face, at + BigInt(12 * MONTH));
+      }
+
+      async function treasuryAllows(amount: bigint) {
+        await ctx.usdc.mint(coop.address, 1_000n * ONE_USDC);
+        await ctx.usdc.connect(coop).approve(await pool.getAddress(), amount);
+      }
+
+      it("borrows the vault's deployable excess once the yield pool runs out", async function () {
+        const { payout } = await buy();
+        await pool.connect(merchant).redeem(payout);
+        await depositIntoYieldPool(50n * ONE_USDC);
+        await bondProceeds(500n * ONE_USDC, 600n * ONE_USDC);
+        await elapse(NET_30 + DAY);
+
+        await pool.drawForDueClaim();
+
+        expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
+        expect(await pool.borrowedFromYield()).to.equal(50n * ONE_USDC);
+        expect(await pool.borrowedFromVault()).to.equal(payout - 50n * ONE_USDC);
+        expect(await vault.lentToPayoutPool()).to.equal(payout - 50n * ONE_USDC);
+        // Bought with borrowed money, so the pool holds the position for its lenders.
+        expect(await pool.advancedOf(await pool.getAddress())).to.equal(payout);
+      });
+
+      it("never lends the vault's redemption reserve", async function () {
+        const { payout } = await buy();
+        await pool.connect(merchant).redeem(payout);
+        // 100 held against 300 of face: 90 kept back, 10 deployable.
+        await bondProceeds(100n * ONE_USDC, 300n * ONE_USDC);
+        await treasuryAllows(1_000n * ONE_USDC);
+        await elapse(NET_30 + DAY);
+
+        await pool.drawForDueClaim();
+
+        expect(await pool.borrowedFromVault()).to.equal(10n * ONE_USDC);
+        expect(await vault.held()).to.equal(90n * ONE_USDC);
+      });
+
+      it("takes the treasury's money as capital, up to its allowance, and it holds the position", async function () {
+        const { payout } = await buy();
+        await pool.connect(merchant).redeem(payout);
+        await treasuryAllows(60n * ONE_USDC);
+        await ctx.usdc.mint(ctx.admin.address, 1_000n * ONE_USDC);
+        await ctx.usdc.approve(await reserve.getAddress(), 1_000n * ONE_USDC);
+        await reserve.depositIntoExcessReserve(100n * ONE_USDC);
+        await elapse(NET_30 + DAY);
+
+        await expect(pool.drawForDueClaim()).to.emit(pool, "DrewFromTreasury").withArgs(60n * ONE_USDC);
+
+        expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
+        // The co-op's own money buys the position it pays for, as when the Safe funds by hand.
+        expect(await pool.advancedOf(coop.address)).to.equal(60n * ONE_USDC);
+        expect(await pool.borrowedFromReserve()).to.equal(payout - 60n * ONE_USDC);
+        expect(await reserve.excessBalance()).to.equal(100n * ONE_USDC - (payout - 60n * ONE_USDC));
+      });
+
+      it("pays the vault its share of the carry beside the yield pool, as each bore it", async function () {
+        const { payout } = await buy();
+        await pool.connect(merchant).redeem(payout);
+        await depositIntoYieldPool(50n * ONE_USDC);
+        await bondProceeds(500n * ONE_USDC, 600n * ONE_USDC);
+        await elapse(NET_30 + DAY);
+        await pool.drawForDueClaim();
+        const vaultBefore = await vault.held();
+
+        await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
+        await term.materialiseCarry(0);
+        await pool.distributeCarry();
+        const earned = await pool.carryEarned();
+        expect(earned).to.be.greaterThan(0n);
+
+        const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+        await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, owed);
+
+        expect(await pool.borrowed()).to.equal(0n);
+        expect(await pool.carryEarned()).to.equal(0n);
+        expect(await vault.lentToPayoutPool()).to.equal(0n);
+        const toVault = (await vault.held()) - vaultBefore - (payout - 50n * ONE_USDC);
+        const toYield = (await yieldLender.totalAssets()) - 50n * ONE_USDC;
+        // Each paid for what it bore (to the unit the division rounds), and between them all of it.
+        expect(toVault).to.be.closeTo((earned * (payout - 50n * ONE_USDC)) / payout, 1n);
+        expect(toVault).to.be.greaterThan(0n);
+        expect(toVault + toYield).to.equal(earned);
+      });
+    });
   });
 
   /*
