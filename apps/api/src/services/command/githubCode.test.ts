@@ -291,7 +291,7 @@ describe('Contracts’ Code payload', () => {
   test('live, the commits, pull requests, branches, contributors and how fresh it is', async () => {
     process.env.PROVIDER_CONTRACTS = 'live';
     const { CODE } = await read(SEE);
-    expect(Object.keys(CODE).sort()).toEqual(['branches', 'commits', 'contributors', 'names', 'path', 'people', 'poller', 'projects', 'pulls', 'repo', 'watch']);
+    expect(Object.keys(CODE).sort()).toEqual(['branches', 'checks', 'commits', 'contributors', 'names', 'path', 'people', 'poller', 'projects', 'pulls', 'repo', 'watch']);
     expect(CODE.names).toBe('shown');
     // newest first, across branches, the branches it's on in the watched order
     expect(CODE.commits.map((x: any) => x.sha)).toEqual([6, 5, 4, 3, 2, 1].map((n) => sha(n).slice(0, 7)));
@@ -328,6 +328,10 @@ describe('Contracts’ Code payload', () => {
       files: 2,
       contracts: ['RevolvingIssuer'],
       projects: ['proto'],
+      // nothing read yet: no checks, no reviews, nobody asked
+      checks: null,
+      reviews: null,
+      requested: [],
     });
     expect(CODE.branches).toEqual([
       { name: 'dev', commits30: 3, lastAt: Date.parse('2026-10-22T10:00:00Z') },

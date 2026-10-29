@@ -1,5 +1,5 @@
 import { merchantDb } from '../config/merchantDb.js';
-import { codeConfig, liveGithub, pollOnce, pollPulls, recordCodeError, recordPullError } from '../services/command/github.js';
+import { codeConfig, liveGithub, pollChecks, pollOnce, pollPulls, recordCodeError, recordPullError } from '../services/command/github.js';
 
 /*
  * The Command Center's GitHub poller, on a schedule (docs/command-center-plan.md, Phase 5c): every
@@ -9,7 +9,8 @@ import { codeConfig, liveGithub, pollOnce, pollPulls, recordCodeError, recordPul
  * requests, each answered 304 with the last ETag, which costs nothing against GITHUB_TOKEN's rate
  * limit; files are read only for what's new, within a budget a run.
  *
- * GITHUB_TOKEN: a fine-grained token, read-only, Contents on Deed3Labs/Protocol-Contracts. Without
+ * GITHUB_TOKEN: a fine-grained token, read-only: Contents, Pull requests and Actions (for Build's
+ * Checks and Reviews) on Deed3Labs/Protocol-Contracts. Without
  * one it still runs (the repository is public) at 60 requests an hour.
  *
  * Off with COMMAND_GITHUB=off. Safe to run twice at once (every write is idempotent).
@@ -47,6 +48,13 @@ async function tick(reason: string): Promise<void> {
     } catch (error) {
       console.error('[github] pull requests failed:', (error as Error).message);
       await recordPullError(db, c, error).catch(() => undefined);
+    }
+    // Build's Checks and Reviews: the branch's Actions runs, each pull request's checks and reviews (migration 0070)
+    try {
+      const k = await pollChecks(db, src, c);
+      if (k.jobsRead || k.checksRead || k.reviewsRead) console.log(`[github] ${reason}: jobs for ${k.jobsRead} runs, checks for ${k.checksRead} and reviews for ${k.reviewsRead} pull requests`);
+    } catch (error) {
+      console.error('[github] checks failed:', (error as Error).message);
     }
   } finally {
     running = false;
