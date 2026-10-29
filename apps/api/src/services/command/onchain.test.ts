@@ -64,6 +64,9 @@ const reader: ChainReader = {
       // the PayoutPool's claims, the registry's shops and the credit book: none here (credit.test.ts reads them)
       if (c.contract === 'PayoutPool' && !(c.fn in views)) return c.fn === 'reserveToken' ? USDC : 0n;
       if (c.contract === 'MerchantRegistry') return 0n;
+      // the $10 offers' line: 40 owed of a 1,000 cap, 20 of it not yet spent
+      if (c.contract === 'OffersIssuer')
+        return BigInt(usdc(({ owed: 40, cap: 1000, totalUnspent: 20, totalGranted: 50, totalExpired: 10, totalSettled: 0 } as Record<string, number>)[c.fn]));
       if (c.contract === 'ClearCredit' && c.fn === 'decimals') return 6n;
       if (c.contract === 'TermIssuer') return c.fn === 'feeRecipient' ? feeTo : c.fn === 'carryTreasury' ? payout : 0n;
       if (c.contract === 'ClearCredit' && c.fn === 'balanceOf') return BigInt(usdc(c.args![0] === SAFE ? 3.25 : c.args![0] === payout ? 9 : 0));
@@ -367,13 +370,11 @@ describe('the co-op’s balance, live', () => {
 });
 
 describe('the $10 offers’ line, live', () => {
-  test('reads nothing, and asks the chain nothing, until OffersIssuer is deployed', async () => {
-    const before = asked.length;
-    expect(offersAddress()).toBeNull();
-    expect(await offersLive(reader)).toBeNull();
-    expect(asked.length).toBe(before);
+  test('reads what the co-op owes on the deployed OffersIssuer, and Money sends it', async () => {
+    expect(offersAddress()).toBe(C.OffersIssuer.address.toLowerCase());
+    expect(await offersLive(reader)).toEqual({ owed: 40, cap: 1000, unspent: 20, granted: 50, expired: 10, settled: 0 });
     const m: any = await moneySection(db, read());
-    expect(m.OFFERS).toBeNull();
+    expect(m.OFFERS).toEqual({ owed: 40, cap: 1000, unspent: 20, granted: 50, expired: 10, settled: 0 });
   });
 });
 

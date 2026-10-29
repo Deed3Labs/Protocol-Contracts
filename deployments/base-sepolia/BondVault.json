@@ -100,6 +100,28 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "BackstopsUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "treasury",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "assurancePool",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "payoutPool",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "BeaconUpgraded",
       "inputs": [
         {
@@ -129,11 +151,57 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "DrewFromReserve",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "owed",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DrewFromTreasury",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Initialized",
       "inputs": [
         {
           "type": "uint8",
           "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LentToPayoutPool",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "outstanding",
           "indexed": false
         }
       ]
@@ -161,6 +229,40 @@
         {
           "type": "uint64",
           "name": "maturity",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RepaidFromPayoutPool",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "outstanding",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RepaidReserve",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "owed",
           "indexed": false
         }
       ]
@@ -427,6 +529,20 @@
     },
     {
       "type": "function",
+      "name": "assurancePool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "coversNearTermMaturities",
       "constant": true,
       "stateMutability": "view",
@@ -568,6 +684,38 @@
     },
     {
       "type": "function",
+      "name": "lendToPayoutPool",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "lent"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lentToPayoutPool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "minReserveBps",
       "constant": true,
       "stateMutability": "view",
@@ -641,6 +789,34 @@
     },
     {
       "type": "function",
+      "name": "owedToReserve",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "payoutPool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "proxiableUUID",
       "constant": true,
       "stateMutability": "view",
@@ -694,6 +870,32 @@
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "repayFromPayoutPool",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "repayReserve",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "paid"
+        }
+      ]
     },
     {
       "type": "function",
@@ -775,6 +977,27 @@
         {
           "type": "uint64",
           "name": "newMaturity"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setBackstops",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_treasury"
+        },
+        {
+          "type": "address",
+          "name": "_assurancePool"
+        },
+        {
+          "type": "address",
+          "name": "_payoutPool"
         }
       ],
       "outputs": []
@@ -889,6 +1112,48 @@
     {
       "type": "function",
       "name": "totalPrincipal",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "treasury",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "treasuryAvailable",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "uncoveredNearTerm",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
