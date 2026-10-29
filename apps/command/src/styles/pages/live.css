@@ -83,8 +83,9 @@ button.fw-k{text-align:left;cursor:pointer}
 .mk2:has(> span:only-child:not(:has(i))){flex:1;display:flex}
 .bt tbody tr > td[colspan]:only-child:has(> span.quiet:only-child){height:120px;text-align:center !important;font-size:12.5px;color:var(--fg-70);background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
 .led > div:only-child:has(> span:only-child){display:grid;place-items:center;min-height:120px;border-bottom:0;font-size:12.5px;background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
-/* a list's mono header (.lbl, 11px, with the list's rule under it) wherever a page labels a group: Shop's
-   "Pickup points · 4 weeks" above its list or its empty state, and Team's Grow / Hold / Rules / Admin
-   over the permission columns */
-.gv-g + .gv-e,.gv-g + .lv-e{border-top:1px solid var(--line)}
-.ad-mx-g > span:not(:first-child){font:400 11px/1.3 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--fg-50);border-bottom:1px solid var(--line);box-shadow:none;padding:14px 0 8px;margin:0 6px}
+/* a list's group label is the style guide's tinted band (useclear.org/style, A product list): 10px mono
+   on a 4% tint, 32px, a hairline under it. Shop's "Pickup points · 4 weeks" and every other .gv-g group
+   in a list, and Team's Grow / Hold / Rules / Admin over the permission columns */
+.gv-g{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;padding:0 22px;background:color-mix(in srgb,var(--fg) 4%,transparent);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+.gv-g .lbl{font-size:10px;letter-spacing:.1em;color:var(--fg-50);padding:0}
+.ad-mx-g > span:not(:first-child){display:flex;align-items:center;height:32px;padding:0 10px;margin:0 1px;font:400 10px/1 var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--fg-50);background:color-mix(in srgb,var(--fg) 4%,transparent);border-bottom:1px solid var(--hair);box-shadow:none}
