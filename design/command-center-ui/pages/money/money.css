@@ -133,7 +133,7 @@ button.nh-r:hover,.nh-r.on{background:color-mix(in srgb,var(--raised) 70%,transp
 .ncr-h{display:flex;flex-direction:column;gap:6px} .ncr-h > span{font-size:12px;color:var(--fg-50)}
 .ncr-t{display:flex;height:14px;background:var(--hair)} .ncr-t i{display:block;height:100%;background:var(--fg)} .ncr-t i.s{background:color-mix(in srgb,var(--fg) 40%,transparent)}
 .ncr .f-key b{font-weight:600;margin-left:4px;font-variant-numeric:tabular-nums}
-.ncr-eq{align-self:center;padding-left:28px;border-left:1px solid var(--hair)}
+.ncr-eq{align-self:stretch;align-content:center;margin-block:-20px;padding:20px 0 20px 28px;border-left:1px solid var(--hair)}
 .ncb,.npd{flex:1;display:flex;flex-direction:column;gap:16px;padding:20px 22px}
 .ncb .m-big small,.npd .m-big small,.nrun .m-big small,.ngt .m-big small{display:block;font-size:13px;font-weight:400;color:var(--fg-70);letter-spacing:0;margin-top:6px}
 .ncb-bar{display:flex;gap:2px;height:14px} .ncb-bar i{display:block;background:var(--fg)}
@@ -226,7 +226,7 @@ select.vin{appearance:auto}
 @media (max-width:1180px){ .nh-r{grid-template-columns:12px minmax(0,1.5fr) 120px 80px 96px 104px} .nmv-r{grid-template-columns:44px minmax(0,1fr) 100px 200px} }
 @media (max-width:1024px){
   .s3{grid-column:span 6} .npt:nth-child(odd){border-left:0}
-  .ncr{grid-template-columns:1fr} .ncr-eq{padding-left:0;border-left:0;padding-top:20px;border-top:1px solid var(--hair)}
+  .ncr{grid-template-columns:1fr} .ncr-eq{margin-block:0;padding:20px 0 0;border-left:0;border-top:1px solid var(--hair)}
   .nlo{grid-template-columns:1fr} .nlo-g + .nlo-g{border-left:0;border-top:1px solid var(--hair)}
   .nh-r{grid-template-columns:12px minmax(0,1fr) 110px 96px 104px} .nh-r > .nh-sp,.nh-r.nh-hd > :nth-child(4){display:none}
 }

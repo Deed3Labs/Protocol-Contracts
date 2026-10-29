@@ -102,16 +102,19 @@ const HOME = (() => {
   const units = (() => { const u = []; for (let b=0;b<12;b++){ const a=[13,13,12,11,11,10,10,10,9,9,8,8][b], o=[6,6,6,5,5,6,6,5,5,5,5,4][b]; for (let i=0;i<25;i++) u.push(i<a?'h-u-a':i<a+o?'h-u-o':'h-u-n'); } return u; })();
   const CG = [['Access',['','','','','c','']],['Issue',['','','','','']],['Tokens',['','']],['Pools',['','','','','x','f','w','']],['Capital',['f','']],['Deeds',['','','','','','','','c']]];
   const tree = (() => {
-    const W=24, H=11, L=[0,20,40,60], cx=170, xs=[98,146,194,242];
-    const node = (x,y,c,due) => `<rect class="${c}" x="${x-W/2+.5}" y="${y+.5}" width="${W-1}" height="${H-1}"/>${due?`<rect class="h-due" x="${x+W/2-2}" y="${y-3}" width="5" height="5"/>`:''}`;
-    const ln = d => `<path class="h-ln" d="${d}"/>`; let g = '';
-    ['Co-op','Subs','Manager','Holdings'].forEach((t,i)=>{ g += `<text x="0" y="${L[i]+9}">${t}</text>`; });
-    g += ln(`M${cx} ${L[0]+H}V${L[1]-4.5}M${xs[0]} ${L[1]-4.5}H${xs[3]}`+xs.map(x=>`M${x} ${L[1]-4.5}V${L[1]}`).join(''));
-    g += ln(`M${xs[2]} ${L[1]+H}V${L[2]}`);
-    g += ln(`M${xs[2]} ${L[2]+H}V${L[3]-4.5}M${xs[2]-24} ${L[3]-4.5}H${xs[2]+24}M${xs[2]-24} ${L[3]-4.5}V${L[3]}M${xs[2]+24} ${L[3]-4.5}V${L[3]}`);
-    g += node(cx,L[0],'n',1) + node(xs[0],L[1],'n') + node(xs[1],L[1],'f') + node(xs[2],L[1],'n') + node(xs[3],L[1],'n',1) + node(xs[2],L[2],'f') + node(xs[2]-24,L[3],'p') + node(xs[2]+24,L[3],'p');
-    g += `<path class="dv" d="M282.5 0V71"/>` + node(316,L[0],'f') + `<text x="316" y="${L[1]+9}" text-anchor="middle">Outside</text>`;
-    return `<svg class="h-gt" width="100%" height="72" viewBox="0 0 342 72" preserveAspectRatio="xMinYMid meet" aria-hidden="true">${g}</svg>`;
+    /* the same tree as Governance → Entities, drawn small: each box is a card (name, footer rule, status square) */
+    const W=60, H=20, X=[43,128,214,299], CO=171, Y=[12,42,72];
+    const card = (x,y,c,t) => `<g class="${c}"><rect class="bx" x="${x-W/2+.5}" y="${y+.5}" width="${W-1}" height="${H-1}"/><path class="nm" d="M${x-W/2+6} ${y+6.5}H${x-W/2+6+t}"/><path class="ft" d="M${x-W/2+1} ${y+13.5}H${x+W/2-1}"/><rect class="st" x="${x-W/2+5}" y="${y+15}" width="3" height="3"/></g>`;
+    const ln = (d,c='h-ln') => `<path class="${c}" d="${d}"/>`;
+    let g = `<defs><pattern id="hgt-h" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0V4" style="stroke:var(--line);stroke-width:1"/></pattern></defs>`;
+    g += `<text x="${X[0]}" y="7" text-anchor="middle">Outside</text><text x="${CO}" y="7" text-anchor="middle">Members</text>`;
+    g += ln(`M${CO} ${Y[0]+H}V${Y[1]-5}M${X[0]} ${Y[1]-5}H${X[3]}`+X.map(x=>`M${x} ${Y[1]-5}V${Y[1]}`).join(''));
+    g += ln(`M${X[2]} ${Y[1]+H}V${Y[2]-5}M${X[1]} ${Y[2]-5}H${X[3]}`+X.slice(1).map(x=>`M${x} ${Y[2]-5}V${Y[2]}`).join(''));
+    g += ln(`M${X[0]-18} ${Y[0]+H}V${Y[1]}`,'dt') + ln(`M${X[1]} ${Y[2]+H}V${Y[2]+H+5}H${X[3]}V${Y[2]+H}M${X[2]} ${Y[2]+H}V${Y[2]+H+5}`,'dt');
+    g += card(X[0],Y[0],'out ing',34) + card(CO,Y[0],'',26);
+    g += card(X[0],Y[1],'',32) + card(X[1],Y[1],'',38) + card(X[2],Y[1],'',40) + card(X[3],Y[1],'ing',36);
+    g += card(X[1],Y[2],'ing',28) + card(X[2],Y[2],'pl',38) + card(X[3],Y[2],'pl',32);
+    return `<svg class="h-gt" width="100%" height="100" viewBox="0 0 342 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${g}</svg>`;
   })();
   const sw = (s) => `<i style="${s}"></i>`;
   const TILES = () => [
@@ -130,7 +133,7 @@ const HOME = (() => {
      viz:`<div class="h-pc">${CG.map(([n,a],i)=>`<div class="h-pc-c ${i===5?'h-dd':''}"><div class="h-pc-s">${a.map(c=>`<i class="${c}"></i>`).join('')}</div><s>${n}</s></div>`).join('')}</div>`,
      key:`<span>${sw('box-shadow:inset 0 0 0 2px var(--live)')}On you</span><span>${sw('box-shadow:inset 0 0 0 2px var(--underway)')}Pending</span><span><i class="h-hatch"></i>Not funded</span><span>${sw('outline:1px dashed var(--fg-50);outline-offset:-1px')}Not deployed</span>`},
     {go:'governance', n:'Governance', chip:['under','3 due'], f:'4', fs:' of 9', s:'entities formed · 6 of 15 board seats filled', viz:tree,
-     key:`<span>${sw('background:var(--fg)')}Formed</span><span>${sw('outline:1.5px dashed var(--underway);outline-offset:-1.5px')}Forming</span><span>${sw('outline:1px dashed var(--fg-50);outline-offset:-1px')}Planned</span><span>${sw('background:var(--underway);width:6px;height:6px')}Filing due</span>`}
+     key:`<span>${sw('background:var(--fg)')}Formed</span><span>${sw('background:var(--underway)')}Forming</span><span>${sw('background:repeating-linear-gradient(45deg,var(--fg-50) 0 1px,transparent 1px 3px);outline:1px solid var(--line);outline-offset:-1px')}Planned</span><span>${sw('outline:1px dashed var(--fg);outline-offset:-1px')}Ownerless</span>`}
   ];
   const pulse = () => `<div class="h-bento">${TILES().map(t=>`<button type="button" class="h-cell h-s4 h-pt" data-go="${t.go}" aria-label="${t.n}: open the section"><span class="h-pt-in">
     <span class="h-pt-h">${ic(t.go)}<b>${t.n}</b>${t.chip?`<span class="h-chip ${t.chip[0]}">${t.chip[1]}</span>`:''}</span>

@@ -310,7 +310,7 @@ button.cm-li:hover{background:var(--raised)} button.cm-li .num{font-weight:500}
 .figsub{font-size:13px;line-height:1.45;color:var(--fg-70);font-variant-numeric:tabular-nums}
 .c-ft{border-top:1px solid var(--hair);display:grid;grid-template-columns:minmax(0,1fr)}
 .c-ft.split{grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr);align-items:center}
-.c-ft .rule{width:1px;height:24px;background:var(--hair)}
+.c-ft .rule{width:1px;height:auto;align-self:stretch;background:var(--hair)}
 .c-ft > button,.c-ft > div.row{display:flex;align-items:center;justify-content:space-between;gap:var(--s1);min-height:48px;padding:0 var(--s3);color:var(--fg-70);font-size:14px;min-width:0;transition:color var(--hover) var(--ease),background var(--hover) var(--ease)}
 .c-ft > button:hover{color:var(--fg);background:var(--raised)}
 .c-ft span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2082,7 +2082,7 @@ button.hb:hover .hb-k{text-decoration:underline;text-underline-offset:3px}
 .pf{margin-left:0;padding:0 var(--s3);gap:var(--s3)}
 .cell > .p-ft{grid-row:auto}
 .p-ft{display:grid;grid-template-columns:minmax(0,1fr) 1px auto;align-items:center;min-height:56px;border-top:1px solid var(--line)}
-.p-ft .rule{width:1px;height:24px;background:var(--hair)}
+.p-ft .rule{width:1px;height:auto;align-self:stretch;background:var(--hair)}
 .flt{display:flex;gap:var(--s3);overflow-x:auto;scrollbar-width:none;min-width:0}
 .flt::-webkit-scrollbar{display:none}
 .flt button{display:inline-flex;align-items:center;gap:var(--s1);height:32px;font:400 11.5px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.1em;color:var(--fg-50);border-bottom:1px solid transparent;white-space:nowrap;transition:color var(--hover) var(--ease),border-color var(--hover) var(--ease)}
@@ -2730,10 +2730,7 @@ button.h-al-t:hover b{text-decoration:underline;text-decoration-color:var(--line
 .h-gt{display:block;overflow:visible}
 .h-gt text{font:400 9.5px var(--f-mono);fill:var(--fg-50);letter-spacing:.06em;text-transform:uppercase}
 .h-gt .h-ln{stroke:var(--line);stroke-width:1;fill:none;shape-rendering:crispEdges}
-.h-gt .n{fill:var(--fg)}
-.h-gt .f{fill:var(--ground);stroke:var(--underway);stroke-width:1.5;stroke-dasharray:3 2}
-.h-gt .p{fill:none;stroke:var(--fg-50);stroke-width:1;stroke-dasharray:2 2}
-.h-gt .h-due{fill:var(--underway)}
+.h-gt .bx{fill:var(--ground);stroke:var(--fg);stroke-width:1}.h-gt .ing .bx{stroke:var(--underway)}.h-gt .pl .bx{fill:url(#hgt-h);stroke:var(--line)}.h-gt .out .bx{stroke:var(--fg);stroke-dasharray:3 2}.h-gt .nm{stroke:var(--fg-70);stroke-width:2}.h-gt .pl .nm{stroke:var(--fg-50)}.h-gt .ft{stroke:var(--hair);stroke-width:1;shape-rendering:crispEdges}.h-gt .st{fill:var(--fg)}.h-gt .ing .st{fill:var(--underway)}.h-gt .pl .st{fill:var(--fg-50)}.h-gt .dt{stroke:var(--fg-50);stroke-width:1;stroke-dasharray:2 2;fill:none;shape-rendering:crispEdges}
 .h-gt .dv{stroke:var(--hair);stroke-dasharray:2 3;shape-rendering:crispEdges}
 /* timeline: one lane per section on a shared day grid. Squares happened, rails running, markers due. */
 .h-tx{padding:16px 22px 14px}

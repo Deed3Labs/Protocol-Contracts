@@ -242,6 +242,7 @@ const apply = {
   merchants(d) {
     replace(TX, d.TX);
     replace(TXO, TX.map(T));
+    vars.txFromMerchants = true;
     replace(SIGNED, d.SIGNED);
     replace(PROSPECTS, d.PROSPECTS);
     assign(OWED, d.OWED);
@@ -278,8 +279,11 @@ const apply = {
     replace(BONDS, d.BONDS);
     replace(ACCTS, d.ACCTS);
     assign(ENTRIES, d.ENTRIES);
-    replace(TX, d.TX);
-    replace(TXO, TX.map(T));
+    // the shops as Money sends them (the old Money page's), never over Merchants' own, whichever loads last (Home loads both)
+    if (!vars.txFromMerchants) {
+      replace(TX, d.TX);
+      replace(TXO, TX.map(T));
+    }
     mergeSummary(d.MEMBER_SUMMARY);
     if (d.SET_ASIDE) vars.setAside = d.SET_ASIDE;
     // live, Lithic's card spend and what's moving through Bridge (Phase 6b)
@@ -414,6 +418,8 @@ const apply = {
     vars.shopNames = d.SHOP_NAMES;
     vars.posterCount = d.POSTERS;
     replace(DEADLINES, d.DEADLINES);
+    // the entities, as Governance's: Home draws them as a small tree
+    if (d.ENT) replace(ENT, d.ENT);
     const f = d.figures;
     replace(FUNNEL, f['home.funnel']);
     // the stored alerts, and the shop's materials at or under their low mark (Phase 10c)

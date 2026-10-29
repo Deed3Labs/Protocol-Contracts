@@ -1,12 +1,16 @@
 // @ts-nocheck: reads the sections' untyped data (src/sections/data.tsx), as the other section files do.
 import { Fragment } from 'react';
-import { REAL } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import { feedList } from '../live/feeds';
+import { loadSection, needsData } from '../live/sections';
 import { css, html } from '../runtime/dom';
 import { ic, int, money } from './core';
-import { ALERTS0, DEADLINES, FUNNEL, MON, NEED, S, W_ICON, vars } from './data';
+import { buildLive } from './buildLive';
+import { ALERTS0, DEADLINES, ENT, FUNNEL, MON, NEED, S, W_ICON, vars } from './data';
+import { fmLive } from './fmLive';
 import { HOME_DEMO, HOME_QV } from './homeData';
-import { finish, go, render, toast, vRO } from './shell';
+import { moneyLive } from './moneyLive';
+import { finish, go, render, toast, vLevel, vRO } from './shell';
 
 /*
  * Home (design/command-center-ui, the HOME module): a brief and four vitals, what needs you beside the
@@ -484,43 +488,57 @@ function funnelViz(F) {
     </div>
   );
 }
-/** The co-op's entities as a small tree: the co-op, its subsidiaries, the manager, the holdings. */
+/**
+ * The co-op's entities as a small tree, the same as Governance → Entities: the Foundation outside it, the
+ * co-op over its four subsidiaries, and Holdings over the manager and the two funds it manages. Each box
+ * is a card (a name line, a footer rule, a status square) in its entity's status, from Governance's data.
+ */
 function treeViz() {
-  const W = 24,
-    H = 11,
-    L = [0, 20, 40, 60],
-    cx = 170,
-    xs = [98, 146, 194, 242];
-  const node = (k, x, y, c, due) => (
-    <Fragment key={k}>
-      <rect className={c} x={x - W / 2 + 0.5} y={y + 0.5} width={W - 1} height={H - 1} />
-      {due ? <rect className="h-due" x={x + W / 2 - 2} y={y - 3} width="5" height="5" /> : ''}
-    </Fragment>
-  );
-  const ln = (k, d) => <path key={k} className="h-ln" d={d} />;
+  const W = 60,
+    H = 20,
+    X = [43, 128, 214, 299],
+    CO = 171,
+    Y = [12, 42, 72];
+  const st = Object.fromEntries(ENT.map((e) => [e[0], e[3]]));
+  const cls = (id) => ({ formed: '', forming: 'ing' })[st[id]] ?? 'pl';
+  // id, x, y, the name line's length
+  const at = [
+    ['fdn', X[0], Y[0], 34],
+    ['coop', CO, Y[0], 26],
+    ['labs', X[0], Y[1], 32],
+    ['fin', X[1], Y[1], 38],
+    ['hold', X[2], Y[1], 40],
+    ['dt', X[3], Y[1], 36],
+    ['mgr', X[1], Y[2], 28],
+    ['prop', X[2], Y[2], 38],
+    ['lend', X[3], Y[2], 32],
+  ];
+  const ln = (k, d, c = 'h-ln') => <path key={k} className={c} d={d} />;
   return (
-    <svg className="h-gt" width="100%" height="72" viewBox="0 0 342 72" preserveAspectRatio="xMinYMid meet" aria-hidden="true">
-      {['Co-op', 'Subs', 'Manager', 'Holdings'].map((t, i) => (
-        <text key={t} x="0" y={L[i] + 9}>
-          {t}
-        </text>
-      ))}
-      {ln('l1', `M${cx} ${L[0] + H}V${L[1] - 4.5}M${xs[0]} ${L[1] - 4.5}H${xs[3]}` + xs.map((x) => `M${x} ${L[1] - 4.5}V${L[1]}`).join(''))}
-      {ln('l2', `M${xs[2]} ${L[1] + H}V${L[2]}`)}
-      {ln('l3', `M${xs[2]} ${L[2] + H}V${L[3] - 4.5}M${xs[2] - 24} ${L[3] - 4.5}H${xs[2] + 24}M${xs[2] - 24} ${L[3] - 4.5}V${L[3]}M${xs[2] + 24} ${L[3] - 4.5}V${L[3]}`)}
-      {node('n0', cx, L[0], 'n', 1)}
-      {node('n1', xs[0], L[1], 'n')}
-      {node('n2', xs[1], L[1], 'f')}
-      {node('n3', xs[2], L[1], 'n')}
-      {node('n4', xs[3], L[1], 'n', 1)}
-      {node('n5', xs[2], L[2], 'f')}
-      {node('n6', xs[2] - 24, L[3], 'p')}
-      {node('n7', xs[2] + 24, L[3], 'p')}
-      <path className="dv" d="M282.5 0V71" />
-      {node('n8', 316, L[0], 'f')}
-      <text x="316" y={L[1] + 9} textAnchor="middle">
+    <svg className="h-gt" width="100%" height="100" viewBox="0 0 342 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <defs>
+        <pattern id="hgt-h" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <path d="M0 0V4" style={css('stroke:var(--line);stroke-width:1')} />
+        </pattern>
+      </defs>
+      <text x={X[0]} y="7" textAnchor="middle">
         Outside
       </text>
+      <text x={CO} y="7" textAnchor="middle">
+        Members
+      </text>
+      {ln('l1', `M${CO} ${Y[0] + H}V${Y[1] - 5}M${X[0]} ${Y[1] - 5}H${X[3]}` + X.map((x) => `M${x} ${Y[1] - 5}V${Y[1]}`).join(''))}
+      {ln('l2', `M${X[2]} ${Y[1] + H}V${Y[2] - 5}M${X[1]} ${Y[2] - 5}H${X[3]}` + X.slice(1).map((x) => `M${x} ${Y[2] - 5}V${Y[2]}`).join(''))}
+      {ln('d1', `M${X[0] - 18} ${Y[0] + H}V${Y[1]}`, 'dt')}
+      {ln('d2', `M${X[1]} ${Y[2] + H}V${Y[2] + H + 5}H${X[3]}V${Y[2] + H}M${X[2]} ${Y[2] + H}V${Y[2] + H + 5}`, 'dt')}
+      {at.map(([id, x, y, t]) => (
+        <g key={id} className={id === 'fdn' ? `out ${cls(id)}` : cls(id)}>
+          <rect className="bx" x={x - W / 2 + 0.5} y={y + 0.5} width={W - 1} height={H - 1} />
+          <path className="nm" d={`M${x - W / 2 + 6} ${y + 6.5}H${x - W / 2 + 6 + t}`} />
+          <path className="ft" d={`M${x - W / 2 + 1} ${y + 13.5}H${x + W / 2 - 1}`} />
+          <rect className="st" x={x - W / 2 + 5} y={y + 15} width="3" height="3" />
+        </g>
+      ))}
     </svg>
   );
 }
@@ -533,6 +551,86 @@ const hatched = (
     ))}
   </div>
 );
+/*
+ * Live, the Merchants, Money and Build tiles draw from those pages' own sections (their datasets, as the
+ * pages build them), loaded beside Home's once each; until one arrives, or for someone who can't see the
+ * page, its tile is hatched and still opens it.
+ */
+const SIDE = ['merchants', 'money', 'build'];
+const sideLoading = new Set();
+function sideLoad() {
+  if (!LIVE) return;
+  for (const r of SIDE) {
+    if (!needsData(r) || sideLoading.has(r) || vLevel(r) < 1) continue;
+    sideLoading.add(r);
+    loadSection(r).then(
+      () => {
+        sideLoading.delete(r);
+        if (S.route === 'home') render();
+      },
+      // left marked: a section it can't load isn't asked for again
+      () => undefined,
+    );
+  }
+}
+const loaded = (r) => !LIVE || !needsData(r);
+/** "$42.4k" */
+const kMoney = (v) => (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(1)}k` : money(v));
+const signed = (v) => `${v < 0 ? '−' : '+'}${money(Math.abs(v))}`;
+/** Partner shops: transacting, signing, signed and idle (Merchants' own list). */
+function liveShops() {
+  if (!loaded('merchants')) return null;
+  const P = fmLive().MS.filter((m) => ['transacting', 'signing', 'signed'].includes(m.stage));
+  const n = (st) => P.filter((m) => m.stage === st).length;
+  const cities = new Set(P.map((m) => m.city).filter(Boolean)).size;
+  return { live: n('transacting'), signing: n('signing'), of: P.length, s: `partner shops transacting${cities ? ` · ${cities} ${cities === 1 ? 'city' : 'cities'}` : ''}` };
+}
+/** What's held, by whose it is, and this week's change (Money's accounts). */
+function liveMoney() {
+  if (!loaded('money')) return null;
+  const GR = [
+    ['members', 'Members’'],
+    ['coop', 'Co-op’s'],
+    ['set', 'Set aside', 1],
+  ];
+  // id, name, what, group, source, balance, weeks, colour, weeks it really has
+  const A = GR.flatMap(([g]) => moneyLive().ACCTS.filter((a) => a[3] === g));
+  if (!A.length) return null;
+  const held = A.reduce((t, a) => t + a[5], 0);
+  const wk = (a) => (a[8] >= 2 ? a[5] - a[6][a[6].length - 2] : 0);
+  const moved = A.reduce((t, a) => t + wk(a), 0);
+  const top = A.reduce((b, a) => (Math.abs(wk(a)) > Math.abs(b ? wk(b) : 0) ? a : b), null);
+  const lc = (n) => (/^[A-Z][a-z]/.test(n) ? n[0].toLowerCase() + n.slice(1) : n);
+  return {
+    held,
+    s: `held across ${A.length} ${A.length === 1 ? 'account' : 'accounts'}${moved ? ` · ${signed(moved)} this week` : ''}`,
+    groups: GR.map(([g, n, rt]) => {
+      const v = A.filter((a) => a[3] === g).reduce((t, a) => t + a[5], 0);
+      return [n, kMoney(v), held ? (v / held) * 100 : 1, rt];
+    }),
+    parts: A.map((a) => [held ? a[5] : 1, a[7]]),
+    names: A.map((a) => a[1]).join(' · '),
+    key: top ? `Biggest mover: ${lc(top[1])}, ${signed(wk(top))} this week` : 'Nothing moved this week',
+  };
+}
+/** The contracts by layer, deeds apart: live, pending in the Ops Safe, waiting on you, not deployed (Build's map). */
+function liveBuild() {
+  if (!loaded('build')) return null;
+  const B = buildLive();
+  if (!B.CTR.length) return null;
+  const pend = {};
+  for (const c of B.CHANGES) if (c.st === 'safe' && c.contract && !c.block) pend[c.contract] = c.need === B.me ? 'w' : (pend[c.contract] ?? 'c');
+  const cls = (c) => (c[4] !== 'live' ? 'x' : (pend[c[0]] ?? ''));
+  const LAY = ['Access', 'Issue', 'Tokens', 'Pools', 'Capital'];
+  const groups = [...LAY.map((n, i) => [n, B.CTR.filter((c) => c[9] !== 'd' && c[3] === i).map(cls)]), ['Deeds', B.CTR.filter((c) => c[9] === 'd').map(cls)]];
+  const flight = B.CHANGES.filter((c) => c.contract && c.st !== 'shipped').length;
+  return {
+    f: B.deployed,
+    of: B.CTR.length,
+    s: `live${B.chain.network ? ` on ${B.chain.network}` : ''} · ${flight ? `${flight} ${flight === 1 ? 'change' : 'changes'} in flight` : 'nothing in flight'}`,
+    groups,
+  };
+}
 function tiles(M) {
   const D = M.tiles;
   const F = FUNNEL.map(([n, v]) => [{ Activated: 'Active', 'First spend': 'Spent' }[n] || n, v]);
@@ -547,7 +645,10 @@ function tiles(M) {
       op = m.opened ?? 0;
     for (let i = 0; i < Math.max(inv, 1); i++) units.push(i < act ? 'h-u-a' : i < act + op ? 'h-u-o' : 'h-u-n');
   }
-  const shops = D ? D.merchants : { live: (vars.shopNames ?? []).length, of: (vars.shopNames ?? []).length, signing: 0, s: 'partner shops transacting' };
+  const shops = D ? D.merchants : liveShops();
+  const mo = D ? null : liveMoney();
+  const bd = D ? null : liveBuild();
+  const formed = ENT.filter((e) => e[3] === 'formed').length;
   return [
     {
       go: 'growth',
@@ -592,15 +693,17 @@ function tiles(M) {
     {
       go: 'merchants',
       n: 'Merchants',
-      f: String(shops.live),
-      fs: ` of ${shops.of}`,
-      s: shops.s,
-      viz: (
+      f: shops ? String(shops.live) : '—',
+      fs: shops ? ` of ${shops.of}` : '',
+      s: shops ? shops.s : 'Opens Merchants',
+      viz: shops ? (
         <div className="h-units" style={css('grid-template-columns:repeat(15,1fr);gap:3px')}>
           {Array.from({ length: Math.max(shops.of, 1) }, (_, i) => (
             <i key={i} className={i < shops.live ? 'h-u-a' : i < shops.live + shops.signing ? 'h-hatch' : 'h-u-n'} />
           ))}
         </div>
+      ) : (
+        hatched
       ),
       key: (
         <>
@@ -622,12 +725,12 @@ function tiles(M) {
     {
       go: 'money',
       n: 'Money',
-      f: D ? money(D.money.held) : '—',
-      s: D ? D.money.s : 'Opens Money',
-      viz: D ? (
+      f: D ? money(D.money.held) : mo ? money(mo.held) : '—',
+      s: D ? D.money.s : mo ? mo.s : 'Opens Money',
+      viz: D || mo ? (
         <>
           <div className="h-mz">
-            {D.money.groups.map(([n, v, flex, rt]) => (
+            {(D ? D.money : mo).groups.map(([n, v, flex, rt]) => (
               <div key={n} className={`h-mz-g${rt ? ' h-rt' : ''}`} style={css(`flex:${flex}`)}>
                 <span>{n}</span>
                 <b>{v}</b>
@@ -635,8 +738,8 @@ function tiles(M) {
               </div>
             ))}
           </div>
-          <div className="h-comp" title="Savings · Yield pool · Operating · Co-op balance · Payout pool · AssurancePool">
-            {D.money.parts.map(([flex, bg], i) => (
+          <div className="h-comp" title={D ? 'Savings · Yield pool · Operating · Co-op balance · Payout pool · AssurancePool' : mo.names}>
+            {(D ? D.money : mo).parts.map(([flex, bg], i) => (
               <Fragment key={i}>{sw(`flex:${flex};background:${bg}`)}</Fragment>
             ))}
           </div>
@@ -644,18 +747,18 @@ function tiles(M) {
       ) : (
         hatched
       ),
-      key: <span>{D ? D.money.key : 'Not in Home’s figures yet'}</span>,
+      key: <span>{D ? D.money.key : mo ? mo.key : 'Not in Home’s figures yet'}</span>,
     },
     {
       go: 'build',
       n: 'Build',
       chip: !vRO() && S.waiting.some((w) => w.id === 'chain') ? ['live', '1 on you'] : null,
-      f: D ? D.build.f : '—',
-      fs: D ? ` of ${D.build.of}` : '',
-      s: D ? D.build.s : 'Opens Build',
-      viz: D ? (
+      f: D ? D.build.f : bd ? String(bd.f) : '—',
+      fs: D ? ` of ${D.build.of}` : bd ? ` of ${bd.of}` : '',
+      s: D ? D.build.s : bd ? bd.s : 'Opens Build',
+      viz: D || bd ? (
         <div className="h-pc">
-          {D.build.groups.map(([n, a], i) => (
+          {(D ? D.build : bd).groups.map(([n, a], i) => (
             <div key={n} className={`h-pc-c ${i === 5 ? 'h-dd' : ''}`}>
               <div className="h-pc-s">
                 {a.map((c, j) => (
@@ -694,10 +797,10 @@ function tiles(M) {
       go: 'governance',
       n: 'Governance',
       chip: D ? ['under', D.governance.due] : DEADLINES.length ? ['under', `${DEADLINES.length} due`] : null,
-      f: D ? D.governance.f : '—',
-      fs: D ? ` of ${D.governance.of}` : '',
-      s: D ? D.governance.s : 'Opens Governance',
-      viz: D ? treeViz() : hatched,
+      f: ENT.length ? String(formed) : '—',
+      fs: ENT.length ? ` of ${ENT.length}` : '',
+      s: D ? D.governance.s : ENT.length ? 'entities formed' : 'Opens Governance',
+      viz: ENT.length ? treeViz() : hatched,
       key: (
         <>
           <span>
@@ -705,16 +808,16 @@ function tiles(M) {
             Formed
           </span>
           <span>
-            {sw('outline:1.5px dashed var(--underway);outline-offset:-1.5px')}
+            {sw('background:var(--underway)')}
             Forming
           </span>
           <span>
-            {sw('outline:1px dashed var(--fg-50);outline-offset:-1px')}
+            {sw('background:repeating-linear-gradient(45deg,var(--fg-50) 0 1px,transparent 1px 3px);outline:1px solid var(--line);outline-offset:-1px')}
             Planned
           </span>
           <span>
-            {sw('background:var(--underway);width:6px;height:6px')}
-            Filing due
+            {sw('outline:1px dashed var(--fg);outline-offset:-1px')}
+            Ownerless
           </span>
         </>
       ),
@@ -1312,6 +1415,7 @@ export function homeHub() {
     document.body.classList.remove('h-pn');
   }
   const M = model();
+  sideLoad();
   return (
     <div className="h-home">
       {header(M)}

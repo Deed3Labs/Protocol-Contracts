@@ -248,7 +248,7 @@ function renderDevices(){
   const rows = Object.entries(FLEET).map(([id,f])=>({ m:MSBY[id], f, bad: Object.values(f).flat().includes('off') ? 'off' : Object.values(f).flat().includes('low') ? 'low' : '' })).sort((a,b)=>(b.bad?1:0)-(a.bad?1:0));
   const all = rows.flatMap(r=>DTYPE.flatMap(([k])=>r.f[k]||[])), off = all.filter(x=>x==='off').length, low = all.filter(x=>x==='low').length;
   const fleet = `<div class="cell s12"><div class="hd"><h2>Devices at shops</h2><div class="r"><span class="lbl">${all.length} devices · ${off} offline · ${low} battery low</span></div></div>
-      <div class="bt-wrap"><table class="bt xd"><colgroup><col style="width:22%"><col style="width:10%"><col style="width:16%"><col style="width:10%"><col style="width:10%"><col style="width:12%"><col style="width:20%"></colgroup>
+      <div class="bt-wrap"><table class="bt xd"><colgroup><col style="width:28%"><col style="width:10%"><col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:19%"></colgroup>
         <thead><tr><th class="c-nm">Shop</th>${DTYPE.map(([k,t])=>`<th style="text-align:left">${t}</th>`).join('')}<th>Checked in</th><th style="text-align:left">What’s next</th></tr></thead><tbody>
         ${rows.map(({m,f,bad})=>{ const st = devFix(m), di = st ? STOPS.indexOf(st)+1 : 0;
           return `<tr data-xopen="${m.id}" class="${bad}"><td class="tn"><b>${m.name}</b><span class="${bad?'warn':''}">${bad ? f.note : m.city}</span>
