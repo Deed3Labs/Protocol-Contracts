@@ -296,32 +296,60 @@ export async function reserveLive(db: Queryable, reader: ChainReader, now: numbe
 export interface CoopLive {
   /** Where the co-op's fee on each financed sale is credited: TermIssuer's fee recipient, else its carry treasury. */
   recipient: string;
-  /** Its ClearCredit balance, in dollars: the fees the co-op holds, spent only by a member vote. */
+  /** Whose holdings are counted: the Ops Safe when it's set, else the fee recipient. */
+  holder: string;
+  /** What it holds, in dollars: USDC (the Ops Safe's only), and CLRUSD credited to it. */
+  usdc: number;
+  clrusd: number;
+  /** The two together: the co-op's own money on chain, spent only by a member vote. */
   balance: number;
   /** The balance at the end of each of the last six weeks, then now. */
   weeks: number[];
 }
 
 /**
- * The co-op's balance: the ClearCredit its fee recipient holds. A financed sale pays the shop the price
- * less its fee and credits the co-op the difference, at TermIssuer's fee recipient (the Ops Safe since
- * 28 Oct; the deployer before). Weeks from the indexer's transfers to and from that address.
+ * The co-op's balance: what its treasury, the Ops Safe, holds on chain. That's USDC (the protocol's
+ * reserve token, the LendingPool's asset) and the ClearCredit it's been credited: a financed sale pays
+ * the shop the price less its fee and credits the co-op the difference at TermIssuer's fee recipient
+ * (the Ops Safe since 28 Oct). Without the Safe set, the fee recipient's ClearCredit alone, as before:
+ * its USDC may not be the co-op's (the carry treasury is the PayoutPool).
+ * The weeks are ClearCredit's transfers to and from the holder, from the indexer. USDC isn't one of our
+ * contracts, so its transfers aren't indexed: its history is today's figure.
  */
-export async function coopLive(db: Queryable, reader: ChainReader, now: number): Promise<CoopLive> {
-  const [fee, treasury, decimals] = await reader.read([
+export async function coopLive(db: Queryable, reader: ChainReader, now: number, safe: string | null = null): Promise<CoopLive> {
+  const [fee, treasury, decimals, usdcAddress] = await reader.read([
     { contract: 'TermIssuer', fn: 'feeRecipient' },
     { contract: 'TermIssuer', fn: 'carryTreasury' },
     { contract: 'ClearCredit', fn: 'decimals' },
+    { contract: 'LendingPool', fn: 'asset' },
   ]);
   const recipient = getAddress(String(fee) === ZERO ? String(treasury) : String(fee));
-  const [held] = await reader.read([{ contract: 'ClearCredit', fn: 'balanceOf', args: [recipient] }]);
-  const dollars = (v: bigint) => Math.round((Number(v) / 10 ** Number(decimals)) * 100) / 100;
-  const me = recipient.toLowerCase();
+  const holder = safe ? getAddress(safe) : recipient;
+  const [held, cash, usdcDecimals] = await reader.read([
+    { contract: 'ClearCredit', fn: 'balanceOf', args: [holder] },
+    ...(safe
+      ? [
+          { contract: 'ERC20', address: String(usdcAddress), fn: 'balanceOf', args: [holder] },
+          { contract: 'ERC20', address: String(usdcAddress), fn: 'decimals' },
+        ]
+      : []),
+  ]);
+  const dollars = (v: bigint, d: unknown = decimals) => Math.round((Number(v) / 10 ** Number(d)) * 100) / 100;
+  const me = holder.toLowerCase();
   const moves = (await events(db, ['ClearCredit'], ['Transfer'])).filter((e) => String(e.args.to).toLowerCase() === me || String(e.args.from).toLowerCase() === me);
   const today = Math.floor(now / DAY) * DAY;
   const at = (t: number) => moves.filter((e) => e.at < t).reduce((s, e) => s + (String(e.args.to).toLowerCase() === me ? big(e.args.value) : -big(e.args.value)), 0n);
-  const balance = dollars(big(held));
-  return { recipient, balance, weeks: [...[6, 5, 4, 3, 2, 1].map((k) => Math.max(0, dollars(at(today + DAY - k * 7 * DAY)))), balance] };
+  const clrusd = dollars(big(held)),
+    usdc = safe ? dollars(big(cash), usdcDecimals) : 0;
+  const balance = Math.round((usdc + clrusd) * 100) / 100;
+  return {
+    recipient,
+    holder,
+    usdc,
+    clrusd,
+    balance,
+    weeks: [...[6, 5, 4, 3, 2, 1].map((k) => Math.round((Math.max(0, dollars(at(today + DAY - k * 7 * DAY))) + usdc) * 100) / 100), balance],
+  };
 }
 
 // ── Bonds ───────────────────────────────────────────────────────────────────

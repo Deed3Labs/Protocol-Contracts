@@ -68,8 +68,11 @@ const reader: ChainReader = {
       if (c.contract === 'TermIssuer') return c.fn === 'feeRecipient' ? feeTo : c.fn === 'carryTreasury' ? payout : 0n;
       if (c.contract === 'ClearCredit' && c.fn === 'balanceOf') return BigInt(usdc(c.args![0] === SAFE ? 3.25 : c.args![0] === payout ? 9 : 0));
       if (c.contract === 'ERC20') {
-        expect([c.address, ...(c.fn === 'balanceOf' ? [c.args![0]] : [])]).toEqual([USDC, ...(c.fn === 'balanceOf' ? [getAddress(C.ESADepositVault.address)] : [])]);
-        return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.vault));
+        expect(c.address).toBe(USDC);
+        if (c.fn === 'decimals') return 6n;
+        // the savings vault's USDC, and the Ops Safe's
+        expect([getAddress(C.ESADepositVault.address), SAFE]).toContain(c.args![0]);
+        return BigInt(usdc(c.args![0] === SAFE ? 20 : reserve.vault));
       }
       if (c.fn === 'balanceOf') return BigInt(usdc(held[c.args![0] as string][0]));
       if (c.fn === 'encumberedOf') return BigInt(usdc(held[c.args![0] as string][1]));
@@ -323,10 +326,25 @@ describe('the co-op’s balance, live', () => {
     await put('ClearCredit', 'Transfer', { from: ZERO, to: SAFE, value: usdc(1) }, '05T10:00:00');
     await put('ClearCredit', 'Transfer', { from: ZERO, to: SAFE, value: usdc(2.25) }, '20T10:00:00');
     const c = await coopLive(db, reader, NOW.getTime());
-    expect(c.recipient).toBe(SAFE);
-    expect(c.balance).toBe(3.25);
+    expect(c).toMatchObject({ recipient: SAFE, holder: SAFE, clrusd: 3.25, usdc: 0, balance: 3.25 });
     // weeks end on the 3rd, 10th and 17th: nothing, then the 1.00, then still 1.00; the 2.25 of the 20th shows now
     expect(c.weeks.slice(-4)).toEqual([0, 1, 1, 3.25]);
+  });
+
+  test('with the Ops Safe set, its USDC counts too, held flat through the weeks (USDC isn’t indexed)', async () => {
+    const c = await coopLive(db, reader, NOW.getTime(), SAFE.toLowerCase());
+    expect(c).toMatchObject({ holder: SAFE, usdc: 20, clrusd: 3.25, balance: 23.25 });
+    expect(c.weeks.slice(-4)).toEqual([20, 21, 21, 23.25]);
+  });
+
+  test('the Ops Safe is whose holdings count, even when the fee goes somewhere else', async () => {
+    feeTo = getAddress(ZERO);
+    try {
+      const c = await coopLive(db, reader, NOW.getTime(), SAFE);
+      expect(c).toMatchObject({ recipient: payout, holder: SAFE, balance: 23.25 });
+    } finally {
+      feeTo = SAFE;
+    }
   });
 
   test('with no fee recipient set, the fee goes to the carry treasury, as the contract pays it', async () => {
@@ -343,10 +361,10 @@ describe('the co-op’s balance, live', () => {
     process.env.COMMAND_SAFE_ADDRESS = SAFE;
     try {
       const m: any = await moneySection(db, read());
-      expect(m.M.coop).toBe(3.25);
+      expect(m.M.coop).toBe(23.25);
       const row = m.ACCTS.find((a: any[]) => a[0] === 'coop');
-      expect([row[2], row[4], row[5], row[6].at(-1)]).toEqual(['The co-op’s fee on each financed sale, held for a vote', 'protocol', 3.25, 3.25]);
-      expect(m.COOP).toEqual({ recipient: SAFE, safe: true });
+      expect([row[2], row[4], row[5], row[6].at(-1)]).toEqual(['USDC and fees in the Ops Safe, spent by a member vote', 'protocol', 23.25, 23.25]);
+      expect(m.COOP).toEqual({ recipient: SAFE, holder: SAFE, safe: true, usdc: 20, clrusd: 3.25 });
     } finally {
       if (was == null) delete process.env.COMMAND_SAFE_ADDRESS;
       else process.env.COMMAND_SAFE_ADDRESS = was;
