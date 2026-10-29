@@ -81,6 +81,10 @@ beforeAll(async () => {
   await put('ClearCredit', 'PurchaseOriginated', { member: B, merchant: OTHER, purchase: String(usdc(999)), payout: '0', discount: '0' }, Date.parse('2026-09-20T10:00:00Z'));
   await put('ClearCredit', 'CreditLineWrittenOff', { member: B, amount: String(usdc(80)) }, Date.parse('2026-09-30T10:00:00Z'));
   await put('AssurancePool', 'AccountReimbursed', { account: B, amount: String(usdc(80)) }, Date.parse('2026-09-30T10:00:00Z'));
+  // the $10 offers' own line, and an unspent offer of A's taken back: neither is members' credit
+  const offers = String(C.OffersIssuer.address);
+  await put('ClearCredit', 'CreditLineCreated', { member: offers, creditLimit: String(usdc(1000)), balance: '0' }, NOW - 30 * DAY);
+  await put('ClearCredit', 'PurchaseReversed', { member: offers, merchant: A, purchase: String(usdc(6)), payout: String(usdc(6)), discount: '0' }, NOW - 2 * DAY);
 });
 
 describe('what the PayoutPool owes shops', () => {

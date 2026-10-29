@@ -87,6 +87,18 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "BondVaultUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "vault",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "BufferMovedToPrimary",
       "inputs": [
         {
@@ -205,6 +217,23 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "LentToBondVault",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "outstanding",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "LentToPayoutPool",
       "inputs": [
         {
@@ -278,6 +307,23 @@
         {
           "type": "uint256",
           "name": "newRTD",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RepaidFromBondVault",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "outstanding",
           "indexed": false
         }
       ]
@@ -430,6 +476,48 @@
     {
       "type": "function",
       "name": "assuranceOracle",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "bondBufferOwed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "bondExposure",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "bondVault",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -845,6 +933,24 @@
     },
     {
       "type": "function",
+      "name": "lendToBondVault",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "lent"
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "lendToPayoutPool",
       "constant": false,
       "payable": false,
@@ -858,6 +964,20 @@
         {
           "type": "uint256",
           "name": "lent"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lentToBondVault",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
         }
       ]
     },
@@ -1047,6 +1167,19 @@
     },
     {
       "type": "function",
+      "name": "repayFromBondVault",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "repayFromPayoutPool",
       "constant": false,
       "payable": false,
@@ -1095,6 +1228,19 @@
         {
           "type": "address",
           "name": "_assuranceOracle"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setBondVault",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "vault"
         }
       ],
       "outputs": []

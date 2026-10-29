@@ -116,6 +116,18 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "BondVaultUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "bondVault",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "CapitalWithdrawn",
       "inputs": [
         {
@@ -206,7 +218,31 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "DrewFromBondVault",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "DrewFromReserve",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DrewFromTreasury",
       "inputs": [
         {
           "type": "uint256",
@@ -373,6 +409,18 @@
           "name": "member",
           "indexed": true
         },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RepaidBondVault",
+      "inputs": [
         {
           "type": "uint256",
           "name": "amount",
@@ -571,6 +619,20 @@
     },
     {
       "type": "function",
+      "name": "bondVault",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "borrowed",
       "constant": true,
       "stateMutability": "view",
@@ -586,6 +648,20 @@
     {
       "type": "function",
       "name": "borrowedFromReserve",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "borrowedFromVault",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -1243,6 +1319,19 @@
     },
     {
       "type": "function",
+      "name": "setBondVault",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "vault"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "setCoopIncomeRecipient",
       "constant": false,
       "payable": false,
@@ -1327,6 +1416,20 @@
       "outputs": [
         {
           "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "treasuryAvailable",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
           "name": ""
         }
       ]
