@@ -80,7 +80,10 @@ async function main() {
   const c = await upgrades.upgradeProxy(credit.address, ClearCredit, { kind: "uups" });
   await c.waitForDeployment();
   saveDeployment(network, "ClearCredit", credit.address, JSON.parse(c.interface.formatJson()));
-  await confirm("ClearCredit", credit.address, "depositRepayment(uint256)", was.credit);
+  // ClearCredit only calls depositRepayment, and built with viaIR the selector isn't a plain run of
+  // bytes in its code (it was not found in a correct upgrade), so it is confirmed by a new
+  // implementation alone
+  await confirm("ClearCredit", credit.address, null, was.credit);
 
   if (!MOVE) {
     console.log("\nMOVE_BUFFER_TO_PRIMARY unset: upgraded, the reserves stay where they are.");
@@ -105,16 +108,18 @@ async function implementationOf(proxy: string): Promise<string> {
 }
 
 /** Confirm against the chain, waiting for it to agree with itself. */
-async function confirm(label: string, proxy: string, signature: string, before: string) {
-  const selector = ethers.id(signature).slice(2, 10);
+async function confirm(label: string, proxy: string, signature: string | null, before: string) {
   let implementation = before;
   for (let i = 0; i < 20 && implementation === before; i++) {
     implementation = await implementationOf(proxy);
     if (implementation === before) await new Promise((r) => setTimeout(r, 1500));
   }
-  const code = await ethers.provider.getCode(implementation);
-  const present = code.includes(selector);
   console.log(`${label.padEnd(14)} implementation ${implementation}${implementation === before ? "  (unchanged)" : ""}`);
+  if (!signature) {
+    if (implementation === before) throw new Error(`${label} at ${proxy} still runs its old implementation.`);
+    return;
+  }
+  const present = (await ethers.provider.getCode(implementation)).includes(ethers.id(signature).slice(2, 10));
   console.log(`${"".padEnd(14)} ${signature.split("(")[0]} in deployed code: ${present}`);
   if (!present) throw new Error(`${label} at ${proxy} does not carry ${signature} after the upgrade.`);
 }

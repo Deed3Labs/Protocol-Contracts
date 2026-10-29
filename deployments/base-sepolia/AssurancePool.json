@@ -87,6 +87,23 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "BufferMovedToPrimary",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "primaryReserve",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "BufferReserveDeposited",
       "inputs": [
         {
@@ -290,6 +307,23 @@
         {
           "type": "address",
           "name": "newReserveToken",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ReservesRepriced",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "accounted",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "held",
           "indexed": false
         }
       ]
@@ -552,6 +586,19 @@
     {
       "type": "function",
       "name": "depositIntoPrimaryReserve",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "depositRepayment",
       "constant": false,
       "payable": false,
       "inputs": [
@@ -827,6 +874,19 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "moveBufferToPrimary",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
