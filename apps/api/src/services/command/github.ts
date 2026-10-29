@@ -104,6 +104,39 @@ export interface ListedPull {
 }
 export type PullsAnswer = { notModified: true; remaining: number | null } | { notModified: false; etag: string | null; pulls: ListedPull[]; more: boolean; remaining: number | null };
 
+/** A workflow run on a branch, as GitHub Actions lists it. */
+export interface ListedRun {
+  id: number;
+  workflow: string;
+  branch: string;
+  sha: string;
+  status: string;
+  conclusion: string | null;
+  createdAt: string;
+  updatedAt: string;
+  url: string;
+}
+/** One job of a run: its name, how it ended, and when it ran (ms). */
+export interface RunJob {
+  name: string;
+  conclusion: string | null;
+  startedAt: number | null;
+  completedAt: number | null;
+}
+/** A check run at a commit (a job of a workflow, or another app's check). */
+export interface CheckRun {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  url: string;
+}
+/** A review on a pull request: who, what they said (APPROVED, CHANGES_REQUESTED, COMMENTED…), when (ms). */
+export interface PullReview {
+  login: string;
+  state: string;
+  at: number;
+}
+
 export interface GithubSource {
   /** One page of the branch's commits (touching the watched folder, if one), newest first, since a time if given. */
   list(c: CodeConfig, since: string | null, page: number, etag: string | null): Promise<ListAnswer>;
@@ -113,6 +146,14 @@ export interface GithubSource {
   pulls(repo: string, page: number, etag: string | null): Promise<PullsAnswer>;
   /** The files one pull request changes, and how many requests reading them took (100 a page). */
   pullFiles(repo: string, number: number): Promise<{ files: string[]; remaining: number | null; requests: number }>;
+  /** The branch's workflow runs since a day (YYYY-MM-DD), newest first, up to 300. */
+  runs?(repo: string, branch: string, since: string): Promise<ListedRun[]>;
+  /** A run's jobs. */
+  jobs?(repo: string, runId: number): Promise<RunJob[]>;
+  /** The check runs at a commit. */
+  checks?(repo: string, sha: string): Promise<CheckRun[]>;
+  /** A pull request's reviews, and who's still asked to review it. */
+  reviews?(repo: string, number: number): Promise<{ reviews: PullReview[]; requested: string[] }>;
   /** Whether it asks with a token (5,000 an hour) or without (60). */
   authorized: boolean;
 }
@@ -194,6 +235,41 @@ export function liveGithub(token = process.env.GITHUB_TOKEN?.trim() || '', f: ty
           url: x.html_url,
         })),
       };
+    },
+    async runs(repo, branch, since) {
+      const out: ListedRun[] = [];
+      for (let page = 1; page <= 3; page++) {
+        const q = new URLSearchParams({ branch, per_page: '100', page: String(page), created: `>=${since}` });
+        const r = await f(`https://api.github.com/repos/${repo}/actions/runs?${q}`, { headers: headers() });
+        if (!r.ok) throw await fail(r);
+        const j = (await r.json()) as any;
+        for (const x of j.workflow_runs ?? [])
+          out.push({ id: Number(x.id), workflow: String(x.name ?? x.workflow_id), branch: String(x.head_branch ?? branch), sha: String(x.head_sha).toLowerCase(), status: String(x.status), conclusion: x.conclusion ?? null, createdAt: x.created_at, updatedAt: x.updated_at, url: x.html_url });
+        if (!/rel="next"/.test(r.headers.get('link') ?? '')) break;
+      }
+      return out;
+    },
+    async jobs(repo, runId) {
+      const r = await f(`https://api.github.com/repos/${repo}/actions/runs/${runId}/jobs?per_page=100`, { headers: headers() });
+      if (!r.ok) throw await fail(r);
+      const ms = (d: string | null) => (d ? new Date(d).getTime() : null);
+      return (((await r.json()) as any).jobs ?? []).map((x: any) => ({ name: String(x.name), conclusion: x.conclusion ?? null, startedAt: ms(x.started_at), completedAt: ms(x.completed_at) }));
+    },
+    async checks(repo, sha) {
+      const r = await f(`https://api.github.com/repos/${repo}/commits/${sha}/check-runs?per_page=100`, { headers: headers() });
+      if (!r.ok) throw await fail(r);
+      return (((await r.json()) as any).check_runs ?? []).map((x: any) => ({ name: String(x.name), status: String(x.status), conclusion: x.conclusion ?? null, url: String(x.html_url ?? '') }));
+    },
+    async reviews(repo, number) {
+      const [a, b] = await Promise.all([
+        f(`https://api.github.com/repos/${repo}/pulls/${number}/reviews?per_page=100`, { headers: headers() }),
+        f(`https://api.github.com/repos/${repo}/pulls/${number}/requested_reviewers`, { headers: headers() }),
+      ]);
+      if (!a.ok) throw await fail(a);
+      if (!b.ok) throw await fail(b);
+      const reviews = ((await a.json()) as any[]).filter((x) => x.submitted_at && x.user?.login).map((x) => ({ login: String(x.user.login), state: String(x.state), at: new Date(x.submitted_at).getTime() }));
+      const requested = (((await b.json()) as any).users ?? []).map((u: any) => String(u.login));
+      return { reviews, requested };
     },
     async pullFiles(repo, number) {
       // GitHub lists at most 3,000 files a PR, 100 a page
@@ -427,6 +503,68 @@ export async function recordPullError(db: Queryable, c: CodeConfig, error: unkno
 }
 
 /** Where the poller is: how many commits it holds, how many still want their files, its last error; each branch's, and the pull requests'. */
+export interface ChecksPollResult {
+  runs: number;
+  jobsRead: number;
+  checksRead: number;
+  reviewsRead: number;
+}
+
+/**
+ * GitHub Actions on the watched branch, and each pull request's checks and reviews (migration 0070).
+ * The last 30 days' runs are upserted every time (a run's status moves until it completes); a complete
+ * run's jobs are read once. A pull request's check runs are read again when its head moves or one is
+ * still running; its reviews when it's been updated since they were read. Within a budget a run.
+ */
+export async function pollChecks(db: Queryable, src: GithubSource, c: CodeConfig, o: { budget?: number; now?: number } = {}): Promise<ChecksPollResult> {
+  const out: ChecksPollResult = { runs: 0, jobsRead: 0, checksRead: 0, reviewsRead: 0 };
+  if (!src.runs || !src.jobs || !src.checks || !src.reviews) return out;
+  const now = o.now ?? Date.now();
+  let budget = o.budget ?? 40;
+  const cutoff = new Date(now - CODE_WINDOW_MS);
+  const runs = await src.runs(c.repo, c.branch, cutoff.toISOString().slice(0, 10));
+  for (const r of runs) {
+    await db.query(
+      `INSERT INTO command.code_runs (repo, id, workflow, branch, sha, status, conclusion, created_at, updated_at, url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (repo, id) DO UPDATE SET status = EXCLUDED.status, conclusion = EXCLUDED.conclusion, updated_at = EXCLUDED.updated_at`,
+      [c.repo, r.id, r.workflow, r.branch, r.sha, r.status, r.conclusion, r.createdAt, r.updatedAt, r.url],
+    );
+  }
+  out.runs = runs.length;
+  const { rows: needJobs } = await db.query<{ id: string }>(
+    `SELECT id FROM command.code_runs WHERE repo = $1 AND status = 'completed' AND jobs IS NULL AND created_at >= $2 ORDER BY created_at DESC`,
+    [c.repo, cutoff],
+  );
+  for (const r of needJobs) {
+    if (budget <= 0) break;
+    await db.query('UPDATE command.code_runs SET jobs = $3 WHERE repo = $1 AND id = $2', [c.repo, r.id, JSON.stringify(await src.jobs(c.repo, Number(r.id)))]);
+    budget--;
+    out.jobsRead++;
+  }
+  // the pull requests Build shows: open, or merged or closed in the window
+  const { rows: pulls } = await db.query<{ number: number; head_sha: string | null; checks: CheckRun[] | null; checks_sha: string | null; updated_at: Date; reviews_at: Date | null }>(
+    `SELECT number, head_sha, checks, checks_sha, updated_at, reviews_at FROM command.code_pulls
+      WHERE repo = $1 AND touches AND (state = 'open' OR coalesce(merged_at, closed_at) >= $2) ORDER BY updated_at DESC`,
+    [c.repo, cutoff],
+  );
+  for (const p of pulls) {
+    if (budget <= 0) break;
+    const running = (p.checks ?? []).some((x) => x.status !== 'completed');
+    if (p.head_sha && (p.checks_sha !== p.head_sha || running)) {
+      await db.query('UPDATE command.code_pulls SET checks = $3, checks_sha = $4 WHERE repo = $1 AND number = $2', [c.repo, p.number, JSON.stringify(await src.checks(c.repo, p.head_sha)), p.head_sha]);
+      budget--;
+      out.checksRead++;
+    }
+    if (budget > 0 && (!p.reviews_at || p.reviews_at < p.updated_at)) {
+      const r = await src.reviews(c.repo, p.number);
+      await db.query('UPDATE command.code_pulls SET reviews = $3, requested = $4, reviews_at = $5 WHERE repo = $1 AND number = $2', [c.repo, p.number, JSON.stringify(r.reviews), r.requested, new Date(now)]);
+      budget -= 2;
+      out.reviewsRead++;
+    }
+  }
+  return out;
+}
+
 export async function codeStatus(db: Queryable, c: CodeConfig = codeConfig()) {
   const { rows } = await db.query<any>(
     `SELECT (SELECT count(*)::int FROM command.code_commits WHERE repo = $1 AND $2 = ANY(branches)) AS commits,
@@ -496,7 +634,15 @@ export interface CodePayload {
     files: number;
     contracts: string[];
     projects: string[];
+    /** Its check runs at its head, as one state; null until the poller has read them. */
+    checks: ReturnType<typeof checkState>;
+    /** Its reviews (logins only above Totals); null until read. */
+    reviews: Array<{ login: string; state: string; at: number }> | null;
+    /** Who's still asked to review it. */
+    requested: string[];
   }>;
+  /** GitHub Actions on the watched branch in the window (migration 0070). */
+  checks: Awaited<ReturnType<typeof branchChecks>>;
   branches: Array<{ name: string; commits30: number; lastAt: number | null }>;
   /** Who's contributed in the window, by GitHub login (else the commit's name); empty at Totals. */
   /** Everyone in the stored history (commits, and PRs touching a project), with their last 30 days too. */
@@ -507,6 +653,49 @@ export interface CodePayload {
 }
 
 const msOf = (d: Date | string | null) => (d == null ? null : new Date(d).getTime());
+
+/** A pull request's checks at its head, as one state: failing if any failed, running if any still runs, else passing; none until read. */
+export function checkState(runs: CheckRun[] | null) {
+  if (!runs) return null;
+  const failing = runs.filter((x) => x.status === 'completed' && ['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure'].includes(x.conclusion ?? '')).map((x) => x.name);
+  const running = runs.filter((x) => x.status !== 'completed').length;
+  const passed = runs.filter((x) => x.status === 'completed' && ['success', 'neutral', 'skipped'].includes(x.conclusion ?? '')).length;
+  return { state: !runs.length ? 'none' : failing.length ? 'fail' : running ? 'run' : 'pass', passed, total: runs.length, failing };
+}
+
+/**
+ * The watched branch's GitHub Actions in the window: each job's runs, how many passed, how long one takes
+ * (median), and how its last run ended. Skipped jobs (the changes filter left them out) don't count.
+ */
+export async function branchChecks(db: Queryable, c: CodeConfig, now: number) {
+  const { rows } = await db.query<{ conclusion: string | null; created_at: Date; url: string; jobs: RunJob[] | null; status: string }>(
+    'SELECT status, conclusion, created_at, url, jobs FROM command.code_runs WHERE repo = $1 AND branch = $2 AND created_at >= $3 ORDER BY created_at',
+    [c.repo, c.branch, new Date(now - CODE_WINDOW_MS)],
+  );
+  const ok = (x: string | null) => x === 'success';
+  const jobs = new Map<string, { runs: number; passed: number; ms: number[]; last: { conclusion: string | null; at: number; url: string } }>();
+  for (const r of rows)
+    for (const j of r.jobs ?? []) {
+      if (j.conclusion === 'skipped' || j.conclusion == null) continue;
+      const e = jobs.get(j.name) ?? { runs: 0, passed: 0, ms: [], last: { conclusion: null, at: 0, url: '' } };
+      e.runs++;
+      if (ok(j.conclusion)) e.passed++;
+      if (j.startedAt && j.completedAt && j.completedAt > j.startedAt) e.ms.push(j.completedAt - j.startedAt);
+      e.last = { conclusion: j.conclusion, at: new Date(r.created_at).getTime(), url: r.url };
+      jobs.set(j.name, e);
+    }
+  const median = (a: number[]) => (a.length ? [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] : null);
+  const done = rows.filter((r) => r.status === 'completed');
+  const last = rows.at(-1);
+  return {
+    branch: c.branch,
+    runs: done.length,
+    passed: done.filter((r) => ok(r.conclusion)).length,
+    running: rows.filter((r) => r.status !== 'completed').length,
+    last: last ? { conclusion: last.conclusion, status: last.status, at: new Date(last.created_at).getTime(), url: last.url } : null,
+    jobs: [...jobs].map(([name, e]) => ({ name, runs: e.runs, passed: e.passed, medianMs: median(e.ms), last: e.last })),
+  };
+}
 
 /** The Code tab's activity: commits, pull requests, branches and contributors. Names only above Totals. */
 export async function codeActivity(db: Queryable, c: CodeConfig, now: number, names: boolean): Promise<CodePayload> {
@@ -519,7 +708,7 @@ export async function codeActivity(db: Queryable, c: CodeConfig, now: number, na
     [c.repo, c.branches, cutoff],
   );
   const { rows: pl } = await db.query<any>(
-    `SELECT number, title, state, draft, login, head, base, created_at, updated_at, merged_at, closed_at, url, files, contracts, projects FROM command.code_pulls
+    `SELECT number, title, state, draft, login, head, base, created_at, updated_at, merged_at, closed_at, url, files, contracts, projects, checks, reviews, requested FROM command.code_pulls
       WHERE repo = $1 AND touches AND (state = 'open' OR coalesce(merged_at, closed_at) >= $2) ORDER BY updated_at DESC, number DESC`,
     [c.repo, cutoff],
   );
@@ -622,7 +811,12 @@ export async function codeActivity(db: Queryable, c: CodeConfig, now: number, na
       files: (r.files ?? []).length,
       contracts: r.contracts ?? [],
       projects: r.projects ?? [],
+      checks: checkState(r.checks),
+      // who reviewed and who's asked: names only above Totals, as the authors are
+      reviews: (r.reviews as PullReview[] | null)?.map((v) => ({ login: names ? v.login : '', state: v.state, at: v.at })) ?? null,
+      requested: names ? (r.requested ?? []) : (r.requested ?? []).map(() => ''),
     })),
+    checks: await branchChecks(db, c, now),
     branches,
     contributors: names ? contributors : [],
     people: contributors.length,

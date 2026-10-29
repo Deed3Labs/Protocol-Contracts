@@ -85,6 +85,10 @@ export function buildLive() {
   const PROJ = CODE.projects?.length
     ? CODE.projects
     : [{ id: 'proto', name: 'Protocol', tiny: 'Contracts', what: 'Smart contracts', lang: 'Solidity · Hardhat', path: CODE.path || 'contracts', lastAt: CODE.commits[0]?.at ?? null }];
+  /* checks: the branch's GitHub Actions in 30 days (the poller's), each project read by the job that covers its folder */
+  const RUNS = CODE.checks ?? null;
+  const jobFor = (path) => (RUNS?.jobs ?? []).find((j) => (String(path || '').startsWith('contracts') ? /contract/i : /app/i).test(j.name)) ?? null;
+  const jobState = (j) => (!j ? 'none' : j.last?.conclusion === 'success' ? 'pass' : j.last?.conclusion ? 'fail' : 'none');
   const REPOS = PROJ.map((p) => ({
     id: p.id,
     name: repoName || 'GitHub isn’t connected',
@@ -94,7 +98,9 @@ export function buildLive() {
     what: p.what,
     lang: p.lang,
     branch: CODE.poller?.branches?.[0] || 'dev',
-    main: 'none',
+    main: jobState(jobFor(p.path)),
+    // the job that checks it on the branch: its runs, passes and usual time
+    job: jobFor(p.path),
     last: p.lastAt ?? null,
     live: p.id === 'proto' ? (CHAIN.network ? `${CHAIN.network} · ${live} of ${CT.length}` : 'Not indexed yet') : 'Not read yet',
     url: CODE.repo ? `https://github.com/${CODE.repo}` : '',
@@ -122,7 +128,13 @@ export function buildLive() {
       t: p.title,
       by: named(nameOf[p.login] || p.login, p.login),
       st: p.state === 'merged' ? 'shipped' : p.draft ? 'draft' : 'review',
-      checks: 'none',
+      // its check runs at its head (the poller's): pass, fail, run, or none until read
+      checks: p.checks?.state ?? 'none',
+      ck: p.checks ?? null,
+      reviews: (p.reviews ?? []).map((v) => ({ ...v, who: v.login ? named(nameOf[v.login] || v.login, v.login) : 'anon' })),
+      // who's asked to review it: the first is who it waits on
+      asked: (p.requested ?? []).filter(Boolean).map((l) => named(nameOf[l] || l, l)),
+      rev: (p.requested ?? []).filter(Boolean).map((l) => named(nameOf[l] || l, l))[0] ?? null,
       files: p.files,
       opened: p.createdAt,
       upd: p.updatedAt,
@@ -326,6 +338,29 @@ export function buildLive() {
   const reviewed = { internal: new Set(), external: new Set() };
   for (const a of AUDITS) if (a.done) for (const c of a.contracts) if (byId[c]) reviewed[a.kind].add(c);
 
+  /* reviews in the window: time to a first review, and each reviewer's reviews, waits and usual time */
+  const W30 = NOW - 30 * DAY;
+  const firsts = [];
+  const byWho = {};
+  for (const p of CODE.pulls ?? []) {
+    const rv = (p.reviews ?? []).filter((v) => v.at >= W30).sort((a, b) => a.at - b.at);
+    if (rv.length) firsts.push(rv[0].at - p.createdAt);
+    for (const v of rv) {
+      const k = v.login ? named(nameOf[v.login] || v.login, v.login) : 'anon';
+      (byWho[k] ??= { done: 0, waits: [] }).done++;
+      if (v === rv.find((x) => x.login === v.login)) byWho[k].waits.push(v.at - p.createdAt);
+    }
+    if (p.state === 'open') for (const l of (p.requested ?? []).filter(Boolean)) (byWho[named(nameOf[l] || l, l)] ??= { done: 0, waits: [] }).asked = ((byWho[named(nameOf[l] || l, l)].asked ?? 0) + 1);
+  }
+  const med = (a) => (a.length ? [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] : null);
+  const H = 3600e3;
+  const REVIEWS = {
+    median: med(firsts),
+    people: Object.entries(byWho).map(([k, v]) => ({ key: k, done: v.done, waiting: v.asked ?? 0, median: med(v.waits) })).sort((a, b) => b.done - a.done || b.waiting - a.waiting),
+    dist: [['Under 1 h', 0, H], ['1 to 4 h', H, 4 * H], ['4 to 24 h', 4 * H, 24 * H], ['Over a day', 24 * H, Infinity]].map(([t, a, b]) => [t, firsts.filter((x) => x >= a && x < b).length]),
+    count: firsts.length,
+  };
+
   return {
     NOW,
     TODAY,
@@ -333,6 +368,9 @@ export function buildLive() {
     PPL,
     SIGNER_KEYS,
     REPOS,
+    /** GitHub Actions on the branch in 30 days: runs, passes, the last one, each job's figures; null until read. */
+    RUNS,
+    REVIEWS,
     CHANGES,
     COMMITS,
     ACT,

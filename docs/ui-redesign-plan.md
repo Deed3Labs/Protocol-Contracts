@@ -420,6 +420,14 @@ Filled in as each page is ported. Known before starting:
   your own wallet (`safe.signQueued`, `safe.signAndSend`), linking it `safe.linkWallet`, and a contract's
   panel proposes a change through the old page's flow (`contracts/propose`, into the Safe); GitHub, the
   Safe and Safe{Wallet} open in a new tab.
+  - **GitHub Actions and reviews now (migration 0070):** the poller also reads the watched branch's workflow
+    runs (each complete run's jobs once) and each pull request's check runs at its head and its reviews (who
+    reviewed, what they said, who's still asked), within a request budget. Deploys' Checks is a row per project
+    from the job that covers its folder (Contracts' hardhat job for `contracts/`, the Apps job for the rest):
+    pass rate, runs and median time in 30 days; coverage isn't measured. The header's Checks is how many
+    projects' jobs last passed; Changes' Reviews is the median time to a first review, each reviewer's reviews
+    and waits, and the spread; a change's panel shows its checks and reviews. The token needs Actions and Pull
+    requests read (dev's has them). Still not read: the apps' deploys on Railway and Vercel (no API tokens set).
   - **Command's own records now (migration 0066):** incidents, security findings and audits, read with the
     section (`INCIDENTS`, `FINDINGS`, `AUDITS`, and `TEAM`: who can be given an incident, the team at Propose
     or more on Build) and written from Build. Overview's and Security's Incidents list the open ones and those
