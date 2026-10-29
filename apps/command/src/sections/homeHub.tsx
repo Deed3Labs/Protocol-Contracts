@@ -8,6 +8,7 @@ import { ic, int, money } from './core';
 import { buildLive } from './buildLive';
 import { ALERTS0, DEADLINES, ENT, FUNNEL, MON, NEED, S, W_ICON, vars } from './data';
 import { fmLive } from './fmLive';
+import { growthLive } from './growthLive';
 import { HOME_DEMO, HOME_QV } from './homeData';
 import { moneyLive } from './moneyLive';
 import { finish, go, render, toast, vLevel, vRO } from './shell';
@@ -552,11 +553,11 @@ const hatched = (
   </div>
 );
 /*
- * Live, the Merchants, Money and Build tiles draw from those pages' own sections (their datasets, as the
+ * Live, the Growth, Merchants, Money and Build tiles draw from those pages' own sections (their datasets, as the
  * pages build them), loaded beside Home's once each; until one arrives, or for someone who can't see the
  * page, its tile is hatched and still opens it.
  */
-const SIDE = ['merchants', 'money', 'build'];
+const SIDE = ['growth', 'merchants', 'money', 'build'];
 const sideLoading = new Set();
 function sideLoad() {
   if (!LIVE) return;
@@ -577,6 +578,12 @@ const loaded = (r) => !LIVE || !needsData(r);
 /** "$42.4k" */
 const kMoney = (v) => (Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(1)}k` : money(v));
 const signed = (v) => `${v < 0 ? '−' : '+'}${money(Math.abs(v))}`;
+/** The funnel's last 30 days, stage by stage, as Growth totals it (its sources, and invites on a row of their own). */
+function liveFunnel() {
+  if (!loaded('growth')) return null;
+  const T = growthLive().D.source.rows.reduce((a, r) => a.map((v, i) => v + (r.f[i] ?? 0)), [0, 0, 0, 0, 0, 0]);
+  return ['Visits', 'Joined', 'Invited', 'Opened', 'Active', 'Spent'].map((n, i) => [n, T[i]]);
+}
 /** Partner shops: transacting, signing, signed and idle (Merchants' own list). */
 function liveShops() {
   if (!loaded('merchants')) return null;
@@ -633,7 +640,10 @@ function liveBuild() {
 }
 function tiles(M) {
   const D = M.tiles;
-  const F = FUNNEL.map(([n, v]) => [{ Activated: 'Active', 'First spend': 'Spent' }[n] || n, v]);
+  const F = (D ? null : liveFunnel()) ?? FUNNEL.map(([n, v]) => [{ Activated: 'Active', 'First spend': 'Spent' }[n] || n, v]);
+  // the step that loses the most, of those with anyone in them
+  const STEP = ['visit → join', 'join → invite', 'invite → open', 'open → active', 'active → spend'];
+  const drop = F.length >= 6 ? STEP.map((t, i) => [t, F[i][1] ? F[i + 1][1] / F[i][1] : null]).filter((x) => x[1] != null).sort((a, b) => a[1] - b[1])[0] : null;
   const joined = F[1]?.[1] ?? 0,
     spent = F[5]?.[1] ?? 0;
   const m = vars.memberSummary ?? {};
@@ -654,9 +664,9 @@ function tiles(M) {
       go: 'growth',
       n: 'Growth',
       f: D ? D.growth.f : int(joined),
-      s: D ? D.growth.s : `joined · ${int(spent)} made a first spend`,
+      s: D ? D.growth.s : `joined in 30 days · ${int(spent)} made a first spend`,
       viz: F.length >= 6 ? funnelViz(F) : hatched,
-      key: <span>{D ? D.growth.key : `${F.length >= 6 && F[0][1] ? `Visit → join, ${((joined / F[0][1]) * 100).toFixed(1)}%` : 'Nothing measured yet'}`}</span>,
+      key: <span>{D ? D.growth.key : drop ? `Biggest drop is ${drop[0]}, ${(drop[1] * 100).toFixed(1)}%` : 'Nothing measured yet'}</span>,
     },
     {
       go: 'members',

@@ -535,8 +535,9 @@ stand.
   a 100% margin. Hardware's price is the smallest deposit it reserves, as the prototype's is, with
   its full price alongside.
 - **Orders, reservations and refunds are the shop's Stripe Checkout**, read with
-  `COMMAND_SHOP_STRIPE_KEY`, which must be a restricted key (`rk_…`): a full secret key is refused.
-  Its scopes, all read: Checkout Sessions, Payment Intents, Refunds, Charges. GETs only.
+  `COMMAND_SHOP_STRIPE_KEY` (a restricted key, `rk_…`; scopes, all read: Checkout Sessions, Payment
+  Intents, Refunds, Charges) when one is set, else the site's secret key the API already holds for
+  hardware orders, `SHOP_STRIPE_SECRET_KEY` (Kai, 2026-10-28: use the key we have). GETs only either way.
   - A paid session with items is an order. Command numbers it (from 1001) and keeps its packing and
     shipping; the sync only adds orders and marks refunds (a full refund is state `refund`).
   - A paid reservation's reserved lines (the payment's `r1…`, as the site writes them) are

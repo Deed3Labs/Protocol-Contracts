@@ -307,10 +307,14 @@ export function stripeFeed(env: Env = process.env, f: typeof fetch = fetch): Fee
 
 // ── The shop (Phase 7a): live, read-only ────────────────────────────────────
 
-/** The shop's Stripe account, read with a restricted key: GETs only, and an unrestricted key is refused. */
+/**
+ * The shop's Stripe account, GETs only: a restricted key of its own (COMMAND_SHOP_STRIPE_KEY) when one is
+ * set, else the site's secret key the API already holds for hardware orders (SHOP_STRIPE_SECRET_KEY, Kai's
+ * call 2026-10-28). Whichever it is, nothing here sends anything but a GET.
+ */
 function shopStripe(env: Env, f: typeof fetch) {
-  const key = env.COMMAND_SHOP_STRIPE_KEY?.trim() ?? '';
-  const off = !key ? 'COMMAND_SHOP_STRIPE_KEY isn’t set' : /^rk_(live|test)_/.test(key) ? null : 'the shop’s key must be a restricted, read-only key (rk_…)';
+  const key = (env.COMMAND_SHOP_STRIPE_KEY?.trim() || env.SHOP_STRIPE_SECRET_KEY?.trim()) ?? '';
+  const off = !key ? 'Neither COMMAND_SHOP_STRIPE_KEY nor SHOP_STRIPE_SECRET_KEY is set' : /^(rk|sk)_(live|test)_/.test(key) ? null : 'the shop’s key isn’t a Stripe key (rk_… or sk_…)';
   const get = async (path: string, q: Record<string, string | string[]> = {}) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(q)) for (const x of [v].flat()) qs.append(k, x);

@@ -162,9 +162,8 @@ describe('Governance → agreement versions', () => {
   });
 
   test('Home sends the entities as Governance does, for its small tree', async () => {
-    const o = { level: 1, reveal: false, now: new Date() };
-    const g = (await governanceSection(db, o)) as any;
-    const h = (await homeSection(db, o)) as any;
+    const g = (await governanceSection(db, { level: 1, reveal: false, now: new Date() })) as any;
+    const h = (await homeSection(db, { level: 1, reveal: false, now: new Date() })) as any;
     expect(g.ENT.length).toBeGreaterThan(0);
     expect(h.ENT).toEqual(g.ENT);
   });
