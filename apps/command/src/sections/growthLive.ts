@@ -6,12 +6,46 @@ import { BOARDS, CITY_V, COHORTS, DESIGNS, HEAT, LANDING, OTHERS, POSTERS, SHOPS
  * the API's growth section sends (live/sections.ts fills ./data from it). What the API doesn't measure yet
  * is zero or empty, never the reference's figures; docs/ui-redesign-plan.md lists each gap:
  * invites, opens and first spends by source, city, shop and design; weekly opens and first spends;
- * bounce and time on page; browsers; campaigns; activation curves; the apps' usage and errors; the
+ * bounce and time on page; browsers; campaigns; the apps' usage and errors; the
  * real-time view; the waitlist's people.
  */
 
 /** The days the page draws: twelve weeks to today, as the API's weekly figures count them. */
 const DAYS = 12 * 7 - 1;
+
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** The batches an invite week came from, as the grid labels it; 0 is an account opened without an invite. */
+const batchName = (bs) => {
+  const n = bs.filter((b) => b > 0);
+  const name = !n.length ? '' : n.length === 1 ? `Batch ${n[0]}` : `Batches ${n[0]}–${n[n.length - 1]}`;
+  return bs.includes(0) ? (name ? `${name} + no invite` : 'No invite') : name;
+};
+
+/** Cohorts' invite weeks (the API's growth.invite_weeks), as renderCohorts reads them: day indexes against `start`, shares of the activated. */
+function cohortsLive(c, start) {
+  const pc = (v, of) => (of ? Math.round((v / of) * 1000) / 10 : 0);
+  return {
+    COH: (c?.weeks ?? []).map((w) => {
+      const d = new Date(w.start);
+      return {
+        d: Math.round((w.start - start.getTime()) / 864e5),
+        n: `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`,
+        b: batchName(w.batches),
+        inv: w.inv,
+        act: w.act,
+        open: w.open,
+        keep: pc(w.keep, w.act),
+        spent: pc(w.spent, w.act),
+        actBy: w.actBy,
+        spentBy: w.spentBy,
+      };
+    }),
+    COH_TT: c?.tt ?? [0, 0, 0, 0, 0, 0],
+    // how they funded: label, activated, still active %, colour (the reference's three)
+    COH_HOW: (c?.how ?? []).map(([n, a, k], i) => [n === 'Deposit' ? 'Direct deposit' : n === 'Bank' ? 'Connected a bank' : 'Added $5', a, a ? Math.round((k / a) * 100) : 0, ['var(--fg)', 'var(--land)', 'var(--live)'][i]]),
+    COH_MEDIAN: c?.medianDays ?? null,
+  };
+}
 
 export function growthLive() {
   const now = new Date();
@@ -52,7 +86,7 @@ export function growthLive() {
       week: { name: 'Invite week', minStep: 2 },
     },
     COHORT: COHORTS.map((c) => [c[0], c[1], [...c[2]]]),
-    COH: [],
+    ...cohortsLive(fig['growth.invite_weeks'], start),
     PROPS: visits ? [['useclear.org', visits, 'var(--fg)']] : [],
     CHANNELS: SRC30.map(([n, v, j]) => [n, v, 0, v ? Math.round((j / v) * 1000) / 10 : 0, 0, []]),
     PAGES: LANDING.map(([p, e, j]) => [p, 'useclear.org', e, 0, 0, j]),

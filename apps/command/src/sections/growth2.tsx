@@ -1004,7 +1004,9 @@ function makeGrowth() {
     keep: 100,
     spent: 67
   }];
-  const HOW = [['Connected a bank', 71, 89, 'var(--fg)'], ['Added $5', 38, 68, 'var(--land)'], ['Direct deposit', 15, 100, 'var(--live)']];
+  const HOW = L ? L.COH_HOW : [['Connected a bank', 71, 89, 'var(--fg)'], ['Added $5', 38, 68, 'var(--land)'], ['Direct deposit', 15, 100, 'var(--live)']];
+  // everyone activated, all weeks: the share each filtered view scales the activation counts by
+  const ACT_ALL = L ? COH.reduce((s, c) => s + c.act, 0) : 124;
   const TAU = 6;
   const CHS = {
     metric: 'act',
@@ -1031,6 +1033,14 @@ function makeGrowth() {
       el: TODAY - c.d
     }));
   }
+  /* live, how they activated says which way of funding keeps people, from the rows */
+  function howFoot() {
+    const got = HOW.filter(h => h[1]).sort((a, b) => b[2] - a[2]);
+    if (!got.length) return 'How people fund shows once someone activates.';
+    if (got.length === 1) return `Everyone so far ${got[0][0].toLowerCase()}; ${got[0][2]}% still use Clear.`;
+    const [hi, lo] = [got[0], got[got.length - 1]];
+    return hi[2] === lo[2] ? `Every way of funding keeps about ${hi[2]}% using Clear.` : `${hi[0]} keeps the most (${hi[2]}%); ${lo[0].toLowerCase()} the least (${lo[2]}%).`;
+  }
   function renderCohorts() {
     const rows = cohRows(),
       el = $g('ch');
@@ -1038,12 +1048,19 @@ function makeGrowth() {
       A = rows.reduce((s, c) => s + c.A, 0),
       O = rows.reduce((s, c) => s + c.O, 0);
     const keep = A ? rows.reduce((s, c) => s + c.A * c.keep, 0) / A : 0;
+    if (L && !COH.length) {
+      html($g('hdr'), <><span className="when"><span className="dot" />Growth · Cohorts</span><p className="brief">{"Nobody has been invited yet. "}<span className="q">Each invite week shows here once a batch goes out or someone opens an account.</span></p></>);
+      html(el, <section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd"><h2>By invite week</h2></div><div className="lv-e"><span>No invite weeks yet.</span></div></div></div></section>);
+      return;
+    }
     if (!rows.length) {
-      html($g('hdr'), <><span className="when"><span className="dot" />Growth · Cohorts{L ? '' : ' · Demo data'}</span><p className="brief">{"Nobody was invited in this period. "}<span className="q">Invites started 15 Sep; pick a longer period.</span></p></>);
+      html($g('hdr'), <><span className="when"><span className="dot" />Growth · Cohorts{L ? '' : ' · Demo data'}</span><p className="brief">{"Nobody was invited in this period. "}<span className="q">{"Invites started "}{L ? COH[0].n : '15 Sep'}; pick a longer period.</span></p></>);
       html(el, <div className="bento"><div className="cell s12"><div className="bk-empty">{"No invite weeks fall inside "}{perName()}{". "}<button className="clear" data-per="all">Show since launch</button></div></div></div>);
       return;
     }
-    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Cohorts{L ? '' : ' · Demo data'}</span><p className="brief">{"Most people who activate do it in the first week, and "}<a data-cjump="how">direct deposit</a>{" members are the ones who stay. "}<span className="q">{rows.length === COH.length ? 'All ' + COH.length + ' invite weeks' : rows.length + ' invite week' + (rows.length > 1 ? 's' : '')}{filterDesc() ? ' · ' + filterDesc() : ''}.</span></p><div className="strip"><div className="sc"><span className="lbl">Invited</span><div className="sc-v">{fmt(I)}</div><div className="mb"><i style={css(`width:${I / 1800 * 100}%`)} /><span className="hroom" style={css(`left:${I / 1800 * 100}%;right:0`)} /></div><div className="sc-s">of 1,800 who joined · rest still waiting</div></div><div className="sc"><span className="lbl">Activated</span><div className="sc-v">{fmt(A)}{" "}<small>{p1(pct(A, I))}</small></div><div className="mb"><i style={css(`width:${pct(A, I)}%`)} /><i style={css(`left:${pct(A, I)}%;width:${pct(O, I)}%;background:var(--land)`)} /></div><div className="sc-s">{fmt(O)}{" more opened but haven't funded"}</div></div><div className="sc"><span className="lbl">Days to activate</span><div className="sc-v">{"6 "}<small>median</small></div><div className="mb"><i style={css(`width:${6 / 90 * 100}%`)} /></div><div className="sc-s">of a 90-day window</div></div><div className="sc"><span className="lbl">Still active</span><div className="sc-v">{Math.round(keep)}%</div><div className="mb"><i style={css(`width:${keep}%;background:var(--settled)`)} /></div><div className="sc-s">used Clear in the last 14 days</div></div></div></>);
+    const JOINED = L ? I + L.WL.waiting : 1800,
+      MED = L ? L.COH_MEDIAN : 6;
+    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Cohorts{L ? '' : ' · Demo data'}</span><p className="brief">{L ? <>{fmt(A)}{" of "}{fmt(I)}{" invited "}{Math.round(A) === 1 ? 'has' : 'have'}{" activated"}{MED != null ? `, ${MED} days after the invite at the median` : ''}{". "}</> : <>{"Most people who activate do it in the first week, and "}<a data-cjump="how">direct deposit</a>{" members are the ones who stay. "}</>}<span className="q">{rows.length === COH.length ? 'All ' + COH.length + ' invite weeks' : rows.length + ' invite week' + (rows.length > 1 ? 's' : '')}{filterDesc() ? ' · ' + filterDesc() : ''}.</span></p><div className="strip"><div className="sc"><span className="lbl">Invited</span><div className="sc-v">{fmt(I)}</div><div className="mb"><i style={css(`width:${pct(I, JOINED)}%`)} /><span className="hroom" style={css(`left:${pct(I, JOINED)}%;right:0`)} /></div><div className="sc-s">{"of "}{fmt(JOINED)}{" who joined · rest still waiting"}</div></div><div className="sc"><span className="lbl">Activated</span><div className="sc-v">{fmt(A)}{" "}<small>{p1(pct(A, I))}</small></div><div className="mb"><i style={css(`width:${pct(A, I)}%`)} /><i style={css(`left:${pct(A, I)}%;width:${pct(O, I)}%;background:var(--land)`)} /></div><div className="sc-s">{fmt(O)}{" more opened but haven't funded"}</div></div><div className="sc"><span className="lbl">Days to activate</span><div className="sc-v">{MED == null ? '—' : MED}{" "}<small>median</small></div><div className="mb"><i style={css(`width:${(MED ?? 0) / 90 * 100}%`)} /></div><div className="sc-s">of a 90-day window</div></div><div className="sc"><span className="lbl">Still active</span><div className="sc-v">{Math.round(keep)}%</div><div className="mb"><i style={css(`width:${keep}%;background:var(--settled)`)} /></div><div className="sc-s">used Clear in the last 14 days</div></div></div></>);
 
     /* cohort grid: rows are invite weeks, columns weeks since invite; cells not reached yet are hatched */
     const M = {
@@ -1057,7 +1074,11 @@ function makeGrowth() {
           partial = !reached && (w - 1) * 7 < c.el;
         if (!reached && !partial) return <div className="cg-na" />;
         let v;
-        if (CHS.metric === 'act') v = cum(c, Math.min(w * 7, c.el)) * 100;else {
+        if (L) {
+          // live: the real counts by the end of each week since the invite; still active is only known now, so it fills the latest week
+          if (CHS.metric === 'keep' && w !== Math.min(W, Math.max(1, Math.ceil(c.el / 7)))) return <div className="cg-na" />;
+          v = CHS.metric === 'act' ? pct(c.actBy[w - 1], c.inv) : CHS.metric === 'spent' ? pct(c.spentBy[w - 1], c.act) : c.keep;
+        } else if (CHS.metric === 'act') v = cum(c, Math.min(w * 7, c.el)) * 100;else {
           const base = CHS.metric === 'keep' ? c.keep : c.spent;
           v = base + (W - w) * (CHS.metric === 'keep' ? 2.2 : -1.5);
           v = Math.max(0, Math.min(100, v));
@@ -1077,20 +1098,20 @@ function makeGrowth() {
               })()}</span><b>{p1(pct(c.A, c.I))}</b></div></Fragment>)}</div></div>;
 
     /* time to activate: how many activated how soon after the invite; the first week is the dark part */
-    const TT = [['Same day', 31], ['1–3 days', 27], ['4–7 days', 29], ['1–2 weeks', 21], ['2–4 weeks', 12], ['4+ weeks', 4]];
+    const TT = [['Same day', 31], ['1–3 days', 27], ['4–7 days', 29], ['1–2 weeks', 21], ['2–4 weeks', 12], ['4+ weeks', 4]].map((t, i) => L ? [t[0], L.COH_TT[i] ?? 0] : t);
     const ttT = TT.reduce((s, x) => s + x[1], 0),
       ttM = Math.max(...TT.map(x => x[1]));
     let ttC = 0;
-    const wk1 = Math.round((TT[0][1] + TT[1][1] + TT[2][1]) / ttT * 100);
+    const wk1 = ttT ? Math.round((TT[0][1] + TT[1][1] + TT[2][1]) / ttT * 100) : 0;
     const curves = <div className="tt"><div className="tt-big"><span className="big">{wk1}%</span><span>of activations happen in the first week after the invite</span></div><div className="tt-bars">{TT.map(([n, v], i) => {
           ttC += v;
-          const c = Math.round(ttC / ttT * 100);
-          return <div key={i} className={`tt-c ${i < 3 ? 'w1' : ''}`}><span className="tt-v">{fmt(v * A / 124)}</span><i style={css(`height:${v / ttM * 100}%`)} /><span className="tt-l">{n}</span><span className="tt-cum">{c}%</span></div>;
+          const c = ttT ? Math.round(ttC / ttT * 100) : 0;
+          return <div key={i} className={`tt-c ${i < 3 ? 'w1' : ''}`}><span className="tt-v">{fmt(v * A / (ACT_ALL || 1))}</span><i style={css(`height:${ttM ? v / ttM * 100 : 0}%`)} /><span className="tt-l">{n}</span><span className="tt-cum">{c}%</span></div>;
         })}<span className="tt-br" style={css("left:0;width:50%")}><b>First week</b></span></div><div className="tt-k"><span><i className="d" />First week</span><span><i />Later</span><span className="tt-ck">Bottom row: share activated by then</span></div></div>;
 
     /* how they activated, and who stayed */
     const hT = HOW.reduce((s, h) => s + h[1], 0);
-    const how = <div className="hw"><div className="hw-bar">{HOW.map((h, __k) => <i key={__k} style={css(`flex:${h[1]};background:${h[3]}`)} />)}</div>{HOW.map((h, __k) => <div key={__k} className="hw-r"><span className="hw-n"><i style={css(`background:${h[3]}`)} /><b>{h[0]}</b><span>{fmt(h[1] * A / 124)}{" · "}{p1(h[1] / hT * 100)}</span></span><span className="hw-k"><span className="lbl">Still active</span><span className="shb"><i style={css(`width:${h[2]}%;background:${h[2] >= 95 ? 'var(--settled)' : h[2] < 75 ? 'var(--underway)' : 'var(--fg)'}`)} /></span><b>{h[2]}%</b></span></div>)}</div>;
+    const how = <div className="hw"><div className="hw-bar">{HOW.map((h, __k) => <i key={__k} style={css(`flex:${h[1]};background:${h[3]}`)} />)}</div>{HOW.map((h, __k) => <div key={__k} className="hw-r"><span className="hw-n"><i style={css(`background:${h[3]}`)} /><b>{h[0]}</b><span>{fmt(h[1] * A / (ACT_ALL || 1))}{" · "}{p1(hT ? h[1] / hT * 100 : 0)}</span></span><span className="hw-k"><span className="lbl">Still active</span><span className="shb"><i style={css(`width:${h[2]}%;background:${h[2] >= 95 ? 'var(--settled)' : h[2] < 75 ? 'var(--underway)' : 'var(--fg)'}`)} /></span><b>{h[2]}%</b></span></div>)}</div>;
 
     /* the 90-day window: each invite week's window on one axis, today marked, what's left to do */
     const w0 = Math.min(...rows.map(c => c.d)),
@@ -1100,7 +1121,8 @@ function makeGrowth() {
     const mo = [];
     for (let d = w0; d <= w1; d++) {
       const dt = dayDate(d);
-      if (d === w0 || dt.getDate() === 1) mo.push([d, dt.toLocaleString('en', {
+      // the first month only when there's room for its name before the next begins
+      if (d === w0 && new Date(dt.getFullYear(), dt.getMonth() + 1, 0).getDate() - dt.getDate() >= 6 || dt.getDate() === 1) mo.push([d, dt.toLocaleString('en', {
         month: 'short'
       })]);
     }
@@ -1117,7 +1139,7 @@ function makeGrowth() {
                         act: 'Activated',
                         keep: 'Active',
                         spent: '$10'
-                      }[k]}</span></button>)}</div></div></div>{grid}<div className="bk-ft"><span>{M[CHS.metric][0]}{": "}{M[CHS.metric][1]}{" by the end of each week. Outlined = this week so far."}</span><span className="cg-k"><i style={css("background:var(--fg)")} />Active<i style={css("background:var(--land)")} />Opened<i style={css("background:var(--hair)")} />Not yet</span></div></div></div></section><section className="band"><div className="bento"><div className="cell s7"><div className="hd"><h2>How fast they activate</h2><div className="r"><span className="lbl">{fmt(A)}{" activations · time after invite"}</span></div></div>{curves}<div className="bk-ft"><span>After the first week activations slow to a trickle, so that's when to nudge.</span><button data-go="members" data-gp="nudges:opened">Nudge in Members →</button></div></div><div className="cell s5" id="how"><div className="hd"><h2>How they activated</h2><div className="r"><span className="lbl">{fmt(A)}{" activations"}</span></div></div>{how}<div className="bk-ft"><span>{"Every direct deposit member stayed. "}<b>$5</b>{" deposits drift most."}</span><span /></div></div></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>The 90-day window</h2><div className="r"><span className="lbl">Activation has to happen inside it</span></div></div>{windowV}<div className="bk-ft"><span><b>{fmt(I - A)}</b>{" invited people aren't active yet. The first window closes "}<b>{dFmt(w0 + 90)}</b>.</span><button data-go="members" data-gp="people">See them in Members →</button></div></div></div></section></>);
+                      }[k]}</span></button>)}</div></div></div>{grid}<div className="bk-ft"><span>{M[CHS.metric][0]}{": "}{M[CHS.metric][1]}{" by the end of each week. Outlined = this week so far."}</span><span className="cg-k"><i style={css("background:var(--fg)")} />Active<i style={css("background:var(--land)")} />Opened<i style={css("background:var(--hair)")} />Not yet</span></div></div></div></section><section className="band"><div className="bento"><div className="cell s7"><div className="hd"><h2>How fast they activate</h2><div className="r"><span className="lbl">{fmt(A)}{" activations · time after invite"}</span></div></div>{L && !ttT ? <div className="lv-e"><span>Nobody has activated yet.</span></div> : curves}<div className="bk-ft"><span>{L ? 'Nudge people who opened an account but haven’t funded it.' : "After the first week activations slow to a trickle, so that's when to nudge."}</span><button data-go="members" data-gp="nudges:opened">Nudge in Members →</button></div></div><div className="cell s5" id="how"><div className="hd"><h2>How they activated</h2><div className="r"><span className="lbl">{fmt(A)}{" activations"}</span></div></div>{L && !hT ? <div className="lv-e"><span>Nobody has funded yet.</span></div> : how}<div className="bk-ft"><span>{L ? howFoot() : <>{"Every direct deposit member stayed. "}<b>$5</b>{" deposits drift most."}</>}</span><span /></div></div></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>The 90-day window</h2><div className="r"><span className="lbl">Activation has to happen inside it</span></div></div>{windowV}<div className="bk-ft"><span><b>{fmt(I - A)}</b>{" invited people aren't active yet. The first window closes "}<b>{dFmt(w0 + 90)}</b>.</span><button data-go="members" data-gp="people">See them in Members →</button></div></div></div></section></>);
   }
   R.addEventListener('mouseover', e => {
     if (S.tab !== 'cohorts') return;
@@ -1738,11 +1760,75 @@ function makeGrowth() {
       renderWl();
     }, 9000);
   }
+  /* live, the moves are worked out from the numbers on this page: each one only when its numbers point somewhere */
+  function liveMoves(bars) {
+    const M = [],
+      per4 = W => W.slice(-4).reduce((a, v) => a + v, 0) / 4;
+    const rate = r => r.f[0] ? r.f[1] / r.f[0] * 100 : 0;
+    // shops with posters and enough scans to judge: the weakest against the rest
+    const shops = D.shop.rows.filter(r => r.f[0] >= 20);
+    if (shops.length >= 2) {
+      const avg = shops.reduce((a, r) => a + r.f[1], 0) / shops.reduce((a, r) => a + r.f[0], 0) * 100;
+      const lo = [...shops].sort((a, b) => rate(a) - rate(b))[0];
+      if (rate(lo) < avg * .6) M.push({
+        k: 'Swap a design',
+        imp: `≈ +${fmt(lo.f[0] * (avg - rate(lo)) / 100)} joins a month`,
+        t: lo.n,
+        m: 'Lowest join rate of the shops with posters, on enough scans to judge.',
+        ev: bars(rate(lo), avg, 'This shop', 'All shops', Math.max(avg, rate(lo)) * 1.2 || 1, v => v.toFixed(1) + '%'),
+        go: 'Plan the swap in Field',
+        to: ['field', 'plan']
+      });
+    }
+    // cities with posters: where each poster pulls the most visits
+    const cities = TF_CITY.filter(c => c[2] && c[1]);
+    if (cities.length >= 2) {
+      const all = cities.reduce((a, c) => a + c[1], 0) / cities.reduce((a, c) => a + c[2], 0);
+      const hi = [...cities].sort((a, b) => b[1] / b[2] - a[1] / a[2])[0];
+      if (hi[1] / hi[2] > all * 1.25) M.push({
+        k: 'Add posters',
+        imp: `${fmt(hi[1] / hi[2])} visits a poster`,
+        t: hi[0],
+        m: 'Each poster there pulls more visits than anywhere else.',
+        ev: bars(hi[1] / hi[2], all, 'Visits per poster', 'All-city average', hi[1] / hi[2] * 1.15, v => fmt(v)),
+        go: 'Add to the Field route',
+        to: ['field', 'plan']
+      });
+    }
+    // the waitlist growing faster than batches invite
+    const j = per4(W_JOIN),
+      inv = per4(W_INV);
+    if (L.WL.waiting && j > inv) M.push({
+      k: 'Raise the invite pace',
+      imp: 'Waitlist stops growing',
+      t: `Invite ${fmt(Math.ceil(j))}+ a week`,
+      m: inv ? `Joins outrun invites ${(j / inv).toFixed(1)} to 1, so the wait keeps getting longer.` : `${fmt(L.WL.waiting)} waiting, and nobody invited in the last four weeks.`,
+      ev: bars(j, inv, 'Joins a week', 'Invites a week', Math.max(j, inv) * 1.15 || 1, v => fmt(v)),
+      go: 'Plan a batch in Members',
+      to: ['members', 'waitlist']
+    });
+    // people with an account and no first deposit
+    const opened = ONB[0][1],
+      active = ONB[2][1];
+    if (opened) M.push({
+      k: 'Nudge to fund',
+      imp: `${fmt(opened)} could activate`,
+      t: `${fmt(opened)} opened but haven’t funded`,
+      m: 'They have an account and no first deposit yet.',
+      ev: bars(opened, active, 'Opened, not funded', 'Activated', Math.max(opened, active) * 1.15 || 1, v => fmt(v)),
+      go: 'Nudge in Members',
+      to: ['members', 'nudges:opened']
+    });
+    return M.slice(0, 3);
+  }
   function renderMoves() {
-    // the moves are worked out from shop, design and city numbers the API doesn't have yet (docs/ui-redesign-plan.md, gaps)
-    if (L) return html($g('moves'), <div className="cell s12"><div className="hd"><h2>Next moves</h2><div className="r"><span className="lbl">Not real yet</span></div></div><div className="bk-empty">Worked out once joins and first spends are counted by shop, design and city.</div></div>);
     // each move: what to do, the evidence drawn as two bars, and what it should be worth
     const bars = (a, b, la, lb, max, fa) => <div className="mv-ev"><div><span>{la}</span><b>{fa(a)}</b></div><i className="mv-b"><i style={css(`width:${a / max * 100}%`)} /></i><div><span>{lb}</span><b>{fa(b)}</b></div><i className="mv-b q"><i style={css(`width:${b / max * 100}%`)} /></i></div>;
+    if (L) {
+      const M = liveMoves(bars);
+      if (!M.length) return html($g('moves'), <div className="cell s12"><div className="hd"><h2>Next moves</h2><div className="r"><span className="lbl">Worked out from the numbers above</span></div></div><div className="lv-e"><span>Nothing to act on yet. Moves show here when the numbers above point somewhere.</span></div></div>);
+      return html($g('moves'), <div className="cell s12"><div className="hd"><h2>Next moves</h2><div className="r"><span className="lbl">Worked out from the numbers above</span></div></div><div className="mv-g">{M.map((m, __k) => <div key={__k} className="mv"><div className="mv-h"><span className="lbl">{m.k}</span><span className="chip ok">{m.imp}</span></div><b className="mv-t">{m.t}</b><span className="mv-m">{m.m}</span>{m.ev}<button className="btn mv-go" data-act="" data-go={m.to[0]} data-gp={m.to[1]}>{m.go}{" →"}</button></div>)}{M.length < 3 ? <div className="mv mv-x" style={css(`grid-column:span ${3 - M.length}`)} /> : null}</div></div>);
+    }
     const M = [{
       k: 'Swap a design',
       imp: '≈ +38 joins a month',
@@ -1807,7 +1893,6 @@ function makeGrowth() {
   /* live, a tab whose numbers the API doesn't have yet says so, hatched, and what it needs (docs/ui-redesign-plan.md, gaps) */
   const NOT_REAL = {
     campaigns: ['cp', 'Campaigns', 'Campaigns need tagged links (UTM) counted by the site feed, with what each cost and the $10 offers they carried.'],
-    cohorts: ['ch', 'Cohorts', 'Cohorts need each invite week’s activations by days since the invite, and who is still active and has spent their $10.'],
     apps: ['ap', 'Apps', 'Apps need the member and merchant apps’ own events: who opens them each day, what they use, onboarding steps and errors.']
   };
   function notReal(tab) {
