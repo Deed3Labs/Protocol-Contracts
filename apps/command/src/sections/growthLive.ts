@@ -143,8 +143,9 @@ export function growthLive() {
 
 /**
  * Campaigns, live: each poster design (Command's own posters and waitlist) and each tagged link the site
- * feed counted (utm_campaign), on the page's day grid, with Untagged the rest. What a campaign cost isn't
- * recorded, so every cost is null; a step nothing measures (who a tagged link brought, past joining) is null.
+ * feed counted (utm_campaign), on the page's day grid, with Untagged the rest. What it cost is what people recorded
+ * (growth.campaign_costs) plus, for a poster design, the $10 offers its people spent at the poster's shop; a
+ * campaign with neither has no known cost (costs empty, offers null). A step nothing measures is null.
  */
 function campaigns(fig, start, all) {
   const DAY = 864e5;
@@ -159,8 +160,13 @@ function campaigns(fig, start, all) {
   };
   const today = dayOf(Date.now());
   const none = { print: null, offer: null, ads: null, credit: null };
+  // each recorded cost on the day grid, by campaign
+  const costs = (key) => (fig['growth.campaign_costs'] ?? []).filter((c) => c.campaign === key).map((c) => ({ ...c, d: dayOf(c.on) }));
   const posters = (fig['growth.poster_campaigns'] ?? []).map((c) => ({
     id: `d:${c.code}`,
+    key: `design:${c.code}`,
+    costs: costs(`design:${c.code}`),
+    offers: c.offers ? c.offers.map(dayOf) : null,
     code: c.code,
     n: c.name,
     sub: `Poster design ${c.code}`,
@@ -179,6 +185,9 @@ function campaigns(fig, start, all) {
       const last = isoDay(c.last);
       return {
         id: `u:${i}`,
+        key: `utm:${c.name}`,
+        costs: costs(`utm:${c.name}`),
+        offers: null,
         n: c.name,
         sub: [c.source, c.medium].filter(Boolean).join(' · ') || 'Tagged links',
         type: c.type,

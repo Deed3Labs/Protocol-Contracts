@@ -105,3 +105,8 @@ button.fw-k{text-align:left;cursor:pointer}
 /* Growth's Next moves with fewer than three: the slots no move fills are hatched, not blank */
 .mv.mv-x{background:repeating-linear-gradient(45deg,transparent 0 6px,color-mix(in srgb,var(--fg) 6%,transparent) 6px 7px)}
 @media (max-width:1024px){.mv.mv-x{display:none}}
+/* Growth › Campaigns detail: the recorded costs' remove button, and the form that records one */
+.led [data-ccost-rm]{border:0;background:none;color:var(--fg-50);cursor:pointer;padding:0 0 0 6px;font:inherit;line-height:1}
+.led [data-ccost-rm]:hover{color:var(--fg)}
+.cc-f{display:flex;flex-direction:column;gap:10px}
+.cc-f > .btn{align-self:flex-start}

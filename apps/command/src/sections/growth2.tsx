@@ -5,6 +5,8 @@ import { api } from '../live/api';
 import { LIVE as LIVE_APP, REAL } from '../live/env';
 import { CC } from './cc';
 import { growthLive } from './growthLive';
+import { run } from '../live/actions';
+import { toast } from './shell';
 import { registerPage, shadowHost } from './pageHost';
 
 /*
@@ -515,7 +517,7 @@ function makeGrowth() {
       return best;
     })() : null;
     // header
-    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Traffic · {L ? 'Plausible' : 'Umami, first-party · Demo data'}</span><p className="brief">{fmt(V)}{" visits from about "}{fmt(visitors)}{" people, "}{Math.round(phone * 100)}{"% on a phone. "}{L ? (busiest ? <><a data-heatjump="">{busiest}</a>{" is the busiest hour. "}</> : '') : <><a data-ref="tiktok.com">TikTok</a>{" is the fastest-growing referrer, and "}<a data-heatjump="">Sunday at noon</a>{" is the busiest hour. "}</>}<span className="q">{perName()}{filterDesc() ? ' · ' + filterDesc() : ''}{TS.prop !== 'all' ? ' · ' + TS.prop : ''}.</span></p><div className="strip"><div className="sc"><span className="lbl">{"Visits · "}{perName()}</span><div className="sc-v">{fmt(V)}</div><div className="mb">{PROPS.reduce((acc, p, i) => {
+    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Traffic · {L ? 'Umami' : 'Umami, first-party · Demo data'}</span><p className="brief">{fmt(V)}{" visits from about "}{fmt(visitors)}{" people, "}{Math.round(phone * 100)}{"% on a phone. "}{L ? (busiest ? <><a data-heatjump="">{busiest}</a>{" is the busiest hour. "}</> : '') : <><a data-ref="tiktok.com">TikTok</a>{" is the fastest-growing referrer, and "}<a data-heatjump="">Sunday at noon</a>{" is the busiest hour. "}</>}<span className="q">{perName()}{filterDesc() ? ' · ' + filterDesc() : ''}{TS.prop !== 'all' ? ' · ' + TS.prop : ''}.</span></p><div className="strip"><div className="sc"><span className="lbl">{"Visits · "}{perName()}</span><div className="sc-v">{fmt(V)}</div><div className="mb">{PROPS.reduce((acc, p, i) => {
               const w = TS.prop === 'all' ? p[1] / (VIS30 || 1) * 100 : p[0] === TS.prop ? 100 : 0;
               acc.h.push(<i key={i} style={css(`left:${acc.x}%;width:${w}%;background:${p[2]}`)} />);
               acc.x += w;
@@ -653,7 +655,7 @@ function makeGrowth() {
     pg.sort((x, y) => pgKey === 'bounce' ? y.b - x.b : pgKey === 'time' ? y.t - x.t : pgKey === 'joins' ? (y.j ?? -1) - (x.j ?? -1) : y.e - x.e);
     const pth = (k2, t) => <th data-pgsort={k2} className={TS.pgSort === k2 ? 's' : ''}>{t}{TS.pgSort === k2 ? ' ↓' : ''}</th>;
     const pages = <div className="bt-wrap"><table className="bt pg"><thead><tr><th className="c-nm">Page</th>{pth('entries', 'Entries')}{pth('bounce', 'Bounced')}{pth('time', 'Time on page')}{pth('joins', 'Joins started')}</tr></thead><tbody>{pg.map((p, __k) => <tr key={__k}><td className="tn c-nm"><b className="mono">{p.path}</b><span><i className="swt" style={css(`background:${PROPS.find(x => x[0] === p.prop)[2]}`)} />{p.prop}</span></td><td>{fmt(p.e)}</td><td className={p.b >= 50 ? 'warn' : ''}>{p.b}%</td><td>{secs(p.t)}</td><td>{p.j == null ? <span className="quiet small">—</span> : fmt(p.j)}</td></tr>)}</tbody></table></div>;
-    html(el, <>{props}<section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s8"><div className="hd"><h2>Visits over time</h2><div className="r"><span className="lbl">{"By "}{gran}</span><div className="seg sm" role="group" aria-label="Granularity">{[['auto', 'Auto'], ['day', 'Daily'], ['week', 'Weekly']].map(([k2, t], __k) => <button key={__k} data-gran={k2} aria-pressed={S.gran === k2}>{t}</button>)}</div></div></div>{chart}<div className="tr-k tf-k">{visibleCh.map((ch, __k) => <button key={__k} data-iso={ch} className={`${iso === ch ? 'on' : ''} ${iso && iso !== ch ? 'off' : ''}`}><i style={css(`background:${CH_COL[ch]};width:10px;height:10px`)} />{ch}</button>)}{prevTot ? <span className="gh-k"><i className="tf-gh-k" />{cmpName()}</span> : ''}{iso ? <button className="clear" data-iso="">Show all</button> : ''}</div></div><div className="cell s4" id="live" /></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Channels and referrers</h2><div className="r"><span className="lbl">Click a row to filter · + for referrers</span></div></div>{L && !chRows.length ? <div className="lv-e"><span>No visits by channel yet</span></div> : <div className="bt-wrap"><table className="bt ch"><thead><tr><th className="c-nm">Channel</th><th>Visits</th><th>Share</th><th>Bounced</th><th>Join rate</th><th>{cmpOn() ? 'Change' : ''}</th></tr></thead><tbody>{chTable}</tbody></table></div>}<div className="bk-ft">{L ? <span>{tfChannelsFoot()}</span> : <span>{"Posters bring 13% of visits but convert "}<b>37×</b>{" better than every other channel combined"}</span>}<button data-tab="campaigns">Compare campaigns →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="heat"><div className="hd"><h2>When they visit</h2><div className="r"><span className="lbl">{"By hour · "}{perName()}</span></div></div>{heat}<div className="bk-ft">{L ? <span>{busiest ? <>{"Busiest: "}<b>{busiest}</b></> : 'No visits counted yet'}</span> : <span>{"Busiest: "}<b>Sunday 12:00–14:00</b>{" and "}<b>weekdays 18:00–21:00</b></span>}{L ? <span /> : <button data-act="" data-newcamp="">Plan a campaign for those windows →</button>}</div></div><div className="cell s5"><div className="hd"><h2>Devices</h2><div className="r"><span className="lbl">{perName()}</span></div></div>{devices}<div className="bk-ft">{L ? <span>By screen size, as Plausible counts it</span> : <span>{"Poster scans are "}<b>99% phone</b></span>}<span /></div></div></div></section><section className="band"><div className="bento"><div className="cell s5"><div className="hd"><h2>Where they're from</h2><div className="r"><span className="lbl">City · visits per poster</span></div></div>{L && !cityRows.length ? <div className="lv-e"><span>No visits by city yet</span></div> : <div className="ct-l">{cities}</div>}<div className="bk-ft">{L ? <span>{tfCityFoot(cityRows)}</span> : <span>Riverside gets the most per poster</span>}<button data-go="field" data-gp="placement">Poster placement in Field →</button></div></div><div className="cell s7"><div className="hd"><h2>Pages</h2><div className="r"><span className="lbl">{"Where visits start · "}{TS.prop === 'all' ? 'all properties' : TS.prop}</span></div></div>{L && !pg.length ? <div className="lv-e"><span>No visits by page yet</span></div> : pages}<div className="bk-ft"><span>{"Pages with "}<b className="warn">50%+</b>{" bounced are worth a look"}</span><span /></div></div></div></section><div className="src-note"><span><b>Source:</b>{L ? ' Plausible, on useclear.org. No cookies, no ad trackers; visitor counts are estimates and nobody is followed across sites.' : " Umami, first-party on our servers. No cookies, no ad trackers; visitor counts are estimates and nobody is followed across sites."}</span>{L ? null : <button className="btn" style={css("height:32px")} data-act="">Add a data source</button>}</div></>);
+    html(el, <>{props}<section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s8"><div className="hd"><h2>Visits over time</h2><div className="r"><span className="lbl">{"By "}{gran}</span><div className="seg sm" role="group" aria-label="Granularity">{[['auto', 'Auto'], ['day', 'Daily'], ['week', 'Weekly']].map(([k2, t], __k) => <button key={__k} data-gran={k2} aria-pressed={S.gran === k2}>{t}</button>)}</div></div></div>{chart}<div className="tr-k tf-k">{visibleCh.map((ch, __k) => <button key={__k} data-iso={ch} className={`${iso === ch ? 'on' : ''} ${iso && iso !== ch ? 'off' : ''}`}><i style={css(`background:${CH_COL[ch]};width:10px;height:10px`)} />{ch}</button>)}{prevTot ? <span className="gh-k"><i className="tf-gh-k" />{cmpName()}</span> : ''}{iso ? <button className="clear" data-iso="">Show all</button> : ''}</div></div><div className="cell s4" id="live" /></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Channels and referrers</h2><div className="r"><span className="lbl">Click a row to filter · + for referrers</span></div></div>{L && !chRows.length ? <div className="lv-e"><span>No visits by channel yet</span></div> : <div className="bt-wrap"><table className="bt ch"><thead><tr><th className="c-nm">Channel</th><th>Visits</th><th>Share</th><th>Bounced</th><th>Join rate</th><th>{cmpOn() ? 'Change' : ''}</th></tr></thead><tbody>{chTable}</tbody></table></div>}<div className="bk-ft">{L ? <span>{tfChannelsFoot()}</span> : <span>{"Posters bring 13% of visits but convert "}<b>37×</b>{" better than every other channel combined"}</span>}<button data-tab="campaigns">Compare campaigns →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="heat"><div className="hd"><h2>When they visit</h2><div className="r"><span className="lbl">{"By hour · "}{perName()}</span></div></div>{heat}<div className="bk-ft">{L ? <span>{busiest ? <>{"Busiest: "}<b>{busiest}</b></> : 'No visits counted yet'}</span> : <span>{"Busiest: "}<b>Sunday 12:00–14:00</b>{" and "}<b>weekdays 18:00–21:00</b></span>}{L ? <span /> : <button data-act="" data-newcamp="">Plan a campaign for those windows →</button>}</div></div><div className="cell s5"><div className="hd"><h2>Devices</h2><div className="r"><span className="lbl">{perName()}</span></div></div>{devices}<div className="bk-ft">{L ? <span>By device, as Umami counts it</span> : <span>{"Poster scans are "}<b>99% phone</b></span>}<span /></div></div></div></section><section className="band"><div className="bento"><div className="cell s5"><div className="hd"><h2>Where they're from</h2><div className="r"><span className="lbl">City · visits per poster</span></div></div>{L && !cityRows.length ? <div className="lv-e"><span>No visits by city yet</span></div> : <div className="ct-l">{cities}</div>}<div className="bk-ft">{L ? <span>{tfCityFoot(cityRows)}</span> : <span>Riverside gets the most per poster</span>}<button data-go="field" data-gp="placement">Poster placement in Field →</button></div></div><div className="cell s7"><div className="hd"><h2>Pages</h2><div className="r"><span className="lbl">{"Where visits start · "}{TS.prop === 'all' ? 'all properties' : TS.prop}</span></div></div>{L && !pg.length ? <div className="lv-e"><span>No visits by page yet</span></div> : pages}<div className="bk-ft"><span>{"Pages with "}<b className="warn">50%+</b>{" bounced are worth a look"}</span><span /></div></div></div></section><div className="src-note"><span><b>Source:</b>{L ? ' Umami, the co-op’s own, on useclear.org. No cookies, no ad trackers; visitor counts are estimates and nobody is followed across sites.' : " Umami, first-party on our servers. No cookies, no ad trackers; visitor counts are estimates and nobody is followed across sites."}</span>{L ? null : <button className="btn" style={css("height:32px")} data-act="">Add a data source</button>}</div></>);
     renderLive();
     clearInterval(liveTimer);
     if (L) {
@@ -844,7 +846,28 @@ function makeGrowth() {
         const num = sumR(i, Math.max(c.start, a), Math.min(end, b));
         return Math.round(x * (den ? num / den : dayK) * mult);
       });
-      // live, what a campaign cost isn't recorded: its spend is unknown (null), never $0
+      // live, what it cost is what was recorded on days in the period, plus its $10 offers spent then;
+      // a campaign with nothing recorded and no offers has an unknown spend (null), never $0
+      if (L) {
+        const inP = d => d >= a && d <= b;
+        const sum = k => c.costs.filter(x => x.kind === k && inP(x.d)).reduce((t, x) => t + x.cents / 100, 0);
+        const redeemed = (c.offers ?? []).filter(inP).length;
+        const sp = {
+          print: sum('print'),
+          offer: sum('offer') + redeemed * 10,
+          ads: sum('ads'),
+          credit: sum('credit')
+        };
+        const known = c.costs.length > 0 || !!c.offers?.length;
+        return {
+          ...c,
+          v: vv,
+          sp,
+          redeemed: c.offers ? redeemed : null,
+          spend: known ? sp.print + sp.offer + sp.ads + sp.credit : null,
+          inR
+        };
+      }
       const known = c.print != null;
       const sp = known ? {
         print: c.start >= a && c.start <= b ? c.print : S.per === 'all' ? c.print : c.print * dayK,
@@ -913,47 +936,87 @@ function makeGrowth() {
   function renderCampaignsLive(rows) {
     const T = totals(),
       [a, b] = S.range;
+    const money = v => '$' + v.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    const money0 = v => '$' + Math.round(v).toLocaleString('en-US');
     const J = rows.reduce((s, c) => s + c.v[1], 0),
       V = rows.reduce((s, c) => s + c.v[0], 0);
-    const known = (c, i) => c.v[i] != null;
-    const step = i => rows.some(c => known(c, i)) ? rows.reduce((s, c) => s + (c.v[i] ?? 0), 0) : null;
+    // what's known to have cost something: recorded costs, or $10 offers spent
+    const costed = rows.filter(c => c.spend != null),
+      SP = costed.reduce((s, c) => s + c.spend, 0),
+      Jc = costed.reduce((s, c) => s + c.v[1], 0),
+      ACTc = costed.reduce((s, c) => s + (c.v[4] ?? 0), 0),
+      OFFER = rows.reduce((s, c) => s + c.sp.offer, 0);
+    const cpj = Jc && SP ? SP / Jc : null;
     const running = CAMPS.filter(c => !c.end),
       ended = CAMPS.filter(c => c.end).sort((x, y) => y.end - x.end);
     const top = rows.slice().sort((x, y) => y.v[1] - x.v[1])[0];
+    const empty = !CAMPS.length;
     const q = <span className="q">{perName()}{filterDesc() ? ' · ' + filterDesc() : ''}.</span>;
-    if (!CAMPS.length) {
-      html($g('hdr'), <><span className="when"><span className="dot" />Growth · Campaigns</span><p className="brief">{"No campaigns yet. "}<span className="q">Poster designs and links tagged with utm_campaign show here once they bring visits.</span></p></>);
-      html($g('cp'), <section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd cp-hd"><h2>Every campaign</h2><div className="r"><button className="btn" style={css("height:32px")} data-newcamp=""><span className="nc-l">+ New campaign</span><span className="nc-s">+ New</span></button></div></div><div className="lv-e"><span>No tagged campaigns yet. Tag links with utm_campaign and they show here.</span></div><div className="bk-ft"><span>{fmt(UNTAGGED.f[0])}{" visits and "}{fmt(UNTAGGED.f[1])}{" joins in the 30 days carried no tag"}</span><button data-newcamp="">Make a tagged link →</button></div></div></div></section>);
-      return renderCampPanel();
-    }
     // the site feed and Command's own records count on their own clocks: a share is capped at all of it
     const of = (x, t) => t ? Math.min(100, Math.round(x / t * 100)) : 0;
-    const share = of(J, T[1]);
-    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Campaigns</span><p className="brief">{fmt(J)}{T[1] >= J ? ` of ${fmt(T[1])}` : ''}{J === 1 ? " join came from a campaign" : " joins came from a campaign"}{top && top.v[1] ? <>{"; the most from "}<a data-camp={top.id}>{top.n}</a></> : ''}{". What campaigns cost isn't recorded, so there's no cost per join. "}{q}</p><div className="strip"><div className="sc"><span className="lbl">Joins from campaigns</span><div className="sc-v">{fmt(J)}{" "}<small>{share}%</small></div><div className="mb"><i style={css(`width:${share}%`)} /></div><div className="sc-s">of all joins carry a campaign tag</div></div><div className="sc"><span className="lbl">Visits from campaigns</span><div className="sc-v">{fmt(V)}</div><div className="mb"><i style={css(`width:${of(V, T[0])}%`)} /></div><div className="sc-s">{T[0] >= V ? `of ${fmt(T[0])} visits` : 'tagged visits in the period'}</div></div><div className="sc"><span className="lbl">Spent</span><div className="sc-v quiet">—</div><div className="mb" /><div className="sc-s">Spend isn't recorded</div></div><div className="sc"><span className="lbl">Live campaigns</span><div className="sc-v">{running.length}{" "}<small>{"of "}{CAMPS.length}</small></div><div className="units cmp-u">{CAMPS.map((c, __k) => <i key={__k} style={css(`background:${c.end ? 'none' : TYPE_COL[c.type]};box-shadow:${c.end ? 'inset 0 0 0 1.5px var(--fg-50)' : 'none'}`)} />)}</div><div className="sc-s">{ended.length ? `${ended[0].n} ended ${dFmt(ended[0].end)}` : 'None has ended'}</div></div></div></>);
-    const {
-      cal,
-      showA
-    } = campCal(rows);
-    const first = Math.min(...CAMPS.map(c => c.start));
+    // the site's own count of joins can trail the campaigns' (or be missing): never a share of less than they brought
+    const share = of(J, Math.max(T[1], J));
+    const KINDS = [['offer', 'var(--live)'], ['print', 'var(--fg)'], ['ads', 'var(--underway)'], ['credit', 'var(--land)']];
+    const brief = empty ? <>{"No campaigns yet. "}<span className="q">Poster designs and links tagged with utm_campaign show here once they bring visits.</span></> : <>{fmt(J)}{T[1] >= J ? ` of ${fmt(T[1])}` : ''}{J === 1 ? " join came from a campaign" : " joins came from a campaign"}{top && top.v[1] ? <>{"; the most from "}<a data-camp={top.id}>{top.n}</a></> : ''}{SP ? `. What they cost comes to ${money(SP)}${cpj != null ? `, ${money(cpj)} a join` : ''}. ` : '. Nothing they cost is recorded yet. '}{q}</>;
+    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Campaigns</span><p className="brief">{brief}</p><div className="strip"><div className="sc"><span className="lbl">{"Spent · "}{perName()}</span><div className={`sc-v ${SP ? '' : 'quiet'}`}>{SP ? <span>{money0(Math.floor(SP))}<span className="ct">.{(SP % 1).toFixed(2).slice(2)}</span></span> : '—'}</div><div className="mb">{(() => {
+            let x = 0;
+            return KINDS.map(([k, col], __k) => {
+              const t = rows.reduce((s, c) => s + c.sp[k], 0),
+                w = SP ? t / SP * 100 : 0,
+                h = <i key={__k} style={css(`left:${x}%;width:${w}%;background:${col}`)} />;
+              x += w;
+              return h;
+            });
+          })()}</div><div className="sc-s">{SP ? `${Math.round(OFFER / SP * 100)}% is the $10 offer, spent in shops` : 'Nothing recorded yet'}</div></div><div className="sc"><span className="lbl">Joins from campaigns</span><div className="sc-v">{fmt(J)}{" "}<small>{share}%</small></div><div className="mb"><i style={css(`width:${share}%`)} /></div><div className="sc-s">of all joins carry a campaign tag</div></div><div className="sc"><span className="lbl">Cost per join</span><div className={`sc-v ${cpj == null ? 'quiet' : ''}`}>{cpj == null ? '—' : <span>${Math.floor(cpj)}<span className="ct">.{(cpj % 1).toFixed(2).slice(2)}</span></span>}</div><div className="mb"><i style={css(`width:${cpj == null ? 0 : Math.min(100, cpj / 5 * 100)}%`)} /></div><div className="sc-s">{cpj != null && ACTc ? `${money(SP / ACTc)} per activated member` : costed.length ? 'No joins yet from what cost something' : 'Record a campaign’s costs in its detail'}</div></div><div className="sc"><span className="lbl">Live campaigns</span><div className="sc-v">{running.length}{" "}<small>{"of "}{CAMPS.length}</small></div><div className="units cmp-u">{CAMPS.map((c, __k) => <i key={__k} style={css(`background:${c.end ? 'none' : TYPE_COL[c.type]};box-shadow:${c.end ? 'inset 0 0 0 1.5px var(--fg-50)' : 'none'}`)} />)}</div><div className="sc-s">{empty ? 'None yet' : ended.length ? `${ended[0].n} ended ${dFmt(ended[0].end)}` : 'None has ended'}</div></div></div></>);
 
-    /* table: what each campaign got; the steps after joining only where Command can follow the people */
-    const key = CS.sort === 'visits' ? 'visits' : 'joins',
-      sorted = rows.slice().sort((x, y) => key === 'visits' ? y.v[0] - x.v[0] : y.v[1] - x.v[1]);
+    /* what ran when: the calendar, or the hatched empty when nothing has */
+    const first = empty ? TODAY : Math.min(...CAMPS.map(c => c.start));
+    const { cal, showA } = empty ? { cal: null, showA: TODAY } : campCal(rows);
+
+    /* table: what each campaign got and what it cost; a cost nobody recorded is a dash, not $0 */
+    const key = CS.sort,
+      cj = c => c.spend != null && c.v[1] ? c.spend / c.v[1] : null;
+    const sorted = rows.slice().sort((x, y) => key === 'cpj' ? (cj(x) ?? 1e9) - (cj(y) ?? 1e9) : key === 'spend' ? (y.spend ?? -1) - (x.spend ?? -1) : key === 'visits' ? y.v[0] - x.v[0] : y.v[1] - x.v[1]);
+    const maxC = 5;
     const th = (k, t) => <th data-csort={k} className={CS.sort === k ? 's' : ''}>{t}{CS.sort === k ? ' ↓' : ''}</th>;
     const n = v => v == null ? <span className="quiet">—</span> : fmt(v);
+    const dash = <span className="quiet">—</span>;
     const uk = factor(a, b);
-    const table = <div className="bt-wrap"><table className="bt cp"><colgroup><col style={css("width:31%")} /><col style={css("width:11%")} /><col style={css("width:10%")} /><col style={css("width:11%")} /><col style={css("width:11%")} /><col style={css("width:12%")} /><col style={css("width:14%")} /></colgroup><thead><tr><th className="c-nm">Campaign</th>{th('visits', 'Visits')}{th('joins', 'Joins')}<th>Join rate</th><th>Invited</th><th>Activated</th><th>Spent at a shop</th></tr></thead><tbody>{sorted.map((c, __k) => <tr key={__k} data-camp={c.id} className={CS.open === c.id ? 'sel' : ''}><td className="tn"><span className="cp-n"><i className="swt" style={css(`background:${TYPE_COL[c.type]}`)} /><b>{c.n}</b>{c.end ? <em className="chip plain nodot">Ended</em> : ''}</span><span className="cp-s">{c.sub}</span></td><td>{fmt(c.v[0])}</td><td><b>{fmt(c.v[1])}</b></td><td className={pct(c.v[1], c.v[0]) > 10 ? 'good' : ''}>{c.v[0] ? p1(pct(c.v[1], c.v[0])) : <span className="quiet">—</span>}</td><td>{n(c.v[2])}</td><td>{n(c.v[4])}</td><td>{n(c.v[5])}</td></tr>)}<tr className="untag"><td className="tn"><span className="cp-n"><i className="swt" style={css("background:var(--hair);box-shadow:inset 0 0 0 1px var(--fg-50)")} /><b>{UNTAGGED.n}</b></span><span className="cp-s">{UNTAGGED.sub}</span></td><td>{fmt(UNTAGGED.f[0] * uk[0])}</td><td>{fmt(UNTAGGED.f[1] * uk[1])}</td><td>{UNTAGGED.f[0] * uk[0] ? p1(pct(UNTAGGED.f[1] * uk[1], UNTAGGED.f[0] * uk[0])) : <span className="quiet">—</span>}</td><td><span className="quiet">—</span></td><td><span className="quiet">—</span></td><td><span className="quiet">—</span></td></tr></tbody></table></div>;
+    const table = <div className="bt-wrap"><table className="bt cp"><colgroup><col style={css("width:27%")} /><col style={css("width:10%")} /><col style={css("width:9%")} /><col style={css("width:8%")} /><col style={css("width:9%")} /><col style={css("width:17%")} /><col style={css("width:8%")} /><col style={css("width:12%")} /></colgroup><thead><tr><th className="c-nm">Campaign</th>{th('spend', 'Spent')}{th('visits', 'Visits')}{th('joins', 'Joins')}<th>Join rate</th>{th('cpj', 'Cost per join')}<th>Activated</th><th>$10 redeemed</th></tr></thead><tbody>{sorted.map((c, __k) => {
+            const x = cj(c);
+            return <tr key={__k} data-camp={c.id} className={CS.open === c.id ? 'sel' : ''}><td className="tn"><span className="cp-n"><i className="swt" style={css(`background:${TYPE_COL[c.type]}`)} /><b>{c.n}</b>{c.end ? <em className="chip plain nodot">Ended</em> : ''}</span><span className="cp-s">{c.sub}</span></td><td>{c.spend == null ? <span className="quiet" title="Not recorded: add it in the campaign’s detail">—</span> : money(c.spend)}</td><td>{fmt(c.v[0])}</td><td><b>{fmt(c.v[1])}</b></td><td className={pct(c.v[1], c.v[0]) > 10 ? 'good' : ''}>{c.v[0] ? p1(pct(c.v[1], c.v[0])) : dash}</td><td>{x == null ? dash : c.spend === 0 ? <span className="cpj"><span className="shb nob" /><b className="quiet">Free</b></span> : <span className="cpj"><span className={`shb ${x > maxC ? 'over' : ''}`}><i className={x > maxC ? 'lo' : ''} style={css(`width:${Math.min(x, maxC) / maxC * 100}%`)} /></span><b className={x > maxC ? 'warn' : ''}>{money(x)}</b></span>}</td><td>{n(c.v[4])}</td><td>{c.redeemed ? <span className="rd"><b>{money0(c.redeemed * 10)}</b><span>{fmt(c.redeemed)}{c.redeemed === 1 ? ' spend' : ' spends'}</span></span> : dash}</td></tr>;
+          })}<tr className="untag"><td className="tn"><span className="cp-n"><i className="swt" style={css("background:var(--hair);box-shadow:inset 0 0 0 1px var(--fg-50)")} /><b>{UNTAGGED.n}</b></span><span className="cp-s">{UNTAGGED.sub}</span></td><td>{dash}</td><td>{fmt(UNTAGGED.f[0] * uk[0])}</td><td>{fmt(UNTAGGED.f[1] * uk[1])}</td><td>{UNTAGGED.f[0] * uk[0] ? p1(pct(UNTAGGED.f[1] * uk[1], UNTAGGED.f[0] * uk[0])) : dash}</td><td>{dash}</td><td>{dash}</td><td>{dash}</td></tr></tbody></table></div>;
+    const untagged = <span>{fmt(UNTAGGED.f[0])}{" visits and "}{fmt(UNTAGGED.f[1])}{" joins in the 30 days carried no tag"}</span>;
+    const uncosted = rows.length - costed.length;
+    const tagged = Math.max(T[1], J) ? 100 - share : 0;
 
-    /* poster designs: join rate only, as cost isn't recorded */
+    /* poster designs: join rate, and what each join cost where that's known */
     const des = rows.filter(c => c.type === 'Posters'),
-      dmax = Math.max(...des.map(c => pct(c.v[1], c.v[0])), 1);
+      dmax = Math.max(...des.map(c => pct(c.v[1], c.v[0])), 1),
+      pmax = Math.max(...des.map(c => cj(c) ?? 0), 2);
     const best = des.filter(c => c.v[1]).sort((x, y) => pct(y.v[1], y.v[0]) - pct(x.v[1], x.v[0]))[0];
     const design = des.length ? <div className="ds">{des.map((c, __k) => {
-        const r = pct(c.v[1], c.v[0]);
-        return <div key={__k} className={`ds-r ${c === best && des.length > 1 ? 'win' : ''}`} data-camp={c.id}><div className="ds-h"><span className="ds-ic">{c.code}</span><span><b>{c.n}</b><span>{c.posters}{c.posters === 1 ? ' poster · ' : ' posters · '}{fmt(c.posters ? c.v[0] / c.posters : 0)}{" scans each"}</span></span>{c === best && des.length > 1 ? <span className="chip ok">Best</span> : ''}</div><div className="ds-b"><span className="lbl">Join rate</span><span className="shb"><i style={css(`width:${r / dmax * 100}%;background:${c === best ? 'var(--settled)' : 'var(--fg)'}`)} /></span><b>{c.v[0] ? p1(r) : '—'}</b></div></div>;
+        const r = pct(c.v[1], c.v[0]),
+          x = cj(c);
+        return <div key={__k} className={`ds-r ${c === best && des.length > 1 ? 'win' : ''}`} data-camp={c.id}><div className="ds-h"><span className="ds-ic">{c.code}</span><span><b>{c.n}</b><span>{c.posters}{c.posters === 1 ? ' poster · ' : ' posters · '}{fmt(c.posters ? c.v[0] / c.posters : 0)}{" scans each"}</span></span>{c === best && des.length > 1 ? <span className="chip ok">Best</span> : ''}</div><div className="ds-b"><span className="lbl">Join rate</span><span className="shb"><i style={css(`width:${r / dmax * 100}%;background:${c === best ? 'var(--settled)' : 'var(--fg)'}`)} /></span><b>{c.v[0] ? p1(r) : '—'}</b></div><div className="ds-b"><span className="lbl">Per join</span><span className="shb"><i className="q" style={css(`width:${x == null ? 0 : x / pmax * 100}%`)} /></span><b className={x == null ? 'quiet' : ''}>{x == null ? '—' : money(x)}</b></div></div>;
       })}</div> : <div className="lv-e"><span>No poster design is up yet. Each design shows here once posters wear it.</span></div>;
-    const tagged = T[1] ? 100 - of(J, T[1]) : 0;
-    html($g('cp'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd cp-hd"><h2>What ran when</h2><div className="r"><span className="lbl cp-hint">{perName()}{" · click a campaign for its detail"}</span><button className="btn" style={css("height:32px")} data-newcamp=""><span className="nc-l">+ New campaign</span><span className="nc-s">+ New</span></button></div></div>{cal}<div className="bk-ft"><span>{"Each bar runs from the first day a campaign brought a visit; one with nobody for a week has ended."}</span>{showA > first ? <button data-per="all">Since launch →</button> : <span />}</div></div></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Every campaign</h2><div className="r"><span className="lbl">Click a row for detail</span></div></div>{table}<div className="bk-ft"><span><b>{tagged}%</b>{" of joins have no tag. Who a tagged link brought past joining isn't followed yet."}</span><button data-newcamp="">Make a tagged link →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7"><div className="hd"><h2>Poster design test</h2><div className="r"><span className="lbl">Same offer, different poster</span></div></div>{design}<div className="bk-ft"><span>{best && des.length > 1 ? <><b>{best.n}</b>{" joins best per scan"}</> : des.length ? 'Needs two designs up to compare' : 'Hang posters from Field'}</span><button data-go="field" data-gp="posters">Plan swaps in Field →</button></div></div><div className="cell s5"><div className="hd"><h2>Where the money went</h2><div className="r"><span className="lbl">{perName()}</span></div></div><div className="lv-e"><span>Spend isn't recorded. Printing, ads and the $10 offers show here once Command keeps them.</span></div></div></div></section></>);
+
+    /* where the money went: the reference's waterfall, from what was recorded and the offers spent */
+    const parts = [['$10 offer', OFFER, 'Spent at partner shops'], ['Printing', rows.reduce((s, c) => s + c.sp.print, 0), 'Print runs recorded'], ['Ads', rows.reduce((s, c) => s + c.sp.ads, 0), 'Ad spend recorded'], ['Referral credit', rows.reduce((s, c) => s + c.sp.credit, 0), 'Credit recorded']].filter(p => p[1] > 0);
+    let run = SP;
+    const wmax = SP || 1;
+    const wf = SP ? <><div className="wf2"><div className="wf2-c"><span className="wf2-v">{money0(SP)}</span><i className="tot" style={css("height:100%")} /><span className="wf2-l">Spent</span></div>{parts.map(([nm, v], __k) => {
+          const top = run / wmax * 100,
+            h = v / wmax * 100;
+          run -= v;
+          return <div key={__k} className="wf2-c"><span className="wf2-v" style={css(`bottom:calc(${top}% + 6px)`)}>−{money0(v)}</span><i className="drop" style={css(`bottom:${top - h}%;height:${h}%`)} /><span className="wf2-l">{nm}</span><b className="wf2-j" style={css(`bottom:${top - h}%`)} /></div>;
+        })}</div><div className="wf2-k">{parts.map(([nm, v, s2], __k) => <div key={__k}><span>{nm}</span><span className="quiet">{s2}</span><b>{Math.round(v / SP * 100)}%</b></div>)}</div></> : <div className="lv-e"><span>Nothing recorded yet. Add a campaign’s print run or ad spend in its detail; $10 offers count themselves.</span></div>;
+
+    const newBtn = <button className="btn" style={css("height:32px")} data-newcamp=""><span className="nc-l">+ New campaign</span><span className="nc-s">+ New</span></button>;
+    html($g('cp'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd cp-hd"><h2>What ran when</h2><div className="r"><span className="lbl cp-hint">{perName()}{empty ? '' : ' · click a campaign for its detail'}</span>{newBtn}</div></div>{empty ? <div className="lv-e"><span>Nothing has run yet. Each campaign’s days show here once it brings a visit.</span></div> : cal}<div className="bk-ft"><span>{"Each bar runs from the first day a campaign brought a visit; one with nobody for a week has ended."}</span>{!empty && showA > first ? <button data-per="all">Since launch →</button> : <span />}</div></div></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Every campaign</h2><div className="r"><span className="lbl">{empty ? 'Tagged links and poster designs' : 'Cost bars run $0–$5 · click a row for detail'}</span></div></div>{empty ? <div className="lv-e"><span>No tagged campaigns yet. Tag links with utm_campaign and they show here.</span></div> : table}<div className="bk-ft">{empty ? untagged : <span><b>{tagged}%</b>{" of joins have no tag."}{uncosted ? ` ${fmt(uncosted)} ${uncosted === 1 ? 'campaign has' : 'campaigns have'} no cost recorded; add it in the detail.` : ''}</span>}<button data-newcamp="">Make a tagged link →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7"><div className="hd"><h2>Poster design test</h2><div className="r"><span className="lbl">Same offer, different poster</span></div></div>{design}<div className="bk-ft"><span>{best && des.length > 1 ? <><b>{best.n}</b>{" joins best per scan"}</> : des.length ? 'Needs two designs up to compare' : 'Hang posters from Field'}</span><button data-go="field" data-gp="posters">Plan swaps in Field →</button></div></div><div className="cell s5"><div className="hd"><h2>Where the money went</h2><div className="r"><span className="lbl">{perName()}</span></div></div>{wf}<div className="bk-ft"><span>{OFFER ? <><b>{money0(OFFER)}</b>{" went straight to partner shops as $10 spends"}</> : SP ? 'No $10 offers spent in this period' : 'Costs show as they’re recorded'}</span><span /></div></div></div></section></>);
     renderCampPanel();
   }
   function renderCampaigns() {
@@ -1026,6 +1089,38 @@ function makeGrowth() {
   }
 
   /* detail panel: the campaign's own funnel, spend and tags */
+  /* live, a campaign's recorded costs, newest first, and the form that records another (Command's own record; nothing is paid) */
+  const COST_N = {
+    print: 'Printing',
+    ads: 'Ads',
+    offer: '$10 offers',
+    credit: 'Referral credit'
+  };
+  function campCosts(c, money) {
+    const today = new Date(),
+      iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    return <><div className="led"><div className="t"><span>Recorded costs · all time</span><b>{c.costs.length ? money(c.costs.reduce((t, x) => t + x.cents, 0) / 100) : ''}</b></div>{c.costs.length ? c.costs.slice().reverse().map(x => <div key={x.id}><span>{dFmt(x.d)}{" · "}{COST_N[x.kind]}{x.note ? ` · ${x.note}` : ''}{x.who ? ` · ${x.who}` : ''}</span><b>{money(x.cents / 100)}{" "}<button className="lnk" data-ccost-rm={x.id} aria-label={`Remove ${money(x.cents / 100)} of ${COST_N[x.kind].toLowerCase()}`}>×</button></b></div>) : <div><span className="quiet">{c.offers ? 'Nothing recorded yet; its $10 offers count themselves' : 'Nothing recorded yet'}</span><b /></div>}</div><div className="cc-f"><span className="lbl">Record a cost</span><label className="fld"><span className="lbl">What</span><select id="cc-k"><option value="print">Printing</option><option value="ads">Ads</option><option value="credit">Referral credit</option>{c.offers ? null : <option value="offer">$10 offers</option>}</select></label><label className="fld"><span className="lbl">Amount, $</span><input id="cc-a" inputMode="decimal" placeholder="0.00" /></label><label className="fld"><span className="lbl">Spent on</span><input id="cc-d" type="date" defaultValue={iso} /></label><label className="fld"><span className="lbl">Note</span><input id="cc-n" maxLength={200} placeholder="40 posters at the print shop" /></label><button className="btn" style={css("height:40px")} data-ccost-add={c.key}>Record cost</button></div></>;
+  }
+  R.addEventListener('click', e => {
+    const add = e.target.closest('[data-ccost-add]'),
+      rm = e.target.closest('[data-ccost-rm]');
+    if (add) {
+      const amount = parseFloat($g('cc-a').value.replace(/[$,\s]/g, '')),
+        spentOn = $g('cc-d').value;
+      if (!(amount > 0)) return toast('Enter what it cost');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(spentOn)) return toast('Pick the day it was spent');
+      add.disabled = true;
+      run('growth', 'campaign-cost', {
+        campaign: add.dataset.ccostAdd,
+        kind: $g('cc-k').value,
+        amount: Math.round(amount * 100) / 100,
+        spentOn,
+        note: $g('cc-n').value.trim()
+      }, () => toast('Cost recorded'));
+    } else if (rm) run('growth', 'campaign-cost-remove', {
+      id: Number(rm.dataset.ccostRm)
+    }, () => toast('Cost removed'));
+  });
   function renderCampPanel() {
     let p = $g('cpanel'),
       sc = $g('cscrim');
@@ -1074,11 +1169,11 @@ function makeGrowth() {
           credit: c.credit
         },
         spend = sp.print + sp.offer + sp.ads + sp.credit,
-        // live, what it cost isn't recorded
-        noCost = c.print == null;
+        // live, a campaign with nothing recorded and no offers spent has no known cost
+        noCost = L ? c.spend == null : c.print == null;
       const fmax = Math.max(v[0], 1),
         hh = x => 4 + 96 * Math.pow(Math.max(x, 1) / fmax, .3);
-      html(p, <><div className="pn-hd"><span className="swt" style={css(`width:10px;height:10px;display:inline-block;background:${TYPE_COL[c.type]}`)} /><span className="lbl">{c.type}</span>{c.end ? <span className="chip plain nodot">Ended</span> : <span className="chip ok">Live</span>}<button className="x" data-cclose="" aria-label="Close"><svg className="i" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5 5 15" /></svg></button></div><div className="pn-b"><div><span className="lbl">{c.sub}{" · "}{dFmt(c.start)}{" – "}{c.end ? dFmt(c.end) : 'now'}</span><h3>{c.n}</h3></div><div className="pn-big"><div><span className="lbl">Cost per join</span><b>{noCost ? <span className="quiet">Not recorded</span> : v[1] ? spend ? money(spend / v[1]) : 'Free' : '—'}</b></div><div><span className="lbl">Joins</span><b>{fmt(v[1])}</b></div></div><div className="pn-fn">{['Visits', 'Joined', 'Invited', 'Opened', 'Active', 'Spent $10'].map((s, i) => <div key={i}><span className="lbl">{s}</span><i style={css(`width:${hh(v[i])}%;background:${i === 5 ? 'var(--fg)' : TYPE_COL[c.type]};opacity:${i === 5 ? 1 : .35 + .65 * (1 - i / 6)}`)} /><b>{v[i] == null ? '—' : fmt(v[i])}</b></div>)}</div>{noCost ? <div className="led"><div><span>Spend</span><b className="quiet">Not recorded</b></div></div> : <div className="led">{[['Printing', sp.print], ['$10 offer redeemed', sp.offer], ['Ads', sp.ads], ['Referral credit', sp.credit]].filter(x => x[1] > 0).map(([k, x], __k) => <div key={__k}><span>{k}</span><b>{money(x)}</b></div>)}<div className="t"><span>Spent</span><b>{money(spend)}</b></div></div>}{c.posters ? <div className="led"><div><span>Posters up</span><b>{c.posters}</b></div><div><span>Scans per poster</span><b>{fmt(v[0] / c.posters)}</b></div></div> : ''}<div className="led"><div><span>Tags</span><b className="mono">{c.utm}</b></div>{c.note ? <div><span>Note</span><b>{c.note}</b></div> : ''}</div></div><div className="pn-ft"><span className="nx" /><button className="btn" style={css("height:40px")} data-cfilter={c.id}>Filter Growth to this</button>{L ? null : <button className="btn p" style={css("height:40px")} data-cclose="" data-act="">{c.end ? 'Run it again' : 'Edit campaign'}</button>}</div></>);
+      html(p, <><div className="pn-hd"><span className="swt" style={css(`width:10px;height:10px;display:inline-block;background:${TYPE_COL[c.type]}`)} /><span className="lbl">{c.type}</span>{c.end ? <span className="chip plain nodot">Ended</span> : <span className="chip ok">Live</span>}<button className="x" data-cclose="" aria-label="Close"><svg className="i" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5 5 15" /></svg></button></div><div className="pn-b"><div><span className="lbl">{c.sub}{" · "}{dFmt(c.start)}{" – "}{c.end ? dFmt(c.end) : 'now'}</span><h3>{c.n}</h3></div><div className="pn-big"><div><span className="lbl">Cost per join</span><b>{noCost ? <span className="quiet">Not recorded</span> : v[1] ? spend ? money(spend / v[1]) : 'Free' : '—'}</b></div><div><span className="lbl">Joins</span><b>{fmt(v[1])}</b></div></div><div className="pn-fn">{['Visits', 'Joined', 'Invited', 'Opened', 'Active', 'Spent $10'].map((s, i) => <div key={i}><span className="lbl">{s}</span><i style={css(`width:${hh(v[i])}%;background:${i === 5 ? 'var(--fg)' : TYPE_COL[c.type]};opacity:${i === 5 ? 1 : .35 + .65 * (1 - i / 6)}`)} /><b>{v[i] == null ? '—' : fmt(v[i])}</b></div>)}</div>{noCost ? <div className="led"><div><span>Spend</span><b className="quiet">Not recorded</b></div></div> : <div className="led">{[['Printing', sp.print], ['$10 offer redeemed', sp.offer], ['Ads', sp.ads], ['Referral credit', sp.credit]].filter(x => x[1] > 0).map(([k, x], __k) => <div key={__k}><span>{k}</span><b>{money(x)}</b></div>)}<div className="t"><span>{L ? `Spent · ${perName()}` : 'Spent'}</span><b>{money(spend)}</b></div></div>}{L ? campCosts(c, money) : ''}{c.posters ? <div className="led"><div><span>Posters up</span><b>{c.posters}</b></div><div><span>Scans per poster</span><b>{fmt(v[0] / c.posters)}</b></div></div> : ''}<div className="led"><div><span>Tags</span><b className="mono">{c.utm}</b></div>{c.note ? <div><span>Note</span><b>{c.note}</b></div> : ''}</div></div><div className="pn-ft"><span className="nx" /><button className="btn" style={css("height:40px")} data-cfilter={c.id}>Filter Growth to this</button>{L ? null : <button className="btn p" style={css("height:40px")} data-cclose="" data-act="">{c.end ? 'Run it again' : 'Edit campaign'}</button>}</div></>);
     }
     BODY.classList.add('pn');
   }

@@ -697,3 +697,8 @@ Kai, 2026-10-24: dev is the real thing on testnet. No seed, no demo people, no p
   or the shop devices, that opened the app; ids, queries, hashes and page titles never leave. Errors go
   up as "Error · <page> · <kind>", never a message, at most five a page load. Growth › Apps reads them
   through the `apps` feed (`appsFeed.ts`).
+- **Campaign costs are recorded by hand; the $10 offers count themselves.** Nothing Command reads knows what a
+  print run or an ad cost, so a campaign's detail has a form (the `campaign-cost` action, Propose on Growth,
+  an audit line each; `campaign-cost-remove` takes one back) saving to `command.campaign_costs` with the day
+  it was spent. A poster design's $10 offers are the first spends of the people its posters brought at that
+  same poster's shop. A campaign with no cost recorded and no offers shows a dash, never $0.

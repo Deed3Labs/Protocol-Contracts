@@ -399,7 +399,7 @@ const FORM_ORDER = ['Waitlist', 'Shop enquiry', 'Land offer', 'Work with us'];
 
 /**
  * Today, 7 days and 30 days as Growth and Home draw them (Phase 7c): the visits, their sources, cities
- * and top page from Plausible (the site feed), and from Command's own records the forms the site's
+ * and top page from Umami (the site feed), and from Command's own records the forms the site's
  * join form sent in each period, the join rate the period before, and the members who became active.
  */
 async function liveRange(db: Queryable, site: Record<string, any>, now: number, members: MemberRow[] | null): Promise<Record<string, unknown>> {
@@ -473,7 +473,8 @@ const median = (xs: number[]) => {
  * Each poster design as a campaign (Growth · Campaigns): the posters wearing it and when the first went up,
  * their scans in the 30 days, the waitlist joins its posters brought in the 30 days, and, of everyone its
  * posters brought, how many were invited, opened the app, became active and spent at a shop. The steps
- * after joining are null when Members isn't live. What a design cost isn't recorded, so nothing says it.
+ * after joining are null when Members isn't live. Its $10 offers are the first spends of the people its posters
+ * brought at the very shop whose poster brought them (when each was spent); what printing cost, people record.
  */
 export function posterCampaigns(
   list: PosterRow[],
@@ -488,6 +489,8 @@ export function posterCampaigns(
     const codes = new Set(up.map((p) => `P-${p.n}`));
     const brought = (members ?? []).filter((m) => m.poster && codes.has(m.poster));
     const step = (k: (m: MemberRow) => unknown) => (members ? brought.filter(k).length : null);
+    const shopOf = new Map(up.map((p) => [`P-${p.n}`, p.shop.trim().toLowerCase()]));
+    const offers = members ? brought.filter((m) => m.spentAt != null && m.spend && m.spend.trim().toLowerCase() === shopOf.get(m.poster!)).map((m) => m.spentAt!) : null;
     return [
       {
         code: d.code,
@@ -500,9 +503,22 @@ export function posterCampaigns(
         opened: step((m) => m.opened != null),
         active: step((m) => m.activeAt != null),
         spent: step((m) => m.spentAt != null),
+        offers,
       },
     ];
   });
+}
+
+/**
+ * What campaigns cost, as people recorded it: each entry with the day it was spent. Who recorded it and its note
+ * only above Totals.
+ */
+async function campaignCosts(db: Queryable, detail: boolean) {
+  const { rows } = await db.query<{ id: string; campaign: string; kind: string; amount_cents: number; spent_on: Date; note: string; who: string }>(
+    `SELECT c.id, c.campaign, c.kind, c.amount_cents, c.spent_on, c.note, coalesce(nullif(p.name, ''), p.email, '') AS who
+       FROM command.campaign_costs c JOIN command.people p ON p.id = c.recorded_by ORDER BY c.spent_on, c.id`,
+  );
+  return rows.map((r) => ({ id: Number(r.id), campaign: r.campaign, kind: r.kind, cents: r.amount_cents, on: ms_(r.spent_on), note: detail ? r.note : '', who: detail ? r.who : '' }));
 }
 
 /** Growth's live parts: the site feed's visits, and the 12 weeks of joins, invites and activations from the waitlist and members. */
@@ -535,6 +551,7 @@ async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | 
       // each invite week: who activated how soon, who stays and who spent (counts only)
       ...(members ? { 'growth.invite_weeks': cohortsOf(members, now) } : {}),
       ...(apps ? { 'growth.apps': apps } : {}),
+      'growth.campaign_costs': await campaignCosts(db, o.level > TOTALS),
       ...(site ? { ...visits, 'growth.range': await liveRange(db, range, now, members) } : {}),
       'growth.poster_campaigns': posterCampaigns(list, designNames, wl, members, now),
     },
@@ -567,7 +584,7 @@ export async function growthSection(db: Queryable, o: ReadOptions): Promise<Grow
   const next = await db.query<{ number: number }>(`SELECT number FROM command.batches WHERE status = 'proposed' ORDER BY number LIMIT 1`);
   const fig = await figures(db, 'growth');
   const median = await db.query<{ value: unknown }>(`SELECT value FROM command.figures WHERE key = 'members.waitlist.median_days'`);
-  // live, the visits are the site's from Plausible, and the weeks of joins, invites and activations Command's own (Phase 7c)
+  // live, the visits are the site's from Umami, and the weeks of joins, invites and activations Command's own (Phase 7c)
   const live = provider === 'live' ? await growthLive(db, o, counts.rows, list) : null;
 
   return {

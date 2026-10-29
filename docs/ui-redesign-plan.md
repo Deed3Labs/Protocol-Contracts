@@ -290,15 +290,17 @@ Filled in as each page is ported. Known before starting:
     (the Nudges tab's lower half says "Not real yet"); extending the invite window and closing an account
     (hidden live; turning off access is there); the join form's whole-list reveal (hidden: one person at a
     time from People); only the newest waiting batch proposal shows when there are two.
-- **Growth** (ported): what campaigns cost (printing, ads, offers, credit) and who a tagged link brought past
-  joining, bounce and time on page, browsers, and invites, opens and first spends by
+- **Growth** (ported): who a tagged link brought past joining, bounce and time on page, browsers, and invites, opens and first spends by
   source, city, shop and design. Apps is live from both apps' own Umami websites (the `apps` feed): who
   opens each app every day, what they use and the errors they hit, with onboarding from Members' rows;
   the waitlist count and median come from `command.waitlist`. Traffic's Right now is Umami's real-time view (`GET /growth/now`, kept
   15 seconds, read every 20).
   Campaigns is live: each poster design (Command's posters, the waitlist joins they brought and, with Members
   live, who was invited, opened, activated and spent) and each `utm_campaign` the site feed counted (visits,
-  joins, its source and medium, the days it ran); spend says "Spend isn't recorded".
+  joins, its source and medium, the days it ran). What each cost is what people record in its detail
+  (`command.campaign_costs`: printing, ads, referral credit, via the `campaign-cost` action) plus, for a poster
+  design, the $10 offers its people spent at that poster's shop; a campaign with neither shows a dash, never $0.
+  With no campaigns the strip and all four sections still draw, each hatched with its reason.
   Cohorts is live from Members' rows (`growth.invite_weeks`, `cohorts.ts`): each invite week's activations
   and first spends by week since the invite, who is still active (seen in 14 days), how fast and how they
   funded. Still active is only known now, so the grid shows it in each week's latest cell. Next moves are
