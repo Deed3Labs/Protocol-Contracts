@@ -1106,7 +1106,7 @@ function makeBuild() {
         per = 8;
       B.cp = Math.min(B.cp, Math.max(0, Math.ceil(L.length / per) - 1));
       let prev = null;
-      const commits = cell('s7', 'Commits', <span className="lbl">{B.repo === 'all' ? 'Every project' : RSHORT[B.repo]}</span>, <div className="bd-cm">{L.slice(B.cp * per, B.cp * per + per).map(([t, r, a, msg, sha], __k) => {
+      const commits = cell('s7', 'Commits', <span className="lbl">{B.repo === 'all' ? 'Every project' : RSHORT[B.repo]}</span>, LV && !L.length ? <div className="lv-e"><span>{B.repo === 'all' ? 'No commits yet' : 'No commits in this project yet'}</span></div> : <div className="bd-cm">{L.slice(B.cp * per, B.cp * per + per).map(([t, r, a, msg, sha], __k) => {
           const dl = dayLbl(t),
             h = dl !== prev ? <div className="bd-cm-d">{lbl(dl)}</div> : '';
           prev = dl;
