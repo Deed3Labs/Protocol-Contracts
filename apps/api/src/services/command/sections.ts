@@ -10,6 +10,7 @@ import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopPr
 import type { MemberSource } from './memberSource.js';
 import { BATCH_ORDERS, WAITING_ID, WINDOW_DAYS, pickFrom, waitNo, waitlistFigures } from './waitlist.js';
 import { codeActivity, codeChanges, codeConfig } from './github.js';
+import { cohortsOf } from './cohorts.js';
 import { safeConfig } from './safe.js';
 import { costHistory, costingPayload, lowMaterials, noCosting, orderCosts, productCost, readBook, readHistory, roundCents, shown, type Book } from './costing.js';
 import { shopModelPayload } from './shopModel.js';
@@ -528,6 +529,8 @@ async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | 
         joined: wl.length,
         medianDays: median(wl.filter((w) => w.invited_at).map((w) => (ms_(w.invited_at!) - ms_(w.joined_at)) / DAY)),
       },
+      // each invite week: who activated how soon, who stays and who spent (counts only)
+      ...(members ? { 'growth.invite_weeks': cohortsOf(members, now) } : {}),
       ...(site ? { ...visits, 'growth.range': await liveRange(db, range, now, members) } : {}),
       'growth.poster_campaigns': posterCampaigns(list, designNames, wl, members, now),
     },

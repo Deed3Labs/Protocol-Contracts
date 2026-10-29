@@ -290,13 +290,18 @@ Filled in as each page is ported. Known before starting:
     (the Nudges tab's lower half says "Not real yet"); extending the invite window and closing an account
     (hidden live; turning off access is there); the join form's whole-list reveal (hidden: one person at a
     time from People); only the newest waiting batch proposal shows when there are two.
-- **Growth** (ported): what campaigns cost (printing, ads, offers, credit) and who a tagged link brought past joining, cohorts by days since the invite with who
-  stays active and spends, the apps' own events, bounce and time on page, browsers, the real-time view,
-  and invites, opens and first spends by source, city, shop and design. Live, Cohorts and Apps
-  say "Not real yet" with what they need; the waitlist count and median come from `command.waitlist`.
+- **Growth** (ported): what campaigns cost (printing, ads, offers, credit) and who a tagged link brought past
+  joining, the apps' own events, bounce and time on page, browsers, and invites, opens and first spends by
+  source, city, shop and design. Live, Apps says "Not real yet" with what it needs; the waitlist count and
+  median come from `command.waitlist`. Traffic's Right now is Umami's real-time view (`GET /growth/now`, kept
+  15 seconds, read every 20).
   Campaigns is live: each poster design (Command's posters, the waitlist joins they brought and, with Members
   live, who was invited, opened, activated and spent) and each `utm_campaign` the site feed counted (visits,
   joins, its source and medium, the days it ran); spend says "Spend isn't recorded".
+  Cohorts is live from Members' rows (`growth.invite_weeks`, `cohorts.ts`): each invite week's activations
+  and first spends by week since the invite, who is still active (seen in 14 days), how fast and how they
+  funded. Still active is only known now, so the grid shows it in each week's latest cell. Next moves are
+  worked out from the page's numbers and show only when they point somewhere.
 - **Field** (live: `fm2.tsx` + `fmLive.ts`, one module with Merchants, its gate on). Each page loads the other's
   section too (they share the pipeline and the route), once, and is built again with it.
   - **Live now.** Today is the field section's route (`ROUTE`, `STOPS` with their tasks and `SHOP_INFO`), with
