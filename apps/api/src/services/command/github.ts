@@ -146,7 +146,7 @@ export interface GithubSource {
   pulls(repo: string, page: number, etag: string | null): Promise<PullsAnswer>;
   /** The files one pull request changes, and how many requests reading them took (100 a page). */
   pullFiles(repo: string, number: number): Promise<{ files: string[]; remaining: number | null; requests: number }>;
-  /** The branch's workflow runs since a day (YYYY-MM-DD), newest first, up to 300. */
+  /** The workflow runs for the branch since a day (YYYY-MM-DD), newest first, up to 300: pull requests into it, and pushes to it. */
   runs?(repo: string, branch: string, since: string): Promise<ListedRun[]>;
   /** A run's jobs. */
   jobs?(repo: string, runId: number): Promise<RunJob[]>;
@@ -239,12 +239,17 @@ export function liveGithub(token = process.env.GITHUB_TOKEN?.trim() || '', f: ty
     async runs(repo, branch, since) {
       const out: ListedRun[] = [];
       for (let page = 1; page <= 3; page++) {
-        const q = new URLSearchParams({ branch, per_page: '100', page: String(page), created: `>=${since}` });
+        // CI runs on pull requests into the branch (dev), not on pushes to it: a run is the branch's when it
+        // was for a pull request into it, or a push to it
+        const q = new URLSearchParams({ per_page: '100', page: String(page), created: `>=${since}` });
         const r = await f(`https://api.github.com/repos/${repo}/actions/runs?${q}`, { headers: headers() });
         if (!r.ok) throw await fail(r);
         const j = (await r.json()) as any;
-        for (const x of j.workflow_runs ?? [])
-          out.push({ id: Number(x.id), workflow: String(x.name ?? x.workflow_id), branch: String(x.head_branch ?? branch), sha: String(x.head_sha).toLowerCase(), status: String(x.status), conclusion: x.conclusion ?? null, createdAt: x.created_at, updatedAt: x.updated_at, url: x.html_url });
+        for (const x of j.workflow_runs ?? []) {
+          const into = x.event === 'pull_request' ? x.pull_requests?.[0]?.base?.ref : x.head_branch;
+          if (into !== branch) continue;
+          out.push({ id: Number(x.id), workflow: String(x.name ?? x.workflow_id), branch, sha: String(x.head_sha).toLowerCase(), status: String(x.status), conclusion: x.conclusion ?? null, createdAt: x.created_at, updatedAt: x.updated_at, url: x.html_url });
+        }
         if (!/rel="next"/.test(r.headers.get('link') ?? '')) break;
       }
       return out;
@@ -511,7 +516,7 @@ export interface ChecksPollResult {
 }
 
 /**
- * GitHub Actions on the watched branch, and each pull request's checks and reviews (migration 0070).
+ * GitHub Actions for the watched branch (pull requests into it, as CI runs), and each pull request’s checks and reviews (migration 0070).
  * The last 30 days' runs are upserted every time (a run's status moves until it completes); a complete
  * run's jobs are read once. A pull request's check runs are read again when its head moves or one is
  * still running; its reviews when it's been updated since they were read. Within a budget a run.

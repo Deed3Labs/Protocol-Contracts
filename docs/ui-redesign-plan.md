@@ -420,7 +420,7 @@ Filled in as each page is ported. Known before starting:
   your own wallet (`safe.signQueued`, `safe.signAndSend`), linking it `safe.linkWallet`, and a contract's
   panel proposes a change through the old page's flow (`contracts/propose`, into the Safe); GitHub, the
   Safe and Safe{Wallet} open in a new tab.
-  - **GitHub Actions and reviews now (migration 0070):** the poller also reads the watched branch's workflow
+  - **GitHub Actions and reviews now (migration 0070):** the poller also reads the workflow runs for pull requests into the watched branch (CI runs on pull requests, not pushes to dev): the
     runs (each complete run's jobs once) and each pull request's check runs at its head and its reviews (who
     reviewed, what they said, who's still asked), within a request budget. Deploys' Checks is a row per project
     from the job that covers its folder (Contracts' hardhat job for `contracts/`, the Apps job for the rest):
