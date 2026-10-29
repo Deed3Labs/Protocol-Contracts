@@ -1466,7 +1466,8 @@ export function homeHub() {
   const M = model();
   sideLoad();
   return (
-    <div className="h-home">
+    // live, h-live: Home's empty cells hatched and its Timeline columns' bands (command.css), as the other pages have them; the preview stays the reference's
+    <div className={REAL ? 'h-home h-live' : 'h-home'}>
       {header(M)}
       {ro ? (
         ''
