@@ -6,7 +6,7 @@ import { BOARDS, CITY_V, COHORTS, DESIGNS, HEAT, LANDING, OTHERS, POSTERS, SHOPS
  * the API's growth section sends (live/sections.ts fills ./data from it). What the API doesn't measure yet
  * is zero or empty, never the reference's figures; docs/ui-redesign-plan.md lists each gap:
  * invites, opens and first spends by source, city, shop and design; weekly opens and first spends;
- * bounce and time on page; browsers; what campaigns cost; the apps' usage and errors; the waitlist's people.
+ * bounce and time on page; browsers; what campaigns cost; the waitlist's people.
  * Traffic's Right now reads GET /growth/now itself (growth2.tsx, pollNow).
  */
 
@@ -44,6 +44,33 @@ function cohortsLive(c, start) {
     // how they funded: label, activated, still active %, colour (the reference's three)
     COH_HOW: (c?.how ?? []).map(([n, a, k], i) => [n === 'Deposit' ? 'Direct deposit' : n === 'Bank' ? 'Connected a bank' : 'Added $5', a, a ? Math.round((k / a) * 100) : 0, ['var(--fg)', 'var(--land)', 'var(--live)'][i]]),
     COH_MEDIAN: c?.medianDays ?? null,
+  };
+}
+
+/** The apps' own usage (the API's growth.apps, from Umami), as renderApps reads it: day-indexed against `start`, features as shares of the week's visitors. */
+function appsLive(a, start) {
+  const days = (u) => {
+    const out = new Array(DAYS + 1).fill(0);
+    (u?.daily ?? []).forEach((v, i) => {
+      const d = Math.round((a.from + i * 864e5 - start.getTime()) / 864e5);
+      if (d >= 0 && d <= DAYS) out[d] = v;
+    });
+    return out;
+  };
+  const week = (u) => u?.week ?? { visitors: 0, visits: 0 };
+  const feats = (u) => (u?.feats ?? []).map(([n, v, s]) => [n, u.week.visitors ? Math.min(100, Math.round((v / u.week.visitors) * 100)) : 0, s]);
+  // an error as its kind and page ("TypeError on /send"), most first; nobody owns one yet
+  const errs = (u, app) =>
+    (u?.errors ?? []).map(([t, n]) => {
+      const [page, kind] = t.split(' · ');
+      return { t: kind ? `${kind} on ${page}` : t, app, n, sev: n >= 10 ? 'absent' : n >= 3 ? 'underway' : 'live', own: null, prog: null };
+    });
+  return {
+    APPS_ON: { member: !!a?.member, merchant: !!a?.merchant },
+    AD: { m: days(a?.member), s: days(a?.merchant) },
+    AWEEK: { member: week(a?.member), merchant: week(a?.merchant) },
+    FEAT: { member: feats(a?.member), merchant: feats(a?.merchant) },
+    ERRS: [...errs(a?.member, 'member'), ...errs(a?.merchant, 'merchant')].sort((x, y) => y.n - x.n),
   };
 }
 
@@ -87,6 +114,7 @@ export function growthLive() {
     },
     COHORT: COHORTS.map((c) => [c[0], c[1], [...c[2]]]),
     ...cohortsLive(fig['growth.invite_weeks'], start),
+    ...appsLive(fig['growth.apps'], start),
     PROPS: visits ? [['useclear.org', visits, 'var(--fg)']] : [],
     CHANNELS: SRC30.map(([n, v, j]) => [n, v, 0, v ? Math.round((j / v) * 1000) / 10 : 0, 0, []]),
     PAGES: LANDING.map(([p, e, j]) => [p, 'useclear.org', e, 0, 0, j]),
@@ -97,13 +125,11 @@ export function growthLive() {
     LIVE: [],
     // until the site feed counts the untagged, all of the 30 days is untagged
     ...campaigns(fig, start, [visits, SRC30.reduce((a, r) => a + r[2], 0)]),
-    FEAT: { member: [], merchant: [] },
     ONB: [
       ['Opened the invite', sum.opened ?? 0],
       ['Funded: bank, $5 or direct deposit', funded],
       ['Active', sum.active ?? 0],
     ],
-    ERRS: [],
     WAIT_NEXT: [],
     WAIT_NEW: [],
     LIVE_POOL: [],

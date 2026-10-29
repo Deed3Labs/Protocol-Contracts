@@ -508,7 +508,10 @@ export function posterCampaigns(
 /** Growth's live parts: the site feed's visits, and the 12 weeks of joins, invites and activations from the waitlist and members. */
 async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | null, list: PosterRow[]) {
   const now = o.now.getTime();
-  const site = (await feedRows(db)).get('site')?.figures as Record<string, any> | null | undefined;
+  const feedsNow = await feedRows(db);
+  const site = feedsNow.get('site')?.figures as Record<string, any> | null | undefined;
+  // the member and merchant apps' own usage (the apps feed), counts only
+  const apps = (feedsNow.get('apps')?.figures as Record<string, unknown> | null | undefined)?.['growth.apps'];
   const { rows: wl } = await db.query<{ joined_at: Date; invited_at: Date | null; batch: number | null; poster: string | null }>('SELECT joined_at, invited_at, batch, poster FROM command.waitlist');
   const { rows: designNames } = await db.query<{ code: string; name: string }>('SELECT code, name FROM command.poster_designs ORDER BY code');
   const week = Math.floor(now / (7 * DAY)) * 7 * DAY;
@@ -531,6 +534,7 @@ async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | 
       },
       // each invite week: who activated how soon, who stays and who spent (counts only)
       ...(members ? { 'growth.invite_weeks': cohortsOf(members, now) } : {}),
+      ...(apps ? { 'growth.apps': apps } : {}),
       ...(site ? { ...visits, 'growth.range': await liveRange(db, range, now, members) } : {}),
       'growth.poster_campaigns': posterCampaigns(list, designNames, wl, members, now),
     },

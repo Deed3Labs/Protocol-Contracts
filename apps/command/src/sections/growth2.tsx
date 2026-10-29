@@ -1327,6 +1327,11 @@ function makeGrowth() {
   };
   const shopsByDay = d => d < 44 ? 0 : Math.min(12, Math.round(2 + (d - 44) * 10 / 34));
   const dau = d => {
+    // live: the visitors Umami counted on each app that day (signed-in members; shop devices on shift)
+    if (L) return {
+      m: L.AD.m[d] ?? 0,
+      s: L.AD.s[d] ?? 0
+    };
     const dow = dayDate(d).getDay(),
       w = dow === 0 ? .78 : dow === 6 ? .9 : 1;
     const r = rng(d * 7 + 3)();
@@ -1376,13 +1381,32 @@ function makeGrowth() {
     own: null,
     prog: null
   }];
+  /* live, the Apps header: the week's members and shop devices from Umami, what's missing said plainly */
+  function appsHdrLive(dauM, wauM, stick) {
+    // everyone signed in counts, so the week's members are against everyone with an account: opened or active
+    const act = ONB[0][1] + ONB[2][1],
+      dev = L.AWEEK.merchant.visitors;
+    const visits = L.AWEEK.member.visits + L.AWEEK.merchant.visits,
+      errN = ERRS.reduce((a, e) => a + e.n, 0);
+    const okPct = visits ? Math.max(0, 100 - errN / visits * 100) : null;
+    let wi = 0,
+      worst = 0;
+    ONB.forEach((x, i) => {
+      if (i && ONB[i - 1][1] - x[1] > worst) {
+        worst = ONB[i - 1][1] - x[1];
+        wi = i;
+      }
+    });
+    const lead = !L.APPS_ON.member ? 'The member app isn’t sending its visits to Umami yet. ' : dauM >= .5 ? <>{"About "}{fmt(dauM)}{" "}{Math.round(dauM) === 1 ? 'member opens' : 'members open'}{" Clear on a typical day. "}</> : 'Nobody opened the member app in this period. ';
+    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Apps</span><p className="brief">{lead}{worst ? <>{"The biggest drop in onboarding is "}<a data-ajump="onb">{wi === 1 ? 'funding the account' : ONB[wi][0].toLowerCase()}</a>{". "}</> : ''}<span className="q">{perName()}.</span></p><div className="strip"><div className="sc"><span className="lbl">Active members · this week</span><div className="sc-v">{fmt(wauM)}{" "}<small>{"of "}{fmt(act)}</small></div><div className="mb"><i style={css(`width:${Math.min(100, pct(wauM, act))}%`)} /></div><div className="sc-s">{act ? `${Math.round(Math.min(100, pct(wauM, act)))}% of members with an account` : 'Nobody has an account yet'}</div></div><div className="sc"><span className="lbl">Daily, on average</span><div className="sc-v">{fmt(dauM)}{" "}<small>{Math.round(stick)}%</small></div><div className="mb"><i style={css(`width:${stick}%`)} /></div><div className="sc-s">of weekly actives, each day</div></div><div className="sc"><span className="lbl">Shop devices · this week</span><div className="sc-v">{fmt(dev)}</div><div className="mb"><i style={css(`width:${dev ? 100 : 0}%;background:var(--land)`)} /></div><div className="sc-s">{L.APPS_ON.merchant ? 'tablets and computers used on shift' : 'The merchant app isn’t sending yet'}</div></div><div className="sc"><span className="lbl">Error-free visits</span><div className="sc-v">{okPct == null ? '—' : `${okPct.toFixed(1)}%`}</div><div className="mb"><i style={css(`width:${okPct ?? 0}%;background:var(--settled)`)} /></div><div className="sc-s">{ERRS.length}{ERRS.length === 1 ? ' kind of error' : ' kinds of error'}{" this week"}</div></div></div></>);
+  }
   function renderApps() {
     const el = $g('ap');
     let mult = 1;
     if (S.F.city.size) mult *= share('city')[4] || 0;
     if (S.F.source.size) mult *= share('source')[4] || 0;
     const [a, b] = S.range,
-      A0 = Math.max(a, 42);
+      A0 = L ? a : Math.max(a, 42);
     const days = [];
     for (let d = A0; d <= b; d++) days.push(d);
     const live = days.length > 0;
@@ -1396,11 +1420,11 @@ function makeGrowth() {
     });
     const avg = k => dv.length ? dv.reduce((s, x) => s + x[k], 0) / dv.length : 0;
     const last7 = dv.slice(-7),
-      wauM = Math.round(actByDay(b) * .79 * mult),
+      wauM = L ? L.AWEEK.member.visitors : Math.round(actByDay(b) * .79 * mult),
       dauM = last7.length ? last7.reduce((s, x) => s + x.m, 0) / last7.length : 0;
     const stick = wauM ? dauM / wauM * 100 : 0;
     const shopsLive = shopsByDay(b);
-    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Apps{L ? '' : ' · Demo data'}</span><p className="brief">{live ? <>{"About "}{fmt(dauM)}{" members open Clear on a typical day, and most of them "}<a data-ajump="feat">pay at a shop</a>{". The biggest drop in onboarding is "}<a data-ajump="onb">funding the account</a>.</> : 'The apps weren’t live yet in this period.'}{" "}<span className="q">{perName()}{filterDesc() ? ' · ' + filterDesc() : ''}.</span></p><div className="strip"><div className="sc"><span className="lbl">Active members · this week</span><div className="sc-v">{fmt(wauM)}{" "}<small>{"of "}{fmt(actByDay(b) * mult)}</small></div><div className="mb"><i style={css("width:79%")} /></div><div className="sc-s">79% of activated members</div></div><div className="sc"><span className="lbl">Daily, on average</span><div className="sc-v">{fmt(dauM)}{" "}<small>{Math.round(stick)}%</small></div><div className="mb"><i style={css(`width:${stick}%`)} /></div><div className="sc-s">of weekly actives, each day</div></div><div className="sc"><span className="lbl">Shops on the merchant app</span><div className="sc-v">{shopsLive}{" "}<small>of 30</small></div><div className="mb"><i style={css(`width:${shopsLive / 30 * 100}%;background:var(--land)`)} /><i style={css(`left:${shopsLive / 30 * 100}%;width:20%`)} className="hatch" /></div><div className="sc-s">6 signing · 19 staff logins</div></div><div className="sc"><span className="lbl">Crash-free sessions</span><div className="sc-v">99.4%</div><div className="mb"><i style={css("width:99.4%;background:var(--settled)")} /></div><div className="sc-s">{ERRS.length}{" open issues · "}{ERRS.filter(e => !e.own).length}{" with no owner"}</div></div></div></>);
+    if (L) appsHdrLive(dauM, wauM, stick);else html($g('hdr'), <><span className="when"><span className="dot" />Growth · Apps{L ? '' : ' · Demo data'}</span><p className="brief">{live ? <>{"About "}{fmt(dauM)}{" members open Clear on a typical day, and most of them "}<a data-ajump="feat">pay at a shop</a>{". The biggest drop in onboarding is "}<a data-ajump="onb">funding the account</a>.</> : 'The apps weren’t live yet in this period.'}{" "}<span className="q">{perName()}{filterDesc() ? ' · ' + filterDesc() : ''}.</span></p><div className="strip"><div className="sc"><span className="lbl">Active members · this week</span><div className="sc-v">{fmt(wauM)}{" "}<small>{"of "}{fmt(actByDay(b) * mult)}</small></div><div className="mb"><i style={css("width:79%")} /></div><div className="sc-s">79% of activated members</div></div><div className="sc"><span className="lbl">Daily, on average</span><div className="sc-v">{fmt(dauM)}{" "}<small>{Math.round(stick)}%</small></div><div className="mb"><i style={css(`width:${stick}%`)} /></div><div className="sc-s">of weekly actives, each day</div></div><div className="sc"><span className="lbl">Shops on the merchant app</span><div className="sc-v">{shopsLive}{" "}<small>of 30</small></div><div className="mb"><i style={css(`width:${shopsLive / 30 * 100}%;background:var(--land)`)} /><i style={css(`left:${shopsLive / 30 * 100}%;width:20%`)} className="hatch" /></div><div className="sc-s">6 signing · 19 staff logins</div></div><div className="sc"><span className="lbl">Crash-free sessions</span><div className="sc-v">99.4%</div><div className="mb"><i style={css("width:99.4%;background:var(--settled)")} /></div><div className="sc-s">{ERRS.length}{" open issues · "}{ERRS.filter(e => !e.own).length}{" with no owner"}</div></div></div></>);
     if (!live) {
       html(el, <div className="bento"><div className="cell s12"><div className="bk-empty">{"The member app opened to the first batch on 15 Sep. "}<button className="clear" data-per="all">Show since launch</button></div></div></div>);
       return;
@@ -1427,12 +1451,12 @@ function makeGrowth() {
     const ticks = [];
     for (let v = 0; v <= ymax + 1e-9; v += step) ticks.push(v);
     const every = bm.length <= 12 ? 1 : Math.ceil(bm.length / 8);
-    const chart = <div className="tfc"><div className="bc-y">{ticks.map((v, __k) => <span key={__k} style={css(`bottom:${v / ymax * 100}%`)}>{fmt(v)}</span>)}</div><div className="bc-p">{ticks.map((v, __k) => <i key={__k} className="bc-g" style={css(`bottom:${v / ymax * 100}%`)} />)}<div className={`bc-cols ${bm.length > 16 ? 'dense' : ''}`}>{bm.map((v, i) => <div key={i} className="bc-c ap-c" title={`${gran === 'day' ? dFmt(v.y) : 'Week of ' + dFmt(v.x)} · ${fmt(v.m)} members · ${fmt(v.s)} shops a day`}><div className="ap-pair"><i style={css(`height:${v.m / ymax * 100}%;background:var(--fg)`)} /><i style={css(`height:${v.s / ymax * 100}%;background:var(--land)`)} /></div><span className={`bc-x ${i % 2 ? 'odd' : ''}`}>{i % every === 0 || i === bm.length - 1 ? gran === 'day' ? dFmt(v.y) : dFmt(v.x) : ''}</span></div>)}</div></div></div>;
+    const chart = <div className="tfc"><div className="bc-y">{ticks.map((v, __k) => <span key={__k} style={css(`bottom:${v / ymax * 100}%`)}>{fmt(v)}</span>)}</div><div className="bc-p">{ticks.map((v, __k) => <i key={__k} className="bc-g" style={css(`bottom:${v / ymax * 100}%`)} />)}<div className={`bc-cols ${bm.length > 16 ? 'dense' : ''}`}>{bm.map((v, i) => <div key={i} className="bc-c ap-c" title={`${gran === 'day' ? dFmt(v.y) : 'Week of ' + dFmt(v.x)} · ${fmt(v.m)} members · ${fmt(v.s)} ${L ? 'shop devices' : 'shops'} a day`}><div className="ap-pair"><i style={css(`height:${v.m / ymax * 100}%;background:var(--fg)`)} /><i style={css(`height:${v.s / ymax * 100}%;background:var(--land)`)} /></div><span className={`bc-x ${i % 2 ? 'odd' : ''}`}>{i % every === 0 || i === bm.length - 1 ? gran === 'day' ? dFmt(v.y) : dFmt(v.x) : ''}</span></div>)}</div></div></div>;
 
     /* features: share of active users who used each, for the chosen app */
     const F = FEAT[AS.feat],
       fcol = APPS[AS.feat].col;
-    const feats = <div className="ft2">{F.map(([nm, p, s], __k) => <div key={__k} className="ft2-r"><span className="ft2-n"><b>{nm}</b><span>{s}</span></span><span className="shb"><i style={css(`width:${p}%;background:${fcol}`)} /></span><b className="ft2-p">{p}%</b></div>)}</div>;
+    const feats = L && !F.length ? <div className="lv-e"><span>{L.APPS_ON[AS.feat] ? 'Nothing used this week.' : `The ${APPS[AS.feat].n.toLowerCase()} isn’t sending its visits yet.`}</span></div> : <div className="ft2">{F.map(([nm, p, s], __k) => <div key={__k} className="ft2-r"><span className="ft2-n"><b>{nm}</b><span>{s}</span></span><span className="shb"><i style={css(`width:${p}%;background:${fcol}`)} /></span><b className="ft2-p">{p}%</b></div>)}</div>;
 
     /* onboarding: each step's count, and what fell off between steps */
     const om = ONB[0][1];
@@ -1451,8 +1475,8 @@ function makeGrowth() {
       })}</div>;
 
     /* issues: Home's list rule */
-    const errs = ERRS.length ? <div className="isl"><div className="al">{ERRS.map((e, __k) => <div key={__k} className="alr"><div className="al-m"><div className="al-t"><i className="sv" style={css(`background:var(--${e.sev})`)} /><b>{e.t}</b><span className="age">{e.n}{" sessions"}</span></div><span className="m">{APPS[e.app].n}</span></div><div className={`own ${e.own ? '' : 'none'}`}><span className="who">{e.own || 'Nobody’s on it'}</span>{e.prog ? <span className="pg"><i><b style={css(`width:${e.prog[0] / e.prog[1] * 100}%`)} /></i>{e.prog[0]}/{e.prog[1]}</span> : e.own ? '' : <button className="lnk" data-act="">Assign →</button>}</div></div>)}</div></div> : <div className="bk-empty">No open issues.</div>;
-    html(el, <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s8"><div className="hd"><h2>Active each day</h2><div className="r"><span className="lbl">{gran === 'week' ? 'Daily average, by week' : 'By day'}</span><div className="seg sm" role="group" aria-label="Granularity">{[['auto', 'Auto'], ['day', 'Daily'], ['week', 'Weekly']].map(([k, t], __k) => <button key={__k} data-gran={k} aria-pressed={S.gran === k}>{t}</button>)}</div></div></div>{chart}<div className="tr-k"><span><i style={css("background:var(--fg);width:10px;height:10px")} />Members on the member app</span><span><i style={css("background:var(--land);width:10px;height:10px")} />Shops on the merchant app</span></div><button className="foot" data-tab="cohorts"><span>Grows with every batch that activates</span><span>Cohorts →</span></button></div><div className="cell s4" id="onb"><div className="hd"><h2>Onboarding</h2><div className="r"><span className="lbl">Member app · all invites</span></div></div>{onb}<button className="foot" data-go="members" data-gp="nudges:opened"><span>{fmt(64 * mult)}{" stuck at funding"}</span><span>Nudge in Members →</span></button></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="feat"><div className="hd"><h2>What they use</h2><div className="r"><div className="seg sm" role="group" aria-label="App">{Object.entries(APPS).map(([k, v], __k) => <button key={__k} data-afeat={k} aria-pressed={AS.feat === k}>{v.n}</button>)}</div></div></div>{feats}<div className="bk-ft"><span>{"Share of this week’s active "}{AS.feat === 'member' ? 'members' : 'shops'}{" who used each"}</span><span /></div></div><div className="cell s5"><div className="hd"><h2>Issues</h2><div className="r"><span className="lbl">{ERRS.length}{" open · "}{ERRS.filter(e => !e.own).length}{" with no owner"}</span></div></div>{errs}<button className="foot" data-go="records" data-gp="log"><span>Error log</span><span>→</span></button></div></div></section><div className="src-note"><span><b>Source:</b>{" first-party events from both apps (Umami custom events) and Clear’s own records. No session recording, nothing sold or shared."}</span>{L ? null : <button className="btn" style={css("height:32px")} data-act="">Add a data source</button>}</div></>);
+    const errs = ERRS.length ? <div className="isl"><div className="al">{ERRS.map((e, __k) => <div key={__k} className="alr"><div className="al-m"><div className="al-t"><i className="sv" style={css(`background:var(--${e.sev})`)} /><b>{e.t}</b><span className="age">{e.n}{L ? e.n === 1 ? ' time' : ' times' : ' sessions'}</span></div><span className="m">{APPS[e.app].n}</span></div><div className={`own ${e.own ? '' : 'none'}`}><span className="who">{e.own || 'Nobody’s on it'}</span>{e.prog ? <span className="pg"><i><b style={css(`width:${e.prog[0] / e.prog[1] * 100}%`)} /></i>{e.prog[0]}/{e.prog[1]}</span> : e.own || L ? '' : <button className="lnk" data-act="">Assign →</button>}</div></div>)}</div></div> : L ? <div className="lv-e"><span>No errors this week.</span></div> : <div className="bk-empty">No open issues.</div>;
+    html(el, <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s8"><div className="hd"><h2>Active each day</h2><div className="r"><span className="lbl">{gran === 'week' ? 'Daily average, by week' : 'By day'}</span><div className="seg sm" role="group" aria-label="Granularity">{[['auto', 'Auto'], ['day', 'Daily'], ['week', 'Weekly']].map(([k, t], __k) => <button key={__k} data-gran={k} aria-pressed={S.gran === k}>{t}</button>)}</div></div></div>{chart}<div className="tr-k"><span><i style={css("background:var(--fg);width:10px;height:10px")} />Members on the member app</span><span><i style={css("background:var(--land);width:10px;height:10px")} />{L ? 'Shop devices on the merchant app' : 'Shops on the merchant app'}</span></div><button className="foot" data-tab="cohorts"><span>Grows with every batch that activates</span><span>Cohorts →</span></button></div><div className="cell s4" id="onb"><div className="hd"><h2>Onboarding</h2><div className="r"><span className="lbl">Member app · all invites</span></div></div>{onb}<button className="foot" data-go="members" data-gp="nudges:opened"><span>{L ? `${fmt(ONB[0][1])} opened, not funded` : `${fmt(64 * mult)} stuck at funding`}</span><span>Nudge in Members →</span></button></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="feat"><div className="hd"><h2>What they use</h2><div className="r"><div className="seg sm" role="group" aria-label="App">{Object.entries(APPS).map(([k, v], __k) => <button key={__k} data-afeat={k} aria-pressed={AS.feat === k}>{v.n}</button>)}</div></div></div>{feats}<div className="bk-ft"><span>{"Share of this week’s active "}{AS.feat === 'member' ? 'members' : 'shops'}{" who used each"}</span><span /></div></div><div className="cell s5"><div className="hd"><h2>Issues</h2><div className="r"><span className="lbl">{L ? `${ERRS.length} this week` : <>{ERRS.length}{" open · "}{ERRS.filter(e => !e.own).length}{" with no owner"}</>}</span></div></div>{errs}<button className="foot" data-go="records" data-gp="log"><span>Error log</span><span>→</span></button></div></div></section><div className="src-note"><span><b>Source:</b>{" first-party events from both apps (Umami custom events) and Clear’s own records. No session recording, nothing sold or shared."}</span>{L ? null : <button className="btn" style={css("height:32px")} data-act="">Add a data source</button>}</div></>);
   }
 
   /* ── Time: every period is a day range on one daily series, so any range adds up ──
@@ -2037,9 +2061,8 @@ function makeGrowth() {
     }
   }
   /* live, a tab whose numbers the API doesn't have yet says so, hatched, and what it needs (docs/ui-redesign-plan.md, gaps) */
-  const NOT_REAL = {
-    apps: ['ap', 'Apps', 'Apps need the member and merchant apps’ own events: who opens them each day, what they use, onboarding steps and errors.']
-  };
+  // every tab reads real numbers now; a tab that can't yet goes here with what it needs
+  const NOT_REAL = {};
   function notReal(tab) {
     const [id, nm, need] = NOT_REAL[tab];
     html($g('hdr'), <><span className="when"><span className="dot" />{"Growth · "}{nm}</span><p className="brief">{"Nothing to show yet. "}<span className="q">{need}</span></p></>);

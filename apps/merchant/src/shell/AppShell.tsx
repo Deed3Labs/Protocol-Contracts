@@ -31,6 +31,7 @@ import {
   type RosterPerson,
 } from '@/shell/chrome';
 import { ShiftActionsContext } from '@/shell/shiftActions';
+import { usePageViews } from '@/lib/analytics';
 
 /**
  * The shell every signed-in screen sits in, at all three widths.
@@ -80,6 +81,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState<Open>(null);
   const [appearance, setAppearance] = useState<Appearance>(readAppearance);
   usePage(pageOf(pathname));
+  // a page view for each page on shift: a day's visitors are the devices shops used
+  usePageViews();
 
   // The shop's name, in the one place it appears on every screen. Remembered on the tablet too, so
   // the shift screen can show it before anyone is on.
