@@ -414,6 +414,8 @@ const apply = {
     vars.shopNames = d.SHOP_NAMES;
     vars.posterCount = d.POSTERS;
     replace(DEADLINES, d.DEADLINES);
+    // the entities, as Governance's: Home draws them as a small tree
+    if (d.ENT) replace(ENT, d.ENT);
     const f = d.figures;
     replace(FUNNEL, f['home.funnel']);
     // the stored alerts, and the shop's materials at or under their low mark (Phase 10c)

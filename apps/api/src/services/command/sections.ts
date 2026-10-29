@@ -1691,11 +1691,14 @@ async function buildRecords(db: Queryable, o: ReadOptions) {
 // ── Governance ──────────────────────────────────────────────────────────────
 
 /** Governance: the entities, filings, boards and seats, the agenda, resolutions, the member vote, meetings, related-party deals and who decides what. */
+/** An entity as Governance (and Home's small tree) reads it: id, name, kind, status, role, map x, map y. */
+const entityRow = (e: any) => [e.id, e.name, e.kind, e.status, e.role, Number(e.map_x), Number(e.map_y)];
+
 export async function governanceSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('governance');
   const q = async (sql: string) => (await db.query<any>(sql)).rows;
   const ents = await q('SELECT * FROM command.entities ORDER BY position');
-  const ENT = ents.map((e) => [e.id, e.name, e.kind, e.status, e.role, Number(e.map_x), Number(e.map_y)]);
+  const ENT = ents.map(entityRow);
   const pick = (k: string) => Object.fromEntries(ents.filter((e) => e[k] != null).map((e) => [e.id, e[k]]));
   const FILINGS = (await q('SELECT * FROM command.filings ORDER BY position')).map((f) => [f.id, f.entity_id, f.title, ms_(f.due_on), f.status, f.owner]);
   const seats = await q('SELECT * FROM command.board_seats ORDER BY board, position');
@@ -1850,8 +1853,11 @@ export async function homeSection(db: Queryable, o: ReadOptions): Promise<Record
   if (m.rows) f['members.first_spends.poster_ten'] = 0;
   // the shop's materials at or under their low mark, for the alerts (Phase 10c): from See, as Shop's costing is
   const LOW_MATERIALS = o.level >= SEE ? await lowMaterials(db) : [];
+  // the entities, as Governance sends them, for Home's small tree
+  const ENT = (await q('SELECT * FROM command.entities ORDER BY position')).map(entityRow);
   return {
     LOW_MATERIALS,
+    ENT,
     MEMBER_SUMMARY: { invited: m.invited, active: m.active, opened: m.opened, notOpened: m.notOpened, funded: m.funded },
     OWED: Object.fromEntries(owed.map((r) => [r.merchant_id, r.owed_cents / 100])),
     SHOP_NAMES: Object.fromEntries(owed.map((r) => [r.merchant_id, r.name ?? r.merchant_id])),

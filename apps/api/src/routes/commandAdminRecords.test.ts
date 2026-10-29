@@ -5,7 +5,7 @@ import type { Db } from '../db/db.js';
 import { testDb } from '../db/testDb.js';
 import { SECTIONS, type Levels } from '../services/command/levels.js';
 import type { MemberSource } from '../services/command/memberSource.js';
-import { governanceSection } from '../services/command/sections.js';
+import { governanceSection, homeSection } from '../services/command/sections.js';
 import { seedCommand } from '../services/command/seed.js';
 import { commandRouter } from './command.js';
 
@@ -159,6 +159,14 @@ describe('Governance → agreement versions', () => {
       if (was == null) delete process.env.PROVIDER_MEMBERS;
       else process.env.PROVIDER_MEMBERS = was;
     }
+  });
+
+  test('Home sends the entities as Governance does, for its small tree', async () => {
+    const o = { level: 1, reveal: false, now: new Date() };
+    const g = (await governanceSection(db, o)) as any;
+    const h = (await homeSection(db, o)) as any;
+    expect(g.ENT.length).toBeGreaterThan(0);
+    expect(h.ENT).toEqual(g.ENT);
   });
 });
 
