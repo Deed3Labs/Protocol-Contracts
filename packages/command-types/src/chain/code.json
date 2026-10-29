@@ -414,18 +414,18 @@
   },
   "OffersIssuer": {
    "source": "contracts/peripherals/OffersIssuer.sol",
-   "sha256": "0e8f1a6c648e9573da90a7a9c915d565efb0a58e57df039ee1e01f053745f9a2",
+   "sha256": "d1925974d353875d4d0178fb1b6e1865c3d4c441cdd587adce07b14a15835dcb",
    "immutables": [
     [
-     5401,
+     5423,
      32
     ],
     [
-     5993,
+     6015,
      32
     ],
     [
-     7154,
+     7214,
      32
     ]
    ]
