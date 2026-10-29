@@ -10,8 +10,8 @@ import type { Queryable } from '../../db/db.js';
  * Plaid, live Bridge, live Lithic, a live Stripe key) doesn't run: its row says it's off and why.
  */
 
-export type FeedId = 'plaid' | 'bridge' | 'lithic' | 'stripe' | 'shop' | 'catalog' | 'site';
-export const FEED_IDS: FeedId[] = ['plaid', 'bridge', 'lithic', 'stripe', 'shop', 'catalog', 'site'];
+export type FeedId = 'plaid' | 'bridge' | 'lithic' | 'stripe' | 'shop' | 'catalog' | 'site' | 'apps';
+export const FEED_IDS: FeedId[] = ['plaid', 'bridge', 'lithic', 'stripe', 'shop', 'catalog', 'site', 'apps'];
 export const FEED_NAMES: Record<FeedId | 'protocol', string> = {
   plaid: 'Plaid',
   bridge: 'Bridge',
@@ -20,6 +20,7 @@ export const FEED_NAMES: Record<FeedId | 'protocol', string> = {
   shop: 'Shop orders',
   catalog: 'Shop catalog',
   site: 'Site visits',
+  apps: 'App usage',
   protocol: 'Clear protocol',
 };
 

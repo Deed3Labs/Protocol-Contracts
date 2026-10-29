@@ -5,6 +5,7 @@ import { costOrders, readBook } from './costing.js';
 import { costOverheads } from './shopModel.js';
 import { feedRows, type Feed, type FeedRow } from './feeds.js';
 import { siteFeed } from './siteFeed.js';
+import { appsFeed } from './appsFeed.js';
 
 /*
  * The four sandbox feeds (Phase 6a). Each reads only: the one write is Plaid's sandbox-only call that
@@ -458,4 +459,4 @@ export function catalogFeed(env: Env = process.env, f: typeof fetch = fetch): Fe
   };
 }
 
-export const liveFeeds = (env: Env = process.env): Feed[] => [plaidFeed(env), bridgeFeed(env), lithicFeed(env), stripeFeed(env), shopFeed(env), catalogFeed(env), siteFeed(env)];
+export const liveFeeds = (env: Env = process.env): Feed[] => [plaidFeed(env), bridgeFeed(env), lithicFeed(env), stripeFeed(env), shopFeed(env), catalogFeed(env), siteFeed(env), appsFeed(env)];

@@ -4,6 +4,7 @@ import AppChrome from './AppChrome';
 import HeaderActions from './HeaderActions';
 import PullToRefresh from '@/components/app-ui/PullToRefresh';
 import { useRefreshOnResume } from '@/hooks/useRefreshOnResume';
+import { usePageViews } from '@/lib/analytics';
 import { useLogout } from '@/hooks/useLogout';
 import { KycProvider } from '@/context/KycContext';
 import { BridgeProvider } from '@/context/BridgeContext';
@@ -117,6 +118,8 @@ function OnboardingGate({ children }: { children: ReactNode }) {
 export default function AppShell() {
   // A backgrounded PWA misses the transient `chain:changed` socket event; this is how it catches up.
   useRefreshOnResume();
+  // a page view for each page of the signed-in app: a day's visitors are the members who opened Clear
+  usePageViews();
   return (
     // Bridge wraps KYC: verification state comes FROM Bridge, so KycModal can read useBridge().
     <BridgeProvider>

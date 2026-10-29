@@ -291,9 +291,10 @@ Filled in as each page is ported. Known before starting:
     (hidden live; turning off access is there); the join form's whole-list reveal (hidden: one person at a
     time from People); only the newest waiting batch proposal shows when there are two.
 - **Growth** (ported): what campaigns cost (printing, ads, offers, credit) and who a tagged link brought past
-  joining, the apps' own events, bounce and time on page, browsers, and invites, opens and first spends by
-  source, city, shop and design. Live, Apps says "Not real yet" with what it needs; the waitlist count and
-  median come from `command.waitlist`. Traffic's Right now is Umami's real-time view (`GET /growth/now`, kept
+  joining, bounce and time on page, browsers, and invites, opens and first spends by
+  source, city, shop and design. Apps is live from both apps' own Umami websites (the `apps` feed): who
+  opens each app every day, what they use and the errors they hit, with onboarding from Members' rows;
+  the waitlist count and median come from `command.waitlist`. Traffic's Right now is Umami's real-time view (`GET /growth/now`, kept
   15 seconds, read every 20).
   Campaigns is live: each poster design (Command's posters, the waitlist joins they brought and, with Members
   live, who was invited, opened, activated and spent) and each `utm_campaign` the site feed counted (visits,

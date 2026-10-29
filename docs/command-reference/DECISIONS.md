@@ -688,3 +688,12 @@ Kai, 2026-10-24: dev is the real thing on testnet. No seed, no demo people, no p
   so the visits Growth shows are visitors. The site loads the tracker from `NEXT_PUBLIC_UMAMI_SRC` and
   `NEXT_PUBLIC_UMAMI_WEBSITE_ID` (clearpath-website PR #96); every event leaves with no hash and only
   `utm_` parameters, its referrer too.
+- **The apps on Umami too, and off Plausible.** The member app (app.useclear.org) moved from Plausible
+  Cloud, whose numbers Command couldn't read without its Business plan, to the same Umami; the merchant
+  app (merchant.useclear.org) is on it for the first time. Each is its own Umami website
+  (`VITE_UMAMI_SRC`, `VITE_UMAMI_WEBSITE_ID` in its Vercel project; `UMAMI_MEMBER_WEBSITE_ID`,
+  `UMAMI_MERCHANT_WEBSITE_ID` on the API, shared with Command's view-only user). Both count page views
+  only once someone is signed in (on shift, for the merchant app), so a day's visitors are the members,
+  or the shop devices, that opened the app; ids, queries, hashes and page titles never leave. Errors go
+  up as "Error · <page> · <kind>", never a message, at most five a page load. Growth › Apps reads them
+  through the `apps` feed (`appsFeed.ts`).
