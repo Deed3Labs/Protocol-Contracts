@@ -53,9 +53,11 @@ describe("repayment routing", function () {
   }
 
   it("sends everything to the reserve when there is no payout pool", async function () {
-    // The inherited behaviour, and the only option before there was anywhere else to send it.
+    // The inherited behaviour, and the only option before there was anywhere else to send it:
+    // the primary reserve up to the target RTD first (20% of the 1,000 out), the rest the buffer.
     await repay(1_000n * ONE_USDC);
-    expect(await ctx.assurancePool.bufferBalance()).to.equal(1_000n * ONE_USDC);
+    expect(await ctx.assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
+    expect(await ctx.assurancePool.bufferBalance()).to.equal(800n * ONE_USDC);
   });
 
   describe("with a payout pool", function () {
@@ -98,7 +100,8 @@ describe("repayment routing", function () {
 
     it("stops at what is actually owed; the rest still goes to the reserve", async function () {
       // Payables before provisions, not instead of them. With 400 of capital already sitting
-      // there, only 600 of the payable is unfunded and the remaining 400 carries on to the buffer.
+      // there, only 600 of the payable is unfunded and the remaining 400 carries on to the reserve:
+      // 200 to bring the primary reserve to its target, 200 to the buffer.
       await ctx.usdc.mint(ctx.admin.address, 400n * ONE_USDC);
       await ctx.usdc.approve(await pool.getAddress(), 400n * ONE_USDC);
       await pool.connect(ctx.admin).fund(400n * ONE_USDC);
@@ -106,7 +109,8 @@ describe("repayment routing", function () {
       await repay(1_000n * ONE_USDC);
 
       expect(await pool.held()).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.assurancePool.bufferBalance()).to.equal(400n * ONE_USDC);
+      expect(await ctx.assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
+      expect(await ctx.assurancePool.bufferBalance()).to.equal(200n * ONE_USDC);
     });
 
     it("covers what it can when the repayment is smaller than the queue", async function () {

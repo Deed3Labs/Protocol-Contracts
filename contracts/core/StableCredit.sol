@@ -549,7 +549,9 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     ///
     /// The payout pool is offered only what it is actually short. It is a timing buffer, not a
     /// place to accumulate, so anything above the claims outstanding carries on to loss
-    /// absorption where it does some good.
+    /// absorption where it does some good: the AssurancePool's primary reserve up to its target
+    /// RTD first, the rest its buffer. All of it used to go to the buffer, which the RTD does not
+    /// count, so the primary reserve never filled from repayments.
     function _routeRepayment(uint256 amount) private {
         IERC20Upgradeable reserve = assurancePool.reserveToken();
         uint256 toPayout;
@@ -567,7 +569,7 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         uint256 remainder = amount - toPayout;
         if (remainder > 0) {
             reserve.approve(address(assurancePool), remainder);
-            assurancePool.depositIntoBufferReserve(remainder);
+            assurancePool.depositRepayment(remainder);
             emit RepaymentRouted(address(assurancePool), remainder);
         }
     }

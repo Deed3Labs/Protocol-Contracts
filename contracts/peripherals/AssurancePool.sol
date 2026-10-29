@@ -32,6 +32,10 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     event PayoutPoolUpdated(address indexed pool);
     event LentToPayoutPool(uint256 amount, uint256 outstanding);
     event RepaidFromPayoutPool(uint256 amount, uint256 outstanding);
+    /// @notice emitted when an operator moves buffer reserve into the primary reserve.
+    event BufferMovedToPrimary(uint256 amount, uint256 primaryReserve);
+    /// @notice emitted when held tokens are repriced: what the tiers accounted, and what is held now.
+    event ReservesRepriced(uint256 accounted, uint256 held);
 
     /* ========== ERRORS ========== */
 
@@ -383,6 +387,28 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         emit BufferReserveDeposited(amount);
     }
 
+    /// @notice takes in a member's repayment: the primary reserve up to the target RTD first, the
+    /// rest into the buffer.
+    /// @dev Repayments used to go to the buffer alone, which the RTD does not count, so the primary
+    /// reserve never filled from them and the pool read as uncovered with the money sitting in it.
+    /// Only what the target needs goes to primary; the buffer stays the cushion it was.
+    /// @param amount amount of reserve token to deposit.
+    function depositRepayment(uint256 amount) external override nonReentrant {
+        require(amount > 0, "AssurancePool: Cannot deposit 0");
+        _registerHeldToken(address(reserveToken));
+        uint256 needed = neededReserves();
+        uint256 toPrimary = needed < amount ? needed : amount;
+        if (toPrimary > 0) {
+            primaryReserve[address(reserveToken)] += toPrimary;
+            emit PrimaryReserveDeposited(toPrimary);
+        }
+        if (amount > toPrimary) {
+            bufferReserve[address(reserveToken)] += amount - toPrimary;
+            emit BufferReserveDeposited(amount - toPrimary);
+        }
+        reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
+    }
+
     /// @notice enables caller to deposit reserve tokens into the excess reserve.
     /// @param amount amount of reserve token to deposit.
     function depositIntoExcessReserve(uint256 amount) public {
@@ -612,6 +638,20 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         emit PayoutPoolUpdated(pool);
     }
 
+    /// @notice moves buffer reserve into the primary reserve, where the RTD counts it.
+    /// @dev Nothing else can: the rebalance only moves buffer up to what the target needs against
+    /// exposure already out, so with none out the primary reserve stays empty and the pool reports
+    /// no room to issue against money it holds. Both tiers absorb losses, so no value leaves loss
+    /// absorption; it only becomes cover the ratio sees.
+    /// @param amount reserve token amount to move, at most the buffer balance.
+    function moveBufferToPrimary(uint256 amount) external onlyOperator nonReentrant {
+        require(amount > 0, "AssurancePool: Cannot move 0");
+        require(amount <= bufferBalance(), "AssurancePool: Insufficient buffer reserve");
+        bufferReserve[address(reserveToken)] -= amount;
+        primaryReserve[address(reserveToken)] += amount;
+        emit BufferMovedToPrimary(amount, primaryBalance());
+    }
+
     /// @notice this function reallocates needed reserves from the excess reserve to the
     /// primary reserve to attempt to reach the target RTD.
     function reallocateExcessBalance() public onlyOperator {
@@ -693,7 +733,10 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     }
     
     /// @notice Recalculate RTD and rebalance reserves based on current token prices (public)
-    /// @dev This function can be called by anyone to maintain target RTD
+    /// @dev Anyone may call this, so it only ever strengthens the cover: below target it tops the
+    /// primary reserve up from buffer and excess. Moving primary out above target is the operator's
+    /// call (`rebalanceRTD`): from anyone, it would let a stranger shrink the room to issue to nothing
+    /// and push cover into the excess reserve, the one tier that can be spent.
     function rebalanceRTDPublic() external {
         // First, update reserve values based on current token prices
         _updateReserveValues();
@@ -704,9 +747,6 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         if (currentRTD < _targetRTD) {
             // RTD is below target - move reserves from buffer/excess to primary
             _rebalanceToPrimary();
-        } else if (currentRTD > _targetRTD) {
-            // RTD is above target - move reserves from primary to buffer/excess
-            _rebalanceFromPrimary();
         }
         
         emit RTDRebalanced(currentRTD, _targetRTD, RTD());
@@ -767,30 +807,32 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     }
     
     /// @notice Update reserve values based on current token prices
-    /// @dev This function recalculates reserve values using live pricing data
+    /// @dev Reprices without moving anything between tiers. It used to zero all three and hand the
+    /// held value out again as primary-up-to-need and the rest as excess, so any rebalance, from
+    /// anyone, turned the buffer (and any primary above need) into excess, the spendable tier: with
+    /// no exposure out, the whole pool. Now a gain in held value lands in excess, and a loss comes
+    /// out of excess first, then the buffer, then the primary reserve, the order losses are meant
+    /// to reach them in. While any held token cannot be priced, nothing is written: a pricing gap
+    /// is not a loss.
     function _updateReserveValues() internal {
-        // Get all tokens held in the pool
-        address[] memory heldTokens = _getHeldTokens();
-        
-        // Reset all reserves to zero
-        primaryReserve[address(reserveToken)] = 0;
-        bufferReserve[address(reserveToken)] = 0;
-        excessReserve[address(reserveToken)] = 0;
-        
-        // Recalculate reserve values based on current prices
-        for (uint256 i = 0; i < heldTokens.length; i++) {
-            address token = heldTokens[i];
-            if (token == address(0)) continue;
-            uint256 tokenBalance = IERC20Upgradeable(token).balanceOf(address(this));
-            
-            if (tokenBalance > 0) {
-                // Convert token balance to reserve token equivalent using current prices
-                uint256 reserveTokenEquivalent = _convertToReserveToken(token, tokenBalance);
-                
-                // Allocate to appropriate reserve based on current RTD needs
-                _allocateToReserves(reserveTokenEquivalent);
-            }
+        (uint256 held, uint256 unpriced) = _heldReserveValue();
+        if (unpriced > 0) return;
+        uint256 accounted = primaryBalance() + bufferBalance() + excessBalance();
+        if (held == accounted) return;
+        address rt = address(reserveToken);
+        if (held > accounted) {
+            excessReserve[rt] += held - accounted;
+        } else {
+            uint256 loss = accounted - held;
+            uint256 x = excessReserve[rt] < loss ? excessReserve[rt] : loss;
+            excessReserve[rt] -= x;
+            loss -= x;
+            x = bufferReserve[rt] < loss ? bufferReserve[rt] : loss;
+            bufferReserve[rt] -= x;
+            loss -= x;
+            primaryReserve[rt] -= loss;
         }
+        emit ReservesRepriced(accounted, held);
     }
     
     /// @notice Get all tokens currently held in the pool
@@ -814,21 +856,6 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         return trimmed;
     }
 
-    /// @notice Allocate reserve token equivalent to appropriate reserves
-    /// @param amount Amount of reserve token equivalent to allocate
-    function _allocateToReserves(uint256 amount) internal {
-        uint256 _neededReserves = neededReserves();
-        
-        if (_neededReserves > amount) {
-            // All goes to primary reserve (RTD not met)
-            primaryReserve[address(reserveToken)] += amount;
-        } else {
-            // Some to primary, rest to excess
-            primaryReserve[address(reserveToken)] += _neededReserves;
-            excessReserve[address(reserveToken)] += (amount - _neededReserves);
-        }
-    }
-    
     /// @notice Get current RTD status and rebalancing needs
     /// @return currentRTD Current RTD percentage
     /// @return _targetRTD Target RTD percentage

@@ -531,4 +531,129 @@ describe("AssurancePool", function () {
       ).to.be.revertedWith("AssurancePool: caller does not have admin access");
     });
   });
+
+  describe("moving between the tiers", function () {
+    // The pool on Base Sepolia held everything in the buffer and nothing in primary: repayments
+    // only ever reached the buffer, nothing could move buffer into primary with no exposure out,
+    // and a rebalance -- from anyone -- turned the whole pool into excess, the spendable tier.
+
+    async function pricedToken() {
+      const { assuranceOracle, tokenRegistry, admin } = ctx;
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      const token = await MockERC20.deploy("Pool Token", "POOL", 18);
+      await tokenRegistry.registerToken(await token.getAddress(), 31337, await token.getAddress(), ethers.parseEther("1"));
+      await tokenRegistry.setStablecoin(await token.getAddress(), false);
+      await assuranceOracle.connect(admin).setForceRegistryFallback(await token.getAddress(), true);
+      return token;
+    }
+
+    it("lets an operator move buffer into primary, where the RTD counts it", async function () {
+      const { assurancePool, operator } = ctx;
+      await fundBuffer(125n * ONE_USDC);
+      await drawCredit(ctx, 1_000n * ONE_USDC); // no exposure source: all of it is exposure
+      expect(await assurancePool.RTD()).to.equal(0n);
+
+      await expect(assurancePool.connect(operator).moveBufferToPrimary(100n * ONE_USDC))
+        .to.emit(assurancePool, "BufferMovedToPrimary")
+        .withArgs(100n * ONE_USDC, 100n * ONE_USDC);
+
+      expect(await assurancePool.primaryBalance()).to.equal(100n * ONE_USDC);
+      expect(await assurancePool.bufferBalance()).to.equal(25n * ONE_USDC);
+      expect(await assurancePool.RTD()).to.equal(ethers.parseEther("0.1"));
+    });
+
+    it("moves buffer only for an operator, and never more than the buffer holds", async function () {
+      const { assurancePool, operator, outsider } = ctx;
+      await fundBuffer(50n * ONE_USDC);
+      await expect(assurancePool.connect(outsider).moveBufferToPrimary(10n * ONE_USDC)).to.be.revertedWith(
+        "AssurancePool: caller does not have operator access"
+      );
+      await expect(assurancePool.connect(operator).moveBufferToPrimary(51n * ONE_USDC)).to.be.revertedWith(
+        "AssurancePool: Insufficient buffer reserve"
+      );
+      await expect(assurancePool.connect(operator).moveBufferToPrimary(0n)).to.be.revertedWith("AssurancePool: Cannot move 0");
+    });
+
+    it("rebalances without emptying the buffer or the primary reserve into excess", async function () {
+      const { assurancePool, operator, outsider } = ctx;
+      await fundBuffer(125n * ONE_USDC);
+      await fundPrimary(50n * ONE_USDC);
+
+      await assurancePool.connect(outsider).rebalanceRTDPublic();
+      await assurancePool.connect(operator).rebalanceRTD();
+
+      expect(await assurancePool.bufferBalance()).to.equal(125n * ONE_USDC);
+      expect(await assurancePool.primaryBalance()).to.equal(50n * ONE_USDC);
+      expect(await assurancePool.excessBalance()).to.equal(0n);
+    });
+
+    it("reprices a held token's gain into excess, and takes its loss from excess, then buffer, then primary", async function () {
+      const { assurancePool, tokenRegistry, admin, operator } = ctx;
+      const token = await pricedToken();
+      const amount = 40n * 10n ** 18n;
+      await token.mint(admin.address, amount);
+      await token.approve(await assurancePool.getAddress(), amount);
+      await assurancePool.depositTokenIntoBuffer(await token.getAddress(), amount);
+      await fundExcess(10n * ONE_USDC);
+      await fundPrimary(5n * ONE_USDC);
+      expect(await assurancePool.bufferBalance()).to.equal(40n * ONE_USDC);
+
+      // half its price: 20 lost, 10 from excess and 10 from the buffer; primary untouched
+      await tokenRegistry.setFallbackPrice(await token.getAddress(), ethers.parseEther("0.5"));
+      await expect(assurancePool.connect(operator).rebalanceRTD())
+        .to.emit(assurancePool, "ReservesRepriced")
+        .withArgs(55n * ONE_USDC, 35n * ONE_USDC);
+      expect(await assurancePool.excessBalance()).to.equal(0n);
+      expect(await assurancePool.bufferBalance()).to.equal(30n * ONE_USDC);
+      expect(await assurancePool.primaryBalance()).to.equal(5n * ONE_USDC);
+
+      // four times that: the 60 gained is spare, so it is excess
+      await tokenRegistry.setFallbackPrice(await token.getAddress(), ethers.parseEther("2"));
+      await assurancePool.connect(operator).rebalanceRTD();
+      expect(await assurancePool.excessBalance()).to.equal(60n * ONE_USDC);
+      expect(await assurancePool.bufferBalance()).to.equal(30n * ONE_USDC);
+      expect(await assurancePool.primaryBalance()).to.equal(5n * ONE_USDC);
+    });
+
+    it("lets anyone top the primary reserve up, but only an operator move it out", async function () {
+      const { assurancePool, operator, outsider } = ctx;
+      await drawCredit(ctx, 1_000n * ONE_USDC); // 20% target: 200 needed
+      await fundPrimary(500n * ONE_USDC);
+
+      await assurancePool.connect(outsider).rebalanceRTDPublic();
+      expect(await assurancePool.primaryBalance()).to.equal(500n * ONE_USDC);
+
+      await assurancePool.connect(operator).rebalanceRTD();
+      expect(await assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
+    });
+
+    it("tops primary up from the buffer for anyone, below target", async function () {
+      const { assurancePool, outsider } = ctx;
+      await fundBuffer(300n * ONE_USDC);
+      await drawCredit(ctx, 1_000n * ONE_USDC);
+
+      await assurancePool.connect(outsider).rebalanceRTDPublic();
+      expect(await assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
+      expect(await assurancePool.bufferBalance()).to.equal(100n * ONE_USDC);
+      expect(await assurancePool.hasValidRTD()).to.equal(true);
+    });
+
+    it("takes a repayment into primary up to the target, the rest into the buffer", async function () {
+      const { assurancePool, usdc, admin } = ctx;
+      const pay = async (amount: bigint) => {
+        await usdc.mint(admin.address, amount);
+        await usdc.approve(await assurancePool.getAddress(), amount);
+        await assurancePool.depositRepayment(amount);
+      };
+      // nothing out: nothing needed, so all of it is buffer
+      await pay(50n * ONE_USDC);
+      expect([await assurancePool.primaryBalance(), await assurancePool.bufferBalance()]).to.deep.equal([0n, 50n * ONE_USDC]);
+
+      await drawCredit(ctx, 1_000n * ONE_USDC);
+      await pay(300n * ONE_USDC);
+      expect(await assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
+      expect(await assurancePool.bufferBalance()).to.equal(150n * ONE_USDC);
+      expect(await assurancePool.hasValidRTD()).to.equal(true);
+    });
+  });
 });

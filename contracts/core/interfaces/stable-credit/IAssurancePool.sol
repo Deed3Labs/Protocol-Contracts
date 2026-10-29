@@ -23,6 +23,11 @@ interface IAssurancePool {
     /// @param amount amount of reserve token to deposit.
     function depositIntoBufferReserve(uint256 amount) external;
 
+    /// @notice takes in a member's repayment: the primary reserve up to the target RTD first, the
+    /// rest into the buffer.
+    /// @param amount amount of reserve token to deposit.
+    function depositRepayment(uint256 amount) external;
+
     /// @notice enables caller to deposit any accepted token into the excess reserve.
     /// @param token address of the token to deposit.
     /// @param amount amount of token to deposit.
