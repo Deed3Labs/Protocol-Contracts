@@ -1,6 +1,6 @@
 import { DAY } from '@clear/command-types';
 import type { Queryable } from '../../db/db.js';
-import { events, type ChainReader } from './onchain.js';
+import { events, offersAddress, type ChainReader } from './onchain.js';
 
 /*
  * Money's on-chain book (docs/ui-redesign-plan.md, gaps): what the PayoutPool owes shops and when,
@@ -151,7 +151,9 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
  */
 export async function creditLive(db: Queryable, reader: ChainReader, now: number): Promise<CreditLive> {
   const lines = await events(db, ['ClearCredit'], ['CreditLineCreated']);
-  const members = [...new Set(lines.map((e) => lc(e.args.member)))];
+  // the $10 offers' own line is the co-op owing itself, not a member's credit (Money shows it apart)
+  const offers = offersAddress();
+  const members = [...new Set(lines.map((e) => lc(e.args.member)))].filter((m) => m !== offers);
   const [decimals] = await reader.read([{ contract: 'ClearCredit', fn: 'decimals' }]);
   const usd = (v: unknown) => round2(Number(big(v)) / 10 ** Number(decimals));
   const per = 5;
@@ -252,7 +254,8 @@ export async function creditLive(db: Queryable, reader: ChainReader, now: number
   const ev = (await events(db, ['ClearCredit', 'RevolvingIssuer', 'TermIssuer', 'AssurancePool'], [
     'PurchaseOriginated', 'PurchaseReversed', 'CardSpendSettled', 'CardSpendReversed', 'CarryAccrued', 'CreditBalanceRepaid', 'CreditLineWrittenOff', 'TermDefaulted', 'AccountReimbursed',
   ]));
-  const month = ev.filter((e) => e.at >= first);
+  // an expired $10 offer comes back as a reversal against the offers line; it was never a purchase
+  const month = ev.filter((e) => e.at >= first && !(e.event === 'PurchaseReversed' && offers && lc(e.args.member) === offers));
   const sum = (name: string, key: string) => round2(month.filter((e) => e.event === name).reduce((a, e) => a + usd(e.args[key]), 0));
   const spent = round2(sum('PurchaseOriginated', 'purchase') - sum('PurchaseReversed', 'purchase') + sum('CardSpendSettled', 'amount') - sum('CardSpendReversed', 'amount'));
   const carry = sum('CarryAccrued', 'amount');

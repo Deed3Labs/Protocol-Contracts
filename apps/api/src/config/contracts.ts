@@ -34,6 +34,8 @@ export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
     PayoutPool: process.env.PAYOUT_POOL_84532 || '0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66',
     MerchantRegistry: process.env.MERCHANT_REGISTRY_84532 || '0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5',
     Liquidator: process.env.LIQUIDATOR_84532 || '0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593',
+    // The co-op's $10 offers, on a capped line of their own. Unset until it's deployed.
+    OffersIssuer: process.env.OFFERS_ISSUER_84532 || '',
   },
   // Sepolia
   11155111: {

@@ -2,7 +2,7 @@ import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, 
 import type { Db, Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
-import { assurancePoolLive, bondVaultLive, coopLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { assurancePoolLive, bondVaultLive, coopLive, offersLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { creditLive, payoutsLive } from './credit.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
@@ -1262,6 +1262,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   // live, the co-op's balance is the USDC the Ops Safe holds on chain, not the table's
   const safe = safeConfig()?.address ?? null;
   const coop = provider === 'live' && safe ? await coopLive(chainOf(o, 'money'), safe).catch(() => null) : null;
+  // live, what the co-op owes for $10 offers on their own line (null until OffersIssuer is deployed)
+  const offers = provider === 'live' ? await offersLive(chainOf(o, 'money')).catch(() => null) : null;
 
   // the headline numbers, as the prototype's M
   const M: Record<string, number> = {
@@ -1356,6 +1358,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     M, Y, Y_DEP,
     // where the co-op's balance is held, whether that's the Ops Safe, and in what
     COOP,
+    // the $10 offers' line: what the co-op owes for them, apart from its balance
+    OFFERS: offers,
     ...(chainPool
       ? { YD: chainPool.days.map(dayMon), Y_ASSETS: chainPool.assetsByDay, Y_LENT: chainPool.lentByDay }
       : { YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent] }),
