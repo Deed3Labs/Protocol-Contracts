@@ -186,6 +186,31 @@ describe("OffersIssuer", function () {
     });
   });
 
+  describe("who sets the cap and the terms", function () {
+    it("is the owner (the Ops Safe) or an operator, and nobody else", async function () {
+      await offers.transferOwnership(safe.address);
+      await offers.connect(safe).setCap(2_000n * ONE_USDC);
+      expect(await offers.cap()).to.equal(2_000n * ONE_USDC);
+      await offers.connect(safe).setTerms(5n * ONE_USDC, 30 * DAY);
+      expect(await offers.offerAmount()).to.equal(5n * ONE_USDC);
+      // an operator still can, which is how the deployer opened the line
+      await offers.connect(ctx.operator).setCap(1_500n * ONE_USDC);
+      expect(await offers.cap()).to.equal(1_500n * ONE_USDC);
+      await expect(offers.connect(ctx.outsider).setCap(1n)).to.be.revertedWith("CreditIssuer: Unauthorized caller");
+      await expect(offers.connect(ctx.outsider).setTerms(1n, 1)).to.be.revertedWith("CreditIssuer: Unauthorized caller");
+    });
+
+    it("never lets the cap go under what the line already owes", async function () {
+      await offers.connect(ctx.operator).grant(newcomer.address);
+      await expect(offers.connect(ctx.operator).setCap(5n * ONE_USDC)).to.be.revertedWith("StableCredit: invalid credit limit");
+    });
+
+    it("leaves giving offers to an operator, not the owner", async function () {
+      await offers.transferOwnership(safe.address);
+      await expect(offers.connect(safe).grant(newcomer.address)).to.be.revertedWith("CreditIssuer: Unauthorized caller");
+    });
+  });
+
   describe("not something the AssurancePool reserves against", function () {
     it("reports no position for its own line or for anyone it enrolled", async function () {
       await offers.connect(ctx.operator).grant(newcomer.address);

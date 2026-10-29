@@ -230,8 +230,16 @@ contract OffersIssuer is CreditIssuer, ICreditPositionSource {
 
     /* ========== RESTRICTED ========== */
 
+    /// @dev The owner (the Ops Safe) or an operator. The cap and the terms are the co-op's to set, and
+    /// the Safe isn't an operator on the AccessManager -- that would hand it every issuer's operator
+    /// calls -- so owning this contract is what lets it change them.
+    modifier onlyOwnerOrOperator() {
+        if (_msgSender() != owner()) require(stableCredit.access().isOperator(_msgSender()), "CreditIssuer: Unauthorized caller");
+        _;
+    }
+
     /// @notice sets the most the co-op can owe for offers at once, opening the line the first time.
-    function setCap(uint256 _cap) external onlyOperator {
+    function setCap(uint256 _cap) external onlyOwnerOrOperator {
         INetworkRegistry registry = stableCredit.networkRegistry();
         if (!registry.isEnrolled(address(this), address(this))) stableCredit.createCreditLine(address(this), _cap, 0);
         else stableCredit.updateCreditLimit(address(this), _cap);
@@ -240,7 +248,7 @@ contract OffersIssuer is CreditIssuer, ICreditPositionSource {
 
     /// @notice sets one offer's worth and how long a member has to spend it. Offers already given
     /// keep the window they were given under only as far as `grantedAt` + the current window.
-    function setTerms(uint256 _offerAmount, uint64 _expiryWindow) external onlyOperator {
+    function setTerms(uint256 _offerAmount, uint64 _expiryWindow) external onlyOwnerOrOperator {
         if (_offerAmount == 0 || _expiryWindow == 0) revert OffersIssuerInvalidTerms();
         offerAmount = _offerAmount;
         expiryWindow = _expiryWindow;
