@@ -6,7 +6,7 @@ import { BOARDS, CITY_V, COHORTS, DESIGNS, HEAT, LANDING, OTHERS, POSTERS, SHOPS
  * the API's growth section sends (live/sections.ts fills ./data from it). What the API doesn't measure yet
  * is zero or empty, never the reference's figures; docs/ui-redesign-plan.md lists each gap:
  * invites, opens and first spends by source, city, shop and design; weekly opens and first spends;
- * bounce and time on page; browsers; campaigns; activation curves; the apps' usage and errors; the
+ * bounce and time on page; browsers; what campaigns cost; activation curves; the apps' usage and errors; the
  * real-time view; the waitlist's people.
  */
 
@@ -61,7 +61,8 @@ export function growthLive() {
     TF_CITY: Object.entries(CITY_V).map(([n, v]) => [n, v, postersIn(n)]),
     W_CH: Object.fromEntries(Object.entries(W_SRC).map(([k, v]) => [k, [...v]])),
     LIVE: [],
-    CAMPS: [],
+    // until the site feed counts the untagged, all of the 30 days is untagged
+    ...campaigns(fig, start, [visits, SRC30.reduce((a, r) => a + r[2], 0)]),
     FEAT: { member: [], merchant: [] },
     ONB: [
       ['Opened the invite', sum.opened ?? 0],
@@ -78,4 +79,59 @@ export function growthLive() {
     visitorsRatio: fig['growth.visitors_ratio'] ?? 0,
     WL: { waiting: 0, joined: 0, medianDays: null, ...(fig['growth.waitlist'] ?? {}) },
   };
+}
+
+/**
+ * Campaigns, live: each poster design (Command's own posters and waitlist) and each tagged link the site
+ * feed counted (utm_campaign), on the page's day grid, with Untagged the rest. What a campaign cost isn't
+ * recorded, so every cost is null; a step nothing measures (who a tagged link brought, past joining) is null.
+ */
+function campaigns(fig, start, all) {
+  const DAY = 864e5;
+  const dayOf = (t) => {
+    const d = new Date(t);
+    return Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - start) / DAY);
+  };
+  // a site feed day ('2026-10-24', UTC) on the local grid
+  const isoDay = (s) => {
+    const [y, m, d] = s.split('-').map(Number);
+    return Math.round((new Date(y, m - 1, d) - start) / DAY);
+  };
+  const today = dayOf(Date.now());
+  const none = { print: null, offer: null, ads: null, credit: null };
+  const posters = (fig['growth.poster_campaigns'] ?? []).map((c) => ({
+    id: `d:${c.code}`,
+    code: c.code,
+    n: c.name,
+    sub: `Poster design ${c.code}`,
+    type: 'Posters',
+    start: dayOf(c.first),
+    end: null,
+    posters: c.posters,
+    ...none,
+    f: [c.visits, c.joins, c.invited, c.opened, c.active, c.spent],
+    utm: `utm_source=poster · design ${c.code}`,
+    note: '',
+  }));
+  const tagged = (fig['growth.campaigns'] ?? [])
+    .filter((c) => c.first)
+    .map((c, i) => {
+      const last = isoDay(c.last);
+      return {
+        id: `u:${i}`,
+        n: c.name,
+        sub: [c.source, c.medium].filter(Boolean).join(' · ') || 'Tagged links',
+        type: c.type,
+        start: isoDay(c.first),
+        // nobody from it in a week: it has ended
+        end: today - last > 7 ? last : null,
+        posters: 0,
+        ...none,
+        f: [c.visits, c.joins, null, null, null, null],
+        utm: ['campaign=' + c.name, c.source && 'source=' + c.source, c.medium && 'medium=' + c.medium].filter(Boolean).join(' · '),
+        note: '',
+      };
+    });
+  const [uv, uj] = fig['growth.untagged'] ?? all;
+  return { CAMPS: [...posters, ...tagged], UNTAGGED: { n: 'Untagged', sub: 'Direct, search and links without tags', f: [uv, uj, null, null, null, null] } };
 }

@@ -721,7 +721,7 @@ function makeGrowth() {
     utm: 'referral · code',
     note: 'Members share a code; $5 credit when their invitee activates.'
   }];
-  const UNTAGGED = {
+  const UNTAGGED = L ? L.UNTAGGED : {
     n: 'Untagged',
     sub: 'Direct, search and links without tags',
     f: [25458, 87, 20, 10, 3, 2]
@@ -730,7 +730,8 @@ function makeGrowth() {
     Posters: 'var(--live)',
     Social: 'var(--land)',
     Ads: 'var(--underway)',
-    Referrals: 'var(--fg)'
+    Referrals: 'var(--fg)',
+    Other: 'color-mix(in srgb,var(--fg) 30%,transparent)'
   };
   const CS = {
     sort: 'joins',
@@ -750,7 +751,7 @@ function makeGrowth() {
       mult = sh[1] || 0;
     }
     const typeOk = c => {
-      if (S.F.design.size) return c.type === 'Posters' && [...S.F.design].some(d => d.startsWith(c.sub.slice(-1)));
+      if (S.F.design.size) return c.type === 'Posters' && [...S.F.design].some(d => d.startsWith(c.code ?? c.sub.slice(-1)));
       if (S.F.shop.size) return c.type === 'Posters';
       if (S.F.source.size) return [...S.F.source].some(s => s === 'Posters' ? c.type === 'Posters' : s === 'Social' ? c.type === 'Social' || c.type === 'Ads' : s === 'Direct' ? c.type === 'Referrals' : false);
       return true;
@@ -762,27 +763,127 @@ function makeGrowth() {
       const dayK = inR / inBase;
       // each step scales by the site's own daily shape over the days this campaign ran, so growth and start dates both count
       const vv = c.f.map((x, i) => {
+        // a step nothing measures stays unknown
+        if (x == null) return null;
         const den = sumR(i, Math.max(c.start, base[0]), Math.min(end, base[1]));
         const num = sumR(i, Math.max(c.start, a), Math.min(end, b));
         return Math.round(x * (den ? num / den : dayK) * mult);
       });
-      const sp = {
+      // live, what a campaign cost isn't recorded: its spend is unknown (null), never $0
+      const known = c.print != null;
+      const sp = known ? {
         print: c.start >= a && c.start <= b ? c.print : S.per === 'all' ? c.print : c.print * dayK,
         offer: c.offer * dayK * mult,
         ads: c.ads * dayK,
         credit: c.credit * dayK * mult
+      } : {
+        print: 0,
+        offer: 0,
+        ads: 0,
+        credit: 0
       };
       return {
         ...c,
         v: vv,
         sp,
-        spend: sp.print + sp.offer + sp.ads + sp.credit,
+        spend: known ? sp.print + sp.offer + sp.ads + sp.credit : null,
         inR
       };
     }).filter(c => c.inR > 0);
   }
+  /* calendar: one lane per campaign on the shared day grid; joins a day underneath so lift lines up with launches */
+  function campCal(rows) {
+    const [a, b] = S.range,
+      n = b - a + 1;
+    const showA = Math.max(0, a),
+      cols = b - showA + 1;
+    const X = d => (Math.max(showA, Math.min(b + 1, d)) - showA) / cols * 100;
+    const months = [];
+    for (let d = showA; d <= b; d++) {
+      const dt = dayDate(d);
+      if (d === showA || dt.getDate() === 1) months.push([d, dt.toLocaleString('en', {
+        month: 'long'
+      })]);
+    }
+    const dayTicks = [];
+    const stepD = cols <= 10 ? 1 : cols <= 40 ? 7 : 14;
+    for (let d = b; d >= showA; d -= stepD) dayTicks.unshift(d);
+    const jd = [];
+    for (let d = showA; d <= b; d++) jd.push(DAILY[1][d]);
+    const jmx = Math.max(...jd, 1);
+    const lanes = CAMPS.map((c, __k) => {
+      const r = rows.find(x => x.id === c.id),
+        end = c.end ?? TODAY,
+        vis = end >= showA && c.start <= b;
+      const x0 = X(c.start),
+        x1 = X(end + 1),
+        cut = c.start < showA;
+      return <div key={__k} className={`cg2-l ${CS.open === c.id ? 'on' : ''}`} data-camp={c.id}><span className="cg2-n"><i style={css(`background:${TYPE_COL[c.type]}`)} /><b>{c.n}</b><span>{c.type}</span></span><span className="cg2-t">{vis ? <span className={`cg2-bar ${c.end ? 'ended' : ''} ${cut ? 'cut' : ''}`} style={css(`left:${x0}%;width:${Math.max(.8, x1 - x0)}%;--c:${TYPE_COL[c.type]}`)}><span className="cg2-bl">{cut ? '← ' : ''}{r ? fmt(r.v[1]) + (r.v[1] === 1 ? ' join' : ' joins') : ''}{c.end ? ' · ended ' + dFmt(c.end) : ''}</span></span> : <span className="cg2-none">{c.start > b ? 'Starts ' + dFmt(c.start) : 'Not running in this period'}</span>}</span></div>;
+    });
+    // month band: one segment per month in view, alternating tint, label inside; Mondays as faint guides through every lane
+    const mSegs = months.map(([d, m], i) => {
+      const nx = months[i + 1] ? months[i + 1][0] : b + 1;
+      return <span key={i} className={`cg2-ms ${i % 2 ? 'alt' : ''}`} style={css(`left:${X(d)}%;width:${X(nx) - X(d)}%`)}><b>{m}</b></span>;
+    });
+    const guides = [];
+    for (let d = showA; d <= b; d++) if (dayDate(d).getDay() === 1) guides.push(<i key={d} style={css(`left:${(d - showA) / cols * 100}%`)} />);
+    const nowX = ((TODAY - showA + .5) / cols * 100).toFixed(3);
+    const cal = <div className="cg2"><div className="cg2-hd"><span /><span className="cg2-t"><span className="cg2-mb">{mSegs}</span>{dayTicks.map((d, __k) => <span key={__k} className={`cg2-dt ${d === TODAY ? 'td' : ''}`} style={css(`left:${(d - showA + .5) / cols * 100}%`)}>{d === TODAY ? 'Today' : dayDate(d).getDate()}</span>)}</span></div><div className="cg2-body"><span /><span className="cg2-gd">{guides}<i className="cg2-now" style={css(`left:${nowX}%`)} /></span></div>{lanes}<div className="cg2-l cg2-j"><span className="cg2-n"><b>All joins a day</b><span>for lift</span></span><span className="cg2-t"><span className="cg2-jb">{jd.map((v, i) => <i key={i} style={css(`left:${i / cols * 100}%;width:${100 / cols}%;height:${Math.max(2, v / jmx * 100)}%`)} />)}</span></span></div></div>;
+    return {
+      cal,
+      showA
+    };
+  }
+  /* live: the poster designs and tagged links Command can count, and nothing about cost, which isn't recorded */
+  function renderCampaignsLive(rows) {
+    const T = totals(),
+      [a, b] = S.range;
+    const J = rows.reduce((s, c) => s + c.v[1], 0),
+      V = rows.reduce((s, c) => s + c.v[0], 0);
+    const known = (c, i) => c.v[i] != null;
+    const step = i => rows.some(c => known(c, i)) ? rows.reduce((s, c) => s + (c.v[i] ?? 0), 0) : null;
+    const running = CAMPS.filter(c => !c.end),
+      ended = CAMPS.filter(c => c.end).sort((x, y) => y.end - x.end);
+    const top = rows.slice().sort((x, y) => y.v[1] - x.v[1])[0];
+    const q = <span className="q">{perName()}{filterDesc() ? ' · ' + filterDesc() : ''}.</span>;
+    if (!CAMPS.length) {
+      html($g('hdr'), <><span className="when"><span className="dot" />Growth · Campaigns</span><p className="brief">{"No campaigns yet. "}<span className="q">Poster designs and links tagged with utm_campaign show here once they bring visits.</span></p></>);
+      html($g('cp'), <section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd cp-hd"><h2>Every campaign</h2><div className="r"><button className="btn" style={css("height:32px")} data-newcamp=""><span className="nc-l">+ New campaign</span><span className="nc-s">+ New</span></button></div></div><div className="lv-e"><span>No tagged campaigns yet. Tag links with utm_campaign and they show here.</span></div><div className="bk-ft"><span>{fmt(UNTAGGED.f[0])}{" visits and "}{fmt(UNTAGGED.f[1])}{" joins in the 30 days carried no tag"}</span><button data-newcamp="">Make a tagged link →</button></div></div></div></section>);
+      return renderCampPanel();
+    }
+    // the site feed and Command's own records count on their own clocks: a share is capped at all of it
+    const of = (x, t) => t ? Math.min(100, Math.round(x / t * 100)) : 0;
+    const share = of(J, T[1]);
+    html($g('hdr'), <><span className="when"><span className="dot" />Growth · Campaigns</span><p className="brief">{fmt(J)}{T[1] >= J ? ` of ${fmt(T[1])}` : ''}{J === 1 ? " join came from a campaign" : " joins came from a campaign"}{top && top.v[1] ? <>{"; the most from "}<a data-camp={top.id}>{top.n}</a></> : ''}{". What campaigns cost isn't recorded, so there's no cost per join. "}{q}</p><div className="strip"><div className="sc"><span className="lbl">Joins from campaigns</span><div className="sc-v">{fmt(J)}{" "}<small>{share}%</small></div><div className="mb"><i style={css(`width:${share}%`)} /></div><div className="sc-s">of all joins carry a campaign tag</div></div><div className="sc"><span className="lbl">Visits from campaigns</span><div className="sc-v">{fmt(V)}</div><div className="mb"><i style={css(`width:${of(V, T[0])}%`)} /></div><div className="sc-s">{T[0] >= V ? `of ${fmt(T[0])} visits` : 'tagged visits in the period'}</div></div><div className="sc"><span className="lbl">Spent</span><div className="sc-v quiet">—</div><div className="mb" /><div className="sc-s">Spend isn't recorded</div></div><div className="sc"><span className="lbl">Live campaigns</span><div className="sc-v">{running.length}{" "}<small>{"of "}{CAMPS.length}</small></div><div className="units cmp-u">{CAMPS.map((c, __k) => <i key={__k} style={css(`background:${c.end ? 'none' : TYPE_COL[c.type]};box-shadow:${c.end ? 'inset 0 0 0 1.5px var(--fg-50)' : 'none'}`)} />)}</div><div className="sc-s">{ended.length ? `${ended[0].n} ended ${dFmt(ended[0].end)}` : 'None has ended'}</div></div></div></>);
+    const {
+      cal,
+      showA
+    } = campCal(rows);
+    const first = Math.min(...CAMPS.map(c => c.start));
+
+    /* table: what each campaign got; the steps after joining only where Command can follow the people */
+    const key = CS.sort === 'visits' ? 'visits' : 'joins',
+      sorted = rows.slice().sort((x, y) => key === 'visits' ? y.v[0] - x.v[0] : y.v[1] - x.v[1]);
+    const th = (k, t) => <th data-csort={k} className={CS.sort === k ? 's' : ''}>{t}{CS.sort === k ? ' ↓' : ''}</th>;
+    const n = v => v == null ? <span className="quiet">—</span> : fmt(v);
+    const uk = factor(a, b);
+    const table = <div className="bt-wrap"><table className="bt cp"><colgroup><col style={css("width:31%")} /><col style={css("width:11%")} /><col style={css("width:10%")} /><col style={css("width:11%")} /><col style={css("width:11%")} /><col style={css("width:12%")} /><col style={css("width:14%")} /></colgroup><thead><tr><th className="c-nm">Campaign</th>{th('visits', 'Visits')}{th('joins', 'Joins')}<th>Join rate</th><th>Invited</th><th>Activated</th><th>Spent at a shop</th></tr></thead><tbody>{sorted.map((c, __k) => <tr key={__k} data-camp={c.id} className={CS.open === c.id ? 'sel' : ''}><td className="tn"><span className="cp-n"><i className="swt" style={css(`background:${TYPE_COL[c.type]}`)} /><b>{c.n}</b>{c.end ? <em className="chip plain nodot">Ended</em> : ''}</span><span className="cp-s">{c.sub}</span></td><td>{fmt(c.v[0])}</td><td><b>{fmt(c.v[1])}</b></td><td className={pct(c.v[1], c.v[0]) > 10 ? 'good' : ''}>{c.v[0] ? p1(pct(c.v[1], c.v[0])) : <span className="quiet">—</span>}</td><td>{n(c.v[2])}</td><td>{n(c.v[4])}</td><td>{n(c.v[5])}</td></tr>)}<tr className="untag"><td className="tn"><span className="cp-n"><i className="swt" style={css("background:var(--hair);box-shadow:inset 0 0 0 1px var(--fg-50)")} /><b>{UNTAGGED.n}</b></span><span className="cp-s">{UNTAGGED.sub}</span></td><td>{fmt(UNTAGGED.f[0] * uk[0])}</td><td>{fmt(UNTAGGED.f[1] * uk[1])}</td><td>{UNTAGGED.f[0] * uk[0] ? p1(pct(UNTAGGED.f[1] * uk[1], UNTAGGED.f[0] * uk[0])) : <span className="quiet">—</span>}</td><td><span className="quiet">—</span></td><td><span className="quiet">—</span></td><td><span className="quiet">—</span></td></tr></tbody></table></div>;
+
+    /* poster designs: join rate only, as cost isn't recorded */
+    const des = rows.filter(c => c.type === 'Posters'),
+      dmax = Math.max(...des.map(c => pct(c.v[1], c.v[0])), 1);
+    const best = des.filter(c => c.v[1]).sort((x, y) => pct(y.v[1], y.v[0]) - pct(x.v[1], x.v[0]))[0];
+    const design = des.length ? <div className="ds">{des.map((c, __k) => {
+        const r = pct(c.v[1], c.v[0]);
+        return <div key={__k} className={`ds-r ${c === best && des.length > 1 ? 'win' : ''}`} data-camp={c.id}><div className="ds-h"><span className="ds-ic">{c.code}</span><span><b>{c.n}</b><span>{c.posters}{c.posters === 1 ? ' poster · ' : ' posters · '}{fmt(c.posters ? c.v[0] / c.posters : 0)}{" scans each"}</span></span>{c === best && des.length > 1 ? <span className="chip ok">Best</span> : ''}</div><div className="ds-b"><span className="lbl">Join rate</span><span className="shb"><i style={css(`width:${r / dmax * 100}%;background:${c === best ? 'var(--settled)' : 'var(--fg)'}`)} /></span><b>{c.v[0] ? p1(r) : '—'}</b></div></div>;
+      })}</div> : <div className="lv-e"><span>No poster design is up yet. Each design shows here once posters wear it.</span></div>;
+    const tagged = T[1] ? 100 - of(J, T[1]) : 0;
+    html($g('cp'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd cp-hd"><h2>What ran when</h2><div className="r"><span className="lbl cp-hint">{perName()}{" · click a campaign for its detail"}</span><button className="btn" style={css("height:32px")} data-newcamp=""><span className="nc-l">+ New campaign</span><span className="nc-s">+ New</span></button></div></div>{cal}<div className="bk-ft"><span>{"Each bar runs from the first day a campaign brought a visit; one with nobody for a week has ended."}</span>{showA > first ? <button data-per="all">Since launch →</button> : <span />}</div></div></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Every campaign</h2><div className="r"><span className="lbl">Click a row for detail</span></div></div>{table}<div className="bk-ft"><span><b>{tagged}%</b>{" of joins have no tag. Who a tagged link brought past joining isn't followed yet."}</span><button data-newcamp="">Make a tagged link →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7"><div className="hd"><h2>Poster design test</h2><div className="r"><span className="lbl">Same offer, different poster</span></div></div>{design}<div className="bk-ft"><span>{best && des.length > 1 ? <><b>{best.n}</b>{" joins best per scan"}</> : des.length ? 'Needs two designs up to compare' : 'Hang posters from Field'}</span><button data-go="field" data-gp="posters">Plan swaps in Field →</button></div></div><div className="cell s5"><div className="hd"><h2>Where the money went</h2><div className="r"><span className="lbl">{perName()}</span></div></div><div className="lv-e"><span>Spend isn't recorded. Printing, ads and the $10 offers show here once Command keeps them.</span></div></div></div></section></>);
+    renderCampPanel();
+  }
   function renderCampaigns() {
     const rows = campScaled();
+    if (L) return renderCampaignsLive(rows);
     const J = rows.reduce((s, c) => s + c.v[1], 0),
       SP = rows.reduce((s, c) => s + c.spend, 0),
       ACT = rows.reduce((s, c) => s + c.v[4], 0);
@@ -809,43 +910,11 @@ function makeGrowth() {
               });
             })()}</div><div className="sc-s">{SP ? Math.round(OFFER / SP * 100) : 0}% is the $10 offer, spent in shops</div></div><div className="sc"><span className="lbl">Joins from campaigns</span><div className="sc-v">{fmt(J)}{" "}<small>{T[1] ? Math.round(J / T[1] * 100) : 0}%</small></div><div className="mb"><i style={css(`width:${T[1] ? J / T[1] * 100 : 0}%`)} /></div><div className="sc-s">of all joins carry a campaign tag</div></div><div className="sc"><span className="lbl">Cost per join</span><div className="sc-v"><span>${Math.floor(cpj)}<span className="ct">.{(cpj % 1).toFixed(2).slice(2)}</span></span></div><div className="mb"><i style={css(`width:${Math.min(100, cpj / 5 * 100)}%`)} /></div><div className="sc-s">{ACT ? money(SP / ACT) : '—'}{" per activated member"}</div></div><div className="sc"><span className="lbl">Live campaigns</span><div className="sc-v">{CAMPS.filter(c => !c.end).length}{" "}<small>{"of "}{CAMPS.length}</small></div><div className="units cmp-u">{CAMPS.map((c, __k) => <i key={__k} style={css(`background:${c.end ? 'none' : TYPE_COL[c.type]};box-shadow:${c.end ? 'inset 0 0 0 1.5px var(--fg-50)' : 'none'}`)} />)}</div><div className="sc-s">Instagram test ended 20 Oct</div></div></div></>);
 
-    /* calendar: one lane per campaign on the shared day grid; joins a day underneath so lift lines up with launches */
-    const [a, b] = S.range,
-      n = b - a + 1;
-    const showA = Math.max(0, a),
-      cols = b - showA + 1;
-    const X = d => (Math.max(showA, Math.min(b + 1, d)) - showA) / cols * 100;
-    const months = [];
-    for (let d = showA; d <= b; d++) {
-      const dt = dayDate(d);
-      if (d === showA || dt.getDate() === 1) months.push([d, dt.toLocaleString('en', {
-        month: 'long'
-      })]);
-    }
-    const dayTicks = [];
-    const stepD = cols <= 10 ? 1 : cols <= 40 ? 7 : 14;
-    for (let d = b; d >= showA; d -= stepD) dayTicks.unshift(d);
-    const jd = [];
-    for (let d = showA; d <= b; d++) jd.push(DAILY[1][d]);
-    const jmx = Math.max(...jd, 1);
-    const lanes = CAMPS.map((c, __k) => {
-      const r = rows.find(x => x.id === c.id),
-        end = c.end ?? TODAY,
-        vis = end >= showA && c.start <= b;
-      const x0 = X(c.start),
-        x1 = X(end + 1),
-        cut = c.start < showA;
-      return <div key={__k} className={`cg2-l ${CS.open === c.id ? 'on' : ''}`} data-camp={c.id}><span className="cg2-n"><i style={css(`background:${TYPE_COL[c.type]}`)} /><b>{c.n}</b><span>{c.type}</span></span><span className="cg2-t">{vis ? <span className={`cg2-bar ${c.end ? 'ended' : ''} ${cut ? 'cut' : ''}`} style={css(`left:${x0}%;width:${Math.max(.8, x1 - x0)}%;--c:${TYPE_COL[c.type]}`)}><span className="cg2-bl">{cut ? '← ' : ''}{r ? fmt(r.v[1]) + ' joins' : ''}{c.end ? ' · ended ' + dFmt(c.end) : ''}</span></span> : <span className="cg2-none">{c.start > b ? 'Starts ' + dFmt(c.start) : 'Not running in this period'}</span>}</span></div>;
-    });
-    // month band: one segment per month in view, alternating tint, label inside; Mondays as faint guides through every lane
-    const mSegs = months.map(([d, m], i) => {
-      const nx = months[i + 1] ? months[i + 1][0] : b + 1;
-      return <span key={i} className={`cg2-ms ${i % 2 ? 'alt' : ''}`} style={css(`left:${X(d)}%;width:${X(nx) - X(d)}%`)}><b>{m}</b></span>;
-    });
-    const guides = [];
-    for (let d = showA; d <= b; d++) if (dayDate(d).getDay() === 1) guides.push(<i key={d} style={css(`left:${(d - showA) / cols * 100}%`)} />);
-    const nowX = ((TODAY - showA + .5) / cols * 100).toFixed(3);
-    const cal = <div className="cg2"><div className="cg2-hd"><span /><span className="cg2-t"><span className="cg2-mb">{mSegs}</span>{dayTicks.map((d, __k) => <span key={__k} className={`cg2-dt ${d === TODAY ? 'td' : ''}`} style={css(`left:${(d - showA + .5) / cols * 100}%`)}>{d === TODAY ? 'Today' : dayDate(d).getDate()}</span>)}</span></div><div className="cg2-body"><span /><span className="cg2-gd">{guides}<i className="cg2-now" style={css(`left:${nowX}%`)} /></span></div>{lanes}<div className="cg2-l cg2-j"><span className="cg2-n"><b>All joins a day</b><span>for lift</span></span><span className="cg2-t"><span className="cg2-jb">{jd.map((v, i) => <i key={i} style={css(`left:${i / cols * 100}%;width:${100 / cols}%;height:${Math.max(2, v / jmx * 100)}%`)} />)}</span></span></div></div>;
+    const [a, b] = S.range;
+    const {
+      cal,
+      showA
+    } = campCal(rows);
 
     /* table: one row per campaign, untagged at the bottom; cost per join drawn so lower reads as better */
     const key = CS.sort,
@@ -929,10 +998,12 @@ function makeGrowth() {
           ads: c.ads,
           credit: c.credit
         },
-        spend = sp.print + sp.offer + sp.ads + sp.credit;
+        spend = sp.print + sp.offer + sp.ads + sp.credit,
+        // live, what it cost isn't recorded
+        noCost = c.print == null;
       const fmax = Math.max(v[0], 1),
         hh = x => 4 + 96 * Math.pow(Math.max(x, 1) / fmax, .3);
-      html(p, <><div className="pn-hd"><span className="swt" style={css(`width:10px;height:10px;display:inline-block;background:${TYPE_COL[c.type]}`)} /><span className="lbl">{c.type}</span>{c.end ? <span className="chip plain nodot">Ended</span> : <span className="chip ok">Live</span>}<button className="x" data-cclose="" aria-label="Close"><svg className="i" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5 5 15" /></svg></button></div><div className="pn-b"><div><span className="lbl">{c.sub}{" · "}{dFmt(c.start)}{" – "}{c.end ? dFmt(c.end) : 'now'}</span><h3>{c.n}</h3></div><div className="pn-big"><div><span className="lbl">Cost per join</span><b>{v[1] ? spend ? money(spend / v[1]) : 'Free' : '—'}</b></div><div><span className="lbl">Joins</span><b>{fmt(v[1])}</b></div></div><div className="pn-fn">{['Visits', 'Joined', 'Invited', 'Opened', 'Active', 'Spent $10'].map((s, i) => <div key={i}><span className="lbl">{s}</span><i style={css(`width:${hh(v[i])}%;background:${i === 5 ? 'var(--fg)' : TYPE_COL[c.type]};opacity:${i === 5 ? 1 : .35 + .65 * (1 - i / 6)}`)} /><b>{fmt(v[i])}</b></div>)}</div><div className="led">{[['Printing', sp.print], ['$10 offer redeemed', sp.offer], ['Ads', sp.ads], ['Referral credit', sp.credit]].filter(x => x[1] > 0).map(([k, x], __k) => <div key={__k}><span>{k}</span><b>{money(x)}</b></div>)}<div className="t"><span>Spent</span><b>{money(spend)}</b></div></div>{c.posters ? <div className="led"><div><span>Posters up</span><b>{c.posters}</b></div><div><span>Scans per poster</span><b>{fmt(v[0] / c.posters)}</b></div></div> : ''}<div className="led"><div><span>Tags</span><b className="mono">{c.utm}</b></div><div><span>Note</span><b>{c.note}</b></div></div></div><div className="pn-ft"><span className="nx" /><button className="btn" style={css("height:40px")} data-cfilter={c.id}>Filter Growth to this</button><button className="btn p" style={css("height:40px")} data-cclose="" data-act="">{c.end ? 'Run it again' : 'Edit campaign'}</button></div></>);
+      html(p, <><div className="pn-hd"><span className="swt" style={css(`width:10px;height:10px;display:inline-block;background:${TYPE_COL[c.type]}`)} /><span className="lbl">{c.type}</span>{c.end ? <span className="chip plain nodot">Ended</span> : <span className="chip ok">Live</span>}<button className="x" data-cclose="" aria-label="Close"><svg className="i" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5 5 15" /></svg></button></div><div className="pn-b"><div><span className="lbl">{c.sub}{" · "}{dFmt(c.start)}{" – "}{c.end ? dFmt(c.end) : 'now'}</span><h3>{c.n}</h3></div><div className="pn-big"><div><span className="lbl">Cost per join</span><b>{noCost ? <span className="quiet">Not recorded</span> : v[1] ? spend ? money(spend / v[1]) : 'Free' : '—'}</b></div><div><span className="lbl">Joins</span><b>{fmt(v[1])}</b></div></div><div className="pn-fn">{['Visits', 'Joined', 'Invited', 'Opened', 'Active', 'Spent $10'].map((s, i) => <div key={i}><span className="lbl">{s}</span><i style={css(`width:${hh(v[i])}%;background:${i === 5 ? 'var(--fg)' : TYPE_COL[c.type]};opacity:${i === 5 ? 1 : .35 + .65 * (1 - i / 6)}`)} /><b>{v[i] == null ? '—' : fmt(v[i])}</b></div>)}</div>{noCost ? <div className="led"><div><span>Spend</span><b className="quiet">Not recorded</b></div></div> : <div className="led">{[['Printing', sp.print], ['$10 offer redeemed', sp.offer], ['Ads', sp.ads], ['Referral credit', sp.credit]].filter(x => x[1] > 0).map(([k, x], __k) => <div key={__k}><span>{k}</span><b>{money(x)}</b></div>)}<div className="t"><span>Spent</span><b>{money(spend)}</b></div></div>}{c.posters ? <div className="led"><div><span>Posters up</span><b>{c.posters}</b></div><div><span>Scans per poster</span><b>{fmt(v[0] / c.posters)}</b></div></div> : ''}<div className="led"><div><span>Tags</span><b className="mono">{c.utm}</b></div>{c.note ? <div><span>Note</span><b>{c.note}</b></div> : ''}</div></div><div className="pn-ft"><span className="nx" /><button className="btn" style={css("height:40px")} data-cfilter={c.id}>Filter Growth to this</button>{L ? null : <button className="btn p" style={css("height:40px")} data-cclose="" data-act="">{c.end ? 'Run it again' : 'Edit campaign'}</button>}</div></>);
     }
     BODY.classList.add('pn');
   }
@@ -1806,7 +1877,6 @@ function makeGrowth() {
   }
   /* live, a tab whose numbers the API doesn't have yet says so, hatched, and what it needs (docs/ui-redesign-plan.md, gaps) */
   const NOT_REAL = {
-    campaigns: ['cp', 'Campaigns', 'Campaigns need tagged links (UTM) counted by the site feed, with what each cost and the $10 offers they carried.'],
     cohorts: ['ch', 'Cohorts', 'Cohorts need each invite week’s activations by days since the invite, and who is still active and has spent their $10.'],
     apps: ['ap', 'Apps', 'Apps need the member and merchant apps’ own events: who opens them each day, what they use, onboarding steps and errors.']
   };
@@ -1927,9 +1997,9 @@ function makeGrowth() {
       const c = CAMPS.find(x => x.id === t.dataset.cfilter);
       Object.values(S.F).forEach(s => s.clear());
       if (c.type === 'Posters') {
-        const d = D.design.rows.find(r => r.n.startsWith(c.sub.slice(-1)));
-        S.F.design.add(d.n);
-      } else S.F.source.add(c.type === 'Referrals' ? 'Direct' : 'Social');
+        const d = D.design.rows.find(r => r.n.startsWith(c.code ?? c.sub.slice(-1)));
+        if (d) S.F.design.add(d.n);
+      } else S.F.source.add(c.type === 'Referrals' || c.type === 'Other' ? 'Direct' : 'Social');
       CS.open = null;
       return render();
     }

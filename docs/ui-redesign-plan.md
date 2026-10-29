@@ -290,10 +290,13 @@ Filled in as each page is ported. Known before starting:
     (the Nudges tab's lower half says "Not real yet"); extending the invite window and closing an account
     (hidden live; turning off access is there); the join form's whole-list reveal (hidden: one person at a
     time from People); only the newest waiting batch proposal shows when there are two.
-- **Growth** (ported): campaigns (tagged links, spend, offers), cohorts by days since the invite with who
+- **Growth** (ported): what campaigns cost (printing, ads, offers, credit) and who a tagged link brought past joining, cohorts by days since the invite with who
   stays active and spends, the apps' own events, bounce and time on page, browsers, the real-time view,
-  and invites, opens and first spends by source, city, shop and design. Live, Campaigns, Cohorts and Apps
+  and invites, opens and first spends by source, city, shop and design. Live, Cohorts and Apps
   say "Not real yet" with what they need; the waitlist count and median come from `command.waitlist`.
+  Campaigns is live: each poster design (Command's posters, the waitlist joins they brought and, with Members
+  live, who was invited, opened, activated and spent) and each `utm_campaign` the site feed counted (visits,
+  joins, its source and medium, the days it ran); spend says "Spend isn't recorded".
 - **Field** (live: `fm2.tsx` + `fmLive.ts`, one module with Merchants, its gate on). Each page loads the other's
   section too (they share the pipeline and the route), once, and is built again with it.
   - **Live now.** Today is the field section's route (`ROUTE`, `STOPS` with their tasks and `SHOP_INFO`), with

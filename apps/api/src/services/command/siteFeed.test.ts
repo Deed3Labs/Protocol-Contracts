@@ -4,9 +4,9 @@ import { testDb } from '../../db/testDb.js';
 import { feedRows, runFeed } from './feeds.js';
 import { TOTALS } from './levels.js';
 import type { MemberSource } from './memberSource.js';
-import { growthSection, homeSection, moneySection } from './sections.js';
+import { growthSection, homeSection, moneySection, posterCampaigns } from './sections.js';
 import { seedCommand } from './seed.js';
-import { siteFeed, sourceOf } from './siteFeed.js';
+import { campaignType, siteFeed, sourceOf } from './siteFeed.js';
 
 /*
  * useclear.org's visits from Umami's API (a stand-in here), in the shapes Growth and Home draw, with
@@ -31,6 +31,9 @@ const answer = (u: URL) => {
   if (u.pathname.endsWith('/stats')) return joined ? { pageviews: 8, visitors: 8, visits: 8 } : { pageviews: '300', visitors: '150', visits: '205' };
   if (u.pathname.endsWith('/pageviews')) {
     const n = Math.round((to - from) / 86_400_000);
+    // a tagged campaign's days: the fall market since 10 Oct, the Nextdoor posts 1–20 Sep
+    const ran = { 'fall-market': ['2026-10-10', '2026-10-24'], 'nextdoor-oct': ['2026-09-01', '2026-09-20'] }[p.utmCampaign ?? ''];
+    if (ran) return { pageviews: [], sessions: Array.from({ length: n }, (_, i) => day(from + i * 86_400_000)).map((d) => ({ x: `${d}T00:00:00Z`, y: d >= ran[0] && d <= ran[1] ? 3 : 0 })) };
     if (p.unit === 'hour' && n > 1) return { pageviews: [], sessions: Array.from({ length: n }, (_, i) => ({ x: `${day(from + i * 86_400_000)}T09:00:00Z`, y: 1 })) };
     if (p.unit === 'hour') return { pageviews: [], sessions: Array.from({ length: 24 }, (_, h) => ({ x: `${day(from)}T${String(h).padStart(2, '0')}:00:00Z`, y: current ? 10 : 5 })) };
     return { pageviews: [], sessions: Array.from({ length: n }, (_, i) => ({ x: `${day(from + i * 86_400_000)}T00:00:00Z`, y: current ? 100 : 80 })) };
@@ -39,7 +42,14 @@ const answer = (u: URL) => {
     case 'referrer':
       return joined ? [] : rows([['google.com', 50], ['instagram.com', 20], ['www.someblog.net', 5], [null, 75]]);
     case 'utmSource':
+      if (p.utmCampaign) return rows([[p.utmCampaign === 'fall-market' ? 'instagram' : 'nextdoor', 9]]);
       return rows([['poster', joined ? 6 : 30]]);
+    case 'utmMedium':
+      return rows([[p.utmCampaign === 'fall-market' ? 'paid' : 'post', 9]]);
+    case 'utmCampaign':
+      // the 30 days have the fall market only; the 12 weeks the Nextdoor posts too
+      if (joined) return rows([['fall-market', 3]]);
+      return Number(p.endAt) + 1 - Number(p.startAt) > 40 * 86_400_000 ? rows([['fall-market', 40], ['nextdoor-oct', 12]]) : rows([['fall-market', 40]]);
     case 'city':
       return rows([['Redlands', 80], ['Riverside', 40], ['Fontana', 10], [null, 3]]);
     case 'entry':
@@ -119,6 +129,23 @@ describe('the site feed', () => {
     expect(f['growth.heat'].reduce((a: number, d: any) => a + d.v.reduce((x: number, y: number) => x + y, 0), 0)).toBeCloseTo(1, 6);
     expect(f['growth.weekly.visits_by_source'].Posters).toEqual(Array(12).fill(30));
     expect(f['growth.phone_share'].slice(-2)).toEqual([73.2, 73.2]);
+    // each tagged campaign of the 12 weeks: its type from its source and medium, its 30 days, the days it ran
+    expect(f['growth.campaigns']).toEqual([
+      { name: 'fall-market', source: 'instagram', medium: 'paid', type: 'Ads', visits: 40, joins: 3, first: '2026-10-10', last: '2026-10-24' },
+      { name: 'nextdoor-oct', source: 'nextdoor', medium: 'post', type: 'Social', visits: 0, joins: 0, first: '2026-09-01', last: '2026-09-20' },
+    ]);
+    // 150 visitors and 8 joins in the 30 days, less the tagged ones
+    expect(f['growth.untagged']).toEqual([110, 5]);
+  });
+
+  test('a tagged campaign’s type', () => {
+    expect([
+      ['poster', 'qr'],
+      ['instagram', 'cpc'],
+      ['newsletter', 'referral'],
+      ['tiktok', 'reel'],
+      ['flyer', 'print'],
+    ].map(([s, m]) => campaignType(s, m))).toEqual(['Posters', 'Ads', 'Referrals', 'Social', 'Other']);
   });
 });
 
@@ -149,6 +176,25 @@ describe('Growth and Home, live', () => {
     // the seed's sample submissions aren't counted or listed: only what the site sent
     const listed: any = await growthSection(db, { level: 2 as any, reveal: false, now: new Date(NOW) });
     expect(listed.INBOX).toHaveLength(5);
+  });
+
+  test('each poster design is a campaign: its posters, scans, the joins its posters brought, and what came after', async () => {
+    const g = await read();
+    // the seed's designs, each with the posters wearing it
+    expect(g.figures['growth.poster_campaigns'].length).toBeGreaterThan(0);
+    expect(g.figures['growth.poster_campaigns'][0]).toMatchObject({ code: expect.any(String), posters: expect.any(Number), invited: null });
+    const P = (n: number, design: string, scans: number, hung: number) => ({ n, design, scans, hung, shop: '', shopId: '', city: '', checked: 0, swap: 0, status: 'up' as const });
+    const list = [P(1, 'A', 30, NOW - 20 * 86_400_000), P(2, 'A', 10, NOW - 9 * 86_400_000), P(3, 'B', 5, NOW - 2 * 86_400_000)];
+    const names = [{ code: 'A', name: 'The neighbor' }, { code: 'B', name: '$10 on us' }, { code: 'C', name: 'The map' }];
+    const wl = [{ poster: 'P-1', joined_at: new Date(NOW - 86_400_000) }, { poster: 'P-2', joined_at: new Date(NOW - 40 * 86_400_000) }, { poster: null, joined_at: new Date(NOW) }];
+    const m = (poster: string | null, extra: object) => ({ poster, ...extra }) as any;
+    const members = [m('P-1', { opened: 1, activeAt: 2, spentAt: 3 }), m('P-2', { opened: 1 }), m('P-2', {}), m(null, { opened: 1, activeAt: 2 })];
+    // C wears no poster: not a campaign; the join 40 days ago is outside the 30
+    expect(posterCampaigns(list, names, wl, members, NOW)).toEqual([
+      { code: 'A', name: 'The neighbor', posters: 2, first: NOW - 20 * 86_400_000, visits: 40, joins: 1, invited: 3, opened: 2, active: 1, spent: 1 },
+      { code: 'B', name: '$10 on us', posters: 1, first: NOW - 2 * 86_400_000, visits: 5, joins: 0, invited: 0, opened: 0, active: 0, spent: 0 },
+    ]);
+    expect(posterCampaigns(list, names, wl, null, NOW)[0]).toMatchObject({ invited: null, active: null });
   });
 
   test('the weeks of joins are the waitlist’s', async () => {
