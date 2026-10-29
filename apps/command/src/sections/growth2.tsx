@@ -1,7 +1,8 @@
 // @ts-nocheck: ported from the redesign's GROWTH module (design/command-center-ui) with scripts/port/convert.cjs; its data is its own.
 import { Fragment } from 'react';
 import { attrs, css, hasHtml, html } from '../runtime/dom';
-import { REAL } from '../live/env';
+import { api } from '../live/api';
+import { LIVE as LIVE_APP, REAL } from '../live/env';
 import { CC } from './cc';
 import { growthLive } from './growthLive';
 import { registerPage, shadowHost } from './pageHost';
@@ -310,25 +311,92 @@ function makeGrowth() {
     const per = rows.filter(c => c.posters).map(c => [c.n, c.v / c.posters]).sort((a, b) => b[1] - a[1]);
     return per.length ? `${per[0][0]} gets the most per poster` : 'No posters counted by city yet';
   }
+  /* the pages people are on, busiest first: the reference's own list, live every page someone is on */
+  const lvGroups = people => (L ? [...new Set(people.map(p => p.page))] : LV_PAGES).map(pg => [pg, people.filter(p => p.page === pg)]).filter(g => g[1].length).sort((a, b) => b[1].length - a[1].length);
+  const lvClock = t => new Date(t).toLocaleTimeString('en-GB', {
+    hour12: false
+  });
+  /* live: read who's on the site now, then draw it; not again within 15 seconds when Traffic redraws */
+  LV.st = 'wait';
+  let lvAt = 0;
+  async function pollNow(force) {
+    if (!L || !force && Date.now() - lvAt < 15000) return;
+    lvAt = Date.now();
+    // the empty preview has no API: nothing on the sites
+    const r = LIVE_APP ? await api('GET', '/growth/now').catch(e => ({
+      err: e.message || 'The site feed didn’t answer.'
+    })) : {
+      people: [],
+      mins: Array(30).fill(0),
+      wk: 0,
+      feed: []
+    };
+    if (r.off) Object.assign(LV, {
+      st: 'off',
+      msg: `The site feed is off: ${r.off}.`
+    });else if (r.err) Object.assign(LV, {
+      st: 'err',
+      msg: r.err
+    });else {
+      const was = new Set(LV.people.map(p => p.id));
+      const seen = LV.st === 'ok';
+      LV.st = 'ok';
+      LV.msg = '';
+      // a person is their page and source: one square each, the new ones popping in after the first read
+      LV.people = r.people.map((p, i) => ({
+        ...p,
+        id: `${p.page}|${p.ch}|${r.people.slice(0, i).filter(q => q.page === p.page && q.ch === p.ch).length}`
+      }));
+      const fresh = seen ? LV.people.find(p => !was.has(p.id)) : null;
+      LV.last = fresh ? fresh.id : null;
+      LV.mins = r.mins;
+      LV.wk = r.wk;
+      LV.feed = r.feed.map(f => ({
+        k: 'in',
+        page: f.page,
+        ch: f.ch,
+        from: f.from,
+        city: f.place,
+        dev: f.dev,
+        t: lvClock(f.at)
+      }));
+      const a = r.feed[0];
+      LV.tick = a ? <><span className="lv2-dot" style={css(`background:${CH_COL[a.ch]}`)} /><span><b>{lvClock(a.at).slice(0, 5)}</b>{" · someone in "}{a.place}{" opened "}<span className="mono">{a.page}</span>{" from "}{a.from}</span></> : 'Nobody arrived in the last 30 minutes.';
+      LV.fresh = !!fresh;
+    }
+    if (S.tab !== 'traffic' || !GLIVE()) return;
+    renderLive();
+    if (CS.open === 'live') {
+      const p = $g('cpanel');
+      if (p) {
+        const b = p.querySelector('.pn-b'),
+          y = b ? b.scrollTop : 0;
+        renderLivePanel(p);
+        const b2 = p.querySelector('.pn-b');
+        if (b2) b2.scrollTop = y;
+      }
+    }
+    LV.fresh = false;
+  }
   function renderLive() {
     const el = $g('live');
     if (!el) return;
-    // the real-time view needs the site feed streamed, which it isn't yet
-    if (L) return html(el, <><div className="hd"><h2>Right now</h2><div className="r"><span className="lbl">Not real yet</span></div></div><div className="bk-empty hatch" style={css("min-height:96px;opacity:.5")} /><div className="bk-empty">Who's on the sites now needs the site feed streamed.</div></>);
+    // live, the people and the minutes are Umami's real-time view (GET /growth/now), read every 20 seconds
+    if (L && LV.st !== 'ok') return html(el, <><div className="hd"><h2>Right now</h2><div className="r"><span className="lbl">{LV.st === 'off' ? 'Off' : LV.st === 'err' ? 'Not answering' : 'Reading'}</span></div></div><div className="lv-e"><span>{LV.msg || 'Reading the site feed…'}</span></div></>);
     const n = LV.people.length,
       mx = Math.max(...LV.mins, n, 1);
-    const groups = LV_PAGES.map(pg => [pg, LV.people.filter(p => p.page === pg)]).filter(g => g[1].length).sort((a, b) => b[1].length - a[1].length);
+    const groups = lvGroups(LV.people);
     const d = n - LV.wk;
-    html(el, <><div className="hd"><h2>Right now</h2><div className="r"><span className="lbl"><span className="dot pulse" style={css("color:var(--settled)")} />{" Live"}</span></div></div><div className="lv2-top"><span className="big num">{n}</span><span className="lv2-s"><b>on Clear's sites now</b><span className={`dl ${d >= 0 ? 'up' : 'dn'}`}>{d >= 0 ? '+' : ''}{d}{" vs this time last week"}</span></span></div><div className="lv2-m">{LV.mins.map((v, i) => <i key={i} className={i === 29 ? 'now' : ''} style={css(`height:${Math.max(6, v / mx * 100)}%`)} />)}</div><div className="lv2-ax"><span>30 min ago</span><span>Now</span></div><div className="lv2-g">{groups.map(([pg, ps], __k) => <div key={__k} className="lv2-r"><span className="lv2-p">{pg}</span><span className="lv2-u">{ps.map((p, __k) => <i key={__k} className={p.id === LV.last ? 'new' : ''} style={css(`background:${CH_COL[p.ch]}`)} title={p.ch} />)}</span><b>{ps.length}</b></div>)}</div><div className="lv2-t" id="lvt">{LV.tick || 'Watching for arrivals…'}</div><button className="foot" data-livep="">{"Open the full live view "}<span>→</span></button></>);
+    html(el, <><div className="hd"><h2>Right now</h2><div className="r"><span className="lbl"><span className="dot pulse" style={css("color:var(--settled)")} />{" Live"}</span></div></div><div className="lv2-top"><span className="big num">{n}</span><span className="lv2-s"><b>on Clear's sites now</b><span className={`dl ${d >= 0 ? 'up' : 'dn'}`}>{d >= 0 ? '+' : ''}{d}{" vs this time last week"}</span></span></div><div className="lv2-m">{LV.mins.map((v, i) => <i key={i} className={i === 29 ? 'now' : ''} style={css(`height:${Math.max(6, v / mx * 100)}%`)} />)}</div><div className="lv2-ax"><span>30 min ago</span><span>Now</span></div>{L && !n ? <div className="lv-e"><span>Nobody is on the sites right now.</span></div> : <div className="lv2-g">{groups.map(([pg, ps], __k) => <div key={__k} className="lv2-r"><span className="lv2-p">{pg}</span><span className="lv2-u">{ps.map((p, __k) => <i key={__k} className={p.id === LV.last ? 'new' : ''} style={css(`background:${CH_COL[p.ch]}`)} title={p.ch} />)}</span><b>{ps.length}</b></div>)}</div>}<div className="lv2-t" id="lvt">{LV.tick || 'Watching for arrivals…'}</div><button className="foot" data-livep="">{"Open the full live view "}<span>→</span></button></>);
   }
   /* the full live view: the same feed, bigger, in the side panel */
   function renderLivePanel(p) {
     const n = LV.people.length,
       mx = Math.max(...LV.mins, n, 1),
       d = n - LV.wk;
-    const groups = LV_PAGES.map(pg => [pg, LV.people.filter(x => x.page === pg)]).filter(g => g[1].length).sort((a, b) => b[1].length - a[1].length);
+    const groups = lvGroups(LV.people);
     const chs = Object.keys(CH_COL).map(ch => [ch, LV.people.filter(x => x.ch === ch).length]);
-    html(p, <><div className="pn-hd"><span className="dot pulse" style={css("color:var(--settled)")} /><span className="lbl">Live view</span><button className="x" data-cclose="" aria-label="Close"><svg className="i" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5 5 15" /></svg></button></div><div className="pn-b lp"><div className="lp-top"><span className="big num">{n}</span><span className="lv2-s"><b>people on Clear's sites now</b><span className={`dl ${d >= 0 ? 'up' : 'dn'}`}>{d >= 0 ? '+' : ''}{d}{" vs this time last week"}</span></span></div><div><div className="lv2-m lp-m">{LV.mins.map((v, i) => <i key={i} className={i === 29 ? 'now' : ''} style={css(`height:${Math.max(6, v / mx * 100)}%`)} title={`${v} on the sites`} />)}</div><div className="lv2-ax lp-ax"><span>30 min ago</span><span>15 min</span><span>Now</span></div></div><div className="lp-sec"><div className="lp-sh"><span className="lbl">By page</span><span className="lp-key">{chs.map(([ch, c], __k) => <span key={__k}><i style={css(`background:${CH_COL[ch]}`)} />{ch}{" "}<b>{c}</b></span>)}</span></div>{groups.map(([pg, ps], __k) => <div key={__k} className="lp-r"><span className="lp-p">{pg}</span><span className="lp-u">{ps.map((x, __k) => <i key={__k} className={x.id === LV.last ? 'new' : ''} style={css(`background:${CH_COL[x.ch]}`)} title={x.ch} />)}</span><b>{ps.length}</b></div>)}</div><div className="lp-sec"><div className="lp-sh"><span className="lbl">Arrivals and leaves</span><span className="lbl">{"Last "}{LV.feed.length}</span></div>{LV.feed.map((f, i) => <div key={i} className={`lp-f ${i === 0 && LV.fresh ? 'fresh' : ''} ${f.k}`}><span className="lp-t">{f.t}</span><i style={css(f.k === 'in' ? `background:${CH_COL[f.ch]}` : `box-shadow:inset 0 0 0 1.5px ${CH_COL[f.ch]}`)} /><span className="lp-w"><b>{f.k === 'in' ? 'Arrived on' : 'Left'}{" "}<span className="mono">{f.page}</span></b><span>{f.k === 'in' ? 'From ' + f.from + ' · ' : ''}{f.city}{" · "}{f.dev}</span></span></div>)}</div></div><div className="pn-ft"><span className="nx">Updates every few seconds · first-party, no cookies</span><button className="btn" style={css("height:40px")} data-cclose="">Close</button></div></>);
+    html(p, <><div className="pn-hd"><span className="dot pulse" style={css("color:var(--settled)")} /><span className="lbl">Live view</span><button className="x" data-cclose="" aria-label="Close"><svg className="i" viewBox="0 0 20 20"><path d="M5 5l10 10M15 5 5 15" /></svg></button></div><div className="pn-b lp"><div className="lp-top"><span className="big num">{n}</span><span className="lv2-s"><b>people on Clear's sites now</b><span className={`dl ${d >= 0 ? 'up' : 'dn'}`}>{d >= 0 ? '+' : ''}{d}{" vs this time last week"}</span></span></div><div><div className="lv2-m lp-m">{LV.mins.map((v, i) => <i key={i} className={i === 29 ? 'now' : ''} style={css(`height:${Math.max(6, v / mx * 100)}%`)} title={`${v} on the sites`} />)}</div><div className="lv2-ax lp-ax"><span>30 min ago</span><span>15 min</span><span>Now</span></div></div><div className="lp-sec"><div className="lp-sh"><span className="lbl">By page</span><span className="lp-key">{chs.map(([ch, c], __k) => <span key={__k}><i style={css(`background:${CH_COL[ch]}`)} />{ch}{" "}<b>{c}</b></span>)}</span></div>{groups.map(([pg, ps], __k) => <div key={__k} className="lp-r"><span className="lp-p">{pg}</span><span className="lp-u">{ps.map((x, __k) => <i key={__k} className={x.id === LV.last ? 'new' : ''} style={css(`background:${CH_COL[x.ch]}`)} title={x.ch} />)}</span><b>{ps.length}</b></div>)}{L && !n ? <div className="lv-e"><span>Nobody is on the sites right now.</span></div> : null}</div><div className="lp-sec"><div className="lp-sh"><span className="lbl">{L ? 'Arrivals' : 'Arrivals and leaves'}</span><span className="lbl">{L ? 'Last 30 minutes' : <>{"Last "}{LV.feed.length}</>}</span></div>{L && !LV.feed.length ? <div className="lv-e"><span>Nobody arrived in the last 30 minutes.</span></div> : null}{LV.feed.map((f, i) => <div key={i} className={`lp-f ${i === 0 && LV.fresh ? 'fresh' : ''} ${f.k}`}><span className="lp-t">{f.t}</span><i style={css(f.k === 'in' ? `background:${CH_COL[f.ch]}` : `box-shadow:inset 0 0 0 1.5px ${CH_COL[f.ch]}`)} /><span className="lp-w"><b>{f.k === 'in' ? 'Arrived on' : 'Left'}{" "}<span className="mono">{f.page}</span></b><span>{f.k === 'in' ? 'From ' + f.from + ' · ' : ''}{f.city}{" · "}{f.dev}</span></span></div>)}</div></div><div className="pn-ft"><span className="nx">{L ? 'Updates every 20 seconds' : 'Updates every few seconds'}{" · first-party, no cookies"}</span><button className="btn" style={css("height:40px")} data-cclose="">Close</button></div></>);
   }
   function liveStep() {
     const r = Math.random();
@@ -588,7 +656,14 @@ function makeGrowth() {
     html(el, <>{props}<section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s8"><div className="hd"><h2>Visits over time</h2><div className="r"><span className="lbl">{"By "}{gran}</span><div className="seg sm" role="group" aria-label="Granularity">{[['auto', 'Auto'], ['day', 'Daily'], ['week', 'Weekly']].map(([k2, t], __k) => <button key={__k} data-gran={k2} aria-pressed={S.gran === k2}>{t}</button>)}</div></div></div>{chart}<div className="tr-k tf-k">{visibleCh.map((ch, __k) => <button key={__k} data-iso={ch} className={`${iso === ch ? 'on' : ''} ${iso && iso !== ch ? 'off' : ''}`}><i style={css(`background:${CH_COL[ch]};width:10px;height:10px`)} />{ch}</button>)}{prevTot ? <span className="gh-k"><i className="tf-gh-k" />{cmpName()}</span> : ''}{iso ? <button className="clear" data-iso="">Show all</button> : ''}</div></div><div className="cell s4" id="live" /></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Channels and referrers</h2><div className="r"><span className="lbl">Click a row to filter · + for referrers</span></div></div>{L && !chRows.length ? <div className="lv-e"><span>No visits by channel yet</span></div> : <div className="bt-wrap"><table className="bt ch"><thead><tr><th className="c-nm">Channel</th><th>Visits</th><th>Share</th><th>Bounced</th><th>Join rate</th><th>{cmpOn() ? 'Change' : ''}</th></tr></thead><tbody>{chTable}</tbody></table></div>}<div className="bk-ft">{L ? <span>{tfChannelsFoot()}</span> : <span>{"Posters bring 13% of visits but convert "}<b>37×</b>{" better than every other channel combined"}</span>}<button data-tab="campaigns">Compare campaigns →</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s7" id="heat"><div className="hd"><h2>When they visit</h2><div className="r"><span className="lbl">{"By hour · "}{perName()}</span></div></div>{heat}<div className="bk-ft">{L ? <span>{busiest ? <>{"Busiest: "}<b>{busiest}</b></> : 'No visits counted yet'}</span> : <span>{"Busiest: "}<b>Sunday 12:00–14:00</b>{" and "}<b>weekdays 18:00–21:00</b></span>}{L ? <span /> : <button data-act="" data-newcamp="">Plan a campaign for those windows →</button>}</div></div><div className="cell s5"><div className="hd"><h2>Devices</h2><div className="r"><span className="lbl">{perName()}</span></div></div>{devices}<div className="bk-ft">{L ? <span>By screen size, as Plausible counts it</span> : <span>{"Poster scans are "}<b>99% phone</b></span>}<span /></div></div></div></section><section className="band"><div className="bento"><div className="cell s5"><div className="hd"><h2>Where they're from</h2><div className="r"><span className="lbl">City · visits per poster</span></div></div>{L && !cityRows.length ? <div className="lv-e"><span>No visits by city yet</span></div> : <div className="ct-l">{cities}</div>}<div className="bk-ft">{L ? <span>{tfCityFoot(cityRows)}</span> : <span>Riverside gets the most per poster</span>}<button data-go="field" data-gp="placement">Poster placement in Field →</button></div></div><div className="cell s7"><div className="hd"><h2>Pages</h2><div className="r"><span className="lbl">{"Where visits start · "}{TS.prop === 'all' ? 'all properties' : TS.prop}</span></div></div>{L && !pg.length ? <div className="lv-e"><span>No visits by page yet</span></div> : pages}<div className="bk-ft"><span>{"Pages with "}<b className="warn">50%+</b>{" bounced are worth a look"}</span><span /></div></div></div></section><div className="src-note"><span><b>Source:</b>{L ? ' Plausible, on useclear.org. No cookies, no ad trackers; visitor counts are estimates and nobody is followed across sites.' : " Umami, first-party on our servers. No cookies, no ad trackers; visitor counts are estimates and nobody is followed across sites."}</span>{L ? null : <button className="btn" style={css("height:32px")} data-act="">Add a data source</button>}</div></>);
     renderLive();
     clearInterval(liveTimer);
-    if (!L) liveTimer = setInterval(() => {
+    if (L) {
+      pollNow();
+      // every 20 seconds while Traffic shows, skipped while the tab is in the background
+      liveTimer = setInterval(() => {
+        if (S.tab !== 'traffic' || !$g('live') || !GLIVE()) return clearInterval(liveTimer);
+        if (!document.hidden) pollNow(true);
+      }, 20000);
+    } else liveTimer = setInterval(() => {
       if (S.tab !== 'traffic' || !$g('live') || !GLIVE()) return clearInterval(liveTimer);
       liveStep();
     }, 3200);

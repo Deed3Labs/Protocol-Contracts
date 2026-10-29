@@ -31,6 +31,7 @@ import { codeStatus } from '../services/command/github.js';
 import { feedStatus, requestSync, type Feed } from '../services/command/feeds.js';
 import { liveFeeds, plaidWebhook, plaidWebhookKey, shopAddress } from '../services/command/feedSources.js';
 import { join } from '../services/command/waitlist.js';
+import { cachedSiteNow, type SiteNow } from '../services/command/siteNow.js';
 import { MAX_PHOTO_BYTES, PHOTO_TYPES, publicCatalog, revalidateSite, uploadPhoto } from '../services/command/catalog.js';
 import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
@@ -68,6 +69,8 @@ export interface CommandDeps {
   feeds?: Feed[];
   /** The member app's records, for Members when it's live (Phase 7b). */
   memberSource?: MemberSource;
+  /** Who's on the site now, for Growth's Right now (Umami's real-time view, kept a few seconds, unless given). */
+  siteNow?: { off(): string | null; read(): Promise<SiteNow> };
   /** A live order's address, read from the shop's Stripe (Phase 7a): Stripe's unless given. */
   shopAddress?: typeof shopAddress;
   /** The Ops Safe: which one (env unless given), and how it's read. */
@@ -123,6 +126,10 @@ export function commandRouter(deps: CommandDeps) {
     return () => (list ??= liveFeeds());
   })();
   const limits = deps.limits ?? { signIn: passThrough, write: passThrough };
+  const siteNowReader = (() => {
+    let r: CommandDeps['siteNow'] | null = deps.siteNow ?? null;
+    return () => (r ??= cachedSiteNow());
+  })();
 
   router.use(deps.identify);
 
@@ -464,6 +471,19 @@ export function commandRouter(deps: CommandDeps) {
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
+    }
+  });
+
+  /** Who's on the site right now (Growth's Right now): counts, pages and sources only, never who. */
+  router.get('/growth/now', need('growth', TOTALS), async (_req, res) => {
+    const r = siteNowReader();
+    const off = r.off();
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (off) return res.json({ off });
+    try {
+      res.json(await r.read());
+    } catch (e) {
+      fail(res, 502, 'SITE_FEED', `The site feed didn’t answer: ${(e as Error).message}`);
     }
   });
 
