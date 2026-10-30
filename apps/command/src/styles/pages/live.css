@@ -129,3 +129,7 @@ button.fw-k{text-align:left;cursor:pointer}
 /* a pipeline shop's street address, a link to the map: in the ledger's own ink, underlined */
 .led b a{color:inherit;text-decoration:underline;text-decoration-color:var(--fg-50);text-underline-offset:3px}
 .led b a:hover{text-decoration-color:currentColor}
+
+/* no scrollbars inside the pages either (command.css hides the document's): everything still scrolls */
+*{scrollbar-width:none !important}
+*::-webkit-scrollbar{display:none}
