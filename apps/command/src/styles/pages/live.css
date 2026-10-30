@@ -122,8 +122,6 @@ button.fw-k{text-align:left;cursor:pointer}
 .sx-more:hover{background:color-mix(in srgb,var(--raised) 70%,var(--ground));color:var(--fg)}
 .sx-more[hidden]{display:none}
 
-/* Money › Where it sits: a bracket too narrow for its label (fitBrackets marks it .thin and picks its line)
-   puts the label below the others, on one line and in full, so its figure never runs into another label */
-.nh-br > span.thin{flex-direction:row;align-items:baseline;gap:6px;padding-top:48px;white-space:nowrap}
-.nh-br > span.thin b{overflow:visible}
-.nh-br > span.thin.end{justify-content:flex-end}
+/* Money › Where it sits: a bracket too narrow for its label (fitBrackets marks it .thin) shows the bracket
+   alone, so its figure never runs into the next label; hovering it names it */
+.nh-br > span.thin b,.nh-br > span.thin em{visibility:hidden}

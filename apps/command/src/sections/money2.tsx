@@ -979,38 +979,22 @@ function makeMoney() {
       if (TOT()) CC.scrub(W);
       setHash();
     }
-    /* a bracket under the bar too narrow for its name and figure (the set-aside accounts, when the co-op's
-       cash dwarfs them, or most of them on a phone) puts its label on one line below the others, on the
-       first line down where it clears every other such label, rather than running into the next one */
+    /* a bracket under the bar too narrow for its figure (the set-aside accounts, when the co-op's cash
+       dwarfs them) shows the bracket alone: its label would run into the next one. Hovering it still
+       names it. */
     function fitBrackets() {
       const br = document.querySelector('.nh-br');
       // live only, as live.css (which styles .thin) is
       if (!br || !L) return;
-      const ss = [...br.children],
-        r = new Range(),
-        ends = [];
-      br.style.height = '';
+      const ss = [...br.children];
+      ss.forEach(s => s.classList.remove('thin'));
       ss.forEach(s => {
-        s.classList.remove('thin', 'end');
-        s.style.paddingTop = '';
+        // the name shortens itself (…); the figure can't, so it's the figure that has to fit
+        const thin = s.scrollWidth > s.clientWidth + 1;
+        s.classList.toggle('thin', thin);
+        if (thin) s.title = `${s.querySelector('b').textContent} · ${s.querySelector('em').textContent}`;
+        else s.removeAttribute('title');
       });
-      const thin = ss.filter(s => s.scrollWidth > s.clientWidth + 1 || s.querySelector('b').scrollWidth > s.querySelector('b').clientWidth + 1);
-      thin.forEach(s => s.classList.add('thin'));
-      const W = br.clientWidth;
-      thin.forEach(s => {
-        r.selectNodeContents(s);
-        const w = r.getBoundingClientRect().width + 16;
-        let l = s.offsetLeft;
-        if (l + w > W) {
-          s.classList.add('end');
-          l = s.offsetLeft + s.offsetWidth - w;
-        }
-        let row = ends.findIndex(e => e <= l);
-        if (row < 0) row = ends.push(0) - 1;
-        ends[row] = l + w;
-        s.style.paddingTop = `${48 + row * 20}px`;
-      });
-      if (ends.length) br.style.height = `${66 + (ends.length - 1) * 20}px`;
     }
     /* measured once the row has a size, which it may not have yet when the page draws, and again whenever
        its width changes */
