@@ -2620,11 +2620,11 @@ export class MemberStore {
    * For the Command Center's Members (Phase 7b): each member's legal name and city from their private
    * profile, read only, or nulls when it can't be read (no profile, or the encryption key isn't set).
    */
-  async privateBasics(memberIds: number[]): Promise<Map<number, { legalName: string | null; city: string | null }>> {
-    const out = new Map<number, { legalName: string | null; city: string | null }>();
+  async privateBasics(memberIds: number[]): Promise<Map<number, { legalName: string | null; email: string | null; city: string | null }>> {
+    const out = new Map<number, { legalName: string | null; email: string | null; city: string | null }>();
     for (const id of memberIds) {
       const p = (await this.loadPrivateProfile(id, false).catch(() => null))?.privateProfile ?? null;
-      out.set(id, { legalName: p?.legalName ?? null, city: p?.addressCity ?? p?.cityRegion ?? null });
+      out.set(id, { legalName: p?.legalName ?? null, email: p?.email ?? null, city: p?.addressCity ?? p?.cityRegion ?? null });
     }
     return out;
   }

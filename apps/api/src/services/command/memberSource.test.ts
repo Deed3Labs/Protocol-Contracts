@@ -29,17 +29,17 @@ beforeAll(async () => {
 });
 
 const source = () =>
-  liveMemberSource({ main: () => db, pay: () => db, basics: async (ids) => new Map(ids.map((id) => [id, { legalName: id === 1 ? 'Ana Ruiz' : null, city: id === 1 ? 'Redlands' : null }])) });
+  liveMemberSource({ main: () => db, pay: () => db, basics: async (ids) => new Map(ids.map((id) => [id, { legalName: id === 1 ? 'Ana Ruiz' : null, email: id === 1 ? 'ana@example.com' : null, city: id === 1 ? 'Redlands' : null }])) });
 
 describe('the member source', () => {
   test('everyone with an account, their code as onboarding sent it, and every wallet they have', async () => {
     const r = await source().roster({ names: true });
     expect(r.map((m) => ({ ...m, wallets: [...m.wallets].sort() }))).toEqual([
-      { id: 1, createdAt: Date.parse('2026-10-20T10:00:00Z'), lastSeen: Date.parse('2026-10-24T09:00:00Z'), inviteCode: 'ABCDE-23456', wallets: ['0xa2', '0xaaa'], name: 'Ana Ruiz', city: 'Redlands' },
-      { id: 2, createdAt: Date.parse('2026-10-21T10:00:00Z'), lastSeen: null, inviteCode: null, wallets: ['0xbbb'], name: null, city: null },
+      { id: 1, createdAt: Date.parse('2026-10-20T10:00:00Z'), lastSeen: Date.parse('2026-10-24T09:00:00Z'), inviteCode: 'ABCDE-23456', wallets: ['0xa2', '0xaaa'], name: 'Ana Ruiz', email: 'ana@example.com', city: 'Redlands' },
+      { id: 2, createdAt: Date.parse('2026-10-21T10:00:00Z'), lastSeen: null, inviteCode: null, wallets: ['0xbbb'], name: null, email: null, city: null },
     ]);
-    // names only when asked; the city either way
-    expect((await source().roster({ names: false }))[0]).toMatchObject({ name: null, city: 'Redlands' });
+    // names and emails only when asked; the city either way
+    expect((await source().roster({ names: false }))[0]).toMatchObject({ name: null, email: null, city: 'Redlands' });
   });
 
   test('each wallet’s first deposit says how they funded, and its first spend is a card purchase or a charge code', async () => {
