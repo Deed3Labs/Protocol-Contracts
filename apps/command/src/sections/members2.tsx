@@ -212,6 +212,10 @@ function makeMembers() {
     open: null,
     bopen: null,
     reveal: new Set(),
+    // live, the list's Show names: every member's name or email, for a reason (POST /members/names), until it's off
+    namesOn: false,
+    names: {},
+    mail: {},
     audit: [],
     b: {
       size: 25,
@@ -334,14 +338,17 @@ function makeMembers() {
         const n = cnt(k, L);
         return <button key={__k} className={`sb-t ${M.stage === k ? 'on' : ''}`} data-mstage={k} aria-pressed={M.stage === k}><span className="sb-l"><i style={css(`background:${col}`)} />{lab}</span><b>{fmt(n)}</b><span className="sb-p">{p1(pct(n, tot))}{" of everyone"}</span></button>;
       })}</div>;
-    html($m('mv'), <section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd"><h2>{M.stage === 'all' ? 'Everyone' : M.stage === 'quiet' ? 'Quiet for 3+ weeks' : STG[M.stage][1]}</h2><div className="r">{M.stage !== 'all' ? <button className="clear" data-mstage="all">Show everyone</button> : quiet ? <button className="clear" data-mstage="quiet">{quiet}{" quiet for 3+ weeks"}</button> : ''}<div className="seg sm" role="group" aria-label="Sort">{[['joined', 'Newest'], ['stage', 'Stage'], ['window', 'Window left']].map(([k, t], __k) => <button key={__k} data-msort={k} aria-pressed={M.sort === k}>{t}</button>)}</div></div></div>{tiles}<div className="bt-wrap"><table className="bt pp"><colgroup><col style={css("width:27%")} /><col style={css("width:23%")} /><col style={css("width:11%")} /><col style={css("width:20%")} /><col style={css("width:19%")} /></colgroup><thead><tr><th className="c-nm">Member</th><th style={css("text-align:left")}>Stage</th><th>Joined</th><th style={css("text-align:left")}>From</th><th>Next</th></tr></thead><tbody>{view.length ? view.map((p, __k) => {
-                  const shown = M.reveal.has(p.id);
-                  return <tr key={__k} data-mp={p.id} className={M.open === p.id ? 'sel' : ''}><td className="tn"><span className="pn"><b className={shown ? '' : 'msk'}>{shown ? realName(p) : p.name}</b><span>{p.id}{" · "}{p.city}</span></span></td><td style={css("text-align:left")}>{stageCell(p)}{QUIET(p) ? <em className="m-qt">Quiet</em> : ''}</td><td>{dFmt(p.joined)}</td><td style={css("text-align:left")} className="fr">{p.src === 'Poster' ? <><span className="sub">Poster ·</span>{" "}{p.shop}</> : p.src}</td><td>{nextCell(p)}</td></tr>;
-                }) : <tr><td colSpan="5" className="tn"><span className="quiet">Nobody matches.</span></td></tr>}</tbody></table></div><div className="bk-ft"><span>{ICON.lock}{" Names are masked · showing one is logged in Records"}</span><span className="pg2"><span>{rows.length ? fmt(M.page * PAGE + 1) : 0}–{fmt(Math.min(rows.length, (M.page + 1) * PAGE))}{" of "}{fmt(rows.length)}</span><button data-mpage="-1" {...attrs(M.page === 0 ? 'disabled' : '')} aria-label="Previous"><svg viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg></button><button data-mpage="1" {...attrs(M.page >= pages - 1 ? 'disabled' : '')} aria-label="Next"><svg viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" /></svg></button></span></div></div></div></section>);
+    html($m('mv'), <section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s12"><div className="hd"><h2>{M.stage === 'all' ? 'Everyone' : M.stage === 'quiet' ? 'Quiet for 3+ weeks' : STG[M.stage][1]}</h2><div className="r">{LV ? <button className={`m-sw ${M.namesOn ? 'on' : ''}`} data-mnames="" aria-pressed={M.namesOn}>{ICON.eye}{M.namesOn ? 'Hide names' : 'Show names'}</button> : ''}{M.stage !== 'all' ? <button className="clear" data-mstage="all">Show everyone</button> : quiet ? <button className="clear" data-mstage="quiet">{quiet}{" quiet for 3+ weeks"}</button> : ''}<div className="seg sm" role="group" aria-label="Sort">{[['joined', 'Newest'], ['stage', 'Stage'], ['window', 'Window left']].map(([k, t], __k) => <button key={__k} data-msort={k} aria-pressed={M.sort === k}>{t}</button>)}</div></div></div>{tiles}<div className="bt-wrap"><table className="bt pp">{LV ? <colgroup><col style={css("width:25%")} /><col className="c-id" style={css("width:9%")} /><col style={css("width:21%")} /><col style={css("width:10%")} /><col style={css("width:17%")} /><col style={css("width:18%")} /></colgroup> : <colgroup><col style={css("width:27%")} /><col style={css("width:23%")} /><col style={css("width:11%")} /><col style={css("width:20%")} /><col style={css("width:19%")} /></colgroup>}<thead><tr><th className="c-nm">Member</th>{LV ? <th className="c-id" style={css("text-align:left")}>ID</th> : ''}<th style={css("text-align:left")}>Stage</th><th>Joined</th><th style={css("text-align:left")}>From</th><th>Next</th></tr></thead><tbody>{view.length ? view.map((p, __k) => {
+                  const shown = M.reveal.has(p.id) || LV && M.namesOn;
+                  // live: the name (or, with none, the email) first; the member number has its own column
+                  const main = shown ? realName(p) : LV && p.name === p.id ? 'Name hidden' : p.name,
+                    sub = LV ? [shown && M.mail[p.id] && main !== M.mail[p.id] ? M.mail[p.id] : null, p.city].filter(Boolean).join(' · ') : `${p.id} · ${p.city}`;
+                  return <tr key={__k} data-mp={p.id} className={M.open === p.id ? 'sel' : ''}><td className="tn"><span className="pn"><b className={shown ? '' : 'msk'}>{main}</b><span>{LV ? <i className="m-idn">{p.id}{" · "}</i> : ''}{sub}</span></span></td>{LV ? <td className="c-id" style={css("text-align:left")}>{p.id}</td> : ''}<td style={css("text-align:left")}>{stageCell(p)}{QUIET(p) ? <em className="m-qt">Quiet</em> : ''}</td><td>{dFmt(p.joined)}</td><td style={css("text-align:left")} className="fr">{p.src === 'Poster' ? <><span className="sub">Poster ·</span>{" "}{p.shop}</> : p.src}</td><td>{nextCell(p)}</td></tr>;
+                }) : <tr><td colSpan={LV ? 6 : 5} className="tn"><span className="quiet">Nobody matches.</span></td></tr>}</tbody></table></div><div className="bk-ft"><span>{ICON.lock}{LV && M.namesOn ? ' Names shown · logged in Records · Hide names masks them again' : ' Names are masked · showing one is logged in Records'}</span><span className="pg2"><span>{rows.length ? fmt(M.page * PAGE + 1) : 0}–{fmt(Math.min(rows.length, (M.page + 1) * PAGE))}{" of "}{fmt(rows.length)}</span><button data-mpage="-1" {...attrs(M.page === 0 ? 'disabled' : '')} aria-label="Previous"><svg viewBox="0 0 16 16"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg></button><button data-mpage="1" {...attrs(M.page >= pages - 1 ? 'disabled' : '')} aria-label="Next"><svg viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5" /></svg></button></span></div></div></div></section>);
   }
   const realName = p => {
     // live, the name the API sent for this person when it was shown (POST /members/:id/reveal)
-    if (LV) return M.real[p.id] ?? p.name;
+    if (LV) return (M.namesOn ? M.names[p.id] : null) ?? M.real[p.id] ?? p.name;
     const F = ['Maria', 'James', 'Ana', 'Kevin', 'Lena', 'Sam', 'Tomas', 'Grace', 'Rosa', 'Eli', 'Nadia', 'Victor', 'Diane', 'Marco', 'Tasha', 'Hugo', 'Iris', 'Omar', 'Paula', 'Wes'];
     const Lx = ['Torres', 'Ortiz', 'Reyes', 'Walker', 'Hughes', 'Nguyen', 'Brooks', 'Kim', 'Alvarez', 'Vega', 'Patel', 'Lopez', 'Diaz', 'Price', 'Young', 'Stone', 'Moreno', 'Wright', 'Bell', 'Cruz'];
     return F[LET.indexOf(p.f) % F.length] + ' ' + Lx[LET.indexOf(p.l) % Lx.length];
@@ -372,7 +379,7 @@ function makeMembers() {
     if (M.nudge) return renderComposer(pn);
     if (M.bopen) return renderBatchPanel(pn);
     const p = PEOPLE.find(x => x.id === M.open),
-      shown = M.reveal.has(p.id),
+      shown = M.reveal.has(p.id) || LV && M.namesOn,
       left = LEFT(p);
     const steps = [['Joined', p.joined], ['Invited', p.invited], ['Opened the app', p.opened], [`Funded${p.fund ? ' · ' + (p.fund === 'Deposit' ? 'direct deposit' : p.fund === '$5' ? '$5' : 'bank') : ''}`, p.act], [`First $10 spend${p.spentAt ? ' · ' + p.spentAt : ''}`, p.stage === 'spent' ? LV ? p.spentDay : Math.min(TODAY, (p.act || TODAY) + 2) : null]];
     const pend = M.approvals.filter(a => a.id === p.id);
@@ -846,6 +853,35 @@ function makeMembers() {
       toast(e.message);
     }
   }
+  /* live, the list's Show names: every member's name, or their email when there's no name, for a reason (POST
+     /members/names: Approve, logged as one reveal of the list); a blank reason is a rush, flagged. Off masks them again. */
+  async function showNames() {
+    if (M.namesOn) {
+      M.namesOn = false;
+      M.names = {};
+      M.mail = {};
+      return render();
+    }
+    const why = window.prompt('Why do you need to see everyone’s names and emails? This is logged.');
+    if (why == null) return;
+    try {
+      const r = await api('POST', '/members/names', why.trim() ? {
+        reason: why.trim()
+      } : {
+        rush: true
+      });
+      for (const n of r.names) {
+        if (!n.no) continue;
+        M.names[n.no] = n.name || n.email || 'No name or email';
+        if (n.email) M.mail[n.no] = n.email;
+      }
+      M.namesOn = true;
+      toast(why.trim() ? 'Names shown · logged in Records with your reason' : 'Names shown · logged in Records as a rush, without a reason');
+      render();
+    } catch (e) {
+      toast(e.message);
+    }
+  }
   /* live, the plan proposed as the API's batch: who goes first as its order, the reason for any skips */
   function proposeLive() {
     const {
@@ -951,6 +987,10 @@ function makeMembers() {
     if (t.hasAttribute('data-mclose')) {
       closeAll();
       return render();
+    }
+    if (t.hasAttribute('data-mnames') && LV) {
+      showNames();
+      return;
     }
     if (d.mreveal && LV) {
       reveal(person(d.mreveal));

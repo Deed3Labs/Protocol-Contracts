@@ -56,7 +56,7 @@ const call = async (who: Who, method: string, path: string, body?: unknown) => {
     headers: { 'content-type': 'application/json', 'x-test-user': who.user, ...(who.session ? { 'x-command-session': who.session } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  return { status: r.status, body: (await r.json().catch(() => ({}))) as any };
+  return { status: r.status, headers: Object.fromEntries(r.headers), body: (await r.json().catch(() => ({}))) as any };
 };
 const signIn = async (user: string) => {
   const r = await call({ user }, 'POST', '/sessions', { deviceKey: `device-${user.replace(/\W/g, '')}-00000000`, keep: true, method: 'email' });
@@ -239,6 +239,26 @@ describe('reveals', () => {
     expect(rush).toMatchObject({ field: 'name', reason: '', flagged: true });
     expect(reasoned).toMatchObject({ field: 'name', reason: 'Their bank link failed', flagged: false });
     expect((await call(kai, 'GET', '/audit')).body.entries[0]).toMatchObject({ area: 'members', detail: 'No reason given: flagged' });
+  });
+
+  test('the page’s names and emails, for a reason: Approve only, logged as one reveal of the list, never cached', async () => {
+    expect((await call(kai, 'POST', '/members/names', {})).status).toBe(400);
+    const r = await call(kai, 'POST', '/members/names', { reason: 'Calling the members who haven’t funded' });
+    expect(r.status).toBe(200);
+    expect(r.headers['cache-control']).toBe('private, no-store');
+    expect(r.body.names.length).toBeGreaterThan(0);
+    expect(r.body.names[0]).toEqual({ id: expect.any(Number), no: expect.stringMatching(/^M-/), name: expect.any(String), email: null });
+    expect(JSON.stringify(r.body.names)).not.toContain('•');
+    expect((await call(kai, 'GET', '/reveals')).body.reveals[0]).toMatchObject({
+      section: 'members',
+      subject: '*',
+      field: 'names and emails, on screen',
+      rows: r.body.names.length,
+      reason: 'Calling the members who haven’t funded',
+      flagged: false,
+    });
+    const p = await person('seenames', all(2));
+    expect((await call(p, 'POST', '/members/names', { reason: 'x' })).status).toBe(403);
   });
 
   test('someone waiting is masked like a member, revealed one at a time for a reason, and never at Totals', async () => {

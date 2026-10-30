@@ -442,6 +442,24 @@ export function commandRouter(deps: CommandDeps) {
     }
   });
 
+  /**
+   * Every member's name and email for the page (its Show names switch), for a reason: Members at Approve, logged as
+   * one reveal of the list before it's sent. On screen only: a list taken away is still an export, with a second person.
+   */
+  router.post('/members/names', limits.write, need('members', APPROVE), async (req, res) => {
+    const c = req.command!;
+    try {
+      const data = await membersSection(c.db, { level: c.levels.members, reveal: true, now: now(), memberSource: deps.memberSource });
+      const names = data.MEMBERS.map((m) => ({ id: m.id, no: m.no, name: [m.first, m.last].filter(Boolean).join(' ') || null, email: m.email ?? null }));
+      if (!(await revealFrom(req, res, { section: 'members', subject: '*', field: 'names and emails, on screen', rows: names.length }))) return;
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.json({ names });
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
   /** One member's name (or someone waiting's), shown for a reason: Members at Approve, logged as a reveal before it's sent. */
   router.post('/members/:id/reveal', limits.write, need('members', APPROVE), async (req, res) => {
     const c = req.command!;

@@ -16,6 +16,8 @@ export interface RosterMember {
   inviteCode: string | null;
   wallets: string[];
   name: string | null;
+  /** Their email, as their private profile has it: only when names were asked for. */
+  email?: string | null;
   city: string | null;
 }
 export interface Milestones {
@@ -45,7 +47,7 @@ const ms = (d: Date | string | null) => (d == null ? null : new Date(d).getTime(
 interface Where {
   main: () => Pick<Queryable, 'query'> | null;
   pay: () => Pick<Queryable, 'query'> | null;
-  basics: (ids: number[]) => Promise<Map<number, { legalName: string | null; city: string | null }>>;
+  basics: (ids: number[]) => Promise<Map<number, { legalName: string | null; email?: string | null; city: string | null }>>;
 }
 const LIVE: Where = { main: getPostgresPool, pay: getPayPool, basics: (ids) => memberStore.privateBasics(ids) };
 
@@ -71,6 +73,7 @@ export function liveMemberSource(where: Where = LIVE): MemberSource {
         inviteCode: r.invite_code?.trim().toUpperCase() || null,
         wallets: [...new Set(r.wallets ?? [])],
         name: names ? (basics.get(Number(r.id))?.legalName ?? null) : null,
+        email: names ? (basics.get(Number(r.id))?.email ?? null) : null,
         city: basics.get(Number(r.id))?.city ?? null,
       }));
     },

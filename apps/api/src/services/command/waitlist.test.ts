@@ -154,7 +154,7 @@ describe('Members, live', () => {
     source = {
       roster: async ({ names }) => [
         // Ana signed up with her code, funded from her bank and spent at Rosa's
-        { id: 7, createdAt: day(-0.5).getTime(), lastSeen: NOW.getTime(), inviteCode: ana, wallets: ['0xa'], name: names ? 'Ana Ruiz' : null, city: 'Redlands' },
+        { id: 7, createdAt: day(-0.5).getTime(), lastSeen: NOW.getTime(), inviteCode: ana, wallets: ['0xa'], name: names ? 'Ana Ruiz' : null, email: names ? 'ana.ruiz@example.com' : null, city: 'Redlands' },
         // Bo signed up with his code, nothing yet
         { id: 8, createdAt: NOW.getTime(), lastSeen: null, inviteCode: bo, wallets: ['0xb'], name: names ? 'Bo Chen' : null, city: null },
         // someone who came another way
@@ -183,6 +183,9 @@ describe('Members, live', () => {
   test('names leave masked unless asked for, and at Totals not at all', async () => {
     const masked = await read();
     expect(masked.MEMBERS.find((x) => x.no === 'M-0007')!.first).not.toBe('Ana');
+    // an email comes with a name, only when names are asked for
+    expect(JSON.stringify(masked)).not.toContain('ana.ruiz@example.com');
+    expect((await read(SEE, true)).MEMBERS.find((x) => x.no === 'M-0007')!.email).toBe('ana.ruiz@example.com');
     const totals = await read(TOTALS);
     expect(totals.MEMBERS.every((x) => x.first == null && x.no === '' && x.invited === 0)).toBe(true);
     // the figures are the same at every level: worked out before the rows lose their dates
