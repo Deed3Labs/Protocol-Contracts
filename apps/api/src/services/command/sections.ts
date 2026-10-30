@@ -976,7 +976,7 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
  * whole (card-save) keeps them; the seed keeps the prototype's shape.
  */
 async function merchantBoard(db: Queryable, o: ReadOptions, OWED: Record<string, number>, full = false) {
-  const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; reach: string; flag: boolean; founding: boolean; posters: number | null; notes: string }>(
+  const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; sells: string; flag: boolean; founding: boolean; posters: number | null; notes: string }>(
     'SELECT * FROM command.merchant_stage WHERE removed_at IS NULL ORDER BY position',
   );
   // a shop's contact is a person: at Totals the board keeps its cards, not their details
@@ -995,7 +995,7 @@ async function merchantBoard(db: Queryable, o: ReadOptions, OWED: Record<string,
       contact: o.level <= TOTALS ? blank : c.contact,
       source: c.source,
       addr: o.level <= TOTALS ? '' : c.address,
-      reach: c.reach,
+      sells: c.sells,
       ...(c.notes && o.level > TOTALS ? { note: c.notes } : {}),
       ...(acts.some((a) => a.stage_id === c.id) && o.level > TOTALS ? { log: acts.filter((a) => a.stage_id === c.id).map((a) => [ms_(a.at), a.text, a.who, a.kind]) } : {}),
     });

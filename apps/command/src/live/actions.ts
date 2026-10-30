@@ -78,7 +78,7 @@ function cardBody(c) {
     contact: { name: '', role: '', phone: '', email: '', ...(c.contact || {}) },
     source: c.source || '',
     addr: c.addr || '',
-    ...(c.reach ? { reach: c.reach } : {}),
+    ...(c.sells ? { sells: c.sells } : {}),
     note: c.note || '',
     flag: !!c.flag,
     log: fresh.map(([, text, , type]) => ({ text, type: type || 'edit' })),

@@ -211,8 +211,8 @@ export function fmLive() {
       n: p.n,
     });
   }
-  // a shop worked online is reached by email, phone or video, so it's nobody's stop; one in person is, at its address
-  for (const m of MS.filter((m) => m.card && m.card.reach !== 'online' && ['prospect', 'talking', 'signing'].includes(m.stage)))
+  // an online shop (e-commerce, for the API) has no door to walk in at, so it's nobody's stop; a storefront is, at its address
+  for (const m of MS.filter((m) => m.card && m.card.sells !== 'online' && ['prospect', 'talking', 'signing'].includes(m.stage)))
     POOL.push({
       id: 'c:' + m.id,
       kind: 'merchant',

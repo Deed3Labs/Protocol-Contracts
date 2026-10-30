@@ -2756,8 +2756,8 @@ function makeFieldMerchants() {
       contact: Object.fromEntries(['name', 'role', 'phone', 'email'].map(k => [k, String(c.contact?.[k] ?? '')])),
       source: c.source || '',
       addr: c.addr || '',
-      ...(c.reach ? {
-        reach: c.reach
+      ...(c.sells ? {
+        sells: c.sells
       } : {}),
       note: c.note || '',
       flag: !!c.flag,
@@ -4381,23 +4381,24 @@ function makeFieldMerchants() {
         const dev = FLEET[m.id] ? <div><span className="lbl">Devices</span><div className="xdv">{DTYPE.filter(([k]) => FLEET[m.id][k]).map(([k, t], __k) => <span key={__k}><span className="xd-q">{FLEET[m.id][k].map((s, __k) => <i key={__k} className={s} />)}</span>{t}{FLEET[m.id][k].length > 1 ? ' × ' + FLEET[m.id][k].length : ''}</span>)}</div>{FLEET[m.id].note ? <span className="small warn">{FLEET[m.id].note}</span> : ''}</div> : '';
         const sel = m.stage === 'signed' ? <div className="led"><div><span>Posters up</span><b>{m.posters}</b></div><div><span>$10 owed to them</span><b>{m.owed ? money(m.owed) : 'Nothing'}</b></div><div><span>Takes cards</span><b className="warn">Not yet</b></div></div> : '';
         const who_ = c ? [c.contact?.name, c.contact?.role].filter(Boolean).join(' · ') : '',
-          reach_ = [c?.contact?.phone, c?.contact?.email].filter(Boolean).join(' · ');
-        const pro = open ? <div className="led"><div><span>Could finance</span><b>{m.val ? money(m.val).replace('.00', '') + ' a month' : '–'}</b></div><div><span>Came from</span><b>{c?.source || '–'}</b></div><div><span>Kind</span><b>{m.kind}</b></div>{c ? <div><span>How we reach them</span><b>{c.reach === 'online' ? 'Online · off the routes' : 'In person'}</b></div> : ''}{c && c.reach !== 'online' ? <div><span>Address</span><b>{c.addr ? <a href={`https://maps.google.com/?q=${encodeURIComponent([c.addr, m.city].filter(Boolean).join(' '))}`} target="_blank" rel="noopener">{c.addr}</a> : <span className="quiet">Not on the card yet</span>}</b></div> : ''}{who_ || reach_ ? <div><span>Contact</span><b>{[who_, reach_].filter(Boolean).join(' · ')}</b></div> : ''}</div> : '';
+          ways_ = [c?.contact?.phone, c?.contact?.email].filter(Boolean).join(' · ');
+        const pro = open ? <div className="led"><div><span>Could finance</span><b>{m.val ? money(m.val).replace('.00', '') + ' a month' : '–'}</b></div><div><span>Came from</span><b>{c?.source || '–'}</b></div><div><span>Kind</span><b>{m.kind}</b></div>{c ? <div><span>Sells</span><b>{c.sells === 'online' ? 'Online · the API' : 'In person'}</b></div> : ''}{c && c.sells !== 'online' ? <div><span>Address</span><b>{c.addr ? <a href={`https://maps.google.com/?q=${encodeURIComponent([c.addr, m.city].filter(Boolean).join(' '))}`} target="_blank" rel="noopener">{c.addr}</a> : <span className="quiet">Not on the card yet</span>}</b></div> : ''}{who_ || ways_ ? <div><span>Contact</span><b>{[who_, ways_].filter(Boolean).join(' · ')}</b></div> : ''}</div> : '';
         const items = [...(edit && ['prospect', 'talking', 'signing'].includes(m.stage) ? STG5.filter(([k]) => k !== m.stage && k !== 'transacting').map(([k, t], __k) => <button key={'s' + __k} data-xstage={`${m.id}|${k}`}>{"Move to "}{t}</button>) : []), ...(adm && m.cap ? [<button key="cap" data-xmprop={`cap|${m.id}`}>{`Raise the cap to $${nextCap(m)} `}<span>2nd approval</span></button>] : []), ...(adm ? [<button key="off" className="dz" data-xmprop={`off|${m.id}`}>{"Pause payments "}<span>Logged</span></button>] : []), ...(edit && ['prospect', 'talking'].includes(m.stage) ? [<button key="nf" className="dz" data-xstage={`${m.id}|closed`}>{"Not a fit "}<span>Logged</span></button>] : [])];
         const why = RO() ? 'Read-only in this view' : !c ? 'Not in the pipeline yet, so there’s no card to log to' : firstName(m.owner) + '’s shop · read-only for you';
         html(pn, <><div className="pn-hd"><span className="lbl">{STGN[m.stage] || 'Shop'}</span>{m.founding ? <span className="fst tlv">Founding</span> : ''}<button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top"><span className="fshop">{ini(m.name)}</span><div><h3>{m.name}</h3><span className="small quiet">{[m.kind, m.city, m.owner === me ? 'your shop' : m.owner === 'none' ? 'no owner yet' : firstName(m.owner) + '’s shop'].filter(Boolean).join(' · ')}</span></div></div><div className="fpl x5">{STG5.map(([k, t], i) => <span key={i} className={i < si ? 'past' : i === si ? 'now' : ''}>{t}</span>)}</div>{nextBlock}{pro}{sel}{money_}{dev}<div><span className="lbl">Visits</span>{visits.length ? visits.slice(0, 6).map((v, __k) => <div key={__k} className="hs3"><b>{v.out}{v.to ? ' → ' + STGN[v.to] : ''}{" "}<span className="quiet" style={css("font-weight:400")}>{"· "}{v.what}</span></b><span>{vDay(v.d)}{" · "}{v.who === me ? 'you' : firstName(v.who)}</span></div>) : (LV ? <div className="lv-e"><span>No visits logged yet.</span></div> : <p className="small quiet" style={css("margin:6px 0 0")}>No visits logged yet.</p>)}</div><div><span className="lbl">Notes</span>{c?.note ? <div className="nt3"><p>{c.note}</p><span>On the card</span></div> : ''}{notes.length ? notes.slice(0, 8).map((n, __k) => <div key={__k} className="nt3"><p>{n[1]}</p><span>{n[2] || 'Someone'}{" · "}{fmtD(n[0])}</span></div>) : c?.note ? '' : (LV ? <div className="lv-e"><span>No notes yet.</span></div> : <p className="small quiet" style={css("margin:6px 0 0")}>No notes yet.</p>)}{edit ? <div className="nt3-in"><textarea id="xnote" rows="2" placeholder="Add a note for the team" /><button className="btn" style={css("height:32px")} data-xnote={m.id}>Add</button></div> : ''}</div></div><div className="pn-ft mft">{edit && c && open ? <button className="btn" data-xedit={m.id}>Edit details</button> : ''}{edit ? <button className="btn p" data-xlog={m.id}>Log a visit</button> : <span className="small quiet" style={css("margin-left:auto")}>{why}</span>}{items.length ? <div className="more3"><button className="btn" data-xmore="">More ▾</button><div className="mm3" hidden>{items}</div></div> : ''}</div></>);
       }
-      /* how a shop is reached: in person it's a walk-in, on Field's routes at its street address; online it isn't */
-      const REACH = [['in_person', 'In person'], ['online', 'Online']];
-      /* a pipeline card's details, changed in place: what it's called, where it is and how it's reached, who to ask for,
+      /* where a shop sells: in person it's a storefront, on Field's routes at its street address; online it's e-commerce,
+         which wants Pay with Clear's API, and has no stop */
+      const SELLS = [['in_person', 'In person'], ['online', 'Online']];
+      /* a pipeline card's details, changed in place: what it's called, where it is and where it sells, who to ask for,
          the next step and what it could finance. Saved whole, with an edit logged on the card. */
       function editPanel(pn, m, c) {
         const E = X.ed ||= {
-            reach: c.reach || 'in_person'
+            sells: c.sells || 'in_person'
           },
           ct = c.contact || {},
           cities = m.city && !GEO[m.city] ? [m.city, ...Object.keys(GEO)] : Object.keys(GEO);
-        html(pn, <><div className="pn-hd"><span className="lbl">{"Edit · "}{STGN[m.stage]}</span><button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>{m.name}</h3><label><span className="lbl">Shop name</span><input id="xen" className="vin" defaultValue={E.name ?? c.name} /></label><div className="xa2"><label><span className="lbl">Kind of shop</span><input id="xek" className="vin" defaultValue={E.kind ?? c.kind ?? ''} placeholder="Auto repair" /></label><label><span className="lbl">City</span><select id="xec" className="vin" defaultValue={E.city ?? m.city}>{cities.map((k, __k) => <option key={__k} {...picked((E.city ?? m.city) === k)}>{k}</option>)}</select></label></div><div className="xa-f"><span className="lbl">How we reach them</span><div className="seg sm" role="group">{REACH.map(([k, t], __k) => <button key={__k} data-xereach={k} aria-pressed={E.reach === k}>{t}</button>)}</div></div>{E.reach === 'online' ? <p className="small quiet" style={css("margin:0")}>Online shops stay off Field’s routes.</p> : <label><span className="lbl">Street address</span><input id="xead" className="vin" defaultValue={E.addr ?? c.addr ?? ''} placeholder="1234 Orange St" autoComplete="street-address" /></label>}<div className="xa2"><label><span className="lbl">Contact</span><input id="xecn" className="vin" defaultValue={E.cname ?? ct.name ?? ''} placeholder="Name" /></label><label><span className="lbl">Their role</span><input id="xecr" className="vin" defaultValue={E.crole ?? ct.role ?? ''} placeholder="Owner" /></label></div><div className="xa2"><label><span className="lbl">Phone</span><input id="xecp" className="vin" type="tel" defaultValue={E.cphone ?? ct.phone ?? ''} /></label><label><span className="lbl">Email</span><input id="xece" className="vin" type="email" defaultValue={E.cemail ?? ct.email ?? ''} /></label></div><div className="xa2"><label><span className="lbl">Next step</span><input id="xenx" className="vin" defaultValue={E.next ?? c.next ?? ''} /></label><label><span className="lbl">Could finance a month</span><input id="xev" className="vin" inputMode="numeric" placeholder="$5,000" defaultValue={E.val ?? (c.val ? String(c.val) : '')} /></label></div></div><div className="pn-ft"><button className="btn" data-xecancel="" style={css("margin-left:auto")}>Cancel</button><button className="btn p" data-xesave={m.id}>Save</button></div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">{"Edit · "}{STGN[m.stage]}</span><button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>{m.name}</h3><label><span className="lbl">Shop name</span><input id="xen" className="vin" defaultValue={E.name ?? c.name} /></label><div className="xa2"><label><span className="lbl">Kind of shop</span><input id="xek" className="vin" defaultValue={E.kind ?? c.kind ?? ''} placeholder="Auto repair" /></label><label><span className="lbl">City</span><select id="xec" className="vin" defaultValue={E.city ?? m.city}>{cities.map((k, __k) => <option key={__k} {...picked((E.city ?? m.city) === k)}>{k}</option>)}</select></label></div><div className="xa-f"><span className="lbl">Sells</span><div className="seg sm" role="group">{SELLS.map(([k, t], __k) => <button key={__k} data-xesells={k} aria-pressed={E.sells === k}>{t}</button>)}</div></div>{E.sells === 'online' ? <p className="small quiet" style={css("margin:0")}>An online shop takes Pay with Clear through the API, so it stays off Field’s routes.</p> : <label><span className="lbl">Street address</span><input id="xead" className="vin" defaultValue={E.addr ?? c.addr ?? ''} placeholder="1234 Orange St" autoComplete="street-address" /></label>}<div className="xa2"><label><span className="lbl">Contact</span><input id="xecn" className="vin" defaultValue={E.cname ?? ct.name ?? ''} placeholder="Name" /></label><label><span className="lbl">Their role</span><input id="xecr" className="vin" defaultValue={E.crole ?? ct.role ?? ''} placeholder="Owner" /></label></div><div className="xa2"><label><span className="lbl">Phone</span><input id="xecp" className="vin" type="tel" defaultValue={E.cphone ?? ct.phone ?? ''} /></label><label><span className="lbl">Email</span><input id="xece" className="vin" type="email" defaultValue={E.cemail ?? ct.email ?? ''} /></label></div><div className="xa2"><label><span className="lbl">Next step</span><input id="xenx" className="vin" defaultValue={E.next ?? c.next ?? ''} /></label><label><span className="lbl">Could finance a month</span><input id="xev" className="vin" inputMode="numeric" placeholder="$5,000" defaultValue={E.val ?? (c.val ? String(c.val) : '')} /></label></div></div><div className="pn-ft"><button className="btn" data-xecancel="" style={css("margin-left:auto")}>Cancel</button><button className="btn p" data-xesave={m.id}>Save</button></div></>);
       }
       /* what's typed in the edit panel, kept when its toggle draws it again */
       const ED_IN = [['name', 'xen'], ['kind', 'xek'], ['city', 'xec'], ['addr', 'xead'], ['cname', 'xecn'], ['crole', 'xecr'], ['cphone', 'xecp'], ['cemail', 'xece'], ['next', 'xenx'], ['val', 'xev']];
@@ -4417,7 +4418,7 @@ function makeFieldMerchants() {
       function addPanel(pn) {
         const A = X.add,
           who = isAdmin() ? A.owner : R.me;
-        html(pn, <><div className="pn-hd"><span className="lbl">New prospect</span><button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>Add a prospect</h3><label><span className="lbl">Shop name</span><input id="xan" className="vin" defaultValue={A.name || ''} placeholder="Rancho Cucamonga Auto" /></label><div className="xa2"><label><span className="lbl">Kind of shop</span><input id="xak" className="vin" defaultValue={A.kind || ''} placeholder="Auto repair" /></label><label><span className="lbl">City</span><select id="xac" className="vin" defaultValue={A.city}>{(A.city && !GEO[A.city] ? [A.city, ...Object.keys(GEO)] : Object.keys(GEO)).map((c, __k) => <option key={__k} {...picked(A.city === c)}>{c}</option>)}</select></label></div><div className="xa-f"><span className="lbl">How we reach them</span><div className="seg sm" role="group">{REACH.map(([k, t], __k) => <button key={__k} data-xareach={k} aria-pressed={(A.reach || 'in_person') === k}>{t}</button>)}</div></div>{A.reach === 'online' ? '' : <label><span className="lbl">Street address</span><input id="xaad" className="vin" defaultValue={A.addr || ''} placeholder="1234 Orange St" autoComplete="street-address" /></label>}<div className="xa-f"><span className="lbl">Came from</span><div className="seg sm" role="group">{Object.entries(SRC).map(([k, t], __k) => <button key={__k} data-xasrc={k} aria-pressed={A.source === k}>{t.replace('Next to a poster shop', 'Poster shop')}</button>)}</div></div>{isAdmin() ? <div className="xa-f"><span className="lbl">Whose lead</span><div className="seg sm" role="group">{Object.entries(TEAM).filter(([, t]) => t.field).map(([k, t], __k) => <button key={__k} data-xaown={k} aria-pressed={who === k}>{k === R.me ? 'Me' : t.n}</button>)}</div></div> : <p className="small quiet" style={css("margin:0")}>It’ll be your lead.</p>}<div className="xa2"><label><span className="lbl">Next step</span><input id="xanx" className="vin" defaultValue={A.next ?? (A.reach === 'online' ? 'Send an intro email' : 'Walk in')} /></label><label><span className="lbl">Could finance a month</span><input id="xav" className="vin" inputMode="numeric" placeholder="$5,000" defaultValue={A.val || ''} /></label></div>{A.from ? <p className="small quiet" style={css("margin:0")}>From a shop enquiry. It’s marked added there.</p> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>{A.reach === 'online' ? 'Online · stays off Field’s routes' : 'Lands in Field’s Needs a visit'}</span><button className="btn" data-xclose="">Cancel</button><button className="btn p" data-xasave="">Add the prospect</button></div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">New prospect</span><button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>Add a prospect</h3><label><span className="lbl">Shop name</span><input id="xan" className="vin" defaultValue={A.name || ''} placeholder="Rancho Cucamonga Auto" /></label><div className="xa2"><label><span className="lbl">Kind of shop</span><input id="xak" className="vin" defaultValue={A.kind || ''} placeholder="Auto repair" /></label><label><span className="lbl">City</span><select id="xac" className="vin" defaultValue={A.city}>{(A.city && !GEO[A.city] ? [A.city, ...Object.keys(GEO)] : Object.keys(GEO)).map((c, __k) => <option key={__k} {...picked(A.city === c)}>{c}</option>)}</select></label></div><div className="xa-f"><span className="lbl">Sells</span><div className="seg sm" role="group">{SELLS.map(([k, t], __k) => <button key={__k} data-xasells={k} aria-pressed={(A.sells || 'in_person') === k}>{t}</button>)}</div></div>{A.sells === 'online' ? '' : <label><span className="lbl">Street address</span><input id="xaad" className="vin" defaultValue={A.addr || ''} placeholder="1234 Orange St" autoComplete="street-address" /></label>}<div className="xa-f"><span className="lbl">Came from</span><div className="seg sm" role="group">{Object.entries(SRC).map(([k, t], __k) => <button key={__k} data-xasrc={k} aria-pressed={A.source === k}>{t.replace('Next to a poster shop', 'Poster shop')}</button>)}</div></div>{isAdmin() ? <div className="xa-f"><span className="lbl">Whose lead</span><div className="seg sm" role="group">{Object.entries(TEAM).filter(([, t]) => t.field).map(([k, t], __k) => <button key={__k} data-xaown={k} aria-pressed={who === k}>{k === R.me ? 'Me' : t.n}</button>)}</div></div> : <p className="small quiet" style={css("margin:0")}>It’ll be your lead.</p>}<div className="xa2"><label><span className="lbl">Next step</span><input id="xanx" className="vin" defaultValue={A.next ?? (A.sells === 'online' ? 'Send the Pay with Clear API docs' : 'Walk in')} /></label><label><span className="lbl">Could finance a month</span><input id="xav" className="vin" inputMode="numeric" placeholder="$5,000" defaultValue={A.val || ''} /></label></div>{A.from ? <p className="small quiet" style={css("margin:0")}>From a shop enquiry. It’s marked added there.</p> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>{A.sells === 'online' ? 'Online · the API, off Field’s routes' : 'Lands in Field’s Needs a visit'}</span><button className="btn" data-xclose="">Cancel</button><button className="btn p" data-xasave="">Add the prospect</button></div></>);
       }
 
       /* ── render + events ── */
@@ -4655,9 +4656,9 @@ function makeFieldMerchants() {
           X.ed = null;
           return renderPanel();
         }
-        if (d.xereach && X.ed) {
+        if (d.xesells && X.ed) {
           keepEdit();
-          X.ed.reach = d.xereach;
+          X.ed.sells = d.xesells;
           return renderPanel();
         }
         if (t.hasAttribute('data-xecancel')) {
@@ -4685,8 +4686,8 @@ function makeFieldMerchants() {
             name,
             kind: (E.kind ?? c.kind ?? '').trim(),
             city: E.city ?? c.city ?? '',
-            reach: E.reach,
-            addr: E.reach === 'online' ? '' : (E.addr ?? c.addr ?? '').trim(),
+            sells: E.sells,
+            addr: E.sells === 'online' ? '' : (E.addr ?? c.addr ?? '').trim(),
             contact,
             next: (E.next ?? c.next ?? '').trim() || null,
             val: +String(E.val ?? '').replace(/\D/g, '') || null
@@ -4695,7 +4696,7 @@ function makeFieldMerchants() {
             name: c.name,
             kind: c.kind || '',
             city: c.city || '',
-            reach: c.reach || 'in_person',
+            sells: c.sells || 'in_person',
             addr: c.addr || '',
             contact: JSON.stringify(['name', 'role', 'phone', 'email'].map(k => c.contact?.[k] ?? '')),
             next: c.next || null,
@@ -4705,7 +4706,7 @@ function makeFieldMerchants() {
             name: 'name',
             kind: 'kind',
             city: 'city',
-            reach: E.reach === 'online' ? 'now online' : 'now in person',
+            sells: E.sells === 'online' ? 'now sells online' : 'now sells in person',
             addr: 'address',
             contact: 'contact',
             next: 'next step',
@@ -4909,11 +4910,11 @@ function makeFieldMerchants() {
           X.add.owner = d.xaown;
           return renderPanel();
         }
-        if (d.xareach) {
+        if (d.xasells) {
           keepAdd();
           // the next step follows how they're reached, unless it was changed by hand
-          if (X.add.next === (X.add.reach === 'online' ? 'Send an intro email' : 'Walk in')) delete X.add.next;
-          X.add.reach = d.xareach;
+          if (X.add.next === (X.add.sells === 'online' ? 'Send the Pay with Clear API docs' : 'Walk in')) delete X.add.next;
+          X.add.sells = d.xasells;
           return renderPanel();
         }
         if (t.hasAttribute('data-xasave') && LV) {
@@ -4934,11 +4935,11 @@ function makeFieldMerchants() {
             stage: 'prospect',
             owner: on ? on.n.split(' ')[0] : null,
             val: +document.getElementById('xav').value.replace(/\D/g, '') || null,
-            next: document.getElementById('xanx').value.trim() || (A.reach === 'online' ? 'Send an intro email' : 'Walk in'),
+            next: document.getElementById('xanx').value.trim() || (A.sells === 'online' ? 'Send the Pay with Clear API docs' : 'Walk in'),
             due: null,
             source: SRC_OUT[A.source] || '',
-            reach: A.reach || 'in_person',
-            addr: A.reach === 'online' ? '' : document.getElementById('xaad')?.value.trim() || ''
+            sells: A.sells || 'in_person',
+            addr: A.sells === 'online' ? '' : document.getElementById('xaad')?.value.trim() || ''
           }, A.from ? {
             enquiry: A.from
           } : {}, [{
