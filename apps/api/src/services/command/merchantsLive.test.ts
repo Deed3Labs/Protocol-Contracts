@@ -183,6 +183,12 @@ describe('Merchants, live from the merchant app', () => {
     expect(totals.TX).toEqual(see.TX);
   });
 
+  test('a shop looked up on the map is pinned at its address; where it is isn’t for Totals', async () => {
+    await db.query(`INSERT INTO command.geocodes (address, lat, lng, matched) VALUES ('12 orange st, redlands', 34.0551, -117.1825, '12 ORANGE ST, REDLANDS, CA') ON CONFLICT (address) DO NOTHING`);
+    expect((await read()).PINS).toMatchObject({ p0: [34.0551, -117.1825] });
+    expect(await read({ level: TOTALS })).not.toHaveProperty('PINS');
+  });
+
   test('every card keeps its owner, value, next step and flag, whatever its stage, so saving one whole loses none', async () => {
     await db.query(`INSERT INTO command.merchant_stage (id, position, name, kind, city, stage, owner, per_month_cents, next_step, contact, source, address, notes, flag)
       VALUES ('p1', 1, 'Inland Cycle Works', 'Bikes', 'Redlands', 'signing', 'Dana', 120000, 'Sign the agreement', '{}', 'Poster', '', '', true)`);

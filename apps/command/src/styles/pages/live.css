@@ -133,3 +133,17 @@ button.fw-k{text-align:left;cursor:pointer}
 /* no scrollbars inside the pages either (command.css hides the document's): everything still scrolls */
 *{scrollbar-width:none !important}
 *::-webkit-scrollbar{display:none}
+
+/* Merchants › Where the shops are, a city picked: each shop's row picks it on the map; the picked one is marked and
+   opens from its Open → */
+.mo-rw{display:flex;align-items:center;border-top:1px solid var(--hair)}
+.mo-c .mo-rw:first-of-type{border-top:0}
+.mo-rw .mo-r{border-top:0;flex:1;min-width:0}
+.mo-rw.now{background:color-mix(in srgb,var(--fg) 6%,transparent)}
+.mo-rw.now .mo-r b{font-weight:600}
+.mo-op{flex:none;margin-right:22px;white-space:nowrap}
+/* a shop's pin: the city tag's look, one line, its name */
+.fsp.mshop .fsp-t{cursor:pointer}
+.fsp.mshop .mc-h b{white-space:nowrap}
+.fsp.mcity.mshop .fsp-d{left:-5px;top:-5px;width:10px;height:10px;box-shadow:inset 0 0 0 1.5px var(--fg),0 0 0 2px var(--ground)}
+.fsp.mcity.mshop.now .fsp-d{box-shadow:0 0 0 2px var(--ground),0 0 0 3.5px var(--fg)}

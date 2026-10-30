@@ -76,6 +76,7 @@ import { startOutboxProcessor } from './jobs/outboxProcessor.js';
 import { startCommandIndexer } from './jobs/commandIndexer.js';
 import { startCommandGithub } from './jobs/commandGithub.js';
 import { startCommandFeeds } from './jobs/commandFeeds.js';
+import { startCommandGeocoder } from './jobs/commandGeocoder.js';
 import { startCommandInvites } from './jobs/commandInvites.js';
 import { startWebhookDeliveries } from './jobs/webhookDeliveries.js';
 import { startRewardsJobs } from './jobs/rewardsJobs.js';
@@ -487,6 +488,8 @@ async function startServer() {
     startCommandGithub();
     // …and the sandbox feeds: Plaid, Bridge, Lithic and Stripe, each on its own schedule.
     startCommandFeeds();
+    // …and the Merchants map's pins: shops' street addresses, looked up with the US Census geocoder.
+    startCommandGeocoder();
     // …and the invites a batch queued, emailed once it's approved.
     startCommandInvites();
     // Acts on the Stripe webhooks the merchant back office stored. After the migrations, which
