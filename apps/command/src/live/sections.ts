@@ -259,6 +259,8 @@ const apply = {
     vars.refurb = d.REFURB ?? [];
     vars.preorders = d.PREORDERS ?? [];
     vars.enquiries = d.ENQ ?? [];
+    // where each shop is on the map, [lat, lng] at its street address, by merchant id or card id (none at Totals)
+    vars.pins = d.PINS ?? {};
     // the board is built from BOARD the next time it's drawn
     XS.board = null;
   },

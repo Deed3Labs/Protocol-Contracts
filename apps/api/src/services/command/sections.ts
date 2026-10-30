@@ -14,6 +14,7 @@ import { cohortsOf } from './cohorts.js';
 import { safeConfig } from './safe.js';
 import { costHistory, costingPayload, lowMaterials, noCosting, orderCosts, productCost, readBook, readHistory, roundCents, shown, type Book } from './costing.js';
 import { shopModelPayload } from './shopModel.js';
+import { shopPins } from './geocode.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -765,6 +766,8 @@ export interface MerchantsPayload {
   PREORDERS: Preorder[];
   /** The site's shop enquiries (its join form's "I run a shop"), newest first. Contacts are masked; one is shown by POST /merchants/enquiries/:id/reveal. */
   ENQ: Enquiry[];
+  /** Live, above Totals: each shop the map can pin, [lat, lng] at its street address (geocode.ts), by its merchant id or card id. */
+  PINS?: Record<string, [number, number]>;
   figures: Record<string, unknown>;
   asOf: number;
 }
@@ -1186,6 +1189,8 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
     ...(o.chain ? { COLLECTED } : {}),
     ...(await merchantRecords(db, o)),
     CLAIMS,
+    // where a shop is, like its address, isn't for Totals
+    ...(o.level > TOTALS ? { PINS: await shopPins(db) } : {}),
     figures: { ...(await figures(db, 'merchants')), 'merchants.newest_partner': newest ? { name: newest.name, joined: Number(newest.joined_ms) } : null },
     asOf: asOfFor('live', o.now),
   };

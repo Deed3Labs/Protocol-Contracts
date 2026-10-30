@@ -1006,7 +1006,7 @@ function makeFieldMerchants() {
         s.map.fitBounds(spec.bounds, {
           padding: spec.pad || 40,
           duration: s.fitted ? 500 : 0,
-          maxZoom: 14
+          maxZoom: spec.maxZoom || 14
         });
         s.fitted = true;
       }
@@ -3821,8 +3821,9 @@ function makeFieldMerchants() {
       };
       function cityList() {
         const by = {};
+        // a shop's town as the merchant app has it can carry its state ("Redlands, CA"): it's the town that's on the map
         MS.forEach(m => {
-          (by[m.city] ||= []).push(m);
+          (by[String(m.city || '').split(',')[0].trim()] ||= []).push(m);
         });
         const order = {
           transacting: 0,
@@ -3854,17 +3855,41 @@ function makeFieldMerchants() {
           m = mkMap(FULL, sz.w / sz.h);
         X.asp = sz.w / sz.h;
         const tag = (c, live) => <span className={`fsp mcity ${X.city === c.c ? 'now' : ''} ${c.tx ? '' : 'minor'} ${!c.tx && X.city !== c.c ? 'z' : ''}`} data-xcity={c.c} style={live ? undefined : css(m.at(...GEO[c.c]))}><svg className="fsp-l" aria-hidden="true"><line x1="0" y1="0" x2="0" y2="0" /></svg><i className="fsp-d" /><b className="fsp-t"><span className="mc-h"><b>{c.c}</b><span>{c.tx}/{c.l.length}</span></span><span className="mc-q">{c.l.slice(0, 18).map((s, __k) => <i key={__k} style={css(`background:${CK[s.stage]}`)} title={`${s.name} · ${STGN[s.stage]}`} />)}{c.l.length > 18 ? <em>+{c.l.length - 18}</em> : ''}</span></b></span>;
-        const pins = C.map((c, i) => <Fragment key={i}>{tag(c)}</Fragment>),
-          live = C.map(c => {
+        const pins = C.map((c, i) => <Fragment key={i}>{tag(c)}</Fragment>);
+        let live = C.map(c => {
             const [la, lo] = GEO[c.c];
             return {
               ll: [lo, la],
               html: tag(c, true)
             };
-          });
+          }),
+          bounds = [[FULL[0], FULL[2]], [FULL[1], FULL[3]]],
+          maxZoom;
+        /* live, a city picked: zoomed to it, each of its shops pinned at its address; a shop picked: zoomed to its door,
+           its pin dark as the picked city's tag is */
+        const city = LV && X.city ? C.find(c => c.c === X.city) : null;
+        if (city) {
+          const at = city.l.filter(s => s.ll),
+            [la, lo] = GEO[city.c],
+            pick = X.shop && at.find(s => s.id === X.shop);
+          live = at.map(s => ({
+            ll: [s.ll[1], s.ll[0]],
+            html: <span className={`fsp mcity minor mshop ${pick === s ? 'now' : ''}`} data-xshop={s.id}><svg className="fsp-l" aria-hidden="true"><line x1="0" y1="0" x2="0" y2="0" /></svg><i className="fsp-d" style={css(`background:${CK[s.stage]}`)} /><b className="fsp-t" title={`${s.name} · ${STGN[s.stage]}`}><span className="mc-h"><b>{s.name}</b></span></b></span>
+          }));
+          if (pick) {
+            bounds = [[pick.ll[1] - .004, pick.ll[0] - .003], [pick.ll[1] + .004, pick.ll[0] + .003]];
+            maxZoom = 16;
+          } else {
+            // the city's own middle, and every pinned shop in it
+            const lats = [la - .03, la + .03, ...at.map(s => s.ll[0])],
+              lngs = [lo - .04, lo + .04, ...at.map(s => s.ll[1])];
+            bounds = [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]];
+          }
+        }
         return fmSlot('corridor', {
-          bounds: [[FULL[0], FULL[2]], [FULL[1], FULL[3]]],
-          pad: 30,
+          bounds,
+          pad: city ? 50 : 30,
+          maxZoom,
           pins: live
         }, areaMap(m, {
           pins,
@@ -3987,8 +4012,8 @@ function makeFieldMerchants() {
       function renderOverviewLive() {
         const C = cityList(),
           sel = X.city ? C.find(c => c.c === X.city) : null;
-        const side = sel ? <div className="mo-c"><div className="mo-ch"><b>{sel.c}</b><button className="lnk3" data-xcity="">All cities</button></div>{sel.l.map((m, __k) => <button key={__k} className="mo-r" data-xopen={m.id}><i style={css(`background:${CK[m.stage]}`)} /><span><b>{m.name}</b><span>{STGN[m.stage]}{m.oct ? ` · ${money(m.oct)} in ${MO().short}` : ''}</span></span></button>)}</div> : <><div className="mo-lh"><span className="lbl">City</span><span className="lbl">{MO().long}</span><span className="lbl">Live</span></div>{C.length ? C.map((c, __k) => <button key={__k} className={`mo-r city ${c.tx ? '' : 'zero'}`} data-xcity={c.c}><b>{c.c}</b><span className="mo-o">{c.oct ? money(c.oct) : '–'}</span><span className="mo-n"><b>{c.tx}</b>{" of "}{c.l.length}</span></button>) : (LV ? <div className="lv-e"><span>No shops yet.</span></div> : <p className="small quiet" style={css("margin:10px 0 0")}>No shops yet.</p>)}</>;
-        const map = <div className="cell s12"><div className="hd"><h2>Where the shops are</h2><div className="r"><span className="lbl">{MS.length}{" shops in "}{plural(C.length, 'city', 'cities')}</span></div></div><div className="mo"><div className="mo-m">{corridor()}</div><div className="mo-s">{side}</div></div><div className="bk-ft"><span className="f-key"><i style={css("background:var(--fg)")} />{"Transacting "}<i style={css("background:var(--live)")} />{"Signing "}<i style={css("background:color-mix(in srgb,var(--fg) 45%,transparent)")} />{"Signed "}<i style={css("background:color-mix(in srgb,var(--fg) 18%,transparent)")} />In the pipeline</span><span className="small quiet d-only">{X.city ? 'Click the city again to see them all' : 'Click a city to see its shops'}</span></div></div>;
+        const side = sel ? <div className="mo-c"><div className="mo-ch"><b>{sel.c}</b><button className="lnk3" data-xcity="">All cities</button></div>{sel.l.map((m, __k) => <div key={__k} className={`mo-rw ${X.shop === m.id ? 'now' : ''}`}><button className="mo-r" data-xshop={m.id} aria-pressed={X.shop === m.id}><i style={css(`background:${CK[m.stage]}`)} /><span><b>{m.name}</b><span>{STGN[m.stage]}{m.oct ? ` · ${money(m.oct)} in ${MO().short}` : ''}{m.ll ? '' : ' · no pin yet'}</span></span></button>{X.shop === m.id ? <button className="lnk3 mo-op" data-xopen={m.id}>Open →</button> : ''}</div>)}</div> : <><div className="mo-lh"><span className="lbl">City</span><span className="lbl">{MO().long}</span><span className="lbl">Live</span></div>{C.length ? C.map((c, __k) => <button key={__k} className={`mo-r city ${c.tx ? '' : 'zero'}`} data-xcity={c.c}><b>{c.c}</b><span className="mo-o">{c.oct ? money(c.oct) : '–'}</span><span className="mo-n"><b>{c.tx}</b>{" of "}{c.l.length}</span></button>) : (LV ? <div className="lv-e"><span>No shops yet.</span></div> : <p className="small quiet" style={css("margin:10px 0 0")}>No shops yet.</p>)}</>;
+        const map = <div className="cell s12"><div className="hd"><h2>Where the shops are</h2><div className="r"><span className="lbl">{MS.length}{" shops in "}{plural(C.length, 'city', 'cities')}</span></div></div><div className="mo"><div className="mo-m">{corridor()}</div><div className="mo-s">{side}</div></div><div className="bk-ft"><span className="f-key"><i style={css("background:var(--fg)")} />{"Transacting "}<i style={css("background:var(--live)")} />{"Signing "}<i style={css("background:color-mix(in srgb,var(--fg) 45%,transparent)")} />{"Signed "}<i style={css("background:color-mix(in srgb,var(--fg) 18%,transparent)")} />In the pipeline</span><span className="small quiet d-only">{X.shop ? 'Click the shop again to see the whole city' : X.city ? 'Click a shop to zoom to it, or the city to see them all' : 'Click a city to see its shops'}</span></div></div>;
         /* needs you: what the shops and the pipeline say, most pressing first */
         const NEED = [];
         MS.filter(m => m.stage === 'signing').forEach(m => NEED.push(['underway', `Sign ${m.name}`, `${m.next || 'Finish onboarding'} · ${m.owner === 'none' ? 'no owner yet' : m.owner === R.me ? 'you' : TEAM[m.owner].n}`, m.due != null ? dueTxtM(m) : '', <><span className="who">{m.owner === R.me ? 'You’re on it' : m.owner === 'none' ? 'Nobody’s on it' : `${firstName(m.owner)} is on it`}</span><button className="lnk" data-xopen={m.id}>Open →</button></>, m.owner === 'none']));
@@ -4482,7 +4507,7 @@ function makeFieldMerchants() {
           closeX();
           return render();
         }
-        const t = e.target.closest('button,a,tr[data-xopen],input,select,[data-xcity]');
+        const t = e.target.closest('button,a,tr[data-xopen],input,select,[data-xcity],[data-xshop]');
         if (!t) {
           const mm = document.querySelector('.mm3');
           if (mm) mm.hidden = true;
@@ -4601,6 +4626,12 @@ function makeFieldMerchants() {
         }
         if (d.xcity !== undefined) {
           X.city = d.xcity && X.city !== d.xcity ? d.xcity : null;
+          X.shop = null;
+          return render();
+        }
+        // live: a shop in the picked city, on the map or in its list: zoomed to, or back out to the city
+        if (d.xshop) {
+          X.shop = X.shop === d.xshop ? null : d.xshop;
           return render();
         }
         if (d.xopen) {

@@ -157,6 +157,9 @@ export function fmLive() {
   // the pipeline's own cards: shops that aren't in the merchant app yet
   for (const c of cards.filter((x) => !used.has(x.id)))
     MS.push({ id: c.id, name: c.name, kind: c.kind || 'Shop', city: c.city || '', stage: c.stage, founding: !!c.founding, owed: c.owed || 0, posters: c.posters ?? posters(c.name), hw: '–', ...fromCard(c) });
+  // where each one is on the map: its own address, else its pipeline card's ([lat, lng], or null for no pin yet)
+  const PINS = vars.pins ?? {};
+  for (const m of MS) m.ll = PINS[m.id] ?? (m.card ? PINS[m.card.id] : null) ?? null;
   const MSBY = Object.fromEntries(MS.map((m) => [m.id, m]));
 
   // Points are the only devices that check in: the merchant app's own statuses, problems first
