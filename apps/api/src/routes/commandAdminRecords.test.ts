@@ -73,6 +73,17 @@ async function person(name: string, levels: Levels) {
   expect((await call(kai, 'PATCH', `/people/${id}/access`, { custom: levels })).status).toBe(200);
   return who;
 }
+/** Someone outside the admins at Approve everywhere: giving Approve waits for a second person, Dana. */
+async function approver(name: string) {
+  const email = `${name}@useclear.org`;
+  await call(kai, 'POST', '/invites', { email, name, group: 'outside' });
+  const who = await signIn(`did:${name}|${email}`);
+  const id = (await call(kai, 'GET', '/people')).body.people.find((p: any) => p.email === email).id;
+  const r = await call(kai, 'PATCH', `/people/${id}/access`, { custom: all(4) });
+  if (r.status === 202) expect((await call(dana, 'POST', `/proposals/${r.body.proposal.id}/approve`)).status).toBe(200);
+  else expect(r.status).toBe(200);
+  return who;
+}
 const settings = async (who: Who = kai) => (await call(who, 'GET', '/sections/settings')).body;
 const governance = async (who: Who = kai) => (await call(who, 'GET', '/sections/governance')).body;
 const members = async (who: Who = kai) => (await call(who, 'GET', '/sections/members')).body;
@@ -228,9 +239,10 @@ describe('Settings → key age', () => {
 
 describe('Settings → worth a look', () => {
   test('joins, new devices, a reveal with no reason and a device gone quiet, from what’s already kept; at Totals, no names', async () => {
-    // a second device for Kai, a reveal in a rush, and a device last seen ten days ago
+    // a second device for Kai, a reveal in a rush (by someone outside the admins: an admin's isn't logged), and a
+    // device last seen ten days ago
     await signIn('did:kai|kai@useclear.org', 'device-kai-the-new-phone-00');
-    expect((await call(kai, 'POST', '/members/1/reveal', { rush: true })).status).toBe(200);
+    expect((await call(await approver('worthrush'), 'POST', '/members/1/reveal', { rush: true })).status).toBe(200);
     await db.query(
       `INSERT INTO command.devices (person_id, device_key, label, first_seen, last_seen) SELECT id, 'device-dana-old-laptop-0000', 'Dana’s old laptop', now() - interval '20 days', now() - interval '10 days' FROM command.people WHERE email = 'dana@useclear.org'`,
     );
