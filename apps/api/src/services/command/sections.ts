@@ -1339,7 +1339,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       : a.id === 'coop' && coop ? coop.weeks
       : [...w.slice(0, -1), now];
     // the USDC behind savings is in the vault, not at Bridge: Bridge is how it arrives
-    // the co-op's balance is the Ops Safe's USDC (its ClearCredit is a claim on the AssurancePool's cash, shown apart)
+    // the co-op's balance is the Ops Safe's USDC (its ClearCredit is a claim still to be cashed, from the PayoutPool or the AssurancePool's excess, shown apart)
     const [purpose, source] =
       a.id === 'sav' && reserve ? ['CLRUSD, backed 1:1 by USDC in the savings vault', 'protocol']
       : a.id === 'coop' && coop ? ['USDC in the Ops Safe, spent by a member vote', 'protocol']
