@@ -1813,7 +1813,7 @@ function makeGrowth() {
       weak = weakest(T);
     const w = 1000 / 6,
       mid = 60,
-      hh = v => v ? 6 + 104 * Math.pow(v / Math.max(T[0], 1), .25) : 2; // a stage no one reached is a hairline, as on Home
+      hh = v => v ? 6 + 104 * Math.pow(v / Math.max(T[0], 1), .25) : 6; // a stage no one reached is a thin line, as on Home
     let top = '',
       bot = '';
     T.forEach((v, i) => {
