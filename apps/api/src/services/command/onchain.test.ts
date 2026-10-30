@@ -62,6 +62,8 @@ const reader: ChainReader = {
       if (c.contract === 'AssurancePool')
         return c.fn === 'reserveToken' ? USDC : c.fn === 'bufferBalance' ? BigInt(usdc(125.03)) : c.fn === 'targetRTD' ? 800_000_000_000_000_000n : c.fn === 'hasValidRTD' ? true : 0n;
       // the PayoutPool's claims, the registry's shops and the credit book: none here (credit.test.ts reads them)
+      // what the PayoutPool holds to pay them: the September half-dollar and the $10 the offers line settled
+      if (c.contract === 'PayoutPool' && c.fn === 'held') return BigInt(usdc(10.5));
       if (c.contract === 'PayoutPool' && !(c.fn in views)) return c.fn === 'reserveToken' ? USDC : 0n;
       if (c.contract === 'MerchantRegistry') return 0n;
       // the $10 offers' line: 40 owed of a 1,000 cap, 20 of it not yet spent
@@ -324,6 +326,12 @@ describe('the AssurancePool, live', () => {
     // 0.8 × (100 + 50) = 120 needed of the 200: 80 above, room for 100 more
     expect(a).toMatchObject({ exposure: 100, bonds: 50, gap: 80, room: 100 });
     expect((await assurancePoolLive(pool({ primary: 200, target: 0.8, exposure: 100 }))).bonds).toBe(0);
+  });
+
+  test('the Payout pool account is what the PayoutPool holds, as the cash flow chart reads it', async () => {
+    const m: any = await moneySection(db, read());
+    expect(m.M.payout).toBe(10.5);
+    expect(m.ACCTS.find((a: any[]) => a[0] === 'pay')[5]).toBe(10.5);
   });
 
   test('what it holds is the contract’s: primary, buffer and excess reserves together', async () => {

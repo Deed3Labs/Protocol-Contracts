@@ -1340,7 +1340,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   // live, BondVault's balance is the chain's: the bond buyers' money, held to pay them at maturity
   const vault = provider === 'live' ? await bondVaultLive(chainOf(o, 'money')) : null;
   if (vault) M.vault = vault.held;
-  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}), ...(vault ? { bond: vault.held } : {}), ...(coop ? { coop: coop.balance } : {}) };
+  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}), ...(vault ? { bond: vault.held } : {}), ...(coop ? { coop: coop.balance } : {}), ...(payouts ? { pay: payouts.held } : {}) };
   const ACCTS = accts.map((a) => {
     const w = weeks(a.id);
     const now = live[a.id] ?? w.at(-1) ?? 0;
