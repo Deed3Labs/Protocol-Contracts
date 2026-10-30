@@ -211,12 +211,14 @@ export function fmLive() {
       n: p.n,
     });
   }
-  for (const m of MS.filter((m) => m.card && ['prospect', 'talking', 'signing'].includes(m.stage)))
+  // an online shop (e-commerce, for the API) has no door to walk in at, so it's nobody's stop; a storefront is, at its address
+  for (const m of MS.filter((m) => m.card && m.card.sells !== 'online' && ['prospect', 'talking', 'signing'].includes(m.stage)))
     POOL.push({
       id: 'c:' + m.id,
       kind: 'merchant',
       shop: m.name,
       city: m.city,
+      addr: m.card.addr || '',
       what: m.next || (m.stage === 'prospect' ? 'Walk in' : 'Follow up'),
       why: m.due != null ? (m.due < 0 ? `${-m.due} days overdue` : m.due === 0 ? 'Due today' : `Due ${fmtD(TODAY + m.due * DAY)}`) : m.last == null ? 'Never visited' : `Last visit ${m.last} days ago`,
       stage: m.stage,

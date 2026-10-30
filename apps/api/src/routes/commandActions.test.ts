@@ -123,6 +123,20 @@ describe('Command’s own records, saved straight away', () => {
     expect((await q(`SELECT removed_reason FROM command.merchant_stage WHERE id = 'n-test'`))[0].removed_reason).toBe('Closed down');
   });
 
+  test('a card sells in person, at its address, or online; a save that leaves it out keeps it', async () => {
+    const card = { id: 'n-sells', name: 'Web Only Bikes', kind: 'Bikes', city: 'Redlands', stage: 'prospect', addr: '12 Orange St' };
+    expect((await call(kai, 'POST', '/actions/merchants/card-save', card)).status).toBe(200);
+    const read = async () => (await call(kai, 'GET', '/sections/merchants')).body.BOARD.find((x: any) => x.id === 'n-sells');
+    // every card so far was a storefront, so one saved without saying sells in person
+    expect([(await read()).sells, (await read()).addr]).toEqual(['in_person', '12 Orange St']);
+    expect((await call(kai, 'POST', '/actions/merchants/card-save', { ...card, sells: 'online', addr: '', log: [{ text: 'Edited the details · now sells online, address', type: 'edit' }] })).status).toBe(200);
+    expect([(await read()).sells, (await read()).addr]).toEqual(['online', '']);
+    // a page that doesn't know about sells (an older one) saves the card without it, and it stays online
+    expect((await call(kai, 'POST', '/actions/merchants/card-save', { ...card, addr: '', next: 'Send the Pay with Clear API docs' })).status).toBe(200);
+    expect((await read()).sells).toBe('online');
+    expect((await call(kai, 'POST', '/actions/merchants/card-save', { ...card, sells: 'phone' })).status).toBe(400);
+  });
+
   test('a product draft is saved from what was typed, not the prototype’s sample', async () => {
     const r = await call(kai, 'POST', '/actions/shop/product-add', { line: 'graphic', name: 'Graphic Tee', variant: 'Test Print', price: 44, cost: [9, 5, 1, 1], options: ['Black'], sizes: ['S', 'M'] });
     expect(r.status).toBe(200);

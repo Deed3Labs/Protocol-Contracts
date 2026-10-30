@@ -1649,7 +1649,7 @@ function makeFieldMerchants() {
           who = LV ? '–' : ['the owner', 'Luis', 'Kim', 'Ms. Tran', 'Hector', 'Sofia'][hashN(x.shop) % 6];
         const si = x.kind === 'merchant' ? STAGES_M.findIndex(s => s[0] === x.stage) : -1;
         const btn = !r || !canEdit(r) ? '' : on === r ? <button className="btn p" data-fadd={x.id}>{"Take off "}{dayName.slice(0, 3)}</button> : on && !canEdit(on) ? <span className="small quiet">{"On "}{firstName(on.who)}{"’s "}{fmtWD(dayT(on.d)).slice(0, 3)}{" route"}</span> : <button className="btn p" data-fadd={x.id} title={`${r.who === R.me ? 'Your' : firstName(r.who) + '’s'} ${dayName} route`}>{on ? 'Move' : 'Add'}{" to "}{dayName.slice(0, 3)}</button>;
-        html(pn, <><div className="pn-hd"><span className="lbl">{KIND[x.kind]}</span><i className="fl-sv" style={css(`background:${sevCol(x.sev)}`)} /><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top">{p ? designThumb(p.design, 48) : x.kind === 'device' ? batteryThumb(48, 1) : x.kind === 'merchant' ? <span className="fshop">{x.shop.split(' ').map(w => w[0]).slice(0, 2).join('')}</span> : designThumb(x.design || 'B', 48)}<div><h3>{x.shop}</h3><span className="small quiet">{x.city}</span></div></div><div className="fit"><b>{x.what}</b><span>{x.why}</span></div>{x.kind === 'merchant' ? <div><div className="w90-h"><span className="lbl">In the Merchants pipeline</span>{x.owner ? <b>{x.owner === R.me ? 'Your lead' : firstName(x.owner) + '’s lead'}</b> : ''}</div><div className="fpl">{STAGES_M.map(([k, t], i) => <span key={i} className={i < si ? 'past' : i === si ? 'now' : ''}>{t}</span>)}</div>{x.val ? <span className="small quiet">Could finance about ${int(x.val)}{" a month"}</span> : ''}</div> : ''}{p ? <div className="w90"><div className="w90-h"><span className="lbl">{"Poster "}{pid(p.n)}{" · 60-day life"}</span><b className={L.d < 0 || p.status !== 'up' ? 'warn' : ''}>{p.status === 'missing' ? 'Gone' : L.d < 0 ? `${-L.d} days late` : `${L.d} days left`}</b></div><span className={`wbar big ${L.d < 10 || p.status !== 'up' ? 'lo' : ''}`}><i style={css(`width:${L.pct * 100}%`)} /></span><span className="small quiet">{"Design "}{p.design}{" · "}{p.scans}{" scans in 30 days · hung "}{fmtD(p.hung)}</span></div> : ''}<div className="led"><div><span>Open until</span><b>{info}</b></div><div><span>Ask for</span><b>{who}</b></div><div><span>Takes about</span><b>{x.mins}{" min"}</b></div><div><span>Planned</span><b>{on ? `${fmtWD(dayT(on.d))} · ${on.who === R.me ? 'you' : firstName(on.who)}` : 'Not yet'}</b></div></div>{x.kind === 'merchant' ? <p className="small quiet" style={css("margin:0")}>Whatever happens on the visit gets logged back to this shop in Merchants.</p> : x.kind === 'device' ? <p className="small quiet" style={css("margin:0")}>From Merchants. Bring a spare battery and a receipt roll.</p> : x.kind === 'new' ? <p className="small quiet" style={css("margin:0")}>{LV && !x.design ? 'From Placement. The owner said yes; the design is picked when it goes up.' : <>{"From Placement. The owner said yes; bring design "}{x.design}.</>}</p> : ''}</div><div className="pn-ft mft">{btn}{x.kind === 'merchant' ? <button className="btn" data-fgo="merchants" data-fshop={x.shop}>In Merchants ↗</button> : ''}{LV ? '' : <div className="more3"><button className="btn" data-fmore="">More ▾</button><div className="mm3" hidden><button data-fsnooze={x.id}>{R.snoozed.has(x.id) ? 'Unsnooze' : 'Snooze a week'}{" "}<span>Hides it</span></button><button className="dz" data-fdrop={x.id}>{"Not needed "}<span>Logged</span></button></div></div>}</div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">{KIND[x.kind]}</span><i className="fl-sv" style={css(`background:${sevCol(x.sev)}`)} /><button className="x" data-fclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top">{p ? designThumb(p.design, 48) : x.kind === 'device' ? batteryThumb(48, 1) : x.kind === 'merchant' ? <span className="fshop">{x.shop.split(' ').map(w => w[0]).slice(0, 2).join('')}</span> : designThumb(x.design || 'B', 48)}<div><h3>{x.shop}</h3><span className="small quiet">{x.city}</span></div></div><div className="fit"><b>{x.what}</b><span>{x.why}</span></div>{x.kind === 'merchant' ? <div><div className="w90-h"><span className="lbl">In the Merchants pipeline</span>{x.owner ? <b>{x.owner === R.me ? 'Your lead' : firstName(x.owner) + '’s lead'}</b> : ''}</div><div className="fpl">{STAGES_M.map(([k, t], i) => <span key={i} className={i < si ? 'past' : i === si ? 'now' : ''}>{t}</span>)}</div>{x.val ? <span className="small quiet">Could finance about ${int(x.val)}{" a month"}</span> : ''}</div> : ''}{p ? <div className="w90"><div className="w90-h"><span className="lbl">{"Poster "}{pid(p.n)}{" · 60-day life"}</span><b className={L.d < 0 || p.status !== 'up' ? 'warn' : ''}>{p.status === 'missing' ? 'Gone' : L.d < 0 ? `${-L.d} days late` : `${L.d} days left`}</b></div><span className={`wbar big ${L.d < 10 || p.status !== 'up' ? 'lo' : ''}`}><i style={css(`width:${L.pct * 100}%`)} /></span><span className="small quiet">{"Design "}{p.design}{" · "}{p.scans}{" scans in 30 days · hung "}{fmtD(p.hung)}</span></div> : ''}<div className="led">{LV && x.kind === 'merchant' ? <div><span>Address</span><b>{x.addr ? <a href={`https://maps.google.com/?q=${encodeURIComponent([x.addr, x.city].filter(Boolean).join(' '))}`} target="_blank" rel="noopener">{x.addr}</a> : <span className="quiet">Not on the card yet</span>}</b></div> : ''}<div><span>Open until</span><b>{info}</b></div><div><span>Ask for</span><b>{who}</b></div><div><span>Takes about</span><b>{x.mins}{" min"}</b></div><div><span>Planned</span><b>{on ? `${fmtWD(dayT(on.d))} · ${on.who === R.me ? 'you' : firstName(on.who)}` : 'Not yet'}</b></div></div>{x.kind === 'merchant' ? <p className="small quiet" style={css("margin:0")}>Whatever happens on the visit gets logged back to this shop in Merchants.</p> : x.kind === 'device' ? <p className="small quiet" style={css("margin:0")}>From Merchants. Bring a spare battery and a receipt roll.</p> : x.kind === 'new' ? <p className="small quiet" style={css("margin:0")}>{LV && !x.design ? 'From Placement. The owner said yes; the design is picked when it goes up.' : <>{"From Placement. The owner said yes; bring design "}{x.design}.</>}</p> : ''}</div><div className="pn-ft mft">{btn}{x.kind === 'merchant' ? <button className="btn" data-fgo="merchants" data-fshop={x.shop}>In Merchants ↗</button> : ''}{LV ? '' : <div className="more3"><button className="btn" data-fmore="">More ▾</button><div className="mm3" hidden><button data-fsnooze={x.id}>{R.snoozed.has(x.id) ? 'Unsnooze' : 'Snooze a week'}{" "}<span>Hides it</span></button><button className="dz" data-fdrop={x.id}>{"Not needed "}<span>Logged</span></button></div></div>}</div></>);
         return;
       }
       if (P.k === 'add') {
@@ -2756,6 +2756,9 @@ function makeFieldMerchants() {
       contact: Object.fromEntries(['name', 'role', 'phone', 'email'].map(k => [k, String(c.contact?.[k] ?? '')])),
       source: c.source || '',
       addr: c.addr || '',
+      ...(c.sells ? {
+        sells: c.sells
+      } : {}),
       note: c.note || '',
       flag: !!c.flag,
       ...patch,
@@ -2894,7 +2897,7 @@ function makeFieldMerchants() {
         staff = LV.ROUTE.staff || 'Someone';
       const info = cur ? SHOP_INFO[cur.id] || ['', '', ''] : null;
       const sub = t => t.done ? `${t.out || 'Done'} at ${t.done}` : t.kind === 'poster' ? `Design ${t.p.design} · ${t.note || 'Scan the code to log it'}` : t.note || '';
-      const now = !N ? <div className="cell s7" id="fnow"><div className="hd"><h2>No route today</h2></div><div className="fn-top"><p className="fn-name">Nobody is out</p><span>A route planned for today shows here once it’s accepted.</span></div><div className="f-ft2"><span className="small quiet">{R.routes.length ? `${R.routes.length} route${R.routes.length === 1 ? '' : 's'} planned ahead` : 'No routes planned ahead'}</span><button className="lnk3" data-ftab="plan">Plan a route →</button></div></div> : cur ? <div className="cell s7" id="fnow"><div className="hd"><h2>{"Now · stop "}{ci + 1}{" of "}{N}</h2><div className="r"><span className="lbl">{cur.eta ? 'ETA ' + cur.eta : ''}</span></div></div><div className="fn-top"><p className="fn-name">{cur.name}</p><span>{[cur.where, cur.city].filter(Boolean).join(' · ')}</span></div><div className="fn-facts"><div><span className="lbl">Open until</span><b>{info[0] || '–'}</b></div><div><span className="lbl">Ask for</span><b>{info[1] || '–'}</b></div><div><span className="lbl">Last visit</span><b>{info[2] || '–'}</b></div></div><div className="fn-tasks">{cur.tasks.map((t, i) => <div key={i} className={`fn-t ${t.done ? 'done' : ''}`}><span className="fn-c">{t.done ? ICO.chk : ''}</span><span className="fn-k"><b>{t.t}</b><span>{sub(t)}</span></span>{t.done ? '' : t.kind === 'poster' ? <button className="btn sm-b" data-fscan={t.p.n}>{ICO.scan}Scan</button> : <button className="btn sm-b" data-fdev={i}>Mark done</button>}</div>)}</div><div className="f-ft2"><button className="lnk3" data-fskip="">Skip{nx ? ` · next is ${nx.name}` : ''}</button><a className="lnk3" href={`https://maps.google.com/?q=${encodeURIComponent(cur.name + ' ' + cur.city)}`} target="_blank" rel="noopener">Directions ↗</a></div></div> : <div className="cell s7" id="fnow"><div className="hd"><h2>Route done</h2></div><div className="fn-top"><p className="fn-name">{"All "}{N}{" stops logged"}</p><span>Anything left over goes back to what needs a visit.</span></div><div className="f-ft2"><span className="small quiet">{LV.ROUTE.backBy ? 'Back by ' + LV.ROUTE.backBy : ''}</span><button className="lnk3" data-ftab="plan">What needs a visit →</button></div></div>;
+      const now = !N ? <div className="cell s7" id="fnow"><div className="hd"><h2>No route today</h2></div><div className="fn-top"><p className="fn-name">Nobody is out</p><span>A route planned for today shows here once it’s accepted.</span></div><div className="f-ft2"><span className="small quiet">{R.routes.length ? `${R.routes.length} route${R.routes.length === 1 ? '' : 's'} planned ahead` : 'No routes planned ahead'}</span><button className="lnk3" data-ftab="plan">Plan a route →</button></div></div> : cur ? <div className="cell s7" id="fnow"><div className="hd"><h2>{"Now · stop "}{ci + 1}{" of "}{N}</h2><div className="r"><span className="lbl">{cur.eta ? 'ETA ' + cur.eta : ''}</span></div></div><div className="fn-top"><p className="fn-name">{cur.name}</p><span>{[cur.where, cur.city].filter(Boolean).join(' · ')}</span></div><div className="fn-facts"><div><span className="lbl">Open until</span><b>{info[0] || '–'}</b></div><div><span className="lbl">Ask for</span><b>{info[1] || '–'}</b></div><div><span className="lbl">Last visit</span><b>{info[2] || '–'}</b></div></div><div className="fn-tasks">{cur.tasks.map((t, i) => <div key={i} className={`fn-t ${t.done ? 'done' : ''}`}><span className="fn-c">{t.done ? ICO.chk : ''}</span><span className="fn-k"><b>{t.t}</b><span>{sub(t)}</span></span>{t.done ? '' : t.kind === 'poster' ? <button className="btn sm-b" data-fscan={t.p.n}>{ICO.scan}Scan</button> : <button className="btn sm-b" data-fdev={i}>Mark done</button>}</div>)}</div><div className="f-ft2"><button className="lnk3" data-fskip="">Skip{nx ? ` · next is ${nx.name}` : ''}</button><a className="lnk3" href={`https://maps.google.com/?q=${encodeURIComponent([cur.name, cur.where, cur.city].filter(Boolean).join(' '))}`} target="_blank" rel="noopener">Directions ↗</a></div></div> : <div className="cell s7" id="fnow"><div className="hd"><h2>Route done</h2></div><div className="fn-top"><p className="fn-name">{"All "}{N}{" stops logged"}</p><span>Anything left over goes back to what needs a visit.</span></div><div className="f-ft2"><span className="small quiet">{LV.ROUTE.backBy ? 'Back by ' + LV.ROUTE.backBy : ''}</span><button className="lnk3" data-ftab="plan">What needs a visit →</button></div></div>;
       const map = <div className="cell s5"><div className="hd"><h2>The route</h2><div className="r"><span className="lbl">{LV.ROUTE.miles ? int(LV.ROUTE.miles) + ' mi · ' : ''}{N}{N === 1 ? ' stop' : ' stops'}</span></div></div><div className="fm-wrap" data-fit="today">{fitMap('today', a => routeMap('today', STOPS, ci, a), .86)}</div><div className="bk-ft"><span><b>{done}{" of "}{N}</b>{" done"}{per ? ` · about ${Math.floor(leftMins / 60)} h ${leftMins % 60} min left` : ''}</span><span className="f-key"><i className="k-done" />{"Done "}<i className="k-now" />{"Now "}<i className="k-next" />Next</span></div></div>;
       const groups = [];
       STOPS.forEach((s, i) => {
@@ -4369,21 +4372,53 @@ function makeFieldMerchants() {
           si = STG5.findIndex(s => s[0] === m.stage),
           ds = devFix(m),
           c = m.card;
+        const open = ['prospect', 'talking', 'signing'].includes(m.stage);
+        if (X.edit === m.id && c && edit && open) return editPanel(pn, m, c);
         const visits = VLOG.filter(v => v.shop === m.name),
           notes = (c?.log || []).filter(l => l[3] !== 'visit');
         const nextBlock = m.next ? <div className="fit"><b>{m.next}</b><span>{m.due != null ? m.due < 0 ? `${-m.due} days overdue` : m.due === 0 ? 'Due today' : 'Due ' + fmtWD(dayT(m.due)) : 'No date set'}{" · "}{ds ? `on ${staffFirst()}’s route today, stop ${STOPS.indexOf(ds) + 1}` : 'not on a route'}</span></div> : '';
         const money_ = m.stage === 'transacting' ? <><div><div className="w90-h"><span className="lbl">{`Cleared · ${MO().long}`}</span><b>{money(m.oct)}{" · "}{plural(m.octN, 'sale', 'sales')}</b></div><span className="small quiet">{`${money(m.sept)} in ${MO().last}`}</span></div><div className="led"><div><span>Fee</span><b>{m.fee ? m.fee.toFixed(1) + '%' + (m.founding ? ' · founding' : '') : 'None'}</b></div><div><span>Terms</span><b>{m.terms || '–'}</b></div><div><span>Cap per sale</span><b>{m.cap ? '$' + m.cap : <span className="quiet">Not read yet</span>}</b></div><div><span>Plans opened</span><b>{m.orig}</b></div><div><span>Next payout</span><b>{m.terms === 'NET-30' ? money(payOf(m).total) + ' · the monthly run' : m.terms ? 'On ' + m.terms : '–'}</b></div><div><span>$10 owed to them</span><b>{m.owed ? money(m.owed) : 'Nothing'}</b></div><div><span>Hardware</span><b>{m.hw || '–'}</b></div></div></> : '';
         const dev = FLEET[m.id] ? <div><span className="lbl">Devices</span><div className="xdv">{DTYPE.filter(([k]) => FLEET[m.id][k]).map(([k, t], __k) => <span key={__k}><span className="xd-q">{FLEET[m.id][k].map((s, __k) => <i key={__k} className={s} />)}</span>{t}{FLEET[m.id][k].length > 1 ? ' × ' + FLEET[m.id][k].length : ''}</span>)}</div>{FLEET[m.id].note ? <span className="small warn">{FLEET[m.id].note}</span> : ''}</div> : '';
         const sel = m.stage === 'signed' ? <div className="led"><div><span>Posters up</span><b>{m.posters}</b></div><div><span>$10 owed to them</span><b>{m.owed ? money(m.owed) : 'Nothing'}</b></div><div><span>Takes cards</span><b className="warn">Not yet</b></div></div> : '';
-        const pro = ['prospect', 'talking', 'signing'].includes(m.stage) ? <div className="led"><div><span>Could finance</span><b>{m.val ? money(m.val).replace('.00', '') + ' a month' : '–'}</b></div><div><span>Came from</span><b>{c?.source || '–'}</b></div><div><span>Kind</span><b>{m.kind}</b></div></div> : '';
+        const who_ = c ? [c.contact?.name, c.contact?.role].filter(Boolean).join(' · ') : '',
+          ways_ = [c?.contact?.phone, c?.contact?.email].filter(Boolean).join(' · ');
+        const pro = open ? <div className="led"><div><span>Could finance</span><b>{m.val ? money(m.val).replace('.00', '') + ' a month' : '–'}</b></div><div><span>Came from</span><b>{c?.source || '–'}</b></div><div><span>Kind</span><b>{m.kind}</b></div>{c ? <div><span>Sells</span><b>{c.sells === 'online' ? 'Online · the API' : 'In person'}</b></div> : ''}{c && c.sells !== 'online' ? <div><span>Address</span><b>{c.addr ? <a href={`https://maps.google.com/?q=${encodeURIComponent([c.addr, m.city].filter(Boolean).join(' '))}`} target="_blank" rel="noopener">{c.addr}</a> : <span className="quiet">Not on the card yet</span>}</b></div> : ''}{who_ || ways_ ? <div><span>Contact</span><b>{[who_, ways_].filter(Boolean).join(' · ')}</b></div> : ''}</div> : '';
         const items = [...(edit && ['prospect', 'talking', 'signing'].includes(m.stage) ? STG5.filter(([k]) => k !== m.stage && k !== 'transacting').map(([k, t], __k) => <button key={'s' + __k} data-xstage={`${m.id}|${k}`}>{"Move to "}{t}</button>) : []), ...(adm && m.cap ? [<button key="cap" data-xmprop={`cap|${m.id}`}>{`Raise the cap to $${nextCap(m)} `}<span>2nd approval</span></button>] : []), ...(adm ? [<button key="off" className="dz" data-xmprop={`off|${m.id}`}>{"Pause payments "}<span>Logged</span></button>] : []), ...(edit && ['prospect', 'talking'].includes(m.stage) ? [<button key="nf" className="dz" data-xstage={`${m.id}|closed`}>{"Not a fit "}<span>Logged</span></button>] : [])];
         const why = RO() ? 'Read-only in this view' : !c ? 'Not in the pipeline yet, so there’s no card to log to' : firstName(m.owner) + '’s shop · read-only for you';
-        html(pn, <><div className="pn-hd"><span className="lbl">{STGN[m.stage] || 'Shop'}</span>{m.founding ? <span className="fst tlv">Founding</span> : ''}<button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top"><span className="fshop">{ini(m.name)}</span><div><h3>{m.name}</h3><span className="small quiet">{[m.kind, m.city, m.owner === me ? 'your shop' : m.owner === 'none' ? 'no owner yet' : firstName(m.owner) + '’s shop'].filter(Boolean).join(' · ')}</span></div></div><div className="fpl x5">{STG5.map(([k, t], i) => <span key={i} className={i < si ? 'past' : i === si ? 'now' : ''}>{t}</span>)}</div>{nextBlock}{pro}{sel}{money_}{dev}<div><span className="lbl">Visits</span>{visits.length ? visits.slice(0, 6).map((v, __k) => <div key={__k} className="hs3"><b>{v.out}{v.to ? ' → ' + STGN[v.to] : ''}{" "}<span className="quiet" style={css("font-weight:400")}>{"· "}{v.what}</span></b><span>{vDay(v.d)}{" · "}{v.who === me ? 'you' : firstName(v.who)}</span></div>) : (LV ? <div className="lv-e"><span>No visits logged yet.</span></div> : <p className="small quiet" style={css("margin:6px 0 0")}>No visits logged yet.</p>)}</div><div><span className="lbl">Notes</span>{c?.note ? <div className="nt3"><p>{c.note}</p><span>On the card</span></div> : ''}{notes.length ? notes.slice(0, 8).map((n, __k) => <div key={__k} className="nt3"><p>{n[1]}</p><span>{n[2] || 'Someone'}{" · "}{fmtD(n[0])}</span></div>) : c?.note ? '' : (LV ? <div className="lv-e"><span>No notes yet.</span></div> : <p className="small quiet" style={css("margin:6px 0 0")}>No notes yet.</p>)}{edit ? <div className="nt3-in"><textarea id="xnote" rows="2" placeholder="Add a note for the team" /><button className="btn" style={css("height:32px")} data-xnote={m.id}>Add</button></div> : ''}</div></div><div className="pn-ft mft">{edit ? <button className="btn p" data-xlog={m.id}>Log a visit</button> : <span className="small quiet" style={css("margin-left:auto")}>{why}</span>}{items.length ? <div className="more3"><button className="btn" data-xmore="">More ▾</button><div className="mm3" hidden>{items}</div></div> : ''}</div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">{STGN[m.stage] || 'Shop'}</span>{m.founding ? <span className="fst tlv">Founding</span> : ''}<button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div className="fpr-top"><span className="fshop">{ini(m.name)}</span><div><h3>{m.name}</h3><span className="small quiet">{[m.kind, m.city, m.owner === me ? 'your shop' : m.owner === 'none' ? 'no owner yet' : firstName(m.owner) + '’s shop'].filter(Boolean).join(' · ')}</span></div></div><div className="fpl x5">{STG5.map(([k, t], i) => <span key={i} className={i < si ? 'past' : i === si ? 'now' : ''}>{t}</span>)}</div>{nextBlock}{pro}{sel}{money_}{dev}<div><span className="lbl">Visits</span>{visits.length ? visits.slice(0, 6).map((v, __k) => <div key={__k} className="hs3"><b>{v.out}{v.to ? ' → ' + STGN[v.to] : ''}{" "}<span className="quiet" style={css("font-weight:400")}>{"· "}{v.what}</span></b><span>{vDay(v.d)}{" · "}{v.who === me ? 'you' : firstName(v.who)}</span></div>) : (LV ? <div className="lv-e"><span>No visits logged yet.</span></div> : <p className="small quiet" style={css("margin:6px 0 0")}>No visits logged yet.</p>)}</div><div><span className="lbl">Notes</span>{c?.note ? <div className="nt3"><p>{c.note}</p><span>On the card</span></div> : ''}{notes.length ? notes.slice(0, 8).map((n, __k) => <div key={__k} className="nt3"><p>{n[1]}</p><span>{n[2] || 'Someone'}{" · "}{fmtD(n[0])}</span></div>) : c?.note ? '' : (LV ? <div className="lv-e"><span>No notes yet.</span></div> : <p className="small quiet" style={css("margin:6px 0 0")}>No notes yet.</p>)}{edit ? <div className="nt3-in"><textarea id="xnote" rows="2" placeholder="Add a note for the team" /><button className="btn" style={css("height:32px")} data-xnote={m.id}>Add</button></div> : ''}</div></div><div className="pn-ft mft">{edit && c && open ? <button className="btn" data-xedit={m.id}>Edit details</button> : ''}{edit ? <button className="btn p" data-xlog={m.id}>Log a visit</button> : <span className="small quiet" style={css("margin-left:auto")}>{why}</span>}{items.length ? <div className="more3"><button className="btn" data-xmore="">More ▾</button><div className="mm3" hidden>{items}</div></div> : ''}</div></>);
+      }
+      /* where a shop sells: in person it's a storefront, on Field's routes at its street address; online it's e-commerce,
+         which wants Pay with Clear's API, and has no stop */
+      const SELLS = [['in_person', 'In person'], ['online', 'Online']];
+      /* a pipeline card's details, changed in place: what it's called, where it is and where it sells, who to ask for,
+         the next step and what it could finance. Saved whole, with an edit logged on the card. */
+      function editPanel(pn, m, c) {
+        const E = X.ed ||= {
+            sells: c.sells || 'in_person'
+          },
+          ct = c.contact || {},
+          cities = m.city && !GEO[m.city] ? [m.city, ...Object.keys(GEO)] : Object.keys(GEO);
+        html(pn, <><div className="pn-hd"><span className="lbl">{"Edit · "}{STGN[m.stage]}</span><button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>{m.name}</h3><label><span className="lbl">Shop name</span><input id="xen" className="vin" defaultValue={E.name ?? c.name} /></label><div className="xa2"><label><span className="lbl">Kind of shop</span><input id="xek" className="vin" defaultValue={E.kind ?? c.kind ?? ''} placeholder="Auto repair" /></label><label><span className="lbl">City</span><select id="xec" className="vin" defaultValue={E.city ?? m.city}>{cities.map((k, __k) => <option key={__k} {...picked((E.city ?? m.city) === k)}>{k}</option>)}</select></label></div><div className="xa-f"><span className="lbl">Sells</span><div className="seg sm" role="group">{SELLS.map(([k, t], __k) => <button key={__k} data-xesells={k} aria-pressed={E.sells === k}>{t}</button>)}</div></div>{E.sells === 'online' ? <p className="small quiet" style={css("margin:0")}>An online shop takes Pay with Clear through the API, so it stays off Field’s routes.</p> : <label><span className="lbl">Street address</span><input id="xead" className="vin" defaultValue={E.addr ?? c.addr ?? ''} placeholder="1234 Orange St" autoComplete="street-address" /></label>}<div className="xa2"><label><span className="lbl">Contact</span><input id="xecn" className="vin" defaultValue={E.cname ?? ct.name ?? ''} placeholder="Name" /></label><label><span className="lbl">Their role</span><input id="xecr" className="vin" defaultValue={E.crole ?? ct.role ?? ''} placeholder="Owner" /></label></div><div className="xa2"><label><span className="lbl">Phone</span><input id="xecp" className="vin" type="tel" defaultValue={E.cphone ?? ct.phone ?? ''} /></label><label><span className="lbl">Email</span><input id="xece" className="vin" type="email" defaultValue={E.cemail ?? ct.email ?? ''} /></label></div><div className="xa2"><label><span className="lbl">Next step</span><input id="xenx" className="vin" defaultValue={E.next ?? c.next ?? ''} /></label><label><span className="lbl">Could finance a month</span><input id="xev" className="vin" inputMode="numeric" placeholder="$5,000" defaultValue={E.val ?? (c.val ? String(c.val) : '')} /></label></div></div><div className="pn-ft"><button className="btn" data-xecancel="" style={css("margin-left:auto")}>Cancel</button><button className="btn p" data-xesave={m.id}>Save</button></div></>);
+      }
+      /* what's typed in the edit panel, kept when its toggle draws it again */
+      const ED_IN = [['name', 'xen'], ['kind', 'xek'], ['city', 'xec'], ['addr', 'xead'], ['cname', 'xecn'], ['crole', 'xecr'], ['cphone', 'xecp'], ['cemail', 'xece'], ['next', 'xenx'], ['val', 'xev']];
+      function keepEdit() {
+        ED_IN.forEach(([k, id]) => {
+          const v = document.getElementById(id)?.value;
+          if (v != null) X.ed[k] = v;
+        });
+      }
+      /* what's typed in the add panel, kept when one of its toggles draws it again */
+      function keepAdd() {
+        const v = id => document.getElementById(id)?.value;
+        [['name', 'xan'], ['kind', 'xak'], ['city', 'xac'], ['addr', 'xaad'], ['next', 'xanx'], ['val', 'xav']].forEach(([k, id]) => {
+          if (v(id) != null) X.add[k] = v(id);
+        });
       }
       function addPanel(pn) {
         const A = X.add,
           who = isAdmin() ? A.owner : R.me;
-        html(pn, <><div className="pn-hd"><span className="lbl">New prospect</span><button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>Add a prospect</h3><label><span className="lbl">Shop name</span><input id="xan" className="vin" defaultValue={A.name || ''} placeholder="Rancho Cucamonga Auto" /></label><div className="xa2"><label><span className="lbl">Kind of shop</span><input id="xak" className="vin" defaultValue={A.kind || ''} placeholder="Auto repair" /></label><label><span className="lbl">City</span><select id="xac" className="vin" defaultValue={A.city}>{(A.city && !GEO[A.city] ? [A.city, ...Object.keys(GEO)] : Object.keys(GEO)).map((c, __k) => <option key={__k} {...picked(A.city === c)}>{c}</option>)}</select></label></div><div className="xa-f"><span className="lbl">Came from</span><div className="seg sm" role="group">{Object.entries(SRC).map(([k, t], __k) => <button key={__k} data-xasrc={k} aria-pressed={A.source === k}>{t.replace('Next to a poster shop', 'Poster shop')}</button>)}</div></div>{isAdmin() ? <div className="xa-f"><span className="lbl">Whose lead</span><div className="seg sm" role="group">{Object.entries(TEAM).filter(([, t]) => t.field).map(([k, t], __k) => <button key={__k} data-xaown={k} aria-pressed={who === k}>{k === R.me ? 'Me' : t.n}</button>)}</div></div> : <p className="small quiet" style={css("margin:0")}>It’ll be your lead.</p>}<div className="xa2"><label><span className="lbl">Next step</span><input id="xanx" className="vin" defaultValue="Walk in" /></label><label><span className="lbl">Could finance a month</span><input id="xav" className="vin" inputMode="numeric" placeholder="$5,000" /></label></div>{A.from ? <p className="small quiet" style={css("margin:0")}>From a shop enquiry. It’s marked added there.</p> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>Lands in Field’s Needs a visit</span><button className="btn" data-xclose="">Cancel</button><button className="btn p" data-xasave="">Add the prospect</button></div></>);
+        html(pn, <><div className="pn-hd"><span className="lbl">New prospect</span><button className="x" data-xclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><h3>Add a prospect</h3><label><span className="lbl">Shop name</span><input id="xan" className="vin" defaultValue={A.name || ''} placeholder="Rancho Cucamonga Auto" /></label><div className="xa2"><label><span className="lbl">Kind of shop</span><input id="xak" className="vin" defaultValue={A.kind || ''} placeholder="Auto repair" /></label><label><span className="lbl">City</span><select id="xac" className="vin" defaultValue={A.city}>{(A.city && !GEO[A.city] ? [A.city, ...Object.keys(GEO)] : Object.keys(GEO)).map((c, __k) => <option key={__k} {...picked(A.city === c)}>{c}</option>)}</select></label></div><div className="xa-f"><span className="lbl">Sells</span><div className="seg sm" role="group">{SELLS.map(([k, t], __k) => <button key={__k} data-xasells={k} aria-pressed={(A.sells || 'in_person') === k}>{t}</button>)}</div></div>{A.sells === 'online' ? '' : <label><span className="lbl">Street address</span><input id="xaad" className="vin" defaultValue={A.addr || ''} placeholder="1234 Orange St" autoComplete="street-address" /></label>}<div className="xa-f"><span className="lbl">Came from</span><div className="seg sm" role="group">{Object.entries(SRC).map(([k, t], __k) => <button key={__k} data-xasrc={k} aria-pressed={A.source === k}>{t.replace('Next to a poster shop', 'Poster shop')}</button>)}</div></div>{isAdmin() ? <div className="xa-f"><span className="lbl">Whose lead</span><div className="seg sm" role="group">{Object.entries(TEAM).filter(([, t]) => t.field).map(([k, t], __k) => <button key={__k} data-xaown={k} aria-pressed={who === k}>{k === R.me ? 'Me' : t.n}</button>)}</div></div> : <p className="small quiet" style={css("margin:0")}>It’ll be your lead.</p>}<div className="xa2"><label><span className="lbl">Next step</span><input id="xanx" className="vin" defaultValue={A.next ?? (A.sells === 'online' ? 'Send the Pay with Clear API docs' : 'Walk in')} /></label><label><span className="lbl">Could finance a month</span><input id="xav" className="vin" inputMode="numeric" placeholder="$5,000" defaultValue={A.val || ''} /></label></div>{A.from ? <p className="small quiet" style={css("margin:0")}>From a shop enquiry. It’s marked added there.</p> : ''}</div><div className="pn-ft"><span className="small quiet" style={css("margin-right:auto")}>{A.sells === 'online' ? 'Online · the API, off Field’s routes' : 'Lands in Field’s Needs a visit'}</span><button className="btn" data-xclose="">Cancel</button><button className="btn p" data-xasave="">Add the prospect</button></div></>);
       }
 
       /* ── render + events ── */
@@ -4572,6 +4607,7 @@ function makeFieldMerchants() {
           if (TOT()) return toast('Shop records stay closed in this view · co-op totals only');
           closeX();
           X.open = d.xopen;
+          X.edit = X.ed = null;
           return render();
         }
         if (t.hasAttribute('data-xclose') || t.hasAttribute('data-fclose')) {
@@ -4579,6 +4615,7 @@ function makeFieldMerchants() {
           const back = R.panel && X.open;
           R.panel = null;
           X.add = null;
+          X.edit = X.ed = null;
           if (!back) X.open = null;
           return render();
         }
@@ -4612,6 +4649,81 @@ function makeFieldMerchants() {
             out: null
           };
           return render();
+        }
+        // a pipeline card's details: Edit details opens them in the panel, saved whole with what changed logged
+        if (d.xedit && LV) {
+          X.edit = d.xedit;
+          X.ed = null;
+          return renderPanel();
+        }
+        if (d.xesells && X.ed) {
+          keepEdit();
+          X.ed.sells = d.xesells;
+          return renderPanel();
+        }
+        if (t.hasAttribute('data-xecancel')) {
+          X.edit = X.ed = null;
+          return renderPanel();
+        }
+        if (d.xesave && LV && X.ed) {
+          const m = MSBY[d.xesave],
+            c = m?.card;
+          if (!c) return;
+          keepEdit();
+          const E = X.ed,
+            name = (E.name ?? c.name).trim();
+          if (!name) {
+            toast('Add the shop’s name');
+            return;
+          }
+          const contact = {
+            name: (E.cname ?? '').trim(),
+            role: (E.crole ?? '').trim(),
+            phone: (E.cphone ?? '').trim(),
+            email: (E.cemail ?? '').trim()
+          };
+          const patch = {
+            name,
+            kind: (E.kind ?? c.kind ?? '').trim(),
+            city: E.city ?? c.city ?? '',
+            sells: E.sells,
+            addr: E.sells === 'online' ? '' : (E.addr ?? c.addr ?? '').trim(),
+            contact,
+            next: (E.next ?? c.next ?? '').trim() || null,
+            val: +String(E.val ?? '').replace(/\D/g, '') || null
+          };
+          const was = {
+            name: c.name,
+            kind: c.kind || '',
+            city: c.city || '',
+            sells: c.sells || 'in_person',
+            addr: c.addr || '',
+            contact: JSON.stringify(['name', 'role', 'phone', 'email'].map(k => c.contact?.[k] ?? '')),
+            next: c.next || null,
+            val: c.val || null
+          };
+          const NAMES = {
+            name: 'name',
+            kind: 'kind',
+            city: 'city',
+            sells: E.sells === 'online' ? 'now sells online' : 'now sells in person',
+            addr: 'address',
+            contact: 'contact',
+            next: 'next step',
+            val: 'what it could finance'
+          };
+          const changed = Object.keys(NAMES).filter(k => (k === 'contact' ? JSON.stringify(['name', 'role', 'phone', 'email'].map(f => contact[f])) : patch[k]) !== was[k]);
+          if (!changed.length) {
+            X.edit = X.ed = null;
+            return renderPanel();
+          }
+          return cardSave(c, patch, [{
+            text: `Edited the details · ${changed.map(k => NAMES[k]).join(', ')}`,
+            type: 'edit'
+          }], () => {
+            X.edit = X.ed = null;
+            renderShell();
+          }, `${name} saved`);
         }
         if (d.xnote && LV) {
           const v = ((document.getElementById('xnote') || {}).value || '').trim(),
@@ -4789,13 +4901,20 @@ function makeFieldMerchants() {
           return render();
         }
         if (d.xasrc) {
+          keepAdd();
           X.add.source = d.xasrc;
-          ['name', 'kind'].forEach((k, i) => X.add[k] = document.getElementById(['xan', 'xak'][i]).value);
           return renderPanel();
         }
         if (d.xaown) {
+          keepAdd();
           X.add.owner = d.xaown;
-          ['name', 'kind'].forEach((k, i) => X.add[k] = document.getElementById(['xan', 'xak'][i]).value);
+          return renderPanel();
+        }
+        if (d.xasells) {
+          keepAdd();
+          // the next step follows how they're reached, unless it was changed by hand
+          if (X.add.next === (X.add.sells === 'online' ? 'Send the Pay with Clear API docs' : 'Walk in')) delete X.add.next;
+          X.add.sells = d.xasells;
           return renderPanel();
         }
         if (t.hasAttribute('data-xasave') && LV) {
@@ -4816,9 +4935,11 @@ function makeFieldMerchants() {
             stage: 'prospect',
             owner: on ? on.n.split(' ')[0] : null,
             val: +document.getElementById('xav').value.replace(/\D/g, '') || null,
-            next: document.getElementById('xanx').value.trim() || 'Walk in',
+            next: document.getElementById('xanx').value.trim() || (A.sells === 'online' ? 'Send the Pay with Clear API docs' : 'Walk in'),
             due: null,
-            source: SRC_OUT[A.source] || ''
+            source: SRC_OUT[A.source] || '',
+            sells: A.sells || 'in_person',
+            addr: A.sells === 'online' ? '' : document.getElementById('xaad')?.value.trim() || ''
           }, A.from ? {
             enquiry: A.from
           } : {}, [{

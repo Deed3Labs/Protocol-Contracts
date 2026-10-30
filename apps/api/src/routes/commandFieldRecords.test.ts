@@ -155,12 +155,19 @@ describe('routes planned ahead', () => {
 
   test('accepted for today, a planned route becomes today’s route, once', async () => {
     // Marcus's route for the 23rd is accepted: the 23rd is today once the section reads the real clock
+    // Orange Show Tires' pipeline card (the stop's c:m2), with the street address the route goes to
+    await q(
+      `INSERT INTO command.merchant_stage (id, position, name, kind, city, stage, source, address) VALUES ('m2', 999, 'Orange Show Tires', 'Tires', 'San Bernardino', 'talking', 'walkin', '1350 S E St')
+       ON CONFLICT (id) DO UPDATE SET address = '1350 S E St'`,
+    );
     process.env.PROVIDER_FIELD = 'live';
     try {
       const f = await field(kai);
       expect(new Date(f.ROUTE.day).toISOString().slice(0, 10)).toBe('2026-10-23');
       expect([f.ROUTE.staff, f.ROUTE.staffKey]).toEqual(['Marcus Lee', marcusId]);
       expect(f.STOPS.map((s: any) => [s.name, s.tasks.map((t: any) => [t.kind, t.t])])).toEqual([['Orange Show Tires', [['visit', 'Follow up']]]]);
+      // a pipeline shop's stop goes to the street address on its card
+      expect(f.STOPS[0].where).toBe('1350 S E St');
       // a plan for today isn't ahead any more
       expect(f.PLANS.some((p: any) => new Date(p.day).toISOString().slice(0, 10) === '2026-10-23')).toBe(false);
       expect(await startPlannedRoute(db, '2026-10-23')).toBe(false);
