@@ -653,7 +653,7 @@ function makeMoney() {
       return cell('s12', 'Where it sits', <span className="lbl">{ACCTS.length}{" accounts · "}{money(tot)}</span>, <><div className="nh"><div className="nh-bar">{seg.map(({
               a,
               w
-            }, __k) => <button key={__k} data-nacct={a[0]} style={css(`flex:${w};--c:${a[7]}`)} title={`${a[1]} · ${money(a[5])}`}>{w > 13 ? <><span>{a[1]}</span><b>{pct(a[5], tot, 0)}</b></> : ''}</button>)}</div><div className="nh-br">{grp.map(({
+            }, __k) => <button key={__k} data-nacct={a[0]} className={w ? '' : 'z'} style={css(`flex:${w || '0 0 2px'};--c:${a[7]}`)} title={`${a[1]} · ${money(a[5])}`}>{w > 13 ? <><span>{a[1]}</span><b>{pct(a[5], tot, 0)}</b></> : ''}</button>)}</div><div className="nh-br">{grp.map(({
               g,
               l,
               w,

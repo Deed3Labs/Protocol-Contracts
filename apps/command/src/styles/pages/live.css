@@ -167,6 +167,8 @@ td.c-id{font-family:var(--f-mono);font-size:12px;color:var(--fg-70);white-space:
 .bt.pp .pn b,.bt.pp .pn > span{overflow-wrap:anywhere;white-space:normal}
 .bt.pp .stg{white-space:normal}
 
+/* Money: an account holding nothing is a hairline in the Where it sits bar, as a zero is on Home, not a padded sliver */
+.nh-bar button.z{padding:0}
 /* Merchants: the founding seats sat on the fee ledger for their bottom space; live has no ledger, so the tiles keep their own */
 .fsx{padding-bottom:20px}
 @media (max-width:760px){ .fsx{padding-bottom:16px} }
