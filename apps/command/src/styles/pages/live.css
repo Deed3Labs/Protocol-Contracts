@@ -176,9 +176,15 @@ td.c-id{font-family:var(--f-mono);font-size:12px;color:var(--fg-70);white-space:
 /* Money · Loss cover: the history line's top border is the ladder's last rule, so the AssurancePool row is as tall as the others */
 .ngt-wf + .ngt-h{margin-top:-18px}
 
-/* Build · From change to live: a stage in flight past three rows counts the rest; Shipped is the week by day, at a fixed height */
-.bd-fb em{font:500 10.5px/12px var(--f-mono);color:var(--fg-50);font-style:normal;padding-left:3px}
-.bd-fw{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;height:72px;margin-top:8px}
-.bd-fw span{display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;gap:4px;min-width:0}
-.bd-fw b{flex:1;display:flex;flex-direction:column;justify-content:flex-end;min-height:0} .bd-fw i{display:block;background:var(--fg)}
-.bd-fw em{font:400 9px/1 var(--f-mono);color:var(--fg-50);font-style:normal;text-align:center}
+/* Build · From change to live: one bar across the card, a segment a stage coloured as its chip, as Money's Where it sits.
+   It never grows taller; a segment too narrow for its stage's name keeps the count, and one narrower still keeps nothing */
+.bd-fz{display:flex;gap:2px;height:40px;margin:22px 22px 4px}
+.bd-fz-s{--c:var(--fg);background:var(--c);min-width:0;padding:0 10px;display:flex;align-items:center;color:var(--ground);text-align:left;container-type:inline-size;transition:filter .2s var(--ease)}
+.bd-fz-s:hover{filter:brightness(1.12)} .bd-fz-s:empty{padding:0}
+.bd-fz-s.review{--c:color-mix(in srgb,var(--fg) 55%,var(--ground))} .bd-fz-s.safe{--c:var(--live)} .bd-fz-s.shipped{--c:var(--settled)}
+.bd-fz-s > span{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap}
+.bd-fz-s em{font-style:normal;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.bd-fz-s b{font:500 11px/1 var(--f-mono);opacity:.8}
+@container (max-width:110px){ .bd-fz-s em{display:none} }
+@container (max-width:6px){ .bd-fz-s > span{display:none} }
+@media (max-width:760px){ .bd-fz{margin:16px 16px 4px} }
