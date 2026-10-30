@@ -975,8 +975,58 @@ function makeMoney() {
         moves: renderMoves
       })[N.tab]();
       renderPanel();
+      watchBrackets();
       if (TOT()) CC.scrub(W);
       setHash();
+    }
+    /* a bracket under the bar too narrow for its name and figure (the set-aside accounts, when the co-op's
+       cash dwarfs them, or most of them on a phone) puts its label on one line below the others, on the
+       first line down where it clears every other such label, rather than running into the next one */
+    function fitBrackets() {
+      const br = document.querySelector('.nh-br');
+      // live only, as live.css (which styles .thin) is
+      if (!br || !L) return;
+      const ss = [...br.children],
+        r = new Range(),
+        ends = [];
+      br.style.height = '';
+      ss.forEach(s => {
+        s.classList.remove('thin', 'end');
+        s.style.paddingTop = '';
+      });
+      const thin = ss.filter(s => s.scrollWidth > s.clientWidth + 1 || s.querySelector('b').scrollWidth > s.querySelector('b').clientWidth + 1);
+      thin.forEach(s => s.classList.add('thin'));
+      const W = br.clientWidth;
+      thin.forEach(s => {
+        r.selectNodeContents(s);
+        const w = r.getBoundingClientRect().width + 16;
+        let l = s.offsetLeft;
+        if (l + w > W) {
+          s.classList.add('end');
+          l = s.offsetLeft + s.offsetWidth - w;
+        }
+        let row = ends.findIndex(e => e <= l);
+        if (row < 0) row = ends.push(0) - 1;
+        ends[row] = l + w;
+        s.style.paddingTop = `${48 + row * 20}px`;
+      });
+      if (ends.length) br.style.height = `${66 + (ends.length - 1) * 20}px`;
+    }
+    /* measured once the row has a size, which it may not have yet when the page draws, and again whenever
+       its width changes */
+    let brRO = null;
+    function watchBrackets() {
+      brRO?.disconnect();
+      const br = document.querySelector('.nh-br');
+      fitBrackets();
+      if (!br || !L || typeof ResizeObserver === 'undefined') return;
+      let w = br.clientWidth;
+      brRO = new ResizeObserver(([e]) => {
+        if (e.contentRect.width === w) return;
+        w = e.contentRect.width;
+        fitBrackets();
+      });
+      brRO.observe(br);
     }
     const logIt = (what, detail, res) => {
       if (L) return;
