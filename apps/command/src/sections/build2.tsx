@@ -1486,10 +1486,17 @@ function makeBuild() {
         const d = Math.floor((NOW - since(c)) / DAY);
         return [c.id, `${SN[c.st]} since ${fmtD(since(c))}`, d < 1 ? 'today' : plural(d, 'day', 'days')];
       });
-      const flow = cell('s7', 'From change to live', <span className="lbl">{RSHORT.proto}{" and the Ops Safe"}</span>, <><div className="bd-fl">{steps.map(([k, t, n, s2], i) => <button key={i} className={`bd-fs ${k}`} data-btab="changes"><div className="bd-fh"><span className="bd-fn">{i + 1}</span><b>{t}</b>{i < 3 ? <span className="bd-fa"><i />{ICO.arrow}</span> : ''}</div><span className="m-big">{n}</span><span className="bd-ft">{s2}</span><div className="bd-fb">{CHANGES.filter(c => c.st === k).map((c, __k) => <i key={__k} className={need(c) ? 'me' : c.block || c.wait ? 'hx' : ''} title={c.t} />)}</div></button>)}</div><div className="bd-lw">{lbl('Longest in its stage')}{long.length ? long.map(([id, s2, d2], __k) => {
+      // one bar across the card, a segment a stage in order, coloured as its numbered chip, the name and count inside as Money's
+      // Where it sits draws them. Widths go by the square root of each count, so a stage of one still reads beside a hundred;
+      // the counts themselves are printed. A segment too narrow for the name keeps the count (live.css); an empty stage is a hairline
+      const strip = <div className="bd-fz">{STAGES.map(([k, t], i) => {
+          const n = cnt(k);
+          return <button key={k} className={`bd-fz-s ${k}`} data-btab="changes" style={css(n ? `flex:${Math.sqrt(n).toFixed(3)} 1 0` : 'flex:0 0 2px')} title={`${i + 1} · ${t} · ${n}`}>{n ? <span><em>{t}</em><b>{n}</b></span> : ''}</button>;
+        })}</div>;
+      const flow = cell('s7', 'From change to live', <span className="lbl">{RSHORT.proto}{" and the Ops Safe"}</span>, <><div className="bd-fl">{steps.map(([k, t, n, s2], i) => <button key={i} className={`bd-fs ${k}`} data-btab="changes"><div className="bd-fh"><span className="bd-fn">{i + 1}</span><b>{t}</b>{i < 3 ? <span className="bd-fa"><i />{ICO.arrow}</span> : ''}</div><span className="m-big">{n}</span><span className="bd-ft">{s2}</span></button>)}</div>{strip}<div className="bd-lw">{lbl('Longest in its stage')}{long.length ? long.map(([id, s2, d2], __k) => {
             const c = CHG[id];
             return <button key={__k} className="bd-lw-r" data-bopen={id}><span><b>{c.t}</b><em>{s2}{need(c) ? ' · waiting on you' : c.block ? ' · ' + c.block.toLowerCase() : ''}</em></span><b>{d2}</b></button>;
-          }) : <div className="bd-e">Nothing in flight</div>}</div><div className="bd-fk f-key"><span><i style={css("background:var(--fg)")} />A change</span><span><i style={css("background:var(--live)")} />Waiting on you</span><span><i className="hx" />Waiting on something else</span></div></>, <><span>Contract changes go through the Ops Safe</span><span /></>);
+          }) : <div className="bd-e">Nothing in flight</div>}</div></>, <><span>Contract changes go through the Ops Safe</span><span /></>);
       const inc = incCell('s5', 5, <button data-btab="security">Security →</button>);
       const days = Array.from({
           length: 28
