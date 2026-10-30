@@ -176,6 +176,10 @@ td.c-id{font-family:var(--f-mono);font-size:12px;color:var(--fg-70);white-space:
 /* Money · Loss cover: the history line's top border is the ladder's last rule, so the AssurancePool row is as tall as the others */
 .ngt-wf + .ngt-h{margin-top:-18px}
 
+/* Settings · Devices: a row fills its share of the list, so its content centres beside Worth a look's; and with no Sign out
+   button (only Team signs people out) the empty column goes, so the time sits on the right edge under the header's count */
+.ad-dl > .ad-dr{flex:1 0 auto}
+.ad-dr:has(> span:last-child:empty){grid-template-columns:26px minmax(0,1fr) auto} .ad-dr > span:last-child:empty{display:none}
 /* Build · From change to live: one bar across the card, a segment a stage coloured as its chip, as Money's Where it sits.
    It never grows taller; a segment too narrow for its stage's name keeps the count, and one narrower still keeps nothing */
 .bd-fz{display:flex;gap:2px;height:40px;margin:22px 22px 0}
