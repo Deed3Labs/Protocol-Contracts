@@ -166,3 +166,6 @@ td.c-id{font-family:var(--f-mono);font-size:12px;color:var(--fg-70);white-space:
 /* a long email (or name) wraps inside its cell rather than widening the table; so does a stage on a narrow screen */
 .bt.pp .pn b,.bt.pp .pn > span{overflow-wrap:anywhere;white-space:normal}
 .bt.pp .stg{white-space:normal}
+
+/* Money: an account holding nothing is a hairline in the Where it sits bar, as a zero is on Home, not a padded sliver */
+.nh-bar button.z{padding:0}
