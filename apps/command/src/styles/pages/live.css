@@ -147,3 +147,6 @@ button.fw-k{text-align:left;cursor:pointer}
 .fsp.mshop .mc-h b{white-space:nowrap}
 .fsp.mcity.mshop .fsp-d{left:-5px;top:-5px;width:10px;height:10px;box-shadow:inset 0 0 0 1.5px var(--fg),0 0 0 2px var(--ground)}
 .fsp.mcity.mshop.now .fsp-d{box-shadow:0 0 0 2px var(--ground),0 0 0 3.5px var(--fg)}
+
+/* Members › Next: a window's bar keeps to its own width, and its days sit clear of it */
+.nx2 .wrow .wbar{flex:none;overflow:hidden}
