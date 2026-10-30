@@ -454,7 +454,7 @@ export function commandRouter(deps: CommandDeps) {
     const c = req.command!;
     try {
       const data = await membersSection(c.db, { level: c.levels.members, reveal: true, now: now(), memberSource: deps.memberSource });
-      const names = data.MEMBERS.map((m) => ({ id: m.id, no: m.no, name: [m.first, m.last].filter(Boolean).join(' ') || null, email: m.email ?? null }));
+      const names = data.MEMBERS.map((m) => ({ id: m.id, no: m.no, name: [m.first, m.last].filter(Boolean).join(' ') || null, email: m.email ?? null, phone: m.phone ?? null, wallet: m.wallet ?? null }));
       if (!isAdmin(c) && !(await revealFrom(req, res, { section: 'members', subject: '*', field: 'names and emails, on screen', rows: names.length }))) return;
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ names });
@@ -473,7 +473,9 @@ export function commandRouter(deps: CommandDeps) {
       if (!m) return fail(res, 404, 'NOT_FOUND', 'No such member');
       if (!isAdmin(c) && !(await revealFrom(req, res, { section: 'members', subject: m.no || String(m.id), field: 'name' }))) return;
       res.setHeader('Cache-Control', 'private, no-store');
-      res.json({ id: m.id, no: m.no, first: m.first, last: m.last });
+      // and how else to know them, for the member without a name (someone waiting has a name, and none of these)
+      const r = m as { email?: string | null; phone?: string | null; wallet?: string | null };
+      res.json({ id: m.id, no: m.no, first: m.first, last: m.last, email: r.email ?? null, phone: r.phone ?? null, wallet: r.wallet ?? null });
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;

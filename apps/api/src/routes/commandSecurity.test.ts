@@ -260,7 +260,7 @@ describe('reveals', () => {
     expect(r.status).toBe(200);
     expect(r.headers['cache-control']).toBe('private, no-store');
     expect(r.body.names.length).toBeGreaterThan(0);
-    expect(r.body.names[0]).toEqual({ id: expect.any(Number), no: expect.stringMatching(/^M-/), name: expect.any(String), email: null });
+    expect(r.body.names[0]).toEqual({ id: expect.any(Number), no: expect.stringMatching(/^M-/), name: expect.any(String), email: null, phone: null, wallet: null });
     expect(JSON.stringify(r.body.names)).not.toContain('•');
     expect((await call(kai, 'GET', '/reveals')).body.reveals[0]).toMatchObject({
       section: 'members',
@@ -297,7 +297,7 @@ describe('reveals', () => {
     expect([w.first, w.last]).toEqual(['W•••', 'I••']);
     expect(JSON.stringify(masked.body)).not.toMatch(/Wren|wren@/);
     const r = await call(await approver('approver3'), 'POST', `/members/${w.id}/reveal`, { reason: 'Moving them up for the Redlands batch' });
-    expect(r.body).toEqual({ id: w.id, no, first: 'Wren', last: 'Ito' });
+    expect(r.body).toEqual({ id: w.id, no, first: 'Wren', last: 'Ito', email: null, phone: null, wallet: null });
     expect((await call(kai, 'GET', '/reveals')).body.reveals[0]).toMatchObject({ section: 'members', subject: no, field: 'name', reason: 'Moving them up for the Redlands batch' });
     const totals = all(2);
     totals.members = 1;

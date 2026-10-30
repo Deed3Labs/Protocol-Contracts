@@ -851,7 +851,8 @@ function makeMembers() {
       } : {
         rush: true
       });
-      M.real[p.id] = [r.first, r.last].filter(Boolean).join(' ') || p.id;
+      // their name, else their email, phone or smart account, as the list's Show names has them
+      M.real[p.id] = [r.first, r.last].filter(Boolean).join(' ') || r.email || r.phone || (r.wallet ? `${r.wallet.slice(0, 6)}…${r.wallet.slice(-4)}` : p.id);
       M.reveal.add(p.id);
       if (!ADMIN()) addReveal(p.id, 'Name');
       toast(ADMIN() ? 'Shown' : why.trim() ? 'Shown · logged in Records with your reason' : 'Shown · logged in Records as a rush, without a reason');
@@ -860,7 +861,7 @@ function makeMembers() {
       toast(e.message);
     }
   }
-  /* live, the list's Show names: every member's name, or their email when there's no name, for a reason (POST
+  /* live, the list's Show names: every member's name, else their email, phone or smart account, for a reason (POST
      /members/names: Approve, logged as one reveal of the list); a blank reason is a rush, flagged. Off masks them again. */
   async function showNames() {
     if (M.namesOn) {
@@ -877,10 +878,12 @@ function makeMembers() {
       } : {
         rush: true
       });
+      // who they are, the first thing known: their name, email, phone (the profile's, else their Privy sign-in's), and
+      // last their smart account, shortened as wallets are (0x7ec1…86cf)
       for (const n of r.names) {
         if (!n.no) continue;
-        M.names[n.no] = n.name || n.email || 'No name or email';
-        if (n.email) M.mail[n.no] = n.email;
+        M.names[n.no] = n.name || n.email || n.phone || (n.wallet ? `${n.wallet.slice(0, 6)}…${n.wallet.slice(-4)}` : 'Nothing on file');
+        if (n.email || n.phone) M.mail[n.no] = n.email || n.phone;
       }
       M.namesOn = true;
       toast(ADMIN() ? 'Names shown' : why.trim() ? 'Names shown · logged in Records with your reason' : 'Names shown · logged in Records as a rush, without a reason');

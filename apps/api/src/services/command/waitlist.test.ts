@@ -156,7 +156,7 @@ describe('Members, live', () => {
         // Ana signed up with her code, funded from her bank and spent at Rosa's
         { id: 7, createdAt: day(-0.5).getTime(), lastSeen: NOW.getTime(), inviteCode: ana, wallets: ['0xa'], name: names ? 'Ana Ruiz' : null, email: names ? 'ana.ruiz@example.com' : null, city: 'Redlands' },
         // Bo signed up with his code, nothing yet
-        { id: 8, createdAt: NOW.getTime(), lastSeen: null, inviteCode: bo, wallets: ['0xb'], name: names ? 'Bo Chen' : null, city: null },
+        { id: 8, createdAt: NOW.getTime(), lastSeen: null, inviteCode: bo, wallets: ['0xb'], name: names ? 'Bo Chen' : null, phone: names ? '+19095550188' : null, wallet: names ? '0xb' : null, city: null },
         // someone who came another way
         { id: 9, createdAt: day(60).getTime(), lastSeen: day(2).getTime(), inviteCode: null, wallets: ['0xc'], name: names ? 'Cher' : null, city: 'Fontana' },
       ],
@@ -186,6 +186,9 @@ describe('Members, live', () => {
     // an email comes with a name, only when names are asked for
     expect(JSON.stringify(masked)).not.toContain('ana.ruiz@example.com');
     expect((await read(SEE, true)).MEMBERS.find((x) => x.no === 'M-0007')!.email).toBe('ana.ruiz@example.com');
+    // so do their phone and smart account
+    expect((await read(SEE, true)).MEMBERS.find((x) => x.no === 'M-0008')).toMatchObject({ phone: '+19095550188', wallet: '0xb' });
+    expect(JSON.stringify(masked)).not.toMatch(/\+19095550188|"wallet"/);
     const totals = await read(TOTALS);
     expect(totals.MEMBERS.every((x) => x.first == null && x.no === '' && x.invited === 0)).toBe(true);
     // the figures are the same at every level: worked out before the rows lose their dates
