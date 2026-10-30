@@ -211,12 +211,14 @@ export function fmLive() {
       n: p.n,
     });
   }
-  for (const m of MS.filter((m) => m.card && ['prospect', 'talking', 'signing'].includes(m.stage)))
+  // a shop worked online is reached by email, phone or video, so it's nobody's stop; one in person is, at its address
+  for (const m of MS.filter((m) => m.card && m.card.reach !== 'online' && ['prospect', 'talking', 'signing'].includes(m.stage)))
     POOL.push({
       id: 'c:' + m.id,
       kind: 'merchant',
       shop: m.name,
       city: m.city,
+      addr: m.card.addr || '',
       what: m.next || (m.stage === 'prospect' ? 'Walk in' : 'Follow up'),
       why: m.due != null ? (m.due < 0 ? `${-m.due} days overdue` : m.due === 0 ? 'Due today' : `Due ${fmtD(TODAY + m.due * DAY)}`) : m.last == null ? 'Never visited' : `Last visit ${m.last} days ago`,
       stage: m.stage,

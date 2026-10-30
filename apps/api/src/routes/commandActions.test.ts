@@ -123,6 +123,20 @@ describe('Command’s own records, saved straight away', () => {
     expect((await q(`SELECT removed_reason FROM command.merchant_stage WHERE id = 'n-test'`))[0].removed_reason).toBe('Closed down');
   });
 
+  test('a card is reached in person at its address, or online; a save that leaves it out keeps it', async () => {
+    const card = { id: 'n-reach', name: 'Web Only Bikes', kind: 'Bikes', city: 'Redlands', stage: 'prospect', addr: '12 Orange St' };
+    expect((await call(kai, 'POST', '/actions/merchants/card-save', card)).status).toBe(200);
+    const read = async () => (await call(kai, 'GET', '/sections/merchants')).body.BOARD.find((x: any) => x.id === 'n-reach');
+    // every card so far was a walk-in, so one saved without saying is in person
+    expect([(await read()).reach, (await read()).addr]).toEqual(['in_person', '12 Orange St']);
+    expect((await call(kai, 'POST', '/actions/merchants/card-save', { ...card, reach: 'online', addr: '', log: [{ text: 'Edited the details · now online, address', type: 'edit' }] })).status).toBe(200);
+    expect([(await read()).reach, (await read()).addr]).toEqual(['online', '']);
+    // a page that doesn't know about reach (an older one) saves the card without it, and it stays online
+    expect((await call(kai, 'POST', '/actions/merchants/card-save', { ...card, addr: '', next: 'Send an intro email' })).status).toBe(200);
+    expect((await read()).reach).toBe('online');
+    expect((await call(kai, 'POST', '/actions/merchants/card-save', { ...card, reach: 'phone' })).status).toBe(400);
+  });
+
   test('a product draft is saved from what was typed, not the prototype’s sample', async () => {
     const r = await call(kai, 'POST', '/actions/shop/product-add', { line: 'graphic', name: 'Graphic Tee', variant: 'Test Print', price: 44, cost: [9, 5, 1, 1], options: ['Black'], sizes: ['S', 'M'] });
     expect(r.status).toBe(200);

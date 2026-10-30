@@ -125,3 +125,7 @@ button.fw-k{text-align:left;cursor:pointer}
 /* Money › Where it sits: a bracket too narrow for its label (fitBrackets marks it .thin) shows the bracket
    alone, so its figure never runs into the next label; hovering it names it */
 .nh-br > span.thin b,.nh-br > span.thin em{visibility:hidden}
+
+/* a pipeline shop's street address, a link to the map: in the ledger's own ink, underlined */
+.led b a{color:inherit;text-decoration:underline;text-decoration-color:var(--fg-50);text-underline-offset:3px}
+.led b a:hover{text-decoration-color:currentColor}

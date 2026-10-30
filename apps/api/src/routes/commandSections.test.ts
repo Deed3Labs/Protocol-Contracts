@@ -228,7 +228,8 @@ describe('Merchants, as each level gets it', () => {
     expect(r.body.SIGNED).toEqual(merchFx.signed);
     expect(r.body.PROSPECTS).toEqual(merchFx.prospects);
     expect(r.body.OWED).toEqual(merchFx.owed);
-    expect(r.body.BOARD).toEqual(merchFx.board);
+    // every prototype card is a walk-in: reached in person, so on Field's routes
+    expect(r.body.BOARD).toEqual(merchFx.board.map((c: Record<string, unknown>) => ({ ...c, reach: 'in_person' })));
     expect(r.body.FLEET).toEqual(merchFx.fleet);
     for (const [k, v] of Object.entries(merchFigures)) expect(r.body.figures[k]).toEqual(v);
   });

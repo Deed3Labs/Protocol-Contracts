@@ -493,6 +493,8 @@ const card = z.object({
   contact: contact.default({ name: '', role: '', phone: '', email: '' }),
   source: text(80).default(''),
   addr: text(200).default(''),
+  /** How the shop is reached: in person (a walk-in, on Field's routes at its address) or online. Left out, a saved card keeps its own. */
+  reach: z.enum(['in_person', 'online']).optional(),
   note: text(2000).default(''),
   flag: z.boolean().default(false),
   /** Log lines added since it was last saved, oldest first. */
@@ -540,11 +542,12 @@ const merchants: Record<string, Action> = {
       const pos = cur?.position ?? (await one<{ p: number }>(tx, 'SELECT coalesce(min(position), 0) - 1 AS p FROM command.merchant_stage', []))!.p;
       const touched = b.log.some((l: { type: string }) => ['call', 'visit', 'demo', 'note'].includes(l.type));
       await tx.query(
-        `INSERT INTO command.merchant_stage (id, position, name, kind, city, stage, owner, per_month_cents, next_step, due_on, contact, source, address, notes, flag, last_contact_at, added_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        `INSERT INTO command.merchant_stage (id, position, name, kind, city, stage, owner, per_month_cents, next_step, due_on, contact, source, address, notes, flag, last_contact_at, added_at, reach)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, coalesce($18, 'in_person'))
          ON CONFLICT (id) DO UPDATE SET name = $3, kind = $4, city = $5, stage = $6, owner = $7, per_month_cents = $8, next_step = $9, due_on = $10, contact = $11,
-           source = $12, address = $13, notes = $14, flag = $15, last_contact_at = coalesce($16, command.merchant_stage.last_contact_at)`,
-        [b.id, pos, b.name, b.kind, b.city, b.stage, b.owner, b.val == null ? null : cents(b.val), b.next, b.due == null ? null : new Date(b.due), JSON.stringify(b.contact), b.source, b.addr, b.note, b.flag, touched ? dayStart(at) : null, at],
+           source = $12, address = $13, notes = $14, flag = $15, last_contact_at = coalesce($16, command.merchant_stage.last_contact_at),
+           reach = coalesce($18, command.merchant_stage.reach)`,
+        [b.id, pos, b.name, b.kind, b.city, b.stage, b.owner, b.val == null ? null : cents(b.val), b.next, b.due == null ? null : new Date(b.due), JSON.stringify(b.contact), b.source, b.addr, b.note, b.flag, touched ? dayStart(at) : null, at, b.reach ?? null],
       );
       for (const l of b.log) await tx.query('INSERT INTO command.merchant_activity (stage_id, at, kind, text, who) VALUES ($1, $2, $3, $4, $5)', [b.id, at, l.type, l.text, who(person)]);
       if (b.enquiry) await markEnquiry(tx, b.enquiry, 'Added', person, at, { card: b.id });

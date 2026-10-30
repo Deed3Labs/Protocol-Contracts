@@ -608,7 +608,7 @@ export async function growthSection(db: Queryable, o: ReadOptions): Promise<Grow
  * A route planned for `day` and accepted becomes that day's route (command.routes, its stops and tasks, as the seed's
  * day has them), when the day has none yet: the first accepted, as the table keeps one route a day. A planned poster
  * is a poster task, a device fix a device task, anything else (a merchant visit, a first poster) a visit to mark done.
- * True when it started one.
+ * A pipeline shop's stop (c:<card or merchant id>) goes to the street address on its card. True when it started one.
  */
 export async function startPlannedRoute(db: Queryable, day: string): Promise<boolean> {
   if ((await db.query('SELECT 1 FROM command.routes WHERE day = $1', [day])).rows.length) return false;
@@ -621,8 +621,9 @@ export async function startPlannedRoute(db: Queryable, day: string): Promise<boo
   );
   const p = plans[0];
   if (!p) return false;
-  const { rows: stops } = await db.query<{ position: number; kind: string; shop: string; city: string; what: string; why: string; poster: number | null; eta: string | null }>(
-    'SELECT * FROM command.route_plan_stops WHERE plan_id = $1 ORDER BY position',
+  const { rows: stops } = await db.query<{ position: number; kind: string; shop: string; city: string; what: string; why: string; poster: number | null; eta: string | null; street: string | null }>(
+    `SELECT s.*, (SELECT m.address FROM command.merchant_stage m WHERE s.ref IN ('c:' || m.id, 'c:' || m.merchant_id) AND m.removed_at IS NULL LIMIT 1) AS street
+       FROM command.route_plan_stops s WHERE s.plan_id = $1 ORDER BY s.position`,
     [p.id],
   );
   const started = await db.query(
@@ -633,7 +634,7 @@ export async function startPlannedRoute(db: Queryable, day: string): Promise<boo
   if (!started.rows.length) return false;
   for (const [i, s] of stops.entries()) {
     const sid = `r${p.id}-${i}`;
-    await db.query(`INSERT INTO command.route_stops (day, id, position, name, city, street, eta) VALUES ($1, $2, $3, $4, $5, '', $6)`, [day, sid, i, s.shop, s.city, s.eta ?? '']);
+    await db.query(`INSERT INTO command.route_stops (day, id, position, name, city, street, eta) VALUES ($1, $2, $3, $4, $5, $6, $7)`, [day, sid, i, s.shop, s.city, s.street ?? '', s.eta ?? '']);
     const kind = s.kind === 'device' ? 'device' : s.kind === 'poster' && s.poster != null ? 'poster' : 'visit';
     await db.query('INSERT INTO command.route_tasks (day, stop_id, position, kind, poster, title, note) VALUES ($1, $2, 0, $3, $4, $5, $6)', [day, sid, kind, kind === 'poster' ? s.poster : null, s.what, s.why || null]);
   }
@@ -975,7 +976,7 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
  * whole (card-save) keeps them; the seed keeps the prototype's shape.
  */
 async function merchantBoard(db: Queryable, o: ReadOptions, OWED: Record<string, number>, full = false) {
-  const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; flag: boolean; founding: boolean; posters: number | null; notes: string }>(
+  const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; reach: string; flag: boolean; founding: boolean; posters: number | null; notes: string }>(
     'SELECT * FROM command.merchant_stage WHERE removed_at IS NULL ORDER BY position',
   );
   // a shop's contact is a person: at Totals the board keeps its cards, not their details
@@ -994,6 +995,7 @@ async function merchantBoard(db: Queryable, o: ReadOptions, OWED: Record<string,
       contact: o.level <= TOTALS ? blank : c.contact,
       source: c.source,
       addr: o.level <= TOTALS ? '' : c.address,
+      reach: c.reach,
       ...(c.notes && o.level > TOTALS ? { note: c.notes } : {}),
       ...(acts.some((a) => a.stage_id === c.id) && o.level > TOTALS ? { log: acts.filter((a) => a.stage_id === c.id).map((a) => [ms_(a.at), a.text, a.who, a.kind]) } : {}),
     });
