@@ -1486,7 +1486,24 @@ function makeBuild() {
         const d = Math.floor((NOW - since(c)) / DAY);
         return [c.id, `${SN[c.st]} since ${fmtD(since(c))}`, d < 1 ? 'today' : plural(d, 'day', 'days')];
       });
-      const flow = cell('s7', 'From change to live', <span className="lbl">{RSHORT.proto}{" and the Ops Safe"}</span>, <><div className="bd-fl">{steps.map(([k, t, n, s2], i) => <button key={i} className={`bd-fs ${k}`} data-btab="changes"><div className="bd-fh"><span className="bd-fn">{i + 1}</span><b>{t}</b>{i < 3 ? <span className="bd-fa"><i />{ICO.arrow}</span> : ''}</div><span className="m-big">{n}</span><span className="bd-ft">{s2}</span><div className="bd-fb">{CHANGES.filter(c => c.st === k).map((c, __k) => <i key={__k} className={need(c) ? 'me' : c.block || c.wait ? 'hx' : ''} title={c.t} />)}</div></button>)}</div><div className="bd-lw">{lbl('Longest in its stage')}{long.length ? long.map(([id, s2, d2], __k) => {
+      // a stage in flight: a square a change, waiting on you first, then on something else; three rows at most, the rest counted
+      const FMAX = 24;
+      const flight = k => {
+        const a = CHANGES.filter(c => c.st === k).map(c => [c, need(c) ? 'me' : c.block || c.wait ? 'hx' : '']).sort((x, y) => (y[1] === 'me') - (x[1] === 'me') || (y[1] === 'hx') - (x[1] === 'hx'));
+        const show = a.length > FMAX ? a.slice(0, FMAX - 1) : a;
+        return <div className="bd-fb">{show.map(([c, cl], __k) => <i key={__k} className={cl} title={c.t} />)}{a.length > show.length ? <em>{`+${a.length - show.length}`}</em> : ''}</div>;
+      };
+      // shipped keeps growing, so it's the week by day instead: a bar a day, the tallest day full height, a day with none a hairline
+      const shipDays = () => {
+        // the seven 24 hours to now, oldest first, so the bars add up to the count above them
+        const days = Array.from({ length: 7 }, (_, i) => NOW - (7 - i) * DAY);
+        // a change timed after now (a clock ahead of ours) is in the last 24 hours
+        const at = CHANGES.filter(c => c.st === 'shipped' && c.live != null).map(c => Math.min(NOW, new Date(c.live).getTime()));
+        const n = days.map(t => at.filter(x => x > t && x <= t + DAY).length);
+        const mx = Math.max(1, ...n);
+        return <div className="bd-fw">{days.map((t, i) => <span key={i} title={`${i === 6 ? 'Last 24 hours' : fmtD(t + DAY)} · ${plural(n[i], 'change', 'changes')}`}><b><i style={css(n[i] ? `height:${Math.max(8, n[i] / mx * 100)}%` : 'height:2px')} /></b><em>{'SMTWTFS'[new Date(t + DAY).getDay()]}</em></span>)}</div>;
+      };
+      const flow = cell('s7', 'From change to live', <span className="lbl">{RSHORT.proto}{" and the Ops Safe"}</span>, <><div className="bd-fl">{steps.map(([k, t, n, s2], i) => <button key={i} className={`bd-fs ${k}`} data-btab="changes"><div className="bd-fh"><span className="bd-fn">{i + 1}</span><b>{t}</b>{i < 3 ? <span className="bd-fa"><i />{ICO.arrow}</span> : ''}</div><span className="m-big">{n}</span><span className="bd-ft">{s2}</span>{k === 'shipped' ? shipDays() : flight(k)}</button>)}</div><div className="bd-lw">{lbl('Longest in its stage')}{long.length ? long.map(([id, s2, d2], __k) => {
             const c = CHG[id];
             return <button key={__k} className="bd-lw-r" data-bopen={id}><span><b>{c.t}</b><em>{s2}{need(c) ? ' · waiting on you' : c.block ? ' · ' + c.block.toLowerCase() : ''}</em></span><b>{d2}</b></button>;
           }) : <div className="bd-e">Nothing in flight</div>}</div><div className="bd-fk f-key"><span><i style={css("background:var(--fg)")} />A change</span><span><i style={css("background:var(--live)")} />Waiting on you</span><span><i className="hx" />Waiting on something else</span></div></>, <><span>Contract changes go through the Ops Safe</span><span /></>);
