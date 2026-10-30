@@ -2718,7 +2718,7 @@ button.h-al-t:hover b{text-decoration:underline;text-decoration-color:var(--line
 .h-pc-s i.c{background:var(--ground);box-shadow:inset 0 0 0 1.5px var(--underway)}
 .h-pc-s i.f{background:repeating-linear-gradient(45deg,var(--fg) 0 1.5px,transparent 1.5px 5px);box-shadow:inset 0 0 0 1px var(--fg)}
 .h-pc-s i.x{background:none;outline:1px dashed var(--fg-50);outline-offset:-1px}
-.h-pc-c s{text-decoration:none;font:400 9px/1 var(--f-mono);color:var(--fg-50);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:12px;padding-top:4px;border-top:1px solid var(--line)}
+.h-pc-c s{text-decoration:none;font:400 9px/12px var(--f-mono);color:var(--fg-50);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-top:4px;border-top:1px solid var(--line);text-align:center}
 .h-gf{display:flex;flex-direction:column;gap:12px}
 .h-gf svg{width:100%;height:48px;display:block;overflow:visible}
 .h-gf .fa{fill:color-mix(in srgb,var(--fg) 18%,transparent)}
