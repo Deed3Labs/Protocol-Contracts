@@ -311,9 +311,10 @@ export interface CoopLive {
 
 /**
  * The co-op's balance: the USDC its treasury, the Ops Safe, holds on chain (the protocol's reserve
- * token, the LendingPool's asset). Its ClearCredit is read but not counted: every CLRC in issue is paid
- * for by USDC that members' repayments put in the AssurancePool (and the PayoutPool), which Money already
- * shows, so adding the Safe's CLRC would count the same money twice.
+ * token, the LendingPool's asset). Its ClearCredit is read but not counted: it is a claim the co-op still
+ * has to cash, either out of the PayoutPool (`withdrawCoopIncome`) from members' repayments once no queued
+ * shop is waiting on that cash, or out of the AssurancePool's excess above its RTD target (`withdraw`,
+ * which never touches the primary or buffer reserve). It counts then, as the USDC it becomes.
  * USDC isn't one of our contracts, so its transfers aren't indexed: its history is today's figure.
  */
 export async function coopLive(reader: ChainReader, safe: string): Promise<CoopLive> {
