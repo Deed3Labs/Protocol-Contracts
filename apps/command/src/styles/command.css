@@ -2967,3 +2967,8 @@ body.h-pn .h-panel{transform:none;visibility:visible}
 @media (max-width:760px){
 .h-live .h-tl-col > .h-lbl{padding:0 16px}
 }
+
+/* no scrollbars anywhere: the page, panels, boards and strips still scroll by wheel, trackpad, touch and keys.
+   !important over the rules that ask for thin ones. Inside the pages' shadow roots, live.css says the same. */
+html, *{scrollbar-width:none !important}
+*::-webkit-scrollbar{display:none}
