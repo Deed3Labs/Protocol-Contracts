@@ -290,6 +290,9 @@ export function commandRouter(deps: CommandDeps) {
     return out.ok;
   };
 
+  /** Someone in the Admin group: they show members' names on screen without a reason or a log (Kai, 2026-10-29). */
+  const isAdmin = (c: NonNullable<Request['command']>) => c.group?.key === 'admin';
+
   /**
    * A whole list with names is an export (migration 0064): it needs an approved export of the asker's own
    * (`export=<grant>`), which a second person gave. Used once; logged as a reveal with the reason it was
@@ -444,14 +447,15 @@ export function commandRouter(deps: CommandDeps) {
 
   /**
    * Every member's name and email for the page (its Show names switch), for a reason: Members at Approve, logged as
-   * one reveal of the list before it's sent. On screen only: a list taken away is still an export, with a second person.
+   * one reveal of the list before it's sent. An admin shows them without a reason or a log (Kai, 2026-10-29). On screen
+   * only: a list taken away is still an export, with a second person, whoever asks.
    */
   router.post('/members/names', limits.write, need('members', APPROVE), async (req, res) => {
     const c = req.command!;
     try {
       const data = await membersSection(c.db, { level: c.levels.members, reveal: true, now: now(), memberSource: deps.memberSource });
       const names = data.MEMBERS.map((m) => ({ id: m.id, no: m.no, name: [m.first, m.last].filter(Boolean).join(' ') || null, email: m.email ?? null }));
-      if (!(await revealFrom(req, res, { section: 'members', subject: '*', field: 'names and emails, on screen', rows: names.length }))) return;
+      if (!isAdmin(c) && !(await revealFrom(req, res, { section: 'members', subject: '*', field: 'names and emails, on screen', rows: names.length }))) return;
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ names });
     } catch (e) {
@@ -460,14 +464,14 @@ export function commandRouter(deps: CommandDeps) {
     }
   });
 
-  /** One member's name (or someone waiting's), shown for a reason: Members at Approve, logged as a reveal before it's sent. */
+  /** One member's name (or someone waiting's), shown for a reason: Members at Approve, logged as a reveal before it's sent; an admin's isn't. */
   router.post('/members/:id/reveal', limits.write, need('members', APPROVE), async (req, res) => {
     const c = req.command!;
     try {
       const data = await membersSection(c.db, { level: c.levels.members, reveal: true, now: now(), memberSource: deps.memberSource });
       const m = [...data.MEMBERS, ...(data.WAITLIST ?? [])].find((x) => String(x.id) === req.params.id || x.no === req.params.id);
       if (!m) return fail(res, 404, 'NOT_FOUND', 'No such member');
-      if (!(await revealFrom(req, res, { section: 'members', subject: m.no || String(m.id), field: 'name' }))) return;
+      if (!isAdmin(c) && !(await revealFrom(req, res, { section: 'members', subject: m.no || String(m.id), field: 'name' }))) return;
       res.setHeader('Cache-Control', 'private, no-store');
       res.json({ id: m.id, no: m.no, first: m.first, last: m.last });
     } catch (e) {

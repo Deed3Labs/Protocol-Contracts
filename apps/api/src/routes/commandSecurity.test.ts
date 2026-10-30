@@ -72,6 +72,17 @@ async function person(name: string, levels: Levels) {
   expect((await call(kai, 'PATCH', `/people/${id}/access`, { custom: levels })).status).toBe(200);
   return who;
 }
+/** Someone outside the admins at Approve everywhere: giving Approve waits for a second person, Dana. */
+async function approver(name: string) {
+  const email = `${name}@useclear.org`;
+  await call(kai, 'POST', '/invites', { email, name, group: 'outside' });
+  const who = await signIn(`did:${name}|${email}`);
+  const id = (await call(kai, 'GET', '/people')).body.people.find((p: any) => p.email === email).id;
+  const r = await call(kai, 'PATCH', `/people/${id}/access`, { custom: all(4) });
+  if (r.status === 202) expect((await call(dana, 'POST', `/proposals/${r.body.proposal.id}/approve`)).status).toBe(200);
+  else expect(r.status).toBe(200);
+  return who;
+}
 const setting = async (id: string) => (await call(kai, 'GET', '/sections/settings')).body.SETTINGS.find((s: any) => s.id === id);
 const restock = (cost: number) => call(kai, 'POST', '/actions/shop/restock', { id: 'lts', units: [{ option: 'Black', size: 'M', n: 4 }], cost });
 
@@ -230,11 +241,12 @@ describe('reveals', () => {
   });
 
   test('one member’s name, for a reason; skipped in a rush it’s shown and flagged', async () => {
-    const r = await call(kai, 'POST', '/members/1/reveal', { reason: 'Their bank link failed' });
+    const ap = await approver('approver1');
+    const r = await call(ap, 'POST', '/members/1/reveal', { reason: 'Their bank link failed' });
     expect(r.status).toBe(200);
     expect(r.body.first).not.toContain('•');
-    expect((await call(kai, 'POST', '/members/1/reveal', {})).status).toBe(400);
-    expect((await call(kai, 'POST', '/members/1/reveal', { rush: true })).status).toBe(200);
+    expect((await call(ap, 'POST', '/members/1/reveal', {})).status).toBe(400);
+    expect((await call(ap, 'POST', '/members/1/reveal', { rush: true })).status).toBe(200);
     const [rush, reasoned] = (await call(kai, 'GET', '/reveals')).body.reveals;
     expect(rush).toMatchObject({ field: 'name', reason: '', flagged: true });
     expect(reasoned).toMatchObject({ field: 'name', reason: 'Their bank link failed', flagged: false });
@@ -242,8 +254,9 @@ describe('reveals', () => {
   });
 
   test('the page’s names and emails, for a reason: Approve only, logged as one reveal of the list, never cached', async () => {
-    expect((await call(kai, 'POST', '/members/names', {})).status).toBe(400);
-    const r = await call(kai, 'POST', '/members/names', { reason: 'Calling the members who haven’t funded' });
+    const ap = await approver('approver2');
+    expect((await call(ap, 'POST', '/members/names', {})).status).toBe(400);
+    const r = await call(ap, 'POST', '/members/names', { reason: 'Calling the members who haven’t funded' });
     expect(r.status).toBe(200);
     expect(r.headers['cache-control']).toBe('private, no-store');
     expect(r.body.names.length).toBeGreaterThan(0);
@@ -261,6 +274,20 @@ describe('reveals', () => {
     expect((await call(p, 'POST', '/members/names', { reason: 'x' })).status).toBe(403);
   });
 
+  test('an admin shows names, the list’s or one member’s, without a reason and without a log', async () => {
+    const before = (await call(kai, 'GET', '/reveals')).body.reveals.length;
+    const list = await call(kai, 'POST', '/members/names', {});
+    expect(list.status).toBe(200);
+    expect(list.headers['cache-control']).toBe('private, no-store');
+    expect(JSON.stringify(list.body.names)).not.toContain('•');
+    const one = await call(kai, 'POST', '/members/1/reveal', {});
+    expect(one.status).toBe(200);
+    expect(one.body.first).not.toContain('•');
+    expect((await call(kai, 'GET', '/reveals')).body.reveals.length).toBe(before);
+    // a whole list taken away is still an export, admin or not
+    expect((await call(kai, 'GET', '/sections/members?reveal=1')).status).toBe(403);
+  });
+
   test('someone waiting is masked like a member, revealed one at a time for a reason, and never at Totals', async () => {
     const { rows } = await db.query<{ id: number }>(`INSERT INTO command.waitlist (email, name, zip, city, source, joined_at) VALUES ('wren@example.com', 'Wren Ito', '92373', 'Redlands', 'website', '2026-10-20T15:00:00Z') RETURNING id`);
     const no = `W-${String(rows[0].id).padStart(4, '0')}`;
@@ -269,7 +296,7 @@ describe('reveals', () => {
     expect(w).toMatchObject({ id: 1_000_000 + rows[0].id, pos: expect.any(Number), city: 'Redlands', src: 'Website', joined: Date.parse('2026-10-20T15:00:00Z') });
     expect([w.first, w.last]).toEqual(['W•••', 'I••']);
     expect(JSON.stringify(masked.body)).not.toMatch(/Wren|wren@/);
-    const r = await call(kai, 'POST', `/members/${w.id}/reveal`, { reason: 'Moving them up for the Redlands batch' });
+    const r = await call(await approver('approver3'), 'POST', `/members/${w.id}/reveal`, { reason: 'Moving them up for the Redlands batch' });
     expect(r.body).toEqual({ id: w.id, no, first: 'Wren', last: 'Ito' });
     expect((await call(kai, 'GET', '/reveals')).body.reveals[0]).toMatchObject({ section: 'members', subject: no, field: 'name', reason: 'Moving them up for the Redlands batch' });
     const totals = all(2);
@@ -293,7 +320,7 @@ describe('reveals', () => {
   test('when Settings stops asking for a reason, a reveal without one isn’t flagged', async () => {
     const r = await call(kai, 'POST', '/actions/settings/change', { id: 'reason', value: false });
     expect((await call(dana, 'POST', `/proposals/${r.body.proposal.id}/approve`)).status).toBe(200);
-    expect((await call(kai, 'POST', '/members/2/reveal', {})).status).toBe(200);
+    expect((await call(await approver('approver4'), 'POST', '/members/2/reveal', {})).status).toBe(200);
     expect((await call(kai, 'GET', '/reveals')).body.reveals[0]).toMatchObject({ subject: expect.any(String), flagged: false, reason: '' });
     const back = await call(kai, 'POST', '/actions/settings/change', { id: 'reason', value: true });
     await call(dana, 'POST', `/proposals/${back.body.proposal.id}/approve`);
