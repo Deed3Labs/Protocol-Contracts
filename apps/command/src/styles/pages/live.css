@@ -148,6 +148,9 @@ button.fw-k{text-align:left;cursor:pointer}
 .fsp.mcity.mshop .fsp-d{left:-5px;top:-5px;width:10px;height:10px;box-shadow:inset 0 0 0 1.5px var(--fg),0 0 0 2px var(--ground)}
 .fsp.mcity.mshop.now .fsp-d{box-shadow:0 0 0 2px var(--ground),0 0 0 3.5px var(--fg)}
 
+/* Members › Next: a window's bar keeps to its own width, and its days sit clear of it */
+.nx2 .wrow .wbar{flex:none;overflow:hidden}
+
 /* Members › the list's Show names switch, beside Show everyone; on, it's marked as the sort's picked button is */
 .m-sw{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--line);font-size:13px;color:var(--fg-70);white-space:nowrap}
 .m-sw svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4}
