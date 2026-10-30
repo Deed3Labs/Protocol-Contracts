@@ -535,7 +535,9 @@ function makeMoney() {
         mx = gateMax(),
         pts = RTD_W.map((v, i) => v == null ? null : [RTD_W.length > 1 ? i / (RTD_W.length - 1) * W : W, H - (L ? Math.min(v, mx) : v) / mx * H]).filter(Boolean),
         dip = RTD_W.findIndex(v => v != null && v < M.floor);
-      const spark = <svg className="ngs" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true"><line x1="0" x2={W} y1={H - M.floor / mx * H} y2={H - M.floor / mx * H} className="fl" /><path d={`M${pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' L')}`} /></svg>;
+      // with no weeks to draw, the target line has nothing to sit against, so it centres on the line beside it
+      const fy = pts.length ? H - M.floor / mx * H : H / 2;
+      const spark = <svg className="ngs" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true"><line x1="0" x2={W} y1={fy} y2={fy} className="fl" />{pts.length ? <path d={`M${pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' L')}`} /> : ''}</svg>;
       // live, it's loss cover, not a gate: nothing stops credit issuing on it. The AssurancePool is the last of
       // three to take a loss (the member's own collateral, then the yield pool's share price, then this), and
       // it's covered while its primary reserve is at target against what could reach it, or nothing could
