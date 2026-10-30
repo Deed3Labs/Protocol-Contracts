@@ -10,8 +10,13 @@ export interface MemberRow {
   /** Masked (`P••••`) unless names were asked for; null at Totals, where names are never sent. */
   first: string | null;
   last: string | null;
-  /** The email on their private profile: only when names were asked for (a reveal), never otherwise. */
+  /**
+   * Only when names were asked for (a reveal), never otherwise: their email and phone (their private profile's, else
+   * their Privy sign-in's), and their smart account, the last thing to know them by.
+   */
   email?: string | null;
+  phone?: string | null;
+  wallet?: string | null;
   batch: number;
   invited: number;
   joined: number;

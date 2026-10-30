@@ -308,8 +308,12 @@ async function membersLive(db: Queryable, o: ReadOptions, keep?: { rows?: Member
     };
     if (funded) Object.assign(r, { fund: FUND[funded.with], activeAt: funded.at });
     if (spend) Object.assign(r, { spend: spend.shop, spentAt: spend.at });
-    // their email only with their name: a reveal (an export, or the page's Show names), never masked
-    if (names === 'shown' && m.email) r.email = m.email;
+    // how else to know them, only with their name: a reveal (an export, or the page's Show names), never masked
+    if (names === 'shown') {
+      if (m.email) r.email = m.email;
+      if (m.phone) r.phone = m.phone;
+      if (m.wallet) r.wallet = m.wallet;
+    }
     return row(r);
   });
   // the figures are worked out from the full rows; at Totals the rows then leave without names or dates

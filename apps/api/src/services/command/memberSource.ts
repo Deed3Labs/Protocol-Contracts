@@ -1,5 +1,6 @@
 import { getPayPool, getPostgresPool } from '../../config/postgres.js';
 import type { Queryable } from '../../db/db.js';
+import { PrivyClient } from '@privy-io/server-auth';
 import { memberStore } from '../memberStore.js';
 
 /*
@@ -16,8 +17,13 @@ export interface RosterMember {
   inviteCode: string | null;
   wallets: string[];
   name: string | null;
-  /** Their email, as their private profile has it: only when names were asked for. */
+  /**
+   * Only when names were asked for: their email and phone, as their private profile has them, else as their Privy
+   * sign-in has them; and their smart account (the members row's primary wallet), the last thing to know them by.
+   */
   email?: string | null;
+  phone?: string | null;
+  wallet?: string | null;
   city: string | null;
 }
 export interface Milestones {
@@ -47,35 +53,64 @@ const ms = (d: Date | string | null) => (d == null ? null : new Date(d).getTime(
 interface Where {
   main: () => Pick<Queryable, 'query'> | null;
   pay: () => Pick<Queryable, 'query'> | null;
-  basics: (ids: number[]) => Promise<Map<number, { legalName: string | null; email?: string | null; city: string | null }>>;
+  basics: (ids: number[]) => Promise<Map<number, { legalName: string | null; email?: string | null; phone?: string | null; city: string | null }>>;
+  /** The email and phone a Privy account signs in with, by its DID; nothing when Privy isn't configured or can't say. */
+  privy?: (did: string) => Promise<{ email: string | null; phone: string | null } | null>;
 }
-const LIVE: Where = { main: getPostgresPool, pay: getPayPool, basics: (ids) => memberStore.privateBasics(ids) };
+
+let privyClient: PrivyClient | null = null;
+/** A member's contact as their Privy sign-in has it: an email account (or Google's, Apple's), and a phone. */
+async function privyContact(did: string) {
+  const id = process.env.PRIVY_APP_ID || process.env.VITE_PRIVY_APP_ID || '',
+    secret = process.env.PRIVY_APP_SECRET || '';
+  if (!id || !secret) return null;
+  privyClient ??= new PrivyClient(id, secret);
+  const u = await privyClient.getUser(did);
+  const email = u.email?.address ?? u.google?.email ?? u.apple?.email ?? null;
+  return { email, phone: u.phone?.number ?? null };
+}
+const LIVE: Where = { main: getPostgresPool, pay: getPayPool, basics: (ids) => memberStore.privateBasics(ids), privy: privyContact };
 
 export function liveMemberSource(where: Where = LIVE): MemberSource {
   return {
     async roster({ names }) {
       const pool = where.main();
       if (!pool) throw new Error('The member database isn’t configured');
-      const { rows } = await pool.query<{ id: string; created_at: Date; last_authenticated_at: Date | null; invite_code: string | null; wallets: string[] | null }>(
-        `SELECT m.id, m.created_at, m.last_authenticated_at, o.invite_code,
+      const { rows } = await pool.query<{ id: string; created_at: Date; last_authenticated_at: Date | null; invite_code: string | null; wallets: string[] | null; auth_subject: string | null; primary_wallet: string | null }>(
+        `SELECT m.id, m.created_at, m.last_authenticated_at, o.invite_code, m.auth_subject, m.primary_wallet,
                 array_remove(array_agg(DISTINCT lower(w.wallet_address)) || array_agg(DISTINCT lower(m.primary_wallet)), NULL) AS wallets
            FROM members m
            LEFT JOIN member_onboarding o ON o.member_id = m.id
            LEFT JOIN member_wallets w ON w.member_id = m.id
-          GROUP BY m.id, o.invite_code
+          GROUP BY m.id, o.invite_code, m.auth_subject, m.primary_wallet
           ORDER BY m.id`,
       );
       const basics = await where.basics(rows.map((r) => Number(r.id)));
-      return rows.map((r) => ({
-        id: Number(r.id),
-        createdAt: ms(r.created_at)!,
-        lastSeen: ms(r.last_authenticated_at),
-        inviteCode: r.invite_code?.trim().toUpperCase() || null,
-        wallets: [...new Set(r.wallets ?? [])],
-        name: names ? (basics.get(Number(r.id))?.legalName ?? null) : null,
-        email: names ? (basics.get(Number(r.id))?.email ?? null) : null,
-        city: basics.get(Number(r.id))?.city ?? null,
-      }));
+      // a member whose profile has neither an email nor a phone: their Privy sign-in's, asked only when names are
+      const fromPrivy = new Map<number, { email: string | null; phone: string | null }>();
+      if (names && where.privy)
+        for (const r of rows) {
+          const b = basics.get(Number(r.id));
+          if (b?.email || b?.phone || !r.auth_subject?.startsWith('did:privy:')) continue;
+          const c = await where.privy(r.auth_subject).catch(() => null);
+          if (c) fromPrivy.set(Number(r.id), c);
+        }
+      return rows.map((r) => {
+        const b = basics.get(Number(r.id)),
+          p = fromPrivy.get(Number(r.id));
+        return {
+          id: Number(r.id),
+          createdAt: ms(r.created_at)!,
+          lastSeen: ms(r.last_authenticated_at),
+          inviteCode: r.invite_code?.trim().toUpperCase() || null,
+          wallets: [...new Set(r.wallets ?? [])],
+          name: names ? (b?.legalName ?? null) : null,
+          email: names ? (b?.email || p?.email || null) : null,
+          phone: names ? (b?.phone || p?.phone || null) : null,
+          wallet: names ? r.primary_wallet?.toLowerCase() || null : null,
+          city: b?.city ?? null,
+        };
+      });
     },
     async milestones(wallets) {
       const out = new Map<string, Milestones>();
