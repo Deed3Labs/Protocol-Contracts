@@ -2773,7 +2773,7 @@ export const GBOARDS = [
     'Co-op board',
     'coop',
     [
-      ['m', 'Kai', D(6, 12), D(1, 15, 2028)],
+      ['c', 'Kai', D(6, 12), D(1, 15, 2028), 'Member-elected'],
       ['m', 'Member M•••', D(8, 20), D(1, 15, 2028)],
       ['m', 'Member M•••', D(8, 20), D(1, 15, 2027)],
       ['m', null, D(1, 15, 2027), 0, 'Elect 15 Jan'],
@@ -2799,7 +2799,7 @@ export const GBOARDS = [
     'ClearLabs board',
     'labs',
     [
-      ['r', 'Kai', D(8, 5), D(8, 5, 2028)],
+      ['c', 'Kai', D(8, 5), D(8, 5, 2028), 'Co-op reserved'],
       ['r', 'Dana Ruiz', D(8, 5), D(8, 5, 2028)],
       ['t', null, 0, 0, 'When a protocol lead joins'],
     ],
