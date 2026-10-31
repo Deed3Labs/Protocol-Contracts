@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, test } from 'bun:test';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
@@ -40,6 +41,28 @@ describe('the structure', () => {
     ]);
     const { rows: notes } = await db.query<{ note: string }>('SELECT note FROM command.board_seats WHERE note IS NOT NULL');
     expect(notes.every((r) => !/\d/.test(r.note))).toBe(true);
+    // every board's first seat is its chair, and says how it's filled
+    const { rows: first } = await db.query<{ board: string; class: string; note: string | null }>('SELECT board, class, note FROM command.board_seats WHERE position = 0 ORDER BY board');
+    expect(first).toEqual([
+      { board: 'ClearLabs board', class: 'c', note: 'Co-op reserved' },
+      { board: 'Co-op board', class: 'c', note: 'Member-elected' },
+      { board: 'Holdings board', class: 'c', note: 'Elected directly' },
+    ]);
+  });
+
+  test('a database seeded before the chairs gets them from migration 0076, and running it again changes nothing', async () => {
+    await db.query("UPDATE command.board_seats SET class = 'm', note = NULL WHERE board = 'Co-op board' AND position = 0");
+    await db.query("UPDATE command.board_seats SET class = 'r', note = NULL WHERE board = 'ClearLabs board' AND position = 0");
+    const sql = readFileSync(new URL('../../../migrations/0076_command_board_chairs.sql', import.meta.url), 'utf8');
+    const statements = sql.replace(/^--.*$/gm, '').split(';').map((x) => x.trim()).filter(Boolean);
+    for (let i = 0; i < 2; i++) for (const st of statements) await db.query(st);
+    const { rows } = await db.query<{ board: string; position: number; class: string; note: string | null }>('SELECT board, position, class, note FROM command.board_seats WHERE board <> $1 AND position < 2 ORDER BY board, position', ['Holdings board']);
+    expect(rows).toEqual([
+      { board: 'ClearLabs board', position: 0, class: 'c', note: 'Co-op reserved' },
+      { board: 'ClearLabs board', position: 1, class: 'r', note: null },
+      { board: 'Co-op board', position: 0, class: 'c', note: 'Member-elected' },
+      { board: 'Co-op board', position: 1, class: 'm', note: null },
+    ]);
   });
 
   test('the contracts keep their map, without the prototype’s notes', async () => {
