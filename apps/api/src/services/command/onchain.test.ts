@@ -130,9 +130,11 @@ afterAll(() => {
 const read = () => ({ level: TOTALS, reveal: false, now: NOW, chain: reader }) as const;
 
 describe('the yield pool, live', () => {
-  test('stands where the contract says, its rates the contract’s own', async () => {
+  test('stands where the contract says; its rate is the carry credit pays, not its curve', async () => {
     const m: any = await moneySection(db, read());
-    expect(m.Y).toMatchObject({ assets: 1406, principal: 1400, lent: 0, cash: 1406, queued: 0, earned: 6, util: 0, borrowBps: 25, supplyBps: 0, apy: 0, cycleDays: 30, opened: '15 Oct', depositors: 3 });
+    // no credit is out, so credit pays nothing yet: the curve's 25 a cycle is a figure no contract charges
+    expect(m.Y).toMatchObject({ assets: 1406, principal: 1400, lent: 0, cash: 1406, queued: 0, earned: 6, util: 0, borrowBps: 0, supplyBps: 0, apy: 0, cycleDays: 30, opened: '15 Oct', depositors: 3 });
+    expect(m.Y.rates?.bookBps ?? null).toBeNull();
     expect(m.Y.curve).toEqual({ base: 25, s1: 75, s2: 900, kink: 0.8 });
     expect(m.Y.price).toBeCloseTo(1406 / 1400, 10);
     // every read in one request: the pool's views, the cycle, the payout draw, and each holder's shares and pledge
