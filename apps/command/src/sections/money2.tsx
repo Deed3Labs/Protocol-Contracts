@@ -797,18 +797,20 @@ function makeMoney() {
       const b = cell('s5', 'How it’s funded', <span className="lbl">Funded beats queued</span>, <div className="led npl">{(L ? [['Today', money(M.payout)], ['Repayments due, 14 days', money(M.dueMembers)], ['Owed, 14 days', money(M.owed14)], ['Borrowed from the yield pool', money(M.short)], ['Paid back', 'From repayments'], ['Order', 'Oldest claim first, always']] : [['Today', money(M.payout)], ['Repayments due by 4 Nov', money(M.dueMembers)], ['Owed by 4 Nov', money(M.owed14)], ['Borrowed from the yield pool', money(M.short)], ['Paid back', '6 Nov, from repayments'], ['Order', 'Oldest claim first, always']]).map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>, <><span>Top-ups need a second person</span>{!L || CAN() ? <button className="btn sm-b" data-npropose="topup">Propose a top-up</button> : <span />}</>);
       return band(<>{a}{b}</>);
     }
-    /* live, the rate is the carry members pay on the credit the pool funded, not the LendingPool's curve, which no contract
-       charges: the pool lends to the PayoutPool, and the PayoutPool hands each lender the carry on the float it funded. So
-       a dollar lent earns the book's average rate, the depositors earn that times the share lent out, and idle cash earns
-       nothing. The bars are what lent money earns a year at each rate a member can be on */
+    /* live, the rate is the carry members pay, not the LendingPool's curve, which no contract charges: the pool lends to the
+       PayoutPool to pay shops, and the PayoutPool hands each lender the carry on what it funded. Members pay it on revolving
+       credit (a range across its tiers) and on term plans; a dollar lent earns the book's average of the two, and the
+       depositors that times the share lent out. With nothing out yet, the term plans' rate stands in */
     function rateLive(mo, t) {
       const R = Y.rates,
-        yr = bps => yApy(bps) * 100,
-        book = R && R.bookBps != null ? R.bookBps : null;
-      const bars = R ? [...(book != null ? [['The book now', book, 1]] : []), ...[...R.tiers.filter(x => x.bps > 0).map(x => [x.name, x.bps, x.out > 0]), ...(R.term.bps ? [['Term plans', R.term.bps, R.term.out > 0]] : [])].sort((x, y) => x[1] - y[1])] : [];
-      const span = R ? [...R.tiers.map(x => x.bps), ...(R.term.bps ? [R.term.bps] : [])].filter(b => b > 0) : [];
-      const bmx = Math.max(1, ...bars.map(b => yr(b[1])));
-      return cell('s7', 'Rate', <span className="lbl">{"Member carry · per "}{Y.cycleDays}{" days"}</span>, <div className="npd"><div className="ngp-eq">{t('Credit pays', book != null ? mo(book) : '—', book != null ? `a month · ${yr(book).toFixed(1)}% a year` : span.length ? `No credit out · ${mo(Math.min(...span))}–${mo(Math.max(...span))} a month by tier` : 'No credit out yet')}<i>×</i>{t('Lent out', pct(Y.lent, Y.assets), `${money(Y.lent)} of ${money(Y.assets)} · to the payout pool`)}<i>=</i>{t('Depositors earn', mo(Y.supplyBps), `a month · ${(Y.apy * 100).toFixed(2)}% a year`, 'hi')}</div>{lbl('What lent money earns a year, by what members pay')}{bars.length ? <div className="nlm wk">{bars.map(([k, b, on], i) => <div key={i}><span>{yr(b).toFixed(1)}%</span><i style={css(`height:${yr(b) / bmx * 100}%`)} className={on ? 'hi' : 'hx'} /><s>{k}</s></div>)}</div> : <div className="lv-e"><span>The issuers’ rates aren’t read yet</span></div>}</div>, <><span>Paid from members’ carry on what it funded · idle cash earns nothing</span><span /></>);
+        rev = R ? R.tiers.filter(x => x.bps > 0).map(x => x.bps) : [],
+        book = R && R.bookBps != null ? R.bookBps : null,
+        rate = book != null ? book : R && R.term.bps ? R.term.bps : rev.length ? Math.min(...rev) : 0,
+        kinds = [rev.length ? `revolving ${mo(Math.min(...rev))}–${mo(Math.max(...rev))}` : '', R && R.term.bps ? `term plans ${mo(R.term.bps)}` : ''].filter(Boolean).join(' · ');
+      const depAt = u => yApy(rate * u) * 100;
+      const sc = [['20%', .2], ['40%', .4], [`${Math.round(Y.util * 100)}% now`, Y.util], [`${Math.round(Y.utilAfter * 100)}% in 14 days`, Y.utilAfter], ['80%', .8]],
+        smx = Math.max(...sc.map(x => depAt(x[1]))) || 1;
+      return cell('s7', 'Rate', <span className="lbl">{"Member carry · per "}{Y.cycleDays}{" days"}</span>, <div className="npd"><div className="ngp-eq">{t('Credit pays', book != null ? mo(book) : '—', `${book != null ? 'a month · ' : 'Nothing out yet · '}${kinds || 'rates not read yet'}${kinds ? ' a month' : ''}`)}<i>×</i>{t('Lent out', pct(Y.lent, Y.assets), `${money(Y.lent)} of ${money(Y.assets)} · to the payout pool`)}<i>=</i>{t('Depositors earn', mo(Y.supplyBps), `a month · ${(Y.apy * 100).toFixed(2)}% a year`, 'hi')}</div>{lbl(`Yearly rate to depositors, by share lent out · at ${book != null ? 'the book’s' : 'the term plans’'} ${mo(rate)} a month`)}<div className="nlm wk">{sc.map(([k, u], i) => <div key={i}><span>{depAt(u).toFixed(1)}%</span><i style={css(`height:${depAt(u) / smx * 100}%`)} className={i === 2 ? 'hi' : 'hx'} /><s>{k}</s></div>)}</div></div>, <><span>Lent to the payout pool to pay shops · paid from members’ carry · idle cash earns nothing</span><span /></>);
     }
     function poolYield() {
       const mo = bps => (bps / 100).toFixed(2) + '%',
