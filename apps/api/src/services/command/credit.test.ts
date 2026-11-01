@@ -42,7 +42,11 @@ const members: Record<string, { balance: number; limit: number; periodEnd: numbe
   [A]: { balance: 300, limit: 500, periodEnd: NOW + 60 * DAY, autopay: false, plans: [7n] },
   [B]: { balance: 50, limit: 500, periodEnd: NOW - 40 * DAY, autopay: true, plans: [] },
 };
-const plan = { member: A, principal: usdc(300), outstanding: usdc(300), repaid: 0n, openedAt: sec(NOW - 10 * DAY), installments: 3, length: BigInt(30 * 86400), rate: 0n, closed: false };
+const plan = { member: A, principal: usdc(300), outstanding: usdc(300), repaid: 0n, openedAt: sec(NOW - 10 * DAY), installments: 3, length: BigInt(30 * 86400), rate: 200n, closed: false };
+// the revolving tiers, per 30 days: savings-backed is free, bond 0.65%, boost 3%; B's 50 is drawn in boost
+const word = (s: string) => '0x' + Buffer.from(s).toString('hex').padEnd(64, '0');
+const tiers: Array<[string, bigint, boolean]> = [[word('SAVINGS'), 0n, true], [word('BOND'), 65n, true], [word('BOOST'), 300n, true]];
+const drawnIn = (m: string, tier: number) => (m === B && tier === 2 ? usdc(50) : 0n);
 
 const asked: ChainCall[] = [];
 const reader: ChainReader = {
@@ -56,7 +60,13 @@ const reader: ChainReader = {
       if (c.contract === 'MerchantRegistry') return c.fn === 'merchantCount' ? 2n : [SHOP, OTHER][Number(c.args![0])];
       if (c.contract === 'ClearCredit')
         return c.fn === 'decimals' ? 6n : c.fn === 'creditBalanceOf' ? usdc(members[a].balance) : usdc(members[a].limit);
-      if (c.contract === 'RevolvingIssuer') return c.fn === 'periodExpirationOf' ? sec(members[a].periodEnd) : members[a].autopay;
+      if (c.contract === 'RevolvingIssuer') {
+        if (c.fn === 'tierCount') return BigInt(tiers.length);
+        if (c.fn === 'cycleLength') return BigInt(30 * 86400);
+        if (c.fn === 'tierAt') return tiers[Number(c.args![0])];
+        if (c.fn === 'principalOf') return drawnIn(a, Number(c.args![1]));
+        return c.fn === 'periodExpirationOf' ? sec(members[a].periodEnd) : members[a].autopay;
+      }
       if (c.contract === 'TermIssuer') {
         if (c.fn === 'plansOf') return members[a].plans;
         if (c.fn === 'planAt') return [plan.member, plan.principal, plan.outstanding, plan.repaid, plan.openedAt, plan.installments, plan.length, plan.rate, plan.closed];
@@ -128,6 +138,17 @@ describe('what members owe', () => {
       [20, 'in', 100, 'Member repayments', '1 plan installment'],
     ]);
     expect(c.due14).toBe(50);
+  });
+
+  test('what the book pays in carry: each tier on what’s drawn in it, the open plan on what’s left, and their average', async () => {
+    const c = await creditLive(db, reader, NOW);
+    expect(c.rates).toEqual({
+      cycleDays: 30,
+      tiers: [{ name: 'Savings', bps: 0, out: 0 }, { name: 'Bond', bps: 65, out: 0 }, { name: 'Boost', bps: 300, out: 50 }],
+      term: { bps: 200, out: 300 },
+      // (50 × 300 + 300 × 200) / 350: what a dollar the yield pool lent earns, per cycle
+      bookBps: (50 * 300 + 300 * 200) / 350,
+    });
   });
 
   test('losses, all time, named only by the last of their address; what the AssurancePool paid', async () => {

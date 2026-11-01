@@ -137,6 +137,45 @@ export interface CreditLive {
   late: number;
   /** How many members owe anything now. */
   owing: number;
+  /** What the book pays in carry; null when the issuers can't be read. */
+  rates: CarryRates | null;
+}
+
+/**
+ * What members pay in carry, per cycle, in basis points: each revolving tier's rate and what's drawn in it, the open term
+ * plans' (or the last plan's, with none open), and the average over everything outstanding. The yield pool lends to the
+ * PayoutPool, which shares carry out by the float each lender funded, so a dollar it has lent earns this average; the
+ * LendingPool's own rate curve is never charged.
+ */
+export interface CarryRates {
+  cycleDays: number;
+  tiers: Array<{ name: string; bps: number; out: number }>;
+  term: { bps: number | null; out: number };
+  bookBps: number | null;
+}
+
+const TIER_NAMES: Record<string, string> = { SAVINGS: 'Savings', BOND: 'Bond', POOL_SHARE: 'Pool share', INCOME: 'Income', BOOST: 'Boost' };
+const bytes32Text = (v: unknown) => Buffer.from(String(v).replace(/^0x/, ''), 'hex').toString('utf8').replace(/\0+$/, '');
+
+async function carryRates(reader: ChainReader, owing: string[], plans: Array<{ outstanding: number; closed: boolean; rate: number; opened: number }>, usd: (v: unknown) => number): Promise<CarryRates> {
+  const [count, cycle] = await reader.read([
+    { contract: 'RevolvingIssuer', fn: 'tierCount' },
+    { contract: 'RevolvingIssuer', fn: 'cycleLength' },
+  ]);
+  const n = Number(big(count));
+  const at = n ? ((await reader.read(Array.from({ length: n }, (_, i) => ({ contract: 'RevolvingIssuer', fn: 'tierAt', args: [BigInt(i)] })))) as Array<[string, bigint, boolean]>) : [];
+  const drawn = n && owing.length ? await reader.read(owing.flatMap((m) => Array.from({ length: n }, (_, i) => ({ contract: 'RevolvingIssuer', fn: 'principalOf', args: [m, BigInt(i)] })))) : [];
+  const tiers = at
+    .map(([kind, bps, active], i) => ({ name: TIER_NAMES[bytes32Text(kind)] ?? bytes32Text(kind), bps: Number(bps), active, out: round2(owing.reduce((a, _, j) => a + usd(drawn[j * n + i]), 0)) }))
+    .filter((t) => t.active || t.out > 0)
+    .map(({ name, bps, out }) => ({ name, bps, out }));
+  const open = plans.filter((p) => !p.closed && p.outstanding > 0);
+  const termOut = round2(open.reduce((a, p) => a + p.outstanding, 0));
+  const last = [...plans].sort((x, y) => y.opened - x.opened)[0];
+  const termBps = termOut ? open.reduce((a, p) => a + p.outstanding * p.rate, 0) / termOut : last ? last.rate : null;
+  const out = tiers.reduce((a, t) => a + t.out, 0) + termOut;
+  const owed = tiers.reduce((a, t) => a + t.out * t.bps, 0) + open.reduce((a, p) => a + p.outstanding * p.rate, 0);
+  return { cycleDays: Number(big(cycle)) / 86400 || 30, tiers, term: { bps: termBps, out: termOut }, bookBps: out ? owed / out : null };
 }
 
 const BUCKETS = ['Current', '1–30 days', '31–60 days', 'Over 60'];
@@ -185,7 +224,7 @@ export async function creditLive(db: Queryable, reader: ChainReader, now: number
       )
     : [];
   const plans = planIds.map((id, i) => {
-    const [member, , outstanding, repaid, , , length, , closed] = pr[i * 3] as [string, bigint, bigint, bigint, bigint, number, bigint, bigint, boolean];
+    const [member, , outstanding, repaid, openedAt, , length, rate, closed] = pr[i * 3] as [string, bigint, bigint, bigint, bigint, number, bigint, bigint, boolean];
     const [inst, scheduleTotal, installments, start] = pr[i * 3 + 1] as [bigint, bigint, number, bigint];
     return {
       id,
@@ -194,6 +233,8 @@ export async function creditLive(db: Queryable, reader: ChainReader, now: number
       repaid: usd(repaid),
       length: Number(length) * 1000,
       closed: !!closed,
+      rate: Number(big(rate)),
+      opened: Number(big(openedAt)) * 1000,
       inst: usd(inst),
       total: usd(scheduleTotal),
       installments: Number(installments),
@@ -299,5 +340,7 @@ export async function creditLive(db: Queryable, reader: ChainReader, now: number
     due14: round2(IN.filter((f) => f[0] <= 14).reduce((a, f) => a + f[2], 0)),
     late,
     owing: who.filter((w) => w.balance > 0).length,
+    // a book read before the issuers had these views (or a reader that can't) has no rates, not a crash
+    rates: await carryRates(reader, who.filter((w) => w.balance > 0).map((w) => w.m), plans, usd).catch(() => null),
   };
 }

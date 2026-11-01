@@ -62,8 +62,10 @@ export function moneyLive() {
   const curve = Y.curve && Y.curve.kink > 0 ? { ...Y.curve } : { base: 0, s1: 0, s2: 0, kink: 1 };
   const YY = {
     assets: 0, principal: 0, lent: 0, depositors: 0, pledged: 0, queued: 0, cash: 0, util: 0, earned: 0, borrowBps: 0, supplyBps: 0, apy: 0, apr: 0, toPayout: 0, utilAfter: 0, apyAfter: 0,
-    ...Object.fromEntries(Object.entries(Y).filter(([k]) => !['curve', 'opened'].includes(k)).map(([k, v]) => [k, num(v)])),
+    ...Object.fromEntries(Object.entries(Y).filter(([k]) => !['curve', 'opened', 'rates'].includes(k)).map(([k, v]) => [k, num(v)])),
     opened: Y.opened || '—',
+    // what the book pays in carry, by tier and on term plans (the API's credit.rates); null until it reads the issuers
+    rates: Y.rates && Array.isArray(Y.rates.tiers) ? Y.rates : null,
     cycleDays: num(Y.cycleDays) || 30,
     curve,
   };

@@ -1302,8 +1302,15 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const borrowBps = (u: number) => (u <= Y.curve.kink ? Y.curve.base + (Y.curve.s1 * u) / Y.curve.kink : Y.curve.base + Y.curve.s1 + (Y.curve.s2 * (u - Y.curve.kink)) / (1 - Y.curve.kink));
   const apr = (bps: number) => ((bps / 10000) * 365) / Y.cycleDays;
   const apy = (bps: number) => Math.pow(1 + bps / 10000, 365 / Y.cycleDays) - 1;
-  // live, the rates are the contract's own reads; the curve is only for what a draw would do to them
-  Y.borrowBps = chainPool ? chainPool.borrowBps : borrowBps(Y.util); Y.supplyBps = chainPool ? chainPool.supplyBps : Y.borrowBps * Y.util;
+  // live, credit pays the carry on the book, not the LendingPool's curve, which nothing charges: the pool lends to the
+  // PayoutPool, and the PayoutPool hands each lender the carry on the float it funded. So a dollar lent earns the book's
+  // average rate, and the depositors that times the share lent out; idle cash earns nothing
+  const rates = credit?.rates ?? null;
+  if (credit) Y.rates = rates;
+  // carry compounds per the issuers' cycle, so a year is counted in theirs
+  if (rates) Y.cycleDays = rates.cycleDays;
+  Y.borrowBps = credit ? (rates?.bookBps ?? 0) : borrowBps(Y.util);
+  Y.supplyBps = Y.borrowBps * Y.util;
   Y.apy = apy(Y.supplyBps); Y.apr = apr(Y.borrowBps);
   if (reserve) { M.clrusd = reserve.clrusd; M.reserveDiff = reserve.difference; }
   M.rtd = M.unsecured ? M.assurance / M.unsecured : 0;
@@ -1333,7 +1340,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   }
   M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
   // live, the gap is the PayoutPool's own shortfall, never the tables' sample against real cash
-  Y.toPayout = Math.min(chainPool ? chainPool.payoutShort : M.short, Y.cash); Y.utilAfter = Y.assets ? (Y.lent + Y.toPayout) / Y.assets : 0; Y.apyAfter = apy(borrowBps(Y.utilAfter) * Y.utilAfter);
+  Y.toPayout = Math.min(chainPool ? chainPool.payoutShort : M.short, Y.cash); Y.utilAfter = Y.assets ? (Y.lent + Y.toPayout) / Y.assets : 0; Y.apyAfter = apy((credit ? Y.borrowBps : borrowBps(Y.utilAfter)) * Y.utilAfter);
 
   const AP_BAL = [...((f['money.ap.balance_weeks'] as number[] | undefined) ?? []), M.assurance];
   const UNSEC = [...((f['money.credit.unsecured_weeks'] as number[] | undefined) ?? []), M.unsecured];
