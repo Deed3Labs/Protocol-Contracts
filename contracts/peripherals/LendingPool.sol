@@ -260,13 +260,17 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
 
     /// @dev Pledged shares do not leave by an ordinary transfer either. Refusing to let them move
     /// is what makes the pledge mean anything, since the member holds them.
+    ///
+    /// Nor by a burn: `withdraw`, `redeem` and `requestWithdrawal` all burn the holder's shares, and
+    /// this used to wave every burn through -- so a member could take pledged shares out as cash
+    /// while the credit they backed was still drawn. Only a mint skips the check.
     function _beforeTokenTransfer(address from, address to, uint256 amount)
         internal
         virtual
         override
     {
         super._beforeTokenTransfer(from, to, amount);
-        if (from == address(0) || to == address(0)) return;
+        if (from == address(0)) return;
         if (hasRole(LIQUIDATOR_ROLE, _msgSender())) return;
         uint256 free = freeSharesOf(from);
         if (amount > free) revert LendingPoolEncumbered(from, free, amount);
