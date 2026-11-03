@@ -1,31 +1,45 @@
 {
   "name": "@useclear/node",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "description": "Pay with Clear for your server: payments, payment links, refunds, webhook endpoints and webhook signatures.",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Deed3Labs/Protocol-Contracts.git",
+    "directory": "packages/clear-node"
+  },
+  "homepage": "https://app.useclear.org/docs/server.md",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/types/clear-node/src/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/types/clear-node/src/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "bundle": "tsup",
     "test": "bun test src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsup && node ../../scripts/sdk/build-types.mjs"
   },
-  "dependencies": {},
+  "dependencies": {
+    "zod": "^4.5.4"
+  },
   "devDependencies": {
     "@clear/public-api-contracts": "file:../public-api-contracts",
     "@types/node": "^22.15.3",
+    "tsup": "^8.5.1",
     "typescript": "~5.8.3"
   }
 }

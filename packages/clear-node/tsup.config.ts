@@ -1,17 +1,17 @@
 import { defineConfig } from 'tsup';
 
 /**
- * The published build. `@clear/public-api-contracts` is a private workspace package, so its types and
- * its few runtime helpers are bundled in (`noExternal`), and the declarations are resolved into
- * `dist/index.d.ts` so nobody needs it from npm. Before publishing, point `main`/`types`/`exports` in
- * package.json at `dist/` and drop `private`.
+ * The published JavaScript. `@clear/public-api-contracts` is a private workspace package, so its few
+ * runtime helpers are bundled in (`noExternal`); `zod` is a dependency and stays external.
+ * Declarations come from `scripts/sdk/build-types.mjs`, which tsup's dts bundler can't replace: the
+ * contracts package points at TypeScript source, which it can't parse.
  */
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['esm', 'cjs'],
   target: 'node18',
   platform: 'node',
-  dts: { resolve: true },
+  dts: false,
   noExternal: [/^@clear\//],
   clean: true,
   sourcemap: true,

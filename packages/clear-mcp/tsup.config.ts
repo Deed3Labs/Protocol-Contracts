@@ -3,8 +3,8 @@ import { defineConfig } from 'tsup';
 /**
  * The published build: `dist/cli.js` is the `useclear-mcp` bin (`npx @useclear/mcp`), with its shebang.
  * `@useclear/node` and `@clear/public-api-contracts` aren't on npm, so they're bundled in (`noExternal`);
- * once `@useclear/node` is published it can become an ordinary dependency instead. Before publishing,
- * point `main`/`types`/`exports` in package.json at `dist/` and drop `private`.
+ * once `@useclear/node` is published it can become an ordinary dependency instead. Declarations come
+ * from `scripts/sdk/build-types.mjs`.
  */
 export default defineConfig([
   {
@@ -22,7 +22,7 @@ export default defineConfig([
     format: ['esm', 'cjs'],
     target: 'node18',
     platform: 'node',
-    dts: { resolve: true },
+    dts: false,
     noExternal: [/^@clear\//, /^@useclear\/node$/],
     sourcemap: true,
     treeshake: true,
