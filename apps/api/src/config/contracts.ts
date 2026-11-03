@@ -28,8 +28,12 @@ export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
     AssurancePool: process.env.ASSURANCE_POOL_84532 || '0xf5E40414410672636Ab1691ae19D2Aa1c1705840',
     // Phase E: bonds, capital and merchant payouts.
     BondVault: process.env.BOND_VAULT_84532 || '0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855',
-    BurnerBond: process.env.BURNER_BOND_84532 || '0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148',
-    BurnerBondDeposit: process.env.BURNER_BOND_DEPOSIT_84532 || '0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3',
+    // The bond collection replaced on 2026-11-03 (scripts/redeploy_bonds.ts). New bonds are sold
+    // here, with ids from 1001; the legacy collection keeps the bonds sold before, which still
+    // redeem from the same BondVault, so readers that list a member's bonds read both.
+    BurnerBond: process.env.BURNER_BOND_84532 || '0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556',
+    BurnerBondDeposit: process.env.BURNER_BOND_DEPOSIT_84532 || '0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c',
+    BurnerBondLegacy: process.env.BURNER_BOND_LEGACY_84532 || '0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148',
     LendingPool: process.env.LENDING_POOL_84532 || '0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23',
     PayoutPool: process.env.PAYOUT_POOL_84532 || '0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66',
     MerchantRegistry: process.env.MERCHANT_REGISTRY_84532 || '0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5',

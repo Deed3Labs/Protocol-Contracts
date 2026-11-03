@@ -272,11 +272,11 @@ Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 | ESADepositVault | `0x836401Ed3e2bF7CAb5e2721188E74B834511413b` |
 | SavingsIntentFactory | `0xee289AF20ddf5654E688ABDEa45D0d741528C8Bc` |
 | ClaimEscrow | `0x24DAE7b66dC31657265260B5d9092280B57Bc37D` |
-| BurnerBondFactory | `0x77e261F967491100906a607b8E46eD670684edDb` |
-| BurnerBond | `0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148` |
-| BurnerBondDeposit | `0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3` |
+| BurnerBondFactory | `0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA` |
+| BurnerBond | `0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556` |
+| BurnerBondDeposit | `0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c` |
 | BondVault | `0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855` |
-| BondValuer | `0x64d509b34B7088C51594002eB5624f63b7630d2C` |
+| BondValuer | `0x5cf830BE04a0E42246334b90870B87ccd898c31e` |
 | DeedNFT | `0x1a4e89225015200f70e5a06f766399a3de6e21E6` |
 | Validator | `0x18C53C0D046f98322954f971c21125E4443c79b9` |
 | ValidatorRegistry | `0x979E6cC741A8481f96739A996D06EcFb9BA2bc91` |
@@ -287,7 +287,10 @@ Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 | FractionTokenFactory | `0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc` |
 | Create2Deployer | `0x2BFba336A1B5E79E4717CA00677C65DDCa63cB06` |
 
-`ESADepositVaultLegacy` and `RevolvingIssuerV1` are retained for reference; superseded.
+`ESADepositVaultLegacy` and `RevolvingIssuerV1` are retained for reference; superseded. The bond factory
+and its USDC collection were replaced on 2026-11-03; the old ones are recorded as `BurnerBondFactoryLegacy`,
+`BurnerBondLegacy`, `BurnerBondDepositLegacy` and `BondValuerLegacy`. The legacy collection no longer
+sells, and its bonds still redeem from the same `BondVault`.
 
 </details>
 

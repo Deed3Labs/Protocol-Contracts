@@ -284,6 +284,42 @@ export async function scBuyBond(args: {
   return hash;
 }
 
+const BOND_HOLDER_ABI = [
+  { type: 'function', name: 'redeemBond', stateMutability: 'nonpayable', inputs: [{ name: 'bondId', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'rollBond', stateMutability: 'nonpayable', inputs: [{ name: 'bondId', type: 'uint256' }], outputs: [{ name: 'newBondId', type: 'uint256' }] },
+  { type: 'function', name: 'setAutoRollOptOut', stateMutability: 'nonpayable',
+    inputs: [{ name: 'bondId', type: 'uint256' }, { name: 'optOut', type: 'bool' }], outputs: [] },
+] as const;
+
+/**
+ * What a holder can do with a bond they hold, sent to the collection that issued it.
+ *
+ * `redeem` and `roll` work only once it has matured: redeem pays the face value out of the
+ * BondVault, roll spends it on a new bond. Before then a holder can only choose which of the two
+ * happens -- rolling is the default, so a pledged bond does not lapse on its own. The collection
+ * comes with the bond rather than from the network config, because bonds sold before a collection
+ * was replaced still live in the old one.
+ */
+export async function scBondAction(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  collection: `0x${string}`;
+  bondId: string;
+  action: 'redeem' | 'roll' | 'cash-at-maturity' | 'roll-at-maturity';
+  chainId: number;
+}): Promise<string> {
+  const id = BigInt(args.bondId);
+  const data =
+    args.action === 'redeem'
+      ? encodeFunctionData({ abi: BOND_HOLDER_ABI, functionName: 'redeemBond', args: [id] })
+      : args.action === 'roll'
+        ? encodeFunctionData({ abi: BOND_HOLDER_ABI, functionName: 'rollBond', args: [id] })
+        : encodeFunctionData({ abi: BOND_HOLDER_ABI, functionName: 'setAutoRollOptOut', args: [id, args.action === 'cash-at-maturity'] });
+  const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [{ to: args.collection, data }]);
+  await recordGaslessBond({ txHash: hash, chainId: args.chainId }).catch(() => {});
+  return hash;
+}
+
 /** Send: [approve(escrow), createTransfer] in ONE sponsored batch. Returns the lock tx hash. */
 export async function scSendLock(args: {
   smartWalletClient?: unknown;

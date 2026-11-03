@@ -49,8 +49,14 @@ const POOL_LTV = POOL_SHARE_HAIRCUT_BPS / 10_000;
 const POOL: YieldPool = { apy: 6.8, lent: 740000, capacity: 1000000, position: 2500, earned: 41.2 };
 
 const BONDS: HeldBond[] = [
-  { id: 'b1', face: 5000, months: 24, paid: 4325, maturesOn: 'Mar 14, 2028', monthsLeft: 19, worthToday: 4459 },
-  { id: 'b2', face: 2500, months: 12, paid: 2400, maturesOn: 'Jan 8, 2027', monthsLeft: 5, worthToday: 2436 },
+  // collection, maturityUnix and autoRoll are what the bond dialog's redeem / roll controls need,
+  // so the preview shows them: one still running, one matured.
+  { id: 'b1', face: 5000, months: 24, paid: 4325, maturesOn: 'Mar 14, 2028', monthsLeft: 19, worthToday: 4459,
+    maturityUnix: 1836259200, collection: '0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556', autoRoll: true },
+  { id: 'b2', face: 2500, months: 12, paid: 2400, maturesOn: 'Jan 8, 2027', monthsLeft: 5, worthToday: 2436,
+    maturityUnix: 1798675200, collection: '0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556', autoRoll: true },
+  { id: 'b3', face: 1000, months: 12, paid: 960, maturesOn: 'Oct 30, 2026', monthsLeft: 0, worthToday: 1000,
+    maturityUnix: 1793318400, collection: '0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556', autoRoll: true },
 ];
 
 /**

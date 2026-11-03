@@ -2851,7 +2851,7 @@
             "slot": "1",
             "type": "t_array(t_uint256)50_storage",
             "contract": "ContextUpgradeable",
-            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:40"
           },
           {
             "label": "__gap",
@@ -2865,9 +2865,9 @@
             "label": "_roles",
             "offset": 0,
             "slot": "101",
-            "type": "t_mapping(t_bytes32,t_struct(RoleData)1590_storage)",
+            "type": "t_mapping(t_bytes32,t_struct(RoleData)1579_storage)",
             "contract": "AccessControlUpgradeable",
-            "src": "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol:62"
+            "src": "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol:57"
           },
           {
             "label": "__gap",
@@ -2897,7 +2897,7 @@
             "label": "networkRegistry",
             "offset": 0,
             "slot": "251",
-            "type": "t_contract(INetworkRegistry)33692",
+            "type": "t_contract(INetworkRegistry)34288",
             "contract": "CollateralRegistry",
             "src": "contracts/peripherals/CollateralRegistry.sol:55"
           },
@@ -2905,7 +2905,7 @@
             "label": "collateralTypes",
             "offset": 0,
             "slot": "252",
-            "type": "t_mapping(t_bytes32,t_struct(CollateralType)56443_storage)",
+            "type": "t_mapping(t_bytes32,t_struct(CollateralType)58289_storage)",
             "contract": "CollateralRegistry",
             "src": "contracts/peripherals/CollateralRegistry.sol:58"
           },
@@ -3007,11 +3007,11 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(INetworkRegistry)33692": {
+          "t_contract(INetworkRegistry)34288": {
             "label": "contract INetworkRegistry",
             "numberOfBytes": "20"
           },
-          "t_enum(Backing)40508": {
+          "t_enum(Backing)41188": {
             "label": "enum ExposureMath.Backing",
             "members": [
               "Unsecured",
@@ -3049,11 +3049,11 @@
             "label": "mapping(bytes32 => mapping(uint256 => bool))",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_bytes32,t_struct(CollateralType)56443_storage)": {
+          "t_mapping(t_bytes32,t_struct(CollateralType)58289_storage)": {
             "label": "mapping(bytes32 => struct CollateralRegistry.CollateralType)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_bytes32,t_struct(RoleData)1590_storage)": {
+          "t_mapping(t_bytes32,t_struct(RoleData)1579_storage)": {
             "label": "mapping(bytes32 => struct AccessControlUpgradeable.RoleData)",
             "numberOfBytes": "32"
           },
@@ -3065,12 +3065,12 @@
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_struct(CollateralType)56443_storage": {
+          "t_struct(CollateralType)58289_storage": {
             "label": "struct CollateralRegistry.CollateralType",
             "members": [
               {
                 "label": "backing",
-                "type": "t_enum(Backing)40508",
+                "type": "t_enum(Backing)41188",
                 "offset": 0,
                 "slot": "0"
               },
@@ -3101,7 +3101,7 @@
             ],
             "numberOfBytes": "128"
           },
-          "t_struct(RoleData)1590_storage": {
+          "t_struct(RoleData)1579_storage": {
             "label": "struct AccessControlUpgradeable.RoleData",
             "members": [
               {
@@ -15329,6 +15329,315 @@
           "t_uint64": {
             "label": "uint64",
             "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
+    },
+    "c8d389e8fac632804c29f6ac12cf256e28b4e2bb359cfb0a6750c9a595cb12f7": {
+      "address": "0xC89a2617C336ed572A884a400E07fF977b9c9Fc9",
+      "txHash": "0x4b449394092772d1e9ad31f5319c3c18f10af7331aa9e266f499e2631fb43427",
+      "layout": {
+        "solcVersion": "0.8.29",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:40"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC165Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol:41"
+          },
+          {
+            "label": "_roles",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_mapping(t_bytes32,t_struct(RoleData)1579_storage)",
+            "contract": "AccessControlUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol:57"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "AccessControlUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol:260"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:169"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:111"
+          },
+          {
+            "label": "networkRegistry",
+            "offset": 0,
+            "slot": "251",
+            "type": "t_contract(INetworkRegistry)34224",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:59"
+          },
+          {
+            "label": "collateralTypes",
+            "offset": 0,
+            "slot": "252",
+            "type": "t_mapping(t_bytes32,t_struct(CollateralType)58199_storage)",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:62"
+          },
+          {
+            "label": "kinds",
+            "offset": 0,
+            "slot": "253",
+            "type": "t_array(t_bytes32)dyn_storage",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:63"
+          },
+          {
+            "label": "pledgedOf",
+            "offset": 0,
+            "slot": "254",
+            "type": "t_mapping(t_address,t_mapping(t_bytes32,t_uint256))",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:66"
+          },
+          {
+            "label": "pledgedItems",
+            "offset": 0,
+            "slot": "255",
+            "type": "t_mapping(t_address,t_mapping(t_bytes32,t_array(t_uint256)dyn_storage))",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:69"
+          },
+          {
+            "label": "itemPledged",
+            "offset": 0,
+            "slot": "256",
+            "type": "t_mapping(t_address,t_mapping(t_bytes32,t_mapping(t_uint256,t_bool)))",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:71"
+          },
+          {
+            "label": "recordedExposureOf",
+            "offset": 0,
+            "slot": "257",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:73"
+          },
+          {
+            "label": "totalExposure",
+            "offset": 0,
+            "slot": "258",
+            "type": "t_uint256",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:76"
+          },
+          {
+            "label": "clrusdKind",
+            "offset": 0,
+            "slot": "259",
+            "type": "t_bytes32",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:81"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "260",
+            "type": "t_array(t_uint256)42_storage",
+            "contract": "CollateralRegistry",
+            "src": "contracts/peripherals/CollateralRegistry.sol:83"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_bytes32)dyn_storage": {
+            "label": "bytes32[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)42_storage": {
+            "label": "uint256[42]",
+            "numberOfBytes": "1344"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_array(t_uint256)dyn_storage": {
+            "label": "uint256[]",
+            "numberOfBytes": "32"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(INetworkRegistry)34224": {
+            "label": "contract INetworkRegistry",
+            "numberOfBytes": "20"
+          },
+          "t_enum(Backing)41124": {
+            "label": "enum ExposureMath.Backing",
+            "members": [
+              "Unsecured",
+              "Savings",
+              "AssetExternal",
+              "AssetInternal"
+            ],
+            "numberOfBytes": "1"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_bytes32,t_array(t_uint256)dyn_storage))": {
+            "label": "mapping(address => mapping(bytes32 => uint256[]))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_bytes32,t_mapping(t_uint256,t_bool)))": {
+            "label": "mapping(address => mapping(bytes32 => mapping(uint256 => bool)))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_bytes32,t_uint256))": {
+            "label": "mapping(address => mapping(bytes32 => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_array(t_uint256)dyn_storage)": {
+            "label": "mapping(bytes32 => uint256[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_mapping(t_uint256,t_bool))": {
+            "label": "mapping(bytes32 => mapping(uint256 => bool))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(CollateralType)58199_storage)": {
+            "label": "mapping(bytes32 => struct CollateralRegistry.CollateralType)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(RoleData)1579_storage)": {
+            "label": "mapping(bytes32 => struct AccessControlUpgradeable.RoleData)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_uint256)": {
+            "label": "mapping(bytes32 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_bool)": {
+            "label": "mapping(uint256 => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(CollateralType)58199_storage": {
+            "label": "struct CollateralRegistry.CollateralType",
+            "members": [
+              {
+                "label": "backing",
+                "type": "t_enum(Backing)41124",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "haircutBps",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "unitPrice",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "valuer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "registered",
+                "type": "t_bool",
+                "offset": 20,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_struct(RoleData)1579_storage": {
+            "label": "struct AccessControlUpgradeable.RoleData",
+            "members": [
+              {
+                "label": "members",
+                "type": "t_mapping(t_address,t_bool)",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "adminRole",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
           },
           "t_uint8": {
             "label": "uint8",

@@ -991,6 +991,14 @@ export interface HeldBond {
    * and term: it is a disclosure figure a member was quoted, and a derivation drifts by rounding.
    */
   rate?: number;
+  /** Unix seconds; past it, the bond can be redeemed or rolled. */
+  maturityUnix?: number;
+  /** The collection that issued it -- the contract to redeem or roll it with. */
+  collection?: `0x${string}`;
+  /** Rolls into a new bond at maturity (the default) rather than paying out. */
+  autoRoll?: boolean;
+  /** Pledged and holding up drawn credit: it can be rolled, not redeemed. */
+  backsDrawnCredit?: boolean;
 }
 
 export interface EarnData {

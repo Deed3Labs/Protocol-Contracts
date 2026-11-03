@@ -54,9 +54,10 @@ const CONTRACTS: Record<number, ClearContracts> = {
   },
   84532: {
     lendingPool: '0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23',
-    burnerBondDeposit: '0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3',
-    burnerBond: '0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148',
-    burnerBondFactory: '0x77e261F967491100906a607b8E46eD670684edDb',
+    // Replaced 2026-11-03: bonds sold before then are in 0x4d96…c148, read through the API.
+    burnerBondDeposit: '0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c',
+    burnerBond: '0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556',
+    burnerBondFactory: '0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA',
     stableCredit: '0x1d9f1ECDc70b31256aFA75A73F991cfAa8bC928C',
     revolvingIssuer: '0x7f15E45aB5eAF0307200274211a90FcbD6716070',
     liquidator: '0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593',

@@ -1,5 +1,5 @@
 {
-  "address": "0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3",
+  "address": "0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c",
   "abi": [
     {
       "type": "constructor",
@@ -646,19 +646,6 @@
     },
     {
       "type": "function",
-      "name": "setMinDiscount",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "_minDiscount"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
       "name": "tokenToCollection",
       "constant": true,
       "stateMutability": "view",
@@ -727,57 +714,6 @@
         {
           "type": "address",
           "name": "newOwner"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "updateDepositParameters",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "_maxDiscount"
-        },
-        {
-          "type": "uint256",
-          "name": "_minDiscount"
-        },
-        {
-          "type": "uint256",
-          "name": "_maxMaturity"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "updateFaceValueLimits",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "_minFaceValue"
-        },
-        {
-          "type": "uint256",
-          "name": "_maxFaceValue"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "updateMinMaturity",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "_minMaturity"
         }
       ],
       "outputs": []

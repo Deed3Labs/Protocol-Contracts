@@ -44,6 +44,10 @@ export function toHeldBonds(rows: EarnBondRow[]): HeldBond[] {
         day: 'numeric',
         year: 'numeric',
       }),
+      maturityUnix: row.maturityUnix,
+      collection: row.collection as `0x${string}` | undefined,
+      autoRoll: row.autoRoll,
+      backsDrawnCredit: row.backsDrawnCredit,
     };
   });
 }
