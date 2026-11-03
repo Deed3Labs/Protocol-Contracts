@@ -3,13 +3,13 @@
 Monorepo for **CLEAR** — a fintech app and financial co-op built to turn renters into owners — and
 for its **Deed track**, the open-source real-world-asset layer underneath it.
 
-Four deployable things and one chain: the Solidity protocol, a consumer app, a merchant counter
-app, and the API both apps talk to.
+The Solidity protocol, five web apps — member, merchant, pay, rewards and the Command Center — and
+the API they all talk to, on one chain.
 
 [System](#what-the-system-is) · [Layout](#repository-layout) · [Quickstart](#quickstart) ·
 [Contracts](#the-on-chain-layer) · [Addresses](#deployed-addresses) · [Tooling](#contract-tooling) ·
 [API](#the-api-appsapi) · [Member](#the-member-app-appsmember) · [Merchant](#the-merchant-app-appsmerchant) ·
-[Licensing](#licensing) · [Docs](#documentation)
+[Pay, rewards, command](#pay-rewards-and-the-command-center) · [Licensing](#licensing) · [Docs](#documentation)
 
 > ⚠️ **Status: alpha, developer preview.** The contracts are deployed on Base Sepolia and partly on
 > Base, and they are **unaudited**. Interfaces still move. Do not put real money behind them without
@@ -56,17 +56,29 @@ Both are argued out in [`docs/contracts/clear-contracts-build-plan.md`](./docs/c
 ## Repository layout
 
 npm workspaces + Turborepo. Each app under `apps/` is its own deploy target with its own root
-directory.
+directory. `apps/api` is the exception to the workspace: it installs on its own, with Bun, and links
+the packages it needs with `file:`.
 
 ```
 apps/
-  member/           consumer PWA           @clear/member     Vite + React 19
-  merchant/         counter app            @clear/merchant   Vite + React 19
-  api/              Express on Bun         @clear/api        Docker → Railway
+  member/           consumer PWA                     @clear/member     Vite + React 19
+  merchant/         counter app, web + Capacitor     @clear/merchant   Vite + React 19
+  pay/              Pay with Clear: links + checkout @clear/pay        Vite + React 19
+  rewards/          shop loyalty app + rewards hub   @clear/rewards    Vite + React 19
+  command/          the Command Center               @clear/command    Vite + React 19
+  api/              Express on Bun                   @clear/api        Docker → Railway
 packages/
-  domain/           charge lifecycle, split + carry math, money formatting, shared types
-  tokens/           color, type scale, spacing, radii
-  contracts-sdk/    generated ABIs, addresses and read helpers — generated output only
+  domain/                charge lifecycle, split + carry math, money formatting, roles, shared types
+  tokens/                color, type scale, spacing, radii
+  member-kit/            components, CSS and onboarding shared by member and rewards
+  merchant-contracts/    zod schemas and the MerchantApi interface, shared by api, merchant, rewards, pay
+  public-api-contracts/  the public /v1 API: schemas, endpoints, versions and published snapshots
+  command-types/         Command Center shapes, figures and seed fixtures
+  pay-docs/              generates the public developer docs and llms.txt from the two above
+  clear-js/              @useclear/js — the browser "Pay with Clear" script
+  clear-node/            @useclear/node — the server SDK for /v1
+  clear-mcp/             @useclear/mcp — an MCP server for a shop's agent
+  contracts-sdk/         generated ABIs, addresses and read helpers — generated output only (empty so far)
 contracts/          Solidity (AGPL-3.0 — see NOTICE.md)
 deploy/             numbered Hardhat deploy scripts, upgrade + verification tooling
 deployments/        deployed addresses and ABIs, by network
@@ -92,8 +104,9 @@ flowchart TD
   MEM --> CH
 ```
 
-No shared component library, deliberately: a tablet counter app and a consumer phone app are
-different products. Tokens and formatters are the whole shared design surface.
+No component library shared between the counter and the phone, deliberately: a tablet counter app
+and a consumer phone app are different products, and tokens and formatters are all they share.
+`member-kit` is shared only between member and rewards, which are the same kind of app.
 
 ### Deploy targets
 
@@ -102,7 +115,12 @@ different products. Tokens and formatters are the whole shared design surface.
 | member | `apps/member` | `app.useclear.org` |
 | member (demo) | `apps/member` | `demo.useclear.org` |
 | merchant | `apps/merchant` | `merchant.useclear.org` |
+| pay | `apps/pay` | `pay.useclear.org`, and `js.useclear.org` for the script |
+| rewards | `apps/rewards` | `rewards.useclear.org`, and each shop's app at `useclear.org/s/:slug` |
+| command | `apps/command` | `command.useclear.org` |
 | api | `apps/api` | Railway (Docker) |
+
+`main` is production and `dev` is the working branch; pull requests go to `dev`.
 
 **Auth sessions do not cross the two surfaces.** Different auth models, no cookie scoped to
 `.useclear.org`, neither app reads the other's storage.
@@ -114,21 +132,24 @@ different products. Tokens and formatters are the whole shared design surface.
 
 ## Quickstart
 
-Requires **Node ≥ 20.19**. The API runs on **Bun**.
+Requires **Node ≥ 20.19** (CI runs 22). The API runs on **Bun**.
 
 ```bash
-npm install          # installs the whole workspace from the repo root
+npm install          # installs every workspace from the repo root — not apps/api
 cp .env.example .env # RPC URLs + deployer key for Hardhat
 npm run compile
 npm run test
 ```
 
-Then run whichever surface you need:
+Then run whichever surface you need. Each app has its own `.env.example`.
 
 ```bash
 npm run dev --workspace @clear/member     # http://localhost:5173
 npm run dev --workspace @clear/merchant   # http://localhost:5174
-cd apps/api && cp env.example .env && npm run dev   # http://localhost:3001
+npm run dev --workspace @clear/rewards    # http://localhost:5190
+npm run dev --workspace @clear/pay        # http://localhost:5195
+npm run dev --workspace @clear/command    # http://localhost:5230
+cd apps/api && bun install && cp env.example .env && bun run dev   # http://localhost:3001
 ```
 
 Turborepo drives everything across the workspace:
@@ -141,7 +162,8 @@ npm run test:apps
 npm run build:member # or build:merchant, filtered
 ```
 
-`.claude/launch.json` carries dev-server definitions for the two apps.
+Before pushing, run `npx turbo run typecheck test --affected`; the `ci` check on a pull request is
+what blocks a merge. [`CLAUDE.md`](./CLAUDE.md) covers which pushes start a Vercel build.
 
 ---
 
@@ -180,10 +202,11 @@ flowchart LR
   CR --> LC["LimitCalculator<br/><i>haircuts → ceiling</i>"]
   LC --> RI["RevolvingIssuer<br/><i>tiers</i>"]
   LC --> TI["TermIssuer<br/><i>plans</i>"]
-  LP["LendingPool"] -->|"funds unsecured tiers"| RI
   RI --> CC["ClearCredit<br/><b>the ledger</b>"]
   TI --> CC
+  OI["OffersIssuer<br/><i>new-member offers</i>"] --> CC
   CC --> PP["PayoutPool"] --> OUT["Merchant USDC"]
+  LP["LendingPool"] -->|"lends float"| PP
   CC -.->|"on default"| LQ["Liquidator"] -.->|"liquidates ESA"| V
 ```
 
@@ -195,7 +218,8 @@ flowchart LR
 | `TermIssuer.sol` | Term plans — partner credit, Clear Cash, ELPA. Per-position rate and clock, split schedules |
 | `CollateralRegistry.sol` | What each member has pledged, and where it sits |
 | `LimitCalculator.sol` | Values collateral, applies haircuts, emits the tiered ceiling |
-| `LendingPool.sol` | ERC-4626, utilization-priced. Funds the unsecured tiers |
+| `OffersIssuer.sol` | A capped line that gives each new member a one-time offer. Unspent offers expire; the Safe pays the line down. Not counted as exposure |
+| `LendingPool.sol` | ERC-4626. Lends float to holders of `BORROWER_ROLE` — the PayoutPool and the card settler — and depositors earn the carry members pay on what they funded. Its utilization curve is a view no contract charges |
 | `Liquidator.sol` | Fires ESA liquidation on default, before anything becomes lost debt |
 | `CreditPool.sol` | Queued deposit/withdraw with discount-rate servicing |
 | `AccessManager.sol` | Admin / operator / member authority boundaries |
@@ -211,7 +235,7 @@ flowchart LR
 | Contract | Role |
 |---|---|
 | `MerchantRegistry.sol` | Per-merchant terms: payout schedule, approval cap, discount rate, status |
-| `PayoutPool.sol` | Funds merchant redemptions at par, separately from the AssurancePool, and reports its own shortfall |
+| `PayoutPool.sol` | Funds merchant redemptions at par and reports its own shortfall. Borrows float from the LendingPool; the AssurancePool and BondVault can lend to it as a last resort |
 
 A merchant's positive balance **is** the payables ledger — what the co-op owes them, on-chain, with
 no parallel off-chain record. A merchant carrying credit of their own is paid by drawdown first;
@@ -221,11 +245,11 @@ only the surplus is redeemable.
 
 | Contract | Role |
 |---|---|
-| `AssurancePool.sol` | Primary / buffer / excess reserve accounting and conversion paths |
+| `AssurancePool.sol` | Primary / buffer / excess reserve accounting and conversion paths. Repayments fill primary up to the target RTD first, and an operator can move buffer to primary. Lends to the PayoutPool and BondVault as a last resort — excess, then buffer, never primary |
 | `AssuranceOracle.sol` | Uniswap V3 pricing with registry fallback, and RTD inputs |
 | `TokenRegistry.sol` | Token registry, stablecoin metadata, chain mappings, fallback pricing |
 | `BurnerBond.sol`, `BurnerBondDeposit.sol`, `BurnerBondFactory.sol` | ERC-1155 zero-coupon bond collections with curve-based discount mechanics |
-| `BondVault.sol`, `BondValuer.sol`, `BondTraits.sol`, `BondDiscountCurve.sol` | Per-bond accounting, code-enforced redemption reserve, valuation and curve |
+| `BondVault.sol`, `BondValuer.sol`, `BondTraits.sol`, `BondDiscountCurve.sol` | Where bond proceeds live — not the AssurancePool — with a derived redemption reserve, valuation and curve |
 
 ### Libraries
 
@@ -246,7 +270,7 @@ only the surplus is redeemable.
 Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 
 <details>
-<summary><b>Base Sepolia</b> — the working network (35 contracts)</summary>
+<summary><b>Base Sepolia</b> — the working network (36 contracts)</summary>
 
 
 | Contract | Address |
@@ -260,6 +284,7 @@ Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 | Liquidator | `0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593` |
 | MerchantRegistry | `0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5` |
 | PayoutPool | `0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66` |
+| OffersIssuer | `0x150EA8497700E127a3dFe44a98a618bcC7D8841c` |
 | NetworkRegistry | `0x0a9FE081622d41069DF22898D969F13e65783D7f` |
 | MembershipRegistry | `0xE7009eE28a71d8D593Cb57C48E1e648A9fB44dE8` |
 | AccessManager | `0x19aBfD8aC2015743238a85F849873870fEDcf207` |
@@ -335,16 +360,18 @@ npm run test:gas
 | Area | Suites |
 |---|---|
 | Deed track | `DeedNFT`, `Validator`, `ValidatorRegistry`, `FundManager`, `MetadataRenderer` |
-| Credit | `StableCredit`, `StableCreditIssuers`, `RevolvingIssuer`, `TermIssuer`, `LimitCalculator`, `CollateralRegistry`, `LendingPool`, `Liquidator`, `PayoutPool` |
-| Credit invariants | seniority, first-loss ordering, repayment routing, income-to-debt, asset-backed default |
+| Credit | `StableCredit`, `StableCreditIssuers`, `RevolvingIssuer`, `TermIssuer`, `OffersIssuer`, `LimitCalculator`, `CollateralRegistry`, `LendingPool`, `Liquidator`, `PayoutPool`, `MembershipRegistry`, `NetworkRegistry` |
+| Credit invariants | `FirstLossOrdering`, `RepaymentRouting`, `IncomeToDebt`, `AssetBackedDefault`, `AssetBackedTier`, `SharedBalance`, `PayoutLifecycle` |
 | Savings + settlement | `ESADepositVault`, `SavingsIntentFactory`, `ClearUSDUpgradeable`, `ClaimEscrow` |
-| Bonds | `BurnerBond`, `BondVault`, `BondCollateral` |
+| Bonds | `BurnerBond`, `BondVault`, `BondCollateral`, `BondBackstop`, `BondSeniority` |
+| Deploy | `CreditCore.deploy` — the credit stack deploys and wires cleanly |
 | Reserve | `AssurancePool`, `AssuranceOracle` |
 | Libraries | `CarryIndex`, `ExposureMath` |
 
 ### Deployment
 
-The `deploy/` scripts are numbered and run in order; `deploy/deploy_all.ts` walks the Deed track.
+The `deploy/` scripts are numbered `00`–`24` and run in order; `deploy/deploy_all.ts` deploys the
+Deed track — the contracts of `00`–`06` — in one run.
 
 ```bash
 npx hardhat run deploy/deploy_all.ts --network base-sepolia   # Deed track
@@ -367,20 +394,21 @@ npx hardhat run deploy/20_deploy_CreditCore.ts        --network base-sepolia
 npx hardhat run deploy/21_deploy_ClearUSDUpgradeable.ts --network base-sepolia
 npx hardhat run deploy/22_deploy_BondsAndPool.ts      --network base-sepolia
 npx hardhat run deploy/23_deploy_BondCollection.ts    --network base-sepolia
+npx hardhat run deploy/24_deploy_OffersIssuer.ts      --network base-sepolia
 ```
 
-Runbooks: [`deploy/README.md`](./deploy/README.md),
-[`deploy/DEPLOYMENT_GUIDE.md`](./deploy/DEPLOYMENT_GUIDE.md),
-[`docs/contracts/clear-deployment-plan.md`](./docs/contracts/clear-deployment-plan.md).
+Runbook: [`deploy/README.md`](./deploy/README.md) — it covers the reserve and bond scripts
+(`07`–`10`) in detail; the rest are described in their own headers.
 
 ### Verification and upgrades
 
 ```bash
-npm run verify:deployments:sepolia
-npm run verify:deployments -- base
-npm run upgrade:check   -- base-sepolia
-npm run upgrade:execute -- base-sepolia
+npm run verify:deployments:sepolia     # checks the reserve and bond contracts only
+CONTRACT_NAME=DeedNFT PROXY_ADDRESS=0x… npm run upgrade:check   -- base-sepolia
+CONTRACT_NAME=DeedNFT PROXY_ADDRESS=0x… npm run upgrade:execute -- base-sepolia
 ```
+
+The credit stack has its own upgrade scripts, one per contract, in `scripts/upgrade_*.ts`.
 
 ### Operational scripts
 
@@ -402,13 +430,14 @@ check two hops out, not a role on the issuer itself.
 
 ## The API (`apps/api`)
 
-Express on Bun, Postgres, Redis, socket.io. Deployed as a Docker image on Railway; `render.yaml` and
-`docker-compose.yml` are also checked in.
+Express on Bun, Postgres, Redis, socket.io. Deployed as a Docker image on Railway, built from the
+repository root (`apps/api/railway.json`); `docker-compose.yml` runs Redis locally.
 
 ```bash
 cd apps/api
+bun install
 cp env.example .env
-npm run dev      # bun --watch src/index.ts
+bun run dev      # bun --watch src/index.ts
 ```
 
 Route groups mounted in `apps/api/src/index.ts`:
@@ -417,26 +446,33 @@ Route groups mounted in `apps/api/src/index.ts`:
 |---|---|
 | `/api/prices`, `/api/balances`, `/api/token-balances`, `/api/nfts`, `/api/transactions`, `/api/portfolio` | Chain data aggregation, caching, portfolio history + snapshots |
 | `/api/members`, `/api/contacts`, `/api/avatars`, `/api/member-links`, `/api/notifications` | Member identity, profile, directory lookup, push |
-| `/api/savings`, `/api/credit`, `/api/pay`, `/api/autopay`, `/api/requests` | ESA deposits, credit lines and plans, the equity ledger, autopay |
+| `/api/session`, `/api/step-up` | Sessions, and step-up checks before money moves |
+| `/api/savings`, `/api/credit`, `/api/pay`, `/api/autopay`, `/api/requests`, `/api/withdraw` | ESA deposits, credit lines and plans, the equity ledger, autopay, cash-out |
+| `/api/assurance`, `/api/disputes` | Assurance claims and reserve reports, disputes |
 | `/api/send` | Link-based send: prepare, lock, claim, payout, refund |
-| `/api/charges`, `/api/merchant`, `/api/withdraw` | Merchant charges, staff, payouts, refunds |
-| `/api/cards`, `/api/lithic`, `/api/lithic/cards` | Card issuing, JIT auth decisioning, ACH origination |
+| `/api/charges`, `/api/merchant` | Merchant charges, staff, payouts, refunds |
+| `/api/device/point`, `/api/p`, `/api/r` | Clear Terminal: a Point's own API, and the public phone pages for paying at a Point and for receipts |
+| `/api/lithic`, `/api/lithic/cards` | The Clear card: issuing, JIT auth decisioning, ACH origination. `/api/cards` is an older scaffold |
 | `/api/plaid`, `/api/bridge`, `/api/stripe`, `/api/onramper`, `/api/ramp`, `/api/sweeps` | Bank links, KYC, fiat on/off ramps, sweeps |
+| `/v1`, `/api/l`, `/api/checkout` | Pay with Clear: the public API for shops, payment links and checkout. `/v1` sits outside `/api` and its rate limiter |
+| `/api/s`, `/api/rewards`, `/api/partners`, `/api/public` | Shop pages, rewards, the partner directory, public reads |
+| `/api/command/*` | The Command Center |
 | `/api/webhooks/{lithic,bridge,onramper,coinbase-ramp}`, `/api/stripe/webhooks` | Signature-verified provider callbacks, mounted outside auth |
 
 ```text
 GET /health
 ```
 
-Most groups sit behind `requireAuth`; webhooks and a few public reads do not. Rate limiting is
-Redis-backed, applied at `/api`.
+Member routes sit behind `requireAuth`. Merchant, send, command, `/v1` and the shop routes do their
+own auth, and webhooks and public reads have none. Rate limiting is Redis-backed, applied at `/api`.
 
 | Provider | Owns |
 |---|---|
 | **Bridge** | Fiat → USDC deposits, hosted KYC |
 | **Lithic** | Card issuing, JIT authorization, ACH push/pull |
 | **Plaid** | Bank linking and identity |
-| **Stripe** · **Coinbase** | Card and crypto on-ramps |
+| **Coinbase** · **Onramper** | Crypto on-ramp for Add money |
+| **Stripe** | Merchant card processing (Stripe Connect, Terminal) and membership billing |
 
 More: [`apps/api/README.md`](./apps/api/README.md), [`apps/api/DEPLOY.md`](./apps/api/DEPLOY.md),
 [`docs/integrations/lithic-integration-spec.md`](./docs/integrations/lithic-integration-spec.md).
@@ -451,8 +487,8 @@ React 19 + Vite + Tailwind, Radix primitives.
 |---|---|
 | Auth + wallets | **Privy** — embedded smart wallets, wagmi/viem underneath |
 | Account abstraction | ZeroDev — sponsored gas, session keys |
-| Messaging · Map | XMTP · Mapbox |
-| Routing · On-ramp | LiFi · Stripe |
+| Messaging · Routing | XMTP · LiFi |
+| On-ramp | Coinbase, through `/api/ramp` |
 
 Routes:
 
@@ -462,11 +498,13 @@ Routes:
 | `/savings` | ESA — deposit, redeem, equity credits |
 | `/earn` | Credit line, tiers, plans |
 | `/send` | Send to a wallet, email or phone |
-| `/activity` | Transactions across chain and linked banks |
+| `/activity`, `/charges` | Transactions across chain and linked banks, and charge history |
 | `/card` | The Clear card |
-| `/scan`, `/c/:code` | Scan to pay, and charge approval |
-| `/contacts`, `/partners`, `/assurance`, `/inbox`, `/settings`, `/learn/:topic` | The rest |
-| `/login`, `/onboarding`, `/s/:shop`, `/claim/:token`, `/wallet-link`, `/share` | Unauthenticated entries |
+| `/scan`, `/code` | Scan to pay, and the member's own Clear code |
+| `/assurance`, `/assurance/reserve`, `/assurance/reports`, `/assurance/claim` | Protections, the reserve, its reports, and making a claim |
+| `/partners`, `/inbox`, `/settings/:page`, `/learn/:topic` | The rest. Contacts live under settings |
+| `/c/:code`, `/approve/:id`, `/join/pay` | Approving a charge or a Pay with Clear payment, outside the app shell |
+| `/login`, `/onboarding`, `/s/:shop`, `/claim/:token`, `/wallet-link`, `/share` | Entries before sign-in |
 
 `/s/:shop` is counter onboarding — a signup started at a merchant counter, which can never itself
 authorize a charge. `/claim/:token` is the recipient side of a send link and needs no account.
@@ -478,7 +516,7 @@ The member app is installable.
 - **Manifest** — `public/manifest.json`: standalone display, shortcuts, share target
 - **Service worker** — `public/sw.js`: per-route cache strategies, network-only for stateful
   endpoints such as Plaid
-- **Runtime** — `OfflineIndicator`, `InstallPrompt`, `PWAInitializer` for sync + notification
+- **Runtime** — `OfflineIndicator`, `PwaInstallTakeover`, `PWAInitializer` for sync + notification
   registration; helpers in `src/utils/serviceWorker.ts`
 
 > **Bundle secrets are scanned on every build** (`npm run scan:secrets`). Dynamic
@@ -516,19 +554,40 @@ discount — live in `MerchantRegistry`.
 
 ```mermaid
 flowchart LR
-  D["Enrolled device"] --> P["Staff PIN"] --> O["Owner<br/><i>Privy organizations</i>"]
-  D -.- d1["raise a charge"]
-  P -.- p1["refund, staff list"]
-  O -.- o1["payouts, withdraw,<br/>reset a PIN"]
+  D["Enrolled device"] --> P["Staff PIN<br/><i>counter · manager</i>"] --> O["Owner<br/><i>Privy organizations</i>"]
+  D -.- d1["the counter"]
+  P -.- p1["charges; a manager approves<br/>refunds and voids"]
+  O -.- o1["payouts, staff, month end,<br/>reset a PIN"]
 ```
 
-Owners can reset a PIN; staff cannot choose each other's. The two balances an owner sees — **owed**
+Three roles: counter, manager, owner. A refund or void is approved by a manager or the owner, never
+by the person who asked; above the PIN limit, the owner approves it on their own phone. Owners can
+reset a PIN; staff cannot choose each other's. The two balances an owner sees — **owed**
 and **held** — are different money and are never summed.
 
-Screens: `/` counter, `/new`, `/charges` + detail + refund, `/payouts` + detail with the withdraw
-modal, `/staff`, `/overview`, `/settings`, `/onboarding`.
+Screens: `/` counter, `/new`, `/charges` + detail + refund, `/tables` (Clear Terminal),
+`/inventory`, `/close` (close the day), `/settings/:section`, `/onboarding`. Owner-only:
+`/payouts` + detail with the withdraw modal, `/staff`, `/overview` (month end).
 
 Design reference: [`docs/merchant-reference/`](./docs/merchant-reference/) — one file per screen.
+Card flow: [`packages/merchant-contracts/CARD_FLOW.md`](./packages/merchant-contracts/CARD_FLOW.md).
+Clear Terminal hardware: [`docs/hardware/`](./docs/hardware/).
+
+---
+
+## Pay, rewards and the Command Center
+
+**Pay with Clear (`apps/pay`)** — payment-link pages (`/l/:slug`) and the checkout frame
+(`/m/:session`) a shop's site opens, plus the `@useclear/js` script at `js.useclear.org/v1`. Shops
+integrate through the public `/v1` API; its docs are generated by
+[`packages/pay-docs`](./packages/pay-docs/README.md) and served at `app.useclear.org/docs/`.
+
+**Rewards (`apps/rewards`)** — one codebase, two forms: each shop's branded loyalty app at
+`useclear.org/s/:slug`, and the hub at `rewards.useclear.org`. Points, offers, rewards and scan to
+pay. Store builds: [`apps/rewards/native/`](./apps/rewards/native/README.md).
+
+**The Command Center (`apps/command`)** — the co-op's internal app, the members' read-only view and
+the investors' data room. See [`apps/command/README.md`](./apps/command/README.md).
 
 ---
 
@@ -539,8 +598,9 @@ This repository carries more than one license, and which applies depends on the 
 | Directory | License | File |
 |---|---|---|
 | `contracts/`, `deploy/`, `scripts/`, `test/` | AGPL-3.0 | [`contracts/LICENSE`](./contracts/LICENSE) |
-| `apps/member`, `apps/merchant`, `apps/api` | Proprietary — all rights reserved | [`LICENSE`](./LICENSE) |
+| `apps/*` | Proprietary — all rights reserved | [`LICENSE`](./LICENSE) |
 | `packages/domain`, `packages/tokens`, `packages/contracts-sdk` | MIT | [`domain`](./packages/domain/LICENSE) · [`tokens`](./packages/tokens/LICENSE) · [`contracts-sdk`](./packages/contracts-sdk/LICENSE) |
+| Every other package under `packages/` | Proprietary — `UNLICENSED` in its `package.json` | [`LICENSE`](./LICENSE) |
 
 `contracts/` is a fork of **StableCredit**, hence AGPL-3.0. **No application code imports Solidity
 source from it** — the apps reach the chain through committed ABI JSON and, in future,
@@ -561,7 +621,6 @@ here assumes they do not — that has not been reviewed by counsel, and should b
 |---|---|
 | Protocol index | [`docs/README.md`](./docs/README.md) |
 | Contract build plan | [`docs/contracts/clear-contracts-build-plan.md`](./docs/contracts/clear-contracts-build-plan.md) |
-| Deployment + wiring plan | [`docs/contracts/clear-deployment-plan.md`](./docs/contracts/clear-deployment-plan.md) |
 | Deployment runbooks | [`deploy/README.md`](./deploy/README.md) |
 | CLRUSD + ESA bootstrap | [`docs/contracts/clrusd-esa-bootstrap.md`](./docs/contracts/clrusd-esa-bootstrap.md) |
 | Lithic integration | [`docs/integrations/lithic-integration-spec.md`](./docs/integrations/lithic-integration-spec.md) |
@@ -569,7 +628,8 @@ here assumes they do not — that has not been reviewed by counsel, and should b
 | Merchant reference | [`docs/merchant-reference/`](./docs/merchant-reference/) |
 | Contract guides | [`docs/contracts/`](./docs/contracts/) — assurance, token registry, bonds |
 | Architecture | [`docs/architecture/`](./docs/architecture/) |
-| Frontend | [`apps/member/README.md`](./apps/member/README.md) · Backend [`apps/api/README.md`](./apps/api/README.md) |
+| Apps | [`member`](./apps/member/README.md) · [`merchant`](./apps/merchant/README.md) · [`command`](./apps/command/README.md) · [`api`](./apps/api/README.md) |
+| Public developer docs | [`packages/pay-docs`](./packages/pay-docs/README.md), served at `app.useclear.org/docs/` |
 
 ---
 

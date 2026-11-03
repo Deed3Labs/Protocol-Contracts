@@ -2,8 +2,7 @@
   "name": "@deed3labs/protocol-contracts",
   "packageManager": "npm@10.2.4",
   "version": "0.1.0",
-  "description": "DeedNFT Contracts with Validator integration for decentralized asset registration and verification",
-  "main": "index.js",
+  "description": "CLEAR monorepo: the Clear Protocol contracts, the member, merchant, pay, rewards and command apps, and the API",
   "workspaces": [
     "apps/member",
     "apps/merchant",
@@ -17,10 +16,7 @@
     "test:coverage": "hardhat coverage",
     "test:gas": "REPORT_GAS=true hardhat test",
     "test:core": "hardhat test test/core/*.spec.ts",
-    "test:extensions": "hardhat test test/extensions/*.test.ts",
-    "test:integration": "hardhat test test/integration/*.test.ts",
     "compile": "npx hardhat compile",
-    "deploy": "npx hardhat run scripts/deploy.js --network <network-name>",
     "deploy:burner-bonds": "npx hardhat run deploy/deploy_burner_bonds.ts --network",
     "deploy:access-manager": "npx hardhat run deploy/16_deploy_AccessManager.ts --network",
     "deploy:membership-registry": "npx hardhat run deploy/17_deploy_MembershipRegistry.ts --network",
@@ -63,10 +59,11 @@
   },
   "keywords": [
     "Solidity",
-    "ERC721",
-    "NFT",
-    "Validator",
-    "Smart Contracts"
+    "Smart Contracts",
+    "Stablecoin",
+    "Mutual Credit",
+    "Cooperative",
+    "Real World Assets"
   ],
   "author": "Deed3Labs, LLC. <dev@deed3.io>",
   "contributors": [
