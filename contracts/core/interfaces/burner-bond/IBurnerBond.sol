@@ -126,11 +126,11 @@ interface IBurnerBond is IERC1155Upgradeable {
     function getDiscountCurve() external view returns (uint8 curveType, uint256 maxDiscount, uint256 maxMaturity, uint256 curveParameter);
     
     /// @notice Set discount curve configuration
+    /// @dev The curve's shape only. Its bounds -- maximum discount and maturity -- are the
+    /// factory's, shared by every collection.
     /// @param curveType Type of curve (0=linear, 1=bonding, 2=logarithmic, 3=custom)
-    /// @param maxDiscount Maximum discount percentage in basis points
-    /// @param maxMaturity Maximum maturity period in seconds
-    /// @param curveParameter Curve-specific parameter (steepness, base, etc.)
-    function setDiscountCurve(uint8 curveType, uint256 maxDiscount, uint256 maxMaturity, uint256 curveParameter) external;
+    /// @param curveParameter Curve-specific parameter (steepness, base, etc.), 10,000 = 1.0
+    function setDiscountCurve(uint8 curveType, uint256 curveParameter) external;
     
     /// @notice Calculate discount using the configured curve
     /// @param maturityDate Maturity date for the bond
@@ -218,16 +218,6 @@ interface IBurnerBond is IERC1155Upgradeable {
     
     /* ========== ADMIN FUNCTIONS ========== */
     
-    /// @notice Update discount calculation parameters
-    /// @param _maxDiscount Maximum discount percentage in basis points (0-5000)
-    /// @param _minDiscount Minimum discount percentage in basis points
-    /// @param _maxMaturity Maximum maturity period in seconds
-    function updateDiscountParameters(uint256 _maxDiscount, uint256 _minDiscount, uint256 _maxMaturity) external;
-    
-    /// @notice Set minimum discount percentage
-    /// @param _minDiscount Minimum discount percentage in basis points
-    function setMinDiscount(uint256 _minDiscount) external;
-    
     /// @notice Set the AssurancePool contract address
     /// @param _assurancePool Address of the AssurancePool contract
     function setAssurancePool(address _assurancePool) external;
@@ -235,15 +225,6 @@ interface IBurnerBond is IERC1155Upgradeable {
     /// @notice Set the underlying token address
     /// @param _underlyingToken Address of the underlying token
     function setUnderlyingToken(address _underlyingToken) external;
-    
-    /// @notice Update minimum and maximum face value limits
-    /// @param _minFaceValue Minimum face value in underlying token units
-    /// @param _maxFaceValue Maximum face value in underlying token units
-    function updateFaceValueLimits(uint256 _minFaceValue, uint256 _maxFaceValue) external;
-    
-    /// @notice Update minimum maturity period
-    /// @param _minMaturity Minimum maturity period in seconds
-    function updateMinMaturity(uint256 _minMaturity) external;
     
     /// @notice Get collection name
     /// @return Collection name

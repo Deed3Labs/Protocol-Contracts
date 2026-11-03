@@ -83,6 +83,47 @@ describe("BurnerBond", function () {
       ).to.be.revertedWith("Token not whitelisted");
     });
 
+    it("sells only in the token its vault holds and pays out", async function () {
+      // WETH is whitelisted, so a collection would be made for it -- but the vault holds USDC, and
+      // proceeds in anything else would sit there uncounted.
+      await expect(
+        deposit
+          .connect(buyer)
+          .makeDeposit(await ctx.weth.getAddress(), 1_000n * ONE_USDC, (await now()) + BigInt(12 * MONTH), 0n)
+      ).to.be.revertedWith("Not the vault's reserve token");
+    });
+
+    it("can start its ids above another collection's, and shares the vault without colliding", async function () {
+      // A collection that replaces another shares its vault, which keys bonds by id alone.
+      const maturity = (await now()) + BigInt(12 * MONTH);
+      await buyBond(1_000n * ONE_USDC, maturity); // bond 1 in this collection
+
+      const Next = await ethers.getContractFactory("BurnerBondFactory");
+      const nextFactory = await Next.deploy(
+        await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress(), "ipfs://bonds"
+      );
+      await nextFactory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
+      const next = await ethers.getContractAt(
+        "BurnerBond", (await nextFactory.getCollectionInfo(await ctx.usdc.getAddress())).collectionAddress
+      );
+      const nextDeposit = await ethers.getContractAt("BurnerBondDeposit", await nextFactory.getUnifiedDepositContract());
+      await next.setBondVault(await vault.getAddress());
+      await nextDeposit.setBondVault(await vault.getAddress());
+      await vault.grantRole(await vault.BOND_ROLE(), await next.getAddress());
+      await vault.grantRole(await vault.BOND_ROLE(), await nextDeposit.getAddress());
+      await next.setFirstBondId(1001n);
+      await ctx.usdc.connect(buyer).approve(await nextDeposit.getAddress(), 1_000_000n * ONE_USDC);
+
+      await nextDeposit
+        .connect(buyer)
+        .makeDeposit(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, maturity, await next.calculateDiscount(maturity));
+      expect(await next.balanceOf(buyer.address, 1001n)).to.equal(1n);
+      expect((await vault.obligations(1n)).faceValue).to.equal(1_000n * ONE_USDC);
+      expect((await vault.obligations(1001n)).faceValue).to.equal(1_000n * ONE_USDC);
+
+      await expect(next.setFirstBondId(5000n)).to.be.revertedWith("Bonds already issued");
+    });
+
     it("refuses a second collection for the same token", async function () {
       await expect(
         factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds")
@@ -113,6 +154,109 @@ describe("BurnerBond", function () {
       const maturity = (await now()) + BigInt(24 * MONTH);
       const discount = await bond.calculateDiscount(maturity);
       expect(discount).to.be.lessThanOrEqual(await factory.getMaxDiscount());
+    });
+  });
+
+  /*
+   * The curve's parameter is stored on a 10,000 scale and its maths runs in 1e18. Before the two
+   * met, a BONDING curve priced every term at the minimum and a LOGARITHMIC one reverted.
+   */
+  describe("the discount curve", function () {
+    /** A maturity halfway to the factory's longest term. */
+    async function halfway() {
+      return (await now()) + (await factory.getMaxMaturity()) / 2n;
+    }
+
+    it("prices a BONDING curve above the linear one halfway out", async function () {
+      const linear = await bond.calculateDiscount(await halfway());
+      await bond.setDiscountCurve(1, 20_000n); // steepness 2.0: 1 - (1 - t)^2
+      const bonding = await bond.calculateDiscount(await halfway());
+
+      const max = await factory.getMaxDiscount();
+      expect(bonding).to.be.greaterThan(linear);
+      // Three quarters of the range at t = 0.5, to within the second it took to ask.
+      expect(bonding).to.be.closeTo((max * 3n) / 4n, 2n);
+    });
+
+    it("prices a LOGARITHMIC curve with diminishing returns, not as a straight line", async function () {
+      const linear = await bond.calculateDiscount(await halfway());
+      await bond.setDiscountCurve(2, 20_000n); // base 2.0: log2(1 + t)
+      const discount = await bond.calculateDiscount(await halfway());
+
+      const max = await factory.getMaxDiscount();
+      expect(discount).to.be.greaterThan(linear);
+      // log2(1.5) = 0.58496...
+      expect(discount).to.be.closeTo((max * 58496n) / 100000n, 2n);
+    });
+
+    it("takes a fractional steepness as given, not rounded down", async function () {
+      await bond.setDiscountCurve(1, 25_000n); // 1 - (1 - t)^2.5
+      const discount = await bond.calculateDiscount(await halfway());
+
+      const max = await factory.getMaxDiscount();
+      // 1 - 0.5^2.5 = 0.82322...
+      expect(discount).to.be.closeTo((max * 82322n) / 100000n, 2n);
+    });
+
+    it("reaches the full range at the longest term, whatever the shape", async function () {
+      const max = await factory.getMaxDiscount();
+      const longest = (await now()) + (await factory.getMaxMaturity()) + 10n;
+      for (const [type, param] of [[1, 37_500n], [2, 100_000n], [2, 15_000n]] as const) {
+        await bond.setDiscountCurve(type, param);
+        expect(await bond.calculateDiscount(longest)).to.be.closeTo(max, 1n);
+      }
+    });
+
+    it("takes only the shape; its bounds stay the factory's", async function () {
+      await expect(bond.setDiscountCurve(1, 20_000n))
+        .to.emit(bond, "DiscountCurveUpdated")
+        .withArgs(1, await factory.getMaxDiscount(), await factory.getMaxMaturity(), 20_000n);
+      const [curveType, maxDiscount, maxMaturity, parameter] = await bond.getDiscountCurve();
+      expect([curveType, maxDiscount, maxMaturity, parameter]).to.deep.equal([
+        1n, await factory.getMaxDiscount(), await factory.getMaxMaturity(), 20_000n,
+      ]);
+    });
+  });
+
+  describe("the factory's bounds", function () {
+    it("are set on the factory, and every collection reads them", async function () {
+      await factory.updateGlobalParameters(3_000n, 100n, 20n * 365n * BigInt(DAY));
+      const [maxDiscount, maxMaturity] = await bond.getDiscountParameters();
+      expect(maxDiscount).to.equal(3_000n);
+      expect(maxMaturity).to.equal(20n * 365n * BigInt(DAY));
+    });
+
+    it("have no setters on the collection or the deposit contract to fail through", async function () {
+      for (const name of ["updateDiscountParameters", "setMinDiscount", "updateFaceValueLimits", "updateMinMaturity"]) {
+        expect(bond.interface.getFunction(name)).to.equal(null);
+      }
+      for (const name of ["updateDepositParameters", "setMinDiscount", "updateFaceValueLimits", "updateMinMaturity"]) {
+        expect(deposit.interface.getFunction(name)).to.equal(null);
+      }
+    });
+  });
+
+  describe("a deactivated collection", function () {
+    it("stops selling, and sells again once reactivated", async function () {
+      const maturity = (await now()) + BigInt(12 * MONTH);
+      await factory.deactivateCollection(await ctx.usdc.getAddress());
+      await expect(buyBond(1_000n * ONE_USDC, maturity)).to.be.revertedWith("Collection inactive");
+
+      await factory.reactivateCollection(await ctx.usdc.getAddress());
+      await buyBond(1_000n * ONE_USDC, maturity);
+      expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
+    });
+
+    it("still redeems the bonds it already sold", async function () {
+      const maturity = (await now()) + BigInt(2 * MONTH);
+      await buyBond(1_000n * ONE_USDC, maturity);
+      await factory.deactivateCollection(await ctx.usdc.getAddress());
+
+      await advance(3 * MONTH);
+      await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
+      await bond.connect(buyer).setAutoRollOptOut(1, true);
+      await bond.connect(buyer).redeemBond(1);
+      expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
     });
   });
 

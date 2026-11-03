@@ -74,6 +74,11 @@ contract BondDiscountCurve {
         if (timeToMaturity > maxMaturity) timeToMaturity = maxMaturity;
 
         (CurveType curveType, uint256 parameter) = curveOf(collection);
+        // Stored on a 10,000 scale (10,000 = 1.0), which is what `setCurve` validates against;
+        // the maths below works in 1e18. Without this, a steepness of 2.0 reached `_power` as an
+        // exponent of 2e-14 -- every BONDING curve priced at the minimum -- and a LOGARITHMIC base
+        // underflowed `parameter - 1e18` and reverted.
+        parameter = parameter * 1e14;
 
         uint256 normalizedTime = (timeToMaturity * 1e18) / maxMaturity;
         uint256 discountRange = maxDiscount - minDiscount;
@@ -81,65 +86,74 @@ contract BondDiscountCurve {
         if (curveType == CurveType.LINEAR) {
             return minDiscount + (normalizedTime * discountRange) / 1e18;
         } else if (curveType == CurveType.BONDING) {
-            // discount = min + range * (1 - (1 - t)^steepness)
-            uint256 curveValue = 1e18 - _power(1e18 - normalizedTime, parameter);
+            // discount = min + range * (1 - (1 - t)^steepness), steepness any value from 1.0 to 5.0
+            uint256 curveValue = 1e18 - _pow(1e18 - normalizedTime, parameter);
             return minDiscount + (curveValue * discountRange) / 1e18;
         } else if (curveType == CurveType.LOGARITHMIC) {
-            // discount = min + range * log_b(1 + t*(b - 1)) / log_b(b)
-            uint256 logResult = _logarithm(1e18 + (normalizedTime * (parameter - 1e18)) / 1e18, parameter);
-            return minDiscount + (logResult * discountRange) / _logarithm(parameter, parameter);
+            // discount = min + range * log_b(1 + t*(b - 1)), which runs from 0 at t = 0 to 1 at t = 1
+            uint256 logResult = (_log2(1e18 + (normalizedTime * (parameter - 1e18)) / 1e18) * 1e18) / _log2(parameter);
+            return minDiscount + (logResult * discountRange) / 1e18;
         }
         revert("Custom curve not implemented yet");
     }
 
     /* ========== MATHS ========== */
+    //
+    // Fixed point, 1e18 = 1.0. These used to be an integer-exponent power and a logarithm that was
+    // linear between 1 and its base -- the whole range the curve asks about -- so a LOGARITHMIC
+    // curve priced exactly like a LINEAR one and a steepness of 2.5 behaved as 2. Accuracy here is
+    // far beyond what a discount in basis points can show.
 
-    function _power(uint256 base, uint256 exponent) internal pure returns (uint256) {
-        if (exponent == 0) return 1e18;
-        if (exponent == 1e18) return base;
-        if (base == 0) return 0;
+    uint256 private constant ONE = 1e18;
+    /// @dev ln(2), 1e18-scaled.
+    uint256 private constant LN2 = 693147180559945309;
 
-        uint256 intExponent = exponent / 1e18;
-        require(intExponent <= 10, "Exponent too large for approximation");
-
-        uint256 result = 1e18;
-        uint256 currentBase = base;
-        while (intExponent > 0) {
-            if (intExponent % 2 == 1) {
-                result = (result * currentBase) / 1e18;
-            }
-            currentBase = (currentBase * currentBase) / 1e18;
-            intExponent /= 2;
+    /// @dev log2 of x, 1e18-scaled, for x >= 1.0. An integer part from the highest set bit, then
+    /// one fractional bit per squaring.
+    function _log2(uint256 x) internal pure returns (uint256 result) {
+        require(x >= ONE, "log2 below 1");
+        uint256 n = 0;
+        uint256 whole = x / ONE;
+        while (whole >= 2) {
+            whole >>= 1;
+            n++;
         }
-        return result;
+        result = n * ONE;
+        uint256 y = x >> n;
+        if (y == ONE) return result;
+        for (uint256 delta = ONE / 2; delta > 0; delta >>= 1) {
+            y = (y * y) / ONE;
+            if (y >= 2 * ONE) {
+                result += delta;
+                y >>= 1;
+            }
+        }
     }
 
-    /// @dev log base `base` of `value`, both 1e18-scaled. Piecewise: a linear approximation of
-    /// ln near 1, then bracket-and-interpolate between successive powers of the base. Accurate
-    /// enough for a discount curve, which is a policy dial rather than a settlement figure.
-    function _logarithm(uint256 value, uint256 base) internal pure returns (uint256) {
-        require(value > 0, "Logarithm of zero or negative number");
-        require(base > 1e18, "Logarithm base must be greater than 1");
+    /// @dev base^exponent for a base in [0, 1.0] and an exponent of at least 1.0, as
+    /// 2^(-exponent * log2(1 / base)).
+    function _pow(uint256 base, uint256 exponent) internal pure returns (uint256) {
+        if (base == 0) return 0;
+        if (base >= ONE) return ONE;
+        uint256 negLog = _log2((ONE * ONE) / base);
+        uint256 y = (negLog * exponent) / ONE;
+        // 2^-190 is far below one unit of the result.
+        if (y >= 190 * ONE) return 0;
+        return (ONE * ONE) / _exp2(y);
+    }
 
-        if (value == 1e18) return 0;
-        if (value == base) return 1e18;
-
-        if (value < base) {
-            // Between 1 and the base: linear in (value - 1), scaled so that value == base gives 1.
-            return ((value - 1e18) * 1e18) / (base - 1e18);
+    /// @dev 2^y, 1e18-scaled, for y >= 0: the whole part as a shift, the fraction as e^(f ln 2) by
+    /// its series, which has converged well before twenty terms for an argument under 0.7.
+    function _exp2(uint256 y) internal pure returns (uint256) {
+        uint256 whole = y / ONE;
+        uint256 z = ((y % ONE) * LN2) / ONE;
+        uint256 term = ONE;
+        uint256 sum = ONE;
+        for (uint256 k = 1; k < 20; k++) {
+            term = (term * z) / (ONE * k);
+            if (term == 0) break;
+            sum += term;
         }
-
-        // Walk up powers of the base until the value is bracketed, then interpolate within.
-        uint256 whole = 0;
-        uint256 lower = 1e18;
-        while (whole < 10) {
-            uint256 upper = (lower * base) / 1e18;
-            if (value < upper) {
-                return whole * 1e18 + ((value - lower) * 1e18) / (upper - lower);
-            }
-            lower = upper;
-            whole++;
-        }
-        return whole * 1e18;
+        return sum << whole;
     }
 }

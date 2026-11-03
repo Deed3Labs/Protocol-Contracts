@@ -124,16 +124,6 @@ interface IBurnerBondDeposit {
     
     /* ========== ADMIN FUNCTIONS ========== */
     
-    /// @notice Update deposit calculation parameters
-    /// @param _maxDiscount Maximum discount percentage in basis points
-    /// @param _minDiscount Minimum discount percentage in basis points
-    /// @param _maxMaturity Maximum maturity period in seconds
-    function updateDepositParameters(uint256 _maxDiscount, uint256 _minDiscount, uint256 _maxMaturity) external;
-    
-    /// @notice Set minimum discount percentage
-    /// @param _minDiscount Minimum discount percentage in basis points
-    function setMinDiscount(uint256 _minDiscount) external;
-    
     /// @notice Register a collection for a token (factory only)
     /// @param tokenAddress Address of the token
     /// @param collectionAddress Address of the BurnerBond collection
@@ -146,13 +136,4 @@ interface IBurnerBondDeposit {
     /// @notice Set the AssurancePool contract address
     /// @param _assurancePool Address of the AssurancePool contract
     function setAssurancePool(address _assurancePool) external;
-    
-    /// @notice Update minimum and maximum face value limits
-    /// @param _minFaceValue Minimum face value in underlying token units
-    /// @param _maxFaceValue Maximum face value in underlying token units
-    function updateFaceValueLimits(uint256 _minFaceValue, uint256 _maxFaceValue) external;
-    
-    /// @notice Update minimum maturity period
-    /// @param _minMaturity Minimum maturity period in seconds
-    function updateMinMaturity(uint256 _minMaturity) external;
 }

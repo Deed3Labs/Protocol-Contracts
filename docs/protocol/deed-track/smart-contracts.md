@@ -3,7 +3,7 @@
 > **Scope.** This document covers the **Deed track** — T-Deeds, validation, subdivision and
 > fractionalization. The Clear Protocol also includes the savings (CLRUSD, ESA), credit,
 > merchant settlement and bond subsystems, which are not described here; see
-> [`../contracts/clear-contracts-build-plan.md`](../contracts/clear-contracts-build-plan.md).
+> [`../contracts/clear-contracts-build-plan.md`](../clear-contracts-build-plan.md).
 
 This document provides an overview of the Deed track's smart contract architecture — its core contracts, interfaces, and their relationships.
 

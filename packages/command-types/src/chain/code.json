@@ -76,12 +76,12 @@
   },
   "BurnerBond": {
    "source": "contracts/peripherals/BurnerBond.sol",
-   "sha256": "85bba47d002a0c42e6e752b496560bddc5b66df21127e68c9f68c0ffd021111c",
+   "sha256": "1630e93e7ae4f2be3019c647692fb00c548ec3a4ed76e9f8b6555af7cf8b59aa",
    "immutables": []
   },
   "BurnerBondDeposit": {
    "source": "contracts/peripherals/BurnerBondDeposit.sol",
-   "sha256": "942848f8b9f21ff11d641033c5df868b0f7231dd667e6a8c1b3e967780c44c9a",
+   "sha256": "b6424efe995d19448bb8e7d87ee54e6388e8443dfd64670cf3381ab034d2c0ca",
    "immutables": []
   },
   "BurnerBondFactory": {
@@ -188,18 +188,18 @@
   },
   "CollateralRegistry": {
    "source": "contracts/peripherals/CollateralRegistry.sol",
-   "sha256": "4fa4858a45e876c38aae0f89ebfc342f37bb2a40454db6024b7080faf61b4f2c",
+   "sha256": "58fb646534b66d5afebfb1322f30298daadda5878f9d42508f66ee5e398a66ca",
    "immutables": [
     [
-     2817,
+     2880,
      32
     ],
     [
-     3002,
+     3065,
      32
     ],
     [
-     4041,
+     4104,
      32
     ]
    ]

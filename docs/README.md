@@ -1,153 +1,52 @@
 # Documentation
 
 Everything written down about **CLEAR** — the app and the co-op — and about **the Clear Protocol**,
-the on-chain layer underneath it. Start with the root [`README.md`](../README.md) for what the
-repository is and how to run it; this index is for the longer-form material.
+the on-chain layer underneath it, sorted by who it is for. Start with the root
+[`README.md`](../README.md) for what the repository is and how to run it.
 
-The **Deed track** — T-Deeds, validators, subdivision, fractionalization — is a named subsystem
-inside the Clear Protocol, not a separate thing. It is ten of the forty-four production contracts
-under [`contracts/`](../contracts/); CLRUSD, the ESA, the two credit issuers, collateral, the
-lending pool, merchant settlement and the bond vault are most of the rest.
+| Section | For |
+|---|---|
+| [Overview](./overview/README.md) | Anyone — what Clear is and how the money works |
+| [Members](./members/README.md) | People using the member app |
+| [Merchants](./merchants/README.md) | Shops taking Clear, and their staff |
+| [Investors](./investors/README.md) | Financial contributors |
+| [Governance](./governance/README.md) | How the co-op decides, and who holds which keys |
+| [Developers](./developers/README.md) | Building on Clear, or working in this repository |
+| [Protocol](./protocol/README.md) | The contracts, including the Deed track |
+| [Operators](./operators/README.md) | Deploying, upgrading and running it |
 
-Two eras of documentation live here. The Clear docs describe what is being built now. The Deed-track
-docs describe the RWA layer, and the ones about its *frontend* predate the app rebuild — each group
-says which it is.
+**Governance is the one place a rule is written down.** When a member, merchant, investor or
+operator page depends on who decides something or who holds a key, it links to
+[`governance/`](./governance/README.md) rather than restating it, so a change is made once.
 
-Every link below points at a file that exists. If one does not, that is a bug worth fixing.
+Every link in these pages points at a file that exists; CI checks it
+(`scripts/check-doc-links.mjs`). Anything no longer true of the code is in
+[`archive/`](./archive/README.md), not here.
 
 ---
 
-## Clear — the product
+## Design and build references
 
-The current statement of what Clear is and how the pieces fit lives in the root
-[`README`](../README.md). The product docs that used to sit here are archived.
-
-| | |
-|---|---|
-| [`archive/`](./archive/) | **Archived, March 2026.** The member overview and the reconciliation baseline — kept for the record, both behind the repository |
-
-## The Clear Protocol — contracts
+What the apps were built to, kept for the people building them. These are not documentation for
+readers and will not be published with it. **Their paths are fixed:** build scripts, tests and
+applied database migrations cite them, and a migration cannot be edited once it has run.
 
 | | |
 |---|---|
-| [`contracts/clear-contracts-build-plan.md`](./contracts/clear-contracts-build-plan.md) | **Read this before touching the on-chain code.** StableCredit as a ledger of obligations rather than a pot of money, the ESA, the yield pool, BurnerBonds, and the connection points to the app and to Lithic |
-| [`contracts/clear-deployment-plan.md`](./contracts/clear-deployment-plan.md) | What has to be deployed, in what order, and which part of the app each step unlocks. Companion to the build plan |
-| [`clrusd-esa-bootstrap.md`](./contracts/clrusd-esa-bootstrap.md) | Runbook for issuing CLRUSD from an isolated `ESADepositVault`, with backing kept segregated from the AssurancePool, and CCIP burn/mint pools for cross-chain |
-| [`token-registry.md`](./contracts/token-registry.md) | `TokenRegistry` — the presence-based whitelist, and what it means for onboarding a token |
-| [`assurancePool.md`](./contracts/assurancePool.md) | Multi-token reserve: deposits, withdrawals, RTD |
-| [`assuranceOracle.md`](./contracts/assuranceOracle.md) | Uniswap-based universal pricing with registry fallback |
-| [`burner-bond-complete.md`](./contracts/burner-bond-complete.md) | The ERC-1155 discount-bond system end to end |
-
-Deployment runbooks proper live outside `docs/`: [`deploy/README.md`](../deploy/README.md) and
-[`deploy/DEPLOYMENT_GUIDE.md`](../deploy/DEPLOYMENT_GUIDE.md). Deployed addresses are tabulated in the
-root [`README.md`](../README.md).
-
-## Clear — the apps
-
-| | |
-|---|---|
-| [`ux/clear-app-design-spec.md`](./ux/clear-app-design-spec.md) | The member app's navigation and screens — what the rebuild is built to |
-| [`reference/clear-app-reference-screens.html`](./reference/clear-app-reference-screens.html) | Static reference screens: Home, limit breakdown, Savings, Earn, Activity, Send, Card. Colors, spacing and structure are authoritative; the implementation approach is not |
-| [`ux/clear-onboarding-plan.md`](./ux/clear-onboarding-plan.md) | Making the reference onboarding flow real, and the components it needs |
-| [`merchant-reference/`](./merchant-reference/) | Design reference for the merchant app: one file per screen with every state, sheet and width, plus the two build prompts (UI and backend) |
-| [`ux/clear-merchant-privy-orgs.md`](./ux/clear-merchant-privy-orgs.md) | Why the merchant app creates four Privy objects where the consumer app creates one, and where each call lands in onboarding |
-| [`reference/README.md`](./reference/README.md) | Index of the visual reference material |
-
-App-level docs sit with their apps: [`apps/member/README.md`](../apps/member/README.md),
-[`apps/api/README.md`](../apps/api/README.md), and the data-fetching, caching and pricing notes in
-[`apps/member/docs/`](../apps/member/docs/).
-
-## Clear — integrations
-
-| | |
-|---|---|
-| [`integrations/lithic-integration-spec.md`](./integrations/lithic-integration-spec.md) | The banking and card rail. Program Managed, and the two rails it must never blur. Read before writing card code |
-
----
-
-## The Deed track — architecture
-
-Current. These describe the contracts, which are still what they say they are. The track keeps its
-own names throughout — `DeedNFT`, `Validator`, the T-Deed token — and those are on-chain
-identifiers, so they are not going to change with the protocol's.
-
-| | |
-|---|---|
-| [`architecture/protocol-overview.md`](./architecture/protocol-overview.md) | High-level system design |
-| [`architecture/smart-contracts.md`](./architecture/smart-contracts.md) | Contract architecture and relationships |
-| [`architecture/validation-system.md`](./architecture/validation-system.md) | How validation works, and the validator lifecycle |
-| [`architecture/asset-workflows.md`](./architecture/asset-workflows.md) | The full asset lifecycle, minting through fractionalization |
-| [`architecture/subdivision.md`](./architecture/subdivision.md) | ERC-1155 subdivision |
-| [`architecture/fractionalization.md`](./architecture/fractionalization.md) | ERC-20 fractional shares |
-| [`architecture/metadata-renderer.md`](./architecture/metadata-renderer.md) | Trait-aware metadata, documents and features |
-| [`api/contract-interfaces.md`](./api/contract-interfaces.md) | Contract interfaces, function by function |
-| [`architecture/XMTP.md`](./architecture/XMTP.md) | XMTP messaging between members and T-Deed owners |
-
-## The Deed track — asset requirements
-
-What a validator checks, per asset type.
-
-- [Land](./assets/land-assets.md)
-- [Vehicles](./assets/vehicle-assets.md)
-- [Estates](./assets/estate-assets.md)
-- [Commercial equipment](./assets/commercial-equipment.md)
-
-## The Deed track — user guides
-
-| | |
-|---|---|
-| [`user-guide/README.md`](./user-guide/README.md) | Tokenizing and managing assets as DeedNFTs |
-| [`quick-start.md`](./quick-start.md) | The five-minute version |
-| [`ux/minting-process.md`](./ux/minting-process.md) | Minting, step by step |
-| [`ux/admin-operations.md`](./ux/admin-operations.md) | Validator management and other admin operations |
-| [`ux/messaging.md`](./ux/messaging.md) | XMTP messaging, for users |
-
----
-
-## Pre-rebuild frontend docs
-
-> These describe the frontend as it was before the Clear rebuild — Reown AppKit for
-> wallets, a component tree that no longer exists, and an `app/` directory that is now `apps/member`.
-> They are kept because the T-Deed surface they document is still in the codebase, but check them
-> against the code before relying on anything. [`apps/member/README.md`](../apps/member/README.md) is
-> the current account of that app.
-
-| | |
-|---|---|
-| [`installation.md`](./installation.md) | Local setup and deployment. Paths are pre-monorepo |
-| [`api/components.md`](./api/components.md) | React component reference |
-| [`api/hooks.md`](./api/hooks.md) | Custom hook reference |
-| [`api/DeedNFTMap.md`](./api/DeedNFTMap.md) | The Mapbox asset map |
-| [`api/MapEnvironmentSetup.md`](./api/MapEnvironmentSetup.md) | Mapbox tokens |
-| [`api/XMTP.md`](./api/XMTP.md) | The `XMTPMessaging` component |
-| [`apps/member/docs/`](../apps/member/docs/) | Member-app internals: data fetching, portfolio and pricing architecture, RPC and Alchemy cost |
-
----
-
-## Where the missing pieces actually are
-
-This index used to link nine files that were never written: an API reference, a developer guide,
-contributing and testing guides, a security model, compliance and audit notes, a validation
-workflow, and a troubleshooting page. The links are gone. What they promised, where it exists:
-
-| Was linked as | Read instead |
-|---|---|
-| `api/README.md` | [`apps/api/README.md`](../apps/api/README.md) — the real route map, auth model and env. For contracts, [`api/contract-interfaces.md`](./api/contract-interfaces.md) |
-| `development/README.md`, `development/contributing.md` | The **Quickstart** and **Contributing** sections of the root [`README.md`](../README.md) |
-| `development/testing.md` | **Contract tooling → Tests** in the root [`README.md`](../README.md), and the suites in [`test/`](../test/) |
-| `security/security-model.md` | **Security** in the root [`README.md`](../README.md); role boundaries are in [`architecture/smart-contracts.md`](./architecture/smart-contracts.md) |
-| `security/audits.md` | There has been no audit. The contracts are unaudited and should not carry real money without an independent review |
-| `security/compliance.md` | Not written. The nearest thing is the KYC/KYB and program-management split in [`integrations/lithic-integration-spec.md`](./integrations/lithic-integration-spec.md) |
-| `ux/validation-workflow.md` | [`architecture/validation-system.md`](./architecture/validation-system.md) |
-| `ux/troubleshooting.md` | Not written |
+| [`reference/`](./reference/README.md) | The member app: the design spec, and static reference screens for Home, Savings, Earn, Activity, Send and Card |
+| [`merchant-reference/`](./merchant-reference/) | The merchant app: one file per screen with every state, sheet and width, its decision log, the pilot checklist and the build prompts. `apps/merchant/scripts/reference-css.mjs` reads the HTML |
+| [`pay-reference/`](./pay-reference/) | Pay with Clear: design reference and decision log. `apps/pay/scripts/reference-css.mjs` reads the HTML |
+| [`rewards-reference/`](./rewards-reference/) | The rewards app: design reference, decision log and store builds. Read by the rewards and merchant reference-css scripts |
+| [`command-reference/`](./command-reference/), [`command-center-plan.md`](./command-center-plan.md), [`ui-redesign-plan.md`](./ui-redesign-plan.md), [`ui-redesign/`](./ui-redesign/) | The Command Center: decision log, original plan, the UI redesign plan and its screenshots. The current design source is [`design/command-center-ui/`](../design/command-center-ui/README.md) |
+| [`hardware/`](./hardware/) | Clear Terminal: the Point device API, the cash-drawer protocol and M2 reader timing. Reference for developers too — linked from [Developers](./developers/README.md) — and pinned to the firmware constants by `apps/merchant/src/hardware/docs.test.ts` |
 
 ---
 
 ## Contributing to these docs
 
 Focused PRs against `dev`, same as code. Update the doc in the same change as the interface or
-workflow it describes — that is the only way any of this stays true. If you add a file here, add it
-to this index; if you find a link that does not resolve, fix it or remove it rather than leaving it.
+workflow it describes — that is the only way any of this stays true. A new page goes in the section
+for its reader and gets a line in that section's `README.md`.
 
 - Issues: [Deed3Labs/Protocol-Contracts/issues](https://github.com/Deed3Labs/Protocol-Contracts/issues)
 - Discussions: [Deed3Labs/Protocol-Contracts/discussions](https://github.com/Deed3Labs/Protocol-Contracts/discussions)

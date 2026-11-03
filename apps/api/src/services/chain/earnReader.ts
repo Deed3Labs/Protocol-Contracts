@@ -36,6 +36,7 @@ const BOND_ABI = [
   'function presentValueOf(uint256 bondId) external view returns (uint256)',
   'function calculatePurchasePrice(uint256 faceValue, uint256 maturityDate) external view returns (uint256)',
   'function balanceOf(address account, uint256 id) external view returns (uint256)',
+  'function willAutoRoll(uint256 bondId) external view returns (bool)',
 ];
 
 /** Cycles a year, for turning a per-cycle rate into the annual one a member is shown. */
@@ -70,6 +71,15 @@ export interface ChainHeldBond {
   /** When it was issued. The term is this to maturity; months left is now to maturity. */
   issuedAtUnix: number;
   redeemed: boolean;
+  /** The collection that issued it, which is the one to redeem or roll it with. */
+  collection: string;
+  /** Whether it rolls into a new bond at maturity (the default) rather than paying out. */
+  autoRoll: boolean;
+  /**
+   * Pledged and holding up drawn credit. The collection still lets its holder redeem it at
+   * maturity -- a burn passes the pledge check -- so the app holds the button back instead.
+   */
+  backsDrawnCredit: boolean;
 }
 
 export interface ChainBondTerm {
@@ -174,13 +184,18 @@ async function readPoolCostBasis(pool: ethers.Contract, wallet: string, chainId:
   }
 }
 
+const REGISTRY_ABI = ['function isItemEncumbered(address holder, bytes32 kind, uint256 itemId) view returns (bool)'];
+const BOND_KIND = ethers.encodeBytes32String('BOND');
+
 async function readBonds(
   provider: ethers.JsonRpcProvider,
   address: string,
   wallet: string,
+  registryAddress: string | null = null,
 ): Promise<ChainHeldBond[] | null> {
   try {
     const collection = new ethers.Contract(address, BOND_ABI, provider);
+    const registry = registryAddress ? new ethers.Contract(registryAddress, REGISTRY_ABI, provider) : null;
     const ids: bigint[] = await collection.getBondIdsByCreator(wallet);
     const held: ChainHeldBond[] = [];
 
@@ -190,9 +205,11 @@ async function readBonds(
       const balance: bigint = await collection.balanceOf(wallet, id);
       if (balance === 0n) continue;
 
-      const [info, worth] = await Promise.all([
+      const [info, worth, autoRoll, backsDrawnCredit] = await Promise.all([
         collection.getBondInfo(id),
         collection.presentValueOf(id),
+        collection.willAutoRoll(id),
+        registry ? registry.isItemEncumbered(wallet, BOND_KIND, id).catch(() => false) : Promise.resolve(false),
       ]);
       held.push({
         bondId: id.toString(),
@@ -202,6 +219,9 @@ async function readBonds(
         maturityUnix: Number(info.maturityDate),
         issuedAtUnix: Number(info.issuedAt),
         redeemed: info.isRedeemed,
+        collection: ethers.getAddress(address),
+        autoRoll: Boolean(autoRoll),
+        backsDrawnCredit: Boolean(backsDrawnCredit),
       });
     }
     return held;
@@ -316,6 +336,9 @@ async function readChainEarnUncached(
 ): Promise<ChainEarn> {
   const poolAddress = getContractAddress(chainId, 'LendingPool');
   const bondAddress = getContractAddress(chainId, 'BurnerBond');
+  // Bonds sold before the collection was replaced are still the member's, and still pay out.
+  const legacyBondAddress = getContractAddress(chainId, 'BurnerBondLegacy');
+  const registryAddress = getContractAddress(chainId, 'CollateralRegistry');
 
   let provider: ethers.JsonRpcProvider;
   try {
@@ -325,12 +348,17 @@ async function readChainEarnUncached(
     return { pool: null, bonds: null, terms: null, earnedToDateCents: 0, complete: false };
   }
 
-  const [pool, bonds, terms, redeemedGains] = await Promise.all([
+  const [pool, currentBonds, legacyBonds, terms, currentGains, legacyGains] = await Promise.all([
     poolAddress ? readPool(provider, poolAddress, wallet, chainId) : Promise.resolve(null),
-    bondAddress ? readBonds(provider, bondAddress, wallet) : Promise.resolve([]),
+    bondAddress ? readBonds(provider, bondAddress, wallet, registryAddress) : Promise.resolve([]),
+    legacyBondAddress ? readBonds(provider, legacyBondAddress, wallet) : Promise.resolve([]),
     bondAddress ? readTerms(provider, bondAddress) : Promise.resolve([]),
     bondAddress ? readRedeemedGains(provider, bondAddress, wallet, chainId) : Promise.resolve(0),
+    legacyBondAddress ? readRedeemedGains(provider, legacyBondAddress, wallet, chainId) : Promise.resolve(0),
   ]);
+  // Ids never collide: the replacement collection's start at 1001.
+  const bonds = currentBonds === null || legacyBonds === null ? null : [...legacyBonds, ...currentBonds];
+  const redeemedGains = currentGains === null || legacyGains === null ? null : currentGains + legacyGains;
 
   const accrued = (bonds ?? [])
     .filter((bond) => !bond.redeemed)

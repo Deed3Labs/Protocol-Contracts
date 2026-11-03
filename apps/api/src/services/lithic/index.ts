@@ -1,7 +1,7 @@
 /*
  * The Lithic service boundary. Everything that talks to Lithic goes through here, and nothing in
  * here talks to the chain — the two rails meet in the sweep saga and the reconciler, never inside a
- * request handler. See docs/integrations/lithic-integration-spec.md.
+ * request handler. See docs/developers/integrations/lithic.md.
  */
 export {
   getLithic,

@@ -7,6 +7,56 @@ import { ChevronIcon, SortIcon } from './brand/icons';
 import { money } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import { bondsWorth, monthYear, type EarnData, type HeldBond } from '@/lib/clearModel';
+import { useOptionalAddress, useOptionalSmartWalletClient } from '@/hooks/useOptionalWallet';
+import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+import { scBondAction } from '@/lib/sendCalls';
+import { markChainStale } from '@/lib/chainStale';
+import { shortMoveReason } from '@/hooks/usePoolMove';
+import { track } from '@/lib/analytics';
+
+type BondAction = 'redeem' | 'roll' | 'cash-at-maturity' | 'roll-at-maturity';
+
+/**
+ * What a holder can do with one bond: once it has matured, take the face value or roll it into a
+ * new bond; before then, choose which of the two happens. Sent to the collection that issued it.
+ */
+function useBondAction(bond: HeldBond, onDone: () => void) {
+  const address = useOptionalAddress();
+  const getClientForChain = useOptionalSmartWalletClient();
+  const [busy, setBusy] = useState<BondAction | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (action: BondAction) => {
+    if (!address || !bond.collection) {
+      setError('Connect a wallet first.');
+      return;
+    }
+    setBusy(action);
+    setError(null);
+    try {
+      const smartWalletClient = getClientForChain
+        ? await getClientForChain({ id: ACTIVE_CHAIN_ID }).catch(() => undefined)
+        : undefined;
+      await scBondAction({
+        smartWalletClient,
+        ownerWallet: address,
+        collection: bond.collection,
+        bondId: bond.id,
+        action,
+        chainId: ACTIVE_CHAIN_ID,
+      });
+      track(action === 'redeem' ? 'bond_redeemed' : action === 'roll' ? 'bond_rolled' : 'bond_maturity_choice', {});
+      // The bond list, the shelf and the limit it backs all move with this.
+      markChainStale();
+      onDone();
+    } catch (e) {
+      setError(shortMoveReason(e instanceof Error ? e.message : "That didn't go through."));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return { run, busy, error };
+}
 
 type Filter = 'all' | 'year' | 'later';
 type Sort = 'maturity' | 'face' | 'worth';
@@ -46,6 +96,9 @@ function BondDetailDialog({
 }) {
   const navigate = useNavigate();
   const gain = bond.face - bond.paid;
+  const matured = bond.maturityUnix !== undefined && bond.maturityUnix <= Date.now() / 1000;
+  const actionable = Boolean(bond.collection);
+  const { run, busy, error } = useBondAction(bond, () => onOpenChange(false));
 
   return (
     <Modal
@@ -55,11 +108,38 @@ function BondDetailDialog({
       description={`A ${money(bond.face)} bond maturing ${monthYear(bond.maturesOn)}.`}
       footer={
         <>
+          {actionable && matured && (
+            <div className="c-pair mb-s2">
+              {!bond.backsDrawnCredit && (
+                <Btn primary disabled={busy !== null} onClick={() => run('redeem')}>
+                  {busy === 'redeem' ? 'Redeeming…' : `Redeem ${money(bond.face)}`}
+                </Btn>
+              )}
+              {bond.autoRoll !== false && (
+                <Btn disabled={busy !== null} onClick={() => run('roll')}>
+                  {busy === 'roll' ? 'Rolling…' : 'Roll it over'}
+                </Btn>
+              )}
+            </div>
+          )}
+          {error && <p className="c-det text-negative mb-s2">{error}</p>}
           <div className="c-footnote mt-0! border-t-0! pt-0!">
-            <p>
-              Locked until maturity. It backs your credit line automatically at 0.65% a cycle &mdash; there is nothing to
-              borrow, the card just reaches it when the cheaper tiers run out.
-            </p>
+            {matured && bond.backsDrawnCredit ? (
+              <p>
+                Matured, and backing credit you&rsquo;ve drawn &mdash; roll it over to keep it there, or pay the credit down
+                first to redeem it.
+              </p>
+            ) : matured ? (
+              <p>
+                Matured. Redeem it for the face value, paid to Ready to allocate, or roll it into a new bond so it keeps
+                backing your credit line.
+              </p>
+            ) : (
+              <p>
+                Locked until maturity. It backs your credit line automatically at 0.65% a cycle &mdash; there is nothing to
+                borrow, the card just reaches it when the cheaper tiers run out.
+              </p>
+            )}
           </div>
           {/* No borrow button: credit draws on its own, so the way through is to the limit it backs. */}
           <div className="c-pair mt-s2">
@@ -116,6 +196,26 @@ function BondDetailDialog({
             <span className="c-v">{money(Math.round(bond.worthToday * ltv * 100) / 100, { cents: true })}</span>
           </div>
         </div>
+        {actionable && !matured && (
+          <div>
+            <div className="c-kv">
+              <span>At maturity</span>
+              <span className="c-v">
+                {bond.autoRoll === false ? 'Pays out' : 'Rolls over'}
+                {' · '}
+                <button
+                  type="button"
+                  className="underline hover:text-ink disabled:opacity-50"
+                  aria-label={bond.autoRoll === false ? 'Roll it over at maturity instead' : 'Take the cash at maturity instead'}
+                  disabled={busy !== null}
+                  onClick={() => run(bond.autoRoll === false ? 'roll-at-maturity' : 'cash-at-maturity')}
+                >
+                  {busy === 'cash-at-maturity' || busy === 'roll-at-maturity' ? 'Saving…' : 'Change'}
+                </button>
+              </span>
+            </div>
+          </div>
+        )}
       </Rows>
     </Modal>
   );
