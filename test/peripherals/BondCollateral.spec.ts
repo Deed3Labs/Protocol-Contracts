@@ -192,6 +192,55 @@ describe("bonds as collateral", function () {
   });
 
   /*
+   * A collection lets burns past its own pledge check, so redemption is refused where it pays out:
+   * the vault will not hand over a bond's face while it is still holding up drawn credit.
+   */
+  describe("a pledged bond backing drawn credit cannot be redeemed", function () {
+    let bondId: bigint;
+
+    beforeEach(async function () {
+      await vault.setEncumbranceSource(await registry.getAddress(), BOND);
+      bondId = await buyBond(1_000n * ONE_USDC, 2 * CYCLE);
+      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await issuer
+        .connect(ctx.operator)
+        .openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, CYCLE);
+      await ctx.stableCredit
+        .connect(ctx.member)
+        .transfer(ctx.counterparty.address, 400n * ONE_USDC);
+      await advance(3 * CYCLE);
+      await bond.connect(ctx.member).setAutoRollOptOut(bondId, true);
+      await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
+    });
+
+    it("refuses while the credit is drawn", async function () {
+      await expect(bond.connect(ctx.member).redeemBond(bondId))
+        .to.be.revertedWithCustomError(vault, "BondVaultBondPledged")
+        .withArgs(bondId);
+      expect(await bond.balanceOf(ctx.member.address, bondId)).to.equal(1n);
+    });
+
+    it("pays once the credit is paid down", async function () {
+      // Carry lands on the balance as the first repayment settles it, so pay until nothing is owed.
+      await ctx.usdc.connect(ctx.member).approve(await ctx.stableCredit.getAddress(), ethers.MaxUint256);
+      for (let i = 0; i < 3; i++) {
+        const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+        if (owed === 0n) break;
+        await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, owed);
+      }
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+
+      const before = await ctx.usdc.balanceOf(ctx.member.address);
+      await bond.connect(ctx.member).redeemBond(bondId);
+      expect((await ctx.usdc.balanceOf(ctx.member.address)) - before).to.equal(1_000n * ONE_USDC);
+    });
+
+    it("is an operator's to set", async function () {
+      await expect(vault.connect(other).setEncumbranceSource(other.address, BOND)).to.be.reverted;
+    });
+  });
+
+  /*
    * Rolling burns the matured bond and issues a replacement for the same money. The pledge has
    * to follow, or the credit drawn against it is backed by an id that no longer exists.
    */

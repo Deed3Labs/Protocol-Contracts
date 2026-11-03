@@ -29,6 +29,16 @@
     },
     {
       "type": "error",
+      "name": "BondVaultBondPledged",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "BondVaultInsufficientFunds",
       "inputs": [
         {
@@ -173,6 +183,23 @@
         {
           "type": "uint256",
           "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EncumbranceSourceUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
           "indexed": false
         }
       ]
@@ -543,6 +570,20 @@
     },
     {
       "type": "function",
+      "name": "collateralKind",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "coversNearTermMaturities",
       "constant": true,
       "stateMutability": "view",
@@ -565,6 +606,20 @@
       "outputs": [
         {
           "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "encumbranceSource",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
           "name": ""
         }
       ]
@@ -998,6 +1053,23 @@
         {
           "type": "address",
           "name": "_payoutPool"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setEncumbranceSource",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
         }
       ],
       "outputs": []

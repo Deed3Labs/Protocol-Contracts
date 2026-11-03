@@ -76,8 +76,8 @@ export interface ChainHeldBond {
   /** Whether it rolls into a new bond at maturity (the default) rather than paying out. */
   autoRoll: boolean;
   /**
-   * Pledged and holding up drawn credit. The collection still lets its holder redeem it at
-   * maturity -- a burn passes the pledge check -- so the app holds the button back instead.
+   * Pledged and holding up drawn credit. BondVault refuses to pay it out, so the app shows Redeem as
+   * unavailable and says why rather than letting the transaction fail.
    */
   backsDrawnCredit: boolean;
 }
@@ -336,8 +336,6 @@ async function readChainEarnUncached(
 ): Promise<ChainEarn> {
   const poolAddress = getContractAddress(chainId, 'LendingPool');
   const bondAddress = getContractAddress(chainId, 'BurnerBond');
-  // Bonds sold before the collection was replaced are still the member's, and still pay out.
-  const legacyBondAddress = getContractAddress(chainId, 'BurnerBondLegacy');
   const registryAddress = getContractAddress(chainId, 'CollateralRegistry');
 
   let provider: ethers.JsonRpcProvider;
@@ -348,17 +346,12 @@ async function readChainEarnUncached(
     return { pool: null, bonds: null, terms: null, earnedToDateCents: 0, complete: false };
   }
 
-  const [pool, currentBonds, legacyBonds, terms, currentGains, legacyGains] = await Promise.all([
+  const [pool, bonds, terms, redeemedGains] = await Promise.all([
     poolAddress ? readPool(provider, poolAddress, wallet, chainId) : Promise.resolve(null),
     bondAddress ? readBonds(provider, bondAddress, wallet, registryAddress) : Promise.resolve([]),
-    legacyBondAddress ? readBonds(provider, legacyBondAddress, wallet) : Promise.resolve([]),
     bondAddress ? readTerms(provider, bondAddress) : Promise.resolve([]),
     bondAddress ? readRedeemedGains(provider, bondAddress, wallet, chainId) : Promise.resolve(0),
-    legacyBondAddress ? readRedeemedGains(provider, legacyBondAddress, wallet, chainId) : Promise.resolve(0),
   ]);
-  // Ids never collide: the replacement collection's start at 1001.
-  const bonds = currentBonds === null || legacyBonds === null ? null : [...legacyBonds, ...currentBonds];
-  const redeemedGains = currentGains === null || legacyGains === null ? null : currentGains + legacyGains;
 
   const accrued = (bonds ?? [])
     .filter((bond) => !bond.redeemed)
