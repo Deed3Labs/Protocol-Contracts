@@ -318,6 +318,55 @@ describe("a purchase, from the shop to the money", function () {
       console.log(`        lent ${u(payout)} -> back ${u(payout)} + ${u(earned)} earned`);
     });
 
+    it("pays the yield pool's depositors what it earned, even while somebody else owes it", async function () {
+      const { payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+      await depositIntoYieldPool(500n * ONE_USDC);
+      await elapse(NET_30 + DAY);
+      await pool.drawForDueClaim();
+
+      // The card settler draws on the same pool and has not paid it back yet.
+      const settler = (await ethers.getSigners())[12];
+      await yieldLender.grantRole(await yieldLender.BORROWER_ROLE(), settler.address);
+      await yieldLender.connect(settler).borrow(100n * ONE_USDC, settler.address);
+
+      await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
+      await term.materialiseCarry(0);
+      await pool.distributeCarry();
+      const earned = await pool.carryEarned();
+      expect(earned).to.be.greaterThan(0n);
+
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, owed);
+
+      // The return is the depositors', not a discount on what the settler still owes.
+      expect(await yieldLender.totalBorrowed()).to.equal(100n * ONE_USDC);
+      expect(await yieldLender.totalAssets()).to.equal(500n * ONE_USDC + earned);
+    });
+
+    it("keeps a lender's return owed while it cannot be paid, rather than spending it", async function () {
+      const { payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+      await depositIntoYieldPool(500n * ONE_USDC);
+      await elapse(NET_30 + DAY);
+      await pool.drawForDueClaim();
+
+      await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
+      await term.materialiseCarry(0);
+      await pool.distributeCarry();
+      const earned = await pool.carryEarned();
+      expect(earned).to.be.greaterThan(0n);
+
+      // The yield pool is unset before the member pays: nothing can reach it.
+      await pool.connect(ctx.admin).setLenders(ethers.ZeroAddress, await reserve.getAddress());
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, owed);
+
+      // Still owed to it, principal and return, until it is named again.
+      expect(await pool.borrowedFromYield()).to.equal(payout);
+      expect(await pool.carryEarned()).to.equal(earned);
+    });
+
     it("gives the lenders their money back before anything else, as the member pays", async function () {
       const { purchase, payout } = await buy();
       await pool.connect(merchant).redeem(payout);
@@ -557,6 +606,79 @@ describe("a purchase, from the shop to the money", function () {
       await expect(
         pool.connect(ctx.outsider).payRefund(ctx.member.address, 1n)
       ).to.be.revertedWithCustomError(pool, "PayoutPoolInvalidAddress");
+    });
+
+    /*
+     * A refund the pool could not cover is the member's money, owed ahead of every claim. Each way
+     * a claim gets paid has to leave it alone, not only the draw for a due one.
+     */
+    describe("what a member is owed comes before any claim", function () {
+      let other: any;
+
+      beforeEach(async function () {
+        other = (await ethers.getSigners())[11];
+        await registry.registerMerchant(other.address, NET_30, 50_000n * ONE_USDC, 250n);
+        await ctx.access.connect(ctx.operator).grantMember(other.address);
+        await ctx.stableCredit.connect(other).approve(await pool.getAddress(), ethers.MaxUint256);
+      });
+
+      /** Leaves the member owed a refund the pool could not cover, and returns what is owed. */
+      async function owedARefund() {
+        const planId = await term.planCount();
+        const { purchase, payout } = await buy();
+        await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, purchase);
+        await pool.connect(merchant).redeem(payout);
+        await term.connect(ctx.operator).closePlanForRefund(planId, purchase, merchant.address, payout);
+        const owed = await pool.refundOwedOf(ctx.member.address);
+        expect(owed).to.be.greaterThan(0n);
+        expect(await pool.refundsOwed()).to.equal(owed);
+        return owed;
+      }
+
+      /** A sale at the other merchant's counter, so there is a second claim to queue. */
+      async function saleAtOther(purchase = 100n * ONE_USDC) {
+        const payout = (purchase * 975n) / 1000n;
+        await term
+          .connect(ctx.operator)
+          .openPlan(ctx.member.address, other.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
+        return payout;
+      }
+
+      it("does not pay a queued claim out of it", async function () {
+        const owed = await owedARefund();
+        const payout = await saleAtOther();
+        await pool.connect(other).redeem(payout);
+
+        // Exactly what the member is owed arrives, and nothing more.
+        await fundPool(coop, owed);
+        expect(await pool.canPayNext()).to.equal(false);
+        await expect(pool.payNext()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+        expect(await pool.connect(coop).payQueue.staticCall(5)).to.equal(0n);
+
+        await pool.payRefundsOwed();
+        expect(await pool.refundsOwed()).to.equal(0n);
+        expect(await ctx.usdc.balanceOf(other.address)).to.equal(0n);
+      });
+
+      it("does not pay a fresh redemption out of it either", async function () {
+        const owed = await owedARefund();
+        await fundPool(coop, owed);
+        const payout = await saleAtOther(owed);
+
+        const [paidNow] = await pool.connect(other).redeem.staticCall(payout);
+        expect(paidNow).to.equal(false);
+        await pool.connect(other).redeem(payout);
+        expect(await ctx.usdc.balanceOf(other.address)).to.equal(0n);
+        expect(await pool.held()).to.equal(owed);
+      });
+
+      it("counts it in the shortfall it reports", async function () {
+        const owed = await owedARefund();
+        const payout = await saleAtOther();
+        await pool.connect(other).redeem(payout);
+
+        expect(await pool.shortfall()).to.equal(payout + owed - (await pool.held()));
+      });
     });
   });
 

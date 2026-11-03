@@ -432,7 +432,7 @@
   },
   "PayoutPool": {
    "source": "contracts/peripherals/PayoutPool.sol",
-   "sha256": "524a7a75578ecd8d350b45a1e1abe5891f7ed0705360457a7994028067b84c6f",
+   "sha256": "45dd842a4a6624f726bdcd06ef1735235b49d520dc5acaa1f62df5eda9498e47",
    "immutables": [
     [
      5661,
