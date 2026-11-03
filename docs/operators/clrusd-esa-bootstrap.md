@@ -1,5 +1,18 @@
 # CLRUSD ESA Bootstrap Runbook
 
+> **Out of date in places — read with [`docs/protocol/savings.md`](../protocol/savings.md).** This
+> runbook was written for the original `ClearUSD`. Since then:
+>
+> - `ClearUSDUpgradeable` (`deploy/21_deploy_ClearUSDUpgradeable.ts`) replaces it, and
+>   `13_deploy_ESADepositVault.ts` points a new vault at it first. Moving an existing vault is
+>   redeem, then `setClrusd`, which refuses while any of the old token is outstanding.
+> - CLRUSD is credit collateral: the token enforces the redemption lock through its encumbrance
+>   source, and holds a `LIQUIDATOR_ROLE`. "`StableCredit` remains independent" below no longer holds.
+> - `15_deploy_CLRUSDTokenPool.ts` and `scripts/clrusd/configure_ccip.ts` bind to the old
+>   `ClearUSD` record; the replacement token needs its own pool.
+> - The emergency controls below leave out `UPGRADER_ROLE`, `LIQUIDATOR_ROLE` and the encumbrance
+>   source.
+
 ## Scope
 
 This v1 flow issues `CLRUSD` from an isolated `ESADepositVault` and keeps backing segregated from `AssurancePool`.

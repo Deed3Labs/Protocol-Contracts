@@ -34,3 +34,8 @@ keeps them: the pre-rebuild hook and component references, `contract-interfaces.
 sixteen functions no contract has), `installation.md`, a second copy of the XMTP doc, the root
 `DEPLOYMENT_SUMMARY.md`, the BurnerBond-only `deploy/DEPLOYMENT_GUIDE.md` and
 `deploy/QUICK_START.md`, and the API's generic `DEPLOYMENT.md` and migration-era `QUICK_TEST.md`.
+
+`contract-guides/` holds the AssurancePool, AssuranceOracle and BurnerBond guides as they stood in
+September 2026, superseded in November by [`docs/protocol/reserve.md`](../protocol/reserve.md) and
+[`docs/protocol/bonds.md`](../protocol/bonds.md). They predate `BondVault`, the buffer → primary
+move and the backstop lending, and name oracle functions that moved to `TokenRegistry`.

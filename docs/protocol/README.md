@@ -8,14 +8,23 @@ the root [`README.md`](../../README.md) (**Deployed addresses**) and recorded in
 code.** StableCredit as a ledger of obligations rather than a pot of money, the ESA, the yield pool,
 BurnerBonds, offers, and the connection points to the app and to Lithic.
 
+How each part works, against the code:
+
 | | |
 |---|---|
-| [`clear-contracts-build-plan.md`](./clear-contracts-build-plan.md) | The design and the reasons for it |
-| [`refund-repayment-plan.md`](./refund-repayment-plan.md) | How refunds and repayments route through the PayoutPool, and the bond and payout backstops |
-| [`token-registry.md`](./token-registry.md) | `TokenRegistry` — the presence-based whitelist, and what it means for onboarding a token |
-| [`assurance-pool.md`](./assurance-pool.md) | Multi-token reserve: deposits, withdrawals, RTD. Predates the buffer → primary move (#806) and the backstop lending (#825) |
-| [`assurance-oracle.md`](./assurance-oracle.md) | Uniswap-based pricing with registry fallback. Some functions it names have moved to `TokenRegistry` |
-| [`burner-bond-complete.md`](./burner-bond-complete.md) | The ERC-1155 discount-bond system. Predates `BondVault` — bond proceeds no longer sit in the AssurancePool |
+| [`savings.md`](./savings.md) | CLRUSD and its redemption lock, the `ESADepositVault`, gasless savings intents, link-based send (`ClaimEscrow`), the cross-chain pool |
+| [`credit.md`](./credit.md) | The ledger, the issuers — revolving tiers, term plans, offers — carry, collateral and the ceiling, default and liquidation, access |
+| [`settlement.md`](./settlement.md) | Merchant terms, how a positive balance becomes USDC, who fronts the cash when it is due, how it and its carry come back, the `LendingPool` |
+| [`reserve.md`](./reserve.md) | The `AssurancePool` — primary, buffer and excess, RTD, lost debt, lending as a last resort — and pricing |
+| [`bonds.md`](./bonds.md) | BurnerBonds, the discount curve, `BondVault` and its backstops, seniority, bonds as collateral |
+
+And the reasoning and reference behind them:
+
+| | |
+|---|---|
+| [`clear-contracts-build-plan.md`](./clear-contracts-build-plan.md) | The design and the reasons for it. Where it and the pages above disagree, the pages describe the code |
+| [`refund-repayment-plan.md`](./refund-repayment-plan.md) | How refunds and repayments route through the PayoutPool |
+| [`token-registry.md`](./token-registry.md) | `TokenRegistry` in detail — the presence-based whitelist, and what it means for onboarding a token |
 
 Deploying and running them is in [Operators](../operators/README.md); who holds the roles is in
 [Governance](../governance/README.md).
@@ -46,10 +55,6 @@ not yet match the ones `MetadataRenderer` and `test/templates` use.
 
 ## To be written
 
-- One page per area, against the code: savings (CLRUSD, the ESA, savings intents), credit (the
-  ledger, the issuers, collateral and limits, liquidation), settlement (MerchantRegistry,
-  PayoutPool, card settlement), the reserve and its backstops, offers, bonds (rewriting the bond doc
-  around BondVault)
-- Contracts with no page yet: `OffersIssuer`, `MutualCredit`, `CreditPool`, `SavingsIntentEscrow`,
-  `CarryIndex`, `ExposureMath`, `ValidatorFactory`
+- `ValidatorFactory`, and a rewrite of the two Deed-track pages above that name functions that no
+  longer exist
 - Contract interfaces generated from the ABIs, replacing the hand-written reference that was removed
