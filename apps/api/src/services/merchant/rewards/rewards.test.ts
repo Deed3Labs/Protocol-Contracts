@@ -333,9 +333,11 @@ describe('bonuses', () => {
     const sofia = await sofiaAt(shop, 0);
     const rules = await rulesAt(db, shop.merchant);
     await patchShopApp(db, shop.merchant, shop.staff.owner, { rules: { ...rules, birthdayRewardId: shop.rewards.agua.id } });
-    await db.query('UPDATE rewards.loyalty_memberships SET birth_month = 11 WHERE person_id = $1', [sofia.person.id]);
+    // A day after the rules above were saved, not a fixed date: birthdayRewards reads the rules in
+    // force at the moment it runs, so a date before today would find the rules without the reward.
+    const first = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await db.query('UPDATE rewards.loyalty_memberships SET birth_month = $2 WHERE person_id = $1', [sofia.person.id, first.getUTCMonth() + 1]);
     const { birthdayRewards } = await import('./ledger.js');
-    const first = new Date('2026-11-01T08:00:00Z');
     await birthdayRewards(db, first);
     await birthdayRewards(db, first);
     expect(await balance(db, shop.merchant, sofia.person.id)).toBe(75);
