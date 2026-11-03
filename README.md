@@ -203,13 +203,13 @@ flowchart LR
   U --> CR["CollateralRegistry"]
   CR --> LC["LimitCalculator<br/><i>haircuts → ceiling</i>"]
   LC --> RI["RevolvingIssuer<br/><i>tiers</i>"]
-  LC --> TI["TermIssuer<br/><i>plans</i>"]
+  OPS["Operator<br/><i>attested income</i>"] -->|"setTermLimit"| TI["TermIssuer<br/><i>plans</i>"]
   RI --> CC["ClearCredit<br/><b>the ledger</b>"]
   TI --> CC
   OI["OffersIssuer<br/><i>new-member offers</i>"] --> CC
   CC --> PP["PayoutPool"] --> OUT["Merchant USDC"]
   LP["LendingPool"] -->|"lends float"| PP
-  CC -.->|"on default"| LQ["Liquidator"] -.->|"liquidates ESA"| V
+  CC -.->|"after default"| LQ["Liquidator"] -.->|"seizes pledged savings"| V
 ```
 
 | Contract | Role |
@@ -222,7 +222,7 @@ flowchart LR
 | `LimitCalculator.sol` | Values collateral, applies haircuts, emits the tiered ceiling |
 | `OffersIssuer.sol` | A capped line that gives each new member a one-time offer. Unspent offers expire; the Safe pays the line down. Not counted as exposure |
 | `LendingPool.sol` | ERC-4626. Lends float to holders of `BORROWER_ROLE` — the PayoutPool and the card settler — and depositors earn the carry members pay on what they funded. Its utilization curve is a view no contract charges |
-| `Liquidator.sol` | Fires ESA liquidation on default, before anything becomes lost debt |
+| `Liquidator.sol` | Once a member has defaulted, seizes the savings or pool shares they pledged and settles their debt with it |
 | `CreditPool.sol` | Queued deposit/withdraw with discount-rate servicing |
 | `AccessManager.sol` | Admin / operator / member authority boundaries |
 | `MembershipRegistry.sol`, `NetworkRegistry.sol` | Membership, and member → issuers → (credit, pool, oracle) |
