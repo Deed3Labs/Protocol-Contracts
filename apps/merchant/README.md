@@ -1,20 +1,22 @@
 # Clear for Merchants
 
-Scaffolded in Phase 3. Staff at a counter raise charges here; owners manage
-payouts, staff and refunds. Deploys to `merchant.useclear.org`.
+A full point of sale for a shop's counter: Clear payments, cards on Stripe Terminal, cash, split
+payments, payment links and phone pays, with inventory, tables (Clear Terminal), close the day,
+payouts, staff and settings. Deploys to `merchant.useclear.org`, and as the Clear for Merchants app
+on iOS and Android.
 
 Design reference: [`docs/merchant-reference/`](../../docs/merchant-reference/) — one file per screen, every state and width.
 
-Network-originated transactions only. A Clear code, approved in the member app, settles on Clear's
-rails and lands here. A card tap never does. This is the Clear half of the counter.
+A Clear payment settles on Clear's rails and is paid out through the PayoutPool on the shop's terms.
+A card is charged directly on the shop's own Stripe account (Connect Standard), so card money never
+passes through Clear. Cash goes in the drawer.
 
-One tender, whatever backs it. A funded balance is collateral for a fully secured draw, not a second
+One Clear tender, whatever backs it. A funded balance is collateral for a fully secured draw, not a second
 tender — so balance and line are the same charge, and the merchant sees one thing. Hence `approved`
 and `isFinanced` gating refunds: the design, not a phase.
 
-Either the shop's point of sale, or a settlement surface beside an incumbent system the merchant's
-category requires them to keep. Per-merchant terms — payout window, approval cap, discount — live
-in `MerchantRegistry`.
+Per-merchant terms — payout window, approval cap, discount — live in `MerchantRegistry`. How the
+app is used, step by step, is in [`docs/merchants/`](../../docs/merchants/README.md).
 
 ## The installed app
 

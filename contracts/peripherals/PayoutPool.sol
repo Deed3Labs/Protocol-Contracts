@@ -14,11 +14,13 @@ import "./interfaces/IPayoutLenders.sol";
 /// @dev A merchant's positive StableCredit is the payables ledger: what the co-op owes them,
 /// on-chain, with no parallel record to reconcile against. This is where it becomes cash.
 ///
-/// **Never the AssurancePool.** Redemption there is capped by lost debt outstanding, so paying
-/// merchants from it would mean a merchant can only be paid when a member has defaulted, at a
-/// rate set by how badly the book is performing. A merchant's balance is a payable -- certain,
-/// owed, due on a schedule. The AssurancePool covers a contingency that may never happen. Funding
-/// the first from the second is the error, and there is no code path from here to there.
+/// **The AssurancePool lends, last; it never funds.** Redemption there is capped by lost debt
+/// outstanding, so paying merchants from it would mean a merchant can only be paid when a member
+/// has defaulted, at a rate set by how badly the book is performing. A merchant's balance is a
+/// payable -- certain, owed, due on a schedule -- and the AssurancePool covers a contingency that
+/// may never happen. So it is never what pays a claim: `drawForDueClaim` may borrow from it only
+/// when every other source is short, from its excess and then its buffer, never its primary
+/// reserve, and repays it out of the next repayments.
 ///
 /// **A merchant is paid by drawdown first.** One holding credit of their own has it reduced
 /// before any surplus becomes redeemable, and only the surplus can be withdrawn. That falls out
