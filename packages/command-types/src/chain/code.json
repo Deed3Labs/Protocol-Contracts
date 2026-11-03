@@ -76,12 +76,12 @@
   },
   "BurnerBond": {
    "source": "contracts/peripherals/BurnerBond.sol",
-   "sha256": "8ab26eb1670f0631c17139152b2ab90bf8b83d96242a59d659277edad82b61d3",
+   "sha256": "1630e93e7ae4f2be3019c647692fb00c548ec3a4ed76e9f8b6555af7cf8b59aa",
    "immutables": []
   },
   "BurnerBondDeposit": {
    "source": "contracts/peripherals/BurnerBondDeposit.sol",
-   "sha256": "2c05fe5a19c1dcc7831451608153ac134de85e7ce91de267fcaeab60973a6fc5",
+   "sha256": "b6424efe995d19448bb8e7d87ee54e6388e8443dfd64670cf3381ab034d2c0ca",
    "immutables": []
   },
   "BurnerBondFactory": {

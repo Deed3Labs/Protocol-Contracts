@@ -2690,6 +2690,12 @@ export interface EarnBondRow {
   /** When it was issued. The term is this to maturity; months left is now to maturity. */
   issuedAtUnix: number;
   redeemed: boolean;
+  /** The collection that issued it, which is the one to redeem or roll it with. */
+  collection?: string;
+  /** Whether it rolls into a new bond at maturity rather than paying out. */
+  autoRoll?: boolean;
+  /** Pledged and holding up drawn credit, so it can't be redeemed from the app. */
+  backsDrawnCredit?: boolean;
 }
 
 export interface EarnTermRow {

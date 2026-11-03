@@ -754,6 +754,16 @@ contract BurnerBond is
         emit BondRolled(bondId, newBondId, rolledValue);
     }
 
+    /// @notice where this collection's bond ids start, set before it has sold anything.
+    /// @dev The BondVault and the CollateralRegistry key a bond by its id alone, so two collections
+    /// sharing them must never issue the same one. A collection that replaces another starts above
+    /// every id the old one has issued or will issue by rolling.
+    function setFirstBondId(uint256 firstId) external onlyOwner {
+        require(totalBondsMinted == 0, "Bonds already issued");
+        require(firstId >= 1, "Ids start at 1");
+        _bondIdCounter._value = firstId;
+    }
+
     /// @notice sets how long a rolled bond runs for.
     function setRollTerm(uint256 _rollTerm) external onlyOwner {
         require(_rollTerm >= factory.getMinMaturity(), "Roll term too short");

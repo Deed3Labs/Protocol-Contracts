@@ -19,6 +19,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 interface IBondVault {
     function recordPurchase(uint256 bondId, uint256 principal, uint256 faceValue, uint64 maturity)
         external;
+    function reserveToken() external view returns (address);
 }
 
 contract BurnerBondDeposit is
@@ -191,6 +192,10 @@ contract BurnerBondDeposit is
         uint256 maturityDate,
         uint256 discountPercentage
     ) public override nonReentrant returns (uint256 bondId) {
+        // Proceeds go to the BondVault, which holds and pays out in one reserve token. A bond in
+        // anything else would put money there the vault does not count and cannot pay back.
+        require(tokenAddress == bondVault.reserveToken(), "Not the vault's reserve token");
+
         // Check if collection exists, if not, create it automatically
         IBurnerBond burnerBond = tokenToCollection[tokenAddress];
         

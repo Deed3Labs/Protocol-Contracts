@@ -1,5 +1,5 @@
 {
-  "address": "0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148",
+  "address": "0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556",
   "abi": [
     {
       "type": "constructor",
@@ -1626,14 +1626,6 @@
         },
         {
           "type": "uint256",
-          "name": "_maxDiscount"
-        },
-        {
-          "type": "uint256",
-          "name": "_maxMaturity"
-        },
-        {
-          "type": "uint256",
           "name": "_curveParameter"
         }
       ],
@@ -1658,6 +1650,19 @@
     },
     {
       "type": "function",
+      "name": "setFirstBondId",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "firstId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "setLiquidator",
       "constant": false,
       "payable": false,
@@ -1665,19 +1670,6 @@
         {
           "type": "address",
           "name": "_liquidator"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "setMinDiscount",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "_minDiscount"
         }
       ],
       "outputs": []
@@ -1836,57 +1828,6 @@
           "name": ""
         }
       ]
-    },
-    {
-      "type": "function",
-      "name": "updateDiscountParameters",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "_maxDiscount"
-        },
-        {
-          "type": "uint256",
-          "name": "_minDiscount"
-        },
-        {
-          "type": "uint256",
-          "name": "_maxMaturity"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "updateFaceValueLimits",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "_minFaceValue"
-        },
-        {
-          "type": "uint256",
-          "name": "_maxFaceValue"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "updateMinMaturity",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "_minMaturity"
-        }
-      ],
-      "outputs": []
     },
     {
       "type": "function",

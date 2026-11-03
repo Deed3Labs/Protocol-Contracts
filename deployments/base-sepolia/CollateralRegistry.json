@@ -257,6 +257,33 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "ItemRolled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "oldItemId",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "newItemId",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "ItemSeized",
       "inputs": [
         {
@@ -423,6 +450,20 @@
     {
       "type": "function",
       "name": "DEFAULT_ADMIN_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ITEM_ROLLER_ROLE",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -1041,6 +1082,31 @@
         {
           "type": "address",
           "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "rollItem",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "oldItemId"
+        },
+        {
+          "type": "uint256",
+          "name": "newItemId"
         }
       ],
       "outputs": []
