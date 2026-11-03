@@ -8,6 +8,7 @@
 //
 //   node ../../scripts/sdk/build-types.mjs        (run from the package directory)
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
@@ -41,7 +42,10 @@ writeFileSync(
   }),
 );
 try {
-  execFileSync(join(packages, '..', 'node_modules/.bin/tsc'), ['-p', tsconfig], { stdio: 'inherit' });
+  // The package's own TypeScript, wherever npm put it: CI installs only the workspaces, so there is
+  // no root node_modules/.bin/tsc to count on.
+  const tsc = createRequire(join(pkgDir, 'package.json')).resolve('typescript/bin/tsc');
+  execFileSync(process.execPath, [tsc, '-p', tsconfig], { stdio: 'inherit' });
 } finally {
   rmSync(tsconfig, { force: true });
 }
