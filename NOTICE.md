@@ -7,6 +7,7 @@ This repository carries more than one license. Which one applies depends on the 
 | `contracts/` | GNU Affero General Public License v3.0 | [`contracts/LICENSE`](contracts/LICENSE) |
 | `apps/*` — member, merchant, pay, rewards, command, api | Proprietary — all rights reserved | [`LICENSE`](LICENSE) |
 | `packages/domain`, `packages/tokens`, `packages/contracts-sdk` | MIT | `packages/*/LICENSE` |
+| `packages/clear-js`, `packages/clear-node`, `packages/clear-mcp` — the public SDKs, `@useclear/js`, `@useclear/node`, `@useclear/mcp` | MIT | `packages/*/LICENSE` |
 | Every other package under `packages/` | Proprietary — all rights reserved | [`LICENSE`](LICENSE) |
 | `deploy/`, `scripts/`, `test/` (hardhat tooling for `contracts/`) | AGPL-3.0 | [`contracts/LICENSE`](contracts/LICENSE) |
 

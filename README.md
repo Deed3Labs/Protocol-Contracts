@@ -605,6 +605,7 @@ This repository carries more than one license, and which applies depends on the 
 | `contracts/`, `deploy/`, `scripts/`, `test/` | AGPL-3.0 | [`contracts/LICENSE`](./contracts/LICENSE) |
 | `apps/*` | Proprietary — all rights reserved | [`LICENSE`](./LICENSE) |
 | `packages/domain`, `packages/tokens`, `packages/contracts-sdk` | MIT | [`domain`](./packages/domain/LICENSE) · [`tokens`](./packages/tokens/LICENSE) · [`contracts-sdk`](./packages/contracts-sdk/LICENSE) |
+| `packages/clear-js`, `packages/clear-node`, `packages/clear-mcp` — the public SDKs | MIT | [`clear-js`](./packages/clear-js/LICENSE) · [`clear-node`](./packages/clear-node/LICENSE) · [`clear-mcp`](./packages/clear-mcp/LICENSE) |
 | Every other package under `packages/` | Proprietary — `UNLICENSED` in its `package.json` | [`LICENSE`](./LICENSE) |
 
 `contracts/` is a fork of **StableCredit**, hence AGPL-3.0. **No application code imports Solidity
