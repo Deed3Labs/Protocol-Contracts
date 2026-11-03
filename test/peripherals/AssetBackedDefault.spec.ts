@@ -113,6 +113,37 @@ describe("asset-backed default", function () {
       expect(await pool.freeSharesOf(ctx.member.address)).to.be.greaterThan(0n);
     });
 
+    it("refuses to burn them on the way out, however the member asks", async function () {
+      await ctx.stableCredit
+        .connect(ctx.member)
+        .transfer(ctx.counterparty.address, 700n * ONE_USDC);
+
+      // Withdrawing and redeeming burn shares, and a transfer check never sees a burn.
+      await expect(
+        pool.connect(ctx.member).withdraw(10n * ONE_USDC, ctx.member.address, ctx.member.address)
+      ).to.be.revertedWithCustomError(pool, "LendingPoolEncumbered");
+      await expect(
+        pool.connect(ctx.member).redeem(10n * ONE_USDC, ctx.member.address, ctx.member.address)
+      ).to.be.revertedWithCustomError(pool, "LendingPoolEncumbered");
+      await expect(
+        pool.connect(ctx.member).requestWithdrawal(10n * ONE_USDC, ctx.member.address)
+      ).to.be.revertedWithCustomError(pool, "LendingPoolEncumbered");
+    });
+
+    it("lets the free part go once credit is repaid", async function () {
+      await ctx.stableCredit
+        .connect(ctx.member)
+        .transfer(ctx.counterparty.address, 700n * ONE_USDC);
+      await ctx.stableCredit
+        .connect(ctx.counterparty)
+        .transfer(ctx.member.address, 350n * ONE_USDC);
+
+      const free = await pool.freeSharesOf(ctx.member.address);
+      expect(free).to.be.greaterThan(0n);
+      await pool.connect(ctx.member).redeem(free, ctx.member.address, ctx.member.address);
+      expect(await pool.balanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC - free);
+    });
+
     it("does not lock a depositor who has pledged nothing", async function () {
       await ctx.usdc.mint(depositor.address, 500n * ONE_USDC);
       await ctx.usdc.connect(depositor).approve(await pool.getAddress(), 500n * ONE_USDC);
