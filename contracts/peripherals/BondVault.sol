@@ -7,6 +7,11 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "./interfaces/IBondBackstop.sol";
 
+/// @dev The CollateralRegistry's answer to "is this bond spoken for".
+interface IBondEncumbranceSource {
+    function isItemEncumbered(address holder, bytes32 kind, uint256 itemId) external view returns (bool);
+}
+
 /// @title BondVault
 /// @notice Where bond proceeds live, and what keeps them senior.
 /// @dev Bondholders lent money and are creditors. Proceeds used to go into the AssurancePool's
@@ -83,7 +88,17 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// can take anything.
     uint256 public owedToReserve;
 
-    uint256[37] private __gap;
+    /* ========== ADDED AFTER DEPLOYMENT: two more slots from the gap ========== */
+
+    /// @notice What reports a bond pledged and backing drawn credit -- the CollateralRegistry.
+    /// @dev A collection exempts burns from its own pledge check, so a holder could redeem a matured
+    /// bond still holding up their credit line and take its collateral out from under it. Every
+    /// redemption pays through `settle`, and this is where it is refused. Unset, nothing is checked.
+    IBondEncumbranceSource public encumbranceSource;
+    /// @notice The collateral kind bonds are pledged as.
+    bytes32 public collateralKind;
+
+    uint256[35] private __gap;
 
     error BondVaultInvalidAddress();
     error BondVaultUnknownBond(uint256 bondId);
@@ -92,6 +107,8 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     error BondVaultReserveFloorOutOfBounds(uint256 bps);
     error BondVaultWouldBreachReserve(uint256 deployable, uint256 requested);
     error BondVaultInsufficientFunds(uint256 held, uint256 required);
+    /// @dev Pledged and backing drawn credit: roll it, or pay the credit down first.
+    error BondVaultBondPledged(uint256 bondId);
 
     event PurchaseRecorded(uint256 indexed bondId, uint256 principal, uint256 faceValue, uint64 maturity);
     event Settled(uint256 indexed bondId, address indexed to, uint256 faceValue);
@@ -108,6 +125,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     event DeployableWithdrawn(address indexed to, uint256 amount);
     event ReserveTermsUpdated(uint64 window, uint256 minReserveBps);
     event BackstopsUpdated(address indexed treasury, address indexed assurancePool, address indexed payoutPool);
+    event EncumbranceSourceUpdated(address indexed source, bytes32 kind);
     event DrewFromTreasury(uint256 amount);
     event DrewFromReserve(uint256 amount, uint256 owed);
     event RepaidReserve(uint256 amount, uint256 owed);
@@ -234,6 +252,10 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         Obligation storage obligation = obligations[bondId];
         if (obligation.faceValue == 0) revert BondVaultUnknownBond(bondId);
         if (obligation.settled) revert BondVaultAlreadySettled(bondId);
+        if (
+            address(encumbranceSource) != address(0)
+                && encumbranceSource.isItemEncumbered(to, collateralKind, bondId)
+        ) revert BondVaultBondPledged(bondId);
 
         uint256 faceValue = obligation.faceValue;
         _cover(faceValue);
@@ -410,6 +432,13 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         assurancePool = _assurancePool;
         payoutPool = _payoutPool;
         emit BackstopsUpdated(_treasury, _assurancePool, _payoutPool);
+    }
+
+    /// @notice names what reports a bond pledged against drawn credit, and the kind to ask about.
+    function setEncumbranceSource(address source, bytes32 kind) external onlyRole(OPERATOR_ROLE) {
+        encumbranceSource = IBondEncumbranceSource(source);
+        collateralKind = kind;
+        emit EncumbranceSourceUpdated(source, kind);
     }
 
     /// @notice sets how far ahead the reserve looks and the floor beneath it.

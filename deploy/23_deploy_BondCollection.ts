@@ -107,6 +107,12 @@ async function main() {
         log(`  BondVault BOND_ROLE -> ${label}`);
       }
     }
+    // The vault refuses to pay a bond still backing drawn credit; the collection's own pledge
+    // check lets burns through, so this is where a redemption is stopped.
+    if ((await vault.encumbranceSource()) !== registryRecord.address) {
+      await (await vault.setEncumbranceSource(registryRecord.address, BOND)).wait();
+      log("  BondVault encumbrance -> CollateralRegistry");
+    }
     // Proceeds land in the vault behind its redemption reserve, never in the AssurancePool.
     // Bondholders are creditors and must be senior to loss absorption.
     if ((await deposit.bondVault()) !== bondVault.address) {

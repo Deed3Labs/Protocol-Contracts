@@ -14,11 +14,13 @@ import "./interfaces/IPayoutLenders.sol";
 /// @dev A merchant's positive StableCredit is the payables ledger: what the co-op owes them,
 /// on-chain, with no parallel record to reconcile against. This is where it becomes cash.
 ///
-/// **Never the AssurancePool.** Redemption there is capped by lost debt outstanding, so paying
-/// merchants from it would mean a merchant can only be paid when a member has defaulted, at a
-/// rate set by how badly the book is performing. A merchant's balance is a payable -- certain,
-/// owed, due on a schedule. The AssurancePool covers a contingency that may never happen. Funding
-/// the first from the second is the error, and there is no code path from here to there.
+/// **The AssurancePool lends, last; it never funds.** Redemption there is capped by lost debt
+/// outstanding, so paying merchants from it would mean a merchant can only be paid when a member
+/// has defaulted, at a rate set by how badly the book is performing. A merchant's balance is a
+/// payable -- certain, owed, due on a schedule -- and the AssurancePool covers a contingency that
+/// may never happen. So it is never what pays a claim: `drawForDueClaim` may borrow from it only
+/// when every other source is short, from its excess and then its buffer, never its primary
+/// reserve, and repays it out of the next repayments.
 ///
 /// **A merchant is paid by drawdown first.** One holding credit of their own has it reduced
 /// before any surplus becomes redeemable, and only the surplus can be withdrawn. That falls out
@@ -134,7 +136,8 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     uint256 public refundsOwed;
 
     /// @notice where the pool draws when a claim has come due and there is nothing to pay it with.
-    /// @dev The yield pool's unlent cash first, then the reserve. Both are REPAID rather than
+    /// @dev The yield pool's unlent cash first, then the bond vault, the treasury, and the reserve
+    /// last (`drawForDueClaim`). The lenders are REPAID rather than
     /// handed the position: the yield pool's share price is cash plus what is out on loan, and the
     /// reserve's cover is denominated in reserve tokens, so a credit claim sitting in either would
     /// read as a hole in their books until somebody redeemed it. The co-op funding directly is
@@ -238,13 +241,22 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         return reserveToken.balanceOf(address(this));
     }
 
+    /// @dev What a claim may be paid from: everything here except refunds members are still owed.
+    /// That money is theirs and settled ahead of any claim, so every path that pays one asks this
+    /// rather than `held()`.
+    function _payable() private view returns (uint256) {
+        uint256 balance = held();
+        return balance > refundsOwed ? balance - refundsOwed : 0;
+    }
+
     /// @notice what the pool would need to clear every queued claim today.
     /// @dev Reported rather than judged, so the manual top-up is a number somebody reads instead
     /// of a call somebody makes. A contract cannot wire dollars and cannot decide to on-ramp; it
-    /// can say exactly how short it is.
+    /// can say exactly how short it is. Refunds owed come first, so they are part of it.
     function shortfall() public view returns (uint256) {
+        uint256 spoken = queuedTotal + refundsOwed;
         uint256 balance = held();
-        return queuedTotal > balance ? queuedTotal - balance : 0;
+        return spoken > balance ? spoken - balance : 0;
     }
 
     /// @notice what a merchant could redeem right now.
@@ -275,15 +287,15 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice whether the oldest unpaid claim can be settled now.
     function canPayNext() external view returns (bool) {
         if (nextUnpaid >= claims.length) return false;
-        return held() >= claims[nextUnpaid].amount;
+        return _payable() >= claims[nextUnpaid].amount;
     }
 
     /* ========== REDEMPTION ========== */
 
     /// @notice converts a merchant's positive balance into money.
-    /// @dev Burns the credits either way. What the merchant is owed stops being a claim on the
-    /// network the moment it becomes a claim on this pool, so the supply goes and the obligation
-    /// is recorded here -- rather than being owed twice, once on each ledger.
+    /// @dev Moves the credits here either way. What the merchant is owed stops being a claim on the
+    /// network the moment it becomes a claim on this pool; when the claim is paid, the position is
+    /// burned or handed to whoever funded it (`_placePosition`), so it is never owed twice.
     /// @param amount how much to redeem, capped at what the merchant holds.
     /// @return paidNow whether it was settled immediately.
     /// @return claimId the queued claim, when it was not.
@@ -328,7 +340,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         queuedTotal += redeeming;
 
         // Funded beats queued: if the money is here, the wait is zero rather than the window.
-        if (claimId == nextUnpaid && held() >= redeeming) {
+        if (claimId == nextUnpaid && _payable() >= redeeming) {
             _pay(claimId);
             paidNow = true;
         } else {
@@ -380,9 +392,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         if (claim.paid) revert PayoutPoolClaimAlreadyPaid(nextUnpaid);
         if (block.timestamp < claim.dueBy) revert PayoutPoolClaimNotDue(nextUnpaid, claim.dueBy);
 
-        uint256 balance = held();
-        uint256 spoken = refundsOwed;
-        uint256 usable = balance > spoken ? balance - spoken : 0;
+        uint256 usable = _payable();
         if (usable >= claim.amount) return 0;
         uint256 short = claim.amount - usable;
 
@@ -431,7 +441,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         }
         if (drawn == 0) revert PayoutPoolInsufficientFunds(held(), claim.amount);
         // Funded beats queued, and it is their turn: pay it rather than making them come back.
-        if (held() >= claim.amount + refundsOwed) _pay(nextUnpaid);
+        if (_payable() >= claim.amount) _pay(nextUnpaid);
     }
 
     /// @dev Members' money goes back to whoever fronted it before it does anything else. They put
@@ -458,22 +468,30 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         uint256 toReserve = owed == 0 ? 0 : (interest * fromReserve) / owed;
         uint256 toYield = interest - toVault - toReserve;
 
+        // Only what actually reaches a lender counts as paid. A lender unnamed since it lent keeps
+        // its return owed here, with its principal, until it is named again.
+        uint256 handed;
         if (toYield > 0 && yieldPool != address(0)) {
-            reserveToken.approve(yieldPool, toYield);
-            ILendingPool(yieldPool).repay(toYield);
+            // Sent, not `repay`d. The yield pool's `repay` takes everything as principal while
+            // anybody owes it -- the card settler too -- so a return paid that way would come off
+            // someone else's loan instead of reaching the depositors. Cash arriving against
+            // unchanged loans is what raises the share price.
+            reserveToken.safeTransfer(yieldPool, toYield);
+            handed += toYield;
             emit InterestPaid(yieldPool, toYield);
         }
         if (toVault > 0 && bondVault != address(0)) {
             reserveToken.approve(bondVault, toVault);
             IAssuranceLender(bondVault).repayFromPayoutPool(toVault);
+            handed += toVault;
             emit InterestPaid(bondVault, toVault);
         }
         if (toReserve > 0 && reserve != address(0)) {
             reserveToken.approve(reserve, toReserve);
             IAssuranceLender(reserve).repayFromPayoutPool(toReserve);
+            handed += toReserve;
             emit InterestPaid(reserve, toReserve);
         }
-        uint256 handed = toYield + toVault + toReserve;
         if (handed > 0) {
             carryEarned -= handed;
             left -= handed;
@@ -526,7 +544,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         Claim storage claim = claims[claimId];
         if (claim.paid) revert PayoutPoolClaimAlreadyPaid(claimId);
 
-        uint256 balance = held();
+        uint256 balance = _payable();
         if (balance < claim.amount) revert PayoutPoolInsufficientFunds(balance, claim.amount);
         _pay(claimId);
     }
@@ -535,7 +553,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     function payQueue(uint256 maxClaims) external returns (uint256 paidCount) {
         for (uint256 i = 0; i < maxClaims; i++) {
             if (nextUnpaid >= claims.length) break;
-            if (held() < claims[nextUnpaid].amount) break;
+            if (_payable() < claims[nextUnpaid].amount) break;
             payNext();
             paidCount++;
         }

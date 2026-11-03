@@ -54,7 +54,7 @@ const CONTRACTS: Record<number, ClearContracts> = {
   },
   84532: {
     lendingPool: '0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23',
-    // Replaced 2026-11-03: bonds sold before then are in 0x4d96…c148, read through the API.
+    // Replaced 2026-11-03 (scripts/redeploy_bonds.ts); the old collection's bonds were all redeemed.
     burnerBondDeposit: '0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c',
     burnerBond: '0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556',
     burnerBondFactory: '0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA',

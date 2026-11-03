@@ -58,18 +58,18 @@
   },
   "BondVault": {
    "source": "contracts/peripherals/BondVault.sol",
-   "sha256": "021b4d1fdfeea8a0e5b60e091a2e5a9d78afe4b8546c6d401b29f8c4c1df93e4",
+   "sha256": "e84a49def2a40a07879185e0e19c16a5ca54ba68cd0cc3a9fe91ca43b582db17",
    "immutables": [
     [
-     3333,
+     3743,
      32
     ],
     [
-     3683,
+     4093,
      32
     ],
     [
-     4263,
+     4673,
      32
     ]
    ]
@@ -432,7 +432,7 @@
   },
   "PayoutPool": {
    "source": "contracts/peripherals/PayoutPool.sol",
-   "sha256": "524a7a75578ecd8d350b45a1e1abe5891f7ed0705360457a7994028067b84c6f",
+   "sha256": "45dd842a4a6624f726bdcd06ef1735235b49d520dc5acaa1f62df5eda9498e47",
    "immutables": [
     [
      5661,

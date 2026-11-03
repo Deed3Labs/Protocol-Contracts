@@ -355,10 +355,7 @@ const BOND_EVENTS = ['BondMinted', 'BondRedeemed', 'RedeemedEarly', 'BondRolled'
  * with its decimals.
  */
 export async function bondsLive(db: Queryable, reader: ChainReader): Promise<BondLive[]> {
-  // Both collections: the one replaced on 2026-11-03 still holds the bonds sold before it, and its
-  // events from before the rename are stored as 'BurnerBond'. Ids don't collide (the new one starts
-  // at 1001).
-  const ev = await events(db, ['BurnerBond', 'BurnerBondLegacy'], BOND_EVENTS);
+  const ev = await events(db, ['BurnerBond'], BOND_EVENTS);
   if (!ev.some((e) => e.event === 'BondMinted')) return [];
   const [token] = await reader.read([{ contract: 'BurnerBond', fn: 'underlyingToken' }]);
   const [decimals] = await reader.read([{ contract: 'ERC20', address: String(token), fn: 'decimals' }]);

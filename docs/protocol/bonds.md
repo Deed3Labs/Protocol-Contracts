@@ -30,15 +30,18 @@ flowchart LR
   D -->|"recordPurchase"| V
 ```
 
-1. If the token has no collection, `_createCollectionViaFactory` opens one. The factory refuses a
-   token `AssuranceOracle.isTokenWhitelisted` does not accept.
+1. The token must be `BondVault`'s `reserveToken` (`"Not the vault's reserve token"`): the vault holds
+   and pays out in that one token, so proceeds in anything else would sit there uncounted. If it has
+   no collection yet, `_createCollectionViaFactory` opens one; the factory refuses a token
+   `AssuranceOracle.isTokenWhitelisted` does not accept. A collection the factory has deactivated
+   refuses the sale (`"Collection inactive"`).
 2. Face value must sit within the factory's bounds and maturity within `maxMaturity`.
 3. The price is `calculateRequiredDeposit`: face less `face × discount / 10000`, the discount read
    from the curve for the time to maturity.
 4. The price moves from the buyer to the deposit contract and straight on to `BondVault`. The call
    reverts with `"Bond vault not set"` if there is none.
 5. `BurnerBond.mintBond` (only the deposit contract may call it) re-checks the bounds and mints the
-   next id to the buyer. `BondVault.recordPurchase` books principal, face and maturity in the same call.
+   next id to the buyer — from 1, or from wherever `setFirstBondId` started the collection. `BondVault.recordPurchase` books principal, face and maturity in the same call.
 
 `discountPercentage` must not exceed the curve's discount for that maturity. It is stored on the bond
 and its traits, but the price charged is the curve's, whatever was passed.
@@ -54,11 +57,8 @@ and its traits, but the price charged is the curve's, whatever was passed.
 `BOND_MAX_MATURITY`). Face-value bounds are raw token units, so they read as dollars only for a
 six-decimal token.
 
-All setters are `onlyOwner` on the factory. `BurnerBond` and `BurnerBondDeposit` carry forwarding
-setters (`updateDiscountParameters`, `setMinDiscount`, `updateFaceValueLimits`, `updateMinMaturity`,
-`updateDepositParameters`); they call the factory from the collection's or deposit contract's
-address, so they pass the factory's `onlyOwner` only if that contract owns the factory. Set
-parameters on the factory.
+All setters are `onlyOwner` on the factory, and every collection reads them from there. The
+collection and the deposit contract have no setters of their own for these.
 
 ## The discount curve
 
@@ -71,12 +71,20 @@ discount = minDiscount + (term / maxMaturity) × (maxDiscount − minDiscount)
 
 With `deploy/23`'s bounds a bond maturing 365 days out is priced at a 640 bps discount.
 
-`BurnerBond.setDiscountCurve` (collection owner) validates a max discount and max maturity, emits
-them, and calls `setCurve` with the type and parameter only — the two bounds are not stored, and
-the factory's remain in force. `setCurve` validates BONDING parameters in 10,000–50,000 and
-LOGARITHMIC in 15,000–100,000, while `_power` and `_logarithm` treat the parameter as 1e18-scaled.
-As written, BONDING returns `minDiscount` for every term short of `maxMaturity`, and LOGARITHMIC
-reverts on underflow. CUSTOM reverts. No deploy script configures a curve, so collections run LINEAR.
+`BurnerBond.setDiscountCurve(curveType, parameter)` (collection owner) sets the shape; the bounds it
+is drawn between are the factory's, and its `DiscountCurveUpdated` event reports them. The parameter
+is on a 10,000 scale (10,000 = 1.0), which `setCurve` validates and `discountFor` converts to 1e18
+before the maths. With `t = term / maxMaturity`:
+
+| Curve | Parameter | Discount, as a share of the range |
+|---|---|---|
+| LINEAR | 10,000 | `t` |
+| BONDING | steepness `s`, 10,000–50,000 | `1 − (1 − t)^s`, fractional `s` as given |
+| LOGARITHMIC | base `b`, 15,000–100,000 | `log_b(1 + t(b − 1))` |
+
+Powers and logarithms use fixed-point `log2` and `exp2`. Every shape runs from `minDiscount` at
+`minMaturity` to `maxDiscount` at `maxMaturity`. CUSTOM reverts. No deploy script configures a
+curve, so collections run LINEAR.
 
 ## Where the money lives — BondVault
 
@@ -100,8 +108,7 @@ only money that leaves the vault other than to a bondholder:
 | `_repayReserve` | Internal / `repayReserve()` | `held() − requiredReserve()`, up to `owedToReserve` |
 
 `held()` is the vault's balance of its single `reserveToken`, and `settle` pays face in that token.
-A collection whose underlying is a different token still sends its proceeds here, where `held()` does
-not count them.
+That is why `makeDeposit` sells only in it.
 
 `coversNearTermMaturities()` reports whether `held()` covers everything due inside the window — a
 timing test, not an aggregate one.
@@ -161,8 +168,11 @@ factory's maturity bounds). Its face is `oldFace × 10000 / (10000 − discount)
 price is the old face, and `BondVault.roll` moves the obligation with no cash.
 
 Nothing rolls on its own. `willAutoRoll` is a flag that `rollBond` checks; `redeemBond` ignores it.
-A pledge in `CollateralRegistry` names the old id, which `rollBond` burns and does not re-pledge;
-the new id counts as collateral once an operator pledges it.
+**A rolled bond keeps its pledge.** If the collection has an encumbrance source, `rollBond` calls
+`CollateralRegistry.rollItem(holder, kind, oldId, newId)`, which moves a pledge on the old id to the
+new one and refreshes the holder's limit; it does nothing for a bond that was not pledged. The
+collection needs `ITEM_ROLLER_ROLE` on the registry for this, which `deploy/23` grants — without it
+every roll of that collection reverts.
 
 ## Bonds as collateral
 
@@ -179,8 +189,12 @@ the holder still holds; a bond they no longer hold is worth 0. One valuer is dep
 `CollateralRegistry.pledgeItem` (`OPERATOR_ROLE`) records a bond id against a member.
 `deploy/23` sets the collection's `encumbranceSource` to the registry with kind `BOND`, so
 `_beforeTokenTransfer` refuses to move a bond while `isItemEncumbered` is true — pledged and with
-credit drawn under the kind. Burns are exempt, and so is a transfer the liquidator operates. Limits
-and haircuts are in [Credit](./credit.md).
+credit drawn under the kind. Burns are exempt, and so is a transfer the liquidator operates.
+**Redemption is stopped at the vault instead:** `BondVault.settle` asks its `encumbranceSource` (the
+registry, set by `deploy/23`) and reverts `BondVaultBondPledged` for a bond still backing drawn
+credit, so the burn unwinds with it. Rolling is not affected — the pledge moves to the new bond. The
+member app shows such a bond's Redeem as unavailable and offers to roll it. Limits and haircuts are
+in [Credit](./credit.md).
 
 `seizeBond(id, from, to)` and `redeemEarly(id)` are restricted to `liquidator` (`setLiquidator`,
 collection owner), and `redeemEarly` requires the liquidator to hold the bond. It pays
@@ -195,7 +209,14 @@ token. Each is a clone of `bondImplementation` initialised with the shared depos
 `bondTraits` and `bondDiscountCurve`; ownership passes to the factory owner. The deposit contract is
 itself a clone, created and handed to the deployer in the factory's constructor.
 `deactivateCollection` / `reactivateCollection` flip `isActive`, which `hasCollection` and
-`getActiveCollections` report; `makeDeposit` and `mintBond` do not read it.
+`getActiveCollections` report and `makeDeposit` enforces.
+
+**A replacement collection shares the vault without sharing ids.** `BondVault` and
+`CollateralRegistry` key a bond by its id alone, so a collection built to replace another calls
+`setFirstBondId` (owner, before its first sale) to start above every id the old one issued.
+`scripts/redeploy_bonds.ts` replaced the Base Sepolia factory and USDC collection this way on
+2026-11-03, with ids from 1001; the old ones are recorded as `*Legacy`, sell nothing, and every bond
+they issued has been redeemed.
 
 A new collection redeems nothing until its owner calls `setBondVault` and the vault grants
 `BOND_ROLE` to both the collection and the deposit contract, which `deploy/23` does.
@@ -222,13 +243,14 @@ stored and settable but no redemption or purchase path reads them.
 | Contract | Gate | Held at deploy by | Functions |
 |---|---|---|---|
 | `BurnerBondFactory` | `onlyOwner` | Deployer | Parameters, `deactivateCollection`, `setAssurancePool`, `setAssuranceOracle`, `setBaseURI`, `emergencyRecover` |
-| `BurnerBond` | `onlyOwner` | Factory owner | `setBondVault`, `setLiquidator`, `setEncumbranceSource`, `setRollTerm`, `setDiscountCurve`, traits, `setURI`, `emergencyRecover` (not the underlying) |
+| `BurnerBond` | `onlyOwner` | Factory owner | `setBondVault`, `setLiquidator`, `setEncumbranceSource`, `setRollTerm`, `setDiscountCurve`, `setFirstBondId` (before the first sale), traits, `setURI`, `emergencyRecover` (not the underlying) |
 | `BurnerBond` | `liquidator` | Unset | `seizeBond`, `redeemEarly` |
 | `BurnerBondDeposit` | `onlyOwner` | Deployer | `setBondVault`, `setFactory`, `emergencyRecover` (not a collection token) |
 | `BondVault` | `DEFAULT_ADMIN_ROLE` | `initialize` admin | Roles, UUPS upgrades |
-| `BondVault` | `OPERATOR_ROLE` | `initialize` admin | `setBackstops`, `setReserveTerms` |
+| `BondVault` | `OPERATOR_ROLE` | `initialize` admin | `setBackstops`, `setReserveTerms`, `setEncumbranceSource` |
 | `BondVault` | `BOND_ROLE` | Collection, deposit contract | `recordPurchase`, `settle`, `settleEarly`, `roll` |
 | `BondVault` | `TREASURY_ROLE` | Granted by the admin | `withdrawDeployable` |
+| `CollateralRegistry` | `ITEM_ROLLER_ROLE` | Each bond collection (`deploy/23`) | `rollItem` |
 
 `BondVault` is a UUPS proxy; its fields added after deployment come from its storage gap.
 `BurnerBond` and `BurnerBondDeposit` are clones, not upgradeable proxies. `BondValuer`, `BondTraits`
