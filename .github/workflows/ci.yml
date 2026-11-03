@@ -105,15 +105,23 @@ jobs:
       - run: npx hardhat compile
       - run: node scripts/command/code-fingerprints.mjs --check
 
+  docs:
+    name: Docs (links)
+    runs-on: ubuntu-latest
+    # Cheap enough to run on every PR: a moved file breaks links in markdown nobody touched.
+    steps:
+      - uses: actions/checkout@v7
+      - run: node scripts/check-doc-links.mjs
+
   ci:
     name: ci
-    needs: [changes, apps, contracts]
+    needs: [changes, apps, contracts, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Every job that had to run passed
         run: |
-          echo "changes=${{ needs.changes.result }} apps=${{ needs.apps.result }} contracts=${{ needs.contracts.result }}"
-          case "${{ needs.changes.result }} ${{ needs.apps.result }} ${{ needs.contracts.result }}" in
+          echo "changes=${{ needs.changes.result }} apps=${{ needs.apps.result }} contracts=${{ needs.contracts.result }} docs=${{ needs.docs.result }}"
+          case "${{ needs.changes.result }} ${{ needs.apps.result }} ${{ needs.contracts.result }} ${{ needs.docs.result }}" in
             *failure*|*cancelled*) exit 1 ;;
           esac

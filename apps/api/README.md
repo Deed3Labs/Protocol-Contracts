@@ -57,7 +57,7 @@ The image runs the TypeScript entry directly rather than a bundle. Bundling was 
 `@coinbase/cdp-sdk` imports a specifier that does not resolve in a clean install, so `bun build`
 succeeds locally against hoisted `node_modules` and fails in the container.
 
-Details in [`DEPLOY.md`](./DEPLOY.md) (Railway, and what this service costs) and [`DOCKER.md`](./DOCKER.md).
+Details in [`DEPLOY.md`](../../docs/operators/api-deploy.md) (Railway, and what this service costs) and [`DOCKER.md`](../../docs/developers/api/local-redis.md).
 
 ---
 
@@ -269,11 +269,11 @@ rotated independently.
 ## Further reading
 
 - Root [`README.md`](../../README.md) — the monorepo, the contracts, the deployed addresses
-- [`DEPLOY.md`](./DEPLOY.md) · [`DOCKER.md`](./DOCKER.md) — running it
-- [`TEST_GUIDE.md`](./TEST_GUIDE.md) — poking at it
-- [`docs/integrations/lithic-integration-spec.md`](../../docs/integrations/lithic-integration-spec.md)
+- [`DEPLOY.md`](../../docs/operators/api-deploy.md) · [`DOCKER.md`](../../docs/developers/api/local-redis.md) — running it
+- [`TEST_GUIDE.md`](../../docs/developers/api/testing.md) — poking at it
+- [`docs/developers/integrations/lithic.md`](../../docs/developers/integrations/lithic.md)
   — the card and banking rail, and the two rails it must not blur
-- [`docs/contracts/clrusd-esa-bootstrap.md`](../../docs/contracts/clrusd-esa-bootstrap.md) — the savings path this API settles against
+- [`docs/operators/clrusd-esa-bootstrap.md`](../../docs/operators/clrusd-esa-bootstrap.md) — the savings path this API settles against
 - [`apps/member/README.md`](../member/README.md) — the app on the other end
 
 ---

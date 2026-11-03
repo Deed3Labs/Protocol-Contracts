@@ -3,7 +3,7 @@
 > **Scope.** This document covers the **Deed track** — T-Deeds, validation, subdivision and
 > fractionalization. The Clear Protocol also includes the savings (CLRUSD, ESA), credit,
 > merchant settlement and bond subsystems, which are not described here; see
-> [`../contracts/clear-contracts-build-plan.md`](../contracts/clear-contracts-build-plan.md).
+> [`../contracts/clear-contracts-build-plan.md`](../clear-contracts-build-plan.md).
 
 The Deed track of the Clear Protocol is a decentralized platform for Real World Asset (RWA) tokenization, validation, and management. Built on Ethereum and Base networks, it enables the creation, validation, and trading of digital representations of real-world assets through a robust smart contract ecosystem.
 
@@ -246,4 +246,4 @@ The protocol is designed for regulatory compliance:
 
 ---
 
-*This overview covers the Deed track's architecture. For detailed technical documentation, see [Smart Contracts](./smart-contracts.md); for the rest of the protocol, see the [contract build plan](../contracts/clear-contracts-build-plan.md).*
+*This overview covers the Deed track's architecture. For detailed technical documentation, see [Smart Contracts](./smart-contracts.md); for the rest of the protocol, see the [contract build plan](../clear-contracts-build-plan.md).*

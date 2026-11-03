@@ -237,7 +237,7 @@ Installable, and the install is the intended way to run it.
 ## Further reading
 
 - Root [`README.md`](../../README.md) — the monorepo, the contracts, the deployed addresses
-- [`docs/ux/clear-app-design-spec.md`](../../docs/ux/clear-app-design-spec.md) — the nav and screens
+- [`docs/reference/clear-app-design-spec.md`](../../docs/reference/clear-app-design-spec.md) — the nav and screens
   this app is built to
 - [`docs/reference/clear-app-reference-screens.html`](../../docs/reference/clear-app-reference-screens.html)
   — static reference screens

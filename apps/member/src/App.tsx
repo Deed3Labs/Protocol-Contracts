@@ -193,7 +193,7 @@ function App() {
                     <Route path="/claim/:token" element={<ClaimFunds />} />
                     
                     {/* Member app — protected. Routes follow the nav in
-                        docs/ux/clear-app-design-spec.md §1.
+                        docs/reference/clear-app-design-spec.md §1.
 
                         Home, Savings, Send, Activity and Card read real data
                         through their *Route containers. What is still
