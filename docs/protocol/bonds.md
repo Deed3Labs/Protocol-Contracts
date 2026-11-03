@@ -189,10 +189,12 @@ the holder still holds; a bond they no longer hold is worth 0. One valuer is dep
 `CollateralRegistry.pledgeItem` (`OPERATOR_ROLE`) records a bond id against a member.
 `deploy/23` sets the collection's `encumbranceSource` to the registry with kind `BOND`, so
 `_beforeTokenTransfer` refuses to move a bond while `isItemEncumbered` is true — pledged and with
-credit drawn under the kind. Burns are exempt, and so is a transfer the liquidator operates — so
-`redeemBond` does not stop a holder redeeming a matured bond that is still backing drawn credit. The
-member app holds the Redeem button back for such a bond and offers to roll it instead. Limits and
-haircuts are in [Credit](./credit.md).
+credit drawn under the kind. Burns are exempt, and so is a transfer the liquidator operates.
+**Redemption is stopped at the vault instead:** `BondVault.settle` asks its `encumbranceSource` (the
+registry, set by `deploy/23`) and reverts `BondVaultBondPledged` for a bond still backing drawn
+credit, so the burn unwinds with it. Rolling is not affected — the pledge moves to the new bond. The
+member app shows such a bond's Redeem as unavailable and offers to roll it. Limits and haircuts are
+in [Credit](./credit.md).
 
 `seizeBond(id, from, to)` and `redeemEarly(id)` are restricted to `liquidator` (`setLiquidator`,
 collection owner), and `redeemEarly` requires the liquidator to hold the bond. It pays
@@ -245,7 +247,7 @@ stored and settable but no redemption or purchase path reads them.
 | `BurnerBond` | `liquidator` | Unset | `seizeBond`, `redeemEarly` |
 | `BurnerBondDeposit` | `onlyOwner` | Deployer | `setBondVault`, `setFactory`, `emergencyRecover` (not a collection token) |
 | `BondVault` | `DEFAULT_ADMIN_ROLE` | `initialize` admin | Roles, UUPS upgrades |
-| `BondVault` | `OPERATOR_ROLE` | `initialize` admin | `setBackstops`, `setReserveTerms` |
+| `BondVault` | `OPERATOR_ROLE` | `initialize` admin | `setBackstops`, `setReserveTerms`, `setEncumbranceSource` |
 | `BondVault` | `BOND_ROLE` | Collection, deposit contract | `recordPurchase`, `settle`, `settleEarly`, `roll` |
 | `BondVault` | `TREASURY_ROLE` | Granted by the admin | `withdrawDeployable` |
 | `CollateralRegistry` | `ITEM_ROLLER_ROLE` | Each bond collection (`deploy/23`) | `rollItem` |

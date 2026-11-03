@@ -76,8 +76,8 @@ export interface ChainHeldBond {
   /** Whether it rolls into a new bond at maturity (the default) rather than paying out. */
   autoRoll: boolean;
   /**
-   * Pledged and holding up drawn credit. The collection still lets its holder redeem it at
-   * maturity -- a burn passes the pledge check -- so the app holds the button back instead.
+   * Pledged and holding up drawn credit. BondVault refuses to pay it out, so the app shows Redeem as
+   * unavailable and says why rather than letting the transaction fail.
    */
   backsDrawnCredit: boolean;
 }
