@@ -105,6 +105,21 @@ export interface PageMod {
   /** The page's shadow host, taken out when the page is built again. */
   host: HTMLElement;
 }
+
+/**
+ * A page's state kept when newer data builds it again (a refresh, or an action's reload): the keys named
+ * (a tab, a filter, a period, a sort) come back as they were; anything drawn from the data, and what's
+ * open (a panel), starts afresh. `id` names the object across builds, say 'money.N'.
+ */
+const KEPT = new Map<string, Record<string, unknown>>();
+export function keep<T extends Record<string, unknown>>(id: string, init: T, keys: (keyof T)[]): T {
+  const old = KEPT.get(id);
+  if (old) for (const k of keys) if (k in old) init[k] = old[k as string] as T[keyof T];
+  KEPT.set(id, init);
+  return init;
+}
+/** Signing out forgets every page's state, so the next person starts on the defaults. */
+export const forgetKept = () => KEPT.clear();
 interface Entry {
   routes: string[];
   slot: string;

@@ -8,7 +8,7 @@ import { addReveal } from './admin2';
 import { CC } from './cc';
 import { INBOX, RANGE, vars } from './data';
 import { membersLive } from './membersLive';
-import { registerPage, shadowHost } from './pageHost';
+import { keep, registerPage, shadowHost } from './pageHost';
 import { render as redraw, toast } from './shell';
 
 /*
@@ -197,7 +197,7 @@ function makeMembers() {
   };
 
   /* state */
-  const M = {
+  const M = keep('members.M', {
     fshow: false,
     tab: 'people',
     q: '',
@@ -238,7 +238,7 @@ function makeMembers() {
     sent: [],
     approvals: [],
     wq: 'next'
-  };
+  }, ['fshow', 'tab', 'q', 'F', 'stage', 'sort', 'page', 'bopen', 'reveal', 'namesOn', 'names', 'mail', 'b', 'ng', 'wq', 'when', 'pv']);
   const passF = p => (!M.F.city.size || M.F.city.has(p.city)) && (!M.F.src.size || M.F.src.has(p.src)) && (!M.F.shop.size || M.F.shop.has(p.shop));
   const cnt = (st, list = PEOPLE) => list.filter(p => p.stage === st).length;
   const fdesc = () => {

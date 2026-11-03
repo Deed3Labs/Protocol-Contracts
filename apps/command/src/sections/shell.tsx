@@ -1,6 +1,7 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { LIVE } from '../live/env';
 import { loadTeam, logView } from '../live/account';
+import { freshen, startRefresh } from '../live/refresh';
 import { loadSection, needsData } from '../live/sections';
 import { Fragment } from 'react';
 import { attrs, css, html } from '../runtime/dom';
@@ -276,8 +277,15 @@ export function render() {
   // the redesign's page modules: this route's mounts into its slot, the others let go
   mountPages(r);
   requestAnimationFrame(syncPages);
-  if (LIVE) logView();
+  if (LIVE) {
+    logView();
+    // the page shown keeps up with the API, and one opened after a while loads again behind the scenes
+    if (!refreshing) startRefresh(render, () => S.route);
+    refreshing = true;
+    void freshen();
+  }
 }
+let refreshing = false;
 export function go(r) {
   if (r === 'contracts') r = 'build';
   if (!NAMES[r]) r = 'home';

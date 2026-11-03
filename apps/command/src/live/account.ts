@@ -5,6 +5,7 @@ import { hideLogin, showLogin, sgnDraw, sgnIn, sgnStep } from '../sections/signi
 import { ANSWERS } from './env';
 import { ApiError, api, city, deviceKey, forgetSession, keepSession, sessionId, whenSessionEnds } from './api';
 import { privy, privyReady } from './privy';
+import { forgetKept } from '../sections/pageHost';
 import { forgetSections } from './sections';
 export { loadSection } from './sections';
 
@@ -135,6 +136,7 @@ export async function liveSignOut() {
   }
   forgetSession();
   forgetSections();
+  forgetKept();
   vars.me = null;
   await privy.logout().catch(() => undefined);
 }

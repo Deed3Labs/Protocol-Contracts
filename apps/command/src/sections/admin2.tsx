@@ -8,7 +8,7 @@ import { loadFeeds } from '../live/feeds';
 import { adminApi, adminLive } from './adminLive';
 import { CC } from './cc';
 import { LOG as LOG_D, S } from './data';
-import { pageModFor, registerPage, shadowHost } from './pageHost';
+import { pageModFor, keep, registerPage, shadowHost } from './pageHost';
 import { openRFlow } from './records';
 import { toast, vLevel } from './shell';
 import { openTFlow } from './team';
@@ -808,7 +808,7 @@ function makeAdmin() {
        Team is who: people, the groups they're in, what each group can do, and who can be the second person.
        Settings is what: the numbers every page enforces, sign-in and privacy, connections, the organization.
        Records is the archive and the log: every filed document, every action, every reveal and every export. */
-    const A = {
+    const A = keep('admin.A', {
       page: 'team',
       tab: {
         team: 'overview',
@@ -822,7 +822,7 @@ function makeAdmin() {
       lp: 0,
       df: 'all',
       gd: null
-    };
+    }, ['page', 'tab', 'lw', 'lr', 'lp', 'df']);
     const TABS = {
       team: [['overview', 'Overview'], ['people', 'People'], ['groups', 'Groups'], ['rule', 'Two-person rule']],
       settings: [['rules', 'Rules and limits'], ['security', 'Security'], ['connections', 'Connections'], ['org', 'Organization']],
