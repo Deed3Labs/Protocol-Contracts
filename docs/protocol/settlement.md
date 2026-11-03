@@ -67,12 +67,13 @@ does not burn them.
 4. If the caller is a funder carrying positions (`advancedOf`), that figure falls by what they
    redeem.
 5. A `Claim` is pushed with `dueBy = now + payoutWindowOf(merchant)`; `queuedTotal` rises.
-6. If this claim is the next unpaid one and `held()` covers it, it is paid in the same call.
+6. If this claim is the next unpaid one and the pool's cash less `refundsOwed` covers it, it is
+   paid in the same call.
    Otherwise `ShortfallReported(shortfall())` is emitted.
 
 ```mermaid
 flowchart TD
-  R["redeem(amount)<br/><i>credits → pool, claim opened</i>"] --> Q{"next in line<br/>and held() ≥ amount?"}
+  R["redeem(amount)<br/><i>credits → pool, claim opened</i>"] --> Q{"next in line<br/>and held() − refundsOwed ≥ amount?"}
   Q -->|yes| P["_pay: USDC to merchant"]
   Q -->|no| W["queued, ShortfallReported"]
   W -->|"cash arrives"| N["payNext / payQueue"]
@@ -83,12 +84,12 @@ flowchart TD
 ```
 
 Claims are paid strictly in index order. `payNext()` pays the claim at `nextUnpaid` and reverts if
-`held()` does not cover it; it takes no argument. `payQueue(maxClaims)` calls `payNext` until it
+the pool's cash less `refundsOwed` does not cover it; it takes no argument. `payQueue(maxClaims)` calls `payNext` until it
 reaches a claim it cannot cover. Both are permissionless. `canPayNext()` reports whether the next
 claim is covered.
 
-`shortfall()` is `queuedTotal − held()`, floored at zero. It is a view; nothing acts on it. It does
-not include `refundsOwed`.
+`shortfall()` is `queuedTotal + refundsOwed − held()`, floored at zero: refunds owed come first, so
+they are part of what the pool is short. It is a view; nothing acts on it.
 
 ## Where the position goes
 
@@ -149,8 +150,11 @@ positive balance on the ledger, less the cash already there) and sends the rest 
    up to what is owed to it, through `repay` or `repayFromPayoutPool`.
 2. **Pays interest** in `_repayLenders` from what is left, up to `carryEarned`. The interest is split
    by each lender's share of `borrowed()` measured before step 1; the yield pool takes the rounding
-   remainder, and all of it when nothing was owed. The paid interest's credits are burned with
-   `settleClaim`.
+   remainder, and all of it when nothing was owed. The yield pool's share is sent as a plain
+   transfer, not through `repay`, so it raises the share price rather than reducing another
+   borrower's loan; the vault's and the reserve's go through `repayFromPayoutPool`. Only what
+   actually reaches a lender counts as paid and has its credits burned with `settleClaim` — a
+   lender unset since it lent keeps its share in `carryEarned` until it is named again.
 3. **Settles the pool's own positions.** The principal repaid in step 1 is burned from
    `advancedOf[pool]`, up to what the pool holds.
 4. **Adds the rest to `memberFunded`.** That cash settles claims when they are paid.
@@ -158,9 +162,9 @@ positive balance on the ledger, less the cash already there) and sends the rest 
 The AssurancePool takes repayment into its buffer first, up to what it lent from the buffer, then
 into excess. The BondVault credits principal against `lentToPayoutPool` and keeps the rest.
 
-`LendingPool.repay` does not track principal per borrower. It lowers `totalBorrowed` by the amount
-paid, floored at zero. Interest paid while another borrower still owes therefore lowers
-`totalBorrowed` instead of raising `totalAssets`.
+`LendingPool.repay` does not track principal per borrower: it lowers `totalBorrowed` by the amount
+paid, floored at zero. That is why the PayoutPool sends interest as a transfer. The card settler
+repays principal only.
 
 ## Carry, by who bore the float
 
@@ -204,7 +208,8 @@ repays.
 - **Borrowing.** `borrow(amount, to)` needs `BORROWER_ROLE`. Nothing grants it at deploy.
   `scripts/upgrade_reserve_draw.ts` grants it to the PayoutPool, and `scripts/grant_pool_borrower.ts`
   to the card-settler wallet.
-- **Repaying.** `repay(amount)` is open to anyone. See the per-borrower note above.
+- **Repaying.** `repay(amount)` is open to anyone and is treated as principal while anything is
+  owed. Interest arrives as a plain transfer (see above).
 - **The queue.** A depositor whose cash is lent out calls `requestWithdrawal(shares, receiver)`. The
   shares are burned now and the claim is fixed in assets. `claimWithdrawal(id)` pays it, by the
   owner, whenever the pool's cash covers that request. Requests are not paid in order.
@@ -240,8 +245,8 @@ then calls `PayoutPool.payRefund(member, paid − carryWithheld)`.
 cannot cover is recorded in `refundOwedTo[member]` and `refundsOwed`. `payRefundsOwed()` is
 permissionless and pays those from the pool's whole cash balance.
 
-`refundsOwed` is held back by `drawForDueClaim`, `unencumbered` and `payRefund`. `payNext`,
-`payQueue` and the immediate payment in `redeem` check only `held()`. There is no draw for a
+`refundsOwed` is held back by every path that pays a claim — `redeem`, `payNext`, `payQueue`,
+`canPayNext` and `drawForDueClaim` — and by `unencumbered` and `payRefund`. There is no draw for a
 refund shortfall. The full design and worked examples are in
 [`refund-repayment-plan.md`](./refund-repayment-plan.md).
 
