@@ -24,8 +24,8 @@ The SDKs: [`@useclear/js`](../../packages/clear-js/README.md) ·
 
 ## Working in this repository
 
-Setup, ports and the commands are in the root [`README.md`](../../README.md) (**Quickstart**);
-CI and preview builds in [`CLAUDE.md`](../../CLAUDE.md).
+**Start with [`setup.md`](./setup.md)** — tools, installing, every `.env`, every dev port, the
+checks to run before pushing, and how a change gets merged.
 
 **Apps** — each has its own README: [`member`](../../apps/member/README.md) ·
 [`merchant`](../../apps/merchant/README.md) · [`command`](../../apps/command/README.md) ·
@@ -50,8 +50,4 @@ The contracts are documented in [Protocol](../protocol/README.md).
 
 ## To be written
 
-- Development setup in full: Node 22 and Bun, which `.env` each surface needs, every dev port,
-  `apps/api` outside the workspace
-- Contributing: branches (`dev` for work, `main` for production), `turbo --affected`, the `ci` check,
-  `[skip preview]`
 - One page per app: routes, auth, env, tests
