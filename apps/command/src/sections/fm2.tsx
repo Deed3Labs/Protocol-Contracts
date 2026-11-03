@@ -10,7 +10,7 @@ import { CC } from './cc';
 import { S } from './data';
 import { INBOX, mask } from './fm2Data';
 import { SRC_OUT, VISIT_OUT, fmLive, visitText } from './fmLive';
-import { registerPage, shadowHost } from './pageHost';
+import { keep, registerPage, shadowHost } from './pageHost';
 import { openItem, render as renderShell, toast, vLevel } from './shell';
 
 /*
@@ -1302,7 +1302,7 @@ function makeFieldMerchants() {
       dana: ['Dana’s place', 'Riverside', [33.9530, -117.3960]],
       kai: ['Kai’s place', 'Redlands', [34.0420, -117.1700]]
     };
-    const R = {
+    const R = keep('field.R', {
       me: LV ? LV.meK : 'kai',
       sel: 'r1',
       pf: 'all',
@@ -1365,7 +1365,7 @@ function makeFieldMerchants() {
         start: 'kai',
         okAt: 'Tue 20 Oct'
       }]
-    };
+    }, ['sel', 'pf', 'near', 'show', 'q']);
     // live, the picked route outlasts the module being built again
     if (LV) Object.defineProperty(R, 'sel', {
       get: () => KEEP.sel,
@@ -2153,11 +2153,11 @@ function makeFieldMerchants() {
        Every finished stop by anyone, with its outcome. Merchant visits carry a pipeline outcome that updates the shop in Merchants.
        Follow-ups are the merchant leads with a next step, sorted by when it's due; "gone quiet" are partners and leads nobody has seen lately.
        Ties: Uptown Barber signed today (Merchants: founding seat 3 of 5), Mission Auto Care's demo is tomorrow, Inland Cycle Works is signing. */
-    const V = {
+    const V = keep('field.V', {
       kind: 'all',
       who: 'all',
       lf: 'due'
-    };
+    }, ['kind', 'who', 'lf']);
     const OUTC = {
       // outcome → tone, label, pipeline stage it leads to (merchant)
       'Not in': ['line', 'Nobody to talk to', null],
@@ -2607,7 +2607,7 @@ function makeFieldMerchants() {
     /* ══ Field: posters and the people who keep them up ══════════════════════════════════════════
        Today is the phone on the route. Plan builds the next routes at a desk. Posters is the fleet.
        Placement is where the next posters go. Counter devices belong to Merchants; Field only gets the fixes as stops. */
-    const F = {
+    const F = keep('field.F', {
       _tab: 'today',
       get tab() {
         return this._tab;
@@ -2636,7 +2636,7 @@ function makeFieldMerchants() {
       },
       saved: {},
       later: new Set()
-    };
+    }, ['_tab', 'pf', 'pq', 'page', 'day']);
     const PHONE = () => matchMedia('(max-width:760px)').matches;
     const stopDone = s => s.tasks.every(t => t.done);
     const curStop = () => STOPS.find(s => !stopDone(s));
@@ -3732,7 +3732,7 @@ function makeFieldMerchants() {
          Overview · Pipeline (prospect → signing, plus shop enquiries) · Partners (signed and transacting) · Payouts · Devices.
          One shop record opens from anywhere. It shares Field's routes, visits and leads: planning or logging a visit here lands in Field.
          Reps edit their own leads and see the rest read-only. Money changes (caps, terms, payouts) need a second person. */
-      const X = {
+      const X = keep('merchants.X', {
         kst: 'prospect',
         tab: 'overview',
         open: null,
@@ -3743,7 +3743,7 @@ function makeFieldMerchants() {
         note: {},
         enqSt: {},
         approvals: []
-      };
+      }, ['kst', 'tab', 'pf', 'bq', 'kmore']);
       const STG5 = [['prospect', 'Prospect'], ['talking', 'Talking'], ['signing', 'Signing'], ['signed', 'Signed'], ['transacting', 'Transacting']];
       const STGN = Object.fromEntries(STG5);
       const STGCOL = {

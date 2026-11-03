@@ -8,7 +8,7 @@ import { buildLive } from './buildLive';
 import { CC } from './cc';
 import { openCFlow } from './contracts';
 import { LOG, S } from './data';
-import { registerPage, shadowHost } from './pageHost';
+import { keep, registerPage, shadowHost } from './pageHost';
 import { openItem, render as renderShell, toast, vLevel } from './shell';
 
 /*
@@ -926,7 +926,7 @@ function makeBuild() {
        Overview (is anything blocked or waiting on you) · Changes (every pull request and on-chain change, by stage) ·
        Contracts (the protocol map, the Ops Safe, releases and roles) · Deploys (where each repo runs, checks, history) ·
        Security (findings, audits, keys, incidents). Agreements live in Governance now. */
-    const B = {
+    const B = keep('build.B', {
       st: 'review',
       tab: 'overview',
       repo: 'all',
@@ -944,7 +944,7 @@ function makeBuild() {
           return 0;
         }
       })()
-    };
+    }, ['st', 'tab', 'repo', 'cp', 'dp', 'more']);
     const CARDS = 6;
     const ME = () => PPL[B.me],
       ENG = () => !!ME().eng,

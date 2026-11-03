@@ -5,7 +5,7 @@ import { REAL } from '../live/env';
 import { CC } from './cc';
 import { communityLive } from './communityLive';
 import { LOG, S } from './data';
-import { registerPage, shadowHost } from './pageHost';
+import { keep, registerPage, shadowHost } from './pageHost';
 import { toast } from './shell';
 
 /*
@@ -476,7 +476,7 @@ function makeCommunity() {
     /* ══ Community — where members talk, meet and watch ═══════════════════════════════════════════════════════════
        Overview (what's on and what needs you) · Forum (every thread, and moderation) · Live (town halls, spaces,
        presentations, hearings) · Channel (Clear on Dial). Decisions are tracked in Governance; this is the conversation. */
-    const C = {
+    const C = keep('community.C', {
       tab: 'overview',
       cat: 'all',
       tp: 0,
@@ -485,7 +485,7 @@ function makeCommunity() {
       me: LC ? LC.me : 'kai',
       ev: 'list',
       mo: 0
-    };
+    }, ['tab', 'cat', 'tp', 'ep', 'ev', 'mo']);
     const ICO = {
       chev: <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>,
       back: <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>,

@@ -6,7 +6,7 @@ import { REAL } from '../live/env';
 import { CC } from './cc';
 import { LOG, S } from './data';
 import { moneyLive, settleMove } from './moneyLive';
-import { registerPage, shadowHost } from './pageHost';
+import { keep, registerPage, shadowHost } from './pageHost';
 import { openItem, render as renderShell, toast, vLevel } from './shell';
 
 /*
@@ -459,7 +459,7 @@ function makeMoney() {
        Tabs answer one question each: Overview (covered?), Cash flow (what moves in the next 30 days), Credit (the book),
        Pools (AssurancePool, Payout, Yield, Bonds), Moves (propose, approve, history). The two checks stay apart on purpose:
        RTD gates credit; claims-in-order only reports and is never summed. */
-    const N = {
+    const N = keep('money.N', {
       tab: 'overview',
       pool: 'yield',
       panel: null,
@@ -468,7 +468,7 @@ function makeMoney() {
       mp: 0,
       mf: 'all',
       rej: false
-    };
+    }, ['tab', 'pool', 'dp', 'mp', 'mf']);
     // live, proposing takes Propose in Money and approving takes Approve (the API checks both)
     const ME = () => PPL[N.me],
       CAN = () => L ? !RO() : !RO() && ME().sign,

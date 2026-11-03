@@ -8,7 +8,7 @@ import { addPhotos, openCatFlow } from './catalog';
 import { CC } from './cc';
 import { openCostFlow } from './costing';
 import { LOG, S, SS } from './data';
-import { registerPage, shadowHost } from './pageHost';
+import { keep, registerPage, shadowHost } from './pageHost';
 import { openSFlow, prOf } from './shop';
 import { render as renderShell, toast } from './shell';
 import { shopLive } from './shopLive';
@@ -682,7 +682,7 @@ function makeShop() {
     /* ══ Shop — what's for sale, what it costs to make, and what's left ═════════════════════════════════════════════════
        Overview · Products (each built from materials, or one cost) · Materials (the saved library, suppliers, reorder points)
        · Inventory (finished stock, batches, what's on the way) · Orders. */
-    const SP = {
+    const SP = keep('shop.SP', {
       tab: 'overview',
       pf: 'all',
       mf: 'all',
@@ -693,7 +693,7 @@ function makeShop() {
       buy: null,
       // the shelf's rows showing: two, then one more at a time
       rows: 2
-    };
+    }, ['tab', 'pf', 'mf', 'of', 'rows']);
     const ICO = {
       chev: <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>,
       back: <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>,

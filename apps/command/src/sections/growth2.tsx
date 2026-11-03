@@ -7,7 +7,7 @@ import { CC } from './cc';
 import { growthLive } from './growthLive';
 import { run } from '../live/actions';
 import { toast } from './shell';
-import { registerPage, shadowHost } from './pageHost';
+import { keep, registerPage, shadowHost } from './pageHost';
 
 /*
  * Growth (design/command-center-ui, the GROWTH module): one funnel, five lenses (Overview, Traffic,
@@ -460,13 +460,13 @@ function makeGrowth() {
     }
     LV.fresh = false;
   }
-  const TS = {
+  const TS = keep('growth.TS', {
     iso: null,
     prop: 'all',
     open: new Set(['Social']),
     heat: 'visits',
     pgSort: 'entries'
-  };
+  }, ['iso', 'prop', 'open', 'heat', 'pgSort']);
   const secs = s => `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
   // the 30-day visits every Traffic figure scales from: live, the site feed's
   const VIS30 = L ? PROPS.reduce((a, p) => a + p[1], 0) : 36410;
@@ -810,10 +810,10 @@ function makeGrowth() {
     Referrals: 'var(--fg)',
     Other: 'color-mix(in srgb,var(--fg) 30%,transparent)'
   };
-  const CS = {
+  const CS = keep('growth.CS', {
     sort: 'joins',
     open: null
-  };
+  }, ['sort']);
   const spendOf = c => c.print + c.offer + c.ads + c.credit;
 
   /* period scaling: the share of each campaign's 30-day result that falls in the chosen range */
@@ -1249,10 +1249,10 @@ function makeGrowth() {
   // everyone activated, all weeks: the share each filtered view scales the activation counts by
   const ACT_ALL = L ? COH.reduce((s, c) => s + c.act, 0) : 124;
   const TAU = 6;
-  const CHS = {
+  const CHS = keep('growth.CHS', {
     metric: 'act',
     hov: null
-  };
+  }, ['metric']);
   const cum = (c, day) => {
     const t = c.tau || TAU,
       el = TODAY - c.d;
@@ -1409,9 +1409,9 @@ function makeGrowth() {
       col: 'var(--land)'
     }
   };
-  const AS = {
+  const AS = keep('growth.AS', {
     feat: 'member'
-  };
+  }, ['feat']);
   // cumulative activated members by day, and shops live by day (12 transacting by today)
   const actByDay = d => {
     let s = 0;
@@ -1617,7 +1617,7 @@ function makeGrowth() {
     const now = new Date(), mon = (now.getDay() + 6) % 7, dom = now.getDate() - 1;
     return [['Yesterday', [TODAY - 1, TODAY - 1]], ['This week', [TODAY - mon, TODAY]], ['Last week', [TODAY - mon - 7, TODAY - mon - 1]], ['This month', [Math.max(0, TODAY - dom), TODAY]]];
   })() : [['Yesterday', [TODAY - 1, TODAY - 1]], ['This week', [TODAY - 2, TODAY]], ['Last week', [TODAY - 9, TODAY - 3]], ['This month', [TODAY - 20, TODAY]], ['September', [28, 57]], ['Since posters went up · 18 Aug', [14, TODAY]], ['Since invites started · 15 Sep', [42, TODAY]]])];
-  const S = {
+  const S = keep('growth.S', {
     tab: 'overview',
     per: '30d',
     range: [TODAY - 29, TODAY],
@@ -1639,7 +1639,10 @@ function makeGrowth() {
     pick: null,
     cal: 1,
     pace: 50
-  };
+  }, ['tab', 'per', 'range', 'cmp', 'gran', 'step', 'dim', 'view', 'sort', 'dir', 'F', 'open', 'pick', 'cal', 'pace']);
+  // a preset period kept from before ends today, should the day have turned since
+  const kept = PRESETS.find(p => p[0] === S.per);
+  if (kept) S.range = [...kept[2]];
   const span = () => S.range[1] - S.range[0] + 1;
   const factor = (a, b) => [0, 1, 2, 3, 4, 5].map(si => BASE[si] ? sumR(si, a, b) / BASE[si] : 0);
   const prevRange = () => {

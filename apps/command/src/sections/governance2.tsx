@@ -9,7 +9,7 @@ import { openCFlow } from './contracts';
 import { LOG, S } from './data';
 import { nextBoard, openVFlow } from './governance';
 import { governanceLive } from './governanceLive';
-import { registerPage, shadowHost } from './pageHost';
+import { keep, registerPage, shadowHost } from './pageHost';
 import { openItem, render as renderShell, toast } from './shell';
 
 /*
@@ -1123,7 +1123,7 @@ function makeGovernance() {
     /* ══ Governance — Proposals first ══════════════════════════════════════════════════════════════════════════════
        Every decision the co-op makes, from a member's draft to the thing actually being done. Discussion runs alongside
        every step; the text freezes when voting opens; member ballots stay sealed until the close. */
-    const G = {
+    const G = keep('governance.G', {
       tab: 'overview',
       cal: 'all',
       ag: 'all',
@@ -1135,7 +1135,7 @@ function makeGovernance() {
       me: 'kai',
       pp: 0,
       back: false
-    };
+    }, ['tab', 'cal', 'ag', 'cv', 'mo', 'set', 'st', 'pp']);
     const ICO = {
       chev: <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" /></svg>,
       back: <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>,

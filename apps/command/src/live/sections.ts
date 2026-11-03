@@ -464,11 +464,24 @@ export function applySection(route: string, d) {
   vars.asOf = d.asOf;
 }
 
+/** When each section last loaded, and what it said (less its asOf), so a refresh can tell whether anything changed. */
+const loadedAt = new Map<string, number>();
+const said = new Map<string, string>();
+const revealed = new Set<string>();
+const sayOf = (d) => JSON.stringify({ ...d, asOf: undefined });
+/** How long ago a page's section loaded; Infinity if it hasn't. */
+export const ageOf = (page: string) => Date.now() - (loadedAt.get(sectionOf(page)) ?? -Infinity);
+
 /** Loads a section; with `exportId`, its names in full, through an export a second person approved (used once). */
 export async function loadSection(page: string, opts: { exportId?: string } = {}) {
   const route = sectionOf(page);
   const d = await api('GET', `/sections/${route}${opts.exportId ? `?reveal=1&export=${encodeURIComponent(opts.exportId)}` : ''}`);
   applySection(route, d);
+  loadedAt.set(route, Date.now());
+  // names shown through an export stay until the page is loaded again by hand: a refresh would hide them
+  if (opts.exportId) revealed.add(route);
+  else revealed.delete(route);
+  said.set(route, sayOf(d));
   // Contracts' signers and their queue come from the Ops Safe, when one is configured
   if (route === 'contracts') await import('./safe').then((m) => m.loadSafe().then(m.loadSafeQueue)).catch(() => undefined);
   ready.add(route);
@@ -477,8 +490,35 @@ export async function loadSection(page: string, opts: { exportId?: string } = {}
   void import('./feeds').then((m) => m.loadFeeds()).catch(() => undefined);
 }
 
+/**
+ * Loads a page's section again in the background (live/refresh.ts). The answer is only written into the
+ * datasets when it differs from the last one and `ok()` still says the page can be drawn again (nobody is
+ * typing or in a panel); resolves to whether it was, so the caller draws the page again only then.
+ */
+export async function refreshSection(page: string, ok: () => boolean): Promise<boolean> {
+  const route = sectionOf(page);
+  if (!LIVE || !SERVED.has(route) || !ready.has(route) || revealed.has(route)) return false;
+  const d = await api('GET', `/sections/${route}`);
+  const say = sayOf(d);
+  if (say === said.get(route)) {
+    loadedAt.set(route, Date.now());
+    return false;
+  }
+  if (!ok()) return false;
+  applySection(route, d);
+  loadedAt.set(route, Date.now());
+  said.set(route, say);
+  loads++;
+  return true;
+}
+
 /** Signing out forgets what was loaded, so the next person's view loads their own. */
-export const forgetSections = () => ready.clear();
+export const forgetSections = () => {
+  ready.clear();
+  loadedAt.clear();
+  said.clear();
+  revealed.clear();
+};
 
 /** Loads a section again after it changed, if it's one the API serves and it was already loaded. */
 export async function reloadSection(page: string) {
