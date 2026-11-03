@@ -4,4 +4,4 @@ Numbered Hardhat deploy scripts (`00`–`24`, run in order), `deploy_all.ts` for
 `verify_deployments.ts`, and the upgrade tooling in `upgrade/`.
 
 - The commands: **Contract tooling** in the root [`README.md`](../README.md)
-- The runbook: [`docs/operators/deploying-contracts.md`](../docs/operators/deploying-contracts.md)
+- The runbook — every script, what it reads, the wiring after and the handover: [`docs/operators/deploying-contracts.md`](../docs/operators/deploying-contracts.md)

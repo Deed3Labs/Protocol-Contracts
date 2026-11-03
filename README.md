@@ -133,7 +133,8 @@ and a consumer phone app are different products, and tokens and formatters are a
 
 ## Quickstart
 
-Requires **Node ≥ 20.19** (CI runs 22). The API runs on **Bun**.
+Requires **Node ≥ 20.19** (CI runs 22). The API runs on **Bun**. The full version — every `.env`,
+the checks to run before pushing — is [`docs/developers/setup.md`](./docs/developers/setup.md).
 
 ```bash
 npm install          # installs every workspace from the repo root — not apps/api
@@ -398,8 +399,8 @@ npx hardhat run deploy/23_deploy_BondCollection.ts    --network base-sepolia
 npx hardhat run deploy/24_deploy_OffersIssuer.ts      --network base-sepolia
 ```
 
-Runbook: [`docs/operators/deploying-contracts.md`](./docs/operators/deploying-contracts.md) — it covers the reserve and bond scripts
-(`07`–`10`) in detail; the rest are described in their own headers.
+Runbook: [`docs/operators/deploying-contracts.md`](./docs/operators/deploying-contracts.md) — every script, what it
+reads, the wiring after, and handing the keys to the Safe.
 
 ### Verification and upgrades
 
