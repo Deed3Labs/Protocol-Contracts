@@ -88,6 +88,14 @@ async function main() {
     await (await collection.setEncumbranceSource(registryRecord.address, BOND)).wait();
     log("  BurnerBond encumbrance -> CollateralRegistry");
   }
+  // Rolling a pledged bond moves its pledge to the replacement, which the collection does in the
+  // registry as it rolls. Without the role, every roll of a collection with an encumbrance source
+  // reverts.
+  const rollerRole = await registry.ITEM_ROLLER_ROLE();
+  if (!(await registry.hasRole(rollerRole, collectionAddress))) {
+    await (await registry.grantRole(rollerRole, collectionAddress)).wait();
+    log("  CollateralRegistry ITEM_ROLLER_ROLE -> collection");
+  }
 
   const bondVault = getDeployment(network, "BondVault");
   if (bondVault) {

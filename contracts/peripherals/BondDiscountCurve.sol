@@ -74,6 +74,11 @@ contract BondDiscountCurve {
         if (timeToMaturity > maxMaturity) timeToMaturity = maxMaturity;
 
         (CurveType curveType, uint256 parameter) = curveOf(collection);
+        // Stored on a 10,000 scale (10,000 = 1.0), which is what `setCurve` validates against;
+        // the maths below works in 1e18. Without this, a steepness of 2.0 reached `_power` as an
+        // exponent of 2e-14 -- every BONDING curve priced at the minimum -- and a LOGARITHMIC base
+        // underflowed `parameter - 1e18` and reverted.
+        parameter = parameter * 1e14;
 
         uint256 normalizedTime = (timeToMaturity * 1e18) / maxMaturity;
         uint256 discountRange = maxDiscount - minDiscount;

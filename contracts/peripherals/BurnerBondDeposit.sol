@@ -203,6 +203,9 @@ contract BurnerBondDeposit is
             burnerBond = tokenToCollection[tokenAddress];
             require(address(burnerBond) != address(0), "Collection creation failed");
         }
+        // A collection the factory owner has deactivated stops selling. Its bonds already sold
+        // still redeem and roll; only new money is turned away.
+        require(factory.getCollectionInfo(tokenAddress).isActive, "Collection inactive");
         
         // Get the underlying token
         IERC20 underlyingToken = IERC20(tokenAddress);
@@ -351,22 +354,9 @@ contract BurnerBondDeposit is
         tokenToCollection[tokenAddress] = IBurnerBond(collectionAddress);
     }
     
-    /// @notice Update deposit calculation parameters (delegates to factory)
-    /// @param _maxDiscount Maximum discount percentage in basis points (0-5000)
-    /// @param _minDiscount Minimum discount percentage in basis points
-    /// @param _maxMaturity Maximum maturity period in seconds
-    function updateDepositParameters(uint256 _maxDiscount, uint256 _minDiscount, uint256 _maxMaturity) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.updateGlobalParameters(_maxDiscount, _minDiscount, _maxMaturity);
-    }
-    
-    /// @notice Set minimum discount percentage (delegates to factory)
-    /// @param _minDiscount Minimum discount percentage in basis points
-    function setMinDiscount(uint256 _minDiscount) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.setMinDiscount(_minDiscount);
-    }
-    
+    // The factory's discount, maturity and face-value bounds are global and set on the factory
+    // by its owner. This contract used to carry setters that forwarded to it; the factory's
+    // setters are owner-only and the caller there was this contract, so every one reverted.
     /// @notice Set the factory contract address
     /// @param _factory Address of the BurnerBondFactory contract
     function setFactory(address _factory) external override onlyOwner {
@@ -386,21 +376,6 @@ contract BurnerBondDeposit is
     function setAssurancePool(address _assurancePool) external override onlyOwner {
         require(_assurancePool != address(0), "Invalid AssurancePool address");
         assurancePool = IAssurancePool(_assurancePool);
-    }
-    
-    /// @notice Update minimum and maximum face value limits (delegates to factory)
-    /// @param _minFaceValue Minimum face value in underlying token units
-    /// @param _maxFaceValue Maximum face value in underlying token units
-    function updateFaceValueLimits(uint256 _minFaceValue, uint256 _maxFaceValue) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.updateFaceValueLimits(_minFaceValue, _maxFaceValue);
-    }
-    
-    /// @notice Update minimum maturity period (delegates to factory)
-    /// @param _minMaturity Minimum maturity period in seconds
-    function updateMinMaturity(uint256 _minMaturity) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.updateMinMaturity(_minMaturity);
     }
     
     /// @notice Emergency function to recover stuck tokens (owner only)

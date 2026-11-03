@@ -20,6 +20,7 @@ import "../core/interfaces/stable-credit/IAssurancePool.sol";
 interface IBondEncumbrance {
     function isItemEncumbered(address holder, bytes32 kind, uint256 itemId)
         external view returns (bool);
+    function rollItem(address member, bytes32 kind, uint256 oldItemId, uint256 newItemId) external;
 }
 
 interface IBondTraitStore {
@@ -342,19 +343,17 @@ contract BurnerBond is
     }
     
     /// @notice Set discount curve configuration
-    /// @param _curveType Type of curve (0=linear, 1=exponential, 2=logarithmic, 3=custom)
-    /// @param _maxDiscount Maximum discount percentage in basis points
-    /// @param _maxMaturity Maximum maturity period in seconds
-    /// @param _curveParameter Curve-specific parameter (exponent, base, etc.)
-    function setDiscountCurve(uint8 _curveType, uint256 _maxDiscount, uint256 _maxMaturity, uint256 _curveParameter) external override onlyOwner {
-        require(_maxDiscount <= 5000, "Max discount cannot exceed 50%");
-        require(_maxMaturity >= factory.getMinMaturity(), "Max maturity too low");
-        require(_maxMaturity <= 50 * 365 days, "Max maturity too high");
-
+    /// @dev The shape only. The maximum discount and maturity it is drawn between are the
+    /// factory's, shared by every collection -- this took them as arguments once, checked them,
+    /// and kept nothing, so a collection looked configured to bounds it was not using. The event
+    /// reports the bounds that actually apply.
+    /// @param _curveType Type of curve (0=linear, 1=bonding, 2=logarithmic, 3=custom)
+    /// @param _curveParameter Curve-specific parameter (steepness, base), 10,000 = 1.0
+    function setDiscountCurve(uint8 _curveType, uint256 _curveParameter) external override onlyOwner {
         // Curve-type and parameter validation lives with the curve.
         discountCurveEngine.setCurve(_curveType, _curveParameter);
 
-        emit DiscountCurveUpdated(_curveType, _maxDiscount, _maxMaturity, _curveParameter);
+        emit DiscountCurveUpdated(_curveType, factory.getMaxDiscount(), factory.getMaxMaturity(), _curveParameter);
     }
     
     /// @notice Get bond statistics
@@ -635,22 +634,9 @@ contract BurnerBond is
 
     /* ========== ADMIN FUNCTIONS ========== */
     
-    /// @notice Update discount calculation parameters (delegates to factory)
-    /// @param _maxDiscount Maximum discount percentage in basis points (0-5000)
-    /// @param _minDiscount Minimum discount percentage in basis points
-    /// @param _maxMaturity Maximum maturity period in seconds
-    function updateDiscountParameters(uint256 _maxDiscount, uint256 _minDiscount, uint256 _maxMaturity) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.updateGlobalParameters(_maxDiscount, _minDiscount, _maxMaturity);
-    }
-    
-    /// @notice Set minimum discount percentage (delegates to factory)
-    /// @param _minDiscount Minimum discount percentage in basis points
-    function setMinDiscount(uint256 _minDiscount) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.setMinDiscount(_minDiscount);
-    }
-    
+    // The factory's discount, maturity and face-value bounds are global and set on the factory
+    // by its owner. This contract used to carry setters that forwarded to it; the factory's
+    // setters are owner-only and the caller there was this contract, so every one reverted.
     /* ========== COLLATERAL ========== */
 
     /// @notice what a bond is worth today, rather than at maturity.
@@ -760,6 +746,11 @@ contract BurnerBond is
 
         newBondId = _issue(newFaceValue, newMaturity, discount, rolledValue, msg.sender);
         bondVault.roll(bondId, newBondId, newFaceValue, uint64(newMaturity));
+        // A pledged bond's pledge moves to its replacement. Burning the old id used to leave the
+        // registry holding a pledge on nothing, valued at nothing, under credit still drawn.
+        if (address(encumbranceSource) != address(0) && collateralKind != bytes32(0)) {
+            encumbranceSource.rollItem(msg.sender, collateralKind, bondId, newBondId);
+        }
         emit BondRolled(bondId, newBondId, rolledValue);
     }
 
@@ -811,21 +802,6 @@ contract BurnerBond is
     function setBurnerBondDeposit(address _burnerBondDeposit) external onlyOwner {
         require(_burnerBondDeposit != address(0), "Invalid BurnerBondDeposit address");
         burnerBondDeposit = IBurnerBondDeposit(_burnerBondDeposit);
-    }
-    
-    /// @notice Update minimum and maximum face value limits (delegates to factory)
-    /// @param _minFaceValue Minimum face value in underlying token units
-    /// @param _maxFaceValue Maximum face value in underlying token units
-    function updateFaceValueLimits(uint256 _minFaceValue, uint256 _maxFaceValue) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.updateFaceValueLimits(_minFaceValue, _maxFaceValue);
-    }
-    
-    /// @notice Update minimum maturity period (delegates to factory)
-    /// @param _minMaturity Minimum maturity period in seconds
-    function updateMinMaturity(uint256 _minMaturity) external override onlyOwner {
-        // Delegate to factory - this ensures consistency across all collections
-        factory.updateMinMaturity(_minMaturity);
     }
     
     /// @notice Emergency function to recover stuck tokens (owner only)

@@ -33,6 +33,10 @@ contract CollateralRegistry is
     UUPSUpgradeable
 {
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+    /// @notice May move a pledge from an item it is retiring to the one it issues in its place.
+    /// @dev A bond collection, for `rollItem`. Granted per collection: whoever holds it can move
+    /// any member's pledge under any kind, so it goes only to a contract that moves its own.
+    bytes32 public constant ITEM_ROLLER_ROLE = keccak256("ITEM_ROLLER_ROLE");
 
     /// @notice A kind of pledge, and the terms it is valued on.
     struct CollateralType {
@@ -95,6 +99,7 @@ contract CollateralRegistry is
     event ItemPledged(address indexed member, bytes32 indexed kind, uint256 itemId);
     event ItemReleased(address indexed member, bytes32 indexed kind, uint256 itemId);
     event ItemSeized(address indexed member, bytes32 indexed kind, uint256 itemId);
+    event ItemRolled(address indexed member, bytes32 indexed kind, uint256 oldItemId, uint256 newItemId);
     event ExposureRefreshed(address indexed member, uint256 previous, uint256 current);
     event ClrusdKindUpdated(bytes32 indexed kind);
 
@@ -333,6 +338,25 @@ contract CollateralRegistry is
         }
         _dropItem(member, kind, itemId);
         emit ItemReleased(member, kind, itemId);
+        refresh(member);
+    }
+
+    /// @notice moves a pledge from an item being retired to the one replacing it.
+    /// @dev For a bond rolled at maturity: the matured id is burned and a new one issued for the
+    /// same money, and the pledge has to follow or the credit drawn against it loses its backing
+    /// the moment the old id stops existing. The collection calls this as it rolls, so the two
+    /// cannot drift apart. Nothing happens if the old item was not pledged.
+    function rollItem(address member, bytes32 kind, uint256 oldItemId, uint256 newItemId)
+        external
+        onlyRole(ITEM_ROLLER_ROLE)
+    {
+        if (!itemPledged[member][kind][oldItemId]) return;
+        _dropItem(member, kind, oldItemId);
+        if (!itemPledged[member][kind][newItemId]) {
+            itemPledged[member][kind][newItemId] = true;
+            pledgedItems[member][kind].push(newItemId);
+        }
+        emit ItemRolled(member, kind, oldItemId, newItemId);
         refresh(member);
     }
 

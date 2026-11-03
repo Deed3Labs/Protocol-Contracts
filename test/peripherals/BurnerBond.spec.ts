@@ -116,6 +116,87 @@ describe("BurnerBond", function () {
     });
   });
 
+  /*
+   * The curve's parameter is stored on a 10,000 scale and its maths runs in 1e18. Before the two
+   * met, a BONDING curve priced every term at the minimum and a LOGARITHMIC one reverted.
+   */
+  describe("the discount curve", function () {
+    /** A maturity halfway to the factory's longest term. */
+    async function halfway() {
+      return (await now()) + (await factory.getMaxMaturity()) / 2n;
+    }
+
+    it("prices a BONDING curve above the linear one halfway out", async function () {
+      const linear = await bond.calculateDiscount(await halfway());
+      await bond.setDiscountCurve(1, 20_000n); // steepness 2.0: 1 - (1 - t)^2
+      const bonding = await bond.calculateDiscount(await halfway());
+
+      const max = await factory.getMaxDiscount();
+      expect(bonding).to.be.greaterThan(linear);
+      // Three quarters of the range at t = 0.5, to within the second it took to ask.
+      expect(bonding).to.be.closeTo((max * 3n) / 4n, 2n);
+    });
+
+    it("prices a LOGARITHMIC curve, within its bounds", async function () {
+      await bond.setDiscountCurve(2, 20_000n); // base 2.0
+      const discount = await bond.calculateDiscount(await halfway());
+      expect(discount).to.be.greaterThan(0n);
+      expect(discount).to.be.lessThanOrEqual(await factory.getMaxDiscount());
+    });
+
+    it("takes only the shape; its bounds stay the factory's", async function () {
+      await expect(bond.setDiscountCurve(1, 20_000n))
+        .to.emit(bond, "DiscountCurveUpdated")
+        .withArgs(1, await factory.getMaxDiscount(), await factory.getMaxMaturity(), 20_000n);
+      const [curveType, maxDiscount, maxMaturity, parameter] = await bond.getDiscountCurve();
+      expect([curveType, maxDiscount, maxMaturity, parameter]).to.deep.equal([
+        1n, await factory.getMaxDiscount(), await factory.getMaxMaturity(), 20_000n,
+      ]);
+    });
+  });
+
+  describe("the factory's bounds", function () {
+    it("are set on the factory, and every collection reads them", async function () {
+      await factory.updateGlobalParameters(3_000n, 100n, 20n * 365n * BigInt(DAY));
+      const [maxDiscount, maxMaturity] = await bond.getDiscountParameters();
+      expect(maxDiscount).to.equal(3_000n);
+      expect(maxMaturity).to.equal(20n * 365n * BigInt(DAY));
+    });
+
+    it("have no setters on the collection or the deposit contract to fail through", async function () {
+      for (const name of ["updateDiscountParameters", "setMinDiscount", "updateFaceValueLimits", "updateMinMaturity"]) {
+        expect(bond.interface.getFunction(name)).to.equal(null);
+      }
+      for (const name of ["updateDepositParameters", "setMinDiscount", "updateFaceValueLimits", "updateMinMaturity"]) {
+        expect(deposit.interface.getFunction(name)).to.equal(null);
+      }
+    });
+  });
+
+  describe("a deactivated collection", function () {
+    it("stops selling, and sells again once reactivated", async function () {
+      const maturity = (await now()) + BigInt(12 * MONTH);
+      await factory.deactivateCollection(await ctx.usdc.getAddress());
+      await expect(buyBond(1_000n * ONE_USDC, maturity)).to.be.revertedWith("Collection inactive");
+
+      await factory.reactivateCollection(await ctx.usdc.getAddress());
+      await buyBond(1_000n * ONE_USDC, maturity);
+      expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
+    });
+
+    it("still redeems the bonds it already sold", async function () {
+      const maturity = (await now()) + BigInt(2 * MONTH);
+      await buyBond(1_000n * ONE_USDC, maturity);
+      await factory.deactivateCollection(await ctx.usdc.getAddress());
+
+      await advance(3 * MONTH);
+      await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
+      await bond.connect(buyer).setAutoRollOptOut(1, true);
+      await bond.connect(buyer).redeemBond(1);
+      expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
+    });
+  });
+
   describe("buying a bond", function () {
     it("takes the purchase price and mints a bond to the buyer", async function () {
       const maturity = (await now()) + BigInt(6 * MONTH);

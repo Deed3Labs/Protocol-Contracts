@@ -191,6 +191,58 @@ describe("bonds as collateral", function () {
     });
   });
 
+  /*
+   * Rolling burns the matured bond and issues a replacement for the same money. The pledge has
+   * to follow, or the credit drawn against it is backed by an id that no longer exists.
+   */
+  describe("a rolled bond stays pledged", function () {
+    let bondId: bigint;
+
+    beforeEach(async function () {
+      await registry.grantRole(await registry.ITEM_ROLLER_ROLE(), await bond.getAddress());
+      bondId = await buyBond(1_000n * ONE_USDC, 2 * CYCLE);
+      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await issuer
+        .connect(ctx.operator)
+        .openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, CYCLE);
+      await ctx.stableCredit
+        .connect(ctx.member)
+        .transfer(ctx.counterparty.address, 400n * ONE_USDC);
+      await advance(3 * CYCLE);
+    });
+
+    it("moves the pledge to the replacement", async function () {
+      await bond.connect(ctx.member).rollBond(bondId);
+      const replacement = bondId + 1n;
+
+      expect(await registry.pledgedItemsOf(ctx.member.address, BOND)).to.deep.equal([replacement]);
+      expect(await registry.isItemEncumbered(ctx.member.address, BOND, replacement)).to.equal(true);
+      expect(await registry.isItemEncumbered(ctx.member.address, BOND, bondId)).to.equal(false);
+    });
+
+    it("keeps the replacement from walking away while credit is drawn", async function () {
+      await bond.connect(ctx.member).rollBond(bondId);
+      await expect(
+        bond
+          .connect(ctx.member)
+          .safeTransferFrom(ctx.member.address, other.address, bondId + 1n, 1, "0x")
+      ).to.be.revertedWith("Bond is pledged as collateral");
+    });
+
+    it("leaves an unpledged bond's roll alone", async function () {
+      const unpledged = await buyBond(500n * ONE_USDC, 2 * CYCLE);
+      await advance(3 * CYCLE);
+      await bond.connect(ctx.member).rollBond(unpledged);
+      expect(await registry.pledgedItemsOf(ctx.member.address, BOND)).to.deep.equal([bondId]);
+    });
+
+    it("moves only on the collection's word", async function () {
+      await expect(
+        registry.connect(other).rollItem(ctx.member.address, BOND, bondId, 999n)
+      ).to.be.reverted;
+    });
+  });
+
   describe("the limit accretes with the bond", function () {
     it("values a fresh pledge near what was paid, not at face", async function () {
       const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
