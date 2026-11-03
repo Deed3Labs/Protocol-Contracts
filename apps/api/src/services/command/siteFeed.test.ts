@@ -6,7 +6,7 @@ import { TOTALS } from './levels.js';
 import type { MemberSource } from './memberSource.js';
 import { growthSection, homeSection, moneySection, posterCampaigns } from './sections.js';
 import { seedCommand } from './seed.js';
-import { campaignType, siteFeed, sourceOf } from './siteFeed.js';
+import { campaignType, type SiteEvent, siteFeed, sourceOf, visitStats } from './siteFeed.js';
 
 /*
  * useclear.org's visits from Umami's API (a stand-in here), in the shapes Growth and Home draw, with
@@ -28,6 +28,11 @@ const answer = (u: URL) => {
   const from = Number(p.startAt),
     to = Number(p.endAt) + 1;
   const current = day(to) === '2026-10-25';
+  if (u.pathname.endsWith('/events')) {
+    // two visits: a poster scan to /join that reads 40 s then joins; a search landing on / that leaves at once
+    const ev = (sessionId: string, at: string, urlPath: string, extra: Partial<SiteEvent> = {}): SiteEvent => ({ sessionId, createdAt: `2026-10-24T${at}Z`, urlPath, eventType: 1, ...extra });
+    return { count: 4, data: [ev('a', '10:00:00', '/join', { urlQuery: 'utm_source=poster' }), ev('a', '10:00:40', '/join', { eventType: 2, eventName: 'Join' }), ev('a', '10:01:00', '/'), ev('b', '11:00:00', '/', { referrerDomain: 'google.com' })] };
+  }
   if (u.pathname.endsWith('/stats')) return joined ? { pageviews: 8, visitors: 8, visits: 8 } : { pageviews: '300', visitors: '150', visits: '205' };
   if (u.pathname.endsWith('/pageviews')) {
     const n = Math.round((to - from) / 86_400_000);
@@ -96,6 +101,25 @@ describe('the site feed', () => {
     expect(siteFeed(ENV).off()).toBeNull();
   });
 
+  test('bounces and time on page from the raw events', () => {
+    const ev = (sessionId: string, at: string, urlPath: string, extra: Partial<SiteEvent> = {}): SiteEvent => ({ sessionId, createdAt: `2026-10-24T${at}Z`, urlPath, eventType: 1, ...extra });
+    const v = visitStats([
+      // newest first, as Umami lists them: a's two visits split at the half-hour gap
+      ev('a', '11:00:00', '/shop'),
+      ev('a', '10:00:30', '/how'),
+      ev('a', '10:00:00', '/'),
+      // b reads / for 12 s and the site's Leave event marks it: timed, and still a bounce
+      ev('b', '09:00:12', '/', { eventType: 2, eventName: 'Leave' }),
+      ev('b', '09:00:00', '/'),
+    ]);
+    expect(v.bounced).toBe(67);
+    expect(v.page('/')).toEqual({ bounced: 50, secs: 21 });
+    expect(v.page('/how')).toEqual({ bounced: null, secs: null });
+    expect(v.page('/shop')).toEqual({ bounced: 100, secs: null });
+    expect(v.channel('Direct')).toBe(67);
+    expect(v.channel('Posters')).toBeNull();
+  });
+
   test('a visit’s source, as the prototype groups them', () => {
     expect(['poster', 'google.com', 'duckduckgo.com', 'instagram.com', 'nextdoor.com', 't.co', '', 'someblog.net'].map(sourceOf)).toEqual(['Posters', 'Search', 'Search', 'Social', 'Social', 'Social', 'Direct', 'Direct']);
   });
@@ -118,7 +142,10 @@ describe('the site feed', () => {
     expect(f.range.week.cities).toEqual([80, 0, 40, 30]);
     expect(f['growth.sources_30d']).toEqual([['Posters', 30, 6, 0], ['Direct', 50, 2, 0], ['Social', 20, 0, 0], ['Search', 50, 0, 0]]);
     expect(f['growth.referrers']).toEqual([['google.com', 50], ['instagram.com', 20], ['someblog.net', 5]]);
-    expect(f['growth.landing']).toEqual([['/join', 120, 8], ['/', 60, 0]]);
+    // the events' bounces and seconds: /join timed to the Join, / never left for anything
+    expect(f['growth.landing']).toEqual([['/join', 120, 8, 0, 40], ['/', 60, 0, 100, null]]);
+    expect(f['growth.bounced']).toBe(50);
+    expect(f['growth.source_bounced']).toEqual({ Posters: 0, Direct: null, Social: null, Search: 100 });
     expect(f['growth.cities']).toEqual({ Redlands: 80, Riverside: 40, Fontana: 10 });
     expect(f['growth.devices']).toEqual([['Phone', 150], ['Desktop', 50], ['Tablet', 5]]);
     expect(f['growth.returning']).toEqual([['New', 150], ['Returning', 55]]);
