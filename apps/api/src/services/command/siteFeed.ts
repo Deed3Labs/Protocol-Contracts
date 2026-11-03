@@ -34,6 +34,80 @@ export const campaignType = (source: string, medium: string) => {
 /** The most campaigns read each sync: each costs three more calls. */
 const CAMPAIGNS = 12;
 
+/** One of Umami's raw events (GET /api/websites/:id/events): a page view (type 1) or a custom event (type 2). */
+export type SiteEvent = { sessionId: string; createdAt: string; urlPath?: string | null; urlQuery?: string | null; referrerDomain?: string | null; eventType: number; eventName?: string | null };
+/** A visit ends after 30 minutes with nothing from that session, as Umami's own visits do. */
+const VISIT_GAP = 30 * 60_000;
+/** The most events read each sync, a thousand at a time. */
+const EVENTS = 20_000;
+
+/**
+ * Bounces and time on page from the raw events: Umami's own figures for one page count only that
+ * page's events, so they can't say either. A visit bounced when it saw one page and did nothing else
+ * (no Join, no other event). A page's time runs from its view to whatever the visit did next, so a
+ * visit's last page has none unless the site sends an event as the person leaves; a page nobody
+ * moved on from has no time at all (null), not zero. A "Leave" event (sent as the page closes) gives the
+ * last page its time without counting as something the visit did.
+ */
+export function visitStats(events: SiteEvent[]) {
+  const bySession = new Map<string, SiteEvent[]>();
+  for (const e of events) if (e.sessionId) (bySession.get(e.sessionId) ?? bySession.set(e.sessionId, []).get(e.sessionId)!).push(e);
+  const pages = new Map<string, { visits: number; bounces: number; secs: number; timed: number }>();
+  const page = (k: string) => pages.get(k) ?? pages.set(k, { visits: 0, bounces: 0, secs: 0, timed: 0 }).get(k)!;
+  const channels = new Map<string, { visits: number; bounces: number }>();
+  let visits = 0,
+    bounces = 0;
+  for (const list of bySession.values()) {
+    const evs = list.map((e) => ({ ...e, at: Date.parse(e.createdAt) })).filter((e) => Number.isFinite(e.at)).sort((a, b) => a.at - b.at);
+    // split into visits at a half-hour gap
+    const runs: (typeof evs)[] = [];
+    for (const e of evs) {
+      const last = runs[runs.length - 1];
+      if (last && e.at - last[last.length - 1].at < VISIT_GAP) last.push(e);
+      else runs.push([e]);
+    }
+    for (const run of runs) {
+      const views = run.filter((e) => e.eventType === 1);
+      if (!views.length) continue;
+      // a "Leave" event only marks when the person left: it ends the page's time, it isn't doing something
+      const bounced = views.length === 1 && run.every((e) => e.eventType === 1 || e.eventName === 'Leave');
+      const first = views[0];
+      const entry = page(first.urlPath || '/');
+      entry.visits++;
+      if (bounced) entry.bounces++;
+      const utm = new URLSearchParams(first.urlQuery ?? '').get('utm_source') ?? '';
+      const src = sourceOf(utm) === 'Posters' ? 'Posters' : sourceOf(first.referrerDomain ?? '');
+      const ch = channels.get(src) ?? channels.set(src, { visits: 0, bounces: 0 }).get(src)!;
+      ch.visits++;
+      visits++;
+      if (bounced) {
+        ch.bounces++;
+        bounces++;
+      }
+      // each view's time: until the visit's next event, page view or not
+      for (const v of views) {
+        const next = run[run.indexOf(v) + 1];
+        if (!next) continue;
+        const p = page(v.urlPath || '/');
+        p.secs += Math.round((next.at - v.at) / 1000);
+        p.timed++;
+      }
+    }
+  }
+  const pct = (b: number, v: number) => (v ? Math.round((b / v) * 100) : null);
+  return {
+    bounced: pct(bounces, visits),
+    page: (k: string) => {
+      const p = pages.get(k);
+      return { bounced: p ? pct(p.bounces, p.visits) : null, secs: p?.timed ? Math.round(p.secs / p.timed) : null };
+    },
+    channel: (k: string) => {
+      const c = channels.get(k);
+      return c ? pct(c.bounces, c.visits) : null;
+    },
+  };
+}
+
 /** The page's three cities, then everyone else. */
 export const TOP_CITIES = ['Redlands', 'San Bernardino', 'Riverside'];
 
@@ -98,6 +172,16 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
   // [from, to): whole UTC days, the end exclusive
   const span = (from: number, to: number) => ({ startAt: from, endAt: to - 1 });
   const JOIN = { event: 'Join' };
+  /** The raw events of [from, to), newest first, up to EVENTS of them. */
+  const events = async (from: number, to: number) => {
+    const out: SiteEvent[] = [];
+    for (let page = 1; out.length < EVENTS; page++) {
+      const r = await get<{ data: SiteEvent[]; count: number | string }>('events', { ...span(from, to), page, pageSize: 1000 });
+      out.push(...r.data);
+      if (r.data.length < 1000 || out.length >= n(r.count)) break;
+    }
+    return out;
+  };
   const metrics = (type: string, from: number, to: number, extra: Record<string, string | number> = {}) => get<XY[]>('metrics', { type, ...span(from, to), limit: 500, ...extra });
   const stats = (from: number, to: number, extra: Record<string, string> = {}) => get<Stats>('stats', { ...span(from, to), ...extra });
   /** Visitors per hour or per day, in the slots asked for ("2026-10-24 09", "2026-10-24"). */
@@ -158,7 +242,7 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
       // the last 12 weeks, each the 7 days to a day of today's week
       const weeks = Array.from({ length: 12 }, (_, i) => back(7, (11 - i) * 7));
       // a join's source and landing page: the Join event's own referrer, UTM tag and page
-      const [src30, srcJoins, cities, refs, landing, landingJoins, devices, pages, heatRows, weekSrc, weekDev, agg] = await Promise.all([
+      const [src30, srcJoins, cities, refs, landing, landingJoins, devices, pages, heatRows, weekSrc, weekDev, agg, vs] = await Promise.all([
         sources(from30, to30),
         sources(from30, to30, JOIN),
         metrics('city', from30, to30, { limit: 12 }),
@@ -171,6 +255,8 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
         Promise.all(weeks.map(([a, b]) => sources(a, b))),
         Promise.all(weeks.map(([a, b]) => metrics('device', a, b))),
         stats(from30, to30),
+        // bounces and time on page: without them (an Umami user that can't see events) the page says so, not 0
+        events(from30, to30).then(visitStats, () => null),
       ]);
       // each hour of the week's share of the last 4 weeks' visitors, Monday first
       const heatTotal = sum(heatRows.map((r) => n(r.y))) || 1;
@@ -223,9 +309,16 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
           'growth.weekly.visits_by_source': bySource,
           'growth.cities': Object.fromEntries(cities.filter((r) => r.x).map((r) => [r.x, n(r.y)])),
           'growth.sources_30d': SOURCES.map((k, i) => [k, src30[i], srcJoins[i], 0]),
+          // the share of visits that bounced, all and by source (null: not measured)
+          'growth.bounced': vs?.bounced ?? null,
+          'growth.source_bounced': Object.fromEntries(SOURCES.map((k) => [k, vs ? vs.channel(k) : null])),
           // Umami keeps the referring site already, not its full address
           'growth.referrers': refs.filter((r) => r.x).map((r) => [String(r.x).replace(/^www\./, ''), n(r.y)]).slice(0, 6),
-          'growth.landing': landing.map((r) => [r.x ?? '/', n(r.y), pageJoin.get(r.x) ?? 0]),
+          // each landing page's entries, joins, share bounced and average seconds on it (nulls: not measured)
+          'growth.landing': landing.map((r) => {
+            const p = vs?.page(r.x ?? '/');
+            return [r.x ?? '/', n(r.y), pageJoin.get(r.x) ?? 0, p?.bounced ?? null, p?.secs ?? null];
+          }),
           'growth.heat': heat,
           'growth.devices': [['Phone', device(/mobile|phone/i)], ['Desktop', device(/desktop|laptop/i)], ['Tablet', device(/tablet/i)]],
           'growth.phone_share': phoneShare,

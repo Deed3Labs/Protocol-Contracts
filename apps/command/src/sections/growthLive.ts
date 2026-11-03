@@ -116,8 +116,10 @@ export function growthLive() {
     ...cohortsLive(fig['growth.invite_weeks'], start),
     ...appsLive(fig['growth.apps'], start),
     PROPS: visits ? [['useclear.org', visits, 'var(--fg)']] : [],
-    CHANNELS: SRC30.map(([n, v, j]) => [n, v, 0, v ? Math.round((j / v) * 1000) / 10 : 0, 0, []]),
-    PAGES: LANDING.map(([p, e, j]) => [p, 'useclear.org', e, 0, 0, j]),
+    // bounces and time on page from the site feed's events; null where it measured none
+    CHANNELS: SRC30.map(([n, v, j]) => [n, v, fig['growth.source_bounced']?.[n] ?? null, v ? Math.round((j / v) * 1000) / 10 : 0, 0, []]),
+    PAGES: LANDING.map(([p, e, j, b, t]) => [p, 'useclear.org', e, b ?? null, t ?? null, j]),
+    BOUNCED: fig['growth.bounced'] ?? null,
     DEV: fig['growth.devices'] ?? [],
     BROWSERS: [],
     TF_CITY: Object.entries(CITY_V).map(([n, v]) => [n, v, postersIn(n)]),
