@@ -338,7 +338,7 @@ Allocation target: ~70% deployable / ~30% reserve, with the reserve share rising
 - `LimitCalculator` picks them up; the asset-backed tier lights up.
 - Merchant exit runs through `PayoutPool` at par. `StandingBid` is **not** deployed here — see "Do not build yet".
 
-**Repayment routing must change when `PayoutPool` exists.** Inherited behaviour sends every repayment — and every liquidation proceed — into the AssurancePool's buffer reserve: `repayCreditBalance` ends in `depositIntoBufferReserve`. That contradicts §4b in both directions. Repayment value is what pays the merchant holding the positive side, and the AssurancePool is the one fund forbidden from funding a payout, so the working capital for net-30 accumulates precisely where it cannot be spent.
+**Repayment routing must change when `PayoutPool` exists.** Inherited behaviour sends every repayment — and every liquidation proceed — into the AssurancePool's buffer reserve: `repayCreditBalance` ends in `depositIntoBufferReserve`. That contradicts §4b in both directions. Repayment value is what pays the merchant holding the positive side, and the AssurancePool is the fund a payout may only borrow from as a last resort, so the working capital for net-30 accumulates precisely where it cannot be spent.
 
 It is the same shape as the bond seniority inversion: money in the wrong pot, where the rule against moving it back is what bites. **Done** — `StableCredit._routeRepayment` offers `PayoutPool` its reported shortfall first and sends only the remainder to the buffer reserve.
 
@@ -394,11 +394,13 @@ Fiat netting is **reconciled to a target**, like the card holds: what should be 
 
 ## 4b. Merchant payouts
 
-### The AssurancePool must never fund a payout
+### The AssurancePool lends to a payout only as a last resort
 
 Redemption there is capped by lost debt outstanding, so paying merchants from it would mean **a merchant can only be paid when a member has defaulted**, at a rate set by how badly the book is performing. It also spends the fund that makes losses survivable on ordinary operations.
 
-**A merchant's positive balance is a payable** — certain, owed, due on a schedule. **The AssurancePool covers a contingency** — a loss that may never happen. Funding the first from the second is the error. Assert it: no code path reaches AssurancePool from the redemption flow.
+**A merchant's positive balance is a payable** — certain, owed, due on a schedule. **The AssurancePool covers a contingency** — a loss that may never happen. Funding the first from the second is the error, so the pool never funds a payout: a merchant is paid from members' repayments and from float lent by the yield pool, the bond vault and the treasury.
+
+**What it may do is lend across a timing gap, last.** When a claim is past its terms and every other source is short, `PayoutPool.drawForDueClaim` borrows from the AssurancePool — excess first, then the buffer while the RTD holds, never the primary reserve — and repays it, with carry, out of the next repayments. Covering a gap that comes back is one of the things a reserve is for; spending its cover is not. (Decided 2026-11-03, implemented in #825; this section used to forbid any path between the two.)
 
 ### The pool is a timing buffer, not a subsidy
 
@@ -486,9 +488,9 @@ An earlier draft of this plan proposed a `ReserveRegistry` where every reserve s
 
 **Accrued carry is derived, never stored per account.** The stored value is an index and a checkpoint. Any code path that writes an absolute accrued figure to a member record is wrong.
 
-**RTD reads the AssurancePool and nothing else.** No other contract address appears in the RTD calculation.
+**RTD's numerator is the AssurancePool's primary reserve.** Its denominator is member exposure (from the exposure source) plus the near-term bond gap (`bondExposure()`), so a bond the vault cannot cover counts against the cover.
 
-**`PayoutPool` and `AssurancePool` never touch.** No redemption path reaches the AssurancePool; no payout draws on loss absorption.
+**`PayoutPool` and `AssurancePool` meet only as borrower and last-resort lender.** No payout is funded out of loss absorption: the pool lends excess, then buffer while the RTD holds, never primary, and is repaid with carry.
 
 **Payout order is claim age.** No priority field exists to be set.
 
@@ -517,7 +519,7 @@ Also run **maturity-bucket coverage**: a system can be solvent in aggregate and 
 - Phase 1: limit recalculates correctly as a bond accretes toward maturity; pledged collateral cannot be transferred; ascending-rate invariant holds.
 - Phase 2: utilization curve; withdrawal queue under high utilization; first-loss ordering.
 - Phase 3: redemption reserve cannot be withdrawn by the Safe; bond redeems at maturity even when the pool is stressed.
-- Phase 4: a positive-balance holder who is not the co-op can redeem; no redemption path reaches the AssurancePool.
+- Phase 4: a positive-balance holder who is not the co-op can redeem; a redemption reaches the AssurancePool only as `drawForDueClaim`'s last-resort loan.
 - Adversarial: flash-loan the oracle; drain attempt on every pool; default a member with collateral and verify no lost debt is created.
 
 ---

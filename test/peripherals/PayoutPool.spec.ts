@@ -250,7 +250,7 @@ describe("PayoutPool", function () {
     });
   });
 
-  describe("it never touches the AssurancePool", function () {
+  describe("it pays merchants without the AssurancePool, which is only ever a last-resort lender", function () {
     it("pays merchants without the reserve moving", async function () {
       // Redemption there is capped by lost debt outstanding, so paying merchants from it would
       // mean a merchant can only be paid when a member has defaulted.
@@ -264,7 +264,7 @@ describe("PayoutPool", function () {
       expect(await ctx.assurancePool.reserveBalance()).to.equal(2_000n * ONE_USDC);
     });
 
-    it("cannot reach the reserve even when it is short", async function () {
+    it("cannot reach the reserve when the reserve isn't named as a lender", async function () {
       await ctx.usdc.mint(ctx.admin.address, 5_000n * ONE_USDC);
       await ctx.usdc.approve(await ctx.assurancePool.getAddress(), 5_000n * ONE_USDC);
       await ctx.assurancePool.depositIntoPrimaryReserve(2_000n * ONE_USDC);

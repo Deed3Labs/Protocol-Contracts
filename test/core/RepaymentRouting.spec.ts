@@ -8,7 +8,7 @@ const NET_30 = 30 * DAY;
 
 // When a member clears their balance, value lands with the co-op -- and that value is what pays
 // the merchant holding the positive side of the purchase that created it. It used to go straight
-// into the AssurancePool's buffer reserve, which is the one fund forbidden from funding a payout,
+// into the AssurancePool's buffer reserve, which a payout may only borrow from as a last resort,
 // so the working capital for net-30 piled up exactly where it could not be spent.
 describe("repayment routing", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;

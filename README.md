@@ -532,30 +532,30 @@ The member app is installable.
 
 ## The merchant app (`apps/merchant`)
 
-Staff raise charges at a counter; owners manage payouts, staff and refunds.
+A full point of sale. Staff take payments at a counter in every way a shop is paid; owners manage
+payouts, staff and refunds.
 
 ```mermaid
 flowchart TD
-  C(["One counter"]) --> QR["Clear code<br/><i>network-originated</i>"]
-  C --> TAP["Card tap<br/><i>a Clear card too</i>"]
-  TAP --> OUT["Ordinary card rails<br/><i>never reaches this app</i>"]
-  QR --> BAL["Funded balance"]
-  QR --> LN["Credit line"]
-  BAL --> ONE["<b>One tender</b><br/>charge-and-settle"]
-  LN --> ONE
-  ONE --> APP["The merchant app"]
+  C(["One counter"]) --> CL["Clear<br/><i>a Clear code, a payment link, a phone pay</i>"]
+  C --> CARD["Card<br/><i>Stripe Terminal: smart reader, M2, Tap to Pay</i>"]
+  C --> CASH["Cash<br/><i>the drawer</i>"]
+  CL --> ONE["<b>One tender</b><br/>funded balance or credit line"]
+  ONE --> PP["Merchant payout<br/><i>PayoutPool, on the shop's terms</i>"]
+  CARD --> ST["The shop's own Stripe account<br/><i>direct charges</i>"]
 ```
 
-**Network-originated transactions only.** A Clear code, approved in the member app, settles on
-Clear's rails and lands here. A card tap never does. This is the Clear half of the counter.
+**Every tender at one counter.** A Clear payment — a code approved in the member app, a payment
+link, a phone pay — settles on Clear's rails and is paid out through the PayoutPool on the shop's
+terms. A card is taken on Stripe Terminal and charged directly on the shop's own Stripe account
+(Connect Standard), so card money never passes through Clear; a Clear card is just a card here.
+Cash goes in the drawer. A sale can be split across tenders, and the app also keeps inventory,
+tables, the close of the day, staff and payouts.
 
-**One tender, whatever backs it.** A funded balance is collateral for a fully secured draw, not a
-second tender — so balance and line are the same charge, and the merchant sees one thing. Hence
-`approved` and `isFinanced` in `packages/domain`: the design, not a phase.
-
-**Direction.** Either the shop's point of sale, or a settlement surface beside an incumbent system
-the merchant's category requires them to keep. Per-merchant terms — payout window, approval cap,
-discount — live in `MerchantRegistry`.
+**One Clear tender, whatever backs it.** A funded balance is collateral for a fully secured draw,
+not a second tender — so balance and line are the same charge, and the merchant sees one thing.
+Hence `approved` and `isFinanced` in `packages/domain`: the design, not a phase. Per-merchant terms
+— payout window, approval cap, discount — live in `MerchantRegistry`.
 
 ```mermaid
 flowchart LR
