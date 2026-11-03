@@ -246,4 +246,4 @@ The protocol is designed for regulatory compliance:
 
 ---
 
-*This overview covers the Deed track's architecture. For detailed technical documentation, see [Smart Contracts](./smart-contracts.md) and [Contract Interfaces](../api/contract-interfaces.md); for the rest of the protocol, see the [contract build plan](../contracts/clear-contracts-build-plan.md).*
+*This overview covers the Deed track's architecture. For detailed technical documentation, see [Smart Contracts](./smart-contracts.md); for the rest of the protocol, see the [contract build plan](../contracts/clear-contracts-build-plan.md).*

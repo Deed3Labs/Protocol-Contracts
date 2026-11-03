@@ -5,8 +5,9 @@ This repository carries more than one license. Which one applies depends on the 
 | Directory | License | File |
 |---|---|---|
 | `contracts/` | GNU Affero General Public License v3.0 | [`contracts/LICENSE`](contracts/LICENSE) |
-| `apps/member`, `apps/merchant`, `apps/api` | Proprietary — all rights reserved | [`LICENSE`](LICENSE) |
+| `apps/*` — member, merchant, pay, rewards, command, api | Proprietary — all rights reserved | [`LICENSE`](LICENSE) |
 | `packages/domain`, `packages/tokens`, `packages/contracts-sdk` | MIT | `packages/*/LICENSE` |
+| Every other package under `packages/` | Proprietary — all rights reserved | [`LICENSE`](LICENSE) |
 | `deploy/`, `scripts/`, `test/` (hardhat tooling for `contracts/`) | AGPL-3.0 | [`contracts/LICENSE`](contracts/LICENSE) |
 
 ## Fork origin

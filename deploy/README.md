@@ -19,8 +19,6 @@ Complete deployment scripts and guides for the BurnerBond system on Base network
 
 | Document | Description |
 |----------|-------------|
-| `QUICK_START.md` | Get started quickly with one-command deployment |
-| `DEPLOYMENT_GUIDE.md` | Comprehensive deployment guide with all details |
 | `README.md` | This file - overview and quick reference |
 
 ### Helper Files
@@ -263,8 +261,6 @@ These roles need careful management:
 
 ## 📚 Additional Resources
 
-- [Quick Start Guide](./QUICK_START.md) - Get started in 5 minutes
-- [Deployment Guide](./DEPLOYMENT_GUIDE.md) - Complete deployment documentation
 - [Smart Contract Docs](../docs/architecture/smart-contracts.md) - Architecture overview
 - [Token Registry Docs](../docs/contracts/token-registry.md) - TokenRegistry details
 - [BurnerBond Docs](../docs/contracts/burner-bond-complete.md) - BurnerBond system details
@@ -340,7 +336,5 @@ npm run deploy:burner-bonds localhost
 ---
 
 **Need Help?** 
-- 📖 Read the full [Deployment Guide](./DEPLOYMENT_GUIDE.md)
-- 🚀 Follow the [Quick Start](./QUICK_START.md)
 - 🐛 Check GitHub Issues
 

@@ -241,9 +241,7 @@ Installable, and the install is the intended way to run it.
   this app is built to
 - [`docs/reference/clear-app-reference-screens.html`](../../docs/reference/clear-app-reference-screens.html)
   — static reference screens
-- [`docs/ux/clear-onboarding-plan.md`](../../docs/ux/clear-onboarding-plan.md) — the onboarding flow
 - [`apps/api/README.md`](../api/README.md) — the API this app talks to
-- `docs/` in this directory — data-fetching, caching and pricing architecture notes
 
 ---
 
