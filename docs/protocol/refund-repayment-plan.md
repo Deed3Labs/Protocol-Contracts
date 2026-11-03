@@ -130,8 +130,9 @@ credit totalSupply 125.033081    (merchant 97.50 · co-op 27.53)
 The cash and the claims match to the cent, and the cash is in the wrong contract. If that merchant
 redeemed today their claim would queue against an empty pool while 125 sat one contract away — and
 the buffer cannot send it: it leaves only through `reimburse` (a loss), a rebalance into the primary
-reserve, or `withdraw`, which takes from *excess* alone. **There is no path from the buffer to the
-payout pool.**
+reserve, or `withdraw`, which takes from *excess* alone. **There was no path from the buffer to the
+payout pool.** (#825 has since added one: `drawForDueClaim` may borrow from the AssurancePool's excess,
+then its buffer, as a last resort, and repay it — see [Settlement](./settlement.md).)
 
 That is the routing's real shape, not a testnet artefact: `shortfall()` is non-zero only while claims
 are already queued and unfunded, so unless a merchant redeemed *before* a member repaid, the money

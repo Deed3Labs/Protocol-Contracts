@@ -543,7 +543,7 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// @notice sends repayment value where it is owed before where it might be needed.
     /// @dev A member clearing their balance is how the merchant holding the other side of that
     /// purchase gets paid. Everything used to go straight into the AssurancePool's buffer
-    /// reserve, which is the one fund forbidden from funding a payout -- so the working capital
+    /// reserve, which a payout may only borrow from as a last resort -- so the working capital
     /// for net-30 accumulated exactly where it could not be spent, and the co-op had to find the
     /// money somewhere else while its own repayments piled up next door.
     ///
