@@ -34,7 +34,7 @@
   "scripts": {
     "test": "bun test src",
     "typecheck": "tsc --noEmit",
-    "build": "tsup && node ../../scripts/sdk/build-types.mjs"
+    "build": "node ../../scripts/sdk/build-js.mjs && node ../../scripts/sdk/build-types.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.31.0",
@@ -44,7 +44,6 @@
     "@clear/public-api-contracts": "file:../public-api-contracts",
     "@types/node": "^22.15.3",
     "@useclear/node": "file:../clear-node",
-    "tsup": "^8.5.1",
     "typescript": "~5.8.3"
   }
 }

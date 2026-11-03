@@ -31,7 +31,7 @@
   "scripts": {
     "test": "bun test src",
     "typecheck": "tsc --noEmit",
-    "build": "tsup && node ../../scripts/sdk/build-types.mjs"
+    "build": "node ../../scripts/sdk/build-js.mjs && node ../../scripts/sdk/build-types.mjs"
   },
   "dependencies": {
     "zod": "^4.5.4"
@@ -39,7 +39,6 @@
   "devDependencies": {
     "@clear/public-api-contracts": "file:../public-api-contracts",
     "@types/node": "^22.15.3",
-    "tsup": "^8.5.1",
     "typescript": "~5.8.3"
   }
 }
