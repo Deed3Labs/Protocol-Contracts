@@ -648,6 +648,7 @@ contract DeedNFT is
     function removeTrait(uint256 tokenId, string memory traitName) external onlyValidatorOrOwner(tokenId) {
         require(_exists(tokenId), "Token does not exist");
         bytes32 traitKey = keccak256(bytes(traitName));
+        require(!_isReservedTrait(traitKey) && traitKey != keccak256("assetType"), "Reserved trait");
         require(_tokenTraits[tokenId][traitKey].length > 0, "Trait does not exist");
         delete _tokenTraits[tokenId][traitKey];
         emit TraitUpdated(traitKey, tokenId, "");
@@ -656,6 +657,15 @@ contract DeedNFT is
         if (metadataRenderer != address(0)) {
             try IMetadataRenderer(metadataRenderer).syncTraitUpdate(tokenId, traitKey, "") {} catch {}
         }
+    }
+
+    /**
+     * @dev Traits that setTrait and removeTrait refuse for every caller. isValidated and validator
+     *      change only through updateValidationStatus, updateMetadata and minting; beneficiary
+     *      follows the deed on transfer.
+     */
+    function _isReservedTrait(bytes32 key) private pure returns (bool) {
+        return key == keccak256("isValidated") || key == keccak256("validator") || key == keccak256("beneficiary");
     }
 
     /**
@@ -687,6 +697,13 @@ contract DeedNFT is
             // Assume it's a string and hash it
             key = keccak256(traitKey);
             isStringKey = true;
+        }
+
+        // Validation is written only by updateValidationStatus, updateMetadata and minting, so an
+        // owner cannot mark their own deed validated or name its royalty receiver.
+        require(!_isReservedTrait(key), "Reserved trait");
+        if (key == keccak256("assetType")) {
+            require(hasRole(VALIDATOR_ROLE, msg.sender), "Only a validator sets asset type");
         }
 
         // Handle different value types

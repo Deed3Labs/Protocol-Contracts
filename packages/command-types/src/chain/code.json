@@ -211,7 +211,7 @@
   },
   "DeedNFT": {
    "source": "contracts/core/DeedNFT.sol",
-   "sha256": "137bbadd3a9f06ebee3e0a1e8466b4763389519fe88da8e9582a4625287f3b64",
+   "sha256": "879532ab53d9652ebb169732497465faed1a442cefd6a7b8c418f415cf4444b3",
    "immutables": [
     [
      3581,
