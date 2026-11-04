@@ -216,8 +216,8 @@ itself a clone, created and handed to the deployer in the factory's constructor.
 `CollateralRegistry` key a bond by its id alone, so a collection built to replace another calls
 `setFirstBondId` (owner, before its first sale) to start above every id the old one issued.
 `scripts/redeploy_bonds.ts` replaced the Base Sepolia factory and USDC collection this way on
-3 Nov 2026, with ids from 1001; the old ones are recorded as `*Legacy`, sell nothing, and every bond
-they issued has been redeemed.
+3 Nov 2026, with ids from 1001; the old ones sell nothing, and every bond they
+issued has been redeemed.
 
 A new collection redeems nothing until its owner calls `setBondVault` and the vault grants
 `BOND_ROLE` to both the collection and the deposit contract, which `deploy/23` does.

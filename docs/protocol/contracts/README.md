@@ -16,14 +16,10 @@ on-chain state: see [Governance](../../governance/README.md).
 | [AssuranceOracle](./AssuranceOracle.md) | Base Sepolia | [reserve](../reserve.md) |
 | [AssurancePool](./AssurancePool.md) | Base Sepolia | [reserve](../reserve.md) |
 | [BondValuer](./BondValuer.md) | Base Sepolia | [bonds](../bonds.md) |
-| [BondValuerLegacy](./BondValuerLegacy.md) (superseded) | Base Sepolia | [bonds](../bonds.md) |
 | [BondVault](./BondVault.md) | Base Sepolia | [bonds](../bonds.md) |
 | [BurnerBond](./BurnerBond.md) | Base Sepolia | [bonds](../bonds.md) |
 | [BurnerBondDeposit](./BurnerBondDeposit.md) | Base Sepolia | [bonds](../bonds.md) |
-| [BurnerBondDepositLegacy](./BurnerBondDepositLegacy.md) (superseded) | Base Sepolia | [bonds](../bonds.md) |
 | [BurnerBondFactory](./BurnerBondFactory.md) | Base Sepolia | [bonds](../bonds.md) |
-| [BurnerBondFactoryLegacy](./BurnerBondFactoryLegacy.md) (superseded) | Base Sepolia | [bonds](../bonds.md) |
-| [BurnerBondLegacy](./BurnerBondLegacy.md) (superseded) | Base Sepolia | [bonds](../bonds.md) |
 | [ClaimEscrow](./ClaimEscrow.md) | Base Sepolia, Base | [savings](../savings.md) |
 | [ClearCredit](./ClearCredit.md) | Base Sepolia | [credit](../credit.md) |
 | [ClearUSD](./ClearUSD.md) | Base Sepolia, Base, Ethereum Sepolia | [savings](../savings.md) |
@@ -33,7 +29,6 @@ on-chain state: see [Governance](../../governance/README.md).
 | [Create2Deployer](./Create2Deployer.md) | Base Sepolia, Base, Ethereum Sepolia | — |
 | [DeedNFT](./DeedNFT.md) | Base Sepolia | [smart-contracts](../deed-track/smart-contracts.md) |
 | [ESADepositVault](./ESADepositVault.md) | Base Sepolia, Base | [savings](../savings.md) |
-| [ESADepositVaultLegacy](./ESADepositVaultLegacy.md) (superseded) | Base Sepolia | [savings](../savings.md) |
 | [Fractionalize](./Fractionalize.md) | Base Sepolia | [fractionalization](../deed-track/fractionalization.md) |
 | [FractionTokenFactory](./FractionTokenFactory.md) | Base Sepolia | [fractionalization](../deed-track/fractionalization.md) |
 | [FundManager](./FundManager.md) | Base Sepolia | [smart-contracts](../deed-track/smart-contracts.md) |
@@ -47,7 +42,6 @@ on-chain state: see [Governance](../../governance/README.md).
 | [OffersIssuer](./OffersIssuer.md) | Base Sepolia | [credit](../credit.md) |
 | [PayoutPool](./PayoutPool.md) | Base Sepolia | [settlement](../settlement.md) |
 | [RevolvingIssuer](./RevolvingIssuer.md) | Base Sepolia | [credit](../credit.md) |
-| [RevolvingIssuerV1](./RevolvingIssuerV1.md) (superseded) | Base Sepolia | [credit](../credit.md) |
 | [SavingsIntentFactory](./SavingsIntentFactory.md) | Base Sepolia | [savings](../savings.md) |
 | [Subdivide](./Subdivide.md) | Base Sepolia | [subdivision](../deed-track/subdivision.md) |
 | [TermIssuer](./TermIssuer.md) | Base Sepolia | [credit](../credit.md) |
