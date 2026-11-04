@@ -19,6 +19,7 @@ const asked: URL[] = [];
 const auth: Array<string | null> = [];
 let logins = 0;
 let expireOnce = false;
+let manyEvents = false;
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
 const rows = (r: Array<[string | null, number]>) => r.map(([x, y]) => ({ x, y }));
@@ -31,6 +32,7 @@ const answer = (u: URL) => {
   if (u.pathname.endsWith('/events')) {
     // two visits: a poster scan to /join that reads 40 s then joins; a search landing on / that leaves at once
     const ev = (sessionId: string, at: string, urlPath: string, extra: Partial<SiteEvent> = {}): SiteEvent => ({ sessionId, createdAt: `2026-10-24T${at}Z`, urlPath, eventType: 1, ...extra });
+    if (manyEvents) return { count: 20_001, data: [] };
     return { count: 4, data: [ev('a', '10:00:00', '/join', { urlQuery: 'utm_source=poster' }), ev('a', '10:00:40', '/join', { eventType: 2, eventName: 'Join' }), ev('a', '10:01:00', '/'), ev('b', '11:00:00', '/', { referrerDomain: 'google.com' })] };
   }
   if (u.pathname.endsWith('/stats')) return joined ? { pageviews: 8, visitors: 8, visits: 8 } : { pageviews: '300', visitors: '150', visits: '205' };
@@ -104,7 +106,7 @@ describe('the site feed', () => {
   test('bounces and time on page from the raw events', () => {
     const ev = (sessionId: string, at: string, urlPath: string, extra: Partial<SiteEvent> = {}): SiteEvent => ({ sessionId, createdAt: `2026-10-24T${at}Z`, urlPath, eventType: 1, ...extra });
     const v = visitStats([
-      // newest first, as Umami lists them: a's two visits split at the half-hour gap
+      // newest first, as Umami lists them: a's two visits, the second over 30 minutes after the first began
       ev('a', '11:00:00', '/shop'),
       ev('a', '10:00:30', '/how'),
       ev('a', '10:00:00', '/'),
@@ -118,6 +120,25 @@ describe('the site feed', () => {
     expect(v.page('/shop')).toEqual({ bounced: 100, secs: null });
     expect(v.channel('Direct')).toBe(67);
     expect(v.channel('Posters')).toBeNull();
+  });
+
+  test('visits as Umami keeps them: 30 minutes from their start, by the hour they began', () => {
+    const ev = (sessionId: string, at: string, urlPath: string): SiteEvent => ({ sessionId, createdAt: `2026-10-24T${at}Z`, urlPath, eventType: 1 });
+    const v = visitStats([
+      // c keeps going past 30 minutes: 12:40 starts a visit in the same hour, so Umami counts one visit,
+      // and /how isn't timed across into it
+      ev('c', '12:40:00', '/shop'),
+      ev('c', '12:20:00', '/how'),
+      ev('c', '12:00:00', '/'),
+      // d's second page is 25 minutes in, past the hour: still the same visit
+      ev('d', '13:59:00', '/'),
+      ev('d', '14:24:00', '/how'),
+    ]);
+    // two visits, neither a bounce; / timed at 20 and 25 minutes
+    expect(v.bounced).toBe(0);
+    expect(v.page('/')).toEqual({ bounced: 0, secs: 1350 });
+    expect(v.page('/how')).toEqual({ bounced: null, secs: null });
+    expect(v.page('/shop')).toEqual({ bounced: null, secs: null });
   });
 
   test('a visit’s source, as the prototype groups them', () => {
@@ -173,6 +194,21 @@ describe('the site feed', () => {
       ['tiktok', 'reel'],
       ['flyer', 'print'],
     ].map(([s, m]) => campaignType(s, m))).toEqual(['Posters', 'Ads', 'Referrals', 'Social', 'Other']);
+  });
+
+  test('past the most events read, bounces and times aren’t measured', async () => {
+    manyEvents = true;
+    try {
+      expect(await runFeed(db, siteFeed(ENV, umami, () => NOW))).toBe('ok');
+    } finally {
+      manyEvents = false;
+    }
+    const f = (await feedRows(db)).get('site')!.figures;
+    expect(f['growth.landing']).toEqual([['/join', 120, 8, null, null], ['/', 60, 0, null, null]]);
+    expect(f['growth.bounced']).toBeNull();
+    expect(f['growth.source_bounced']).toEqual({ Posters: null, Direct: null, Social: null, Search: null });
+    // and back to measured, for the sections read below
+    expect(await runFeed(db, siteFeed(ENV, umami, () => NOW))).toBe('ok');
   });
 });
 

@@ -36,9 +36,16 @@ const CAMPAIGNS = 12;
 
 /** One of Umami's raw events (GET /api/websites/:id/events): a page view (type 1) or a custom event (type 2). */
 export type SiteEvent = { sessionId: string; createdAt: string; urlPath?: string | null; urlQuery?: string | null; referrerDomain?: string | null; eventType: number; eventName?: string | null };
-/** A visit ends after 30 minutes with nothing from that session, as Umami's own visits do. */
-const VISIT_GAP = 30 * 60_000;
-/** The most events read each sync, a thousand at a time. */
+/**
+ * Umami's visits (v3, /api/send): a visit's id is its session and the clock hour it started in, and it
+ * lasts 30 minutes from that start however busy it is; the next event after that starts a new visit, in
+ * its own hour. Two visits begun in the same hour share an id, so Umami counts them as one, and so do we.
+ * The events list doesn't give the id; this rebuilds it. (A reload that loses the tracker's memory and
+ * crosses into the next hour within the 30 minutes gets a new id from Umami; here it stays in its visit.)
+ */
+const VISIT_LENGTH = 30 * 60_000;
+const HOUR = 3_600_000;
+/** The most events read each sync, a thousand at a time: past it, bounces and times aren't measured. */
 const EVENTS = 20_000;
 
 /**
@@ -59,14 +66,15 @@ export function visitStats(events: SiteEvent[]) {
     bounces = 0;
   for (const list of bySession.values()) {
     const evs = list.map((e) => ({ ...e, at: Date.parse(e.createdAt) })).filter((e) => Number.isFinite(e.at)).sort((a, b) => a.at - b.at);
-    // split into visits at a half-hour gap
-    const runs: (typeof evs)[] = [];
+    // into Umami's visits, by the hour each one started in
+    const byVisit = new Map<number, (typeof evs[number] & { start: number })[]>();
+    let start = -Infinity;
     for (const e of evs) {
-      const last = runs[runs.length - 1];
-      if (last && e.at - last[last.length - 1].at < VISIT_GAP) last.push(e);
-      else runs.push([e]);
+      if (e.at - start > VISIT_LENGTH) start = e.at;
+      const key = Math.floor(start / HOUR);
+      (byVisit.get(key) ?? byVisit.set(key, []).get(key)!).push({ ...e, start });
     }
-    for (const run of runs) {
+    for (const run of byVisit.values()) {
       const views = run.filter((e) => e.eventType === 1);
       if (!views.length) continue;
       // a "Leave" event only marks when the person left: it ends the page's time, it isn't doing something
@@ -84,10 +92,11 @@ export function visitStats(events: SiteEvent[]) {
         ch.bounces++;
         bounces++;
       }
-      // each view's time: until the visit's next event, page view or not
+      // each view's time: until the visit's next event, page view or not, within the same 30 minutes
+      // (two visits that share an hour aren't timed across the gap between them)
       for (const v of views) {
         const next = run[run.indexOf(v) + 1];
-        if (!next) continue;
+        if (!next || next.start !== v.start) continue;
         const p = page(v.urlPath || '/');
         p.secs += Math.round((next.at - v.at) / 1000);
         p.timed++;
@@ -172,15 +181,18 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
   // [from, to): whole UTC days, the end exclusive
   const span = (from: number, to: number) => ({ startAt: from, endAt: to - 1 });
   const JOIN = { event: 'Join' };
-  /** The raw events of [from, to), newest first, up to EVENTS of them. */
+  /**
+   * The raw events of [from, to), newest first. Past EVENTS of them only the newest would be read, which
+   * would pass for the whole range: then there's nothing to measure from (null), and the page says so.
+   */
   const events = async (from: number, to: number) => {
     const out: SiteEvent[] = [];
-    for (let page = 1; out.length < EVENTS; page++) {
+    for (let page = 1; ; page++) {
       const r = await get<{ data: SiteEvent[]; count: number | string }>('events', { ...span(from, to), page, pageSize: 1000 });
+      if (n(r.count) > EVENTS) return null;
       out.push(...r.data);
-      if (r.data.length < 1000 || out.length >= n(r.count)) break;
+      if (r.data.length < 1000 || out.length >= n(r.count)) return out;
     }
-    return out;
   };
   const metrics = (type: string, from: number, to: number, extra: Record<string, string | number> = {}) => get<XY[]>('metrics', { type, ...span(from, to), limit: 500, ...extra });
   const stats = (from: number, to: number, extra: Record<string, string> = {}) => get<Stats>('stats', { ...span(from, to), ...extra });
@@ -255,8 +267,8 @@ export function siteFeed(env: Env = process.env, f: typeof fetch = fetch, now = 
         Promise.all(weeks.map(([a, b]) => sources(a, b))),
         Promise.all(weeks.map(([a, b]) => metrics('device', a, b))),
         stats(from30, to30),
-        // bounces and time on page: without them (an Umami user that can't see events) the page says so, not 0
-        events(from30, to30).then(visitStats, () => null),
+        // bounces and time on page: without them (an Umami user that can’t see events, or more than EVENTS) the page says so, not 0
+        events(from30, to30).then((e) => (e ? visitStats(e) : null), () => null),
       ]);
       // each hour of the week's share of the last 4 weeks' visitors, Monday first
       const heatTotal = sum(heatRows.map((r) => n(r.y))) || 1;
