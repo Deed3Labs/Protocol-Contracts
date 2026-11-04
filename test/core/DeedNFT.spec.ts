@@ -486,6 +486,67 @@ describe("DeedNFT", function() {
     });
   });
 
+  describe("Reserved traits", function() {
+    const key = (name: string) => ethers.keccak256(ethers.toUtf8Bytes(name));
+    const TRUE = ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [true]);
+
+    it("refuses an owner marking their own deed validated, by name or by key", async function() {
+      await expect(
+        deedNFT.connect(user1).setTrait(1, ethers.toUtf8Bytes("isValidated"), TRUE, 3)
+      ).to.be.revertedWith("Reserved trait");
+      await expect(
+        deedNFT.connect(user1).setTrait(1, key("isValidated"), TRUE, 3)
+      ).to.be.revertedWith("Reserved trait");
+
+      const [isValidated] = await deedNFT.getValidationStatus(1);
+      expect(isValidated).to.equal(false);
+    });
+
+    it("refuses an owner naming the validator, and so the royalty receiver", async function() {
+      const before = await deedNFT.getTraitValue(1, key("validator"));
+      await expect(
+        deedNFT.connect(user1).setTrait(
+          1,
+          ethers.toUtf8Bytes("validator"),
+          ethers.AbiCoder.defaultAbiCoder().encode(["address"], [user1.address]),
+          0
+        )
+      ).to.be.revertedWith("Reserved trait");
+      expect(await deedNFT.getTraitValue(1, key("validator"))).to.equal(before);
+    });
+
+    it("refuses the reserved traits to validators too", async function() {
+      for (const name of ["isValidated", "validator", "beneficiary"]) {
+        await expect(
+          deedNFT.setTrait(1, ethers.toUtf8Bytes(name), TRUE, 0)
+        ).to.be.revertedWith("Reserved trait");
+      }
+    });
+
+    it("lets only a validator set the asset type", async function() {
+      const vehicle = ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [1]);
+      await expect(
+        deedNFT.connect(user1).setTrait(1, ethers.toUtf8Bytes("assetType"), vehicle, 0)
+      ).to.be.revertedWith("Only a validator sets asset type");
+      await deedNFT.setTrait(1, ethers.toUtf8Bytes("assetType"), vehicle, 0);
+      expect(await deedNFT.getTraitValue(1, key("assetType"))).to.equal(vehicle);
+    });
+
+    it("refuses removing a reserved trait or the asset type", async function() {
+      for (const name of ["isValidated", "validator", "beneficiary", "assetType"]) {
+        await expect(deedNFT.connect(user1).removeTrait(1, name)).to.be.revertedWith("Reserved trait");
+        await expect(deedNFT.removeTrait(1, name)).to.be.revertedWith("Reserved trait");
+      }
+    });
+
+    it("still lets the owner set and remove ordinary traits", async function() {
+      await deedNFT.connect(user1).setTrait(1, ethers.toUtf8Bytes("parcelNumber"), ethers.toUtf8Bytes("123"), 1);
+      expect(await deedNFT.getTraitValue(1, key("parcelNumber"))).to.not.equal("0x");
+      await deedNFT.connect(user1).removeTrait(1, "parcelNumber");
+      expect(await deedNFT.getTraitValue(1, key("parcelNumber"))).to.equal("0x");
+    });
+  });
+
   describe("Royalty Management", function() {
     it("Should set and enforce royalties correctly", async function() {
       // Set marketplace approval

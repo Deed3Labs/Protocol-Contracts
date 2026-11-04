@@ -11,6 +11,18 @@ describe("MetadataRenderer", function() {
   let deedNFT: DeedNFT;
   let validator: Validator;
   let validatorRegistry: ValidatorRegistry;
+
+  // isValidated is a reserved trait: only an active validator writes it, through
+  // updateValidationStatus, as Validator.validateDeed does.
+  async function markValidated(tokenId: number) {
+    const validatorAddress = await validator.getAddress();
+    await deedNFT.grantRole(await deedNFT.VALIDATOR_ROLE(), validatorAddress);
+    await ethers.provider.send("hardhat_impersonateAccount", [validatorAddress]);
+    await ethers.provider.send("hardhat_setBalance", [validatorAddress, "0xDE0B6B3A7640000"]);
+    const asValidator = await ethers.getSigner(validatorAddress);
+    await deedNFT.connect(asValidator).updateValidationStatus(tokenId, true, validatorAddress);
+    await ethers.provider.send("hardhat_stopImpersonatingAccount", [validatorAddress]);
+  }
   let deployer: SignerWithAddress;
   let user1: SignerWithAddress;
   let user2: SignerWithAddress;
@@ -720,7 +732,7 @@ describe("MetadataRenderer", function() {
       expect(decodedStringValue).to.equal(stringTraitValue);
 
       // Set a boolean trait
-      const boolTraitName = "isValidated";
+      const boolTraitName = "hasLien";
       const boolTraitValue = true;
       await deedNFT.setTrait(
         tokenId,
@@ -851,12 +863,7 @@ describe("MetadataRenderer", function() {
         ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [0]),
         0 // bytes type
       );
-      await deedNFT.setTrait(
-        tokenId,
-        ethers.toUtf8Bytes("isValidated"),
-        ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [true]),
-        0 // bytes type
-      );
+      await markValidated(tokenId);
       await deedNFT.setTrait(
         tokenId,
         ethers.toUtf8Bytes("definition"),
@@ -968,8 +975,9 @@ describe("MetadataRenderer", function() {
         trait_type: "assetType",
         value: "Land"
       });
+      // Written by updateValidationStatus, so it keeps its display name from mint.
       expect(attributes).to.deep.include({
-        trait_type: "isValidated",
+        trait_type: "Validation Status",
         value: "Valid"
       });
       expect(metadata.description).to.equal("Test definition");
@@ -997,12 +1005,7 @@ describe("MetadataRenderer", function() {
         ethers.AbiCoder.defaultAbiCoder().encode(["uint8"], [0]),
         0 // bytes type
       );
-      await deedNFT.setTrait(
-        tokenId,
-        ethers.toUtf8Bytes("isValidated"),
-        ethers.AbiCoder.defaultAbiCoder().encode(["bool"], [true]),
-        0 // bytes type
-      );
+      await markValidated(tokenId);
 
       // Get and decode token URI
       const tokenURI = await metadataRenderer.tokenURI(tokenId);
