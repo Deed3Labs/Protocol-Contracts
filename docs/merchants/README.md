@@ -16,15 +16,15 @@ developer side (payment links, checkout and the `/v1` API) is in
 
 | | |
 |---|---|
-| [Setting up a shop](./setting-up.md) | Signing up, the owner's sign-in, verifying the business, linking a bank, connecting Stripe, enrolling and removing tablets, the installed app |
+| [Setting up a shop](./setting-up.md) | Signing up, the owner's sign-in, verifying the business, linking a bank, connecting Stripe, enrolling and removing tablets, the installed app and getting it |
 | [Staff and shifts](./staff.md) | Counter, manager and owner, and who can do what; PINs; shifts, breaks and hours; tip sharing |
-| [Taking payments](./taking-payments.md) | A sale start to finish; Clear, card, cash and split; payment links; paying from a phone; receipts; offline |
+| [Taking payments](./taking-payments.md) | A sale start to finish; Clear, card, cash and split; payment links; paying from a phone; receipts; offline, and why cards wait |
 | [Refunds, voids and disputes](./refunds-voids-disputes.md) | Who approves what, voiding today's sales, card, cash and Clear refunds, card and Clear disputes |
-| [Closing the day](./closing-the-day.md) | Opening the drawer, No sale, blind counts, sign-offs, Close the day, the end-of-day summary |
+| [Closing the day](./closing-the-day.md) | Opening the drawer, No sale, blind counts, sign-offs, Close the day, closing with one person on, the end-of-day summary |
 | [Payouts](./payouts.md) | Owed and held, when you're paid and net-30, withdrawing, fees, reconciliation, statements and exports |
-| [Settings and inventory](./settings-and-inventory.md) | Every Settings section; tax, tips, discounts, receipts; the catalogue and importing a spreadsheet |
-| [Clear Terminal](./clear-terminal.md) | Points, the Pay case and an M2 at the table, the cash drawer, printers, tables and the wait list |
-| [Rewards and online sales](./rewards-and-online.md) | Your shop app: points, rewards, offers, your own domain, the store app; Pay with Clear on your website |
+| [Settings and inventory](./settings-and-inventory.md) | Every Settings section; tax, tips, discounts, receipts; leaving Clear; the catalogue and importing a spreadsheet |
+| [Clear Terminal](./clear-terminal.md) | Points, the Pay case and an M2 at the table, the cash drawer, printers, tables and the wait list; hardware on order |
+| [Rewards and online sales](./rewards-and-online.md) | Your shop app: points, rewards, offers, your own domain, the store app, what the add-ons cost; Pay with Clear on your website |
 
 ## Troubleshooting
 
@@ -38,10 +38,13 @@ Each guide ends with what its errors mean:
 
 A PIN lock ("Too many wrong PINs") is explained in [Staff and shifts](./staff.md#pins).
 
-## Not written yet
+## Where to find
 
-- How to install Clear for Merchants on a tablet or phone (where it's distributed)
-- Card payments while offline (store-and-forward on the M2), which the app doesn't offer yet
-- Closing with one person on (the setting is saved, but how the close follows it isn't documented)
-- Leaving Clear
-- Prices of the shop app add-ons and Clear hardware
+| Topic | Where |
+|---|---|
+| Installing Clear for Merchants on a tablet or phone | [Getting the installed app](./setting-up.md#getting-the-installed-app) |
+| Card payments while offline | [Card payments while offline](./taking-payments.md#card-payments-while-offline) |
+| Closing with one person on | [Closing with one person on](./closing-the-day.md#closing-with-one-person-on) |
+| Leaving Clear | [Leaving Clear](./settings-and-inventory.md#leaving-clear) |
+| Prices of the shop app add-ons | [What the add-ons cost](./rewards-and-online.md#what-the-add-ons-cost) |
+| Prices of Clear hardware | [Hardware on order](./clear-terminal.md#hardware-on-order) |

@@ -10,7 +10,7 @@ The fractionalization system allows asset owners to:
 - **Create Shares**: Deploy ERC-20 tokens representing fractional ownership
 - **Enable Trading**: Trade shares on decentralized exchanges
 - **Governance**: Implement approval-based asset unlocking
-- **Validation**: Ensure assets are validated before fractionalization
+- **Validation reporting**: Report an asset's validation status (`validateDeedNFTAsset`, `validateSubdivisionAsset`). `createFraction` does not require it
 
 ## 🏗️ Technical Architecture
 
@@ -25,7 +25,7 @@ The main contract that handles fractionalization operations:
 - **Approval Mechanisms**: Governance-based asset unlocking
 - **Multi-Asset Support**: Both DeedNFT and Subdivision assets
 - **Factory Integration**: Automated token deployment
-- **Validation Integration**: Asset validation before fractionalization
+- **Validation Reporting**: Views that report whether the locked asset is validated; not a precondition
 
 #### 2. FractionToken Contract (`FractionToken.sol`)
 
@@ -58,15 +58,15 @@ The fractionalization system supports:
 
 ### 1. Asset Preparation
 
-1. **Asset Validation**
-   - Asset must be validated before fractionalization
-   - Validation status verified on-chain
-   - Asset traits and metadata reviewed
+1. **What `createFraction` checks**
+   - The caller owns the DeedNFT, or the subdivision unit, being locked
+   - For a unit: the subdivision and the unit exist
+   - `totalShares` is above zero, a symbol is given, and the approval percentage is 51–100
 
-2. **Asset Requirements**
-   - Asset must be owned by caller
-   - Asset must exist and be valid
-   - Asset must meet validation criteria
+2. **What it does not check**
+   - Validation. An unvalidated asset can be fractionalized. `validateDeedNFTAsset` and
+     `validateSubdivisionAsset` report an asset's validation status for anyone who wants to check
+     before buying shares; nothing enforces it
 
 ### 2. Fraction Creation
 
@@ -164,9 +164,16 @@ struct UnlockParams {
 
 #### Unlock Conditions
 
-1. **Full Ownership**: Caller must own all shares
-2. **Approval Threshold**: Meet required approval percentage
-3. **Asset Integrity**: Asset must still be valid
+`unlockAsset` takes one of three paths:
+
+1. **No active shares**: only the collection admin can unlock.
+2. **`checkApprovals` false**: the caller must hold every active share.
+3. **`checkApprovals` true**: `_checkApproval` counts only the caller's own shares, and only if
+   `adminApprovals[caller]` is set. **Nothing in the contract sets `adminApprovals`**, so this path
+   never passes as written; an unlock today needs one of the first two.
+
+The asset's validation status is not checked on unlock. Every share is burned and the asset goes to
+`to`.
 
 ## 🔧 Technical Implementation
 

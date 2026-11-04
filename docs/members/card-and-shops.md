@@ -42,6 +42,39 @@ can't spend it twice.
 
 The Card page lists the card's own transactions. **Activity** shows everything, card and otherwise.
 
+### If your card is lost, stolen or damaged
+
+**Freeze it first.** Freezing stops new purchases on that card straight away, and it is the one step
+the app carries out today.
+
+**Replace this card** is under the card's **Details**. It offers three choices — lost, stolen or
+damaged — and says what each would do. **The app doesn't replace a card yet**: choosing one closes
+the sheet, and no card is cancelled or posted.
+
+Until it does:
+
+- **Keep the card frozen.** A frozen card stays frozen until you unfreeze it.
+- **Get another card from New card.** A new virtual card is issued at once with its own number. A
+  new physical card is posted to your home address, arrives frozen, and is activated with the last
+  four digits printed on it. Every card spends from the same limit.
+- **Dispute anything you didn't make.** See
+  [Disputes](./assurance-and-disputes.md#disputes).
+
+Freezing one card doesn't touch your other cards.
+
+### Spending limits and controls
+
+The Card page shows **Controls** — contactless, online payments, ATM withdrawals and international —
+and the card's limits per transaction and per day, with **Adjust limits** to change them.
+
+**The app doesn't apply these yet.** In this version the switches and limits change on screen only:
+they aren't saved, and the card issuer isn't told, so they don't stop a purchase. The limits shown
+are the same for every member, not ones set on your card. What your card can spend is set by your
+cash and your credit line, in the order under [What the card spends from](#what-the-card-spends-from).
+
+Clear's server can set a monthly spending limit on a card with the issuer, but the app doesn't use it
+yet. To stop a card spending at all, freeze it.
+
 ## Paying at a shop
 
 At a Clear shop you don't need the card. The shop asks for an amount and **you approve it on your own

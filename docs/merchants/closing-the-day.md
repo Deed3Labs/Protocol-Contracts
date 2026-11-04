@@ -53,6 +53,26 @@ given, cash refunds and tips paid out.
 - **Anyone on shift**, once the counts agree. A short or over drawer still needs a manager's or
   owner's sign-off.
 
+## Closing with one person on
+
+**Settings › Closing › When only one person is on** offers two choices: **One count, signed off by
+the owner next morning** (the default), or **Wait for a second person**. The choice is saved with the
+shop's settings.
+
+**The app doesn't act on this setting yet.** Whichever you pick, Close the day follows the rules
+above — two counts at close, the sign-off, and who can close — and nothing is put on the owner's Home
+the next morning, though the setting's note says it would be. So with one person on:
+
+- **With Two counts at close on**, the close waits until someone else makes the second count. The
+  same person can't count twice.
+- **With it off**, one count is enough. But if that count is short or over, it still needs a
+  sign-off from a manager or owner who didn't make the count, so a lone closer can't close a drawer
+  that doesn't match.
+- **Who can close** still applies: with Owners and managers, counter staff on their own can count
+  but not close.
+
+If you often close alone, an owner can turn off **Two counts at close**.
+
 ## Close the day
 
 Once the counts are in, Home's drawer panel offers **Close the day**. The page shows the day: what

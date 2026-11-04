@@ -8,10 +8,7 @@ allowed to do each of these is in [Governance](../governance/README.md).
 | [`deploying-contracts.md`](./deploying-contracts.md) | Deploying the contracts: scripts `00`–`24` in order, the wiring after them, pointing the apps at the addresses, handing the keys to the Safe, and upgrades |
 | [`clrusd-esa-bootstrap.md`](./clrusd-esa-bootstrap.md) | Issuing CLRUSD from an isolated `ESADepositVault`, and CCIP burn/mint pools for cross-chain. Written for the original `ClearUSD`; a note at the top lists what has changed |
 | [`api-deploy.md`](./api-deploy.md) | The API on Railway, and what it costs |
+| [`going-live.md`](./going-live.md) | Going live: what decides test or real money, each provider's sandbox and live settings, and every webhook the API takes with the signature it checks |
+| [`command-center-live-switches.md`](./command-center-live-switches.md) | The Command Center's live switches: seeding, `seed` or `live` per section, and the jobs and feeds behind the live data |
 | [Store builds](../rewards-reference/store-builds.md) | Building a shop's rewards app for the App Store and Google Play |
 | [Measuring the M2](../hardware/m2-timing.md) | Timing a table's card reader on a tablet |
-
-## To be written
-
-- Going live: environments, providers, webhooks — from the merchant pilot checklist
-- The Command Center's live switches

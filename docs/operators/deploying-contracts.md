@@ -53,7 +53,12 @@ npx hardhat run deploy/<script>.ts --network base-sepolia
 | `05_deploy_Subdivide` | `Subdivide` |
 | `06_deploy_Fractionalize` | `FractionTokenFactory`, then `Fractionalize` |
 
-`deploy/deploy_all.ts` deploys and wires the same contracts in one run.
+**Use `deploy/deploy_all.ts` for `00`–`05`.** It deploys and wires those contracts in one run, then
+`06` adds fractionalization. The numbered scripts `00`–`04` are out of date: they call roles and
+functions the current contracts don't have (for example `OPERATOR_ROLE` on `ValidatorRegistry`,
+`ADMIN_ROLE` on `DeedNFT` and `MetadataRenderer`) and would fail. What `deploy_all.ts` wires, and
+what it leaves for an admin to set, is in
+[The Deed track's contracts](../protocol/deed-track/smart-contracts.md#deployment-and-wiring).
 
 ### Reserve, pricing and the first bonds — `07`–`10`
 

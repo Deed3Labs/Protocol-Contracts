@@ -49,7 +49,14 @@ Prices are set in the billing provider (Stripe), not in this repository, so they
 The member app has pages for them — the bylaws, voting history and a ballot, and patronage — but in
 this code they are drawn from sample content: the bylaws text, the ballot and its options, past votes
 and the patronage figures are examples, and a vote cast there is not recorded anywhere. The adopted
-bylaws are not in this repository.
+bylaws are not in this repository. The sample bylaws also say that keeping a savings account in good
+standing makes someone a member; the code does not — membership is the paid-plan record described
+above.
+
+How decisions are meant to be made — the members, regional councils, the co-op and Holdings boards,
+the Delegate Assembly and the five reserved matters — is in
+[The co-op's structure](./structure.md). It is a draft of the structure as published, not binding
+until the bylaws are adopted.
 
 The Command Center has a Governance section for the co-op's own records — its legal entities, boards
 and seats, agendas, resolutions, meetings and filings. It starts with every entity marked as planned
@@ -64,4 +71,5 @@ written.
 
 - The bylaws: who may join, one member one vote, meetings, and how the bylaws are amended
 - Patronage: how any surplus is shared among members
-- Which decisions belong to the members, which to a board, and which to staff
+- Which decisions belong to the members, which to a board, and which to staff, as adopted rules. The
+  published draft is [The co-op's structure](./structure.md)

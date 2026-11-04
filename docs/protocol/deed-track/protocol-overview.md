@@ -1,249 +1,175 @@
-# Protocol Overview
+# The Deed track
 
-> **Scope.** This document covers the **Deed track** — T-Deeds, validation, subdivision and
-> fractionalization. The Clear Protocol also includes the savings (CLRUSD, ESA), credit,
-> merchant settlement and bond subsystems, which are not described here; see
-> [`../contracts/clear-contracts-build-plan.md`](../clear-contracts-build-plan.md).
+The Deed track is the part of the Clear Protocol for real-world assets. A **T-Deed** is an ERC-721
+token from `DeedNFT` (name `DeedNFT`, symbol `DEED`) that stands for one asset: land, a vehicle, an
+estate or a piece of commercial equipment. Its description lives on-chain as traits. A validator
+contract checks it against criteria for its asset type and records the result on the token. A
+validated land or estate deed can be split into ERC-1155 units, and a deed can be locked against an
+ERC-20 share token.
 
-The Deed track of the Clear Protocol is a decentralized platform for Real World Asset (RWA) tokenization, validation, and management. Built on Ethereum and Base networks, it enables the creation, validation, and trading of digital representations of real-world assets through a robust smart contract ecosystem.
+**The Deed track stands on its own.** No contract outside it reads `DeedNFT`, and the only piece it
+shares with the rest of the protocol is the optional `TokenRegistry` lookup for payment tokens
+([`token-registry.md`](../token-registry.md)). In the app's language the Clear Deed is, on the
+chain, a T-Deed ([glossary](../../overview/glossary.md)). No service mints T-Deeds yet.
 
-## 🎯 Core Mission
+Deployed addresses are in the root [`README.md`](../../../README.md#deployed-addresses) (**Deployed
+addresses**). Each contract's functions, roles and events are in
+[`smart-contracts.md`](./smart-contracts.md).
 
-The Deed track bridges the gap between traditional real-world assets and blockchain technology by providing:
-
-- **Secure Tokenization**: Convert real-world assets into tradeable digital tokens
-- **Decentralized Validation**: Community-driven asset verification and validation
-- **Transparent Ownership**: Immutable ownership records on the blockchain
-- **Fractional Ownership**: Enable REIT-style investment opportunities
-- **Asset Subdivision**: Break down large assets into manageable units
-
-## 🏗️ Architecture Overview
-
-The protocol is built on a modular architecture consisting of core contracts, extension contracts, and supporting infrastructure:
-
-### Core Contracts
-- **DeedNFT**: Core ERC721 contract representing real-world assets
-- **Validator**: Asset validation and verification system
-- **ValidatorRegistry**: Registry for managing authorized validators
-- **FundManager**: Financial operations and fee distribution
-- **MetadataRenderer**: Standardized metadata management
-- **ValidatorFactory**: Factory for deploying validator instances
-
-### Extension Contracts
-- **Subdivide**: Asset subdivision into ERC1155 units
-- **Fractionalize**: Fractional ownership via ERC20 tokens
-- **FractionToken**: ERC20 tokens representing fractional shares
-- **FractionTokenFactory**: Factory for deploying fraction tokens
-
-### Supporting Infrastructure
-- **UUPS Upgradeable Pattern**: Seamless contract upgrades
-- **Role-Based Access Control**: Comprehensive permission system
-- **Emergency Controls**: Pausable functionality for crisis management
-- **Multi-Network Support**: Ethereum and Base networks
-
-## 🔄 Asset Lifecycle
-
-The protocol supports a complete asset lifecycle from creation to trading:
-
-### 1. Asset Creation
-- **Minting**: Create DeedNFT representing real-world asset
-- **Metadata**: Rich metadata with asset-specific information
-- **Documentation**: Property documents and legal agreements
-- **Validation**: Initial validation by authorized validators
-
-### 2. Asset Management
-- **Ownership Transfer**: Secure transfer of asset ownership
-- **Metadata Updates**: Dynamic metadata updates
-- **Validation Maintenance**: Ongoing validation and verification
-- **Document Management**: Document storage and retrieval
-
-### 3. Asset Division
-- **Subdivision**: Break down assets into smaller units
-- **Fractionalization**: Create fractional ownership shares
-- **Unit Management**: Individual unit validation and transfer
-- **Share Trading**: Trade fractional shares on secondary markets
-
-### 4. Asset Trading
-- **Marketplace Integration**: Compatible with major NFT marketplaces
-- **Royalty Enforcement**: On-chain royalty payments
-- **Transfer Validation**: Secure asset transfers
-- **Compliance**: Regulatory compliance features
-
-## 🛡️ Security Model
-
-The protocol implements multiple layers of security:
-
-### Smart Contract Security
-- **Access Control**: Role-based permissions for all operations
-- **Reentrancy Protection**: Protection against reentrancy attacks
-- **Pausable Functionality**: Emergency stop mechanisms
-- **Upgrade Safety**: Secure contract upgrade patterns
-
-### Validation Security
-- **Multi-Validator Architecture**: Distributed validation system
-- **Validator Verification**: Capability and interface compliance checks
-- **Confidence Scoring**: Quantitative validation assessment
-- **Audit Trail**: Complete validation history
-
-### Financial Security
-- **Commission Controls**: Configurable platform fees
-- **Fee Distribution**: Secure fee distribution mechanisms
-- **Token Whitelisting**: Approved payment tokens only
-- **Emergency Withdrawals**: Emergency fund recovery
-
-## 🌐 Network Support
-
-The protocol operates on multiple networks:
-
-### Primary Networks
-- **Ethereum Mainnet**: Primary production network
-- **Base Mainnet**: Layer 2 for cost-effective transactions
-
-### Test Networks
-- **Sepolia Testnet**: Ethereum testnet for development
-- **Base Sepolia Testnet**: Base testnet for development
-
-### Network Features
-- **Cross-Network Compatibility**: Consistent functionality across networks
-- **Gas Optimization**: Network-specific gas optimization
-- **Fallback Support**: Multiple RPC endpoints for reliability
-
-## 📊 Asset Types
-
-The protocol supports various real-world asset types:
-
-### Land Assets
-- **Residential Properties**: Houses, apartments, condominiums
-- **Commercial Properties**: Office buildings, retail spaces
-- **Industrial Properties**: Warehouses, manufacturing facilities
-- **Agricultural Land**: Farms, ranches, agricultural properties
-
-### Vehicle Assets
-- **Automobiles**: Cars, trucks, motorcycles
-- **Commercial Vehicles**: Delivery trucks, construction vehicles
-- **Recreational Vehicles**: RVs, boats, aircraft
-- **Heavy Equipment**: Construction equipment, agricultural machinery
-
-### Estate Assets
-- **Residential Estates**: Luxury homes, mansions
-- **Commercial Estates**: Office complexes, shopping centers
-- **Industrial Estates**: Manufacturing facilities, warehouses
-- **Mixed-Use Properties**: Combined residential and commercial
-
-### Commercial Equipment
-- **Manufacturing Equipment**: Production machinery, tools
-- **Technology Equipment**: Servers, computers, networking equipment
-- **Medical Equipment**: Diagnostic equipment, treatment devices
-- **Agricultural Equipment**: Tractors, harvesters, irrigation systems
-
-## 🔧 Technical Standards
-
-The protocol adheres to established Ethereum standards:
-
-### NFT Standards
-- **ERC721**: Core NFT standard for asset representation
-- **ERC1155**: Multi-token standard for subdivision units
-- **ERC-7496**: Dynamic trait management for metadata
-- **ERC-2981**: Royalty standard for creator payments
-
-### Token Standards
-- **ERC20**: Standard for fractional ownership tokens
-- **ERC721C**: On-chain royalty enforcement
-- **ERC-5792**: Wallet-based account abstraction
-
-### Security Standards
-- **UUPS**: Universal Upgradeable Proxy Standard
-- **OpenZeppelin**: Battle-tested security libraries
-- **ReentrancyGuard**: Protection against reentrancy attacks
-- **Pausable**: Emergency stop functionality
-
-## 🎨 User Experience
-
-The protocol provides comprehensive user interfaces:
-
-### Frontend Application
-- **Modern React Interface**: Built with React, TypeScript, and Vite
-- **Wallet Integration**: Privy embedded and external wallets, with wagmi/viem underneath
-- **Multi-Network Support**: Automatic network detection and switching
-- **Real-time Updates**: Live blockchain state synchronization
-
-### Key Features
-- **Asset Minting**: Intuitive asset creation workflow
-- **Asset Viewing**: Rich metadata display with image galleries
-- **Asset Trading**: Secure transfer and marketplace integration
-- **Admin Panel**: Comprehensive administrative tools
-- **Validation Interface**: Integrated validation workflows
-
-### Mobile Support
-- **Responsive Design**: Works on desktop and mobile devices
-- **Touch Optimization**: Touch-friendly interface elements
-- **Offline Capabilities**: Limited offline functionality
-- **Progressive Web App**: PWA capabilities for mobile installation
-
-## 🚀 Future Roadmap
-
-The protocol is designed for continuous evolution:
-
-### Short-term Goals
-- **Enhanced Validation**: AI-powered validation assistance
-- **Mobile App**: Native mobile applications
-- **Advanced Analytics**: Comprehensive protocol analytics
-- **API Expansion**: Public API for third-party integrations
-
-### Long-term Vision
-- **Cross-chain Support**: Multi-blockchain asset management
-- **DeFi Integration**: DeFi protocol integrations
-- **Institutional Features**: Enterprise-grade features
-- **Global Expansion**: International compliance and support
-
-## 🤝 Community & Governance
-
-The protocol is built for community participation:
-
-### Community Features
-- **Open Source**: Fully open-source codebase
-- **Community Validation**: Community-driven validation processes
-- **Transparent Operations**: All operations are transparent and auditable
-- **Decentralized Governance**: Community-driven protocol decisions
-
-### Development
-- **Active Development**: Continuous protocol improvements
-- **Community Contributions**: Open to community contributions
-- **Security Audits**: Regular security audits and improvements
-- **Documentation**: Comprehensive documentation and guides
-
-## 📈 Economic Model
-
-The protocol implements a sustainable economic model:
-
-### Revenue Streams
-- **Validation Fees**: Fees for asset validation services
-- **Platform Commissions**: Platform fees for transactions
-- **Royalty Payments**: Creator royalty payments
-- **Premium Features**: Advanced features for power users
-
-### Token Economics
-- **Utility Tokens**: Protocol utility tokens for governance
-- **Staking Rewards**: Rewards for protocol participation
-- **Fee Distribution**: Fair distribution of protocol fees
-- **Incentive Alignment**: Aligned incentives for all participants
-
-## 🔍 Compliance & Legal
-
-The protocol is designed for regulatory compliance:
-
-### Legal Framework
-- **Operating Agreements**: Legal wrapper for asset ownership
-- **Compliance Features**: Built-in regulatory compliance
-- **Audit Trail**: Complete transaction and validation history
-- **Legal Documentation**: Comprehensive legal documentation
-
-### Regulatory Support
-- **Multi-Jurisdiction**: Support for multiple jurisdictions
-- **Compliance Tools**: Tools for regulatory compliance
-- **Reporting**: Comprehensive reporting capabilities
-- **Legal Integration**: Integration with legal systems
+| Contract | Role |
+|---|---|
+| `DeedNFT.sol` | The T-Deed. ERC-721 with ERC-7496 traits, validation status, royalties to the validator, a marketplace allow-list |
+| `Validator.sol` | Checks a deed or a unit against its asset type's criteria and writes the result back. Sets the mint fee and the royalty rate |
+| `ValidatorRegistry.sol` | Which validators exist and which are active. Activating one grants it `VALIDATOR_ROLE` on `DeedNFT` |
+| `FundManager.sol` | Takes the validator's service fee at mint, keeps a commission, holds the rest for the validator |
+| `MetadataRenderer.sol` | Builds `tokenURI` for a deed from its traits plus stored features, condition, legal details, documents and gallery |
+| `Subdivide.sol` | Splits a validated land or estate deed into ERC-1155 units, one token per unit |
+| `Fractionalize.sol` | Takes custody of a deed and issues ERC-20 shares against it |
+| `FractionToken.sol` | The ERC-20 share token, one per fraction, with a per-wallet cap |
+| `FractionTokenFactory.sol` | Clones a `FractionToken` for each fraction. Only `Fractionalize` may call it |
+| `ValidatorFactory.sol` | Meant to deploy and register new validators. Not deployed, and its `createValidator` reverts as written |
 
 ---
 
-*This overview covers the Deed track's architecture. For detailed technical documentation, see [Smart Contracts](./smart-contracts.md); for the rest of the protocol, see the [contract build plan](../clear-contracts-build-plan.md).*
+## How the contracts connect
+
+**`DeedNFT` is the hub; everything else either checks it or writes to it through a role.**
+
+- **Minting asks the validator and the registry.** `DeedNFT.mintAsset` requires
+  `ValidatorRegistry.isValidatorActive`, then asks the chosen `Validator` for `supportsAssetType`,
+  `defaultOperatingAgreement` and, if a `FundManager` is set, `getServiceFee`.
+- **The registry hands out the validator role.** `ValidatorRegistry.updateValidatorStatus` and
+  `removeValidator` call `DeedNFT.addValidator` / `removeValidator` so that the active validators
+  hold `VALIDATOR_ROLE` there and inactive ones do not. They also call
+  `FundManager.updateValidatorRoles`, which gives each active validator `FEE_MANAGER_ROLE` on the
+  `FundManager`.
+- **Validation is written back by the validator.** `Validator.validateDeed` reads the deed's traits
+  with `getTraitValue` and records the result with `DeedNFT.updateValidationStatus`.
+- **Fees route through the `FundManager`.** `mintAsset` calls `FundManager.processPayment`, which
+  only accepts calls from a `DeedNFT` on its compatible list.
+- **Metadata follows the traits.** `DeedNFT.tokenURI` asks `MetadataRenderer.tokenURI` first, and
+  every trait write calls `MetadataRenderer.syncTraitUpdate`. `setMetadataRenderer` gives the
+  renderer `VALIDATOR_ROLE` on `DeedNFT` so it can write the `customMetadata` trait back.
+- **The extensions read the deed and act for its owner.** `Subdivide` checks `DeedNFT.ownerOf`,
+  `getValidationStatus` and `getTraitValue`. `Fractionalize` moves the deed into its own custody, and
+  `FractionTokenFactory` clones the share token for it.
+
+---
+
+## The asset lifecycle
+
+```mermaid
+flowchart LR
+  M["Minter"] -->|"mintAsset"| D["T-Deed<br/>isValidated = false"]
+  V["Validator.validateDeed"] -->|"updateValidationStatus"| D
+  D -->|"createSubdivision, mintUnit<br/>(Land or Estate only)"| S["Subdivide<br/>ERC-1155 units"]
+  D -->|"createFraction"| F["Fractionalize<br/>holds the deed"]
+  F -->|"mintShares"| T["FractionToken<br/>ERC-20 shares"]
+  F -->|"unlockAsset"| O["Holder of every share"]
+```
+
+### 1. Mint
+
+**Only a `MINTER_ROLE` holder can mint, and it names the owner.**
+`mintAsset(owner, assetType, uri, definition, configuration, validatorAddress, token, salt)`:
+
+1. The validator is `validatorAddress`, or the `DeedNFT`'s default validator if that is zero. It must
+   be active in the registry, implement `IValidator`, support the asset type and have a default
+   operating agreement.
+2. If a `FundManager` is set, the caller — not the owner — pays the validator's service fee in
+   `token` through `processPayment`. If none is set, `token` must be the zero address.
+3. With a non-zero `salt` the id is `generateUniqueTokenId(owner, assetType, definition, salt)`, a
+   hash reduced to nine digits. With `salt` zero it is the next sequential id, from 1.
+4. The deed gets seven traits: `assetType`, `isValidated` (false), `operatingAgreement` (the
+   validator's default agreement URI with the token id appended), `definition`, `configuration`,
+   `validator` and `beneficiary` (the owner). `DeedNFTMinted` is emitted.
+
+Asset types are the `DeedNFT.AssetType` enum: `Land` (0), `Vehicle` (1), `Estate` (2),
+`CommercialEquipment` (3). What a validator looks for in each is under
+[land](./assets/land-assets.md), [vehicles](./assets/vehicle-assets.md),
+[estates](./assets/estate-assets.md) and [commercial equipment](./assets/commercial-equipment.md).
+
+### 2. Validate
+
+**A validator checks the deed's traits against the criteria for its asset type.**
+`Validator.validateDeed(tokenId)` needs `VALIDATOR_ROLE` on that `Validator`, and reads the deed from
+the validator's `primaryDeedNFT`. It fails — emitting `ValidationError` and writing nothing — if the
+asset type is not supported, or if a required operating agreement or definition is missing or not
+recognised. Otherwise it checks that every required trait is present and non-empty, then calls
+`DeedNFT.updateValidationStatus` with the result.
+
+- If an asset type has no criteria, `validateDeed` marks the deed valid. `setupValidationCriteria`
+  loads the built-in presets; `setValidationCriteria` sets custom ones.
+- `validateDeed` does not check which validator the deed names. Any active validator can validate
+  any deed in its primary `DeedNFT`, and the `validator` trait becomes that validator.
+- `updateMetadata` by the owner sets `isValidated` back to false and clears `validator`. `setTrait`
+  and `removeTrait` do not.
+
+The full rules are in [`validation-system.md`](./validation-system.md).
+
+### 3. Subdivide
+
+**A validated land or estate deed can be split into numbered units.** The deed's owner calls
+`Subdivide.createSubdivision` and becomes the collection admin. The deed stays with its owner:
+subdivision does not take custody. Whoever owns the deed at the time mints units with `mintUnit` or
+`batchMintUnits`. Each unit is its own ERC-1155 id, `(deedId << 128) | unitId`, with a supply of one,
+and it inherits the deed's asset type, operating agreement, definition, configuration and validator.
+Units are validated one by one with `Validator.validateSubdivisionUnit`. See
+[`subdivision.md`](./subdivision.md).
+
+### 4. Fractionalize
+
+**`createFraction` moves the deed into `Fractionalize` and issues an ERC-20 against it.** It does not
+check that the deed is validated. The caller becomes the collection admin and is the only one who can
+mint shares, up to `totalShares`. The deed comes back out through `unlockAsset`: before any shares
+are minted, to wherever the admin sends it; after, only for someone holding every minted share, whose
+shares are burned. The code also accepts a subdivision unit, but that path cannot complete as written
+— see [`smart-contracts.md`](./smart-contracts.md#fractionalize). More in
+[`fractionalization.md`](./fractionalization.md).
+
+### 5. Transfer and royalties
+
+**T-Deeds move like any ERC-721, but only an approved marketplace can move one for its owner.**
+Royalty enforcement is on from `initialize`. With it on, `approve` and `setApprovalForAll` revert
+(`"!mkt"`) for an operator that is not on the `setApprovedMarketplace` list, and so does a transfer
+sent by anyone other than the owner or an approved marketplace. Each transfer rewrites the
+`beneficiary` trait to the new owner. `royaltyInfo` names the deed's validator contract as the
+receiver, at that validator's `royaltyFeePercentage` — 5% by default, and never more.
+
+Pausing `DeedNFT` stops minting, burning and `updateMetadata`, not transfers. An owner can burn a
+deed with `burnAsset` or `burnBatchAssets`.
+
+[`asset-workflows.md`](./asset-workflows.md) walks the same lifecycle with the app in view.
+
+---
+
+## Roles
+
+**Every contract starts with its deployer holding all of its roles.** Who holds them now is in
+[Governance](../../governance/README.md).
+
+| Role | Where | Allows |
+|---|---|---|
+| `DEFAULT_ADMIN_ROLE` | `DeedNFT`, `FundManager`, `Subdivide`, `Fractionalize` | Upgrades and granting roles. On `DeedNFT`, every setting: registry, default validator, renderer, `FundManager`, minters, marketplaces, royalty enforcement, pause |
+| Owner (`Ownable`) | `Validator`, `ValidatorRegistry`, `MetadataRenderer`, `FractionTokenFactory` | Upgrades and configuration. On the registry, every registration and status change |
+| `MINTER_ROLE` | `DeedNFT` | `mintAsset` |
+| `VALIDATOR_ROLE` | `DeedNFT`, `Subdivide` | Writing validation status and traits. Granted to active validators by the registry |
+| `VALIDATOR_ROLE` | `Validator` | Calling `validateDeed` and `validateSubdivisionUnit` |
+| `CRITERIA_MANAGER_ROLE`, `METADATA_ROLE`, `FEE_MANAGER_ROLE` | `Validator` | Criteria and asset types; operating agreements; fees, royalties and payment tokens |
+| `ADMIN_ROLE`, `FEE_MANAGER_ROLE` | `FundManager` | Commission, fee receiver, compatible `DeedNFT`s; withdrawing validator fees |
+| `ADMIN_ROLE` | `Subdivide`, `Fractionalize` | Pause, and on `Subdivide` the marketplace list and granting `VALIDATOR_ROLE` |
+| Collection admin | Per subdivision or fraction | Unit metadata and traits, burnability and the unit validator; minting shares |
+
+---
+
+## Networks
+
+**The Deed track is deployed on Base Sepolia only.** `deployments/base-sepolia/` records `DeedNFT`,
+`Validator`, `ValidatorRegistry`, `FundManager`, `MetadataRenderer`, `Subdivide`, `Fractionalize`
+and `FractionTokenFactory`. `FractionToken`s are clones made per fraction. `ValidatorFactory` has no
+deploy script and is not deployed. Nothing on Base mainnet or Ethereum Sepolia belongs to the Deed
+track.
+
+How the contracts are deployed and wired, and what the scripts leave for an admin to do afterwards,
+is in [`smart-contracts.md`](./smart-contracts.md#deployment-and-wiring) and
+[Operators](../../operators/deploying-contracts.md).

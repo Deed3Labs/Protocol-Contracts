@@ -50,13 +50,57 @@ Open Settings from your avatar.
 |---|---|
 | **Account** (Personal information) | Your legal name, home address, identity status, phone and email. Your home address is where a physical card is posted. You can change your phone number with a code sent to the new one. Name and date of birth are locked once you're verified |
 | **Membership** | When you joined, and the membership agreement, bylaws, patronage, voting and Acceleration |
-| **Security** | Face ID, payment protection and an authenticator app. See [Getting started](./getting-started.md#app-lock-and-face-id) |
+| **Security** | Face ID, payment protection and an authenticator app (see [Getting started](./getting-started.md#app-lock-and-face-id)); trusted devices, login history and recovery contacts (below) |
+| **Notifications** | Switches for what reaches you (below) |
 | **Contacts** | People you send to, and partners you follow |
+| **Linked accounts** | Direct deposit and linked banks (below) |
+| **Appearance** | Light, Dusk or Dark |
 | **Advanced** | Your wallet address, downloads, and **Permissions** |
 | **Help** | Help topics and **Dispute resolution** |
 
 **Your stake in the co-op is your savings balance.** How voting, the bylaws and patronage work is in
 [Governance](../governance/README.md).
+
+### Notifications
+
+**Where they arrive.** The bell at the top of every page lists your latest notifications — money
+received, credits earned, a payment due and the like — with **Mark all read** and **Clear all**.
+Clearing one only takes it off the list: everything that moved money stays in **Activity**.
+
+Once you're signed in, the app asks your device for permission to send notifications. If you allow
+it, the most important ones also arrive as push notifications when the app is closed: money
+received, credit, milestones, payments due, your identity check and requests.
+
+**The switches in Settings → Notifications aren't saved yet.** They are grouped as Money, Credit and
+Savings, but in this version turning one off changes the screen only, and the notification still
+reaches you. To stop push notifications, turn them off for the app in your device's settings.
+
+### Linked accounts
+
+Your account and routing numbers — for direct deposit, or to push money in from your bank — are on
+Home, under your cash account's **Account details**. See
+[Adding and moving money](./adding-and-moving-money.md#your-account-details).
+
+**Settings → Linked accounts isn't connected yet.** In this version it shows sample entries — a
+direct deposit and an external bank — that are the same for every member and aren't yours, and
+**Link another account** doesn't link anything. Clear can't pull money from a bank either way.
+
+### Trusted devices, login history and recovery contacts
+
+These three rows sit under Settings → Security. **None of them is connected yet:**
+
+- **Trusted devices** and **Login history** show sample entries, not your own devices and sign-ins.
+  Their **Remove** and **Sign out everywhere** buttons do nothing.
+- **Recovery contacts** lets you pick a member, but nothing is sent to them and nothing is saved.
+
+What does work today:
+
+- **Sign out**, in the menu under your avatar, signs this device out.
+- **Turning Face ID off** in Settings → Security removes Face ID from every device on your account,
+  so a lost phone can't use it to sign in. See
+  [If you lose your phone number](./getting-started.md#if-you-lose-your-phone-number).
+- The app locks after five idle minutes, and Clear's server refuses an idle session too. See
+  [The lock](./getting-started.md#the-lock).
 
 ### Permissions
 
@@ -75,9 +119,12 @@ It also has the **Repay from USDC deposits** switch for automatic repayment. See
 - your savings and cash are paid out to you
 - your equity credits are forfeited, vested or not
 
-Nothing happens until you confirm on the next screen.
+Nothing happens until you confirm on the next screen. **The app doesn't close an account yet**: in
+this version the figures on that screen are examples rather than yours, and its **Close account**
+button does nothing.
 
 ## Related
 
 - [Savings and equity credits](./savings-and-equity-credits.md)
 - [Governance](../governance/README.md)
+- [Deeds and real-world assets](../overview/deeds-and-real-world-assets.md)

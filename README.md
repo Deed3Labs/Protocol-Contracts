@@ -631,6 +631,7 @@ Everything lives in [`docs/`](./docs/README.md), sectioned by who it is for:
 | [Members](./docs/members/README.md) | People using the member app |
 | [Merchants](./docs/merchants/README.md) | Shops taking Clear, and their staff |
 | [Investors](./docs/investors/README.md) | Financial contributors |
+| [Contributors](./docs/contributors/README.md) | People contributing land or property |
 | [Governance](./docs/governance/README.md) | How the co-op decides, and who holds which keys — the other sections link here |
 | [Developers](./docs/developers/README.md) | Building on Clear, or working in this repository |
 | [Protocol](./docs/protocol/README.md) | The contracts, including the Deed track |

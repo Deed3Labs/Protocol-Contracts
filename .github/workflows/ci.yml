@@ -112,6 +112,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: node scripts/check-doc-links.mjs
+      # docs/protocol/contracts is generated from deployments/: fail if a deployment moved and the
+      # reference didn't.
+      - run: node scripts/docs/contract-reference.mjs --check
 
   ci:
     name: ci
