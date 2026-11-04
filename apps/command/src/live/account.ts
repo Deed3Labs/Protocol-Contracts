@@ -128,16 +128,24 @@ export async function liveTerms() {
   }
 }
 
+/**
+ * Forgets everything the signed-in person's session loaded: the session, every section's data and every
+ * page's kept state (a tab, a filter, names shown for a reason), so whoever signs in next starts clean.
+ */
+function forgetAll() {
+  forgetSession();
+  forgetSections();
+  forgetKept();
+  vars.me = null;
+}
+
 export async function liveSignOut() {
   try {
     if (sessionId()) await api('DELETE', '/sessions/current');
   } catch {
     // ended already: nothing to undo
   }
-  forgetSession();
-  forgetSections();
-  forgetKept();
-  vars.me = null;
+  forgetAll();
   await privy.logout().catch(() => undefined);
 }
 
@@ -167,9 +175,9 @@ export async function liveBoot(start) {
     }
     start = '';
   }
+  // a session that ends (it expired, or was ended elsewhere) forgets as much as signing out does
   whenSessionEnds(() => {
-    forgetSession();
-    vars.me = null;
+    forgetAll();
     showLogin();
     toast('Your session ended. Sign in again.');
   });
