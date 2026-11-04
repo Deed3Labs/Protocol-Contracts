@@ -14,7 +14,8 @@
 #   3. A preview with no pull request skips, except on `dev`: demo.useclear.org and
 #      merchant.useclear.org are pinned to that branch, so it deploys like production does.
 #   4. Otherwise build only if something this app's build reads changed since the last deployment
-#      of this branch: the app's folder, the packages/* it depends on, or the root install inputs.
+#      of this branch: the app's folder, the packages/* it depends on, the root install inputs, or
+#      content it reads from elsewhere in the repo (CONTENT below: the docs site is built from docs/).
 #
 # Every input is a Vercel system env var, so a dry run is just setting them, e.g.
 #   VERCEL_ENV=preview VERCEL_GIT_COMMIT_REF=dev VERCEL_GIT_COMMIT_SHA=<sha> \
@@ -68,8 +69,14 @@ PACKAGES="$(node -e '
   console.log([...seen].sort().join(" "));
 ' "$APP")" || build "couldn't read workspace dependencies"
 
+# Content an app's build reads from outside its own folder and packages/*.
+case "$APP" in
+  apps/docs) CONTENT=(docs apps/member/public/docs deployments/base deployments/base-sepolia) ;;
+  *) CONTENT=() ;;
+esac
+
 # shellcheck disable=SC2206
-PATHS=("$APP" $PACKAGES "${ROOT_INPUTS[@]}")
+PATHS=("$APP" $PACKAGES "${ROOT_INPUTS[@]}" ${CONTENT[@]+"${CONTENT[@]}"})
 
 HEAD_SHA="$(git rev-parse --verify --quiet "$HEAD_SHA^{commit}")" || build "commit $HEAD_SHA isn't in the clone"
 has_commit() { git cat-file -e "$1^{commit}" 2>/dev/null; }

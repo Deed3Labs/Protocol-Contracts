@@ -30,6 +30,7 @@ jobs:
     outputs:
       apps: ${{ steps.filter.outputs.apps }}
       api: ${{ steps.filter.outputs.api }}
+      docs: ${{ steps.filter.outputs.docs }}
       contracts: ${{ steps.filter.outputs.contracts }}
     steps:
       - uses: actions/checkout@v7
@@ -42,9 +43,11 @@ jobs:
           match() { grep -qE "$1" changed.txt && echo true || echo false; }
           root='^(package\.json|package-lock\.json|\.github/workflows/ci\.yml)$'
           {
-            # apps/api counts: the member tests read API source.
-            echo "apps=$(match "^(apps/(member|merchant|api|rewards|pay|command)|packages)/|^(turbo\.json|tsconfig\.json|\.npmrc)$|$root")"
+            # apps/api counts: the member tests read API source. docs/ counts: the docs site is built from it.
+            content='^(docs|apps/member/public/docs|deployments/base|deployments/base-sepolia)/'
+            echo "apps=$(match "^(apps/(member|merchant|api|rewards|pay|command|docs)|packages)/|^(turbo\.json|tsconfig\.json|\.npmrc)$|$root|$content")"
             echo "api=$(match '^apps/api/')"
+            echo "docs=$(match "$content")"
             # and Build's code fingerprints: what each deployed contract compiles to (scripts/command/code-fingerprints.mjs)
             echo "contracts=$(match "^(contracts|test|deploy|deployments/base-sepolia)/|^hardhat\.config\.ts$|^scripts/command/code-fingerprints\.mjs$|^packages/command-types/src/chain/code\.json$|$root")"
           } >> "$GITHUB_OUTPUT"
@@ -77,6 +80,9 @@ jobs:
       - name: Member tests (they read apps/api source, which turbo can't see)
         if: needs.changes.outputs.api == 'true'
         run: npx turbo run test --filter=@clear/member
+      - name: Docs site tests (they read docs/, which turbo can't see)
+        if: needs.changes.outputs.docs == 'true'
+        run: npx turbo run test --filter=@clear/docs
       - name: Lint (advisory until the existing errors are fixed)
         continue-on-error: true
         run: npx turbo run lint --affected
