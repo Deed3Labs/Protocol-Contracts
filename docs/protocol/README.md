@@ -4,11 +4,11 @@ The Clear Protocol: the contracts under [`contracts/`](../../contracts/). Deploy
 the root [`README.md`](../../README.md) (**Deployed addresses**) and recorded in
 [`deployments/`](../../deployments/).
 
-**Read [the contract build plan](./clear-contracts-build-plan.md) before touching the on-chain
-code.** StableCredit as a ledger of obligations rather than a pot of money, the ESA, the yield pool,
-BurnerBonds, offers, and the connection points to the app and to Lithic.
+[The contract design](./clear-contracts-build-plan.md) explains the model behind them: StableCredit
+as a ledger of obligations rather than a pot of money, the ESA (Equity Savings Account) vault, the
+lending pool, BurnerBonds, offers, and where the contracts meet the app and the card issuer.
 
-How each part works, against the code:
+How each part works:
 
 | | |
 |---|---|
@@ -22,7 +22,7 @@ And the reasoning and reference behind them:
 
 | | |
 |---|---|
-| [`clear-contracts-build-plan.md`](./clear-contracts-build-plan.md) | The design and the reasons for it. Where it and the pages above disagree, the pages describe the code |
+| [`clear-contracts-build-plan.md`](./clear-contracts-build-plan.md) | The design and the reasons for it. For exact behaviour, the pages above are the reference |
 | [`refund-repayment-plan.md`](./refund-repayment-plan.md) | How refunds and repayments route through the PayoutPool |
 | [`token-registry.md`](./token-registry.md) | `TokenRegistry` in detail — the presence-based whitelist, and what it means for onboarding a token |
 | [`contracts/`](./contracts/README.md) | **The contract reference**: one page per deployed contract — address on each network, every function and who can call it, events, errors. Generated from [`deployments/`](../../deployments/) and checked in CI |
@@ -49,5 +49,9 @@ token — because those are on-chain identifiers. For a plain-language introduct
 
 What a validator checks, per asset type — [land](./deed-track/assets/land-assets.md),
 [vehicles](./deed-track/assets/vehicle-assets.md), [estates](./deed-track/assets/estate-assets.md),
-[commercial equipment](./deed-track/assets/commercial-equipment.md). The trait keys these list do
-not yet match the ones `MetadataRenderer` and `test/templates` use.
+[commercial equipment](./deed-track/assets/commercial-equipment.md).
+
+Each page lists the trait keys the contracts read, and the example metadata for that type in
+[`test/templates`](../../test/templates/). **Known limitation:** the templates use display labels
+(such as "Parcel Number") where the contracts read camelCase keys (`parcelNumber`), so a trait set
+under a template's label is not read.

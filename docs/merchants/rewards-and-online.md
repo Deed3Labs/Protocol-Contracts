@@ -67,7 +67,7 @@ earned when the order is paid. A reward is applied to the order before Checkout.
 
 ### Your own domain
 
-Add-on, billed with your plan.
+An add-on.
 
 1. **Your own domain › Set up**, and type the domain, for example `rewards.yourshop.com`.
 2. Add the DNS record the sheet shows where you bought the domain. If the domain is used elsewhere,
@@ -80,28 +80,13 @@ number once on your domain, because it can't share Clear's sign-in.
 
 ### Your own app in the stores
 
-Add-on, with a setup charge and then monthly. Your app, with your name and icon, in the App Store
-and Google Play. It adds push notifications, your rewards card in Apple Wallet and Google Wallet,
-and the scanner.
-
-Apple and Google require it to be published from **your own developer accounts**, so it's yours:
-
-1. Open your developer accounts: the Apple Developer Program and the Google Play Console, as a
-   business. Apple asks for a D-U-N-S number.
-2. Invite Clear as an admin on both.
-3. Clear builds and submits it: your icon, name, screenshots and listing.
-4. Clear keeps it current for as long as the add-on is on.
-
-**Start** emails Clear (`partners@useclear.org`). The sheet shows where each build stands once
-there is one.
+Not available yet.
 
 ### What the add-ons cost
 
-The app labels **Your own domain** "billed with your plan" and **Your own app in the stores** "setup,
-then monthly", without a figure. **The code doesn't set a price for either, and the app doesn't
-charge for them:** setting up a domain in Settings bills nothing, and the store app starts as an email
-to Clear. Ask Clear for the price before you start. Points, rewards and offers in your shop app
-aren't add-ons.
+Not available yet.
+
+Points, rewards and offers in your shop app aren't add-ons.
 
 ## Payment links
 
@@ -121,7 +106,7 @@ Customers can pay your online shop with Clear, and by card when Stripe is connec
 - **Testing** (test mode only): a test member that always approves, and Stripe's test card once
   cards are connected.
 - **Build with AI**: the docs as plain text, a prompt with your keys filled in for a coding
-  assistant, and an MCP server.
+  assistant, and an MCP (Model Context Protocol) server.
 
 A refund your server asks for with the secret key is approved as it's asked: the key is the shop's
 own, so nobody at the counter approves it.

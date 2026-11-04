@@ -21,7 +21,7 @@ For Clear payments, Payouts shows two balances:
   may already be **released**: money the payout pool can pay now. The rest releases on your payout
   day.
 - **The cash account** is money the shop already holds. It is the shop's own wallet, in your
-  business's name, held as USDC. From there you can withdraw it to your bank, spend it at other
+  business's name, held as USDC (a digital dollar). From there you can withdraw it to your bank, spend it at other
   Clear Partners, or receive into it.
 
 The figure at the top, **Ready to withdraw**, is what can move today: the cash account plus what's
@@ -53,7 +53,8 @@ Owners and managers can withdraw. Only an owner can add or remove the bank it go
 
 1. On **Payouts**, choose **Withdraw**.
 2. **Where is it coming from?** What you're owed, or the cash account.
-3. **Where does it end up?** Pick a destination:
+3. **Where does it end up?** Pick a destination. ACH (Automated Clearing House) is the ordinary
+   US bank-to-bank transfer.
 
 | Destination | Arrives | Fee |
 |---|---|---|
@@ -69,7 +70,7 @@ the part paid now, and the queued part lands in the cash account when it's paid.
 says money moved when it didn't: a refused transfer, or a cash account that couldn't fund it, says
 so and that nothing left.
 
-A debit card destination reads **Not set up yet** and can't be picked.
+**Withdrawing to a debit card:** Not available yet.
 
 ### Allowing Clear to settle payouts
 
@@ -95,8 +96,8 @@ fee, and the screens show the fee as the charge happens. The rates are part of y
 
 - **Stripe's processing fee**, charged by Stripe on your own Stripe account.
 - **Clear's card fee**: nothing on a card sale under $10.00; otherwise 30¢ a sale on the free
-  pay-as-you-go plan, or your plan's fee on a paid plan. It is worked out on the server on the
-  final amount, tip included, and Stripe takes it when the payment is captured.
+  pay-as-you-go plan, or your plan's fee on a paid plan. It is worked out on the final amount, tip
+  included, and Stripe takes it when the payment is captured.
 
 Each card deposit on Payouts shows the sales, Stripe's fee and Clear's fee apart, and what reached
 the bank. Disputes and other adjustments Stripe made show there too.

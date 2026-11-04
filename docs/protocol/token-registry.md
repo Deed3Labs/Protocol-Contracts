@@ -1,74 +1,62 @@
-## Token Registry
+# Token registry
 
-### Overview
+`TokenRegistry` holds token policy for the protocol in one place: which tokens are accepted, which
+are treated as stablecoins, a fallback price for each, per-chain addresses and display metadata.
+Contracts that need token policy read it from here rather than keeping their own copy.
 
-`TokenRegistry` is the protocol’s single source of truth for token onboarding and metadata. Its presence-based whitelist model defines which tokens the protocol recognizes. It centralizes:
+It covers:
 
 - Token whitelisting (presence in the registry)
 - Per-chain token addresses (chainId → address)
 - Stablecoin classification
 - Fallback pricing (USD, 18 decimals)
-- Human-readable metadata (symbol, name, decimals)
+- Display metadata (symbol, name, decimals)
 
-Downstream contracts (e.g., `AssuranceOracle`, `AssurancePool`, `Validator`, `FundManager`) read from the registry for consistent policy and safer defaults.
+## Who reads it
 
-### Why a central registry?
+| Contract | Reads | Used for |
+|---|---|---|
+| `AssuranceOracle` | `getIsWhitelisted`, `getIsStablecoin`, `getFallbackPrice`, `getWhitelistedTokens`, `hasPricingData`, `getPriceSource` | Which tokens it prices, which it treats as $1, and the fallback when no pool price is available |
+| `Validator`, `FundManager` | `getIsWhitelisted` | Accepting a token that is either on their own local list or whitelisted here |
 
-- Single source of truth: Update once, reflected everywhere.
-- Consistency: Avoids desync across contracts and deployments.
-- Operational simplicity: Easier governance, monitoring, and audits.
-- Resilience: Controlled fallback prices when market feeds fail.
-- Separation of concerns: Oracle focuses on price selection; registry holds token data.
+`AssurancePool` never reads the registry directly. It accepts a token when the oracle does, so the
+registry reaches it through the oracle. See [The reserve](./reserve.md).
 
-### Data model
+## Data model
 
-For each token (keyed by its address on this chain):
+For each token, keyed by its address on this chain:
 
-- isWhitelisted: bool (presence in the registry tracked by an index + boolean map)
-- stablecoin: bool (explicit classification for $1 semantics)
-- symbol: string (optional metadata)
-- name: string (optional metadata)
-- decimals: uint8 (optional metadata)
-- chainAddresses: mapping(uint256 chainId → address tokenOnChain)
-- fallbackPrice: uint256 (USD price with 18 decimals; stored in separate map)
+| Field | Type | Notes |
+|---|---|---|
+| Whitelisted | `bool` | Presence-based: a token is whitelisted when it is in `whitelistedList` and flagged in `isWhitelisted` |
+| Stablecoin | `bool` | The oracle prices a flagged token at $1 |
+| Fallback price | `uint256` | USD with 18 decimals, in its own mapping |
+| Chain addresses | `mapping(uint256 => address)` | The token's address on other chains |
+| Symbol, name, decimals | `string`, `string`, `uint8` | Optional metadata |
 
-Notes:
-- Whitelisting is presence-based (added to `whitelistedList` and flagged in `isWhitelisted`).
-- Fallback price defaults to 1e18 ($1) during registration if omitted.
+`getTokenInfo` returns the stored metadata. When none has been set, it reads `decimals()` from the
+token itself and returns that, with an empty symbol and name.
 
-### Core responsibilities
+## Write functions
 
-- Canonical onboarding via `registerToken(...)` (sets chain mapping, fallback price, and whitelists)
-- Updates via granular setters: metadata, stablecoin flag, additional chain mappings, and fallback price
-- Removal via `removeToken(...)` (de-lists token and clears associated data)
+Every write is `onlyOwner` (OpenZeppelin `Ownable`). The contract is a plain deployment, not an
+upgradeable proxy.
 
-### Contract interactions
+| Function | Effect |
+|---|---|
+| `registerToken(token, chainId, chainTokenAddress, fallbackPrice)` | Sets the chain address and the fallback price (`1e18`, $1, when given 0), and whitelists the token |
+| `setFallbackPrice(token, price)` | Sets the price, which must be non-zero, and whitelists the token if it is not already |
+| `batchSetFallbackPrices(tokens, prices)` | `setFallbackPrice` for each pair |
+| `setStablecoin(token, isStablecoin)` | Sets the flag. Does not whitelist |
+| `setChainAddress(token, chainId, chainTokenAddress)` | Adds or changes one chain mapping |
+| `setTokenMetadata(token, symbol, name, decimals)` | Sets the display metadata |
+| `removeToken(token)` | De-lists the token and clears its fallback price, stablecoin flag and metadata |
 
-- `AssuranceOracle`
-  - Reads `getIsWhitelisted`, `getIsStablecoin`, `getFallbackPrice`, and may prefer fallback pricing using its own policy flag.
-- `AssurancePool`
-  - Indirectly benefits from consistent token acceptance and pricing through the oracle.
-- `Validator` and `FundManager`
-  - Use `getIsWhitelisted` to expand allowed tokens alongside local policy when applicable.
+`removeToken` uses `delete` on the token's record, which in Solidity does not clear a nested
+mapping. Chain addresses set for a removed token therefore remain readable through
+`getChainAddress`, and reappear if the token is registered again.
 
-### Admin/Governance
-
-All mutating functions are owner/admin-gated. Recommended flow:
-
-1) Add a token (minimal happy path):
-   - `registerToken(token, chainId, chainTokenAddress, fallbackPrice)`
-   - If `fallbackPrice == 0`, the token defaults to $1.
-
-2) Update fields over time:
-   - `setFallbackPrice(token, price)`
-   - `setStablecoin(token, isStablecoin)`
-   - `setChainAddress(token, chainId, chainTokenAddress)`
-   - `setTokenMetadata(token, symbol, name, decimals)`
-
-3) Remove a token:
-   - `removeToken(token)`
-
-### Public read API (key calls)
+## Read functions
 
 - `getIsWhitelisted(address token) → bool`
 - `getIsStablecoin(address token) → bool`
@@ -76,22 +64,10 @@ All mutating functions are owner/admin-gated. Recommended flow:
 - `getChainAddress(address token, uint256 chainId) → address`
 - `getFallbackPrice(address token) → uint256`
 - `getWhitelistedTokens() → address[]`
-- `hasPricingData(address token) → bool`
-- `getPriceSource(address token) → string` ("stablecoin" | "fallback" | "default")
+- `hasPricingData(address token) → bool`: true with a fallback price or the stablecoin flag
+- `getPriceSource(address token) → string`: `"stablecoin"`, `"fallback"` or `"default"`
 
-### Write API (admin)
-
-- `registerToken(address token, uint256 chainId, address chainTokenAddress, uint256 fallbackPrice)`
-  - Whitelists token, sets chain address and fallback price (1e18 if zero).
-- `removeToken(address token)`
-  - Removes whitelist entry, fallback price, and all metadata/chain mappings.
-- `setStablecoin(address token, bool isStablecoin)`
-- `setTokenMetadata(address token, string symbol, string name, uint8 decimals)`
-- `setChainAddress(address token, uint256 chainId, address chainTokenAddress)`
-- `setFallbackPrice(address token, uint256 price)`
-- `batchSetFallbackPrices(address[] tokens, uint256[] prices)`
-
-### Events
+## Events
 
 - `TokenWhitelisted(token, whitelisted)`
 - `TokenStablecoinFlagUpdated(token, isStablecoin)`
@@ -99,52 +75,57 @@ All mutating functions are owner/admin-gated. Recommended flow:
 - `TokenChainAddressSet(token, chainId, chainTokenAddress)`
 - `FallbackPriceUpdated(token, newPrice)`
 
-### Typical onboarding flow
+## Onboarding a token
 
-1) Project governance decides to support token T on chain C.
-2) Registry admin calls `registerToken(T, C, T_on_C, priceOrZero)`.
-3) Oracle and other contracts immediately recognize T as whitelisted; oracle will use Uniswap first, then fallback price as needed (or prefer fallback if told to via oracle policy).
+1. The registry owner calls `registerToken(T, C, T_on_C, priceOrZero)`.
+2. If the token is a dollar stablecoin, the owner also calls `setStablecoin(T, true)`.
+3. The oracle accepts T at once. It prices it at $1 if it is flagged as a stablecoin; otherwise from
+   a Uniswap time-weighted average, falling back to the registry price, or from the registry price
+   first if the oracle's `forceRegistryFallback` is set for T. The order is in
+   [The reserve](./reserve.md#pricing--assuranceoracle).
+
+`deploy/14_register_CLRUSD_in_registry.ts` registers CLRUSD this way, with its metadata and the
+stablecoin flag.
 
 ### Examples
 
-Register a token with default $1 fallback:
+Register a token with the default $1 fallback:
 
 ```
 registerToken(0xToken, 84532, 0xTokenOnBaseSepolia, 0)
 ```
 
-Register a token with explicit fallback price:
+Register a token with an explicit fallback price:
 
 ```
 registerToken(0xToken, 84532, 0xTokenOnBaseSepolia, 2_000000000000000000) // $2.00
 ```
 
-Update fallback price later:
+Update the fallback price later:
 
 ```
 setFallbackPrice(0xToken, 1500000000000000000) // $1.50
 ```
 
-Mark a token as stablecoin:
+Mark a token as a stablecoin:
 
 ```
 setStablecoin(0xUSDS, true)
 ```
 
-Remove a token entirely:
+Remove a token:
 
 ```
 removeToken(0xToken)
 ```
 
-### Security considerations
+## Security considerations
 
-- Admin-only mutations: Ensure governance/owner roles are protected (multisig, timelocks as appropriate).
-- Fallback pricing authority: Changes affect protocol pricing when market feeds fail; audit and monitor events.
-- Chain address mappings: Incorrect addresses can mislead off-chain clients and cross-chain flows; validate before setting.
-
-### Versioning / Upgrades
-
-The registry is designed to evolve without requiring downstream changes. Adding fields or methods should preserve existing read APIs so consumers remain compatible.
-
-
+- **Owner-only writes.** Whoever owns the registry decides which tokens the oracle accepts and what
+  they are worth when market prices are unavailable. Who holds that key is in
+  [Governance](../governance/README.md).
+- **Fallback prices.** A fallback price is used whenever the oracle cannot read a pool price, and
+  always for a token the oracle forces to the registry. Watch `FallbackPriceUpdated`.
+- **Stablecoin flag.** A flagged token is valued at $1 regardless of its market price.
+- **Chain addresses.** Off-chain clients and cross-chain flows read these; a wrong address
+  misleads them. Chain addresses also survive `removeToken`, as noted above.

@@ -40,14 +40,64 @@ checks to run before pushing, and how a change gets merged.
 | | |
 |---|---|
 | [`api/local-redis.md`](./api/local-redis.md) | Redis for the API, locally, with docker-compose |
-| [`api/testing.md`](./api/testing.md) | Poking at a running API with curl |
-| [`merchant-privy-orgs.md`](./merchant-privy-orgs.md) | Why the merchant app creates four Privy objects where the member app creates one |
+| [`api/testing.md`](./api/testing.md) | Checking a running API with curl |
+| [`merchant-privy-orgs.md`](./merchant-privy-orgs.md) | How a shop maps onto a Privy organization, key quorums and an organization wallet |
 | [`merchant-contracts/CARD_FLOW.md`](../../packages/merchant-contracts/CARD_FLOW.md) | How a card sale moves through the merchant API |
-| [`integrations/lithic.md`](./integrations/lithic.md) | The banking and card rail, and the two rails it must never blur. Written before the build — the code is in `apps/api/src/services/lithic` |
+| [`integrations/lithic.md`](./integrations/lithic.md) | The banking and card rail: accounts, card authorisations, ACH, the savings sweep and reconciliation |
 | [Clear Terminal hardware](../hardware/) | The Point device API and the cash-drawer protocol, pinned to the firmware by a test |
 
 The contracts are documented in [Protocol](../protocol/README.md).
 
-## To be written
+## Where the rules live
 
-- One page per app: routes, auth, env, tests
+Some rules that read as co-op policy are constants in code, so they change only through a pull
+request. Their current values are in [Governance → Parameters](../governance/parameters.md).
+
+| Rule | Where |
+|---|---|
+| Equity credits: the savings match and its monthly cap, rent and bill credits, the on-time grace, vesting, the multiplier | Constants at the top of [`apps/api/src/services/payLedgerStore.ts`](../../apps/api/src/services/payLedgerStore.ts) (`DEPOSIT_MATCH_PER_USD`, `DEPOSIT_MATCH_MONTHLY_CAP`, `RENT_BASE_CREDITS`, `BILL_CREDIT_RATE`, `BILL_CREDIT_CAP`, `GRACE_DAYS`, `VEST_DAYS`, `MAX_MULTIPLIER`) |
+| The equity-credit threshold of each protection, and the path to the Clear Deed | `ASSURANCE` in [`apps/member/src/data/clearPlaceholder.ts`](../../apps/member/src/data/clearPlaceholder.ts), read by Savings through `SAVINGS_IN_USE` and `SAVINGS_DAY_ONE`. These are the values the app uses, although the file otherwise holds fixtures |
+| The automatic split-plan limit | [`apps/api/src/services/credit/termLimitRule.ts`](../../apps/api/src/services/credit/termLimitRule.ts) (`STARTER_CENTS`, `STEP_CENTS`, `CYCLES_PER_STEP`, `CEILING_CENTS`). Whether it runs is `AUTO_TERM_LIMITS` ([Going live → Off until set](../operators/going-live.md#off-until-set)) |
+
+## Known limitations
+
+These screens are visible in the apps but do not do what they show. Each row says what happens now
+and where the code is. Paths are relative to the app's `src/` unless they start with `apps/` or `packages/`.
+
+**Fixtures.** The member app's fixed data is
+[`apps/member/src/data/clearPlaceholder.ts`](../../apps/member/src/data/clearPlaceholder.ts). Live
+routes start from its `*_DAY_ONE` objects and replace fields as real reads arrive (see the comment
+in `pages/app/HomeRoute.tsx`). `SETTINGS`, `ASSURANCE_RESERVE`, `RESERVE_REPORTS`, `CLAIM_RECORD`,
+`CLAIM_STEPS` and `CONTACTS` are shown as they are, to every member.
+
+### Member app
+
+| Feature | Current state | Where it lives |
+|---|---|---|
+| Withdrawing to a bank | The API route works ([Going live → Bridge](../operators/going-live.md#bridge)), but no screen reaches it. Its only caller is `WithdrawModal`, opened by `openWithdraw`; only `components/app-ui/QuickActions.tsx` calls that, and nothing renders it | `withdrawToBank` in `utils/apiClient.ts`; `components/app-ui/WithdrawModal.tsx`; `context/MoneyActionsContext.tsx`; `apps/api/src/routes/withdraw.ts` |
+| Home's Add money sheet | Home renders it without `onAdd` or `onSendBack`, so neither **Add** nor the swapped **Send … to your bank** does anything | `pages/app/HomePage.tsx`; `components/clear/AddMoneyDialog.tsx` |
+| Requesting money | Send renders `RequestMoneyDialog` without `onRequest`, so its button does nothing. `createPaymentRequest` is called only by `components/app-ui/RequestModal.tsx`, which nothing opens (`openRequest` has no caller). `POST /api/requests` works: it finds the recipient by phone or email, refuses yourself, and notifies them. It stores no expiry, though the sheet says 7 days. The API has no route to list or answer a request, and no screen does | `pages/app/SendPage.tsx`; `components/clear/RequestMoneyDialog.tsx`; `apps/api/src/routes/requests.ts` |
+| Replacing a card | `ReplaceCardDialog`'s `onReplace` only closes the sheet. No card is closed or reissued | `pages/app/CardPage.tsx`; `components/clear/card/ReplaceCardDialog.tsx` |
+| Card controls (contactless, online, ATM, international) | Fixture switches held in component state. Not saved, and Lithic is not told. Lithic's real controls are freeze and a spend limit ([Lithic → Cards](./integrations/lithic.md#cards)) | `controls` in `CARD_DAY_ONE`; `components/clear/CardControlsCard.tsx` |
+| Card limits and **Adjust limits** | The per-transaction and per-day figures are the fixture's, the same for every member. `AdjustLimitsDialog`'s `onSave` sets local state only. The spend-limit route has no caller ([Lithic → Known limitations](./integrations/lithic.md#5-known-limitations)) | `perTransactionLimit`, `perDayLimit` in `CARD_DAY_ONE`; `pages/app/CardPage.tsx` |
+| Settings → Notifications | The switches are local `useState` toggles. Not saved; notifications are sent regardless | `notificationGroups` in `SETTINGS`; `pages/app/SettingsPage.tsx` |
+| Settings → Linked accounts | Fixture entries (a direct deposit and an external bank). `LinkAccountDialog` is rendered without `onConnect` or `onManual`, so **Link another account** links nothing | `linked` in `SETTINGS`; `components/clear/LinkAccountDialog.tsx` |
+| Settings → Trusted devices, Login history | Fixture entries. **Remove** and **Sign out everywhere** have no handler | `devices`, `logins`, `lastLogin` in `SETTINGS`; `components/settings/TrustedDevicesDialog.tsx`; `components/settings/LoginHistoryPanel.tsx` |
+| Settings → Recovery contacts | Lists the `CONTACTS` fixture. Choosing one sends and saves nothing. There is no recovery flow: the member-kit onboarding's `recovery` step is unreachable, because nothing passes `onRecover` | `components/clear/RecoveryContactsDialog.tsx`; `packages/member-kit/src/onboarding/OnboardingFlow.tsx` |
+| Settings → Advanced → Permissions | Rows come from the `permissions` fixture; turning one off changes the screen only. `lib/onboardingGrants.ts`, which bundles the grants, is never imported | `permissions` in `SETTINGS`; `components/settings/PermissionsPanel.tsx` |
+| Settings → Advanced downloads | **Export account data** and **Transaction history (CSV)** buttons have no handler | `components/settings/AdvancedDialog.tsx` |
+| Closing an account | Figures are the `closure` fixture. `CloseAccountDialog` is rendered without `onCloseAccount`, so **Close account** does nothing | `closure` in `SETTINGS`; `components/settings/CloseAccountDialog.tsx` |
+| The reserve's figures, reports and claim record | Fixture figures (balance, members covered, claims paid, cover ratio), the same for every member. Listed statements don't open, no reviewer is named, and **Get them by email** is not connected. `GET /api/assurance/record` returns the real claim record, and the app does not read it | `ASSURANCE_RESERVE`, `RESERVE_REPORTS`, `CLAIM_RECORD`, `CLAIM_STEPS`; `pages/app/AssuranceReservePage.tsx`, `ExplainerPage.tsx`, `ReserveReportsPage.tsx`, `ClaimPage.tsx`; `apps/api/src/routes/assurance.ts` |
+| Queued lending-pool withdrawals | Earn queues the part the pool can't pay with `LendingPool.requestWithdrawal`. Nothing in the apps calls `claimWithdrawal` or shows the queued request, so it is paid only if the member calls the contract themselves ([Settlement → LendingPool](../protocol/settlement.md#lendingpool)) | `lib/sendCalls.ts`; `components/clear/ConnectedPoolMove.tsx` |
+| **Repay … and withdraw …** | Offered on a lending-pool withdrawal that would leave the credit limit below what the member owes, when Ready to allocate covers the gap. `ConnectedPoolMove` doesn't pass `onRepayAndMove`, so the button does nothing | `components/clear/MoveMoneyDialog.tsx`; `components/clear/ConnectedPoolMove.tsx` |
+
+### Merchant app
+
+| Feature | Current state | Where it lives |
+|---|---|---|
+| Card payments while offline (store-and-forward) | Not built. `OFFLINE_BUILT = false`; when true, `offlineFor()` allows it only for a Bluetooth reader (the M2), since Tap to Pay is online-only. The Capacitor Stripe Terminal plugin in use has no offline API. **Settings › Payments › When the connection drops** shows it locked. The settings `offline_cards_enabled` and `offline_cards_limit_cents` ($500.00 default) are saved, and the API returns the limit with each card tender as `offlineLimitCents`, but nothing stores a payment. A Clear charge's **No connection** sheet says a card would be stored | `reader/platform.ts`; `settings/panes.tsx`; `charge/phone.tsx`; `apps/api/src/services/merchant/shop/shopService.ts`; `apps/api/src/services/merchant/cards/cardTenders.ts` |
+| Closing with one person on | `one_person_close` (`owner_next_morning` or `wait_for_second`) is saved with the shop's settings and read by nothing; nothing reaches the owner's Home the next morning | `apps/api/src/services/merchant/shop/shopService.ts`; the drawer close in `apps/api/src/services/merchant/drawer/` |
+| Leave Clear | `ConfirmLeaveSheet` is rendered without `onLeave`, so **Leave Clear** is disabled, and its payout and waiting figures are hard-coded. No API route ends a partnership | `pages/SettingsPage.tsx`; `settings/views.tsx` |
+| Your own app in the stores (add-on) | **Start** is a `mailto:` to `partners@useclear.org`. Nothing in the code builds or submits a store app: a build made by hand through the shop's developer accounts is recorded with `apps/api/scripts/store-build.ts`, and Settings › Shop app shows that record ([`store-builds.md`](../rewards-reference/store-builds.md)) | `settings/shopApp.tsx`; `apps/api/src/services/merchant/rewards/storeBuilds.ts` |
+| Add-on prices | **Your own domain** says "billed with your plan" and **Your own app in the stores** "setup, then monthly". No price is set for either and nothing charges for them | `settings/shopApp.tsx` |
+| Getting the installed app | Nothing sets up an App Store or Google Play release ([Setting up → The installed merchant app](./setup.md#the-installed-merchant-app)) | `apps/merchant/capacitor.config.ts`; `apps/merchant/ios`, `apps/merchant/android` |

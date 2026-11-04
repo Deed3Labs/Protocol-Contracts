@@ -25,15 +25,14 @@ T-Deed stands for one asset and carries its record with it:
 A T-Deed can be transferred to someone else, though the contract can limit which marketplaces may
 handle it. Its owner can also give it up, which removes it and its record.
 
-**Where it stands.** The Deed track is deployed on Base Sepolia, a test network, and is unaudited.
-No service mints T-Deeds yet, and the app's step after a member reaches the Clear Deed is not open.
-See [Status, security and licensing](./status-and-security.md) and
-[On-chain authority](../governance/on-chain-authority.md#the-wallets-that-do-each-job).
+**Where it stands.** The Deed track runs on Base Sepolia, a test network, and has not been audited.
+Issuing T-Deeds for real properties: Not available yet. Turning a member's progress into a recorded
+Clear Deed in the app: Not available yet. See
+[Status, security and licensing](./status-and-security.md).
 
 ## Asset types
 
-`DeedNFT` supports four kinds of asset. Each has a metadata template in `test/templates/` and a page
-on what a validator checks.
+`DeedNFT` supports four kinds of asset. Each has a page on what a validator checks.
 
 | Type | What it is | A validator checks for, by default | More |
 |---|---|---|---|
@@ -85,9 +84,8 @@ a single subdivided unit.
   (a `FractionToken`) is created for it with a fixed maximum number of shares.
 - The person who locked the asset issues the shares, and can set a limit on how many any one wallet
   may hold. Shares can be passed on like other tokens.
-- To take the asset back out, someone must hold every share, or — by a second route in the code — at
-  least the percentage chosen when it was locked (51 to 100 percent) of them themselves. Unlocking
-  cancels all the shares.
+- To take the asset back out, someone must hold every share, or, by a second route, at least the
+  percentage chosen when it was locked (51 to 100 percent). Unlocking cancels all the shares.
 - **The contracts pay nothing to share holders.** A share records part-ownership of the locked asset;
   it does not carry rent or any other payment.
 - The contract does not itself require the asset to be validated before it is locked; it lets anyone
@@ -98,14 +96,13 @@ The share tokens are ERC-20 tokens. More:
 
 ## Contributing property
 
-People who contribute land or property to the co-op's property company receive shares in that
-company. Those shares are not fraction tokens and no contract issues them; see
+People who contribute land or property to Clear Properties, the co-op's property company, receive
+shares in that company. Those shares are not tokens, and no contract issues them; see
 [Contributors](../contributors/README.md).
 
 ## Read more
 
-- [The Deed track](../protocol/README.md#the-deed-track): the protocol pages, and which of them are
-  out of date
+- [The Deed track](../protocol/README.md#the-deed-track): the full technical account
 - [Asset workflows](../protocol/deed-track/asset-workflows.md): the lifecycle, from minting through
   fractionalization
 - [Glossary](./glossary.md)

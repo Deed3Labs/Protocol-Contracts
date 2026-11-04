@@ -44,36 +44,19 @@ The Card page lists the card's own transactions. **Activity** shows everything, 
 
 ### If your card is lost, stolen or damaged
 
-**Freeze it first.** Freezing stops new purchases on that card straight away, and it is the one step
-the app carries out today.
+**Freeze it first.** Freezing stops new purchases on that card straight away, and the card stays
+frozen until you unfreeze it. Freezing one card doesn't touch your other cards.
 
-**Replace this card** is under the card's **Details**. It offers three choices — lost, stolen or
-damaged — and says what each would do. **The app doesn't replace a card yet**: choosing one closes
-the sheet, and no card is cancelled or posted.
+**Replacing a card.** Not available yet.
 
-Until it does:
+To keep spending, add another card from **New card** — see
+[Virtual and physical cards](#virtual-and-physical-cards).
 
-- **Keep the card frozen.** A frozen card stays frozen until you unfreeze it.
-- **Get another card from New card.** A new virtual card is issued at once with its own number. A
-  new physical card is posted to your home address, arrives frozen, and is activated with the last
-  four digits printed on it. Every card spends from the same limit.
-- **Dispute anything you didn't make.** See
-  [Disputes](./assurance-and-disputes.md#disputes).
-
-Freezing one card doesn't touch your other cards.
+**Dispute anything you didn't make.** See [Disputes](./assurance-and-disputes.md#disputes).
 
 ### Spending limits and controls
 
-The Card page shows **Controls** — contactless, online payments, ATM withdrawals and international —
-and the card's limits per transaction and per day, with **Adjust limits** to change them.
-
-**The app doesn't apply these yet.** In this version the switches and limits change on screen only:
-they aren't saved, and the card issuer isn't told, so they don't stop a purchase. The limits shown
-are the same for every member, not ones set on your card. What your card can spend is set by your
-cash and your credit line, in the order under [What the card spends from](#what-the-card-spends-from).
-
-Clear's server can set a monthly spending limit on a card with the issuer, but the app doesn't use it
-yet. To stop a card spending at all, freeze it.
+Not available yet.
 
 ## Paying at a shop
 
@@ -82,8 +65,9 @@ phone** — nothing is taken until you do.
 
 ### Scan the shop's code
 
-Tap **Scan** and point your camera at the code on the shop's screen. If the camera isn't available,
-type the eight-character code instead. Scanning a Clear Point's code opens that table's bill.
+Tap **Scan** and point your camera at the QR code on the shop's screen. If the camera isn't
+available, type the eight-character code instead. Scanning a Clear Point's code opens that table's
+bill.
 
 ### Show your Clear code
 
@@ -97,9 +81,9 @@ The charge shows the shop, who raised it, when, the amount and what it includes.
 question: pay now, or over time.**
 
 **Pay now** takes the whole amount from Ready to allocate, and there's nothing to clear later. Where
-the shop pays Clear a fee on it, the screen says how much. Your card cash (Spendable) is shown but
-can't pay a shop yet. If you're
-short, the screen tells you how much, and offers to add money or to pay over time instead.
+the shop pays Clear a fee on it, the screen says how much. If you're short, the screen tells you how
+much, and offers to add money or to pay over time instead. Paying a shop from your card cash
+(Spendable) is not available yet.
 
 **Pay over time** opens a plan on your term limit. Choose **Next cycle**, or **In 2**, **In 4** or
 **In 12** cycles. The sheet shows your first payment and the rate before you approve. Paying over

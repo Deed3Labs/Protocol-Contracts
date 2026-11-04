@@ -1,66 +1,46 @@
-# Docker Setup Guide
+# Redis for the API, locally
 
-## Quick Start
+The API caches prices, balances and transactions in Redis, and uses it for rate limiting. It boots
+without Redis, with a warning. For a local Redis, use the Docker Compose file in `apps/api`.
 
-### Start Redis
-```bash
-docker-compose up -d redis
-```
+## Running it
 
-### Start Redis with Management UI
-```bash
-docker-compose --profile tools up -d
-```
+From `apps/api`:
 
-This will start:
-- Redis on port 6379
-- Redis Commander (management UI) on http://localhost:8081
+| | Command |
+|---|---|
+| Start Redis | `docker compose up -d redis` |
+| Start Redis and Redis Commander | `docker compose --profile tools up -d` |
+| Stop | `docker compose down` |
+| Follow the logs | `docker compose logs -f redis` |
+| Open the Redis CLI | `docker compose exec redis redis-cli` |
 
-### Stop Services
-```bash
-docker-compose down
-```
+From the repository root, add `-f apps/api/docker-compose.yml`.
 
-### View Logs
-```bash
-docker-compose logs -f redis
-```
+Redis listens on `localhost:6379`, with append-only persistence. Redis Commander, a web UI for
+browsing the data, is at `http://localhost:8081` when started with the `tools` profile.
 
-### Access Redis CLI
-```bash
-docker-compose exec redis redis-cli
-```
+## Pointing the API at it
 
-## Redis Commander
+The API reads `REDIS_URL` first, then `REDIS_HOST`, `REDIS_PORT` (defaults `localhost` and `6379`)
+and `REDIS_PASSWORD`. `apps/api/env.example` sets `REDIS_URL` to a sample cloud address, so for
+local Redis remove that line from your `.env` or set it to `redis://localhost:6379`.
 
-Redis Commander provides a web-based UI to browse and manage your Redis data.
+## Data
 
-Access it at: http://localhost:8081
-
-## Data Persistence
-
-Redis data is persisted in a Docker volume (`redis-data`). To remove all data:
+Redis data lives in the `redis-data` Docker volume and survives `docker compose down`. To remove it:
 
 ```bash
-docker-compose down -v
+docker compose down -v
 ```
 
-## Production Considerations
+## Hosted Redis
 
-For production, consider:
-1. Setting a Redis password
-2. Using Redis Cloud or AWS ElastiCache
-3. Configuring proper backup strategies
-4. Setting up monitoring and alerts
+A deployed API uses a hosted Redis, set with `REDIS_URL`. To run the local container with a
+password, change its command in `docker-compose.yml`:
 
-### Setting Redis Password
-
-Update `docker-compose.yml`:
 ```yaml
-command: redis-server --appendonly yes --requirepass your-password-here
+command: redis-server --appendonly yes --requirepass <password>
 ```
 
-Then update your `.env`:
-```
-REDIS_PASSWORD=your-password-here
-```
+and set the same value as `REDIS_PASSWORD` in the API's `.env`.

@@ -81,10 +81,9 @@ oracle passes the pool's `onlyOperator` check.
 A token is accepted (`_isTokenAccepted`) if it is the reserve token, an oracle stablecoin, or
 whitelisted by the oracle.
 
-**Repayments fill the primary reserve to target first.** `depositRepayment` used to be a buffer
-deposit; since #806 only the part above `neededReserves()` reaches the buffer. A repayment
-therefore stops filling primary once the target is met, and an empty book (`neededReserves() == 0`)
-sends all of it to the buffer.
+**Repayments fill the primary reserve to target first.** Only the part of a repayment above
+`neededReserves()` reaches the buffer. A repayment therefore stops filling primary once the target is
+met, and an empty book (`neededReserves() == 0`) sends all of it to the buffer.
 
 ## Moving between tiers
 
@@ -122,7 +121,7 @@ has already moved the full `amount`.
 `withdraw` and `withdrawToken` take from excess only, and only for an address on the
 `withdrawalCallers` allowlist (`onlyWithdrawalCaller`, managed by `setWithdrawalCaller`, admin).
 Operator or admin access is not enough. The list is empty on a fresh deployment and no deploy script
-on this branch adds anyone.
+adds anyone.
 
 `withdrawToken` pays in the requested token when the pool has enough of it, and otherwise makes up
 the value through `_withdrawEquivalentValue`: the requested token, then `withdrawalPriority()` —
@@ -150,7 +149,7 @@ flowchart LR
   AP -. never .-> P["primary"]
 ```
 
-The pool is last in both waterfalls. A payout claim reaches it only after the yield pool, the bond
+The pool is last in both waterfalls. A payout claim reaches it only after the lending pool, the bond
 vault's deployable excess and the treasury's allowance to the PayoutPool; a maturing bond only after
 the vault's own holdings and the treasury's allowance to the vault. The treasury is the Safe:
 each contract reads `min(allowance(treasury → contract), balanceOf(treasury))`, and the Safe's
@@ -215,7 +214,7 @@ directly. Detail is in [`token-registry.md`](./token-registry.md).
 | Anyone | | Deposits, `rebalanceRTDPublic`, `repayFromPayoutPool`, `repayFromBondVault` |
 
 A token stays in the held set once it has arrived, so `setReserveToken` does not hide the outgoing
-reserve token's balance from accounting or from the payout path. Both contracts are UUPS proxies; the pool's fields added
-after its first deployment sit below every earlier one. The reserve upgrades on this branch are
-`scripts/upgrade_assurance_reserves.ts` (#806), `upgrade_reserve_draw.ts` and
-`upgrade_bond_backstops.ts` (#825).
+reserve token's balance from accounting or from the payout path. Both contracts are UUPS proxies; the
+pool's fields added after its first deployment sit below every earlier one. The upgrade scripts for
+the reserve are `scripts/upgrade_assurance_reserves.ts` (the three tiers and repayment routing),
+`upgrade_reserve_draw.ts` and `upgrade_bond_backstops.ts` (lending to the PayoutPool and BondVault).

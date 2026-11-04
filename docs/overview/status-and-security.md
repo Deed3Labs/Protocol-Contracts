@@ -18,17 +18,15 @@ nothing is real money.
 only on the test network today.
 
 Every address is listed in the root README under
-[Deployed addresses](../../README.md#deployed-addresses), and recorded in
-[`deployments/`](../../deployments/).
+[Deployed addresses](../../README.md#deployed-addresses).
 
 ## Which app
 
-`main` is the production branch and `dev` is where work lands. `demo.useclear.org`,
-`merchant.useclear.org` and `command.useclear.org` follow `dev`; the Command Center there runs on
-the test network and the providers' sandboxes.
+`demo.useclear.org`, `merchant.useclear.org` and `command.useclear.org` run on the test network,
+with the bank, identity, card and payment providers in their sandbox or test modes. Nothing there is
+real money.
 
-The card integration is sandbox only: no production card keys are in the code. The Command Center
-reads the bank, identity and payment providers in their sandbox or test modes.
+**The card is not available with real money yet.** It runs in its provider's sandbox only.
 
 Equity credits earned on a test network are recorded separately from those earned on a live one.
 
@@ -38,14 +36,15 @@ Equity credits earned on a test network are recorded separately from those earne
 - **Access control on every money path.** Contracts that move value check roles, can be paused, and
   guard against re-entry.
 - **No single key should hold the contracts.** Admin powers are meant to sit with the Ops Safe, a
-  multi-signature wallet, and each day-to-day job with its own wallet. The scripts that hand them over
-  are written and rehearsed; until they are run on a network, the deployer key holds every role
-  there. Who holds what is in [On-chain authority](../governance/on-chain-authority.md).
+  multi-signature wallet, and each day-to-day job with its own wallet. Until they are handed over on
+  a network, the deployer key holds every role there. Who holds what is in
+  [On-chain authority](../governance/on-chain-authority.md).
 - **Interfaces still move.** Contract functions and API shapes can change between versions.
 
 ## Licensing
 
-**This repository carries more than one license, and which one applies depends on the directory.**
+**Clear's source code carries more than one license, and which one applies depends on the
+directory.**
 
 | Part | License |
 |---|---|

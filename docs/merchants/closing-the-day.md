@@ -55,13 +55,9 @@ given, cash refunds and tips paid out.
 
 ## Closing with one person on
 
-**Settings › Closing › When only one person is on** offers two choices: **One count, signed off by
-the owner next morning** (the default), or **Wait for a second person**. The choice is saved with the
-shop's settings.
+A separate rule for closing alone: Not available yet.
 
-**The app doesn't act on this setting yet.** Whichever you pick, Close the day follows the rules
-above — two counts at close, the sign-off, and who can close — and nothing is put on the owner's Home
-the next morning, though the setting's note says it would be. So with one person on:
+With one person on, Close the day follows the rules above:
 
 - **With Two counts at close on**, the close waits until someone else makes the second count. The
   same person can't count twice.

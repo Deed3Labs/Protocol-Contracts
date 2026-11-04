@@ -18,9 +18,8 @@ Chrome in a browser. Signing in another tablet is in Settings › Security, not 
 
 ## Hardware on order
 
-Clear hardware is reserved on useclear.org, with a deposit. **Prices are set and shown there, at
-the time you reserve; the merchant app's code doesn't fix them.** After you reserve, the owner
-sees each line in **Settings › Devices › On order**:
+Clear hardware is reserved on useclear.org, with a deposit. Prices are shown there when you
+reserve. After you reserve, the owner sees each line in **Settings › Devices › On order**:
 
 - the deposit paid, and what is charged when it ships
 - the estimated ship month, or the date building starts once it's scheduled
@@ -29,8 +28,8 @@ sees each line in **Settings › Devices › On order**:
 **Cancel** refunds a line's deposit in full, until building starts. Clear emails you the
 date before it does. Once a line has shipped, it reads Paid in full with the total.
 
-If On order reads "Hardware orders aren't connected yet", the list can't be read from here at the
-moment; your reservation itself is unaffected.
+If On order reads "Hardware orders aren't connected yet", the list can't be shown at the moment;
+your reservation itself is unaffected.
 
 ## Points
 

@@ -45,9 +45,8 @@ Each surface reads its own file. None is committed; copy the example beside it.
 | Command | `apps/command/.env.example` → `.env` | `VITE_PRIVY_APP_ID`, `VITE_API_BASE_URL` |
 | Rewards | none | `VITE_API_BASE_URL` if the API is not on `localhost:3001` |
 
-The member app's `.env.example` files still list Reown-era variables (`VITE_APPKIT_PROJECT_ID`) and
-leave out ones the app now needs; the env table in [`apps/member/README.md`](../../apps/member/README.md)
-is the reference.
+The member app's `.env.example` files are incomplete. The env table in
+[`apps/member/README.md`](../../apps/member/README.md) is the reference.
 
 **Anything prefixed `VITE_` ends up in the browser bundle.** Never give a secret that prefix. The
 member build scans its bundle for secrets and fails if it finds one (`npm run scan:secrets`).
@@ -74,7 +73,28 @@ The apps call the API at `VITE_API_BASE_URL`, `http://localhost:3001` by default
 
 Signing in needs Privy, a backend and real accounts. To look at screens without any of that, the
 member, merchant, rewards, pay and command apps each serve a preview harness at `?preview=1` — for
-example `http://localhost:5173/?preview=1` — with placeholder data. See each app's README.
+example `http://localhost:5173/?preview=1` — drawn with fixed sample data. See each app's README.
+
+## The installed merchant app
+
+The merchant app's web build, wrapped with Capacitor for iOS and Android
+([`apps/merchant/capacitor.config.ts`](../../apps/merchant/capacitor.config.ts)): appId
+`org.useclear.merchant`, name "Clear for Merchants", native projects in `apps/merchant/ios` and
+`apps/merchant/android`. It adds the Stripe Reader M2 over Bluetooth and Tap to Pay; in a browser
+the app drives smart readers only.
+
+```bash
+npm run cap:ios       # in apps/merchant: build, sync, open in Xcode
+npm run cap:android   # build, sync, open in Android Studio
+```
+
+- **Set `VITE_API_BASE_URL` to the API's full URL at build time.** The installed app loads its pages
+  from the bundle and has no `/api` of its own.
+- **The API must allow the app's origins**: `capacitor://localhost` (iOS) and `https://localhost`
+  (Android) ([Going live → Cross-origin](../operators/going-live.md#cross-origin)).
+- **Tap to Pay on iOS needs Apple's Tap to Pay entitlement.** The iOS project has no entitlements
+  file for it.
+- Nothing sets up an App Store or Google Play release.
 
 ## Contracts
 
@@ -112,15 +132,15 @@ in `apps/command/e2e`.
 
 ## Getting a change merged
 
-- **Branches.** `main` is production; `dev` is where work lands, and what `demo.useclear.org` and
-  `merchant.useclear.org` follow. Work on a short-lived branch and open a pull request into `dev`. Delete the branch once it
-  is merged.
+- **Branches.** `main` is production; `dev` is where work lands, and what `demo.useclear.org`,
+  `merchant.useclear.org` and `command.useclear.org` follow. Work on a short-lived branch, open a pull request into `dev`, and
+  delete the branch once it is merged.
 - **The `ci` check** is what blocks a merge. It runs the affected apps' typecheck and tests, the
   Hardhat suite when contracts change, and a check that every relative link in the docs resolves
   (`node scripts/check-doc-links.mjs`). Lint runs but does not block yet.
-- **Preview builds cost money.** A branch gets Vercel previews only once it has a pull request, and
-  only for the apps it touches. Push at the end of a piece of work rather than after every commit,
-  and put `[skip preview]` in the message of a push that only touches docs. Details in
-  [`CLAUDE.md`](../../CLAUDE.md).
+- **Vercel previews** are built only for a branch with a pull request, and only for the apps it
+  touches. Push at the end of a piece of work rather than after every commit, and put
+  `[skip preview]` in the message of a push that only touches docs
+  ([Going live → Builds and deploys](../operators/going-live.md#builds-and-deploys)).
 - **Docs move with the code.** If you change an interface or a workflow, change its page in the same
   pull request.

@@ -1,328 +1,192 @@
-# Validation System
-
-The Clear Protocol's validation system ensures the authenticity, accuracy, and compliance of real-world assets before they are tokenized as DeedNFTs. This document explains how validation works from both technical and user experience perspectives.
-
-## 🎯 Overview
-
-The validation system consists of multiple layers:
-
-1. **Smart Contract Validation** - On-chain validation logic
-2. **Validator Contracts** - Specialized validation contracts for different asset types
-3. **Frontend Validation Interface** - User-friendly validation workflow
-4. **Role-Based Access Control** - Secure validation permissions
-
-## 🏗️ Technical Architecture
-
-### Core Components
-
-#### 1. Validator Contract (`Validator.sol`)
-
-The main validation contract that handles:
-
-- **Role Management**: Different roles for validators, admins, and metadata managers
-- **Validation Criteria**: Asset-specific validation requirements
-- **Metadata Management**: Operating agreements and validation documents
-- **Fee Management**: Service fees and royalty distribution
-- **Subdivision Validation**: Individual validation for subdivision units
-- **Multi-Asset Support**: Validation for both DeedNFT and Subdivision assets
-
-#### 2. Validation Roles
-
-```solidity
-VALIDATOR_ROLE        // Can perform validations
-METADATA_ROLE         // Can update metadata and documents
-CRITERIA_MANAGER_ROLE // Can update validation criteria
-FEE_MANAGER_ROLE      // Can manage fees and payments
-ADMIN_ROLE           // Administrative operations
-```
-
-#### 3. Validation Criteria Structure
-
-```solidity
-struct ValidationCriteria {
-    string[] requiredTraits;        // Required metadata traits
-    string additionalCriteria;       // Additional validation rules
-    bool requireOperatingAgreement; // Whether operating agreement is required
-    bool requireDefinition;         // Whether asset definition is required
-}
-```
-
-## 📋 Asset Validation Requirements
-
-### Land Assets
-
-**Required Traits:**
-- `location` - Geographic coordinates and address
-- `size` - Land area in square meters/feet
-- `zoning` - Zoning classification
-- `ownership` - Current ownership information
-- `title_number` - Legal title number
-
-**Additional Requirements:**
-- Property survey documents
-- Title deed verification
-- Zoning compliance certificate
-- Environmental assessment (if applicable)
-
-### Vehicle Assets
-
-**Required Traits:**
-- `make` - Vehicle manufacturer
-- `model` - Vehicle model
-- `year` - Manufacturing year
-- `vin` - Vehicle Identification Number
-- `condition` - Current condition assessment
-
-**Additional Requirements:**
-- Vehicle registration documents
-- VIN verification
-- Condition inspection report
-- Maintenance history
-- Insurance documentation
-
-### Estate Assets
-
-**Required Traits:**
-- `property_type` - Type of estate (residential/commercial)
-- `square_footage` - Total square footage
-- `bedrooms` - Number of bedrooms (residential)
-- `bathrooms` - Number of bathrooms
-- `address` - Property address
-
-**Additional Requirements:**
-- Property appraisal
-- Building inspection report
-- Certificate of occupancy
-- Property tax records
-- Insurance documentation
-
-### Commercial Equipment
-
-**Required Traits:**
-- `equipment_type` - Type of equipment
-- `manufacturer` - Equipment manufacturer
-- `model` - Equipment model
-- `serial_number` - Equipment serial number
-- `condition` - Current condition
-
-**Additional Requirements:**
-- Equipment appraisal
-- Maintenance records
-- Safety certifications
-- Warranty documentation
-- Insurance coverage
-
-## 🔄 Validation Workflow
-
-### 1. Asset Minting
-1. User selects asset type
-2. User provides basic metadata
-3. System validates required fields
-4. NFT is minted with initial status
-
-### 2. Validation Process
-1. **Validator Assignment**: Asset is assigned to appropriate validator
-2. **Document Review**: Validator reviews uploaded documents
-3. **On-Site Inspection**: Physical verification (if required)
-4. **Criteria Check**: Validator verifies against validation criteria
-5. **Status Update**: Validation status is updated on-chain
-
-### 3. Validation Statuses
-
-- **PENDING**: Asset awaiting validation
-- **VALIDATED**: Asset successfully validated
-- **REJECTED**: Asset failed validation
-- **UNDER_REVIEW**: Asset currently being reviewed
-
-### 4. Subdivision Validation Workflow
-
-1. **Subdivision Creation**
-   - DeedNFT owner creates subdivision via Subdivide contract
-   - Subdivision units are minted as ERC1155 tokens
-   - Units inherit traits from parent DeedNFT
-
-2. **Unit Validation Process**
-   - Validator calls `validateSubdivisionUnit()` for each unit
-   - Individual validation criteria applied per unit
-   - Unit-specific traits validated against criteria
-   - Validation status updated in Subdivide contract
-
-3. **Subdivision Validation Statuses**
-   - **PENDING**: Unit awaiting validation
-   - **VALIDATED**: Unit successfully validated
-   - **REJECTED**: Unit failed validation
-   - **INHERITED**: Unit inherits validation from parent DeedNFT
-
-## 🎨 User Experience Flow
-
-### For Asset Owners
-
-1. **Mint Asset**
-   - Navigate to Minting page
-   - Select asset type
-   - Fill required metadata
-   - Upload supporting documents
-   - Submit for minting
-
-2. **Track Validation**
-   - View asset in dashboard
-   - Check validation status
-   - Upload additional documents if requested
-   - Respond to validator inquiries
-
-3. **Manage Validated Assets**
-   - View validation certificate
-   - Access asset documents
-   - Transfer or sell asset
-   - Update asset information
-
-### For Validators
-
-1. **Access Validation Interface**
-   - Connect wallet with VALIDATOR_ROLE
-   - Navigate to Validation page
-   - View pending validations
-
-2. **Review Assets**
-   - Examine asset metadata
-   - Review uploaded documents
-   - Verify against validation criteria
-   - Request additional information if needed
-
-3. **Update Validation Status**
-   - Approve or reject validation
-   - Add validation notes
-   - Update asset metadata
-   - Issue validation certificate
-
-## 🔧 Technical Implementation
-
-### Frontend Validation Interface
-
-The `Validation.tsx` component provides:
-
-- **Asset Management**: View and manage all assets
-- **Validation Forms**: Structured forms for validation criteria
-- **Document Management**: Upload and manage validation documents
-- **Status Tracking**: Real-time validation status updates
-- **Role Verification**: Check user permissions for validation
-
-### Key Functions
-
-```typescript
-// Check validator permissions
-const checkValidatorPermissions = async (validatorContract, tokenId)
-
-// Update validation status
-const handleUpdateValidation = async (tokenId)
-
-// Validate deed using validator contract
-const handleValidateDeed = async (tokenId)
-
-// Manage validation documents
-const handleManageDocument = async (tokenId, docType, documentURI)
-```
-
-### Smart Contract Integration
-
-```solidity
-// Validate a deed
-function validateDeed(uint256 tokenId) external onlyRole(VALIDATOR_ROLE)
-
-// Validate a subdivision unit
-function validateSubdivisionUnit(
-    address subdivideContract,
-    uint256 deedId,
-    uint256 unitId
-) external onlyRole(VALIDATOR_ROLE)
-
-// Update validation status
-function updateValidationStatus(
-    uint256 tokenId, 
-    bool isValid, 
-    address validator
-) external onlyRole(VALIDATOR_ROLE)
-
-// Update subdivision unit validation status
-function updateUnitValidationStatus(
-    uint256 deedId,
-    uint256 unitId,
-    bool isValid,
-    address validatorAddress
-) external onlyRole(VALIDATOR_ROLE)
-
-// Set validation criteria
-function setValidationCriteria(
-    uint256 assetType,
-    string[] memory requiredTraits,
-    string memory additionalCriteria
-) external onlyRole(CRITERIA_MANAGER_ROLE)
-```
-
-## 🔒 Security Considerations
-
-### Access Control
-- Role-based permissions prevent unauthorized validation
-- Multi-signature requirements for critical operations
-- Time-locked validation periods for dispute resolution
-
-### Data Integrity
-- Immutable validation records on blockchain
-- Cryptographic verification of documents
-- Audit trail for all validation activities
-
-### Privacy Protection
-- Encrypted document storage
-- Selective disclosure of sensitive information
-- GDPR-compliant data handling
-
-## 📊 Validation Metrics
-
-### Performance Indicators
-- **Validation Success Rate**: Percentage of successful validations
-- **Average Validation Time**: Time from submission to completion
-- **Validator Performance**: Individual validator statistics
-- **Asset Type Distribution**: Breakdown by asset type
-
-### Quality Metrics
-- **Document Completeness**: Percentage of required documents provided
-- **Validation Accuracy**: Rate of correct validations
-- **Dispute Resolution**: Time to resolve validation disputes
-
-## 🚀 Best Practices
-
-### For Asset Owners
-1. **Prepare Documents**: Gather all required documentation before minting
-2. **Provide Accurate Information**: Ensure all metadata is accurate and complete
-3. **Respond Promptly**: Respond quickly to validator requests
-4. **Maintain Records**: Keep copies of all validation documents
-
-### For Validators
-1. **Follow Standards**: Adhere to validation criteria consistently
-2. **Document Decisions**: Provide clear reasoning for validation decisions
-3. **Maintain Independence**: Avoid conflicts of interest
-4. **Continuous Learning**: Stay updated on validation standards
-
-### For Administrators
-1. **Monitor Performance**: Track validation metrics and performance
-2. **Update Criteria**: Regularly review and update validation criteria
-3. **Train Validators**: Provide ongoing training for validators
-4. **Handle Disputes**: Establish clear dispute resolution procedures
-
-## 🔄 Future Enhancements
-
-### Planned Features
-- **Automated Validation**: AI-powered document verification
-- **Multi-Validator Consensus**: Multiple validators for high-value assets
-- **Real-time Monitoring**: Live tracking of validation progress
-- **Mobile Validation**: Mobile app for field validations
-
-### Integration Opportunities
-- **Government Databases**: Integration with official registries
-- **Insurance Providers**: Automated insurance verification
-- **Legal Services**: Integration with legal document verification
-- **Marketplace Integration**: Direct integration with trading platforms
+# Validation
+
+A T-Deed is minted unvalidated. A validator, which is a `Validator` contract operated by whoever
+holds its `VALIDATOR_ROLE`, checks the deed's traits against the criteria for its asset type and
+writes the result back to `DeedNFT`. What a validator reviews off-chain before it calls
+`validateDeed` (title, survey, inspection and so on) is up to that validator. The contracts record
+only the outcome.
+
+Source: [`Validator.sol`](../../../contracts/core/Validator.sol),
+[`ValidatorRegistry.sol`](../../../contracts/core/ValidatorRegistry.sol). Every function, role and
+event is in [`smart-contracts.md`](./smart-contracts.md#validator).
 
 ---
 
-*This documentation is part of the Clear Protocol docs. For questions or contributions, please contact the development team.* 
+## Validation status
+
+**A deed's status is two traits: `isValidated` (true or false) and `validator` (an address).**
+`DeedNFT.getValidationStatus(tokenId)` returns both. There are no other states. A deed that failed
+its check and one that has never been checked both read `isValidated = false`; the
+`DeedValidated(tokenId, false)` event is what tells them apart.
+
+| Event | Effect on the deed |
+|---|---|
+| `mintAsset` | `isValidated = false`, `validator` = the validator chosen at mint |
+| `Validator.validateDeed` passes or fails the criteria | `isValidated` = the result, `validator` = that `Validator` |
+| `validateDeed` stops early (see below) | Nothing written; `ValidationError` emitted |
+| Owner calls `updateMetadata` | `isValidated = false`, `validator` = zero address |
+| Validator calls `updateMetadata` | Unchanged |
+| `setTrait`, `removeTrait`, transfer | Unchanged (except as in [Known limitations](#known-limitations)) |
+
+---
+
+## What `validateDeed` checks
+
+**`Validator.validateDeed(tokenId)` reads the deed from the validator's `primaryDeedNFT`.** The
+caller needs `VALIDATOR_ROLE` on that `Validator`, and the primary `DeedNFT` must be on its
+compatible list. Then, in order:
+
+1. **Asset type.** The deed's `assetType` trait must be one this validator supports
+   (`supportedAssetTypes`). Otherwise `ValidationError`, nothing written.
+2. **Operating agreement**, if the criteria require one. The deed's `operatingAgreement` trait must
+   be present and recognised (see [Operating agreements](#operating-agreements)). Otherwise
+   `ValidationError`, nothing written.
+3. **Definition**, if the criteria require one. The `definition` trait must be a non-empty string.
+   Otherwise `ValidationError`, nothing written.
+4. **Required traits.** If the criteria list none, the deed is marked valid. Otherwise every listed
+   trait must be present on the deed as a non-empty string. The result, valid or not, is written
+   with `DeedNFT.updateValidationStatus`.
+
+Required traits are looked up by `keccak256` of their name, as separate traits. The contract does
+not parse `definition`: a value that appears only inside the definition string does not count.
+
+`DeedNFT.updateValidationStatus` accepts the write only from an address that holds `VALIDATOR_ROLE`
+on `DeedNFT`, is active in the `ValidatorRegistry`, and passes itself as `validatorAddress`.
+
+---
+
+## Validation criteria
+
+**Each `Validator` keeps one set of criteria per asset type.** A criteria set is:
+
+```solidity
+struct ValidationCriteria {
+    string[] requiredTraits;
+    string additionalCriteria;      // stored, never checked
+    bool requireOperatingAgreement;
+    bool requireDefinition;
+}
+```
+
+`setupValidationCriteria(assetTypeId)` loads a preset and marks the type supported. Each preset
+requires an operating agreement and a definition:
+
+| Asset type | Required traits |
+|---|---|
+| Land (0) | `country`, `state`, `county`, `parcelNumber`, `legalDescription` |
+| Vehicle (1) | `make`, `model`, `year`, `vin` |
+| Estate (2) | `country`, `state`, `county`, `parcelNumber`, `legalDescription` |
+| Commercial Equipment (3) | `manufacturer`, `model`, `serialNumber`, `year` |
+
+`setValidationCriteria(assetTypeId, requiredTraits, additionalCriteria, requireOperatingAgreement,
+requireDefinition)` sets custom criteria instead. `setAssetTypeSupport(assetTypeId, supported)`
+turns a type on or off without touching its criteria. All three need `CRITERIA_MANAGER_ROLE`.
+`getValidationCriteria(assetTypeId)` reads them back.
+
+A supported asset type with no criteria validates every deed. The deploy script turns on all four
+types without criteria, so until a criteria manager sets them, every deed passes.
+
+Which trait keys each asset type uses, and how they relate to the metadata, is on the asset pages:
+[land](./assets/land-assets.md), [vehicles](./assets/vehicle-assets.md),
+[estates](./assets/estate-assets.md), [commercial equipment](./assets/commercial-equipment.md).
+
+---
+
+## Operating agreements
+
+**Every deed carries an operating agreement URI, and validation can require it to be recognised.**
+At mint the agreement is the validator's `defaultOperatingAgreementUri` with the token id appended.
+
+`validateDeed` accepts an agreement that:
+
+- has a name registered for it exactly (`registerOperatingAgreement` or `setOperatingAgreementName`),
+- contains the validator's `baseUri`, or
+- contains any URI passed to `registerOperatingAgreement`.
+
+So a newly minted deed's agreement passes only if the default URI contains `baseUri` or has been
+registered with `registerOperatingAgreement`. Both registration functions need `METADATA_ROLE`.
+
+`updateMetadata` uses a stricter rule for a new agreement: it must have a name in the deed's
+validator exactly (`operatingAgreementName`). The public `validateOperatingAgreement` view uses a
+third rule: registered exactly, or containing the default URI.
+
+---
+
+## Validating subdivision units
+
+**`validateSubdivisionUnit(subdivideContract, deedId, unitId)` runs the same checks on a unit's own
+traits** and writes the result with `Subdivide.updateUnitValidationStatus`. `subdivideContract` must
+be on the validator's compatible list, and the `Validator` needs `VALIDATOR_ROLE` on `Subdivide`.
+A unit copies only `assetType`, `operatingAgreement`, `definition` and `configuration` from its
+deed, so any other required trait must be set on the unit. Details in
+[`subdivision.md`](./subdivision.md#validating-units).
+
+---
+
+## A validator's lifecycle
+
+**A validator is a `Validator` contract that the registry has activated.** Setting one up:
+
+1. **Deploy** a `Validator` behind a UUPS proxy with `initialize(baseUri, defaultOperatingAgreementUri)`.
+   The deployer becomes its owner, holds `DEFAULT_ADMIN_ROLE`, `VALIDATOR_ROLE`, `METADATA_ROLE`,
+   `CRITERIA_MANAGER_ROLE` and `FEE_MANAGER_ROLE`, and is the royalty receiver. The royalty rate
+   starts at 500 basis points (5%).
+2. **Point it at the deeds.** The owner calls `setDeedNFT(DeedNFT)`, which makes it the primary and
+   compatible contract, and `addCompatibleDeedNFT(Subdivide)` for units. `setFundManager` if mint
+   fees are charged.
+3. **Set criteria** with `setupValidationCriteria` or `setValidationCriteria`, and
+   **register the operating agreement** with `registerOperatingAgreement`.
+4. **Set fees.** `addWhitelistedToken`, `setServiceFee(token, fee)`, `setRoyaltyFeePercentage`
+   (at most 500) and `setRoyaltyReceiver`. With a `FundManager` set on `DeedNFT`, a mint reverts
+   unless the validator has a non-zero fee for the payment token.
+5. **Register and activate.** The registry owner calls `registerValidator(validator, name,
+   description, supportedAssetTypes)`, which registers it inactive, then
+   `updateValidatorStatus(validator, true)`. Activation grants the `Validator` `VALIDATOR_ROLE` on
+   `DeedNFT` and `FEE_MANAGER_ROLE` on the `FundManager`.
+6. **For units**, a `Subdivide` admin calls `addValidator(Validator)`.
+
+`DeedNFT` will mint against an active validator that implements `IValidator`, supports the asset
+type and has a default operating agreement. `setDefaultValidator` on `DeedNFT` chooses the one used
+when a mint names none.
+
+**Deactivating.** `updateValidatorStatus(validator, false)` revokes its `VALIDATOR_ROLE` on
+`DeedNFT`; mints against it and its validation writes then revert. `removeValidator` deletes the
+record as well. Deeds it already validated keep their status.
+
+`ValidatorFactory` was written to deploy and register a validator in one call, but its
+`createValidator` always reverts; see [Known limitations](#known-limitations).
+
+---
+
+## Roles
+
+| Role | On | Allows |
+|---|---|---|
+| `VALIDATOR_ROLE` | `Validator` | `validateDeed`, `validateSubdivisionUnit` |
+| `CRITERIA_MANAGER_ROLE` | `Validator` | Criteria and supported asset types |
+| `METADATA_ROLE` | `Validator` | Operating agreements |
+| `FEE_MANAGER_ROLE` | `Validator` | Payment tokens, service fees, royalty rate and receiver, `withdrawServiceFees` |
+| `DEFAULT_ADMIN_ROLE` | `Validator` | Granting every other role; `grantRole` is restricted to it |
+| Owner | `Validator` | Upgrades, URIs, which `DeedNFT`s it serves, `FundManager`, `TokenRegistry` |
+| Owner | `ValidatorRegistry` | Every registration and status change |
+| `VALIDATOR_ROLE` | `DeedNFT` | `updateValidationStatus`, plus `setTrait` and `updateMetadata` on any deed. Granted to active validators by the registry |
+
+`ADMIN_ROLE` is declared on `Validator` but granted to no one.
+
+---
+
+## Known limitations
+
+- **The deed's owner can write its validation traits.** `DeedNFT.setTrait` accepts any key from the
+  deed's owner, including `isValidated`, `validator` and `assetType`. An owner can mark their own
+  deed validated without a validator, and the `validator` trait also decides whom `royaltyInfo`
+  names as the royalty receiver.
+- **`validateDeed` does not check which validator the deed names.** Any active validator can
+  validate any deed in its primary `DeedNFT`, and becomes the deed's `validator`.
+- **Required traits must be strings.** `validateDeed` decodes each one as a string. A required trait
+  stored as a number or boolean (`setTrait` `valueType` 2 or 3) can make the call revert.
+- **`additionalCriteria` is stored and never checked.**
+- **`ValidatorFactory.createValidator` reverts.** It deploys `new Validator()` and calls `initialize`
+  on it, but `Validator`'s constructor disables initializers. Past that, it would also need to own
+  the `ValidatorRegistry` to register the new validator. It is not deployed and has no tests.
+- **No tests cover unit validation**, because no tests cover `Subdivide`.

@@ -1,48 +1,34 @@
 # Tax basics
 
-What the public website says about how a contribution is taxed. **Every statement on this page is the
-website's description, not advice, and is marked for counsel.** No contract in this repository does
-anything about tax. The website itself says it is not a contributor's tax adviser, that it describes
-how the structure works rather than anyone's situation, and that a contributor should bring their own
-CPA. Not an offer, and not tax or legal advice; see the notice in the [section index](./README.md).
-[COUNSEL TO REVIEW]
+**Clear is not a contributor's tax adviser.** Nothing here is advice about anyone's situation or a
+statement of how any contribution is taxed. Bring your own CPA: documents are sent to a contributor's
+advisers. Nothing here is an offer either; see [Contributors](./README.md).
 
-## Section 721
+## What happens, mechanically
 
-**The website says a contribution is made under section 721**, and that under section 721,
-contributing property to a partnership in exchange for an interest in it is not a taxable event.
-[COUNSEL TO REVIEW]
+These are the facts of the structure that a tax adviser will want to know:
 
-It contrasts this with selling, where it says depreciation recapture, capital gains and state tax
-fall due together, in the year of the sale. [COUNSEL TO REVIEW]
+- **No buyer.** The deed goes into a nominee trust, with Clear Properties as its beneficiary, and
+  the contributor receives shares in Clear Properties.
+- **Nothing is settled in cash.** Shares are issued one per dollar of appraised value, and no cash is
+  paid either way to balance the exchange.
+- **Tax distributions are required.** The agreement that governs the shares requires them. The
+  agreement is not public.
 
-## No boot
+See [How contributing works](./how-contributing-works.md).
 
-**The website says nothing is settled in cash, so there is no boot.** Shares are issued by value and
-nothing is trued up with cash. [COUNSEL TO REVIEW]
+## How a contribution is taxed
 
-## The deferred gain
-
-**The website says the gain is deferred, not removed.** The deferred gain still exists, and comes due
-if the contributor ever sells the shares. [COUNSEL TO REVIEW]
-
-## The K-1
-
-The website says a contributor receives a K-1 rather than a 1099, that it arrives later than a 1099,
-and that an accountant will charge to handle it. [COUNSEL TO REVIEW]
-
-It says the agreement requires tax distributions, so that no holder receives a K-1 for income they
-did not receive in cash. [COUNSEL TO REVIEW]
+It depends on the contributor's situation: whether tax is due when the property goes in, which tax
+forms a holder receives, and what happens if the shares are ever sold. Take these questions to your
+own tax adviser.
 
 ## The holding period
 
-**The website says a contribution is designed to be held.** It says anti-abuse rules make the
-deferral depend on not moving property in and out every couple of years, that those rules look at a
-window of seven years rather than months, and that someone planning to trade property every couple of
-years should not use this structure. [COUNSEL TO REVIEW]
+**A contribution is designed to be held.** If you plan to trade property every couple of years, this
+structure is not for you.
 
-## What is not covered
+## What to take to your own adviser
 
-Anything specific to a contributor's own situation: their basis, any debt on the property, state
-rules, depreciation already taken, or what happens on a later sale or on death. The website covers
-none of these, and neither does this page. [COUNSEL TO REVIEW]
+Anything specific to your own situation: your basis, any debt on the property, state rules,
+depreciation already taken, and what happens on a later sale or on death.

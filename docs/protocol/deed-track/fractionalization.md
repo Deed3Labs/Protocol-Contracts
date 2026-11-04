@@ -1,444 +1,153 @@
-# Asset Fractionalization System
+# Fractionalization
 
-The Clear Protocol's fractionalization system enables asset owners to convert their DeedNFTs and Subdivision units into tradeable ERC-20 shares, providing liquidity and enabling fractional ownership. This document explains the fractionalization functionality, workflows, and technical implementation.
+`Fractionalize` takes custody of a T-Deed and issues an ERC-20 share token against it. Each
+fraction has an id, from 1, and its own `FractionToken`, cloned by `FractionTokenFactory`. The deed
+comes back out through `unlockAsset`, to whoever holds every minted share.
 
-## 🎯 Overview
+Source: [`Fractionalize.sol`](../../../contracts/extensions/Fractionalize.sol),
+[`FractionToken.sol`](../../../contracts/core/FractionToken.sol),
+[`FractionTokenFactory.sol`](../../../contracts/core/factories/FractionTokenFactory.sol). Every
+function, role and event is in [`smart-contracts.md`](./smart-contracts.md#fractionalize).
 
-The fractionalization system allows asset owners to:
-
-- **Lock Assets**: Secure custody of DeedNFTs and Subdivision units
-- **Create Shares**: Deploy ERC-20 tokens representing fractional ownership
-- **Enable Trading**: Trade shares on decentralized exchanges
-- **Governance**: Implement approval-based asset unlocking
-- **Validation reporting**: Report an asset's validation status (`validateDeedNFTAsset`, `validateSubdivisionAsset`). `createFraction` does not require it
-
-## 🏗️ Technical Architecture
-
-### Core Components
-
-#### 1. Fractionalize Contract (`Fractionalize.sol`)
-
-The main contract that handles fractionalization operations:
-
-- **Asset Locking**: Secure asset custody during fractionalization
-- **ERC-20 Shares**: Standard token implementation for shares
-- **Approval Mechanisms**: Governance-based asset unlocking
-- **Multi-Asset Support**: Both DeedNFT and Subdivision assets
-- **Factory Integration**: Automated token deployment
-- **Validation Reporting**: Views that report whether the locked asset is validated; not a precondition
-
-#### 2. FractionToken Contract (`FractionToken.sol`)
-
-ERC-20 token implementation for fraction shares:
-
-- **Standard ERC-20**: Full ERC-20 compliance
-- **Minting Control**: Restricted minting to fractionalize contract
-- **Burning Support**: Optional burning functionality
-- **Wallet Limits**: Configurable maximum shares per wallet
-- **Access Control**: Role-based permissions
-
-#### 3. FractionTokenFactory Contract (`FractionTokenFactory.sol`)
-
-Factory contract for deploying FractionToken instances:
-
-- **Clone Pattern**: Gas-efficient token deployment
-- **Standardized Setup**: Consistent token configuration
-- **Cost Optimization**: Minimal deployment costs
-- **Template System**: Reusable token templates
-
-### Supported Asset Types
-
-The fractionalization system supports:
-
-- **DeedNFT Assets**: Direct fractionalization of DeedNFTs
-- **Subdivision Assets**: Fractionalization of subdivision units
-- **All Asset Types**: Land, Estate, Vehicle, Commercial Equipment
-
-## 📋 Fractionalization Workflow
-
-### 1. Asset Preparation
-
-1. **What `createFraction` checks**
-   - The caller owns the DeedNFT, or the subdivision unit, being locked
-   - For a unit: the subdivision and the unit exist
-   - `totalShares` is above zero, a symbol is given, and the approval percentage is 51–100
-
-2. **What it does not check**
-   - Validation. An unvalidated asset can be fractionalized. `validateDeedNFTAsset` and
-     `validateSubdivisionAsset` report an asset's validation status for anyone who wants to check
-     before buying shares; nothing enforces it
-
-### 2. Fraction Creation
-
-#### Creation Process
-
-```solidity
-function createFraction(FractionCreationParams calldata params) external
+```mermaid
+flowchart LR
+  O["Deed owner"] -->|"createFraction"| F["Fractionalize<br/>holds the deed"]
+  F -->|"createFractionToken"| T["FractionToken<br/>(clone)"]
+  F -->|"mintShares<br/>(collection admin)"| H["Share holders"]
+  H -->|"unlockAsset<br/>(holder of every share)"| R["Deed sent to 'to'"]
 ```
-
-#### Parameters
-
-```solidity
-struct FractionCreationParams {
-    FractionAssetType assetType;     // DeedNFT or SubdivisionNFT
-    uint256 originalTokenId;        // ID of the asset to fractionalize
-    string name;                    // Name of the fraction collection
-    string description;             // Description of the fraction
-    string symbol;                  // Trading symbol for shares
-    string collectionUri;           // Base URI for metadata
-    uint256 totalShares;            // Total number of shares to create
-    bool burnable;                  // Whether shares can be burned
-    uint256 approvalPercentage;     // Percentage needed for unlocking
-}
-```
-
-#### Asset Locking
-
-1. **Asset Transfer**: Asset is transferred to Fractionalize contract
-2. **Custody Verification**: Asset is locked and cannot be transferred
-3. **Ownership Record**: Original owner retains administrative rights
-
-### 3. Token Deployment
-
-#### Factory Integration
-
-```solidity
-function createFractionToken(
-    uint256 fractionId,
-    string memory name,
-    string memory symbol,
-    uint256 maxSharesPerWallet,
-    bool burnable
-) external returns (address tokenAddress)
-```
-
-#### Token Configuration
-
-- **Name and Symbol**: Set during creation
-- **Max Shares Per Wallet**: Configurable limit
-- **Burning**: Optional burning functionality
-- **Access Control**: Restricted minting and burning
-
-### 4. Share Management
-
-#### Minting Shares
-
-```solidity
-// Mint single share
-function mintShares(uint256 fractionId, uint256 amount, address to) external
-
-// Batch mint shares
-function batchMintShares(BatchMintParams calldata params) external
-```
-
-#### Share Operations
-
-```solidity
-// Burn shares (if enabled)
-function burnShares(uint256 fractionId, uint256 amount) external
-
-// Check wallet limits
-function canReceiveShares(uint256 fractionId, address account) external view returns (bool)
-
-// Get voting power
-function getVotingPower(uint256 fractionId, address account) external view returns (uint256)
-```
-
-### 5. Asset Unlocking
-
-#### Unlock Process
-
-```solidity
-function unlockAsset(UnlockParams calldata params) external
-```
-
-#### Unlock Parameters
-
-```solidity
-struct UnlockParams {
-    uint256 fractionId;    // ID of the fraction
-    address to;           // Recipient of unlocked asset
-    bool checkApprovals;  // Whether to check approval threshold
-}
-```
-
-#### Unlock Conditions
-
-`unlockAsset` takes one of three paths:
-
-1. **No active shares**: only the collection admin can unlock.
-2. **`checkApprovals` false**: the caller must hold every active share.
-3. **`checkApprovals` true**: `_checkApproval` counts only the caller's own shares, and only if
-   `adminApprovals[caller]` is set. **Nothing in the contract sets `adminApprovals`**, so this path
-   never passes as written; an unlock today needs one of the first two.
-
-The asset's validation status is not checked on unlock. Every share is burned and the asset goes to
-`to`.
-
-## 🔧 Technical Implementation
-
-### Data Structures
-
-#### Fraction Information
-
-```solidity
-struct FractionInfo {
-    string name;                           // Collection name
-    string description;                    // Collection description
-    string symbol;                        // Trading symbol
-    string collectionUri;                 // Base URI for metadata
-    uint256 totalShares;                  // Total number of shares
-    uint256 activeShares;                 // Currently minted shares
-    uint256 maxSharesPerWallet;           // Maximum shares per wallet
-    uint256 requiredApprovalPercentage;   // Percentage needed for unlocking
-    bool isActive;                        // Operational status
-    bool burnable;                        // Whether shares can be burned
-    FractionAssetType assetType;          // Type of locked asset
-    uint256 originalTokenId;              // ID of locked NFT
-    address collectionAdmin;              // Admin address
-    address tokenAddress;                 // ERC-20 token address
-    mapping(address => bool) transferApprovals;  // Transfer approvals
-    mapping(address => bool) adminApprovals;     // Admin approvals
-}
-```
-
-#### Asset Types
-
-```solidity
-enum FractionAssetType { 
-    DeedNFT,        // Direct DeedNFT fractionalization
-    SubdivisionNFT  // Subdivision unit fractionalization
-}
-```
-
-### Asset Validation
-
-#### DeedNFT Validation
-
-```solidity
-function validateDeedNFTAsset(uint256 fractionId) external view returns (bool, string memory)
-```
-
-- **Existence Check**: Verify DeedNFT exists
-- **Validation Status**: Check if DeedNFT is validated
-- **Asset Type**: Verify asset type and capabilities
-- **Validator Info**: Get validator information
-
-#### Subdivision Validation
-
-```solidity
-function validateSubdivisionAsset(uint256 fractionId) external view returns (bool, string memory)
-```
-
-- **Subdivision Check**: Verify subdivision exists
-- **Unit Validation**: Check unit validation status
-- **Asset Type**: Verify unit asset type
-- **Validator Info**: Get validator information
-
-### Trait Management
-
-#### DeedNFT Traits
-
-```solidity
-// Get DeedNFT trait
-function getDeedNFTAssetTrait(uint256 fractionId, bytes32 traitKey) external view returns (bytes memory)
-
-// Get all DeedNFT trait keys
-function getDeedNFTAssetTraitKeys(uint256 fractionId) external view returns (bytes32[] memory)
-```
-
-#### Subdivision Traits
-
-```solidity
-// Get subdivision trait
-function getSubdivisionAssetTrait(uint256 fractionId, bytes32 traitKey) external view returns (bytes memory)
-
-// Get all subdivision trait keys
-function getSubdivisionAssetTraitKeys(uint256 fractionId) external view returns (bytes32[] memory)
-```
-
-### Information Retrieval
-
-#### Fraction Information
-
-```solidity
-// Basic fraction info
-function getFractionBasicInfo(uint256 fractionId) external view returns (FractionBasicInfo memory)
-
-// Extended fraction info
-function getFractionExtendedInfo(uint256 fractionId) external view returns (FractionExtendedInfo memory)
-
-// Ownership info
-function getFractionOwnershipInfo(uint256 fractionId) external view returns (FractionOwnershipInfo memory)
-
-// Token address
-function getFractionToken(uint256 fractionId) external view returns (address)
-```
-
-#### Asset Information
-
-```solidity
-// Comprehensive asset info
-function getAssetInformation(uint256 fractionId) external view returns (
-    string memory assetType,
-    bool isValidated,
-    address validator,
-    string memory metadata
-)
-```
-
-## 🎨 User Experience
-
-### For Asset Owners
-
-1. **Prepare Asset**
-   - Ensure asset is validated
-   - Gather required information
-   - Plan fraction structure
-
-2. **Create Fraction**
-   - Navigate to fractionalization interface
-   - Select asset to fractionalize
-   - Configure fraction parameters
-   - Deploy fraction contract
-
-3. **Manage Shares**
-   - Mint shares to addresses
-   - Monitor share distribution
-   - Handle administrative tasks
-
-4. **Unlock Asset**
-   - Collect required approvals
-   - Meet unlock conditions
-   - Retrieve original asset
-
-### For Share Holders
-
-1. **Receive Shares**
-   - Shares are minted to specified addresses
-   - Shares appear as ERC-20 tokens
-   - Standard wallet integration
-
-2. **Trade Shares**
-   - Transfer shares to other addresses
-   - Trade on decentralized exchanges
-   - Participate in governance
-
-3. **Governance Participation**
-   - Vote on asset unlocking
-   - Approve administrative actions
-   - Participate in decision making
-
-### For Validators
-
-1. **Validate Assets**
-   - Review asset before fractionalization
-   - Verify validation status
-   - Ensure compliance with criteria
-
-2. **Monitor Fractions**
-   - Track fraction performance
-   - Monitor asset integrity
-   - Handle validation disputes
-
-## 🔒 Security Considerations
-
-### Asset Security
-
-- **Secure Custody**: Assets are locked in contract
-- **Ownership Verification**: Only original owner can unlock
-- **Validation Requirements**: Assets must be validated
-
-### Share Security
-
-- **Minting Control**: Restricted to authorized contracts
-- **Burning Control**: Optional burning with restrictions
-- **Transfer Limits**: Configurable wallet limits
-
-### Governance Security
-
-- **Approval Mechanisms**: Multi-signature requirements
-- **Threshold Settings**: Configurable approval percentages
-- **Time Locks**: Optional time delays for decisions
-
-## 📊 Performance Metrics
-
-### Gas Optimization
-
-| Operation | Gas Cost | Notes |
-|-----------|----------|-------|
-| Create Fraction | ~300,000 gas | One-time setup cost |
-| Mint Shares | ~100,000 gas | Per share minting |
-| Transfer Shares | ~35,000 gas | Standard ERC-20 transfer |
-| Burn Shares | ~50,000 gas | Per share burning |
-| Unlock Asset | ~150,000 gas | Asset retrieval cost |
-
-### Storage Efficiency
-
-- **Optimized Data Structures**: Efficient storage patterns
-- **Batch Operations**: Reduced gas costs for multiple operations
-- **Lazy Loading**: On-demand data loading
-- **Compression**: Data compression where applicable
-
-## 🔄 Integration Points
-
-### With DeedNFT
-
-- **Asset Locking**: DeedNFTs are locked during fractionalization
-- **Trait Access**: Fractionalize contract can access DeedNFT traits
-- **Validation Integration**: Uses same validation system
-
-### With Subdivide
-
-- **Unit Fractionalization**: Subdivision units can be fractionalized
-- **Trait Inheritance**: Units inherit traits from parent DeedNFT
-- **Validation Requirements**: Units must be validated
-
-### With Validator
-
-- **Asset Validation**: Assets must be validated before fractionalization
-- **Criteria Application**: Validation criteria applied to assets
-- **Status Verification**: Validation status checked before locking
-
-## 🚀 Best Practices
-
-### For Asset Owners
-
-1. **Plan Fractionalization**: Carefully plan share structure
-2. **Set Clear Rules**: Define governance rules clearly
-3. **Monitor Performance**: Track fraction performance
-4. **Handle Governance**: Participate in decision making
-
-### For Share Holders
-
-1. **Understand Rights**: Know your rights and responsibilities
-2. **Participate in Governance**: Vote on important decisions
-3. **Monitor Performance**: Track fraction performance
-4. **Trade Responsibly**: Understand market dynamics
-
-### For Developers
-
-1. **Interface Compliance**: Implement all required interface functions
-2. **Error Handling**: Provide clear error messages and handling
-3. **Gas Optimization**: Optimize gas usage for common operations
-4. **Testing**: Comprehensive testing of all functionality
-
-## 🔄 Future Enhancements
-
-### Planned Features
-
-- **Automated Governance**: AI-powered decision making
-- **Multi-Asset Fractions**: Fractionalize multiple assets together
-- **Real-time Monitoring**: Live tracking of fraction performance
-- **Mobile Support**: Mobile app for fraction management
-
-### Integration Opportunities
-
-- **DeFi Integration**: Integration with DeFi protocols
-- **Marketplace Integration**: Direct integration with trading platforms
-- **Legal Services**: Integration with legal document verification
-- **Insurance Providers**: Automated insurance verification
 
 ---
 
-*This documentation is part of the Clear Protocol docs. For questions about fractionalization functionality, please contact the development team.*
+## Creating a fraction
+
+**`createFraction(params)` moves the asset into `Fractionalize` and creates its share token.** The
+caller becomes the fraction's collection admin.
+
+`params` is a `FractionCreationParams`:
+
+| Field | Meaning |
+|---|---|
+| `assetType` | `DeedNFT` (0) or `SubdivisionNFT` (1) |
+| `originalTokenId` | The deed id, or a unit's ERC-1155 id `(deedId << 128) \| unitId` |
+| `name`, `symbol` | The share token's ERC-20 name and symbol. `symbol` must not be empty |
+| `description`, `collectionUri` | Stored on the fraction and returned by `getFractionExtendedInfo` |
+| `totalShares` | The most shares that can ever be minted. Must be above zero |
+| `burnable` | Whether shares can be burned. Fixed for the life of the fraction |
+| `approvalPercentage` | 51–100. Stored as `requiredApprovalPercentage`; see [Known limitations](#known-limitations) |
+
+What `createFraction` checks:
+
+- The caller owns the asset. For a unit, the subdivision is active and the unit id is below its
+  `totalUnits`.
+- `totalShares`, `symbol` and `approvalPercentage`, as above.
+
+What it does not check:
+
+- **Validation.** An unvalidated deed can be fractionalized. `validateDeedNFTAsset` and
+  `validateSubdivisionAsset` report a locked asset's validation status; nothing requires it.
+- **An active subdivision.** A deed with one can still be locked. While `Fractionalize` holds the
+  deed, no one can mint more units or deactivate the subdivision, because both follow the deed's
+  owner.
+
+**Moving the deed.** `Fractionalize` calls `DeedNFT.transferFrom`, so the owner must approve it
+first. While `DeedNFT` enforces royalties, which it does from `initialize`, both that approval and
+the transfer revert unless `Fractionalize` is on `DeedNFT`'s approved-marketplace list
+(`setApprovedMarketplace(Fractionalize, true)`).
+
+**The share token.** `FractionTokenFactory.createFractionToken` clones the `FractionToken`
+implementation and initializes it with `Fractionalize` as its minter, the fraction's name and
+symbol, `burnable`, and a per-wallet cap equal to `totalShares`. Events: `FractionCreated`,
+`AssetLocked`.
+
+---
+
+## Minting and burning shares
+
+**Only the collection admin mints, and never more than `totalShares` in all.**
+
+```solidity
+function mintShares(uint256 fractionId, uint256 amount, address to) external
+function batchMintShares(BatchMintParams calldata params) external // fractionId, amounts[], recipients[]
+```
+
+- A zero recipient means the caller.
+- `amount` must be above zero, and `activeShares + amount` must not exceed `totalShares`.
+- The recipient's balance after minting must not exceed the per-wallet cap. The cap is
+  `totalShares`, so one wallet can hold every share.
+- Each mint adds to `activeShares` and emits `SharesMinted`.
+
+**Burning.** `burnShares(fractionId, amount)` burns the caller's shares through the token's
+`burnFrom` and reduces `activeShares`. It needs `burnable`. A holder can also call
+`FractionToken.burn` directly, but that leaves `activeShares` unchanged; see
+[Known limitations](#known-limitations).
+
+**Transfers.** Shares are ordinary ERC-20 tokens. `transfer` and `transferFrom` revert if the
+recipient would end up above the per-wallet cap.
+
+---
+
+## Unlocking the deed
+
+**`unlockAsset(params)` ends the fraction and sends the asset to `params.to`.** `params` is an
+`UnlockParams`: `fractionId`, `to` (not zero) and `checkApprovals`.
+
+| State | Who can unlock |
+|---|---|
+| No shares minted (`activeShares == 0`) | The collection admin only |
+| Shares minted, `checkApprovals` false | A caller holding every minted share (`getVotingPower == activeShares`) |
+| Shares minted, `checkApprovals` true | No one; the check needs an approval nothing can set |
+
+On unlock the fraction is marked inactive, every share the caller holds is burned, and the asset is
+transferred to `to`. Validation status is not checked. Event: `AssetUnlocked`.
+
+---
+
+## Reading a fraction
+
+| Function | Returns |
+|---|---|
+| `getFractionBasicInfo(fractionId)` | Name, symbol, `totalShares`, `activeShares`, `maxSharesPerWallet` |
+| `getFractionExtendedInfo(fractionId)` | Description, `collectionUri`, `requiredApprovalPercentage`, `isActive`, `burnable` |
+| `getFractionOwnershipInfo(fractionId)` | Asset type, original token id, collection admin |
+| `getFractionToken(fractionId)` | The share token |
+| `canReceiveShares(fractionId, account)` | Whether the account's balance is below the per-wallet cap |
+| `getVotingPower(fractionId, account)` | The account's share balance |
+| `getApprovals(fractionId, account)` | `(transferApproved, adminApproved)`, which are always false |
+| `validateAsset`, `validateDeedNFTAsset`, `validateSubdivisionAsset` | Whether the locked asset is validated, with a short description |
+| `getAssetInformation(fractionId)` | Asset kind, validation status, validator, and the deed's `tokenURI` (for a unit, its deed and unit ids) |
+| `getDeedNFTAssetDetails`, `getDeedNFTAssetTrait`, `getDeedNFTAssetTraitKeys` | The locked deed's asset type, status and traits |
+| `getSubdivisionAssetDetails`, `getSubdivisionAssetTrait`, `getSubdivisionAssetTraitKeys` | The same for a unit |
+
+`getFractionToken` and the asset views revert once a fraction is inactive. `getVotingPower` is a
+balance; there is no voting function.
+
+---
+
+## Roles and pausing
+
+- **Collection admin**: the caller of `createFraction`. Mints shares and, before any are minted, can
+  unlock. No function hands the role on.
+- **`ADMIN_ROLE`** on `Fractionalize`: `pause` and `unpause`, which stop `createFraction`, minting,
+  `burnShares` and `unlockAsset`. They do not stop share transfers.
+- **`DEFAULT_ADMIN_ROLE`**: upgrades and role grants.
+
+Each `FractionToken`'s own admin roles belong to `FractionTokenFactory`, which has no function that
+uses them. A token's cap, `burnable` flag and pause cannot be changed after it is created.
+
+---
+
+## Known limitations
+
+- **A subdivision unit cannot be fractionalized.** `createFraction` moves a unit with
+  `safeTransferFrom`, which requires the receiver to implement `onERC1155Received`. `Fractionalize`
+  does not, so the call reverts.
+- **The `checkApprovals` unlock path never passes.** It counts the caller's shares only if
+  `adminApprovals[caller]` is set, and nothing in the contract sets it. `requiredApprovalPercentage`
+  has no other use.
+- **A non-burnable fraction cannot be unlocked once shares are minted.** Unlocking burns the
+  caller's shares through `burnFrom`, which reverts unless the token is burnable.
+- **Shares burned with `FractionToken.burn` stay counted.** `activeShares` does not go down, so no
+  one can hold every minted share afterwards and the deed cannot be unlocked. Burn through
+  `burnShares`.
+- **No tests cover `Fractionalize`, `FractionToken` or `FractionTokenFactory`.**

@@ -60,11 +60,9 @@ and offers **Top off** to put money back into savings.
 
 ### What credits do
 
-- They count toward your Clear Deed — 15,000 credits in the app today.
+- They count toward your Clear Deed, which is reached at 15,000 credits.
 - They unlock your protections. See [Assurance](./assurance-and-disputes.md#your-protections).
 - **They can't be withdrawn, sold or redeemed for cash.**
-
-If you close your account, your equity credits are forfeited, vested or not.
 
 ### On track for
 
@@ -74,7 +72,7 @@ there's no date.
 
 ## Bonds on Earn
 
-Earn holds bonds and the [yield pool](#the-yield-pool-on-earn). It is open before identity
+Earn holds bonds and the [lending pool](#the-lending-pool-on-earn). It is open before identity
 verification, like savings.
 
 **A BurnerBond is a fixed-term bond.** You pay less than its face value today, and at maturity it
@@ -98,11 +96,11 @@ sheet:
 **A bond that is backing credit you've drawn can be rolled over, but not redeemed.** To redeem it,
 pay that credit down first.
 
-## The yield pool on Earn
+## The lending pool on Earn
 
-**The yield pool is money you lend to the co-op's lending pool.** The pool lends its cash out to fund
-members' credit, and to pay shops on time when the co-op's payout fund runs short, and takes it back
-as members repay. It is not savings:
+**The lending pool is money you lend to the co-op.** The pool lends its cash out to fund members'
+credit, and to pay shops on time when the co-op's payout fund runs short, and takes it back as
+members repay. It is not savings:
 
 - it doesn't become CLRUSD, and it earns no equity credits
 - the money can be lent out when you want it back (see below)
@@ -115,14 +113,15 @@ Your position is a share of everything the pool owns, lent out or not. **It grow
 comes back above what was lent** — the carry members pay on credit the pool funded. Nothing else
 raises it, and nothing guarantees it.
 
-The **Yield pool** cell on Earn shows:
+The pool's cell on Earn shows:
 
-- **a variable rate**, beside a ring showing how much of the pool is lent out. The rate is read from
-  the pool's rate curve, but nothing charges borrowers that rate, so it isn't what your position
-  earns
 - **your position**, what it is worth today
 - **Earned**, what it is worth now less what you put in
-- what it adds to your credit limit
+- how much of the pool is lent out
+- what your position adds to your credit limit
+
+The cell and the Deposit sheet also show a rate, and the sheet a yearly figure worked out from it.
+Nobody is charged that rate, so it is not what your position earns.
 
 ### Adding to the pool
 
@@ -138,13 +137,12 @@ right now**, because the rest is lent out.
 - If you ask for more than that, the sheet splits it: **Available now** comes back straight away,
   and the rest is **Queued**. A queued amount is fixed in dollars when you queue it; from then on it
   neither gains nor loses with the pool.
-- **The app doesn't pay out a queued withdrawal yet.** The sheet says it is sent as members repay,
-  but in this version nothing claims it for you and the app doesn't show it. The pool pays a queued
-  amount only when its owner claims it, once the pool has the cash, and there is no date by which
-  that happens.
-- **Taking money out lowers your credit limit** by 70% of the amount. If that would leave your limit
-  below what you've drawn, the sheet says by how much. Repay that much from Home first, then
-  withdraw. Pool money backing credit you've drawn can't leave until that credit is repaid.
+- **Paying out a queued withdrawal.** Not available yet.
+- **Taking money out lowers your credit limit** by 70% of the amount. Pool money backing credit
+  you've drawn can't leave until that credit is repaid. If a withdrawal would leave your limit below
+  what you've drawn, the sheet says by how much. Repay that much from the cycle card on Home first,
+  then withdraw.
+- **Repaying and withdrawing in one step.** Not available yet.
 
 How the pool lends, how depositors are paid and how withdrawals queue, in full:
 [Investors → The lending pool](../investors/lending-pool.md).

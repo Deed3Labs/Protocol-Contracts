@@ -1,25 +1,25 @@
 # Going live: environments, providers, webhooks
 
 What decides whether a running copy of Clear moves test money or real money, what each outside
-provider needs from the API's environment, and the webhook endpoints the API exposes. Every API
-variable named here is in [`apps/api/env.example`](../../apps/api/env.example); the apps' are in
-their own `.env.example`. Who decides that a deployment goes live is in
+provider needs from the API's environment, and the webhook endpoints the API exposes. API
+variables are in [`apps/api/env.example`](../../apps/api/env.example) unless marked otherwise; the
+apps' are in their own `.env.example`. Who decides that a deployment goes live is in
 [Governance](../governance/README.md).
 
 ## There is no single switch
 
 **The code has no one "environment" setting.** The chain is chosen in one place, each provider by
 its own variable or by the mode of its key, and the Command Center per section. A deployment is
-live only when every row on this page is on its live side; one left on a sandbox makes a
-deployment that is part test, part real.
+live only when every setting below is on its live side; one left on a sandbox makes a deployment
+that is part test, part real.
 
-Unless a row says otherwise, a provider whose key is not set is off: its routes answer that it is
-not configured, and nothing pretends.
+Unless stated otherwise, a provider whose key is not set is off: its routes answer that it is not
+configured.
 
 ### `NODE_ENV`
 
-Neither the Dockerfile nor `railway.json` sets it. **Set `NODE_ENV=production` on any deployment
-that is not a laptop**: an unset value counts as production for some checks and not for others.
+Neither the Dockerfile nor `railway.json` sets it. **Set `NODE_ENV=production` on every deployed
+environment**: an unset value counts as production for some checks and not for others.
 
 | Check | Treats as production |
 |---|---|
@@ -63,6 +63,10 @@ addresses the credit services read, `SEND_CLAIM_ESCROW_ADDRESS_<chainId>` and th
 listed; without it the API allows every origin. `ALLOW_VERCEL_PREVIEWS=true` also admits Vercel
 preview hosts. The public `/v1` API has its own CORS, per shop.
 
+The installed merchant app (Capacitor) calls the API from `capacitor://localhost` on iOS and
+`https://localhost` on Android. With `STRICT_CORS=true`, add both to `CORS_ORIGIN`
+([Setting up → The installed merchant app](../developers/setup.md#the-installed-merchant-app)).
+
 ## Providers
 
 Each provider's sandbox and live sides, the variable that chooses between them, and what else it
@@ -93,6 +97,17 @@ It also needs `BRIDGE_WEBHOOK_PUBLIC_KEY` (below), and `BRIDGE_ONBOARDING_REDIRE
 hosted KYC returns. Send's fiat payouts use Bridge when `SEND_PAYOUT_PROVIDER` is `bridge_only` or
 `stripe_bridge_jit`; it is `mock` until then, and the `SEND_BRIDGE_*` variables shape those
 transfers.
+
+**Bank withdrawals** are `POST /api/withdraw/:wallet`
+([`withdraw.ts`](../../apps/api/src/routes/withdraw.ts)): USDC on Base is off-ramped by Bridge to a
+bank account the member linked with Plaid, after a step-up. `rail` is `ach` (standard) or
+`ach_same_day`, which charges Clear's fee through Bridge's `developer_fee_percent`:
+`BRIDGE_INSTANT_WITHDRAW_FEE_PERCENT`, 1 when unset (not in `env.example`). It needs Bridge and
+Plaid both configured, and a Bridge customer for the member's verified email; otherwise it answers
+`503` with `notConfigured`. The response carries a
+Bridge deposit address: the client must send the USDC there, or the transfer stays
+`awaiting_funds`. **No member-app screen reaches this route**
+([Developers → Known limitations](../developers/README.md#member-app)).
 
 ### Lithic
 
@@ -127,7 +142,8 @@ registry it writes to: `MEMBERSHIP_REGISTRY_ADDRESS`, `MEMBERSHIP_RPC_URL`, `MEM
 Connect onboarding returns to `MERCHANT_APP_URL`. Terminal readers have no variables of their own.
 
 `SHOP_STRIPE_SECRET_KEY` is a different account: the website shop's, where hardware deposits are
-taken. The merchant app reads reservations from it and refunds there.
+taken. The merchant app reads reservations from it and refunds there. Unset, the hardware-orders
+routes answer `503` `not_configured` and the merchant app says hardware orders aren't connected yet.
 
 ### Coinbase Onramp and Onramper
 
@@ -192,7 +208,13 @@ on their live hostnames. The API reads visits back for the Command Center with `
 Some features stay inert until a variable names them, so a deployment can go live without them:
 `CLEAR_FEE_COLLECTION_ADDRESS` (collecting Clear's fee from a shop's wallet; until set, fees are
 billed and wait as due), `PROTOCOL_EVENT_LISTENER` and `PORTFOLIO_SNAPSHOTS`
-([Deploying the server](./api-deploy.md#environment-flags)).
+([Deploying the server](./api-deploy.md#environment-flags)). Also:
+
+| Variable | Without it |
+|---|---|
+| `VERCEL_TOKEN` and `VERCEL_REWARDS_PROJECT_ID`, with `VERCEL_TEAM_ID` when the project is a team's (not in `env.example`) | A shop's custom domain is saved as `pending` and never added to Vercel or verified ([`vercel.ts`](../../apps/api/src/services/merchant/rewards/vercel.ts)) |
+| `SHOP_STRIPE_SECRET_KEY` | Hardware orders can't be listed ([Stripe](#stripe)) |
+| `AUTO_TERM_LIMITS` (not in `env.example`) | The automatic split-plan limit runs on Base Sepolia (`84532`) only. `on` runs it on any chain; any other value turns it off everywhere ([`termLimitService.ts`](../../apps/api/src/services/credit/termLimitService.ts)). The rule's figures are proposals not yet signed off ([Governance → Parameters](../governance/parameters.md)) |
 
 ## Webhooks
 

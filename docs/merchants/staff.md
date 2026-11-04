@@ -38,9 +38,9 @@ The details of each are on the page that covers it:
 [refunds and voids](./refunds-voids-disputes.md), [closing](./closing-the-day.md),
 [payouts](./payouts.md), [settings](./settings-and-inventory.md).
 
-The server holds every one of these rules. The app also hides what a role can't use: on a counter
-shift, Payouts, Staff and Overview are padlocked in the nav, and tapping one opens the owner's
-sign-in.
+Clear checks every one of these rules on each request, whatever screen it comes from. The app also
+hides what a role can't use: on a counter shift, Payouts, Staff and Overview are padlocked in the
+nav, and tapping one opens the owner's sign-in.
 
 ## Adding someone
 
@@ -92,10 +92,9 @@ which sends every Clear refund to the owner. A manager sees the limit but can't 
 - **Handing the tablet over doesn't end anyone's shift.** The next person signs in on top; everyone
   who started a shift stays on until they end it. Home's crew strip shows who is on.
 - **End shift** (on Home, or from your profile) signs you out and ends your shift and any break.
-  Its sheet shows the charges you raised, the cash you took and your tips today. An owner can end anyone's
-  shift from their sheet in Staff; a manager can end counter staff's.
-- **A shift nobody ended** is closed on the next read after its day, at eight hours in, and marked
-  as a guess.
+  Its sheet shows the charges you raised, the cash you took and your tips today. An owner can end
+  anyone's shift from their sheet in Staff; a manager can end counter staff's.
+- **A shift nobody ended** is closed after its day, at eight hours in, and marked as a guess.
 - **The tablet locks** after its idle time (Settings › Counter). The shift keeps running; the
   tablet asks for a PIN again.
 
@@ -105,8 +104,8 @@ Settings › Counter sets how long a break is and after how many hours on shift 
 minutes after 5 hours to start with). Home's shift clock counts worked time and says **break
 due** once someone has worked that long without one.
 
-**Start break** and **End break** are on Home, under your shift clock. One break at a time. The tablet's idle lock still
-applies during a break.
+**Start break** and **End break** are on Home, under your shift clock. One break at a time. The
+tablet's idle lock still applies during a break.
 
 ## Hours
 

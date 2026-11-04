@@ -1,141 +1,227 @@
-# Lithic Integration Spec
+# Lithic integration
 
-Banking and card layer for the Clear member app. Lithic **Program Managed** — Lithic and its partner bank handle sponsorship, KYC/KYB, AML/BSA, ledgering, card manufacturing and network connectivity. We control spend logic and business rules via API.
+Lithic is the banking and card rail for the member app. Clear uses Lithic's **Program Managed**
+model: Lithic and its partner bank handle sponsorship, KYC, AML/BSA, ledgering, card manufacture
+and network connectivity. Clear sets spend logic and business rules through Lithic's API.
 
-Docs: `https://docs.lithic.com` — read Financial Accounts, ACH, Auth Stream Access, Cards, and External Bank Accounts before writing code.
+The code is in [`apps/api/src/services/lithic`](../../../apps/api/src/services/lithic/), the
+routes in `apps/api/src/routes/lithic*.ts`. Nothing inside the Lithic service talks to the chain:
+the two rails meet only in the savings sweep, card settlement and the reconciler. Environment
+variables and webhook secrets are in [Going live → Lithic](../../operators/going-live.md#lithic).
+Lithic's own reference is at `https://docs.lithic.com`.
 
 ---
 
-## 1. The money model — read this first
+## 1. The money model
 
-Two rails. Do not blur them.
+Two rails, kept apart.
 
 | | Lives in | Card-spendable | Purpose |
 |---|---|---|---|
-| **Cash account** | Lithic routable Financial Account (USD) | Yes | Direct deposit lands, card spends |
-| **USDC** | Member's Privy smart account | No | Transit only — normally $0 |
-| **ESA** | CLRUSD on the smart account | No | Savings. Vests credits, collateralizes credit, feeds Earn |
-| **Credit position** | StableCredit contracts | Drawn via card | Tiers, limits, cycles, carry cost |
+| **Cash account** | A routable Lithic Financial Account (USD) | Yes | Direct deposit lands here; the card spends from it |
+| **USDC** | The member's smart wallet | No | Transit only, normally $0.00 |
+| **ESA** | CLRUSD on the member's smart wallet | No | Savings, and the collateral for savings-backed credit |
+| **Credit position** | The credit contracts (`RevolvingIssuer` on the `ClearCredit` ledger) | Drawn by the card | Tiers, limits, carry |
 
-**Fiat is for spending. Chain is for holding.**
+**Fiat is for spending. The chain is for holding.**
 
-### Authority
-- **Lithic's ledger is authoritative for fiat balances.**
-- **Our contracts are authoritative for CLRUSD, credits, tiers, and the stablecredit position.**
-- Our own DB is a double-entry record of both, never a naive mirror of either. Drift between any two must raise an alert, never a silent correction.
+### Which record is authoritative
 
-### The member never onramps
-A savings sweep is two movements that happen on different rails but present as one action:
+- **Lithic's ledger** is authoritative for fiat balances.
+- **The contracts** are authoritative for CLRUSD, tiers and the credit position.
+- **The API's own database** keeps a double-entry record of both (`lithic_ledger_entries`), never
+  a plain mirror of either. Drift between any two raises an alert and is never corrected
+  automatically ([Reconciliation](#3-reconciliation)).
 
-1. **Fiat:** debit the member's Lithic Financial Account → credit the co-op's Lithic operating account. Book transfer inside one institution.
-2. **Chain:** co-op treasury sends USDC from its own reserve to the member's smart account; the ESA contract mints CLRUSD.
+### The savings sweep travels the member's own accounts
 
-No hosted widget, no redirect, no "buy crypto" language, no second KYC. The member moved money between their own accounts. The co-op replenishes its USDC reserve on a treasury schedule — that is an ops job, not a member flow, and is **out of scope for this integration**.
+Moving cash into savings is one member action over two rails that cannot be made atomic:
 
-### Credit draws settle from float, not from chain
-A card authorization resolves in ~200ms. CLRUSD cannot convert in that window. So:
+1. **Fiat:** an ACH push from the member's Lithic cash account to the member's own Bridge account.
+2. **Conversion:** Bridge converts the dollars and delivers USDC to the member's smart wallet.
+3. **Chain:** the member signs an ESA deposit, the API relays it, and the vault mints CLRUSD.
 
-- The co-op maintains a **settlement float** — a fiat pool in Lithic sized to expected credit draw.
-- When a member draws savings-backed credit at a swipe, the float funds the fiat settlement and the on-chain ledger records the stablecredit issuance.
-- Reconcile on a schedule, not per transaction.
+No co-op account holds the money at any point, and the member is never sent to a hosted widget or
+asked for a second KYC. The USDC and the CLRUSD minted from it are in the member's own wallet.
+
+### Card credit is issued on chain at settlement
+
+A card authorisation is answered in milliseconds, so it is decided off chain from a precomputed
+snapshot ([Card authorisations](#card-authorisations)). When the purchase settles, the credit part
+of it is drawn on the `RevolvingIssuer` with `settleCardSpend`, which fills the tiers cheapest first
+and starts carry. The cash part is the member's own money and is not issued as credit
+([`cardSettlementService.ts`](../../../apps/api/src/services/chain/cardSettlementService.ts)).
+
+- **Once per purchase.** The reference is the hashed Lithic transaction token, and the issuer
+  refuses a second settlement of the same reference.
+- **Every attempt is recorded.** After five failures a purchase is marked `needs_review` rather
+  than retried.
+- **The chain's split wins.** Once issued, the pending hold stops being shown, so a purchase is
+  never counted twice.
+- **Refunds after settlement** give the difference back with `reverseCardSpend`. A purchase under
+  an open dispute is held off the chain and accrues no carry.
 
 ---
 
-## 2. Build order
+## 2. How each flow works
 
-Each step ships and is reviewed before the next begins.
+### Account provisioning
 
-### Step 0 — audit, then stop
-Report on: secrets/env handling, the existing API and service layer, whether a job/queue system exists for webhooks, the DB layer, and where on-chain contract calls currently live. Then propose where the Lithic service boundary sits and how it talks to the chain layer. **Wait for my response before building.**
+`POST /api/lithic/account` provisions a member's Lithic account and financial accounts.
+`GET /api/lithic/account` returns the provisioning state, and the routing and account numbers once
+they exist. The wallet always comes from the verified session, never from the request.
 
-### Step 1 — client scaffold
-Lithic client with sandbox/prod config, typed wrappers, and a local script that provisions a test member end to end. Sandbox only.
+- **It runs on request, not at signup.** Lithic's KYC needs date of birth, a government id and a
+  street address. The member record does not hold them (Bridge collects them through its own hosted
+  flow), so the route takes them in the body and rejects a request with the list of what is missing.
+- **The workflow is `KYC_BASIC`** by default: Lithic runs KYC. The service also supports
+  `KYC_EXEMPT` and `KYC_BYO`.
+- **Idempotency is Clear's.** Lithic does not deduplicate account-holder creation, so provisioning
+  checks the API's own store first, then Lithic by the external id stamped on every account holder.
+- **Only a routable account is shown.** Deposit numbers come from a `ROUTABLE` financial account;
+  the service never falls back to a non-routable one.
 
-### Step 2 — account provisioning
-On member signup:
-- Create a Lithic `Account`
-- Create a **ROUTABLE** `Financial Account` (virtual accounts are internal-transfer-only and will not receive direct deposit)
-- Persist both tokens against the member record
-- Surface routing + account number to the Account Details modal
+### Card authorisations
 
-### Step 3 — Auth Stream Access (the core)
+Lithic's Auth Stream Access (ASA) asks, in real time, whether to approve each authorisation. The
+API answers at `/api/webhooks/lithic/auth-stream`, mounted before the rate limiter so a busy minute
+cannot decline a card.
 
-Lithic sends a real-time authorization request; we approve or decline inside the timeout. Our logic is a **waterfall**: cash first, then credit tiers cheapest-first.
+The decision is a **waterfall**: cash first, then credit tiers cheapest first
+([`authDecision.ts`](../../../apps/api/src/services/lithic/authDecision.ts)). The order is fixed.
 
-Draw order:
-1. Cash account balance
-2. Savings-backed (ESA collateral) — free
-3. Asset-backed (bonds at 95% of present value, pool shares at 70%) — 0.65–0.75% per cycle
-4. Income-backed (50% of estimated monthly deposit) — 1.5% per cycle
-5. Clear Boost (opt-in, $500/$750) — 3% per cycle
+| Order | Source | Limit ([`tierLimits.ts`](../../../apps/api/src/services/lithic/tierLimits.ts)) | Carry |
+|---|---|---|---|
+| 1 | Cash | The Lithic cash balance | None |
+| 2 | Savings-backed | 100% of the member's CLRUSD | None |
+| 3 | Asset-backed | 95% of bonds at present value, plus 70% of the lending pool position | 0.65–0.75% per cycle |
+| 4 | Income-backed | 50% of the estimated monthly deposit | 1.5% per cycle |
+| 5 | Clear Boost | A fixed opt-in amount; $0.00 until taken up | 3% per cycle |
 
-Requirements:
-- **The tier decision is a precomputed lookup, not a calculation.** Maintain a per-member `available_by_tier` snapshot, updated on every balance-changing event. The auth handler reads it; it never derives it.
-- **Never block on an external call** inside the auth window — no chain reads, no Plaid, no HTTP.
-- Idempotent by Lithic event ID.
-- An approval that draws credit is a **credit issuance event**: record the tier drawn, start the carry-cost clock, decrement available room, and respond — atomically.
-- Log every decision with the inputs that produced it. We will have to explain individual authorizations to members.
-- Fail closed on timeout or internal error, and alert.
+When the on-chain `LimitCalculator` can be read, its savings and asset ceilings replace the
+arithmetic above, so the API and the contracts give the same answer.
 
-### Step 4 — ACH receipt (direct deposit)
-Inbound ACH to a member's Financial Account. On receipt:
-1. Credit their cash balance
-2. **Settle any outstanding credit balance first** (this is how the equilibrium rule resolves itself — there is no "pay" button)
-3. Apply their auto-save allocation, if configured
+Rules the handler keeps:
 
-Receipts post immediately to available balance.
+- **A precomputed lookup.** Each card has an `available_by_tier` snapshot, rewritten on every event
+  that changes a balance. The handler reads one row; it never derives availability.
+- **No outside calls** inside the authorisation window: no chain reads, no Plaid, no HTTP.
+- **Idempotent** by Lithic's transaction token.
+- **All or nothing.** If the full amount cannot be funded, the authorisation is declined; partial
+  approvals are not offered. A paused card declines with `CARD_PAUSED`.
+- **Fail closed.** Any error, unknown card or unverifiable signature declines.
+- **Every decision is logged** with the inputs that produced it.
 
-### Step 5 — ACH origination (pull)
-Scheduled debits from a member's linked external bank for recurring ESA contributions.
+When money is given back (a void, a refund, a clearing below the authorisation), the most expensive
+tier is released first. When a clearing lands above its authorisation, the extra is drawn through
+the same waterfall and any shortfall is recorded rather than discarded.
 
-- Configure a hold on ACH debits (Lithic default is 2 days, configurable 1–4).
-- **A pulled deposit is not final on arrival.** Insufficient-funds returns come back in days; unauthorized-entry returns can come back for up to 60 days.
-- **Do not let pulled funds count toward credit collateral until the return window closes.** Sweeping them into the ESA early would collateralize a credit line with money that can be clawed back.
-- Handle every return code; a return must reverse cleanly through both ledgers.
+### Card events and direct deposit
 
-### Step 6 — external bank accounts
-Link and verify via micro-deposit (`POST /external_bank_accounts` with `verification_method: MICRO_DEPOSIT`) or Plaid. Needed for Step 5.
+`/api/webhooks/lithic` receives Lithic's asynchronous events, signed with Standard Webhooks.
 
-### Step 7 — savings sweep
-The two-rail operation from §1. Implement as a **saga with explicit states**, not a transaction:
+- **Card events** (`card_transaction`) reconcile a draw the auth stream already made: voids,
+  reversals and clearings for a different amount. The charge itself is never replayed.
+- **Direct deposit.** A settled inbound `payment_transaction` is an ACH credit to the member's cash
+  account. The API records it double-entry, **settles any outstanding credit first**, applies the
+  member's auto-save rule to what is left, and rewrites the member's snapshot. Deposits to a Bridge
+  virtual account go through the same service
+  ([`depositReceiptService.ts`](../../../apps/api/src/services/deposits/depositReceiptService.ts)),
+  idempotent by rail and external id.
+- **ACH returns** are handled explicitly and reversed through both ledgers.
 
-`initiated → fiat_debited → usdc_sent → clrusd_minted → complete`
+### Pulling from an outside bank
 
-- If it fails after `fiat_debited`, the member lands in **"ready to allocate"** — USDC on their smart account, not yet in the ESA. This state must be visible and recoverable, with actions to retry allocation, move to Earn, or return to cash.
-- Sweeps should **batch** where possible. Fifty members sweeping on payday is one treasury conversion, not fifty.
-- The credit vesting clock starts at **CLRUSD mint**, not at fiat debit. Show the member the vest date from the mint.
+The services for linking an outside bank and debiting it are in
+[`bankAccountService.ts`](../../../apps/api/src/services/lithic/bankAccountService.ts) and
+[`achOriginationService.ts`](../../../apps/api/src/services/lithic/achOriginationService.ts):
 
-### Step 8 — cards
-Virtual first (works for e-commerce immediately), physical after. Freeze/unfreeze, spend limits, and controls: contactless, online payments, ATM, international.
+- **Linking** uses `MICRO_DEPOSIT` by default; `PLAID` and `PRENOTE` are also accepted.
+- **A pull** is a Lithic `COLLECTION`, with an SEC code (`WEB` for an in-app authorisation, `PPD`,
+  or `CCD` for a business account) and Lithic's availability hold of 1–4 days (Lithic's default is
+  2).
+- **Pulled money is not collateral until its return window closes**: 60 days for consumer debits
+  (`PPD`, `WEB`), which carry unauthorised-entry returns, and 5 days for `CCD`. Until then it is
+  recorded as pending and kept out of the snapshot. An hourly job releases it when the window
+  passes; a return reverses it.
 
-**Do not build for Colossus yet.** It is a later dual-applet addition to the physical card program; reissuing plastic is acceptable.
+### The savings sweep
+
+`POST /api/sweeps` starts a sweep. The caller supplies the sweep id, so a double tap, a retried
+request and a rule that fires twice all describe the same sweep. Sweeps that share a `batchKey`
+are grouped.
+
+| State | Waiting on |
+|---|---|
+| `initiated` | The API, to push the fiat from Lithic to the member's Bridge account (the sweep id is the idempotency token) |
+| `fiat_debited` | ACH and Bridge. Bridge's webhook advances it when the USDC lands; nothing retries it, because a retry would push the money twice |
+| `ready_to_allocate` | The member. The USDC is in their wallet; `POST /api/sweeps/:id/allocate` relays their signed ESA deposit |
+| `clrusd_minted` | The API, to close the sweep |
+| `complete` | Nothing |
+
+A sweep whose USDC has already reached the member's wallet is never marked `failed`; it stays at
+`ready_to_allocate`. A runner moves sweeps forward every minute.
+`GET`, `PUT` and `DELETE /api/sweeps/auto-save` manage the member's auto-save rule.
+
+### Cards
+
+Routes are under `/api/lithic/cards`
+([`lithicCards.ts`](../../../apps/api/src/routes/lithicCards.ts)).
+
+- **Virtual cards** are usable as soon as they are issued. **Physical cards** need
+  `LITHIC_CARD_PRODUCT_ID`, and are activated on arrival.
+- **Controls:** freeze and unfreeze, and a spend limit. Unfreezing and changing the limit need a
+  recent step-up.
+- **Full card numbers never reach the API.** The member's browser shows them in Lithic's embedded
+  frame; the API only issues the short-lived URL for it, after a step-up.
+- **A new card gets a snapshot before it can be used**, so its first authorisation is not declined
+  for lack of one.
+- Every route takes the wallet from the session and checks that the card belongs to it.
 
 ---
 
 ## 3. Reconciliation
 
-Run continuously, alert on drift, never auto-correct:
+An hourly job compares the books with the rails
+([`reconcileService.ts`](../../../apps/api/src/services/reconciliation/reconcileService.ts)). It
+reads and alerts; it never writes.
 
-| Invariant | Check |
+| Check | Compares |
 |---|---|
-| Vault solvency | Lithic cash held for members = sum of member cash balances |
-| ESA backing | Co-op fiat received from sweeps = CLRUSD minted |
-| Credit issuance | On-chain stablecredit outstanding = sum of tier draws in our ledger |
-| Float adequacy | Settlement float ≥ savings-backed credit drawn but not yet reconciled |
+| Vault solvency | Lithic cash held for members against the sum of member cash balances |
+| ESA backing | USDC held by the ESA vault against CLRUSD in circulation |
+| Sweep completion | Fiat pushed out for completed sweeps against the CLRUSD those sweeps minted |
+| Credit issuance | Card credit the ledger says is settled on chain against what the issuer holds |
+| Float adequacy | The settlement float against savings-backed credit drawn but not yet reconciled |
+
+Money compares exactly, with one cent of tolerance for unit conversion. **A figure that cannot be
+read reports `unavailable`, never `ok`**, and a run is healthy only when every check was evaluated
+and passed.
 
 ---
 
-## 4. Constraints
+## 4. Rules for changes
 
-- Sandbox only. No production keys in code or committed config.
-- All webhook handlers verify signatures and are idempotent by event ID.
-- Money movement is double-entry in our records.
-- Integration tests against sandbox for every flow — especially ASA approve, ASA decline, ACH return, and a sweep that fails mid-saga.
-- **Ask before making any decision that changes the money model rather than the plumbing.**
+- **Sandbox is the default.** Production takes both `LITHIC_ENV=production` and
+  `LITHIC_ALLOW_PRODUCTION=true`. No production keys in code or committed config.
+- **Every webhook handler verifies its signature** and is idempotent by event or transaction id.
+- **Money movement is double-entry** in the API's records.
+- **Test against the sandbox.** `bun run lithic:test` runs the service tests; the
+  `lithic:verify-*` scripts in `apps/api/package.json` exercise provisioning, the auth stream and
+  cards against Lithic's sandbox.
 
 ---
 
-## 5. Open questions — flag, don't decide
+## 5. Known limitations
 
-1. Does the member's smart account hold CLRUSD directly, or does the co-op custody it with position tracked in contract state? Direct is honest to self-custody; custodied is far simpler for lost-device recovery.
-2. Should "back to cash" from the ready-to-allocate state be instant (co-op eats conversion timing) or queued?
+- **A program without financial accounts.** When the Lithic program exposes no financial accounts,
+  cards work but direct deposit and ACH do not, and vault solvency reports `unavailable`.
+- **No route links or debits an outside bank.** The services above are not exposed through the API
+  yet.
+- **Clear Boost is not available yet.** Nothing sets a Boost limit, so the tier is always $0.00.
+- **There is no funded settlement float account**, so float adequacy reports `unavailable`.
+- **From `ready_to_allocate`, the API offers one action:** allocating the USDC into the ESA.
+- **The spend limit has no caller.** `POST /api/lithic/cards/:token/spend-limit` (step-up,
+  `MONTHLY` unless a `duration` is given) and the member app's `setCardSpendLimit` exist, but no
+  screen calls them. The Card page's limits, controls and **Replace this card** are fixtures that
+  Lithic never sees ([Developers → Known limitations](../README.md#member-app)).

@@ -20,7 +20,7 @@ the tiers you have.
 | Tier | Backed by | How much it adds |
 |---|---|---|
 | **Savings** | Your CLRUSD | 100% of your savings. Free to use |
-| **Assets** | Your bonds and yield-pool position | 95% of what your bonds are worth today, 70% of your pool position |
+| **Assets** | Your bonds and lending-pool position | 95% of what your bonds are worth today, 70% of your pool position |
 | **Income** | The income landing in your account | Half of your estimated monthly deposits |
 | **Clear Boost** | Nothing — it's opt-in | Nothing until you add it |
 
@@ -112,7 +112,7 @@ never ahead of schedule.
 
 From a plan's sheet, **Change split** spreads what's left over a new number of cycles. Anything you
 are behind on stays due now; only the rest is re-spread. You can't change a split while you're
-behind, and the contract allows three changes per plan, at least one installment apart.
+behind. A plan can be re-split up to three times, at least one installment apart.
 
 ### Falling behind on a plan
 

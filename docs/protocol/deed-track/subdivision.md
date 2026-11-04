@@ -1,415 +1,193 @@
-# Asset Subdivision System
+# Subdivision
 
-The Clear Protocol's subdivision system enables DeedNFT owners to break down their assets into smaller, tradeable units using ERC1155 tokens. This document explains the subdivision functionality, workflows, and technical implementation.
+`Subdivide` splits a validated Land or Estate T-Deed into numbered units. Each unit is its own
+ERC-1155 token with a supply of one, so a unit behaves like a non-fungible token inside one
+collection per deed. The deed itself stays with its owner.
 
-## 🎯 Overview
+Source: [`Subdivide.sol`](../../../contracts/extensions/Subdivide.sol). Every function, role and
+event is in [`smart-contracts.md`](./smart-contracts.md#subdivide).
 
-The subdivision system allows asset owners to:
-
-- **Create Subdivisions**: Break down large assets (Land, Estate) into smaller units
-- **Manage Units**: Mint, transfer, and burn individual subdivision units
-- **Validate Units**: Individual validation for each subdivision unit
-- **Trait Management**: ERC-7496 dynamic trait support for units
-- **Royalty Support**: ERC-2981 royalty implementation for units
-
-## 🏗️ Technical Architecture
-
-### Core Components
-
-#### 1. Subdivide Contract (`Subdivide.sol`)
-
-The main contract that handles subdivision operations:
-
-- **ERC1155 Implementation**: Multi-token standard for subdivision units
-- **Subdivision Management**: Create and manage asset subdivisions
-- **Unit Validation**: Individual validation for subdivision units
-- **Trait Management**: ERC-7496 dynamic trait support
-- **Role-Based Access**: Collection admin and validator roles
-- **Royalty Support**: ERC-2981 royalty implementation
-
-#### 2. Supported Asset Types
-
-Only specific asset types can be subdivided:
-
-- **Land (0)**: Can be subdivided into smaller land parcels
-- **Estate (2)**: Can be subdivided into units or rooms
-- **Vehicle (1)**: Cannot be subdivided (atomic asset)
-- **Commercial Equipment (3)**: Cannot be subdivided (atomic asset)
-
-#### 3. Subdivision Data Structure
-
-```solidity
-struct SubdivisionInfo {
-    string name;                    // Name of the subdivision
-    string description;             // Description of the subdivision
-    string symbol;                 // Trading symbol for units
-    string collectionUri;          // Base URI for metadata
-    uint256 totalUnits;            // Total number of units authorized
-    uint256 activeUnits;           // Currently minted units
-    bool isActive;                 // Operational status
-    bool burnable;                 // Whether units can be burned
-    address collectionAdmin;       // Admin of the subdivision
-    address subdivisionValidator;  // Custom validator (optional)
-    mapping(uint256 => string) unitMetadata; // Custom metadata per unit
-}
+```mermaid
+flowchart LR
+  O["Deed owner"] -->|"createSubdivision"| S["Subdivision<br/>(per deed)"]
+  O -->|"mintUnit, batchMintUnits"| U["Units<br/>ERC-1155, supply 1 each"]
+  V["Validator.validateSubdivisionUnit"] -->|"updateUnitValidationStatus"| U
+  A["Collection admin"] -->|"traits, metadata,<br/>burnable, validator"| U
 ```
-
-## 📋 Subdivision Workflow
-
-### 1. Subdivision Creation
-
-1. **Prerequisites**
-   - DeedNFT must be validated
-   - Asset type must support subdivision (Land or Estate)
-   - Caller must be DeedNFT owner
-
-2. **Creation Process**
-   ```solidity
-   function createSubdivision(
-       uint256 deedId,
-       string memory name,
-       string memory description,
-       string memory symbol,
-       string memory collectionUri,
-       uint256 totalUnits,
-       bool burnable
-   ) external
-   ```
-
-3. **Configuration**
-   - Set subdivision name and description
-   - Define trading symbol
-   - Set collection metadata URI
-   - Specify total number of units
-   - Configure burning permissions
-
-### 2. Unit Management
-
-#### Minting Units
-
-```solidity
-// Mint single unit
-function mintUnit(uint256 deedId, uint256 unitId, address to) external
-
-// Batch mint multiple units
-function batchMintUnits(
-    uint256 deedId,
-    uint256[] calldata unitIds,
-    address[] calldata recipients
-) external
-```
-
-#### Unit Operations
-
-```solidity
-// Burn unit (if burnable)
-function burnUnit(uint256 deedId, uint256 unitId) external
-
-// Deactivate subdivision
-function deactivateSubdivision(uint256 deedId) external
-```
-
-### 3. Unit Validation
-
-#### Validation Process
-
-1. **Validator Assignment**
-   - Subdivision can have custom validator
-   - Falls back to parent DeedNFT validator
-   - Validator must be active in ValidatorRegistry
-
-2. **Unit Validation**
-   ```solidity
-   function updateUnitValidationStatus(
-       uint256 deedId,
-       uint256 unitId,
-       bool isValid,
-       address validatorAddress
-   ) external onlyRole(VALIDATOR_ROLE)
-   ```
-
-3. **Validation Criteria**
-   - Units inherit validation criteria from parent DeedNFT
-   - Custom validation rules can be applied
-   - Individual unit traits are validated
-
-### 4. Trait Management
-
-#### ERC-7496 Dynamic Traits
-
-The subdivision system implements ERC-7496 for dynamic trait management:
-
-```solidity
-// Set unit trait
-function setUnitTrait(
-    uint256 deedId,
-    uint256 unitId,
-    bytes32 traitKey,
-    bytes memory traitValue
-) external onlyCollectionAdmin(deedId)
-
-// Get unit trait
-function getUnitTraitValue(
-    uint256 deedId,
-    uint256 unitId,
-    bytes32 traitKey
-) external view returns (bytes memory)
-
-// Flexible trait setting
-function setUnitTraitFlexible(
-    uint256 deedId,
-    uint256 unitId,
-    bytes memory traitKey,
-    bytes memory traitValue,
-    uint8 valueType
-) external onlyCollectionAdmin(deedId)
-```
-
-#### Supported Trait Types
-
-- **String Traits**: Text-based properties
-- **Numeric Traits**: Integer values
-- **Boolean Traits**: True/false values
-- **Bytes Traits**: Raw data
-
-### 5. Metadata Management
-
-#### Unit Metadata
-
-```solidity
-// Set custom metadata for unit
-function setUnitMetadata(
-    uint256 deedId,
-    uint256 unitId,
-    string calldata metadata
-) external onlyCollectionAdmin(deedId)
-
-// Get unit metadata
-function getUnitMetadata(uint256 deedId, uint256 unitId) external view returns (string memory)
-```
-
-#### Token URI Generation
-
-```solidity
-function uri(uint256 tokenId) public view returns (string memory) {
-    // Custom unit metadata takes precedence
-    // Falls back to collection URI + unit ID
-}
-```
-
-## 🔧 Technical Implementation
-
-### Token ID Generation
-
-Subdivision units use a combined token ID:
-
-```solidity
-function _generateTokenId(uint256 deedId, uint256 unitId) internal pure returns (uint256) {
-    return (deedId << 128) | unitId;
-}
-```
-
-- **High 128 bits**: DeedNFT ID
-- **Low 128 bits**: Unit ID within subdivision
-
-### Access Control
-
-#### Roles
-
-```solidity
-ADMIN_ROLE           // Administrative functions
-VALIDATOR_ROLE       // Unit validation
-```
-
-#### Collection Admin
-
-- **Collection Admin**: DeedNFT owner becomes subdivision admin
-- **Admin Rights**: Manage subdivision settings, mint units, set traits
-- **Transfer Rights**: Can transfer admin rights to another address
-
-### Royalty Management
-
-#### ERC-2981 Implementation
-
-```solidity
-function royaltyInfo(uint256 tokenId, uint256 salePrice) 
-    external view returns (address receiver, uint256 royaltyAmount)
-```
-
-- **Validator Royalties**: Units inherit royalty settings from validator
-- **Parent Fallback**: Falls back to parent DeedNFT royalties
-- **Configurable**: Royalty settings can be updated per subdivision
-
-### Security Features
-
-#### Marketplace Integration
-
-```solidity
-// Approve marketplaces
-function setApprovedMarketplace(address marketplace, bool approved) external
-
-// Royalty enforcement
-function setRoyaltyEnforcement(bool enforced) external
-```
-
-#### Transfer Validation
-
-```solidity
-// Transfer validator
-function setTransferValidator(address validator) external
-function getTransferValidator() external view returns (address)
-```
-
-## 🎨 User Experience
-
-### For Asset Owners
-
-1. **Create Subdivision**
-   - Navigate to asset management
-   - Select "Create Subdivision"
-   - Configure subdivision settings
-   - Deploy subdivision contract
-
-2. **Manage Units**
-   - Mint units to specific addresses
-   - Set custom metadata for units
-   - Configure unit traits
-   - Transfer units to buyers
-
-3. **Monitor Subdivision**
-   - View subdivision statistics
-   - Track unit validation status
-   - Manage collection settings
-   - Handle admin operations
-
-### For Unit Holders
-
-1. **Receive Units**
-   - Units are minted to specified addresses
-   - Units appear in wallet as ERC1155 tokens
-   - Custom metadata and traits are attached
-
-2. **Transfer Units**
-   - Standard ERC1155 transfer functions
-   - Royalty enforcement on transfers
-   - Marketplace integration support
-
-3. **Burn Units**
-   - Burn units if subdivision allows burning
-   - Reduces total active units count
-   - Permanent token destruction
-
-### For Validators
-
-1. **Validate Units**
-   - Access validation interface
-   - Review unit traits and metadata
-   - Apply validation criteria
-   - Update validation status
-
-2. **Manage Validation**
-   - Set custom validation rules
-   - Monitor validation progress
-   - Handle validation disputes
-
-## 🔒 Security Considerations
-
-### Access Control
-
-- **Role-Based Permissions**: Different roles for different operations
-- **Collection Admin Rights**: Restricted to DeedNFT owner
-- **Validator Permissions**: Only registered validators can validate
-
-### Data Integrity
-
-- **Immutable Records**: Validation records cannot be altered
-- **Trait Validation**: Unit traits are validated against criteria
-- **Metadata Verification**: Custom metadata is verified
-
-### Privacy Protection
-
-- **Selective Disclosure**: Control what information is shared
-- **Trait Privacy**: Sensitive traits can be encrypted
-- **Metadata Control**: Custom metadata URIs for privacy
-
-## 📊 Performance Metrics
-
-### Gas Optimization
-
-| Operation | Gas Cost | Notes |
-|-----------|----------|-------|
-| Create Subdivision | ~200,000 gas | One-time setup cost |
-| Mint Unit | ~120,000 gas | Per unit minting |
-| Transfer Unit | ~45,000 gas | Standard ERC1155 transfer |
-| Set Trait | ~80,000 gas | Per trait update |
-| Validate Unit | ~100,000 gas | Per unit validation |
-
-### Storage Efficiency
-
-- **Optimized Data Structures**: Efficient storage patterns
-- **Batch Operations**: Reduced gas costs for multiple operations
-- **Lazy Loading**: On-demand data loading
-- **Compression**: Data compression where applicable
-
-## 🔄 Integration Points
-
-### With DeedNFT
-
-- **Ownership Verification**: Subdivision requires DeedNFT ownership
-- **Trait Inheritance**: Units inherit traits from parent DeedNFT
-- **Validation Integration**: Uses same validation system
-
-### With Validator
-
-- **Unit Validation**: Individual validation for each unit
-- **Criteria Application**: Validation criteria applied per unit
-- **Status Updates**: Validation status tracked per unit
-
-### With Fractionalize
-
-- **Asset Fractionalization**: Subdivision units can be fractionalized
-- **Share Creation**: Units can be converted to ERC-20 shares
-- **Liquidity Provision**: Enables trading of subdivision units
-
-## 🚀 Best Practices
-
-### For Asset Owners
-
-1. **Plan Subdivision**: Carefully plan unit structure before creation
-2. **Set Clear Rules**: Define unit management rules clearly
-3. **Monitor Validation**: Track validation progress for all units
-4. **Manage Metadata**: Keep unit metadata up to date
-
-### For Validators
-
-1. **Consistent Validation**: Apply validation criteria consistently
-2. **Document Decisions**: Provide clear reasoning for validation decisions
-3. **Monitor Performance**: Track validation metrics and performance
-4. **Handle Disputes**: Establish clear dispute resolution procedures
-
-### For Developers
-
-1. **Interface Compliance**: Implement all required interface functions
-2. **Error Handling**: Provide clear error messages and handling
-3. **Gas Optimization**: Optimize gas usage for common operations
-4. **Testing**: Comprehensive testing of all functionality
-
-## 🔄 Future Enhancements
-
-### Planned Features
-
-- **Automated Validation**: AI-powered unit validation
-- **Multi-Validator Consensus**: Multiple validators for high-value units
-- **Real-time Monitoring**: Live tracking of subdivision operations
-- **Mobile Support**: Mobile app for subdivision management
-
-### Integration Opportunities
-
-- **Marketplace Integration**: Direct integration with trading platforms
-- **Legal Services**: Integration with legal document verification
-- **Insurance Providers**: Automated insurance verification
-- **Government Databases**: Integration with official registries
 
 ---
 
-*This documentation is part of the Clear Protocol docs. For questions about subdivision functionality, please contact the development team.*
+## Unit token ids
+
+**A unit's token id packs the deed id and the unit id into one number.**
+
+```solidity
+tokenId = (deedId << 128) | unitId
+```
+
+The high 128 bits are the deed id; the low 128 bits are the unit id, from 0 to `totalUnits - 1`.
+`uri` and `royaltyInfo` take this combined id. Most other functions take `deedId` and `unitId`
+separately.
+
+---
+
+## Creating a subdivision
+
+```solidity
+function createSubdivision(
+    uint256 deedId,
+    string memory name,
+    string memory description,
+    string memory symbol,
+    string memory collectionUri,
+    uint256 totalUnits,
+    bool burnable
+) external
+```
+
+The caller must own the deed, and the deed must:
+
+- be validated (`DeedNFT.getValidationStatus`), and
+- have asset type Land (0) or Estate (2). Vehicles and commercial equipment cannot be subdivided;
+  `supportsSubdivision(assetType)` reports this.
+
+`totalUnits` must be above zero, `symbol` and `collectionUri` must not be empty, and the deed must
+not already have an active subdivision. The caller becomes the collection admin. Event:
+`SubdivisionCreated`.
+
+**Subdivision does not take custody of the deed.** Its owner can still transfer or burn it. Minting
+units and deactivating the subdivision follow whoever owns the deed at the time; the collection admin
+stays whoever created the subdivision until the role is handed on.
+
+---
+
+## Minting units
+
+```solidity
+function mintUnit(uint256 deedId, uint256 unitId, address to) external
+function batchMintUnits(uint256 deedId, uint256[] calldata unitIds, address[] calldata recipients) external
+```
+
+- **Only the deed's current owner can mint.** The subdivision must be active and the contract not
+  paused.
+- Each unit id must be below `totalUnits` and not already minted. A zero recipient means the deed's
+  owner.
+- Minting does not check the deed's validation status again.
+
+Each new unit gets these traits:
+
+| Trait | Value |
+|---|---|
+| `isValidated` | `false` |
+| `parentDeed` | The deed id |
+| `unitType` | `"Subdivision Unit"` |
+| `beneficiary` | The recipient |
+| `assetType`, `operatingAgreement`, `definition`, `configuration` | Copied from the deed |
+| `validator` | The subdivision's validator if one is set, otherwise the deed's `validator` trait |
+
+Event: `UnitMinted`, one per unit.
+
+---
+
+## Holding, transferring and burning units
+
+- **Transfers** use the standard ERC-1155 `safeTransferFrom` and `safeBatchTransferFrom`, one unit
+  at a time (`amount` must be 1). Each transfer rewrites the unit's `beneficiary` trait to the new
+  holder. `ownerOf(tokenId)` returns the current holder.
+- **Burning**: `burnUnit(deedId, unitId)` by the unit's holder, only while the subdivision is
+  `burnable`. Event: `UnitBurned`.
+- **Deactivating**: `deactivateSubdivision(deedId)` by the deed's current owner, once every minted
+  unit has been burned. A deactivated subdivision's views revert, and the deed can be subdivided
+  again. Event: `SubdivisionDeactivated`.
+
+---
+
+## The collection admin
+
+**The collection admin manages a subdivision's units after they are minted.**
+
+| Function | What it does |
+|---|---|
+| `setUnitMetadata(deedId, unitId, metadata)` | A per-unit metadata URI, returned by `uri` in place of the collection URI |
+| `setBurnable(deedId, burnable)` | Whether holders can burn units |
+| `setSubdivisionValidator(deedId, validator)` | A validator for units minted from now on. It must be active in the `ValidatorRegistry`; zero clears it |
+| `setUnitTrait(deedId, unitId, traitKey, traitValue)` | Sets a trait from a `bytes32` key and raw bytes |
+| `setUnitTraitFlexible(deedId, unitId, traitKey, traitValue, valueType)` | Like `DeedNFT.setTrait`: a 32-byte key is used as is, anything else is hashed and recorded as the trait's name. `valueType` 0 raw bytes, 1 string, 2 number, 3 boolean |
+| `removeUnitTrait(deedId, unitId, traitName)` | Deletes a trait |
+| `transferCollectionAdmin(deedId, newAdmin)` | Hands the role on |
+
+`setUnitTraitName` (by `ADMIN_ROLE`) names a trait key for every unit.
+
+---
+
+## Validating units
+
+**Units are validated one at a time, against their own traits.** A validator holding
+`VALIDATOR_ROLE` on its `Validator` contract calls:
+
+```solidity
+function validateSubdivisionUnit(address subdivideContract, uint256 deedId, uint256 unitId) external
+```
+
+The check is the same as for a deed ([`validation-system.md`](./validation-system.md)), applied to
+the unit's traits. Three things must be in place:
+
+- `Subdivide` is on the `Validator`'s compatible list (`addCompatibleDeedNFT`).
+- The `Validator` holds `VALIDATOR_ROLE` on `Subdivide` (`addValidator`, by `ADMIN_ROLE`) and is
+  active in the `ValidatorRegistry`. The registry does not grant this role on `Subdivide`; only on
+  `DeedNFT`.
+- Every trait the criteria require is set on the unit itself. A unit copies only `assetType`,
+  `operatingAgreement`, `definition` and `configuration` from its deed, so traits such as `country`
+  or `parcelNumber` have to be set on each unit by the collection admin.
+
+The result is written by `Subdivide.updateUnitValidationStatus`, which sets the unit's
+`isValidated` and `validator` traits. Event: `UnitValidated`.
+
+---
+
+## Metadata and royalties
+
+- **`uri(tokenId)`** returns the unit's own metadata URI if the collection admin set one, otherwise
+  `collectionUri/unitId`.
+- **`royaltyInfo(tokenId, salePrice)`** names the unit's `validator` contract as the receiver, at
+  that validator's royalty rate. A unit with no validator falls back to the parent deed's `royaltyInfo`.
+- **ERC-7496 reads**: `getUnitTraitValue`, `getUnitTraitValues`, `getUnitTraitKeys`,
+  `getUnitTraitName`, `getUnitTraitMetadataURI`.
+- **Status reads**: `getUnitValidationStatus`, `isUnitValidated`, `getUnitAssetType`,
+  `getSubdivisionValidator`, `subdivisionExists`, `unitExists`, `getUnitMetadata`.
+
+`Subdivide` stores an approved-marketplace list, a royalty-enforcement flag and a transfer validator
+(`setApprovedMarketplace`, `setRoyaltyEnforcement`, `setToDefaultSecurityPolicy`,
+`setTransferValidator`, all `ADMIN_ROLE`). No approval or transfer reads them, so unit transfers
+are not restricted to approved marketplaces.
+
+---
+
+## Roles and pausing
+
+- **Deed owner**: creates the subdivision, mints units, deactivates it.
+- **Collection admin**: the table above.
+- **`VALIDATOR_ROLE`** on `Subdivide`: `updateUnitValidationStatus`. Granted with `addValidator`.
+- **`ADMIN_ROLE`**: pause, `addValidator` and `removeValidator`, trait names, the marketplace
+  settings.
+- **`DEFAULT_ADMIN_ROLE`**: upgrades.
+
+`pause` stops `createSubdivision`, `mintUnit` and `batchMintUnits`. Transfers, burning and the
+collection admin's functions keep working.
+
+---
+
+## Known limitations
+
+- **`DeedNFT` has no `getAssetType`.** `Subdivide` calls it through `IDeedNFT`, so
+  `setUnitTrait` and `setUnitTraitFlexible` revert on the `assetType` key, and `getUnitAssetType`
+  reverts for a unit without its own `assetType` trait. Units minted normally copy `assetType` from
+  the deed, so `getUnitAssetType` works for them.
+- **A unit cannot be fractionalized.** `Fractionalize` cannot receive ERC-1155 tokens; see
+  [`fractionalization.md`](./fractionalization.md#known-limitations).
+- **The deed is not locked.** If its owner transfers it, the new owner controls minting and
+  deactivation. If it is burned, no more units can be minted, the subdivision can never be
+  deactivated, and `royaltyInfo` for a unit without a validator reverts.
+- **A unit's validation does not follow the deed's.** Units start unvalidated, and a later change to
+  the deed's status does not reach them.
+- **No tests cover `Subdivide`.**

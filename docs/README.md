@@ -1,8 +1,8 @@
 # Documentation
 
-Everything written down about **CLEAR** — the app and the co-op — and about **the Clear Protocol**,
-the on-chain layer underneath it, sorted by who it is for. Start with the root
-[`README.md`](../README.md) for what the repository is and how to run it.
+Documentation for **Clear** — the app and the co-op — and for **the Clear Protocol**, the on-chain
+layer underneath it, sorted by who it is for. New to Clear? Start with the
+[Overview](./overview/README.md). To run the software, start with [Developers](./developers/README.md).
 
 | Section | For |
 |---|---|
@@ -12,25 +12,21 @@ the on-chain layer underneath it, sorted by who it is for. Start with the root
 | [Investors](./investors/README.md) | Financial contributors |
 | [Contributors](./contributors/README.md) | People contributing land or property |
 | [Governance](./governance/README.md) | How the co-op decides, and who holds which keys |
-| [Developers](./developers/README.md) | Building on Clear, or working in this repository |
+| [Developers](./developers/README.md) | Building on Clear, or running and changing its software |
 | [Protocol](./protocol/README.md) | The contracts, including the Deed track, and a [reference page for every deployed contract](./protocol/contracts/README.md) |
 | [Operators](./operators/README.md) | Deploying, upgrading and running it |
 
-**Governance is the one place a rule is written down.** When a member, merchant, investor or
-operator page depends on who decides something or who holds a key, it links to
-[`governance/`](./governance/README.md) rather than restating it, so a change is made once.
+**Who decides what is set out in [Governance](./governance/README.md).** Every other section links
+there for who decides something or who holds a key.
 
-Every link in these pages points at a file that exists; CI checks it
-(`scripts/check-doc-links.mjs`), and that the generated [contract reference](./protocol/contracts/README.md) matches
-`deployments/` (`scripts/docs/contract-reference.mjs --check`). Anything no longer true of the code is in
-[`archive/`](./archive/README.md), not here.
+Superseded material is in [`archive/`](./archive/README.md).
 
 ---
 
 ## Design and build references
 
-What the apps were built to, kept for the people building them. These are not documentation for
-readers and will not be published with it. **Their paths are fixed:** build scripts, tests and
+Design specifications the apps are built to. They are reference material for contributors to the
+software, not part of the published documentation. **Their paths are fixed:** build scripts, tests and
 applied database migrations cite them, and a migration cannot be edited once it has run.
 
 | | |
@@ -44,11 +40,15 @@ applied database migrations cite them, and a migration cannot be edited once it 
 
 ---
 
-## Contributing to these docs
+## Contributing to the documentation
 
-Focused PRs against `dev`, same as code. Update the doc in the same change as the interface or
-workflow it describes — that is the only way any of this stays true. A new page goes in the section
-for its reader and gets a line in that section's `README.md`.
+Open a focused pull request against `dev`, as for code, and update the documentation in the same change
+as the interface or workflow it describes. A new page goes in the section for its reader and gets a
+line in that section's `README.md`.
+
+CI checks that every link resolves (`scripts/check-doc-links.mjs`) and that the
+[contract reference](./protocol/contracts/README.md) matches `deployments/`
+(`scripts/docs/contract-reference.mjs --check`).
 
 - Issues: [Deed3Labs/Protocol-Contracts/issues](https://github.com/Deed3Labs/Protocol-Contracts/issues)
 - Discussions: [Deed3Labs/Protocol-Contracts/discussions](https://github.com/Deed3Labs/Protocol-Contracts/discussions)

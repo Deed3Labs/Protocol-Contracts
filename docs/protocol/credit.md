@@ -47,7 +47,7 @@ consulting what the obligor already holds, so an address can hold credits and ow
 | `writeOffCreditLine(member, amount)` | issuer | Moves up to `amount` of the member's debt to the ledger's own line, adds it to `lostDebt()`, and zeroes the caller's ceiling allocation |
 
 Origination is capital-free: three entries that sum to zero and no reserve token moves. The refund
-arithmetic is set out in [`refund-repayment-plan.md`](./refund-repayment-plan.md).
+arithmetic is in [Refunds and repayments](./refund-repayment-plan.md).
 
 ### Who may write, and the ceiling
 
@@ -292,8 +292,10 @@ absorbed by that tier first; `TermIssuer._onDefault` then closes the plans regar
 balance)` with `ClearUSD.seize`, records the seizure in the registry, redeems the CLRUSD at
 `ESADepositVault`, and calls `settleFromCollateral(member, tierId, redeemed)`. That settles the named
 tier through `repayCreditBalanceFor`, so the waterfall is not told. `liquidateShares` does the same
-with pool shares, redeems what the pool can pay now and queues the rest; `settleRealized` applies the
-queued cash later. `settleFromSavings` lets a member do the same to their own `SAVINGS` tier at an
+with pool shares, redeems what the pool can pay now and queues the rest; `settleRealized` applies
+cash the Liquidator holds to the tier later. The Liquidator has no call that claims its queued
+request, and it needs the pool's `LIQUIDATOR_ROLE`, which no deploy script grants
+([Settlement → LendingPool](./settlement.md#lendingpool)). `settleFromSavings` lets a member do the same to their own `SAVINGS` tier at an
 issuer the Liquidator trusts, without being in default. The Liquidator needs AccessManager operator
 (`settleFromCollateral` is `onlyOperator`), the registry's `OPERATOR_ROLE` and CLRUSD's
 `LIQUIDATOR_ROLE`.

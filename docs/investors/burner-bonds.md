@@ -1,127 +1,134 @@
 # BurnerBonds
 
-A BurnerBond is a zero-coupon bond. The buyer pays less than face value today, and whoever holds the
-bond at maturity is paid face value. Each bond is one ERC-1155 token with its own id. The proceeds
-are held in `BondVault`, not in the AssurancePool. The contracts' full behaviour is in
-[Bonds](../protocol/bonds.md); addresses are in the root [`README.md`](../../README.md#deployed-addresses).
+A BurnerBond is a zero-coupon bond: the buyer pays less than face value today, and whoever holds the
+bond when it matures is paid face value. Nothing is paid in between. Each bond is its own token on
+the chain, with its own number.
+
+The money paid for bonds is held in the bond vault (the `BondVault` contract), not in the
+AssurancePool. The contracts' full behaviour is in [Bonds](../protocol/bonds.md), and their
+addresses are listed under [Deployed addresses](../../README.md#deployed-addresses).
 
 ## Buying a bond
 
-**`BurnerBondDeposit.makeDeposit(token, faceValue, maturityDate, discountPercentage)` does the whole
-purchase in one transaction.** It takes the price from the buyer, sends it straight to the BondVault,
-mints the bond to the buyer, and books the vault's obligation (principal, face value and maturity).
-If any step fails, nothing happens.
+**A purchase happens in one transaction.** The buyer's payment goes straight to the bond vault, the
+bond is issued to the buyer, and the vault records what it owes: the price paid, the face value and
+the maturity date. If any step fails, nothing happens.
 
-It refuses a purchase when:
+A purchase is refused when:
 
-- the token is not the vault's reserve token;
-- the collection has been deactivated by its owner (bonds already sold still redeem and roll);
-- the face value is outside the factory's bounds, or the maturity is in the past or beyond the
-  factory's `maxMaturity`;
-- `discountPercentage` is above the curve's discount for that maturity.
+- it is paid in a token other than the one the vault holds (USDC, in the deployed setup);
+- the bond series has been closed to new sales by its owner (bonds already sold still redeem and
+  roll);
+- the face value is outside the allowed range, or the maturity date is in the past or further out
+  than the longest term allowed;
+- the discount the buyer asks for is larger than the discount set for that term.
 
-### How the price is computed
+### How the price is set
+
+The discount grows in a straight line with the time to maturity:
 
 ```
-price    = faceValue − faceValue × discount / 10,000
-discount = minDiscount + (term / maxMaturity) × (maxDiscount − minDiscount)
+price    = face value − (face value × discount)
+discount = smallest discount + (term ÷ longest term) × (largest discount − smallest discount)
 ```
 
-`term` is the time from now to maturity, capped at `maxMaturity`; a term shorter than `minMaturity`
-gets no discount. This is the LINEAR curve, the one every deployed collection runs. The bounds are
-factory parameters set by its owner ([Bonds](../protocol/bonds.md#the-discount-curve)). The price
-charged is always the curve's, whatever `discountPercentage` the buyer passed.
+A term longer than the longest allowed counts as the longest; a term shorter than the shortest
+allowed gets no discount. The range is set by the bond factory's owner
+([Bonds → The discount curve](../protocol/bonds.md#the-discount-curve)). The buyer always pays the
+price this sets, whatever discount they asked for.
 
-**What a bondholder receives is fixed at purchase:** face value at maturity, against the price paid.
-Nothing the co-op earns on the proceeds changes it.
+**What a bondholder receives is fixed when they buy:** face value at maturity, against the price
+paid. Nothing the co-op earns on the money changes it.
 
 ## Where the proceeds go
 
-**Proceeds go to the BondVault.** The vault keeps back a redemption reserve and treats only the rest
-as deployable.
+**The bond vault keeps back a redemption reserve, and treats only the rest as free to use.** The
+reserve is the larger of:
 
-```
-requiredReserve  = max( face value of bonds maturing within reserveWindow,
-                        totalFaceOutstanding × minReserveBps / 10,000 )
-deployableExcess = held − (requiredReserve + owedToReserve)        floored at zero
-```
+- the face value of every bond maturing within the reserve window (90 days when deployed);
+- a floor across all bonds outstanding (30% of their face value when deployed).
 
-**The reserve is derived, not set.** It rises by itself as maturities come inside the window. The
-deploy script sets the window at 90 days, and `minReserveBps` starts at 3,000. An operator can change
-both with `setReserveTerms`; the floor is bounded to 2,000–10,000 bps, and the window is not bounded.
-`owedToReserve` is anything the vault has borrowed from the AssurancePool, which it repays before the
-treasury can take anything.
+What the vault holds above that reserve, and above anything it owes the AssurancePool, is its
+**deployable excess**.
 
-The deployable excess is the only money that leaves the vault other than to a bondholder:
+**The reserve is worked out, not set by hand.** It rises by itself as bonds come inside the window.
+The vault's operator can change the window and the floor: the floor can be set anywhere from 20% to
+100%, and the window has no limit. Anything the vault has borrowed from the AssurancePool is repaid
+before the treasury can take anything.
 
-| Outflow | Who | What happens to it |
+The deployable excess is the only money that leaves the vault other than to pay a bondholder:
+
+| Where it goes | Who sends it | What happens to it |
 |---|---|---|
-| `withdrawDeployable(amount, to)` | `TREASURY_ROLE`, the co-op's Safe | Leaves the contracts. What the co-op does with it is not governed by any contract |
-| `lendToPayoutPool(amount)` | The PayoutPool, for a merchant claim that has come due | Lent, and repaid with interest when members repay ([What stands behind it](./what-stands-behind.md#merchant-payout-claims)) |
+| The co-op's Safe | The holder of the vault's treasury permission, which is the Safe | It leaves the contracts. No contract governs what the co-op does with it |
+| The payout pool | The payout pool, for a merchant payout that has come due | Lent, and repaid with carry when members repay ([What stands behind it](./what-stands-behind.md#merchant-payout-claims)) |
 
-Interest the PayoutPool pays the vault stays in the vault and adds to `held()`. It does not change
-what any bondholder is owed; above the reserve it is deployable like any other money.
+The Safe is the co-op's multi-signature wallet: moving money from it needs more than one of its
+owners to sign ([On-chain authority](../governance/on-chain-authority.md#the-ops-safe)).
 
-Money lent to the PayoutPool is not in `held()` while it is out, and `requiredReserve()` does not
-wait for it to come back.
+Carry the payout pool pays the vault stays in the vault. It does not change what any bondholder is
+owed; above the reserve, it can be withdrawn or lent like any other money.
+
+Money lent to the payout pool does not count as held while it is out, and the reserve does not wait
+for it to come back.
 
 ## Payment at maturity
 
-**`redeemBond(id)` pays face value to whoever holds the bond once it has matured.**
-`batchRedeemBonds(ids)` does the same for up to 50. The bond is burned and `BondVault.settle` pays.
-If the vault holds less than the face value, it draws on its backstops in order:
+**Once a bond has matured, whoever holds it can redeem it for face value.** Up to 50 bonds can be
+redeemed in one transaction. The bond is retired and the vault pays. If the vault holds less than
+the face value, it draws on its backstops in this order:
 
 1. the vault's own holdings;
-2. the co-op treasury, up to the allowance the Safe has given the vault (capped at the Safe's
-   balance);
-3. the AssurancePool, from its excess, then its buffer while `hasValidRTD()` holds, and never its
-   primary reserve.
+2. the co-op's treasury, up to the amount the Safe has allowed the vault to draw, and no more than
+   the Safe holds;
+3. the AssurancePool: its excess first, then its buffer while its reserve is at target, and never
+   its primary reserve.
 
-If all three together cannot pay, the redemption reverts: nothing moves, and the holder keeps the
-unpaid bond. The order and its limits are in [What stands behind it](./what-stands-behind.md#bonds-at-maturity).
+If all three together cannot pay, the redemption fails: nothing moves, and the holder keeps the
+unpaid bond. The order and its limits are in
+[What stands behind it](./what-stands-behind.md#bonds-at-maturity).
 
-**There is no early exit for a holder.** A bond redeems only at or after maturity. The one early
-path, `redeemEarly`, is restricted to the collection's liquidator (below). Bonds are transferable
-unless pledged, but the contracts provide no market for them and no buy-back.
+**A holder cannot exit early.** A bond redeems only at or after maturity. The one early redemption
+belongs to the bond series' liquidator (below). Bonds can be transferred unless pledged, but the
+contracts provide no market for them and no buy-back.
 
 ## Rolling
 
-**At maturity, a holder may roll a bond instead of redeeming it.** `rollBond(id)` burns the matured
-bond and issues a new one maturing `rollTerm` from now (365 days by default). No cash moves: the
-matured face value buys the new bond at the curve's discount for the new term, so
+**At maturity, a holder may roll a bond instead of redeeming it.** Rolling retires the matured bond
+and issues a new one, maturing a year later by default. No cash moves: the matured face value buys
+the new bond at the discount for the new term, so
 
 ```
-newFace = oldFace × 10,000 / (10,000 − discount)
+new face value = old face value ÷ (1 − discount)
 ```
 
-Nothing rolls on its own. The holder calls `rollBond`; `redeemBond` pays out regardless of the roll
-setting. A holder can opt a bond out of rolling with `setAutoRollOptOut`, after which `rollBond`
-refuses it. A pledged bond's pledge moves to the new bond.
+Nothing rolls on its own. The holder has to choose to roll; redeeming always pays out. A holder can
+opt a bond out of rolling, after which it can only be redeemed. If a pledged bond is rolled, the
+pledge moves to the new bond.
 
 ## Bonds as collateral
 
-**A member can pledge a bond against credit.** Bonds are registered in `CollateralRegistry` as
-`BOND`, counted at 95% (`9_500` bps) of their present value. `presentValueOf(id)` accretes
-straight-line from the price paid to face value over the bond's term, and is face value from maturity
-on. Limits and haircuts are in [Credit](../protocol/credit.md#collateral-and-the-ceiling).
+**A member can pledge a bond against credit.** A pledged bond counts at 95% of its value today. That
+value rises in a straight line from the price paid to face value over the bond's term, and is face
+value from maturity on. Limits and haircuts are in
+[Credit → Collateral and the ceiling](../protocol/credit.md#collateral-and-the-ceiling).
 
-- A bond that is pledged, with credit drawn under it, cannot be transferred, and `BondVault.settle`
-  refuses to pay it out, so it cannot be redeemed until the credit is paid down. It can be rolled;
-  the pledge moves to the new bond.
-- The collection's `liquidator` can `seizeBond` and `redeemEarly`. Early redemption pays
-  `presentValueOf` and retires the full face value; the difference stays in the vault. No deploy
-  script sets a liquidator, so neither function can be called until the collection's owner sets one.
+- While a pledged bond backs credit the member has drawn, it cannot be transferred or redeemed until
+  that credit is paid down. It can still be rolled, and the pledge moves to the new bond.
+- The bond series' liquidator can seize a bond and redeem it early. Early redemption pays the bond's
+  value today and retires its full face value; the difference stays in the vault. No liquidator has
+  been named, so neither can happen until the bond series' owner names one.
 
 ## Who controls the bonds
 
-| Contract | Gate | Can |
-|---|---|---|
-| `BondVault` | `DEFAULT_ADMIN_ROLE` | Grant roles; upgrade the vault (UUPS) |
-| `BondVault` | `OPERATOR_ROLE` | `setBackstops` (treasury, AssurancePool, PayoutPool), `setReserveTerms` |
-| `BondVault` | `TREASURY_ROLE` | `withdrawDeployable` |
-| `BurnerBondFactory` | Owner | Discount, maturity and face-value bounds; deactivate a collection |
-| `BurnerBond` | Owner | `setBondVault`, `setLiquidator`, `setRollTerm`, `setEncumbranceSource` |
+- **The bond vault's admin** grants the vault's permissions and can replace its code (an upgrade).
+- **The vault's operator** names its backstops (the treasury, the AssurancePool and the payout pool)
+  and sets the reserve window and floor.
+- **The vault's treasury permission** withdraws the deployable excess.
+- **The bond factory's owner** sets the discount, maturity and face-value ranges for new bonds, and
+  can close a bond series to new sales.
+- **Each bond series' owner** can point the series at a different vault, name its liquidator, set
+  the roll term and set where pledges are recorded.
 
-`BurnerBond` and `BurnerBondDeposit` are clones, not upgradeable proxies; the collection's owner can
-still point it at a different vault with `setBondVault`. Who holds each of these is in
-[Governance](../governance/README.md).
+Bond series cannot be upgraded, but their owner can still point them at a different vault. Who holds
+each permission is in [Governance → On-chain authority](../governance/on-chain-authority.md).

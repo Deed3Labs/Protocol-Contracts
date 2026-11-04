@@ -1,435 +1,237 @@
-# Refunds — Giving Back What Was Paid
+# Refunds and repayments
 
-Plan for the hole found on 2026-09-21: **a refund never returns a member's own money.** It cancels
-what they still owe and stops there, so a member who had paid half a plan is out of pocket by that
-half on a purchase that was given back.
-
-Scope: `StableCredit`, `PayoutPool`, `TermIssuer`, the refund path in the API, and what the member
-is told. Disputes decided for the member go through the same code and get the same fix for free.
+How a member's repayment reaches the merchants it pays, and how a refund cancels what a member still
+owes and gives back what they already paid. The contracts are `StableCredit`, `PayoutPool` and
+`TermIssuer`; the API calls them from `apps/api/src/services/refundSettlement.ts`. The function-level
+reference is in [Settlement and the float](./settlement.md) and [Credit](./credit.md).
 
 ---
 
-## 1. What happens today
+## 1. Origination moves no money
 
-### Origination is capital-free
+A partner purchase is a three-party mint that nets to zero: the member is debited, the merchant is
+credited the payout, and the co-op is credited the discount (`originatePurchase`). No reserve token
+moves. Money enters only when the member repays, and leaves only when a merchant redeems or a member
+is refunded.
 
-A purchase is a three-party mint that nets to zero — the member is debited, the merchant credited,
-the co-op credited the discount. No money moves.
-
-### A member's repayments leave the ledger
-
-`_routeRepayment` sends their USDC to the **payout pool** first, up to what merchants are owed, and
-the remainder to the assurance buffer. The money is really there; it is not an entry.
-
-### A refund only unwinds debt
-
-`closePlanForRefund` → `reversePurchase` burns the merchant's credits and the co-op's discount, and
-reduces what the member owes. Capped twice over: `closePlan` asks for at most `principalOutstanding`,
-and `reversePurchase` reverts if the reversal exceeds what is owed.
-
-Two things follow, one right and one wrong.
-
-**Right, and already built.** If the merchant has already redeemed, there is nothing on the shelf to
-burn: `_transferObligation(member, merchant, shortfall)` releases the member, the merchant carries
-the obligation, and it comes off what they are paid next (`RefundOwedByMerchant`). A refund after the
-merchant has drawn down needs nothing new.
-
-**Wrong.** Nothing returns what the member already paid.
-
-### Worked example — $100 purchase, 2.5% fee, member has paid $46, refunded in full
-
-| | Member | Merchant | Co-op | Pool |
-|---|---|---|---|---|
-| Purchase | −$100 | +$97.50 | +$2.50 | — |
-| Member pays $46 | −$54 | | | +$46 cash |
-| Refund today | **0 owed** | −$52.65 | −$1.35 | +$46 cash |
-| **Net** | **−$46 out of pocket** | keeps $44.85 | keeps $1.15 | holds their $46 |
-
-The member ends level on the ledger and $46 down in cash. The value sits with the merchant and the
-co-op, in exactly the proportion the member paid for.
-
-### And the carry is stranded
-
-Carry accrued while they held the plan is materialised before the unwind and survives it, correctly:
-a refund does not unmake the time the money was held. But the plan then closes, so no tier and no
-open plan holds that carry — it becomes a balance with nothing pointing at it, which is what froze a
-member's line over 2.6 cents. #550 gives it a home on screen and a Repay.
+| On a $100.00 purchase with a 2.5% fee | Member | Merchant | Co-op |
+|---|---|---|---|
+| Ledger after the purchase | −$100.00 | +$97.50 | +$2.50 |
 
 ---
 
-## 2. What a refund should do
+## 2. Repayments
 
-**Reverse what is still owed. Repay what was already paid. Withhold the carry from the cash.**
+### Where a repayment goes
 
-The split falls out of the arithmetic, so the backend picks it rather than anyone choosing:
-
-| Member has paid | What happens |
-|---|---|
-| Nothing | Today's behaviour exactly: reverse the debt. Carry remains on the ledger and the member clears it with Repay (#550). Nothing to net against. |
-| Some of it | Reverse what is still owed **and** repay what was paid, less carry incurred. |
-| All of it | Repay the lot, less carry incurred. No reversal: there is no debt left to cancel. |
-
-Where the cash comes from, and who ends up carrying it:
-
-- **From the payout pool**, which is where their payments landed.
-- **The merchant's balance falls by their share** of the repaid part, because that money was theirs
-  to be paid. If they have already redeemed, the obligation transfers to them instead and comes off
-  their next payout — the mechanism `_transferObligation` already implements.
-- **The co-op gives back its 2.5%** on the repaid part, from the treasury's own balance.
-- **The carry is withheld from the member's cash** and applied to their ledger balance. They paid for
-  the time they held the money, as they should, and no isolated balance is left behind.
-
-### The same example, under this plan
-
-| | Member | Merchant | Co-op | Pool |
-|---|---|---|---|---|
-| After purchase and $46 paid | −$54 owed | +$97.50 | +$2.50 | +$46 cash |
-| Reverse the $54 still owed | 0 owed | −$52.65 | −$1.35 | — |
-| Repay the $46 paid, less $0.40 carry | **+$45.60 cash** | −$44.85 | −$1.15 | −$45.60 |
-| Carry settled from the withheld $0.40 | **0 owed, nothing stranded** | | +$0.40 | −$0.40 |
-
-Everyone ends where they should: the member whole apart from carry they genuinely incurred, the
-merchant and co-op giving back what they were paid, and nothing left on the ledger to chase.
-
----
-
-## 3. What has to change
-
-### PayoutPool — a withdrawal, not a claim
-
-**Settled: the queue does not change.** A merchant redeeming is a *claim* on the pool and waits its
-turn by age. A member's refund is not — it is the withdrawal of money that member paid in, which is
-sitting there because `_routeRepayment` put it there. Nothing is being taken from the merchants in
-the queue in aggregate; the merchant whose sale it was gives it back.
-
-This is how a card refund works, and the reasoning is the same: the sale was the merchant's, so the
-merchant bears it. If they have already redeemed, their balance goes negative and their next payout
-settles it — a drawn line, exactly as `_transferObligation` already does.
-
-`payRefund(address member, uint256 amount)`, callable only by StableCredit, paying from `held()`.
-No priority field, no second queue.
-
-### Routing — fund the pool against payables, not queued claims
-
-**Settled, and it is where the residual actually lived.** A refund could find an empty pool, and the
-reason is not refunds at all: `_routeRepayment` funds the pool against `shortfall()`, which is
-`queuedTotal − held()` — cash for claims a merchant has *already redeemed against*. A merchant's
-unredeemed balance is a payable too ("the merchant's positive balance IS the payables ledger"), and
-nothing reserves cash against it. So when no claim happens to be queued, a member's repayment goes
-straight past the pool into the assurance buffer, and the pool was never funded for the obligation
-that money belongs to.
-
-**What that has already done, on Base Sepolia, 2026-09-21.** Every test repayment is in the buffer:
+`StableCredit._routeRepayment` sends a repayment's reserve tokens to the PayoutPool first, up to
+what the pool is short of every outstanding payable, and the rest to the AssurancePool:
 
 ```
-AssurancePool  125.033081 USDC   (buffer 125.033081 · primary 0 · excess 0)
-PayoutPool       0.0      USDC
-credit totalSupply 125.033081    (merchant 97.50 · co-op 27.53)
+target   = stableCredit.totalSupply()      // every positive balance: what merchants and the co-op are owed
+toPayout = min(amount, target − payoutPool.held())
+rest     → AssurancePool.depositRepayment  // primary reserve up to target RTD, then the buffer
 ```
 
-The cash and the claims match to the cent, and the cash is in the wrong contract. If that merchant
-redeemed today their claim would queue against an empty pool while 125 sat one contract away — and
-the buffer cannot send it: it leaves only through `reimburse` (a loss), a rebalance into the primary
-reserve, or `withdraw`, which takes from *excess* alone. **There was no path from the buffer to the
-payout pool.** (#825 has since added one: `drawForDueClaim` may borrow from the AssurancePool's excess,
-then its buffer, as a last resort, and repay it — see [Settlement](./settlement.md).)
+**Payables come before provisions.** A merchant's positive balance is a present liability; the
+AssurancePool's buffer is a provision against future losses. Measuring the PayoutPool's need against
+every positive balance, rather than against claims already queued, keeps a repayment in the pool
+even when no merchant has redeemed yet. Measured against the queue alone, a repayment made before a
+merchant redeemed would pass into the AssurancePool, where it cannot pay a claim except as a
+last-resort loan.
 
-That is the routing's real shape, not a testnet artefact: `shortfall()` is non-zero only while claims
-are already queued and unfunded, so unless a merchant redeemed *before* a member repaid, the money
-goes to the buffer. Merchants would redeem, find nothing, queue, and wait for a manual top-up while
-the buffer accumulated what should have paid them.
+With no payout pool set, all of it goes to the AssurancePool.
 
-The fix is in the routing:
+### Inside the PayoutPool
 
-```
-target   = every outstanding payable
-toPayout = min(amount, target − held())
-remainder → assurance buffer
-```
+`PayoutPool.receiveRepayment` accepts calls from the ledger only. Anybody else putting cash in uses
+`fund`, which buys positions rather than settling them (see below). It then:
 
-Payables get covered before provisions, which is the right order: a payable is a present liability
-and the buffer is a provision against future losses. The buffer fills more slowly as a result, and
-that is the intended trade.
+1. **Repays lenders' principal**: the lending pool, then the bond vault, then the AssurancePool,
+   each up to what the pool borrowed from it.
+2. **Pays lenders' interest** from what is left, up to `carryEarned`, split by each lender's share of
+   what was borrowed before step 1.
+3. **Settles the pool's own positions**: the principal repaid in step 1 is burned from the positions
+   the pool bought with borrowed money.
+4. **Adds the rest to `memberFunded`**: members' own cash, which settles claims when they are paid.
 
-With this, the money a member repays sits in the pool against the merchant's payable — which is
-exactly the money a refund gives back. **The assurance buffer never enters the refund path**, and
-"we remove the USDC the member paid from the payout pool" is literally what happens.
+The lenders come first because what they lent paid a claim that this member's debt stood behind. If
+the pool kept the repayment to settle claims, it would go on borrowing against money it already held.
 
 ### The position follows the cash
 
-A claim paid in cash used to MOVE to the co-op rather than burn, on the grounds that burning would
-leave a member owing with nobody holding the matching claim. That is true of one case and one only.
+When a claim is paid, `_placePosition` looks at whose cash paid it:
 
-| Cash that paid the claim | What happens to the credits | Why |
+| Cash that paid the claim | What happens to the merchant's credits | Why |
 |---|---|---|
-| A member's own repayment (`donate`) | **Burned** (`settleClaim`) | Their obligation went when they paid. The claim was backed by that cash, and burning it puts supply back in step with what members owe. |
-| The yield pool (`fund`) | **Transferred to the pool** | It advanced the money and the member still owes it, so it holds the position and earns the carry — exactly as it does on the unsecured tiers it funds (`tierCarryRecipient`). |
-| Co-op capital (`fund`) | **Transferred to the co-op** | Same rule, different funder. The fallback when no funder is named. |
+| A member's repayment (`memberFunded`) | **Burned** (`StableCredit.settleClaim`) | The member's obligation went when they paid. Burning brings supply back into step with what members owe |
+| A funder's capital (`fund`, `capitalOf`) | **Transferred to that funder**, oldest capital first | The member still owes it, so whoever advanced the cash holds the position and earns its carry |
+| Borrowed cash (`drawForDueClaim`) | **Kept by the pool** | The lenders are repaid in cash; the pool holds the position until the member repays |
+| Anything else | **Transferred to `coopTreasury`** | Cash the pool cannot attribute; the co-op holds the position rather than it disappearing |
 
-Only the pool knows which cash paid a claim, so only the pool may call a claim settled — hence
-`settleClaim` being restricted to it rather than being a burn anyone can call. The pool holds the
-position between redemption and payment for the same reason: until the claim is paid, nobody knows
-whose money will pay it, and deciding at redemption is what forced the old guess.
-
-**This is why the earlier draft's `receivablesHolder` is gone.** Nothing accumulates, so there is
-nothing to exclude, and the funding target is simply `totalSupply() − held()`.
+Only the pool knows which cash paid a claim, so `settleClaim` accepts calls from the pool alone.
+The pool holds the merchant's credits from redemption until payment (`inFlight`) for the same
+reason: until the claim is paid, nobody knows whose money will pay it.
 
 ### Who funds a payout, and in what order
 
-Three sources, and the order is the whole design rather than a policy anyone sets:
+1. **Members' repayments.** Normally in the pool by the time a merchant's turn comes. These claims
+   settle; nothing is bought.
+2. **Capital put in with `fund`** (`FUNDER_ROLE`). Smoothing money, so the pool can pay between
+   repayments. Each funder holds the positions their money paid for and can take back capital it
+   never spent with `withdrawCapital`.
+3. **`drawForDueClaim`, for a claim that is due and unpaid.** Permissionless. It refuses a claim
+   whose payout window has not run out (`PayoutPoolClaimNotDue`), and draws the shortfall from, in
+   order:
+   1. the lending pool's unlent cash;
+   2. the bond vault's deployable excess, never its redemption reserve;
+   3. the treasury (the Safe), up to the USDC allowance it has given the pool. This is capital, not a
+      loan: the treasury holds the position it pays for, as when it funds by hand;
+   4. the AssurancePool: excess, then buffer while `hasValidRTD()` holds, never the primary reserve.
 
-1. **The member's own repayments.** What is normally in the pool by the time a merchant's turn
-   comes. These claims settle; nothing is bought.
-2. **Cash the co-op has put in the pool.** Smoothing money, so the pool is funded between
-   repayments. The co-op holds the positions it pays for.
-3. **The yield pool, for a shortfall.** A claim whose turn has come and whose net 30 has elapsed,
-   with nothing in the pool to pay it, is the obligation that has to be met. It draws on the pool's
-   unlent cash, and the yield pool holds what it funds.
+There is no early-payment path. A merchant is paid when it is their turn and the money is there,
+and queued when it is not. A funded pool pays a claim before its window runs out; an empty pool means
+waiting until the window has run out, when `drawForDueClaim` can act.
 
-**There is no "early payment" path, and nothing decides to advance.** A merchant is paid when it is
-their turn and the money is there, and queued when it is not — a claim before its net 30 with a
-funded pool is simply paid, and an empty pool means waiting however early or late it is. The only
-thing anyone has to fund deliberately is a claim that is due and unpayable.
+### Lenders are repaid, not handed the position
 
-So `fund` is not one party's door. Whoever puts capital in holds the positions their money paid for
-(`capitalOf`, drawn down oldest first), and takes back what it never spent (`withdrawCapital`). The
-co-op would ordinarily leave idle capital in the yield pool and earn the return on it; funding the
-payout pool directly is for smoothing and emergencies, which is why it stays open rather than being
-routed through the pool.
+The lending pool's share price counts cash plus what is out on loan, and the AssurancePool's cover is
+counted in reserve tokens. A credit claim sitting in either would read as a hole in their books until
+somebody redeemed it. So a lender gets back what it put up, in cash, and the pool holds the position
+in between. That holding is excluded from `distributableCarry`, so it is never paid out as anybody
+else's carry, and it is burned as the member's repayment reaches the lender.
 
-**Carry splits the same way as the positions: by who funded the payout.** That is what the
-per-funder tracking is for, and it is the reason `capitalFunder` — a single named party — was
-wrong.
+Lenders are paid for lending out of the same cash. Carry is added to what a member owes, so the
+repayment that settles the principal carries the interest with it. The pool's share of the carry is
+held as `carryEarned` and handed to the lenders in proportion to what each put up; the division's
+remainder goes to the lending pool.
 
-### A refund short of cash draws the same way a payout does
+### Carry, by who bore the float
 
-A refund can outrun the pool: the merchant may have taken their money out before the purchase came
-back. The pool pays what it holds and records the rest (`refundsOwed`), settled ahead of any claim,
-because money already belonging to a member is not the pool's to pay somebody else with.
+`distributeCarry` (permissionless) splits carry the pool holds by each party's share of every claim
+outstanding: a funder carrying three fifths of the float receives three fifths of the carry. What no
+funder bore goes to `coopTreasury`. Shares use positions held at the moment of the call.
 
-**That gap is funded in the same order as a merchant payout** — pool cash, then the yield pool's
-unlent cash, then the reserve — and whoever funds it holds the claim, exactly as they do there. The
-only difference is whose claim it is:
-
-| funding | the funder ends up holding |
-|---|---|
-| a merchant payout | a claim on the **member**, who still owes it |
-| a refund | a claim on the **merchant**, who owes it back |
-
-Both come back the same way: credits reaching a party with an obligation burn against it, so the
-next sale settles it before it pays them anything.
-
-So the draw is one piece of work serving both, and until it exists a member can be left waiting for
-their own money — which is the same timing gap as the payout queue, pointed the other way.
-
-### Built: the draw, and what it is not
-
-`PayoutPool.drawForDueClaim()` finds the money for a claim whose turn has come **and** whose terms
-have run out. It refuses a claim that is not due (`PayoutPoolClaimNotDue`), so nothing in it can be
-used to pay anybody early — a funded pool already does that, and an unfunded one is a wait.
-
-The yield pool's unlent cash first; then `BondVault.lendToPayoutPool`, its deployable excess only,
-never the redemption reserve; then the treasury (the Safe) up to the USDC allowance it has given the
-pool, taken as capital so the Safe holds the position it pays for, as when it funds by hand; then
-`AssurancePool.lendToPayoutPool`: excess, then buffer while `hasValidRTD()` holds, never the primary
-reserve (order added 2026-10-29). Repayment restores the cushion before anything is called spare
-again. The yield pool, the vault and the reserve split the carry by what each put up, measured before
-the repayment that returns their principal; the division's remainder goes to the yield pool.
-
-**The lenders are repaid rather than handed the position**, which is where this departs from the co-op
-funding directly. The yield pool's share price is cash plus what is out on loan; the reserve's cover
-is counted in reserve tokens. A credit claim sitting in either reads as a hole in their books until
-somebody redeems it, so what they put up comes back as what they put up. Members' repayments
-therefore go to the lenders before they settle anything — otherwise the pool would borrow against
-money it already had.
-
-**The pool holds what it buys with borrowed money.** It has to be somebody, and it must not be the
-co-op: that would have it holding a claim it never paid for and collecting the carry on a float the
-yield pool was bearing. The holding is excluded from `distributableCarry`, so it cannot be paid out
-as anybody else's earnings, and it is burned when the member's repayment reaches the lender.
-
-**And they are paid for lending.** Carry is added to what a member owes, so the repayment that
-settles the principal carries the interest in the same cash — nothing has to be converted, which is
-what an earlier draft of this section got wrong. The pool's share of the carry is held as
-`carryEarned`, handed to the lenders in the same proportion as the principal they put up, and the
-claim it stood for is burned with it. Lending to the pool is a business rather than a favour.
-
-### Superseded: the reserve as funder of last resort
-
-The order above has three sources. A fourth exists and is not wired: **the AssurancePool**, for a
-claim whose turn has come and whose net 30 has elapsed when the payout pool is empty and the yield
-pool has nothing unlent. Not for paying anybody early — that needs no decision and no reserve, only
-a funded pool — but for the obligation that is due and that somebody must meet. That is one of the
-things a reserve is for, and the machinery is already here: whoever's capital pays a claim holds the
-position and earns carry on the float they bore, so the reserve would be another funder in
-`capitalOf`, with positions and the carry split following on their own.
-
-The order to draw in, each only when the one before is exhausted:
-
-1. cash the pool holds (members' repayments, then co-op smoothing capital)
-2. the yield pool's unlent cash
-3. the assurance reserve
-
-**What it already does right.** `poolExposure()` is `stableCredit.totalSupply()` — every outstanding
-claim, what merchants are owed included — narrowed by an `exposureSource` where one is set (the
-CollateralRegistry, reporting uncollateralised exposure). So it already measures itself against what
-is uncovered rather than against everything.
-
-**And burning settled claims makes that honest.** While a claim paid in cash stayed on the ledger,
-supply stayed inflated and the reserve held cover against obligations that had already been settled.
-On Base Sepolia today the ledger says 125.03 of exposure where members owe 0.026197.
-
-**Which tier, and how much: excess first, then buffer, never primary.** Excess is spare by
-definition. The buffer is first-loss money, but meeting a due claim is not a loss — the position
-comes back, with carry — so lending it for a timing gap is what it is there for. The primary reserve
-is what the RTD is measured against, and drawing on it would report the co-op as under-reserved when
-nothing had been lost.
-
-**Capped at whatever keeps RTD at or above target.** The constraint enforces itself: the reserve
-covers due claims until covering one more would put the network below its own policy, and then it
-stops and reports the shortfall — which is what `shortfall()` already does for the pool. Nobody sets
-a number, and the number cannot drift out of date.
-
-**The carry split is built, and cannot be switched on yet.** The pool splits carry by each funder's
-share of every claim outstanding — three fifths of the carry for three fifths of the float — and what
-no funder bore goes to the co-op, which is all of it until somebody funds a payout.
-
-> **The fee and the carry share one recipient, and must not.** `TermIssuer.openPlan` mints the
-> co-op's 2.5% to `carryTreasury`:
-> `originatePurchase(member, purchase, merchant, payout, carryTreasury, discount)`. So pointing that
-> at the pool — which is the only way carry reaches it — also sends every new purchase's fee there,
-> and `distributeCarry` would split the co-op's own income among funders.
->
-> Done and undone on Base Sepolia on 2026-09-21; nothing was lost, because no purchase happened in
-> the window. `scripts/configure-carry-recipients.mjs` now refuses to run.
->
-> **The fix is a recipient of its own for the fee**, so that `carryTreasury` means carry alone. It
-> is a small change to `TermIssuer` — a `feeRecipient` address, defaulting to the carry treasury so
-> nothing moves until it is set — and it is the first thing to build before any of the carry work
-> can be used. `tierCarryRecipient` is unaffected: a tier the LendingPool funds already names it.
-
-> **Watch:** `receiveRepayment` (once `donate`) means "a member paid down their balance", and that
-> is what makes claims burn. Capital must never arrive that way, whoever sends it — burning a claim
-> whose member still owes leaves an obligation with nothing holding it. The contract now refuses
-> anyone but the ledger.
+Carry reaches the pool only when an issuer names the pool as its carry recipient. The co-op's fee on
+each purchase has a recipient of its own, `TermIssuer.feeRecipient` (falling back to `carryTreasury`
+while unset), so pointing carry at the pool does not send the co-op's fee with it.
 
 ### The co-op's income
 
-The co-op's income is then funded in the pool like anyone else's and **withdrawn by role to a
-treasury address**, with the address settable only by that role.
-
-**It does not queue.** The 2.5% was never the merchant's money: on a $100 purchase the merchant is
-owed $97.50 and the co-op $2.50, and a $100 repayment covers both. So the fee is not a claim and
-takes no place in the queue — it is withdrawable from cash **not already earmarked for queued
-claims**:
+The co-op's fee is not a claim and does not queue: on a $100.00 purchase the merchant is owed $97.50
+and the co-op $2.50, and a $100.00 repayment covers both. `withdrawCoopIncome` (`OPERATOR_ROLE`) pays
+it from cash no queued claim or owed refund is waiting on:
 
 ```
-withdrawable = held() − queuedTotal
+withdrawable = min(coopTreasury's credits, held() − queuedTotal − refundsOwed, memberFunded)
 ```
 
 The co-op takes its fee as soon as the money is there, and can never take cash already promised to a
-merchant who is waiting. Both halves of that matter: it is owed its fee, and it is the one party here
-that must not be able to pay itself first.
+waiting merchant. The credits are burned, and the cash goes to `coopIncomeRecipient`, or to
+`coopTreasury` while that is unset.
 
-Where the money LANDS is a separate question from who holds the claim, and separately settable
-(`coopIncomeRecipient`). The co-op's multisig holds the position and its balance falls when it is
-paid; the cash can go to an on-ramp account, another custodian, or whatever pays the co-op's bills.
-Unset, it goes to the holder.
+---
 
-> **On Base Sepolia, 2026-09-21**, `coopTreasury` (PayoutPool) and `carryTreasury` (TermIssuer) are
-> the same address, `0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA`, holding 27.533081 credits against
-> a totalSupply of 125.033081. An earlier draft made splitting them step zero, to keep the co-op's
-> income apart from positions it had bought. Burning settled claims removes that need: nothing
-> accumulates, so one address can hold both and the two may stay as they are.
+## 3. Refunds
 
-### StableCredit — a refund path that moves money
+### What a refund does
 
-`reversePurchase` stays as it is, for the part still owed. Alongside it:
+**A refund reverses what is still owed and repays what was already paid, less the carry incurred.**
+`TermIssuer.closePlanForRefund(planId, amount, merchant, payout)` (`onlyOperator`) does both:
 
-`repayRefund(member, paid, merchant, merchantShare, coop, coopShare, carryWithheld)`
+1. If the plan is open, it materialises the plan's carry first. Carry is not refunded: the member
+   held the money for that time.
+2. It caps the refund at the plan's original principal, and splits it by arithmetic, not proportion:
 
-- asserts the legs net, exactly as origination and reversal do;
-- burns the merchant's and the co-op's credits for their shares, or transfers the obligation where
-  the merchant has redeemed;
-- settles `carryWithheld` against the member's credit balance;
-- calls `payoutPool.payRefund(member, paid − carryWithheld)`.
+   ```
+   reverse = min(refund, principal still owed)
+   cash    = min(refund − reverse, repaid − refundedOf[planId])
+   ```
 
-### TermIssuer — one entry point, both halves
+3. `reverse` goes through `StableCredit.reversePurchase`: the merchant's and the co-op's credits are
+   burned and the member's obligation falls by the same amount. No money moves.
+4. `cash` goes through `StableCredit.repayRefund`: the merchant and the co-op each give up their share
+   of it, and the PayoutPool pays the member `cash − carryWithheld`, where `carryWithheld` is the carry
+   materialised in step 1, capped at the cash.
+5. The plan closes once what is outstanding is no more than that carry.
 
-`closePlanForRefund` currently caps at outstanding principal. It gains the paid half: the carry
-materialised at close, and the call into `repayRefund`.
+`refundedOf[planId]` records cash already given back, so a refund cannot return the same money
+twice. A plan the member has paid off is closed but can still be refunded: everything comes back as
+cash.
 
-**Settled: the split is arithmetic, not proportion.** Money paid is fungible against the purchase, so:
-
-```
-reverse = min(refund, still owed)
-cash    = refund − reverse
-```
-
-| refund | owed | paid | reverse | cash | the member afterwards |
+| Refund | Still owed | Paid | Reversed | Cash | The member afterwards |
 |---|---|---|---|---|---|
-| $100 | $54 | $46 | $54 | $46 | owes nothing, is paid back what they paid |
-| $40 | $54 | $46 | $40 | — | owes $14 on a $60 purchase, having paid $46 |
-| $60 | $54 | $46 | $54 | $6 | purchase is $40, they paid $46, $6 comes back |
+| $100.00 | $54.00 | $46.00 | $54.00 | $46.00 | Owes nothing on the plan, and is paid back what they paid, less carry |
+| $40.00 | $54.00 | $46.00 | $40.00 | — | Owes $14.00 on what is now a $60.00 purchase, having paid $46.00 |
+| $60.00 | $54.00 | $46.00 | $54.00 | $6.00 | The purchase is now $40.00; they paid $46.00, so $6.00 comes back, less carry |
 
-A proportional share of `plan.repaid` would have taken cash out of the pool in the middle row, where
-nothing needs to move at all. Proportion applies only to splitting the **cash** leg between the
-merchant and the co-op, at the sale's own fee ratio, rounding to the co-op rather than clawing a cent
-from a merchant.
+The middle row moves no money at all. Splitting the cash between the merchant and the co-op is the
+only proportional step: it follows the sale's own fee ratio, with rounding falling to the co-op
+rather than taking a cent from a merchant.
 
-The carry is withheld from the cash leg and capped at it: no cash, no netting, and the member clears
-it with Repay (#550).
+### Worked example
 
-### API — no decisions, just arithmetic
+A $100.00 purchase with a 2.5% fee. The member has paid $46.00, carried $0.40 of carry, and is
+refunded in full.
 
-`refundSettlement.closePlan` reads the plan, works out owed vs paid for the amount being refunded,
-and calls the single entry point. The result already carries `unwoundCents`; it gains the cash repaid
-and the carry withheld, for the notification and the member's activity.
+| | Member | Merchant | Co-op | PayoutPool |
+|---|---|---|---|---|
+| After the purchase and $46.00 paid | −$54.00 owed | +$97.50 | +$2.50 | $46.00 cash |
+| Reverse the $54.00 still owed | $0.00 owed | −$52.65 | −$1.35 | — |
+| Repay the $46.00 paid, $0.40 carry withheld | **+$45.60 cash** | −$44.85 | −$1.15 | −$45.60 |
 
-### Member app
+The merchant and the co-op give back what they were paid, and the withheld $0.40 stays in the pool
+as members' cash.
 
-The refund notification says what came back and what was withheld: "$45.60 returned · $0.40 carry
-for the time you held it". The activity row shows the same, because a member seeing $45.60 against a
-$46 payment will otherwise ask where the difference went — and the answer should be on the row.
+### Where the merchant has already redeemed
 
----
+The merchant's share is taken back from what they still hold. Where they hold less (they redeemed
+and were paid), the rest becomes their obligation:
 
-## 4. Order to build
+- **In a reversal**, `_transferObligation` moves the member's obligation to the merchant
+  (`RefundOwedByMerchant`). Nothing is minted or burned.
+- **In a cash repayment**, `_takeBack` moves that much of the member's remaining obligation to the
+  merchant while the member still owes at least that much; otherwise it creates the obligation on the
+  merchant with the matching claim minted to the PayoutPool, which paid the member.
 
-0. **Route against payables, and settle claims paid with members' money.** Without this the pool is
-   not funded for refunds at all, and everything below it is untested in the case that matters.
-   Deploying it needs three things beyond the upgrade: the pool must be granted **network
-   membership** (it holds a position between redemption and payment, and cannot pay a claim
-   without it), `capitalFunder` should name the yield pool once it funds payouts, and on Base
-   Sepolia the pool needs funding directly, since the 125 already in the buffer cannot be moved to
-   it. Test USDC, so no loss — but on a live chain this is the difference between member repayments
-   paying merchants and a treasury paying them by hand.
-1. **PayoutPool.payRefund** — pay from `held()`, and the role-gated withdrawal of the co-op's income
-   to its treasury address.
-2. **StableCredit.repayRefund**, including the redeemed-merchant path, and its tests.
-3. **TermIssuer.closePlanForRefund** extended, with the proportional paid share.
-4. **API** split and call, with the figures returned.
-5. **App**: notification and activity copy.
-6. **A fee recipient of its own on TermIssuer**, so carry can reach the pool without the co-op's
-   income following it. Nothing built above can be switched on until this lands.
-7. ~~**The draw**: pool, then yield pool, then reserve.~~ **Built.** Within the reserve: excess,
-   then buffer while the primary cover is at target, never primary.
-8. ~~**Interest for the lenders.**~~ **Built** — it comes out of the member's own repayment, which
-   carries principal and carry together.
-6. **Upgrade** the deployed proxies on Base Sepolia, then refund a part-paid plan end to end and
-   check every balance in the table above.
+A merchant's obligation is netted against credits they later receive **by transfer**
+(`MutualCredit._afterTransfer`). Credits minted to them by a new partner purchase do not net against
+it; see [The payable](./settlement.md#the-payable).
 
-Steps 1–3 are contract changes to upgradeable proxies (`StableCredit`, `PayoutPool`, `TermIssuer`).
-Nothing here touches CLRUSD, which stays immutable.
+### When the pool is short
 
----
+A refund is a withdrawal of the member's own money, not a claim, so it does not queue behind
+merchants. `PayoutPool.payRefund` (ledger only) pays from `held() − refundsOwed`. What it cannot
+cover is recorded in `refundOwedTo[member]` and `refundsOwed`, and `payRefundsOwed()`
+(permissionless) pays it as cash arrives.
 
-## 5. What this does not change
+Owed refunds come ahead of claims: every path that pays a claim, and `unencumbered()`, holds
+`refundsOwed` back. The pool does not borrow for a refund; `drawForDueClaim` serves claims only.
 
-- **Carry is never forgiven.** It is withheld from cash where there is cash, and shown to the member
-  to clear where there is not (#550). The co-op never pays a member to have held a balance.
-- **A refund with nothing paid** behaves exactly as it does today.
-- **A refund after the merchant has redeemed** behaves as it does today: the obligation moves to the
-  merchant and comes off their next payout.
-- **Disputes** decided for the member run through the same path, so they are fixed with it rather
-  than separately.
+### Refunds without a plan
+
+A charge the member paid in full at checkout ("Pay now") has no term plan. The API refunds it by
+transfer from the shop's wallet and the co-op's operator wallet (`apps/api/src/services/paidNowRefund.ts`)
+and refuses a refund the shop's cash cannot cover.
+
+A dispute against a partner charge uses the same `closePlan` path: the plan is unwound when the
+dispute is opened, and a new plan is opened for the purchase if the member loses
+(`apps/api/src/services/disputes/disputeEnforcement.ts`).
+
+### What a refund does not change
+
+- **Carry is never forgiven.** It is withheld from cash where there is cash. Where there is none, it
+  stays on the member's ledger balance, to be cleared like any other carry.
+- **A refund with nothing paid** only reverses: no money moves.
+- **CLRUSD is untouched.** Refunds move reserve tokens through the PayoutPool and credits on the
+  ledger only.
+
+### Known limitations
+
+- **Withheld carry stays on the member's ledger balance.** `repayRefund` keeps `carryWithheld` out of
+  the cash but does not reduce the member's `creditBalanceOf` by it. After a refund with carry
+  withheld, the member's ledger balance still shows that carry as owed, while the cash covering it
+  sits in the PayoutPool as members' funds.
+- **`PlanRefundPaid` reports the cash before withholding.** Its `returned` field is the cash leg
+  including `carryWithheld`; the amount actually sent to the member is `returned − carryWithheld`, and
+  less still if the pool was short (see `RefundPaid` and `RefundQueued` on the PayoutPool).

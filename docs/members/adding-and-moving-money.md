@@ -1,7 +1,7 @@
 # Adding and moving money
 
-Where your money sits in Clear, how it gets in, how it moves between your cash and your savings,
-and where taking it out to a bank stands.
+Where your money sits in Clear, how it gets in, and how it moves between your cash and your
+savings.
 
 ## Where your money sits
 
@@ -30,12 +30,17 @@ The **Add money** sheet offers these ways in:
 | Bank via Coinbase | Runs in Coinbase's page and needs a Coinbase account |
 | Direct deposit or bank push | You send it from your own bank to your Clear account and routing numbers. Free |
 
+The sheet opens from **Add money** on the Move money sheet, when you have nothing in Ready to
+allocate, and from a shop charge when you're short.
+
 For a card or Apple Pay, you choose an amount, review it — the review shows the fee and what is
 added to your balance — and finish on Coinbase's page. The app tells you when the money has been
 added, or when a checkout was cancelled.
 
 **Clear cannot pull money from your bank.** For a bank deposit, you push it: the app gives you
 account and routing numbers, and you send the money from your bank.
+
+**Adding money from a linked bank, through Add money on Home.** Not available yet.
 
 ### Your account details
 
@@ -60,8 +65,8 @@ confirm, the sheet shows:
 Ready to allocate. Two things can affect it:
 
 - **Savings backing credit you've drawn can't leave.** If you've spent against your savings, that
-  amount stays put until the credit is repaid. The sheet offers to repay first, from Ready to
-  allocate, and then make the move.
+  amount stays put until the credit is repaid. The sheet only moves what is free; repay from the
+  cycle card on Home first to free the rest. See [Repaying](./credit.md#repaying).
 - **Recent equity-credit matches are given back.** Credits matched on savings you added in the last
   30 days are cancelled, newest first, up to the amount you move out. Credits that have already
   vested are kept. The sheet shows "Credits given up" before you confirm.
@@ -72,20 +77,7 @@ If you have nothing in Ready to allocate, the sheet says so and offers **Add mon
 
 ## Taking money out to a bank
 
-**The app doesn't do this yet.** There is no working way in the app to send money from your Clear
-account to a bank account.
-
-The Add money sheet on Home has a swap arrow that turns it round, so it reads **Send … to your
-bank**. In this version that button doesn't send anything, and nothing leaves your account.
-
-What you can do today is **move savings back to cash** at any time (see
-[Moving money between cash and savings](#moving-money-between-cash-and-savings)). It lands in Ready
-to allocate, where it can pay a Clear shop, pay down credit or go to Earn. It can't reach your bank
-from there yet.
-
-When withdrawals open, Clear's server is built to pay out through Bridge, Clear's banking partner,
-to a bank account you've linked with Plaid: by standard ACH, or same-day ACH for a fee. Like every
-money move, it asks for Face ID when payment protection is on.
+Not available yet.
 
 ## Auto-save
 
