@@ -31,7 +31,7 @@ Dark) is chosen from the profile menu.
 | Closing | The drawer, and who closes ([Closing the day](./closing-the-day.md)) |
 | Security | Your sign-in, and every device signed in as the shop |
 | Notifications | The end-of-day summary |
-| Advanced | Business verification, your data |
+| Advanced | Business verification, your data, [leaving Clear](#leaving-clear) |
 | Help | A person, then the guides |
 
 ## Tax
@@ -105,6 +105,33 @@ running low.
 
 Lists every device signed in as the shop, with when it was enrolled and last used. Sign one out to
 remove it (see [Setting up](./setting-up.md#removing-a-tablet)).
+
+## Leaving Clear
+
+**Settings › Advanced › Leaving** (owners) says you can leave at any time, with no exclusivity and
+no fee, that charges already approved still settle, and that what you're owed is still paid.
+
+**Leave Clear** opens a sheet that sets out what leaving would do:
+
+| | |
+|---|---|
+| New charges | Stop now |
+| Waiting charges | Cancelled |
+| Approved charges | Still settle |
+| What you are owed | Paid on the 14th |
+| Your listing | Comes down |
+| Counter cards | Stop working |
+
+The sheet says the 14th for every shop; when you are actually paid follows your terms (see
+[Payouts](./payouts.md#when-youre-paid)).
+
+From there, **Talk to someone first** closes the sheet, and **Continue** opens **Confirm**, which
+asks you to choose between **Stay with Clear** and **Leave Clear**.
+
+**The app doesn't end a partnership yet.** In this version the **Leave Clear** button on Confirm
+can't be pressed, the figures on that screen are examples rather than your shop's, and nothing in
+the sheets is carried out. To leave, email Clear at `partners@useclear.org`. What your terms say about
+leaving, and who sets them, is in [Governance](../governance/README.md).
 
 ## Inventory
 

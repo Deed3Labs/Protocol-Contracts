@@ -1,7 +1,7 @@
 # Sending money
 
 You can send money to another member, or to someone who hasn't joined Clear yet. The **Send** page
-holds your contacts, your Clear code and the way to scan one.
+holds your contacts, your Clear code, the way to scan one, and **Request**.
 
 ## Who you can send to
 
@@ -46,6 +46,26 @@ If someone sent you money with a link:
 **Joining Clear to claim is free**, and the full amount lands in your account.
 
 A link that has expired can't be claimed. If that happens, ask the sender to send it again.
+
+## Requesting money
+
+**Request**, beside the search box on the Send page, opens a request sheet. Pick the person first,
+then the amount, and add a note so they know what it's for. The sheet sets out what a request is:
+
+- they see a request, not a charge
+- nothing moves until they approve it
+- it expires in 7 days
+- you're told when they pay or decline
+
+**The app doesn't send requests yet.** In this version, the **Request** button at the foot of the
+sheet doesn't send anything, so the other person isn't told. There is also no screen yet for
+answering a request someone sends you.
+
+When requests open, Clear's server is built so that a request can only go to a Clear member it finds
+by their phone number or email, never to yourself, and the other person gets a notification saying
+who asked and how much.
+
+To ask someone for money today, ask them to send it to you from their own Send page.
 
 ## Disputing a send
 

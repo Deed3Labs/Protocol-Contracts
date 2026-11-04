@@ -10,9 +10,10 @@ the on-chain layer underneath it, sorted by who it is for. Start with the root
 | [Members](./members/README.md) | People using the member app |
 | [Merchants](./merchants/README.md) | Shops taking Clear, and their staff |
 | [Investors](./investors/README.md) | Financial contributors |
+| [Contributors](./contributors/README.md) | People contributing land or property |
 | [Governance](./governance/README.md) | How the co-op decides, and who holds which keys |
 | [Developers](./developers/README.md) | Building on Clear, or working in this repository |
-| [Protocol](./protocol/README.md) | The contracts, including the Deed track |
+| [Protocol](./protocol/README.md) | The contracts, including the Deed track, and a [reference page for every deployed contract](./protocol/contracts/README.md) |
 | [Operators](./operators/README.md) | Deploying, upgrading and running it |
 
 **Governance is the one place a rule is written down.** When a member, merchant, investor or
@@ -20,7 +21,8 @@ operator page depends on who decides something or who holds a key, it links to
 [`governance/`](./governance/README.md) rather than restating it, so a change is made once.
 
 Every link in these pages points at a file that exists; CI checks it
-(`scripts/check-doc-links.mjs`). Anything no longer true of the code is in
+(`scripts/check-doc-links.mjs`), and that the generated [contract reference](./protocol/contracts/README.md) matches
+`deployments/` (`scripts/docs/contract-reference.mjs --check`). Anything no longer true of the code is in
 [`archive/`](./archive/README.md), not here.
 
 ---

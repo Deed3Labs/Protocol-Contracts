@@ -92,12 +92,40 @@ Both are rehearsed against a copy of the live network before they run. The rehea
 Safe ends up with every admin role and every ownership, that the deployer ends with none, that two
 signers can act through the Safe and that one alone cannot.
 
-**To see who holds each role on a network now**, run either script without `MODE=run`. The dry run
-reads the chain, needs no key, and changes nothing. The Command Center reads the Safe's owners and
-its signature threshold from the chain.
-
 People sign Safe transactions with their own wallets. How the Command Center prepares them is in
 [The Command Center](./command-center.md).
+
+## Who holds each role today
+
+**These pages do not record who holds a role on a network.** That is state on the chain: it changes
+with each grant and hand-over, and anyone can read it. The contracts' addresses are in the root README
+under [Deployed addresses](../../README.md#deployed-addresses), and each of these is a public view
+function, callable from a block explorer's "Read contract" tab without a wallet:
+
+| To check | Call |
+|---|---|
+| Whether an address holds a role | `hasRole(role, address)` on the contract. A role's id is the value of its getter, such as `OPERATOR_ROLE()`; `DEFAULT_ADMIN_ROLE` is zero |
+| Admin, operator or member of the credit contracts | `isAdmin(address)`, `isOperator(address)` and `isMember(address)` on `AccessManager`. `isOperator` is true for an admin too, and `isMember` for anyone with an active `MembershipRegistry` record |
+| Who owns a contract that has an owner (the issuers, `AssurancePool`, `AssuranceOracle`, the cross-chain CLRUSD pool) | `owner()`, and `pendingOwner()` where ownership is accepted in a second step |
+| Who is CLRUSD's admin | `defaultAdmin()` and `pendingDefaultAdmin()` on `ClearUSDUpgradeable`. Its `owner()` only repeats the default admin |
+| Who can sign for the Ops Safe | `getOwners()` and `getThreshold()` on the Safe. The Command Center reads the same two from the chain |
+
+`hasRole` answers for one address at a time: the contracts do not keep a list of a role's holders. To
+see every grant and removal, read the contract's `RoleGranted` and `RoleRevoked` events.
+
+**The hand-over scripts also report it.** Run without `MODE=run`, each one only reads the chain: it
+needs no key and sends nothing.
+
+- **`safe-handover.ts`** lists every contract deployed on Base Sepolia, which of its roles the deployer
+  and the Ops Safe each hold (marking the admin roles), who owns it and any owner still to accept, and
+  the steps a hand-over would still take.
+- **`ops-roles.ts`** lists each role in the role-to-job map, whether the deployer and that job's wallet
+  hold it now, and where it is meant to go — a job's wallet, the Ops Safe, or given up. It also reports
+  whether each contract holds the roles another contract needs it to.
+
+Both read the Base Sepolia deployment list, and both ask only about the addresses they are given — the
+deployer, the Safe and the job wallets. They answer "does this wallet hold it?", not "who else does?";
+the events above answer that.
 
 ## Who can upgrade a contract
 

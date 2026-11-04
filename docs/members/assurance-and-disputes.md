@@ -30,6 +30,30 @@ To reach it, tap any protection under **Protections** on Savings, then **What th
 covers**. The page shows the reserve's balance, how many members it covers, and how much of a worst
 case it holds against the policy floor the co-op commits to. It also links to the reserve's reports.
 
+### The reserve's figures and reports
+
+**The figures on the reserve page aren't read from the reserve yet.** In this version they are fixed
+example figures — the balance, the members covered, the claims paid this year, and the share of a
+worst case it holds — and every member sees the same ones. Don't rely on them as the reserve's real
+position.
+
+**Reserve reports**, a row on the reserve page, describes the reports the co-op means
+to publish:
+
+- a statement every quarter, within six weeks of the quarter's close
+- each one listing the reserve's balance, every claim paid, every claim declined, and the cover
+  ratio at the close
+- prepared by Clear and reviewed, and **not an independent audit** — the page says so
+
+**The app doesn't publish reports yet.** The statements listed on that page are examples and don't
+open, the reviewer isn't named, and **Get them by email** isn't connected.
+
+What anyone can check today is on chain. The `AssurancePool` contract, the co-op's reserve against
+members' credit, can be read by anyone: its balances, and its reserve ratio against its target. How
+to read it is in [Investors → What anyone can read](../investors/on-chain-data.md#the-assurancepool), and what it holds and
+pays for is in [Protocol → The reserve](../protocol/reserve.md). The target, and who sets it, is in
+[Governance → Parameters](../governance/parameters.md#the-reserve).
+
 ## Making a claim
 
 Start from **How to make a claim**, at the foot of the reserve page.

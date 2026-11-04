@@ -95,6 +95,14 @@ Apple and Google require it to be published from **your own developer accounts**
 **Start** emails Clear (`partners@useclear.org`). The sheet shows where each build stands once
 there is one.
 
+### What the add-ons cost
+
+The app labels **Your own domain** "billed with your plan" and **Your own app in the stores** "setup,
+then monthly", without a figure. **The code doesn't set a price for either, and the app doesn't
+charge for them:** setting up a domain in Settings bills nothing, and the store app starts as an email
+to Clear. Ask Clear for the price before you start. Points, rewards and offers in your shop app
+aren't add-ons.
+
 ## Payment links
 
 To take a payment without the customer at the counter, send a payment link from New charge; see

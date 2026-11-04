@@ -1,6 +1,7 @@
 # Getting started
 
-Joining Clear, verifying who you are, and keeping the app locked to you. Everything here happens in
+Joining Clear, verifying who you are, keeping the app locked to you, and getting back in if you lose
+your phone number. Everything here happens in
 the member app at `app.useclear.org`.
 
 ## Signing in
@@ -97,6 +98,27 @@ With payment protection on, Clear asks for Face ID when money moves — a send, 
 unfreezing your card, or showing its numbers. One check covers the next couple of minutes, so a move
 that takes two signatures doesn't ask twice. Clear's server also refuses those requests without a
 fresh check, so the protection does not rely on the phone alone.
+
+## If you lose your phone number
+
+There is no password to reset. What gets you back in is **another way of signing in that is already
+on your account**:
+
+- **Face ID**, on a device where you turned it on
+- **Google**, if that's how you signed in before
+- **an email code**, if your account was opened with an email address
+
+Once you're in, change your number in **Settings → Account → Phone**. Clear sends a code to the new
+number, and your old number keeps working until the new one answers.
+
+If the phone itself is lost, turn Face ID off in **Settings → Security** from a device you still
+have. That removes Face ID from every device on your account, so the lost phone can't use it. If the
+app says Face ID wasn't confirmed, sign out, sign back in with a code, and try again within a few
+minutes. Then turn Face ID back on from the device you have.
+
+**If none of these works, the app can't recover your account yet.** There is no recovery flow in the
+app, and **Recovery contacts** in Settings → Security isn't connected: choosing a member there
+doesn't ask them anything. Email support at `support@useclear.org`.
 
 ## Next
 

@@ -1,603 +1,361 @@
-# Smart Contracts Architecture
-
-> **Scope.** This document covers the **Deed track** — T-Deeds, validation, subdivision and
-> fractionalization. The Clear Protocol also includes the savings (CLRUSD, ESA), credit,
-> merchant settlement and bond subsystems, which are not described here; see
-> [`../contracts/clear-contracts-build-plan.md`](../clear-contracts-build-plan.md).
-
-This document provides an overview of the Deed track's smart contract architecture — its core contracts, interfaces, and their relationships.
-
-## 🏗️ Contract Overview
-
-The Deed track consists of several interconnected smart contracts that work together to provide a complete RWA tokenization and validation system.
-
-### Core Contracts
-
-| Contract | Purpose | Size | Key Features |
-|----------|---------|------|--------------|
-| **DeedNFT.sol** | Main NFT contract | 1,078 lines | ERC721, validation integration, metadata management |
-| **Validator.sol** | Asset validation logic | 950 lines | Role-based validation, subdivision validation, criteria management |
-| **ValidatorRegistry.sol** | Validator management | 443 lines | Validator registration, discovery |
-| **MetadataRenderer.sol** | Metadata handling | 901 lines | Dynamic metadata, trait management |
-| **FundManager.sol** | Financial operations | 394 lines | Fee collection, distribution, escrow |
-| **ValidatorFactory.sol** | Validator deployment | 278 lines | Standardized validator creation |
-
-### Extension Contracts
-
-| Contract | Purpose | Size | Key Features |
-|----------|---------|------|--------------|
-| **Subdivide.sol** | Asset subdivision | 1,258 lines | ERC1155, subdivision management, unit validation |
-| **Fractionalize.sol** | Asset fractionalization | 724 lines | ERC-20 shares, asset locking, approval mechanisms |
-| **FractionToken.sol** | Fraction token implementation | ~200 lines | ERC-20, share management, burning |
-| **FractionTokenFactory.sol** | Token factory | ~100 lines | Clone pattern, token deployment |
-
-## 📋 Contract Details
-
-### 1. DeedNFT.sol
-
-The main ERC721 contract that represents real-world assets as NFTs.
-
-#### Key Features
-
-- **ERC721 Implementation**: Standard NFT functionality
-- **Validation Integration**: Works with validator contracts
-- **Metadata Management**: Dynamic metadata updates
-- **Role-Based Access**: Different roles for different operations
-- **Royalty Enforcement**: On-chain royalty management
-- **Batch Operations**: Efficient batch minting and updates
-
-#### Core Functions
-
-```solidity
-// Minting
-function mint(address to, uint256 assetType, string memory metadata) external
-function batchMint(address[] memory recipients, uint256[] memory assetTypes) external
-
-// Validation
-function updateValidationStatus(uint256 tokenId, bool isValid, address validator) external
-function getValidationStatus(uint256 tokenId) external view returns (bool)
-
-// Metadata
-function setTokenMetadata(uint256 tokenId, string memory metadata) external
-function getTokenMetadata(uint256 tokenId) external view returns (string memory)
-
-// Transfer
-function transferFrom(address from, address to, uint256 tokenId) external
-function safeTransferFrom(address from, address to, uint256 tokenId) external
-```
-
-#### Role System
-
-```solidity
-MINTER_ROLE           // Can mint new NFTs
-VALIDATOR_ROLE        // Can update validation status
-METADATA_ROLE         // Can update metadata
-ADMIN_ROLE           // Administrative operations
-```
-
-### 2. Validator.sol
-
-Handles asset validation logic and criteria management.
-
-#### Key Features
-
-- **Validation Criteria**: Asset-specific validation requirements
-- **Role Management**: Different validation roles
-- **Document Management**: Operating agreements and documents
-- **Fee Management**: Service fees and royalty distribution
-- **Metadata Integration**: Works with MetadataRenderer
-
-#### Core Functions
-
-```solidity
-// Validation
-function validateDeed(uint256 tokenId) external onlyRole(VALIDATOR_ROLE)
-function updateValidationCriteria(uint256 assetType, ValidationCriteria memory criteria) external
-
-// Document Management
-function setOperatingAgreement(string memory uri, string memory name) external
-function getOperatingAgreement(string memory uri) external view returns (string memory)
-
-// Fee Management
-function setServiceFee(address token, uint256 fee) external onlyRole(FEE_MANAGER_ROLE)
-function withdrawFees(address token, address recipient) external onlyRole(FEE_MANAGER_ROLE)
-```
-
-#### Validation Criteria Structure
-
-```solidity
-struct ValidationCriteria {
-    string[] requiredTraits;        // Required metadata traits
-    string additionalCriteria;       // Additional validation rules
-    bool requireOperatingAgreement; // Whether operating agreement is required
-    bool requireDefinition;         // Whether asset definition is required
-}
-```
-
-### 3. ValidatorRegistry.sol
-
-Manages validator registration and discovery.
-
-#### Key Features
-
-- **Validator Registration**: Register and manage validators
-- **Validator Discovery**: Find validators for specific asset types
-- **Reputation System**: Track validator performance
-- **Access Control**: Manage validator permissions
-
-#### Core Functions
-
-```solidity
-// Registration
-function registerValidator(address validator, string memory name, string memory description) external
-function deregisterValidator(address validator) external onlyRole(ADMIN_ROLE)
-
-// Discovery
-function getValidatorsForAssetType(uint256 assetType) external view returns (address[] memory)
-function getValidatorInfo(address validator) external view returns (ValidatorInfo memory)
-
-// Management
-function updateValidatorReputation(address validator, uint256 reputation) external onlyRole(ADMIN_ROLE)
-```
-
-### 4. MetadataRenderer.sol
-
-Handles dynamic metadata rendering and trait management.
-
-#### Key Features
-
-- **Dynamic Metadata**: On-chain metadata updates
-- **Trait Management**: Flexible trait system
-- **Document Storage**: Asset document management
-- **Gallery Support**: Multiple image support
-- **Animation Support**: Animated content support
-
-#### Core Functions
-
-```solidity
-// Metadata Management
-function setTokenMetadata(uint256 tokenId, string memory metadata) external
-function getTokenMetadata(uint256 tokenId) external view returns (string memory)
-
-// Trait Management
-function setTrait(uint256 tokenId, bytes32 traitKey, bytes memory value) external
-function getTrait(uint256 tokenId, bytes32 traitKey) external view returns (bytes memory)
-
-// Document Management
-function setTokenDocument(uint256 tokenId, string memory docType, string memory uri) external
-function getTokenDocument(uint256 tokenId, string memory docType) external view returns (string memory)
-```
-
-### 5. FundManager.sol
-
-Manages financial operations and fee distribution.
-
-#### Key Features
-
-- **Fee Collection**: Collect and manage protocol fees
-- **Commission Management**: Protocol commission from validator fees
-- **Validator Fee Distribution**: Distribute fees to validators
-- **Multi-Token Support**: Support for various tokens
-
-#### Core Functions
-
-```solidity
-// Payment Processing
-function processPayment(
-    address payer,
-    address validatorAddress,
-    address token,
-    uint256 serviceFee
-) external returns (uint256 commissionAmount, uint256 validatorAmount)
-
-// Fee Management
-function withdrawValidatorFees(address validatorContract, address token) external
-function getValidatorFeeBalance(address validatorContract, address token) external view returns (uint256)
-
-// Commission Management
-function setCommissionPercentage(uint256 newCommissionPercentage) external
-function getCommissionPercentage() external view returns (uint256)
-```
-
-### 6. ValidatorFactory.sol
-
-Factory contract for deploying standardized validators.
-
-#### Key Features
-
-- **Standardized Deployment**: Consistent validator setup
-- **Configuration Management**: Pre-configured validator settings
-- **Cost Optimization**: Efficient deployment patterns
-- **Template System**: Reusable validator templates
-
-#### Core Functions
-
-```solidity
-// Deployment
-function createValidator(
-    string memory name,
-    string memory description,
-    uint256[] memory supportedAssetTypes
-) external returns (address validator)
-
-// Configuration
-function setValidatorTemplate(bytes32 templateId, ValidatorConfig memory config) external onlyRole(ADMIN_ROLE)
-function getValidatorTemplate(bytes32 templateId) external view returns (ValidatorConfig memory)
-```
-
-### 7. Subdivide.sol
-
-Contract for subdividing DeedNFTs into multiple ERC1155 tokens, enabling granular asset management.
-
-#### Key Features
-
-- **ERC1155 Implementation**: Multi-token standard for subdivision units
-- **Subdivision Management**: Create and manage asset subdivisions
-- **Unit Validation**: Individual validation for subdivision units
-- **Trait Management**: ERC-7496 dynamic trait support
-- **Role-Based Access**: Collection admin and validator roles
-- **Royalty Support**: ERC-2981 royalty implementation
-
-#### Core Functions
-
-```solidity
-// Subdivision Management
-function createSubdivision(
-    uint256 deedId,
-    string memory name,
-    string memory description,
-    string memory symbol,
-    string memory collectionUri,
-    uint256 totalUnits,
-    bool burnable
-) external
-
-// Unit Management
-function mintUnit(uint256 deedId, uint256 unitId, address to) external
-function batchMintUnits(uint256 deedId, uint256[] calldata unitIds, address[] calldata recipients) external
-function burnUnit(uint256 deedId, uint256 unitId) external
-
-// Validation
-function updateUnitValidationStatus(uint256 deedId, uint256 unitId, bool isValid, address validatorAddress) external
-function getUnitValidationStatus(uint256 deedId, uint256 unitId) external view returns (bool, address)
-
-// Trait Management
-function setUnitTrait(uint256 deedId, uint256 unitId, bytes32 traitKey, bytes memory traitValue) external
-function getUnitTraitValue(uint256 deedId, uint256 unitId, bytes32 traitKey) external view returns (bytes memory)
-```
-
-#### Data Structures
-
-```solidity
-struct SubdivisionInfo {
-    string name;
-    string description;
-    string symbol;
-    string collectionUri;
-    uint256 totalUnits;
-    uint256 activeUnits;
-    bool isActive;
-    bool burnable;
-    address collectionAdmin;
-    address subdivisionValidator;
-    mapping(uint256 => string) unitMetadata;
-}
-```
-
-### 8. Fractionalize.sol
-
-Contract for fractionalizing DeedNFT and Subdivide tokens into ERC-20 shares, enabling liquidity and trading.
-
-#### Key Features
-
-- **Asset Locking**: Secure asset custody during fractionalization
-- **ERC-20 Shares**: Standard token implementation for shares
-- **Approval Mechanisms**: Governance-based asset unlocking
-- **Multi-Asset Support**: Both DeedNFT and Subdivision assets
-- **Factory Integration**: Automated token deployment
-- **Validation Integration**: Asset validation before fractionalization
-
-#### Core Functions
-
-```solidity
-// Fractionalization
-function createFraction(FractionCreationParams calldata params) external
-function mintShares(uint256 fractionId, uint256 amount, address to) external
-function batchMintShares(BatchMintParams calldata params) external
-function burnShares(uint256 fractionId, uint256 amount) external
-function unlockAsset(UnlockParams calldata params) external
-
-// Asset Validation
-function validateDeedNFTAsset(uint256 fractionId) external view returns (bool, string memory)
-function validateSubdivisionAsset(uint256 fractionId) external view returns (bool, string memory)
-function validateAsset(uint256 fractionId) external view returns (bool, string memory)
-
-// Information Retrieval
-function getFractionBasicInfo(uint256 fractionId) external view returns (FractionBasicInfo memory)
-function getFractionExtendedInfo(uint256 fractionId) external view returns (FractionExtendedInfo memory)
-function getAssetInformation(uint256 fractionId) external view returns (string, bool, address, string)
-```
-
-#### Data Structures
-
-```solidity
-enum FractionAssetType { DeedNFT, SubdivisionNFT }
-
-struct FractionCreationParams {
-    FractionAssetType assetType;
-    uint256 originalTokenId;
-    string name;
-    string description;
-    string symbol;
-    string collectionUri;
-    uint256 totalShares;
-    bool burnable;
-    uint256 approvalPercentage;
-}
-
-struct FractionInfo {
-    string name;
-    string description;
-    string symbol;
-    string collectionUri;
-    uint256 totalShares;
-    uint256 activeShares;
-    uint256 maxSharesPerWallet;
-    uint256 requiredApprovalPercentage;
-    bool isActive;
-    bool burnable;
-    FractionAssetType assetType;
-    uint256 originalTokenId;
-    address collectionAdmin;
-    address tokenAddress;
-    mapping(address => bool) transferApprovals;
-    mapping(address => bool) adminApprovals;
-}
-```
-
-### 9. FractionToken.sol
-
-ERC-20 token implementation for fraction shares with specialized features.
-
-#### Key Features
-
-- **Standard ERC-20**: Full ERC-20 compliance
-- **Minting Control**: Restricted minting to fractionalize contract
-- **Burning Support**: Optional burning functionality
-- **Wallet Limits**: Configurable maximum shares per wallet
-- **Access Control**: Role-based permissions
-
-#### Core Functions
-
-```solidity
-// Token Management
-function mint(address to, uint256 amount) external onlyMinter
-function burnFrom(address account, uint256 amount) external onlyBurner
-function setMaxSharesPerWallet(uint256 maxShares) external onlyAdmin
-
-// Information
-function getFractionId() external view returns (uint256)
-function getMaxSharesPerWallet() external view returns (uint256)
-function isBurnable() external view returns (bool)
-```
-
-### 10. FractionTokenFactory.sol
-
-Factory contract for deploying FractionToken instances using the clone pattern.
-
-#### Key Features
-
-- **Clone Pattern**: Gas-efficient token deployment
-- **Standardized Setup**: Consistent token configuration
-- **Cost Optimization**: Minimal deployment costs
-- **Template System**: Reusable token templates
-
-#### Core Functions
-
-```solidity
-// Token Creation
-function createFractionToken(
-    uint256 fractionId,
-    string memory name,
-    string memory symbol,
-    uint256 maxSharesPerWallet,
-    bool burnable
-) external returns (address tokenAddress)
-
-// Token Management
-function getTokenByFractionId(uint256 fractionId) external view returns (address)
-function isToken(address tokenAddress) external view returns (bool)
-```
-
-## 🔗 Contract Relationships
-
-### Contract Interactions
-
-```mermaid
-graph TD
-    A[DeedNFT] --> B[Validator]
-    A --> C[MetadataRenderer]
-    A --> I[Subdivide]
-    I --> B
-    I --> J[Fractionalize]
-    A --> J
-    J --> K[FractionTokenFactory]
-    K --> L[FractionToken]
-    B --> D[ValidatorRegistry]
-    B --> E[FundManager]
-    F[ValidatorFactory] --> B
-    G[User] --> A
-    G --> I
-    G --> J
-    H[Admin] --> D
-    H --> E
-    H --> I
-    H --> J
-```
-
-### Data Flow
-
-1. **Asset Minting**
-   - User calls `DeedNFT.mint()`
-   - DeedNFT creates NFT with initial metadata
-   - Asset is registered for validation
-
-2. **Validation Process**
-   - Validator calls `Validator.validateDeed()`
-   - Validator updates validation status in DeedNFT
-   - Validation fees are collected by FundManager
-
-3. **Asset Subdivision**
-   - DeedNFT owner calls `Subdivide.createSubdivision()`
-   - Subdivision units are minted as ERC1155 tokens
-   - Units inherit traits from parent DeedNFT
-   - Individual unit validation through Validator
-
-4. **Asset Fractionalization**
-   - Asset owner calls `Fractionalize.createFraction()`
-   - Asset is locked in Fractionalize contract
-   - FractionToken is deployed via FractionTokenFactory
-   - Shares are minted and distributed
-
-5. **Metadata Updates**
-   - Authorized users call `MetadataRenderer.setTokenMetadata()`
-   - Metadata is updated and events are emitted
-   - Frontend reflects changes immediately
-
-6. **Fee Distribution**
-   - FundManager processes payments and takes commission
-   - Validator fees are distributed to validators
-   - Commission is sent to protocol fee receiver
-
-## 🔒 Security Features
-
-### Access Control
-
-- **Role-Based Permissions**: Different roles for different operations
-- **Multi-Signature Support**: Enhanced security for critical operations
-- **Time-Locked Operations**: Protection against unauthorized changes
-- **Pausable Functions**: Emergency pause capability
-
-### Data Integrity
-
-- **Immutable Records**: Validation records cannot be altered
-- **Cryptographic Verification**: Document authenticity verification
-- **Audit Trail**: Complete history of all operations
-- **Version Control**: Contract upgrade mechanisms
-
-### Privacy Protection
-
-- **Selective Disclosure**: Control what information is shared
-- **Encrypted Storage**: Sensitive data encryption
-- **GDPR Compliance**: Privacy protection for EU users
-- **Data Minimization**: Only necessary data is stored
-
-## 📊 Contract Metrics
-
-### Gas Optimization
-
-| Contract | Deployment Cost | Mint Cost | Transfer Cost |
-|----------|----------------|-----------|---------------|
-| DeedNFT | ~2,500,000 gas | ~150,000 gas | ~65,000 gas |
-| Validator | ~1,800,000 gas | ~80,000 gas | N/A |
-| MetadataRenderer | ~1,200,000 gas | ~50,000 gas | N/A |
-| FundManager | ~1,500,000 gas | ~30,000 gas | N/A |
-| Subdivide | ~2,200,000 gas | ~120,000 gas | ~45,000 gas |
-| Fractionalize | ~1,900,000 gas | ~100,000 gas | N/A |
-| FractionToken | ~800,000 gas | ~40,000 gas | ~35,000 gas |
-| FractionTokenFactory | ~600,000 gas | ~25,000 gas | N/A |
-
-### Storage Efficiency
-
-- **Optimized Data Structures**: Efficient storage patterns
-- **Batch Operations**: Reduced gas costs for multiple operations
-- **Lazy Loading**: On-demand data loading
-- **Compression**: Data compression where applicable
-
-## 🔄 Upgrade Mechanisms
-
-### UUPS Upgradeable Pattern
-
-All contracts implement the UUPS (Universal Upgradeable Proxy Standard) pattern:
-
-```solidity
-contract DeedNFT is UUPSUpgradeable {
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
-        // Upgrade authorization logic
-    }
-}
-```
-
-### Upgrade Process
-
-1. **Implementation Deployment**: Deploy new implementation contract
-2. **Upgrade Authorization**: Owner authorizes upgrade
-3. **Upgrade Execution**: Proxy points to new implementation
-4. **Verification**: Verify upgrade success
-
-## 🧪 Testing Strategy
-
-### Unit Testing
-
-- **Individual Contract Tests**: Test each contract in isolation
-- **Function Testing**: Test all public and external functions
-- **Edge Case Testing**: Test boundary conditions
-- **Gas Testing**: Optimize gas usage
-
-### Integration Testing
-
-- **Contract Interaction Tests**: Test contract relationships
-- **End-to-End Tests**: Test complete workflows
-- **Scenario Testing**: Test real-world scenarios
-- **Performance Testing**: Test under load
-
-### Security Testing
-
-- **Vulnerability Assessment**: Identify security issues
-- **Penetration Testing**: Attempt to exploit vulnerabilities
-- **Audit Compliance**: Ensure audit recommendations are implemented
-- **Continuous Monitoring**: Monitor for security issues
-
-## 📈 Performance Optimization
-
-### Gas Optimization
-
-- **Function Optimization**: Minimize gas usage per function
-- **Storage Optimization**: Efficient storage patterns
-- **Batch Operations**: Reduce transaction costs
-- **Lazy Evaluation**: Defer expensive operations
-
-### Scalability Features
-
-- **Horizontal Scaling**: Support for multiple validators
-- **Vertical Scaling**: Efficient resource usage
-- **Load Distribution**: Distribute load across contracts
-- **Caching**: Implement caching where beneficial
-
-## 🔧 Development Guidelines
-
-### Code Standards
-
-- **Solidity Style Guide**: Follow Solidity style guidelines
-- **Documentation**: Comprehensive NatSpec documentation
-- **Error Handling**: Proper error handling and messages
-- **Testing Coverage**: Maintain high test coverage
-
-### Deployment Process
-
-1. **Compilation**: Compile all contracts
-2. **Testing**: Run comprehensive test suite
-3. **Deployment**: Deploy to target network
-4. **Verification**: Verify contracts on block explorer
-5. **Configuration**: Configure contract parameters
-
-### Maintenance
-
-- **Regular Audits**: Schedule regular security audits
-- **Performance Monitoring**: Monitor contract performance
-- **Bug Fixes**: Address issues promptly
-- **Feature Updates**: Add new features as needed
+# Deed track contracts
+
+Each Deed track contract: what it is for, what it stores, its public functions and who may call
+them, its events, and how it upgrades. The lifecycle that ties them together is in
+[`protocol-overview.md`](./protocol-overview.md). Deployed addresses are in the root
+[`README.md`](../../../README.md#deployed-addresses) (**Deployed addresses**); who holds each role is
+in [Governance](../../governance/README.md).
+
+| Contract | Source | Standard | Upgrade |
+|---|---|---|---|
+| `DeedNFT` | `contracts/core/DeedNFT.sol` | ERC-721, ERC-7496, ERC-2981 | UUPS, `DEFAULT_ADMIN_ROLE` |
+| `Validator` | `contracts/core/Validator.sol` | ERC-165 (`IValidator`) | UUPS, owner |
+| `ValidatorRegistry` | `contracts/core/ValidatorRegistry.sol` | — | UUPS, owner |
+| `FundManager` | `contracts/core/FundManager.sol` | — | UUPS, `DEFAULT_ADMIN_ROLE` |
+| `MetadataRenderer` | `contracts/core/MetadataRenderer.sol` | ERC-4906 events | UUPS, owner |
+| `Subdivide` | `contracts/extensions/Subdivide.sol` | ERC-1155, ERC-7496, ERC-2981 | UUPS, `DEFAULT_ADMIN_ROLE` |
+| `Fractionalize` | `contracts/extensions/Fractionalize.sol` | — | UUPS, `DEFAULT_ADMIN_ROLE` |
+| `FractionToken` | `contracts/core/FractionToken.sol` | ERC-20 | Clone; not upgradeable in practice |
+| `FractionTokenFactory` | `contracts/core/factories/FractionTokenFactory.sol` | — | UUPS, owner |
+| `ValidatorFactory` | `contracts/core/factories/ValidatorFactory.sol` | — | UUPS, owner. Not deployed |
+
+Their interfaces are in `contracts/core/interfaces/`: `IDeedNFT`, `IValidator`, `IValidatorRegistry`,
+`IFundManager`, `IMetadataRenderer`, `ISubdivide`, `IFractionalize`, `IFractionTokenFactory`.
+`DeedNFT` does not declare that it implements `IDeedNFT`, and the two differ — see
+[`Subdivide`](#subdivide).
+
+Every contract's `initialize` grants all of its roles, or its ownership, to the deployer.
 
 ---
 
-*This documentation is part of the Clear Protocol docs. For technical questions about smart contracts, please contact the development team.* 
+## `DeedNFT`
+
+**The T-Deed: one ERC-721 token per real-world asset, described by traits.** Imports Limit Break's
+`ICreatorToken` for the royalty-enforcement interface, and reports ERC-7496 (`0xaf332f3e`) in
+`supportsInterface`.
+
+State: `nexttokenId` (from 1), the default validator, the validator registry, `metadataRenderer`,
+`fundManager`, the trait store (`tokenId → key → bytes`) and trait names, the approved-marketplace
+list and the royalty-enforcement flag. `totalSupply` is a running count of live tokens.
+
+| Function | Who | What it does |
+|---|---|---|
+| `mintAsset(owner, assetType, uri, definition, configuration, validatorAddress, token, salt)` | `MINTER_ROLE`, not paused | Mints a deed. Steps in [the overview](./protocol-overview.md#1-mint) |
+| `generateUniqueTokenId(owner, assetType, definition, salt)` | Anyone (pure) | The id `mintAsset` uses when `salt` is non-zero: a hash mod 10⁹ |
+| `burnAsset(tokenId)`, `burnBatchAssets(tokenIds)` | Deed owner, not paused | Burns and clears the token's traits |
+| `updateValidationStatus(tokenId, isValid, validatorAddress)` | `VALIDATOR_ROLE`, active in the registry, `validatorAddress == msg.sender` | Writes `isValidated` and `validator` |
+| `updateMetadata(tokenId, uri, operatingAgreement, definition, configuration)` | Deed owner or `VALIDATOR_ROLE`, not paused | Rewrites those traits. The agreement must have a name in the deed's validator (`operatingAgreementName`). From a non-validator, also resets validation |
+| `setTrait(tokenId, traitKey, traitValue, valueType)` | Deed owner or `VALIDATOR_ROLE` | Sets any trait. A 32-byte key is used as is, anything else is hashed and its name recorded. `valueType` 0 raw bytes, 1 string, 2 number, 3 boolean |
+| `removeTrait(tokenId, traitName)` | Deed owner or `VALIDATOR_ROLE` | Deletes a trait |
+| `getTraitValue`, `getTraitValues`, `getTraitKeys`, `getTraitName`, `getTraitMetadataURI` | Anyone | ERC-7496 reads |
+| `getValidationStatus(tokenId)` | Anyone | `(isValidated, validator)` |
+| `tokenURI(tokenId)` | Anyone | The renderer's output, or the stored URI if the renderer is unset, reverts or returns empty |
+| `royaltyInfo(tokenId, salePrice)` | Anyone | Receiver is the deed's validator contract; amount is its `getRoyaltyFeePercentage` in basis points. Reverts while the deed names no validator, as after an owner's `updateMetadata` |
+| `addMinter`, `removeMinter` | `DEFAULT_ADMIN_ROLE` | `MINTER_ROLE` |
+| `addValidator`, `removeValidator` | `DEFAULT_ADMIN_ROLE` or the validator registry | `VALIDATOR_ROLE` |
+| `setDefaultValidator` | `DEFAULT_ADMIN_ROLE` | Must be registered in the registry |
+| `setValidatorRegistry`, `setFundManager`, `setContractURI`, `setTraitName` | `DEFAULT_ADMIN_ROLE` | Configuration |
+| `setMetadataRenderer(renderer)` | `DEFAULT_ADMIN_ROLE` | Moves `VALIDATOR_ROLE` from the old renderer to the new one |
+| `setApprovedMarketplace`, `setRoyaltyEnforcement`, `setToDefaultSecurityPolicy` | `DEFAULT_ADMIN_ROLE` | The marketplace list; enforcement on or off; enforcement on |
+| `setTransferValidator`, `getTransferValidator`, `getTransferValidationFunction` | Admin / anyone | `ICreatorToken` plumbing. The stored address is not consulted by any transfer |
+| `pause`, `unpause` | `DEFAULT_ADMIN_ROLE` | Stops minting, burning and `updateMetadata`; not transfers or `setTrait` |
+
+**Royalty enforcement.** While on, `approve` and `setApprovalForAll` revert with `"!mkt"` for an
+operator not on the marketplace list, and `_beforeTokenTransfer` reverts a transfer whose sender is
+neither the owner nor an approved marketplace. Every transfer also rewrites `beneficiary`.
+
+Events: `DeedNFTMinted`, `DeedNFTBurned`, `DeedValidated`, `TraitUpdated`, `MetadataRendererUpdated`,
+`ContractURIUpdated`, `MarketplaceApproved`, `RoyaltyEnforcementChanged`, `TransferValidatorUpdated`.
+
+---
+
+## `Validator`
+
+**Checks deeds and units against per-asset-type criteria, and sets what a deed costs to mint and
+pays in royalties.** One `Validator` serves one primary `DeedNFT` plus a list of compatible contracts
+(which must include `Subdivide` for unit validation). It is both `Ownable` and `AccessControl`.
+
+State: `baseUri`, `defaultOperatingAgreementUri`, `primaryDeedNFT` and `compatibleDeedNFTs`,
+`supportedAssetTypes`, `validationCriteria` per asset type (`requiredTraits`, `additionalCriteria`,
+`requireOperatingAgreement`, `requireDefinition`), named operating agreements, the payment-token
+whitelist and `serviceFee` per token, `royaltyFeePercentage` (default 500 bps) and `royaltyReceiver`,
+`fundManager`, `tokenRegistry`.
+
+| Function | Who | What it does |
+|---|---|---|
+| `validateDeed(tokenId)` | `VALIDATOR_ROLE` | Checks the deed in `primaryDeedNFT` and calls `updateValidationStatus`. Detail in [`validation-system.md`](./validation-system.md) |
+| `validateSubdivisionUnit(subdivideContract, deedId, unitId)` | `VALIDATOR_ROLE` | The same check against a unit's traits; writes `Subdivide.updateUnitValidationStatus`. `subdivideContract` must be compatible |
+| `setAssetTypeSupport(assetTypeId, supported)` | `CRITERIA_MANAGER_ROLE` | Which asset types this validator accepts |
+| `setValidationCriteria(assetTypeId, requiredTraits, additionalCriteria, requireOperatingAgreement, requireDefinition)` | `CRITERIA_MANAGER_ROLE` | Custom criteria. `additionalCriteria` is stored but nothing checks it |
+| `setupValidationCriteria(assetTypeId)` | `CRITERIA_MANAGER_ROLE` | Presets, and marks the type supported: Land and Estate need `country`, `state`, `county`, `parcelNumber`, `legalDescription`; Vehicle `make`, `model`, `year`, `vin`; Commercial Equipment `manufacturer`, `model`, `serialNumber`, `year`. All four require an agreement and a definition |
+| `registerOperatingAgreement(uri, name)` | `METADATA_ROLE` | Names an agreement and adds it to the prefix list `validateDeed` matches against |
+| `setOperatingAgreementName`, `removeOperatingAgreementName` | `METADATA_ROLE` | Names or un-names an agreement, without the prefix list |
+| `addWhitelistedToken`, `removeWhitelistedToken`, `setServiceFee(token, fee)` | `FEE_MANAGER_ROLE` | What a mint costs, per payment token |
+| `setRoyaltyFeePercentage(bps)` | `FEE_MANAGER_ROLE` | At most 500 |
+| `setRoyaltyReceiver(receiver)` | `FEE_MANAGER_ROLE` | Where service fees and royalties are paid |
+| `withdrawServiceFees(token)` | `FEE_MANAGER_ROLE` | Calls `FundManager.withdrawValidatorFees`, which pays the royalty receiver |
+| `withdrawRoyalties(token)` | Royalty receiver or the `FundManager` | Pays out the contract's whole balance of `token`: the `FundManager` commission to its fee receiver, the rest to the royalty receiver |
+| `setBaseUri`, `setDefaultOperatingAgreement`, `setFundManager`, `setTokenRegistry` | Owner | Configuration |
+| `setDeedNFT`, `setPrimaryDeedNFT`, `addCompatibleDeedNFT`, `removeCompatibleDeedNFT` | Owner | Which contracts this validator serves. The primary cannot be removed |
+| `grantRole(role, account)` | `DEFAULT_ADMIN_ROLE` | Overridden so only the default admin grants any role |
+| `supportsAssetType`, `defaultOperatingAgreement`, `operatingAgreementName`, `validateOperatingAgreement`, `getValidationCriteria`, `getServiceFee`, `isTokenWhitelisted`, `getRoyaltyFeePercentage`, `getRoyaltyReceiver`, `getRoyaltyBalance`, `isCompatibleDeedNFT`, `getBaseUri` | Anyone | Reads. `isTokenWhitelisted` is true for the local list or the `TokenRegistry` |
+
+**Recognising an operating agreement.** `validateDeed` accepts an agreement that is registered
+exactly, contains `baseUri`, or contains any URI passed to `registerOperatingAgreement`. A new
+deed's agreement is the default URI with its token id appended, so it passes only if the default URI
+contains `baseUri` or has been registered. The public `validateOperatingAgreement` uses a different
+rule — registered exactly, or containing the default URI.
+
+`ADMIN_ROLE` is declared and checked by `FundManager.withdrawValidatorFees`, but `initialize` grants
+it to no one.
+
+Events: `DeedValidated`, `ValidationError`, `ValidationCriteriaUpdated`, `OperatingAgreementRegistered`,
+`DeedNFTUpdated`, `PrimaryDeedNFTUpdated`, `CompatibleDeedNFTUpdated`, `RoyaltyWithdrawn`.
+
+---
+
+## `ValidatorRegistry`
+
+**The list of validators, and the switch that turns each one on.** A validator is registered
+inactive; activating it is what lets `DeedNFT` mint against it and lets it write validation.
+
+State: `validators` (`isActive`, `supportedAssetTypes`, `name`, `description`), `assetTypeValidators`
+(asset type → validator addresses), the address list, `fundManager`, `deedNFT`.
+
+| Function | Who | What it does |
+|---|---|---|
+| `registerValidator(validator, name, description, supportedAssetTypes)` | Owner | Registers inactive, and refreshes `FundManager` roles |
+| `updateValidatorStatus(validator, isActive)` | Owner | Activates or deactivates. Syncs `VALIDATOR_ROLE` on `DeedNFT` for every registered validator, and `FEE_MANAGER_ROLE` on the `FundManager` |
+| `removeValidator(validator)` | Owner | Deletes the record and revokes its `DeedNFT` role. Its entries in `assetTypeValidators` stay |
+| `updateValidatorName(validator, newName)` | Owner | Renames |
+| `getValidatorAssetTypes(validator)` | Owner | Not a view: re-reads `supportsAssetType(0…3)` from the validator and stores the result |
+| `setDeedNFT`, `setFundManager` | Owner | The contracts it keeps roles in sync on |
+| `isValidatorRegistered`, `isValidatorActive`, `getValidatorName`, `getSupportedAssetTypes`, `getActiveValidators`, `validators`, `assetTypeValidators` | Anyone | Reads |
+
+Every function that changes state is `onlyOwner`. `REGISTRY_ADMIN_ROLE` is granted to the deployer
+and checked by none of them.
+
+Events: `ValidatorRegistered` (also emitted on rename, and on removal with an empty name),
+`ValidatorStatusUpdated`, `ValidatorAssetTypesUpdated`, `DeedNFTUpdated`.
+
+---
+
+## `FundManager`
+
+**Takes the service fee at mint and keeps each validator's share until it is withdrawn.**
+
+State: `compatibleDeedNFTs`, `validatorRegistry`, the commission in basis points, `feeReceiver`,
+per-validator per-token balances, the list of validators it has given `FEE_MANAGER_ROLE`, a token
+list, `tokenRegistry`.
+
+| Function | Who | What it does |
+|---|---|---|
+| `processPayment(payer, validatorAddress, token, serviceFee)` | A compatible `DeedNFT` | The token must be whitelisted by the validator or the `TokenRegistry`, and the fee must equal the validator's `getServiceFee`. Pulls the fee from `payer`, sends the commission to `feeReceiver`, credits the rest to the validator |
+| `withdrawValidatorFees(validatorContract, token)` | `ADMIN_ROLE` or `FEE_MANAGER_ROLE` on that validator, or `FEE_MANAGER_ROLE` here | Pays the validator's balance to its royalty receiver |
+| `withdrawRoyaltyCommission(validatorContract, token)` | `ADMIN_ROLE` or `FEE_MANAGER_ROLE` | Calls `Validator.withdrawRoyalties` |
+| `updateValidatorRoles()` | `ADMIN_ROLE` or the registry | Revokes `FEE_MANAGER_ROLE` from validators it granted it to, then grants it to every active one |
+| `setCommissionPercentage(bps)` | `ADMIN_ROLE` | At most 1,000 (10%). `initialize` accepts up to 10,000 |
+| `setFeeReceiver`, `setValidatorRegistry`, `setTokenRegistry` | `ADMIN_ROLE` | Configuration |
+| `addCompatibleDeedNFT`, `removeCompatibleDeedNFT` | `ADMIN_ROLE` | Which `DeedNFT`s may call `processPayment` |
+| `addWhitelistedToken`, `removeWhitelistedToken` | `ADMIN_ROLE` | A token list `processPayment` does not read |
+| `getValidatorFeeBalance`, `getCommissionPercentage`, `commissionPercentage`, `feeReceiver`, `isCompatibleDeedNFT`, `getCompatibleDeedNFTs`, `getWhitelistedTokens`, `formatFee` | Anyone | Reads |
+
+`MINTER_ROLE` is granted to the deployer and checked by nothing.
+
+Events: `ServiceFeeCollected`, `ValidatorFeesWithdrawn`, `CommissionPercentageUpdated`,
+`FeeReceiverUpdated`, `ValidatorRegistryUpdated`, `CompatibleDeedNFTUpdated`.
+
+---
+
+## `MetadataRenderer`
+
+**Builds the JSON `DeedNFT.tokenURI` returns.** It combines the deed's traits with what it stores
+itself, keyed by token id for its one `deedNFT`. An unvalidated deed shows the invalidated image
+(`defaultImageURIs[255]`). The output format is in [`metadata-renderer.md`](./metadata-renderer.md).
+
+State: default image and background colour per asset type; per token, the stored metadata
+(name, description, image, colours, animation URL, external link, gallery, documents, custom
+metadata), features, condition and legal information.
+
+| Function | Who | What it does |
+|---|---|---|
+| `tokenURI(tokenId)`, `contractURI()` | Anyone | The metadata JSON |
+| `syncTraitUpdate(tokenId, traitKey, traitValue)` | The `deedNFT` only | Mirrors `name`, `description`, `image`, `background_color`, `animation_url`, `gallery` and `customMetadata` traits into storage |
+| `setTokenFeatures`, `setAssetCondition`, `setTokenLegalInfo`, `manageTokenDocument`, `setTokenAnimationURL`, `setTokenExternalLink` | Renderer owner, a `DeedNFT` `VALIDATOR_ROLE` holder, or the deed's owner | Per-token details |
+| `setTokenCustomMetadata(tokenId, metadata)` | Same | Stores it and writes it to `DeedNFT` as the `customMetadata` trait |
+| `setTokenGallery`, `setDeedNFT` | `DEFAULT_ADMIN_ROLE` | Gallery; which `DeedNFT` it renders |
+| `setAssetTypeImageURI`, `setAssetTypeBackgroundColor`, `setInvalidatedImageURI` | Owner | Defaults |
+| `getTokenFeatures`, `getAssetCondition`, `getTokenLegalInfo`, `getTokenDocument`, `getTokenDocuments`, `getTokenGallery`, `getTokenAnimationURL`, `getTokenExternalLink` | Anyone | Reads |
+
+Events: `MetadataUpdate`, `MetadataSynced`.
+
+---
+
+## `Subdivide`
+
+**Splits a validated Land or Estate deed into ERC-1155 units, each its own token with a supply of
+one.** The unit's token id is `(deedId << 128) | unitId`. The deed stays with its owner.
+
+State: `subdivisions` per deed (`name`, `description`, `symbol`, `collectionUri`, `totalUnits`,
+`activeUnits`, `isActive`, `burnable`, `collectionAdmin`, `subdivisionValidator`, per-unit metadata),
+unit traits, unit owners, `deedNFT`, `validatorRegistry`. `defaultValidator` is set to zero at
+`initialize` and has no setter, so a unit's validator is the subdivision's, or else the deed's.
+
+| Function | Who | What it does |
+|---|---|---|
+| `createSubdivision(deedId, name, description, symbol, collectionUri, totalUnits, burnable)` | The deed's owner, not paused | The deed must be validated and Land (0) or Estate (2), with no active subdivision. Caller becomes collection admin |
+| `mintUnit(deedId, unitId, to)`, `batchMintUnits(deedId, unitIds, recipients)` | The deed's current owner, not paused | Mints units below `totalUnits`; a zero recipient means the deed's owner. Copies `assetType`, `operatingAgreement`, `definition`, `configuration` and the validator from the deed |
+| `burnUnit(deedId, unitId)` | The unit's holder | Only while `burnable` |
+| `deactivateSubdivision(deedId)` | The deed's current owner | Only once every unit is burned |
+| `updateUnitValidationStatus(deedId, unitId, isValid, validatorAddress)` | `VALIDATOR_ROLE`, active in the registry | Writes `isValidated` and `validator` on the unit |
+| `setUnitMetadata`, `setBurnable`, `setSubdivisionValidator`, `transferCollectionAdmin` | Collection admin | Per-unit URI, burnability, a validator for all units (must be active), handing the role on |
+| `setUnitTrait`, `setUnitTraitFlexible`, `removeUnitTrait` | Collection admin | Unit traits. Setting `assetType` reverts — see below |
+| `addValidator`, `removeValidator`, `setUnitTraitName` | `ADMIN_ROLE` | `VALIDATOR_ROLE`; trait names |
+| `setApprovedMarketplace`, `setRoyaltyEnforcement`, `setToDefaultSecurityPolicy`, `setTransferValidator` | `ADMIN_ROLE` | Stored; no approval or transfer path reads them |
+| `pause`, `unpause` | `ADMIN_ROLE` | Stops creating subdivisions and minting units |
+| `uri(tokenId)` | Anyone | The unit's own metadata, else `collectionUri/unitId` |
+| `royaltyInfo(tokenId, salePrice)` | Anyone | The unit's validator at its rate, else the parent deed's `royaltyInfo` |
+| `subdivisions`, `subdivisionExists`, `unitExists`, `ownerOf`, `getUnitAssetType`, `isUnitValidated`, `getUnitValidationStatus`, `getSubdivisionValidator`, `supportsSubdivision`, `getUnitTraitValue`, `getUnitTraitValues`, `getUnitTraitKeys`, `getUnitTraitName`, `getUnitMetadata`, `getUnitTraitMetadataURI` | Anyone | Reads. Most revert once the subdivision is inactive |
+
+**The deed is not locked.** Its owner can still transfer or burn it. Minting units follows the deed's
+current owner; the collection admin stays whoever created the subdivision until it is handed on.
+
+**`DeedNFT` has no `getAssetType`.** `IDeedNFT` declares it and `Subdivide` calls it, so
+`setUnitTrait` or `setUnitTraitFlexible` on the `assetType` key reverts, as does `getUnitAssetType`
+for a unit with no `assetType` trait of its own.
+
+Events: `SubdivisionCreated`, `UnitMinted`, `UnitBurned`, `UnitValidated`, `UnitTraitUpdated`,
+`UnitMetadataUpdated`, `BurnableStatusChanged`, `SubdivisionValidatorUpdated`,
+`SubdivisionDeactivated`, `CollectionAdminTransferred`, `MarketplaceApproved`,
+`RoyaltyEnforcementChanged`.
+
+---
+
+## `Fractionalize`
+
+**Holds a deed and issues ERC-20 shares against it.** Each fraction has an id from `nextFractionId`
+(from 1) and its own `FractionToken`.
+
+State per fraction: name, description, symbol, `collectionUri`, `totalShares`, `activeShares`,
+`maxSharesPerWallet` (set to `totalShares`), `requiredApprovalPercentage`, `isActive`, `burnable`,
+the asset type and original token id, `collectionAdmin`, `tokenAddress`.
+
+| Function | Who | What it does |
+|---|---|---|
+| `createFraction(params)` | The asset's owner, not paused | `params` is `FractionCreationParams`: `assetType` (`DeedNFT` or `SubdivisionNFT`), `originalTokenId`, `name`, `description`, `symbol`, `collectionUri`, `totalShares`, `burnable`, `approvalPercentage` (51–100). Takes the asset and has the factory create the token. Does not check validation |
+| `mintShares(fractionId, amount, to)`, `batchMintShares(params)` | Collection admin, not paused | Mints up to `totalShares`; a zero recipient means the caller |
+| `burnShares(fractionId, amount)` | A holder, not paused | Only while `burnable` |
+| `unlockAsset(params)` | See below, not paused | Ends the fraction and sends the asset to `params.to` |
+| `pause`, `unpause` | `ADMIN_ROLE` | Stops all of the above |
+| `getFractionBasicInfo`, `getFractionExtendedInfo`, `getFractionOwnershipInfo`, `getFractionToken`, `getApprovals`, `canReceiveShares`, `getVotingPower` | Anyone | Reads |
+| `validateAsset`, `validateDeedNFTAsset`, `validateSubdivisionAsset`, `getAssetInformation`, `getDeedNFTAssetDetails`, `getDeedNFTAssetTrait`, `getDeedNFTAssetTraitKeys`, `getSubdivisionAssetDetails`, `getSubdivisionAssetTrait`, `getSubdivisionAssetTraitKeys` | Anyone | Reads about the locked asset |
+
+**Who can unlock.** With no shares minted, only the collection admin. With shares minted, the caller
+must hold every minted share (`getVotingPower == activeShares`); those shares are burned first. The
+`checkApprovals` route compares the caller's `adminApprovals` against `requiredApprovalPercentage`,
+but no function sets approvals, so it never passes.
+
+**What blocks an unlock or a lock:**
+
+- Burning shares needs `burnable`. A non-burnable fraction cannot be unlocked once any share is
+  minted.
+- Shares burned with `FractionToken.burn` directly do not reduce `activeShares`, after which no one
+  can hold "every minted share". Burn through `burnShares`.
+- `createFraction` moves a deed with `transferFrom`, sent by `Fractionalize`. While `DeedNFT`
+  enforces royalties, `Fractionalize` must be on its `setApprovedMarketplace` list for both the
+  owner's `approve` and the transfer to succeed.
+- A subdivision unit is moved with `safeTransferFrom`, which requires the receiver to implement
+  `onERC1155Received`. `Fractionalize` does not, so fractionalizing a unit reverts.
+
+Events: `FractionCreated`, `AssetLocked`, `SharesMinted`, `SharesBurned`, `AssetUnlocked`.
+
+---
+
+## `FractionToken`
+
+**The ERC-20 share token for one fraction.** Records `fractionalizeContract` and `fractionId`.
+
+| Function | Who | What it does |
+|---|---|---|
+| `mint(to, amount)` | `MINTER_ROLE` (`Fractionalize`), not paused | Respects `maxSharesPerWallet` |
+| `burnFrom(from, amount)` | `MINTER_ROLE`, not paused | Only while `burnable` |
+| `burn(amount)` | Any holder, not paused | Only while `burnable` |
+| `transfer`, `transferFrom` | Holders | Revert if the recipient would exceed `maxSharesPerWallet` (0 means no cap) |
+| `setMaxSharesPerWallet`, `setBurnable`, `pause`, `unpause` | `ADMIN_ROLE` | See below |
+| `getVotingPower(account)`, `canReceive(account, amount)` | Anyone | Balance; whether a transfer would fit the cap |
+
+**Each token is an EIP-1167 clone initialized by the factory, so the factory holds its admin roles —
+and the factory has no function that uses them.** The admin setters, pause and upgrade cannot be
+reached. A clone has no ERC-1967 implementation slot, so UUPS's `onlyProxy` check would refuse an
+upgrade anyway.
+
+Events: `MaxSharesPerWalletUpdated`, `BurnableStatusUpdated`.
+
+---
+
+## `FractionTokenFactory`
+
+**Clones the `FractionToken` implementation for each fraction.** `initialize` deploys the
+implementation with `new FractionToken()`.
+
+| Function | Who | What it does |
+|---|---|---|
+| `createFractionToken(fractionId, name, symbol, maxSharesPerWallet, burnable)` | `fractionalizeContract` only | Clones, initializes with `Fractionalize` as minter, records it. One token per fraction id |
+| `updateImplementation(newImplementation)` | Owner | For clones made afterwards; existing ones are unchanged |
+| `updateFractionalizeContract(newContract)` | Owner | Which contract may create tokens |
+| `getTokenByFractionId`, `isToken`, `getAllCreatedTokens`, `getCreatedTokenCount`, `fractionTokenImplementation` | Anyone | Reads |
+
+Events: `FractionTokenCreated`, `ImplementationUpdated`.
+
+---
+
+## `ValidatorFactory`
+
+**Meant to deploy a configured `Validator` and register it in one call.** It has no deploy script, is
+not in `deployments/`, and has no tests.
+
+`createValidator(name, description, supportedAssetTypes, royaltyFeePercentage, serviceFee, baseUri,
+operatingAgreementUri)` is open to anyone. It deploys `new Validator()` and calls `initialize` on it
+directly, but `Validator`'s constructor calls `_disableInitializers()`, so that call reverts. Even
+past that, `ValidatorRegistry.registerValidator` is `onlyOwner`, so the factory would have to own the
+registry. Its owner-only setters are `addDefaultWhitelistedToken`, `removeDefaultWhitelistedToken`,
+`updateValidatorRegistry` and `updateFundManager`. Events: `ValidatorCreated`,
+`TokenWhitelisted`, `TokenRemovedFromWhitelist`.
+
+---
+
+## Deployment and wiring
+
+**`deploy/deploy_all.ts` deploys and wires `ValidatorRegistry`, `MetadataRenderer`, `Validator`,
+`DeedNFT`, `FundManager` and `Subdivide`; `deploy/06_deploy_Fractionalize.ts` adds
+`FractionTokenFactory` and `Fractionalize`.** All are UUPS proxies. The numbered scripts `00`–`04`
+call roles and functions the current contracts do not have — `OPERATOR_ROLE`, `ADMIN_ROLE` on
+`DeedNFT` and `MetadataRenderer`, `setAssetTypeSupported`, `FundManager.setDeedNFT`, and
+initializer arguments that no longer match — so `deploy_all.ts` is the one that runs against them.
+`05` matches the current `Subdivide`.
+
+What `deploy_all.ts` wires:
+
+1. `ValidatorRegistry.setDeedNFT`, `Validator.setDeedNFT`, `MetadataRenderer.setDeedNFT` and
+   `DeedNFT.setMetadataRenderer`, plus the renderer's default images.
+2. `ValidatorRegistry.setFundManager`, then `registerValidator` and `updateValidatorStatus(true)` for
+   the default validator — which grants it `VALIDATOR_ROLE` on `DeedNFT` and `FEE_MANAGER_ROLE` on the
+   `FundManager`.
+3. `Validator.setAssetTypeSupport` for all four types (no criteria) and `Validator.setFundManager`.
+4. `Subdivide` `ADMIN_ROLE` to the deployer and `VALIDATOR_ROLE` to the validator.
+
+What it leaves for an admin:
+
+- `DeedNFT.setFundManager` — until then minting charges no fee. Once it is set,
+  `FundManager.addCompatibleDeedNFT(DeedNFT)` must be too, or every mint reverts in
+  `processPayment`.
+- `Validator.setupValidationCriteria` or `setValidationCriteria` — until then every supported deed
+  validates.
+- `Validator.registerOperatingAgreement` for the default agreement.
+- `Validator.addCompatibleDeedNFT(Subdivide)` — until then `validateSubdivisionUnit` reverts.
+- `DeedNFT.setApprovedMarketplace(Fractionalize, true)` — until then `createFraction` reverts while
+  royalties are enforced.
+
+Whether these were done on Base Sepolia is not recorded in the repository. The `Validator` and
+`FundManager` ABIs saved in `deployments/base-sepolia/` predate `setTokenRegistry`. Upgrades use
+`deploy/upgrade/`; the steps are in [Operators](../../operators/deploying-contracts.md).

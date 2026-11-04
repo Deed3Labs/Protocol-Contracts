@@ -131,8 +131,25 @@ A line above New charge says when the tablet is offline.
   the sale and its drawer events are queued on the tablet and sent, in order, when the connection is
   back. A tablet that has never read the shop's tax rates says so.
 - **Card, Clear and split wait** for the connection.
-- Card payments can't be stored offline yet. Settings › Payments says it is coming to the M2 in an
-  app update.
+
+### Card payments while offline
+
+**The app doesn't take card payments offline yet.** Storing a card payment on the reader and sending
+it when the connection is back (store-and-forward) isn't built, on the M2 or anywhere else. Every
+card payment — M2, Tap to Pay or a smart reader — needs the connection at the moment it's taken.
+
+**Settings › Payments › When the connection drops** shows **Store card payments** locked, with the
+reason:
+
+| It reads | Where |
+|---|---|
+| Coming to the M2 in an app update | In the installed app, with Stripe connected |
+| On the M2, in the Clear app | In a browser |
+| Needs Stripe connected first | Before Stripe is connected |
+
+So while the tablet is offline, **take cash or wait**. A Clear charge that can't reach the customer's
+phone shows **No connection**. Its sheet says a card would be stored and sent later; that isn't so
+yet, so a card waits for the connection like everything else except cash.
 
 ## Charges
 

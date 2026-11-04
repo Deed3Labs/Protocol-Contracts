@@ -150,6 +150,23 @@ The installed app is the same app wrapped for iOS and Android. Beyond the web ap
 It asks for Bluetooth and location permission (Stripe needs the device's location to take card
 payments), and on iOS for local network access, to find printers on your shop's network.
 
+### Getting the installed app
+
+Clear for Merchants is built from the same code as the web app, wrapped for iOS and Android. **This
+guide can't point you to a store listing:** the code doesn't set up an App Store or Google Play
+release, so where you download it from isn't fixed here. Ask Clear for the app for your devices.
+
+Until you have it:
+
+- **Use the web app.** Open `merchant.useclear.org` in the device's browser. It takes Clear, cash and
+  cards on Stripe smart readers, but not an M2 or Tap to Pay.
+- **Add it to the home screen** if you like (Share › Add to Home Screen on an iPad or iPhone, or the
+  browser's Install or Add to Home screen on Android). It opens full screen as Clear for Merchants,
+  but it is still the web app, with the same limits.
+
+Once the installed app is on the device, open it and [enroll the device](#enrolling-a-tablet) like
+any other.
+
 ## Signing your shop in to useclear.org
 
 To reserve Clear hardware on useclear.org, the site sends you to the merchant app's **/connect**

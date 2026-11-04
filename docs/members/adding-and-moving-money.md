@@ -1,6 +1,7 @@
 # Adding and moving money
 
-Where your money sits in Clear, how it gets in, and how it moves between your cash and your savings.
+Where your money sits in Clear, how it gets in, how it moves between your cash and your savings,
+and where taking it out to a bank stands.
 
 ## Where your money sits
 
@@ -68,6 +69,23 @@ Ready to allocate. Two things can affect it:
 Moving out lowers your credit limit by the same amount.
 
 If you have nothing in Ready to allocate, the sheet says so and offers **Add money**.
+
+## Taking money out to a bank
+
+**The app doesn't do this yet.** There is no working way in the app to send money from your Clear
+account to a bank account.
+
+The Add money sheet on Home has a swap arrow that turns it round, so it reads **Send … to your
+bank**. In this version that button doesn't send anything, and nothing leaves your account.
+
+What you can do today is **move savings back to cash** at any time (see
+[Moving money between cash and savings](#moving-money-between-cash-and-savings)). It lands in Ready
+to allocate, where it can pay a Clear shop, pay down credit or go to Earn. It can't reach your bank
+from there yet.
+
+When withdrawals open, Clear's server is built to pay out through Bridge, Clear's banking partner,
+to a bank account you've linked with Plaid: by standard ACH, or same-day ACH for a fee. Like every
+money move, it asks for Face ID when payment protection is on.
 
 ## Auto-save
 
