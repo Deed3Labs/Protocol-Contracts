@@ -1,4 +1,5 @@
 import express from 'express';
+import { buildInfo } from './services/command/deploys.js';
 import { redactError } from './utils/redact.js';
 import { createServer } from 'http';
 import cors from 'cors';
@@ -226,6 +227,8 @@ app.get('/health', async (req: express.Request, res: express.Response) => {
       status: 'ok',
       timestamp: new Date().toISOString(),
       redis: isRedisConnected ? 'connected' : 'disconnected',
+      // what's running, as Railway built it: Command's Build page reads both environments' (deploys.ts)
+      build: buildInfo(),
     });
   } catch (error) {
     res.status(500).json({

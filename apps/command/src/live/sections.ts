@@ -365,6 +365,8 @@ const apply = {
     vars.contractsNow = d.NOW;
     // live, the map's contracts the indexer found deployed (null when the section isn't read from the chain)
     vars.contractsDeployed = d.DEPLOYED ?? null;
+    // where each app runs (the API's deploys.ts): Vercel's deploys and the API's Railway environments
+    vars.contractsRunning = d.RUNNING ?? null;
     replace(SIGNERS, d.SIGNERS);
     // Build's own records (migration 0066): incidents, findings, audits, and who can be given an incident
     vars.buildRecords = { incidents: d.INCIDENTS ?? [], findings: d.FINDINGS ?? [], audits: d.AUDITS ?? [], team: d.TEAM ?? [] };

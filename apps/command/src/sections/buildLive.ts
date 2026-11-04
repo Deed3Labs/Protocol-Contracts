@@ -235,16 +235,32 @@ export function buildLive() {
   }
 
   /* where the contracts run, and their releases as deploys, newest first */
+  // the apps' deploys (Vercel, and the API's Railway environments): a cell is its latest deploy, how it went and when
+  const RUN = vars.contractsRunning ?? null;
+  const shortSha = (s) => (s ? String(s).slice(0, 7) : '');
+  const ago = (t) => {
+    const m = Math.max(0, Math.round((Date.now() - t) / 60_000));
+    return m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+  };
+  const runCell = (c, k) => {
+    if (!c) return ['—', k === 'preview' ? 'No pull request deploys' : 'No deploys', 'na'];
+    const word = c.state === 'ready' ? 'Running' : c.state === 'building' ? 'Building' : 'Failed';
+    return [k === 'preview' && c.pr ? `#${c.pr} · ${c.ref}` : c.ref || '—', [word, shortSha(c.sha), c.at ? ago(c.at) : ''].filter(Boolean).join(' · '), c.state === 'ready' ? 'ok' : c.state === 'building' ? 'warn' : 'bad'];
+  };
+  // read: the API row whenever the deploys came, Vercel's apps once the token is set
+  const readFor = (id) => RUN && (id === 'sdk' || (!RUN.vercelOff && id !== 'proto'));
   const ENV = Object.fromEntries(
     PROJ.map((p) => [
       p.id,
       {
-        preview: ['—', 'Not read yet', 'na'],
-        test: p.id === 'proto' ? [CHAIN.network || 'Not indexed yet', `${live} of ${CT.length} contracts found on-chain`, live ? 'ok' : 'na'] : ['—', 'Not read yet', 'na'],
-        prod: ['—', 'Not read yet', 'na'],
+        preview: readFor(p.id) ? runCell(RUN.projects[p.id]?.preview, 'preview') : ['—', 'Not read yet', 'na'],
+        test: p.id === 'proto' ? [CHAIN.network || 'Not indexed yet', `${live} of ${CT.length} contracts found on-chain`, live ? 'ok' : 'na'] : readFor(p.id) ? runCell(RUN.projects[p.id]?.test, 'test') : ['—', 'Not read yet', 'na'],
+        prod: readFor(p.id) ? runCell(RUN.projects[p.id]?.prod, 'prod') : ['—', 'Not read yet', 'na'],
       },
     ]),
   );
+  /** The Deploys tab's foot: where the cells come from, or what's missing. */
+  const RUN_NOTE = !RUN ? 'The apps’ deploys (Railway, Vercel) aren’t read yet' : RUN.vercelOff ? `The API’s environments from Railway · Vercel’s apps need ${RUN.vercelOff.replace(' isn’t set', '')}` : 'Vercel and Railway, read every two minutes';
   const nameById = Object.fromEntries(CT.map((c) => [c[0], c[1]]));
   const DEPLOYS = Object.entries(RELEASES)
     .flatMap(([id, list]) => (list ?? []).map(([ver, at, impl]) => [at, 'proto', 'test', `${nameById[id] ?? id} ${ver}`, 'Read from the chain', 'ok', impl ? `Implementation ${short(impl)}` : 'Upgraded']))
@@ -377,6 +393,8 @@ export function buildLive() {
     RSHORT,
     RTINY,
     ENV,
+    RUN_NOTE,
+    RUN_ON: !!RUN,
     DEPLOYS,
     FINDINGS,
     INCIDENTS,

@@ -35,6 +35,7 @@ import { cachedSiteNow, type SiteNow } from '../services/command/siteNow.js';
 import { MAX_PHOTO_BYTES, PHOTO_TYPES, publicCatalog, revalidateSite, uploadPhoto } from '../services/command/catalog.js';
 import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
+import type { Deploys } from '../services/command/deploys.js';
 
 /*
  * The Command Center's API (docs/command-center-plan.md, Phase 2): sign-in sessions, who you are and
@@ -65,6 +66,8 @@ export interface CommandDeps {
   chain?: ChainReader;
   /** The GitHub poller: a catch-up when someone opens Contracts. */
   code?: { catchUp(): void };
+  /** Where each app runs, for Build (deploys.ts: Vercel's deploys, the API's Railway environments). */
+  deploys?: () => Promise<Deploys>;
   /** The sandbox feeds, for their status (Phase 6a): the live four unless given. */
   feeds?: Feed[];
   /** The member app's records, for Members when it's live (Phase 7b). */
@@ -568,7 +571,7 @@ export function commandRouter(deps: CommandDeps) {
     deps.indexer?.catchUp();
     deps.code?.catchUp();
     try {
-      res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now(), chain: deps.chain }));
+      res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now(), chain: deps.chain, deploys: deps.deploys }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
