@@ -231,11 +231,15 @@ contract DeedNFT is
      * @dev Modifier to check if the caller is a validator or the deed owner
      */
     modifier onlyValidatorOrOwner(uint256 tokenId) {
+        _checkValidatorOrOwner(tokenId);
+        _;
+    }
+
+    function _checkValidatorOrOwner(uint256 tokenId) private view {
         require(
             hasRole(VALIDATOR_ROLE, msg.sender) || ownerOf(tokenId) == msg.sender,
             "Not authorized"
         );
-        _;
     }
 
     function _exists(uint256 tokenId) internal view override returns (bool) {
@@ -684,8 +688,7 @@ contract DeedNFT is
         bytes memory traitValue,
         uint8 valueType
     ) external onlyValidatorOrOwner(tokenId) {
-        require(_exists(tokenId), "Token does not exist");
-        
+        // _setTraitValue checks that the token exists.
         // Convert string trait name to bytes32 key if provided as string
         bytes32 key;
         bool isStringKey = false;
