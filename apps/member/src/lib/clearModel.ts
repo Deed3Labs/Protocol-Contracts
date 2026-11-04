@@ -1098,6 +1098,15 @@ export function assetBackedLimit(data: EarnData): number {
 }
 
 /**
+ * What the Earn positions back, exactly: the pool at its LTV plus the bonds at theirs, in cents.
+ * Earn's "Backs your limit" shows this, so it adds up to the rows beneath it ($234.50 for 70% of a
+ * $335.00 pool), where `assetBackedLimit` would read $234.00.
+ */
+export function assetBacking(data: EarnData): number {
+  return toCents(poolBacking(data) + bondsBacking(data));
+}
+
+/**
  * Earned to date, derived from the rows: pool interest plus what the bonds have appreciated
  * (worth today less what was paid). A figure that included yield already withdrawn would be a
  * different quantity and need a different label.
