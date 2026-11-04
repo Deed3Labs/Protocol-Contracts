@@ -15,6 +15,7 @@ import { safeConfig } from './safe.js';
 import { costHistory, costingPayload, lowMaterials, noCosting, orderCosts, productCost, readBook, readHistory, roundCents, shown, type Book } from './costing.js';
 import { shopModelPayload } from './shopModel.js';
 import { shopPins } from './geocode.js';
+import type { Deploys } from './deploys.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -47,6 +48,8 @@ export interface ReadOptions {
   memberSource?: MemberSource;
   /** Where the Clear charges are (charge_requests), for Merchants live: the main database unless given. */
   charges?: Pick<Queryable, 'query'>;
+  /** Where each app runs (deploys.ts), for Build live: none unless given. */
+  deploys?: () => Promise<Deploys>;
 }
 
 const chainOf = (o: ReadOptions, source: string) => {
@@ -1722,11 +1725,14 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
   const CODE = provider === 'live' ? await codeActivity(db, codeConfig(), NOW, o.level > TOTALS) : null;
   // live, which of the map's contracts the indexer has found deployed (Build counts and draws these as live)
   const DEPLOYED = deployed ? ctr.filter((c) => onChain(c.name)).map((c) => c.id) : null;
+  // live, where each app runs: Vercel's deploys and the API's Railway environments (deploys.ts)
+  const RUNNING = provider === 'live' && o.deploys ? await o.deploys().catch(() => null) : null;
   return {
     AGR, CTR, CTR_NOTE, REL, RELEASES, PENDING,
     // Command's own records, whatever the provider: incidents, findings, audits (migration 0066)
     ...(await buildRecords(db, o)),
     ...(DEPLOYED ? { DEPLOYED } : {}),
+    ...(RUNNING ? { RUNNING } : {}),
     CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     ...(CODE ? { CODE } : {}),
     SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),
