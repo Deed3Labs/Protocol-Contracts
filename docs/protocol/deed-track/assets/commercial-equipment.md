@@ -79,5 +79,3 @@ Supporting records are stored in the `MetadataRenderer`
 - **The example metadata uses display labels, not trait keys.** `test/templates` lists
   "Manufacturer", "Model" and "Serial Number". The contracts read `manufacturer`, `model` and
   `serialNumber`; a trait set under the label is a different key and is not read.
-- **The deed's owner can set `isValidated` directly** with `setTrait`; see
-  [`validation-system.md`](../validation-system.md#known-limitations).

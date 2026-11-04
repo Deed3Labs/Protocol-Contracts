@@ -82,5 +82,3 @@ validate a unit against the preset, the collection admin sets `country`, `state`
 - **The template has no `legalDescription` or `zipCode` attribute.** The preset requires
   `legalDescription`, and the renderer reads `zipCode`. The template carries the legal description
   only inside its off-chain `properties.legal.legal_description`.
-- **The deed's owner can set `isValidated` directly** with `setTrait`; see
-  [`validation-system.md`](../validation-system.md#known-limitations).

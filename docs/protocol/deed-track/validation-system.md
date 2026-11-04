@@ -26,7 +26,16 @@ its check and one that has never been checked both read `isValidated = false`; t
 | `validateDeed` stops early (see below) | Nothing written; `ValidationError` emitted |
 | Owner calls `updateMetadata` | `isValidated = false`, `validator` = zero address |
 | Validator calls `updateMetadata` | Unchanged |
-| `setTrait`, `removeTrait`, transfer | Unchanged (except as in [Known limitations](#known-limitations)) |
+| `setTrait`, `removeTrait`, transfer | Unchanged. The validation traits are reserved (below) |
+
+### Reserved traits
+
+`isValidated`, `validator` and `beneficiary` are reserved. `setTrait` and `removeTrait` refuse them
+for every caller, the deed's owner and `VALIDATOR_ROLE` alike, so validation changes only through
+`updateValidationStatus` (an active validator writing its own address), `updateMetadata` (an owner's
+edit resets it) and minting. `beneficiary` follows the deed on transfer. `assetType` can be set with
+`setTrait` only by `VALIDATOR_ROLE`, and nobody can remove it. Because the `validator` trait can only
+be written by a validator, `royaltyInfo` always names a validator, or no one, as the royalty receiver.
 
 ---
 
@@ -169,7 +178,7 @@ record as well. Deeds it already validated keep their status.
 | `DEFAULT_ADMIN_ROLE` | `Validator` | Granting every other role; `grantRole` is restricted to it |
 | Owner | `Validator` | Upgrades, URIs, which `DeedNFT`s it serves, `FundManager`, `TokenRegistry` |
 | Owner | `ValidatorRegistry` | Every registration and status change |
-| `VALIDATOR_ROLE` | `DeedNFT` | `updateValidationStatus`, plus `setTrait` and `updateMetadata` on any deed. Granted to active validators by the registry |
+| `VALIDATOR_ROLE` | `DeedNFT` | `updateValidationStatus`, plus `setTrait` (including `assetType`, but not the reserved traits) and `updateMetadata` on any deed. Granted to active validators by the registry |
 
 `ADMIN_ROLE` is declared on `Validator` but granted to no one.
 
@@ -177,10 +186,6 @@ record as well. Deeds it already validated keep their status.
 
 ## Known limitations
 
-- **The deed's owner can write its validation traits.** `DeedNFT.setTrait` accepts any key from the
-  deed's owner, including `isValidated`, `validator` and `assetType`. An owner can mark their own
-  deed validated without a validator, and the `validator` trait also decides whom `royaltyInfo`
-  names as the royalty receiver.
 - **`validateDeed` does not check which validator the deed names.** Any active validator can
   validate any deed in its primary `DeedNFT`, and becomes the deed's `validator`.
 - **Required traits must be strings.** `validateDeed` decodes each one as a string. A required trait

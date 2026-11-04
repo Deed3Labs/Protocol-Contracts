@@ -102,9 +102,10 @@ recognised. Otherwise it checks that every required trait is present and non-emp
   loads the built-in presets; `setValidationCriteria` sets custom ones.
 - `validateDeed` does not check which validator the deed names. Any active validator can validate
   any deed in its primary `DeedNFT`, and the `validator` trait becomes that validator.
-- `updateMetadata` by the owner sets `isValidated` back to false and clears `validator`. `setTrait`
-  and `removeTrait` do not, and `setTrait` lets the owner write `isValidated` and `validator`
-  directly; see [Known limitations](#known-limitations).
+- `updateMetadata` by the owner sets `isValidated` back to false and clears `validator`.
+- `isValidated`, `validator` and `beneficiary` are reserved: `setTrait` and `removeTrait` refuse them
+  for every caller, and only `VALIDATOR_ROLE` can set `assetType`. See
+  [Reserved traits](./validation-system.md#reserved-traits).
 
 The full rules are in [`validation-system.md`](./validation-system.md).
 
@@ -180,9 +181,6 @@ is in [`smart-contracts.md`](./smart-contracts.md#deployment-and-wiring) and
 
 ## Known limitations
 
-- **The deed's owner can write its validation traits.** `DeedNFT.setTrait` accepts any key from the
-  owner, including `isValidated` and `validator`. See
-  [`validation-system.md`](./validation-system.md#known-limitations).
 - **`DeedNFT` has no `getAssetType`.** `Subdivide` calls it, so setting a unit's `assetType` trait
   reverts. See [`subdivision.md`](./subdivision.md#known-limitations).
 - **A subdivision unit cannot be fractionalized.** `Fractionalize` has no `onERC1155Received`, so

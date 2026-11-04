@@ -45,8 +45,8 @@ list and the royalty-enforcement flag. `totalSupply` is a running count of live 
 | `burnAsset(tokenId)`, `burnBatchAssets(tokenIds)` | Deed owner, not paused | Burns and clears the token's traits |
 | `updateValidationStatus(tokenId, isValid, validatorAddress)` | `VALIDATOR_ROLE`, active in the registry, `validatorAddress == msg.sender` | Writes `isValidated` and `validator` |
 | `updateMetadata(tokenId, uri, operatingAgreement, definition, configuration)` | Deed owner or `VALIDATOR_ROLE`, not paused | Rewrites those traits. The agreement must have a name in the deed's validator (`operatingAgreementName`). From a non-validator, also resets validation |
-| `setTrait(tokenId, traitKey, traitValue, valueType)` | Deed owner or `VALIDATOR_ROLE` | Sets any trait, including `isValidated`, `validator` and `assetType`. A 32-byte key is used as is, anything else is hashed and its name recorded. `valueType` 0 raw bytes, 1 string, 2 number, 3 boolean |
-| `removeTrait(tokenId, traitName)` | Deed owner or `VALIDATOR_ROLE` | Deletes a trait |
+| `setTrait(tokenId, traitKey, traitValue, valueType)` | Deed owner or `VALIDATOR_ROLE` | Sets a trait. Refuses the reserved traits `isValidated`, `validator` and `beneficiary`; `assetType` only from `VALIDATOR_ROLE`. A 32-byte key is used as is, anything else is hashed and its name recorded. `valueType` 0 raw bytes, 1 string, 2 number, 3 boolean |
+| `removeTrait(tokenId, traitName)` | Deed owner or `VALIDATOR_ROLE` | Deletes a trait. Refuses `isValidated`, `validator`, `beneficiary` and `assetType` |
 | `getTraitValue`, `getTraitValues`, `getTraitKeys`, `getTraitName`, `getTraitMetadataURI` | Anyone | ERC-7496 reads |
 | `getValidationStatus(tokenId)` | Anyone | `(isValidated, validator)` |
 | `tokenURI(tokenId)` | Anyone | The renderer's output, or the stored URI if the renderer is unset, reverts or returns empty |
