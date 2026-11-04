@@ -1,508 +1,154 @@
-# Asset Workflows
+# Asset workflows
 
-This document outlines the complete asset lifecycle in The Clear Protocol, from initial minting through subdivision and fractionalization. It provides a comprehensive guide to understanding how assets flow through the system and the various operations available at each stage.
+The calls that take a T-Deed through its life, in order, with who makes each one. The rules behind
+each step are in [`protocol-overview.md`](./protocol-overview.md); every function's access and
+events are in [`smart-contracts.md`](./smart-contracts.md).
 
-## 🎯 Overview
-
-The Clear Protocol supports a complete asset lifecycle with three main stages:
-
-1. **Asset Minting**: Create and validate DeedNFTs
-2. **Asset Subdivision**: Break down assets into smaller units
-3. **Asset Fractionalization**: Convert assets into tradeable shares
-
-## 📋 Complete Asset Lifecycle
-
-### Stage 1: Asset Minting
-
-#### 1.1 Asset Creation
-
-**Purpose**: Create a new DeedNFT representing a real-world asset
-
-**Prerequisites**:
-- Valid asset documentation
-- Asset type identification
-- Required metadata
-
-**Process**:
-1. **Asset Type Selection**
-   - Land (0): Real estate properties
-   - Vehicle (1): Cars, trucks, motorcycles
-   - Estate (2): Buildings, structures
-   - Commercial Equipment (3): Machinery, tools
-
-2. **Metadata Configuration**
-   ```solidity
-   function mint(
-       address to,
-       uint256 assetType,
-       string memory metadata
-   ) external
-   ```
-
-3. **Initial Traits**
-   - Asset-specific required traits
-   - Custom metadata fields
-   - Document references
-
-#### 1.2 Asset Validation
-
-**Purpose**: Verify asset authenticity and compliance
-
-**Process**:
-1. **Validator Assignment**
-   - Asset assigned to appropriate validator
-   - Validator reviews documentation
-   - On-site inspection (if required)
-
-2. **Validation Criteria**
-   ```solidity
-   function validateDeed(uint256 tokenId) external onlyRole(VALIDATOR_ROLE)
-   ```
-
-3. **Status Updates**
-   - PENDING: Awaiting validation
-   - VALIDATED: Successfully validated
-   - REJECTED: Failed validation
-   - UNDER_REVIEW: Currently being reviewed
-
-#### 1.3 Post-Validation
-
-**Available Operations**:
-- **Transfer**: Standard ERC721 transfers
-- **Metadata Updates**: Update asset information
-- **Trait Management**: Add/modify asset traits
-- **Subdivision**: Create subdivisions (Land/Estate only)
-
-### Stage 2: Asset Subdivision
-
-#### 2.1 Subdivision Creation
-
-**Purpose**: Break down large assets into smaller, manageable units
-
-**Prerequisites**:
-- DeedNFT must be validated
-- Asset type must support subdivision (Land or Estate)
-- Owner must have necessary permissions
-
-**Process**:
-1. **Subdivision Planning**
-   ```solidity
-   function createSubdivision(
-       uint256 deedId,
-       string memory name,
-       string memory description,
-       string memory symbol,
-       string memory collectionUri,
-       uint256 totalUnits,
-       bool burnable
-   ) external
-   ```
-
-2. **Configuration**
-   - Subdivision name and description
-   - Trading symbol for units
-   - Total number of units
-   - Burning permissions
-   - Collection metadata URI
-
-#### 2.2 Unit Management
-
-**Purpose**: Create and manage individual subdivision units
-
-**Process**:
-1. **Unit Minting**
-   ```solidity
-   // Single unit minting
-   function mintUnit(uint256 deedId, uint256 unitId, address to) external
-   
-   // Batch unit minting
-   function batchMintUnits(
-       uint256 deedId,
-       uint256[] calldata unitIds,
-       address[] calldata recipients
-   ) external
-   ```
-
-2. **Unit Configuration**
-   - Custom metadata per unit
-   - Unit-specific traits
-   - Individual validation
-
-3. **Unit Operations**
-   - Transfer units (ERC1155 standard)
-   - Burn units (if enabled)
-   - Update unit metadata
-
-#### 2.3 Unit Validation
-
-**Purpose**: Validate individual subdivision units
-
-**Process**:
-1. **Validator Assignment**
-   - Subdivision can have custom validator
-   - Falls back to parent DeedNFT validator
-   - Validator must be active in registry
-
-2. **Unit Validation**
-   ```solidity
-   function validateSubdivisionUnit(
-       address subdivideContract,
-       uint256 deedId,
-       uint256 unitId
-   ) external onlyRole(VALIDATOR_ROLE)
-   ```
-
-3. **Validation Criteria**
-   - Units inherit criteria from parent DeedNFT
-   - Custom validation rules can be applied
-   - Individual unit traits validated
-
-#### 2.4 Post-Subdivision
-
-**Available Operations**:
-- **Unit Transfers**: Standard ERC1155 transfers
-- **Unit Validation**: Individual unit validation
-- **Trait Management**: Unit-specific trait updates
-- **Fractionalization**: Convert units to shares
-
-### Stage 3: Asset Fractionalization
-
-#### 3.1 Fraction Creation
-
-**Purpose**: Convert assets into tradeable ERC-20 shares
-
-**Prerequisites**:
-- Asset must be validated
-- Asset must be owned by caller
-- Asset must meet fractionalization criteria
-
-**Process**:
-1. **Asset Selection**
-   - DeedNFT assets (direct fractionalization)
-   - Subdivision units (unit fractionalization)
-
-2. **Fraction Configuration**
-   ```solidity
-   function createFraction(FractionCreationParams calldata params) external
-   ```
-
-3. **Asset Locking**
-   - Asset transferred to Fractionalize contract
-   - Asset locked in secure custody
-   - Original owner retains administrative rights
-
-#### 3.2 Token Deployment
-
-**Purpose**: Deploy ERC-20 token for fraction shares
-
-**Process**:
-1. **Factory Integration**
-   ```solidity
-   function createFractionToken(
-       uint256 fractionId,
-       string memory name,
-       string memory symbol,
-       uint256 maxSharesPerWallet,
-       bool burnable
-   ) external returns (address tokenAddress)
-   ```
-
-2. **Token Configuration**
-   - Name and symbol
-   - Maximum shares per wallet
-   - Burning permissions
-   - Access control settings
-
-#### 3.3 Share Management
-
-**Purpose**: Manage fraction shares and governance
-
-**Process**:
-1. **Share Minting**
-   ```solidity
-   function mintShares(uint256 fractionId, uint256 amount, address to) external
-   function batchMintShares(BatchMintParams calldata params) external
-   ```
-
-2. **Share Operations**
-   - Transfer shares (ERC-20 standard)
-   - Burn shares (if enabled)
-   - Vote on governance decisions
-
-3. **Governance**
-   - Approval-based unlocking
-   - Voting on asset decisions
-   - Administrative actions
-
-#### 3.4 Asset Unlocking
-
-**Purpose**: Retrieve original asset from fractionalization
-
-**Process**:
-1. **Unlock Conditions**
-   - Full ownership of all shares
-   - Meeting approval threshold
-   - Asset integrity verification
-
-2. **Unlock Process**
-   ```solidity
-   function unlockAsset(UnlockParams calldata params) external
-   ```
-
-3. **Asset Retrieval**
-   - Asset transferred back to owner
-   - All shares burned
-   - Fraction deactivated
-
-## 🔄 Workflow Diagrams
-
-### Complete Asset Lifecycle
+All of these are direct contract calls. The Clear app has no screens for minting, validating,
+subdividing or fractionalizing T-Deeds, and no service mints them yet.
 
 ```mermaid
-graph TD
-    A[Asset Creation] --> B[Asset Validation]
-    B --> C{Validation Result}
-    C -->|Valid| D[Asset Available]
-    C -->|Invalid| E[Asset Rejected]
-    D --> F{Asset Type}
-    F -->|Land/Estate| G[Create Subdivision]
-    F -->|Vehicle/Equipment| H[Direct Fractionalization]
-    G --> I[Unit Management]
-    I --> J[Unit Validation]
-    J --> K[Unit Available]
-    K --> L[Unit Fractionalization]
-    H --> M[Asset Fractionalization]
-    L --> M
-    M --> N[Share Management]
-    N --> O[Asset Unlocking]
+flowchart TD
+  A["Minter: mintAsset"] --> B["Owner or validator: set traits"]
+  B --> C["Validator: validateDeed"]
+  C -->|"isValidated = false"| B
+  C -->|"isValidated = true"| D{"Asset type"}
+  D -->|"Land or Estate"| E["Owner: createSubdivision, mintUnit"]
+  E --> F["Collection admin: set unit traits"]
+  F --> G["Validator: validateSubdivisionUnit"]
+  D -->|"Any type"| H["Owner: createFraction"]
+  H --> I["Collection admin: mintShares"]
+  I --> J["Holder of every share: unlockAsset"]
 ```
 
-### Subdivision Workflow
-
-```mermaid
-graph TD
-    A[DeedNFT Owner] --> B[Create Subdivision]
-    B --> C[Configure Subdivision]
-    C --> D[Mint Units]
-    D --> E[Set Unit Traits]
-    E --> F[Validate Units]
-    F --> G[Units Available]
-    G --> H[Transfer Units]
-    G --> I[Fractionalize Units]
-```
-
-### Fractionalization Workflow
-
-```mermaid
-graph TD
-    A[Asset Owner] --> B[Select Asset]
-    B --> C[Validate Asset]
-    C --> D[Create Fraction]
-    D --> E[Deploy Token]
-    E --> F[Mint Shares]
-    F --> G[Distribute Shares]
-    G --> H[Governance]
-    H --> I[Unlock Asset]
-```
-
-## 🎯 Use Cases
-
-### Real Estate Development
-
-1. **Land Acquisition**
-   - Mint DeedNFT for land parcel
-   - Validate land ownership and zoning
-   - Create subdivision for development
-
-2. **Development Planning**
-   - Subdivide land into lots
-   - Set individual lot traits
-   - Validate each lot separately
-
-3. **Fractionalization**
-   - Fractionalize individual lots
-   - Create tradeable shares
-   - Enable liquidity for investors
-
-### Vehicle Fleet Management
-
-1. **Fleet Registration**
-   - Mint DeedNFTs for vehicles
-   - Validate vehicle documentation
-   - Track fleet assets
-
-2. **Fleet Operations**
-   - Transfer vehicles between operators
-   - Update vehicle information
-   - Monitor fleet performance
-
-3. **Fleet Fractionalization**
-   - Fractionalize high-value vehicles
-   - Create investment opportunities
-   - Enable fleet sharing
-
-### Equipment Leasing
-
-1. **Equipment Registration**
-   - Mint DeedNFTs for equipment
-   - Validate equipment specifications
-   - Track equipment status
-
-2. **Lease Management**
-   - Transfer equipment to lessees
-   - Monitor equipment usage
-   - Handle maintenance records
-
-3. **Equipment Fractionalization**
-   - Fractionalize expensive equipment
-   - Create investment opportunities
-   - Enable equipment sharing
-
-## 🔧 Technical Implementation
-
-### Contract Interactions
-
-```mermaid
-graph TD
-    A[DeedNFT] --> B[Validator]
-    A --> C[MetadataRenderer]
-    A --> D[Subdivide]
-    D --> B
-    D --> E[Fractionalize]
-    A --> E
-    E --> F[FractionTokenFactory]
-    F --> G[FractionToken]
-    B --> H[ValidatorRegistry]
-    B --> I[FundManager]
-```
-
-### Data Flow
-
-1. **Asset Creation**
-   - User calls `DeedNFT.mint()`
-   - DeedNFT creates NFT with initial metadata
-   - Asset registered for validation
-
-2. **Asset Validation**
-   - Validator calls `Validator.validateDeed()`
-   - Validation status updated in DeedNFT
-   - Validation fees collected by FundManager
-
-3. **Asset Subdivision**
-   - DeedNFT owner calls `Subdivide.createSubdivision()`
-   - Subdivision units minted as ERC1155 tokens
-   - Units inherit traits from parent DeedNFT
-
-4. **Asset Fractionalization**
-   - Asset owner calls `Fractionalize.createFraction()`
-   - Asset locked in Fractionalize contract
-   - FractionToken deployed via factory
-
-5. **Share Management**
-   - Shares minted and distributed
-   - Governance mechanisms activated
-   - Trading enabled on exchanges
-
-## 🚀 Best Practices
-
-### For Asset Owners
-
-1. **Planning**
-   - Plan asset structure before minting
-   - Consider subdivision and fractionalization options
-   - Set clear governance rules
-
-2. **Validation**
-   - Ensure all documentation is complete
-   - Work with qualified validators
-   - Maintain asset information
-
-3. **Management**
-   - Monitor asset performance
-   - Handle governance decisions
-   - Maintain compliance
-
-### For Validators
-
-1. **Validation Process**
-   - Apply validation criteria consistently
-   - Document validation decisions
-   - Maintain validation standards
-
-2. **Performance Monitoring**
-   - Track validation metrics
-   - Handle disputes promptly
-   - Maintain validator reputation
-
-### For Developers
-
-1. **Integration**
-   - Implement all required interfaces
-   - Handle errors gracefully
-   - Optimize gas usage
-
-2. **Testing**
-   - Test all workflow scenarios
-   - Verify contract interactions
-   - Monitor performance
-
-## 🔒 Security Considerations
-
-### Asset Security
-
-- **Ownership Verification**: Ensure proper ownership checks
-- **Access Control**: Implement role-based permissions
-- **Data Integrity**: Protect asset information
-
-### Transaction Security
-
-- **Validation Requirements**: Verify all validations
-- **Approval Mechanisms**: Implement proper approval workflows
-- **Audit Trails**: Maintain complete transaction history
-
-### Governance Security
-
-- **Multi-Signature**: Implement multi-signature requirements
-- **Time Locks**: Add time delays for critical decisions
-- **Threshold Settings**: Configure appropriate approval thresholds
-
-## 📊 Performance Metrics
-
-### Gas Optimization
-
-| Operation | Gas Cost | Notes |
-|-----------|----------|-------|
-| Mint DeedNFT | ~150,000 gas | Per asset minting |
-| Validate Asset | ~80,000 gas | Per asset validation |
-| Create Subdivision | ~200,000 gas | One-time setup |
-| Mint Unit | ~120,000 gas | Per unit minting |
-| Create Fraction | ~300,000 gas | One-time setup |
-| Mint Shares | ~100,000 gas | Per share minting |
-| Unlock Asset | ~150,000 gas | Asset retrieval |
-
-### Storage Efficiency
-
-- **Optimized Data Structures**: Efficient storage patterns
-- **Batch Operations**: Reduced gas costs for multiple operations
-- **Lazy Loading**: On-demand data loading
-- **Compression**: Data compression where applicable
-
-## 🔄 Future Enhancements
-
-### Planned Features
-
-- **Automated Workflows**: AI-powered asset management
-- **Multi-Asset Operations**: Handle multiple assets simultaneously
-- **Real-time Monitoring**: Live tracking of all operations
-- **Mobile Support**: Mobile app for asset management
-
-### Integration Opportunities
-
-- **DeFi Integration**: Integration with DeFi protocols
-- **Marketplace Integration**: Direct integration with trading platforms
-- **Legal Services**: Integration with legal document verification
-- **Insurance Providers**: Automated insurance verification
+Validation is not required before `createFraction`; the diagram shows the usual order.
 
 ---
 
-*This documentation is part of the Clear Protocol docs. For questions about asset workflows, please contact the development team.*
+## 1. Before the first mint
+
+**An admin has to finish the wiring the deploy script leaves open.** The list is in
+[`smart-contracts.md`](./smart-contracts.md#deployment-and-wiring). In short:
+
+1. A validator is registered and active in the `ValidatorRegistry`, supports the asset type, and
+   has a default operating agreement ([validator lifecycle](./validation-system.md#a-validators-lifecycle)).
+2. If mint fees are charged: `DeedNFT.setFundManager`, `FundManager.addCompatibleDeedNFT(DeedNFT)`,
+   and on the validator a whitelisted payment token with a non-zero `setServiceFee`.
+3. Validation criteria are set on the validator. Until they are, every deed of a supported type
+   validates.
+4. The minter holds `MINTER_ROLE` on `DeedNFT` (`addMinter`).
+
+---
+
+## 2. Mint
+
+**The minter calls `DeedNFT.mintAsset` and names the owner.**
+
+```solidity
+mintAsset(owner, assetType, uri, definition, configuration, validatorAddress, token, salt)
+```
+
+| Argument | Notes |
+|---|---|
+| `owner` | Receives the deed |
+| `assetType` | `0` Land, `1` Vehicle, `2` Estate, `3` CommercialEquipment |
+| `uri` | Fallback metadata URI, used when the renderer returns nothing |
+| `definition` | Required, non-empty. Becomes the metadata `description` |
+| `configuration` | Optional |
+| `validatorAddress` | Zero for the default validator |
+| `token` | The fee token; zero when no `FundManager` is set |
+| `salt` | Zero for the next sequential id; non-zero for a hashed nine-digit id |
+
+With a `FundManager`, the minter (not the owner) pays the validator's service fee, so it approves the
+`FundManager` for that amount of `token` first. The deed starts with `isValidated = false`.
+Event: `DeedNFTMinted`.
+
+---
+
+## 3. Describe the asset
+
+**The details a validator checks are separate traits on the deed.** The owner, or a validator,
+sets each one with `DeedNFT.setTrait`:
+
+```solidity
+setTrait(tokenId, bytes("parcelNumber"), bytes("APN 123-456-789"), 1) // 1 = string
+```
+
+Use string values (`valueType` 1). The trait keys for each asset type are on its page:
+[land](./assets/land-assets.md), [vehicles](./assets/vehicle-assets.md),
+[estates](./assets/estate-assets.md), [commercial equipment](./assets/commercial-equipment.md).
+
+Supporting records go to the `MetadataRenderer`: `manageTokenDocument` for documents,
+`setTokenFeatures`, `setAssetCondition`, `setTokenLegalInfo`, and the `image` trait or
+`setTokenGallery` for pictures ([`metadata-renderer.md`](./metadata-renderer.md#stored-details)).
+
+---
+
+## 4. Validate
+
+**The validator's operator calls `Validator.validateDeed(tokenId)`.** It checks the asset type,
+operating agreement, definition and required traits, then writes the result to the deed
+([`validation-system.md`](./validation-system.md#what-validatedeed-checks)). If the result is
+false, fix the traits and call it again.
+
+After this, an owner's `updateMetadata` sets the deed back to unvalidated; the validator has to run
+`validateDeed` again.
+
+---
+
+## 5. Subdivide (Land and Estate)
+
+**The deed's owner creates the subdivision and mints units.**
+
+1. `Subdivide.createSubdivision(deedId, name, description, symbol, collectionUri, totalUnits, burnable)`.
+   The deed must be validated. The caller becomes the collection admin.
+2. `mintUnit(deedId, unitId, to)` or `batchMintUnits(deedId, unitIds, recipients)`, with unit ids
+   from 0 to `totalUnits - 1`.
+3. The collection admin sets each unit's own traits with `setUnitTraitFlexible`, including every
+   trait the validator's criteria require. Units copy only `assetType`, `operatingAgreement`,
+   `definition` and `configuration` from the deed.
+4. The validator's operator calls `Validator.validateSubdivisionUnit(Subdivide, deedId, unitId)`
+   for each unit.
+
+Units move with ERC-1155 `safeTransferFrom`. To close the subdivision, burn every unit
+(`burnUnit`, while `burnable`), then the deed's owner calls `deactivateSubdivision`. See
+[`subdivision.md`](./subdivision.md).
+
+---
+
+## 6. Fractionalize
+
+**The deed's owner locks it in `Fractionalize` and mints shares against it.**
+
+1. A `DeedNFT` admin has added `Fractionalize` to the approved-marketplace list
+   (`setApprovedMarketplace(Fractionalize, true)`). Without it, the next two steps revert while
+   royalties are enforced.
+2. The owner calls `DeedNFT.approve(Fractionalize, deedId)`.
+3. The owner calls `Fractionalize.createFraction(params)` with `assetType` `DeedNFT`, the deed id,
+   a name and symbol, `totalShares`, `burnable` and an `approvalPercentage` of 51–100. Choose
+   `burnable = true`: a non-burnable fraction cannot be unlocked once shares exist.
+4. The owner, now the collection admin, mints with `mintShares(fractionId, amount, to)` or
+   `batchMintShares`. `getFractionToken(fractionId)` gives the ERC-20 address.
+
+Subdivision units cannot be fractionalized. See
+[`fractionalization.md`](./fractionalization.md#known-limitations).
+
+---
+
+## 7. Unlock
+
+**Whoever holds every minted share takes the deed back out.** Collect all shares in one wallet,
+then call `Fractionalize.unlockAsset({fractionId, to, checkApprovals: false})`. The shares are
+burned and the deed goes to `to`. Before any shares are minted, the collection admin can do the
+same.
+
+---
+
+## 8. Transfer and burn
+
+- **Transfer.** The owner can transfer a deed directly. Anyone else moving it, including a
+  marketplace, must be on `DeedNFT`'s approved-marketplace list while royalties are enforced. Each
+  transfer rewrites the `beneficiary` trait. `royaltyInfo` names the deed's validator as the
+  royalty receiver.
+- **Burn.** The owner calls `burnAsset(tokenId)` or `burnBatchAssets(tokenIds)`. The deed's traits
+  are cleared.

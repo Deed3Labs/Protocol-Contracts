@@ -1,138 +1,136 @@
 # The lending pool
 
-`LendingPool` is an ERC-4626 vault over the reserve token (USDC in the deployed configuration).
-Depositors put the token in and receive shares; the pool lends that cash to a short list of
-borrowers and takes it back, with anything above principal. The contract's full behaviour is in [Settlement and the float](../protocol/settlement.md#lendingpool). Its address is in
-the root [`README.md`](../../README.md#deployed-addresses).
+The lending pool (the `LendingPool` contract) holds money that depositors put in, and lends it for a
+time to fund members' credit. When members repay, the money comes back to the pool, together with
+the carry they paid on it. The pool holds and pays out a single token: USDC, in the deployed setup.
+
+The pool follows ERC-4626, a common standard for vaults on Ethereum-compatible chains, so standard
+wallets and block explorers can read it. Its full behaviour is in
+[Settlement and the float](../protocol/settlement.md#lendingpool), and its address is listed under
+[Deployed addresses](../../README.md#deployed-addresses).
 
 ## Shares and what they are worth
 
-**A share is a claim on everything the pool owns, lent out or not.** The standard ERC-4626 calls
-(`deposit`, `mint`, `withdraw`, `redeem`) work as the standard describes. No role or membership check
-gates a deposit.
+**A depositor receives shares. Each share is a claim on everything the pool owns, whether it is
+held as cash or lent out.** Anyone can deposit; the pool does not check membership. Members can
+deposit from Earn in the member app.
 
-```
-totalAssets = cash held + totalBorrowed − queuedAssets
-```
+The pool counts what it owns as:
 
-| Term | What it is |
-|---|---|
-| `totalBorrowed` | Principal lent and not yet repaid, as the pool counts it |
-| `queuedAssets` | What depositors who have queued a withdrawal are owed. Their shares are already burned |
-| `availableCash()` | Cash held less `queuedAssets`. The most that can be lent or withdrawn now |
+- the cash it holds,
+- plus what it has lent and not yet been repaid,
+- less what it already owes depositors waiting in the withdrawal queue (see
+  [Withdrawing](#withdrawing)).
 
-A share's value is `totalAssets` divided by the shares outstanding (`convertToAssets`). It rises when
-cash comes back above what was lent. Nothing else in the contract raises it.
+A share is worth that total divided by the number of shares. Its value rises when money comes back
+to the pool above what was lent. Nothing else raises it.
 
 ## What the pool lends to
 
-**Only an address holding `BORROWER_ROLE` can borrow, and only up to `availableCash()`.** Nothing
-grants the role at deploy. Two scripts grant it:
+**Only borrowers the pool's admin has approved can borrow, and only from cash the pool holds.** No
+borrower is approved when the pool is deployed; the co-op's setup approves two:
 
-| Borrower | Granted by | When it borrows |
-|---|---|---|
-| `PayoutPool` | `scripts/upgrade_reserve_draw.ts` | When a merchant's payout claim has passed its payout window and the PayoutPool cannot pay it from its own cash. The lending pool is the first source it draws on ([What stands behind it](./what-stands-behind.md#merchant-payout-claims)) |
-| The co-op's card-funding wallet | `scripts/grant_pool_borrower.ts` | When a member's card purchase settles on a pool-funded credit tier. The co-op's API borrows the same amount, and repays when that tier is repaid |
+| Borrower | When it borrows |
+|---|---|
+| The payout pool | When a merchant's payout has come due and the payout pool cannot pay it from its own cash. The lending pool is the first source it borrows from ([What stands behind it](./what-stands-behind.md#merchant-payout-claims)) |
+| The co-op's card-funding wallet | When a member's card purchase settles on a credit tier the pool funds. It repays when the member repays that tier |
 
-The pool-funded tiers are the unsecured ones: by default `INCOME` and `BOOST`, set in the API by
-`POOL_FUNDED_TIER_KINDS`. Savings-backed and asset-backed credit is not funded from the pool. The
-card-funding wallet's borrowing is driven by the co-op's API (`apps/api`, `poolFunding.ts`), not by
-a contract: the pool records each `borrow` and `repay`, and nothing on-chain requires either to
-happen. The merchant is paid in fiat from the co-op's float; the borrowed USDC reaches that float
-through the co-op's periodic off-ramp.
+**The pool funds unsecured credit only:** by default, the income-based tier and Boost. Credit backed
+by savings or by other assets is not funded from the pool.
 
-Both borrowers fund credit that members repay over time, so the pool's cash is lent against member
-repayments.
+The card-funding wallet's borrowing and repayment are run by the co-op's server, not by a contract.
+The pool records each loan and each repayment, but nothing on the chain makes either happen.
+Merchants are paid in dollars from the co-op's float; the borrowed USDC reaches that float when the
+co-op periodically converts it to dollars.
+
+Both borrowers fund credit that members repay over time, so the pool's cash is lent against what
+members will repay.
 
 ## How depositors are paid
 
-**What comes back to depositors above principal is carry: the charge members pay on the float the
-pool funded.** Carry is the charge on a member's credit, derived from each tier's `CarryIndex` ([Credit](../protocol/credit.md#carry)). It
+**What comes back to depositors above what was lent is carry: the charge members pay on the credit
+the pool funded.** How carry is charged is in [Credit → Carry](../protocol/credit.md#carry). It
 reaches the pool by two routes, one for each borrower.
 
-**Through the PayoutPool.** `scripts/configure-carry-recipients.mjs` names the PayoutPool as the
-issuers' carry treasury, so carry they mint there reaches it as credits. `distributeCarry()` splits
-it by the positions each party holds; the share that falls to positions the PayoutPool bought with borrowed cash is set aside as
-`carryEarned`. When a member's repayment reaches the PayoutPool (`receiveRepayment`), it:
+**Through the payout pool.** Carry on members' credit is paid to the payout pool, which divides it
+among everyone whose money paid merchants, in proportion to what each put up. The part earned by
+money the payout pool borrowed is set aside for its lenders. When a member's repayment reaches the
+payout pool, it:
 
-1. repays principal to its lenders, the lending pool first;
-2. pays interest from what is left, up to `carryEarned`, split between its lenders by each one's
-   share of what the PayoutPool owed before step 1. The lending pool takes the rounding remainder,
-   and all of it when nothing was owed.
+1. repays what it borrowed, the lending pool first;
+2. pays its lenders the carry set aside for them, split by how much each had lent.
 
-The lending pool's interest is sent as a plain token transfer. It adds to the pool's cash without
-reducing `totalBorrowed`, so it raises the value of every share outstanding.
+The lending pool's carry arrives as cash on top of what it lent, so it raises the value of every
+share.
 
-**Through the card-funding wallet.** Carry on a tier is written into that tier's principal whenever
-it is materialised, so the amount the API repays when the tier is repaid includes the carry. It is
-repaid through `LendingPool.repay`.
+**Through the card-funding wallet.** Carry on a pool-funded tier is added to what the member owes on
+that tier. When the tier is repaid, what the wallet repays to the pool includes the carry.
 
-**`repay` does not track principal per borrower.** It lowers `totalBorrowed` by the whole amount
-paid, floored at zero. While any other loan is still outstanding, the carry part of a repayment
-lowers `totalBorrowed` instead of raising `totalAssets`, and so does not move the share price. It
-reaches the share price only once `totalBorrowed` has fallen to zero.
+**The pool does not track each borrower's loan separately.** Every repayment lowers the pool's total
+amount lent by the full amount paid. While any other loan is still outstanding, the carry part of a
+card-funding repayment counts as repaid principal and does not raise the value of a share. It
+reaches share value only once nothing is left on loan.
 
 ### The rate curve is not charged
 
-`borrowRatePerCycle()` and `supplyRatePerCycle()` compute a rate from the pool's utilisation, on a
-curve the operator sets with `setRateCurve`. **No contract reads either.** `borrow` and `repay` move
-principal only; nothing charges a borrower the curve's rate. What depositors receive is what comes
-back above principal, as described above, and not what the curve reports.
+The pool reports a borrowing rate and a supply rate, worked out from how much of the pool is lent
+out. **Nothing charges or pays either one.** Borrowing and repaying move only the amounts lent. What
+depositors receive is what comes back above what was lent, as described above, not what those
+reported rates show.
 
 ### Timing
 
-Nothing is time-weighted. `distributeCarry()` splits by positions held at the moment it is called,
-and interest is split by what each lender was owed at the moment a repayment arrives. In the lending
-pool itself, carry raises the value of the shares outstanding when the cash lands, so whoever holds
-shares then shares in it, whenever they deposited.
+Nothing is weighted by time. Carry is divided by what each party has put up at the moment it is
+divided, and the payout pool pays its lenders by what each was owed when a repayment arrives. Inside
+the lending pool, carry raises the value of every share when the cash lands, so whoever holds shares
+at that moment shares in it, however recently they deposited.
 
 ## Withdrawing
 
-**A depositor can withdraw only what the pool holds in cash.** `maxWithdraw` and `maxRedeem` are
-capped by `availableCash()`, so they report what would succeed right now. When the cash is lent out,
-the depositor queues:
+**A depositor can withdraw only what the pool holds in cash.** The pool's figures for the most a
+depositor can withdraw are capped by its available cash, so they show what would succeed right now.
+When the cash is lent out, the depositor joins a queue:
 
-1. `requestWithdrawal(shares, receiver)` burns the shares now and fixes the claim in assets at
-   `previewRedeem`. From that moment the request no longer gains or loses with the pool.
-2. `claimWithdrawal(id)`, called by the request's owner, pays it once the pool's cash covers that
-   request.
+1. Asking to withdraw burns the shares straight away and fixes the amount owed, in USDC, at that
+   moment's share value. From then on the request no longer gains or loses with the pool.
+2. The depositor claims the money once the pool's cash covers that request.
 
-Requests are **not paid in order**: any request whose amount the cash covers can be claimed, so a
-smaller request can be paid before an earlier, larger one. Cash already owed to queued requests is
-held back from lending and from ordinary withdrawals, since both see only `availableCash()`.
+Requests are **not paid in order**. Any request the cash covers can be claimed, so a smaller, later
+request can be paid before an earlier, larger one. Cash already owed to queued requests is held back
+from lending and from ordinary withdrawals.
 
-There is no date by which a queued request is paid. It is paid once the pool's cash, from repayments
-or new deposits, covers it.
+There is no date by which a queued request is paid. It is paid once repayments or new deposits
+bring in enough cash.
 
 ## Shares as collateral
 
-**A member can pledge pool shares against credit.** The deploy script registers pool shares in
-`CollateralRegistry` as `POOL_SHARE`, counted at 70% (`7_000` bps), at a fixed unit price per share
-rather than at the share's current `convertToAssets` value. Details are in
-[Credit](../protocol/credit.md#collateral-and-the-ceiling).
+**A member can pledge pool shares against credit.** Pledged shares count at 70% of a fixed price per
+share, not at a share's current value. Limits and haircuts are in
+[Credit → Collateral and the ceiling](../protocol/credit.md#collateral-and-the-ceiling).
 
-- Shares the registry reports as backing drawn credit (`encumberedOf`) cannot be transferred. If the
-  registry cannot be read, nothing is treated as pledged.
-- The lock applies to burns too: a holder's own `withdraw`, `redeem` or `requestWithdrawal` burns
-  shares, and is refused for shares backing drawn credit.
-- `seizeShares` (`LIQUIDATOR_ROLE`) can take only pledged shares. On a default, the `Liquidator`
-  seizes them, redeems what the pool can pay now and queues the rest, so recovery waits on the pool's
-  cash like any other withdrawal.
+- Shares that back credit a member has drawn cannot be transferred, withdrawn or queued for
+  withdrawal until that credit is paid down. If the record of pledges cannot be read, no shares are
+  treated as pledged.
+- After a default, pledged shares can be seized only by an address holding the pool's liquidator
+  permission, and the co-op's setup does not give that permission to the liquidator contract. Until
+  it does, pledged pool shares are not seized. Seized shares are withdrawn for what the pool can pay
+  now and queued for the rest, so recovery waits on the pool's cash like any other withdrawal.
 
 ## Losses
 
-`absorbLoss` (`LOSS_REPORTER_ROLE`) writes down `totalBorrowed`, which lowers the share price. The
-contract's design is that depositors take the first loss on what the pool funded. **No contract calls
-`absorbLoss`.** What follows from that is in [Risks](./risks.md#credit-losses).
+The pool has a way to write down a loss: it lowers the amount counted as lent, which lowers the
+value of every share. By design, depositors take the first loss on what the pool funded. **No
+contract or service writes losses down today.** What follows from that is in
+[Risks](./risks.md#credit-losses).
 
 ## Who controls the pool
 
-| Role | Can |
-|---|---|
-| `DEFAULT_ADMIN_ROLE` | Grant and revoke every role; upgrade the contract (UUPS) |
-| `OPERATOR_ROLE` | `setRateCurve`, `setEncumbranceSource` |
-| `BORROWER_ROLE` | `borrow` |
-| `LOSS_REPORTER_ROLE` | `absorbLoss` |
-| `LIQUIDATOR_ROLE` | `seizeShares` |
+- **The pool's admin** can grant and remove every other permission, and can replace the pool's code
+  (an upgrade).
+- **The operator** sets the reported rate curve and where pledges of pool shares are recorded.
+- **Approved borrowers** can borrow.
+- **The loss reporter** can write down losses.
+- **The liquidator** can seize pledged shares.
 
-`repay` is open to anyone. Who holds each role is in [Governance](../governance/README.md).
+Anyone can repay the pool. Who holds each permission is in
+[Governance → On-chain authority](../governance/on-chain-authority.md).

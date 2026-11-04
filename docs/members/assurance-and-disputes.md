@@ -22,50 +22,34 @@ in [Savings and equity credits](./savings-and-equity-credits.md#equity-credits).
 
 ## The assurance reserve
 
-The protections are paid from the assurance reserve, the co-op's shared safety fund. **It isn't
-funded from member deposits**: the app describes it as retained surplus from lending and card
-activity. **Your savings are never used to cover someone else's claim.**
-
-To reach it, tap any protection under **Protections** on Savings, then **What the assurance reserve
-covers**. The page shows the reserve's balance, how many members it covers, and how much of a worst
-case it holds against the policy floor the co-op commits to. It also links to the reserve's reports.
+The protections are paid from the assurance reserve, the co-op's shared safety fund. **Your savings
+are never used to cover someone else's claim.**
 
 ### The reserve's figures and reports
 
-**The figures on the reserve page aren't read from the reserve yet.** In this version they are fixed
-example figures — the balance, the members covered, the claims paid this year, and the share of a
-worst case it holds — and every member sees the same ones. Don't rely on them as the reserve's real
-position.
+Not available yet.
 
-**Reserve reports**, a row on the reserve page, describes the reports the co-op means
-to publish:
+### What anyone can read on chain
 
-- a statement every quarter, within six weeks of the quarter's close
-- each one listing the reserve's balance, every claim paid, every claim declined, and the cover
-  ratio at the close
-- prepared by Clear and reviewed, and **not an independent audit** — the page says so
-
-**The app doesn't publish reports yet.** The statements listed on that page are examples and don't
-open, the reviewer isn't named, and **Get them by email** isn't connected.
-
-What anyone can check today is on chain. The `AssurancePool` contract, the co-op's reserve against
-members' credit, can be read by anyone: its balances, and its reserve ratio against its target. How
-to read it is in [Investors → What anyone can read](../investors/on-chain-data.md#the-assurancepool), and what it holds and
-pays for is in [Protocol → The reserve](../protocol/reserve.md). The target, and who sets it, is in
-[Governance → Parameters](../governance/parameters.md#the-reserve).
+The co-op's reserve against members' credit is the AssurancePool, and anyone can read it on
+chain: its balances, and its reserve ratio against its target. How to read it is in
+[Investors → What anyone can read](../investors/on-chain-data.md#the-assurancepool), and what it
+holds and pays for is in [Protocol → The reserve](../protocol/reserve.md). The target, and who sets
+it, is in [Governance → Parameters](../governance/parameters.md#the-reserve).
 
 ## Making a claim
 
-Start from **How to make a claim**, at the foot of the reserve page.
+Tap any protection under **Protections** on Savings, then **What the assurance reserve covers**,
+then **How to make a claim**.
 
 1. **Choose the protection.** You can only claim on one that is active. A protection you haven't
    unlocked can't be claimed on, even for something that happened after you joined.
 2. **Say what happened**, in your own words — up to 2,000 characters.
 3. **Send the claim.**
 
-A person on the team reads every claim and answers in writing: yes, no, or what's missing, with the
-reason. **A claim that's paid is paid from the reserve into your cash account.** A claim costs you
-nothing and doesn't touch your credits, whichever way it goes.
+A person on the team reads every claim and decides it: yes, no, or what's missing. A claim that's
+paid goes into your cash account. A claim costs you nothing and doesn't touch your credits,
+whichever way it goes.
 
 If you have no active protections yet, there is nothing to claim on. Cycle assurance is active from
 day one.

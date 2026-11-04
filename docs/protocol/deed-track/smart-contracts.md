@@ -45,8 +45,8 @@ list and the royalty-enforcement flag. `totalSupply` is a running count of live 
 | `burnAsset(tokenId)`, `burnBatchAssets(tokenIds)` | Deed owner, not paused | Burns and clears the token's traits |
 | `updateValidationStatus(tokenId, isValid, validatorAddress)` | `VALIDATOR_ROLE`, active in the registry, `validatorAddress == msg.sender` | Writes `isValidated` and `validator` |
 | `updateMetadata(tokenId, uri, operatingAgreement, definition, configuration)` | Deed owner or `VALIDATOR_ROLE`, not paused | Rewrites those traits. The agreement must have a name in the deed's validator (`operatingAgreementName`). From a non-validator, also resets validation |
-| `setTrait(tokenId, traitKey, traitValue, valueType)` | Deed owner or `VALIDATOR_ROLE` | Sets any trait. A 32-byte key is used as is, anything else is hashed and its name recorded. `valueType` 0 raw bytes, 1 string, 2 number, 3 boolean |
-| `removeTrait(tokenId, traitName)` | Deed owner or `VALIDATOR_ROLE` | Deletes a trait |
+| `setTrait(tokenId, traitKey, traitValue, valueType)` | Deed owner or `VALIDATOR_ROLE` | Sets a trait. Refuses the reserved traits `isValidated`, `validator` and `beneficiary`; `assetType` only from `VALIDATOR_ROLE`. A 32-byte key is used as is, anything else is hashed and its name recorded. `valueType` 0 raw bytes, 1 string, 2 number, 3 boolean |
+| `removeTrait(tokenId, traitName)` | Deed owner or `VALIDATOR_ROLE` | Deletes a trait. Refuses `isValidated`, `validator`, `beneficiary` and `assetType` |
 | `getTraitValue`, `getTraitValues`, `getTraitKeys`, `getTraitName`, `getTraitMetadataURI` | Anyone | ERC-7496 reads |
 | `getValidationStatus(tokenId)` | Anyone | `(isValidated, validator)` |
 | `tokenURI(tokenId)` | Anyone | The renderer's output, or the stored URI if the renderer is unset, reverts or returns empty |
@@ -224,6 +224,8 @@ current owner; the collection admin stays whoever created the subdivision until 
 `setUnitTrait` or `setUnitTraitFlexible` on the `assetType` key reverts, as does `getUnitAssetType`
 for a unit with no `assetType` trait of its own.
 
+No tests cover `Subdivide`.
+
 Events: `SubdivisionCreated`, `UnitMinted`, `UnitBurned`, `UnitValidated`, `UnitTraitUpdated`,
 `UnitMetadataUpdated`, `BurnableStatusChanged`, `SubdivisionValidatorUpdated`,
 `SubdivisionDeactivated`, `CollectionAdminTransferred`, `MarketplaceApproved`,
@@ -266,6 +268,8 @@ but no function sets approvals, so it never passes.
   owner's `approve` and the transfer to succeed.
 - A subdivision unit is moved with `safeTransferFrom`, which requires the receiver to implement
   `onERC1155Received`. `Fractionalize` does not, so fractionalizing a unit reverts.
+
+No tests cover `Fractionalize`, `FractionToken` or `FractionTokenFactory`.
 
 Events: `FractionCreated`, `AssetLocked`, `SharesMinted`, `SharesBurned`, `AssetUnlocked`.
 
@@ -356,6 +360,6 @@ What it leaves for an admin:
 - `DeedNFT.setApprovedMarketplace(Fractionalize, true)` — until then `createFraction` reverts while
   royalties are enforced.
 
-Whether these were done on Base Sepolia is not recorded in the repository. The `Validator` and
+`deployments/` does not record whether these were done on Base Sepolia. The `Validator` and
 `FundManager` ABIs saved in `deployments/base-sepolia/` predate `setTokenRegistry`. Upgrades use
 `deploy/upgrade/`; the steps are in [Operators](../../operators/deploying-contracts.md).

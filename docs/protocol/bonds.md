@@ -95,7 +95,8 @@ curve, so collections run LINEAR.
 
 It rises by itself as maturities come into the window. `deploy/22` initialises the window at 90 days;
 `minReserveBps` starts at 3,000. `setReserveTerms` (`OPERATOR_ROLE`) can change both, with the floor
-bounded to `MIN_RESERVE_FLOOR_BPS = 2,000` … `MAX_RESERVE_FLOOR_BPS = 10,000`.
+bounded to `MIN_RESERVE_FLOOR_BPS = 2,000` … `MAX_RESERVE_FLOOR_BPS = 10,000`. The window is not
+bounded: any `uint64` is accepted, zero included.
 
 `deployableExcess()` is `held() − (requiredReserve() + owedToReserve)`, floored at zero. It is the
 only money that leaves the vault other than to a bondholder:
@@ -199,7 +200,7 @@ in [Credit](./credit.md).
 `seizeBond(id, from, to)` and `redeemEarly(id)` are restricted to `liquidator` (`setLiquidator`,
 collection owner), and `redeemEarly` requires the liquidator to hold the bond. It pays
 `presentValueOf` through `BondVault.settleEarly`, which retires the full face value and keeps the
-difference in the vault. No deploy script on this branch sets a liquidator, and the `Liquidator`
+difference in the vault. No deploy script sets a liquidator, and the `Liquidator`
 contract does not call either function.
 
 ## Collections
@@ -215,7 +216,7 @@ itself a clone, created and handed to the deployer in the factory's constructor.
 `CollateralRegistry` key a bond by its id alone, so a collection built to replace another calls
 `setFirstBondId` (owner, before its first sale) to start above every id the old one issued.
 `scripts/redeploy_bonds.ts` replaced the Base Sepolia factory and USDC collection this way on
-2026-11-03, with ids from 1001; the old ones are recorded as `*Legacy`, sell nothing, and every bond
+3 Nov 2026, with ids from 1001; the old ones are recorded as `*Legacy`, sell nothing, and every bond
 they issued has been redeemed.
 
 A new collection redeems nothing until its owner calls `setBondVault` and the vault grants

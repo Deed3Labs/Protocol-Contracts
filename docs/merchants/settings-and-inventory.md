@@ -98,7 +98,7 @@ Starting cash, two counts at close, and who can close. See
 
 **End-of-day summary** emails the day's figures to the address in **Send to** when the day is
 closed (see [Closing the day](./closing-the-day.md#the-end-of-day-summary)). It's the only
-notification by email for now; Home shows refunds waiting for you, charges still waiting and stock
+notification sent by email; Home shows refunds waiting for you, charges still waiting and stock
 running low.
 
 ## Security
@@ -108,30 +108,12 @@ remove it (see [Setting up](./setting-up.md#removing-a-tablet)).
 
 ## Leaving Clear
 
-**Settings › Advanced › Leaving** (owners) says you can leave at any time, with no exclusivity and
-no fee, that charges already approved still settle, and that what you're owed is still paid.
+You can leave Clear at any time, with no exclusivity and no fee. What your terms say about leaving,
+and who sets them, is in [Governance](../governance/README.md).
 
-**Leave Clear** opens a sheet that sets out what leaving would do:
+**Leaving from the app** (Settings › Advanced › Leaving): Not available yet.
 
-| | |
-|---|---|
-| New charges | Stop now |
-| Waiting charges | Cancelled |
-| Approved charges | Still settle |
-| What you are owed | Paid on the 14th |
-| Your listing | Comes down |
-| Counter cards | Stop working |
-
-The sheet says the 14th for every shop; when you are actually paid follows your terms (see
-[Payouts](./payouts.md#when-youre-paid)).
-
-From there, **Talk to someone first** closes the sheet, and **Continue** opens **Confirm**, which
-asks you to choose between **Stay with Clear** and **Leave Clear**.
-
-**The app doesn't end a partnership yet.** In this version the **Leave Clear** button on Confirm
-can't be pressed, the figures on that screen are examples rather than your shop's, and nothing in
-the sheets is carried out. To leave, email Clear at `partners@useclear.org`. What your terms say about
-leaving, and who sets them, is in [Governance](../governance/README.md).
+To leave, email Clear at `partners@useclear.org`.
 
 ## Inventory
 

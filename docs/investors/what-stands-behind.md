@@ -1,110 +1,112 @@
 # What stands behind it
 
-The contracts pay from fixed sources in a fixed order. This page sets out that order for the two
-places contributed money is at stake: a bond coming due, and a merchant's payout claim that the
-lending pool may be asked to fund. The detail is in [The reserve](../protocol/reserve.md) and
+The contracts pay from fixed sources in a fixed order. Contributed money is at stake in two places:
+a bond coming due, and a merchant's payout that the lending pool may be asked to fund. The detail is
+in [The reserve](../protocol/reserve.md) and
 [Settlement and the float](../protocol/settlement.md).
 
 | | Bonds at maturity | Merchant payout claims |
 |---|---|---|
-| First | BondVault holdings | The PayoutPool's own cash |
+| First | Bond vault holdings | The payout pool's own cash |
 | Then | Treasury allowance to the vault | Lending pool's available cash |
-| Then | AssurancePool excess, then buffer | BondVault's deployable excess |
-| Then | | Treasury allowance to the PayoutPool |
+| Then | AssurancePool excess, then buffer | Bond vault's deployable excess |
+| Then | | Treasury allowance to the payout pool |
 | Last | | AssurancePool excess, then buffer |
 | Never | AssurancePool primary reserve | AssurancePool primary reserve |
 
 ## The AssurancePool's three tiers
 
-**The AssurancePool holds the reserve in three tiers, and only one of them lends.** Each tier is a
-number in reserve-token units ([The reserve](../protocol/reserve.md#three-tiers)).
+**The AssurancePool is the co-op's reserve against member defaults. It holds its money in three
+tiers, and the primary tier is never lent.** Each tier is an amount in USDC
+([The reserve → Three tiers](../protocol/reserve.md#three-tiers)).
 
-| Tier | What spends it | Lent to the BondVault or PayoutPool |
+| Tier | What it pays for | Lent to the bond vault or payout pool |
 |---|---|---|
-| Primary | `reimburse`, for lost debt, once the buffer is empty | Never |
-| Buffer | `reimburse` first | Only while `hasValidRTD()` is true, and only after excess |
-| Excess | Withdrawals by an allowlisted instrument | First |
+| Primary | Debt written off after a member defaults, once the buffer is empty | Never |
+| Buffer | Written-off debt, before the primary tier | Only while the reserve ratio is at target, and only after the excess |
+| Excess | Withdrawals by an approved address | First |
 
-RTD is the primary reserve divided by what it stands behind: members' exposure plus the bond gap
-(`bondExposure()`, below). `hasValidRTD()` is true when RTD is at or above the target. So the buffer
-is lent only while the primary reserve is at target, and the primary reserve is never lent.
+The reserve ratio, RTD (reserve to debt), is the primary reserve divided by what it stands behind:
+the part of members' credit that collateral does not cover, plus the bond gap (below). The buffer is
+lent only while that ratio is at or above its target, so it is lent only while the primary reserve
+is at target. The primary reserve is never lent.
 
-The excess is not held for contributors. An address on the `withdrawalCallers` allowlist can withdraw
-it. The list is empty on a fresh deployment and no deploy script adds anyone; who can add to it is in
-[Governance](../governance/README.md).
+The excess is not held for contributors. An address on the AssurancePool's withdrawal list can
+withdraw it. The list is empty when the pool is deployed, and no deployment step adds anyone. Who
+can add to it is in [Governance](../governance/README.md).
 
 ## Bonds at maturity
 
-**A bond is paid from the BondVault, then the treasury's allowance, then the AssurancePool.**
-`BondVault._cover` runs when a holder redeems a matured bond:
+**A bond is paid from the bond vault, then the treasury's allowance, then the AssurancePool.** When
+a holder redeems a matured bond, the vault pays from:
 
-1. **The vault's holdings** (`held()`), its balance of the reserve token.
-2. **The treasury**, up to `treasuryAvailable()`: the lesser of the allowance the Safe has given the
-   vault and the Safe's balance. This is a contribution, not a loan. It comes back to the Safe as
-   deployable excess.
-3. **The AssurancePool**, through `lendToBondVault`: excess first, then buffer while `hasValidRTD()`
-   holds. What it lends is recorded in `owedToReserve`.
+1. **Its own holdings** of USDC.
+2. **The treasury**, up to the lesser of the allowance the co-op's Safe has given the vault and what
+   the Safe holds. This is a contribution, not a loan. It comes back to the Safe as deployable
+   excess.
+3. **The AssurancePool**: excess first, then buffer while the reserve ratio is at target. The vault
+   records what it borrows.
 
-If the three together fall short, the redemption reverts and nothing moves.
+If the three together fall short, the redemption fails and nothing moves.
 
-What the vault owes the AssurancePool is repaid from money above `requiredReserve()`, before the Safe
-can withdraw anything: `withdrawDeployable` repays first, and `repayReserve()` is open to anyone.
+What the vault owes the AssurancePool is repaid from money above the redemption reserve, before the
+Safe can withdraw anything. Anyone can trigger that repayment.
 
-**The bond gap counts in the reserve's ratio.** `BondVault.uncoveredNearTerm()` is the face value due
-inside the reserve window that the vault's holdings and the treasury's allowance cannot pay.
-`AssurancePool.bondExposure()` adds it to the RTD denominator, so a gap lowers RTD and raises the
-reserve the target calls for.
+**The bond gap counts in the reserve ratio.** The bond gap is the face value due within the reserve
+window that neither the vault's holdings nor the treasury's allowance can pay. It is added to what
+the AssurancePool stands behind, so a gap lowers the ratio and raises the reserve the target calls
+for.
 
 **Bond money is kept apart from the credit book.** Proceeds sit in the vault, not the AssurancePool.
-The AssurancePool has no function that pulls from the vault; the vault calls it only to borrow and to
-repay. The vault lends to the PayoutPool only from its deployable excess, never from the redemption
+The AssurancePool has no way to pull money from the vault; the vault only borrows from it and repays
+it. The vault lends to the payout pool only from its deployable excess, never from the redemption
 reserve.
 
 ## Merchant payout claims
 
-**When a merchant's claim has come due and the PayoutPool cannot pay it, `drawForDueClaim()` borrows
-for it.** Claims are paid strictly in order. Anyone may call it for the next unpaid claim once that
-claim's payout window has run out. It draws the shortfall
-from each source in turn, each only for what the one before could not cover:
+**When a merchant's payout has come due and the payout pool cannot pay it, the payout pool borrows
+for it.** Payouts are paid strictly in order. Once the next unpaid payout's window has run out,
+anyone can trigger the borrowing. It draws the shortfall from each source in turn, each only for
+what the one before could not cover:
 
-1. **The lending pool**, up to its `availableCash()`. Recorded in `borrowedFromYield`.
-2. **The BondVault**, from its deployable excess only. Recorded in `borrowedFromVault`.
-3. **The treasury**, up to the Safe's allowance to the PayoutPool. This is capital, not a loan: it
-   buys the position it pays for.
-4. **The AssurancePool**: excess, then buffer while `hasValidRTD()` holds, never primary. Recorded in
-   `borrowedFromReserve`.
+1. **The lending pool**, up to its available cash.
+2. **The bond vault**, from its deployable excess only.
+3. **The treasury**, up to the allowance the co-op's Safe has given the payout pool. This is
+   capital, not a loan: the treasury takes the position it pays for.
+4. **The AssurancePool**: excess, then buffer while the reserve ratio is at target, never primary.
 
-The lending pool is first. Its depositors' cash is the first money lent to pay a merchant.
+The lending pool comes first. Its depositors' cash is the first money lent to pay a merchant.
 
 ### Repayment order
 
-**A member's repayment repays the PayoutPool's lenders before it settles anything else.**
-`receiveRepayment` takes the part of each repayment routed to the PayoutPool and:
+**A member's repayment repays the payout pool's lenders before it settles anything else.** From the
+part of each repayment that goes to the payout pool, it:
 
-1. repays **principal**: the lending pool, then the BondVault, then the AssurancePool, each up to what
-   it is owed;
-2. pays **interest** from what is left, up to `carryEarned`, split between the three by each one's
-   share of what the PayoutPool owed before step 1.
+1. repays what was **lent**: the lending pool, then the bond vault, then the AssurancePool, each up
+   to what it is owed;
+2. pays **carry** from what is left, up to the carry set aside for its lenders, split among the three
+   in proportion to what each was owed before step 1.
 
-The lending pool is repaid principal first. Interest is shared pro rata, not in order. How interest
-reaches lending pool depositors is in [The lending pool](./lending-pool.md#how-depositors-are-paid).
+The lending pool is repaid first. Carry is shared in proportion, not in order. How it reaches the
+lending pool's depositors is in [The lending pool](./lending-pool.md#how-depositors-are-paid).
 
 ## What does not stand behind the lending pool
 
 **Nothing in the contracts covers a loss on money the lending pool has lent.**
 
-- The AssurancePool lends to the PayoutPool and the BondVault. It does not lend to, or reimburse, the
-  lending pool.
-- `LendingPool.absorbLoss` reports a loss larger than the pool as `uncovered` in an event. No
-  contract acts on it.
-- The AssurancePool's primary reserve pays lost debt through `reimburse` to whoever retires it with
-  `StableCredit.burnLostDebt`. No contract routes that to the lending pool.
+- The AssurancePool lends to the payout pool and the bond vault. It does not lend to, or reimburse,
+  the lending pool.
+- If a loss larger than the whole pool were written down, the pool would report the uncovered part
+  in a public event. Nothing acts on it.
+- The AssurancePool's primary reserve pays for written-off debt to whoever retires that debt on the
+  credit ledger. Nothing routes that payment to the lending pool.
 
 See [Risks](./risks.md#credit-losses).
 
 ## The treasury's allowances are discretionary
 
-Both treasury steps read the allowance the Safe has given each contract, at the moment of the draw.
-The Safe's owners set those allowances themselves, and can lower them to zero. A zero allowance means
-that step contributes nothing and the next one is asked. Who the Safe's owners are is in
-[Governance](../governance/README.md).
+Both treasury steps read the allowance the co-op's Safe has given each contract at the moment of the
+draw. The Safe's owners set those allowances themselves, and can lower them to zero. A zero allowance
+means that step contributes nothing and the next source is asked. Who can sign for the Safe can be
+read on the chain: see
+[On-chain authority → Who holds each role today](../governance/on-chain-authority.md#who-holds-each-role-today).

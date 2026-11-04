@@ -1,6 +1,6 @@
 # Glossary
 
-The words these pages use, in plain terms. Contract names are in `code`; the contracts themselves are
+The words Clear uses, in plain terms. Contract names are in `code`; the contracts themselves are
 described under [Protocol](../protocol/README.md).
 
 | Term | Meaning |
@@ -15,7 +15,7 @@ described under [Protocol](../protocol/README.md).
 | **Clear Pay** | Paying rent and bills through the app. Paying on time earns equity credits |
 | **Clear Protocol** | The contracts under the app: savings, the credit ledger, shop payouts, the reserve and the Deed track |
 | **CLRUSD** | Clear USD. Your savings. One CLRUSD for each USDC deposited, redeemable for USDC at any time. Pays no interest |
-| **Command Center** | The co-op's internal app, the members' read-only view of the co-op, and the investors' data room. See [The Command Center](../governance/command-center.md) |
+| **Command Center** | The co-op's internal app, where staff, members and invited investors each sign in with their own access. See [The Command Center](../governance/command-center.md) |
 | **Co-op discount** | The share of a partner purchase the shop has agreed to give up. It goes to the co-op |
 | **Credit ledger, `ClearCredit`** | The on-chain record of what each member owes and what each shop is owed |
 | **Credit line** | Credit you can draw on with the card or at partner shops. Its size depends on what backs it |

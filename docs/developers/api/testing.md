@@ -1,80 +1,97 @@
-# API Testing Guide
+# Testing the API
 
-## Quick Test
+Two kinds of check: the unit tests, which need no running server, and a smoke test that calls a
+running API over HTTP. Both run from `apps/api`.
 
-Run the test script to verify all endpoints:
+## Unit tests
 
 ```bash
 cd apps/api
-npm run test
+bun test src
 ```
 
-Or manually:
+Changes to the API also need the member app's tests, because some of them read API source
+([Setting up → Before you push](../setup.md#before-you-push)).
+
+## Smoke test
+
+[`test-api.ts`](../../../apps/api/test-api.ts) calls the health, price, balance, token-balance and
+transaction endpoints, singly and in batches, and reports each as passed or failed. It calls
+`http://localhost:3001` unless `API_BASE_URL` is set.
 
 ```bash
-bun test-api.ts
+cd apps/api
+bun run dev          # in one terminal
+bun run test         # in another: runs bun test-api.ts
 ```
 
-## Manual Testing
+## Calling endpoints by hand
 
-### 1. Health Check
+The examples use chain `1` (Ethereum) and well-known mainnet addresses, as the smoke test does. Any
+chain the API's RPC provider serves works the same way.
+
+### Health
+
 ```bash
 curl http://localhost:3001/health
 ```
 
-Expected: `{"status":"ok","redis":"connected","timestamp":"..."}`
+```json
+{"status":"ok","timestamp":"…","redis":"connected"}
+```
 
-### 2. Get Token Price
+`redis` is `disconnected` when Redis is not reachable; the API still answers.
+
+### Token price
+
 ```bash
 curl http://localhost:3001/api/prices/1/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
 ```
 
-Expected: `{"price":2500.50,"cached":false,"timestamp":...}`
+```json
+{"price":…,"cached":false,"timestamp":…}
+```
 
-### 3. Get Balance
+### Native balance
+
 ```bash
 curl http://localhost:3001/api/balances/1/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 ```
 
-Expected: `{"balance":"123.4567","balanceWei":"123456789000000000000","cached":false}`
+```json
+{"balance":"…","balanceWei":"…","balanceUSD":0,"cached":false,"timestamp":…}
+```
 
-### 4. Get Token Balance
+`balanceUSD` is always `0`; the client multiplies by the current price.
+
+### Token balance
+
 ```bash
 curl http://localhost:3001/api/token-balances/1/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
 ```
 
-Expected: `{"address":"0x...","symbol":"USDC","balance":"100.0","cached":false}`
+### Transactions
 
-### 5. Get Transactions
 ```bash
-curl http://localhost:3001/api/transactions/1/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045?limit=5
+curl "http://localhost:3001/api/transactions/1/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045?limit=5"
 ```
 
-Expected: `{"transactions":[...],"cached":false}`
+```json
+{"transactions":[…],"cached":false,"timestamp":…}
+```
 
-## Testing Cache
+## Caching
 
-1. Make a request (should return `"cached": false`)
-2. Make the same request again immediately (should return `"cached": true`)
+With Redis connected, the second identical request within the cache window returns
+`"cached": true`. The windows are set by `CACHE_TTL_PRICE` (300 seconds by default),
+`CACHE_TTL_BALANCE` and `CACHE_TTL_TRANSACTION` (600 seconds each). Without Redis, every response is
+`"cached": false`.
 
-## Testing from Frontend
+## Common problems
 
-1. Open browser console
-2. Check for `checkServerHealth()` calls
-3. Verify API calls are going to your Railway URL
-4. Check Network tab for API requests
-
-## Common Issues
-
-### Server not responding
-- Check Railway logs
-- Verify server is running: `curl https://your-server.railway.app/health`
-- Check environment variables in Railway
-
-### CORS errors
-- Verify `CORS_ORIGIN` is set in Railway
-- Check that your Vercel domain is allowed
-
-### Redis connection errors
-- Verify `REDIS_URL` is set correctly in Railway
-- Check Upstash dashboard to ensure database is active
+| Symptom | Check |
+|---|---|
+| No response | The server is running (`curl <api-host>/health`), and its logs on the host |
+| CORS errors in the browser | The app's origin is in `CORS_ORIGIN` ([Going live → Cross-origin](../../operators/going-live.md#cross-origin)) |
+| `redis: "disconnected"` | `REDIS_URL`, or `REDIS_HOST` and `REDIS_PORT`, point at a running Redis ([Redis for the API](./local-redis.md)) |
+| Routes answer `503` | `DATABASE_URL` is not set; routes backed by the member store need Postgres |

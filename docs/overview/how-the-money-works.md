@@ -1,6 +1,6 @@
 # How the money works
 
-The plain version. The full account, with the reasons for each choice, is
+Where each dollar sits, in plain terms. The full account, with the reasons for each choice, is
 [the contract build plan](../protocol/clear-contracts-build-plan.md); the pages under
 [Protocol](../protocol/README.md) describe the contracts as they are.
 
@@ -30,8 +30,9 @@ relayer submits the transaction and pays the fee.
 
 **One limit on taking savings out.** If you have pledged savings behind credit and then drawn on
 that credit, the CLRUSD contract can hold back the part covering what you drew until you pay it back.
-The lock works only once the co-op connects it ([Parameters](../governance/parameters.md)); the rest
-of your savings stays free either way.
+The lock applies only once the co-op switches it on ([Parameters](../governance/parameters.md)); the
+rest of your savings stays free either way.
+
 The co-op can also pause the vault in an emergency, which stops deposits and redemptions until it is
 unpaused. Who can do that is in [Governance](../governance/on-chain-authority.md).
 
@@ -80,8 +81,8 @@ sale).
 
 ## Repaying
 
-Unless you pay a particular split plan, a repayment clears your most expensive balance first. On the chain, repayments go
-first to the PayoutPool, up to what it needs to pay shops, and anything beyond that goes to the
+Unless you pay a particular split plan, a repayment clears your most expensive balance first. On
+the chain, repayments go first to the PayoutPool, up to what it needs to pay shops, and anything beyond that goes to the
 reserve.
 
 ## Carry: what credit costs

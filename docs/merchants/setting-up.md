@@ -10,7 +10,7 @@ The merchant app is one app in two forms:
 | | Where | What it adds |
 |---|---|---|
 | The web app | `merchant.useclear.org` in any browser | Everything except the Bluetooth card readers |
-| Clear for Merchants | Installed on an iPad, iPhone or Android tablet or phone | The Stripe Reader M2 over Bluetooth, Tap to Pay, and Wi-Fi printers |
+| Clear for Merchants | Installed on an iPad, iPhone or Android tablet or phone | The Stripe Reader M2 over Bluetooth, Tap to Pay on Android, and Wi-Fi printers |
 
 Both run the same screens. Use the installed app on any device that will take cards on an M2 or
 with Tap to Pay; a browser takes cards on Stripe smart readers only.
@@ -143,20 +143,19 @@ The removed device shows **This tablet was removed**. To use it again, enroll it
 The installed app is the same app wrapped for iOS and Android. Beyond the web app it can:
 
 - pair and take cards on a **Stripe Reader M2** over Bluetooth;
-- take **Tap to Pay** on the device itself. Android needs nothing extra. On an iPhone or iPad it
-  depends on Apple granting Clear's app the Tap to Pay entitlement;
+- take **Tap to Pay** on an Android phone or tablet itself;
 - print to **Wi-Fi printers** and talk to Bluetooth hardware (see [Clear Terminal](./clear-terminal.md)).
+
+**Tap to Pay on an iPhone or iPad:** Not available yet.
 
 It asks for Bluetooth and location permission (Stripe needs the device's location to take card
 payments), and on iOS for local network access, to find printers on your shop's network.
 
 ### Getting the installed app
 
-Clear for Merchants is built from the same code as the web app, wrapped for iOS and Android. **This
-guide can't point you to a store listing:** the code doesn't set up an App Store or Google Play
-release, so where you download it from isn't fixed here. Ask Clear for the app for your devices.
+**Clear for Merchants in the App Store and Google Play:** Not available yet.
 
-Until you have it:
+Meanwhile:
 
 - **Use the web app.** Open `merchant.useclear.org` in the device's browser. It takes Clear, cash and
   cards on Stripe smart readers, but not an M2 or Tap to Pay.
@@ -164,7 +163,7 @@ Until you have it:
   browser's Install or Add to Home screen on Android). It opens full screen as Clear for Merchants,
   but it is still the web app, with the same limits.
 
-Once the installed app is on the device, open it and [enroll the device](#enrolling-a-tablet) like
+Once the installed app is on a device, open it and [enroll the device](#enrolling-a-tablet) like
 any other.
 
 ## Signing your shop in to useclear.org
@@ -186,7 +185,7 @@ sit inside these (see [Staff and shifts](./staff.md#hours)). Only the owner chan
 |---|---|
 | The tablet shows the owner's sign-in instead of the shift screen | It isn't enrolled. The owner signs in and enrolls it |
 | "This tablet was removed" | An owner signed it out in Settings › Security. Enroll it again to use it |
-| "Owner sign-in is not set up" | This copy of the app has no sign-in configured. The counter still works; contact Clear |
+| "Owner sign-in is not set up" | Owner sign-in isn't available in this copy of the app. The counter still works; contact Clear |
 | Business verification reads Not approved | Bridge says why on the same cell. **See what Bridge needs** |
 | Business verification reads Paused | Contact Clear |
 | Linking a bank says the business isn't verified, or the address is missing | Verify the business first, and add the shop's address in Settings › Shop |

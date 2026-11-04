@@ -5,8 +5,8 @@ spend from it, pay your rent through it, and every month of doing that on time m
 home of your own. Underneath it is the Clear Protocol: the contracts on the Base network that hold
 the savings and keep the records.
 
-This page is for anyone. Nothing here assumes you know what a blockchain is. Words in bold that you
-have not met before are in the [glossary](./glossary.md).
+You don't need to know what a blockchain is. Words in bold that you have not met before are in the
+[glossary](./glossary.md).
 
 ## Who it is for
 
@@ -15,7 +15,7 @@ have not met before are in the [glossary](./glossary.md).
 - **Shops** that want to take payments from members, and from everyone else, at the counter or
   online: [Merchants](../merchants/README.md).
 - **Financial contributors** who put money behind the co-op's lending: [Investors](../investors/README.md).
-- **People building on Clear**, or working in this repository: [Developers](../developers/README.md).
+- **People building on Clear**, or working on its source code: [Developers](../developers/README.md).
 
 ## Three layers
 
@@ -32,14 +32,18 @@ the reserve. They are open source. If you want the detail, start with
 
 ## The products
 
+**Savings and send run on Base, the public network.** Credit lines, split plans, the card and
+payouts to shops run only on the test network for now, where nothing is real money. See
+[Status, security and licensing](./status-and-security.md).
+
 ### Savings
 
 You deposit USDC, a digital dollar, and receive the same amount of **CLRUSD**, one for one. Your
 CLRUSD balance is your savings. It is yours, it is liquid, and you can turn it back into USDC
 whenever you want.
 
-**Savings earn no interest.** CLRUSD pays nothing to the people who hold it; there is no interest
-logic in the contract. What saving does earn you is equity credits, below.
+**Savings earn no interest.** CLRUSD pays nothing to the people who hold it. What saving does earn
+you is equity credits, below.
 
 Your savings sit in the **Equity Savings Account (ESA)**. The contract behind it is
 `ESADepositVault`; how it works is in [Savings and send](../protocol/savings.md).
@@ -63,8 +67,9 @@ Equity credits are kept by Clear's server, not by a contract. No contract on the
 ### Clear Deed
 
 The Clear Deed is the finish line: **a home title, free of debt, earned by being consistent.** It is
-not a mortgage. On the chain a home is recorded as a T-Deed, a token issued by the `DeedNFT`
-contract in the Deed track of the protocol ([the Deed track](../protocol/README.md)).
+not a mortgage. On the chain, a home is recorded as a T-Deed, a token issued by the `DeedNFT`
+contract in the Deed track of the protocol. Recording a member's home as a T-Deed: Not available
+yet. More in [Deeds and real-world assets](./deeds-and-real-world-assets.md).
 
 ### Clear Assurance
 

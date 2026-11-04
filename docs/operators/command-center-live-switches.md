@@ -1,10 +1,17 @@
 # The Command Center's live switches
 
-What decides, in code, whether each Command Center section shows sample rows or real data, and the
-jobs that fetch the real data. **The switches are the API's environment variables, not controls in
+What decides whether each Command Center section shows sample rows or real data, and the jobs that
+fetch the real data. **The switches are the API's environment variables, not controls in
 the app**, and changing them on a deployment is governed:
 [The Command Center → Going live](../governance/command-center.md#going-live). Running and deploying
 the app itself is in [`apps/command/README.md`](../../apps/command/README.md).
+
+**`command.useclear.org` is deployed from the `dev` branch**, so what it shows is testnet and
+sandbox data. The project's `main` branch is kept for real money.
+
+**The first admin comes from `COMMAND_ADMIN_EMAILS`**, a comma-separated list on the API. A person
+who signs in with one of those emails and has no Command Center record yet is created in the Admin
+group, and the audit log records it.
 
 ## Three layers
 
@@ -88,8 +95,8 @@ it is off and why.
 provider's sandbox or test mode, and each turns itself off when given a live key
 ([`feedSources.ts`](../../apps/api/src/services/command/feedSources.ts)). With `PROVIDER_MONEY=live`
 on a deployment holding live keys, the chain's figures are live and the bank, card, deposit and
-payout figures stay empty: the code has no production path for them yet. Only the shop's feed takes
-a live key.
+payout figures stay empty: there is no production path for them yet. Only the shop's feed takes a
+live key.
 
 **The Plaid feed makes its own bank link**, once, with Plaid's sandbox-only call: a sandbox
 institution (`COMMAND_PLAID_INSTITUTION`) and a starting balance (`COMMAND_PLAID_SANDBOX_BALANCE`).

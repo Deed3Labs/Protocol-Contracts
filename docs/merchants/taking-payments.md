@@ -12,7 +12,7 @@ take a payment.
    number; they confirm on their phone. You see their name and their points at your shop, never a
    balance. It earns them points and lets you send a Clear charge straight to their phone (see
    [Rewards and online sales](./rewards-and-online.md)).
-3. **Checkout.** The server prices the order: tax, any discount and the total. Apply a discount
+3. **Checkout.** Clear prices the order: tax, any discount and the total. Apply a discount
    code here, typed or scanned.
 4. **Tip.** If the shop asks for tips (Settings › Tips), the customer picks one of your presets or
    Custom.
@@ -58,12 +58,12 @@ reader:
 |---|---|---|
 | Stripe smart reader | The web app and the installed app | **Settings › Payments › Add a reader**: on the reader, open Settings and choose Generate pairing code, then type the code and a name |
 | Stripe Reader M2 | The installed app only, over Bluetooth | Turn it on near the device; the card screen finds it over Bluetooth |
-| Tap to Pay | The installed app only, on the device itself | Offered on the card screen |
+| Tap to Pay | The installed app on Android, on the device itself (iPhone and iPad: Not available yet.) | Offered on the card screen |
 
 At Checkout, choose **Card**. The tablet connects to a reader it can use (if there's more than one,
 it lists them), then waits for the customer to tap, insert or swipe. **Use another reader** switches.
-A smart reader is driven by Clear's server, so the tablet and the reader don't need to be on the
-same network.
+A smart reader connects to Clear over the internet, so the tablet and the reader don't need to be
+on the same network.
 
 A card payment is **authorised** at the sale and **captured at Close the day**. Until then you can:
 
@@ -118,7 +118,6 @@ it's paid, they can have the receipt emailed.
 After a sale, choose how the customer gets the receipt:
 
 - **Text** or **Email** asks for a number or address the first time, then shows where it went.
-  Texts go by Twilio and email by Resend, when Clear has them set up.
 - **Print** uses a paired printer if there is one, or the device's own print dialog (AirPrint on an
   iPad, Android's print service, or the browser's). The receipt is laid out for 80mm paper. Reprint
   from the sale in Charges; a refund taken later shows on a reprint.
@@ -134,22 +133,10 @@ A line above New charge says when the tablet is offline.
 
 ### Card payments while offline
 
-**The app doesn't take card payments offline yet.** Storing a card payment on the reader and sending
-it when the connection is back (store-and-forward) isn't built, on the M2 or anywhere else. Every
-card payment — M2, Tap to Pay or a smart reader — needs the connection at the moment it's taken.
+Not available yet.
 
-**Settings › Payments › When the connection drops** shows **Store card payments** locked, with the
-reason:
-
-| It reads | Where |
-|---|---|
-| Coming to the M2 in an app update | In the installed app, with Stripe connected |
-| On the M2, in the Clear app | In a browser |
-| Needs Stripe connected first | Before Stripe is connected |
-
-So while the tablet is offline, **take cash or wait**. A Clear charge that can't reach the customer's
-phone shows **No connection**. Its sheet says a card would be stored and sent later; that isn't so
-yet, so a card waits for the connection like everything else except cash.
+Every card payment, on an M2, with Tap to Pay or on a smart reader, needs the connection at the
+moment it's taken. While the tablet is offline, take cash or wait for the connection.
 
 ## Charges
 

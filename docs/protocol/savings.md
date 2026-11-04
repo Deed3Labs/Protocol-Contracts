@@ -1,8 +1,8 @@
 # Savings and send
 
 **USDC goes into `ESADepositVault` and CLRUSD comes out one-for-one; CLRUSD goes back in and the
-same USDC comes out.** Everything else on this page is a way of reaching those two calls without the
-member paying gas, a lock that stops CLRUSD backing drawn credit from leaving, or the escrow behind
+same USDC comes out.** The rest of the savings layer is built around those two calls: gasless ways
+to reach them, a lock that stops CLRUSD backing drawn credit from leaving, and the escrow behind
 link-based send.
 
 Scope: `ClearUSD`, `ClearUSDUpgradeable`, `ESADepositVault`, `SavingsIntentFactory`,
@@ -83,8 +83,8 @@ requires `LIQUIDATOR_ROLE`, reverts with `ClearUSDSeizureExceedsEncumbrance` if 
 allowance from the holder. It cannot reach a free balance, and a holder with nothing encumbered has
 nothing seizable.
 
-`seize` does not decide whether a default has happened. In this repo its caller is `Liquidator`; see
-the next section and [Credit](./credit.md).
+`seize` does not decide whether a default has happened. Its caller is `Liquidator`; see the next
+section and [Credit](./credit.md).
 
 ---
 
@@ -266,5 +266,5 @@ separate deployment.
 
 ## Not on-chain
 
-Equity credits are not recorded by any contract on this branch. No Solidity file under `contracts/`
-mentions them. Savings in this layer are CLRUSD balances and the reserve in the vault.
+Equity credits are not recorded by any contract; no contract under `contracts/` refers to them.
+Savings in this layer are CLRUSD balances and the reserve in the vault.

@@ -27,7 +27,7 @@ addresses**). Each contract's functions, roles and events are in
 | `Fractionalize.sol` | Takes custody of a deed and issues ERC-20 shares against it |
 | `FractionToken.sol` | The ERC-20 share token, one per fraction, with a per-wallet cap |
 | `FractionTokenFactory.sol` | Clones a `FractionToken` for each fraction. Only `Fractionalize` may call it |
-| `ValidatorFactory.sol` | Meant to deploy and register new validators. Not deployed, and its `createValidator` reverts as written |
+| `ValidatorFactory.sol` | Meant to deploy and register new validators. Not deployed; its `createValidator` always reverts |
 
 ---
 
@@ -102,8 +102,10 @@ recognised. Otherwise it checks that every required trait is present and non-emp
   loads the built-in presets; `setValidationCriteria` sets custom ones.
 - `validateDeed` does not check which validator the deed names. Any active validator can validate
   any deed in its primary `DeedNFT`, and the `validator` trait becomes that validator.
-- `updateMetadata` by the owner sets `isValidated` back to false and clears `validator`. `setTrait`
-  and `removeTrait` do not.
+- `updateMetadata` by the owner sets `isValidated` back to false and clears `validator`.
+- `isValidated`, `validator` and `beneficiary` are reserved: `setTrait` and `removeTrait` refuse them
+  for every caller, and only `VALIDATOR_ROLE` can set `assetType`. See
+  [Reserved traits](./validation-system.md#reserved-traits).
 
 The full rules are in [`validation-system.md`](./validation-system.md).
 
@@ -123,8 +125,9 @@ Units are validated one by one with `Validator.validateSubdivisionUnit`. See
 check that the deed is validated. The caller becomes the collection admin and is the only one who can
 mint shares, up to `totalShares`. The deed comes back out through `unlockAsset`: before any shares
 are minted, to wherever the admin sends it; after, only for someone holding every minted share, whose
-shares are burned. The code also accepts a subdivision unit, but that path cannot complete as written
-— see [`smart-contracts.md`](./smart-contracts.md#fractionalize). More in
+shares are burned, which needs the fraction to be burnable. `createFraction` also accepts a
+subdivision unit, but that path always reverts; see
+[`smart-contracts.md`](./smart-contracts.md#fractionalize). More in
 [`fractionalization.md`](./fractionalization.md).
 
 ### 5. Transfer and royalties
@@ -139,7 +142,7 @@ receiver, at that validator's `royaltyFeePercentage` — 5% by default, and neve
 Pausing `DeedNFT` stops minting, burning and `updateMetadata`, not transfers. An owner can burn a
 deed with `burnAsset` or `burnBatchAssets`.
 
-[`asset-workflows.md`](./asset-workflows.md) walks the same lifecycle with the app in view.
+[`asset-workflows.md`](./asset-workflows.md) lists the calls for each step, in order.
 
 ---
 
@@ -153,7 +156,7 @@ deed with `burnAsset` or `burnBatchAssets`.
 | `DEFAULT_ADMIN_ROLE` | `DeedNFT`, `FundManager`, `Subdivide`, `Fractionalize` | Upgrades and granting roles. On `DeedNFT`, every setting: registry, default validator, renderer, `FundManager`, minters, marketplaces, royalty enforcement, pause |
 | Owner (`Ownable`) | `Validator`, `ValidatorRegistry`, `MetadataRenderer`, `FractionTokenFactory` | Upgrades and configuration. On the registry, every registration and status change |
 | `MINTER_ROLE` | `DeedNFT` | `mintAsset` |
-| `VALIDATOR_ROLE` | `DeedNFT`, `Subdivide` | Writing validation status and traits. Granted to active validators by the registry |
+| `VALIDATOR_ROLE` | `DeedNFT`, `Subdivide` | Writing validation status and traits. On `DeedNFT`, granted to active validators by the registry; on `Subdivide`, by `addValidator` |
 | `VALIDATOR_ROLE` | `Validator` | Calling `validateDeed` and `validateSubdivisionUnit` |
 | `CRITERIA_MANAGER_ROLE`, `METADATA_ROLE`, `FEE_MANAGER_ROLE` | `Validator` | Criteria and asset types; operating agreements; fees, royalties and payment tokens |
 | `ADMIN_ROLE`, `FEE_MANAGER_ROLE` | `FundManager` | Commission, fee receiver, compatible `DeedNFT`s; withdrawing validator fees |
@@ -173,3 +176,19 @@ track.
 How the contracts are deployed and wired, and what the scripts leave for an admin to do afterwards,
 is in [`smart-contracts.md`](./smart-contracts.md#deployment-and-wiring) and
 [Operators](../../operators/deploying-contracts.md).
+
+---
+
+## Known limitations
+
+- **`DeedNFT` has no `getAssetType`.** `Subdivide` calls it, so setting a unit's `assetType` trait
+  reverts. See [`subdivision.md`](./subdivision.md#known-limitations).
+- **A subdivision unit cannot be fractionalized.** `Fractionalize` has no `onERC1155Received`, so
+  receiving a unit reverts.
+- **The `checkApprovals` unlock path never passes.** `adminApprovals` is never set.
+- **A non-burnable fraction cannot be unlocked once shares are minted.** Unlocking burns the shares.
+  See [`fractionalization.md`](./fractionalization.md#known-limitations).
+- **`ValidatorFactory.createValidator` reverts.** `Validator` disables initializers in its
+  constructor, so the factory cannot initialize the validator it deploys.
+- **No tests cover `Subdivide`, `Fractionalize` or `ValidatorFactory`.** `DeedNFT`, `Validator`,
+  `ValidatorRegistry`, `FundManager` and `MetadataRenderer` have tests in `test/core/`.

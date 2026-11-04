@@ -54,8 +54,8 @@ npx hardhat run deploy/<script>.ts --network base-sepolia
 | `06_deploy_Fractionalize` | `FractionTokenFactory`, then `Fractionalize` |
 
 **Use `deploy/deploy_all.ts` for `00`–`05`.** It deploys and wires those contracts in one run, then
-`06` adds fractionalization. The numbered scripts `00`–`04` are out of date: they call roles and
-functions the current contracts don't have (for example `OPERATOR_ROLE` on `ValidatorRegistry`,
+`06` adds fractionalization. The numbered scripts `00`–`04` do not match the current contracts:
+they call roles and functions the contracts don't have (for example `OPERATOR_ROLE` on `ValidatorRegistry`,
 `ADMIN_ROLE` on `DeedNFT` and `MetadataRenderer`) and would fail. What `deploy_all.ts` wires, and
 what it leaves for an admin to set, is in
 [The Deed track's contracts](../protocol/deed-track/smart-contracts.md#deployment-and-wiring).
@@ -88,7 +88,7 @@ what it leaves for an admin to set, is in
 Each has an npm script as well — `npm run deploy:clrusd -- base-sepolia` and so on; the list is in
 the root README. CCIP lanes are configured after `15`: `npm run clrusd:ccip:configure`, then
 `npm run clrusd:validate`. The full CLRUSD runbook is
-[`clrusd-esa-bootstrap.md`](./clrusd-esa-bootstrap.md).
+[CLRUSD and the ESA vault](./clrusd-esa-bootstrap.md).
 
 ### Credit, capital and offers — `20`–`24`
 
@@ -143,7 +143,15 @@ Until this is done, the deployer key holds everything. Two steps, each rehearsed
 the live network first:
 
 1. **Operational roles to the wallets that do each job** — `scripts/command/ops-roles.ts`, rehearsed
-   with `scripts/command/drill_ops_roles.ts`. The deployer stops being a live key.
+   with `scripts/command/drill_ops_roles.ts`. The deployer stops being a live key. Which role goes
+   to which job is [`scripts/command/ops-roles.map.json`](../../scripts/command/ops-roles.map.json):
+   each role goes to a job's wallet (`<JOB>_ADDRESS` in the environment, e.g.
+   `CREDIT_OPERATOR_ADDRESS`), to the Safe (`SAFE_ADDRESS`), or is renounced because nothing
+   off-chain uses it. Its `checks` list names roles one contract needs on another; `FIX_CHECKS=1`
+   with `MODE=run` grants the missing ones. **No deploy script grants `LendingPool`'s
+   `LIQUIDATOR_ROLE` to the `Liquidator`; only this step does**, and until it has run
+   `Liquidator.liquidateShares` reverts
+   ([Settlement → LendingPool](../protocol/settlement.md#lendingpool)).
 2. **Admin to the Ops Safe** — `scripts/command/safe-handover.ts`, rehearsed with
    `scripts/command/drill_safe_handover.ts`. It surveys who holds each admin role and `owner()`,
    grants each to the Safe, and only then has the deployer renounce. It moves admin roles only;
@@ -155,7 +163,26 @@ SAFE_ADDRESS=0x… DEPLOYER=0x… npx hardhat run scripts/command/safe-handover.
 SAFE_ADDRESS=0x… MODE=run CONFIRM=handover npx hardhat run scripts/command/safe-handover.ts --network base-sepolia      # do it
 ```
 
-Who holds what afterwards, and why, belongs in [Governance](../governance/README.md).
+**Run without `MODE=run`, each script only reads the chain:** it needs no key and sends nothing.
+
+- **`safe-handover.ts`** lists every contract deployed on Base Sepolia, which of its roles the
+  deployer and the Ops Safe each hold (marking the admin roles), who owns it and any owner still to
+  accept, and the steps a hand-over would still take.
+- **`ops-roles.ts`** lists each role in the map, whether the deployer and that job's wallet hold it
+  now, and where it is meant to go. It also reports whether each contract holds the roles in the
+  map's `checks` list.
+
+Both read the Base Sepolia deployment list (`deployments/base-sepolia`) and ask only about the
+addresses they are given: the deployer, the Safe and the job wallets. They answer "does this wallet
+hold it?", not "who else does?"; for that, read the contracts' `RoleGranted` and `RoleRevoked`
+events ([On-chain authority](../governance/on-chain-authority.md)).
+
+```bash
+DEPLOYER=0x… CREDIT_OPERATOR_ADDRESS=0x… … npx hardhat run scripts/command/ops-roles.ts --network base-sepolia                            # survey
+MODE=run CONFIRM=ops-roles FIX_CHECKS=1 CREDIT_OPERATOR_ADDRESS=0x… … npx hardhat run scripts/command/ops-roles.ts --network base-sepolia   # do it
+```
+
+Who holds what afterwards, and why, is in [Governance](../governance/README.md).
 
 ## Upgrades
 

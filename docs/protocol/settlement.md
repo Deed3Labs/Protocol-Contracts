@@ -44,8 +44,8 @@ conversion, so credits and the reserve token are treated as the same unit.
 |---|---|
 | `payoutWindow` | `PayoutPool.redeem`, through `payoutWindowOf` |
 | `active` | `PayoutPool.redeem`, through `isActive` |
-| `approvalCap` | No contract. `scripts/register_merchant.ts` describes it as enforced off-chain per charge |
-| `discountBps` | No contract. Same as above |
+| `approvalCap` | No contract. The API checks each charge against `approvalCapOf` (`apps/api/src/services/chargeService.ts`) |
+| `discountBps` | No contract. The API computes each charge's payout from `discountBpsOf` (same file) |
 
 `payoutWindowOf` returns `defaultPayoutWindow` when the merchant is unregistered **or** registered
 with a window of zero, so a per-merchant zero means the default. `setDefaultPayoutWindow` itself
@@ -118,7 +118,7 @@ without drawing if the pool's cash, less `refundsOwed`, already covers it.
 
 The shortfall is drawn from each source in turn, each only for what the one before could not cover:
 
-1. **Yield pool.** `ILendingPool(yieldPool).borrow(take, pool)`, up to its `availableCash()`.
+1. **Lending pool.** `ILendingPool(yieldPool).borrow(take, pool)`, up to its `availableCash()`.
    Recorded in `borrowedFromYield`.
 2. **Bond vault.** `IAssuranceLender(bondVault).lendToPayoutPool(short)`. The vault lends from its
    deployable excess only. Recorded in `borrowedFromVault`.
@@ -146,11 +146,11 @@ positive balance on the ledger, less the cash already there) and sends the rest 
 
 `PayoutPool.receiveRepayment(amount)` accepts calls from the ledger only. It then:
 
-1. **Repays principal** in `_repayPrincipal`: yield pool, then bond vault, then AssurancePool, each
+1. **Repays principal** in `_repayPrincipal`: lending pool, then bond vault, then AssurancePool, each
    up to what is owed to it, through `repay` or `repayFromPayoutPool`.
 2. **Pays interest** in `_repayLenders` from what is left, up to `carryEarned`. The interest is split
-   by each lender's share of `borrowed()` measured before step 1; the yield pool takes the rounding
-   remainder, and all of it when nothing was owed. The yield pool's share is sent as a plain
+   by each lender's share of `borrowed()` measured before step 1; the lending pool takes the rounding
+   remainder, and all of it when nothing was owed. The lending pool's share is sent as a plain
    transfer, not through `repay`, so it raises the share price rather than reducing another
    borrower's loan; the vault's and the reserve's go through `repayFromPayoutPool`. Only what
    actually reaches a lender counts as paid and has its credits burned with `settleClaim` — a
@@ -164,7 +164,8 @@ into excess. The BondVault credits principal against `lentToPayoutPool` and keep
 
 `LendingPool.repay` does not track principal per borrower: it lowers `totalBorrowed` by the amount
 paid, floored at zero. That is why the PayoutPool sends interest as a transfer. The card settler
-repays principal only.
+repays through `repay` too, and what it repays includes carry
+([Card settlement](#card-settlement)).
 
 ## Carry, by who bore the float
 
@@ -205,22 +206,51 @@ repays.
 `totalAssets()` is cash plus `totalBorrowed`, less `queuedAssets`. `availableCash()` is cash less
 `queuedAssets`, and caps both `borrow` and `maxWithdraw`.
 
+- **Depositing.** The standard ERC-4626 calls (`deposit`, `mint`, `withdraw`, `redeem`) are not
+  overridden. No role or membership check gates a deposit. `maxWithdraw` and `maxRedeem` are capped
+  by `availableCash()`, so a withdrawal larger than the free cash has to queue.
 - **Borrowing.** `borrow(amount, to)` needs `BORROWER_ROLE`. Nothing grants it at deploy.
   `scripts/upgrade_reserve_draw.ts` grants it to the PayoutPool, and `scripts/grant_pool_borrower.ts`
   to the card-settler wallet.
 - **Repaying.** `repay(amount)` is open to anyone and is treated as principal while anything is
   owed. Interest arrives as a plain transfer (see above).
 - **The queue.** A depositor whose cash is lent out calls `requestWithdrawal(shares, receiver)`. The
-  shares are burned now and the claim is fixed in assets. `claimWithdrawal(id)` pays it, by the
-  owner, whenever the pool's cash covers that request. Requests are not paid in order.
+  shares are burned now and the claim is fixed in assets at `previewRedeem`, so it stops earning and
+  stops carrying loss. `claimWithdrawal(id)` pays it to the receiver. Only the request's owner can
+  call it, and it reverts while the pool's cash is below the request (`isClaimable` says whether it
+  would pass). Nothing pays a request automatically, and requests are not paid in order.
 - **The rate curve is a view.** `borrowRatePerCycle()` and `supplyRatePerCycle()` compute a kinked
   curve from `utilizationBps()`, set by `setRateCurve`. No contract reads either; `borrow` and
   `repay` move principal only. What depositors earn is what comes back above principal, which for
   the PayoutPool's loans is their share of member carry.
-- **Losses.** `absorbLoss` (`LOSS_REPORTER_ROLE`) writes down `totalBorrowed`. No contract calls it.
-- **Shares as collateral.** Shares reported encumbered by `encumbranceSource` cannot be
-  transferred, and `seizeShares` (`LIQUIDATOR_ROLE`) can take only those. See
-  [`credit.md`](./credit.md).
+- **Losses.** `absorbLoss(amount)` (`LOSS_REPORTER_ROLE`) writes down `totalBorrowed` by up to what
+  it holds, which lowers the share price: depositors take the first loss on what the pool funded.
+  A loss larger than `totalBorrowed` is reported as `uncovered` in `LossAbsorbed`; no contract acts
+  on it. No deploy script grants `LOSS_REPORTER_ROLE`, and no contract or service calls
+  `absorbLoss`.
+- **Shares as collateral.** Shares the source set by `setEncumbranceSource` reports as backing
+  drawn credit (`encumberedOf`) cannot leave the holder: not by transfer, and not by a burn, so the
+  holder's own `withdraw`, `redeem` and `requestWithdrawal` are refused for them
+  (`LendingPoolEncumbered`). Only a mint, or a call by a `LIQUIDATOR_ROLE` holder, skips the check.
+  If the source can't be read, nothing is treated as pledged. `seizeShares(holder, to, shares)`
+  (`LIQUIDATOR_ROLE`) can take only pledged shares. See
+  [`credit.md`](./credit.md#collateral-and-the-ceiling).
+- **Seizing on default.** `Liquidator.liquidateShares` seizes the shares a defaulted tier needs,
+  redeems what the pool can pay now and queues the rest with `requestWithdrawal`, owned by the
+  Liquidator ([`credit.md`](./credit.md#default)).
+
+**Known limitations**
+
+- **No deploy script grants the pool's `LIQUIDATOR_ROLE` to the `Liquidator`.** Only
+  `scripts/command/ops-roles.ts`, run with `FIX_CHECKS=1`, does
+  ([Handing over the keys](../operators/deploying-contracts.md#handing-over-the-keys)). Until then
+  `liquidateShares` reverts and pledged pool shares are not seized.
+- **The `Liquidator` has no call to `claimWithdrawal`.** The part of a seizure it queues is owned
+  by the Liquidator, and only the owner can claim it, so that cash stays in the pool until the
+  Liquidator is upgraded.
+- **Nothing in the apps claims a queued withdrawal.** The member app queues with
+  `requestWithdrawal` and never calls `claimWithdrawal` or shows the request
+  ([Developers → Known limitations](../developers/README.md#member-app)).
 
 ## Card settlement
 
@@ -228,8 +258,29 @@ repays.
 address allowed by `setCardSettler` may call it. It reverts unless the member's active tiers have
 headroom for the whole amount, draws the tiers in tier order (`_draw`), and calls `originatePurchase` with the full amount credited to `cardSettlementAccount` and no
 discount. That account then holds an ordinary positive balance. `reverseCardSpend` undoes it through
-`reversePurchase`. The card-settler wallet's borrowing from the LendingPool happens off this path,
-through `borrow`. Details are in [`credit.md`](./credit.md).
+`reversePurchase`. Details are in [`credit.md`](./credit.md).
+
+**The card-settler wallet's borrowing from the LendingPool is driven by the API, not by a
+contract** ([`poolFunding.ts`](../../apps/api/src/services/chain/poolFunding.ts)). The pool records
+each `borrow` and `repay`; nothing on-chain requires either.
+
+- **Which tiers.** `POOL_FUNDED_TIER_KINDS`, by default `INCOME,BOOST`: the unsecured tiers.
+  Savings-backed and asset-backed credit is not funded from the pool.
+- **Borrowing.** The API reads `TierDrawn` on a pool-funded tier from the receipts of the
+  transactions it sends (settlement, reversal, netting, re-issue) and borrows the same amount to
+  the card-funding wallet. The merchant is still paid in fiat from the co-op's float; moving the
+  borrowed USDC into that float is a periodic off-ramp outside the API.
+- **Repaying.** On `TierRepaid` it calls `LendingPool.repay` for the amount repaid. Carry is
+  materialised into the tier's principal (`RevolvingIssuer._materialiseCarry`) before any payment
+  is placed, so that amount includes the carry accrued on the tier.
+- **Where the carry lands.** `repay` lowers `totalBorrowed` by the whole amount. While other loans
+  are outstanding, the carry part therefore lowers `totalBorrowed` instead of raising
+  `totalAssets`, and does not move the share price. It reaches the share price once
+  `totalBorrowed` has fallen to zero.
+- **Waiting.** A borrow waits while the pool's `availableCash()` is short; a repayment waits while
+  the card-funding wallet holds too little USDC, and the row says to top it up from treasury. Each
+  movement is one row, keyed by transaction and log index, so a receipt read twice is recorded
+  once.
 
 ## Refunds
 
@@ -247,8 +298,8 @@ permissionless and pays those from the pool's whole cash balance.
 
 `refundsOwed` is held back by every path that pays a claim — `redeem`, `payNext`, `payQueue`,
 `canPayNext` and `drawForDueClaim` — and by `unencumbered` and `payRefund`. There is no draw for a
-refund shortfall. The full design and worked examples are in
-[`refund-repayment-plan.md`](./refund-repayment-plan.md).
+refund shortfall. The arithmetic and worked examples are in
+[Refunds and repayments](./refund-repayment-plan.md).
 
 ## Who can call what
 
@@ -260,8 +311,14 @@ refund shortfall. The full design and worked examples are in
 | `fund` | `FUNDER_ROLE` |
 | `setLenders`, `setBondVault`, `setCoopTreasury`, `setCoopIncomeRecipient`, `withdrawCoopIncome` | `OPERATOR_ROLE` |
 | `MerchantRegistry.registerMerchant`, `updateTerms`, `setActive`, `setDefaultPayoutWindow` | `OPERATOR_ROLE` |
+| `LendingPool.deposit`, `mint`, `withdraw`, `redeem`, `requestWithdrawal` | Anyone. Only free shares can be burned |
+| `LendingPool.claimWithdrawal` | The request's owner |
+| `LendingPool.repay` | Anyone |
 | `LendingPool.borrow` | `BORROWER_ROLE` |
 | `LendingPool.setRateCurve`, `setEncumbranceSource` | `OPERATOR_ROLE` |
+| `LendingPool.absorbLoss` | `LOSS_REPORTER_ROLE` |
+| `LendingPool.seizeShares` | `LIQUIDATOR_ROLE` |
+| `LendingPool` role grants and upgrades (UUPS) | `DEFAULT_ADMIN_ROLE` |
 
 Tests: `test/peripherals/PayoutPool.spec.ts`, `test/peripherals/LendingPool.spec.ts`,
 `test/core/PayoutLifecycle.spec.ts`, `test/core/RepaymentRouting.spec.ts`,

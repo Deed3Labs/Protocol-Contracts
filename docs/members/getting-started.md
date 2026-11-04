@@ -1,15 +1,14 @@
 # Getting started
 
 Joining Clear, verifying who you are, keeping the app locked to you, and getting back in if you lose
-your phone number. Everything here happens in
-the member app at `app.useclear.org`.
+your phone number. Everything here happens in the member app at `app.useclear.org`.
 
 ## Signing in
 
 **There is no password on a Clear account.** You sign in one of these ways:
 
 - **Your phone number or email.** Enter it and Clear sends you a six-digit code.
-- **Google.** The sign-in screen also shows an Apple button; it is not available yet.
+- **Google.** Signing in with Apple is not available yet.
 - **Face ID**, once you have turned it on (see [App lock and Face ID](#app-lock-and-face-id)). On a
   device that remembers you, the welcome screen offers Face ID first, with a code as the fallback.
 
@@ -23,10 +22,10 @@ After your first sign-in, the app takes you through joining:
 1. **Join the co-op.** The screen sets out three terms: what you save is your share, with no buy-in
    and no fee to join; one member, one vote, however much you save; and if you leave, your balance
    leaves with you. The membership agreement and bylaws are linked at the foot of the screen.
-2. **Your ZIP code.** Clear opens one region at a time. If your ZIP is not served yet, you go to a
-   waitlist instead and can leave an email for updates.
-3. **Two more details.** Identity verification is not done here. It is deferred until you need it,
-   so you can look around first.
+2. **Your ZIP code**, on the same screen. Clear opens one region at a time. If your ZIP is not
+   served yet, you go to a waitlist instead and can leave an email for updates.
+3. **Two more details.** Identity verification waits until you first need it, so you can look
+   around first.
 
 If you arrived through an invite link, the invite is carried into your sign-up for you.
 
@@ -45,8 +44,8 @@ when you set up your card. The form asks for:
 - your legal name and home address — filled in from your linked bank when there is one, and editable
 - your phone number and email
 
-These go encrypted straight to Clear's card issuer, which runs the check. Clear does not keep your
-Social Security number or date of birth.
+Clear passes these to its card issuer, which runs the check. Clear does not keep your Social
+Security number or date of birth.
 
 ### What you can do while you wait
 
@@ -75,8 +74,8 @@ screen instead of your account, and your balances are not drawn underneath it.
 - With Face ID on, a glance opens it again. You stay signed in.
 - Without Face ID, send yourself a code. That signs you out and back in.
 
-The server keeps its own lock as well, so a session left idle is refused there too, whatever the
-phone's clock says.
+Clear's server keeps its own lock as well, so a session left idle is refused there too, whatever
+the phone's clock says.
 
 ### Face ID for signing in
 
@@ -116,9 +115,8 @@ have. That removes Face ID from every device on your account, so the lost phone 
 app says Face ID wasn't confirmed, sign out, sign back in with a code, and try again within a few
 minutes. Then turn Face ID back on from the device you have.
 
-**If none of these works, the app can't recover your account yet.** There is no recovery flow in the
-app, and **Recovery contacts** in Settings → Security isn't connected: choosing a member there
-doesn't ask them anything. Email support at `support@useclear.org`.
+**If none of these works, email support at `support@useclear.org`.** Recovering an account in the
+app, and recovery contacts, are not available yet.
 
 ## Next
 
