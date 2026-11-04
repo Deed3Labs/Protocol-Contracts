@@ -22,6 +22,17 @@
         "@clear/merchant"
       ],
       "port": 5174
+    },
+    {
+      "name": "docs",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@clear/docs"
+      ],
+      "port": 5240
     }
   ]
 }
