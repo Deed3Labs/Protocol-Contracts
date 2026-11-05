@@ -73,8 +73,31 @@ export function railNav(site, current) {
  * p: { id, title, description, crumbs: [sec, label] | null, main, toc, wide, edit, prev, next }
  * assets: { css, js, search }
  */
+// What a shared link shows: the page's title and description over the docs card (public/share-card.png,
+// rendered by scripts/share-card.mjs). Absolute URLs, because link previews fetch them from elsewhere.
+export const SITE_URL = 'https://docs.useclear.org';
+const TAGLINE = 'How the co-op works, how to use it, and how it is built.';
+function shareTags(p, title, description) {
+  const url = p.id === 'home' ? `${SITE_URL}/` : `${SITE_URL}/${p.id}`;
+  const canonical = p.id === '404' ? '' : `<link rel="canonical" href="${url}">\n<meta property="og:url" content="${url}">\n`;
+  return `${canonical}<meta property="og:type" content="website">
+<meta property="og:site_name" content="Clear docs">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(description)}">
+<meta property="og:image" content="${SITE_URL}/share-card.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Clear docs: ${TAGLINE}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(description)}">
+<meta name="twitter:image" content="${SITE_URL}/share-card.png">`;
+}
+
 export function renderPage(site, p, assets) {
   const docTitle = p.id === 'home' ? 'Clear docs' : `${p.title} · Clear docs`;
+  const description = p.description || TAGLINE;
   const pager = (o, dir) => (o ? `<a class="cd-icon-btn" href="${o.url}" aria-label="${dir === 'prev' ? 'Previous' : 'Next'} page: ${esc(o.label)}" rel="${dir}">${dir === 'prev' ? ICON.prev : ICON.caret}</a>` : `<span class="cd-icon-btn" aria-hidden="true" disabled>${dir === 'prev' ? ICON.prev : ICON.caret}</span>`);
   const crumbs = p.crumbs ? `<span>${esc(p.crumbs[0])}</span><i>/</i><b>${esc(p.crumbs[1])}</b>` : `<b>${p.id === 'home' ? 'Home' : esc(p.title)}</b>`;
   const right = p.crumbs
@@ -91,9 +114,12 @@ export function renderPage(site, p, assets) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(docTitle)}</title>
-<meta name="description" content="${esc(p.description || 'How the co-op works, how to use it, and how it is built.')}">
+<meta name="description" content="${esc(description)}">
 <meta name="color-scheme" content="light dark">
+${shareTags(p, docTitle, description)}
+<link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/brand/clear-mark-solid-ink.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="${FONTS}">
