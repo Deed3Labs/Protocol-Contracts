@@ -36,11 +36,8 @@ three days after its due date.
 | Rent | 200 for each on-time payment |
 | Any other bill | 10% of the amount paid, up to 500 for one bill |
 
-The base is then multiplied by your **multiplier**:
-
-- On the **Standard** plan, it starts at 1× and rises by 0.25× for every six months in a row you've
-  paid on time, up to 1.5×.
-- On the **Accelerated** plan, it is 1.5× from the start.
+The base is then multiplied by your **multiplier**. It starts at 1× and rises by 0.25× for every six
+months in a row you've paid on time, up to 1.5×.
 
 So on-time rent earns between 200 and 300 credits. The multiplier applies to rent and bill credits,
 not to matched savings. Plans are explained in

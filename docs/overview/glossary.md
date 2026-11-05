@@ -5,7 +5,7 @@ described under [Protocol](../protocol/README.md).
 
 | Term | Meaning |
 |---|---|
-| **Accelerated** | One of the two membership plans. Earns equity credits on rent and bills at the full multiplier from the start. Paid once |
+| **Accelerated** | An optional paid membership plan. Not available yet |
 | **AccessManager** | The contract that says who is an admin, an operator or a member for the credit contracts. See [On-chain authority](../governance/on-chain-authority.md) |
 | **Assurance, Clear Assurance** | The co-op's protections for members, such as rent paid for you if you lose your job. Each one unlocks at a number of equity credits |
 | **AssurancePool** | The contract that holds the reserve |
@@ -28,7 +28,8 @@ described under [Protocol](../protocol/README.md).
 | **Float** | Dollars the co-op keeps with its card provider to pay card swipes at shops outside the network |
 | **LendingPool** | Where financial contributors put money that the co-op borrows to pay shops on time |
 | **Lost debt** | Debt written off after a default. The reserve makes it good |
-| **Membership plan** | Standard or Accelerated. Sets how fast you earn equity credits on rent and bills |
+| **Membership** | Your savings account, as in a credit union: what you save is your share in the co-op, with one vote per member. The bylaws set the formal rules |
+| **Membership plan** | Standard, which every member is on and which is free, or Accelerated, which is not available yet |
 | **Ops Safe** | The co-op's multi-signature wallet. Admin powers over the contracts are handed to it, so no single key controls them |
 | **Operator** | A wallet allowed to do one day-to-day job on the contracts, such as opening credit lines |
 | **Partner shop** | A shop registered with the co-op, where a purchase goes straight onto the credit ledger |
@@ -39,7 +40,7 @@ described under [Protocol](../protocol/README.md).
 | **Reserve** | Money held to cover losses when members cannot repay. In three parts: primary, buffer and excess |
 | **RTD, reserve-to-debt ratio** | The primary reserve divided by what it stands behind |
 | **Split plan** | Paying a purchase back in 1, 2, 4, 6 or 12 instalments, against its own limit |
-| **Standard** | One of the two membership plans. Billed yearly. Its equity-credit multiplier grows with your on-time record |
+| **Standard** | The membership plan every member is on. Free. Its equity-credit multiplier grows with your on-time record |
 | **T-Deed** | The on-chain token for a property, issued by `DeedNFT` |
 | **Term limit** | The most a member can have outstanding on split plans |
 | **USDC** | A digital dollar. What you deposit to save |

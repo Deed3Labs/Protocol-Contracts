@@ -56,9 +56,9 @@ the co-op, whoever else sits on the board.
 
 ### Members
 
-**One vote each, not by balance.** A bigger balance does not give a member a bigger say. What makes
-someone a member of the co-op is set by the bylaws, which are not adopted yet. How membership is
-recorded in the apps today is in [Membership and the co-op](./membership.md).
+**One vote each, not by balance.** A bigger balance does not give a member a bigger say. As in a
+credit union, your savings account is your membership. The bylaws set the formal rules and are not
+adopted yet. See [Membership and the co-op](./membership.md).
 
 ### Regional councils
 

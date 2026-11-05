@@ -5,45 +5,28 @@ stand.
 
 ## Who is a member
 
-**Having a Clear account and holding a membership are different things.** Anyone who signs up has
-an account. A membership is a record on the chain, written once a membership plan is paid for.
+**Clear works like a credit union: your savings account is your membership.** You join in the app,
+with no buy-in and no fee. What you save is your share in the co-op, and it stays yours: if you
+leave, your balance leaves with you.
 
-| | What it is | Where it is kept |
-|---|---|---|
-| **An account** | A sign-in, a wallet and a profile in the member app | Clear's server |
-| **A membership** | An active record with a plan and an expiry date | The membership registry (`MembershipRegistry`), on the chain |
-
-When a plan is paid, Clear's server writes the member's record to the membership registry: their
-wallet, their plan, an expiry date and a fingerprint of their details (a hash; no personal details go
-on the chain). A Standard record stops counting once its expiry date passes, and when a Standard
-subscription is cancelled or goes unpaid, the server marks the record revoked.
-
-The wallet that writes these records is the **membership registrar**. Unless a separate registrar is
-set, it is the credit operator's wallet
-([On-chain authority](./on-chain-authority.md#the-wallets-that-do-each-job)). The deployer key never
-does it.
-
-The credit contracts ask the access manager (`AccessManager`) whether someone is a member. It answers
-yes for an active, unexpired record in the membership registry, and also for anyone holding its own
-member or operator role, or the admin role. Taking away the access manager's member role does not end
-a membership recorded in the registry.
-
-What makes someone a member of the co-op itself, with a vote, is for the bylaws to set, and they are
-not adopted yet.
+- **One member, one vote**, however much you save.
+- **The bylaws set the formal rules of membership.** They are not adopted yet, so this is a draft
+  until they are. How the co-op is meant to be governed is in [The co-op's structure](./structure.md).
 
 ## The two plans
 
+**Standard is every member's plan, and it is free.** Accelerated is an optional paid plan.
+
 | | Standard | Accelerated |
 |---|---|---|
-| Billed | Yearly, as a subscription | Once |
-| Membership record expires | At the end of the paid year | Never |
-| Equity-credit multiplier on rent and bills | Starts at 1×, rises with an on-time record, up to 1.5× | 1.5× from the start |
+| Cost | Free | Not available yet |
+| Who is on it | Every member | Not available yet |
 
-**The plan sets the equity-credit multiplier and nothing else.** It does not change your savings,
-the match on your deposits, which protections you can unlock, or your credit. The exact multiplier
-rules are in [Parameters](./parameters.md#equity-credits).
+On Standard, your equity credits on rent and bills grow with your on-time record: the multiplier
+starts at 1× and rises to 1.5×. The rules are in [Parameters](./parameters.md#equity-credits).
 
-Plan prices are set in the billing provider (Stripe) and are not listed here.
+Your plan doesn't change your savings, the match on your deposits, which protections you can unlock,
+or your credit.
 
 ## Bylaws, voting and patronage
 

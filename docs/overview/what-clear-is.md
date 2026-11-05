@@ -59,7 +59,7 @@ You earn them two ways:
   limit. A match settles after 30 days; take that deposit out sooner and its match is cancelled.
 - **Paying on time through Clear Pay.** Rent paid on time earns credits, and so do other bills.
 
-Your membership plan changes how fast the bill and rent credits add up. The exact rules are in
+A record of paying on time makes the bill and rent credits add up faster. The exact rules are in
 [Parameters and who sets them](../governance/parameters.md).
 
 Equity credits are kept by Clear's server, not by a contract. No contract on the chain holds them.
@@ -120,9 +120,10 @@ payouts, staff and refunds. See [Merchants](../merchants/README.md).
 
 ### Membership
 
-Membership comes in two plans, **Standard** and **Accelerated**. The plan sets how fast you earn
-equity credits on rent and bills, and nothing else: it does not decide which protections you get.
-Standard is billed yearly; Accelerated is a single payment.
+**Clear works like a credit union: your savings account is your membership.** Joining is free, with
+no buy-in. What you save is your share in the co-op, and every member has one vote, however much
+they save. Every member is on the **Standard** plan, which is free. **Accelerated**, an optional paid
+plan, is not available yet. See [Membership and the co-op](../governance/membership.md).
 
 ## Next
 

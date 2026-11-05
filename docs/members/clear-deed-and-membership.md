@@ -25,21 +25,16 @@ How credits are earned and how they vest is in
 
 ## Membership plans
 
-There are two membership plans. **The only thing a plan changes is your equity-credit multiplier** —
-the number your rent and bill credits are multiplied by.
+**Your savings account is your membership**, as in a credit union. Joining is free, with no buy-in:
+what you save is your share in the co-op, and you have one vote however much you save. How
+membership and the co-op's rules work is in [Membership and the co-op](../governance/membership.md).
 
-| | Standard | Accelerated |
-|---|---|---|
-| Multiplier on rent and bill credits | Starts at 1×, rises 0.25× for every six months in a row you pay on time, up to 1.5× | 1.5× from the start |
-| Matched savings credits | 1 per dollar saved | 1 per dollar saved |
-| Protections | Unlock on your credits | Unlock on your credits |
+**Everyone is on Standard, and it is free.** On Standard, the multiplier on your rent and bill
+credits starts at 1× and rises 0.25× for every six months in a row you pay on time, up to 1.5×.
+Matched savings credits and your protections don't depend on your plan. See
+[Assurance](./assurance-and-disputes.md#your-protections).
 
-**Everyone joins on Standard**, and joining is free. Your protections don't depend on your plan; they
-unlock on your equity credits. See [Assurance](./assurance-and-disputes.md#your-protections).
-
-Accelerated is a shortcut, not the only route: Standard reaches the same 1.5× through on-time
-payments. **Settings → Membership → Acceleration** shows whether it's on for you. Turning it on is
-not available yet.
+**Accelerated**, an optional paid plan: Not available yet.
 
 ## Settings
 
