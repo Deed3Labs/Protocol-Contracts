@@ -27,7 +27,7 @@ contract, the access manager (`AccessManager`).
 |---|---|---|
 | Admin | An admin | Upgrading the credit ledger, changing its settings, granting operators. An admin also counts as an operator |
 | `OPERATOR` | An admin | The credit issuers' day-to-day calls: opening lines and plans, setting term limits and tier rates, reinstating a member |
-| `MEMBER` | An operator | Being treated as a member. Most members are recognised through the membership registry instead ([Membership](./membership.md)) |
+| `MEMBER` | An operator | Being treated as a member by the credit contracts. An active record in the membership registry counts too ([Protocol → Access](../protocol/credit.md#access)) |
 
 The credit issuers check operator authority by asking the ledger's access manager, not through a
 role of their own. Because an admin counts as an operator, the deployer stops being an operator only

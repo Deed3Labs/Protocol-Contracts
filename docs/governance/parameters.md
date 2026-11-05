@@ -34,8 +34,7 @@ server's software, so they change only through a software change (see
 | Other bills paid on time | 10% of the payment in credits, at most 500, times your multiplier |
 | On time | Paid no more than 3 days after the due date. A late payment earns nothing |
 | Vesting | 30 days from the payment or deposit |
-| Multiplier, Accelerated | 1.5× |
-| Multiplier, Standard | 1×, plus 0.25× for every 6 months in a row with an on-time payment, up to 1.5× |
+| Multiplier | 1×, plus 0.25× for every 6 months in a row with an on-time payment, up to 1.5× |
 | Test networks | Credits earned there are recorded separately from live ones |
 
 The multiplier applies to rent and bills, not to the savings match. Equity credits can never be
@@ -117,8 +116,8 @@ switching a shop on or off as Safe transactions ([The Command Center](./command-
 
 ## Membership
 
-Prices for Standard and Accelerated are set in the billing provider (Stripe) and are not listed
-here. What each plan changes is in [Membership and the co-op](./membership.md).
+Standard, every member's plan, is free. Accelerated, an optional paid plan, is not available yet.
+See [Membership and the co-op](./membership.md).
 
 ## How a rule changes
 

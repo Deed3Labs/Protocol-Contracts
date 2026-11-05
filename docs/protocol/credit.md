@@ -323,6 +323,17 @@ does not remove a registry member. `grantOperator` is `onlyAdmin`. `grantMember`
 pass `onlyOperator`, but the inner `grantRole`/`revokeRole` require the role admin — `"OPERATOR"` for
 `"MEMBER"`, `DEFAULT_ADMIN_ROLE` for `"OPERATOR"`.
 
+**Membership records.** The API writes a `MembershipRegistry` record when a membership checkout is
+paid through Stripe (`apps/api/src/services/memberBillingService.ts`): plan `YEARLY` as a
+subscription whose record expires with the paid period and is revoked when the subscription ends,
+or `LIFETIME` as a one-time payment with no expiry. The writer is the registrar
+(`MEMBERSHIP_REGISTRY_*`, see [Going live](../operators/going-live.md#stripe)). The member app does
+not start that checkout, and onboarding stores `membershipPlan: 'YEARLY'` for every member at no
+charge, so app members have no registry record from it. Equity credits treat `LIFETIME` as
+Accelerated (1.5× from the start, `payLedgerStore.ts`); everyone else is on the Standard multiplier.
+The co-op's own definition of membership (the savings account, as in a credit union) is in
+[Governance → Membership](../governance/membership.md); nothing on the chain records it.
+
 `NetworkRegistry.registerIssuer` binds an issuer to a ledger, AssurancePool and oracle;
 `enrolMember` is open to the issuer, its ledger or an operator; `deregisterIssuer` refuses while
 anyone is enrolled. `deploy/20` makes `ClearCredit`, both issuers and `LimitCalculator` AccessManager
