@@ -121,7 +121,7 @@ describe('the built site', () => {
     const broken = [];
     for (const [p, html] of pages) {
       for (const [, href] of html.matchAll(/href="(\/[^"]*)"/g)) {
-        if (/^\/(assets|brand)\//.test(href)) continue;
+        if (/^\/(assets|brand)\//.test(href) || /^\/[\w-]+\.(ico|png)$/.test(href)) continue;
         const [path, anchor] = href.split('#');
         const target = pages.get(path);
         if (!target) broken.push(`${p} -> ${href}`);
@@ -140,6 +140,16 @@ describe('the built site', () => {
     assert.match(pages.get('/governance/structure'), /aria-label="Pages that point here"/);
     assert.match(pages.get('/governance/structure'), /class="cd-orgf"/);
     assert.match(pages.get('/protocol/deed-track/protocol-overview'), /data-map="deed"/);
+  });
+  test('every page carries its share preview and icons', () => {
+    for (const [p, html] of pages) {
+      assert.match(html, /<meta property="og:image" content="https:\/\/docs\.useclear\.org\/share-card\.png">/, p);
+      assert.match(html, /<meta name="twitter:card" content="summary_large_image">/, p);
+      assert.match(html, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png">/, p);
+    }
+    assert.match(pages.get('/governance/structure'), /<meta property="og:title" content="The co-op&#39;s structure · Clear docs">|<meta property="og:title" content="The co-op's structure · Clear docs">/);
+    assert.match(pages.get('/governance/structure'), /<meta property="og:url" content="https:\/\/docs\.useclear\.org\/governance\/structure">/);
+    for (const f of ['share-card.png', 'favicon.ico', 'apple-touch-icon.png']) assert.ok(readdirSync(join(REPO, 'apps/docs/public')).includes(f), f);
   });
   test('locked areas link to the sign-in and publish nothing', () => {
     const home = pages.get('/');
