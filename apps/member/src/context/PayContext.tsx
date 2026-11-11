@@ -151,7 +151,7 @@ interface PayValue {
   refresh: () => void;
   /** Open the Pay flow; pass a bill id to go straight to that payment (e.g. "Pay rent"). */
   openPay: (billId?: string) => void;
-  /** Open the bill-portal directory (pay on the biller's own site with the Clear card). */
+  /** Open the bill-portal directory (pay on the biller's own site with the Clear Visa card). */
   openPortals: () => void;
 }
 

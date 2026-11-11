@@ -1,6 +1,6 @@
 /*
  * Bill-portal directory for Clear Pay. Users can't be given most billers' ACH details (utilities/rent
- * pull from you), so instead we send them to the biller's own portal to pay with their Clear card
+ * pull from you), so instead we send them to the biller's own portal to pay with their Clear Visa card
  * (Bridge / Stripe Issuing, funded just-in-time from their Base USDC). This is the verified list of
  * provider login/pay URLs, grouped by category and tagged by the US states they serve so we can bubble
  * the likely ones to the top. National providers (telecom, rent platforms) carry no `states`.

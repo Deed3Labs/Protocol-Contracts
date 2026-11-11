@@ -182,7 +182,7 @@ export default function CardRoute() {
     setBusy(true);
     setNotice(null);
     try {
-      const { value: created, error, unavailable, needsSetup } = await createCard('Clear card');
+      const { value: created, error, unavailable, needsSetup } = await createCard('Clear Visa card');
       if (created) {
         setCards((prev) => [created, ...prev]);
         return;
@@ -274,7 +274,7 @@ export default function CardRoute() {
           setNewCard({ kind: 'physical', last4: ordered.lastFour ?? '', label: label || undefined });
           return;
         }
-        const { value: created, error } = await createCard(label || 'Clear card');
+        const { value: created, error } = await createCard(label || 'Clear Visa card');
         if (!created) {
           setAddError(error ?? "That didn't go through. Please try again.");
           return;

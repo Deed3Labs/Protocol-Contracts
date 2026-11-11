@@ -138,7 +138,7 @@ export function chargePaymentRow(p: ChargePayment, ts: number): ActivityRow {
 }
 
 /**
- * Whether a shop's card sale was the member's own Clear card, which the card feed already lists: the
+ * Whether a shop's card sale was the member's own Clear Visa card, which the card feed already lists: the
  * same last four, or (the feed has no last four) the same amount within a quarter of an hour.
  */
 function onClearCard(p: ShopPurchase, cards: CardTransaction[], cardLast4?: string): boolean {
@@ -242,7 +242,7 @@ export function mergedActivityRows(
     ...shopRows,
     // Charges the rows above don't cover: waiting on them, over time, never charged.
     ...chargeActivityRows(charges),
-    // Card purchases at Clear shops, from before they set up Clear too. One on their own Clear card
+    // Card purchases at Clear shops, from before they set up Clear too. One on their own Clear Visa card
     // is already a card row above, so it isn't listed twice.
     ...shopPurchases.filter((p) => !onClearCard(p, cards, cardLast4)).map((p) => ({ ts: Date.parse(p.at), row: shopPurchaseRow(p) })),
   ]

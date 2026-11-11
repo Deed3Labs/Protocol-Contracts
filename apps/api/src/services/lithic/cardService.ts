@@ -119,7 +119,7 @@ export async function createVirtualCard(
   const created = await lithic.cards.create({
     type: 'VIRTUAL',
     account_token: account.accountToken,
-    memo: options.memo || 'Clear card',
+    memo: options.memo || 'Clear Visa card',
     ...(options.spendLimitCents
       ? {
           spend_limit: Math.round(options.spendLimitCents),
@@ -186,7 +186,7 @@ export async function createPhysicalCard(
     type: 'PHYSICAL',
     account_token: account.accountToken,
     product_id: productId,
-    memo: options.memo || 'Clear card',
+    memo: options.memo || 'Clear Visa card',
     shipping_address: {
       first_name: shipping.firstName,
       last_name: shipping.lastName,

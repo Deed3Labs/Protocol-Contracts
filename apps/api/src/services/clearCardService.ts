@@ -2,7 +2,7 @@ import Stripe from 'stripe';
 import { getPostgresPool } from '../config/postgres.js';
 
 /*
- * Clear card (Bridge + Stripe Issuing) — P2 scaffold. FEATURE-FLAGGED: entirely inert until
+ * Clear Visa card (Bridge + Stripe Issuing) — P2 scaffold. FEATURE-FLAGGED: entirely inert until
  * STRIPE_SECRET_KEY is set, so nothing runs in prod/dev without real credentials.
  *
  * Model (per apidocs.bridge.xyz/platform/cards/overview/stripe-issuing):
