@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import * as cards from '../services/clearCardService.js';
 
 /*
- * Clear card (Bridge / Stripe Issuing) — P2 scaffold. Every route no-ops with `configured:false` until
+ * Clear Visa card (Bridge / Stripe Issuing) — P2 scaffold. Every route no-ops with `configured:false` until
  * STRIPE_SECRET_KEY is set, so this is inert in prod/dev without credentials. See clearCardService.ts.
  */
 const router = Router();

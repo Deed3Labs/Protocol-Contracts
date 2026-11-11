@@ -4,7 +4,7 @@ import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { getClearCard, activateClearCard, type ClearCard } from '@/utils/apiClient';
 
 /*
- * Clear card state (Bridge / Stripe Issuing) — P2. `configured` is false until the backend has
+ * Clear Visa card state (Bridge / Stripe Issuing) — P2. `configured` is false until the backend has
  * STRIPE_SECRET_KEY, so the UI cleanly shows an "activating soon" state everywhere until then.
  */
 export function useClearCard() {
@@ -33,7 +33,7 @@ export function useClearCard() {
    * Activate, and keep the reason if it did not.
    *
    * The result was discarded entirely: activation failed, `refresh()` found no card, the spinner
-   * stopped and the button sat there saying "Activate your Clear card" again. Identical to not
+   * stopped and the button sat there saying "Activate your Clear Visa card" again. Identical to not
    * having pressed it.
    */
   const activate = useCallback(async () => {

@@ -10,7 +10,7 @@ import { PORTAL_CATEGORIES, type BillPortal } from '@/data/billPortals';
  * In-app portal view. Billers overwhelmingly block iframing (X-Frame-Options) — and that can't be
  * detected cross-origin, so a blocked frame just renders blank. Rather than gamble on a blank screen,
  * the default is a branded launch screen that opens the biller's login/pay page in a new tab, with a
- * floating Clear card overlay to copy while paying. Only portals explicitly flagged `frameable` embed.
+ * floating Clear Visa card overlay to copy while paying. Only portals explicitly flagged `frameable` embed.
  *
  * P2: <CardOverlay/> shows the live Stripe Issuing card (PAN/CVV) when active.
  */
@@ -60,7 +60,7 @@ export default function BillPortalBrowser({ portal, onClose }: { portal: BillPor
           )}
         </div>
 
-        {/* floating Clear card overlay (P2 renders the live card here) */}
+        {/* floating Clear Visa card overlay (P2 renders the live card here) */}
         <CardOverlay />
       </DialogContent>
     </Dialog>
@@ -75,7 +75,7 @@ function LaunchScreen({ portal, onOpen }: { portal: BillPortal; onOpen: () => vo
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary text-3xl">{cat?.emoji}</div>
       <div className="mt-4 text-lg font-semibold text-foreground">Pay your {portal.name} bill</div>
       <p className="mt-1 max-w-[340px] text-sm text-muted-foreground">
-        For your security, {portal.name} opens in a new tab. Sign in there and pay with your Clear card — it’s at the bottom to copy.
+        For your security, {portal.name} opens in a new tab. Sign in there and pay with your Clear Visa card — it’s at the bottom to copy.
       </p>
       <button
         type="button"
@@ -89,7 +89,7 @@ function LaunchScreen({ portal, onOpen }: { portal: BillPortal; onOpen: () => vo
 }
 
 /**
- * Floating wallet to use the Clear card while paying. Shows the live Stripe Issuing card once active
+ * Floating wallet to use the Clear Visa card while paying. Shows the live Stripe Issuing card once active
  * (P2), an Activate CTA when the card program is configured but the user has no card yet, or an
  * "activating soon" state until the backend has card credentials.
  */
@@ -108,7 +108,7 @@ function CardOverlay() {
           <CreditCard className="h-4 w-4" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-foreground">Pay with your Clear card</span>
+          <span className="block text-sm font-medium text-foreground">Pay with your Clear Visa card</span>
           <span className="block text-xs text-muted-foreground">Funded from your Cash balance · USDC</span>
         </span>
         <ChevronUp className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
@@ -127,12 +127,12 @@ function CardOverlay() {
               disabled={activating}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.99] disabled:opacity-60"
             >
-              {activating ? <><Loader2 className="h-4 w-4 animate-spin" /> Setting up…</> : 'Activate your Clear card'}
+              {activating ? <><Loader2 className="h-4 w-4 animate-spin" /> Setting up…</> : 'Activate your Clear Visa card'}
             </button>
           ) : (
             <div className="flex items-center gap-2 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
               <ShieldCheck className="h-4 w-4 shrink-0 text-amber-500" />
-              Your Clear card is activating — card details to copy will appear here once it’s live.
+              Your Clear Visa card is activating — card details to copy will appear here once it’s live.
             </div>
           )}
           {/* After whichever of the three states is showing, under the button that failed. */}

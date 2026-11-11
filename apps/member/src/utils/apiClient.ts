@@ -3297,7 +3297,7 @@ export interface ApiNotification {
   read: boolean;
   createdAt: string;
 }
-// ── Clear card (Bridge / Stripe Issuing) — P2. All no-op with configured:false until the backend has keys.
+// ── Clear Visa card (Bridge / Stripe Issuing) — P2. All no-op with configured:false until the backend has keys.
 export interface ClearCard {
   ownerWallet: string;
   status: string; // 'pending' | 'active' | 'inactive' | 'canceled'

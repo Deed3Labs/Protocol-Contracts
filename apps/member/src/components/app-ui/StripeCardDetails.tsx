@@ -3,7 +3,7 @@ import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { createCardEphemeralKey } from '@/utils/apiClient';
 
 /*
- * Renders the live Clear card number/expiry/CVV via Stripe Issuing Elements — the PCI-compliant iframe,
+ * Renders the live Clear Visa card number/expiry/CVV via Stripe Issuing Elements — the PCI-compliant iframe,
  * so the raw PAN never touches our DOM/logs. Inert unless VITE_STRIPE_PUBLISHABLE_KEY is set.
  *
  * Flow (Stripe.js issuing): client nonce → backend ephemeral key → mount issuing display elements.

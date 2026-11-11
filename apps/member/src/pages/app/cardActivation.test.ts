@@ -35,7 +35,7 @@ describe('a failed activation says so', () => {
   test('the route shows the outcome rather than discarding it', () => {
     expect(route).toContain('setNotice(');
     // The old shape: a failure fell off the end of the function.
-    expect(route).not.toMatch(/const created = await createCard\('Clear card'\);\s*if \(created\) setCard\(created\);/);
+    expect(route).not.toMatch(/const created = await createCard\('Clear Visa card'\);\s*if \(created\) setCard\(created\);/);
   });
 
   test('and the page has somewhere to put it', () => {

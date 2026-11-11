@@ -94,7 +94,7 @@ Defined in `src/App.tsx`. Pages live in `src/pages/app` and `src/pages/auth`.
 | `/earn` | `EarnRoute` | Credit line, tiers, plans |
 | `/send` | `SendRoute` | Send to a wallet, email or phone |
 | `/activity` | `ActivityRoute` | Transactions across chain and linked banks |
-| `/card` | `CardRoute` | The Clear card, controls, details |
+| `/card` | `CardRoute` | The Clear Visa card, controls, details |
 | `/scan` | `ScanPage` | Camera, Clear codes |
 | `/contacts` | `ContactsPage` | Directory and handles |
 | `/partners` | `PartnersPage` | Where credit spends |

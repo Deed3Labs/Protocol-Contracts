@@ -12,7 +12,7 @@ import type { Charge, Merchant, Payout, Staff } from '@clear/domain';
  * the reference drew.
  *
  * **Network-originated transactions only.** What reaches this app is a charge raised as a Clear
- * code and approved in the member app. Card-rail payments — a Clear card included — never reach it,
+ * code and approved in the member app. Card-rail payments — a Clear Visa card included — never reach it,
  * so there is nothing here representing one and no total that mixes the two rails.
  */
 

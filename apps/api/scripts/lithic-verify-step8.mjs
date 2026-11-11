@@ -18,7 +18,7 @@ const check = (ok, label, detail = '') => {
 const info = (label, detail) => console.log(`INFO  ${label}${detail ? ` — ${detail}` : ''}`);
 
 // 1. Issue a virtual card, the way createVirtualCard does.
-const card = await lithic.cards.create({ type: 'VIRTUAL', memo: 'Clear card verify' });
+const card = await lithic.cards.create({ type: 'VIRTUAL', memo: 'Clear Visa card verify' });
 check(Boolean(card.token), 'virtual card issued', card.token);
 check(card.state === 'OPEN', 'new card opens unfrozen', card.state);
 check(!card.spend_limit, 'no default spend limit is imposed', `spend_limit=${card.spend_limit ?? 0}`);

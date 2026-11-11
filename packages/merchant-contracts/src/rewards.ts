@@ -602,7 +602,7 @@ export const MemberShopPurchases = z.object({
       at: Timestamp,
       /** What was paid by card, tip included. */
       amountCents: NonNegativeCents,
-      /** The card's last four, so a sale on the member's own Clear card isn't listed twice. */
+      /** The card's last four, so a sale on the member's own Clear Visa card isn't listed twice. */
       cardLast4: z.string().regex(/^\d{4}$/).nullable(),
       /** Earned there, when they'd joined. */
       points: z.object({ earned: z.number().int(), name: PointsName }).nullable(),

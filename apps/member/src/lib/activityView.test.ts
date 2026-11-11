@@ -183,7 +183,7 @@ describe('shop card purchases (rewards, Phase 6)', () => {
     expect(rows[0]).toMatchObject({ id: 'shop:ord_1', name: 'Mi Casa Tacos', source: 'card', kind: 'spending', amount: -17.33, paidFromLabel: 'Card ••4242' });
     expect(sourceTag(rows[0]!)).toEqual({ label: 'Card' });
   });
-  test('one on their own Clear card is already in the card feed, so it isn’t listed twice', () => {
+  test('one on their own Clear Visa card is already in the card feed, so it isn’t listed twice', () => {
     const card = { id: 'ctx_1', name: 'MI CASA TACOS', at: '2026-10-12T02:31:10.000Z', amountCents: 1733, mcc: '5812', city: 'Redlands', state: 'CA', draws: [{ source: 'cash', amountCents: 1733 }], cardToken: 'card_1' };
     expect(mergedActivityRows([], [card], undefined, [], [], [], [purchase]).map((r) => r.id)).toEqual(['ctx_1']);
   });

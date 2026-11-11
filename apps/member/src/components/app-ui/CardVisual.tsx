@@ -3,7 +3,7 @@ import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { cn } from '@/lib/utils';
 
 /**
- * The Clear card — not issued yet, so this is deliberately a preview.
+ * The Clear Visa card — not issued yet, so this is deliberately a preview.
  *
  * It previously rendered a hardcoded PAN (`5231 7252 1769 8152`) behind a working Show/Hide toggle,
  * plus a freeze switch that toggled nothing. That reads as a real, active card: a member could try to
@@ -24,7 +24,7 @@ export default function CardVisual({ className, onManage }: { className?: string
         </div>
 
         {/* Muted, non-interactive preview — no digits, nothing to freeze. */}
-        <div className="relative aspect-[1.6/1] overflow-hidden rounded-xl bg-secondary" aria-label="Clear card preview — not yet available">
+        <div className="relative aspect-[1.6/1] overflow-hidden rounded-xl bg-secondary" aria-label="Clear Visa card preview — not yet available">
           <div className="relative flex h-full flex-col justify-between p-5">
             <span className="font-display text-sm font-semibold tracking-wide text-muted-foreground">Clear</span>
             <span className="whitespace-nowrap font-display text-base tracking-[0.15em] tabular-nums text-muted-foreground/60">
