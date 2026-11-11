@@ -102,5 +102,6 @@ payment again.**
 ## Related
 
 - [Credit](./credit.md)
-- [The Clear card and paying at shops](./card-and-shops.md)
+- [The Clear Visa card](./clear-visa-card.md)
+- [Paying at Clear shops](./paying-at-shops.md)
 - Who runs the reserve and sets its policy: [Governance](../governance/README.md)

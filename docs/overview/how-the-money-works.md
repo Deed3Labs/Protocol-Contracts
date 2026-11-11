@@ -71,13 +71,15 @@ repaid as members repay.
 A shop that also owes the co-op is paid down first: money reaching it by transfer clears its own debt
 before anything is left to cash out.
 
-## The card
+## The Clear Visa card
 
-**A card swipe at a shop outside the Clear network needs real dollars, because that shop is not on
+**A Clear Visa card swipe at a shop outside the Clear network needs real dollars, because that shop is not on
 the ledger.** The co-op pays it from a float held with its card provider. The swipe shows straight
 away in your app as a hold; it is written to the ledger only once the payment clears, usually one to
 three days later, because the amount can still change until then (a tip, a fuel pump, a cancelled
 sale).
+
+The purchase step by step: [How a Visa card purchase works](../protocol/visa-card-purchases.md).
 
 ## Repaying
 

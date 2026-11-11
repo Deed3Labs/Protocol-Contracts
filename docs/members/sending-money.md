@@ -26,7 +26,7 @@ Sending asks for Face ID when payment protection is on. See
 
 Your Clear code, on the Send page and full screen at **Your code**, says who you are. It doesn't
 carry an amount. At a shop counter, the shop enters the amount and you approve it on your phone —
-see [Paying at a shop](./card-and-shops.md#paying-at-a-shop).
+see [Paying at Clear shops](./paying-at-shops.md).
 
 ## Claiming money someone sent you
 

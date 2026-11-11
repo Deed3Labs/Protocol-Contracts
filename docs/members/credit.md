@@ -97,7 +97,7 @@ At a shop, choose **Pay over time** on the charge and pick how to split it:
 Paying over time is for charges of $50 or more; below that, a charge is paid now. Some shops,
 especially online, offer Pay now only. Each plan has its own rate, and the sheet shows your first
 payment and the rate before you approve. How the charge itself works is in
-[The Clear card and paying at shops](./card-and-shops.md#approving-a-charge).
+[Paying at Clear shops](./paying-at-shops.md#approving-a-charge).
 
 ### Paying a plan
 
@@ -130,7 +130,8 @@ from your income.
 
 ## Related
 
-- [The Clear card and paying at shops](./card-and-shops.md)
+- [The Clear Visa card](./clear-visa-card.md)
+- [Paying at Clear shops](./paying-at-shops.md)
 - [Disputes](./assurance-and-disputes.md#disputes) — a disputed amount is held and charged no carry
 - Who sets credit parameters: [Governance](../governance/README.md)
 - The contracts: [Protocol → Credit](../protocol/credit.md)

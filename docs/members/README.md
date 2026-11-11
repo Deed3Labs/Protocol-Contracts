@@ -10,7 +10,9 @@ if you're new.
 | [Savings and equity credits](./savings-and-equity-credits.md) | What is yours to withdraw and what only goes toward a home; how credits are matched, earned and vested; bonds and the lending pool on Earn |
 | [Credit](./credit.md) | Your credit line and its tiers, your cycle and repaying, your term limit and paying over time |
 | [Sending money](./sending-money.md) | Sending to members and non-members, claiming a send link, requesting money |
-| [The Clear card and paying at shops](./card-and-shops.md) | Virtual and physical cards, what the card spends from, a lost or stolen card, limits and controls, scanning a shop's code, your Clear code, approving a charge |
+| [Paying at Clear shops](./paying-at-shops.md) | Scanning a shop's code, your Clear code, approving a charge, paying on a shop's website |
+| [Your cards](./cards.md) | The Clear Visa card and the Clear card, side by side |
+| [The Clear Visa card](./clear-visa-card.md) | Virtual and physical cards, what the card spends from, a lost or stolen card, limits and controls, scanning a shop's code, your Clear code, approving a charge |
 | [Assurance and disputes](./assurance-and-disputes.md) | Your protections, the assurance reserve and its figures and reports, making a claim, and disputing a payment |
 | [Your Clear Deed, membership and settings](./clear-deed-and-membership.md) | The Clear Deed, the Standard and Accelerated plans, Settings (notifications, linked accounts, devices and login history), closing your account |
 
@@ -25,8 +27,8 @@ is in [Protocol](../protocol/README.md).
 |---|---|
 | Withdrawing to a bank account | [Taking money out to a bank](./adding-and-moving-money.md#taking-money-out-to-a-bank) |
 | Requesting money from someone | [Requesting money](./sending-money.md#requesting-money) |
-| Replacing a lost, stolen or damaged card | [If your card is lost, stolen or damaged](./card-and-shops.md#if-your-card-is-lost-stolen-or-damaged) |
-| Changing your card's spending limits | [Spending limits and controls](./card-and-shops.md#spending-limits-and-controls) |
+| Replacing a lost, stolen or damaged card | [If your card is lost or stolen](./clear-visa-card.md#if-your-card-is-lost-or-stolen) |
+| Changing your card's spending limits | [Spending limits and controls](./clear-visa-card.md#spending-limits-and-controls) |
 | Getting back in without your phone number | [If you lose your phone number](./getting-started.md#if-you-lose-your-phone-number) |
 | Notifications | [Notifications](./clear-deed-and-membership.md#notifications) |
 | Linked accounts | [Linked accounts](./clear-deed-and-membership.md#linked-accounts) |

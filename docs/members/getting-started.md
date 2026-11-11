@@ -49,8 +49,8 @@ Security number or date of birth.
 
 ### What you can do while you wait
 
-**Savings and Earn are open before you are verified.** They hold your own money. Credit and the card
-open once verification clears.
+**Savings and Earn are open before you are verified.** They hold your own money. Credit and the Clear
+Visa card open once verification clears.
 
 ### The answers you might get
 
@@ -60,7 +60,7 @@ open once verification clears.
 | Under review | The issuer is checking by hand | Wait; the app tells you either way |
 | Photo needed | A document photo is required | Add the photo from the same Identity row |
 | Needs a correction | Something you typed didn't match your records | You'll be contacted about which detail to correct |
-| Couldn't verify | Credit and the card can't be opened on this account | Talk to support from **Settings → Help** |
+| Couldn't verify | Credit and the Clear Visa card can't be opened on this account | Talk to support from **Settings → Help** |
 
 Once verified, your legal name and date of birth are locked. To correct either, contact support.
 

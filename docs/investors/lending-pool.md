@@ -38,7 +38,8 @@ borrower is approved when the pool is deployed; the co-op's setup approves two:
 **The pool funds unsecured credit only:** by default, the income-based tier and Boost. Credit backed
 by savings or by other assets is not funded from the pool.
 
-The card-funding wallet's borrowing and repayment are run by the co-op's server, not by a contract.
+The card-funding wallet's borrowing and repayment are run by the co-op's server, not by a contract
+([How a Visa card purchase works](../protocol/visa-card-purchases.md#4-borrowing-from-the-lendingpool)).
 The pool records each loan and each repayment, but nothing on the chain makes either happen.
 Merchants are paid in dollars from the co-op's float; the borrowed USDC reaches that float when the
 co-op periodically converts it to dollars.

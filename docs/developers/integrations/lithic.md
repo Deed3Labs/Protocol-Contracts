@@ -1,6 +1,6 @@
 # Lithic integration
 
-Lithic is the banking and card rail for the member app. Clear uses Lithic's **Program Managed**
+Lithic is the banking and card rail for the member app, and issues the Clear Visa card. Clear uses Lithic's **Program Managed**
 model: Lithic and its partner bank handle sponsorship, KYC, AML/BSA, ledgering, card manufacture
 and network connectivity. Clear sets spend logic and business rules through Lithic's API.
 

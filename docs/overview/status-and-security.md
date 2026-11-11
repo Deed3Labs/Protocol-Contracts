@@ -26,7 +26,7 @@ Every address is listed in the root README under
 with the bank, identity, card and payment providers in their sandbox or test modes. Nothing there is
 real money.
 
-**The card is not available with real money yet.** It runs in its provider's sandbox only.
+**The Clear Visa card is not available with real money yet.** It runs in its provider's sandbox only.
 
 Equity credits earned on a test network are recorded separately from those earned on a live one.
 
