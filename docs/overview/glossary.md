@@ -11,14 +11,16 @@ described under [Protocol](../protocol/README.md).
 | **AssurancePool** | The contract that holds the reserve |
 | **Base, Base Sepolia** | Base is the public network the contracts run on. Base Sepolia is its test network, where nothing is real money |
 | **Carry** | The cost of credit. It builds up on what you have drawn |
+| **Clear card** | Clear's own wooden membership card, for paying at Clear shops without your phone. Planned; not available yet. See [Your cards](../members/cards.md) |
 | **Clear Deed** | The finish line: a home title, free of debt, earned through equity credits. Not a mortgage. On the chain, a T-Deed |
 | **Clear Pay** | Paying rent and bills through the app. Paying on time earns equity credits |
 | **Clear Protocol** | The contracts under the app: savings, the credit ledger, shop payouts, the reserve and the Deed track |
+| **Clear Visa card** | Today's card: a Visa card that spends your cash first, then your credit line, cheapest tier first. Test network only. See [The Clear Visa card](../members/clear-visa-card.md) |
 | **CLRUSD** | Clear USD. Your savings. One CLRUSD for each USDC deposited, redeemable for USDC at any time. Pays no interest |
 | **Command Center** | The co-op's internal app, where staff, members and invited investors each sign in with their own access. See [The Command Center](../governance/command-center.md) |
 | **Co-op discount** | The share of a partner purchase the shop has agreed to give up. It goes to the co-op |
 | **Credit ledger, `ClearCredit`** | The on-chain record of what each member owes and what each shop is owed |
-| **Credit line** | Credit you can draw on with the card or at partner shops. Its size depends on what backs it |
+| **Credit line** | Credit you can draw on with the Clear Visa card or at partner shops. Its size depends on what backs it |
 | **Deed track** | The part of the protocol for real-world assets: T-Deeds, validators, subdivision and fractions |
 | **Default** | When a member has fallen far enough behind that the debt is treated as unpaid |
 | **Deployer key** | The wallet that put the contracts on the chain. It holds every role until they are handed over |

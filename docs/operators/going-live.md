@@ -75,7 +75,7 @@ needs.
 | Provider | What it does here | Sandbox or live chosen by |
 |---|---|---|
 | Bridge | KYC and KYB, virtual accounts, deposits, withdrawals, Send payouts | `BRIDGE_ENV` |
-| Lithic | Cards, card authorisations, ACH | `LITHIC_ENV` and `LITHIC_ALLOW_PRODUCTION` |
+| Lithic | The Clear Visa card, its authorisations, ACH | `LITHIC_ENV` and `LITHIC_ALLOW_PRODUCTION` |
 | Plaid | Bank linking and balances, member and merchant | `PLAID_ENV` |
 | Stripe | Membership billing, merchant Connect accounts, Terminal readers, Pay with Clear cards, Send payouts | The key's mode |
 | Coinbase Onramp | Buying and selling USDC by card | `RAMP_SANDBOX` |

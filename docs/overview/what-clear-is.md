@@ -32,8 +32,8 @@ the reserve. They are open source. If you want the detail, start with
 
 ## The products
 
-**Savings and send run on Base, the public network.** Credit lines, split plans, the card and
-payouts to shops run only on the test network for now, where nothing is real money. See
+**Savings and send run on Base, the public network.** Credit lines, split plans, the Clear Visa
+card and payouts to shops run only on the test network for now, where nothing is real money. See
 [Status, security and licensing](./status-and-security.md).
 
 ### Savings
@@ -81,7 +81,7 @@ claim is read by a person at the co-op.
 
 Members can spend on credit, in two separate ways:
 
-- **A credit line** that backs the Clear card and spending at partner shops. How much it allows
+- **A credit line** that backs the Clear Visa card and spending at partner shops. How much it allows
   depends on what backs it — your savings, or other things you have pledged.
 - **Split plans**, for paying a purchase back in 1, 2, 4, 6 or 12 instalments. These draw on a
   separate limit that starts small and grows as you pay on time.
@@ -90,10 +90,16 @@ Credit has a cost, called **carry**. If you pledge savings behind your credit li
 what you have drawn can be held until you repay it; the rest stays free. More in
 [How the money works](./how-the-money-works.md).
 
-### The Clear card
+### Cards
 
-A card for spending anywhere cards are taken. A swipe at a shop outside the Clear network is paid
-from the co-op's float, and recorded against your credit line once the payment clears.
+**The Clear Visa card** is for spending anywhere Visa is taken. A swipe at a shop outside the Clear
+network is paid from the co-op's float, and recorded against your credit line once the payment
+clears. It runs on the test network only.
+
+**The Clear card** is Clear's own wooden membership card, for paying at Clear shops without your
+phone. It is planned and not available yet.
+
+Both, side by side: [Your cards](../members/cards.md).
 
 ### Send
 

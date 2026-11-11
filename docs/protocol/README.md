@@ -15,6 +15,7 @@ How each part works:
 | [`savings.md`](./savings.md) | CLRUSD and its redemption lock, the `ESADepositVault`, gasless savings intents, link-based send (`ClaimEscrow`), the cross-chain pool |
 | [`credit.md`](./credit.md) | The ledger, the issuers — revolving tiers, term plans, offers — carry, collateral and the ceiling, default and liquidation, access |
 | [`settlement.md`](./settlement.md) | Merchant terms, how a positive balance becomes USDC, who fronts the cash when it is due, how it and its carry come back, the `LendingPool` |
+| [`visa-card-purchases.md`](./visa-card-purchases.md) | One Clear Visa card purchase end to end: the authorisation, `settleCardSpend` at clearing, borrowing from the `LendingPool`, repayment and carry, reversals and refunds |
 | [`reserve.md`](./reserve.md) | The `AssurancePool` — primary, buffer and excess, RTD, lost debt, lending as a last resort — and pricing |
 | [`bonds.md`](./bonds.md) | BurnerBonds, the discount curve, `BondVault` and its backstops, seniority, bonds as collateral |
 
