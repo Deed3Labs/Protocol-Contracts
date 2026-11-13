@@ -211,18 +211,50 @@
   },
   "DeedNFT": {
    "source": "contracts/core/DeedNFT.sol",
-   "sha256": "60022f9bb701b5c1da0e95aacc0df9a132cf8055e7122a8edcbaa61842d0fcb8",
+   "sha256": "a570f862e523aad79fdbd882135151cb799f95e11eb9d7b646e5e7ae1a495c1c",
    "immutables": [
     [
-     3421,
+     3440,
      32
     ],
     [
-     4491,
+     4514,
      32
     ],
     [
-     5064,
+     5087,
+     32
+    ],
+    [
+     5555,
+     32
+    ],
+    [
+     6522,
+     32
+    ],
+    [
+     6652,
+     32
+    ],
+    [
+     8570,
+     32
+    ],
+    [
+     12145,
+     32
+    ],
+    [
+     13685,
+     32
+    ],
+    [
+     13723,
+     32
+    ],
+    [
+     18828,
      32
     ]
    ]
@@ -265,18 +297,18 @@
   },
   "Fractionalize": {
    "source": "contracts/extensions/Fractionalize.sol",
-   "sha256": "601be1a7c86bc72deca0c742a2ac02704e28d81e0a774f633b76f7084d1d30c5",
+   "sha256": "ed08e5d5099306488293c1cf4df74202b24ab18066a5c6d4204640071240848e",
    "immutables": [
     [
-     4437,
+     4551,
      32
     ],
     [
-     5515,
+     5646,
      32
     ],
     [
-     8693,
+     8963,
      32
     ]
    ]
@@ -378,18 +410,18 @@
   },
   "MetadataRenderer": {
    "source": "contracts/core/MetadataRenderer.sol",
-   "sha256": "c27fe8818fd8f7d1a9477e7f605de72bbc2b8578d02b588ca46dacae3c8fa70e",
+   "sha256": "fbee9ce04a1ce76521b5c5ca8acd21040202dd8776df3ae1f10b0a387c09e630",
    "immutables": [
     [
-     9690,
+     10236,
      32
     ],
     [
-     9813,
+     10359,
      32
     ],
     [
-     11098,
+     11644,
      32
     ]
    ]
@@ -486,18 +518,18 @@
   },
   "Subdivide": {
    "source": "contracts/extensions/Subdivide.sol",
-   "sha256": "0c4bcabebcf586bfe2301875bf62dbf41376cc4a5cd04b2dfca30efac42197ed",
+   "sha256": "735faa0ea427b67a15e09a76b61e14afe8b5f6488dacd08c74457e925e6be89e",
    "immutables": [
     [
-     3888,
+     3870,
      32
     ],
     [
-     5104,
+     5086,
      32
     ],
     [
-     5373,
+     5355,
      32
     ]
    ]
@@ -535,36 +567,36 @@
   },
   "Validator": {
    "source": "contracts/core/Validator.sol",
-   "sha256": "7e8b4d160b4915401b9622b8a191c7653a90aec63d0507de477f32f6a756b18d",
+   "sha256": "926766402490932526187ae7a60e2e85ccd7f630859c74d790495f70fa01b650",
    "immutables": [
     [
-     6928,
+     7816,
      32
     ],
     [
-     7069,
+     7957,
      32
     ],
     [
-     8895,
+     9775,
      32
     ]
    ]
   },
   "ValidatorRegistry": {
    "source": "contracts/core/ValidatorRegistry.sol",
-   "sha256": "a0de86352926d0f4623e6dc9a4c5b99f9387d5bf2ba0e4bb40bb9e9273e35557",
+   "sha256": "af3ac54d22da365438a0cdae2e5e159b6a1624c423f49931585c6bf35d7fc9b5",
    "immutables": [
     [
-     4530,
+     4599,
      32
     ],
     [
-     4671,
+     4740,
      32
     ],
     [
-     6213,
+     6346,
      32
     ]
    ]
