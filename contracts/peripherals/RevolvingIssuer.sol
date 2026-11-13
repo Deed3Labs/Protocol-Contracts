@@ -69,6 +69,14 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         return (tier.kind, tier.index.ratePerCycle, tier.active);
     }
 
+    /// @notice a member's unsecured revolving principal, carry excluded: the tiers priced from
+    /// RateSchedule, which are the revolving part of their small loan under the CFL (DECISIONS #7).
+    function cflPrincipalOf(address member) external view returns (uint256 total) {
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tierProduct[i] != bytes32(0)) total += principalOnlyOf(member, i);
+        }
+    }
+
     /// @notice seconds in this network's credit cycle.
     /// @dev Derived, not stored. The clock already exists on the tiers -- every rate here is
     /// quoted per cycle and carry accrues against it -- so a second copy in storage would be a

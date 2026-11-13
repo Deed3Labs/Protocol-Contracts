@@ -130,6 +130,16 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         return _pendingPlanCarry(planId);
     }
 
+    /// @notice a member's term principal, carry excluded, as one part of their small loan under
+    /// the CFL (DECISIONS #7). Free plans count: they are principal the member owes all the same.
+    function cflPrincipalOf(address member) external view returns (uint256 total) {
+        uint256[] memory ids = openPlanIds[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (plans[ids[i]].closed) continue;
+            total += plans[ids[i]].principalOutstanding - carryOutstandingOf[ids[i]];
+        }
+    }
+
     /// @notice how a plan is priced: its state and product, merchant subsidy, and whether it is
     /// free.
     function pricingOf(uint256 planId) external view returns (PlanPricing memory) {

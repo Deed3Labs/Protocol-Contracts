@@ -24,6 +24,11 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 /// Band upper bounds are fixed when a product is created: a snapshot of band accumulators only
 /// means something if the bands it was taken against are the bands it is compared with. A new
 /// band structure is a new product id.
+/// @notice What an issuer reports as a member's principal under the state's small-loan law.
+interface ICflPrincipalSource {
+    function cflPrincipalOf(address member) external view returns (uint256);
+}
+
 contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     uint256 internal constant RAY = 1e27;
     uint256 internal constant BPS = 10_000;
@@ -79,7 +84,12 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     mapping(bytes32 => Band[]) private bandsOf;
     mapping(bytes32 => uint256[]) private bandAcc;
 
-    uint256[47] private __gap;
+    /// @dev DECISIONS #7: a member's credit across the issuers in `cflSources` is one loan for the
+    /// legal cap. Stored inverted so the default, before governance says otherwise, is ON.
+    bool public cflAggregationOff;
+    address[] private cflSources;
+
+    uint256[45] private __gap;
 
     error RateScheduleUnknownProduct(bytes32 stateCode, bytes32 productId);
     error RateScheduleBadBands();
@@ -87,6 +97,8 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
 
     event ProductSet(bytes32 indexed stateCode, bytes32 indexed productId, ProductParams params);
     event BandsSet(bytes32 indexed stateCode, bytes32 indexed productId, Band[] bands);
+    event CflAggregationSet(bool on);
+    event CflSourcesSet(address[] sources);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -208,6 +220,59 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
         if (principal == 0) return (0, 0, now_);
         listCarry = (principal * (now_.list - from.list)) / RAY;
         capCarry = _cap(stateCode, productId, principal, from, now_);
+    }
+
+    /// @notice turns CFL aggregation on or off (DECISIONS #7; default on, pending counsel).
+    function setCflAggregation(bool on) external onlyOwner {
+        cflAggregationOff = !on;
+        emit CflAggregationSet(on);
+    }
+
+    /// @notice the issuers whose principal is aggregated into one loan for the cap.
+    function setCflSources(address[] calldata sources) external onlyOwner {
+        cflSources = sources;
+        emit CflSourcesSet(sources);
+    }
+
+    function cflSourcesOf() external view returns (address[] memory) {
+        return cflSources;
+    }
+
+    /// @notice a member's principal across every aggregated issuer, or zero while aggregation is off.
+    function aggregatePrincipalOf(address member) public view returns (uint256 total) {
+        if (cflAggregationOff) return 0;
+        for (uint256 i = 0; i < cflSources.length; i++) {
+            total += ICflPrincipalSource(cflSources[i]).cflPrincipalOf(member);
+        }
+    }
+
+    /// @notice the cap on one of `member`'s positions of `principal` since `from`.
+    /// @dev The lower of the cap on the position alone and its pro-rata share of the cap on the
+    /// member's aggregate principal. Taking the lower keeps aggregation from ever raising a charge,
+    /// as it otherwise could when the aggregate crosses into the large-loan regime -- the
+    /// positions themselves are still small loans.
+    function capFor(address member, bytes32 stateCode, bytes32 productId, uint256 principal, Snapshot memory from)
+        public
+        view
+        returns (uint256 cap)
+    {
+        cap = capSince(stateCode, productId, principal, from);
+        uint256 aggregate = aggregatePrincipalOf(member);
+        if (aggregate > principal) {
+            uint256 share = (capSince(stateCode, productId, aggregate, from) * principal) / aggregate;
+            if (share < cap) cap = share;
+        }
+    }
+
+    /// @notice `chargesSince`, with the cap taken as `capFor` this member.
+    function chargesFor(address member, bytes32 stateCode, bytes32 productId, uint256 principal, Snapshot memory from)
+        external
+        view
+        returns (uint256 listCarry, uint256 capCarry)
+    {
+        if (principal == 0) return (0, 0);
+        listCarry = (principal * (snapshot(stateCode, productId).list - from.list)) / RAY;
+        capCarry = capFor(member, stateCode, productId, principal, from);
     }
 
     /// @notice the monthly rate the cap allows on `principal`, in bps: what a full month of the

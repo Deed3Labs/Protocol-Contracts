@@ -239,7 +239,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
             unsecuredCarry == 0 || ceilingProduct == bytes32(0)
                 || !rateSchedule.hasProduct(state, ceilingProduct)
         ) return carries;
-        uint256 cap = rateSchedule.capSince(state, ceilingProduct, unsecuredPrincipal, ceilingSnap[member]);
+        uint256 cap = rateSchedule.capFor(member, state, ceilingProduct, unsecuredPrincipal, ceilingSnap[member]);
         if (unsecuredCarry <= cap) return carries;
         // Over the member's ceiling: trim the excess from the dearest unsecured tier first.
         uint256 excess = unsecuredCarry - cap;

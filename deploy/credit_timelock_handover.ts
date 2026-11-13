@@ -7,11 +7,15 @@
  * of those: `assertNoCreditAdmin` checks that, and the handover throws if it fails.
  *
  * What moves:
- * - Ownable (`owner()` authorizes upgrades): RevolvingIssuer, TermIssuer, RateSchedule, and the
+ * - Ownable (`owner()` authorizes upgrades): RevolvingIssuer, TermIssuer, OffersIssuer, RateSchedule, and the
  *   AssurancePool/AssuranceOracle if given.
  * - DEFAULT_ADMIN_ROLE (authorizes upgrades and settings): NetworkRegistry, CollateralRegistry,
- *   LimitCalculator, Liquidator, MerchantRegistry, ESADepositVault, ClaimEscrow, and the
- *   AccessManager, whose admin is the ledger's admin and passes every credit role.
+ *   LimitCalculator, Liquidator, MerchantRegistry, ESADepositVault, ClaimEscrow, MembershipRegistry,
+ *   PayoutPool, LendingPool, BondVault,
+ *   and the AccessManager, whose admin is the ledger's admin (ClearCredit upgrades are `onlyAdmin`)
+ *   and passes every credit role.
+ * - The ProxyAdmin of the two transparent proxies (AccessManager, MembershipRegistry).
+ * - OffersIssuer's owner, when it is deployed.
  * - CLRUSD: DEFAULT_ADMIN_ROLE and UPGRADER_ROLE.
  *
  * What does not: operational roles (CREDIT_LINES/LIMITS, OPERATOR, FRAUD_ROLE, SECURITY_ROLE,
@@ -43,13 +47,28 @@ export interface CreditContracts {
   vault?: any;
   claimEscrow?: any;
   access?: any;
+  membershipRegistry?: any;
+  offers?: any;
+  payoutPool?: any;
+  lendingPool?: any;
+  bondVault?: any;
   clrusd?: any;
 }
 
-const OWNABLE: (keyof CreditContracts)[] = ["revolving", "term", "rateSchedule", "assurancePool", "assuranceOracle"];
+const OWNABLE: (keyof CreditContracts)[] = ["revolving", "term", "offers", "rateSchedule", "assurancePool", "assuranceOracle"];
 const ADMIN_ONLY: (keyof CreditContracts)[] = [
   "networkRegistry", "collateral", "limits", "liquidator", "merchantRegistry", "vault", "claimEscrow", "access",
+  "membershipRegistry", "payoutPool", "lendingPool", "bondVault",
 ];
+/** Deployed as transparent proxies (deploy/16, deploy/17): their upgrade power is a ProxyAdmin's owner. */
+const TRANSPARENT: (keyof CreditContracts)[] = ["access", "membershipRegistry"];
+
+async function proxyAdminOf(ct: any) {
+  const { ethers, upgrades } = require("hardhat");
+  const admin = await upgrades.erc1967.getAdminAddress(await ct.getAddress());
+  if (admin === ethers.ZeroAddress) return undefined;
+  return ethers.getContractAt(["function owner() view returns (address)", "function transferOwnership(address)"], admin);
+}
 
 async function send(txp: Promise<any>) {
   await (await txp).wait();
@@ -84,6 +103,13 @@ export async function handOverCredit(c: CreditContracts, deployerSigner: any, ti
     log(`${name}: admin -> timelock`);
   };
   for (const name of ADMIN_ONLY) if (c[name]) await move(name, c[name], [ZERO]);
+  for (const name of TRANSPARENT) {
+    const pa = c[name] && (await proxyAdminOf(c[name]));
+    if (pa && (await pa.owner()) === me) {
+      await send(pa.transferOwnership(timelock));
+      log(`${name}: ProxyAdmin -> timelock`);
+    }
+  }
   if (c.clrusd) await move("clrusd", c.clrusd, [await c.clrusd.UPGRADER_ROLE(), ZERO]);
 
   await assertNoCreditAdmin(c, me);
@@ -94,6 +120,10 @@ export async function assertNoCreditAdmin(c: CreditContracts, account: string) {
   const left: string[] = [];
   for (const name of OWNABLE) if (c[name] && (await c[name].owner()) === account) left.push(`${name}.owner`);
   for (const name of ADMIN_ONLY) if (c[name] && (await c[name].hasRole(ZERO, account))) left.push(`${name}.DEFAULT_ADMIN_ROLE`);
+  for (const name of TRANSPARENT) {
+    const pa = c[name] && (await proxyAdminOf(c[name]));
+    if (pa && (await pa.owner()) === account) left.push(`${name}.ProxyAdmin.owner`);
+  }
   if (c.clrusd) {
     if (await c.clrusd.hasRole(ZERO, account)) left.push("clrusd.DEFAULT_ADMIN_ROLE");
     if (await c.clrusd.hasRole(await c.clrusd.UPGRADER_ROLE(), account)) left.push("clrusd.UPGRADER_ROLE");
@@ -138,6 +168,11 @@ async function main() {
     vault: await at("ESADepositVault"),
     claimEscrow: await at("ClaimEscrow"),
     access: await at("AccessManager"),
+    membershipRegistry: await at("MembershipRegistry"),
+    offers: await at("OffersIssuer"),
+    payoutPool: await at("PayoutPool"),
+    lendingPool: await at("LendingPool"),
+    bondVault: await at("BondVault"),
     clrusd: await at("ClearUSDUpgradeable"),
   };
   await handOverCredit(c, deployer, timelockAddress!, console.log);

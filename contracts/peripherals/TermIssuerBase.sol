@@ -428,8 +428,8 @@ abstract contract TermIssuerBase is CreditIssuer {
         uint256 elapsed = block.timestamp - pricing.accruedAt;
         uint256 charge;
         if (pricing.priced) {
-            (uint256 list, uint256 cap,) =
-                rateSchedule.chargesSince(pricing.state, pricing.product, principal, planSnap[planId]);
+            (uint256 list, uint256 cap) =
+                rateSchedule.chargesFor(plan.member, pricing.state, pricing.product, principal, planSnap[planId]);
             charge = list < cap ? list : cap;
         } else {
             charge = (principal * plan.index.ratePerCycle * 12 * elapsed) / (BPS_ * 365 days);

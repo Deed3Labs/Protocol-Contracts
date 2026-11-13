@@ -46,6 +46,8 @@ describe("compliance deployment and credit timelock handover", function () {
     expect(await core.revolving.rateSchedule()).to.equal(await rates.getAddress());
     expect(await core.revolving.ceilingProduct()).to.equal(ethers.encodeBytes32String("REVOLVING"));
     expect(await core.term.rateSchedule()).to.equal(await rates.getAddress());
+    expect(await rates.cflSourcesOf()).to.deep.equal([await core.revolving.getAddress(), await core.term.getAddress()]);
+    expect(await rates.cflAggregationOff()).to.equal(false);
   });
 
   it("prices exactly the unsecured tiers from the schedule", async function () {
@@ -86,6 +88,9 @@ describe("compliance deployment and credit timelock handover", function () {
     expect(await rates.owner()).to.equal(t);
     expect(await core.revolving.owner()).to.equal(t);
     expect(await access.isAdmin(t)).to.equal(true);
+    // AccessManager is a transparent proxy: its upgrade power moved with the ProxyAdmin.
+    const pa = await ethers.getContractAt(["function owner() view returns (address)"], await upgrades.erc1967.getAdminAddress(await access.getAddress()));
+    expect(await pa.owner()).to.equal(t);
 
     // A rate change now takes a proposal and 7 days.
     const p = loadRateTable()[1];

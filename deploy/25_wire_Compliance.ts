@@ -8,7 +8,8 @@ import { saveDeployment, getDeployment } from "./helpers";
  *
  * - Deploys RateSchedule behind a UUPS proxy, owned by the deployer until the credit timelock
  *   handover (`credit_timelock_handover.ts`) moves it to the 7-day TimelockController.
- * - Creates the products in `deploy/config/rate-schedule.json` (every figure pending counsel).
+ * - Creates the products in `deploy/config/rate-schedule.json` (every figure pending counsel), and
+ *   names both issuers as the CFL aggregation sources (DECISIONS #7, on by default).
  * - Points the revolving issuer at it: the ceiling product, and one product per unsecured tier
  *   (set once: positions snapshot that product's accumulator).
  * - Points the term issuer at it. Until this runs, plans keep the rate the member signed and
@@ -105,6 +106,18 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     }
     await (await rates.setProduct(p.state, p.product, p.params, p.bands)).wait();
     log(`  product ${ethers.decodeBytes32String(p.state)}/${ethers.decodeBytes32String(p.product)} at ${p.params.listMonthlyBps} bps/month`);
+  }
+
+  // ---- CFL aggregation (DECISIONS #7): term plans and unsecured revolving are one loan ----
+  const sources = [await revolving.getAddress(), await term.getAddress()];
+  const current: string[] = [...(await rates.cflSourcesOf())];
+  if (current.length !== sources.length || current.some((a, i) => a !== sources[i])) {
+    if (ownsRates) {
+      await (await rates.setCflSources(sources)).wait();
+      log("  CFL aggregation sources -> RevolvingIssuer, TermIssuer (aggregation on by default)");
+    } else {
+      log("! CFL aggregation sources differ, and RateSchedule is owned by the timelock: propose it there.");
+    }
   }
 
   // ---- revolving: ceiling product and unsecured tier products ----

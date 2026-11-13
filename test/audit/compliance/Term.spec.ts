@@ -141,6 +141,43 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 100n, 0n], 0, CYCLE);
   });
 
+  it("DECISIONS #7: term plans and unsecured revolving principal are one loan for the cap, until governance turns it off", async function () {
+    const { term, revolving, ctx } = core;
+    const INCOME = 2;
+    await rates.setProduct(CA, P("INCOME"), params({ listMonthlyBps: 150 }), CA_BANDS);
+    await rates.setProduct(CA, P("REVOLVING"), params(), CA_BANDS);
+    await revolving.connect(ctx.admin).setPricing(await rates.getAddress(), P("REVOLVING"));
+    await revolving.connect(ctx.admin).setTierProduct(INCOME, P("INCOME"));
+    await rates.setCflSources([await revolving.getAddress(), await term.getAddress()]);
+    expect(await rates.cflAggregationOff()).to.equal(false); // on by default
+
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+    await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 1_000n * ONE_USDC);
+    await open(ctx.member, 940n * ONE_USDC, 4);
+    expect(await rates.aggregatePrincipalOf(ctx.member.address)).to.equal(1_940n * ONE_USDC);
+
+    const snap = await ethers.provider.send("evm_snapshot", []);
+    await advance(CYCLE);
+    await term.materialiseCarry(0);
+    await revolving.materialiseCarry(ctx.member.address);
+    // The cap on $1,940 is $33.275 a month. The plan's share (940/1,940) is $16.12, under its
+    // $18.80 list charge, so it is trimmed; the line's share ($17.15) is above its $15.00 list,
+    // so the line is charged in full.
+    const share = (33_275_000n * 940n) / 1_940n;
+    expect(await term.carryOutstandingOf(0)).to.be.closeTo(thirtyDays(share), 20_000n);
+    expect(await revolving.carryOf(ctx.member.address, INCOME)).to.be.closeTo(thirtyDays(15_000_000n), 5_000n);
+
+    // Off: each loan is capped alone, and the plan pays its list rate.
+    await ethers.provider.send("evm_revert", [snap]);
+    await expect(rates.setCflAggregation(false)).to.emit(rates, "CflAggregationSet").withArgs(false);
+    expect(await rates.aggregatePrincipalOf(ctx.member.address)).to.equal(0n);
+    await advance(CYCLE);
+    await term.materialiseCarry(0);
+    expect(await term.carryOutstandingOf(0)).to.be.closeTo(thirtyDays(18_800_000n), 20_000n);
+    // Only the governor (the credit timelock in production) can flip it.
+    await expect(rates.connect(ctx.member).setCflAggregation(true)).to.be.reverted;
+  });
+
   it("acceptance 10: a full refund after the merchant redeemed leaves it owing the payout; its next payout nets that first", async function () {
     const { term, pool, merchant, ctx, member2 } = core;
     await ctx.networkRegistry.attestStateCode(member2.address, CA);
