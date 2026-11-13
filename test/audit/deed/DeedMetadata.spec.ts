@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers, upgrades, network } from "hardhat";
-import { deployDeedTrack, mintValidatedLand, k, enc, dec, coder, Ctx, AGREEMENT_BASE, BASE_URI } from "./fixture";
+import { deployDeedTrack, mintValidatedLand, mintValidatedVehicle, k, enc, dec, coder, Ctx, AGREEMENT_BASE, BASE_URI } from "./fixture";
 
 /*
  * Deed-track audit regressions: metadata integrity and validator powers.
@@ -12,14 +12,16 @@ describe("AUDIT deed: metadata integrity", function () {
   beforeEach(async () => { ctx = await deployDeedTrack(); });
 
   // Report D-1 (spec label D-01)
+  // Since v5 a Land deed is a trust deed whose definition and agreement nobody edits (TrustV5 spec, item 3);
+  // the Phase 1 legacy rules are exercised on a Vehicle deed.
   it("D-1: holder can no longer rewrite or delete the legal traits of a VALIDATED deed", async () => {
     const { deed, alice } = ctx;
-    const id = await mintValidatedLand(ctx, alice);
+    const id = await mintValidatedVehicle(ctx, alice);
     expect((await deed.getValidationStatus(id))[0]).to.equal(true);
 
     for (const [name, val] of [
-      ["legalDescription", "LOT 99, a different parcel"],
-      ["parcelNumber", "9999-999-99"],
+      ["vin", "SOME-OTHER-VIN"],
+      ["make", "Other"],
       ["definition", "Anything at all"],
       ["operatingAgreement", "ipfs://my-own-agreement"],
       ["configuration", "anything"],
@@ -27,9 +29,9 @@ describe("AUDIT deed: metadata integrity", function () {
       await expect(deed.connect(alice).setTrait(id, ethers.toUtf8Bytes(name), ethers.toUtf8Bytes(val), 1))
         .to.be.revertedWithCustomError(deed, "ValidatedTraitLocked");
     }
-    await expect(deed.connect(alice).removeTrait(id, "legalDescription"))
+    await expect(deed.connect(alice).removeTrait(id, "vin"))
       .to.be.revertedWithCustomError(deed, "ValidatedTraitLocked");
-    expect(dec(await deed.getTraitValue(id, k("legalDescription")))).to.contain("LOT 12");
+    expect(dec(await deed.getTraitValue(id, k("vin")))).to.equal("1HGCM82633A004352");
     expect((await deed.getValidationStatus(id))[0]).to.equal(true);
 
     // Ordinary (non-required) traits remain the holder's
@@ -39,7 +41,7 @@ describe("AUDIT deed: metadata integrity", function () {
     await deed.connect(alice).updateMetadata(id, "", AGREEMENT_BASE, "Corrected definition", "");
     expect((await deed.getValidationStatus(id))[0]).to.equal(false);
     // Unvalidated: holder may edit again; the agreement only through updateMetadata (registered names only)
-    await deed.connect(alice).setTrait(id, ethers.toUtf8Bytes("legalDescription"), ethers.toUtf8Bytes("LOT 12 (fixed)"), 1);
+    await deed.connect(alice).setTrait(id, ethers.toUtf8Bytes("vin"), ethers.toUtf8Bytes("1HGCM82633A004353"), 1);
     await expect(deed.connect(alice).setTrait(id, ethers.toUtf8Bytes("operatingAgreement"), ethers.toUtf8Bytes("ipfs://my-own-agreement"), 1))
       .to.be.revertedWithCustomError(deed, "AgreementViaUpdateMetadata");
     await expect(deed.connect(alice).updateMetadata(id, "", "ipfs://my-own-agreement", "d", ""))
@@ -123,7 +125,7 @@ describe("AUDIT deed: metadata integrity", function () {
   // Report D-14 (spec label D-04)
   it("D-14: validateDeed accepts only an exact registered agreement or <registered base><tokenId>, and a removed name stops validating", async () => {
     const { deed, alice, deployer, validator } = ctx;
-    const id = await mintValidatedLand(ctx, alice);
+    const id = await mintValidatedVehicle(ctx, alice); // legacy agreement path (Land deeds are trust deeds since v5)
     // The deed's validator signer writes candidate agreements (the holder is locked out on a validated deed).
     const evil = "https://evil.example/forged-trust.pdf?x=" + AGREEMENT_BASE;
     await deed.connect(deployer).setTrait(id, ethers.toUtf8Bytes("operatingAgreement"), ethers.toUtf8Bytes(evil), 1);
@@ -154,7 +156,7 @@ describe("AUDIT deed: metadata integrity", function () {
   // Report D-6 (spec label D-05)
   it("D-6: trait names are JSON-escaped, so tokenURI cannot be spoofed as validated", async () => {
     const { deed, mallory, deployer } = ctx;
-    await deed.connect(deployer).mintAsset(mallory.address, 0, "ipfs://fb", "junk", "", ethers.ZeroAddress, ethers.ZeroAddress, 0);
+    await deed.connect(deployer).mintAsset(mallory.address, 1, "ipfs://fb", "junk", "", ethers.ZeroAddress, ethers.ZeroAddress, 0);
     const id = 1n;
     expect((await deed.getValidationStatus(id))[0]).to.equal(false);
 
@@ -201,7 +203,7 @@ describe("AUDIT deed: metadata integrity", function () {
   // Report D-15 (spec label D-07)
   it("D-15: holder updateMetadata keeps the recorded validator: royaltyInfo and later edits keep working", async () => {
     const { deed, alice, deployer } = ctx;
-    const id = await mintValidatedLand(ctx, alice);
+    const id = await mintValidatedVehicle(ctx, alice); // updateMetadata is the legacy path; trust deeds refuse it
     const v1 = await ctx.validator.getAddress();
     await deed.connect(alice).updateMetadata(id, "", AGREEMENT_BASE, "new def", "");
     expect(await deed.getValidationStatus(id)).to.deep.equal([false, v1]);
@@ -216,8 +218,8 @@ describe("AUDIT deed: metadata integrity", function () {
   // Report D-12 (spec label D-08)
   it("D-12: trait keys are per token: another holder's keys no longer raise this deed's burn cost", async () => {
     const { deed, alice, mallory, deployer } = ctx;
-    const victim = await mintValidatedLand(ctx, alice);
-    await deed.connect(deployer).mintAsset(mallory.address, 0, "", "m", "", ethers.ZeroAddress, ethers.ZeroAddress, 0);
+    const victim = await mintValidatedVehicle(ctx, alice);
+    await deed.connect(deployer).mintAsset(mallory.address, 1, "", "m", "", ethers.ZeroAddress, ethers.ZeroAddress, 0);
     const mid = 2n;
     const before = await deed.connect(alice).burnAsset.estimateGas(victim);
     for (let i = 0; i < 150; i++) {
@@ -226,11 +228,12 @@ describe("AUDIT deed: metadata integrity", function () {
     const after = await deed.connect(alice).burnAsset.estimateGas(victim);
     console.log(`      burnAsset gas: ${before} -> ${after} after another holder added 150 keys`);
     expect(after).to.equal(before);
-    expect((await deed.getTraitKeys(victim)).length).to.equal(12);
-    expect((await deed.getTraitKeys(mid)).length).to.equal(157);
+    // 6 base traits (no beneficiary since v5, item 5) + 4 vehicle traits; 6 + 150 junk keys
+    expect((await deed.getTraitKeys(victim)).length).to.equal(10);
+    expect((await deed.getTraitKeys(mid)).length).to.equal(156);
     // removing a key drops it from the token's set
     await deed.connect(mallory).removeTrait(mid, "junk0");
-    expect((await deed.getTraitKeys(mid)).length).to.equal(156);
+    expect((await deed.getTraitKeys(mid)).length).to.equal(155);
     // burning costs the same however many keys the token has (no key loop; IDs are never reused, D-8)
     await deed.connect(mallory).burnAsset(mid);
   });

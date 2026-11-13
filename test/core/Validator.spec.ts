@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import { deployDeedNFT } from "../helpers/deed";
 import { ethers } from "hardhat";
 import { Contract } from "ethers";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
@@ -53,7 +54,7 @@ describe("Validator Contract", function() {
     
     // Deploy DeedNFT with correct parameters
     const DeedNFT = await ethers.getContractFactory("DeedNFT");
-    deedNFT = await upgrades.deployProxy(DeedNFT, [
+    deedNFT = await deployDeedNFT([
       await validator.getAddress(),
       await validatorRegistry.getAddress()
     ]);
@@ -214,7 +215,7 @@ describe("Validator Contract", function() {
   describe("DeedNFT Management", function() {
     it("should allow admin to set DeedNFT address", async function() {
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
-      const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
+      const newDeedNFT = await deployDeedNFT([
         await validator.target,
         await validatorRegistry.getAddress()
       ]);
@@ -232,7 +233,7 @@ describe("Validator Contract", function() {
 
     it("should allow admin to add compatible DeedNFT", async function() {
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
-      const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
+      const newDeedNFT = await deployDeedNFT([
         await validator.target,
         await validatorRegistry.getAddress()
       ]);
@@ -244,7 +245,7 @@ describe("Validator Contract", function() {
 
     it("should allow admin to remove compatible DeedNFT", async function() {
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
-      const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
+      const newDeedNFT = await deployDeedNFT([
         await validator.target,
         await validatorRegistry.getAddress()
       ]);
@@ -706,7 +707,7 @@ describe("Validator Contract", function() {
     });
     it("should not allow setting primary DeedNFT to non-compatible address", async function() {
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
-      const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
+      const newDeedNFT = await deployDeedNFT([
         await validator.target,
         await validatorRegistry.getAddress()
       ]);
@@ -726,7 +727,7 @@ describe("Validator Contract", function() {
     it("should return correct compatibility for DeedNFT", async function() {
       expect(await validator.isCompatibleDeedNFT(await deedNFT.getAddress())).to.be.true;
       const DeedNFT = await ethers.getContractFactory("DeedNFT");
-      const newDeedNFT = await upgrades.deployProxy(DeedNFT, [
+      const newDeedNFT = await deployDeedNFT([
         await validator.target,
         await validatorRegistry.getAddress()
       ]);
