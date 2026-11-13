@@ -71,4 +71,9 @@ Draft PR #887 tracks Phase 2's contracts. These changes are needed for 2b:
   - ESADepositVault and ClaimEscrow pass OpenZeppelin's storage report against every implementation in `.openzeppelin/base.json` (the vault appends `s_lastDepositAt`; its gap goes from 34 to 33);
   - against `dev`, RevolvingIssuer, Liquidator, TermIssuer, CollateralRegistry, BondVault, LimitCalculator, NetworkRegistry and MerchantRegistry are append-only, each ending at the same slot;
   - PayoutPool renames slot 257 `nextUnpaid` to `legacyNext` (same meaning) and appends.
-- **Sizes and Slither:** SEE-CHECKS.
+- **Sizes:** SEE-SIZES.
+- **Slither** (Medium and High only, per contract, compared with `dev`). Nothing new in BondVault, BurnerBondDeposit, CollateralRegistry, ESADepositVault or TermIssuerExtension. The new entries:
+  - **`reentrancy-balance` (High) in `Liquidator.settleExcess` / `_redeemBond`: no live path, hardened.** It measures what `redeemEarly` delivered by reading the balance before and after. The callee is the governed bond collection, and USDC has no transfer hook. A re-entry lock now guards every Liquidator enforcement path (it packs into an existing slot).
+  - **`uninitialized-state` (High): false positives.** In RevolvingIssuer they are the Base/Extension split: `creditTerms`, `boostBaseCap`, `boostEarnedCap` and `cycleOf` are written in the extension. In PayoutPool, `windowQueue` is filled with `push` through a storage reference.
+  - **`reentrancy-no-eth` on `judgeCycle`: false positive.** Its external calls are a `staticcall` to the deposit source and `updateCreditLimit` on the ledger, which has no callback.
+  - **`incorrect-equality`, `uninitialized-local` and `unused-return`: intended.** These are zero checks, locals relying on the zero default, and tuple fields that aren't needed.
