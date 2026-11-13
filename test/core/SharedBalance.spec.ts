@@ -1,6 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -40,9 +41,14 @@ describe("a balance shared between issuers", function () {
     for (const who of [coop, merchant]) {
       await ctx.access.connect(ctx.operator).grantMember(who.address);
     }
-    // The member pays the merchant; Phase 1 only lets a draw pay a merchant or a named system
-    // address (audit C-1).
-    await ctx.stableCredit.setSystemRecipient(merchant.address, true);
+    // The member pays a registered merchant: Phase 1 only lets a draw or a plan pay an active
+    // merchant (audit C-1, H-4).
+    const MerchantRegistry = await ethers.getContractFactory("MerchantRegistry");
+    const merchants = await upgrades.deployProxy(MerchantRegistry, [ctx.admin.address, MONTH], { kind: "uups" });
+    await merchants.registerMerchant(merchant.address, MONTH, 1_000_000n * ONE_USDC, 250n);
+    await ctx.stableCredit.connect(ctx.admin).setMerchantRegistry(await merchants.getAddress());
+    await ctx.usdc.mint(merchant.address, 1_000_000n * ONE_USDC);
+    await ctx.usdc.connect(merchant).approve(await ctx.stableCredit.getAddress(), ethers.MaxUint256);
 
     // The plan's revolving tiers, cheapest first.
     for (const [kind, rate] of [
@@ -84,14 +90,11 @@ describe("a balance shared between issuers", function () {
   it("keeps the ledger and the issuers agreeing after an undirected payment", async function () {
     // The case that used to drift: a member with a term plan and no revolving balance receives
     // credit that names no plan. The ledger burns their balance either way.
-    await term
-      .connect(ctx.operator)
-      .openPlan(
-        ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC,
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC,
         0n, CYCLE, 12, MONTH
       );
 
-    await ctx.stableCredit.connect(merchant).transfer(ctx.member.address, 400n * ONE_USDC);
+    await ctx.stableCredit.connect(merchant).repayCreditBalance(ctx.member.address, 400n * ONE_USDC);
 
     const { ledger, held } = await reconcile();
     expect(ledger).to.equal(600n * ONE_USDC);
@@ -102,10 +105,7 @@ describe("a balance shared between issuers", function () {
   it("does not let two issuers each claim the same payment", async function () {
     // Both hold debt. A 400 payment must reduce 400 of debt in total, not 400 of each.
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 300n * ONE_USDC);
-    await term
-      .connect(ctx.operator)
-      .openPlan(
-        ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC,
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC,
         250n, CYCLE, 12, MONTH
       );
 
@@ -113,7 +113,7 @@ describe("a balance shared between issuers", function () {
     expect(before.ledger).to.equal(1_300n * ONE_USDC);
     expect(before.held).to.equal(before.ledger);
 
-    await ctx.stableCredit.connect(merchant).transfer(ctx.member.address, 400n * ONE_USDC);
+    await ctx.stableCredit.connect(merchant).repayCreditBalance(ctx.member.address, 400n * ONE_USDC);
 
     const after = await reconcile();
     about(after.ledger, 900n * ONE_USDC);
@@ -125,14 +125,11 @@ describe("a balance shared between issuers", function () {
     // different issuers. Ordering by issuer would clear the cheaper debt first, which is the
     // same money buying less relief.
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 300n * ONE_USDC);
-    await term
-      .connect(ctx.operator)
-      .openPlan(
-        ctx.member.address, merchant.address, 400n * ONE_USDC, 400n * ONE_USDC,
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 400n * ONE_USDC, 400n * ONE_USDC,
         250n, CYCLE, 12, MONTH
       );
 
-    await ctx.stableCredit.connect(merchant).transfer(ctx.member.address, 400n * ONE_USDC);
+    await ctx.stableCredit.connect(merchant).repayCreditBalance(ctx.member.address, 400n * ONE_USDC);
 
     // The advance is gone; the income tier is untouched.
     about(await term.totalPrincipalOf(ctx.member.address), 0n);
@@ -146,17 +143,14 @@ describe("a balance shared between issuers", function () {
       .setTierCapacity(ctx.member.address, 2, 300n * ONE_USDC);
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 800n * ONE_USDC);
 
-    await term
-      .connect(ctx.operator)
-      .openPlan(
-        ctx.member.address, merchant.address, 400n * ONE_USDC, 400n * ONE_USDC,
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 400n * ONE_USDC, 400n * ONE_USDC,
         250n, CYCLE, 12, MONTH
       );
 
     // 500 in the income tier at 150, 300 in Boost at 300, 400 in an advance at 250.
     expect(await revolving.principalOf(ctx.member.address, 2)).to.equal(300n * ONE_USDC);
 
-    await ctx.stableCredit.connect(merchant).transfer(ctx.member.address, 300n * ONE_USDC);
+    await ctx.stableCredit.connect(merchant).repayCreditBalance(ctx.member.address, 300n * ONE_USDC);
 
     // Boost cleared first; the advance and the income tier are untouched.
     about(await revolving.principalOf(ctx.member.address, 2), 0n);
@@ -169,16 +163,13 @@ describe("a balance shared between issuers", function () {
       .connect(ctx.operator)
       .setTierCapacity(ctx.member.address, 2, 300n * ONE_USDC);
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 800n * ONE_USDC);
-    await term
-      .connect(ctx.operator)
-      .openPlan(
-        ctx.member.address, merchant.address, 400n * ONE_USDC, 400n * ONE_USDC,
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 400n * ONE_USDC, 400n * ONE_USDC,
         250n, CYCLE, 12, MONTH
       );
 
     // 1,200 owed across three bands. Pay 800: Boost (300), then the advance (400), then 100 of
     // the income tier.
-    await ctx.stableCredit.connect(merchant).transfer(ctx.member.address, 800n * ONE_USDC);
+    await ctx.stableCredit.connect(merchant).repayCreditBalance(ctx.member.address, 800n * ONE_USDC);
 
     about(await revolving.principalOf(ctx.member.address, 2), 0n);
     about(await term.totalPrincipalOf(ctx.member.address), 0n);
@@ -192,16 +183,10 @@ describe("a balance shared between issuers", function () {
     // A directed payment records itself and the ledger stays quiet, so the revolving line does
     // not also take it.
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 300n * ONE_USDC);
-    const planId = await term
-      .connect(ctx.operator)
-      .openPlan.staticCall(
-        ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC,
+    const planId = await signedOpenPlanStatic(term, ctx.operator, ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC,
         0n, CYCLE, 12, MONTH
       );
-    await term
-      .connect(ctx.operator)
-      .openPlan(
-        ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC,
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC,
         250n, CYCLE, 12, MONTH
       );
 
@@ -221,14 +206,11 @@ describe("a balance shared between issuers", function () {
 
   it("reconciles when a payment clears everything", async function () {
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 300n * ONE_USDC);
-    await term
-      .connect(ctx.operator)
-      .openPlan(
-        ctx.member.address, merchant.address, 500n * ONE_USDC, 500n * ONE_USDC,
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 500n * ONE_USDC, 500n * ONE_USDC,
         0n, CYCLE, 12, MONTH
       );
 
-    await ctx.stableCredit.connect(merchant).transfer(ctx.member.address, 800n * ONE_USDC);
+    await ctx.stableCredit.connect(merchant).repayCreditBalance(ctx.member.address, 800n * ONE_USDC);
 
     const { ledger, held } = await reconcile();
     about(ledger, 0n);

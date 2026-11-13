@@ -93,7 +93,24 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @dev ref => amount repaid under the mandate. Once per ref, like every other card write.
     mapping(bytes32 => uint256) private autoRepayments;
 
-    uint256[35] private __gap;
+    /// @notice Today's budget for new revolving capacity, across every member (audit H-4).
+    DailyCap private capacityIncreaseCap;
+
+    /// @dev What the card issuer approved, recorded when it approved it (audit M-2).
+    struct CardAuthorization {
+        address member;
+        uint256 amount;
+    }
+    /// @dev ref => authorization. Settlement may not exceed it.
+    mapping(bytes32 => CardAuthorization) private cardAuthorizations;
+    /// @notice The most one card purchase may settle for. Zero means no cap has been set.
+    uint256 public cardTxCap;
+    /// @notice Today's budget for card settlements, across every member.
+    DailyCap private cardSpendCap;
+
+    /// @dev Eight slots from the gap: capacityIncreaseCap (3), cardAuthorizations, cardTxCap,
+    /// cardSpendCap (3).
+    uint256[27] private __gap;
 
     /* ========== ERRORS ========== */
 
@@ -118,6 +135,11 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @notice thrown when a transfer would mint more than the tiers can place.
     /// @dev Debt no tier holds accrues nothing and no default can reach it (audit C-1).
     error RevolvingIssuerDrawUnplaced(address member, uint256 unplaced);
+    error RevolvingIssuerCardNotAuthorized(bytes32 ref, address member);
+    error RevolvingIssuerCardExceedsAuthorization(bytes32 ref, uint256 amount, uint256 authorized);
+    error RevolvingIssuerCardTxCap(uint256 amount, uint256 cap);
+    error RevolvingIssuerCardAlreadyAuthorized(bytes32 ref);
+    error RevolvingIssuerMemberNotInGoodStanding(address member);
 
     /* ========== EVENTS ========== */
 
@@ -136,6 +158,8 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     event CardSpendRepaid(bytes32 indexed ref, address indexed member, uint256 amount);
     event AutoRepaySet(address indexed member, bool enabled);
     event AutoRepaid(bytes32 indexed ref, address indexed member, uint256 amount);
+    event CardAuthorized(bytes32 indexed ref, address indexed member, uint256 amount);
+    event CardCapsUpdated(uint256 txCap, uint256 dailyCap);
 
     /* ========== INITIALIZER ========== */
 
@@ -312,7 +336,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @param cycleLength_ seconds in a cycle. Must match the network's, and sets it when first.
     function addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength_)
         external
-        onlyOperator
+        onlyCreditRole(CREDIT_SETTINGS_ROLE)
         returns (uint256 tierId)
     {
         if (tiers.length > 0) {
@@ -340,7 +364,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @notice changes a tier's rate from now on.
     /// @dev Checkpoints the index, so the new rate never reaches carry already accrued at the old
     /// one. The ascending order still has to hold afterwards, in both directions.
-    function setTierRate(uint256 tierId, uint256 ratePerCycle) external onlyOperator {
+    function setTierRate(uint256 tierId, uint256 ratePerCycle) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         _requireTier(tierId);
         if (tierId > 0) {
             uint256 previous = tiers[tierId - 1].index.ratePerCycle;
@@ -359,7 +383,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @notice opens or closes a tier to new draws.
     /// @dev Closing does not call in what is drawn. Existing positions keep accruing and can be
     /// repaid; they simply cannot grow.
-    function setTierActive(uint256 tierId, bool active) external onlyOperator {
+    function setTierActive(uint256 tierId, bool active) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         _requireTier(tierId);
         tiers[tierId].active = active;
     }
@@ -367,7 +391,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @notice moves the co-op treasury, and with it the fallback for every tier that has not
     /// named someone else.
     /// @dev Cannot be cleared. There is no state in which carry has nowhere to go.
-    function setCarryTreasury(address treasury) external onlyOperator {
+    function setCarryTreasury(address treasury) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         if (treasury == address(0)) revert RevolvingIssuerNoCarryRecipient();
         carryTreasury = treasury;
         emit CarryTreasuryUpdated(treasury);
@@ -377,7 +401,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @dev Pass address(0) to return the tier to the treasury. That is how a funding source is
     /// retired: carry keeps accruing and keeps landing somewhere, and where it landed in the
     /// meantime can be settled by hand.
-    function setTierCarryRecipient(uint256 tierId, address recipient) external onlyOperator {
+    function setTierCarryRecipient(uint256 tierId, address recipient) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         _requireTier(tierId);
         tierCarryRecipient[tierId] = recipient;
         emit CarryRecipientUpdated(tierId, recipient);
@@ -399,12 +423,16 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @param capacity new ceiling contribution.
     function setTierCapacity(address member, uint256 tierId, uint256 capacity)
         public
-        onlyOperator
+        onlyCreditRole(CREDIT_LIMITS_ROLE)
     {
         _requireTier(tierId);
         uint256 drawn = drawnOf(member, tierId);
         if (capacity < drawn) {
             revert RevolvingIssuerCapacityBelowDrawn(tierId, capacity, drawn);
+        }
+        uint256 previous = tierCapacity[member][tierId];
+        if (capacity > previous) {
+            _consumeDailyCap(capacityIncreaseCap, "CAPACITY", capacity - previous);
         }
         tierCapacity[member][tierId] = capacity;
         emit TierCapacityUpdated(member, tierId, capacity);
@@ -421,13 +449,18 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         uint256[] calldata capacities,
         uint256 periodLength,
         uint256 graceLength
-    ) external onlyOperator notNull(member) notInActivePeriod(member) {
+    ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) notInActivePeriod(member) {
         uint256 total;
+        uint256 increase;
         for (uint256 i = 0; i < capacities.length && i < tiers.length; i++) {
+            uint256 previous = tierCapacity[member][i];
+            if (capacities[i] > previous) increase += capacities[i] - previous;
             tierCapacity[member][i] = capacities[i];
             total += capacities[i];
             emit TierCapacityUpdated(member, i, capacities[i]);
         }
+        // Opening a line is new credit like any other limit raised (audit H-4).
+        _consumeDailyCap(capacityIncreaseCap, "CAPACITY", increase);
         stableCredit.createCreditLine(member, total, 0);
         // Zero means "this network's cycle", which is what every caller should want and what
         // nothing previously supplied -- the period was whatever the caller happened to pass, so
@@ -453,13 +486,13 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     }
 
     /// @notice allows or revokes a key that records card purchases as settled.
-    function setCardSettler(address settler, bool allowed) external onlyOperator notNull(settler) {
+    function setCardSettler(address settler, bool allowed) external onlyCreditRole(CREDIT_SETTINGS_ROLE) notNull(settler) {
         isCardSettler[settler] = allowed;
         emit CardSettlerUpdated(settler, allowed);
     }
 
     /// @notice sets the account a settled card purchase's claim is minted to.
-    function setCardSettlementAccount(address account) external onlyOperator notNull(account) {
+    function setCardSettlementAccount(address account) external onlyCreditRole(CREDIT_SETTINGS_ROLE) notNull(account) {
         cardSettlementAccount = account;
         emit CardSettlementAccountUpdated(account);
     }
@@ -492,6 +525,26 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         // but must not let the same purchase be drawn again.
         if (cardSettlements[ref].member != address(0)) revert RevolvingIssuerCardAlreadySettled(ref);
 
+        /*
+         * Only what was approved, for whom it was approved (audit M-2). The authorization was
+         * recorded when the card network asked, while the member was in good standing; a purchase
+         * that clears after a freeze is still honoured, because it was approved before it. One in
+         * default is not: a default ends the line. A per-purchase and a per-day cap bound what the
+         * settler key can do even with authorizations it recorded itself (DFAL 10a: flagged for
+         * counsel in the Phase 1 report).
+         */
+        CardAuthorization memory authorization = cardAuthorizations[ref];
+        if (authorization.member != member) revert RevolvingIssuerCardNotAuthorized(ref, member);
+        if (amount > authorization.amount) {
+            revert RevolvingIssuerCardExceedsAuthorization(ref, amount, authorization.amount);
+        }
+        if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
+        if (inDefault(member) || hasDefaulted(member)) {
+            revert RevolvingIssuerMemberNotInGoodStanding(member);
+        }
+        _consumeDailyCap(cardSpendCap, "CARD", amount);
+        delete cardAuthorizations[ref];
+
         // Carry accrued since the last touch is part of what is owed; bring it on before measuring.
         _materialiseCarry(member);
 
@@ -507,6 +560,56 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
             member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
         );
         emit CardSpendSettled(ref, member, amount);
+    }
+
+    /// @notice records what the card issuer approved, at the moment it approved it.
+    /// @dev Settlement may later draw up to this and no more (audit M-2). Refused for a member who
+    /// is frozen, in default or has defaulted, or for more than their line could hold right now.
+    /// @param ref the card issuer's transaction reference, hashed.
+    /// @param member address whose line the purchase will draw on.
+    /// @param amount the approved amount, in ledger units.
+    function authorizeCardSpend(bytes32 ref, address member, uint256 amount)
+        external
+        notNull(member)
+    {
+        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
+        if (amount == 0) revert RevolvingIssuerCardAmountZero();
+        if (cardAuthorizations[ref].member != address(0) || cardSettlements[ref].member != address(0)) {
+            revert RevolvingIssuerCardAlreadyAuthorized(ref);
+        }
+        if (isFrozen(member) || inDefault(member) || hasDefaulted(member)) {
+            revert RevolvingIssuerMemberNotInGoodStanding(member);
+        }
+        if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
+        uint256 headroom;
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tiers[i].active) headroom += headroomOf(member, i);
+        }
+        if (headroom < amount) revert RevolvingIssuerCardHeadroom(member, amount, headroom);
+        cardAuthorizations[ref] = CardAuthorization({member: member, amount: amount});
+        emit CardAuthorized(ref, member, amount);
+    }
+
+    /// @notice what an authorization recorded for a ref still allows.
+    function cardAuthorizationOf(bytes32 ref) external view returns (address member, uint256 amount) {
+        CardAuthorization memory authorization = cardAuthorizations[ref];
+        return (authorization.member, authorization.amount);
+    }
+
+    /// @notice caps on card settlement: per purchase and per day, across every member.
+    function setCardCaps(uint256 txCap, uint256 dailyCap)
+        external
+        onlyCreditRole(CREDIT_SETTINGS_ROLE)
+    {
+        cardTxCap = txCap;
+        cardSpendCap.cap = dailyCap;
+        emit CardCapsUpdated(txCap, dailyCap);
+    }
+
+    /// @notice caps how much new revolving capacity may be granted in a day, across every member.
+    function setDailyCapacityCap(uint256 cap) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
+        capacityIncreaseCap.cap = cap;
+        emit DailyCapUpdated("CAPACITY", cap);
     }
 
     /// @notice gives back a settled card purchase, in whole or in part: a refund after clearing.
@@ -821,7 +924,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     }
 
     /// @notice sets the contract reporting what a member's collateral does not cover.
-    function setExposureSource(address _exposureSource) external onlyOperator {
+    function setExposureSource(address _exposureSource) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         exposureSource = IExposureSource(_exposureSource);
     }
 

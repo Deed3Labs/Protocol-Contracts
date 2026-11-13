@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -52,6 +53,8 @@ describe("a purchase, from the shop to the money", function () {
 
     const MerchantRegistry = await ethers.getContractFactory("MerchantRegistry");
     registry = await upgrades.deployProxy(MerchantRegistry, [ctx.admin.address, NET_30], { kind: "uups" });
+    // As deploy/22 wires it: the ledger knows who the merchants are (audit C-1, H-4).
+    await ctx.stableCredit.connect(ctx.admin).setMerchantRegistry(await registry.getAddress());
 
     const PayoutPool = await ethers.getContractFactory("PayoutPool");
     pool = await upgrades.deployProxy(
@@ -96,9 +99,7 @@ describe("a purchase, from the shop to the money", function () {
   /** A $100 purchase at the shop, 2.5% to the co-op, split over four cycles. */
   async function buy(purchase = 100n * ONE_USDC) {
     const payout = (purchase * 975n) / 1000n;
-    await term
-      .connect(ctx.operator)
-      .openPlan(ctx.member.address, merchant.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
     return { purchase, payout, discount: purchase - payout };
   }
 
@@ -650,9 +651,7 @@ describe("a purchase, from the shop to the money", function () {
       /** A sale at the other merchant's counter, so there is a second claim to queue. */
       async function saleAtOther(purchase = 100n * ONE_USDC) {
         const payout = (purchase * 975n) / 1000n;
-        await term
-          .connect(ctx.operator)
-          .openPlan(ctx.member.address, other.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
+        await signedOpenPlan(term, ctx.operator, ctx.member.address, other.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
         return payout;
       }
 
@@ -784,9 +783,7 @@ describe("a purchase, from the shop to the money", function () {
     /** A purchase at the newcomer's counter, so they have a balance to try to redeem. */
     async function buyFrom(who: any, purchase = 100n * ONE_USDC) {
       const payout = (purchase * 975n) / 1000n;
-      await term
-        .connect(ctx.operator)
-        .openPlan(ctx.member.address, who.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
+      await signedOpenPlan(term, ctx.operator, ctx.member.address, who.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
       return payout;
     }
 

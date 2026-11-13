@@ -5,6 +5,7 @@ import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
 import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @dev The parts of the revolving line a mandated collection reads.
 interface IRevolvingMandate {
@@ -125,7 +126,15 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// Payments clear it before principal. Appended after `refundedOf`.
     mapping(uint256 => uint256) public carryOutstandingOf;
 
-    uint256[33] private __gap;
+    /// @notice Today's budget for raising term limits, across every member (audit H-4).
+    DailyCap private limitIncreaseCap;
+    /// @notice Today's budget for new plans, across every member (audit H-4).
+    DailyCap private planTotalCap;
+    /// @notice The next nonce a member's signature over plan terms must carry.
+    mapping(address => uint256) public planNonces;
+
+    /// @dev Seven slots from the gap: limitIncreaseCap (3), planTotalCap (3), planNonces.
+    uint256[26] private __gap;
 
     /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
     uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
@@ -157,6 +166,11 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     error TermIssuerNotCollector(address caller);
     error TermIssuerMandateOff(address member);
     error TermIssuerCollectionUsed(bytes32 ref);
+    /// @notice thrown when a plan's merchant is not a registered, active merchant (audit H-4).
+    error TermIssuerMerchantNotActive(address merchant);
+    /// @notice thrown when the member did not sign these plan terms (audit H-4).
+    error TermIssuerBadSignature(address member);
+    error TermIssuerSignatureExpired(uint256 deadline);
 
     /* ========== EVENTS ========== */
 
@@ -182,6 +196,8 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     event MandateSourceUpdated(address source);
     event CollectedForMember(bytes32 indexed ref, address indexed member, uint256 amount);
     event ResidualCarryPaid(address indexed member, address indexed payer, uint256 amount);
+    /// @notice the terms the member signed for a plan, and the disclosure they were shown.
+    event PlanTermsSigned(uint256 indexed planId, address indexed member, bytes32 disclosureHash, uint256 nonce);
 
     /// @notice The splits a member may choose: pay in one cycle, or spread over 2, 4, 6 or 12.
     /// @dev A fixed set rather than any number. The split is a product choice the member makes
@@ -477,9 +493,15 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// @notice sets a member's ceiling for term plans.
     /// @dev Underwritten off-chain against attested income and entered here as an attestation,
     /// not as raw data. Separate from the revolving tiers, which are backed by pledged collateral.
-    function setTermLimit(address member, uint256 limit) external onlyOperator notNull(member) {
+    function setTermLimit(address member, uint256 limit)
+        external
+        onlyCreditRole(CREDIT_LIMITS_ROLE)
+        notNull(member)
+    {
         // A default is not undone by writing a new number over it; reinstatement is its own step.
         if (termSuspended[member] && limit > 0) revert TermIssuerSuspended(member);
+        uint256 previous = termLimitOf[member];
+        if (limit > previous) _consumeDailyCap(limitIncreaseCap, "TERM_LIMIT", limit - previous);
         termLimitOf[member] = limit;
         emit TermLimitUpdated(member, limit);
         // The first allocation is what enrols the member with this issuer; after that the
@@ -515,7 +537,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// @return refunded principal actually unwound.
     function closePlanForRefund(uint256 planId, uint256 amount, address merchant, uint256 payout)
         external
-        onlyOperator
+        onlyCreditRole(CREDIT_LINES_ROLE)
         returns (uint256 refunded)
     {
         _requirePlan(planId);
@@ -648,7 +670,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// @notice where the co-op's share of a purchase is minted.
     /// @dev Name this before moving `carryTreasury`, never after: between the two the fee would be
     /// minted wherever carry had gone.
-    function setFeeRecipient(address recipient) external onlyOperator {
+    function setFeeRecipient(address recipient) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         if (recipient == address(0)) revert TermIssuerNoCarryRecipient();
         feeRecipient = recipient;
         emit FeeRecipientUpdated(recipient);
@@ -660,38 +682,102 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     }
 
     /// @notice moves the co-op treasury.
-    function setCarryTreasury(address treasury) external onlyOperator {
+    function setCarryTreasury(address treasury) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         if (treasury == address(0)) revert TermIssuerNoCarryRecipient();
         carryTreasury = treasury;
         emit CarryTreasuryUpdated(treasury);
     }
 
-    /// @notice opens a term plan against a partner purchase.
+    /// @notice The terms a member signs for a plan.
+    /// @dev Everything that decides what they owe and to whom, plus the hash of the disclosure
+    /// they were shown, so the signature is over what they agreed to rather than over whatever an
+    /// operator key later submits (audit H-4).
+    struct PlanTerms {
+        address member;
+        address merchant;
+        uint256 purchase;
+        uint256 payout;
+        uint256 ratePerCycle;
+        uint64 cycleLength;
+        uint32 installments;
+        uint64 installmentLength;
+        bytes32 disclosureHash;
+        uint256 deadline;
+    }
+
+    bytes32 public constant PLAN_TERMS_TYPEHASH = keccak256(
+        "PlanTerms(address member,address merchant,uint256 purchase,uint256 payout,uint256 ratePerCycle,uint64 cycleLength,uint32 installments,uint64 installmentLength,bytes32 disclosureHash,uint256 nonce,uint256 deadline)"
+    );
+
+    /// @notice the EIP-712 domain plan signatures are made in.
+    /// @dev Computed rather than stored: EIP712Upgradeable would add storage ahead of this
+    /// contract's own, which an upgrade may not do.
+    function domainSeparator() public view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256(bytes("Clear TermIssuer")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(this)
+            )
+        );
+    }
+
+    /// @notice the digest a member signs for these terms, at their current nonce.
+    function planTermsDigest(PlanTerms calldata terms) public view returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                PLAN_TERMS_TYPEHASH,
+                terms.member,
+                terms.merchant,
+                terms.purchase,
+                terms.payout,
+                terms.ratePerCycle,
+                terms.cycleLength,
+                terms.installments,
+                terms.installmentLength,
+                terms.disclosureHash,
+                planNonces[terms.member],
+                terms.deadline
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+    }
+
+    /// @notice opens a term plan against a partner purchase, on terms the member signed.
     /// @dev The purchase is a three-party mint that nets to zero: the member is debited, the
     /// merchant is credited the payout, and the co-op is credited the discount. StableCredit
     /// asserts the netting.
-    /// @param member address taking on the plan.
-    /// @param merchant address receiving the payout.
-    /// @param purchase amount the member is debited.
-    /// @param payout amount the merchant is credited.
-    /// @param ratePerCycle carry rate per cycle, in basis points.
-    /// @param cycleLength seconds in a cycle.
-    /// @param installments number of scheduled installments.
-    /// @param installmentLength seconds between installments.
+    ///
+    /// The operator submits; the member decides (audit H-4). Without the member's signature an
+    /// operator key could open a plan for anyone, naming itself the merchant and the payout the
+    /// whole purchase. EIP-1271 signatures are accepted, so a smart wallet can sign. The merchant
+    /// must be registered and active, and every plan counts against today's cap.
+    /// @param terms the plan terms, as the member signed them.
+    /// @param signature the member's EIP-712 signature over `terms` at their current nonce.
     /// @return planId the new plan's id.
-    function openPlan(
-        address member,
-        address merchant,
-        uint256 purchase,
-        uint256 payout,
-        uint256 ratePerCycle,
-        uint64 cycleLength,
-        uint32 installments,
-        uint64 installmentLength
-    ) external onlyOperator notNull(member) returns (uint256 planId) {
-        if (installmentLength == 0 || purchase == 0) revert TermIssuerInvalidSchedule();
-        if (!isOfferedSplit(installments)) revert TermIssuerSplitNotOffered(installments);
-        if (payout > purchase) revert TermIssuerInvalidSchedule();
+    function openPlan(PlanTerms calldata terms, bytes calldata signature)
+        external
+        onlyCreditRole(CREDIT_LINES_ROLE)
+        notNull(terms.member)
+        returns (uint256 planId)
+    {
+        address member = terms.member;
+        uint256 purchase = terms.purchase;
+        if (block.timestamp > terms.deadline) revert TermIssuerSignatureExpired(terms.deadline);
+        if (!SignatureChecker.isValidSignatureNow(member, planTermsDigest(terms), signature)) {
+            revert TermIssuerBadSignature(member);
+        }
+        uint256 nonce = planNonces[member]++;
+        if (!stableCredit.isActiveMerchant(terms.merchant)) {
+            revert TermIssuerMerchantNotActive(terms.merchant);
+        }
+        if (terms.installmentLength == 0 || purchase == 0) revert TermIssuerInvalidSchedule();
+        if (!isOfferedSplit(terms.installments)) revert TermIssuerSplitNotOffered(terms.installments);
+        if (terms.payout > purchase) revert TermIssuerInvalidSchedule();
         // Behind on one plan freezes new ones: term credit, not the card, and only until caught up.
         if (termSuspended[member]) revert TermIssuerSuspended(member);
         if (totalArrearsOf(member) > 0) revert TermIssuerBehindSchedule(member);
@@ -700,6 +786,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         if (wouldOwe > termLimitOf[member]) {
             revert TermIssuerExceedsTermLimit(member, wouldOwe, termLimitOf[member]);
         }
+        _consumeDailyCap(planTotalCap, "PLANS", purchase);
 
         planId = plans.length;
         plans.push();
@@ -708,20 +795,34 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         plan.principal = purchase;
         plan.principalOutstanding = purchase;
         plan.openedAt = uint64(block.timestamp);
-        plan.installments = installments;
-        plan.installmentLength = installmentLength;
+        plan.installments = terms.installments;
+        plan.installmentLength = terms.installmentLength;
         plan.scheduleStart = uint64(block.timestamp);
         plan.scheduleBase = purchase;
         plan.scheduleFloor = 0;
-        plan.index.init(ratePerCycle, cycleLength, uint64(block.timestamp));
+        plan.index.init(terms.ratePerCycle, terms.cycleLength, uint64(block.timestamp));
         plan.normalized = CarryIndex.normalizeUp(purchase, CarryIndex.RAY);
         _fixSchedule(plan);
         memberPlans[member].push(planId);
 
         stableCredit.originatePurchase(
-            member, purchase, merchant, payout, _feeRecipient(), purchase - payout
+            member, purchase, terms.merchant, terms.payout, _feeRecipient(), purchase - terms.payout
         );
-        emit PlanOpened(planId, member, purchase, ratePerCycle, installments);
+        emit PlanOpened(planId, member, purchase, terms.ratePerCycle, terms.installments);
+        emit PlanTermsSigned(planId, member, terms.disclosureHash, nonce);
+    }
+
+    /// @notice caps on new term credit per day, across every member.
+    /// @param limitCap most that term limits may be raised by in a day.
+    /// @param planCap most that new plans may total in a day.
+    function setDailyCaps(uint256 limitCap, uint256 planCap)
+        external
+        onlyCreditRole(CREDIT_SETTINGS_ROLE)
+    {
+        limitIncreaseCap.cap = limitCap;
+        planTotalCap.cap = planCap;
+        emit DailyCapUpdated("TERM_LIMIT", limitCap);
+        emit DailyCapUpdated("PLANS", planCap);
     }
 
     /// @notice re-splits what is left of a plan over a newly chosen number of cycles.
@@ -743,7 +844,10 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         _requirePlan(planId);
         Plan storage plan = plans[planId];
         if (plan.closed) revert TermIssuerPlanClosed(planId);
-        if (msg.sender != plan.member && !stableCredit.access().isOperator(msg.sender)) {
+        if (
+            msg.sender != plan.member
+                && !stableCredit.access().hasCreditRole(CREDIT_LINES_ROLE, msg.sender)
+        ) {
             revert TermIssuerNotPlanHolder(msg.sender);
         }
         if (!isOfferedSplit(installments)) revert TermIssuerSplitNotOffered(installments);
@@ -924,13 +1028,15 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     function reinstate(address member) external notNull(member) {
         if (!termSuspended[member]) revert TermIssuerNotReinstatable(member);
         bool repaid = recoveredOf[member] >= writtenOffOf[member];
-        if (!repaid && !stableCredit.access().isOperator(msg.sender)) revert TermIssuerNotReinstatable(member);
+        if (!repaid && !stableCredit.access().hasCreditRole(CREDIT_LIMITS_ROLE, msg.sender)) {
+            revert TermIssuerNotReinstatable(member);
+        }
         termSuspended[member] = false;
         emit TermReinstated(member);
     }
 
     /// @notice names the revolving line whose mandate and settlers a mandated collection honours.
-    function setMandateSource(address source) external onlyOperator {
+    function setMandateSource(address source) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         mandateSource = source;
         emit MandateSourceUpdated(source);
     }

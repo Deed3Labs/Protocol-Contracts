@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
 
 /*
  * Audit proofs of concept, flipped into regression tests once each finding was fixed. A test
@@ -85,8 +86,7 @@ describe("AUDIT PoC", function () {
     expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(0n);
 
     // The scheduled path still works, and what it creates can default.
-    await term.connect(ctx.operator).openPlan(
-      m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
+    await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
     await advance(3 * CYCLE + 1);
     await expect(term.declareDefault(m.address)).to.emit(term, "TermDefaulted");
   });
@@ -132,8 +132,7 @@ describe("AUDIT PoC", function () {
   it("H-1 (fixed): a deactivated merchant cannot move its balance to another wallet, merchant or not", async function () {
     await wireLedgerToRegistry();
     await term.connect(ctx.operator).setTermLimit(ctx.member.address, 1_000n * ONE_USDC);
-    await term.connect(ctx.operator).openPlan(
-      ctx.member.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
     await registry.setActive(merchant.address, false);
     await ctx.stableCredit.connect(merchant).approve(await pool.getAddress(), ethers.MaxUint256);
     await expect(pool.connect(merchant).redeem(1n)).to.be.revertedWithCustomError(pool, "PayoutPoolMerchantInactive");

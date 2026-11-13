@@ -1,6 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -12,6 +13,7 @@ describe("TermIssuer", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
   let issuer: any;
   let coop: any, merchant: any, payer: any;
+  let merchants: any;
 
   beforeEach(async function () {
     ctx = await deployPhase0Network();
@@ -38,6 +40,12 @@ describe("TermIssuer", function () {
       .connect(ctx.operator)
       .initializeCreditLine(ctx.member.address, 0, 0, ONE_YEAR, MONTH);
 
+    // Plans pay registered, active merchants only (audit H-4), so the ledger knows the registry.
+    const MerchantRegistry = await ethers.getContractFactory("MerchantRegistry");
+    merchants = await upgrades.deployProxy(MerchantRegistry, [ctx.admin.address, MONTH], { kind: "uups" });
+    await merchants.registerMerchant(merchant.address, MONTH, 1_000_000n * ONE_USDC, 250n);
+    await ctx.stableCredit.connect(ctx.admin).setMerchantRegistry(await merchants.getAddress());
+
     // Fund the payer so installments can actually be settled in reserve tokens.
     await ctx.usdc.mint(payer.address, 100_000n * ONE_USDC);
     await ctx.usdc
@@ -45,16 +53,25 @@ describe("TermIssuer", function () {
       .approve(await ctx.stableCredit.getAddress(), 100_000n * ONE_USDC);
   });
 
+  /// The merchant draws its payout down. In Phase 1 the only way a merchant's balance leaves it is
+  /// redemption at the payout pool (audit H-1), so that is what this does.
+  async function merchantWithdraws(amount: bigint) {
+    const PayoutPool = await ethers.getContractFactory("PayoutPool");
+    const pool = await upgrades.deployProxy(PayoutPool, [
+      ctx.admin.address, await ctx.stableCredit.getAddress(), await ctx.usdc.getAddress(),
+      await merchants.getAddress(), coop.address], { kind: "uups" });
+    await ctx.stableCredit.connect(ctx.admin).setPayoutPool(await pool.getAddress());
+    await ctx.stableCredit.connect(merchant).approve(await pool.getAddress(), amount);
+    await pool.connect(merchant).redeem(amount);
+  }
+
   async function setLimit(amount: bigint) {
     await issuer.connect(ctx.operator).setTermLimit(ctx.member.address, amount);
   }
 
   /// A 12-month plan at 150 bps a cycle.
   async function openPlan(purchase: bigint, payout: bigint, rate = 150n, installments = 12) {
-    return issuer
-      .connect(ctx.operator)
-      .openPlan(
-        ctx.member.address, merchant.address, purchase, payout, rate, CYCLE, installments, MONTH
+    return signedOpenPlan(issuer, ctx.operator, ctx.member.address, merchant.address, purchase, payout, rate, CYCLE, installments, MONTH
       );
   }
 
@@ -151,9 +168,7 @@ describe("TermIssuer", function () {
       await setLimit(4_000n * ONE_USDC);
       // One installment a year, so the first plan is still on time when the second opens -- a
       // member behind on a plan cannot open another.
-      await issuer
-        .connect(ctx.operator)
-        .openPlan(ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC, 150n, CYCLE, 1, 12 * CYCLE);
+      await signedOpenPlan(issuer, ctx.operator, ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC, 150n, CYCLE, 1, 12 * CYCLE);
       await advance(6 * CYCLE);
       await openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC);
       await advance(6 * CYCLE);
@@ -601,7 +616,7 @@ describe("TermIssuer", function () {
 
     it("moves the debt to the merchant when they have already drawn it down", async function () {
       // Spend the payout, the way a withdrawal would.
-      await ctx.stableCredit.connect(merchant).transfer(payer.address, PAYOUT);
+      await merchantWithdraws(PAYOUT);
       expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
 
       await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT);
@@ -613,7 +628,7 @@ describe("TermIssuer", function () {
     });
 
     it("says so on chain when a merchant is left carrying it", async function () {
-      await ctx.stableCredit.connect(merchant).transfer(payer.address, PAYOUT);
+      await merchantWithdraws(PAYOUT);
       await expect(
         issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT)
       )
@@ -622,7 +637,7 @@ describe("TermIssuer", function () {
     });
 
     it("takes back only what is left when the merchant spent part of it", async function () {
-      await ctx.stableCredit.connect(merchant).transfer(payer.address, 400n * ONE_USDC);
+      await merchantWithdraws(400n * ONE_USDC);
 
       await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT);
 

@@ -65,6 +65,8 @@ describe("the asset-backed tier", function () {
       { kind: "uups" }
     );
     await ctx.access.grantOperator(await limits.getAddress());
+    // It sets tier capacity, which is the limits role (audit H-4).
+    await ctx.access.grantRole(ethers.id("CREDIT_LIMITS_ROLE"), await limits.getAddress());
     await registry.grantRole(await registry.OPERATOR_ROLE(), await limits.getAddress());
     await ctx.assurancePool.connect(ctx.admin).setExposureSource(await registry.getAddress());
 

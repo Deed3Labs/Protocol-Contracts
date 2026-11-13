@@ -20,6 +20,28 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     error CreditIssuerPeriodMayOnlyExtend(address member);
     /// @notice thrown when a setter is used on a member who has no period to change.
     error CreditIssuerNoPeriod(address member);
+    /// @notice thrown when a caller lacks the credit role a function needs.
+    error CreditIssuerMissingRole(bytes32 role, address caller);
+    /// @notice thrown when today's cap on new credit would be exceeded.
+    /// @dev Bounds what a leaked key can do in a day (audit H-4).
+    error CreditIssuerDailyCapExceeded(bytes32 cap, uint256 requested, uint256 remaining);
+
+    event DailyCapUpdated(bytes32 indexed cap, uint256 amount);
+
+    bytes32 internal constant CREDIT_LINES_ROLE = keccak256("CREDIT_LINES_ROLE");
+    bytes32 internal constant CREDIT_LIMITS_ROLE = keccak256("CREDIT_LIMITS_ROLE");
+    bytes32 internal constant CREDIT_SETTINGS_ROLE = keccak256("CREDIT_SETTINGS_ROLE");
+
+    /// @notice A daily budget for some kind of new credit.
+    /// @dev Held by the issuers that use it, not here: this base contract has no storage gap, so
+    /// anything added to it would shift every child's layout.
+    struct DailyCap {
+        /// @dev Most that may be granted in one UTC day. Zero means no cap has been set.
+        uint256 cap;
+        /// @dev Day number (timestamp / 1 day) `used` was counted for.
+        uint64 day;
+        uint256 used;
+    }
 
     /* ========== STATE VARIABLES ========== */
 
@@ -370,7 +392,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
         uint256 initialBalance,
         uint256 periodLength,
         uint256 graceLength
-    ) external virtual onlyOperator notNull(member) notInActivePeriod(member) {
+    ) external virtual onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) notInActivePeriod(member) {
         stableCredit.createCreditLine(member, limit, initialBalance);
         _updateCreditPeriod(member, block.timestamp + periodLength, graceLength);
     }
@@ -384,7 +406,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     function updateCreditPeriod(address member, uint256 periodExpiration, uint256 graceLength)
         public
         virtual
-        onlyOperator
+        onlyCreditRole(CREDIT_LINES_ROLE)
     {
         // Renewing moves a deadline out; it may not move one in (audit H-2).
         if (inInitializedPeriod(member)) {
@@ -400,7 +422,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @dev by default the caller must have operator authorization.
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to pause terms for.
-    function pausePeriodOf(address member) external onlyOperator {
+    function pausePeriodOf(address member) external onlyCreditRole(CREDIT_LINES_ROLE) {
         creditPeriods[member].paused = true;
         emit CreditTermsPaused(member);
     }
@@ -409,7 +431,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @dev by default the caller must have operator authorization.
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to unpause period for.
-    function unpausePeriodOf(address member) external onlyOperator {
+    function unpausePeriodOf(address member) external onlyCreditRole(CREDIT_LINES_ROLE) {
         CreditPeriod storage period = creditPeriods[member];
         period.paused = false;
         // Lifting a pause must not land the member straight in default: a pause that outlasted
@@ -427,7 +449,10 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to set period expiration for.
     /// @param periodExpiration expiration timestamp of credit period.
-    function setPeriodExpirationOf(address member, uint256 periodExpiration) public onlyOperator {
+    function setPeriodExpirationOf(address member, uint256 periodExpiration)
+        public
+        onlyCreditRole(CREDIT_LINES_ROLE)
+    {
         if (!inInitializedPeriod(member)) revert CreditIssuerNoPeriod(member);
         if (periodExpiration < creditPeriods[member].expiration) {
             revert CreditIssuerPeriodMayOnlyExtend(member);
@@ -440,7 +465,10 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to set grace period for.
     /// @param graceLength length of grace period.
-    function setGraceLengthOf(address member, uint256 graceLength) public onlyOperator {
+    function setGraceLengthOf(address member, uint256 graceLength)
+        public
+        onlyCreditRole(CREDIT_LINES_ROLE)
+    {
         if (!inInitializedPeriod(member)) revert CreditIssuerNoPeriod(member);
         if (graceLength < creditPeriods[member].graceLength) {
             revert CreditIssuerPeriodMayOnlyExtend(member);
@@ -597,6 +625,28 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// redeployment either.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
+    /// @dev One of the split credit roles (audit H-4). The admin passes all of them.
+    modifier onlyCreditRole(bytes32 role) {
+        if (!stableCredit.access().hasCreditRole(role, _msgSender())) {
+            revert CreditIssuerMissingRole(role, _msgSender());
+        }
+        _;
+    }
+
+    /// @dev Spends `amount` of today's budget, starting a new day's count when the day turns.
+    /// A cap of zero has not been set and does not limit anything; the deploy script sets one.
+    function _consumeDailyCap(DailyCap storage budget, bytes32 name, uint256 amount) internal {
+        if (budget.cap == 0 || amount == 0) return;
+        uint64 today = uint64(block.timestamp / 1 days);
+        if (budget.day != today) {
+            budget.day = today;
+            budget.used = 0;
+        }
+        uint256 remaining = budget.cap > budget.used ? budget.cap - budget.used : 0;
+        if (amount > remaining) revert CreditIssuerDailyCapExceeded(name, amount, remaining);
+        budget.used += amount;
+    }
+
     modifier onlyOperator() {
         require(stableCredit.access().isOperator(_msgSender()), "CreditIssuer: Unauthorized caller");
         _;
@@ -605,7 +655,8 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     modifier canIssueCreditTo(address member) {
         // only allow member or credit issuer to call
         require(
-            _msgSender() == member || stableCredit.access().isOperator(_msgSender()),
+            _msgSender() == member
+                || stableCredit.access().hasCreditRole(CREDIT_LINES_ROLE, _msgSender()),
             "CreditIssuer: Unauthorized caller"
         );
         _;

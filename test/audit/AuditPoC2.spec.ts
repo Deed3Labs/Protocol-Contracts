@@ -38,6 +38,8 @@ describe("AUDIT PoC 2 — savings-backed credit without savings", function () {
     const limits: any = await upgrades.deployProxy(LimitCalculator,
       [ctx.admin.address, await registry.getAddress(), await revolving.getAddress()], { kind: "uups" });
     await ctx.access.grantOperator(await limits.getAddress());
+    // It sets tier capacity, which is the limits role (audit H-4).
+    await ctx.access.grantRole(ethers.id("CREDIT_LIMITS_ROLE"), await limits.getAddress());
 
     await registry.setClrusdToken(await clrusd.getAddress());
     await ctx.stableCredit.setSystemRecipient(merchant.address, true);

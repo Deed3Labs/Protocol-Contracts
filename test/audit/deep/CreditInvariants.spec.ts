@@ -3,6 +3,7 @@ import { ethers } from "hardhat";
 import * as fs from "fs";
 import { runFuzz } from "./fuzz-engine";
 import { deployCore, ONE_USDC } from "./deep-setup";
+import { signedOpenPlan } from "../../helpers/plans";
 
 /*
  * Stateful invariant fuzzing of the credit core. These tests PASS and write what they find to
@@ -66,7 +67,7 @@ describe("DEEP AUDIT: credit-core invariants (seeded stateful fuzz)", function (
     const at = async (t: number) => ethers.provider.send("evm_setNextBlockTimestamp", [t]);
     const run = async (daily: boolean) => {
       await at(t0); await ctx.stableCredit.connect(m).transfer(merchant.address, 1_700n * ONE_USDC + 123_457n);
-      await at(t0 + 1); await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC + 7n, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
+      await at(t0 + 1); await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC + 7n, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
       for (let d = 1; d <= 120; d++) {
         const t = t0 + d * DAY;
         if (daily) { await at(t); await revolving.materialiseCarry(m.address); await at(t + 1); await term.materialiseCarry(0); }

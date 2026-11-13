@@ -2,13 +2,14 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployCore, advance, ONE_USDC, CYCLE, DAY, NET_30 } from "./deep-setup";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
+import { signedOpenPlan, signedOpenPlanStatic } from "../../helpers/plans";
 
 describe("DEEP AUDIT PoC 2", function () {
   it("X-8 (fixed): the treasury's positions are not burned as income, and a stale carrier share cannot break the split", async function () {
     const { ctx, revolving, term, pool, merchant, merchant2, coop, member2 } = await deployCore();
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
-    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
+    await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
     await pool.connect(merchant).redeem(975n * ONE_USDC);
     await ctx.usdc.connect(coop).approve(await pool.getAddress(), 10_000n * ONE_USDC);
     await advance(NET_30 + 1);
@@ -108,7 +109,7 @@ describe("DEEP AUDIT PoC 2", function () {
     const { ctx, term, pool, merchant, funder } = await deployCore({ fundPool: 5_000n * ONE_USDC });
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
-    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
+    await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
     await term.connect(m).payPlan(0, 1_000n * ONE_USDC);
     await pool.connect(merchant).redeem(975n * ONE_USDC);   // settled out of the member's money
     expect(await pool.capitalOf(funder.address)).to.equal(5_000n * ONE_USDC);
@@ -125,14 +126,14 @@ describe("DEEP AUDIT PoC 2", function () {
     const { ctx, term, pool, merchant } = await deployCore({ fundPool: 5_000n * ONE_USDC });
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
-    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 4, CYCLE);
+    await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 4, CYCLE);
     await pool.connect(merchant).redeem(975n * ONE_USDC);
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
     expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(0n);
     expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
     expect(await ctx.stableCredit.refundReceivableOf(merchant.address)).to.equal(975n * ONE_USDC);
     await term.connect(ctx.operator).setTermLimit(m.address, 2_000n * ONE_USDC);
-    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 4, CYCLE);
+    await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 4, CYCLE);
     expect(await pool.redeemableOf(merchant.address)).to.equal(0n);
     expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(0n);
     expect(await ctx.stableCredit.refundReceivableOf(merchant.address)).to.equal(0n);
@@ -155,7 +156,7 @@ describe("DEEP AUDIT PoC 2", function () {
     const { ctx, term, merchant } = await deployCore();
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
-    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
+    await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
     await advance(20 * DAY);
     const snap = await ethers.provider.send("evm_snapshot", []);
 
@@ -175,14 +176,14 @@ describe("DEEP AUDIT PoC 2", function () {
     await advance(3 * CYCLE + 1);
     await expect(term.declareDefault(m.address)).to.be.revertedWithCustomError(term, "TermIssuerNotDefaultable");
     // And a new plan is not blocked.
-    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 10n * ONE_USDC, 9n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
+    await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 10n * ONE_USDC, 9n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
   });
 
   it("X-13 (fixed): a partial refund re-fixes the schedule over what is left", async function () {
     const { ctx, term, merchant } = await deployCore();
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
-    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
+    await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
     await term.connect(ctx.operator).closePlanForRefund(0, 400n * ONE_USDC, merchant.address, 390n * ONE_USDC);
     const [installment, total, installments] = await term.scheduleOf(0);
     expect(installments).to.equal(4n);
@@ -196,7 +197,7 @@ describe("DEEP AUDIT PoC 2", function () {
     const { ctx, term, pool, merchant, coop } = await deployCore();
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
-    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
+    await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
     await pool.connect(merchant).redeem(975n * ONE_USDC);
     // The treasury can put up only part of it.
     await ctx.usdc.connect(coop).approve(await pool.getAddress(), 500n * ONE_USDC);

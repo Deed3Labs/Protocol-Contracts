@@ -82,6 +82,11 @@ export async function deployPhase0Network() {
   // address the admin has named (audit C-1). The counterparty stands for whoever the member pays,
   // so it is named here; tests about who may be paid set up a merchant registry of their own.
   await stableCredit.setSystemRecipient(counterparty.address, true);
+  // The credit operator's powers are split by job (audit H-4). The test operator holds all three;
+  // production gives each to a different key.
+  for (const role of ["CREDIT_LINES_ROLE", "CREDIT_LIMITS_ROLE", "CREDIT_SETTINGS_ROLE"]) {
+    await access.grantRole(ethers.id(role), operator.address);
+  }
   await assurancePool.setAssuranceOracle(await assuranceOracle.getAddress());
   await assurancePool.setTokenAddresses(
     await usdc.getAddress(),
@@ -100,6 +105,13 @@ export async function deployPhase0Network() {
 /// Opens a credit line and draws against it, so `stableCredit.totalSupply()` is non-zero.
 /// Spending mints credit at the moment of the transaction; that minted supply is the exposure
 /// the AssurancePool reserves against.
+/** Grants a contract or key every credit role, for tests that stand in for several jobs. */
+export async function grantCreditRoles(access: any, who: string) {
+  for (const role of ["CREDIT_LINES_ROLE", "CREDIT_LIMITS_ROLE", "CREDIT_SETTINGS_ROLE"]) {
+    await access.grantRole(ethers.id(role), who);
+  }
+}
+
 export async function drawCredit(
   ctx: Awaited<ReturnType<typeof deployPhase0Network>>,
   amount: bigint

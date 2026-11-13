@@ -1,5 +1,6 @@
 import { ethers } from "hardhat";
 import { deployCore, ONE_USDC, CYCLE, DAY } from "./deep-setup";
+import { signedOpenPlan, signedOpenPlanStatic } from "../../helpers/plans";
 
 /*
  * Seeded stateful fuzzer for the credit core: ClearCredit + RevolvingIssuer + TermIssuer + PayoutPool.
@@ -146,7 +147,7 @@ export async function runFuzz(cfg: FuzzConfig, env?: any) {
       action = "openPlan";
       if (amt > 0n) fn = async () => {
         const id = Number(await term.planCount());
-        const tx = await term.connect(ctx.operator).openPlan(m.address, mer.address, amt, (amt * 975n) / 1000n, rate, CYCLE, inst, CYCLE);
+        const tx = await signedOpenPlan(term, ctx.operator, m.address, mer.address, amt, (amt * 975n) / 1000n, rate, CYCLE, inst, CYCLE);
         plans.push({ id, member: m.address, merchant: mer.address, principal: amt });
         return tx;
       };

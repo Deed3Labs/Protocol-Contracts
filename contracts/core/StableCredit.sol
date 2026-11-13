@@ -155,8 +155,13 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     function isEligibleRecipient(address recipient) public view override returns (bool) {
         if (recipient == address(0)) return false;
         if (isSystemRecipient[recipient]) return true;
-        if (address(merchantRegistry) == address(0)) return false;
-        return merchantRegistry.isRegistered(recipient) && merchantRegistry.isActive(recipient);
+        return isActiveMerchant(recipient);
+    }
+
+    /// @inheritdoc IStableCredit
+    function isActiveMerchant(address merchant) public view override returns (bool) {
+        if (merchant == address(0) || address(merchantRegistry) == address(0)) return false;
+        return merchantRegistry.isRegistered(merchant) && merchantRegistry.isActive(merchant);
     }
 
     /* ========== PUBLIC FUNCTIONS ========== */
