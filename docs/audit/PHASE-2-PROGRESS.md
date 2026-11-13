@@ -14,8 +14,12 @@ Branch `audit/phase-2-compliance`, cut from `audit/phase-1` (PR #883, not yet me
 - [x] 8. State gate (stateCode by attestation in NetworkRegistry)
 - [x] 9. DFAL 10a–10e (computed lock, permissionless liquidation, fraud/security pause with 72h expiry and two-person renewal, token powers, 7-day upgrade timelocks)
 - [x] 10. ESADepositVault pilot cap (storage-safe; no stateCode counts as WY, DECISIONS #6)
-- [ ] Acceptance tests 1–17 (`test/audit/compliance/`), figures recomputed for per-second accrual (DECISIONS #1)
-- [ ] PHASE-2-REPORT.md, UPGRADEABILITY.md, PR
+- [x] Acceptance tests 1–17 (`test/audit/compliance/`), figures recomputed for per-second accrual (DECISIONS #1)
+- [x] Deploy wiring (`deploy/25_wire_Compliance.ts`) and credit timelock handover (`deploy/credit_timelock_handover.ts`), tested on a fresh chain
+- [x] DECISIONS #7: CFL aggregation switch in RateSchedule (default on), `cflPrincipalOf` on both issuers
+- [x] Sizes, Slither, storage layout (see PHASE-2-REPORT section 8)
+- [x] PHASE-2-REPORT.md, UPGRADEABILITY.md
+- [ ] Full suite green; PR
 
 Notes:
 - TermIssuer now has two delegatecall extensions (TermIssuerExtension: refunds, re-split, collection, recovery; TermIssuerOrigination: openPlan) to stay under 24 KiB. RevolvingIssuer has one.

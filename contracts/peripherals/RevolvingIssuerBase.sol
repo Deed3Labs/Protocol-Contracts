@@ -281,8 +281,10 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// @dev The tier's own rate accumulated since the tier began: monthly bps x 12 / 365 days
     /// per second (DECISIONS #1), checkpointed on rate changes.
     function _localAcc(uint256 tierId) internal view returns (uint256) {
-        uint256 rate = (tiers[tierId].index.ratePerCycle * RAY * 12) / (BPS_ * 365 days);
-        return localAcc[tierId] + rate * (block.timestamp - localAccAt[tierId]);
+        // Multiply before dividing: the per-second rate is never truncated on its own.
+        return localAcc[tierId]
+            + (tiers[tierId].index.ratePerCycle * RAY * 12 * (block.timestamp - localAccAt[tierId]))
+                / (BPS_ * 365 days);
     }
 
     /// @notice fills tiers in order, cheapest first.
