@@ -35,3 +35,61 @@ Branch `audit/phase-2b-credit-agreements`, cut from `dev` after Phases 1 and 2 m
 - [ ] 12.11 Separate AssuranceReserve; no bond principal into either reserve (helper agent).
 - [ ] 12.12 ACH and Autopay authorizations revocable by the member (autoClear is member-toggled). Only the pledge stays locked while drawn, and only for the encumbered amount (already the computed lock).
 - [ ] Report, UPGRADEABILITY update, PR
+
+## Design (so a resumed session does not re-derive it)
+
+**Cycles (12.4, 12.5) on RevolvingIssuer.** The 30-day period and its grace window stay. A cycle is
+judged when its grace window ends (`inExpiredPeriod`), which is where Phase 1 decided default:
+- Compliant (rebalanced to zero) is a **Clean Cycle**: `cleanStreak++`, `missedInRow = 0`, and a halved
+  limit is restored. The cycle rolls.
+- **First miss** (`missedInRow` 0 → 1): `cleanStreak = 0`. The unsecured limit (INCOME + BOOST
+  capacity) is halved, even below drawn. `unsecuredCeiling` records the halved total, so later
+  capacity pushes can't undo it until a Clean Cycle. The cycle rolls. `unsecuredExcessOf(member)` =
+  unsecured drawn − halved limit. The Liquidator settles it from pledged bonds/pool shares, never
+  Savings.
+- **Second miss in a row** (1 → 2): the chain dates the cure notice now (`cureNoticeAt`, event
+  `CureNotice`). The line stays frozen.
+- **Default** = `missedInRow >= 2`, still not compliant, and `now >= cureNoticeAt + cureWindow`
+  (15 days, governed). Computed; no role sets it.
+- **Deposit cycles:** at each judgement, `depositSource.lastDepositAt(member) >= cycle start` sets
+  a bit in a 6-bit shift register. ESADepositVault gains an appended `lastDepositAt` mapping (live
+  contract, gap shrinks).
+- **Boost cap** = `boostBaseCap` ($500), or `boostEarnedCap` ($750) from the cycle after
+  `cleanStreak >= 6` and at least 5 of the last 6 cycles had a deposit. Both are governed.
+  Enforced wherever capacity is written. Nothing reads Acceleration.
+
+**Unsecured cap (12.3).** INCOME + BOOST capacity ≤ `unsecuredLineCap` ($2,499, governed), and ≤
+`unsecuredCeiling` while halved. The member ceiling (Phase 2) already caps carry on the combined
+principal.
+
+**autoClear (12.2, replaced).**
+- Per member: `autoClearOn`, `autoClearScope` (UNSECURED_ONLY = 0, the default, or ALL = 1), and
+  `autoClearSet` (whether the member ever chose).
+- Set by the member, or by their EIP-712 `AutoClear(member, on, scope, nonce, deadline)`
+  signature: the onboarding signature sets it ON.
+- Governed `autoClearOffGlobal` (stored inverted, so the default is enabled).
+- `repayForMember(ref, member, amount)` (card settler, `ref` = attested fiat receipt hash, used
+  once). The settler delivers the reserve token itself, so it never takes the member's USDC or
+  CLRUSD. It clears dearest-first within scope, and emits `AutoCleared(ref, member, applied,
+  remainder)`.
+- With autoClear off it reverts. The app's one-tap "Clear $X now?" is a member-signed Repay.
+
+**Savings draws (12.7).** `savingsDrawAllowance[member]` is a standing allowance set only by the
+member (`setSavingsDrawAllowance`) or by their EIP-712 signature, and revocable to 0. A card
+settlement whose draw lands in the SAVINGS tier consumes it, and reverts if short. No admin path
+raises Savings-backed drawn: capacity writes can't, and transfers are the member's own.
+
+**Liquidator (12.5 settlement, 12.6, 12.8), second helper.**
+- `settleExcess(member)` (permissionless): redeems pledged pool shares, then bonds (bonds at ≥100%
+  present value), up to `unsecuredExcessOf`, and settles BOOST then INCOME via
+  `settleFromCollateral`. Never CLRUSD.
+- Liquidation Hold: per member `{reason, setAt, until, proposer, confirmed}`. `HOLD_ROLE` A
+  proposes and a different B confirms. `maxHold[reason]` is governed (DEATH 90 days). It lapses
+  on its own, and a different signer can renew within the max. While a hold is active,
+  `liquidate`, `liquidateShares`, `settleExcess` and `settleShortfall` revert. Nothing else is
+  gated.
+- Earn shortfall: `noticeShortfall(member)` (permissionless) records `shortfallNoticedAt` and
+  emits when pledged Earn value < Earn-backed drawn. After 72 hours (governed),
+  `settleShortfall(member)` redeems the smallest amount that closes the gap, pool shares first.
+  Never Savings.
+- Savings (`liquidate`): only on the new default, and only up to Savings-backed drawn.
