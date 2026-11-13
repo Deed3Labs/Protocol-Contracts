@@ -160,6 +160,40 @@ async function main() {
     await (await credit.setPayoutPool(payoutPoolAddress)).wait();
     log("  ledger -> PayoutPool");
   }
+  // The ledger has to know who the merchants are: a draw or a plan may pay only an active one,
+  // and a merchant's balance may go only to the payout pool (audit C-1, H-1, H-4).
+  if ((await credit.merchantRegistry()) !== merchantsAddress) {
+    await (await credit.setMerchantRegistry(merchantsAddress)).wait();
+    log("  ledger -> MerchantRegistry");
+  }
+
+  // The treasury holds positions it paid for (drawForDueClaim) and redeems them like a merchant;
+  // only named co-op addresses may (audit C-1, DECISIONS #3).
+  const redeemer = await payoutPool.REDEEMER_ROLE();
+  if (!(await payoutPool.hasRole(redeemer, coopTreasury))) {
+    await (await payoutPool.grantRole(redeemer, coopTreasury)).wait();
+    log("  PayoutPool REDEEMER_ROLE -> co-op treasury");
+  }
+
+  // A borrower draws only to its stored destination, within a daily cap (audit H-4). The payout
+  // pool borrows to itself; the card settler, if named, to the card float.
+  const borrowerRole = await lendingPool.BORROWER_ROLE();
+  const poolBorrowCap = BigInt(process.env.PAYOUT_POOL_DAILY_BORROW_USD ?? "100000") * 10n ** 6n;
+  if (!(await lendingPool.hasRole(borrowerRole, payoutPoolAddress))) {
+    await (await lendingPool.grantRole(borrowerRole, payoutPoolAddress)).wait();
+  }
+  await (await lendingPool.setBorrower(payoutPoolAddress, payoutPoolAddress, poolBorrowCap)).wait();
+  log(`  LendingPool borrower: PayoutPool -> itself, ${poolBorrowCap}/day`);
+  const cardSettler = process.env.CARD_SETTLER_ADDRESS;
+  const cardFloat = process.env.CARD_FLOAT_ADDRESS;
+  if (cardSettler && cardFloat && ethers.isAddress(cardSettler) && ethers.isAddress(cardFloat)) {
+    const cardCap = BigInt(process.env.CARD_SETTLER_DAILY_BORROW_USD ?? "25000") * 10n ** 6n;
+    if (!(await lendingPool.hasRole(borrowerRole, cardSettler))) {
+      await (await lendingPool.grantRole(borrowerRole, cardSettler)).wait();
+    }
+    await (await lendingPool.setBorrower(cardSettler, cardFloat, cardCap)).wait();
+    log(`  LendingPool borrower: card settler -> card float, ${cardCap}/day`);
+  }
 
   log("\nBonds and pool deployed.");
   log("\nBond collections are created per token with factory.createCollection(); none exist yet.");

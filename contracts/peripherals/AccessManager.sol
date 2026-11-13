@@ -13,6 +13,16 @@ import "../core/interfaces/stable-credit/IMembershipRegistry.sol";
 contract AccessManager is AccessControlUpgradeable, IAccessManager {
     IMembershipRegistry public membershipRegistry;
 
+    /// @notice Opens credit lines and term plans, services credit periods and processes refunds.
+    /// @dev The job the API's hot key does all day. It cannot raise a limit or change a setting
+    /// (audit H-4).
+    bytes32 public constant CREDIT_LINES_ROLE = keccak256("CREDIT_LINES_ROLE");
+    /// @notice Sets term limits and tier capacities: underwriting decisions, within daily caps.
+    bytes32 public constant CREDIT_LIMITS_ROLE = keccak256("CREDIT_LIMITS_ROLE");
+    /// @notice Changes how the credit system is configured: tiers, rates, treasuries, card
+    /// settlers, caps. Meant for the Safe, not a server key.
+    bytes32 public constant CREDIT_SETTINGS_ROLE = keccak256("CREDIT_SETTINGS_ROLE");
+
     event MembershipRegistryUpdated(address registry);
 
     /* ========== INITIALIZER ========== */
@@ -42,6 +52,14 @@ contract AccessManager is AccessControlUpgradeable, IAccessManager {
     }
 
     /// @notice returns true if the given address has member access
+    /// @inheritdoc IAccessManager
+    /// @dev An admin passes every credit role. The plain operator role passes none of them: it is
+    /// still what membership grants and system contracts check, but it is no longer a key to every
+    /// credit power at once (audit H-4).
+    function hasCreditRole(bytes32 role, address account) public view override returns (bool) {
+        return hasRole(role, account) || hasRole(DEFAULT_ADMIN_ROLE, account);
+    }
+
     function isMember(address member) public view override returns (bool) {
         return
             hasRole("MEMBER", member)

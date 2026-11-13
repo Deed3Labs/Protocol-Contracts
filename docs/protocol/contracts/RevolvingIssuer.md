@@ -14,35 +14,35 @@ Source: [`contracts/peripherals/RevolvingIssuer.sol`](../../../contracts/periphe
 |---|---|---|
 | `__CreditIssuer_init(address _stableCredit)` | `onlyInitializing` |  |
 | `absorbRepayment(address member, uint256 available, uint256 minRate)` | `onlyStableCredit` |  |
-| `addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength_)` | `onlyOperator` |  |
+| `addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength_)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
 | `initialize(address _stableCredit, address _carryTreasury)` | Once, when the proxy is initialised |  |
-| `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | `onlyOperator` | `notNull(member)`, `notInActivePeriod(member)` |
+| `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)`, `notInActivePeriod(member)` |
 | `materialiseCarry(address member)` | Anyone |  |
-| `openLine(address member, uint256[] capacities, uint256 periodLength, uint256 graceLength)` | `onlyOperator` | `notNull(member)`, `notInActivePeriod(member)` |
-| `pausePeriodOf(address member)` | `onlyOperator` |  |
+| `openLine(address member, uint256[] capacities, uint256 periodLength, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)`, `notInActivePeriod(member)` |
+| `pausePeriodOf(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
 | `renounceOwnership()` | The owner |  |
 | `repayCardSpend(bytes32 ref, address member, uint256 amount)` | Anyone; acts on the caller's own account | `notNull(member)` |
 | `repayForMember(bytes32 ref, address member, uint256 amount)` | Anyone; acts on the caller's own account | `notNull(member)` |
 | `reverseCardSpend(bytes32 ref, uint256 amount)` | Anyone; acts on the caller's own account |  |
 | `setAutoRepay(bool enabled)` | Anyone; acts on the caller's own account |  |
-| `setCardSettlementAccount(address account)` | `onlyOperator` | `notNull(account)` |
-| `setCardSettler(address settler, bool allowed)` | `onlyOperator` | `notNull(settler)` |
-| `setCarryTreasury(address treasury)` | `onlyOperator` |  |
-| `setExposureSource(address _exposureSource)` | `onlyOperator` |  |
-| `setGraceLengthOf(address member, uint256 graceLength)` | `onlyOperator` |  |
-| `setPeriodExpirationOf(address member, uint256 periodExpiration)` | `onlyOperator` |  |
-| `setTierActive(uint256 tierId, bool active)` | `onlyOperator` |  |
-| `setTierCapacity(address member, uint256 tierId, uint256 capacity)` | `onlyOperator` |  |
-| `setTierCarryRecipient(uint256 tierId, address recipient)` | `onlyOperator` |  |
-| `setTierRate(uint256 tierId, uint256 ratePerCycle)` | `onlyOperator` |  |
+| `setCardSettlementAccount(address account)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` | `notNull(account)` |
+| `setCardSettler(address settler, bool allowed)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` | `notNull(settler)` |
+| `setCarryTreasury(address treasury)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
+| `setExposureSource(address _exposureSource)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
+| `setGraceLengthOf(address member, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
+| `setPeriodExpirationOf(address member, uint256 periodExpiration)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
+| `setTierActive(uint256 tierId, bool active)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
+| `setTierCapacity(address member, uint256 tierId, uint256 capacity)` | `onlyCreditRole(CREDIT_LIMITS_ROLE)` |  |
+| `setTierCarryRecipient(uint256 tierId, address recipient)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
+| `setTierRate(uint256 tierId, uint256 ratePerCycle)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
 | `settleCardSpend(bytes32 ref, address member, uint256 amount)` | Anyone; acts on the caller's own account | `notNull(member)` |
 | `settleFromCollateral(address member, uint256 tierId, uint256 amount)` | `onlyOperator` |  |
 | `syncCreditPeriod(address member)` | Anyone |  |
 | `syncCreditPositions(address sender, address recipient, uint256 amount)` | `onlyStableCredit` |  |
 | `transferOwnership(address newOwner)` | The owner |  |
 | `underwriteMember(address member)` | Anyone | `notNull(member)`, `canIssueCreditTo(member)` |
-| `unpausePeriodOf(address member)` | `onlyOperator` |  |
-| `updateCreditPeriod(address member, uint256 periodExpiration, uint256 graceLength)` | `onlyOperator` |  |
+| `unpausePeriodOf(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
+| `updateCreditPeriod(address member, uint256 periodExpiration, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
 | `upgradeTo(address newImplementation)` | `onlyOwner` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyOwner` (via `_authorizeUpgrade`) | payable |
 | `validateCreditTransaction(address sender, address recipient, uint256 amount)` | `onlyStableCredit` |  |

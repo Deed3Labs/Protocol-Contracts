@@ -70,6 +70,13 @@ contract OffersIssuer is CreditIssuer, ICreditPositionSource {
 
     /* ========== INITIALIZER ========== */
 
+    /// @dev The bare implementation can never be initialized; only the proxy can (audit L-1).
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+
     /// @param _stableCredit the ledger.
     /// @param _treasury the Safe, which pays the line down.
     /// @param _offerAmount one offer, in credits.
@@ -138,7 +145,7 @@ contract OffersIssuer is CreditIssuer, ICreditPositionSource {
     /// @dev Called by the backend when someone joins. One per member, ever, and never past the cap:
     /// the ledger refuses a draw beyond the line's limit, and this says why first.
     /// @param member the new member.
-    function grant(address member) external onlyOperator notNull(member) {
+    function grant(address member) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) {
         if (grantedAt[member] != 0) revert OffersIssuerAlreadyGranted(member);
         uint256 amount = offerAmount;
         uint256 after_ = owed() + amount;
@@ -234,7 +241,13 @@ contract OffersIssuer is CreditIssuer, ICreditPositionSource {
     /// the Safe isn't an operator on the AccessManager -- that would hand it every issuer's operator
     /// calls -- so owning this contract is what lets it change them.
     modifier onlyOwnerOrOperator() {
-        if (_msgSender() != owner()) require(stableCredit.access().isOperator(_msgSender()), "CreditIssuer: Unauthorized caller");
+        // Settings, not a line-opening key (audit H-4).
+        if (_msgSender() != owner()) {
+            require(
+                stableCredit.access().hasCreditRole(CREDIT_SETTINGS_ROLE, _msgSender()),
+                "CreditIssuer: Unauthorized caller"
+            );
+        }
         _;
     }
 

@@ -188,6 +188,7 @@ contract LimitCalculator is AccessControlUpgradeable, UUPSUpgradeable {
     /// capacities and every member's limit reads as zero.
     /// @param _issuer address of the issuer whose tier capacities this calculator writes.
     function setIssuer(address _issuer) external onlyRole(OPERATOR_ROLE) {
+        if (_issuer == address(0)) revert LimitCalculatorInvalidAddress(); // audit L-8
         if (_issuer == address(0)) revert LimitCalculatorInvalidAddress();
         issuer = RevolvingIssuer(_issuer);
         emit IssuerUpdated(_issuer);

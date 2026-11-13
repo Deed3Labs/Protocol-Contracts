@@ -104,11 +104,12 @@ describe("AssuranceOracle", function () {
       expect(await oracle.twapPeriod()).to.equal(DEFAULT_TWAP_PERIOD);
     });
 
-    it("prices the constructor stablecoins at a dollar without consulting a pool", async function () {
-      for (const token of [usdc, usdt, dai]) {
-        expect(await oracle.getTokenPriceInUSD(await token.getAddress())).to.equal(
-          ethers.parseEther("1")
-        );
+    // Audit X-15: only USDC, the numeraire, is a fixed dollar. USDT and DAI used to be priced at
+    // $1 without consulting anything, so a depegged one entered the reserves at par.
+    it("prices only USDC at a fixed dollar; other stablecoins need a real price", async function () {
+      expect(await oracle.getTokenPriceInUSD(await usdc.getAddress())).to.equal(ethers.parseEther("1"));
+      for (const token of [usdt, dai]) {
+        await expect(oracle.getTokenPriceInUSD(await token.getAddress())).to.be.revertedWith("No price data");
       }
     });
   });

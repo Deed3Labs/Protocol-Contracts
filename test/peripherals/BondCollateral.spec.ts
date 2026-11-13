@@ -49,8 +49,9 @@ describe("bonds as collateral", function () {
     await bond.setBondVault(await vault.getAddress());
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
-    issuer = await RevolvingIssuer.deploy();
-    await issuer.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    issuer = await upgrades.deployProxy(
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
       await ctx.stableCredit.getAddress(),
@@ -137,26 +138,19 @@ describe("bonds as collateral", function () {
     });
 
     it("moves again once the credit is repaid", async function () {
-      // A line opened for somebody with nothing pledged, purely to fund the carry: repaying the
-      // principal alone leaves a few units of carry outstanding, and any debt at all keeps the
-      // collateral spoken for.
-      await issuer
-        .connect(ctx.operator)
-        .openLine(other.address, [10n * ONE_USDC], CYCLE, CYCLE);
-      await ctx.stableCredit.connect(other).transfer(ctx.member.address, ONE_USDC);
-
       await ctx.stableCredit
         .connect(ctx.member)
         .transfer(ctx.counterparty.address, 500n * ONE_USDC);
       await ctx.stableCredit
         .connect(ctx.counterparty)
         .transfer(ctx.member.address, 500n * ONE_USDC);
-      await ctx.stableCredit
-        .connect(ctx.member)
-        .transfer(
-          ctx.counterparty.address,
-          await ctx.stableCredit.balanceOf(ctx.member.address)
-        );
+      // Repaying the principal alone leaves a few units of carry outstanding, and any debt at all
+      // keeps the collateral spoken for, so the member clears the rest in USDC. (This used to be
+      // funded by a member-to-member draw, which Phase 1 no longer allows: audit C-1.)
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      await ctx.usdc.mint(ctx.member.address, owed);
+      await ctx.usdc.connect(ctx.member).approve(await ctx.stableCredit.getAddress(), owed);
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, owed);
 
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
       expect(await registry.isItemEncumbered(ctx.member.address, BOND, bondId)).to.equal(false);
@@ -173,13 +167,23 @@ describe("bonds as collateral", function () {
 
       // The lock is there to stop the member emptying the collateral, not to stop the co-op
       // collecting it. A lock that also binds the liquidator secures nothing.
+      // Audit M-6: naming a liquidator once bonds exist waits out LIQUIDATOR_DELAY, and a
+      // seizure needs the member in default as well as the bond pledged.
       await bond.setLiquidator(coop.address);
+      await ethers.provider.send("evm_increaseTime", [7 * 24 * 3600]);
+      await ethers.provider.send("evm_mine", []);
+      await bond.executeLiquidatorChange();
+      const signals = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
+      await signals.setInDefault(ctx.member.address, true);
+      await bond.setDefaultSource(await signals.getAddress());
       await bond.connect(coop).seizeBond(bondId, ctx.member.address, coop.address);
       expect(await bond.balanceOf(coop.address, bondId)).to.equal(1n);
     });
 
     it("leaves an unpledged bond alone", async function () {
-      const free = await buyBond(100n * ONE_USDC, YEAR);
+      // $500: the minimum face was raised from $100 (audit X-10).
+      const free = await buyBond(500n * ONE_USDC, YEAR);
+
       await ctx.stableCredit
         .connect(ctx.member)
         .transfer(ctx.counterparty.address, 500n * ONE_USDC);
@@ -385,6 +389,7 @@ describe("bonds as collateral", function () {
       // The calculator points at the issuer, not the other way round: it reads collateral and
       // pushes the ceiling in. So what it needs is the right to act, not a registration.
       await ctx.access.grantOperator(await limits.getAddress());
+      await ctx.access.grantRole(ethers.id("CREDIT_LIMITS_ROLE"), await limits.getAddress()); // audit H-4
       await registry.grantRole(await registry.OPERATOR_ROLE(), await limits.getAddress());
       // A ceiling has to have somewhere to land: the calculator sets a line's capacity, it does
       // not open the line.

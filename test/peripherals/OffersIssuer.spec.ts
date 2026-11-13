@@ -25,8 +25,9 @@ describe("OffersIssuer", function () {
     [safe, shop, newcomer] = [signers[8], signers[9], signers[10]];
 
     const OffersIssuer = await ethers.getContractFactory("OffersIssuer");
-    offers = await OffersIssuer.deploy();
-    await offers.initialize(await ctx.stableCredit.getAddress(), safe.address, OFFER, 90 * DAY);
+    offers = await upgrades.deployProxy(
+      OffersIssuer, [await ctx.stableCredit.getAddress(), safe.address, OFFER, 90 * DAY], { kind: "uups" }
+    );
     await ctx.networkRegistry.registerIssuer(
       await offers.getAddress(),
       await ctx.stableCredit.getAddress(),
@@ -82,9 +83,9 @@ describe("OffersIssuer", function () {
     });
 
     it("is the backend's call alone", async function () {
-      await expect(offers.connect(ctx.outsider).grant(newcomer.address)).to.be.revertedWith(
-        "CreditIssuer: Unauthorized caller"
-      );
+      // The lines role, not the plain operator role (audit H-4).
+      await expect(offers.connect(ctx.outsider).grant(newcomer.address))
+        .to.be.revertedWithCustomError(offers, "CreditIssuerMissingRole");
     });
   });
 
@@ -207,7 +208,8 @@ describe("OffersIssuer", function () {
 
     it("leaves giving offers to an operator, not the owner", async function () {
       await offers.transferOwnership(safe.address);
-      await expect(offers.connect(safe).grant(newcomer.address)).to.be.revertedWith("CreditIssuer: Unauthorized caller");
+      await expect(offers.connect(safe).grant(newcomer.address))
+        .to.be.revertedWithCustomError(offers, "CreditIssuerMissingRole");
     });
   });
 

@@ -2,7 +2,8 @@ import { getDeployment } from "../deploy/helpers";
 
 /*
  * Grants the relayer the on-chain roles it needs for gasless submission:
- *   - ESADepositVault.OPERATOR_ROLE (depositWithAuthorization / redeemWithAuthorization)
+ *   - ESADepositVault.RELAYER_ROLE (depositWithAuthorization / redeemWithAuthorization / mandates).
+ *     Not OPERATOR_ROLE: since audit H-3 no vault function accepts it.
  *   - ClaimEscrow.SETTLER_ROLE     (createTransferWithAuthorization / claim releases)
  * Reads the deployed proxy addresses for the current network. Usage:
  *   RELAYER_ADDRESS=0x... npx hardhat run scripts/grant_relayer_roles.ts --network base-sepolia
@@ -24,12 +25,12 @@ async function main() {
   const vaultAddr = getDeployment(network.name, "ESADepositVault")?.address;
   if (vaultAddr) {
     const vault = await hre.ethers.getContractAt("ESADepositVault", vaultAddr);
-    const role = await vault.OPERATOR_ROLE();
+    const role = await vault.RELAYER_ROLE();
     if (await vault.hasRole(role, relayer)) {
-      console.log("✓ relayer already has OPERATOR_ROLE on vault", vaultAddr);
+      console.log("✓ relayer already has RELAYER_ROLE on vault", vaultAddr);
     } else {
       await (await vault.grantRole(role, relayer)).wait();
-      console.log("✓ granted OPERATOR_ROLE on vault", vaultAddr);
+      console.log("✓ granted RELAYER_ROLE on vault", vaultAddr);
     }
   } else {
     console.warn("No ESADepositVault deployment on this network — skipped.");

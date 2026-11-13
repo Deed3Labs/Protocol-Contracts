@@ -13,18 +13,18 @@ Source: [`contracts/peripherals/ESADepositVault.sol`](../../../contracts/periphe
 
 | Function | Who can call | Also |
 |---|---|---|
-| `cancelMandate(bytes32 digest)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `cancelMandate(bytes32 digest)` | `onlyRole(RELAYER_ROLE)` |  |
 | `deposit(address token, uint256 amount, address receiver)` | Checked inside the function | `whenNotPaused` |
-| `depositWithAuthorization(address depositor, address token, uint256 amount, address receiver, uint256 validAfter, uint256 validBefore, bytes32 authNonce, uint8 v, bytes32 r, bytes32 s)` | `onlyRole(OPERATOR_ROLE)` | `whenNotPaused` |
-| `executeMandateDeposit(address depositor, address token, uint256 amountPerRun, uint64 interval, uint32 maxRuns, uint256 startAt, uint256 expiry, uint256 nonce, bytes signature)` | `onlyRole(OPERATOR_ROLE)` | `whenNotPaused` |
+| `depositWithAuthorization(address depositor, address token, uint256 amount, address receiver, uint256 validAfter, uint256 validBefore, bytes32 authNonce, uint8 v, bytes32 r, bytes32 s)` | `onlyRole(RELAYER_ROLE)` | `whenNotPaused` |
+| `executeMandateDeposit(address depositor, address token, uint256 amountPerRun, uint64 interval, uint32 maxRuns, uint256 startAt, uint256 expiry, uint256 nonce, bytes signature)` | `onlyRole(RELAYER_ROLE)` | `whenNotPaused` |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address clrusd_, address admin)` | Once, when the proxy is initialised |  |
 | `pause()` | `onlyRole(PAUSER_ROLE)` |  |
 | `redeem(address token, uint256 clrusdAmount, address receiver)` | Checked inside the function | `whenNotPaused` |
-| `redeemWithAuthorization(address redeemer, address token, uint256 clrusdAmount, address receiver, uint256 deadline, uint8 v, bytes32 r, bytes32 s)` | `onlyRole(OPERATOR_ROLE)` | `whenNotPaused` |
+| `redeemWithAuthorization(address redeemer, address token, uint256 clrusdAmount, address receiver, uint256 deadline, uint8 v, bytes32 r, bytes32 s)` | `onlyRole(RELAYER_ROLE)` | `whenNotPaused` |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
-| `setAcceptedToken(address token, bool accepted)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `setAcceptedToken(address token, bool accepted)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setClrusd(address clrusd_)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `unpause()` | `onlyRole(PAUSER_ROLE)` |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |

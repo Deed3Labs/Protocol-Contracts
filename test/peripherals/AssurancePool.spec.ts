@@ -33,6 +33,15 @@ describe("AssurancePool", function () {
     await assurancePool.depositIntoPrimaryReserve(amount);
   }
 
+  /// A token the pool holds from before the reserve-token-only rule (audit X-9): registered as
+  /// held (here through a reserve-token change and back) and sitting in the pool, unbooked.
+  async function holdLegacy(token: any, amount: bigint) {
+    const { assurancePool, admin, usdc } = ctx;
+    await assurancePool.connect(admin).setReserveToken(await token.getAddress());
+    await assurancePool.connect(admin).setReserveToken(await usdc.getAddress());
+    await token.mint(await assurancePool.getAddress(), amount);
+  }
+
   describe("withdrawal access control", function () {
     // The inherited contract left both withdrawal entry points public with only a reentrancy
     // guard, so any address could take the excess reserve. Nobody withdraws directly now: every
@@ -163,28 +172,22 @@ describe("AssurancePool", function () {
       expect(await usdc.balanceOf(instrument.address)).to.equal(50n * ONE_USDC);
     });
 
-    it("leaves primary and buffer untouched when the payout is served in another token", async function () {
-      // The excess is funded in DAI, and the claim is made in USDC. The payout path falls through
-      // to the equivalent-value sweep, which pays out of raw balances that primary also sits in.
-      const { assurancePool, admin, instrument, usdc, dai } = ctx;
-      await fundPrimary(100n * ONE_USDC);
-
+    it("refuses deposits in anything but the reserve token (X-9)", async function () {
+      // Changed by the X-9 fix. This test used to fund excess in DAI and then pay a USDC claim
+      // out of the USDC backing primary. Every tier is booked in reserve-token units and every
+      // payout pays the reserve token, so another token on the books is value the pool cannot
+      // hand over; it now refuses one at the door.
+      const { assurancePool, admin, dai, usdt } = ctx;
       const daiAmount = 60n * 10n ** 18n;
       await dai.mint(admin.address, daiAmount);
       await dai.approve(await assurancePool.getAddress(), daiAmount);
-      await assurancePool.depositTokenIntoExcess(await dai.getAddress(), daiAmount);
-      expect(await assurancePool.excessBalance()).to.equal(60n * ONE_USDC);
-
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
-      await assurancePool.connect(instrument).withdrawToken(await usdc.getAddress(), 60n * ONE_USDC);
-
-      expect(await assurancePool.primaryBalance()).to.equal(100n * ONE_USDC);
-      expect(await assurancePool.bufferBalance()).to.equal(0n);
-      expect(await assurancePool.excessBalance()).to.equal(0n);
-
-      // Value out matches value claimed: the pool still holds 100 USDC of backing for primary,
-      // now composed of 40 USDC and 60 DAI.
-      expect(await assurancePool.heldReserveValue()).to.equal(100n * ONE_USDC);
+      for (const token of [dai, usdt]) {
+        const at = await token.getAddress();
+        await expect(assurancePool.depositTokenIntoExcess(at, 1n)).to.be.revertedWith("Token not accepted for deposits");
+        await expect(assurancePool.depositTokenIntoPrimary(at, 1n)).to.be.revertedWith("Token not accepted for deposits");
+        await expect(assurancePool.depositTokenIntoBuffer(at, 1n)).to.be.revertedWith("Token not accepted for deposits");
+        await expect(assurancePool.depositToken(at, 1n)).to.be.revertedWith("Token not accepted for deposits");
+      }
     });
 
     it("cannot withdraw more than the accounted excess", async function () {
@@ -252,46 +255,29 @@ describe("AssurancePool", function () {
       expect(priority).to.include(await dai.getAddress());
     });
 
-    it("records a stablecoin that arrives", async function () {
-      const { assurancePool, admin, usdc, dai } = ctx;
-      const amount = 50n * 10n ** 18n;
-      await dai.mint(admin.address, amount);
-      await dai.approve(await assurancePool.getAddress(), amount);
-      await assurancePool.depositTokenIntoExcess(await dai.getAddress(), amount);
-
-      const held = await assurancePool.heldTokens();
-      expect(held).to.include(await usdc.getAddress());
-      expect(held).to.include(await dai.getAddress());
-      expect(await assurancePool.heldReserveValue()).to.equal(50n * ONE_USDC);
-    });
-
-    it("counts a whitelisted non-stablecoin in held value", async function () {
-      const { assurancePool, admin } = ctx;
+    it("counts a legacy holding in held value", async function () {
+      // Changed by the X-9 fix: a whitelisted token can no longer be deposited, but one the pool
+      // already holds is still enumerated and priced.
+      const { assurancePool } = ctx;
       const token = await whitelistedToken();
-      const amount = 40n * 10n ** 18n;
-      await token.mint(admin.address, amount);
-      await token.approve(await assurancePool.getAddress(), amount);
-
-      await assurancePool.depositTokenIntoExcess(await token.getAddress(), amount);
+      await holdLegacy(token, 40n * 10n ** 18n);
 
       expect(await assurancePool.heldTokens()).to.include(await token.getAddress());
       expect(await assurancePool.heldReserveValue()).to.equal(40n * ONE_USDC);
-      expect(await assurancePool.excessBalance()).to.equal(40n * ONE_USDC);
     });
 
-    it("can pay a whitelisted non-stablecoin back out again", async function () {
-      // The trap this closes: value that could enter but never leave.
-      const { assurancePool, admin, instrument } = ctx;
+    it("can pay a legacy holding back out again", async function () {
+      // The trap this closes: value that could enter but never leave. Booked by a rebalance and
+      // paid through the equivalent-value sweep.
+      const { assurancePool, admin, instrument, operator, usdc } = ctx;
       const token = await whitelistedToken();
       const amount = 40n * 10n ** 18n;
-      await token.mint(admin.address, amount);
-      await token.approve(await assurancePool.getAddress(), amount);
-      await assurancePool.depositTokenIntoExcess(await token.getAddress(), amount);
+      await holdLegacy(token, amount);
+      await assurancePool.connect(operator).rebalanceRTD();
+      expect(await assurancePool.excessBalance()).to.equal(40n * ONE_USDC);
 
       await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
-      await assurancePool
-        .connect(instrument)
-        .withdrawToken(await token.getAddress(), 40n * ONE_USDC);
+      await assurancePool.connect(instrument).withdrawToken(await usdc.getAddress(), 40n * ONE_USDC);
 
       expect(await token.balanceOf(instrument.address)).to.equal(amount);
       expect(await assurancePool.excessBalance()).to.equal(0n);
@@ -303,10 +289,7 @@ describe("AssurancePool", function () {
       // a TWAP window, has no price -- and that must not take the reserve accounting down with it.
       const { assurancePool, tokenRegistry, admin, instrument, usdc } = ctx;
       const token = await whitelistedToken();
-      const amount = 40n * 10n ** 18n;
-      await token.mint(admin.address, amount);
-      await token.approve(await assurancePool.getAddress(), amount);
-      await assurancePool.depositTokenIntoExcess(await token.getAddress(), amount);
+      await holdLegacy(token, 40n * 10n ** 18n);
       await fundPrimary(100n * ONE_USDC);
 
       expect(await assurancePool.heldReserveValue()).to.equal(140n * ONE_USDC);
@@ -328,26 +311,27 @@ describe("AssurancePool", function () {
     it("still refuses to pay out a token it cannot value", async function () {
       // Tolerance belongs to the accounting, not the payout. Handing over an amount nobody can
       // price is how a pool is drained by arithmetic rather than by access.
-      const { assurancePool, tokenRegistry, admin, instrument } = ctx;
+      const { assurancePool, tokenRegistry, admin, instrument, operator, usdc } = ctx;
       const token = await whitelistedToken();
-      const amount = 40n * 10n ** 18n;
-      await token.mint(admin.address, amount);
-      await token.approve(await assurancePool.getAddress(), amount);
-      await assurancePool.depositTokenIntoExcess(await token.getAddress(), amount);
+      await holdLegacy(token, 40n * 10n ** 18n);
+      await assurancePool.connect(operator).rebalanceRTD(); // books it as excess
 
       await tokenRegistry.removeToken(await token.getAddress());
       await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
 
       await expect(
-        assurancePool.connect(instrument).withdrawToken(await token.getAddress(), 40n * ONE_USDC)
+        assurancePool.connect(instrument).withdrawToken(await usdc.getAddress(), 40n * ONE_USDC)
       ).to.be.reverted;
     });
 
     it("keeps holding the old reserve token after the reserve token changes", async function () {
       // Dropping it would make the balance invisible to accounting and unreachable by the payout
       // path at the same moment.
-      const { assurancePool, admin, usdc, usdt } = ctx;
+      const { assurancePool, admin, usdc, usdt, tokenRegistry, assuranceOracle } = ctx;
       await fundPrimary(100n * ONE_USDC);
+      // USDT is no longer priced at a fixed dollar (audit X-15); give it a price to be read in.
+      await tokenRegistry.registerToken(await usdt.getAddress(), 31337, await usdt.getAddress(), ethers.parseEther("1"));
+      await assuranceOracle.connect(admin).setForceRegistryFallback(await usdt.getAddress(), true);
 
       await assurancePool.connect(admin).setReserveToken(await usdt.getAddress());
 
@@ -587,33 +571,36 @@ describe("AssurancePool", function () {
       expect(await assurancePool.excessBalance()).to.equal(0n);
     });
 
-    it("reprices a held token's gain into excess, and takes its loss from excess, then buffer, then primary", async function () {
-      const { assurancePool, tokenRegistry, admin, operator } = ctx;
+    it("takes a repricing loss from excess, then buffer, and books the gain back to the tier that lost (X-16)", async function () {
+      // Changed by the X-9 and X-16 fixes: a held token can no longer be deposited into a tier,
+      // so the holding is a legacy one; and a later gain now restores the tier the loss came out
+      // of before any of it is excess. It used to land in excess, the withdrawable tier.
+      const { assurancePool, tokenRegistry, admin, operator, instrument } = ctx;
       const token = await pricedToken();
-      const amount = 40n * 10n ** 18n;
-      await token.mint(admin.address, amount);
-      await token.approve(await assurancePool.getAddress(), amount);
-      await assurancePool.depositTokenIntoBuffer(await token.getAddress(), amount);
-      await fundExcess(10n * ONE_USDC);
-      await fundPrimary(5n * ONE_USDC);
-      expect(await assurancePool.bufferBalance()).to.equal(40n * ONE_USDC);
+      await fundBuffer(50n * ONE_USDC);
+      await holdLegacy(token, 40n * 10n ** 18n);
+      await assurancePool.connect(operator).rebalanceRTD(); // books the 40 as excess
+      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
+      await assurancePool.connect(instrument).withdraw(38n * ONE_USDC); // excess 2
+      expect(await assurancePool.excessBalance()).to.equal(2n * ONE_USDC);
 
-      // half its price: 20 lost, 10 from excess and 10 from the buffer; primary untouched
+      // half its price: 20 lost, 2 from excess and 18 from the buffer
       await tokenRegistry.setFallbackPrice(await token.getAddress(), ethers.parseEther("0.5"));
       await expect(assurancePool.connect(operator).rebalanceRTD())
         .to.emit(assurancePool, "ReservesRepriced")
-        .withArgs(55n * ONE_USDC, 35n * ONE_USDC);
+        .withArgs(52n * ONE_USDC, 32n * ONE_USDC);
       expect(await assurancePool.excessBalance()).to.equal(0n);
-      expect(await assurancePool.bufferBalance()).to.equal(30n * ONE_USDC);
-      expect(await assurancePool.primaryBalance()).to.equal(5n * ONE_USDC);
+      expect(await assurancePool.bufferBalance()).to.equal(32n * ONE_USDC);
+      expect(await assurancePool.repricingLossFromBuffer()).to.equal(18n * ONE_USDC);
 
-      // four times that: the 60 gained is spare, so it is excess
-      await tokenRegistry.setFallbackPrice(await token.getAddress(), ethers.parseEther("2"));
-      await assurancePool.connect(operator).rebalanceRTD();
-      expect(await assurancePool.excessBalance()).to.equal(60n * ONE_USDC);
-      expect(await assurancePool.bufferBalance()).to.equal(30n * ONE_USDC);
-      expect(await assurancePool.primaryBalance()).to.equal(5n * ONE_USDC);
+      // back to where it was: the buffer gets its 18 back first, only the rest is excess
+      await tokenRegistry.setFallbackPrice(await token.getAddress(), ethers.parseEther("1"));
+      await assurancePool.connect(ctx.outsider).rebalanceRTDPublic();
+      expect(await assurancePool.bufferBalance()).to.equal(50n * ONE_USDC);
+      expect(await assurancePool.excessBalance()).to.equal(2n * ONE_USDC);
+      expect(await assurancePool.repricingLossFromBuffer()).to.equal(0n);
     });
+
 
     it("lets anyone top the primary reserve up, but only an operator move it out", async function () {
       const { assurancePool, operator, outsider } = ctx;

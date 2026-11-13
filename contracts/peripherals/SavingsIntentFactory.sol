@@ -8,6 +8,12 @@ import "./SavingsIntentEscrow.sol";
 /// @title SavingsIntentFactory
 /// @notice Predicts deterministic escrow addresses so users can fund them in one transaction,
 ///         then lets a sponsored settler deploy and finalize the escrow later.
+/// @dev **The address commits to the whole config (audit H-4).** The clone salt used to be the
+///      caller's salt alone, so the address a member funded said nothing about what it would do:
+///      the settler chose `receiver`, `vault` and `depositor` when it settled, and `finalize`
+///      approved that vault. The clone salt is now `keccak256(abi.encode(userSalt, config))`, so a
+///      member who funds `predictIntentAddress(userSalt, config)` has fixed every field of `config`
+///      -- any other config deploys somewhere else, where none of their money is.
 contract SavingsIntentFactory is AccessControl {
     bytes32 public constant CREATOR_ROLE = keccak256("CREATOR_ROLE");
     bytes32 public constant SETTLER_ROLE = keccak256("SETTLER_ROLE");
@@ -41,8 +47,15 @@ contract SavingsIntentFactory is AccessControl {
         _grantRole(SETTLER_ROLE, admin);
     }
 
-    function predictIntentAddress(bytes32 salt) public view returns (address) {
-        return Clones.predictDeterministicAddress(escrowImplementation, salt, address(this));
+    /// @notice The clone salt for an intent: the caller's salt bound to the full config.
+    function intentSalt(bytes32 userSalt, IntentConfig calldata config) public pure returns (bytes32) {
+        return keccak256(abi.encode(userSalt, config));
+    }
+
+    /// @notice The escrow address for `config` under `userSalt`. Funding this address commits the
+    ///         funder to exactly this config.
+    function predictIntentAddress(bytes32 userSalt, IntentConfig calldata config) public view returns (address) {
+        return Clones.predictDeterministicAddress(escrowImplementation, intentSalt(userSalt, config), address(this));
     }
 
     function createIntentDeterministic(bytes32 salt, IntentConfig calldata config)
@@ -76,10 +89,11 @@ contract SavingsIntentFactory is AccessControl {
     }
 
     function _provisionIntent(bytes32 salt, IntentConfig calldata config) internal returns (address escrow) {
-        escrow = predictIntentAddress(salt);
+        bytes32 cloneSalt = intentSalt(salt, config);
+        escrow = Clones.predictDeterministicAddress(escrowImplementation, cloneSalt, address(this));
 
         if (escrow.code.length == 0) {
-            escrow = Clones.cloneDeterministic(escrowImplementation, salt);
+            escrow = Clones.cloneDeterministic(escrowImplementation, cloneSalt);
             SavingsIntentEscrow(payable(escrow)).initialize(
                 address(this),
                 config.depositor,
@@ -96,8 +110,11 @@ contract SavingsIntentFactory is AccessControl {
             return escrow;
         }
 
+        // Defence in depth: the salt already pins the config, but an escrow that exists must still
+        // agree with it field by field.
         _assertConfigMatches(escrow, config);
     }
+
 
     function _assertConfigMatches(address escrow, IntentConfig calldata config) internal view {
         SavingsIntentEscrow intent = SavingsIntentEscrow(payable(escrow));

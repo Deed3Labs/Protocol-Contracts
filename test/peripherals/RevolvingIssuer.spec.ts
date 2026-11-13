@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 
 const ONE_USDC = 10n ** 6n;
@@ -25,8 +25,9 @@ describe("RevolvingIssuer", function () {
     coop = (await ethers.getSigners())[8];
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
-    issuer = await RevolvingIssuer.deploy();
-    await issuer.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    issuer = await upgrades.deployProxy(
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
 
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
@@ -329,7 +330,10 @@ describe("RevolvingIssuer", function () {
       expect(owed).to.be.greaterThan(100n * ONE_USDC);
       expect(await ctx.stableCredit.creditLimitLeftOf(ctx.member.address)).to.equal(0n);
 
-      await expect(spend(1n * ONE_USDC)).to.be.revertedWith("MutualCredit: Insufficient credit");
+      // The tiers have no room, so the draw is refused before anything is minted (audit C-1:
+      // every unit minted must land in a tier).
+      await expect(spend(1n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerDrawUnplaced");
     });
 
     it("lets a member repay carry once it is on the ledger", async function () {
@@ -408,10 +412,9 @@ describe("RevolvingIssuer", function () {
 
     it("refuses to deploy or leave itself without a treasury", async function () {
       const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
-      const orphan = await RevolvingIssuer.deploy();
       await expect(
-        orphan.initialize(await ctx.stableCredit.getAddress(), ethers.ZeroAddress)
-      ).to.be.revertedWithCustomError(orphan, "RevolvingIssuerNoCarryRecipient");
+        upgrades.deployProxy(RevolvingIssuer, [await ctx.stableCredit.getAddress(), ethers.ZeroAddress], { kind: "uups" })
+      ).to.be.revertedWithCustomError(issuer, "RevolvingIssuerNoCarryRecipient");
 
       await expect(
         issuer.connect(ctx.operator).setCarryTreasury(ethers.ZeroAddress)
@@ -515,9 +518,15 @@ describe("RevolvingIssuer", function () {
       await issuer.connect(ctx.operator).setCardSettlementAccount(float.address);
     });
 
+    /// Approval, then clearing: settlement draws only what was authorized (audit M-2).
+    async function settle(ref: string, member: string, amount: bigint) {
+      await issuer.connect(settler).authorizeCardSpend(ref, member, amount);
+      return issuer.connect(settler).settleCardSpend(ref, member, amount);
+    }
+
     it("draws the tiers cheapest first and records the debt, with the claim to the float", async function () {
       await openLine([100n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
-      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await settle(REF, ctx.member.address, 175n * ONE_USDC);
 
       expect(await issuer.drawnOf(ctx.member.address, 0)).to.equal(100n * ONE_USDC);
       expect(await issuer.drawnOf(ctx.member.address, 1)).to.equal(75n * ONE_USDC);
@@ -533,7 +542,7 @@ describe("RevolvingIssuer", function () {
 
     it("starts carry from settlement", async function () {
       await openLine([0n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
-      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await settle(REF, ctx.member.address, 175n * ONE_USDC);
       expect(await issuer.carryOf(ctx.member.address, 1)).to.equal(0n);
 
       await advance(CYCLE);
@@ -542,7 +551,7 @@ describe("RevolvingIssuer", function () {
 
     it("settles a purchase once, even after it has been fully refunded", async function () {
       await openLine([500n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
-      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await settle(REF, ctx.member.address, 175n * ONE_USDC);
       await expect(issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC))
         .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardAlreadySettled");
 
@@ -553,8 +562,11 @@ describe("RevolvingIssuer", function () {
 
     it("is all or nothing when the line cannot hold it", async function () {
       await openLine([100n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
-      await expect(issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC))
+      // Refused at approval, so nothing is ever there to settle.
+      await expect(issuer.connect(settler).authorizeCardSpend(REF, ctx.member.address, 175n * ONE_USDC))
         .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardHeadroom");
+      await expect(issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardNotAuthorized");
       expect(await issuer.drawnOf(ctx.member.address, 0)).to.equal(0n);
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
     });
@@ -566,12 +578,12 @@ describe("RevolvingIssuer", function () {
       await expect(issuer.connect(ctx.operator).settleCardSpend(REF, ctx.member.address, ONE_USDC))
         .to.be.revertedWithCustomError(issuer, "RevolvingIssuerNotCardSettler");
       await expect(issuer.connect(settler).setCardSettlementAccount(settler.address))
-        .to.be.revertedWith("CreditIssuer: Unauthorized caller");
+        .to.be.revertedWithCustomError(issuer, "CreditIssuerMissingRole");
     });
 
     it("a fiat repayment clears the debt against the float's claim, dearest tier first", async function () {
       await openLine([100n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
-      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await settle(REF, ctx.member.address, 175n * ONE_USDC);
 
       const PAY = ethers.id("card-repay:member:1");
       await issuer.connect(settler).repayCardSpend(PAY, ctx.member.address, 100n * ONE_USDC);
@@ -589,7 +601,7 @@ describe("RevolvingIssuer", function () {
 
     it("clears a repayment once, and refuses more than is drawn or than the float holds", async function () {
       await openLine([500n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
-      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await settle(REF, ctx.member.address, 175n * ONE_USDC);
       const PAY = ethers.id("card-repay:member:1");
 
       await issuer.connect(settler).repayCardSpend(PAY, ctx.member.address, 50n * ONE_USDC);
@@ -612,7 +624,7 @@ describe("RevolvingIssuer", function () {
       // Testnet's arrangement: carry goes to the treasury, and the treasury is the card float.
       await issuer.connect(ctx.operator).setCarryTreasury(float.address);
       await openLine([0n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
-      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await settle(REF, ctx.member.address, 175n * ONE_USDC);
 
       await advance(CYCLE);
       const drawn = await issuer.drawnOf(ctx.member.address, 1);
@@ -631,7 +643,7 @@ describe("RevolvingIssuer", function () {
 
     it("only a card settler can clear a repayment", async function () {
       await openLine([500n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
-      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await settle(REF, ctx.member.address, 175n * ONE_USDC);
       await expect(
         issuer.connect(ctx.member).repayCardSpend(ethers.id("x"), ctx.member.address, ONE_USDC)
       ).to.be.revertedWithCustomError(issuer, "RevolvingIssuerNotCardSettler");
@@ -639,7 +651,7 @@ describe("RevolvingIssuer", function () {
 
     it("a refund after clearing gives the purchase back, dearest tier first", async function () {
       await openLine([100n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
-      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await settle(REF, ctx.member.address, 175n * ONE_USDC);
 
       await issuer.connect(settler).reverseCardSpend(REF, 50n * ONE_USDC);
       expect(await issuer.drawnOf(ctx.member.address, 1)).to.equal(25n * ONE_USDC);

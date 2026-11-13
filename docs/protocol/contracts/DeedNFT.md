@@ -15,14 +15,14 @@ Source: [`contracts/core/DeedNFT.sol`](../../../contracts/core/DeedNFT.sol) · G
 | `addMinter(address minter)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `addValidator(address validator)` | `onlyAdminOrRegistry` |  |
 | `approve(address to, uint256 tokenId)` | Anyone |  |
-| `burnAsset(uint256 tokenId)` | `onlyDeedOwner(tokenId)` | `whenNotPaused` |
-| `burnBatchAssets(uint256[] tokenIds)` | Checked inside the function | `whenNotPaused` |
+| `burnAsset(uint256 tokenId)` | `onlyDeedOwner(tokenId)` |  |
+| `burnBatchAssets(uint256[] tokenIds)` | Checked inside the function |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address _defaultValidator, address _validatorRegistry)` | Once, when the proxy is initialised |  |
 | `mintAsset(address owner, uint8 assetType, string uri, string definition, string configuration, address validatorAddress, address token, uint256 salt)` | `onlyRole(MINTER_ROLE)` | `whenNotPaused` |
 | `pause()` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `removeMinter(address minter)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `removeTrait(uint256 tokenId, string traitName)` | `onlyValidatorOrOwner(tokenId)` |  |
+| `removeTrait(uint256 tokenId, string traitName)` | Anyone | `whenNotPaused` |
 | `removeValidator(address validator)` | `onlyAdminOrRegistry` |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
@@ -36,14 +36,14 @@ Source: [`contracts/core/DeedNFT.sol`](../../../contracts/core/DeedNFT.sol) · G
 | `setMetadataRenderer(address renderer)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setRoyaltyEnforcement(bool enforced)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setToDefaultSecurityPolicy()` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `setTrait(uint256 tokenId, bytes traitKey, bytes traitValue, uint8 valueType)` | `onlyValidatorOrOwner(tokenId)` |  |
+| `setTrait(uint256 tokenId, bytes traitKey, bytes traitValue, uint8 valueType)` | Anyone | `whenNotPaused` |
 | `setTraitName(bytes32 traitKey, string traitName)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `setTransferValidator(address validator)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setTransferValidator(address validator)` | Not in the current source |  |
 | `setValidatorRegistry(address registry)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `transferFrom(address from, address to, uint256 tokenId)` | The holder, or an approved spender |  |
 | `unpause()` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `updateMetadata(uint256 tokenId, string uri, string operatingAgreement, string definition, string configuration)` | `onlyValidatorOrOwner(tokenId)` | `whenNotPaused` |
-| `updateValidationStatus(uint256 tokenId, bool isValid, address validatorAddress)` | `onlyRole(VALIDATOR_ROLE)` |  |
+| `updateMetadata(uint256 tokenId, string uri, string operatingAgreement, string definition, string configuration)` | Anyone | `whenNotPaused` |
+| `updateValidationStatus(uint256 tokenId, bool isValid, address validatorAddress)` | `onlyRole(VALIDATOR_ROLE)` | `whenNotPaused` |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |
 

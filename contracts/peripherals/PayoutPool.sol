@@ -40,6 +40,11 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
     /// @notice May move value in from somewhere already on chain.
     bytes32 public constant FUNDER_ROLE = keccak256("FUNDER_ROLE");
+    /// @notice A co-op address, named by the admin, that may redeem credit it holds.
+    /// @dev The co-op's own accounts (the treasury holding positions it paid for) are not merchants
+    /// but still need to turn a position into cash. They are named one by one, by the admin;
+    /// nobody else who merely holds credit may redeem it (audit C-1, DECISIONS #3).
+    bytes32 public constant REDEEMER_ROLE = keccak256("REDEEMER_ROLE");
 
     /// @notice A claim waiting to be paid.
     struct Claim {
@@ -178,6 +183,8 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     error PayoutPoolInvalidAddress();
     error PayoutPoolNothingToRedeem(address merchant);
     error PayoutPoolMerchantInactive(address merchant);
+    /// @dev Neither a registered, active merchant nor a named co-op address.
+    error PayoutPoolNotEligible(address holder);
     /// @dev Drawing on anybody is for a claim past its terms, never for paying one early.
     error PayoutPoolClaimNotDue(uint256 claimId, uint64 dueBy);
     error PayoutPoolClaimAlreadyPaid(uint256 claimId);
@@ -244,9 +251,24 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev What a claim may be paid from: everything here except refunds members are still owed.
     /// That money is theirs and settled ahead of any claim, so every path that pays one asks this
     /// rather than `held()`.
+    ///
+    /// Only the members' money that refunds can actually use is held back: a refund is paid out of
+    /// members' money and nothing else (audit X-12), so reserving capital for one would only stop
+    /// that capital paying a claim it is allowed to pay.
     function _payable() private view returns (uint256) {
         uint256 balance = held();
-        return balance > refundsOwed ? balance - refundsOwed : 0;
+        uint256 reserved = _reservedForRefunds();
+        return balance > reserved ? balance - reserved : 0;
+    }
+
+    /// @dev Members' money set aside for refunds still owed.
+    function _reservedForRefunds() private view returns (uint256) {
+        return refundsOwed < memberFunded ? refundsOwed : memberFunded;
+    }
+
+    /// @dev Members' money free to settle claims, after refunds owed have first call on it.
+    function _memberFundedFree() private view returns (uint256) {
+        return memberFunded - _reservedForRefunds();
     }
 
     /// @notice what the pool would need to clear every queued claim today.
@@ -301,8 +323,20 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @return claimId the queued claim, when it was not.
     function redeem(uint256 amount) external returns (bool paidNow, uint256 claimId) {
         address merchant = _msgSender();
-        if (merchantRegistry.isRegistered(merchant) && !merchantRegistry.isActive(merchant)) {
-            revert PayoutPoolMerchantInactive(merchant);
+        /*
+         * Only a registered, active merchant, or a co-op address the admin has named, turns credit
+         * into cash. Paying any positive holder is what let a credit line become USDC at par
+         * through a wallet that was never a merchant (audit C-1, H-1, M-1). FIFO order, funding
+         * and the AssurancePool rule are untouched; this is the eligibility check only
+         * (DECISIONS #3).
+         *
+         * A funder named with FUNDER_ROLE counts as a named co-op address: it holds positions it
+         * paid for (`_placePosition`) and redeeming them is how it gets its capital back.
+         */
+        if (merchantRegistry.isRegistered(merchant)) {
+            if (!merchantRegistry.isActive(merchant)) revert PayoutPoolMerchantInactive(merchant);
+        } else if (!hasRole(REDEEMER_ROLE, merchant) && !hasRole(FUNDER_ROLE, merchant)) {
+            revert PayoutPoolNotEligible(merchant);
         }
 
         uint256 available = redeemableOf(merchant);
@@ -350,7 +384,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice names where the pool draws when a claim has come due.
-    function setLenders(address yieldPool_, address reserve_) external onlyRole(OPERATOR_ROLE) {
+    /// @dev Admin, not operator, like every setting below that decides where money goes: an
+    /// operator hot key that could repoint the treasury, the income recipient or a lender could
+    /// send positions and income to itself (audit H-4). Zero switches a lender off.
+    function setLenders(address yieldPool_, address reserve_) external onlyRole(DEFAULT_ADMIN_ROLE) {
         yieldPool = yieldPool_;
         reserve = reserve_;
         emit LendersUpdated(yieldPool_, reserve_);
@@ -362,7 +399,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice names the bond vault the pool may borrow from.
-    function setBondVault(address vault) external onlyRole(OPERATOR_ROLE) {
+    function setBondVault(address vault) external onlyRole(DEFAULT_ADMIN_ROLE) {
         bondVault = vault;
         emit BondVaultUpdated(vault);
     }
@@ -398,6 +435,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
 
         if (yieldPool != address(0)) {
             uint256 cash = ILendingPool(yieldPool).availableCash();
+            // The yield pool caps what each borrower may take in a day (audit H-4); asking for
+            // more would revert the whole draw.
+            uint256 allowed = ILendingPool(yieldPool).borrowableToday(address(this));
+            if (allowed < cash) cash = allowed;
             uint256 take = cash < short ? cash : short;
             if (take > 0) {
                 ILendingPool(yieldPool).borrow(take, address(this));
@@ -439,9 +480,17 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
                 emit DrewFromReserve(lent);
             }
         }
-        if (drawn == 0) revert PayoutPoolInsufficientFunds(held(), claim.amount);
+        /*
+         * All or nothing (audit X-20). Borrowing part of a claim left the cash idle, counted as
+         * though it were funding, while the next repayment went to the lender before the claim;
+         * the position was then handed to whoever happened to be last. If every source together
+         * cannot pay this claim, none of them lends: the revert unwinds every draw above.
+         */
+        if (drawn == 0 || _payable() < claim.amount) {
+            revert PayoutPoolInsufficientFunds(_payable(), claim.amount);
+        }
         // Funded beats queued, and it is their turn: pay it rather than making them come back.
-        if (_payable() >= claim.amount) _pay(nextUnpaid);
+        _pay(nextUnpaid);
     }
 
     /// @dev Members' money goes back to whoever fronted it before it does anything else. They put
@@ -578,7 +627,9 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         // and settling that as if it were a position would burn somebody's earnings.
         if (inFlight < amount) amount = inFlight;
         inFlight -= amount;
-        uint256 settled = amount < memberFunded ? amount : memberFunded;
+        // Members' money owed back to members on refunds is not this claim's to use.
+        uint256 freeMembers = _memberFundedFree();
+        uint256 settled = amount < freeMembers ? amount : freeMembers;
         if (settled > 0) {
             memberFunded -= settled;
             stableCredit.settleClaim(address(this), settled);
@@ -678,7 +729,20 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
                 address carrier = carriers[i];
                 uint256 carrying = advancedOf[carrier];
                 if (carrying == 0) continue;
+                // A carrier can only be carrying what it still holds. A position settled or moved
+                // somewhere this pool did not see stops earning carry here (audit X-8).
+                if (carrier != address(this)) {
+                    uint256 holds = stableCredit.balanceOf(carrier);
+                    if (carrying > holds) {
+                        advancedTotal -= carrying - holds;
+                        advancedOf[carrier] = holds;
+                        carrying = holds;
+                        if (carrying == 0) continue;
+                    }
+                }
                 uint256 share = (distributed * carrying) / float_;
+                // Never more than is left: a stale share must not underflow the split (audit X-8).
+                if (share > left) share = left;
                 if (share == 0) continue;
                 left -= share;
                 if (carrier == address(this)) {
@@ -744,7 +808,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice where the co-op's income is paid, which need not be where it accrues.
-    function setCoopIncomeRecipient(address recipient) external onlyRole(OPERATOR_ROLE) {
+    function setCoopIncomeRecipient(address recipient) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (recipient == address(0)) revert PayoutPoolInvalidAddress();
         coopIncomeRecipient = recipient;
         emit CoopIncomeRecipientUpdated(recipient);
@@ -754,8 +818,11 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev Their own unspent capital, and never more cash than is actually free: a queued claim's
     /// money is somebody else's, and members' repayments were never the funder's at all.
     function idleCapitalOf(address funder) public view returns (uint256) {
-        uint256 free = unencumbered();
-        uint256 notMembers = held() > memberFunded ? held() - memberFunded : 0;
+        uint256 balance = held();
+        // Queued claims may be paid from capital, so they hold it back. Refunds owed do not: only
+        // members' money may pay those (audit X-12), and that is excluded below already.
+        uint256 free = balance > queuedTotal ? balance - queuedTotal : 0;
+        uint256 notMembers = balance > memberFunded ? balance - memberFunded : 0;
         if (notMembers < free) free = notMembers;
         uint256 own = capitalOf[funder];
         return own < free ? own : free;
@@ -793,7 +860,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         if (_msgSender() != address(stableCredit)) revert PayoutPoolInvalidAddress();
         if (member == address(0)) revert PayoutPoolInvalidAddress();
 
-        uint256 available = held() > refundsOwed ? held() - refundsOwed : 0;
+        // Members' own money only. Funder capital paying a refund was a loss the funder never saw:
+        // `capitalOf` stayed put while the cash behind it left (audit X-12). What member money
+        // cannot cover yet is owed, and paid as repayments arrive.
+        uint256 available = _refundable();
         paid = amount < available ? amount : available;
         uint256 short = amount - paid;
         if (short > 0) {
@@ -803,39 +873,54 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
             emit RefundQueued(member, short);
         }
         if (paid > 0) {
-            // Their own money, so it stops being anybody's working capital on the way out.
-            uint256 fromMembers = paid < memberFunded ? paid : memberFunded;
-            memberFunded -= fromMembers;
+            memberFunded -= paid;
             reserveToken.safeTransfer(member, paid);
             emit RefundPaid(member, paid);
         }
+    }
+
+    /// @dev Cash a refund may be paid from: members' money that is actually here.
+    function _refundable() private view returns (uint256) {
+        uint256 balance = held();
+        return memberFunded < balance ? memberFunded : balance;
     }
 
     /// @notice pays what is still owed to members whose refunds outran the cash.
     /// @dev Before claims, and permissionless for the same reason `distributeCarry` is: a member
     /// waiting on their own money should not also be waiting on somebody remembering to run this.
     function payRefundsOwed() external returns (uint256 paid) {
-        for (uint256 i = 0; i < refundees.length && held() > 0; i++) {
+        return payRefundsOwedUpTo(DEFAULT_REFUND_PAGE);
+    }
+
+    /// @notice how many members `payRefundsOwed` looks at in one call.
+    uint256 public constant DEFAULT_REFUND_PAGE = 100;
+
+    /// @notice `payRefundsOwed`, looking at no more than `maxRefundees` members (audit L-7).
+    /// @dev One pass: a member paid in full is dropped from the list there and then, so the list
+    /// never has to be walked a second time to tidy it.
+    function payRefundsOwedUpTo(uint256 maxRefundees) public returns (uint256 paid) {
+        uint256 looked;
+        uint256 i = 0;
+        while (i < refundees.length && looked < maxRefundees && _refundable() > 0) {
+            looked++;
             address member = refundees[i];
             uint256 owed = refundOwedTo[member];
-            if (owed == 0) continue;
-            uint256 available = held();
+            // Members' money only, as in `payRefund` (audit X-12).
+            uint256 available = _refundable();
             uint256 take = owed < available ? owed : available;
-            refundOwedTo[member] = owed - take;
-            refundsOwed -= take;
-            paid += take;
-            uint256 fromMembers = take < memberFunded ? take : memberFunded;
-            memberFunded -= fromMembers;
-            reserveToken.safeTransfer(member, take);
-            emit RefundPaid(member, take);
-        }
-        uint256 i2 = 0;
-        while (i2 < refundees.length) {
-            if (refundOwedTo[refundees[i2]] == 0) {
-                refundees[i2] = refundees[refundees.length - 1];
+            if (take > 0) {
+                refundOwedTo[member] = owed - take;
+                refundsOwed -= take;
+                paid += take;
+                memberFunded -= take;
+                reserveToken.safeTransfer(member, take);
+                emit RefundPaid(member, take);
+            }
+            if (refundOwedTo[member] == 0) {
+                refundees[i] = refundees[refundees.length - 1];
                 refundees.pop();
             } else {
-                i2++;
+                i++;
             }
         }
     }
@@ -863,12 +948,20 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// The credits are burned: the co-op's fee is paid out of members' own repayments, so the
     /// position is settled rather than sold to anybody.
     function withdrawCoopIncome(uint256 amount) external onlyRole(OPERATOR_ROLE) returns (uint256 paid) {
-        uint256 owed = stableCredit.balanceOf(coopTreasury);
+        // Income only. Positions the treasury bought with capital sit in the same balance, and
+        // burning them as income left `advancedOf` standing for a claim that no longer existed --
+        // the carry split then underflowed or overpaid the co-op (audit X-8). The treasury
+        // recovers those by redeeming them.
+        uint256 balance = stableCredit.balanceOf(coopTreasury);
+        uint256 positions = advancedOf[coopTreasury];
+        uint256 owed = balance > positions ? balance - positions : 0;
         paid = amount < owed ? amount : owed;
         uint256 available = unencumbered();
         if (paid > available) paid = available;
-        // Only out of members' own money: capital advanced to pay merchants early is not the fee.
-        if (paid > memberFunded) paid = memberFunded;
+        // Only out of members' own money that no refund is waiting on: capital advanced to pay
+        // merchants early is not the fee.
+        uint256 freeMembers = _memberFundedFree();
+        if (paid > freeMembers) paid = freeMembers;
         if (paid == 0) revert PayoutPoolNothingToRedeem(coopTreasury);
 
         // The claim comes off the holder's balance; the money goes where the co-op wants it. A
@@ -881,7 +974,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice moves the co-op's side of the position.
-    function setCoopTreasury(address treasury) external onlyRole(OPERATOR_ROLE) {
+    function setCoopTreasury(address treasury) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (treasury == address(0)) revert PayoutPoolInvalidAddress();
         coopTreasury = treasury;
     }

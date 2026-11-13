@@ -34,8 +34,9 @@ describe("ClearUSDUpgradeable", function () {
     await clrusd.grantRole(await clrusd.BURNER_ROLE(), ctx.admin.address);
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
-    revolving = await RevolvingIssuer.deploy();
-    await revolving.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    revolving = await upgrades.deployProxy(
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
     await ctx.networkRegistry.registerIssuer(
       await revolving.getAddress(),
       await ctx.stableCredit.getAddress(),
@@ -54,6 +55,8 @@ describe("ClearUSDUpgradeable", function () {
     );
     await registry.registerCollateralType(SAVINGS, SAVINGS_BACKED, 10_000n, 10n ** 18n);
     await registry.setClrusdKind(SAVINGS);
+    // A savings pledge is valued against the member's real CLRUSD balance (audit C-2).
+    await registry.setClrusdToken(await clrusd.getAddress());
     await clrusd.setEncumbranceSource(await registry.getAddress());
 
     await clrusd.mint(ctx.member.address, 1_000n * ONE_USDC);

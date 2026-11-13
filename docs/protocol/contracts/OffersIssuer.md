@@ -15,14 +15,14 @@ Source: [`contracts/peripherals/OffersIssuer.sol`](../../../contracts/peripheral
 | `__CreditIssuer_init(address _stableCredit)` | `onlyInitializing` |  |
 | `absorbRepayment(address member, uint256 available, uint256 minRate)` | `onlyStableCredit` |  |
 | `expire(address member)` | Anyone |  |
-| `grant(address member)` | `onlyOperator` | `notNull(member)` |
+| `grant(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)` |
 | `initialize(address _stableCredit, address _treasury, uint256 _offerAmount, uint64 _expiryWindow)` | Once, when the proxy is initialised |  |
-| `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | `onlyOperator` | `notNull(member)`, `notInActivePeriod(member)` |
-| `pausePeriodOf(address member)` | `onlyOperator` |  |
+| `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)`, `notInActivePeriod(member)` |
+| `pausePeriodOf(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
 | `renounceOwnership()` | The owner |  |
 | `setCap(uint256 _cap)` | `onlyOwnerOrOperator` |  |
-| `setGraceLengthOf(address member, uint256 graceLength)` | `onlyOperator` |  |
-| `setPeriodExpirationOf(address member, uint256 periodExpiration)` | `onlyOperator` |  |
+| `setGraceLengthOf(address member, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
+| `setPeriodExpirationOf(address member, uint256 periodExpiration)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
 | `setTerms(uint256 _offerAmount, uint64 _expiryWindow)` | `onlyOwnerOrOperator` |  |
 | `settle()` | Anyone |  |
 | `setTreasury(address _treasury)` | `onlyOwner` |  |
@@ -30,8 +30,8 @@ Source: [`contracts/peripherals/OffersIssuer.sol`](../../../contracts/peripheral
 | `syncCreditPositions(address sender, address recipient, uint256 amount)` | `onlyStableCredit` |  |
 | `transferOwnership(address newOwner)` | The owner |  |
 | `underwriteMember(address member)` | Anyone | `notNull(member)`, `canIssueCreditTo(member)` |
-| `unpausePeriodOf(address member)` | `onlyOperator` |  |
-| `updateCreditPeriod(address member, uint256 periodExpiration, uint256 graceLength)` | `onlyOperator` |  |
+| `unpausePeriodOf(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
+| `updateCreditPeriod(address member, uint256 periodExpiration, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
 | `upgradeTo(address newImplementation)` | `onlyOwner` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyOwner` (via `_authorizeUpgrade`) | payable |
 | `validateCreditTransaction(address sender, address recipient, uint256 amount)` | `onlyStableCredit` |  |

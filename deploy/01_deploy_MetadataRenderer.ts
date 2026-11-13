@@ -33,14 +33,9 @@ async function main() {
   const metadataRendererAddress = await metadataRenderer.getAddress();
   console.log("MetadataRenderer deployed to:", metadataRendererAddress);
 
-  // Setup initial roles and configuration
-  const ADMIN_ROLE = await metadataRenderer.ADMIN_ROLE();
-  const REGISTRY_ADMIN_ROLE = await metadataRenderer.REGISTRY_ADMIN_ROLE();
-
-  // Grant roles to deployer
-  await metadataRenderer.grantRole(ADMIN_ROLE, deployer.address);
-  await metadataRenderer.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
-  console.log("Granted roles to deployer");
+  // initialize() already gives the deployer ownership and DEFAULT_ADMIN_ROLE. The renderer has no
+  // ADMIN_ROLE or REGISTRY_ADMIN_ROLE (the old grants reverted, audit D-22). Hand both to the Deed
+  // timelock/Safe with deed_admin_handover.ts (audit D-13).
 
   // Save deployment information
   const metadataRendererAbi = metadataRenderer.interface.formatJson();

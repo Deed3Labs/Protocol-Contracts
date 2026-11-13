@@ -13,6 +13,36 @@ import "../core/interfaces/stable-credit/ICreditIssuer.sol";
 /// @dev This contract is intended to be extended by a parent contract that implements
 /// custom credit terms and underwriting logic.
 contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable, UUPSUpgradeable {
+    /// @notice thrown when an operator would bring a member's deadline closer.
+    /// @dev Operators may extend or pause a period, never shorten one. A key that could pull an
+    /// expiry forward could put a member into default by itself, which is a declared default the
+    /// compliance spec rules out (10b) (audit H-2).
+    error CreditIssuerPeriodMayOnlyExtend(address member);
+    /// @notice thrown when a setter is used on a member who has no period to change.
+    error CreditIssuerNoPeriod(address member);
+    /// @notice thrown when a caller lacks the credit role a function needs.
+    error CreditIssuerMissingRole(bytes32 role, address caller);
+    /// @notice thrown when today's cap on new credit would be exceeded.
+    /// @dev Bounds what a leaked key can do in a day (audit H-4).
+    error CreditIssuerDailyCapExceeded(bytes32 cap, uint256 requested, uint256 remaining);
+
+    event DailyCapUpdated(bytes32 indexed cap, uint256 amount);
+
+    bytes32 internal constant CREDIT_LINES_ROLE = keccak256("CREDIT_LINES_ROLE");
+    bytes32 internal constant CREDIT_LIMITS_ROLE = keccak256("CREDIT_LIMITS_ROLE");
+    bytes32 internal constant CREDIT_SETTINGS_ROLE = keccak256("CREDIT_SETTINGS_ROLE");
+
+    /// @notice A daily budget for some kind of new credit.
+    /// @dev Held by the issuers that use it, not here: this base contract has no storage gap, so
+    /// anything added to it would shift every child's layout.
+    struct DailyCap {
+        /// @dev Most that may be granted in one UTC day. Zero means no cap has been set.
+        uint256 cap;
+        /// @dev Day number (timestamp / 1 day) `used` was counted for.
+        uint64 day;
+        uint256 used;
+    }
+
     /* ========== STATE VARIABLES ========== */
 
     IStableCredit public stableCredit;
@@ -176,6 +206,37 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
         return (0, false);
     }
 
+    /// @inheritdoc ICreditIssuer
+    /// @dev Nothing is locked by default: a plain transfer may draw on everything this issuer
+    /// contributes. An issuer whose allocation may only be used through a scheduled path overrides
+    /// this.
+    function lockedAllocationOf(address)
+        external
+        view
+        virtual
+        override
+        returns (uint256 allocation, uint256 drawn)
+    {
+        return (0, 0);
+    }
+
+    /// @notice whether a transfer that draws on this issuer's line pays somebody it may pay.
+    /// @dev Only draws are checked, and only the sender's own: spending a positive balance is the
+    /// ledger's business, and a member enrolled here only as a recipient is not drawing on this
+    /// line. A draw must pay an active merchant or a named system address (audit C-1). The ledger
+    /// answers, so the list lives in one place, and it fails closed while no merchant registry is
+    /// set.
+    function _drawRecipientAllowed(address sender, address recipient, uint256 amount)
+        internal
+        view
+        returns (bool)
+    {
+        if (recipient == address(0) || amount == 0) return true;
+        if (stableCredit.balanceOf(sender) >= amount) return true;
+        if (!stableCredit.networkRegistry().isEnrolled(sender, address(this))) return true;
+        return stableCredit.isEligibleRecipient(recipient);
+    }
+
     /// @notice takes what this issuer can of a repayment.
     /// @dev Nothing by default: the base issuer tracks a period, not a composition, so there is
     /// no position for a payment to land against.
@@ -331,7 +392,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
         uint256 initialBalance,
         uint256 periodLength,
         uint256 graceLength
-    ) external virtual onlyOperator notNull(member) notInActivePeriod(member) {
+    ) external virtual onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) notInActivePeriod(member) {
         stableCredit.createCreditLine(member, limit, initialBalance);
         _updateCreditPeriod(member, block.timestamp + periodLength, graceLength);
     }
@@ -345,8 +406,15 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     function updateCreditPeriod(address member, uint256 periodExpiration, uint256 graceLength)
         public
         virtual
-        onlyOperator
+        onlyCreditRole(CREDIT_LINES_ROLE)
     {
+        // Renewing moves a deadline out; it may not move one in (audit H-2).
+        if (inInitializedPeriod(member)) {
+            CreditPeriod storage period = creditPeriods[member];
+            if (periodExpiration < period.expiration || graceLength < period.graceLength) {
+                revert CreditIssuerPeriodMayOnlyExtend(member);
+            }
+        }
         _updateCreditPeriod(member, periodExpiration, graceLength);
     }
 
@@ -354,7 +422,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @dev by default the caller must have operator authorization.
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to pause terms for.
-    function pausePeriodOf(address member) external onlyOperator {
+    function pausePeriodOf(address member) external onlyCreditRole(CREDIT_LINES_ROLE) {
         creditPeriods[member].paused = true;
         emit CreditTermsPaused(member);
     }
@@ -363,8 +431,16 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @dev by default the caller must have operator authorization.
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to unpause period for.
-    function unpausePeriodOf(address member) external onlyOperator {
-        creditPeriods[member].paused = false;
+    function unpausePeriodOf(address member) external onlyCreditRole(CREDIT_LINES_ROLE) {
+        CreditPeriod storage period = creditPeriods[member];
+        period.paused = false;
+        // Lifting a pause must not land the member straight in default: a pause that outlasted
+        // the period would otherwise make unpausing a declared default by another name (audit
+        // H-2, compliance 10b). The deadline restarts at the moment the pause ends, so the member
+        // still gets their whole grace.
+        if (period.expiration != 0 && period.expiration < block.timestamp) {
+            period.expiration = block.timestamp;
+        }
         emit CreditTermsUnpaused(member);
     }
 
@@ -373,7 +449,14 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to set period expiration for.
     /// @param periodExpiration expiration timestamp of credit period.
-    function setPeriodExpirationOf(address member, uint256 periodExpiration) public onlyOperator {
+    function setPeriodExpirationOf(address member, uint256 periodExpiration)
+        public
+        onlyCreditRole(CREDIT_LINES_ROLE)
+    {
+        if (!inInitializedPeriod(member)) revert CreditIssuerNoPeriod(member);
+        if (periodExpiration < creditPeriods[member].expiration) {
+            revert CreditIssuerPeriodMayOnlyExtend(member);
+        }
         creditPeriods[member].expiration = periodExpiration;
     }
 
@@ -382,7 +465,14 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to set grace period for.
     /// @param graceLength length of grace period.
-    function setGraceLengthOf(address member, uint256 graceLength) public onlyOperator {
+    function setGraceLengthOf(address member, uint256 graceLength)
+        public
+        onlyCreditRole(CREDIT_LINES_ROLE)
+    {
+        if (!inInitializedPeriod(member)) revert CreditIssuerNoPeriod(member);
+        if (graceLength < creditPeriods[member].graceLength) {
+            revert CreditIssuerPeriodMayOnlyExtend(member);
+        }
         creditPeriods[member].graceLength = graceLength;
         emit GraceLengthUpdated(member, graceLength);
     }
@@ -390,24 +480,53 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /* ========== PRIVATE FUNCTIONS ========== */
 
     /// @notice called when a member's credit period has expired
-    /// @dev deletes credit terms and emits a default event if caller is in default.
+    /// @dev A compliant member rolls straight into a new period; a member in default has the
+    /// period deleted, the debt written off and the default recorded.
+    ///
+    /// Rolling rather than deleting is the fix for audit H-2. `syncCreditPeriod` is public, and a
+    /// deleted period used to read as "no terms", which waved every later draw through and made
+    /// default impossible -- so anyone, the member included, could switch a line's terms off by
+    /// calling it at the right moment. A line that still has a limit always has a period now.
     /// @param member address of member to expire.
     /// @return true if member is not in default, false if member is in default.
     function expireCreditPeriod(address member) internal virtual returns (bool) {
         bool memberInDefault = inDefault(member);
-        delete creditPeriods[member];
-        // if member in default, write off credit line and revoke membership
-        if (memberInDefault) {
-            defaultedAt[member] = uint64(block.timestamp);
-            // write off this issuer's share of the debt
-            stableCredit.writeOffCreditLine(member, _writeOffAmount(member));
-            // revoke membership
-            _onDefault(member);
-            emit CreditLineDefaulted(member);
-            return false;
+        if (!memberInDefault) {
+            CreditPeriod storage period = creditPeriods[member];
+            uint256 length = _rolloverLength(member);
+            // Counted from now, as the renewer counts it: a full period from today rather than one
+            // already partly spent.
+            period.issuedAt = block.timestamp;
+            period.expiration = block.timestamp + length;
+            emit CreditPeriodExpired(member);
+            emit CreditPeriodCreated(member, period.expiration, period.graceLength);
+            return true;
         }
-        emit CreditPeriodExpired(member);
-        return true;
+        // in default: delete the period, write off this issuer's share and revoke membership
+        delete creditPeriods[member];
+        defaultedAt[member] = uint64(block.timestamp);
+        stableCredit.writeOffCreditLine(member, _writeOffAmount(member));
+        _onDefault(member);
+        emit CreditLineDefaulted(member);
+        return false;
+    }
+
+    /// @notice how long a rolled-over period runs.
+    /// @dev The length of the period that just ended, by default, which is whatever the operator
+    /// last set. An issuer with a network cycle overrides this.
+    function _rolloverLength(address member) internal view virtual returns (uint256) {
+        CreditPeriod storage period = creditPeriods[member];
+        uint256 length = period.expiration > period.issuedAt ? period.expiration - period.issuedAt : 0;
+        // A period always has some length; a zero one would expire again in the same block.
+        return length == 0 ? 1 days : length;
+    }
+
+    /// @notice whether a member's line with this issuer must have a period to draw on.
+    /// @dev Yes whenever this issuer gives them a ceiling a plain transfer can draw. An issuer
+    /// whose allocation is drawn only through a scheduled path (a term plan) is governed by that
+    /// schedule instead, and overrides this.
+    function _requiresPeriod(address member) internal view virtual returns (bool) {
+        return stableCredit.issuerCreditLimit(address(this), member) > 0;
     }
 
     /// @notice whether a member's credit line ended in default.
@@ -462,8 +581,9 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
         if (amount > 0 && amount <= stableCredit.balanceOf(sender)) {
             return true;
         }
-        // valid if sender period is not initialized.
-        if (!inInitializedPeriod(sender)) return true;
+        // A limit with no period is not a line without terms, it is a line whose terms were lost.
+        // Treating it as valid is what let a deleted period wave every draw through (audit H-2).
+        if (!inInitializedPeriod(sender)) return !_requiresPeriod(sender);
         // valid if sender is not in an active period.
         if (inActivePeriod(sender)) return true;
         // valid if sender's period is paused
@@ -505,34 +625,79 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// redeployment either.
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    modifier onlyOperator() {
-        require(stableCredit.access().isOperator(_msgSender()), "CreditIssuer: Unauthorized caller");
+    /// @dev One of the split credit roles (audit H-4). The admin passes all of them.
+    modifier onlyCreditRole(bytes32 role) {
+        _requireCreditRole(role);
         _;
+    }
+
+    /// @dev Out of line: a modifier body is copied into every function that uses it, and these
+    /// contracts sit close to the bytecode size limit.
+    function _requireCreditRole(bytes32 role) internal view {
+        if (!stableCredit.access().hasCreditRole(role, _msgSender())) {
+            revert CreditIssuerMissingRole(role, _msgSender());
+        }
+    }
+
+    /// @dev Spends `amount` of today's budget, starting a new day's count when the day turns.
+    /// A cap of zero has not been set and does not limit anything; the deploy script sets one.
+    function _consumeDailyCap(DailyCap storage budget, bytes32 name, uint256 amount) internal {
+        if (budget.cap == 0 || amount == 0) return;
+        uint64 today = uint64(block.timestamp / 1 days);
+        if (budget.day != today) {
+            budget.day = today;
+            budget.used = 0;
+        }
+        uint256 remaining = budget.cap > budget.used ? budget.cap - budget.used : 0;
+        if (amount > remaining) revert CreditIssuerDailyCapExceeded(name, amount, remaining);
+        budget.used += amount;
+    }
+
+    modifier onlyOperator() {
+        _requireOperator();
+        _;
+    }
+
+    function _requireOperator() internal view {
+        require(stableCredit.access().isOperator(_msgSender()), "CreditIssuer: Unauthorized caller");
     }
 
     modifier canIssueCreditTo(address member) {
         // only allow member or credit issuer to call
         require(
-            _msgSender() == member || stableCredit.access().isOperator(_msgSender()),
+            _msgSender() == member
+                || stableCredit.access().hasCreditRole(CREDIT_LINES_ROLE, _msgSender()),
             "CreditIssuer: Unauthorized caller"
         );
         _;
     }
 
     modifier onlyStableCredit() {
+        _requireStableCredit();
+        _;
+    }
+
+    function _requireStableCredit() internal view {
         require(
             _msgSender() == address(stableCredit), "CreditIssuer: can only be called by network"
         );
-        _;
     }
 
     modifier notInActivePeriod(address member) {
-        require(!inActivePeriod(member), "CreditIssuer: member in active credit period");
+        _requireNotInActivePeriod(member);
         _;
     }
 
+    function _requireNotInActivePeriod(address member) internal view {
+        require(!inActivePeriod(member), "CreditIssuer: member in active credit period");
+    }
+
     modifier notNull(address member) {
-        require(member != address(0), "CreditIssuer: member address can't be null ");
+        _requireNotNull(member);
         _;
+    }
+
+    function _requireNotNull(address member) internal pure {
+        require(member != address(0), "CreditIssuer: member address can't be null ");
     }
 }

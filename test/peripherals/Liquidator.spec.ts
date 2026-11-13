@@ -39,8 +39,9 @@ describe("Liquidator", function () {
     await vault.setAcceptedToken(await ctx.usdc.getAddress(), true);
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
-    issuer = await RevolvingIssuer.deploy();
-    await issuer.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    issuer = await upgrades.deployProxy(
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
       await ctx.stableCredit.getAddress(),
@@ -61,6 +62,8 @@ describe("Liquidator", function () {
     await registry.registerCollateralType(SAVINGS, SAVINGS_BACKED, 10_000n, 10n ** 18n);
     await registry.registerCollateralType(INCOME, UNSECURED, 0n, 0n);
     await registry.setClrusdKind(SAVINGS);
+    // A savings pledge is valued against the member's real CLRUSD balance (audit C-2).
+    await registry.setClrusdToken(await clrusd.getAddress());
     await clrusd.setEncumbranceSource(await registry.getAddress());
     await issuer.connect(ctx.operator).setExposureSource(await registry.getAddress());
     await ctx.assurancePool.connect(ctx.admin).setExposureSource(await registry.getAddress());

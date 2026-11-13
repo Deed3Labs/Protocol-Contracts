@@ -98,19 +98,20 @@ describe("repayment routing", function () {
       expect(await ctx.assurancePool.bufferBalance()).to.equal(0n);
     });
 
-    it("stops at what is actually owed; the rest still goes to the reserve", async function () {
-      // Payables before provisions, not instead of them. With 400 of capital already sitting
-      // there, only 600 of the payable is unfunded and the remaining 400 carries on to the reserve:
-      // 200 to bring the primary reserve to its target, 200 to the buffer.
+    it("does not count funder capital as members' money (audit X-2)", async function () {
+      // Capital sitting in the pool is somebody's working capital, not a repayment. The old rule
+      // counted it, sent this repayment past the pool, and the funder later paid the merchant for
+      // a claim the member had already settled. The whole payable is still owed by members' money.
       await ctx.usdc.mint(ctx.admin.address, 400n * ONE_USDC);
       await ctx.usdc.approve(await pool.getAddress(), 400n * ONE_USDC);
       await pool.connect(ctx.admin).fund(400n * ONE_USDC);
 
       await repay(1_000n * ONE_USDC);
 
-      expect(await pool.held()).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
-      expect(await ctx.assurancePool.bufferBalance()).to.equal(200n * ONE_USDC);
+      expect(await pool.held()).to.equal(1_400n * ONE_USDC);
+      expect(await pool.memberFunded()).to.equal(1_000n * ONE_USDC);
+      expect(await ctx.assurancePool.primaryBalance()).to.equal(0n);
+      expect(await ctx.assurancePool.bufferBalance()).to.equal(0n);
     });
 
     it("covers what it can when the repayment is smaller than the queue", async function () {

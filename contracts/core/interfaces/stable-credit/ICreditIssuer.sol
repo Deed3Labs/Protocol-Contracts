@@ -67,6 +67,21 @@ interface ICreditIssuer {
     /// @param amount amount moved.
     function syncCreditPositions(address sender, address recipient, uint256 amount) external;
 
+    /// @notice The part of a member's ceiling a plain transfer may not draw on, and what is owed
+    /// against it.
+    /// @dev A term limit exists to be used through a plan, which always comes with a schedule.
+    /// Drawing it by plain transfer instead leaves debt that no schedule describes and no default
+    /// can ever reach (audit C-1). The ledger subtracts every issuer's locked allocation from the
+    /// ceiling a transfer may mint against, and the debt drawn against it from the balance it
+    /// measures, so a plain transfer can only ever use the revolving part of the line.
+    /// @param member address of the member.
+    /// @return allocation this issuer's contribution to the ceiling that only it may draw.
+    /// @return drawn what the member owes against that allocation.
+    function lockedAllocationOf(address member)
+        external
+        view
+        returns (uint256 allocation, uint256 drawn);
+
     /// @notice called by network authorized to issue credit.
     /// @dev intended to be overwritten in parent implementation to include custom underwriting logic.
     /// @param member address of member.

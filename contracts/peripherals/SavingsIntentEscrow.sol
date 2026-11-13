@@ -53,10 +53,18 @@ contract SavingsIntentEscrow is Initializable, ReentrancyGuardUpgradeable {
     );
 
     event Refunded(address indexed depositor, uint256 refundedAmount);
+    /// @notice emitted when more than `amount` was found at finalize and the excess went back.
+    event ExcessReturned(address indexed depositor, uint256 excess);
 
     modifier onlyFactory() {
         if (msg.sender != factory) revert SavingsIntentEscrowUnauthorized();
         _;
+    }
+
+    /// @dev The implementation itself is never an escrow; only its clones are (audit L-1).
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
     }
 
     function initialize(
@@ -102,15 +110,26 @@ contract SavingsIntentEscrow is Initializable, ReentrancyGuardUpgradeable {
         return IERC20(transferToken).balanceOf(address(this));
     }
 
+    /// @dev At least `amount`, not exactly (audit M-4). The address is public before it is funded,
+    ///      so requiring an exact balance let anyone send one wei and hold the member's deposit until
+    ///      expiry. Exactly `amount` goes to the vault; anything above it goes back to the depositor.
     function finalize() external onlyFactory nonReentrant returns (uint256 resultAmount) {
         if (status != Status.Pending) revert SavingsIntentEscrowInvalidState();
-        if (currentBalance() != amount) revert SavingsIntentEscrowFundingIncomplete();
+        uint256 balance = currentBalance();
+        if (balance < amount) revert SavingsIntentEscrowFundingIncomplete();
 
         IERC20 transferAsset = IERC20(transferToken);
         transferAsset.safeApprove(vault, 0);
         transferAsset.safeApprove(vault, amount);
 
         status = Status.Finalized;
+
+        if (balance > amount) {
+            uint256 excess = balance - amount;
+            transferAsset.safeTransfer(depositor, excess);
+            emit ExcessReturned(depositor, excess);
+        }
+
 
         if (action == Action.Deposit) {
             resultAmount = IESADepositVault(vault).deposit(vaultToken, amount, receiver);

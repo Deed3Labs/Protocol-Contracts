@@ -21,6 +21,8 @@ describe("LendingPool", function () {
       { kind: "uups" }
     );
     await pool.grantRole(await pool.BORROWER_ROLE(), borrower.address);
+    // Audit H-4: a borrower draws only to its stored destination, within a daily cap.
+    await pool.setBorrower(borrower.address, borrower.address, 1_000_000n * ONE_USDC);
     await pool.grantRole(await pool.LOSS_REPORTER_ROLE(), admin.address);
 
     for (const who of [alice, bob]) {
@@ -70,6 +72,10 @@ describe("LendingPool", function () {
       // The carry earned on the tiers this pool funded comes back with the principal.
       await pool.connect(borrower).repay(550n * ONE_USDC);
 
+      // It streams in over a week rather than landing at once (audit X-18).
+      expect(await pool.totalAssets()).to.equal(1_000n * ONE_USDC);
+      await ethers.provider.send("evm_increaseTime", [7 * 24 * 3600]);
+      await ethers.provider.send("evm_mine", []);
       expect(await pool.totalAssets()).to.equal(1_050n * ONE_USDC);
       expect(await pool.convertToAssets(await pool.balanceOf(alice.address)))
         .to.be.greaterThan(1_049n * ONE_USDC);
@@ -151,24 +157,26 @@ describe("LendingPool", function () {
       expect(await pool.isClaimable(0)).to.equal(false);
     });
 
-    it("stops the queued depositor earning and stops them carrying loss", async function () {
-      // Waiting in line should not also cost you. The claim is fixed in assets when it is made.
+    it("stops the queued depositor earning, but has them carry their share of a loss (X-7)", async function () {
+      // Changed by the X-7 fix: the claim used to be fixed in assets when queued, so queueing just
+      // before a loss pushed all of it onto the depositors who stayed. The shares now wait in
+      // escrow and are priced at claim time, capped at their value when queued.
       await deposit(alice, 1_000n * ONE_USDC);
       await deposit(bob, 1_000n * ONE_USDC);
       await pool.connect(borrower).borrow(1_500n * ONE_USDC, borrower.address);
 
       await pool.connect(alice).requestWithdrawal(await pool.balanceOf(alice.address), alice.address);
       const [, , queued] = await pool.requestAt(0);
+      expect(queued).to.equal(1_000n * ONE_USDC);
 
-      // A loss lands after Alice queued; her claim does not move, Bob's shares do.
-      const bobBefore = await pool.convertToAssets(await pool.balanceOf(bob.address));
       await pool.absorbLoss(500n * ONE_USDC);
       const bobAfter = await pool.convertToAssets(await pool.balanceOf(bob.address));
 
-      const [, , stillQueued] = await pool.requestAt(0);
-      expect(stillQueued).to.equal(queued);
-      expect(bobAfter).to.be.lessThan(bobBefore);
+      // Half each: 750 for Alice's claim, 750 for Bob's shares.
+      expect(await pool.requestValue(0)).to.be.closeTo(750n * ONE_USDC, 1n);
+      expect(bobAfter).to.be.closeTo(750n * ONE_USDC, 1n);
     });
+
 
     it("pays out once the loans come back", async function () {
       await deposit(alice, 1_000n * ONE_USDC);

@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -40,8 +41,9 @@ describe("a purchase, from the shop to the money", function () {
     [coop, merchant, yieldPool] = [signers[8], signers[9], signers[10]];
 
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
-    term = await TermIssuer.deploy();
-    await term.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    term = await upgrades.deployProxy(
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
     await ctx.networkRegistry.registerIssuer(
       await term.getAddress(),
       await ctx.stableCredit.getAddress(),
@@ -52,6 +54,8 @@ describe("a purchase, from the shop to the money", function () {
 
     const MerchantRegistry = await ethers.getContractFactory("MerchantRegistry");
     registry = await upgrades.deployProxy(MerchantRegistry, [ctx.admin.address, NET_30], { kind: "uups" });
+    // As deploy/22 wires it: the ledger knows who the merchants are (audit C-1, H-4).
+    await ctx.stableCredit.connect(ctx.admin).setMerchantRegistry(await registry.getAddress());
 
     const PayoutPool = await ethers.getContractFactory("PayoutPool");
     pool = await upgrades.deployProxy(
@@ -96,9 +100,7 @@ describe("a purchase, from the shop to the money", function () {
   /** A $100 purchase at the shop, 2.5% to the co-op, split over four cycles. */
   async function buy(purchase = 100n * ONE_USDC) {
     const payout = (purchase * 975n) / 1000n;
-    await term
-      .connect(ctx.operator)
-      .openPlan(ctx.member.address, merchant.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
+    await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
     return { purchase, payout, discount: purchase - payout };
   }
 
@@ -106,6 +108,14 @@ describe("a purchase, from the shop to the money", function () {
     await ctx.usdc.mint(who.address, amount);
     await ctx.usdc.connect(who).approve(await pool.getAddress(), amount);
     await pool.connect(who).fund(amount);
+  }
+
+  /** The merchant pays back, in USDC, the refund debt it took on. Members' money, so it may pay
+   * a refund; funder capital may not (audit X-12). */
+  async function merchantRepays(who: any, amount: bigint) {
+    await ctx.usdc.mint(who.address, amount);
+    await ctx.usdc.connect(who).approve(await ctx.stableCredit.getAddress(), amount);
+    await ctx.stableCredit.connect(who).repayCreditBalance(who.address, amount);
   }
 
   async function elapse(seconds: number) {
@@ -236,6 +246,8 @@ describe("a purchase, from the shop to the money", function () {
         { kind: "uups" }
       );
       await yieldLender.grantRole(await yieldLender.BORROWER_ROLE(), await pool.getAddress());
+      // A borrower draws only to its stored destination, within a daily cap (audit H-4).
+      await yieldLender.setBorrower(await pool.getAddress(), await pool.getAddress(), ethers.MaxUint256);
       reserve = ctx.assurancePool;
       await reserve.connect(ctx.operator).setPayoutPool(await pool.getAddress());
       await pool.connect(ctx.admin).setLenders(await yieldLender.getAddress(), await reserve.getAddress());
@@ -314,6 +326,9 @@ describe("a purchase, from the shop to the money", function () {
       // Principal back, and the return on top -- no converting, it arrived in the same cash.
       expect(await pool.borrowed()).to.equal(0n);
       expect(await pool.carryEarned()).to.equal(0n);
+      // Interest streams into the share price over a week rather than landing at once (audit X-18).
+      await yieldLender.syncInterest();
+      await elapse(7 * DAY);
       expect(await yieldLender.totalAssets()).to.equal(500n * ONE_USDC + earned);
       console.log(`        lent ${u(payout)} -> back ${u(payout)} + ${u(earned)} earned`);
     });
@@ -328,6 +343,7 @@ describe("a purchase, from the shop to the money", function () {
       // The card settler draws on the same pool and has not paid it back yet.
       const settler = (await ethers.getSigners())[12];
       await yieldLender.grantRole(await yieldLender.BORROWER_ROLE(), settler.address);
+      await yieldLender.setBorrower(settler.address, settler.address, ethers.MaxUint256);
       await yieldLender.connect(settler).borrow(100n * ONE_USDC, settler.address);
 
       await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
@@ -341,6 +357,8 @@ describe("a purchase, from the shop to the money", function () {
 
       // The return is the depositors', not a discount on what the settler still owes.
       expect(await yieldLender.totalBorrowed()).to.equal(100n * ONE_USDC);
+      await yieldLender.syncInterest();
+      await elapse(7 * DAY); // streamed, audit X-18
       expect(await yieldLender.totalAssets()).to.equal(500n * ONE_USDC + earned);
     });
 
@@ -480,6 +498,8 @@ describe("a purchase, from the shop to the money", function () {
         expect(await pool.borrowed()).to.equal(0n);
         expect(await pool.carryEarned()).to.equal(0n);
         expect(await vault.lentToPayoutPool()).to.equal(0n);
+        await yieldLender.syncInterest();
+        await elapse(7 * DAY); // the yield pool's share streams in, audit X-18
         const toVault = (await vault.held()) - vaultBefore - (payout - 50n * ONE_USDC);
         const toYield = (await yieldLender.totalAssets()) - 50n * ONE_USDC;
         // Each paid for what it bore (to the unit the division rounds), and between them all of it.
@@ -595,8 +615,12 @@ describe("a purchase, from the shop to the money", function () {
       // It is their money, so it is not free for the co-op's fee or anyone's capital either.
       expect(await pool.unencumbered()).to.equal(0n);
 
-      // The merchant's next payout funds it, which is the obligation they took on.
+      // Funder capital does not pay it: a refund is members' money going home (audit X-12).
       await fundPool(coop, purchase);
+      await pool.payRefundsOwed();
+      expect(await pool.refundOwedOf(ctx.member.address)).to.equal(purchase - paidNow);
+      // The merchant paying back the obligation they took on does.
+      await merchantRepays(merchant, purchase - paidNow);
       await pool.payRefundsOwed();
       expect(await pool.refundOwedOf(ctx.member.address)).to.equal(0n);
       expect((await ctx.usdc.balanceOf(ctx.member.address)) - before).to.equal(purchase);
@@ -638,9 +662,7 @@ describe("a purchase, from the shop to the money", function () {
       /** A sale at the other merchant's counter, so there is a second claim to queue. */
       async function saleAtOther(purchase = 100n * ONE_USDC) {
         const payout = (purchase * 975n) / 1000n;
-        await term
-          .connect(ctx.operator)
-          .openPlan(ctx.member.address, other.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
+        await signedOpenPlan(term, ctx.operator, ctx.member.address, other.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
         return payout;
       }
 
@@ -649,8 +671,8 @@ describe("a purchase, from the shop to the money", function () {
         const payout = await saleAtOther();
         await pool.connect(other).redeem(payout);
 
-        // Exactly what the member is owed arrives, and nothing more.
-        await fundPool(coop, owed);
+        // Exactly what the member is owed arrives, as members' money, and nothing more.
+        await merchantRepays(merchant, owed);
         expect(await pool.canPayNext()).to.equal(false);
         await expect(pool.payNext()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
         expect(await pool.connect(coop).payQueue.staticCall(5)).to.equal(0n);
@@ -662,7 +684,8 @@ describe("a purchase, from the shop to the money", function () {
 
       it("does not pay a fresh redemption out of it either", async function () {
         const owed = await owedARefund();
-        await fundPool(coop, owed);
+        // Members' money arriving: the only money a refund may use, so the only money it holds back.
+        await merchantRepays(merchant, owed);
         const payout = await saleAtOther(owed);
 
         const [paidNow] = await pool.connect(other).redeem.staticCall(payout);
@@ -771,9 +794,7 @@ describe("a purchase, from the shop to the money", function () {
     /** A purchase at the newcomer's counter, so they have a balance to try to redeem. */
     async function buyFrom(who: any, purchase = 100n * ONE_USDC) {
       const payout = (purchase * 975n) / 1000n;
-      await term
-        .connect(ctx.operator)
-        .openPlan(ctx.member.address, who.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
+      await signedOpenPlan(term, ctx.operator, ctx.member.address, who.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
       return payout;
     }
 

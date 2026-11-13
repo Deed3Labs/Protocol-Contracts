@@ -237,6 +237,53 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
     log("  clrusdKind -> SAVINGS");
   }
 
+  // A savings pledge is valued against the member's real CLRUSD balance (audit C-2). Until the
+  // token is named, savings back nothing: the registry fails closed.
+  const clrusdRecord = getDeployment(network, "ClearUSDUpgradeable");
+  if (clrusdRecord && (await collateral.clrusdToken()) !== clrusdRecord.address) {
+    await (await collateral.setClrusdToken(clrusdRecord.address)).wait();
+    log("  CollateralRegistry clrusdToken -> ClearUSDUpgradeable");
+  } else if (!clrusdRecord) {
+    log("! No ClearUSDUpgradeable yet: run deploy/21, then re-run this to name it (savings back nothing until then).");
+  }
+
+  /*
+   * The credit operator's powers are split by job (audit H-4). The deployer is the AccessManager
+   * admin and passes every role; these grants are for the keys that do each job day to day.
+   * Settings stay with the admin (the Safe after handover).
+   */
+  const LINES = ethers.id("CREDIT_LINES_ROLE");
+  const LIMITS = ethers.id("CREDIT_LIMITS_ROLE");
+  const grants: [string, string, string | undefined][] = [
+    ["CREDIT_LIMITS_ROLE", LIMITS, limitsAddress],
+    ["CREDIT_LINES_ROLE", LINES, process.env.CREDIT_LINES_KEY],
+    ["CREDIT_LIMITS_ROLE", LIMITS, process.env.CREDIT_LIMITS_KEY],
+  ];
+  for (const [label, role, who] of grants) {
+    if (!who || !ethers.isAddress(who)) continue;
+    if (!(await access.hasRole(role, who))) {
+      await (await access.grantRole(role, who)).wait();
+      log(`  ${label} -> ${who}`);
+    }
+  }
+  if (!process.env.CREDIT_LINES_KEY) {
+    log("! CREDIT_LINES_KEY unset: grant CREDIT_LINES_ROLE to the API's line-opening key by hand.");
+  }
+
+  // Daily caps on new credit (audit H-4, M-2), in ledger units (6 decimals). A cap of zero means
+  // none, so these are always set; override per network with the env vars.
+  const usd = (n: string | undefined, fallback: bigint) =>
+    (n ? BigInt(n) : fallback) * 10n ** 6n;
+  const capacityCap = usd(process.env.DAILY_CAPACITY_CAP_USD, 50_000n);
+  const termLimitCap = usd(process.env.DAILY_TERM_LIMIT_CAP_USD, 50_000n);
+  const planCap = usd(process.env.DAILY_PLAN_CAP_USD, 50_000n);
+  const cardTxCap = usd(process.env.CARD_TX_CAP_USD, 2_500n);
+  const cardDailyCap = usd(process.env.CARD_DAILY_CAP_USD, 25_000n);
+  await (await revolving.setDailyCapacityCap(capacityCap)).wait();
+  await (await revolving.setCardCaps(cardTxCap, cardDailyCap)).wait();
+  await (await term.setDailyCaps(termLimitCap, planCap)).wait();
+  log(`  daily caps: capacity ${capacityCap}, term limits ${termLimitCap}, plans ${planCap}, card ${cardTxCap}/${cardDailyCap}`);
+
   // ---- Phase C's half, done here only if it already exists ----
   const pool = getDeployment(network, "AssurancePool");
   const oracle = getDeployment(network, "AssuranceOracle");

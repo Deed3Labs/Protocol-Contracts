@@ -16,8 +16,8 @@ Source: [`contracts/core/ClearCredit.sol`](../../../contracts/core/ClearCredit.s
 | `__StableCredit_init(string name_, string symbol_, address access_)` | `onlyInitializing` |  |
 | `accrueCarry(address member, address recipient, uint256 amount)` | `onlyCreditIssuer` |  |
 | `approve(address spender, uint256 amount)` | The token holder |  |
-| `burn(uint256 amount)` | The holder, or an approved spender |  |
-| `burnFrom(address account, uint256 amount)` | An approved spender |  |
+| `burn(uint256 amount)` | Anyone |  |
+| `burnFrom(address account, uint256 amount)` | Anyone |  |
 | `burnLostDebt(address member, uint256 amount)` | Checked inside the function |  |
 | `createCreditLine(address member, uint256 limit, uint256 initialBalance)` | `onlyCreditIssuer` |  |
 | `decreaseAllowance(address spender, uint256 subtractedValue)` | The token holder |  |

@@ -24,6 +24,8 @@ interface IPayoutSink {
     /// @notice cash here that came from members paying down their balances.
     function memberFunded() external view returns (uint256);
 
+    function refundsOwed() external view returns (uint256);
+
     /// @notice gives a member back money they paid in, for a purchase that was given back.
     function payRefund(address member, uint256 amount) external returns (uint256 paid);
 }

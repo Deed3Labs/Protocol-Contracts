@@ -56,7 +56,8 @@ contract AssuranceOracle is IAssuranceOracle, OwnableUpgradeable, UUPSUpgradeabl
     IUniswapV3Factory public uniswapFactory;
     address public WETH_ADDRESS;
     
-    // Default stablecoins (always accepted, always $1 USD)
+    // Default stablecoins (always accepted; only USDC, the numeraire, is priced at a fixed $1)
+
     address public USDC_ADDRESS;
     address public USDT_ADDRESS;
     address public DAI_ADDRESS;
@@ -85,6 +86,12 @@ contract AssuranceOracle is IAssuranceOracle, OwnableUpgradeable, UUPSUpgradeabl
     event TwapPeriodUpdated(uint32 newPeriod);
     event TargetRTDSourceUpdated(address indexed source);
     event PricingAddressesUpdated(address indexed uniswapFactory, address indexed weth);
+
+    /// @dev The implementation is never used directly, only behind a proxy (audit L-1).
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
     
     /// @notice initializes the oracle.
     /// @dev Upgradeable for the same reason the rest of the system is, and for one of its own: the
@@ -166,9 +173,14 @@ contract AssuranceOracle is IAssuranceOracle, OwnableUpgradeable, UUPSUpgradeabl
     /// @notice Gets the price of a token in USD using Uniswap V3 as primary source, fallback pricing as backup
     /// @param token Token address to get price for
     /// @return Price in USD (18 decimals)
+    /// @dev Only USDC is fixed at $1, because it is the unit of account: every pool price here is
+    /// read against USDC, so its price is 1 by definition. Every other token, the other
+    /// "stablecoins" included, is priced like anything else (audit X-15). A hard-coded $1 for USDT,
+    /// DAI and registry stablecoins let a depegged coin enter the reserves at par through the
+    /// permissionless deposit paths.
     function getTokenPriceInUSD(address token) public view returns (uint256) {
-        // For stablecoins, always return $1 USD
-        if (_isStablecoin(token)) {
+        // The numeraire.
+        if (token == USDC_ADDRESS) {
             return 1e18;
         }
         
@@ -408,8 +420,9 @@ contract AssuranceOracle is IAssuranceOracle, OwnableUpgradeable, UUPSUpgradeabl
     /// @param token Token address to check
     /// @return True if token has pricing data
     function hasPricingData(address token) external view returns (bool) {
-        // Any token on Uniswap has pricing data, or tokens with registry fallback prices, or stablecoins
-        if (_isStablecoin(token)) return true;
+        // Any token on Uniswap has pricing data, or tokens with registry fallback prices, or the
+        // numeraire. Being a stablecoin is no longer pricing data in itself (audit X-15).
+        if (token == USDC_ADDRESS) return true;
         if (getUniswapPrice(token) > 0) return true;
         if (address(tokenRegistry) != address(0)) {
             return tokenRegistry.hasPricingData(token);
@@ -421,7 +434,7 @@ contract AssuranceOracle is IAssuranceOracle, OwnableUpgradeable, UUPSUpgradeabl
     /// @param token Token address to check
     /// @return "stablecoin", "fallback", "uniswap", or "default"
     function getPriceSource(address token) external view returns (string memory) {
-        if (_isStablecoin(token)) return "stablecoin";
+        if (token == USDC_ADDRESS) return "stablecoin";
         if (forceRegistryFallback[token]) return "fallback";
         if (getUniswapPrice(token) > 0) return "uniswap";
         if (address(tokenRegistry) != address(0)) return tokenRegistry.getPriceSource(token);
