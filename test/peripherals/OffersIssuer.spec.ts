@@ -25,8 +25,9 @@ describe("OffersIssuer", function () {
     [safe, shop, newcomer] = [signers[8], signers[9], signers[10]];
 
     const OffersIssuer = await ethers.getContractFactory("OffersIssuer");
-    offers = await OffersIssuer.deploy();
-    await offers.initialize(await ctx.stableCredit.getAddress(), safe.address, OFFER, 90 * DAY);
+    offers = await upgrades.deployProxy(
+      OffersIssuer, [await ctx.stableCredit.getAddress(), safe.address, OFFER, 90 * DAY], { kind: "uups" }
+    );
     await ctx.networkRegistry.registerIssuer(
       await offers.getAddress(),
       await ctx.stableCredit.getAddress(),

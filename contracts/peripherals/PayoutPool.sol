@@ -384,7 +384,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice names where the pool draws when a claim has come due.
-    function setLenders(address yieldPool_, address reserve_) external onlyRole(OPERATOR_ROLE) {
+    /// @dev Admin, not operator, like every setting below that decides where money goes: an
+    /// operator hot key that could repoint the treasury, the income recipient or a lender could
+    /// send positions and income to itself (audit H-4). Zero switches a lender off.
+    function setLenders(address yieldPool_, address reserve_) external onlyRole(DEFAULT_ADMIN_ROLE) {
         yieldPool = yieldPool_;
         reserve = reserve_;
         emit LendersUpdated(yieldPool_, reserve_);
@@ -396,7 +399,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice names the bond vault the pool may borrow from.
-    function setBondVault(address vault) external onlyRole(OPERATOR_ROLE) {
+    function setBondVault(address vault) external onlyRole(DEFAULT_ADMIN_ROLE) {
         bondVault = vault;
         emit BondVaultUpdated(vault);
     }
@@ -805,7 +808,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice where the co-op's income is paid, which need not be where it accrues.
-    function setCoopIncomeRecipient(address recipient) external onlyRole(OPERATOR_ROLE) {
+    function setCoopIncomeRecipient(address recipient) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (recipient == address(0)) revert PayoutPoolInvalidAddress();
         coopIncomeRecipient = recipient;
         emit CoopIncomeRecipientUpdated(recipient);
@@ -886,27 +889,38 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev Before claims, and permissionless for the same reason `distributeCarry` is: a member
     /// waiting on their own money should not also be waiting on somebody remembering to run this.
     function payRefundsOwed() external returns (uint256 paid) {
-        for (uint256 i = 0; i < refundees.length && _refundable() > 0; i++) {
+        return payRefundsOwedUpTo(DEFAULT_REFUND_PAGE);
+    }
+
+    /// @notice how many members `payRefundsOwed` looks at in one call.
+    uint256 public constant DEFAULT_REFUND_PAGE = 100;
+
+    /// @notice `payRefundsOwed`, looking at no more than `maxRefundees` members (audit L-7).
+    /// @dev One pass: a member paid in full is dropped from the list there and then, so the list
+    /// never has to be walked a second time to tidy it.
+    function payRefundsOwedUpTo(uint256 maxRefundees) public returns (uint256 paid) {
+        uint256 looked;
+        uint256 i = 0;
+        while (i < refundees.length && looked < maxRefundees && _refundable() > 0) {
+            looked++;
             address member = refundees[i];
             uint256 owed = refundOwedTo[member];
-            if (owed == 0) continue;
             // Members' money only, as in `payRefund` (audit X-12).
             uint256 available = _refundable();
             uint256 take = owed < available ? owed : available;
-            refundOwedTo[member] = owed - take;
-            refundsOwed -= take;
-            paid += take;
-            memberFunded -= take;
-            reserveToken.safeTransfer(member, take);
-            emit RefundPaid(member, take);
-        }
-        uint256 i2 = 0;
-        while (i2 < refundees.length) {
-            if (refundOwedTo[refundees[i2]] == 0) {
-                refundees[i2] = refundees[refundees.length - 1];
+            if (take > 0) {
+                refundOwedTo[member] = owed - take;
+                refundsOwed -= take;
+                paid += take;
+                memberFunded -= take;
+                reserveToken.safeTransfer(member, take);
+                emit RefundPaid(member, take);
+            }
+            if (refundOwedTo[member] == 0) {
+                refundees[i] = refundees[refundees.length - 1];
                 refundees.pop();
             } else {
-                i2++;
+                i++;
             }
         }
     }
@@ -960,7 +974,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice moves the co-op's side of the position.
-    function setCoopTreasury(address treasury) external onlyRole(OPERATOR_ROLE) {
+    function setCoopTreasury(address treasury) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (treasury == address(0)) revert PayoutPoolInvalidAddress();
         coopTreasury = treasury;
     }

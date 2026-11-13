@@ -36,13 +36,16 @@ describe("DEEP AUDIT PoC 2", function () {
     expect(await pool.distributableCarry()).to.equal(0n);
   });
 
-  it("X-11: CarryIndex.rpow overflows at the 50%/cycle cap after 131 cycles (~10.8y) -> every touch of that position reverts", async function () {
+  it("X-11 (fixed): at the rate ceiling the carry index saturates instead of overflowing; the position stays readable", async function () {
     const H = await ethers.getContractFactory("CarryIndexHarness");
-    const h: any = await H.deploy();
+    const h = await H.deploy();
     const key = ethers.encodeBytes32String("k");
     await h.initIndex(key, 5_000n, CYCLE, 0);
-    await h.currentIndex(key, 130n * BigInt(CYCLE)); // fine
-    await expect(h.currentIndex(key, 131n * BigInt(CYCLE))).to.be.revertedWithPanic(0x11);
+    const RAY = 10n ** 27n;
+    const MAX_INDEX = RAY * 10n ** 9n;
+    expect(await h.currentIndex(key, 30n * BigInt(CYCLE))).to.be.lt(MAX_INDEX);
+    expect(await h.currentIndex(key, 131n * BigInt(CYCLE))).to.equal(MAX_INDEX);
+    expect(await h.currentIndex(key, 10_000n * BigInt(CYCLE))).to.equal(MAX_INDEX);
   });
 
   it("X-12 (fixed): a refund is paid only from members' money; funder capital is untouched and stays withdrawable", async function () {

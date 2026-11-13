@@ -41,8 +41,9 @@ describe("a purchase, from the shop to the money", function () {
     [coop, merchant, yieldPool] = [signers[8], signers[9], signers[10]];
 
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
-    term = await TermIssuer.deploy();
-    await term.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    term = await upgrades.deployProxy(
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
     await ctx.networkRegistry.registerIssuer(
       await term.getAddress(),
       await ctx.stableCredit.getAddress(),

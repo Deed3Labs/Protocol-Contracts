@@ -22,12 +22,14 @@ describe("a balance shared between issuers", function () {
     [coop, merchant] = [signers[8], signers[9]];
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
-    revolving = await RevolvingIssuer.deploy();
-    await revolving.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    revolving = await upgrades.deployProxy(
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
 
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
-    term = await TermIssuer.deploy();
-    await term.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    term = await upgrades.deployProxy(
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
 
     for (const issuer of [revolving, term]) {
       await ctx.networkRegistry.registerIssuer(

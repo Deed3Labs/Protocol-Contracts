@@ -26,8 +26,9 @@ export async function deployPhase0Network() {
   // The production ledger, not a harness: a test that proves a contract nobody deploys has
   // proved the wrong contract.
   const ClearCredit = await ethers.getContractFactory("ClearCredit");
-  const stableCredit = await ClearCredit.deploy();
-  await stableCredit.initialize("Clear Credit", "CLRC", await access.getAddress());
+  const stableCredit = await upgrades.deployProxy(
+    ClearCredit, ["Clear Credit", "CLRC", await access.getAddress()], { kind: "uups" }
+  );
 
   const CreditIssuerHarness = await ethers.getContractFactory("CreditIssuerHarness");
   const creditIssuer = await CreditIssuerHarness.deploy();

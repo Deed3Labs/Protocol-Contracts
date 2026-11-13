@@ -39,8 +39,9 @@ describe("Liquidator", function () {
     await vault.setAcceptedToken(await ctx.usdc.getAddress(), true);
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
-    issuer = await RevolvingIssuer.deploy();
-    await issuer.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    issuer = await upgrades.deployProxy(
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
       await ctx.stableCredit.getAddress(),

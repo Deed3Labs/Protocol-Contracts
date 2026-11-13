@@ -34,8 +34,9 @@ describe("ClearUSDUpgradeable", function () {
     await clrusd.grantRole(await clrusd.BURNER_ROLE(), ctx.admin.address);
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
-    revolving = await RevolvingIssuer.deploy();
-    await revolving.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    revolving = await upgrades.deployProxy(
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
     await ctx.networkRegistry.registerIssuer(
       await revolving.getAddress(),
       await ctx.stableCredit.getAddress(),

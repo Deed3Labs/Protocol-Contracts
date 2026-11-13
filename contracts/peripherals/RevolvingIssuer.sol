@@ -163,6 +163,12 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
 
     /* ========== INITIALIZER ========== */
 
+    /// @dev The bare implementation can never be initialized; only the proxy can (audit L-1).
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /// @param _stableCredit the ledger this issuer writes to.
     /// @param _carryTreasury the co-op treasury, and the fallback for carry with no other home.
     function initialize(address _stableCredit, address _carryTreasury) external initializer {

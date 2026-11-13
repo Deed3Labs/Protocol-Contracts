@@ -17,6 +17,12 @@ import "./StableCredit.sol";
 /// forms -- `RevolvingIssuer` and `TermIssuer` -- and a bare one is never deployed, so giving it a
 /// third would be inventing a contract to satisfy a pattern rather than a need.
 contract ClearCredit is StableCredit {
+    /// @dev The bare implementation can never be initialized; only the proxy can (audit L-1).
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /// @notice initializes the ledger.
     /// @param name_ token name.
     /// @param symbol_ token symbol.

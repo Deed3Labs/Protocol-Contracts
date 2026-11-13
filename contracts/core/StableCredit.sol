@@ -9,6 +9,7 @@ import "./interfaces/stable-credit/IPayoutSink.sol";
 import "./interfaces/stable-credit/IMerchantStatus.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./MutualCredit.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
 /// @title StableCredit contract
 /// @notice Extends the ERC20 standard to include mutual credit functionality where users
@@ -56,6 +57,8 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     error StableCreditMerchantMayOnlyRedeem(address merchant, address to);
     /// @dev Zero is not a valid "off" value for these.
     error StableCreditInvalidAddress();
+    /// @notice thrown by `burn` and `burnFrom`, which the ledger does not offer.
+    error StableCreditBurnDisabled();
 
     event MerchantRegistryUpdated(address indexed merchantRegistry);
     /// @notice a refund or reversal left `holder` owing; tracked until it is collected.
@@ -219,7 +222,10 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         uint256 creditBalance = creditBalanceOf(member);
         require(amount <= creditBalance, "StableCredit: invalid payment amount");
         uint256 reserveTokenAmount = assurancePool.convertStableCreditToReserveToken(amount);
-        assurancePool.reserveToken().transferFrom(payer, address(this), reserveTokenAmount);
+        // Safe transfer: a reserve token that returns false must not read as paid (audit L-5).
+        SafeERC20Upgradeable.safeTransferFrom(
+            assurancePool.reserveToken(), payer, address(this), reserveTokenAmount
+        );
         _routeRepayment(reserveTokenAmount);
         // A repayment is a system move. A frozen member paying down what froze them must not be
         // refused by the freeze.
@@ -568,9 +574,23 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         emit CreditLineWrittenOff(member, writeOff);
     }
 
+    /// @notice a claim cannot be burned by whoever holds it.
+    /// @dev Every claim is matched by an obligation; burning one leaves supply out of step with what
+    /// is owed, which the payout pool and the RTD both read (audit L-2). Claims leave the ledger by
+    /// settlement, reversal or write-off, each of which moves the other side as well.
+    function burn(uint256) public pure override {
+        revert StableCreditBurnDisabled();
+    }
+
+    /// @notice see `burn`.
+    function burnFrom(address, uint256) public pure override {
+        revert StableCreditBurnDisabled();
+    }
+
     /// @notice enables network admin to set the access manager address
     /// @param _access address of access manager contract
     function setAccessManager(address _access) external onlyAdmin {
+        if (_access == address(0)) revert StableCreditInvalidAddress();
         access = IAccessManager(_access);
         emit AccessManagerUpdated(_access);
     }
@@ -578,6 +598,7 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// @notice enables network admin to set the assurance pool address
     /// @param _assurancePool address of assurance pool contract
     function setAssurancePool(address _assurancePool) public onlyAdmin {
+        if (_assurancePool == address(0)) revert StableCreditInvalidAddress();
         assurancePool = IAssurancePool(_assurancePool);
         emit AssurancePoolUpdated(_assurancePool);
     }
@@ -606,6 +627,7 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// @notice enables network admin to set the network registry address
     /// @param _networkRegistry address of the network registry
     function setNetworkRegistry(address _networkRegistry) external onlyAdmin {
+        if (_networkRegistry == address(0)) revert StableCreditInvalidAddress();
         networkRegistry = INetworkRegistry(_networkRegistry);
         emit NetworkRegistryUpdated(_networkRegistry);
     }

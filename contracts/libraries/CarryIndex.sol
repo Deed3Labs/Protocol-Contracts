@@ -33,6 +33,13 @@ library CarryIndex {
     /// this ceiling is a misconfiguration, not a product.
     uint256 internal constant MAX_RATE_PER_CYCLE = 5_000;
 
+    /// @notice The highest an index ever reads: a billionfold growth.
+    /// @dev Saturating rather than overflowing (audit X-11). At the rate ceiling the index used to
+    /// overflow after 131 cycles, and every later touch of the position reverted, which froze the
+    /// member's balance for good. Debt that has grown a billionfold is long past default anyway;
+    /// what matters is that it can still be read, repaid and written off.
+    uint256 internal constant MAX_INDEX = RAY * 1e9;
+
     /// @notice An accrual clock shared by everything drawn against one rate.
     /// @dev One of these per revolving tier, and one per term plan. They are separate mechanisms
     /// because they are separate clocks: a tier's balance shares a rate and an origin, while each
@@ -83,8 +90,9 @@ library CarryIndex {
         uint256 cycleLength = idx.cycleLength;
         uint256 perCycle = RAY + (idx.ratePerCycle * RAY) / BPS;
 
-        // Compound across whole cycles.
-        uint256 value = mulRay(idx.base, rpow(perCycle, elapsed / cycleLength));
+        // Compound across whole cycles, saturating at MAX_INDEX (audit X-11).
+        uint256 value = mulRay(idx.base, rpowCapped(perCycle, elapsed / cycleLength, MAX_INDEX));
+        if (value >= MAX_INDEX) return MAX_INDEX;
 
         // Accrue linearly through the cycle in progress, so a position worsens with every second
         // held rather than stepping at a boundary.
@@ -93,7 +101,7 @@ library CarryIndex {
             uint256 withinCycle = RAY + ((perCycle - RAY) * remainder) / cycleLength;
             value = mulRay(value, withinCycle);
         }
-        return value;
+        return value > MAX_INDEX ? MAX_INDEX : value;
     }
 
     /// @notice changes the rate, checkpointing the index so past accrual is preserved.
@@ -227,6 +235,25 @@ library CarryIndex {
     /// @param x RAY-scaled base.
     /// @param n exponent.
     /// @return z RAY-scaled result.
+    /// @notice `rpow`, but stopping at `cap` instead of overflowing.
+    /// @dev Both operands of every multiplication stay at or below `cap`, and `cap * cap` fits in a
+    /// word for any cap up to about 1e38, so nothing on the way can overflow.
+    function rpowCapped(uint256 x, uint256 n, uint256 cap) internal pure returns (uint256 z) {
+        z = RAY;
+        if (x > cap) x = cap;
+        while (n > 0) {
+            if (n & 1 == 1) {
+                z = mulRay(z, x);
+                if (z >= cap) return cap;
+            }
+            n >>= 1;
+            if (n > 0) {
+                x = mulRay(x, x);
+                if (x > cap) x = cap;
+            }
+        }
+    }
+
     function rpow(uint256 x, uint256 n) internal pure returns (uint256 z) {
         z = RAY;
         while (n > 0) {

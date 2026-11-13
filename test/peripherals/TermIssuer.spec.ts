@@ -21,8 +21,9 @@ describe("TermIssuer", function () {
     [coop, merchant, payer] = [signers[8], signers[9], signers[10]];
 
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
-    issuer = await TermIssuer.deploy();
-    await issuer.initialize(await ctx.stableCredit.getAddress(), coop.address);
+    issuer = await upgrades.deployProxy(
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+    );
 
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),

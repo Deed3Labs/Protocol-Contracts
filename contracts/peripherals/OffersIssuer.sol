@@ -70,6 +70,13 @@ contract OffersIssuer is CreditIssuer, ICreditPositionSource {
 
     /* ========== INITIALIZER ========== */
 
+    /// @dev The bare implementation can never be initialized; only the proxy can (audit L-1).
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+
     /// @param _stableCredit the ledger.
     /// @param _treasury the Safe, which pays the line down.
     /// @param _offerAmount one offer, in credits.

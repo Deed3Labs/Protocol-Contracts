@@ -134,7 +134,15 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     mapping(address => uint256) public planNonces;
 
     /// @dev Seven slots from the gap: limitIncreaseCap (3), planTotalCap (3), planNonces.
-    uint256[26] private __gap;
+    /// @dev member => ids of plans still open. Every loop over a member's plans walks this rather
+    /// than `memberPlans`, which only grows, so a member's calls do not get dearer with every plan
+    /// they have ever closed (audit L-7).
+    mapping(address => uint256[]) private openPlanIds;
+    /// @dev planId => its position in `openPlanIds` plus one; zero when not tracked.
+    mapping(uint256 => uint256) private openPlanSlot;
+
+    /// @dev Two more slots from the gap: openPlanIds, openPlanSlot.
+    uint256[24] private __gap;
 
     /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
     uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
@@ -208,6 +216,12 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     }
 
     /* ========== INITIALIZER ========== */
+
+    /// @dev The bare implementation can never be initialized; only the proxy can (audit L-1).
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
     function initialize(address _stableCredit, address _carryTreasury) external initializer {
         if (_carryTreasury == address(0)) revert TermIssuerNoCarryRecipient();
@@ -352,7 +366,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
 
     /// @notice a member's total arrears across every plan they hold.
     function totalArrearsOf(address member) public view returns (uint256 total) {
-        uint256[] storage ids = memberPlans[member];
+        uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
             total += arrearsOf(ids[i]);
         }
@@ -381,7 +395,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
 
     /// @notice the soonest any of a member's plans becomes defaultable. Zero when none is behind.
     function memberDefaultableAt(address member) public view returns (uint256 soonest) {
-        uint256[] storage ids = memberPlans[member];
+        uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
             uint256 at = defaultableAt(ids[i]);
             if (at != 0 && (soonest == 0 || at < soonest)) soonest = at;
@@ -408,7 +422,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
 
     /// @notice a member's total owed across every open plan, carry included.
     function totalOwedOf(address member) public view returns (uint256 total) {
-        uint256[] storage ids = memberPlans[member];
+        uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
             if (!plans[ids[i]].closed) total += owedOn(ids[i]);
         }
@@ -416,7 +430,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
 
     /// @notice a member's outstanding principal across every open plan.
     function totalPrincipalOf(address member) public view returns (uint256 total) {
-        uint256[] storage ids = memberPlans[member];
+        uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
             // Closed plans are skipped. Until refunds existed every closed plan had nothing
             // outstanding, so the sum was the same either way; a refund can close one over a carry
@@ -641,6 +655,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
             plan.normalized = 0;
             carryOutstandingOf[planId] = 0;
             plan.closed = true;
+            _untrackOpen(planId);
             emit PlanClosed(planId);
         } else if (refunded > 0) {
             // Still open with less to pay. The old schedule was sized for the whole purchase, so
@@ -804,6 +819,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         plan.normalized = CarryIndex.normalizeUp(purchase, CarryIndex.RAY);
         _fixSchedule(plan);
         memberPlans[member].push(planId);
+        _trackOpen(member, planId);
 
         stableCredit.originatePurchase(
             member, purchase, terms.merchant, terms.payout, _feeRecipient(), purchase - terms.payout
@@ -949,7 +965,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         if (mandateCollections[ref] != 0) revert TermIssuerCollectionUsed(ref);
 
         uint256 remaining = amount;
-        uint256[] storage ids = memberPlans[member];
+        uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length && remaining > 0; i++) {
             uint256 planId = ids[i];
             if (plans[planId].closed) continue;
@@ -993,7 +1009,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         uint256 at = memberDefaultableAt(member);
         if (at == 0 || block.timestamp < at) revert TermIssuerNotDefaultable(member);
 
-        uint256[] storage ids = memberPlans[member];
+        uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
             _materialiseCarry(ids[i]);
         }
@@ -1055,6 +1071,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         emit PlanPaid(planId, pay, principalPortion);
         if (plan.principalOutstanding == 0) {
             plan.closed = true;
+            _untrackOpen(planId);
             emit PlanClosed(planId);
         }
     }
@@ -1093,7 +1110,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         returns (uint256 absorbed)
     {
         if (available == 0) return 0;
-        uint256[] storage ids = memberPlans[member];
+        uint256[] memory ids = openPlanIds[member];
         uint256 remaining = available;
 
         for (uint256 i = 0; i < ids.length && remaining > 0; i++) {
@@ -1118,6 +1135,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
             emit PlanPaid(planId, pay, principalPortion);
             if (plan.principalOutstanding == 0) {
                 plan.closed = true;
+                _untrackOpen(planId);
                 emit PlanClosed(planId);
             }
         }
@@ -1130,7 +1148,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         override
         returns (uint256 rate, bool hasPosition)
     {
-        uint256[] storage ids = memberPlans[member];
+        uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
             Plan storage plan = plans[ids[i]];
             if (plan.closed || plan.principalOutstanding == 0) continue;
@@ -1154,7 +1172,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// no revoking membership. A missed plan ends term credit; it does not take away the card, the
     /// savings, or the co-op.
     function _onDefault(address member) internal override {
-        uint256[] storage ids = memberPlans[member];
+        uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
             Plan storage plan = plans[ids[i]];
             if (plan.closed) continue;
@@ -1162,6 +1180,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
             plan.principalOutstanding = 0;
             carryOutstandingOf[ids[i]] = 0;
             plan.closed = true;
+            _untrackOpen(ids[i]);
             emit PlanClosed(ids[i]);
         }
         termLimitOf[member] = 0;
@@ -1198,6 +1217,39 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         uint256 carry = carryOutstandingOf[planId];
         cleared = pay < carry ? pay : carry;
         if (cleared > 0) carryOutstandingOf[planId] = carry - cleared;
+    }
+
+    /// @notice the ids of a member's plans that are still open.
+    function openPlansOf(address member) external view returns (uint256[] memory) {
+        return openPlanIds[member];
+    }
+
+    /// @notice rebuilds a member's open-plan index from their plan history.
+    /// @dev For a proxy upgraded from before the index existed: its open plans were never added.
+    /// Permissionless, because it only records which of the member's plans are open, which is a
+    /// fact anyone can read. Bounded by the member's own history.
+    function indexOpenPlans(address member) external {
+        uint256[] storage all = memberPlans[member];
+        for (uint256 i = 0; i < all.length; i++) {
+            uint256 planId = all[i];
+            if (!plans[planId].closed && openPlanSlot[planId] == 0) _trackOpen(member, planId);
+        }
+    }
+
+    function _trackOpen(address member, uint256 planId) private {
+        openPlanIds[member].push(planId);
+        openPlanSlot[planId] = openPlanIds[member].length;
+    }
+
+    function _untrackOpen(uint256 planId) private {
+        uint256 slot = openPlanSlot[planId];
+        if (slot == 0) return;
+        uint256[] storage ids = openPlanIds[plans[planId].member];
+        uint256 last = ids[ids.length - 1];
+        ids[slot - 1] = last;
+        openPlanSlot[last] = slot;
+        ids.pop();
+        delete openPlanSlot[planId];
     }
 
     function _requirePlan(uint256 planId) private view {

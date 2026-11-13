@@ -17,7 +17,7 @@ Branch `audit/phase-1`, cut from `audit/materials` (which is `dev` @ `7eb5976` p
 - [x] 5. Pool accounting: X-2, X-8, X-20
 - [x] 6. X-6: write-offs stay with the defaulting issuer
 - [x] 7. H-4 (credit side) and M-2: per-function operator roles, daily caps, plan merchants active, member-signed plans, card settlement caps and authorizations
-- [ ] 8. M-3, L-2, L-1, L-5, L-6, L-7, L-8, X-11
+- [x] 8. M-3 (1B), L-2, L-1, L-5, L-6 (step 3), L-7, L-8, X-11
 
 Notes:
 - Step 2: H-2 proof rewritten as two regression tests.
