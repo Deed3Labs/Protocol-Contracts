@@ -261,18 +261,18 @@
   },
   "ESADepositVault": {
    "source": "contracts/peripherals/ESADepositVault.sol",
-   "sha256": "94c5c0e960c03e081f729ff815367db318936a2d2fca5f14694d748c8dfa38e1",
+   "sha256": "392b4915ece14e3c645e9231eac088d9f38c58cbb77d7473f0ebdb5d13b97725",
    "immutables": [
     [
-     4103,
+     4181,
      32
     ],
     [
-     4243,
+     4321,
      32
     ],
     [
-     6511,
+     6589,
      32
     ]
    ]
@@ -369,18 +369,18 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "57ab88d6077dd38f4849bded83bb6522ce258513cf06ea2d6bade2aaf3014432",
+   "sha256": "d4bf120e03ab292413884dbdb0dbedc260708f1aa0df0ce9ecdfadd8482fdd47",
    "immutables": [
     [
-     7995,
+     8210,
      32
     ],
     [
-     8180,
+     8395,
      32
     ],
     [
-     10283,
+     10559,
      32
     ]
    ]
@@ -482,26 +482,30 @@
   },
   "RevolvingIssuer": {
    "source": "contracts/peripherals/RevolvingIssuer.sol",
-   "sha256": "dcac6d95fb90b561dbb70b82754a7276b8397b9dda8fd333fd110a76a0d29911",
+   "sha256": "c80be60c838c7013841c4cc202b3a363e10315a581ce62e201ae45e1094b019a",
    "immutables": [
     [
-     2754,
+     3395,
      32
     ],
     [
-     2871,
+     3512,
      32
     ],
     [
-     4149,
+     5023,
      32
     ],
     [
-     10103,
+     11951,
      32
     ],
     [
-     12152,
+     14289,
+     32
+    ],
+    [
+     21435,
      32
     ]
    ]
