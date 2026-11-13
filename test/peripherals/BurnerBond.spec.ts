@@ -515,7 +515,7 @@ describe("BurnerBond as collateral", function () {
   // A bond pledged against a credit line has to be reachable when the member defaults. It is one
   // token with an id rather than a balance, and it pays at maturity rather than on demand -- so
   // the co-op takes the bond and is paid what it is worth today, not what it will be worth.
-  let ctx: any, factory: any, deposit: any, bond: any, vault: any;
+  let ctx: any, factory: any, deposit: any, bond: any, vault: any, signals: any;
   let buyer: any, coop: any, liquidator: any, other: any;
 
   const ONE = 10n ** 6n;
@@ -556,6 +556,14 @@ describe("BurnerBond as collateral", function () {
     await deposit
       .connect(buyer)
       .makeDeposit(await ctx.usdc.getAddress(), 1_000n * ONE, maturity, discount);
+
+    // Audit M-6: a seizure needs the bond pledged against drawn credit and its holder in default.
+    // This suite is about what happens once a seizure is legitimate, so the buyer is both.
+    signals = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
+    await bond.setEncumbranceSource(await signals.getAddress(), ethers.id("BOND"));
+    await bond.setDefaultSource(await signals.getAddress());
+    await signals.setItemEncumbered(buyer.address, 1, true);
+    await signals.setInDefault(buyer.address, true);
   });
 
   it("is worth its purchase price at the start and its face at maturity", async function () {
@@ -598,7 +606,7 @@ describe("BurnerBond as collateral", function () {
     const pv = await bond.presentValueOf(1);
     await bond.connect(liquidator).redeemEarly(1);
 
-    expect(await ctx.usdc.balanceOf(liquidator.address)).to.equal(pv);
+    expect(await ctx.usdc.balanceOf(liquidator.address)).to.be.closeTo(pv, 2n); // one second of accretion either way
     expect(pv).to.be.lessThan(1_000n * ONE);
   });
 
@@ -614,7 +622,7 @@ describe("BurnerBond as collateral", function () {
 
     // The obligation is gone in full; only the present value left the vault.
     expect(await vault.totalFaceOutstanding()).to.equal(0n);
-    expect(await vault.held()).to.equal(funded + 1_000n * ONE - pv);
+    expect(await vault.held()).to.be.closeTo(funded + 1_000n * ONE - pv, 2n);
   });
 
   it("refuses early redemption to a holder who is not the co-op", async function () {
@@ -730,7 +738,13 @@ describe("auto-roll", function () {
   it("will not roll a bond the co-op has seized", async function () {
     // A seized bond is collateral somebody is waiting on. Rolling it would put the recovery
     // another term away, so the co-op redeems it early instead.
+    const signals = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
+    await bond.setEncumbranceSource(await signals.getAddress(), ethers.id("BOND"));
+    await bond.setDefaultSource(await signals.getAddress());
+    await signals.setItemEncumbered(buyer.address, 1, true);
+    await signals.setInDefault(buyer.address, true);
     await mature();
+
     await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
 
     await expect(bond.connect(liquidator).rollBond(1))

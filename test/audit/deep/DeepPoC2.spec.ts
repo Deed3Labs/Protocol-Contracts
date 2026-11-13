@@ -36,66 +36,6 @@ describe("DEEP AUDIT PoC 2", function () {
     expect(await pool.distributableCarry()).to.equal(0n);
   });
 
-  it("X-9: reserves deposited in DAI/USDT are booked as USDC; reimburse() pays only USDC and reverts -> burnLostDebt bricked", async function () {
-    const ctx = await deployPhase0Network();
-    const { creditIssuer, stableCredit, operator, member, counterparty, access, assurancePool, dai } = ctx;
-    // 10,000 of assurance in DAI (permissionless deposit, priced at a hard-coded $1).
-    await dai.mint(counterparty.address, 10_000n * 10n ** 18n);
-    await dai.connect(counterparty).approve(await assurancePool.getAddress(), ethers.MaxUint256);
-    await assurancePool.connect(counterparty).depositTokenIntoPrimary(await dai.getAddress(), 10_000n * 10n ** 18n);
-    expect(await assurancePool.primaryBalance()).to.equal(10_000n * ONE_USDC);
-
-    // A member defaults: lost debt is created.
-    await creditIssuer.connect(operator).initializeCreditLine(member.address, 1_000n * ONE_USDC, 0, 30 * DAY, 10 * DAY);
-    await access.connect(operator).grantMember(counterparty.address);
-    await stableCredit.connect(member).transfer(counterparty.address, 1_000n * ONE_USDC);
-    await advance(41 * DAY);
-    await creditIssuer.syncCreditPeriod(member.address);
-    expect(await stableCredit.lostDebt()).to.equal(1_000n * ONE_USDC);
-
-    // The holder of the orphaned claims asks the reserve to cover them: the pool "has" 10,000 but cannot pay.
-    await expect(stableCredit.connect(counterparty).burnLostDebt(counterparty.address, 1_000n * ONE_USDC))
-      .to.be.revertedWith("ERC20: transfer amount exceeds balance");
-    // With USDC in the pool instead, the same call succeeds:
-    await ctx.usdc.mint(await assurancePool.getAddress(), 1_000n * ONE_USDC);
-    await stableCredit.connect(counterparty).burnLostDebt(counterparty.address, 1_000n * ONE_USDC);
-  });
-
-  it("X-10: every outstanding bond adds an unbounded loop iteration to every RTD read (repayment path gas grows linearly)", async function () {
-    const ctx = await deployPhase0Network();
-    const { admin, operator, usdc, assurancePool, assuranceOracle, outsider } = ctx;
-    const Factory = await ethers.getContractFactory("BurnerBondFactory");
-    const factory: any = await Factory.deploy(await assurancePool.getAddress(), await assuranceOracle.getAddress(), "ipfs://x");
-    const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.burnerBondDeposit());
-    const BondVault = await ethers.getContractFactory("BondVault");
-    const vault: any = await upgrades.deployProxy(BondVault, [admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
-    await deposit.setBondVault(await vault.getAddress());
-    await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
-    await assurancePool.connect(operator).setBondVault(await vault.getAddress());
-
-    await usdc.mint(outsider.address, 10_000_000n * ONE_USDC);
-    await usdc.connect(outsider).approve(await deposit.getAddress(), ethers.MaxUint256);
-    const now = (await ethers.provider.getBlock("latest"))!.timestamp;
-
-    const gasAt: bigint[] = [];
-    const measure = async () => gasAt.push(await assurancePool.depositRepayment.estimateGas(1n).catch(async () => {
-      // depositRepayment needs an allowance; measure the view it is dominated by instead.
-      return await assurancePool.neededReserves.estimateGas();
-    }));
-    await measure();
-    const N = 60;
-    for (let i = 0; i < N; i++) {
-      // Minimum face value, maturity inside the 90-day reserve window, from an anonymous wallet.
-      await deposit.connect(outsider).makeDeposit(await usdc.getAddress(), 100n * ONE_USDC, now + 60 * DAY + i, 0);
-    }
-    await measure();
-    const perBond = (gasAt[1] - gasAt[0]) / BigInt(N);
-    console.log(`      neededReserves gas: ${gasAt[0]} -> ${gasAt[1]} with ${N} bonds (~${perBond}/bond)`);
-    console.log(`      bonds to exceed a 16.7M tx cap: ~${16_777_216n / perBond}, i.e. ~$${(16_777_216n / perBond) * 100n} of $100 bonds`);
-    expect(perBond).to.be.gt(1_500n);
-    expect(await vault.outstandingCount()).to.equal(BigInt(N));
-  });
-
   it("X-11: CarryIndex.rpow overflows at the 50%/cycle cap after 131 cycles (~10.8y) -> every touch of that position reverts", async function () {
     const H = await ethers.getContractFactory("CarryIndexHarness");
     const h: any = await H.deploy();

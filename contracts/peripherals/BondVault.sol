@@ -42,6 +42,14 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
 
     uint256 internal constant BPS = 10_000;
 
+    /// @dev Maturity buckets (audit X-10): one per UTC day from `BUCKET_EPOCH`, summed with a
+    /// Fenwick tree so "face due within a window" costs log2(BUCKETS) reads instead of one per
+    /// outstanding bond. `faceDueWithin` used to walk every bond on every RTD read, and about
+    /// 2,100 minimum-face bonds pushed the member repayment path past the block gas limit.
+    uint256 internal constant BUCKET_EPOCH = 1_577_836_800; // 2020-01-01T00:00:00Z
+    /// @dev 2^15 days: maturities up to early 2109.
+    uint256 internal constant BUCKETS = 32_768;
+
     /// @notice What the vault owes on one bond.
     struct Obligation {
         uint256 principal;
@@ -98,7 +106,15 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice The collateral kind bonds are pledged as.
     bytes32 public collateralKind;
 
-    uint256[35] private __gap;
+    /* ========== ADDED BY THE AUDIT FIXES: two slots from the gap ========== */
+
+    /// @dev Fenwick tree over maturity day (1-indexed): face value outstanding per bucket.
+    mapping(uint256 => uint256) private dueTree;
+    /// @dev bond id => its bucket, plus nothing: buckets are already 1-indexed, so 0 means "not
+    /// bucketed" (a bond recorded before the X-10 fix, until `bucketOutstanding` picks it up).
+    mapping(uint256 => uint256) private bucketOf;
+
+    uint256[33] private __gap;
 
     error BondVaultInvalidAddress();
     error BondVaultUnknownBond(uint256 bondId);
@@ -109,6 +125,12 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     error BondVaultInsufficientFunds(uint256 held, uint256 required);
     /// @dev Pledged and backing drawn credit: roll it, or pay the credit down first.
     error BondVaultBondPledged(uint256 bondId);
+    /// @dev The maturity falls outside the bucketed range.
+    error BondVaultMaturityOutOfRange(uint64 maturity);
+    /// @dev Only the tracked borrower may repay (audit M-8).
+    error BondVaultNotTrackedBorrower(address caller);
+    /// @dev The payout pool cannot be re-pointed while it owes the vault.
+    error BondVaultLoanOutstanding(uint256 outstanding);
 
     event PurchaseRecorded(uint256 indexed bondId, uint256 principal, uint256 faceValue, uint64 maturity);
     event Settled(uint256 indexed bondId, address indexed to, uint256 faceValue);
@@ -131,6 +153,8 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     event RepaidReserve(uint256 amount, uint256 owed);
     event LentToPayoutPool(uint256 amount, uint256 outstanding);
     event RepaidFromPayoutPool(uint256 amount, uint256 outstanding);
+    /// @notice A payout-pool repayment carried carry on top of principal (audit X-17).
+    event InterestReceived(uint256 principal, uint256 interest);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -170,12 +194,56 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         return outstanding;
     }
 
-    /// @notice face value falling due inside a window.
+    /// @notice face value falling due inside a window, overdue face included.
+    /// @dev Read from the maturity buckets (audit X-10), so the cost no longer grows with the
+    /// number of bonds. Day granularity: a bond maturing later on the horizon's own day counts as
+    /// due, which can only overstate the reserve, never understate it.
     function faceDueWithin(uint64 window) public view returns (uint256 due) {
-        uint256 horizon = block.timestamp + window;
-        for (uint256 i = 0; i < outstanding.length; i++) {
-            Obligation storage obligation = obligations[outstanding[i]];
-            if (obligation.maturity <= horizon) due += obligation.faceValue;
+        uint256 i = _bucketFor(block.timestamp + window);
+        if (i > BUCKETS) i = BUCKETS;
+        while (i > 0) {
+            due += dueTree[i];
+            i -= i & (~i + 1);
+        }
+    }
+
+    /// @notice buckets bonds recorded before the X-10 fix. Permissionless and idempotent.
+    /// @param start index into the outstanding list to start at
+    /// @param count how many to look at
+    function bucketOutstanding(uint256 start, uint256 count) external returns (uint256 bucketed) {
+        uint256 end = start + count;
+        if (end > outstanding.length) end = outstanding.length;
+        for (uint256 j = start; j < end; j++) {
+            uint256 bondId = outstanding[j];
+            if (bucketOf[bondId] != 0) continue;
+            Obligation storage obligation = obligations[bondId];
+            _addDue(bondId, obligation.maturity, obligation.faceValue);
+            bucketed++;
+        }
+    }
+
+    function _bucketFor(uint256 timestamp) private pure returns (uint256) {
+        // Anything before the epoch (only possible in tests) sits in the first bucket.
+        return timestamp <= BUCKET_EPOCH ? 1 : (timestamp - BUCKET_EPOCH) / 1 days + 1;
+    }
+
+    function _addDue(uint256 bondId, uint64 maturity, uint256 face) private {
+        uint256 i = _bucketFor(maturity);
+        if (i > BUCKETS) revert BondVaultMaturityOutOfRange(maturity);
+        bucketOf[bondId] = i;
+        while (i <= BUCKETS) {
+            dueTree[i] += face;
+            i += i & (~i + 1);
+        }
+    }
+
+    function _removeDue(uint256 bondId, uint256 face) private {
+        uint256 i = bucketOf[bondId];
+        if (i == 0) return; // never bucketed: nothing to take out
+        delete bucketOf[bondId];
+        while (i <= BUCKETS) {
+            dueTree[i] -= face;
+            i += i & (~i + 1);
         }
     }
 
@@ -238,6 +306,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
             Obligation({principal: principal, faceValue: faceValue, maturity: maturity, settled: false});
         outstanding.push(bondId);
         outstandingIndex[bondId] = outstanding.length;
+        _addDue(bondId, maturity, faceValue);
 
         totalPrincipal += principal;
         totalFaceOutstanding += faceValue;
@@ -264,6 +333,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         totalFaceOutstanding -= faceValue;
         totalFaceSettled += faceValue;
         _removeOutstanding(bondId);
+        _removeDue(bondId, faceValue);
 
         reserveToken.safeTransfer(to, faceValue);
         emit Settled(bondId, to, faceValue);
@@ -295,6 +365,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         totalFaceOutstanding -= faceValue;
         totalFaceSettled += faceValue;
         _removeOutstanding(bondId);
+        _removeDue(bondId, faceValue);
 
         reserveToken.safeTransfer(to, presentValue);
         emit SettledEarly(bondId, to, presentValue, faceValue);
@@ -321,6 +392,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         matured.settled = true;
         totalFaceOutstanding -= rolled;
         _removeOutstanding(oldBondId);
+        _removeDue(oldBondId, rolled);
 
         obligations[newBondId] = Obligation({
             principal: rolled,
@@ -330,6 +402,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         });
         outstanding.push(newBondId);
         outstandingIndex[newBondId] = outstanding.length;
+        _addDue(newBondId, newMaturity, newFaceValue);
         totalFaceOutstanding += newFaceValue;
 
         emit Rolled(oldBondId, newBondId, rolled, newFaceValue, newMaturity);
@@ -417,18 +490,27 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice takes back what the payout pool borrowed, and any carry on it.
+    /// @dev Only the payout pool (audit M-8): anyone else's payment reduced `lentToPayoutPool`
+    /// while the payout pool's own `borrowedFromVault` stayed put, and the books disagreed. Only
+    /// principal reduces what is owed; the carry stays here as vault cash (audit X-17).
     function repayFromPayoutPool(uint256 amount) external {
+        if (payoutPool == address(0) || _msgSender() != payoutPool) revert BondVaultNotTrackedBorrower(_msgSender());
         reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
         uint256 principal = lentToPayoutPool < amount ? lentToPayoutPool : amount;
         lentToPayoutPool -= principal;
+        if (amount > principal) emit InterestReceived(principal, amount - principal);
         emit RepaidFromPayoutPool(amount, lentToPayoutPool);
     }
 
     /* ========== RESTRICTED ========== */
 
     /// @notice names the treasury, the reserve of last resort, and the payout pool.
+    /// @dev Zero is a valid "none" for each. The payout pool is not re-pointed while it owes the
+    /// vault, because only the tracked payout pool may repay (audit M-8).
     function setBackstops(address _treasury, address _assurancePool, address _payoutPool) external onlyRole(OPERATOR_ROLE) {
+        if (_payoutPool != payoutPool && lentToPayoutPool != 0) revert BondVaultLoanOutstanding(lentToPayoutPool);
         treasury = _treasury;
+
         assurancePool = _assurancePool;
         payoutPool = _payoutPool;
         emit BackstopsUpdated(_treasury, _assurancePool, _payoutPool);

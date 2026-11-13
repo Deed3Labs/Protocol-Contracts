@@ -39,8 +39,11 @@ export async function deployPhase0Network() {
   });
 
   const AssurancePool = await ethers.getContractFactory("AssurancePool");
-  const assurancePool = await AssurancePool.deploy();
-  await assurancePool.initialize(await stableCredit.getAddress(), await usdc.getAddress());
+  // Behind a proxy, as deploy/08 deploys it: the implementation itself cannot be initialized
+  // (audit L-1).
+  const assurancePool = await upgrades.deployProxy(
+    AssurancePool, [await stableCredit.getAddress(), await usdc.getAddress()], { kind: "uups" }
+  );
 
   const MockUniswapV3Factory = await ethers.getContractFactory("MockUniswapV3Factory");
   const uniswapFactory = await MockUniswapV3Factory.deploy();

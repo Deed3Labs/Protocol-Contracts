@@ -160,31 +160,4 @@ describe("DEEP AUDIT PoC", function () {
     expect(await revolving.headroomOf(m.address, 3)).to.equal(0n);
   });
 
-  it("X-7: LendingPool depositors front-run a loss by queueing a withdrawal and push it onto the others", async function () {
-    const [admin, a, b, borrower, reporter] = await ethers.getSigners();
-    const MockERC20 = await ethers.getContractFactory("MockERC20");
-    const usdc: any = await MockERC20.deploy("USDC", "USDC", 6);
-    const LP = await ethers.getContractFactory("LendingPool");
-    const lp: any = await upgrades.deployProxy(LP, [admin.address, await usdc.getAddress(), "Yield", "yUSDC"], { kind: "uups" });
-    await lp.grantRole(await lp.BORROWER_ROLE(), borrower.address);
-    await lp.grantRole(await lp.LOSS_REPORTER_ROLE(), reporter.address);
-    for (const w of [a, b]) {
-      await usdc.mint(w.address, 1_000n * ONE_USDC);
-      await usdc.connect(w).approve(await lp.getAddress(), ethers.MaxUint256);
-      await lp.connect(w).deposit(1_000n * ONE_USDC, w.address);
-    }
-    await lp.connect(borrower).borrow(1_500n * ONE_USDC, borrower.address); // only 500 cash left
-    // A sees a default coming (TermIssuer.declareDefault / CreditIssuer expiry are public) and queues first.
-    // No cash is needed to queue: the request just locks today's share price.
-    await lp.connect(a).requestWithdrawal(await lp.balanceOf(a.address), a.address);
-    await lp.connect(reporter).absorbLoss(1_000n * ONE_USDC);
-    // B absorbs the WHOLE 1,000 loss; A's claim is still 1,000.
-    const [, , aAssets] = await lp.requestAt(0);
-    expect(aAssets).to.be.closeTo(1_000n * ONE_USDC, 1n);
-    expect(await lp.previewRedeem(await lp.balanceOf(b.address))).to.equal(0n);
-    // and A is paid out of the cash B left in the pool.
-    await usdc.mint(await lp.getAddress(), 500n * ONE_USDC); // e.g. a later repayment
-    await lp.connect(a).claimWithdrawal(0);
-    expect(await usdc.balanceOf(a.address)).to.be.closeTo(1_000n * ONE_USDC, 1n);
-  });
 });

@@ -30,6 +30,8 @@ describe("asset-backed default", function () {
       { kind: "uups" }
     );
     await pool.grantRole(await pool.BORROWER_ROLE(), borrower.address);
+    // A borrower draws only to its stored destination, within a daily cap (audit H-4).
+    await pool.setBorrower(borrower.address, borrower.address, ethers.MaxUint256);
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     issuer = await RevolvingIssuer.deploy();

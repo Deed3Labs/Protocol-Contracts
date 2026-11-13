@@ -28,6 +28,9 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @custom:storage-location erc7201:clear.storage.ClearUSD
     struct ClearUSDStorage {
         IEncumbranceSource encumbranceSource;
+        /// @dev The lock last read successfully per holder (audit M-3). Appended to the namespaced
+        /// struct, which is layout-safe: nothing else lives after it in this namespace.
+        mapping(address => uint256) lastKnownLock;
     }
 
     // keccak256(abi.encode(uint256(keccak256("clear.storage.ClearUSD")) - 1)) & ~bytes32(uint256(0xff))
@@ -39,8 +42,12 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
 
     error ClearUSDEncumbered(address holder, uint256 free, uint256 amount);
     error ClearUSDSeizureExceedsEncumbrance(address holder, uint256 encumbered, uint256 amount);
+    error ClearUSDEncumbranceUnreadable(address holder);
 
     event EncumbranceSourceUpdated(address indexed source);
+    /// @notice The encumbrance source reverted while a holder's CLRUSD moved (audit M-3). Monitoring
+    /// should alert on this: it means the lock is running on its last known reading.
+    event EncumbranceSourceReverted(address indexed holder, uint256 lastKnownLock);
 
     function _clearUsdStorage() private pure returns (ClearUSDStorage storage $) {
         bytes32 slot = CLEAR_USD_STORAGE;
@@ -71,15 +78,44 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         return balance > locked ? balance - locked : 0;
     }
 
-    /// @dev A source that reverts must not take the token down with it. An unreadable source locks
-    /// nothing: the registry going quiet is a problem to fix, not a reason to freeze everyone.
+    /// @notice the lock last read successfully for a holder (audit M-3).
+    function lastKnownLockOf(address holder) external view returns (uint256) {
+        return _clearUsdStorage().lastKnownLock[holder];
+    }
+
+    /// @notice records a holder's current lock from the source.
+    /// @dev Permissionless: it can only write what the source reports, and reverts (writing
+    /// nothing) when the source cannot be read. The credit side should call it after a draw, so
+    /// the record is current before anything can go wrong with the source.
+    function syncEncumbrance(address holder) external returns (uint256 locked) {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        if (address($.encumbranceSource) == address(0)) return 0;
+        locked = $.encumbranceSource.encumberedOf(holder);
+        $.lastKnownLock[holder] = locked;
+    }
+
+    /// @dev Fails closed for pledgers, open for everyone else (audit M-3). An unreadable source
+    /// used to lock nothing, so a bad registry upgrade -- or a caller sending just enough gas for
+    /// the registry call to run out -- released every member's collateral with no sign on chain.
+    /// Whether a holder has drawn credit cannot be known without the call that failed, so the
+    /// narrowest safe rule is the holder's own history: one whose last successful reading was a
+    /// non-zero lock is treated as fully locked; one never seen locked (never pledged, or last read
+    /// at zero) is not frozen. A source that breaks therefore still cannot freeze the holders who
+    /// have nothing to do with credit.
     function _encumberedOf(address holder) internal view returns (uint256) {
+        (uint256 locked, bool ok) = _readLock(holder);
+        if (ok) return locked;
+        return _clearUsdStorage().lastKnownLock[holder] > 0 ? type(uint256).max : 0;
+    }
+
+    /// @dev The source's answer, and whether it gave one. No source is a valid answer of zero.
+    function _readLock(address holder) internal view returns (uint256 locked, bool ok) {
         IEncumbranceSource source = _clearUsdStorage().encumbranceSource;
-        if (address(source) == address(0)) return 0;
-        try source.encumberedOf(holder) returns (uint256 locked) {
-            return locked;
+        if (address(source) == address(0)) return (0, true);
+        try source.encumberedOf(holder) returns (uint256 value) {
+            return (value, true);
         } catch {
-            return 0;
+            return (0, false);
         }
     }
 
@@ -103,7 +139,10 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         external
         onlyRole(LIQUIDATOR_ROLE)
     {
-        uint256 encumbered = _encumberedOf(holder);
+        // A seizure needs a real answer: "fully locked" is a reason to refuse a transfer, never a
+        // licence to take a holder's whole balance.
+        (uint256 encumbered, bool ok) = _readLock(holder);
+        if (!ok) revert ClearUSDEncumbranceUnreadable(holder);
         if (amount > encumbered) {
             revert ClearUSDSeizureExceedsEncumbrance(holder, encumbered, amount);
         }
@@ -116,9 +155,20 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// exempt because it has no `from` to encumber.
     function _update(address from, address to, uint256 value) internal virtual override {
         if (from != address(0)) {
-            uint256 free = freeBalanceOf(from);
+            ClearUSDStorage storage $ = _clearUsdStorage();
+            (uint256 locked, bool ok) = _readLock(from);
+            if (ok) {
+                // Keep the record current, so a later outage fails closed for this holder.
+                if (locked != $.lastKnownLock[from]) $.lastKnownLock[from] = locked;
+            } else {
+                locked = $.lastKnownLock[from] > 0 ? type(uint256).max : 0;
+                emit EncumbranceSourceReverted(from, $.lastKnownLock[from]);
+            }
+            uint256 balance = balanceOf(from);
+            uint256 free = balance > locked ? balance - locked : 0;
             if (value > free) revert ClearUSDEncumbered(from, free, value);
         }
+
         super._update(from, to, value);
     }
 }

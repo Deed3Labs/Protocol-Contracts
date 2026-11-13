@@ -23,6 +23,11 @@ interface IBondEncumbrance {
     function rollItem(address member, bytes32 kind, uint256 oldItemId, uint256 newItemId) external;
 }
 
+/// @dev Whether a member is in default -- the shape of `ICreditIssuer.inDefault`.
+interface IMemberDefaultSource {
+    function inDefault(address member) external view returns (bool);
+}
+
 interface IBondTraitStore {
     function setTrait(uint256 bondId, bytes32 key, bytes calldata value) external;
     function setTraits(uint256 bondId, bytes32[] calldata keys, bytes[] calldata values) external;
@@ -110,6 +115,16 @@ contract BurnerBond is
     event BondSeized(uint256 indexed bondId, address indexed from, address indexed to);
     event RedeemedEarly(uint256 indexed bondId, address indexed holder, uint256 presentValue);
     event LiquidatorUpdated(address indexed liquidator);
+    event LiquidatorProposed(address indexed liquidator, uint256 readyAt);
+    event DefaultSourceUpdated(address indexed source);
+
+    /// @notice How long a new liquidator waits between being proposed and taking effect (audit M-6).
+    /// @dev The liquidator can take pledged bonds and redeem them early, so naming one is a power
+    /// over every bondholder; a week gives them time to see it coming.
+    uint256 internal constant LIQUIDATOR_DELAY = 7 days;
+
+    error BurnerBondNotSeizable(uint256 bondId, address from);
+    error BurnerBondLiquidatorNotReady(uint256 readyAt);
     
     /// @notice Underlying token contract (can be USDC, WETH, etc.)
     IERC20 public underlyingToken;
@@ -171,6 +186,16 @@ contract BurnerBond is
     /// redeemed, and this contract had reached the size a contract may be -- so it sheds what it
     /// does not need to be correct before it sheds anything it does.
     IBondTraitStore public traitStore;
+
+    /* ========== ADDED BY THE AUDIT FIXES (appended) ========== */
+
+    /// @notice A liquidator proposed and not yet in effect (audit M-6).
+    address public pendingLiquidator;
+    /// @notice When `pendingLiquidator` may take effect.
+    uint256 public pendingLiquidatorReadyAt;
+    /// @notice Answers whether a member is in default; `seizeBond` requires it (audit M-6).
+    /// @dev Anything with `inDefault(address) returns (bool)`, e.g. the member's credit issuer.
+    address public defaultSource;
     
     /**
      * @dev Mapping from trait key to trait name
@@ -669,14 +694,21 @@ contract BurnerBond is
 
     /// @notice takes a pledged bond and hands it to the co-op.
     /// @dev A bond is one token with an id, not a balance, so seizing it is a transfer of that
-    /// id rather than an amount. The caller decides whether a default has happened; this only
-    /// enforces who may ask.
+    /// id rather than an amount. Bounded the way CLRUSD's `seize` is (audit M-6): only a bond the
+    /// encumbrance source reports as backing drawn credit, and only from a member the default
+    /// source reports in default. It used to take any bond from any holder, which made the
+    /// collection's owner -- who names the liquidator -- the effective holder of every bond.
     /// @param bondId the bond
     /// @param from the member it is taken from
     /// @param to where it goes, which should be the co-op treasury
     function seizeBond(uint256 bondId, address from, address to) external {
         require(msg.sender == liquidator, "Only liquidator can seize");
         require(balanceOf(from, bondId) > 0, "Not bond holder");
+        if (
+            address(encumbranceSource) == address(0) || defaultSource == address(0)
+                || !encumbranceSource.isItemEncumbered(from, collateralKind, bondId)
+                || !IMemberDefaultSource(defaultSource).inDefault(from)
+        ) revert BurnerBondNotSeizable(bondId, from);
         _safeTransferFrom(from, to, bondId, 1, "");
         emit BondSeized(bondId, from, to);
     }
@@ -777,11 +809,40 @@ contract BurnerBond is
         collateralKind = kind;
     }
 
-    /// @notice names the contract that may seize and redeem early.
+    /// @notice names the contract that may seize and redeem early -- after a delay (audit M-6).
+    /// @dev Takes effect at once only where nobody can be harmed by it: removing the liquidator
+    /// (which only takes power away), or naming the first one before any bond exists. Otherwise
+    /// it is a proposal that `executeLiquidatorChange` applies after `LIQUIDATOR_DELAY`, so the
+    /// owner can no longer name itself and take every bond in the same breath.
     function setLiquidator(address _liquidator) external onlyOwner {
-        liquidator = _liquidator;
-        emit LiquidatorUpdated(_liquidator);
+        if (_liquidator == address(0) || (liquidator == address(0) && totalBondsMinted == 0)) {
+            liquidator = _liquidator;
+            pendingLiquidator = address(0);
+            pendingLiquidatorReadyAt = 0;
+            emit LiquidatorUpdated(_liquidator);
+            return;
+        }
+        pendingLiquidator = _liquidator;
+        pendingLiquidatorReadyAt = block.timestamp + LIQUIDATOR_DELAY;
+        emit LiquidatorProposed(_liquidator, pendingLiquidatorReadyAt);
     }
+
+    /// @notice applies a proposed liquidator once its delay has passed.
+    function executeLiquidatorChange() external onlyOwner {
+        uint256 readyAt = pendingLiquidatorReadyAt;
+        if (readyAt == 0 || block.timestamp < readyAt) revert BurnerBondLiquidatorNotReady(readyAt);
+        liquidator = pendingLiquidator;
+        pendingLiquidator = address(0);
+        pendingLiquidatorReadyAt = 0;
+        emit LiquidatorUpdated(liquidator);
+    }
+
+    /// @notice names what reports a member in default, which `seizeBond` requires (audit M-6).
+    function setDefaultSource(address source) external onlyOwner {
+        defaultSource = source;
+        emit DefaultSourceUpdated(source);
+    }
+
 
     /// @notice sets the vault redemptions are paid from.
     /// @dev Without this a collection can be created but never redeem, because the vault it pays

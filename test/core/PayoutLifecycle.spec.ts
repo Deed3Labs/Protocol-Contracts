@@ -245,6 +245,8 @@ describe("a purchase, from the shop to the money", function () {
         { kind: "uups" }
       );
       await yieldLender.grantRole(await yieldLender.BORROWER_ROLE(), await pool.getAddress());
+      // A borrower draws only to its stored destination, within a daily cap (audit H-4).
+      await yieldLender.setBorrower(await pool.getAddress(), await pool.getAddress(), ethers.MaxUint256);
       reserve = ctx.assurancePool;
       await reserve.connect(ctx.operator).setPayoutPool(await pool.getAddress());
       await pool.connect(ctx.admin).setLenders(await yieldLender.getAddress(), await reserve.getAddress());
@@ -323,6 +325,9 @@ describe("a purchase, from the shop to the money", function () {
       // Principal back, and the return on top -- no converting, it arrived in the same cash.
       expect(await pool.borrowed()).to.equal(0n);
       expect(await pool.carryEarned()).to.equal(0n);
+      // Interest streams into the share price over a week rather than landing at once (audit X-18).
+      await yieldLender.syncInterest();
+      await elapse(7 * DAY);
       expect(await yieldLender.totalAssets()).to.equal(500n * ONE_USDC + earned);
       console.log(`        lent ${u(payout)} -> back ${u(payout)} + ${u(earned)} earned`);
     });
@@ -337,6 +342,7 @@ describe("a purchase, from the shop to the money", function () {
       // The card settler draws on the same pool and has not paid it back yet.
       const settler = (await ethers.getSigners())[12];
       await yieldLender.grantRole(await yieldLender.BORROWER_ROLE(), settler.address);
+      await yieldLender.setBorrower(settler.address, settler.address, ethers.MaxUint256);
       await yieldLender.connect(settler).borrow(100n * ONE_USDC, settler.address);
 
       await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
@@ -350,6 +356,8 @@ describe("a purchase, from the shop to the money", function () {
 
       // The return is the depositors', not a discount on what the settler still owes.
       expect(await yieldLender.totalBorrowed()).to.equal(100n * ONE_USDC);
+      await yieldLender.syncInterest();
+      await elapse(7 * DAY); // streamed, audit X-18
       expect(await yieldLender.totalAssets()).to.equal(500n * ONE_USDC + earned);
     });
 
@@ -489,6 +497,8 @@ describe("a purchase, from the shop to the money", function () {
         expect(await pool.borrowed()).to.equal(0n);
         expect(await pool.carryEarned()).to.equal(0n);
         expect(await vault.lentToPayoutPool()).to.equal(0n);
+        await yieldLender.syncInterest();
+        await elapse(7 * DAY); // the yield pool's share streams in, audit X-18
         const toVault = (await vault.held()) - vaultBefore - (payout - 50n * ONE_USDC);
         const toYield = (await yieldLender.totalAssets()) - 50n * ONE_USDC;
         // Each paid for what it bore (to the unit the division rounds), and between them all of it.

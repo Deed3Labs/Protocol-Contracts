@@ -52,26 +52,29 @@ describe("SavingsIntentFactory", function () {
     return BigInt((latest?.timestamp || 0) + 3600);
   }
 
+  // The escrow address commits to the whole config (audit H-4), so every prediction names it.
+  async function depositConfig(amount: bigint, expiry: bigint) {
+    return {
+      depositor: user.address,
+      receiver: receiver.address,
+      transferToken: await usdc.getAddress(),
+      vaultToken: await usdc.getAddress(),
+      vault: await vault.getAddress(),
+      amount,
+      expiry,
+      action: 0,
+    };
+  }
+
   it("settles a deposit after a single transfer to the predicted escrow", async function () {
     const amount = 125n * ONE_USDC;
-    const expiry = await currentExpiry();
+    const config = await depositConfig(amount, await currentExpiry());
     const salt = makeSalt("deposit-1");
-    const predicted = await factory.predictIntentAddress(salt);
+    const predicted = await factory.predictIntentAddress(salt, config);
 
     await usdc.connect(user).transfer(predicted, amount);
 
-    await expect(
-      factory.settleDeterministic(salt, {
-        depositor: user.address,
-        receiver: receiver.address,
-        transferToken: await usdc.getAddress(),
-        vaultToken: await usdc.getAddress(),
-        vault: await vault.getAddress(),
-        amount,
-        expiry,
-        action: 0,
-      })
-    ).to.emit(vault, "Deposited");
+    await expect(factory.settleDeterministic(salt, config)).to.emit(vault, "Deposited");
 
     expect(await clearUsd.balanceOf(receiver.address)).to.equal(amount);
     expect(await usdc.balanceOf(await vault.getAddress())).to.equal(amount);
@@ -83,24 +86,22 @@ describe("SavingsIntentFactory", function () {
     await vault.connect(user).deposit(await usdc.getAddress(), mintAmount, user.address);
 
     const redeemAmount = 80n * ONE_USDC;
-    const expiry = await currentExpiry();
+    const config = {
+      depositor: user.address,
+      receiver: receiver.address,
+      transferToken: await clearUsd.getAddress(),
+      vaultToken: await usdc.getAddress(),
+      vault: await vault.getAddress(),
+      amount: redeemAmount,
+      expiry: await currentExpiry(),
+      action: 1,
+    };
     const salt = makeSalt("redeem-1");
-    const predicted = await factory.predictIntentAddress(salt);
+    const predicted = await factory.predictIntentAddress(salt, config);
 
     await clearUsd.connect(user).transfer(predicted, redeemAmount);
 
-    await expect(
-      factory.settleDeterministic(salt, {
-        depositor: user.address,
-        receiver: receiver.address,
-        transferToken: await clearUsd.getAddress(),
-        vaultToken: await usdc.getAddress(),
-        vault: await vault.getAddress(),
-        amount: redeemAmount,
-        expiry,
-        action: 1,
-      })
-    ).to.emit(vault, "Redeemed");
+    await expect(factory.settleDeterministic(salt, config)).to.emit(vault, "Redeemed");
 
     expect(await usdc.balanceOf(receiver.address)).to.equal(redeemAmount);
     expect(await clearUsd.balanceOf(user.address)).to.equal(mintAmount - redeemAmount);
@@ -109,59 +110,33 @@ describe("SavingsIntentFactory", function () {
   it("refunds a funded intent after expiry", async function () {
     const amount = 55n * ONE_USDC;
     const latest = await ethers.provider.getBlock("latest");
-    const expiry = BigInt((latest?.timestamp || 0) + 30);
+    const config = await depositConfig(amount, BigInt((latest?.timestamp || 0) + 30));
     const salt = makeSalt("refund-1");
-    const predicted = await factory.predictIntentAddress(salt);
+    const predicted = await factory.predictIntentAddress(salt, config);
 
     await usdc.connect(user).transfer(predicted, amount);
-    await factory.createIntentDeterministic(salt, {
-      depositor: user.address,
-      receiver: receiver.address,
-      transferToken: await usdc.getAddress(),
-      vaultToken: await usdc.getAddress(),
-      vault: await vault.getAddress(),
-      amount,
-      expiry,
-      action: 0,
-    });
+    await factory.createIntentDeterministic(salt, config);
 
     await ethers.provider.send("evm_increaseTime", [31]);
     await ethers.provider.send("evm_mine", []);
 
     const userBalanceBefore = await usdc.balanceOf(user.address);
-    await factory.refundDeterministic(salt, {
-      depositor: user.address,
-      receiver: receiver.address,
-      transferToken: await usdc.getAddress(),
-      vaultToken: await usdc.getAddress(),
-      vault: await vault.getAddress(),
-      amount,
-      expiry,
-      action: 0,
-    });
+    await factory.refundDeterministic(salt, config);
 
     expect(await usdc.balanceOf(user.address)).to.equal(userBalanceBefore + amount);
   });
 
-  it("rejects settlement when the funded balance does not match the intent amount", async function () {
+  it("rejects settlement when the funded balance is short of the intent amount", async function () {
     const amount = 90n * ONE_USDC;
-    const expiry = await currentExpiry();
+    const config = await depositConfig(amount, await currentExpiry());
     const salt = makeSalt("mismatch-1");
-    const predicted = await factory.predictIntentAddress(salt);
+    const predicted = await factory.predictIntentAddress(salt, config);
 
     await usdc.connect(user).transfer(predicted, amount - ONE_USDC);
 
-    await expect(
-      factory.settleDeterministic(salt, {
-        depositor: user.address,
-        receiver: receiver.address,
-        transferToken: await usdc.getAddress(),
-        vaultToken: await usdc.getAddress(),
-        vault: await vault.getAddress(),
-        amount,
-        expiry,
-        action: 0,
-      })
-    ).to.be.revertedWithCustomError(await ethers.getContractAt("SavingsIntentEscrow", predicted), "SavingsIntentEscrowFundingIncomplete");
+    await expect(factory.settleDeterministic(salt, config)).to.be.revertedWithCustomError(
+      await ethers.getContractAt("SavingsIntentEscrow", predicted),
+      "SavingsIntentEscrowFundingIncomplete"
+    );
   });
 });

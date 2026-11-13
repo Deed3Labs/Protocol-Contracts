@@ -432,6 +432,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
 
         if (yieldPool != address(0)) {
             uint256 cash = ILendingPool(yieldPool).availableCash();
+            // The yield pool caps what each borrower may take in a day (audit H-4); asking for
+            // more would revert the whole draw.
+            uint256 allowed = ILendingPool(yieldPool).borrowableToday(address(this));
+            if (allowed < cash) cash = allowed;
             uint256 take = cash < short ? cash : short;
             if (take > 0) {
                 ILendingPool(yieldPool).borrow(take, address(this));

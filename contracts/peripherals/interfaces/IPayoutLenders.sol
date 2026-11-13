@@ -11,6 +11,8 @@ interface ILendingPool {
     /// @notice cash on hand and not already claimed by the withdrawal queue.
     function availableCash() external view returns (uint256);
 
+    function borrowableToday(address borrower) external view returns (uint256);
+
     /// @notice draws cash to fund unsecured credit.
     function borrow(uint256 amount, address to) external;
 

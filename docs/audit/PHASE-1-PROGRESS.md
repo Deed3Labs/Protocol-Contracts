@@ -22,13 +22,13 @@ Branch `audit/phase-1`, cut from `audit/materials` (which is `dev` @ `7eb5976` p
 Notes:
 - Step 2: H-2 proof rewritten as two regression tests.
 - Step 1: ledger `setMerchantRegistry` must be wired in deploy/22 (pending, done with the 1B merge).
-- Step 3: `test/peripherals/ClearUSDUpgradeable.spec.ts` (1B's file) needs `registry.setClrusdToken(clrusd)` in its setup; one test fails until the 1B merge adds it. Same for `test/peripherals/BondCollateral.spec.ts` "moves again once the credit is repaid", which draws member-to-member to fund carry. deploy/20 must call `setClrusdToken` (pending).
+- Step 3: deploy/20 must call `setClrusdToken` (pending). The 1B test files that needed it were fixed at merge.
 - Step 3 also did L-6 (`_requiredUnits` rounds up), since it is the same function.
 - Steps 4-5 landed together (X-2's routing formula was needed to test the refund path). Fuzz at 60 steps: (i-b) holds in all seeds; (ii) "refund up" is residual carry left by a reversal that returned no cash, by design (`residualCarryOf`).
 
 ## 1B: money peripherals (subagent, branch `audit/phase-1-1b`, merged here when done)
 
-- [ ] H-3, M-5, H-4 (ClaimEscrow, SavingsIntent, LendingPool), M-4, M-6, M-8, X-17, X-7, X-18, X-9, X-15, X-16, X-10, X-19, M-7 prep
+- [x] H-3, M-5, H-4 (ClaimEscrow, SavingsIntent, LendingPool), M-4, M-6, M-8, X-17, X-7, X-18, X-9, X-15, X-16, X-10, X-19, M-7 prep, M-3 (merged; lead added AssurancePool L-1 constructor, LendingPool.syncInterest, PayoutPool borrow sized by borrowableToday)
 
 ## 1C: Deed track (subagent, branch `audit/phase-1-1c`, merged here when done)
 
