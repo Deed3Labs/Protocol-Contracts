@@ -42,4 +42,4 @@ Notes:
 - [x] Slither per changed contract: no new real High or Medium (triaged; see report)
 - [x] Storage layout of `ESADepositVault` and `ClaimEscrow` checked against `.openzeppelin/base.json`: OK
 - [x] `PHASE-1-REPORT.md` written
-- [ ] Push and PR into `dev`
+- [x] Pushed; PR https://github.com/Deed3Labs/Protocol-Contracts/pull/883 into `dev`
