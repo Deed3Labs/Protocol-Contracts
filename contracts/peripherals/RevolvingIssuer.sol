@@ -260,6 +260,13 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         return backed < room ? backed : room;
     }
 
+    /// @dev What a member could draw across every tier open to new draws.
+    function _activeHeadroom(address member) private view returns (uint256 headroom) {
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tiers[i].active) headroom += headroomOf(member, i);
+        }
+    }
+
     /// @dev What the collateral registry says may still be drawn against a kind. A registry that
     /// cannot answer backs nothing: under-lending shrinks a line, over-lending lends against
     /// savings that may be gone.
@@ -554,13 +561,9 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         // Carry accrued since the last touch is part of what is owed; bring it on before measuring.
         _materialiseCarry(member);
 
-        uint256 headroom;
-        for (uint256 i = 0; i < tiers.length; i++) {
-            if (tiers[i].active) headroom += headroomOf(member, i);
-        }
-        if (headroom < amount) revert RevolvingIssuerCardHeadroom(member, amount, headroom);
-
-        _draw(member, amount);
+        // All or nothing: whatever the tiers cannot place reverts the whole settlement.
+        uint256 unplaced = _draw(member, amount);
+        if (unplaced > 0) revert RevolvingIssuerCardHeadroom(member, amount, amount - unplaced);
         cardSettlements[ref] = CardSettlement({member: member, amount: amount});
         stableCredit.originatePurchase(
             member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
@@ -587,10 +590,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
             revert RevolvingIssuerMemberNotInGoodStanding(member);
         }
         if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
-        uint256 headroom;
-        for (uint256 i = 0; i < tiers.length; i++) {
-            if (tiers[i].active) headroom += headroomOf(member, i);
-        }
+        uint256 headroom = _activeHeadroom(member);
         if (headroom < amount) revert RevolvingIssuerCardHeadroom(member, amount, headroom);
         cardAuthorizations[ref] = CardAuthorization({member: member, amount: amount});
         emit CardAuthorized(ref, member, amount);

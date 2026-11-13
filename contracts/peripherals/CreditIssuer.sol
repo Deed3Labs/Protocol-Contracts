@@ -627,10 +627,16 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
 
     /// @dev One of the split credit roles (audit H-4). The admin passes all of them.
     modifier onlyCreditRole(bytes32 role) {
+        _requireCreditRole(role);
+        _;
+    }
+
+    /// @dev Out of line: a modifier body is copied into every function that uses it, and these
+    /// contracts sit close to the bytecode size limit.
+    function _requireCreditRole(bytes32 role) internal view {
         if (!stableCredit.access().hasCreditRole(role, _msgSender())) {
             revert CreditIssuerMissingRole(role, _msgSender());
         }
-        _;
     }
 
     /// @dev Spends `amount` of today's budget, starting a new day's count when the day turns.
@@ -648,8 +654,12 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     }
 
     modifier onlyOperator() {
-        require(stableCredit.access().isOperator(_msgSender()), "CreditIssuer: Unauthorized caller");
+        _requireOperator();
         _;
+    }
+
+    function _requireOperator() internal view {
+        require(stableCredit.access().isOperator(_msgSender()), "CreditIssuer: Unauthorized caller");
     }
 
     modifier canIssueCreditTo(address member) {
@@ -663,19 +673,31 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     }
 
     modifier onlyStableCredit() {
+        _requireStableCredit();
+        _;
+    }
+
+    function _requireStableCredit() internal view {
         require(
             _msgSender() == address(stableCredit), "CreditIssuer: can only be called by network"
         );
-        _;
     }
 
     modifier notInActivePeriod(address member) {
-        require(!inActivePeriod(member), "CreditIssuer: member in active credit period");
+        _requireNotInActivePeriod(member);
         _;
     }
 
+    function _requireNotInActivePeriod(address member) internal view {
+        require(!inActivePeriod(member), "CreditIssuer: member in active credit period");
+    }
+
     modifier notNull(address member) {
-        require(member != address(0), "CreditIssuer: member address can't be null ");
+        _requireNotNull(member);
         _;
+    }
+
+    function _requireNotNull(address member) internal pure {
+        require(member != address(0), "CreditIssuer: member address can't be null ");
     }
 }
