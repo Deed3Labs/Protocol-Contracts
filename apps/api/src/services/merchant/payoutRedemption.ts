@@ -2,6 +2,7 @@ import { encodeFunctionData, parseEventLogs, type Address } from 'viem';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainId } from '../chargeService.js';
 import { shopWallet, shopWalletGap } from './shopWallet.js';
+import { decodeChainError, describeRedeemRefusal } from '../chain/chainErrors.js';
 
 /*
  * Turning what a shop is owed into money, without the shop paying for gas.
@@ -29,6 +30,12 @@ import { shopWallet, shopWalletGap } from './shopWallet.js';
  *
  * Unconfigured is reported, never faked. A server without sponsorship or without Clear's signing
  * key says so, and the caller records a request the old way rather than claiming money moved.
+ *
+ * Who may redeem (audit C-1, H-1, DECISIONS #3): only a registered, active merchant, or an address
+ * the pool's admin named (REDEEMER_ROLE, FUNDER_ROLE). A merchant's balance may go nowhere else on
+ * the ledger: the pool is its only exit. The redeem is simulated before anything is sent, so a shop
+ * that is not eligible is told why (`PayoutPoolNotEligible`, `PayoutPoolMerchantInactive`) without
+ * an approval or a reverted transaction on its wallet.
  */
 
 
@@ -63,6 +70,9 @@ const CREDIT_ABI = [
 ] as const;
 
 const POOL_ABI = [
+  { type: 'error', name: 'PayoutPoolNotEligible', inputs: [{ name: 'holder', type: 'address' }] },
+  { type: 'error', name: 'PayoutPoolMerchantInactive', inputs: [{ name: 'merchant', type: 'address' }] },
+  { type: 'error', name: 'PayoutPoolNothingToRedeem', inputs: [{ name: 'merchant', type: 'address' }] },
   {
     name: 'redeem',
     type: 'function',
@@ -146,6 +156,25 @@ export async function redeemForMerchant(input: {
   const amount = input.amountMicros < held ? input.amountMicros : held;
   if (amount <= 0n) return { ok: false, reason: 'There is nothing to withdraw from what you are owed.' };
 
+  /*
+   * Asked before anything is sent. `redeem` checks who is redeeming before it pulls the credits, so
+   * even without an allowance yet, a shop the pool will not pay hears why now rather than after an
+   * approval it did not need. A revert for any other reason (the allowance itself) is the approve's
+   * to fix, below.
+   */
+  try {
+    await publicClient.simulateContract({
+      account: merchant,
+      address: poolAddress,
+      abi: POOL_ABI,
+      functionName: 'redeem',
+      args: [amount],
+    });
+  } catch (error) {
+    const refusal = describeRedeemRefusal(decodeChainError(error));
+    if (refusal) return { ok: false, reason: refusal };
+  }
+
   try {
     if (allowance < amount) {
       const approveHash = await send(
@@ -175,6 +204,9 @@ export async function redeemForMerchant(input: {
     const message = error instanceof Error ? error.message : 'unknown error';
     console.error('[merchant] redemption failed', message);
     // Never the raw chain error: a shop reads this. What it must not say is that money moved.
-    return { ok: false, reason: 'We could not move that just now. Nothing has left your balance.' };
+    return {
+      ok: false,
+      reason: describeRedeemRefusal(decodeChainError(error)) ?? 'We could not move that just now. Nothing has left your balance.',
+    };
   }
 }
