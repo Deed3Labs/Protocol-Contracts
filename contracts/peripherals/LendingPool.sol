@@ -230,11 +230,9 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
         accountedCash = cash;
     }
 
-    /// @dev Records cash that moved through a tracked path (deposit, withdrawal, borrow, claim,
-    /// principal repayment), so it is not mistaken for interest.
-    function _accountCash() private {
-        accountedCash = _cash();
-    }
+    // Tracked paths (deposit, withdrawal, borrow, claim, principal repayment) adjust
+    // `accountedCash` by the amount they move, before moving it, so it is never mistaken for
+    // interest and no state is written after a token call.
 
     /// @notice cash on hand and not already claimed by the queue.
     function availableCash() public view returns (uint256) {
@@ -430,8 +428,8 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
     /// the one already reported, and the deposit is then recorded as accounted cash.
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override {
         _syncInterest();
+        accountedCash += assets; // booked before the transfer in, which reverts the lot if it fails
         super._deposit(caller, receiver, assets, shares);
-        _accountCash();
     }
 
     function _withdraw(address caller, address receiver, address owner, uint256 assets, uint256 shares)
@@ -439,8 +437,8 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
         override
     {
         _syncInterest();
+        accountedCash -= assets;
         super._withdraw(caller, receiver, owner, assets, shares);
-        _accountCash();
     }
 
     /* ========== THE QUEUE ========== */
@@ -503,8 +501,8 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
             requestSharesOf[requestId] = 0;
             _burn(address(this), shares);
         }
+        accountedCash -= assets;
         SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(asset()), request.receiver, assets);
-        _accountCash();
         emit WithdrawalClaimed(requestId, request.receiver, assets);
     }
 
@@ -533,8 +531,8 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
         window.drawn = uint192(drawnToday + amount);
 
         totalBorrowed += amount;
+        accountedCash -= amount;
         SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(asset()), to, amount);
-        _accountCash();
         emit Borrowed(borrower, to, amount);
     }
 
@@ -551,17 +549,24 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
     /// liabilities, which is exactly how a share price rises. Carry earned on the tiers this pool
     /// funded arrives here, and it arrives for the depositors rather than for the co-op.
     ///
-    /// The surplus streams in rather than landing at once (audit X-18): it is recorded as
-    /// untracked inflow and starts vesting immediately.
+    /// The surplus streams in rather than landing at once (audit X-18): it is locked as interest
+    /// and starts vesting immediately.
     function repay(uint256 amount) external {
         _syncInterest();
+        uint256 principal = amount > totalBorrowed ? totalBorrowed : amount;
+        totalBorrowed -= principal;
+        if (amount > principal) {
+            // The surplus is interest: lock it now, as the next sync would on finding it.
+            uint256 locked = unvestedInterest() + (amount - principal);
+            lockedInterest = uint192(locked);
+            interestLockedAt = uint64(block.timestamp);
+            emit InterestStreamed(amount - principal, locked);
+        }
+        // All of it is accounted for now: the principal as cash, the surplus as locked interest.
+        accountedCash += amount;
         SafeERC20Upgradeable.safeTransferFrom(
             IERC20Upgradeable(asset()), _msgSender(), address(this), amount
         );
-        uint256 principal = amount > totalBorrowed ? totalBorrowed : amount;
-        totalBorrowed -= principal;
-        accountedCash += principal;
-        _syncInterest();
         emit Repaid(_msgSender(), amount);
     }
 
