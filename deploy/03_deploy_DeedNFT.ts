@@ -39,21 +39,23 @@ async function main() {
   const deedNFTAddress = await deedNFT.getAddress();
   console.log("DeedNFT deployed to:", deedNFTAddress);
 
-  // Setup initial roles
-  const ADMIN_ROLE = await deedNFT.ADMIN_ROLE();
-  const MINTER_ROLE = await deedNFT.MINTER_ROLE();
-  const VALIDATOR_ROLE = await deedNFT.VALIDATOR_ROLE();
+  // initialize() gives the deployer DEFAULT_ADMIN_ROLE and MINTER_ROLE only. There is no ADMIN_ROLE
+  // (the old call reverted, audit D-22). The validator receives VALIDATOR_ROLE from the registry when
+  // it is activated, and never MINTER_ROLE.
 
-  // Grant roles to deployer and validator
-  await deedNFT.grantRole(ADMIN_ROLE, deployer.address);
-  await deedNFT.grantRole(MINTER_ROLE, deployer.address);
-  await deedNFT.grantRole(MINTER_ROLE, validatorAddress);
-  await deedNFT.grantRole(VALIDATOR_ROLE, validatorAddress);
-  console.log("Granted roles to deployer and validator");
-
-  // Set MetadataRenderer
-  await deedNFT.setMetadataRenderer(metadataRendererAddress);
-  console.log("Set MetadataRenderer");
+  // Wire registry, validator and renderer to this DeedNFT
+  const validatorRegistry = await hre.ethers.getContractAt("ValidatorRegistry", validatorRegistryAddress);
+  const validator = await hre.ethers.getContractAt("Validator", validatorAddress);
+  const metadataRenderer = await hre.ethers.getContractAt("MetadataRenderer", metadataRendererAddress);
+  await (await validatorRegistry.setDeedNFT(deedNFTAddress)).wait();
+  await (await validator.setDeedNFT(deedNFTAddress)).wait();
+  await (await metadataRenderer.setDeedNFT(deedNFTAddress)).wait();
+  await (await deedNFT.setMetadataRenderer(metadataRendererAddress)).wait();
+  // Re-sync the validator's DeedNFT role now that the registry knows the DeedNFT
+  if (await validatorRegistry.isValidatorActive(validatorAddress)) {
+    await (await validatorRegistry.updateValidatorStatus(validatorAddress, true)).wait();
+  }
+  console.log("Wired ValidatorRegistry, Validator and MetadataRenderer to DeedNFT");
 
   // Save deployment information
   const deedNFTAbi = deedNFT.interface.formatJson();
