@@ -16,7 +16,7 @@ import "../core/interfaces/stable-credit/IAssurancePool.sol";
 
 /// @title BurnerBond
 /// @notice ERC-1155 based bond system that allows users to mint bonds at a discount
-/// @dev Bonds are backed by USDC deposited into the AssurancePool excess reserve
+/// @dev Bonds are backed by the proceeds held in the BondVault, never the AssurancePool
 interface IBondEncumbrance {
     function isItemEncumbered(address holder, bytes32 kind, uint256 itemId)
         external view returns (bool);

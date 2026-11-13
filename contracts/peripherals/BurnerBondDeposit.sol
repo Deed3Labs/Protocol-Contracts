@@ -39,7 +39,9 @@ contract BurnerBondDeposit is
     /// @notice Factory contract for managing collections (single source of truth for parameters)
     IBurnerBondFactory public factory;
     
-    /// @notice AssurancePool contract for token deposits
+    /// @notice The AssurancePool. Recorded for the factory's wiring only.
+    /// @dev Bond principal is never sent to it (compliance addendum 12.11): every deposit goes to
+    /// `bondVault`.
     IAssurancePool public assurancePool;
 
     /// @notice Where bond proceeds are held.
@@ -277,7 +279,7 @@ contract BurnerBondDeposit is
         require(bondId > 0, "Bond minting failed");
         
         // If we reach here, both deposit and minting succeeded
-        // The bond is now fully backed by underlying token in the AssurancePool
+        // The bond is now backed by the underlying token held in the bond vault
         
         // Update deposit information
         deposits[depositId].bondId = bondId;
@@ -451,11 +453,12 @@ contract BurnerBondDeposit is
         // Get the underlying token
         IERC20 underlyingToken = IERC20(deposit.tokenAddress);
 
-        // Approve AssurancePool to spend underlying token
-        underlyingToken.approve(address(assurancePool), deposit.amount);
-
-        // Deposit underlying token into AssurancePool excess reserve
-        assurancePool.depositTokenIntoExcess(deposit.tokenAddress, deposit.amount);
+        // Into the bond vault, as `makeDeposit` does, and never the AssurancePool (compliance
+        // addendum 12.11). This path used to put the principal into the AssurancePool's excess
+        // reserve, where it funded other people's defaults and the bond's redemption competed
+        // with them. The vault holds it against this bond's redemption and books what it owes.
+        require(address(bondVault) != address(0), "Bond vault not set");
+        underlyingToken.safeTransfer(address(bondVault), deposit.amount);
 
         // Mint bond using BurnerBond contract
         bondId = burnerBond.mintBond(
@@ -464,6 +467,7 @@ contract BurnerBondDeposit is
             deposit.discountPercentage,
             deposit.depositor
         );
+        bondVault.recordPurchase(bondId, deposit.amount, deposit.faceValue, uint64(deposit.maturityDate));
 
         // Update deposit information
         deposit.bondId = bondId;

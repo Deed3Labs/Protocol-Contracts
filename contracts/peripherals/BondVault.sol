@@ -84,9 +84,11 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /* ========== ADDED AFTER DEPLOYMENT: five slots from the gap ========== */
 
     /// @notice The co-op's treasury, the Safe. Pays a bond the vault cannot, up to the allowance it
-    /// has given this vault, before the AssurancePool is asked.
+    /// has given this vault.
     address public treasury;
-    /// @notice The reserve of last resort for a bond neither the vault nor the treasury can pay.
+    /// @notice The AssurancePool, named only so a loan it made before addendum 12.11 can be repaid.
+    /// @dev It is no longer asked for anything: a bond redemption never draws on the credit-loss
+    /// reserve.
     address public assurancePool;
     /// @notice The payout pool, which may borrow the deployable excess for a claim that has come due.
     address public payoutPool;
@@ -276,7 +278,8 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice face value due inside the window that neither the vault nor the treasury can pay.
-    /// @dev What the AssurancePool backs as the last resort, and so what its RTD counts.
+    /// @dev The AssurancePool's RTD still counts it, though the pool no longer lends for it
+    /// (addendum 12.11): what a bond the vault cannot pay is waiting on.
     function uncoveredNearTerm() external view returns (uint256) {
         uint256 due = faceDueWithin(reserveWindow);
         uint256 have = held() + treasuryAvailable();
@@ -314,9 +317,9 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice pays a matured bond.
-    /// @dev Paid out of the vault's own holdings first, then the treasury, then the AssurancePool as
-    /// the last resort. A bondholder is still not exposed to how the credit book performs: the
-    /// reserve only lends from what it holds above the primary cover, and the vault pays it back.
+    /// @dev Paid out of the vault's own holdings first, then the treasury up to its allowance.
+    /// Never the AssurancePool (addendum 12.11): a bondholder is not exposed to how the credit book
+    /// performs, and the AssurancePool is not exposed to bond redemptions.
     function settle(uint256 bondId, address to) external onlyRole(BOND_ROLE) returns (uint256) {
         Obligation storage obligation = obligations[bondId];
         if (obligation.faceValue == 0) revert BondVaultUnknownBond(bondId);
@@ -427,8 +430,8 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /* ========== BACKSTOPS ========== */
 
     /// @dev Makes sure the vault holds `amount` before it pays a bondholder: its own holdings, then
-    /// the treasury up to its allowance, then the AssurancePool. Reverts only when all three together
-    /// cannot, and then nothing has moved.
+    /// the treasury up to its allowance. Reverts when both together cannot, and then nothing has
+    /// moved. The AssurancePool is not asked (addendum 12.11): no redemption path draws on it.
     function _cover(uint256 amount) private {
         uint256 balance = held();
         if (balance >= amount) return;
@@ -438,22 +441,14 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         if (fromTreasury > short) fromTreasury = short;
         if (fromTreasury > 0) {
             reserveToken.safeTransferFrom(treasury, address(this), fromTreasury);
-            short -= fromTreasury;
             emit DrewFromTreasury(fromTreasury);
-        }
-        if (short > 0 && assurancePool != address(0)) {
-            uint256 lent = IBondReserve(assurancePool).lendToBondVault(short);
-            if (lent > 0) {
-                owedToReserve += lent;
-                short -= lent;
-                emit DrewFromReserve(lent, owedToReserve);
-            }
         }
         balance = held();
         if (balance < amount) revert BondVaultInsufficientFunds(balance, amount);
     }
 
-    /// @notice pays the AssurancePool back from what the vault does not owe soon.
+    /// @notice pays the AssurancePool back what it lent before addendum 12.11, from what the vault
+    /// does not owe soon. Nothing can add to that loan any more.
     /// @dev Permissionless: new proceeds arriving should restore the reserve without anybody having
     /// to remember. The treasury is not repaid here; what it put in comes back as deployable excess,
     /// which the Safe takes in the ordinary way.
