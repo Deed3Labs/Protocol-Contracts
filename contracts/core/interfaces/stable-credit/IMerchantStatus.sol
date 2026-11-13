@@ -10,3 +10,11 @@ interface IMerchantStatus {
 
     function isActive(address merchant) external view returns (bool);
 }
+
+/// @notice A merchant's terms by plan length (compliance spec item 8).
+interface IMerchantSplitTerms {
+    function splitTermsOf(address merchant, uint32 installments)
+        external
+        view
+        returns (uint256 discountBps, uint256 subsidyBps, uint32 freeSplitMax);
+}

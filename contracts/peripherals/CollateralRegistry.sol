@@ -95,6 +95,10 @@ contract CollateralRegistry is
     error CollateralRegistryTypeExists(bytes32 kind);
     error CollateralRegistryHaircutTooHigh(uint256 haircutBps);
     error CollateralRegistryEncumbered(address member, bytes32 kind, uint256 free, uint256 amount);
+    /// @notice thrown when anything would change how the CLRUSD lock is computed once it is live.
+    /// @dev Compliance spec 10a: the lock is computed from on-chain state and no admin can set,
+    /// extend or hold one -- including indirectly, by re-pricing the collateral it is computed from.
+    error CollateralRegistryClrusdTermsFixed();
 
     event CollateralTypeRegistered(
         bytes32 indexed kind, ExposureMath.Backing backing, uint256 haircutBps
@@ -328,6 +332,8 @@ contract CollateralRegistry is
         if (kind != bytes32(0) && !collateralTypes[kind].registered) {
             revert CollateralRegistryUnknownType(kind);
         }
+        // Set once (spec 10a): pointing the lock at another kind would change what it locks.
+        if (clrusdKind != bytes32(0)) revert CollateralRegistryClrusdTermsFixed();
         clrusdKind = kind;
         emit ClrusdKindUpdated(kind);
     }
@@ -500,6 +506,9 @@ contract CollateralRegistry is
     {
         if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
         if (haircutBps > ExposureMath.BPS) revert CollateralRegistryHaircutTooHigh(haircutBps);
+        // A lower haircut or price on the CLRUSD kind would lock more of a member's CLRUSD for the
+        // same draw: an indirect lock no admin may impose (spec 10a).
+        if (kind == clrusdKind && kind != bytes32(0)) revert CollateralRegistryClrusdTermsFixed();
         collateralTypes[kind].haircutBps = haircutBps;
         collateralTypes[kind].unitPrice = unitPrice;
         emit CollateralTypeUpdated(kind, haircutBps, unitPrice);
@@ -510,6 +519,7 @@ contract CollateralRegistry is
     /// worth moves without anybody touching it.
     function setCollateralValuer(bytes32 kind, address valuer) external onlyRole(OPERATOR_ROLE) {
         if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
+        if (kind == clrusdKind && kind != bytes32(0)) revert CollateralRegistryClrusdTermsFixed();
         collateralTypes[kind].valuer = valuer;
         emit CollateralValuerUpdated(kind, valuer);
     }

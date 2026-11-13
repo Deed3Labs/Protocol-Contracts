@@ -7,6 +7,7 @@ import "./ICreditIssuer.sol";
 import "./INetworkRegistry.sol";
 import "./IAssurancePool.sol";
 import "./IMutualCredit.sol";
+import "./IMerchantStatus.sol";
 
 interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @dev the reserve pool contract which holds and manages reserve tokens
@@ -17,6 +18,8 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     function networkRegistry() external view returns (INetworkRegistry);
     /// @notice an issuer's contribution to a member's ceiling.
     function issuerCreditLimit(address issuer, address member) external view returns (uint256);
+    /// @notice the merchant registry the ledger reads.
+    function merchantRegistry() external view returns (IMerchantStatus);
     /// @notice whether an address is a registered, active merchant. False while no registry is set.
     function isActiveMerchant(address merchant) external view returns (bool);
     /// @notice whether a member may pay credit to this address.

@@ -35,9 +35,22 @@ contract NetworkRegistry is
 
     /// @dev Reserved so state can be added without disturbing the layout of anything that
     /// inherits from this contract later.
-    uint256[45] private __gap;
+    /// @notice Each member's home state (two-letter code as bytes32, e.g. "CA"), as attested.
+    /// @dev Compliance spec item 9. What a member may be offered, and at what price, depends on
+    /// where they live; the RateSchedule is read by this code. Set only by the trusted attestation
+    /// signer, never by the member or an operator key. Appended from the gap.
+    mapping(address => bytes32) public stateCodeOf;
+
+    uint256[44] private __gap;
+
+    /// @notice May attest a member's state of residence. The trusted signer, and nothing else.
+    bytes32 public constant STATE_ATTESTER_ROLE = keccak256("STATE_ATTESTER_ROLE");
 
     error NetworkRegistryInvalidAddress();
+    error NetworkRegistryInvalidStateCode();
+
+    /// @notice a member's state of residence was attested.
+    event StateCodeAttested(address indexed member, bytes32 stateCode, address indexed attester);
     error NetworkRegistryIssuerAlreadyRegistered(address issuer);
     error NetworkRegistryUnknownIssuer(address issuer);
     error NetworkRegistryUnauthorized(address caller);
@@ -187,4 +200,20 @@ contract NetworkRegistry is
         emit MemberWithdrawn(member, issuer);
     }
 
+
+    /// @notice records a member's state of residence, as attested by the trusted signer.
+    /// @dev The attestation is what an issuer's state gate and the vault's pilot cap read. It
+    /// cannot move a member's funds or change what they owe (spec 10a, test 14): it only decides
+    /// which products may be offered to them from here on.
+    /// @param member address of the member.
+    /// @param stateCode two-letter state code as bytes32; zero is not a state.
+    function attestStateCode(address member, bytes32 stateCode)
+        external
+        onlyRole(STATE_ATTESTER_ROLE)
+    {
+        if (member == address(0)) revert NetworkRegistryInvalidAddress();
+        if (stateCode == bytes32(0)) revert NetworkRegistryInvalidStateCode();
+        stateCodeOf[member] = stateCode;
+        emit StateCodeAttested(member, stateCode, msg.sender);
+    }
 }

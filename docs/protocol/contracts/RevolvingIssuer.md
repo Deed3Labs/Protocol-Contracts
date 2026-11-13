@@ -14,16 +14,16 @@ Source: [`contracts/peripherals/RevolvingIssuer.sol`](../../../contracts/periphe
 |---|---|---|
 | `__CreditIssuer_init(address _stableCredit)` | `onlyInitializing` |  |
 | `absorbRepayment(address member, uint256 available, uint256 minRate)` | `onlyStableCredit` |  |
-| `addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength_)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
+| `addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength_)` | Anyone |  |
 | `initialize(address _stableCredit, address _carryTreasury)` | Once, when the proxy is initialised |  |
 | `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)`, `notInActivePeriod(member)` |
 | `materialiseCarry(address member)` | Anyone |  |
 | `openLine(address member, uint256[] capacities, uint256 periodLength, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)`, `notInActivePeriod(member)` |
 | `pausePeriodOf(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
 | `renounceOwnership()` | The owner |  |
-| `repayCardSpend(bytes32 ref, address member, uint256 amount)` | Anyone; acts on the caller's own account | `notNull(member)` |
-| `repayForMember(bytes32 ref, address member, uint256 amount)` | Anyone; acts on the caller's own account | `notNull(member)` |
-| `reverseCardSpend(bytes32 ref, uint256 amount)` | Anyone; acts on the caller's own account |  |
+| `repayCardSpend(bytes32 ref, address member, uint256 amount)` | Anyone |  |
+| `repayForMember(bytes32 ref, address member, uint256 amount)` | Anyone |  |
+| `reverseCardSpend(bytes32 ref, uint256 amount)` | Anyone |  |
 | `setAutoRepay(bool enabled)` | Anyone; acts on the caller's own account |  |
 | `setCardSettlementAccount(address account)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` | `notNull(account)` |
 | `setCardSettler(address settler, bool allowed)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` | `notNull(settler)` |
@@ -34,9 +34,9 @@ Source: [`contracts/peripherals/RevolvingIssuer.sol`](../../../contracts/periphe
 | `setTierActive(uint256 tierId, bool active)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
 | `setTierCapacity(address member, uint256 tierId, uint256 capacity)` | `onlyCreditRole(CREDIT_LIMITS_ROLE)` |  |
 | `setTierCarryRecipient(uint256 tierId, address recipient)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
-| `setTierRate(uint256 tierId, uint256 ratePerCycle)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
-| `settleCardSpend(bytes32 ref, address member, uint256 amount)` | Anyone; acts on the caller's own account | `notNull(member)` |
-| `settleFromCollateral(address member, uint256 tierId, uint256 amount)` | `onlyOperator` |  |
+| `setTierRate(uint256 tierId, uint256 ratePerCycle)` | Anyone |  |
+| `settleCardSpend(bytes32 ref, address member, uint256 amount)` | Anyone |  |
+| `settleFromCollateral(address member, uint256 tierId, uint256 amount)` | Anyone |  |
 | `syncCreditPeriod(address member)` | Anyone |  |
 | `syncCreditPositions(address sender, address recipient, uint256 amount)` | `onlyStableCredit` |  |
 | `transferOwnership(address newOwner)` | The owner |  |

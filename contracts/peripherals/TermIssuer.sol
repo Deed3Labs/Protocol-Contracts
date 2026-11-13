@@ -3,6 +3,7 @@ pragma solidity ^0.8.29;
 
 import "./TermIssuerBase.sol";
 import "./TermIssuerExtension.sol";
+import "./TermIssuerOrigination.sol";
 import "../libraries/CarryIndex.sol";
 import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -32,6 +33,7 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     constructor() {
         _disableInitializers();
         extension = address(new TermIssuerExtension());
+        origination = address(new TermIssuerOrigination());
     }
 
     function initialize(address _stableCredit, address _carryTreasury) external initializer {
@@ -112,51 +114,53 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     function owedOn(uint256 planId) public view returns (uint256) {
         _requirePlan(planId);
         Plan storage plan = plans[planId];
-        return CarryIndex.denormalize(plan.normalized, plan.index.currentIndex(block.timestamp));
+        if (plan.closed) return 0;
+        return plan.principalOutstanding + _pendingPlanCarry(planId);
     }
 
     /// @notice the carry accrued on a plan since it was last brought current.
     function carryOn(uint256 planId) external view returns (uint256) {
-        Plan storage plan = plans[planId];
-        uint256 owed = owedOn(planId);
-        return owed > plan.principalOutstanding ? owed - plan.principalOutstanding : 0;
+        _requirePlan(planId);
+        return _pendingPlanCarry(planId);
     }
-
-
 
     /// @notice carry a plan has accrued but not yet had written onto the ledger.
     function pendingCarryOn(uint256 planId) external view returns (uint256) {
         _requirePlan(planId);
-        return _pendingCarry(plans[planId]);
+        return _pendingPlanCarry(planId);
     }
 
-    function _pendingCarry(Plan storage plan) private view returns (uint256) {
-        if (plan.closed || plan.normalized == 0) return 0;
-        uint256 owed =
-            CarryIndex.denormalize(plan.normalized, plan.index.currentIndex(block.timestamp));
-        return owed > plan.principalOutstanding ? owed - plan.principalOutstanding : 0;
-    }
-
-
-    /// @notice a member's total arrears across every plan they hold.
-    function totalArrearsOf(address member) public view returns (uint256 total) {
+    /// @notice a member's term principal, carry excluded, as one part of their small loan under
+    /// the CFL (DECISIONS #7). Free plans count: they are principal the member owes all the same.
+    function cflPrincipalOf(address member) external view returns (uint256 total) {
         uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
-            total += arrearsOf(ids[i]);
+            if (plans[ids[i]].closed) continue;
+            total += plans[ids[i]].principalOutstanding - carryOutstandingOf[ids[i]];
         }
     }
+
+    /// @notice how a plan is priced: its state and product, merchant subsidy, and whether it is
+    /// free.
+    function pricingOf(uint256 planId) external view returns (PlanPricing memory) {
+        _requirePlan(planId);
+        return planPricing[planId];
+    }
+
+
 
     /// @notice when a plan fell behind: the due date of its oldest installment not yet covered.
     /// Zero for a plan that is on time.
     /// @dev Anything a re-split carried in (the floor above what was repaid) was due the moment the
-    /// schedule began. Past that, installment k is covered once `repaid` reaches
-    /// `floor + installmentAmount * k`, so the first uncovered one is the next whole installment.
+    /// schedule began. Past that, installment k is covered once `repaid` reaches what the schedule
+    /// asks for after k installments; the first uncovered one is when the plan fell behind.
     function delinquentSince(uint256 planId) public view returns (uint256) {
         if (arrearsOf(planId) == 0) return 0;
         Plan storage plan = plans[planId];
-        if (plan.repaid < plan.scheduleFloor || plan.installmentAmount == 0) return plan.scheduleStart;
-        uint256 k = (plan.repaid - plan.scheduleFloor) / plan.installmentAmount + 1;
-        if (k > plan.installments) k = plan.installments;
+        if (plan.repaid < plan.scheduleFloor) return plan.scheduleStart;
+        uint256 n = plan.installments;
+        uint256 k = 1;
+        while (k < n && plan.repaid >= _dueAt(plan, k)) k++;
         return plan.scheduleStart + k * plan.installmentLength;
     }
 
@@ -300,129 +304,20 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         emit CarryTreasuryUpdated(treasury);
     }
 
-    /// @notice The terms a member signs for a plan.
-    /// @dev Everything that decides what they owe and to whom, plus the hash of the disclosure
-    /// they were shown, so the signature is over what they agreed to rather than over whatever an
-    /// operator key later submits (audit H-4).
-    struct PlanTerms {
-        address member;
-        address merchant;
-        uint256 purchase;
-        uint256 payout;
-        uint256 ratePerCycle;
-        uint64 cycleLength;
-        uint32 installments;
-        uint64 installmentLength;
-        bytes32 disclosureHash;
-        uint256 deadline;
-    }
-
-    bytes32 public constant PLAN_TERMS_TYPEHASH = keccak256(
-        "PlanTerms(address member,address merchant,uint256 purchase,uint256 payout,uint256 ratePerCycle,uint64 cycleLength,uint32 installments,uint64 installmentLength,bytes32 disclosureHash,uint256 nonce,uint256 deadline)"
-    );
-
-    /// @notice the EIP-712 domain plan signatures are made in.
-    /// @dev Computed rather than stored: EIP712Upgradeable would add storage ahead of this
-    /// contract's own, which an upgrade may not do.
-    function domainSeparator() public view returns (bytes32) {
-        return keccak256(
-            abi.encode(
-                keccak256(
-                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                ),
-                keccak256(bytes("Clear TermIssuer")),
-                keccak256(bytes("1")),
-                block.chainid,
-                address(this)
-            )
-        );
+    /// @notice opens a term plan against a partner purchase, on terms the member signed.
+    /// @dev Runs in TermIssuerOrigination (see `origination`).
+    function openPlan(PlanTerms calldata, bytes calldata) external returns (uint256) {
+        _forwardTo(origination);
     }
 
     /// @notice the digest a member signs for these terms, at their current nonce.
-    function planTermsDigest(PlanTerms calldata terms) public view returns (bytes32) {
-        bytes32 structHash = keccak256(
-            abi.encode(
-                PLAN_TERMS_TYPEHASH,
-                terms.member,
-                terms.merchant,
-                terms.purchase,
-                terms.payout,
-                terms.ratePerCycle,
-                terms.cycleLength,
-                terms.installments,
-                terms.installmentLength,
-                terms.disclosureHash,
-                planNonces[terms.member],
-                terms.deadline
-            )
-        );
-        return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+    function planTermsDigest(PlanTerms calldata terms) external view returns (bytes32) {
+        return _planTermsDigest(terms);
     }
 
-    /// @notice opens a term plan against a partner purchase, on terms the member signed.
-    /// @dev The purchase is a three-party mint that nets to zero: the member is debited, the
-    /// merchant is credited the payout, and the co-op is credited the discount. StableCredit
-    /// asserts the netting.
-    ///
-    /// The operator submits; the member decides (audit H-4). Without the member's signature an
-    /// operator key could open a plan for anyone, naming itself the merchant and the payout the
-    /// whole purchase. EIP-1271 signatures are accepted, so a smart wallet can sign. The merchant
-    /// must be registered and active, and every plan counts against today's cap.
-    /// @param terms the plan terms, as the member signed them.
-    /// @param signature the member's EIP-712 signature over `terms` at their current nonce.
-    /// @return planId the new plan's id.
-    function openPlan(PlanTerms calldata terms, bytes calldata signature)
-        external
-        onlyCreditRole(CREDIT_LINES_ROLE)
-        notNull(terms.member)
-        returns (uint256 planId)
-    {
-        address member = terms.member;
-        uint256 purchase = terms.purchase;
-        if (block.timestamp > terms.deadline) revert TermIssuerSignatureExpired(terms.deadline);
-        if (!SignatureChecker.isValidSignatureNow(member, planTermsDigest(terms), signature)) {
-            revert TermIssuerBadSignature(member);
-        }
-        uint256 nonce = planNonces[member]++;
-        if (!stableCredit.isActiveMerchant(terms.merchant)) {
-            revert TermIssuerMerchantNotActive(terms.merchant);
-        }
-        if (terms.installmentLength == 0 || purchase == 0) revert TermIssuerInvalidSchedule();
-        if (!isOfferedSplit(terms.installments)) revert TermIssuerSplitNotOffered(terms.installments);
-        if (terms.payout > purchase) revert TermIssuerInvalidSchedule();
-        // Behind on one plan freezes new ones: term credit, not the card, and only until caught up.
-        if (termSuspended[member]) revert TermIssuerSuspended(member);
-        if (totalArrearsOf(member) > 0) revert TermIssuerBehindSchedule(member);
-
-        uint256 wouldOwe = totalPrincipalOf(member) + purchase;
-        if (wouldOwe > termLimitOf[member]) {
-            revert TermIssuerExceedsTermLimit(member, wouldOwe, termLimitOf[member]);
-        }
-        _consumeDailyCap(planTotalCap, "PLANS", purchase);
-
-        planId = plans.length;
-        plans.push();
-        Plan storage plan = plans[planId];
-        plan.member = member;
-        plan.principal = purchase;
-        plan.principalOutstanding = purchase;
-        plan.openedAt = uint64(block.timestamp);
-        plan.installments = terms.installments;
-        plan.installmentLength = terms.installmentLength;
-        plan.scheduleStart = uint64(block.timestamp);
-        plan.scheduleBase = purchase;
-        plan.scheduleFloor = 0;
-        plan.index.init(terms.ratePerCycle, terms.cycleLength, uint64(block.timestamp));
-        plan.normalized = CarryIndex.normalizeUp(purchase, CarryIndex.RAY);
-        _fixSchedule(plan);
-        memberPlans[member].push(planId);
-        _trackOpen(member, planId);
-
-        stableCredit.originatePurchase(
-            member, purchase, terms.merchant, terms.payout, _feeRecipient(), purchase - terms.payout
-        );
-        emit PlanOpened(planId, member, purchase, terms.ratePerCycle, terms.installments);
-        emit PlanTermsSigned(planId, member, terms.disclosureHash, nonce);
+    /// @notice names the RateSchedule plans are priced from.
+    function setRateSchedule(address rateSchedule_) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
+        rateSchedule = RateSchedule(rateSchedule_);
     }
 
     /// @notice caps on new term credit per day, across every member.
@@ -540,9 +435,6 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
             uint256 owed = plan.principalOutstanding;
             uint256 pay = owed < remaining ? owed : remaining;
 
-            uint256 index = plan.index.currentIndex(block.timestamp);
-            uint256 reduction = CarryIndex.normalizeUp(pay, index);
-            plan.normalized = reduction >= plan.normalized ? 0 : plan.normalized - reduction;
             plan.principalOutstanding = owed - pay;
             plan.repaid += pay;
             uint256 principalPortion = pay - _clearCarry(planId, pay);
@@ -593,7 +485,6 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         for (uint256 i = 0; i < ids.length; i++) {
             Plan storage plan = plans[ids[i]];
             if (plan.closed) continue;
-            plan.normalized = 0;
             plan.principalOutstanding = 0;
             carryOutstandingOf[ids[i]] = 0;
             plan.closed = true;
@@ -632,6 +523,10 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable extension;
 
+    /// @notice Where `openPlan` runs. Created and pinned like `extension`.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable origination;
+
     /// @notice see TermIssuerExtension.closePlanForRefund.
     function closePlanForRefund(uint256, uint256, address, uint256) external returns (uint256) {
         _forward();
@@ -639,6 +534,11 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
 
     /// @notice see TermIssuerExtension.setSplit.
     function setSplit(uint256, uint32) external {
+        _forward();
+    }
+
+    /// @notice see TermIssuerExtension.resplitWithSignature.
+    function resplitWithSignature(uint256, uint32, uint256, uint256, bytes calldata) external {
         _forward();
     }
 
@@ -666,7 +566,12 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     /// returns or reverts exactly as it did.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
     function _forward() private {
-        address target = extension;
+        _forwardTo(extension);
+    }
+
+    /// @dev `_forward`, to a named target.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function _forwardTo(address target) private {
         assembly {
             calldatacopy(0, 0, calldatasize())
             let ok := delegatecall(gas(), target, 0, calldatasize(), 0, 0)

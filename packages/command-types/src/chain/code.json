@@ -174,32 +174,32 @@
   },
   "ClearUSDUpgradeable": {
    "source": "contracts/peripherals/ClearUSDUpgradeable.sol",
-   "sha256": "bb798f547a46619a018446ced003347eb72907f13e794a26ca6e5367de96d0f2",
+   "sha256": "e61d2cebd2e7738698d2efac3bb1ffe3cc5bacf0c25dc103a66ee67057c5afba",
    "immutables": [
     [
-     4894,
+     6263,
      32
     ],
     [
-     5059,
+     6428,
      32
     ]
    ]
   },
   "CollateralRegistry": {
    "source": "contracts/peripherals/CollateralRegistry.sol",
-   "sha256": "1abe35f0a36e1fd108793c5fe6f4d0f9eebd772f8d4127a2d5d974d75eaae609",
+   "sha256": "3387dd322a29524205c7b42d2c50d6372ba121f33919a6af929d229c78eb144c",
    "immutables": [
     [
-     3036,
+     3111,
      32
     ],
     [
-     3221,
+     3296,
      32
     ],
     [
-     4285,
+     4360,
      32
     ]
    ]
@@ -229,18 +229,18 @@
   },
   "ESADepositVault": {
    "source": "contracts/peripherals/ESADepositVault.sol",
-   "sha256": "2c922a07301bae5e51619f4582fdbd99242d0e2dcf2510712bf32c29d216c73a",
+   "sha256": "94c5c0e960c03e081f729ff815367db318936a2d2fca5f14694d748c8dfa38e1",
    "immutables": [
     [
-     3679,
+     4103,
      32
     ],
     [
-     3820,
+     4243,
      32
     ],
     [
-     6064,
+     6511,
      32
     ]
    ]
@@ -337,18 +337,18 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "f1ea6a0d6bab5d6feb299b1013bf6d54b31ca31270225da52a92708a5acd862d",
+   "sha256": "e2cdd93dff26e3b6171a0a5f1c144949992d0b038abbf24e33b878304ae9df2c",
    "immutables": [
     [
-     4058,
+     4224,
      32
     ],
     [
-     4243,
+     4409,
      32
     ],
     [
-     6360,
+     6526,
      32
     ]
    ]
@@ -360,18 +360,18 @@
   },
   "MerchantRegistry": {
    "source": "contracts/peripherals/MerchantRegistry.sol",
-   "sha256": "3f33cd417ca33ab6c098d2500d6bd798589cfeada14662c8b8bf0abbb043e5a8",
+   "sha256": "61b03fd38c8b8aafbb21a6e48f8749199e13b8b19370c04af757fcad249c1df6",
    "immutables": [
     [
-     2120,
+     3085,
      32
     ],
     [
-     2305,
+     3270,
      32
     ],
     [
-     2789,
+     3818,
      32
     ]
    ]
@@ -396,18 +396,18 @@
   },
   "NetworkRegistry": {
    "source": "contracts/peripherals/NetworkRegistry.sol",
-   "sha256": "d8c3847897976b6eedbc88094baee315070567fd61280af8aa58221cccc22e0a",
+   "sha256": "d06d993ab92f19e5a80e31d3cc8759b19f76ebc77aa50f21cc3a079cc23a087b",
    "immutables": [
     [
-     1798,
+     2211,
      32
     ],
     [
-     1983,
+     2396,
      32
     ],
     [
-     2642,
+     3096,
      32
     ]
    ]
@@ -450,18 +450,26 @@
   },
   "RevolvingIssuer": {
    "source": "contracts/peripherals/RevolvingIssuer.sol",
-   "sha256": "3fb8475c2bbf11fd065ce3d11f5a1ddd68ea868612df601a11eb37dfeb204a04",
+   "sha256": "dcac6d95fb90b561dbb70b82754a7276b8397b9dda8fd333fd110a76a0d29911",
    "immutables": [
     [
-     7661,
+     2754,
      32
     ],
     [
-     7846,
+     2871,
      32
     ],
     [
-     9545,
+     4149,
+     32
+    ],
+    [
+     10103,
+     32
+    ],
+    [
+     12152,
      32
     ]
    ]
@@ -504,26 +512,38 @@
   },
   "TermIssuer": {
    "source": "contracts/peripherals/TermIssuer.sol",
-   "sha256": "679a507c06f949ab09c3dd9d2e1715746f2a7275d13cfed99f659db55d275c19",
+   "sha256": "255d215cc4ee370c21aeb7bc2f86bb78bf16f177cd23c84aadb6032c6471ec2d",
    "immutables": [
     [
-     2754,
+     1735,
      32
     ],
     [
-     3071,
+     2338,
      32
     ],
     [
-     4332,
+     3299,
      32
     ],
     [
-     4445,
+     3501,
      32
     ],
     [
-     15588,
+     3637,
+     32
+    ],
+    [
+     4893,
+     32
+    ],
+    [
+     11020,
+     32
+    ],
+    [
+     12912,
      32
     ]
    ]
