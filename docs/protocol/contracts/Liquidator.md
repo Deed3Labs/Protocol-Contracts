@@ -14,7 +14,7 @@ Source: [`contracts/peripherals/Liquidator.sol`](../../../contracts/peripherals/
 |---|---|---|
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address admin, address _stableCredit, address _clrusd, address _vault, address _reserveToken, address _collateralRegistry)` | Once, when the proxy is initialised |  |
-| `liquidate(address member, address issuer, uint256 tierId, bytes32 kind)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `liquidate(address member, address issuer, uint256 tierId, bytes32 kind)` | Anyone |  |
 | `liquidateShares(address member, address issuer, uint256 tierId, bytes32 kind, address pool)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |

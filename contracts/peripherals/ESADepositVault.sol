@@ -104,6 +104,18 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     event ClrusdUpdated(address indexed clrusd);
 
     error ESADepositVaultInvalidAddress();
+    /// @notice thrown when a CA mint would take the rolling year's CA volume past the pilot cap.
+    error ESADepositVaultPilotCapReached(uint256 volume, uint256 amount, uint256 cap);
+    error ESADepositVaultNotPaused();
+    /// @notice the two-person rule: the last signer cannot renew their own pause.
+    error ESADepositVaultSameSigner();
+
+    event PilotCapUpdated(uint256 cap, uint256 alertAt, bool enabled);
+    event StateSourceUpdated(address indexed source);
+    /// @notice CA volume crossed the alert threshold, below the cap.
+    event PilotAlert(uint256 volume, uint256 cap);
+    event PauseExpiresAt(uint64 until, address indexed signer);
+    event PauseWindowUpdated(uint64 window);
     /// @notice thrown when re-pointing the vault while the old token is still held by somebody.
     error ESADepositVaultTokenStillOutstanding(uint256 outstanding);
     error ESADepositVaultInvalidAmount();
@@ -149,7 +161,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     function deposit(address token, uint256 amount, address receiver) external override whenNotPaused returns (uint256 minted) {
         minted = _validateDeposit(token, amount, receiver);
         IERC20Upgradeable(token).safeTransferFrom(msg.sender, address(this), amount);
-        IClearUSDMintBurn(clrusd).mint(receiver, minted);
+        _mintCounted(receiver, minted);
         emit Deposited(msg.sender, receiver, token, amount, minted);
     }
 
@@ -221,7 +233,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         IERC3009(token).receiveWithAuthorization(
             depositor, address(this), amount, auth.validAfter, auth.validBefore, auth.nonce, auth.v, auth.r, auth.s
         );
-        IClearUSDMintBurn(clrusd).mint(receiver, minted);
+        _mintCounted(receiver, minted);
         emit Deposited(depositor, receiver, token, amount, minted);
     }
 
@@ -298,6 +310,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         if (_convertToClrUsd(token, returnedAmount) != clrusdAmount) revert ESADepositVaultNonExactAmount();
         if (IERC20Upgradeable(token).balanceOf(address(this)) < returnedAmount) revert ESADepositVaultInsufficientLiquidity();
 
+        _countPilot(redeemer, clrusdAmount, false);
         IClearUSDMintBurn(clrusd).burnFrom(redeemer, clrusdAmount);
         IERC20Upgradeable(token).safeTransfer(receiver, returnedAmount);
         emit Redeemed(redeemer, receiver, token, clrusdAmount, returnedAmount);
@@ -332,7 +345,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
 
         minted = _validateDeposit(token, amountPerRun, depositor);
         IERC20Upgradeable(token).safeTransferFrom(depositor, address(this), amountPerRun);
-        IClearUSDMintBurn(clrusd).mint(depositor, minted);
+        _mintCounted(depositor, minted);
         emit Deposited(depositor, depositor, token, amountPerRun, minted);
         emit MandateDeposit(digest, depositor, st.runsDone, amountPerRun, minted);
     }
@@ -454,12 +467,107 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         return token != address(0) && token == s_acceptedToken;
     }
 
+    /// @notice pauses deposits and redemptions during a security incident.
+    /// @dev Compliance spec 10c: a pause that blocks redemption is a power to block a member's
+    /// CLRUSD transaction, so it is limited the same way the token's pauses are -- it lapses on its
+    /// own after the window (72 hours by default) unless a different signer renews it.
     function pause() external onlyRole(PAUSER_ROLE) {
         _pause();
+        s_pausedUntil = uint64(block.timestamp) + _pauseWindow();
+        s_pauseSigner = msg.sender;
+        emit PauseExpiresAt(s_pausedUntil, msg.sender);
+    }
+
+    /// @notice renews a pause for another window; needs a different signer from the last one.
+    function renewPause() external onlyRole(PAUSER_ROLE) {
+        if (!paused()) revert ESADepositVaultNotPaused();
+        if (msg.sender == s_pauseSigner) revert ESADepositVaultSameSigner();
+        s_pausedUntil = uint64(block.timestamp) + _pauseWindow();
+        s_pauseSigner = msg.sender;
+        emit PauseExpiresAt(s_pausedUntil, msg.sender);
     }
 
     function unpause() external onlyRole(PAUSER_ROLE) {
-        _unpause();
+        if (super.paused()) _unpause();
+        s_pausedUntil = 0;
+    }
+
+    /// @notice paused only until the window lapses (spec 10c). A pause set before this rule
+    /// existed (no expiry recorded) counts as lapsed.
+    function paused() public view virtual override returns (bool) {
+        return super.paused() && block.timestamp < s_pausedUntil;
+    }
+
+    /// @notice how long a pause lasts before it lapses. Governed (admin is the timelock).
+    function setPauseWindow(uint64 window) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        s_pauseWindow = window;
+        emit PauseWindowUpdated(window);
+    }
+
+    function _pauseWindow() internal view returns (uint64) {
+        return s_pauseWindow == 0 ? 72 hours : s_pauseWindow;
+    }
+
+    /* ── Pilot volume cap (compliance spec item 11, DFAL small-volume exemption) ── */
+
+    /// @notice the 365-day rolling window: this many days, counting today.
+    uint256 public constant PILOT_WINDOW_DAYS = 365;
+
+    /// @notice CLRUSD minted plus redeemed for CA members over the rolling 365 days.
+    function caVolume() public view returns (uint256 total) {
+        uint256 today = block.timestamp / 1 days;
+        uint256 from = today + 1 > PILOT_WINDOW_DAYS ? today + 1 - PILOT_WINDOW_DAYS : 0;
+        if (s_caWindowFrom >= from) return s_caWindowTotal;
+        // Days that have left the window since it was last brought forward.
+        total = s_caWindowTotal;
+        uint256 stop = from < s_caWindowFrom + PILOT_WINDOW_DAYS ? from : s_caWindowFrom + PILOT_WINDOW_DAYS;
+        for (uint256 d = s_caWindowFrom; d < stop; d++) total -= s_caVolumeByDay[d];
+        if (from >= s_caWindowFrom + PILOT_WINDOW_DAYS) total = 0;
+    }
+
+    /// @notice configures the pilot cap: the most CA volume a rolling year may hold, the level
+    /// at which to raise an alert, and whether it applies at all. Governed (admin is the timelock).
+    function setPilotCap(uint256 cap, uint256 alertAt, bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        s_pilotCap = cap;
+        s_pilotAlert = alertAt;
+        s_pilotCapOn = enabled;
+        emit PilotCapUpdated(cap, alertAt, enabled);
+    }
+
+    /// @notice names where members' attested states are read (the NetworkRegistry).
+    function setStateSource(address source) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        s_stateSource = source;
+        emit StateSourceUpdated(source);
+    }
+
+    /// @dev Mints after counting the pilot volume, which refuses a CA mint past the cap.
+    function _mintCounted(address receiver, uint256 minted) internal {
+        _countPilot(receiver, minted, true);
+        IClearUSDMintBurn(clrusd).mint(receiver, minted);
+    }
+
+    /// @dev Counts CA volume over the rolling window. Only CA members count; a member with no
+    /// attested state counts as WY (DECISIONS #6). New CA mints revert once the cap is reached;
+    /// redemptions are counted but never blocked -- refusing a member their money back is not what
+    /// a volume cap is for.
+    function _countPilot(address member, uint256 amount, bool isMint) internal {
+        if (!s_pilotCapOn || s_stateSource == address(0)) return;
+        (bool ok, bytes memory data) = s_stateSource.staticcall(
+            abi.encodeWithSignature("stateCodeOf(address)", member)
+        );
+        if (!ok || data.length < 32 || abi.decode(data, (bytes32)) != bytes32("CA")) return;
+
+        uint256 total = caVolume();
+        uint256 today = block.timestamp / 1 days;
+        uint256 from = today + 1 > PILOT_WINDOW_DAYS ? today + 1 - PILOT_WINDOW_DAYS : 0;
+        if (from > s_caWindowFrom) s_caWindowFrom = from;
+        if (isMint && total + amount > s_pilotCap) revert ESADepositVaultPilotCapReached(total, amount, s_pilotCap);
+        uint256 after_ = total + amount;
+        s_caWindowTotal = after_;
+        s_caVolumeByDay[today] += amount;
+        if (s_pilotAlert != 0 && total < s_pilotAlert && after_ >= s_pilotAlert) {
+            emit PilotAlert(after_, s_pilotCap);
+        }
     }
 
     function _convertToClrUsd(address token, uint256 tokenAmount) internal view returns (uint256) {
@@ -481,7 +589,20 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     ///         `setAcceptedToken(USDC, true)` (scripts/migrate_vault_clrusd.ts does both).
     address private s_acceptedToken;
 
+    /* ── Compliance spec 10c and 11, appended after s_acceptedToken ── */
+    address private s_stateSource;
+    uint256 private s_pilotCap;
+    uint256 private s_pilotAlert;
+    mapping(uint256 => uint256) private s_caVolumeByDay;
+    uint256 private s_caWindowTotal;
+    uint256 private s_caWindowFrom;
+    bool private s_pilotCapOn;
+    uint64 private s_pausedUntil;
+    address private s_pauseSigner;
+    uint64 private s_pauseWindow;
+
     /// @dev Reserved storage for future upgrades. Reduced by 1 (depositMandates mapping added),
-    ///      then by 1 more (s_acceptedToken added).
-    uint256[42] private __gap;
+    ///      then by 1 more (s_acceptedToken added), then by 8 more for the block above (the last
+    ///      four share one slot).
+    uint256[34] private __gap;
 }

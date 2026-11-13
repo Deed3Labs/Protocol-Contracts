@@ -116,9 +116,6 @@ contract TermIssuerExtension is TermIssuerBase {
             emit PlanRefundPaid(planId, cash - withheld, withheld);
         }
 
-        uint256 index = plan.index.currentIndex(block.timestamp);
-        uint256 reduction = CarryIndex.normalizeUp(refunded, index);
-        plan.normalized = reduction >= plan.normalized ? 0 : plan.normalized - reduction;
         plan.principalOutstanding -= refunded;
 
         // Not added to `repaid`. Nobody paid this -- it was given back, and a plan that reports it
@@ -142,7 +139,6 @@ contract TermIssuerExtension is TermIssuerBase {
          */
         if (plan.principalOutstanding <= carry) {
             plan.principalOutstanding = 0;
-            plan.normalized = 0;
             carryOutstandingOf[planId] = 0;
             plan.closed = true;
             _untrackOpen(planId);
@@ -172,24 +168,64 @@ contract TermIssuerExtension is TermIssuerBase {
     /// @param planId plan to re-split.
     /// @param installments new number of cycles: 1, 2, 4, 6 or 12.
     function setSplit(uint256 planId, uint32 installments) external {
+        _resplit(planId, installments, false, 0);
+    }
+
+    bytes32 public constant RESPLIT_TYPEHASH = keccak256(
+        "Resplit(uint256 planId,uint32 installments,uint256 rateBps,uint256 nonce,uint256 deadline)"
+    );
+
+    /// @notice re-splits a plan on new finance-charge terms the member has signed for.
+    /// @dev Spec item 6. A re-split that makes the plan cost more -- a free plan becoming charged, a
+    /// higher rate, or the same rate over more installments -- creates new finance-charge terms, so
+    /// it needs the member's EIP-712 signature over the new split and rate at their current nonce.
+    function resplitWithSignature(
+        uint256 planId,
+        uint32 installments,
+        uint256 rateBps,
+        uint256 deadline,
+        bytes calldata signature
+    ) external {
+        _requirePlan(planId);
+        address member = plans[planId].member;
+        if (block.timestamp > deadline) revert TermIssuerSignatureExpired(deadline);
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                domainSeparator(),
+                keccak256(abi.encode(RESPLIT_TYPEHASH, planId, installments, rateBps, planNonces[member], deadline))
+            )
+        );
+        if (!SignatureChecker.isValidSignatureNow(member, digest, signature)) {
+            revert TermIssuerBadSignature(member);
+        }
+        planNonces[member]++;
+        _resplit(planId, installments, true, rateBps);
+    }
+
+    /// @dev Accrues to now, sets the new rate going forward only, and re-fixes the schedule over
+    /// what is left (spec item 6). Nothing before the switch is ever charged at the new rate,
+    /// because carry up to now is materialised at the old one first.
+    function _resplit(uint256 planId, uint32 installments, bool signed, uint256 signedRate) internal {
         _requirePlan(planId);
         Plan storage plan = plans[planId];
         if (plan.closed) revert TermIssuerPlanClosed(planId);
         if (
             msg.sender != plan.member
                 && !stableCredit.access().hasCreditRole(CREDIT_LINES_ROLE, msg.sender)
+                && !signed
         ) {
             revert TermIssuerNotPlanHolder(msg.sender);
         }
-        if (!isOfferedSplit(installments)) revert TermIssuerSplitNotOffered(installments);
 
         /*
          * The member's own re-splits are bounded: not while behind (catch up first -- a re-split
          * is how a plan is reshaped, not how a missed installment is put off), at most
-         * MAX_SPLIT_CHANGES in a plan's life, and at most one an installment period. An operator
-         * re-splitting for hardship is not held to these.
+         * MAX_SPLIT_CHANGES in a plan's life, and at most one an installment period. A re-split the
+         * member signed is theirs too, whoever submits it. An operator re-splitting for hardship,
+         * unsigned (so never at a higher cost), is not held to these.
          */
-        if (msg.sender == plan.member) {
+        if (msg.sender == plan.member || signed) {
             if (arrearsOf(planId) > 0) revert TermIssuerBehindSchedule(plan.member);
             SplitLog storage log = splitLogs[planId];
             if (log.changes >= MAX_SPLIT_CHANGES) revert TermIssuerSplitLimitReached(planId);
@@ -200,8 +236,38 @@ contract TermIssuerExtension is TermIssuerBase {
             log.lastChangedAt = uint64(block.timestamp);
         }
 
-        // Bring the plan current first, so the remainder being re-split is what is really owed.
+        // Bring the plan current first, at the old rate, so the remainder being re-split is what is
+        // really owed and nothing before now is charged at the new one.
         _materialiseCarry(planId);
+
+        PlanPricing storage pricing = planPricing[planId];
+        bool largeLoan;
+        if (pricing.priced) {
+            Quote memory q = _quote(
+                plan.member,
+                pricing.merchant,
+                pricing.product,
+                plan.principalOutstanding - carryOutstandingOf[planId],
+                installments,
+                plan.installmentLength
+            );
+            largeLoan = q.largeLoan;
+            uint256 oldRate = plan.index.ratePerCycle;
+            uint256 due = installmentsDue(planId);
+            uint256 remaining = plan.installments > due ? plan.installments - due : 0;
+            bool costRises = q.rateBps > oldRate || (q.rateBps > 0 && installments > remaining);
+            if (costRises && !signed) revert TermIssuerResplitNeedsSignature(planId);
+            if (signed && signedRate != q.rateBps) {
+                revert TermIssuerTermsMismatch(signedRate, q.rateBps, 0, 0);
+            }
+            pricing.free = q.free;
+            pricing.subsidyBps = q.subsidyBps;
+            plan.index.ratePerCycle = q.rateBps;
+            emit PlanRepriced(planId, q.rateBps, q.free);
+        }
+        if (!isOfferedSplit(installments) && !(largeLoan && installments == CLEAR_CASH_SPLIT)) {
+            revert TermIssuerSplitNotOffered(installments);
+        }
 
         uint256 repaid = plan.repaid;
         uint256 behind = arrearsOf(planId);

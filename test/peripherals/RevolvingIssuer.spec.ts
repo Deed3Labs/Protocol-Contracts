@@ -313,8 +313,11 @@ describe("RevolvingIssuer", function () {
       expect(await issuer.carryOf(ctx.member.address, 2)).to.be.greaterThan(0n);
 
       await spend(10n * ONE_USDC);
-      // Cleared but for the seconds since the spend settled.
-      expect(await issuer.carryOf(ctx.member.address, 2)).to.be.lessThan(1_000n);
+      // On the ledger now, but for the seconds since the spend settled. (carryOf reports the
+      // carry still owed in the tier, kept apart from principal: compliance spec item 2.)
+      const pending = (await issuer.drawnOf(ctx.member.address, 2)) - (await issuer.principalOf(ctx.member.address, 2));
+      expect(pending).to.be.lessThan(1_000n);
+      expect(await issuer.carryOf(ctx.member.address, 2)).to.be.greaterThan(ONE_USDC);
       expect(await ctx.stableCredit.balanceOf(coop.address)).to.be.greaterThan(ONE_USDC);
     });
 
