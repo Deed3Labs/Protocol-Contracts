@@ -5,8 +5,13 @@ import {
   planDisclosureForTerms,
   planTermsMessage,
   planTermsMismatch,
+  RESPLIT_TYPES,
+  resplitDisclosure,
+  resplitMessage,
+  resplitMismatch,
   type PlanTerms,
   type PlanTermsTypedData,
+  type ResplitTypedData,
 } from '@clear/domain';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { requireStepUp } from '@/lib/stepUp';
@@ -77,8 +82,58 @@ export async function signPlanTerms(args: {
       ...planTermsMessage(args.typedData.message),
       member: args.typedData.message.member as `0x${string}`,
       merchant: args.typedData.message.merchant as `0x${string}`,
+      productId: args.typedData.message.productId as `0x${string}`,
       disclosureHash: args.typedData.message.disclosureHash as `0x${string}`,
     },
   });
   return { terms: termsOf(args.typedData), signature };
+}
+
+/**
+ * A re-split that costs more (Phase 2, spec item 6): the lines to show, from the signed fields and
+ * the remainder the server read from chain. The rate on screen is the one being signed.
+ */
+export function resplitDisclosureFor(typedData: ResplitTypedData, remaining: string, installmentLength: string): string[] {
+  return resplitDisclosure({
+    remaining: BigInt(remaining),
+    rateBps: Number(typedData.message.rateBps),
+    installments: Number(typedData.message.installments),
+    installmentLengthSeconds: Number(installmentLength),
+  });
+}
+
+/**
+ * Check a `Resplit` against what the screen showed, then sign it with the member's own wallet. The
+ * server submits it (`resplitWithSignature`). Throws with a sentence before any signature exists if
+ * the plan, split or rate differ from the screen.
+ */
+export async function signResplit(args: {
+  typedData: ResplitTypedData;
+  member: string;
+  shown: { planId: number; installments: number; rateBps: number };
+  expected: { chainId: number; termIssuer: string };
+}): Promise<string> {
+  const mismatch = resplitMismatch({
+    typedData: args.typedData,
+    shown: args.shown,
+    expected: args.expected,
+    nowSeconds: Math.floor(Date.now() / 1000),
+  });
+  if (mismatch) throw new Error(`These terms are not the ones on your screen (${mismatch}). Nothing was signed.`);
+
+  // New finance-charge terms: Face ID first, like signing a plan.
+  await requireStepUp();
+  const config = wagmiAdapter.wagmiConfig;
+  try {
+    await switchChain(config, { chainId: args.expected.chainId });
+  } catch {
+    /* already on it, or the wallet declined: the domain binds the chain either way */
+  }
+  return signTypedData(config, {
+    account: args.member as `0x${string}`,
+    domain: { ...args.typedData.domain, verifyingContract: args.typedData.domain.verifyingContract as `0x${string}` },
+    types: RESPLIT_TYPES,
+    primaryType: 'Resplit',
+    message: resplitMessage(args.typedData.message),
+  });
 }

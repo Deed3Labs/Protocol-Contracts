@@ -21,7 +21,7 @@ import type {
   RefundSavingsIntentResponse,
 } from '@/types/savings';
 import { getAccessToken } from '@privy-io/react-auth';
-import type { PlanTerms, PlanTermsTypedData } from '@clear/domain';
+import type { PlanTerms, PlanTermsTypedData, ResplitTypedData } from '@clear/domain';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
 import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
@@ -2647,6 +2647,12 @@ export interface CreditState {
    * no line.
    */
   term: CreditTermCeiling | null;
+  /**
+   * Phase 2: whether the member's state of residence is attested on chain. Lines and plans need it,
+   * so `false` means credit waits for it ("not confirmed yet"), not that the member was declined.
+   * Null or absent: unread, or a network from before Phase 2.
+   */
+  stateConfirmed?: boolean | null;
   source: string;
   complete: boolean;
 }
@@ -2963,6 +2969,55 @@ export async function removeStepUp(): Promise<boolean> {
 export async function getMyDisputes(): Promise<import('@/lib/clearModel').MemberDispute[] | null> {
   const r = await apiRequest<{ disputes: import('@/lib/clearModel').MemberDispute[] }>('/api/disputes');
   return r.error || !r.data ? null : r.data.disputes;
+}
+
+/**
+ * Put a lost (or withdrawn) partner dispute back on a plan: the terms to sign, then the signature.
+ * `TermIssuer.openPlan` opens it only on the member's own signature (audit H-4).
+ */
+export async function prepareDisputeReopen(token: string): Promise<{ typedData?: PlanTermsTypedData; error?: string }> {
+  const r = await apiRequest<{ typedData: PlanTermsTypedData }>(`/api/disputes/${encodeURIComponent(token)}/reopen/prepare`, { method: 'POST' });
+  return r.error || !r.data?.typedData ? { error: r.error || 'We could not get this plan ready. Nothing was charged.' } : { typedData: r.data.typedData };
+}
+
+export async function submitDisputeReopen(token: string, signed: { terms: PlanTerms; signature: string }): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ reopened: boolean }>(`/api/disputes/${encodeURIComponent(token)}/reopen`, {
+    method: 'POST',
+    body: JSON.stringify({ terms: signed.terms, signature: signed.signature }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'We could not do that just now. Nothing was charged.' } : { ok: true };
+}
+
+/**
+ * Re-split, Phase 2 (spec item 6). Whether the new split needs the member's signature; when it does,
+ * the `Resplit` typed data, what the new schedule spreads (ledger units) and the installment length.
+ */
+export async function prepareResplit(
+  wallet: string,
+  planId: number,
+  installments: number,
+): Promise<
+  | { needsSignature: false; error?: undefined }
+  | { needsSignature: true; typedData: ResplitTypedData; remaining: string; installmentLength: string; error?: undefined }
+  | { error: string }
+> {
+  const r = await apiRequest<
+    { needsSignature: false } | { needsSignature: true; typedData: ResplitTypedData; remaining: string; installmentLength: string }
+  >(`/api/credit/${wallet.toLowerCase()}/plans/${planId}/split/prepare`, { method: 'POST', body: JSON.stringify({ installments }) });
+  if (r.error || !r.data) return { error: r.error || 'We could not get this change ready. Nothing has changed.' };
+  return r.data;
+}
+
+export async function submitResplit(
+  wallet: string,
+  planId: number,
+  input: { installments: number; rateBps: string; deadline: string; signature: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/plans/${planId}/split`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'That did not go through. The split is unchanged.' } : { ok: true };
 }
 
 /** Take a dispute back before it is decided. */

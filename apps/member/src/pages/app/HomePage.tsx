@@ -1,3 +1,4 @@
+import type { SplitOutcome } from '@/hooks/useCreditRepay';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import BalanceBlock from '@/components/clear/BalanceBlock';
@@ -73,7 +74,7 @@ export default function HomePage({
   /** Savings not pledged against drawn credit: what a plan may be paid from. */
   savingsFree?: number;
   /** Re-splits a plan on chain. Absent in the preview harness, where a split is only held here. */
-  onSetSplit?: (planId: number, installments: number) => Promise<{ ok?: boolean; error?: string }>;
+  onSetSplit?: (planId: number, installments: number) => Promise<SplitOutcome>;
 }) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
@@ -217,7 +218,8 @@ export default function HomePage({
             // On chain for a live plan; the chain read that follows is the new schedule.
             if (onSetSplit && livePlan) {
               const result = await onSetSplit(Number(plan.id), splitInto);
-              if (result.error) return result;
+              // Phase 2: a split that costs more waits for the member to read and sign new terms.
+              if (result.error || result.needsSignature) return result;
             } else {
               setSplits((s) => ({ ...s, [plan.id]: splitInto }));
             }

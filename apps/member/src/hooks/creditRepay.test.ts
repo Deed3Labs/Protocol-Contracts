@@ -102,7 +102,18 @@ describe('re-split a term plan', () => {
   });
 
   test('a live plan saves to chain; only the preview holds a split locally', () => {
-    expect(home).toMatch(/if \(onSetSplit && livePlan\) \{[\s\S]{0,160}if \(result\.error\) return result;[\s\S]{0,40}\} else \{\s*setSplits/);
+    expect(home).toMatch(/if \(onSetSplit && livePlan\) \{[\s\S]{0,260}if \(result\.error \|\| result\.needsSignature\) return result;[\s\S]{0,40}\} else \{\s*setSplits/);
+  });
+
+  test('Phase 2: a split that costs more is read and signed first, then submitted by the server', () => {
+    // Asked before any transaction; the wallet's own setSplit is only for one that needs no signature.
+    expect(hook.indexOf('await prepareResplit(')).toBeLessThan(hook.indexOf('await scSetSplit({'));
+    expect(hook).toContain('lines: resplitDisclosureFor(typedData, remaining, installmentLength)');
+    const sign = hook.slice(hook.indexOf('sign: async () => {'));
+    expect(sign.indexOf('await signResplit(')).toBeLessThan(sign.indexOf('await submitResplit('));
+    const dialog = readFileSync(new URL('../components/clear/SplitPlanDialog.tsx', import.meta.url), 'utf8');
+    expect(dialog).toContain('toSign.lines.map(');
+    expect(dialog).toContain("'Sign and use this split'");
   });
 
   test('live, Clears from is a fact, not a picker with nothing behind it', () => {

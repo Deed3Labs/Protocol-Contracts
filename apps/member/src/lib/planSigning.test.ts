@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { keccak256, toBytes, hashTypedData } from 'viem';
 import { ethers } from 'ethers';
-import { buildPlanTerms, planDisclosureForTerms, planDisclosureText, planTermsMessage, planTermsTypedData, PLAN_TERMS_TYPES } from '@clear/domain';
+import { buildPlanTerms, PLAN_PRODUCTS, planDisclosureForTerms, planDisclosureText, planTermsMessage, planTermsTypedData, PLAN_TERMS_TYPES, RESPLIT_TYPES, resplitMessage, resplitTypedData } from '@clear/domain';
 
 const SIGNING = readFileSync(join(import.meta.dir, 'planSigning.ts'), 'utf8');
 const ROUTE = readFileSync(join(import.meta.dir, '../pages/app/ChargeApprovalRoute.tsx'), 'utf8');
@@ -12,8 +12,9 @@ const built = buildPlanTerms({
   member: '0x00000000000000000000000000000000000000A1',
   merchant: '0x00000000000000000000000000000000000000b2',
   merchantName: 'Corner Garage',
+  productId: PLAN_PRODUCTS.PARTNER,
   purchaseCents: 94_000,
-  payoutCents: 91_180,
+  payout: 911_800_000n,
   ratePerCycleBps: 200,
   cycleLengthSeconds: 30 * 86_400,
   installments: 4,
@@ -43,11 +44,32 @@ describe('the phone and the server hash the same disclosure (audit H-4)', () => 
         ...planTermsMessage(td.message),
         member: td.message.member as `0x${string}`,
         merchant: td.message.merchant as `0x${string}`,
+        productId: td.message.productId as `0x${string}`,
         disclosureHash: td.message.disclosureHash as `0x${string}`,
       },
     });
     const viaEthers = ethers.TypedDataEncoder.hash(td.domain, { PlanTerms: [...PLAN_TERMS_TYPES.PlanTerms] }, td.message);
     expect(viaViem).toBe(viaEthers as `0x${string}`);
+  });
+});
+
+describe('a re-split the member signs (Phase 2)', () => {
+  test('viem hashes Resplit the way ethers does, in the plan domain', () => {
+    const td = resplitTypedData({ chainId: 84532, termIssuer: '0x00000000000000000000000000000000000000c3', planId: 3, installments: 12, rateBps: 200, nonce: 4n, deadline: 2_000_000_000 });
+    const viaViem = hashTypedData({
+      domain: { ...td.domain, verifyingContract: td.domain.verifyingContract as `0x${string}` },
+      types: RESPLIT_TYPES,
+      primaryType: 'Resplit',
+      message: resplitMessage(td.message),
+    });
+    const viaEthers = ethers.TypedDataEncoder.hash(td.domain, { Resplit: [...RESPLIT_TYPES.Resplit] }, td.message);
+    expect(viaViem).toBe(viaEthers as `0x${string}`);
+  });
+
+  test('the re-split is checked against the screen before Face ID and before the wallet signs', () => {
+    const fn = SIGNING.slice(SIGNING.indexOf('export async function signResplit'));
+    expect(fn.indexOf('resplitMismatch(')).toBeLessThan(fn.indexOf('await requireStepUp()'));
+    expect(fn.indexOf('resplitMismatch(')).toBeLessThan(fn.indexOf('signTypedData('));
   });
 });
 

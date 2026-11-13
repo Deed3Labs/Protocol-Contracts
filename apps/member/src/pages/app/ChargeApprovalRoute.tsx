@@ -64,6 +64,10 @@ function PayNowProviders({ children }: { children: ReactNode }) {
 
 const PAYING: Record<PayNowStep, string> = { 1: 'Confirm with Face ID…', 2: 'Paying…', 3: 'Checking…' };
 
+/** The same words the server uses (chainErrors STATE_NOT_CONFIRMED): not a refusal, a wait. */
+const STATE_NOT_CONFIRMED =
+  'Your state of residence isn’t confirmed yet, so Clear can’t offer you credit. Nothing was charged. You can still pay now, and credit opens once your state is confirmed.';
+
 /**
  * `approval`: opened as Pay with Clear's approval page (`/approve/:id`, ApprovalPageRoute), which has
  * already read the payment. The charge is its `chargeCode`, and the screen is the online sheet; when
@@ -94,6 +98,8 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
   /** The plan terms fetched to sign, and the disclosure rebuilt from them (audit H-4). */
   const [prepared, setPrepared] = useState<{ typedData: PlanTermsTypedData; disclosure: string[] } | null>(null);
   const [perCycleLimit, setPerCycleLimit] = useState<number | null>(null);
+  /** Nobody has attested the member's state yet, so the chain refuses any plan (Phase 2). */
+  const [stateUnconfirmed, setStateUnconfirmed] = useState(false);
   const [mode, setMode] = useState<PayMode>('choose');
   const [paying, setPaying] = useState<PayNowStep | null>(null);
   const [addMoneyOpen, setAddMoneyOpen] = useState(false);
@@ -189,7 +195,10 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
     if (!address) return;
     let cancelled = false;
     void getCredit(address).then((credit) => {
-      if (cancelled || !credit?.term) return;
+      if (cancelled) return;
+      // Phase 2: no plan (in full included) without an attested state. Paying now still works.
+      if (credit?.stateConfirmed === false) setStateUnconfirmed(true);
+      if (!credit?.term) return;
       setPerCycleLimit(credit.term.availableCents / 100);
     });
     return () => {
@@ -293,6 +302,10 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
    */
   const onApprove = useCallback(async () => {
     if (!charge || !address) return;
+    if (stateUnconfirmed) {
+      setError(STATE_NOT_CONFIRMED);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -335,7 +348,7 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
     } finally {
       setBusy(false);
     }
-  }, [charge, splitInto, address, prepared]);
+  }, [charge, splitInto, address, prepared, stateUnconfirmed]);
 
   const onDecline = useCallback(async () => {
     if (!charge) return;

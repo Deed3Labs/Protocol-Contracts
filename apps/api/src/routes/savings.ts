@@ -4,6 +4,16 @@ import { ethers } from 'ethers';
 import { requireWalletMatch, requireVerifiedWallet } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
 import { savingsRelayerService } from '../services/savingsRelayerService.js';
+import { decodeChainError, describeCreditRefusal } from '../services/chain/chainErrors.js';
+
+/**
+ * A relayed vault or CLRUSD call that the chain refused for a reason the member can act on
+ * (Phase 2: the CA pilot cap on mints, a lapsing CLRUSD pause, savings encumbered by credit).
+ * Null for anything else, which keeps its existing 500.
+ */
+function memberRefusal(error: unknown): string | null {
+  return describeCreditRefusal(decodeChainError(error));
+}
 import { savingsGaslessService } from '../services/savingsGaslessService.js';
 import { relayEsaDeposit } from '../services/savings/esaDeposit.js';
 import { payLedgerStore, networkFromChainId } from '../services/payLedgerStore.js';
@@ -208,6 +218,11 @@ savingsRouter.post('/intents/finalize', async (req: Request, res: Response) => {
       status: 'FINALIZED',
     });
   } catch (error) {
+    const refusal = memberRefusal(error);
+    if (refusal) {
+      res.status(409).json({ error: 'Failed to finalize savings intent', message: refusal });
+      return;
+    }
     res.status(500).json({
       error: 'Failed to finalize savings intent',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -423,6 +438,11 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
 
     res.json({ success: true, action, chainId: config.chainId, vaultAddress: config.vaultAddress, txHash, status: 'SUBMITTED' });
   } catch (error) {
+    const refusal = memberRefusal(error);
+    if (refusal) {
+      res.status(409).json({ error: 'Failed to submit gasless savings transfer', message: refusal });
+      return;
+    }
     res.status(500).json({
       error: 'Failed to submit gasless savings transfer',
       message: error instanceof Error ? error.message : 'Unknown error',

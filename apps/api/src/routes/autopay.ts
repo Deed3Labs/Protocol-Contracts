@@ -7,9 +7,10 @@ import { savingsRelayerService } from '../services/savingsRelayerService.js';
 import { requireStepUp } from '../middleware/stepUp.js';
 
 /*
- * Autopay rules — recurring gasless savings deposits via a ZeroDev session. Wallet-scoped
- * (requireWalletMatch), mounted under requireAuth. The client installs the session (signs once) and
- * posts the serialized permission account here; the runner (jobs/autopayRunner) executes it.
+ * Autopay rules — recurring gasless savings deposits under the vault's on-chain `DepositMandate`.
+ * Wallet-scoped (requireWalletMatch), mounted under requireAuth. The client signs the mandate once
+ * (lib/autopay) and posts it here; the runner (jobs/autopayRunner) submits `executeMandateDeposit`
+ * when a rule is due. No session key is held.
  */
 const router = Router();
 
