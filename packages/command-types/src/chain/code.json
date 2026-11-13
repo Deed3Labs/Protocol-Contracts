@@ -450,7 +450,7 @@
   },
   "RevolvingIssuer": {
    "source": "contracts/peripherals/RevolvingIssuer.sol",
-   "sha256": "b833095f7e31172b53a69db7224d1e924d496aa19914e0f9dcc8e4a6bdcb0d29",
+   "sha256": "dcac6d95fb90b561dbb70b82754a7276b8397b9dda8fd333fd110a76a0d29911",
    "immutables": [
     [
      2754,

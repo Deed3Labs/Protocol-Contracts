@@ -19,7 +19,7 @@ Branch `audit/phase-2-compliance`, cut from `audit/phase-1` (PR #883, not yet me
 - [x] DECISIONS #7: CFL aggregation switch in RateSchedule (default on), `cflPrincipalOf` on both issuers
 - [x] Sizes, Slither, storage layout (see PHASE-2-REPORT section 8)
 - [x] PHASE-2-REPORT.md, UPGRADEABILITY.md
-- [ ] Full suite green; PR
+- [x] Full suite green (885 passing); draft PR into `dev`
 
 Notes:
 - TermIssuer now has two delegatecall extensions (TermIssuerExtension: refunds, re-split, collection, recovery; TermIssuerOrigination: openPlan) to stay under 24 KiB. RevolvingIssuer has one.

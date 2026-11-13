@@ -109,7 +109,7 @@ The app and API work for Phases 1 and 2 is in draft PR #884. After this PR merge
 
 ## 8. Numbers
 
-- **Tests:** full suite: SEE-FULL-SUITE. Compliance and deploy specs: 29 passing.
+- **Tests:** full Hardhat suite 885 passing, 0 failing (after the `_localAcc` fix). Compliance and deploy specs: 29 of them. `npx turbo run typecheck test --affected`: 32 of 32 tasks passed.
 - **Sizes** (production build, EIP-170 limit 24,576):
 
   | Contract | Size (bytes) |
