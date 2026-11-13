@@ -450,6 +450,13 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         return super._validateCreditTransaction(sender, recipient, amount);
     }
 
+    /// @notice a term line is governed by its plans' schedules, not by a period.
+    /// @dev The term limit is locked to `openPlan`, so no transfer ever draws it, and a plan's
+    /// default comes from its schedule (`declareDefault`).
+    function _requiresPeriod(address) internal pure override returns (bool) {
+        return false;
+    }
+
     /// @notice whether a member is current on every plan they hold.
     /// @dev Overrides cycle equilibrium. The base rule is that a member has rebalanced to zero or
     /// above; here a member carrying a term balance on schedule is doing exactly what the product

@@ -165,24 +165,48 @@ describe("AUDIT PoC", function () {
     expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(10n * ONE_USDC);
   });
 
-  it("H-2: anyone can delete a compliant member's period at expiry; the line then runs forever with no default", async function () {
+  it("H-2 (fixed): syncing a compliant member at expiry rolls the period forward, and the line can still default", async function () {
+    await wireLedgerToRegistry();
     const m = ctx.member;
     await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
     // Cycle and grace run out while compliant (balance zero).
     await advance(CYCLE + CYCLE + 1);
-    // Permissionless: anyone (the member themself) expires it before the hourly renewer runs.
+    // Permissionless, as before -- but now it renews instead of deleting.
     await revolving.connect(attackerWallet).syncCreditPeriod(m.address);
     const [issuedAt, expiration] = await revolving.creditPeriods(m.address);
-    expect(issuedAt).to.equal(0n);
-    expect(expiration).to.equal(0n); // renewer skips wallets with issuedAt == 0
+    const now = BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
+    expect(issuedAt).to.equal(now);
+    expect(expiration).to.equal(now + BigInt(CYCLE));
 
-    // Draw the whole line and sit on it for a year.
-    await ctx.stableCredit.connect(m).transfer(attackerWallet.address, 2_000n * ONE_USDC);
+    // Draw the whole line and sit on it: the period runs out, grace runs out, and it defaults.
+    await ctx.stableCredit.connect(m).transfer(merchant.address, 2_000n * ONE_USDC);
     await advance(365 * DAY);
+    expect(await revolving.inDefault(m.address)).to.equal(true);
     await revolving.syncCreditPeriod(m.address);
+    expect(await revolving.hasDefaulted(m.address)).to.equal(true);
+    expect(await ctx.access.isMember(m.address)).to.equal(false);
+    expect(await ctx.stableCredit.lostDebt()).to.be.greaterThan(0n);
+  });
+
+  it("H-2 (fixed): operators may extend or pause a period, never bring a deadline closer", async function () {
+    const m = ctx.member;
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
+    const [, expiration, grace] = await revolving.creditPeriods(m.address);
+    await expect(revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration - 1n))
+      .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");
+    await expect(revolving.connect(ctx.operator).setGraceLengthOf(m.address, grace - 1n))
+      .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");
+    await expect(revolving.connect(ctx.operator).updateCreditPeriod(m.address, expiration - 1n, grace))
+      .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");
+    await revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration + 10n);
+    await revolving.connect(ctx.operator).setGraceLengthOf(m.address, grace + 10n);
+
+    // A pause that outlasts the period does not turn into a default the moment it is lifted.
+    await ctx.stableCredit.connect(m).transfer(ctx.counterparty.address, 100n * ONE_USDC);
+    await revolving.connect(ctx.operator).pausePeriodOf(m.address);
+    await advance(4 * CYCLE);
+    await revolving.connect(ctx.operator).unpausePeriodOf(m.address);
     expect(await revolving.inDefault(m.address)).to.equal(false);
-    expect(await revolving.isFrozen(m.address)).to.equal(false);
-    expect(await ctx.access.isMember(m.address)).to.equal(true);
-    // Still free to draw again after repaying, indefinitely.
+    expect(await revolving.isFrozen(m.address)).to.equal(true);
   });
 });

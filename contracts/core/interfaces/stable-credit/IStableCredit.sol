@@ -15,6 +15,8 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     function access() external view returns (IAccessManager);
     /// @dev the credit issuer contract which manages credit line issuance
     function networkRegistry() external view returns (INetworkRegistry);
+    /// @notice an issuer's contribution to a member's ceiling.
+    function issuerCreditLimit(address issuer, address member) external view returns (uint256);
     /// @notice whether a member may pay credit to this address.
     /// @dev Phase 1 has no member-to-member transfers (audit C-1, M-1): credit is spent at an active
     /// merchant or paid to a system address the admin has named. Issuers ask this before letting a

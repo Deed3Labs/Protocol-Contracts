@@ -615,6 +615,12 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         return super._validateCreditTransaction(sender, recipient, amount);
     }
 
+    /// @notice a rolled-over revolving period runs one network cycle.
+    function _rolloverLength(address member) internal view override returns (uint256) {
+        uint256 cycle = cycleLength();
+        return cycle == 0 ? super._rolloverLength(member) : cycle;
+    }
+
     /// @notice records what a credit movement did to this member's tiers.
     /// @dev Runs on the mint path rather than a separate reporting call, because the shortfall
     /// about to be minted is exactly what has to be placed in a tier, and the recipient's

@@ -13,6 +13,14 @@ import "../core/interfaces/stable-credit/ICreditIssuer.sol";
 /// @dev This contract is intended to be extended by a parent contract that implements
 /// custom credit terms and underwriting logic.
 contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable, UUPSUpgradeable {
+    /// @notice thrown when an operator would bring a member's deadline closer.
+    /// @dev Operators may extend or pause a period, never shorten one. A key that could pull an
+    /// expiry forward could put a member into default by itself, which is a declared default the
+    /// compliance spec rules out (10b) (audit H-2).
+    error CreditIssuerPeriodMayOnlyExtend(address member);
+    /// @notice thrown when a setter is used on a member who has no period to change.
+    error CreditIssuerNoPeriod(address member);
+
     /* ========== STATE VARIABLES ========== */
 
     IStableCredit public stableCredit;
@@ -378,6 +386,13 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
         virtual
         onlyOperator
     {
+        // Renewing moves a deadline out; it may not move one in (audit H-2).
+        if (inInitializedPeriod(member)) {
+            CreditPeriod storage period = creditPeriods[member];
+            if (periodExpiration < period.expiration || graceLength < period.graceLength) {
+                revert CreditIssuerPeriodMayOnlyExtend(member);
+            }
+        }
         _updateCreditPeriod(member, periodExpiration, graceLength);
     }
 
@@ -395,7 +410,15 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to unpause period for.
     function unpausePeriodOf(address member) external onlyOperator {
-        creditPeriods[member].paused = false;
+        CreditPeriod storage period = creditPeriods[member];
+        period.paused = false;
+        // Lifting a pause must not land the member straight in default: a pause that outlasted
+        // the period would otherwise make unpausing a declared default by another name (audit
+        // H-2, compliance 10b). The deadline restarts at the moment the pause ends, so the member
+        // still gets their whole grace.
+        if (period.expiration != 0 && period.expiration < block.timestamp) {
+            period.expiration = block.timestamp;
+        }
         emit CreditTermsUnpaused(member);
     }
 
@@ -405,6 +428,10 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @param member address of member to set period expiration for.
     /// @param periodExpiration expiration timestamp of credit period.
     function setPeriodExpirationOf(address member, uint256 periodExpiration) public onlyOperator {
+        if (!inInitializedPeriod(member)) revert CreditIssuerNoPeriod(member);
+        if (periodExpiration < creditPeriods[member].expiration) {
+            revert CreditIssuerPeriodMayOnlyExtend(member);
+        }
         creditPeriods[member].expiration = periodExpiration;
     }
 
@@ -414,6 +441,10 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @param member address of member to set grace period for.
     /// @param graceLength length of grace period.
     function setGraceLengthOf(address member, uint256 graceLength) public onlyOperator {
+        if (!inInitializedPeriod(member)) revert CreditIssuerNoPeriod(member);
+        if (graceLength < creditPeriods[member].graceLength) {
+            revert CreditIssuerPeriodMayOnlyExtend(member);
+        }
         creditPeriods[member].graceLength = graceLength;
         emit GraceLengthUpdated(member, graceLength);
     }
@@ -421,24 +452,53 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /* ========== PRIVATE FUNCTIONS ========== */
 
     /// @notice called when a member's credit period has expired
-    /// @dev deletes credit terms and emits a default event if caller is in default.
+    /// @dev A compliant member rolls straight into a new period; a member in default has the
+    /// period deleted, the debt written off and the default recorded.
+    ///
+    /// Rolling rather than deleting is the fix for audit H-2. `syncCreditPeriod` is public, and a
+    /// deleted period used to read as "no terms", which waved every later draw through and made
+    /// default impossible -- so anyone, the member included, could switch a line's terms off by
+    /// calling it at the right moment. A line that still has a limit always has a period now.
     /// @param member address of member to expire.
     /// @return true if member is not in default, false if member is in default.
     function expireCreditPeriod(address member) internal virtual returns (bool) {
         bool memberInDefault = inDefault(member);
-        delete creditPeriods[member];
-        // if member in default, write off credit line and revoke membership
-        if (memberInDefault) {
-            defaultedAt[member] = uint64(block.timestamp);
-            // write off this issuer's share of the debt
-            stableCredit.writeOffCreditLine(member, _writeOffAmount(member));
-            // revoke membership
-            _onDefault(member);
-            emit CreditLineDefaulted(member);
-            return false;
+        if (!memberInDefault) {
+            CreditPeriod storage period = creditPeriods[member];
+            uint256 length = _rolloverLength(member);
+            // Counted from now, as the renewer counts it: a full period from today rather than one
+            // already partly spent.
+            period.issuedAt = block.timestamp;
+            period.expiration = block.timestamp + length;
+            emit CreditPeriodExpired(member);
+            emit CreditPeriodCreated(member, period.expiration, period.graceLength);
+            return true;
         }
-        emit CreditPeriodExpired(member);
-        return true;
+        // in default: delete the period, write off this issuer's share and revoke membership
+        delete creditPeriods[member];
+        defaultedAt[member] = uint64(block.timestamp);
+        stableCredit.writeOffCreditLine(member, _writeOffAmount(member));
+        _onDefault(member);
+        emit CreditLineDefaulted(member);
+        return false;
+    }
+
+    /// @notice how long a rolled-over period runs.
+    /// @dev The length of the period that just ended, by default, which is whatever the operator
+    /// last set. An issuer with a network cycle overrides this.
+    function _rolloverLength(address member) internal view virtual returns (uint256) {
+        CreditPeriod storage period = creditPeriods[member];
+        uint256 length = period.expiration > period.issuedAt ? period.expiration - period.issuedAt : 0;
+        // A period always has some length; a zero one would expire again in the same block.
+        return length == 0 ? 1 days : length;
+    }
+
+    /// @notice whether a member's line with this issuer must have a period to draw on.
+    /// @dev Yes whenever this issuer gives them a ceiling a plain transfer can draw. An issuer
+    /// whose allocation is drawn only through a scheduled path (a term plan) is governed by that
+    /// schedule instead, and overrides this.
+    function _requiresPeriod(address member) internal view virtual returns (bool) {
+        return stableCredit.issuerCreditLimit(address(this), member) > 0;
     }
 
     /// @notice whether a member's credit line ended in default.
@@ -493,8 +553,9 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
         if (amount > 0 && amount <= stableCredit.balanceOf(sender)) {
             return true;
         }
-        // valid if sender period is not initialized.
-        if (!inInitializedPeriod(sender)) return true;
+        // A limit with no period is not a line without terms, it is a line whose terms were lost.
+        // Treating it as valid is what let a deleted period wave every draw through (audit H-2).
+        if (!inInitializedPeriod(sender)) return !_requiresPeriod(sender);
         // valid if sender is not in an active period.
         if (inActivePeriod(sender)) return true;
         // valid if sender's period is paused
