@@ -61,6 +61,8 @@ describe("Liquidator", function () {
     await registry.registerCollateralType(SAVINGS, SAVINGS_BACKED, 10_000n, 10n ** 18n);
     await registry.registerCollateralType(INCOME, UNSECURED, 0n, 0n);
     await registry.setClrusdKind(SAVINGS);
+    // A savings pledge is valued against the member's real CLRUSD balance (audit C-2).
+    await registry.setClrusdToken(await clrusd.getAddress());
     await clrusd.setEncumbranceSource(await registry.getAddress());
     await issuer.connect(ctx.operator).setExposureSource(await registry.getAddress());
     await ctx.assurancePool.connect(ctx.admin).setExposureSource(await registry.getAddress());

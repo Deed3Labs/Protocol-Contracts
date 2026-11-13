@@ -3,6 +3,8 @@ pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
 import "../core/interfaces/stable-credit/IEncumbranceSource.sol";
 import "../core/interfaces/stable-credit/ICollateralValuer.sol";
@@ -80,7 +82,13 @@ contract CollateralRegistry is
     /// directly rather than having pledged something held elsewhere.
     bytes32 public clrusdKind;
 
-    uint256[42] private __gap;
+    /// @notice The CLRUSD token whose balance a savings pledge is valued against.
+    /// @dev A pledge is a number an operator script writes; the savings behind it can be moved
+    /// while nothing is drawn. So a CLRUSD pledge is worth what the member still holds, never more
+    /// than what was pledged (audit C-2, DECISIONS #2). Appended from the gap.
+    address public clrusdToken;
+
+    uint256[41] private __gap;
 
     error CollateralRegistryInvalidAddress();
     error CollateralRegistryUnknownType(bytes32 kind);
@@ -102,6 +110,7 @@ contract CollateralRegistry is
     event ItemRolled(address indexed member, bytes32 indexed kind, uint256 oldItemId, uint256 newItemId);
     event ExposureRefreshed(address indexed member, uint256 previous, uint256 current);
     event ClrusdKindUpdated(bytes32 indexed kind);
+    event ClrusdTokenUpdated(address indexed token);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -154,9 +163,39 @@ contract CollateralRegistry is
             }
         }
 
-        uint256 units = pledgedOf[member][kind];
+        uint256 units = _unitsHeld(member, kind);
         if (units == 0) return 0;
         return (units * collateral.unitPrice) / PRICE_SCALE;
+    }
+
+    /// @notice the pledged units that are actually still there.
+    /// @dev For CLRUSD, the lesser of what was pledged and what the member holds. The pledge is not
+    /// locked (DECISIONS #2: locking it would conflict with DFAL 10a), so savings moved away while
+    /// nothing was drawn stop counting the moment they leave (audit C-2). With no token set the
+    /// holding cannot be read, and it counts as nothing rather than as the pledge.
+    function _unitsHeld(address member, bytes32 kind) private view returns (uint256) {
+        uint256 units = pledgedOf[member][kind];
+        if (units == 0 || kind != clrusdKind) return units;
+        if (clrusdToken == address(0)) return 0;
+        uint256 held = IERC20Upgradeable(clrusdToken).balanceOf(member);
+        return held < units ? held : units;
+    }
+
+    /// @notice how much more a member may draw against a collateral kind, given what backs it now.
+    /// @dev Read by the revolving line before it fills the savings tier, at the moment of the draw
+    /// (audit C-2). Only the CLRUSD kind is limited this way; for every other kind the answer is
+    /// "no limit from here", and the tier's capacity is what bounds it.
+    /// @param member address of the member.
+    /// @param kind collateral kind of the tier being drawn.
+    /// @return the most that may still be drawn against it.
+    function backedHeadroomOf(address member, bytes32 kind) external view returns (uint256) {
+        if (kind == bytes32(0) || kind != clrusdKind) return type(uint256).max;
+        CollateralType storage collateral = collateralTypes[kind];
+        if (!collateral.registered) return 0;
+        uint256 backs =
+            (collateralValueOf(member, kind) * collateral.haircutBps) / ExposureMath.BPS;
+        uint256 drawn = _drawnUnder(member, kind);
+        return backs > drawn ? backs - drawn : 0;
     }
 
     /// @notice the individual items a member has pledged under one kind.
@@ -225,9 +264,12 @@ contract CollateralRegistry is
         // Collateral that realizes nothing can never free itself while anything is drawn on it.
         if (collateral.haircutBps == 0 || collateral.unitPrice == 0) return type(uint256).max;
 
-        // The value the haircut has to reach, converted back into units.
-        uint256 neededValue = (drawn * ExposureMath.BPS) / collateral.haircutBps;
-        return (neededValue * PRICE_SCALE) / collateral.unitPrice;
+        // The value the haircut has to reach, converted back into units. Rounded up at each step
+        // and multiplied before dividing: rounding down left the lock a few units short of what is
+        // drawn (audit L-6).
+        uint256 neededValue =
+            Math.mulDiv(drawn, ExposureMath.BPS, collateral.haircutBps, Math.Rounding.Up);
+        return Math.mulDiv(neededValue, PRICE_SCALE, collateral.unitPrice, Math.Rounding.Up);
     }
 
     /// @notice a member's outstanding principal drawn under one kind.
@@ -270,6 +312,15 @@ contract CollateralRegistry is
         CollateralType storage collateral = collateralTypes[kind];
         if (!collateral.registered) return 0;
         return _requiredUnits(holder, kind, collateral);
+    }
+
+    /// @notice names the CLRUSD token a savings pledge is valued against.
+    /// @dev Admin, not operator: pointing this at a token that reports any balance it likes would
+    /// reopen the hole it closes (audit C-2).
+    function setClrusdToken(address token) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (token == address(0)) revert CollateralRegistryInvalidAddress();
+        clrusdToken = token;
+        emit ClrusdTokenUpdated(token);
     }
 
     /// @notice names the collateral kind held as CLRUSD in members' own accounts.

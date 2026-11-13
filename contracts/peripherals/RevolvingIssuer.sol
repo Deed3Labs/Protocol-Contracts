@@ -217,10 +217,28 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @notice how much more a member may draw in a tier.
     /// @dev Carry consumes headroom as it accrues, because the ceiling bounds what is owed rather
     /// than what was spent.
+    /// Capped, for a collateral-backed tier, at what the collateral backs right now. A savings
+    /// tier's capacity was set from a pledge, and the savings behind it can leave while nothing is
+    /// drawn; drawing against capacity alone let a member keep their savings and spend them too
+    /// (audit C-2). Asked at every draw and every card settlement, because both read this.
     function headroomOf(address member, uint256 tierId) public view returns (uint256) {
         uint256 capacity = tierCapacity[member][tierId];
         uint256 drawn = drawnOf(member, tierId);
-        return capacity > drawn ? capacity - drawn : 0;
+        uint256 room = capacity > drawn ? capacity - drawn : 0;
+        if (room == 0 || address(exposureSource) == address(0)) return room;
+        uint256 backed = _backedHeadroom(member, tiers[tierId].kind);
+        return backed < room ? backed : room;
+    }
+
+    /// @dev What the collateral registry says may still be drawn against a kind. A registry that
+    /// cannot answer backs nothing: under-lending shrinks a line, over-lending lends against
+    /// savings that may be gone.
+    function _backedHeadroom(address member, bytes32 kind) private view returns (uint256) {
+        (bool ok, bytes memory data) = address(exposureSource).staticcall(
+            abi.encodeWithSignature("backedHeadroomOf(address,bytes32)", member, kind)
+        );
+        if (!ok || data.length < 32) return 0;
+        return abi.decode(data, (uint256));
     }
 
     /// @notice who is owed carry accrued in a tier.
