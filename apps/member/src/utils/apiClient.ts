@@ -1316,13 +1316,19 @@ export async function claimPayoutBank(
   return response.data;
 }
 
+/**
+ * Claim to a wallet. `claimSignature` is the claim key's EIP-712 signature over
+ * Claim(transferId, recipientWallet), made in this browser from the claim link (lib/claimKey):
+ * ClaimEscrow releases the money only to the wallet the key signed for (audit H-4).
+ */
 export async function claimPayoutWallet(
   claimSessionToken: string,
-  recipientWallet: string
+  recipientWallet: string,
+  claimSignature: string,
 ): Promise<ClaimPayoutResponse | null> {
   const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/wallet', {
     method: 'POST',
-    body: JSON.stringify({ claimSessionToken, recipientWallet }),
+    body: JSON.stringify({ claimSessionToken, recipientWallet, claimSignature }),
   });
 
   if (response.error || !response.data) {
@@ -1545,7 +1551,7 @@ export async function recordGaslessSavings(p: {
   await apiRequest('/api/savings/gasless/record', { method: 'POST', body: JSON.stringify(p) });
 }
 
-export async function prepareSendLockAuthorization(id: number): Promise<{
+export async function prepareSendLockAuthorization(id: number, claimToken: string): Promise<{
   transferId: string;
   chainId: number;
   escrowAddress: string;
@@ -1553,7 +1559,7 @@ export async function prepareSendLockAuthorization(id: number): Promise<{
 }> {
   const response = await apiRequest<{ transferId: string; chainId: number; escrowAddress: string; typedData: Eip712TypedData }>(
     `/api/send/transfers/${id}/lock-authorization`,
-    { method: 'POST', body: JSON.stringify({}) },
+    { method: 'POST', body: JSON.stringify({ claimToken }) },
   );
   if (response.error || !response.data) {
     throw new Error(response.error || 'Failed to prepare send.');
@@ -1564,10 +1570,11 @@ export async function prepareSendLockAuthorization(id: number): Promise<{
 export async function submitSendLockAuthorization(
   id: number,
   signature: string,
+  claimToken: string,
 ): Promise<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }> {
   const response = await apiRequest<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }>(
     `/api/send/transfers/${id}/submit-authorization`,
-    { method: 'POST', body: JSON.stringify({ signature }), timeout: 120000 },
+    { method: 'POST', body: JSON.stringify({ signature, claimToken }), timeout: 120000 },
   );
   if (response.error || !response.data) {
     throw new Error(response.error || 'Failed to complete send.');

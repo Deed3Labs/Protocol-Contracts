@@ -63,6 +63,19 @@ export {
   type PlanTermsTypedData,
 } from './planTerms';
 
+export {
+  CLAIM_ESCROW_DOMAIN_NAME,
+  CLAIM_ESCROW_DOMAIN_VERSION,
+  CLAIM_KEY_DERIVATION_PREFIX,
+  CLAIM_TYPES,
+  claimEscrowDomain,
+  claimKeySeed,
+  claimTypedData,
+  claimWindowOpen,
+  TRANSFER_TERMS_TYPES,
+  type ClaimTransferTerms,
+} from './claimKey';
+
 export { formatCalendarDate, parseCalendarDate } from './dates';
 
 export type {
