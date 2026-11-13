@@ -101,7 +101,7 @@ describe("MetadataRenderer", function() {
     // Token 1: Land with full address
     await deedNFT.mintAsset(
       user1.address, 
-      0, // AssetType.Land
+      1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
       "ipfs://metadata1",
       JSON.stringify({
         country: "USA",
@@ -157,7 +157,7 @@ describe("MetadataRenderer", function() {
     // Token 2: Land with only parcel number and state
     await deedNFT.mintAsset(
       user1.address, 
-      0, // AssetType.Land
+      1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
       "ipfs://metadata2",
       JSON.stringify({
         parcelNumber: "P12345",
@@ -192,7 +192,7 @@ describe("MetadataRenderer", function() {
     // Token 3: Estate with full address
     await deedNFT.mintAsset(
       user1.address,
-      2, // AssetType.Estate
+      1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
       "ipfs://metadata3",
       JSON.stringify({
         streetNumber: "456",
@@ -332,7 +332,7 @@ describe("MetadataRenderer", function() {
     // Token 6: Land with no traits
     await deedNFT.mintAsset(
       user1.address,
-      0, // AssetType.Land
+      1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
       "ipfs://metadata6",
       "{}",
       "configuration6",
@@ -705,7 +705,7 @@ describe("MetadataRenderer", function() {
       // Mint a new token first
       await deedNFT.mintAsset(
         user1.address,
-        0, // Land type
+        1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
         "ipfs://metadata1",
         "{}",
         "configuration1",
@@ -848,7 +848,7 @@ describe("MetadataRenderer", function() {
       // Mint a new token first
       await deedNFT.mintAsset(
         user1.address, 
-        0, // Land type
+        1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
         "ipfs://metadata1",
         "{}",
         "configuration1",
@@ -990,7 +990,7 @@ describe("MetadataRenderer", function() {
       // Mint a new token first
       await deedNFT.mintAsset(
         user1.address,
-        0, // Land type
+        1, // minted as Vehicle (Land and Estate mint as trust deeds since v5); assetType set below
         "ipfs://metadata7",
         "{}",
         "configuration7",

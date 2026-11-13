@@ -148,7 +148,7 @@ describe("FundManager Contract", function() {
       await fundManager.connect(user1).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await deedNFT.connect(user1).mintAsset(
         user1.address,
-        0, // Land
+        1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
         "ipfs://metadata1",
         definition,
         "configuration1",
@@ -199,7 +199,7 @@ describe("FundManager Contract", function() {
       await expect(
         newDeedNFT.connect(user1).mintAsset(
           user1.address,
-          0,
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -241,7 +241,7 @@ describe("FundManager Contract", function() {
       await fundManager.connect(user2).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await deedNFT.connect(user2).mintAsset(
         user2.address,
-        0, // Land
+        1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
         "ipfs://metadata1",
         definition,
         "configuration1",
@@ -322,7 +322,7 @@ describe("FundManager Contract", function() {
       await fundManager.connect(user2).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await deedNFT.connect(user2).mintAsset(
         user2.address,
-        0, // Land
+        1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
         "ipfs://metadata1",
         definition,
         "configuration1",
@@ -467,7 +467,7 @@ describe("FundManager Contract", function() {
       await expect(
         deedNFT.connect(user1).mintAsset(
           user1.address,
-          0, // Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -493,7 +493,7 @@ describe("FundManager Contract", function() {
       await expect(
         deedNFT.connect(user1).mintAsset(
           user1.address,
-          0, // Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",

@@ -329,7 +329,7 @@ describe("Validator Contract", function() {
       await validator.connect(admin).setRoyaltyReceiver(user1.address);
       await validator.connect(admin).addWhitelistedToken(await token.getAddress());
       await validator.connect(admin).setServiceFee(await token.getAddress(), ethers.parseUnits("100", 18));
-      await validator.connect(admin).setAssetTypeSupport(0, true);
+      await validator.connect(admin).setAssetTypeSupport(1, true);
 
       // Set up token balance and approval
       await token.mint(user2.address, ethers.parseUnits("1000", 18));
@@ -352,7 +352,7 @@ describe("Validator Contract", function() {
       await fundManager.connect(user2).setMaxFee(await token.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await deedNFT.connect(user2).mintAsset(
         user1.address,
-        0,
+        1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
         "ipfs://metadata1",
         definition,
         "configuration1",
@@ -599,9 +599,9 @@ describe("Validator Contract", function() {
     let tokenId: number;
     beforeEach(async function() {
       // Set up asset type support and criteria
-      await validator.connect(admin).setAssetTypeSupport(0, true);
+      await validator.connect(admin).setAssetTypeSupport(1, true);
       await validator.connect(admin).setValidationCriteria(
-        0,
+        1,
         ["country", "state"],
         "",
         true,
@@ -620,7 +620,7 @@ describe("Validator Contract", function() {
       const definition = JSON.stringify({ country: "USA", state: "CA" });
       await deedNFT.connect(user2).mintAsset(
         user1.address,
-        0,
+        1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
         "ipfs://metadata1",
         definition,
         "configuration1",
@@ -653,7 +653,7 @@ describe("Validator Contract", function() {
     });
 
     it("should fail validation if asset type is not supported", async function() {
-      await validator.connect(admin).setAssetTypeSupport(0, false);
+      await validator.connect(admin).setAssetTypeSupport(1, false);
       await validator.connect(validator1).validateDeed(tokenId);
       const [isValidated] = await deedNFT.getValidationStatus(tokenId);
       expect(isValidated).to.be.false;
