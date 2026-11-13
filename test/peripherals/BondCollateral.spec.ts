@@ -173,13 +173,23 @@ describe("bonds as collateral", function () {
 
       // The lock is there to stop the member emptying the collateral, not to stop the co-op
       // collecting it. A lock that also binds the liquidator secures nothing.
+      // Audit M-6: naming a liquidator once bonds exist waits out LIQUIDATOR_DELAY, and a
+      // seizure needs the member in default as well as the bond pledged.
       await bond.setLiquidator(coop.address);
+      await ethers.provider.send("evm_increaseTime", [7 * 24 * 3600]);
+      await ethers.provider.send("evm_mine", []);
+      await bond.executeLiquidatorChange();
+      const signals = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
+      await signals.setInDefault(ctx.member.address, true);
+      await bond.setDefaultSource(await signals.getAddress());
       await bond.connect(coop).seizeBond(bondId, ctx.member.address, coop.address);
       expect(await bond.balanceOf(coop.address, bondId)).to.equal(1n);
     });
 
     it("leaves an unpledged bond alone", async function () {
-      const free = await buyBond(100n * ONE_USDC, YEAR);
+      // $500: the minimum face was raised from $100 (audit X-10).
+      const free = await buyBond(500n * ONE_USDC, YEAR);
+
       await ctx.stableCredit
         .connect(ctx.member)
         .transfer(ctx.counterparty.address, 500n * ONE_USDC);

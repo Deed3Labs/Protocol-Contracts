@@ -26,6 +26,8 @@ describe("first loss ordering", function () {
       { kind: "uups" }
     );
     await pool.grantRole(await pool.BORROWER_ROLE(), borrower.address);
+    // Audit H-4: a borrower draws only to its stored destination, within a daily cap.
+    await pool.setBorrower(borrower.address, borrower.address, 1_000_000n * ONE_USDC);
     await pool.grantRole(await pool.LOSS_REPORTER_ROLE(), ctx.admin.address);
 
     await ctx.usdc.mint(depositor.address, 10_000n * ONE_USDC);

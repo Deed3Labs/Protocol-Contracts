@@ -67,7 +67,10 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     uint256 public minDiscount = 0; // 0% minimum discount
     uint256 public maxMaturity = 30 * 365 * 24 * 60 * 60; // 30 years
     uint256 public minMaturity = 24 * 60 * 60; // 1 day
-    uint256 public minFaceValue = 100 * 10**6; // $100 USDC
+    /// @dev Raised from $100 (audit X-10): the smallest bond is what an attacker pays per entry
+    /// when trying to bloat the vault's books. The maturity buckets remove the unbounded loop
+    /// itself; this keeps the bond count proportionate to the money behind it.
+    uint256 public minFaceValue = 500 * 10**6; // $500 USDC
     uint256 public maxFaceValue = 1000000 * 10**6; // $1M USDC
     
     /// @notice Total collections created
@@ -246,13 +249,19 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     /// @param collectionBaseURI Base URI for the collection metadata
     /// @return collectionAddress Address of the created collection
     /// @return depositContract Address of the created deposit contract
+    /// @dev The owner, or the unified deposit contract creating one on a first purchase (audit
+    /// X-19). Open to anyone, a stranger could create the reserve token's collection first with
+    /// their own name, symbol and description, fixed for good. The deposit contract names a
+    /// collection from the token's own metadata, so it cannot be used to squat one.
     function createCollection(
         address tokenAddress,
         string calldata tokenSymbol,
         string calldata tokenName,
         string calldata collectionBaseURI
     ) external override nonReentrant returns (address collectionAddress, address depositContract) {
+        require(msg.sender == owner() || msg.sender == address(burnerBondDeposit), "Not allowed to create collections");
         require(tokenAddress != address(0), "Invalid token address");
+
         require(collections[tokenAddress].collectionAddress == address(0), "Collection already exists");
         // Check if token is whitelisted by calling the oracle directly
         try assuranceOracle.isTokenWhitelisted(tokenAddress) returns (bool isWhitelisted) {

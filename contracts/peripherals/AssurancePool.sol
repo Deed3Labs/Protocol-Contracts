@@ -17,6 +17,16 @@ import "./interfaces/IBondBackstop.sol";
 /// @title AssurancePool
 /// @notice Stores and manages reserve tokens according to pool
 /// configurations set by operator access granted addresses.
+/// @dev Audit fixes (Phase 1):
+/// - X-9: deposits are accepted in the reserve token only. Every tier is booked in reserve-token
+///   units and every payout (`reimburse`, the lending paths, `withdraw`) pays the reserve token, so
+///   accepting DAI or USDT booked value the pool could not pay out and made `burnLostDebt` and the
+///   backstops revert. Holdings that predate this (or an old reserve token after a change) are
+///   still enumerated, priced, and paid out by the equivalent-value sweep in `withdrawToken`.
+/// - X-16: repricing gains go back to the tier a repricing loss came out of before any reaches
+///   the withdrawable excess.
+/// - M-8, X-17: `repayFromPayoutPool` and `repayFromBondVault` accept only the borrower they
+///   track, and split interest from principal.
 contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
@@ -40,6 +50,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     event BufferMovedToPrimary(uint256 amount, uint256 primaryReserve);
     /// @notice emitted when held tokens are repriced: what the tiers accounted, and what is held now.
     event ReservesRepriced(uint256 accounted, uint256 held);
+    /// @notice emitted when a lender repayment carried interest on top of principal (audit X-17).
+    event LenderInterestReceived(address indexed from, uint256 principal, uint256 interest);
 
     /* ========== ERRORS ========== */
 
@@ -51,6 +63,10 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     error AssurancePoolInvalidAddress();
     /// @notice thrown when accepting another token would make the accounting loops unbounded.
     error AssurancePoolTooManyTokens();
+    /// @notice thrown when a lender repayment comes from anyone but the borrower this pool tracks.
+    error AssurancePoolNotTrackedBorrower(address caller);
+    /// @notice thrown when re-pointing a borrower while it still owes this pool.
+    error AssurancePoolLoanOutstanding(uint256 outstanding);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -128,6 +144,13 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     uint256 public lentToBondVault;
     /// @dev How much of that came out of the buffer, restored first on the way back.
     uint256 public bondBufferOwed;
+
+    /* ========== ADDED BY THE AUDIT FIXES ========== */
+
+    /// @notice Repricing losses taken from the primary reserve and not yet restored (audit X-16).
+    uint256 public repricingLossFromPrimary;
+    /// @notice Repricing losses taken from the buffer and not yet restored (audit X-16).
+    uint256 public repricingLossFromBuffer;
 
     /* ========== INITIALIZER ========== */
 
@@ -644,23 +667,35 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice takes back what was lent, into the reserve it came from.
     /// @dev Buffer first on the way home, mirroring the way out: the cushion is restored before
     /// anything is called spare again.
+    /// @dev Only the payout pool (audit M-8): a third party's payment used to reduce
+    /// `lentToPayoutPool` while the payout pool's own `borrowedFromReserve` stayed put, so the two
+    /// books disagreed and the pool's later repayment landed in excess. Interest is split from
+    /// principal (audit X-17): only principal reduces what is owed and restores the buffer; the
+    /// interest is income and goes to excess. The payout pool sends interest through this same
+    /// function, after its principal is clear.
     function repayFromPayoutPool(uint256 amount) external nonReentrant {
+        if (payoutPool == address(0) || _msgSender() != payoutPool) revert AssurancePoolNotTrackedBorrower(_msgSender());
         reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
-        uint256 owed = lentToPayoutPool < amount ? lentToPayoutPool : amount;
-        lentToPayoutPool -= owed;
+        uint256 principal = lentToPayoutPool < amount ? lentToPayoutPool : amount;
+        lentToPayoutPool -= principal;
 
-        uint256 toBuffer = amount < bufferOwed ? amount : bufferOwed;
+        uint256 toBuffer = principal < bufferOwed ? principal : bufferOwed;
         if (toBuffer > 0) {
             bufferOwed -= toBuffer;
             bufferReserve[address(reserveToken)] += toBuffer;
         }
         uint256 rest = amount - toBuffer;
         if (rest > 0) excessReserve[address(reserveToken)] += rest;
+        if (amount > principal) emit LenderInterestReceived(_msgSender(), principal, amount - principal);
         emit RepaidFromPayoutPool(amount, lentToPayoutPool);
     }
 
     /// @notice names the payout pool this reserve will lend to.
+    /// @dev Never zero (audit L-8), and not while the current one owes this pool: repayment is
+    /// accepted only from the tracked borrower (M-8), so re-pointing would strand the loan.
     function setPayoutPool(address pool) external onlyOperator {
+        if (pool == address(0)) revert AssurancePoolInvalidAddress();
+        if (pool != payoutPool && lentToPayoutPool != 0) revert AssurancePoolLoanOutstanding(lentToPayoutPool);
         payoutPool = pool;
         emit PayoutPoolUpdated(pool);
     }
@@ -698,23 +733,29 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     }
 
     /// @notice takes back what the bond vault borrowed, the buffer first.
+    /// @dev Only the bond vault, and principal split from anything above it (audits M-8, X-17).
     function repayFromBondVault(uint256 amount) external nonReentrant {
+        if (bondVault == address(0) || _msgSender() != bondVault) revert AssurancePoolNotTrackedBorrower(_msgSender());
         reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
-        uint256 owed = lentToBondVault < amount ? lentToBondVault : amount;
-        lentToBondVault -= owed;
+        uint256 principal = lentToBondVault < amount ? lentToBondVault : amount;
+        lentToBondVault -= principal;
 
-        uint256 toBuffer = amount < bondBufferOwed ? amount : bondBufferOwed;
+        uint256 toBuffer = principal < bondBufferOwed ? principal : bondBufferOwed;
         if (toBuffer > 0) {
             bondBufferOwed -= toBuffer;
             bufferReserve[address(reserveToken)] += toBuffer;
         }
         uint256 rest = amount - toBuffer;
         if (rest > 0) excessReserve[address(reserveToken)] += rest;
+        if (amount > principal) emit LenderInterestReceived(_msgSender(), principal, amount - principal);
         emit RepaidFromBondVault(amount, lentToBondVault);
     }
 
     /// @notice names the bond vault this reserve backs.
+    /// @dev Zero is a valid "none" (no bond exposure is read). Not re-pointed while the current
+    /// vault owes this pool, since only the tracked vault may repay (audit M-8).
     function setBondVault(address vault) external onlyOperator {
+        if (vault != bondVault && lentToBondVault != 0) revert AssurancePoolLoanOutstanding(lentToBondVault);
         bondVault = vault;
         emit BondVaultUpdated(vault);
     }
@@ -754,6 +795,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// and dropping it here would make that balance invisible to accounting and unreachable by
     /// the payout path at the same moment.
     function setReserveToken(address _reserveToken) external onlyAdmin {
+        if (_reserveToken == address(0)) revert AssurancePoolInvalidAddress();
         _registerHeldToken(_reserveToken);
         reserveToken = IERC20Upgradeable(_reserveToken);
         emit ReserveTokenUpdated(_reserveToken);
@@ -779,6 +821,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     }
 
     function setAssuranceOracle(address _assuranceOracle) external onlyAdmin {
+        if (_assuranceOracle == address(0)) revert AssurancePoolInvalidAddress();
         assuranceOracle = IAssuranceOracle(_assuranceOracle);
         emit AssuranceOracleUpdated(_assuranceOracle);
     }
@@ -890,10 +933,14 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev Reprices without moving anything between tiers. It used to zero all three and hand the
     /// held value out again as primary-up-to-need and the rest as excess, so any rebalance, from
     /// anyone, turned the buffer (and any primary above need) into excess, the spendable tier: with
-    /// no exposure out, the whole pool. Now a gain in held value lands in excess, and a loss comes
-    /// out of excess first, then the buffer, then the primary reserve, the order losses are meant
-    /// to reach them in. While any held token cannot be priced, nothing is written: a pricing gap
-    /// is not a loss.
+    /// no exposure out, the whole pool. A loss comes out of excess first, then the buffer, then the
+    /// primary reserve, the order losses are meant to reach them in. While any held token cannot be
+    /// priced, nothing is written: a pricing gap is not a loss.
+    ///
+    /// A gain goes back where a repricing loss came from before any of it is excess (audit X-16):
+    /// the primary reserve first, then the buffer. Booking every gain to excess while losses came
+    /// out of primary let anyone calling `rebalanceRTDPublic` ratchet value out of the loss-absorbing
+    /// tiers into the withdrawable one as a volatile holding moved up and down.
     function _updateReserveValues() internal {
         (uint256 held, uint256 unpriced) = _heldReserveValue();
         if (unpriced > 0) return;
@@ -901,7 +948,16 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         if (held == accounted) return;
         address rt = address(reserveToken);
         if (held > accounted) {
-            excessReserve[rt] += held - accounted;
+            uint256 gain = held - accounted;
+            uint256 x = repricingLossFromPrimary < gain ? repricingLossFromPrimary : gain;
+            repricingLossFromPrimary -= x;
+            primaryReserve[rt] += x;
+            gain -= x;
+            x = repricingLossFromBuffer < gain ? repricingLossFromBuffer : gain;
+            repricingLossFromBuffer -= x;
+            bufferReserve[rt] += x;
+            gain -= x;
+            excessReserve[rt] += gain;
         } else {
             uint256 loss = accounted - held;
             uint256 x = excessReserve[rt] < loss ? excessReserve[rt] : loss;
@@ -909,8 +965,10 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
             loss -= x;
             x = bufferReserve[rt] < loss ? bufferReserve[rt] : loss;
             bufferReserve[rt] -= x;
+            repricingLossFromBuffer += x;
             loss -= x;
             primaryReserve[rt] -= loss;
+            repricingLossFromPrimary += loss;
         }
         emit ReservesRepriced(accounted, held);
     }
@@ -1081,20 +1139,15 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice Check if a token is accepted for deposits/withdrawals
     /// @param token Token address to check
     /// @return True if token is accepted
+    /// @dev The reserve token only (audit X-9). The tiers are booked in reserve-token units and
+    /// every payout path pays the reserve token, so another token accepted here was value on the
+    /// books the pool could not hand over: once reserve-token cash fell below the accounted
+    /// reserves, `burnLostDebt`, the payout backstop and the bond backstop all reverted. Accepting
+    /// another token safely needs per-token tiers; until then, one token.
     function _isTokenAccepted(address token) internal view returns (bool) {
-        // Accept reserve token
-        if (token == address(reserveToken)) {
-            return true;
-        }
-        
-        // Accept stablecoins (USDC, USDT, DAI)
-        if (assuranceOracle.checkIsStablecoin(token)) {
-            return true;
-        }
-        
-        // Accept whitelisted tokens
-        return assuranceOracle.isTokenWhitelisted(token);
+        return token == address(reserveToken);
     }
+
     
     /// @notice Convert any token to reserve token equivalent using oracle
     /// @param token Token address to convert from
