@@ -12,15 +12,16 @@ Branch `audit/phase-2-compliance`, cut from `audit/phase-1` (PR #883, not yet me
 - [x] 6. Clear Cash, including the 13-cycle option (DECISIONS #4)
 - [x] 7. MerchantRegistry additions (discount/subsidy by split, freeSplitMax, noSurcharge)
 - [x] 8. State gate (stateCode by attestation in NetworkRegistry)
-- [ ] 9. DFAL 10a–10e (computed lock, permissionless liquidation, fraud/security pause with 72h expiry and two-person renewal, token powers, 7-day upgrade timelocks)
-- [ ] 10. ESADepositVault pilot cap (storage-safe; no stateCode counts as WY, DECISIONS #6)
+- [x] 9. DFAL 10a–10e (computed lock, permissionless liquidation, fraud/security pause with 72h expiry and two-person renewal, token powers, 7-day upgrade timelocks)
+- [x] 10. ESADepositVault pilot cap (storage-safe; no stateCode counts as WY, DECISIONS #6)
 - [ ] Acceptance tests 1–17 (`test/audit/compliance/`), figures recomputed for per-second accrual (DECISIONS #1)
 - [ ] PHASE-2-REPORT.md, UPGRADEABILITY.md, PR
 
 Notes:
 - TermIssuer now has two delegatecall extensions (TermIssuerExtension: refunds, re-split, collection, recovery; TermIssuerOrigination: openPlan) to stay under 24 KiB. RevolvingIssuer has one.
 - `PlanTerms` gained `productId` (app PR #884's signing module must add it after Phase 2 lands).
-- Acceptance done so far: 1, 2, 3, 4, 5, 6, 7, 8, 10, 11.
+- Acceptance done so far: 1–17 (9, 12–17 in `Dfal.spec.ts`).
+- The 7-day upgrade timelock is `contracts/governance/Timelock.sol` (OZ `TimelockController`); deploy wiring hands UUPS/owner powers to it.
 
 ## Design (so a resumed session does not re-derive it)
 

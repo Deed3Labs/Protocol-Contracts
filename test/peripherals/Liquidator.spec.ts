@@ -84,6 +84,9 @@ describe("Liquidator", function () {
     await clrusd.grantRole(await clrusd.LIQUIDATOR_ROLE(), await liquidator.getAddress());
     await registry.grantRole(await registry.OPERATOR_ROLE(), await liquidator.getAddress());
     await ctx.access.grantOperator(await liquidator.getAddress());
+    // Liquidation is permissionless now, so only issuers the admin trusts can trigger it
+    // (compliance spec 10b).
+    await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
   });
 
   /// The member saves USDC, receives CLRUSD, pledges it, and opens a line against it.
