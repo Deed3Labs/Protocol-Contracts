@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
+import "./IExtensionKind.sol";
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -213,6 +214,7 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// @notice thrown when the rate or payout signed for is not what the chain computes.
     error TermIssuerTermsMismatch(uint256 signedRate, uint256 rate, uint256 signedPayout, uint256 payout);
     /// @notice thrown when a large loan is scheduled over less than its minimum term.
+    error TermIssuerExtensionMismatch();
     error TermIssuerTermTooShort(uint256 term, uint256 minimum);
     /// @notice thrown when a re-split would cost the member more and they have not signed for it.
     error TermIssuerResplitNeedsSignature(uint256 planId);

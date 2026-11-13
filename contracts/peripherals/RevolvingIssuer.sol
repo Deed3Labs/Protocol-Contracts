@@ -2,7 +2,6 @@
 pragma solidity ^0.8.29;
 
 import "./RevolvingIssuerBase.sol";
-import "./RevolvingIssuerExtension.sol";
 import "../libraries/CarryIndex.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "../libraries/ExposureMath.sol";
@@ -32,10 +31,18 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /* ========== INITIALIZER ========== */
 
     /// @dev The bare implementation can never be initialized; only the proxy can (audit L-1).
+    /// @dev Both modules are deployed on their own and passed in: creating them here would put their
+    /// creation code inside this one and over EIP-3860's 48 KiB limit. Each is checked for its
+    /// kind and fixed for the life of this implementation.
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(address extension_, address cycles_) {
         _disableInitializers();
-        extension = address(new RevolvingIssuerExtension());
+        if (
+            IExtensionKind(extension_).extensionKind() != keccak256("RevolvingIssuerExtension.v2")
+                || IExtensionKind(cycles_).extensionKind() != keccak256("RevolvingIssuerCycles.v1")
+        ) revert RevolvingIssuerExtensionMismatch();
+        extension = extension_;
+        cycles = cycles_;
     }
 
     /// @param _stableCredit the ledger this issuer writes to.
@@ -380,7 +387,7 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// @custom:oz-upgrades-unsafe-allow delegatecall
     function expireCreditPeriod(address member) internal override returns (bool) {
         (bool ok, bytes memory data) =
-            extension.delegatecall(abi.encodeWithSignature("judgeCycle(address)", member));
+            cycles.delegatecall(abi.encodeWithSignature("judgeCycle(address)", member));
         if (!ok) {
             assembly {
                 revert(add(data, 32), mload(data))
@@ -542,6 +549,10 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable extension;
 
+    /// @notice Where the section 12 functions run (RevolvingIssuerCycles). Fixed like `extension`.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable cycles;
+
     /// @notice see RevolvingIssuerExtension.settleCardSpend.
     function settleCardSpend(bytes32, address, uint256) external {
         _forward();
@@ -564,7 +575,7 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
 
     /// @notice see RevolvingIssuerExtension.repayForMember.
     function repayForMember(bytes32, address, uint256) external {
-        _forward();
+        _forwardTo(cycles);
     }
 
     /// @notice see RevolvingIssuerExtension.settleFromCollateral.
@@ -584,34 +595,38 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
 
     /// @notice see RevolvingIssuerExtension: section 12 settings and the member's own switches.
     function setCreditTerms(CreditTerms calldata, uint128, uint128) external {
-        _forward();
+        _forwardTo(cycles);
     }
 
     function setDepositSource(address) external {
-        _forward();
+        _forwardTo(cycles);
     }
 
     function setAutoClear(bool, uint8) external {
-        _forward();
+        _forwardTo(cycles);
     }
 
     function setAutoClearWithSignature(address, bool, uint8, uint256, bytes calldata) external {
-        _forward();
+        _forwardTo(cycles);
     }
 
     function setSavingsDrawAllowance(uint256) external {
-        _forward();
+        _forwardTo(cycles);
     }
 
     function setSavingsDrawAllowanceWithSignature(address, uint256, uint256, bytes calldata) external {
-        _forward();
+        _forwardTo(cycles);
     }
 
     /// @dev Runs the extension's implementation of this call against this contract's storage, and
     /// returns or reverts exactly as it did.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
     function _forward() private {
-        address target = extension;
+        _forwardTo(extension);
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function _forwardTo(address target) private {
         assembly {
             calldatacopy(0, 0, calldatasize())
             let ok := delegatecall(gas(), target, 0, calldatasize(), 0, 0)

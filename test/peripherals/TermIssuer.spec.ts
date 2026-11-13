@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
+import { issuerProxyOptions } from "../helpers/issuers";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -22,7 +23,7 @@ describe("TermIssuer", function () {
 
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
     issuer = await upgrades.deployProxy(
-      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" }
     );
 
     await ctx.networkRegistry.registerIssuer(

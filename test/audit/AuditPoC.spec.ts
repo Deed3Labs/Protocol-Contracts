@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
 import { driveToDefault } from "../helpers/default";
+import { issuerProxyOptions } from "../helpers/issuers";
 
 /*
  * Audit proofs of concept, flipped into regression tests once each finding was fixed. A test
@@ -30,10 +31,10 @@ describe("AUDIT PoC", function () {
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     revolving = await upgrades.deployProxy(
-      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
     term = await upgrades.deployProxy(
-      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
 
     for (const issuer of [revolving, term]) {
       await ctx.networkRegistry.registerIssuer(

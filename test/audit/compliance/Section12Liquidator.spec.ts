@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { ONE_USDC, DAY, CA, P, CA_BANDS, params, deployRateSchedule } from "./rates";
+import { issuerProxyOptions } from "../../helpers/issuers";
 
 /*
  * Section 12 addendum, the Liquidator side: 12.5 (a missed cycle's excess is settled from Earn,
@@ -512,7 +513,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     const m = ctx.member.address;
     const CYCLE = 30 * DAY, GRACE = 5 * DAY;
     const R = await ethers.getContractFactory("RevolvingIssuer");
-    const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), (await ethers.getSigners())[8].address], { kind: "uups" });
+    const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), (await ethers.getSigners())[8].address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
     await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress(),
       await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
     await ctx.access.grantOperator(await issuer.getAddress());

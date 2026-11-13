@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
+import "./IExtensionKind.sol";
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -245,6 +246,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     event SavingsDrawn(address indexed member, uint256 amount, uint256 allowanceLeft);
 
     error RevolvingIssuerUnsecuredCap(uint256 capacity, uint256 cap);
+    error RevolvingIssuerExtensionMismatch();
     error RevolvingIssuerBoostCap(uint256 capacity, uint256 cap);
     error RevolvingIssuerAutoClearOff();
     error RevolvingIssuerNothingToClear(address member);

@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { issuerProxyOptions } from "../helpers/issuers";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -26,7 +27,7 @@ describe("RevolvingIssuer", function () {
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     issuer = await upgrades.deployProxy(
-      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" }
     );
 
     await ctx.networkRegistry.registerIssuer(
@@ -416,7 +417,7 @@ describe("RevolvingIssuer", function () {
     it("refuses to deploy or leave itself without a treasury", async function () {
       const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
       await expect(
-        upgrades.deployProxy(RevolvingIssuer, [await ctx.stableCredit.getAddress(), ethers.ZeroAddress], { kind: "uups" })
+        upgrades.deployProxy(RevolvingIssuer, [await ctx.stableCredit.getAddress(), ethers.ZeroAddress], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" })
       ).to.be.revertedWithCustomError(issuer, "RevolvingIssuerNoCarryRecipient");
 
       await expect(

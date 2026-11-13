@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network, drawCredit } from "../../helpers/phase0-fixture";
 import { driveToDefault } from "../../helpers/default";
+import { issuerProxyOptions } from "../../helpers/issuers";
 
 /*
  * Compliance addendum 12.11 (restated by section 13): no redemption, payout or force-settlement
@@ -172,7 +173,7 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       await clrusd.grantRole(await clrusd.BURNER_ROLE(), await vault.getAddress());
       await vault.setAcceptedToken(await ctx.usdc.getAddress(), true);
 
-      const issuer: any = await upgrades.deployProxy(await ethers.getContractFactory("RevolvingIssuer"), [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+      const issuer: any = await upgrades.deployProxy(await ethers.getContractFactory("RevolvingIssuer"), [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
       await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress(),
         await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
       await ctx.access.grantOperator(await issuer.getAddress());

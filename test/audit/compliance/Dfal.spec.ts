@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { CA, ONE_USDC, CYCLE, DAY } from "./rates";
+import { issuerProxyOptions } from "../../helpers/issuers";
 
 /*
  * Compliance spec items 10-11 (DFAL "control", pilot cap). Acceptance tests 9, 12, 13, 14, 15, 16
@@ -29,7 +30,7 @@ async function deployStack() {
   await vault.setAcceptedToken(await ctx.usdc.getAddress(), true);
 
   const R = await ethers.getContractFactory("RevolvingIssuer");
-  const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+  const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
   await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress(),
     await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
   await ctx.access.grantOperator(await issuer.getAddress());
