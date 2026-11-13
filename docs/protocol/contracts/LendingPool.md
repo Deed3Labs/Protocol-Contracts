@@ -24,8 +24,8 @@ Source: [`contracts/peripherals/LendingPool.sol`](../../../contracts/peripherals
 | `mint(uint256 shares, address receiver)` | Anyone (ERC-4626) |  |
 | `redeem(uint256 shares, address receiver, address owner)` | The share owner, or an approved spender |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
-| `repay(uint256 amount)` | Checked inside the function |  |
-| `requestWithdrawal(uint256 shares, address receiver)` | Checked inside the function |  |
+| `repay(uint256 amount)` | Anyone; acts on the caller's own account |  |
+| `requestWithdrawal(uint256 shares, address receiver)` | Anyone; acts on the caller's own account |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `seizeShares(address holder, address to, uint256 shares)` | `onlyRole(LIQUIDATOR_ROLE)` |  |
 | `setEncumbranceSource(address source, bytes32 kind)` | `onlyRole(OPERATOR_ROLE)` |  |

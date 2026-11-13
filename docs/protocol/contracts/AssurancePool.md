@@ -30,8 +30,8 @@ Source: [`contracts/peripherals/AssurancePool.sol`](../../../contracts/periphera
 | `rebalanceRTDPublic()` | Anyone |  |
 | `reimburse(address account, uint256 amount)` | `onlyStableCredit` | `nonReentrant` |
 | `renounceOwnership()` | The owner |  |
-| `repayFromBondVault(uint256 amount)` | Anyone; acts on the caller's own account | `nonReentrant` |
-| `repayFromPayoutPool(uint256 amount)` | Anyone; acts on the caller's own account | `nonReentrant` |
+| `repayFromBondVault(uint256 amount)` | Checked inside the function | `nonReentrant` |
+| `repayFromPayoutPool(uint256 amount)` | Checked inside the function | `nonReentrant` |
 | `setAssuranceOracle(address _assuranceOracle)` | `onlyAdmin` |  |
 | `setBondVault(address vault)` | `onlyOperator` |  |
 | `setExposureSource(address _exposureSource)` | `onlyAdmin` |  |

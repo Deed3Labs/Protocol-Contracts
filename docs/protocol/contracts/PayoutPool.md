@@ -22,13 +22,13 @@ Source: [`contracts/peripherals/PayoutPool.sol`](../../../contracts/peripherals/
 | `payRefund(address member, uint256 amount)` | Checked inside the function |  |
 | `payRefundsOwed()` | Anyone |  |
 | `receiveRepayment(uint256 amount)` | Checked inside the function |  |
-| `redeem(uint256 amount)` | Anyone; acts on the caller's own account |  |
+| `redeem(uint256 amount)` | Checked inside the function |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
-| `setBondVault(address vault)` | `onlyRole(OPERATOR_ROLE)` |  |
-| `setCoopIncomeRecipient(address recipient)` | `onlyRole(OPERATOR_ROLE)` |  |
-| `setCoopTreasury(address treasury)` | `onlyRole(OPERATOR_ROLE)` |  |
-| `setLenders(address yieldPool_, address reserve_)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `setBondVault(address vault)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setCoopIncomeRecipient(address recipient)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setCoopTreasury(address treasury)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setLenders(address yieldPool_, address reserve_)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |
 | `withdrawCapital(uint256 amount, address to)` | Anyone; acts on the caller's own account |  |

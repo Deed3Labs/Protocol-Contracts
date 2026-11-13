@@ -14,7 +14,7 @@ Source: [`contracts/core/MetadataRenderer.sol`](../../../contracts/core/Metadata
 |---|---|---|
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize()` | Once, when the proxy is initialised |  |
-| `manageTokenDocument(uint256 tokenId, string docType, string documentURI, bool isRemove)` | `onlyOwnerOrValidator(tokenId)` |  |
+| `manageTokenDocument(uint256 tokenId, string docType, string documentURI, bool isRemove)` | `onlyDeedValidator(tokenId)` |  |
 | `renounceOwnership()` | The owner |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
@@ -28,7 +28,7 @@ Source: [`contracts/core/MetadataRenderer.sol`](../../../contracts/core/Metadata
 | `setTokenExternalLink(uint256 tokenId, string externalLink)` | `onlyOwnerOrValidator(tokenId)` |  |
 | `setTokenFeatures(uint256 tokenId, string[] features)` | `onlyOwnerOrValidator(tokenId)` |  |
 | `setTokenGallery(uint256 tokenId, string[] imageUrls)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `setTokenLegalInfo(uint256 tokenId, string jurisdiction, string registrationNumber, string registrationDate, string[] documents, string[] restrictions, string additionalInfo)` | `onlyOwnerOrValidator(tokenId)` |  |
+| `setTokenLegalInfo(uint256 tokenId, string jurisdiction, string registrationNumber, string registrationDate, string[] documents, string[] restrictions, string additionalInfo)` | `onlyDeedValidator(tokenId)` |  |
 | `syncTraitUpdate(uint256 tokenId, bytes32 traitKey, bytes traitValue)` | Checked inside the function |  |
 | `transferOwnership(address newOwner)` | The owner |  |
 | `upgradeTo(address newImplementation)` | `onlyOwner` (via `_authorizeUpgrade`) |  |

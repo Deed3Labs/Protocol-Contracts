@@ -12,7 +12,7 @@ Source: [`contracts/core/factories/BurnerBondFactory.sol`](../../../contracts/co
 
 | Function | Who can call | Also |
 |---|---|---|
-| `createCollection(address tokenAddress, string tokenSymbol, string tokenName, string collectionBaseURI)` | Anyone | `nonReentrant` |
+| `createCollection(address tokenAddress, string tokenSymbol, string tokenName, string collectionBaseURI)` | Checked inside the function | `nonReentrant` |
 | `deactivateCollection(address tokenAddress)` | `onlyOwner` |  |
 | `emergencyRecover(address token, uint256 amount)` | `onlyOwner` |  |
 | `reactivateCollection(address tokenAddress)` | `onlyOwner` |  |

@@ -13,15 +13,15 @@ Source: [`contracts/extensions/Subdivide.sol`](../../../contracts/extensions/Sub
 | Function | Who can call | Also |
 |---|---|---|
 | `addValidator(address validator)` | `onlyRole(ADMIN_ROLE)` |  |
-| `batchMintUnits(uint256 deedId, uint256[] unitIds, address[] recipients)` | Checked inside the function | `whenNotPaused` |
-| `burnUnit(uint256 deedId, uint256 unitId)` | Checked inside the function |  |
+| `batchMintUnits(uint256 deedId, uint256[] unitIds, address[] recipients)` | Anyone | `whenNotPaused` |
+| `burnUnit(uint256 deedId, uint256 unitId)` | Anyone; acts on the caller's own account |  |
 | `createSubdivision(uint256 deedId, string name, string description, string symbol, string collectionUri, uint256 totalUnits, bool burnable)` | Checked inside the function | `whenNotPaused` |
-| `deactivateSubdivision(uint256 deedId)` | Checked inside the function |  |
+| `deactivateSubdivision(uint256 deedId)` | Anyone; acts on the caller's own account |  |
 | `grantRole(bytes32 role, address account)` | Checked inside the function |  |
 | `initialize(address _deedNFT, address _validatorRegistry)` | Once, when the proxy is initialised |  |
-| `mintUnit(uint256 deedId, uint256 unitId, address to)` | Checked inside the function | `whenNotPaused` |
+| `mintUnit(uint256 deedId, uint256 unitId, address to)` | Anyone | `whenNotPaused` |
 | `pause()` | `onlyRole(ADMIN_ROLE)` |  |
-| `removeUnitTrait(uint256 deedId, uint256 unitId, string traitName)` | `onlyCollectionAdmin(deedId)` |  |
+| `removeUnitTrait(uint256 deedId, uint256 unitId, string traitName)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
 | `removeValidator(address validator)` | `onlyRole(ADMIN_ROLE)` |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
@@ -29,18 +29,18 @@ Source: [`contracts/extensions/Subdivide.sol`](../../../contracts/extensions/Sub
 | `safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)` | The holder, or an approved operator |  |
 | `setApprovalForAll(address operator, bool approved)` | The holder |  |
 | `setApprovedMarketplace(address marketplace, bool approved)` | `onlyRole(ADMIN_ROLE)` |  |
-| `setBurnable(uint256 deedId, bool burnable)` | `onlyCollectionAdmin(deedId)` |  |
+| `setBurnable(uint256 deedId, bool burnable)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
 | `setRoyaltyEnforcement(bool enforced)` | `onlyRole(ADMIN_ROLE)` |  |
-| `setSubdivisionValidator(uint256 deedId, address validator)` | `onlyCollectionAdmin(deedId)` |  |
+| `setSubdivisionValidator(uint256 deedId, address validator)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
 | `setToDefaultSecurityPolicy()` | `onlyRole(ADMIN_ROLE)` |  |
-| `setTransferValidator(address validator)` | `onlyRole(ADMIN_ROLE)` |  |
-| `setUnitMetadata(uint256 deedId, uint256 unitId, string metadata)` | `onlyCollectionAdmin(deedId)` |  |
-| `setUnitTrait(uint256 deedId, uint256 unitId, bytes32 traitKey, bytes traitValue)` | `onlyCollectionAdmin(deedId)` |  |
-| `setUnitTraitFlexible(uint256 deedId, uint256 unitId, bytes traitKey, bytes traitValue, uint8 valueType)` | `onlyCollectionAdmin(deedId)` |  |
+| `setTransferValidator(address validator)` | Not in the current source |  |
+| `setUnitMetadata(uint256 deedId, uint256 unitId, string metadata)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
+| `setUnitTrait(uint256 deedId, uint256 unitId, bytes32 traitKey, bytes traitValue)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
+| `setUnitTraitFlexible(uint256 deedId, uint256 unitId, bytes traitKey, bytes traitValue, uint8 valueType)` | `onlyCollectionAdmin(deedId)` | `whenNotPaused` |
 | `setUnitTraitName(bytes32 traitKey, string traitName)` | `onlyRole(ADMIN_ROLE)` |  |
-| `transferCollectionAdmin(uint256 deedId, address newAdmin)` | Checked inside the function |  |
+| `transferCollectionAdmin(uint256 deedId, address newAdmin)` | Checked inside the function | `whenNotPaused` |
 | `unpause()` | `onlyRole(ADMIN_ROLE)` |  |
-| `updateUnitValidationStatus(uint256 deedId, uint256 unitId, bool isValid, address validatorAddress)` | `onlyRole(VALIDATOR_ROLE)` |  |
+| `updateUnitValidationStatus(uint256 deedId, uint256 unitId, bool isValid, address validatorAddress)` | `onlyRole(VALIDATOR_ROLE)` | `whenNotPaused` |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |
 
