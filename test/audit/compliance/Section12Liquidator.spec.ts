@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
-import { ONE_USDC, DAY } from "./rates";
+import { ONE_USDC, DAY, CA, P, CA_BANDS, params, deployRateSchedule } from "./rates";
 
 /*
  * Section 12 addendum, the Liquidator side: 12.5 (a missed cycle's excess is settled from Earn,
@@ -32,7 +32,7 @@ async function now() {
   return BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
 }
 
-async function deployStack() {
+async function deployStack(enrolMock = true) {
   const ctx = await deployPhase0Network();
   const signers = await ethers.getSigners();
   const [holdA, holdB, holdC, stranger] = [signers[9], signers[10], signers[11], signers[12]];
@@ -53,7 +53,7 @@ async function deployStack() {
     .deploy(await usdc.getAddress(), [SAVINGS, BOND, POOL_SHARE, INCOME, BOOST]);
   await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress(),
     await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
-  await ctx.networkRegistry.enrolMember(ctx.member.address, await issuer.getAddress());
+  if (enrolMock) await ctx.networkRegistry.enrolMember(ctx.member.address, await issuer.getAddress());
 
   const registry: any = await upgrades.deployProxy(await ethers.getContractFactory("CollateralRegistry"),
     [ctx.admin.address, await ctx.networkRegistry.getAddress()], { kind: "uups" });
@@ -502,5 +502,49 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     await expect(liquidator.connect(stranger).setEarnSources(stranger.address, stranger.address)).to.be.reverted;
     // The bond gate answers only inside the Liquidator's own call.
     expect(await liquidator.inDefault(m)).to.equal(false);
+  });
+
+  it("end to end (12.5) with the real RevolvingIssuer: a missed cycle halves the line, and settleExcess clears the excess from pool shares, Savings untouched", async function () {
+    // A fresh stack whose member is not enrolled with the mock: the ledger asks every issuer a
+    // member has, and here that is only the real one.
+    s = await deployStack(false);
+    const { ctx, liquidator, clrusd, stranger } = s;
+    const m = ctx.member.address;
+    const CYCLE = 30 * DAY, GRACE = 5 * DAY;
+    const R = await ethers.getContractFactory("RevolvingIssuer");
+    const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), (await ethers.getSigners())[8].address], { kind: "uups" });
+    await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress(),
+      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+    await ctx.access.grantOperator(await issuer.getAddress());
+    await ctx.access.grantOperator(await liquidator.getAddress()); // settleFromCollateral
+    for (const [kind, rate] of [[SAVINGS, 0n], [BOND, 65n], [POOL_SHARE, 75n], [INCOME, 150n], [BOOST, 300n]] as const) {
+      await issuer.connect(ctx.operator).addTier(kind, rate, CYCLE);
+    }
+    const rates = await deployRateSchedule(ctx.admin.address);
+    await rates.setProduct(CA, P("INCOME"), params({ listMonthlyBps: 150 }), CA_BANDS);
+    await rates.setProduct(CA, P("BOOST"), params({ listMonthlyBps: 300 }), CA_BANDS);
+    await rates.setProduct(CA, P("REVOLVING"), params(), CA_BANDS);
+    await issuer.connect(ctx.operator).setPricing(await rates.getAddress(), P("REVOLVING"));
+    await issuer.connect(ctx.operator).setTierProduct(3, P("INCOME"));
+    await issuer.connect(ctx.operator).setTierProduct(4, P("BOOST"));
+    await ctx.networkRegistry.grantRole(await ctx.networkRegistry.STATE_ATTESTER_ROLE(), ctx.admin.address);
+    await ctx.networkRegistry.attestStateCode(m, CA);
+    await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
+
+    await save(U(300));
+    await poolShares(U(1_000));
+    await issuer.connect(ctx.operator).openLine(m, [0n, 0n, 0n, U(1_000), U(500)], CYCLE, GRACE);
+    await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, U(1_500));
+
+    await advance(CYCLE + GRACE + 1);
+    await issuer.connect(stranger).syncCreditPeriod(m); // first missed rebalance
+    const excess = await issuer.unsecuredExcessOf(m);
+    expect(excess).to.be.gte(U(750));
+    const savings = await clrusd.balanceOf(m);
+
+    await liquidator.connect(stranger).settleExcess(m, await issuer.getAddress());
+    expect(await issuer.unsecuredExcessOf(m)).to.be.lte(U(1)); // closed, to carry accrued in the call
+    expect(await clrusd.balanceOf(m)).to.equal(savings);
+    expect(await issuer.inDefault(m)).to.equal(false);
   });
 });

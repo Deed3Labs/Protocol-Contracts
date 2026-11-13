@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
+import { driveToDefault } from "../helpers/default";
 
 /*
  * Audit proofs of concept, flipped into regression tests once each finding was fixed. A test
@@ -179,7 +180,8 @@ describe("AUDIT PoC", function () {
 
     // Draw the whole line and sit on it: the period runs out, grace runs out, and it defaults.
     await ctx.stableCredit.connect(m).transfer(merchant.address, 2_000n * ONE_USDC);
-    await advance(365 * DAY);
+    // Section 12.5: two missed rebalances in a row, each judged, then the cure window.
+    await driveToDefault(revolving, m.address, ctx.operator);
     expect(await revolving.inDefault(m.address)).to.equal(true);
     await revolving.syncCreditPeriod(m.address);
     expect(await revolving.hasDefaulted(m.address)).to.equal(true);

@@ -149,10 +149,10 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     boostDepositCycles: BigInt(terms.boostDepositCycles),
     autoClearOffGlobal: !terms.autoClearEnabledGlobal,
   };
-  const current = await revolving.creditTerms();
-  const same = current.unsecuredLineCap === wanted.unsecuredLineCap && current.cureWindow === wanted.cureWindow
-    && current.boostCleanCycles === wanted.boostCleanCycles && current.boostDepositCycles === wanted.boostDepositCycles
-    && current.autoClearOffGlobal === wanted.autoClearOffGlobal
+  const held = await revolving.creditTerms();
+  const same = held.unsecuredLineCap === wanted.unsecuredLineCap && held.cureWindow === wanted.cureWindow
+    && held.boostCleanCycles === wanted.boostCleanCycles && held.boostDepositCycles === wanted.boostDepositCycles
+    && held.autoClearOffGlobal === wanted.autoClearOffGlobal
     && (await revolving.boostBaseCap()) === BigInt(terms.boostBaseCapUsd) * ONE_USD
     && (await revolving.boostEarnedCap()) === BigInt(terms.boostEarnedCapUsd) * ONE_USD;
   if (!same) {

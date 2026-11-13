@@ -477,12 +477,15 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         return tierProduct[tierId] != bytes32(0);
     }
 
-    /// @dev The member's unsecured capacity and drawn amount (principal, carry included), together.
+    /// @dev The member's unsecured capacity and drawn amount together. Drawn includes carry accrued
+    /// since the last touch, so an amount sized from it still covers the debt once that carry is
+    /// brought onto the ledger.
     function _unsecuredTotals(address member) internal view returns (uint256 capacity, uint256 drawn) {
+        uint256[] memory pending = _pendingCarry(member);
         for (uint256 i = 0; i < tiers.length; i++) {
             if (!_isUnsecured(i)) continue;
             capacity += tierCapacity[member][i];
-            drawn += tierPrincipal[member][i];
+            drawn += tierPrincipal[member][i] + pending[i];
         }
     }
 

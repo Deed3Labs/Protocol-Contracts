@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network, drawCredit } from "../../helpers/phase0-fixture";
+import { driveToDefault } from "../../helpers/default";
 
 /*
  * Compliance addendum 12.11 (restated by section 13): no redemption, payout or force-settlement
@@ -205,9 +206,8 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
       await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 30 * DAY, 30 * DAY);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 400n * ONE_USDC);
-      const [, expiration, grace] = await issuer.creditPeriods(ctx.member.address);
-      await ethers.provider.send("evm_setNextBlockTimestamp", [Number(expiration + grace) + 1]);
-      await ethers.provider.send("evm_mine", []);
+      // Section 12.5: two missed rebalances in a row, each judged, then the cure window.
+      await driveToDefault(issuer, ctx.member.address, ctx.operator);
 
       const before = await holdings(ctx);
       await liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
