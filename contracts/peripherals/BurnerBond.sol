@@ -121,7 +121,7 @@ contract BurnerBond is
     /// @notice How long a new liquidator waits between being proposed and taking effect (audit M-6).
     /// @dev The liquidator can take pledged bonds and redeem them early, so naming one is a power
     /// over every bondholder; a week gives them time to see it coming.
-    uint256 public constant LIQUIDATOR_DELAY = 7 days;
+    uint256 internal constant LIQUIDATOR_DELAY = 7 days;
 
     error BurnerBondNotSeizable(uint256 bondId, address from);
     error BurnerBondLiquidatorNotReady(uint256 readyAt);
