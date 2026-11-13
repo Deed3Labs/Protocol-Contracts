@@ -120,6 +120,7 @@ Each test fills the pool's primary, buffer and excess tiers. It then compares th
   - a fresh claim is paid on the spot only if nothing is due before it;
   - `dueWithin` at two days before the deadline, including the shortfall and the list cap;
   - every existing view still works;
+  - the upgrade case: with the pool's storage set to what an upgrade from the FIFO version leaves (three claims, no window queues), a new net-14 claim is paid first and the three legacy claims follow in their old order;
   - the window bound, with the gas of a full pick.
 - `test/audit/compliance/ReserveUntouched.spec.ts` (above).
 
@@ -137,4 +138,16 @@ Each test fills the pool's primary, buffer and excess tiers. It then compares th
 
 ## Numbers
 
-(Filled in at the end of the phase.)
+- **Tests:** full Hardhat suite (`KEEP_REVERT_STRINGS=true npx hardhat test --no-compile`), 897 passing and 0 failing. The base branch had 885. The 12 new tests are 7 in `PayoutDeadline.spec`, 4 in `ReserveUntouched.spec` and 1 in `PayoutPool.spec`.
+- **Sizes** (production build, `npx hardhat compile --force`; no contract over 24,576):
+
+  | Contract | Bytes |
+  |---|---|
+  | PayoutPool | 21,563 |
+  | AssurancePool (unchanged) | 18,299 |
+  | BondVault | 10,880 |
+  | BurnerBondDeposit | 8,107 |
+  | BurnerBond (comment only) | 24,224 |
+
+- **Storage:** OpenZeppelin's `getStorageUpgradeReport` reports no errors for the new PayoutPool layout against all six PayoutPool implementations recorded in `.openzeppelin/base-sepolia.json`. The `nextUnpaid` → `legacyNext` rename is accepted through `@custom:oz-renamed-from`. BondVault, BurnerBondDeposit and AssurancePool storage is unchanged.
+- **Generated files:** fingerprints (`packages/command-types/src/chain/code.json`) and contract docs regenerated; both `--check`s pass; `check-doc-links`: 184 files, no broken links.

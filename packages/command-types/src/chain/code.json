@@ -58,7 +58,7 @@
   },
   "BondVault": {
    "source": "contracts/peripherals/BondVault.sol",
-   "sha256": "5c68b3ec9757310f22c98631a76f8fb35d458cc59ecf4a044cd6039bc621b0ac",
+   "sha256": "3052dd40b9f70b5757606bbd6e508c01d1e2185c0bfbbd78b9501d3b3950a4c4",
    "immutables": [
     [
      3936,
@@ -81,7 +81,7 @@
   },
   "BurnerBondDeposit": {
    "source": "contracts/peripherals/BurnerBondDeposit.sol",
-   "sha256": "b6424efe995d19448bb8e7d87ee54e6388e8443dfd64670cf3381ab034d2c0ca",
+   "sha256": "bf81d8826cdcff5c5dfc2b1a65753c55937f8793a761cc9897e813b99eaab9f8",
    "immutables": []
   },
   "BurnerBondFactory": {
@@ -432,18 +432,18 @@
   },
   "PayoutPool": {
    "source": "contracts/peripherals/PayoutPool.sol",
-   "sha256": "824465fe5b8f9d2f47b75c39fa975c1dab9166939d1805361153b4e72eebf52d",
+   "sha256": "db3dbdbde707b06af62215df8c3602dfbfb12454b1582b41f5638fe38aaec24d",
    "immutables": [
     [
-     5810,
+     3680,
      32
     ],
     [
-     5995,
+     4889,
      32
     ],
     [
-     7149,
+     11282,
      32
     ]
    ]
