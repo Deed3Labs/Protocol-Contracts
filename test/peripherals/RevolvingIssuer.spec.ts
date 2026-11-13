@@ -498,8 +498,14 @@ describe("RevolvingIssuer", function () {
       await openLine([300n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
       await spend(300n * ONE_USDC);
 
+      // Section 12.5: one missed rebalance is not a default -- it halves the unsecured limit and
+      // the cycle rolls. Default is the second miss in a row plus the cure window (unset here, so
+      // zero), dated by the chain.
       await advance(ONE_YEAR + CYCLE + ONE_DAY);
-      expect(await issuer.inDefault(ctx.member.address)).to.equal(true);
+      await issuer.syncCreditPeriod(ctx.member.address);
+      expect(await issuer.inDefault(ctx.member.address)).to.equal(false);
+      expect(await ctx.stableCredit.lostDebt()).to.equal(0n);
+      await advance(ONE_YEAR + CYCLE + ONE_DAY);
       await issuer.syncCreditPeriod(ctx.member.address);
 
       expect(await ctx.stableCredit.lostDebt()).to.equal(300n * ONE_USDC);
@@ -519,6 +525,8 @@ describe("RevolvingIssuer", function () {
       float = signers[10];
       await issuer.connect(ctx.operator).setCardSettler(settler.address, true);
       await issuer.connect(ctx.operator).setCardSettlementAccount(float.address);
+      // Section 12.7: card spending draws on Savings only as far as the member has authorized.
+      await issuer.connect(ctx.member).setSavingsDrawAllowance(ethers.MaxUint256);
     });
 
     /// Approval, then clearing: settlement draws only what was authorized (audit M-2).
@@ -669,7 +677,7 @@ describe("RevolvingIssuer", function () {
     });
   });
 
-  describe("automatic repayment from USDC deposits, under the member's own mandate", function () {
+  describe("automatic clearing from Spendable, under the member's own switch (section 12.2)", function () {
     let settler: any;
     const PAY = ethers.id("auto-repay:member:1");
 
@@ -679,36 +687,43 @@ describe("RevolvingIssuer", function () {
       await issuer.connect(ctx.operator).setCardSettlementAccount((await ethers.getSigners())[10].address);
       await openLine([100n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
       await spend(300n * ONE_USDC); // 100 savings, 200 asset
-      // The member's USDC deposit, and their approval for the ledger to take it.
+      // The cash that landed in Spendable is delivered by the settler, not taken from the member.
+      await ctx.usdc.mint(settler.address, 1_000n * ONE_USDC);
+      await ctx.usdc.connect(settler).approve(await issuer.getAddress(), ethers.MaxUint256);
       await ctx.usdc.mint(ctx.member.address, 1_000n * ONE_USDC);
-      await ctx.usdc.connect(ctx.member).approve(await ctx.stableCredit.getAddress(), ethers.MaxUint256);
     });
 
-    it("does nothing without the member's mandate", async function () {
+    it("does nothing without the member's switch", async function () {
       await expect(issuer.connect(settler).repayForMember(PAY, ctx.member.address, 100n * ONE_USDC))
         .to.be.revertedWithCustomError(issuer, "RevolvingIssuerAutoRepayNotEnabled");
     });
 
-    it("with it: pulls the member's own USDC and clears the dearest tier first", async function () {
-      await issuer.connect(ctx.member).setAutoRepay(true);
+    it("scope ALL: the settler's cash clears the dearest tier first; the member's own USDC is never touched", async function () {
+      await issuer.connect(ctx.member).setAutoClear(true, 1);
       await issuer.connect(settler).repayForMember(PAY, ctx.member.address, 250n * ONE_USDC);
 
-      // The 65 bps asset tier accrues a few units of carry in the seconds between the spend and the
-      // repayment; it is cleared first, so a few units more stay on the free tier.
       const DUST = 10n;
       expect(await issuer.drawnOf(ctx.member.address, 1)).to.equal(0n); // asset (65 bps) cleared first
       expect(await issuer.drawnOf(ctx.member.address, 0)).to.be.closeTo(50n * ONE_USDC, DUST);
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.be.closeTo(50n * ONE_USDC, DUST);
-      expect(await ctx.usdc.balanceOf(ctx.member.address)).to.equal(750n * ONE_USDC);
+      expect(await ctx.usdc.balanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC);
+      expect(await ctx.usdc.balanceOf(settler.address)).to.equal(750n * ONE_USDC);
       expect(await issuer.totalPrincipalOf(ctx.member.address))
         .to.equal(await ctx.stableCredit.creditBalanceOf(ctx.member.address));
     });
 
-    it("never more than is owed, once per ref, and only by the card settler", async function () {
+    it("the default scope (income-backed and Boost only) leaves secured tiers alone", async function () {
       await issuer.connect(ctx.member).setAutoRepay(true);
-      await expect(issuer.connect(settler).repayForMember(PAY, ctx.member.address, 400n * ONE_USDC))
-        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardRepaymentExceedsDrawn");
-      await issuer.connect(settler).repayForMember(PAY, ctx.member.address, 100n * ONE_USDC);
+      await expect(issuer.connect(settler).repayForMember(PAY, ctx.member.address, 100n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerNothingToClear");
+    });
+
+    it("clears no more than is owed and reports the rest as spendable; once per ref; only the card settler", async function () {
+      await issuer.connect(ctx.member).setAutoClear(true, 1);
+      const tx = issuer.connect(settler).repayForMember(PAY, ctx.member.address, 400n * ONE_USDC);
+      await expect(tx).to.emit(issuer, "AutoCleared");
+      expect(await issuer.totalPrincipalOf(ctx.member.address)).to.equal(0n);
+      expect(await ctx.usdc.balanceOf(settler.address)).to.be.closeTo(700n * ONE_USDC, 100n);
       await expect(issuer.connect(settler).repayForMember(PAY, ctx.member.address, 100n * ONE_USDC))
         .to.be.revertedWithCustomError(issuer, "RevolvingIssuerAutoRepayAlreadyUsed");
       await expect(issuer.connect(ctx.operator).repayForMember(ethers.id("x"), ctx.member.address, ONE_USDC))

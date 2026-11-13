@@ -217,6 +217,7 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
             _consumeDailyCap(capacityIncreaseCap, "CAPACITY", capacity - previous);
         }
         tierCapacity[member][tierId] = capacity;
+        _checkCreditCaps(member);
         emit TierCapacityUpdated(member, tierId, capacity);
         _syncLedgerLimit(member);
     }
@@ -249,6 +250,7 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
             total += capacities[i];
             emit TierCapacityUpdated(member, i, capacities[i]);
         }
+        _checkCreditCaps(member);
         // Opening a line is new credit like any other limit raised (audit H-4).
         _consumeDailyCap(capacityIncreaseCap, "CAPACITY", increase);
         stableCredit.createCreditLine(member, total, 0);
@@ -368,6 +370,35 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     {
         if (!_drawRecipientAllowed(sender, recipient, amount)) return false;
         return super._validateCreditTransaction(sender, recipient, amount);
+    }
+
+    /// @notice judges a cycle whose grace window has ended (section 12.4, 12.5).
+    /// @dev Clean: the streak grows and the cycle rolls. First miss: the unsecured limit halves and
+    /// the cycle rolls. Second miss in a row: the chain dates the cure notice and the line stays
+    /// frozen. Default only once the cure window after that notice has passed. Runs in the
+    /// extension, against this contract's storage.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function expireCreditPeriod(address member) internal override returns (bool) {
+        (bool ok, bytes memory data) =
+            extension.delegatecall(abi.encodeWithSignature("judgeCycle(address)", member));
+        if (!ok) {
+            assembly {
+                revert(add(data, 32), mload(data))
+            }
+        }
+        uint8 outcome = abi.decode(data, (uint8));
+        // 2: default now. The base path writes off and closes the line with this contract's own
+        // `_writeOffAmount` and `_onDefault`, which the extension does not have.
+        if (outcome == 2) return super.expireCreditPeriod(member);
+        return outcome == 0;
+    }
+
+    /// @notice in default: two consecutive missed rebalances, still not rebalanced, and the cure
+    /// window after the chain-dated notice has passed (section 12.5). Computed; no role sets it.
+    function inDefault(address member) public view override returns (bool) {
+        CycleRecord memory c = cycleOf[member];
+        if (c.missedInRow < 2 || c.cureNoticeAt == 0) return false;
+        return super.inDefault(member) && block.timestamp >= c.cureNoticeAt + creditTerms.cureWindow;
     }
 
     /// @notice a rolled-over revolving period runs one network cycle.
@@ -548,6 +579,31 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
 
     /// @notice see RevolvingIssuerExtension.setTierRate.
     function setTierRate(uint256, uint256) external {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension: section 12 settings and the member's own switches.
+    function setCreditTerms(CreditTerms calldata, uint128, uint128) external {
+        _forward();
+    }
+
+    function setDepositSource(address) external {
+        _forward();
+    }
+
+    function setAutoClear(bool, uint8) external {
+        _forward();
+    }
+
+    function setAutoClearWithSignature(address, bool, uint8, uint256, bytes calldata) external {
+        _forward();
+    }
+
+    function setSavingsDrawAllowance(uint256) external {
+        _forward();
+    }
+
+    function setSavingsDrawAllowanceWithSignature(address, uint256, uint256, bytes calldata) external {
         _forward();
     }
 
