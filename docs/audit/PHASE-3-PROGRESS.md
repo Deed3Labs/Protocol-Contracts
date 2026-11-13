@@ -28,7 +28,9 @@ Inputs: `specs/deed-trust-v5-brief.md`, `-addendum-1.md`, `-addendum-2.md` (wins
 - [x] 6. Transfer policy, lastFrom, FC registry, Verified via MembershipRegistry, trustee rule; IDeedCustody in Subdivide/Fractionalize
 - [x] 7. CoopTransferAgent
 - [x] 8. Notices and markVoid
-- [ ] 9. Timelock + FC registry + agent in deploy scripts and handover
-- [ ] 10. Tests (`test/audit/deed/TrustV5*.spec.ts`) and existing tests updated
-- [ ] 11. Sizes, Slither, storage layout, full suite
-- [ ] 12. DEED-V5-INTERFACE.md, PHASE-3-REPORT.md, draft PR
+- [x] 9. Timelock + FC registry + agent in deploy scripts and handover
+- [x] 10. Tests (`test/audit/deed/TrustV5*.spec.ts`) and existing tests updated
+- [x] 11. Sizes, Slither, storage layout, full suite
+- [x] 12. DEED-V5-INTERFACE.md, PHASE-3-REPORT.md, draft PR
+
+Done: full suite 888 passing; sizes, Slither and storage layout are in PHASE-3-REPORT.md. Draft PR into dev, stacked on #883.

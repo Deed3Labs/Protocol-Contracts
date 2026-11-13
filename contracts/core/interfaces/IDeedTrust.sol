@@ -132,7 +132,6 @@ interface IDeedTrust {
     error NotProtector();
     error NotHolder();
     error NotTrustParty();
-    error TrusteeUnavailable();
     error InvalidTransferPolicy();
     error ProgramRequired();
     error ProtectorNotSponsor();
