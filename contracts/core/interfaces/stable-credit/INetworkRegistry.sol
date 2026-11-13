@@ -44,6 +44,9 @@ interface INetworkRegistry {
     /// @notice removes a member from an issuer.
     function withdrawMember(address member, address issuer) external;
 
+    /// @notice a member's attested state of residence, or zero if none has been attested.
+    function stateCodeOf(address member) external view returns (bytes32);
+
     /* ========== EVENTS ========== */
 
     event IssuerRegistered(

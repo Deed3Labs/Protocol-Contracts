@@ -31,6 +31,12 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         /// @dev The lock last read successfully per holder (audit M-3). Appended to the namespaced
         /// struct, which is layout-safe: nothing else lives after it in this namespace.
         mapping(address => uint256) lastKnownLock;
+        /// @dev Compliance spec 10c, appended: per-account fraud pauses and the global security
+        /// pause, each expiring on its own unless a second signer renews it.
+        mapping(address => Pause) accountPause;
+        Pause globalPause;
+        /// @dev How long a pause lasts before it lapses. Zero means the default, 72 hours.
+        uint64 pauseWindow;
     }
 
     // keccak256(abi.encode(uint256(keccak256("clear.storage.ClearUSD")) - 1)) & ~bytes32(uint256(0xff))
@@ -39,15 +45,40 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
 
     /// @notice May take encumbered collateral, and only encumbered collateral.
     bytes32 public constant LIQUIDATOR_ROLE = keccak256("LIQUIDATOR_ROLE");
+    /// @notice May pause one account's outgoing transfers for suspected fraud. Cannot move funds.
+    bytes32 public constant FRAUD_ROLE = keccak256("FRAUD_ROLE");
+    /// @notice May pause every member transfer during a security incident. Cannot move funds.
+    bytes32 public constant SECURITY_ROLE = keccak256("SECURITY_ROLE");
+    uint64 public constant DEFAULT_PAUSE_WINDOW = 72 hours;
+
+    /// @notice A pause in force: until when, why, and who last set or renewed it.
+    struct Pause {
+        uint64 until;
+        uint32 reason;
+        address lastSigner;
+    }
 
     error ClearUSDEncumbered(address holder, uint256 free, uint256 amount);
     error ClearUSDSeizureExceedsEncumbrance(address holder, uint256 encumbered, uint256 amount);
     error ClearUSDEncumbranceUnreadable(address holder);
+    /// @notice thrown when a paused account (or anyone, during a security pause) sends.
+    error ClearUSDPaused(address holder, uint32 reason, uint64 until);
+    /// @notice thrown when the signer that set or last renewed a pause tries to renew it.
+    /// @dev The two-person rule (spec 10c): nobody keeps a member frozen on their own say-so.
+    error ClearUSDSameSigner(address signer);
+    error ClearUSDNoPause();
 
     event EncumbranceSourceUpdated(address indexed source);
     /// @notice The encumbrance source reverted while a holder's CLRUSD moved (audit M-3). Monitoring
     /// should alert on this: it means the lock is running on its last known reading.
     event EncumbranceSourceReverted(address indexed holder, uint256 lastKnownLock);
+    event AccountPaused(address indexed account, uint32 reason, uint64 until, address indexed signer);
+    event AccountPauseRenewed(address indexed account, uint32 reason, uint64 until, address indexed signer);
+    event AccountUnpaused(address indexed account, address indexed signer);
+    event SecurityPaused(uint32 reason, uint64 until, address indexed signer);
+    event SecurityPauseRenewed(uint32 reason, uint64 until, address indexed signer);
+    event SecurityUnpaused(address indexed signer);
+    event PauseWindowUpdated(uint64 window);
 
     function _clearUsdStorage() private pure returns (ClearUSDStorage storage $) {
         bytes32 slot = CLEAR_USD_STORAGE;
@@ -158,6 +189,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// exempt because it has no `from` to encumber.
     function _update(address from, address to, uint256 value) internal virtual override {
         if (from != address(0)) {
+            _requireNotPaused(from);
             ClearUSDStorage storage $ = _clearUsdStorage();
             (uint256 locked, bool ok) = _readLock(from);
             if (ok) {
@@ -174,5 +206,96 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         }
 
         super._update(from, to, value);
+    }
+
+    /* ========== FRAUD AND SECURITY PAUSES (compliance spec 10c) ========== */
+
+    /// @notice whether `account` may send right now, and if not, until when.
+    function pausedUntil(address account) external view returns (uint64) {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        uint64 a = $.accountPause[account].until;
+        uint64 g = $.globalPause.until;
+        uint64 latest = a > g ? a : g;
+        return latest > block.timestamp ? latest : 0;
+    }
+
+    /// @notice pauses one account's outgoing transfers, for suspected fraud only.
+    /// @dev The DFAL carve-out: stopping a transaction solely in response to unauthorized or
+    /// fraudulent activity. It moves nothing, blocks only what the account sends, and lapses on
+    /// its own after the window unless a different signer renews it. Not a credit or collections
+    /// tool: nothing in the credit system reads it.
+    /// @param account the account to pause.
+    /// @param reason an off-chain case reference.
+    function pauseAccount(address account, uint32 reason) external onlyRole(FRAUD_ROLE) {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        Pause storage p = $.accountPause[account];
+        // An active pause is extended only by renewal, which needs a second signer.
+        if (p.until > block.timestamp) revert ClearUSDSameSigner(_msgSender());
+        uint64 until = uint64(block.timestamp) + _window();
+        $.accountPause[account] = Pause({until: until, reason: reason, lastSigner: _msgSender()});
+        emit AccountPaused(account, reason, until, _msgSender());
+    }
+
+    /// @notice renews an account's pause for another window. Needs a different signer from the
+    /// one that set or last renewed it, and a reason; each renewal is logged.
+    function renewAccountPause(address account, uint32 reason) external onlyRole(FRAUD_ROLE) {
+        Pause storage p = _clearUsdStorage().accountPause[account];
+        _renew(p, reason);
+        emit AccountPauseRenewed(account, reason, p.until, _msgSender());
+    }
+
+    /// @notice ends an account's pause early.
+    function unpauseAccount(address account) external onlyRole(FRAUD_ROLE) {
+        delete _clearUsdStorage().accountPause[account];
+        emit AccountUnpaused(account, _msgSender());
+    }
+
+    /// @notice pauses every member transfer during a security incident (an exploit: unauthorized
+    /// activity). Same limits as an account pause: it moves nothing and lapses after the window
+    /// unless a second signer renews it.
+    function pauseForSecurity(uint32 reason) external onlyRole(SECURITY_ROLE) {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        if ($.globalPause.until > block.timestamp) revert ClearUSDSameSigner(_msgSender());
+        uint64 until = uint64(block.timestamp) + _window();
+        $.globalPause = Pause({until: until, reason: reason, lastSigner: _msgSender()});
+        emit SecurityPaused(reason, until, _msgSender());
+    }
+
+    function renewSecurityPause(uint32 reason) external onlyRole(SECURITY_ROLE) {
+        Pause storage p = _clearUsdStorage().globalPause;
+        _renew(p, reason);
+        emit SecurityPauseRenewed(reason, p.until, _msgSender());
+    }
+
+    function unpauseSecurity() external onlyRole(SECURITY_ROLE) {
+        delete _clearUsdStorage().globalPause;
+        emit SecurityUnpaused(_msgSender());
+    }
+
+    /// @notice sets how long a pause lasts before it lapses. Governed: the admin is the timelock.
+    function setPauseWindow(uint64 window) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _clearUsdStorage().pauseWindow = window;
+        emit PauseWindowUpdated(window);
+    }
+
+    function _renew(Pause storage p, uint32 reason) private {
+        if (p.until <= block.timestamp) revert ClearUSDNoPause();
+        if (p.lastSigner == _msgSender()) revert ClearUSDSameSigner(_msgSender());
+        p.until = uint64(block.timestamp) + _window();
+        p.reason = reason;
+        p.lastSigner = _msgSender();
+    }
+
+    function _window() private view returns (uint64) {
+        uint64 w = _clearUsdStorage().pauseWindow;
+        return w == 0 ? DEFAULT_PAUSE_WINDOW : w;
+    }
+
+    function _requireNotPaused(address from) private view {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        Pause storage a = $.accountPause[from];
+        if (a.until > block.timestamp) revert ClearUSDPaused(from, a.reason, a.until);
+        Pause storage g = $.globalPause;
+        if (g.until > block.timestamp) revert ClearUSDPaused(from, g.reason, g.until);
     }
 }

@@ -17,6 +17,8 @@ interface IClearUSDSeizable {
 
 interface ICollateralSeizureSink {
     function recordSeizure(address member, bytes32 kind, uint256 amount) external;
+
+    function encumberedOfKind(address holder, bytes32 kind) external view returns (uint256);
 }
 
 interface ISeizableShares {
@@ -179,11 +181,19 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// @param member address of the defaulted member.
     /// @param issuer address of the issuer the member defaulted with.
     /// @return repaid amount of the member's balance settled.
+    ///
+    /// Permissionless (compliance spec 10b): default is computed on chain by the issuer -- the
+    /// period and grace ended without the member returning to equilibrium -- and recorded only by
+    /// that computation, so no role can declare one. Anyone may call this once it holds, and it
+    /// reverts otherwise. Only issuers the admin has marked trusted are asked, so a contract that
+    /// merely claims a default cannot trigger a seizure. Never more than the CLRUSD the registry
+    /// computes as locked for this kind, nor more than the tier owes; the proceeds go only to that
+    /// tier's debt.
     function liquidate(address member, address issuer, uint256 tierId, bytes32 kind)
         external
-        onlyRole(OPERATOR_ROLE)
         returns (uint256 repaid)
     {
+        if (!trustedSavingsIssuer[issuer]) revert LiquidatorUntrustedIssuer(issuer);
         ICreditIssuer creditIssuer = ICreditIssuer(issuer);
         // `inDefault` reads the credit period, and expiring one deletes it, so a member
         // liquidated after the write-off would read as never having defaulted at all.
@@ -197,6 +207,8 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         uint256 owed = ITierSettler(issuer).principalOf(member, tierId);
         uint256 available = clrusd.balanceOf(member);
         uint256 seizing = owed < available ? owed : available;
+        uint256 encumbered = collateralRegistry.encumberedOfKind(member, kind);
+        if (encumbered < seizing) seizing = encumbered;
         if (seizing == 0) revert LiquidatorNothingToSeize(member);
 
         clrusd.seize(member, address(this), seizing);

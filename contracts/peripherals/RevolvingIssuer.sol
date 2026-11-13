@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "./CreditIssuer.sol";
+import "./RevolvingIssuerBase.sol";
+import "./RevolvingIssuerExtension.sol";
 import "../libraries/CarryIndex.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "../libraries/ExposureMath.sol";
 import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
+import "./RateSchedule.sol";
 
 /// @title RevolvingIssuer
 /// @notice The tiered revolving line: savings-backed, asset-backed, income and Clear Boost.
@@ -23,143 +25,9 @@ import "../core/interfaces/stable-credit/IExposureSource.sol";
 /// cannot work this way -- each has its own rate and its own opening date, and two plans at
 /// different rates cannot share an index -- which is why they are a separate issuer rather than a
 /// fifth tier.
-contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
+contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     using CarryIndex for CarryIndex.Index;
     using SafeERC20Upgradeable for IERC20Upgradeable;
-
-    /* ========== STATE VARIABLES ========== */
-
-    struct TierConfig {
-        bytes32 kind;
-        CarryIndex.Index index;
-        bool active;
-    }
-
-    /// @dev Ordered cheapest first. Position in this array is the draw order.
-    TierConfig[] private tiers;
-
-    /// @dev member => tier => ceiling contribution
-    mapping(address => mapping(uint256 => uint256)) private tierCapacity;
-    /// @dev member => tier => index-relative amount owed
-    mapping(address => mapping(uint256 => uint256)) private tierNormalized;
-    /// @dev member => tier => principal drawn, carry excluded
-    mapping(address => mapping(uint256 => uint256)) private tierPrincipal;
-
-    /// @notice The co-op's treasury, and the terminal fallback for carry.
-    /// @dev Set at initialization and never allowed to be empty. Carry is accrued on every
-    /// interaction, so a recipient that cannot be resolved does not merely lose the carry -- it
-    /// reverts the transfer that triggered the accrual, and members stop being able to spend.
-    /// A backstop that is always set means the worst case is carry landing somewhere it can be
-    /// redistributed from by hand, rather than the line seizing up.
-    address public carryTreasury;
-    /// @dev tier => recipient, falling back to the treasury when unset.
-    /// @dev A tier funded from somewhere else names it here: the LendingPool funds the unsecured
-    /// tiers, and the carry on those is owed to the depositors whose money was lent rather than
-    /// to the co-op. Clearing it back to zero returns the tier to the treasury, which is how a
-    /// pool is retired without stranding the carry that accrues in the meantime.
-    mapping(uint256 => address) private tierCarryRecipient;
-
-    /// @notice Reports how much of a member's debt no collateral stands behind.
-    /// @dev Optional. Unset, a default writes off the whole position, which is right only when
-    /// nothing was pledged.
-    IExposureSource public exposureSource;
-
-    /// @notice where a card purchase's claim is minted when it settles: the co-op's card float.
-    /// @dev A swipe at a merchant outside the network is paid by the card issuer in fiat, from the
-    /// co-op's float, at clearing. The member's obligation is created then, and the matching claim
-    /// belongs to the float that paid -- one fixed address, set by an operator, so a settler key
-    /// cannot mint claims to anyone it likes.
-    address public cardSettlementAccount;
-    /// @notice keys allowed to record a card purchase as settled.
-    mapping(address => bool) public isCardSettler;
-
-    /// @dev What a settled card purchase put on a member's line, by the issuer's transaction ref.
-    struct CardSettlement {
-        address member;
-        uint256 amount;
-    }
-    /// @dev ref => settlement. The ref makes settling idempotent: a retried or redelivered
-    /// settlement cannot draw twice for one purchase.
-    mapping(bytes32 => CardSettlement) private cardSettlements;
-
-    /// @dev ref => amount cleared by a fiat repayment. Keyed like settlements, so a repayment
-    /// recorded twice -- a retry, or two processes deciding at once -- clears once.
-    mapping(bytes32 => uint256) private cardRepayments;
-
-    /// @notice members who have asked for their USDC deposits to repay their card debt.
-    /// @dev Set by the member, never by anyone else. It is the mandate: the card settler can pull a
-    /// member's USDC to repay only while this is on, and the member turns it off the same way.
-    mapping(address => bool) public autoRepayEnabled;
-    /// @dev ref => amount repaid under the mandate. Once per ref, like every other card write.
-    mapping(bytes32 => uint256) private autoRepayments;
-
-    /// @notice Today's budget for new revolving capacity, across every member (audit H-4).
-    DailyCap private capacityIncreaseCap;
-
-    /// @dev What the card issuer approved, recorded when it approved it (audit M-2).
-    struct CardAuthorization {
-        address member;
-        uint256 amount;
-    }
-    /// @dev ref => authorization. Settlement may not exceed it.
-    mapping(bytes32 => CardAuthorization) private cardAuthorizations;
-    /// @notice The most one card purchase may settle for. Zero means no cap has been set.
-    uint256 public cardTxCap;
-    /// @notice Today's budget for card settlements, across every member.
-    DailyCap private cardSpendCap;
-
-    /// @dev Eight slots from the gap: capacityIncreaseCap (3), cardAuthorizations, cardTxCap,
-    /// cardSpendCap (3).
-    uint256[27] private __gap;
-
-    /* ========== ERRORS ========== */
-
-    error RevolvingIssuerRatesMustAscend(uint256 previous, uint256 proposed);
-    /// @notice thrown when a tier or a credit line would run on a different clock from the rest.
-    error RevolvingIssuerCycleMismatch(uint64 expected, uint64 given);
-    error RevolvingIssuerUnknownTier(uint256 tierId);
-    error RevolvingIssuerCapacityBelowDrawn(uint256 tierId, uint256 capacity, uint256 drawn);
-    error RevolvingIssuerNoCarryRecipient();
-    error RevolvingIssuerNotCardSettler(address caller);
-    error RevolvingIssuerNoCardSettlementAccount();
-    error RevolvingIssuerCardAmountZero();
-    error RevolvingIssuerCardAlreadySettled(bytes32 ref);
-    error RevolvingIssuerCardNotSettled(bytes32 ref);
-    error RevolvingIssuerCardHeadroom(address member, uint256 amount, uint256 headroom);
-    error RevolvingIssuerCardReversalExceedsSettlement(bytes32 ref, uint256 amount, uint256 settled);
-    error RevolvingIssuerCardAlreadyRepaid(bytes32 ref);
-    error RevolvingIssuerCardRepaymentExceedsDrawn(address member, uint256 amount, uint256 principal);
-    error RevolvingIssuerCardFloatCannotCover(uint256 amount, uint256 held);
-    error RevolvingIssuerAutoRepayNotEnabled(address member);
-    error RevolvingIssuerAutoRepayAlreadyUsed(bytes32 ref);
-    /// @notice thrown when a transfer would mint more than the tiers can place.
-    /// @dev Debt no tier holds accrues nothing and no default can reach it (audit C-1).
-    error RevolvingIssuerDrawUnplaced(address member, uint256 unplaced);
-    error RevolvingIssuerCardNotAuthorized(bytes32 ref, address member);
-    error RevolvingIssuerCardExceedsAuthorization(bytes32 ref, uint256 amount, uint256 authorized);
-    error RevolvingIssuerCardTxCap(uint256 amount, uint256 cap);
-    error RevolvingIssuerCardAlreadyAuthorized(bytes32 ref);
-    error RevolvingIssuerMemberNotInGoodStanding(address member);
-
-    /* ========== EVENTS ========== */
-
-    event TierAdded(uint256 indexed tierId, bytes32 kind, uint256 ratePerCycle);
-    event TierRateUpdated(uint256 indexed tierId, uint256 ratePerCycle);
-    event TierCapacityUpdated(address indexed member, uint256 indexed tierId, uint256 capacity);
-    event TierDrawn(address indexed member, uint256 indexed tierId, uint256 amount);
-    event TierRepaid(address indexed member, uint256 indexed tierId, uint256 amount);
-    event CarryRecipientUpdated(uint256 indexed tierId, address recipient);
-    event CarryTreasuryUpdated(address treasury);
-    event TierCarryMaterialised(address indexed member, uint256 indexed tierId, uint256 amount);
-    event CardSettlerUpdated(address indexed settler, bool allowed);
-    event CardSettlementAccountUpdated(address account);
-    event CardSpendSettled(bytes32 indexed ref, address indexed member, uint256 amount);
-    event CardSpendReversed(bytes32 indexed ref, address indexed member, uint256 amount);
-    event CardSpendRepaid(bytes32 indexed ref, address indexed member, uint256 amount);
-    event AutoRepaySet(address indexed member, bool enabled);
-    event AutoRepaid(bytes32 indexed ref, address indexed member, uint256 amount);
-    event CardAuthorized(bytes32 indexed ref, address indexed member, uint256 amount);
-    event CardCapsUpdated(uint256 txCap, uint256 dailyCap);
 
     /* ========== INITIALIZER ========== */
 
@@ -167,6 +35,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
+        extension = address(new RevolvingIssuerExtension());
     }
 
     /// @param _stableCredit the ledger this issuer writes to.
@@ -200,6 +69,14 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         return (tier.kind, tier.index.ratePerCycle, tier.active);
     }
 
+    /// @notice a member's unsecured revolving principal, carry excluded: the tiers priced from
+    /// RateSchedule, which are the revolving part of their small loan under the CFL (DECISIONS #7).
+    function cflPrincipalOf(address member) external view returns (uint256 total) {
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tierProduct[i] != bytes32(0)) total += principalOnlyOf(member, i);
+        }
+    }
+
     /// @notice seconds in this network's credit cycle.
     /// @dev Derived, not stored. The clock already exists on the tiers -- every rate here is
     /// quoted per cycle and carry accrues against it -- so a second copy in storage would be a
@@ -218,73 +95,25 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         return tierCapacity[member][tierId];
     }
 
-    /// @notice what a member owes in a tier, carry included.
-    /// @dev Derived on read from the tier's index and the member's checkpoint. No accrued figure
-    /// is stored against the member anywhere.
-    function drawnOf(address member, uint256 tierId) public view returns (uint256) {
-        _requireTier(tierId);
-        return CarryIndex.denormalize(
-            tierNormalized[member][tierId], tiers[tierId].index.currentIndex(block.timestamp)
-        );
-    }
 
-    /// @notice the principal a member has drawn in a tier, carry excluded.
+    /// @notice what a member owes in a tier that is already on the ledger: principal and
+    /// materialised, unpaid carry.
     /// @dev This is the figure that reconciles with the ledger's credit balance.
     function principalOf(address member, uint256 tierId) external view returns (uint256) {
         return tierPrincipal[member][tierId];
     }
 
-    /// @notice the carry accrued on a member's position in a tier.
+
+    /// @notice the carry owed in a tier, materialised and pending.
     function carryOf(address member, uint256 tierId) external view returns (uint256) {
         _requireTier(tierId);
-        return CarryIndex.accruedCarry(
-            tierNormalized[member][tierId],
-            tiers[tierId].index.currentIndex(block.timestamp),
-            tierPrincipal[member][tierId]
-        );
+        return tierCarry[member][tierId] + _pendingCarry(member)[tierId];
     }
 
-    /// @notice how much more a member may draw in a tier.
-    /// @dev Carry consumes headroom as it accrues, because the ceiling bounds what is owed rather
-    /// than what was spent.
-    /// Capped, for a collateral-backed tier, at what the collateral backs right now. A savings
-    /// tier's capacity was set from a pledge, and the savings behind it can leave while nothing is
-    /// drawn; drawing against capacity alone let a member keep their savings and spend them too
-    /// (audit C-2). Asked at every draw and every card settlement, because both read this.
-    function headroomOf(address member, uint256 tierId) public view returns (uint256) {
-        uint256 capacity = tierCapacity[member][tierId];
-        uint256 drawn = drawnOf(member, tierId);
-        uint256 room = capacity > drawn ? capacity - drawn : 0;
-        if (room == 0 || address(exposureSource) == address(0)) return room;
-        uint256 backed = _backedHeadroom(member, tiers[tierId].kind);
-        return backed < room ? backed : room;
-    }
 
-    /// @dev What a member could draw across every tier open to new draws.
-    function _activeHeadroom(address member) private view returns (uint256 headroom) {
-        for (uint256 i = 0; i < tiers.length; i++) {
-            if (tiers[i].active) headroom += headroomOf(member, i);
-        }
-    }
 
-    /// @dev What the collateral registry says may still be drawn against a kind. A registry that
-    /// cannot answer backs nothing: under-lending shrinks a line, over-lending lends against
-    /// savings that may be gone.
-    function _backedHeadroom(address member, bytes32 kind) private view returns (uint256) {
-        (bool ok, bytes memory data) = address(exposureSource).staticcall(
-            abi.encodeWithSignature("backedHeadroomOf(address,bytes32)", member, kind)
-        );
-        if (!ok || data.length < 32) return 0;
-        return abi.decode(data, (uint256));
-    }
 
-    /// @notice who is owed carry accrued in a tier.
-    /// @dev Resolves to the tier's own recipient, or the treasury when it has none. Never zero,
-    /// because the treasury cannot be.
-    function carryRecipientOf(uint256 tierId) public view returns (address) {
-        address recipient = tierCarryRecipient[tierId];
-        return recipient == address(0) ? carryTreasury : recipient;
-    }
+
 
     /// @notice a member's total ceiling across every tier.
     function totalCapacityOf(address member) public view returns (uint256 total) {
@@ -296,8 +125,9 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// @notice a member's total owed across every tier, carry included.
     /// @dev The balance is the sum of the positions, never a separately maintained total.
     function totalDrawnOf(address member) public view returns (uint256 total) {
+        uint256[] memory pending = _pendingCarry(member);
         for (uint256 i = 0; i < tiers.length; i++) {
-            total += drawnOf(member, i);
+            total += tierPrincipal[member][i] + pending[i];
         }
     }
 
@@ -327,71 +157,10 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         }
     }
 
-    /// @notice a member's total principal across every tier, carry excluded.
-    /// @dev This is the figure that reconciles with the ledger. StableCredit's credit balance
-    /// moves only when credit moves, so it carries principal; the carry above it is derived here
-    /// and is not yet materialised onto the ledger. `totalDrawnOf` minus this is what the member
-    /// owes beyond what they spent.
-    function totalPrincipalOf(address member) public view returns (uint256 total) {
-        for (uint256 i = 0; i < tiers.length; i++) {
-            total += tierPrincipal[member][i];
-        }
-    }
 
     /* ========== RESTRICTED FUNCTIONS ========== */
 
-    /// @notice adds a tier at the end of the draw order.
-    /// @dev Rates must ascend. Yield-bearing collateral has to cost more than it yields, and a
-    /// tier that is cheaper than the one before it would be drawn last while costing least --
-    /// the waterfall would have to be enforced separately instead of falling out of the order.
-    /// @param kind tier kind, from ExposureMath.
-    /// @param ratePerCycle carry rate per cycle in basis points.
-    /// @param cycleLength_ seconds in a cycle. Must match the network's, and sets it when first.
-    function addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength_)
-        external
-        onlyCreditRole(CREDIT_SETTINGS_ROLE)
-        returns (uint256 tierId)
-    {
-        if (tiers.length > 0) {
-            uint256 previous = tiers[tiers.length - 1].index.ratePerCycle;
-            if (ratePerCycle < previous) {
-                revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
-            }
-        }
-        // Every tier shares one clock. Two tiers accruing on different periods would make
-        // "cheapest first" meaningless, because the rates would stop being comparable and draw
-        // order is priced off exactly that comparison.
-        if (tiers.length > 0 && cycleLength_ != tiers[0].index.cycleLength) {
-            revert RevolvingIssuerCycleMismatch(tiers[0].index.cycleLength, cycleLength_);
-        }
 
-        tierId = tiers.length;
-        tiers.push();
-        TierConfig storage tier = tiers[tierId];
-        tier.kind = kind;
-        tier.active = true;
-        tier.index.init(ratePerCycle, cycleLength_, uint64(block.timestamp));
-        emit TierAdded(tierId, kind, ratePerCycle);
-    }
-
-    /// @notice changes a tier's rate from now on.
-    /// @dev Checkpoints the index, so the new rate never reaches carry already accrued at the old
-    /// one. The ascending order still has to hold afterwards, in both directions.
-    function setTierRate(uint256 tierId, uint256 ratePerCycle) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        _requireTier(tierId);
-        if (tierId > 0) {
-            uint256 previous = tiers[tierId - 1].index.ratePerCycle;
-            if (ratePerCycle < previous) {
-                revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
-            }
-        }
-        if (tierId + 1 < tiers.length) {
-            uint256 next = tiers[tierId + 1].index.ratePerCycle;
-            if (ratePerCycle > next) revert RevolvingIssuerRatesMustAscend(ratePerCycle, next);
-        }
-        tiers[tierId].index.setRate(ratePerCycle, block.timestamp);
-        emit TierRateUpdated(tierId, ratePerCycle);
-    }
 
     /// @notice opens or closes a tier to new draws.
     /// @dev Closing does not call in what is drawn. Existing positions keep accruing and can be
@@ -463,6 +232,14 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         uint256 periodLength,
         uint256 graceLength
     ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) notInActivePeriod(member) {
+        // State gate (spec item 9): no line for a member with no attested state, or in a state
+        // where the revolving product is not enabled.
+        if (address(rateSchedule) != address(0)) {
+            bytes32 state = _stateOf(member);
+            if (state == bytes32(0) || !rateSchedule.isEnabled(state, ceilingProduct)) {
+                revert RevolvingIssuerStateNotEnabled(member, state);
+            }
+        }
         uint256 total;
         uint256 increase;
         for (uint256 i = 0; i < capacities.length && i < tiers.length; i++) {
@@ -510,91 +287,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         emit CardSettlementAccountUpdated(account);
     }
 
-    /// @notice records a card purchase outside the network as settled: the draw becomes debt.
-    /// @dev Called once the card network has cleared the purchase, not at authorization. The
-    /// amount is final then -- a tip added, a fuel pump's round number replaced, a void never
-    /// reaching here at all -- so this is one write for one fact rather than a write and its
-    /// corrections.
-    ///
-    /// The tiers are drawn here, cheapest first, the same as a spend on the ledger would draw them.
-    /// That is what starts carry: carry accrues on a tier's position, so a purchase recorded on the
-    /// ledger alone would be owed and never cost anything. Then the ledger records it the way it
-    /// records a partner purchase, with the claim going to the float that paid the merchant.
-    ///
-    /// All or nothing. A purchase the line cannot hold reverts rather than drawing part of it,
-    /// because the settlement is the member's whole purchase and a partial draw would record a
-    /// different fact from the one that happened.
-    /// @param ref the card issuer's transaction reference, hashed.
-    /// @param member address whose line the purchase is drawn on.
-    /// @param amount the settled amount, in ledger units.
-    function settleCardSpend(bytes32 ref, address member, uint256 amount)
-        external
-        notNull(member)
-    {
-        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
-        if (cardSettlementAccount == address(0)) revert RevolvingIssuerNoCardSettlementAccount();
-        if (amount == 0) revert RevolvingIssuerCardAmountZero();
-        // Once settled, always settled -- even after a full refund, which leaves the amount at zero
-        // but must not let the same purchase be drawn again.
-        if (cardSettlements[ref].member != address(0)) revert RevolvingIssuerCardAlreadySettled(ref);
 
-        /*
-         * Only what was approved, for whom it was approved (audit M-2). The authorization was
-         * recorded when the card network asked, while the member was in good standing; a purchase
-         * that clears after a freeze is still honoured, because it was approved before it. One in
-         * default is not: a default ends the line. A per-purchase and a per-day cap bound what the
-         * settler key can do even with authorizations it recorded itself (DFAL 10a: flagged for
-         * counsel in the Phase 1 report).
-         */
-        CardAuthorization memory authorization = cardAuthorizations[ref];
-        if (authorization.member != member) revert RevolvingIssuerCardNotAuthorized(ref, member);
-        if (amount > authorization.amount) {
-            revert RevolvingIssuerCardExceedsAuthorization(ref, amount, authorization.amount);
-        }
-        if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
-        if (inDefault(member) || hasDefaulted(member)) {
-            revert RevolvingIssuerMemberNotInGoodStanding(member);
-        }
-        _consumeDailyCap(cardSpendCap, "CARD", amount);
-        delete cardAuthorizations[ref];
-
-        // Carry accrued since the last touch is part of what is owed; bring it on before measuring.
-        _materialiseCarry(member);
-
-        // All or nothing: whatever the tiers cannot place reverts the whole settlement.
-        uint256 unplaced = _draw(member, amount);
-        if (unplaced > 0) revert RevolvingIssuerCardHeadroom(member, amount, amount - unplaced);
-        cardSettlements[ref] = CardSettlement({member: member, amount: amount});
-        stableCredit.originatePurchase(
-            member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
-        );
-        emit CardSpendSettled(ref, member, amount);
-    }
-
-    /// @notice records what the card issuer approved, at the moment it approved it.
-    /// @dev Settlement may later draw up to this and no more (audit M-2). Refused for a member who
-    /// is frozen, in default or has defaulted, or for more than their line could hold right now.
-    /// @param ref the card issuer's transaction reference, hashed.
-    /// @param member address whose line the purchase will draw on.
-    /// @param amount the approved amount, in ledger units.
-    function authorizeCardSpend(bytes32 ref, address member, uint256 amount)
-        external
-        notNull(member)
-    {
-        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
-        if (amount == 0) revert RevolvingIssuerCardAmountZero();
-        if (cardAuthorizations[ref].member != address(0) || cardSettlements[ref].member != address(0)) {
-            revert RevolvingIssuerCardAlreadyAuthorized(ref);
-        }
-        if (isFrozen(member) || inDefault(member) || hasDefaulted(member)) {
-            revert RevolvingIssuerMemberNotInGoodStanding(member);
-        }
-        if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
-        uint256 headroom = _activeHeadroom(member);
-        if (headroom < amount) revert RevolvingIssuerCardHeadroom(member, amount, headroom);
-        cardAuthorizations[ref] = CardAuthorization({member: member, amount: amount});
-        emit CardAuthorized(ref, member, amount);
-    }
 
     /// @notice what an authorization recorded for a ref still allows.
     function cardAuthorizationOf(bytes32 ref) external view returns (address member, uint256 amount) {
@@ -612,79 +305,41 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         emit CardCapsUpdated(txCap, dailyCap);
     }
 
+    /// @notice names the RateSchedule unsecured tiers are priced from, and the product whose
+    /// graduated schedule is the member-level ceiling.
+    function setPricing(address rateSchedule_, bytes32 ceilingProduct_)
+        external
+        onlyCreditRole(CREDIT_SETTINGS_ROLE)
+    {
+        rateSchedule = RateSchedule(rateSchedule_);
+        ceilingProduct = ceilingProduct_;
+        emit PricingUpdated(rateSchedule_, ceilingProduct_);
+    }
+
+    /// @notice prices an unsecured tier as a RateSchedule product. Set once: positions snapshot the
+    /// product's accumulator, and switching product under them would compare unrelated numbers.
+    function setTierProduct(uint256 tierId, bytes32 productId)
+        external
+        onlyCreditRole(CREDIT_SETTINGS_ROLE)
+    {
+        _requireTier(tierId);
+        if (tierProduct[tierId] != bytes32(0)) revert RevolvingIssuerTierProductSet(tierId);
+        tierProduct[tierId] = productId;
+        emit TierProductSet(tierId, productId);
+    }
+
     /// @notice caps how much new revolving capacity may be granted in a day, across every member.
     function setDailyCapacityCap(uint256 cap) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         capacityIncreaseCap.cap = cap;
         emit DailyCapUpdated("CAPACITY", cap);
     }
 
-    /// @notice gives back a settled card purchase, in whole or in part: a refund after clearing.
-    /// @dev The inverse of `settleCardSpend`, and capital-free for the same reason a partner
-    /// reversal is. The tiers are cleared dearest first, which is what any repayment does, and
-    /// the ledger takes the claim back from the float.
-    /// @param ref the card issuer's transaction reference, hashed.
-    /// @param amount the amount given back, in ledger units.
-    function reverseCardSpend(bytes32 ref, uint256 amount) external {
-        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
-        if (amount == 0) revert RevolvingIssuerCardAmountZero();
-        CardSettlement memory settlement = cardSettlements[ref];
-        if (settlement.member == address(0)) revert RevolvingIssuerCardNotSettled(ref);
-        if (amount > settlement.amount) {
-            revert RevolvingIssuerCardReversalExceedsSettlement(ref, amount, settlement.amount);
-        }
-
-        _materialiseCarry(settlement.member);
-        _repay(settlement.member, amount);
-        cardSettlements[ref].amount = settlement.amount - amount;
-        stableCredit.reversePurchase(
-            settlement.member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
-        );
-        emit CardSpendReversed(ref, settlement.member, amount);
-    }
 
     /// @notice what a fiat repayment ref cleared, zero if it has not been recorded.
     function cardRepaymentOf(bytes32 ref) external view returns (uint256) {
         return cardRepayments[ref];
     }
 
-    /// @notice clears card debt a member has repaid in fiat.
-    /// @dev A card purchase was paid to the merchant in fiat, out of the co-op's float, and the
-    /// matching claim was minted to that float at settlement. When the member repays in fiat the
-    /// dollars go straight back into the float -- which is exactly the claim being satisfied. So
-    /// nothing needs to move on chain to settle it: the float's claim is burned against the
-    /// member's obligation, the same capital-free unwind a reversal is. The tiers are cleared
-    /// dearest first, as any repayment clears them, and the carry that stops is the most it can be.
-    ///
-    /// On-ramping the fiat to pay this in reserve tokens would move money onto the chain only for
-    /// it to be moved back off again to refill the float.
-    ///
-    /// Refuses rather than doing part: more than the member has drawn here would be clearing
-    /// debt that lives somewhere else, and more than the float holds would hand the co-op an
-    /// obligation instead of burning a claim.
-    /// @param ref idempotency key for this repayment.
-    /// @param member address whose card debt is cleared.
-    /// @param amount the amount repaid, in ledger units.
-    function repayCardSpend(bytes32 ref, address member, uint256 amount)
-        external
-        notNull(member)
-    {
-        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
-        if (amount == 0) revert RevolvingIssuerCardAmountZero();
-        if (cardRepayments[ref] != 0) revert RevolvingIssuerCardAlreadyRepaid(ref);
-
-        _materialiseCarry(member);
-        uint256 principal = totalPrincipalOf(member);
-        if (amount > principal) revert RevolvingIssuerCardRepaymentExceedsDrawn(member, amount, principal);
-        uint256 held = IERC20Upgradeable(address(stableCredit)).balanceOf(cardSettlementAccount);
-        if (held < amount) revert RevolvingIssuerCardFloatCannotCover(amount, held);
-
-        _repay(member, amount);
-        cardRepayments[ref] = amount;
-        stableCredit.reversePurchase(
-            member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
-        );
-        emit CardSpendRepaid(ref, member, amount);
-    }
 
     /// @notice the member turns automatic repayment from their USDC deposits on or off.
     /// @dev Only for the caller. Turning it on is the whole mandate; the member also approves the
@@ -694,33 +349,6 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         emit AutoRepaySet(_msgSender(), enabled);
     }
 
-    /// @notice repays a member's card debt from their own USDC, under the mandate they set.
-    /// @dev "There is no pay button": a deposit that lands as USDC in the member's wallet repays
-    /// what they owe before anything else touches it, the way a fiat deposit does. The USDC is pulled
-    /// from the member into the ledger (`repayCreditBalanceFor`, the member as payer), and the tiers
-    /// are cleared dearest first, as any repayment clears them.
-    ///
-    /// Bounded three ways: only for a member who switched it on, only up to what they owe on these
-    /// tiers, and only once per ref. It cannot move a member's money anywhere but against their own
-    /// debt.
-    /// @param ref idempotency key.
-    /// @param member address being repaid for.
-    /// @param amount amount to repay, in ledger units.
-    function repayForMember(bytes32 ref, address member, uint256 amount) external notNull(member) {
-        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
-        if (!autoRepayEnabled[member]) revert RevolvingIssuerAutoRepayNotEnabled(member);
-        if (amount == 0) revert RevolvingIssuerCardAmountZero();
-        if (autoRepayments[ref] != 0) revert RevolvingIssuerAutoRepayAlreadyUsed(ref);
-
-        _materialiseCarry(member);
-        uint256 principal = totalPrincipalOf(member);
-        if (amount > principal) revert RevolvingIssuerCardRepaymentExceedsDrawn(member, amount, principal);
-
-        autoRepayments[ref] = amount;
-        stableCredit.repayCreditBalanceFor(member, member, uint128(amount));
-        _repay(member, amount);
-        emit AutoRepaid(ref, member, amount);
-    }
 
     /// @notice what an auto-repay ref repaid, zero if unused.
     function autoRepaymentOf(bytes32 ref) external view returns (uint256) {
@@ -821,80 +449,14 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         return (0, false);
     }
 
-    /// @notice moves carry accrued in each tier onto the ledger.
-    /// @dev Carry deepens the member's negative balance and mints the matching claim to whoever
-    /// funded the draw. Once it is on the ledger it stops being a figure this contract derives
-    /// and becomes debt like any other: repayable, and counted by everything that reads a
-    /// balance. The tier's principal is raised to match, so the same carry is never accrued twice.
-    function _materialiseCarry(address member) private {
-        for (uint256 i = 0; i < tiers.length; i++) {
-            uint256 normalized = tierNormalized[member][i];
-            if (normalized == 0) continue;
 
-            uint256 drawn = CarryIndex.denormalize(
-                normalized, tiers[i].index.currentIndex(block.timestamp)
-            );
-            uint256 principal = tierPrincipal[member][i];
-            if (drawn <= principal) continue;
 
-            uint256 carry = drawn - principal;
-            tierPrincipal[member][i] = drawn;
-            stableCredit.accrueCarry(member, carryRecipientOf(i), carry);
-            emit TierCarryMaterialised(member, i, carry);
-        }
-    }
 
-    /// @notice fills tiers in order, cheapest first.
-    /// @return remaining what the tiers had no room for.
-    function _draw(address member, uint256 amount) private returns (uint256 remaining) {
-        remaining = amount;
-        for (uint256 i = 0; i < tiers.length && remaining > 0; i++) {
-            if (!tiers[i].active) continue;
-            uint256 headroom = headroomOf(member, i);
-            if (headroom == 0) continue;
 
-            uint256 take = headroom < remaining ? headroom : remaining;
-            uint256 index = tiers[i].index.currentIndex(block.timestamp);
-            tierNormalized[member][i] += CarryIndex.normalizeUp(take, index);
-            tierPrincipal[member][i] += take;
-            remaining -= take;
-            emit TierDrawn(member, i, take);
-        }
-        // Anything left over means the ledger allowed a draw this issuer has no room for. The
-        // ledger's ceiling is the sum of every issuer's allocation, not just these capacities, so
-        // it can happen; the caller decides what to do about it.
-    }
 
-    /// @notice clears tiers in reverse order, most expensive first.
-    /// @dev Used when this issuer is the only claim on the payment. The ledger's band walk calls
-    /// `_repayTier` directly, so a dearer position at another issuer is cleared first.
-    function _repay(address member, uint256 amount) private {
-        uint256 remaining = amount;
-        for (uint256 i = tiers.length; i > 0 && remaining > 0; i--) {
-            uint256 tierId = i - 1;
-            uint256 principal = tierPrincipal[member][tierId];
-            if (principal == 0) continue;
-            uint256 pay = principal < remaining ? principal : remaining;
-            _repayTier(member, tierId, pay);
-            remaining -= pay;
-        }
-    }
 
-    /// @notice reduces one tier's position by a payment against its principal.
-    /// @dev Allocated against principal rather than against what is owed. Carry is materialised
-    /// before any payment is placed, so by then it is principal in the tier that accrued it and
-    /// there is no separate carry left to settle.
-    function _repayTier(address member, uint256 tierId, uint256 pay) private {
-        uint256 index = tiers[tierId].index.currentIndex(block.timestamp);
-        uint256 stored = tierNormalized[member][tierId];
 
-        // Rounded up, mirroring the draw. Rounding down leaves a few wei of position behind
-        // after a payment that settled it, and that residue goes on accruing.
-        uint256 reduction = CarryIndex.normalizeUp(pay, index);
-        tierNormalized[member][tierId] = reduction >= stored ? 0 : stored - reduction;
-        tierPrincipal[member][tierId] -= pay;
-        emit TierRepaid(member, tierId, pay);
-    }
+
 
     /// @notice this issuer's share of a member's debt that no collateral covers.
     /// @dev Only what sits in these tiers, and within that, only the part collateral does not
@@ -934,43 +496,73 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         exposureSource = IExposureSource(_exposureSource);
     }
 
-    /// @notice settles a tier out of the collateral that was pledged against it.
-    /// @dev Directed at one tier on purpose. An ordinary payment works down the rate bands,
-    /// because a member paying something back should stop the most carry they can. Liquidated
-    /// collateral is not that: it was pledged against a particular tier, and letting it settle a
-    /// dearer one somewhere else would leave the tier it actually backed still drawn against a
-    /// pledge that no longer exists.
-    ///
-    /// The caller delivers the reserve token first. Settling on the ledger is silent, so the
-    /// waterfall is not told and cannot claim the payment a second time.
-    /// @param member address whose tier is settled.
-    /// @param tierId tier the collateral backed.
-    /// @param amount amount of reserve token delivered.
-    function settleFromCollateral(address member, uint256 tierId, uint256 amount)
-        external
-        onlyOperator
-    {
-        _requireTier(tierId);
-        _materialiseCarry(member);
-
-        uint256 principal = tierPrincipal[member][tierId];
-        uint256 pay = principal < amount ? principal : amount;
-        if (pay == 0) return;
-
-        IERC20Upgradeable reserve = stableCredit.assurancePool().reserveToken();
-        reserve.safeTransferFrom(_msgSender(), address(this), pay);
-        reserve.forceApprove(address(stableCredit), pay);
-        stableCredit.repayCreditBalanceFor(address(this), member, uint128(pay));
-
-        _repayTier(member, tierId, pay);
-    }
 
     /// @notice writes this issuer's contribution to the member's ledger ceiling.
     function _syncLedgerLimit(address member) private {
         stableCredit.updateCreditLimit(member, totalCapacityOf(member));
     }
 
-    function _requireTier(uint256 tierId) private view {
-        if (tierId >= tiers.length) revert RevolvingIssuerUnknownTier(tierId);
+    /* ========== FORWARDED TO THE EXTENSION ========== */
+
+    /// @notice Where the forwarded functions below actually run.
+    /// @dev Created by this implementation's constructor and fixed with it: upgrading RevolvingIssuer
+    /// deploys a fresh pair, and nobody can point a live contract at other code. Not storage, so
+    /// the layout is untouched.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable extension;
+
+    /// @notice see RevolvingIssuerExtension.settleCardSpend.
+    function settleCardSpend(bytes32, address, uint256) external {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension.authorizeCardSpend.
+    function authorizeCardSpend(bytes32, address, uint256) external {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension.reverseCardSpend.
+    function reverseCardSpend(bytes32, uint256) external {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension.repayCardSpend.
+    function repayCardSpend(bytes32, address, uint256) external {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension.repayForMember.
+    function repayForMember(bytes32, address, uint256) external {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension.settleFromCollateral.
+    function settleFromCollateral(address, uint256, uint256) external {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension.addTier.
+    function addTier(bytes32, uint256, uint64) external returns (uint256) {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension.setTierRate.
+    function setTierRate(uint256, uint256) external {
+        _forward();
+    }
+
+    /// @dev Runs the extension's implementation of this call against this contract's storage, and
+    /// returns or reverts exactly as it did.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function _forward() private {
+        address target = extension;
+        assembly {
+            calldatacopy(0, 0, calldatasize())
+            let ok := delegatecall(gas(), target, 0, calldatasize(), 0, 0)
+            returndatacopy(0, 0, returndatasize())
+            switch ok
+            case 0 { revert(0, returndatasize()) }
+            default { return(0, returndatasize()) }
+        }
     }
 }
