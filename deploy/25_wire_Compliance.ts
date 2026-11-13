@@ -14,6 +14,8 @@ import { saveDeployment, getDeployment } from "./helpers";
  *   (set once: positions snapshot that product's accumulator).
  * - Points the term issuer at it. Until this runs, plans keep the rate the member signed and
  *   follow no state rules -- the legacy mode Phase 1 left.
+ * - Sets the Clear Credit Agreement's terms from `deploy/config/credit-terms.json` (section 12) and
+ *   names ESADepositVault as where ESA deposits are read for the Boost cap.
  * - Grants STATE_ATTESTER_ROLE on NetworkRegistry to `STATE_ATTESTER_KEY` when set.
  * - Trusts the revolving issuer on the Liquidator (permissionless liquidation only seizes for
  *   trusted issuers), and names NetworkRegistry as the vault's state source.
@@ -136,6 +138,31 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
         log(`  tier ${ethers.decodeBytes32String(kind)} priced as ${ethers.decodeBytes32String(p.product)}`);
       }
     }
+  }
+
+  // ---- the Clear Credit Agreement's terms (section 12) ----
+  const terms = JSON.parse(fs.readFileSync(path.join(__dirname, "config", "credit-terms.json"), "utf8"));
+  const wanted = {
+    unsecuredLineCap: BigInt(terms.unsecuredLineCapUsd) * ONE_USD,
+    cureWindow: BigInt(terms.cureWindowDays * DAY),
+    boostCleanCycles: BigInt(terms.boostCleanCycles),
+    boostDepositCycles: BigInt(terms.boostDepositCycles),
+    autoClearOffGlobal: !terms.autoClearEnabledGlobal,
+  };
+  const current = await revolving.creditTerms();
+  const same = current.unsecuredLineCap === wanted.unsecuredLineCap && current.cureWindow === wanted.cureWindow
+    && current.boostCleanCycles === wanted.boostCleanCycles && current.boostDepositCycles === wanted.boostDepositCycles
+    && current.autoClearOffGlobal === wanted.autoClearOffGlobal
+    && (await revolving.boostBaseCap()) === BigInt(terms.boostBaseCapUsd) * ONE_USD
+    && (await revolving.boostEarnedCap()) === BigInt(terms.boostEarnedCapUsd) * ONE_USD;
+  if (!same) {
+    await (await revolving.setCreditTerms(wanted, BigInt(terms.boostBaseCapUsd) * ONE_USD, BigInt(terms.boostEarnedCapUsd) * ONE_USD)).wait();
+    log(`  credit terms: unsecured cap ${terms.unsecuredLineCapUsd} USD, Boost ${terms.boostBaseCapUsd}/${terms.boostEarnedCapUsd} USD, cure ${terms.cureWindowDays} days`);
+  }
+  const vaultForDeposits = getDeployment(network, "ESADepositVault");
+  if (vaultForDeposits && (await revolving.depositSource()) !== vaultForDeposits.address) {
+    await (await revolving.setDepositSource(vaultForDeposits.address)).wait();
+    log("  RevolvingIssuer deposit source -> ESADepositVault");
   }
 
   // ---- term ----
