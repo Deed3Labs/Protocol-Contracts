@@ -60,11 +60,22 @@ export async function deployDeedTrack() {
   await factory.updateFractionalizeContract(await fractionalize.getAddress());
   // Without this, createFraction reverts "!mkt" (royalty enforcement is on by default).
   await deed.setApprovedMarketplace(await fractionalize.getAddress(), true);
+  // After the D-9 fix Subdivide takes custody of the parent deed, so it is a custody contract on DeedNFT
+  // too; and after the D-17 fix Subdivide enforces its own marketplace list, so Fractionalize must be on it
+  // to pull a unit (D-21).
+  await deed.setApprovedMarketplace(await subdivide.getAddress(), true);
+  await subdivide.setApprovedMarketplace(await fractionalize.getAddress(), true);
 
   return { deployer, alice, bob, carol, mallory, operator2, registry, renderer, validator, deed, fundManager, subdivide, factory, fractionalize };
 }
 
 export type Ctx = Awaited<ReturnType<typeof deployDeedTrack>>;
+
+/** Subdivide a deed: the holder approves Subdivide, which takes custody of the parent (D-9 fix). */
+export async function subdivideDeed(ctx: Ctx, owner: any, id: bigint, units = 5, burnable = true) {
+  await ctx.deed.connect(owner).approve(await ctx.subdivide.getAddress(), id);
+  await ctx.subdivide.connect(owner).createSubdivision(id, "Tract", "", "TR", "ipfs://tr", units, burnable);
+}
 
 export const LAND_TRAITS: Record<string, string> = {
   country: "US",

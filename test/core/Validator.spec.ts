@@ -348,7 +348,7 @@ describe("Validator Contract", function() {
         parcelNumber: "12345"
       });
 
-      await deedNFT.connect(user2).mintAsset(
+      await deedNFT.connect(user2).mintAssetWithMaxFee(
         user1.address,
         0,
         "ipfs://metadata1",
@@ -356,8 +356,9 @@ describe("Validator Contract", function() {
         "configuration1",
         await validator.target,
         await token.getAddress(),
-        ethers.parseUnits("100", 18)
-      );
+        ethers.parseUnits("100", 18),
+          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
+        );
 
       // Debug: Check balances after mint
       const feeReceiverBalanceAfterMint = await token.balanceOf(admin.address);

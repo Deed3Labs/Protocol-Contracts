@@ -13,6 +13,8 @@ import {StringsUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Stri
 import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {IERC2981Upgradeable} from "@openzeppelin/contracts-upgradeable/interfaces/IERC2981Upgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {IAccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/IAccessControlUpgradeable.sol";
+import {EnumerableSetUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 
 // External validator and registry interfaces
 import "./interfaces/IValidator.sol";
@@ -45,6 +47,7 @@ contract DeedNFT is
 {
     using StringsUpgradeable for uint256;
     using AddressUpgradeable for address;
+    using EnumerableSetUpgradeable for EnumerableSetUpgradeable.Bytes32Set;
 
     // ============ Role Definitions ============
     bytes32 public constant VALIDATOR_ROLE = keccak256("VALIDATOR_ROLE");
@@ -116,6 +119,59 @@ contract DeedNFT is
     // Add FundManager interface
     IFundManager public fundManager;
 
+    /**
+     * @dev Every token ID ever minted, kept after burn. A recorded county deed names the Deed ID, so an
+     *      ID must never point at a second property (audit D-8).
+     */
+    mapping(uint256 => bool) private _everMinted;
+
+    /**
+     * @dev Per-token trait key sets. The old global `_allTraitKeys` array grew with every key any holder
+     *      invented and was scanned by every burn and tokenURI (audit D-12); each token now only pays for
+     *      its own keys. `_allTraitKeys` is kept only for storage layout.
+     */
+    mapping(uint256 => EnumerableSetUpgradeable.Bytes32Set) private _tokenTraitKeys;
+
+    // ============ Audit-fix constants, errors and events ============
+
+    /// @dev Salted IDs live in [2^127, 2^128): above any reachable sequential ID, and below 2^128 so
+    ///      Subdivide's `(deedId << 128) | unitId` packing stays collision-free (audit D-8).
+    uint256 private constant SALTED_ID_FLAG = 1 << 127;
+    uint256 private constant MAX_TRAIT_NAME_LENGTH = 64;
+
+    bytes32 private constant KEY_ASSET_TYPE = keccak256("assetType");
+    bytes32 private constant KEY_IS_VALIDATED = keccak256("isValidated");
+    bytes32 private constant KEY_OPERATING_AGREEMENT = keccak256("operatingAgreement");
+    bytes32 private constant KEY_DEFINITION = keccak256("definition");
+    bytes32 private constant KEY_CONFIGURATION = keccak256("configuration");
+    bytes32 private constant KEY_VALIDATOR = keccak256("validator");
+    bytes32 private constant KEY_BENEFICIARY = keccak256("beneficiary");
+    bytes32 private constant KEY_CUSTOM_METADATA = keccak256("customMetadata");
+    bytes32 private constant KEY_GALLERY = keccak256("gallery");
+
+    /// @dev Caller is neither the deed's holder nor a signer of the deed's own validator.
+    error NotDeedEditor(uint256 tokenId, address caller);
+    /// @dev Caller is not the validator recorded on this deed.
+    error NotDeedValidator(uint256 tokenId, address caller);
+    /// @dev The holder tried to change a trait the validator vouched for. Use updateMetadata (which
+    ///      resets validation) or ask the deed's validator.
+    error ValidatedTraitLocked(uint256 tokenId, bytes32 traitKey);
+    /// @dev The renderer may only write display-only traits.
+    error RendererTraitNotAllowed(bytes32 traitKey);
+    /// @dev Trait names created through setTrait must match [A-Za-z0-9_]{1,64}.
+    error InvalidTraitName();
+    /// @dev Operating agreement is not one the deed's validator has registered by name.
+    error UnregisteredOperatingAgreement();
+    /// @dev The service fee at execution exceeds the minter's stated maximum.
+    error FeeAboveMax(uint256 fee, uint256 maxFee);
+    /// @dev The chosen validator is not active, does not implement IValidator, or does not support the asset type.
+    error ValidatorNotUsable(address validator);
+
+    /// @dev Emitted when a signer of the deed's own validator edits its metadata (audit D-2: edits are logged).
+    event DeedEditedByValidator(uint256 indexed tokenId, address indexed validator, address indexed editor);
+    /// @dev Emitted when the holder moves the deed to another validator; validation is reset.
+    event DeedValidatorReassigned(uint256 indexed tokenId, address indexed previousValidator, address indexed newValidator);
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -137,7 +193,8 @@ contract DeedNFT is
         __UUPSUpgradeable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(VALIDATOR_ROLE, msg.sender);
+        // No VALIDATOR_ROLE for the deployer (audit D-2): editing rights over a deed belong to that
+        // deed's own validator, never to a global key.
         _grantRole(MINTER_ROLE, msg.sender);
 
         defaultValidator = _defaultValidator;
@@ -228,18 +285,83 @@ contract DeedNFT is
     }
 
     /**
-     * @dev Modifier to check if the caller is a validator or the deed owner
+     * @dev Returns whether the caller edits as the deed's validator, and reverts unless the caller is
+     *      that validator (or one of its signers) or the deed's holder. Audit D-2: there is no global
+     *      editor key; a validator's powers reach only the deeds that name it.
      */
-    modifier onlyValidatorOrOwner(uint256 tokenId) {
-        _checkValidatorOrOwner(tokenId);
-        _;
+    function _requireEditor(uint256 tokenId) private view returns (bool byValidator) {
+        byValidator = _isDeedValidator(tokenId, msg.sender);
+        if (!byValidator && ownerOf(tokenId) != msg.sender) revert NotDeedEditor(tokenId, msg.sender);
     }
 
-    function _checkValidatorOrOwner(uint256 tokenId) private view {
-        require(
-            hasRole(VALIDATOR_ROLE, msg.sender) || ownerOf(tokenId) == msg.sender,
-            "Not authorized"
-        );
+    /**
+     * @dev The validator recorded on the deed. A zero record (written by the pre-fix updateMetadata,
+     *      audit D-15) falls back to the default validator instead of bricking the deed.
+     */
+    function _validatorOf(uint256 tokenId) internal view returns (address validator) {
+        bytes memory raw = _tokenTraits[tokenId][KEY_VALIDATOR];
+        if (raw.length > 0) validator = abi.decode(raw, (address));
+        if (validator == address(0)) validator = defaultValidator;
+    }
+
+    /**
+     * @dev True when `account` is the deed's recorded validator contract, or holds VALIDATOR_ROLE inside
+     *      that validator contract (its signers), and that validator is active in the registry.
+     */
+    function _isDeedValidator(uint256 tokenId, address account) internal view returns (bool) {
+        address v = _validatorOf(tokenId);
+        if (v == address(0) || validatorRegistry == address(0)) return false;
+        if (!IValidatorRegistry(validatorRegistry).isValidatorActive(v)) return false;
+        if (account == v) return true;
+        if (v.code.length == 0) return false;
+        try IAccessControlUpgradeable(v).hasRole(VALIDATOR_ROLE, account) returns (bool ok) {
+            return ok;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * @notice Whether `account` may act as this deed's validator: the deed's recorded (active) validator
+     *         contract or one of its signers. Used by MetadataRenderer for validator-only records.
+     */
+    function isDeedValidator(uint256 tokenId, address account) external view returns (bool) {
+        return _exists(tokenId) && _isDeedValidator(tokenId, account);
+    }
+
+    function _isValidated(uint256 tokenId) private view returns (bool) {
+        bytes memory raw = _tokenTraits[tokenId][KEY_IS_VALIDATED];
+        return raw.length > 0 && abi.decode(raw, (bool));
+    }
+
+    /**
+     * @dev Traits the validator vouches for and that the holder may not change on a validated deed
+     *      (audit D-1): definition, operating agreement, configuration, and every required trait in the
+     *      deed's validator criteria for its asset type. Fails closed if the criteria cannot be read.
+     */
+    function _isValidatedTrait(uint256 tokenId, bytes32 key) private view returns (bool) {
+        if (key == KEY_DEFINITION || key == KEY_OPERATING_AGREEMENT || key == KEY_CONFIGURATION) return true;
+        address v = _validatorOf(tokenId);
+        bytes memory rawType = _tokenTraits[tokenId][KEY_ASSET_TYPE];
+        if (v == address(0) || rawType.length == 0) return true;
+        try IValidator(v).getValidationCriteria(uint256(abi.decode(rawType, (uint8)))) returns (
+            string[] memory required, string memory, bool, bool
+        ) {
+            for (uint256 i = 0; i < required.length; i++) {
+                if (keccak256(bytes(required[i])) == key) return true;
+            }
+            return false;
+        } catch {
+            return true;
+        }
+    }
+
+    /// @dev Holder edits go through the deed validator's registered agreement names (audit D-1, D-14).
+    function _requireRegisteredAgreement(uint256 tokenId, string memory agreement) private view {
+        address v = _validatorOf(tokenId);
+        if (v == address(0) || bytes(IValidator(v).operatingAgreementName(agreement)).length == 0) {
+            revert UnregisteredOperatingAgreement();
+        }
     }
 
     function _exists(uint256 tokenId) internal view override returns (bool) {
@@ -306,14 +428,14 @@ contract DeedNFT is
     {
         require(renderer != address(0), "Invalid renderer address");
         
-        // Revoke VALIDATOR_ROLE from old renderer if it exists
+        // Older deployments granted the renderer VALIDATOR_ROLE; take it back if present.
         if (metadataRenderer != address(0)) {
             _revokeRole(VALIDATOR_ROLE, metadataRenderer);
         }
         
-        // Set new renderer and grant VALIDATOR_ROLE
+        // The renderer gets no role (audit D-2). It may only write the display-only traits
+        // `customMetadata` and `gallery` through setTrait; see _checkRendererKey.
         metadataRenderer = renderer;
-        _grantRole(VALIDATOR_ROLE, renderer);
         
         emit MetadataRendererUpdated(renderer);
     }
@@ -357,7 +479,11 @@ contract DeedNFT is
     }
 
     /**
-     * @dev Generates a unique token ID based on input parameters
+     * @dev Generates a unique token ID based on input parameters.
+     *      Audit D-8: the old `% 1e9` ID space collided with the sequential range and with itself
+     *      (birthday bound ~37k mints). Salted IDs now take 127 bits of the hash and set bit 127, so
+     *      they sit in [2^127, 2^128): never in the sequential range, and still below 2^128 for
+     *      Subdivide's unit-ID packing. Uniqueness over all time is enforced at mint by `_everMinted`.
      */
     function generateUniqueTokenId(
         address owner,
@@ -365,16 +491,26 @@ contract DeedNFT is
         string memory definition,
         uint256 salt
     ) public pure returns (uint256) {
-        return uint256(keccak256(abi.encodePacked(
+        uint256 h = uint256(keccak256(abi.encodePacked(
             owner,
             uint8(assetType),
             definition,
             salt
-        ))) % 1000000000; // Keep it to 9 digits for readability
+        )));
+        return (h & (SALTED_ID_FLAG - 1)) | SALTED_ID_FLAG;
     }
 
     /**
-     * @dev Mints a new deed with a deterministic token ID
+     * @notice Whether a token ID has ever been minted (including burned deeds). Such an ID can never be
+     *         minted again.
+     */
+    function wasEverMinted(uint256 tokenId) external view returns (bool) {
+        return _everMinted[tokenId];
+    }
+
+    /**
+     * @dev Mints a new deed with a deterministic token ID. Charges no service fee: when a FundManager is
+     *      set, use {mintAssetWithMaxFee} so the minter bounds the fee (audit D-16).
      */
     function mintAsset(
         address owner,
@@ -386,6 +522,39 @@ contract DeedNFT is
         address token,
         uint256 salt
     ) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
+        return _mintAsset(owner, assetType, uri, definition, configuration, validatorAddress, token, salt, 0);
+    }
+
+    /**
+     * @notice Mints a new deed and pays the validator's service fee, reverting if the fee read at
+     *         execution exceeds `maxFee`. Audit D-16: a validator fee manager could otherwise raise the
+     *         fee between the minter's approval and the mint and drain a standing allowance.
+     */
+    function mintAssetWithMaxFee(
+        address owner,
+        AssetType assetType,
+        string memory uri,
+        string memory definition,
+        string memory configuration,
+        address validatorAddress,
+        address token,
+        uint256 salt,
+        uint256 maxFee
+    ) external whenNotPaused onlyRole(MINTER_ROLE) returns (uint256) {
+        return _mintAsset(owner, assetType, uri, definition, configuration, validatorAddress, token, salt, maxFee);
+    }
+
+    function _mintAsset(
+        address owner,
+        AssetType assetType,
+        string memory uri,
+        string memory definition,
+        string memory configuration,
+        address validatorAddress,
+        address token,
+        uint256 salt,
+        uint256 maxFee
+    ) private returns (uint256) {
         require(owner != address(0), "Invalid owner address");
         require(bytes(definition).length > 0, "Definition cannot be empty");
 
@@ -426,6 +595,7 @@ contract DeedNFT is
             // Get service fee from validator
             uint256 serviceFee = IValidator(selectedValidator).getServiceFee(token);
             require(serviceFee > 0, "Service fee not set");
+            if (serviceFee > maxFee) revert FeeAboveMax(serviceFee, maxFee);
 
             // Process payment
             fundManager.processPayment(msg.sender, selectedValidator, token, serviceFee);
@@ -439,16 +609,19 @@ contract DeedNFT is
         // Use unique ID generation if salt is provided, otherwise use sequential ID
         if (salt > 0) {
             tokenId = generateUniqueTokenId(owner, assetType, definition, salt);
-            // Ensure the token ID doesn't already exist
-            require(!_exists(tokenId), "Token ID already exists");
         } else {
-            // Use the sequential ID approach
+            // Use the sequential ID approach, stepping over any ID a pre-fix salted mint occupied so a
+            // collision can never brick sequential minting (audit D-8).
+            while (_everMinted[nexttokenId]) nexttokenId++;
             tokenId = nexttokenId;
             nexttokenId++;
         }
-        
+        // Never reuse an ID, even after burn (audit D-8).
+        require(!_everMinted[tokenId] && !_exists(tokenId), "Token ID already exists");
+        _everMinted[tokenId] = true;
+
         _mint(owner, tokenId);
-        
+
         // Set token URI as fallback if provided
         if (bytes(uri).length > 0) {
             _setTokenURI(tokenId, uri);
@@ -474,30 +647,33 @@ contract DeedNFT is
 
     /**
      * @dev Burns a deed owned by the caller.
+     *      Not pausable (audit D-17): an owner can always exit; a pause must never trap the holder's
+     *      redemption. The ID stays recorded in `_everMinted` and can never be minted again.
      * @param tokenId ID of the deed to burn.
      */
     function burnAsset(uint256 tokenId)
         public
         onlyDeedOwner(tokenId)
-        whenNotPaused
     {
         _burn(tokenId);
-        
-        // Clear all traits
-        for (uint i = 0; i < _allTraitKeys.length; i++) {
-            delete _tokenTraits[tokenId][_allTraitKeys[i]];
+
+        // Clear this token's traits (its own key set only, audit D-12)
+        EnumerableSetUpgradeable.Bytes32Set storage keys = _tokenTraitKeys[tokenId];
+        for (uint256 i = keys.length(); i > 0; i--) {
+            bytes32 key = keys.at(i - 1);
+            delete _tokenTraits[tokenId][key];
+            keys.remove(key);
         }
-        
+
         emit DeedNFTBurned(tokenId);
     }
 
     /**
-     * @dev Batch burns multiple deeds owned by the caller.
+     * @dev Batch burns multiple deeds owned by the caller. Not pausable, like burnAsset.
      * @param tokenIds Array of deed IDs to burn.
      */
     function burnBatchAssets(uint256[] memory tokenIds)
         external
-        whenNotPaused
     {
         for (uint256 i = 0; i < tokenIds.length; i++) {
             uint256 tokenId = tokenIds[i];
@@ -518,8 +694,9 @@ contract DeedNFT is
      * @param validatorAddress Address of the validator
      * @notice This function can only be called by a registered validator
      */
-    function updateValidationStatus(uint256 tokenId, bool isValid, address validatorAddress) 
-        external 
+    function updateValidationStatus(uint256 tokenId, bool isValid, address validatorAddress)
+        external
+        whenNotPaused
         onlyRole(VALIDATOR_ROLE)
     {
         require(_exists(tokenId), "Deed does not exist");
@@ -528,20 +705,49 @@ contract DeedNFT is
             IValidatorRegistry(validatorRegistry).isValidatorActive(msg.sender),
             "Validator not active"
         );
-        
+        // Audit D-7: only the validator recorded on this deed may give or withdraw its verdict. Another
+        // active validator cannot flip it or take its royalties; the holder moves a deed to a new
+        // validator with reassignValidator.
+        if (_validatorOf(tokenId) != msg.sender) revert NotDeedValidator(tokenId, msg.sender);
+
         // Update traits
-        _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(isValid));
-        _setTraitValue(tokenId, keccak256("validator"), abi.encode(msg.sender));
-        
+        _setTraitValue(tokenId, KEY_IS_VALIDATED, abi.encode(isValid));
+        _setTraitValue(tokenId, KEY_VALIDATOR, abi.encode(msg.sender));
+
         emit DeedValidated(tokenId, isValid);
+    }
+
+    /**
+     * @notice The holder moves the deed to another active validator that supports its asset type.
+     *         Validation is reset: the new validator must validate the deed itself. This is the only way a
+     *         deed changes validator (audit D-7); no admin path exists.
+     * @param tokenId ID of the deed.
+     * @param newValidator Address of the new validator contract.
+     */
+    function reassignValidator(uint256 tokenId, address newValidator) external whenNotPaused onlyDeedOwner(tokenId) {
+        bytes memory rawType = _tokenTraits[tokenId][KEY_ASSET_TYPE];
+        if (
+            newValidator == address(0) ||
+            newValidator.code.length == 0 ||
+            !IValidatorRegistry(validatorRegistry).isValidatorActive(newValidator) ||
+            !IERC165Upgradeable(newValidator).supportsInterface(type(IValidator).interfaceId) ||
+            rawType.length == 0 ||
+            !IValidator(newValidator).supportsAssetType(uint256(abi.decode(rawType, (uint8))))
+        ) revert ValidatorNotUsable(newValidator);
+        address previous = _validatorOf(tokenId);
+        _setTraitValue(tokenId, KEY_IS_VALIDATED, abi.encode(false));
+        _setTraitValue(tokenId, KEY_VALIDATOR, abi.encode(newValidator));
+        emit DeedValidatorReassigned(tokenId, previous, newValidator);
+        emit DeedValidated(tokenId, false);
     }
 
     // Metadata functions
 
     /**
      * @dev Updates the metadata of a deed.
-     *      Only callable by the owner or a validator.
-     *      If called by a non-validator, sets isValidated to false.
+     *      Only callable by the owner or the deed's own validator (or one of its signers).
+     *      If called by the owner, sets isValidated to false but keeps the recorded validator, so
+     *      royaltyInfo and later edits keep working (audit D-15).
      * @param tokenId ID of the deed.
      * @param uri New token URI (used as fallback if metadata renderer fails).
      * @param operatingAgreement New operating agreement.
@@ -554,7 +760,8 @@ contract DeedNFT is
         string memory operatingAgreement,
         string memory definition,
         string memory configuration
-    ) external whenNotPaused onlyValidatorOrOwner(tokenId) {
+    ) external whenNotPaused {
+        bool byValidator = _requireEditor(tokenId);
         require(
             bytes(operatingAgreement).length > 0,
             "Operating agreement cannot be empty"
@@ -565,10 +772,7 @@ contract DeedNFT is
         );
 
         // Check if operating agreement is valid
-        bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
-        address validatorAddress = validatorBytes.length > 0 
-            ? abi.decode(validatorBytes, (address)) 
-            : defaultValidator;
+        address validatorAddress = _validatorOf(tokenId);
 
         require(
             validatorAddress != address(0),
@@ -598,10 +802,12 @@ contract DeedNFT is
         _setTraitValue(tokenId, keccak256("definition"), abi.encode(definition));
         _setTraitValue(tokenId, keccak256("configuration"), abi.encode(configuration));
         
-        // If not called by validator, reset validation status
-        if (!hasRole(VALIDATOR_ROLE, msg.sender)) {
-            _setTraitValue(tokenId, keccak256("isValidated"), abi.encode(false));
-            _setTraitValue(tokenId, keccak256("validator"), abi.encode(address(0)));
+        // If not called by the deed's validator, reset validation status. The validator record is kept
+        // (audit D-15): writing address(0) made royaltyInfo and every later updateMetadata revert.
+        if (byValidator) {
+            emit DeedEditedByValidator(tokenId, validatorAddress, msg.sender);
+        } else {
+            _setTraitValue(tokenId, KEY_IS_VALIDATED, abi.encode(false));
         }
     }
     
@@ -616,21 +822,10 @@ contract DeedNFT is
      */
     function _setTraitValue(uint256 tokenId, bytes32 traitKey, bytes memory traitValue) internal {
         require(_exists(tokenId), "Token does not exist");
-        
-        // Check if this is a new trait key and add it to _allTraitKeys if it doesn't exist
-        bool traitExists = false;
-        for (uint i = 0; i < _allTraitKeys.length; i++) {
-            if (_allTraitKeys[i] == traitKey) {
-                traitExists = true;
-                break;
-            }
-        }
-        
-        // Add new trait key to the array if it doesn't exist
-        if (!traitExists) {
-            _allTraitKeys.push(traitKey);
-        }
-        
+
+        // Track the key on this token only (audit D-12)
+        _tokenTraitKeys[tokenId].add(traitKey);
+
         _tokenTraits[tokenId][traitKey] = traitValue;
         emit TraitUpdated(traitKey, tokenId, traitValue);
 
@@ -649,17 +844,39 @@ contract DeedNFT is
      * @param tokenId ID of the token
      * @param traitName Name of the trait to remove
      */
-    function removeTrait(uint256 tokenId, string memory traitName) external onlyValidatorOrOwner(tokenId) {
+    function removeTrait(uint256 tokenId, string memory traitName) external whenNotPaused {
         require(_exists(tokenId), "Token does not exist");
+        bool byValidator = _requireEditor(tokenId);
         bytes32 traitKey = keccak256(bytes(traitName));
-        require(!_isReservedTrait(traitKey) && traitKey != keccak256("assetType"), "Reserved trait");
+        require(!_isReservedTrait(traitKey) && traitKey != KEY_ASSET_TYPE, "Reserved trait");
         require(_tokenTraits[tokenId][traitKey].length > 0, "Trait does not exist");
+        if (byValidator) {
+            emit DeedEditedByValidator(tokenId, _validatorOf(tokenId), msg.sender);
+        } else if (_isValidated(tokenId) && _isValidatedTrait(tokenId, traitKey)) {
+            // Audit D-1: the holder cannot delete what the validator vouched for.
+            revert ValidatedTraitLocked(tokenId, traitKey);
+        }
         delete _tokenTraits[tokenId][traitKey];
+        _tokenTraitKeys[tokenId].remove(traitKey);
         emit TraitUpdated(traitKey, tokenId, "");
         
         // Sync deletion with MetadataRenderer
         if (metadataRenderer != address(0)) {
             try IMetadataRenderer(metadataRenderer).syncTraitUpdate(tokenId, traitKey, "") {} catch {}
+        }
+    }
+
+    /// @dev Trait names created by setTrait: 1-64 characters of [A-Za-z0-9_] (audit D-6).
+    function _requireTraitName(bytes memory name) private pure {
+        if (name.length == 0 || name.length > MAX_TRAIT_NAME_LENGTH) revert InvalidTraitName();
+        for (uint256 i = 0; i < name.length; i++) {
+            bytes1 c = name[i];
+            if (
+                !(c >= 0x30 && c <= 0x39) && // 0-9
+                !(c >= 0x41 && c <= 0x5a) && // A-Z
+                !(c >= 0x61 && c <= 0x7a) && // a-z
+                c != 0x5f                    // _
+            ) revert InvalidTraitName();
         }
     }
 
@@ -687,8 +904,12 @@ contract DeedNFT is
         bytes memory traitKey,
         bytes memory traitValue,
         uint8 valueType
-    ) external onlyValidatorOrOwner(tokenId) {
-        // _setTraitValue checks that the token exists.
+    ) external whenNotPaused {
+        // Who is writing: the deed's own validator (or a signer of it), the renderer (display-only keys),
+        // or the holder. Nobody else (audit D-2).
+        bool byValidator = _isDeedValidator(tokenId, msg.sender);
+        bool byRenderer = !byValidator && msg.sender == metadataRenderer && metadataRenderer != address(0);
+        if (!byValidator && !byRenderer && ownerOf(tokenId) != msg.sender) revert NotDeedEditor(tokenId, msg.sender);
         // Convert string trait name to bytes32 key if provided as string
         bytes32 key;
         bool isStringKey = false;
@@ -700,13 +921,22 @@ contract DeedNFT is
             // Assume it's a string and hash it
             key = keccak256(traitKey);
             isStringKey = true;
+            // Audit D-6: the name is stored and rendered, so keep it to [A-Za-z0-9_]{1,64}.
+            _requireTraitName(traitKey);
         }
 
         // Validation is written only by updateValidationStatus, updateMetadata and minting, so an
         // owner cannot mark their own deed validated or name its royalty receiver.
         require(!_isReservedTrait(key), "Reserved trait");
-        if (key == keccak256("assetType")) {
-            require(hasRole(VALIDATOR_ROLE, msg.sender), "Only a validator sets asset type");
+        if (key == KEY_ASSET_TYPE) {
+            require(byValidator, "Only a validator sets asset type");
+        }
+        if (byRenderer && key != KEY_CUSTOM_METADATA && key != KEY_GALLERY) revert RendererTraitNotAllowed(key);
+        if (byValidator) {
+            emit DeedEditedByValidator(tokenId, _validatorOf(tokenId), msg.sender);
+        } else if (!byRenderer) {
+            // Audit D-1: once validated, what the validator vouched for is the validator's to change.
+            if (_isValidated(tokenId) && _isValidatedTrait(tokenId, key)) revert ValidatedTraitLocked(tokenId, key);
         }
 
         // Handle different value types
@@ -726,7 +956,11 @@ contract DeedNFT is
         } else {
             revert("Invalid value type");
         }
-        
+        // A holder may only point the deed at an agreement its validator registered by name (audit D-1).
+        if (!byValidator && key == KEY_OPERATING_AGREEMENT) {
+            _requireRegisteredAgreement(tokenId, abi.decode(value, (string)));
+        }
+
         _setTraitValue(tokenId, key, value);
         
         // If trait was provided as string, set the trait name automatically
@@ -771,24 +1005,19 @@ contract DeedNFT is
      */
     function getTraitKeys(uint256 tokenId) external view returns (bytes32[] memory) {
         require(_exists(tokenId), "Token does not exist");
-        
-        // Count traits with values
+
+        // Scan only this token's own keys (audit D-12)
+        EnumerableSetUpgradeable.Bytes32Set storage keys = _tokenTraitKeys[tokenId];
+        uint256 n = keys.length();
+        bytes32[] memory traitKeys = new bytes32[](n);
         uint256 count;
-        for (uint i = 0; i < _allTraitKeys.length; i++) {
-            if (_tokenTraits[tokenId][_allTraitKeys[i]].length > 0) count++;
+        for (uint256 i = 0; i < n; i++) {
+            bytes32 key = keys.at(i);
+            if (_tokenTraits[tokenId][key].length > 0) traitKeys[count++] = key;
         }
-        
-        bytes32[] memory traitKeys = new bytes32[](count);
-        if (count == 0) return traitKeys;
-        
-        // Fill array
-        count = 0;
-        for (uint i = 0; i < _allTraitKeys.length; i++) {
-            if (_tokenTraits[tokenId][_allTraitKeys[i]].length > 0) {
-                traitKeys[count++] = _allTraitKeys[i];
-            }
+        assembly {
+            mstore(traitKeys, count)
         }
-        
         return traitKeys;
     }
     
@@ -889,9 +1118,10 @@ contract DeedNFT is
         override(ERC721Upgradeable, ERC721URIStorageUpgradeable, ERC721EnumerableUpgradeable, AccessControlUpgradeable, IERC165Upgradeable)
         returns (bool)
     {
-        return 
+        // ICreatorToken is not advertised (audit D-18): the stored transfer validator is never called,
+        // so claiming ERC721-C enforcement would mislead marketplaces.
+        return
             interfaceId == type(IERC2981Upgradeable).interfaceId ||
-            interfaceId == type(ICreatorToken).interfaceId ||
             interfaceId == 0xaf332f3e || // ERC-7496 (Dynamic Traits)
             super.supportsInterface(interfaceId);
     }
@@ -933,10 +1163,8 @@ contract DeedNFT is
     {
         require(_exists(tokenId), "Token does not exist");
         
-        // Get validator from traits
-        bytes memory validatorBytes = _tokenTraits[tokenId][keccak256("validator")];
-        require(validatorBytes.length > 0, "No validator found");
-        address validator = abi.decode(validatorBytes, (address));
+        // Get validator from traits (falls back to the default validator, audit D-15)
+        address validator = _validatorOf(tokenId);
         require(validator != address(0), "Invalid validator address");
         
         uint96 fee = IValidator(validator).getRoyaltyFeePercentage(tokenId);
@@ -998,7 +1226,8 @@ contract DeedNFT is
      * @param tokenId ID of the token to approve
      */
     function approve(address to, uint256 tokenId) public override(ERC721Upgradeable, IERC721Upgradeable) {
-        if (_enforceRoyalties && !isApprovedMarketplace(to)) {
+        // Clearing an approval (to == 0) is always allowed (audit D-18).
+        if (_enforceRoyalties && to != address(0) && !isApprovedMarketplace(to)) {
             revert("!mkt");
         }
         super.approve(to, tokenId);
@@ -1037,7 +1266,9 @@ contract DeedNFT is
     }
 
     /**
-     * @dev Sets the transfer validator address
+     * @dev Sets the transfer validator address.
+     *      Stored only: transfers never consult it, and ICreatorToken is not advertised (audit D-18).
+     *      Wiring it in would give the admin a power to block every transfer.
      * @param validator The address of the transfer validator
      */
     function setTransferValidator(address validator) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -1058,7 +1289,10 @@ contract DeedNFT is
 
     /**
      * @dev Hook that is called before any token transfer. Implements ERC721C compatibility.
-     * Updates the beneficiary trait to match the new owner during transfers.
+     * Updates the beneficiary trait to the new holder, except when the deed moves into an approved
+     * marketplace or custody contract (Fractionalize, Subdivide, an escrow): there the depositor stays
+     * the beneficiary (audit D-19). The trait is a convenience record of the last non-custody holder,
+     * not the legal beneficial owner.
      */
     function _beforeTokenTransfer(
         address from,
@@ -1075,8 +1309,10 @@ contract DeedNFT is
         else if (to == address(0)) _activeTokenCount--;
         // Regular transfer with royalty enforcement
         else if (_enforceRoyalties && _msgSender() != from && !_approvedMarketplaces[_msgSender()]) revert("!mkt");
-        // Update beneficiary trait on transfer
-        if (from != address(0) && to != address(0)) _setTraitValue(tokenId, keccak256("beneficiary"), abi.encode(to));
+        // Update beneficiary trait on transfer, unless the deed is only going into custody (audit D-19)
+        if (from != address(0) && to != address(0) && !_approvedMarketplaces[to]) {
+            _setTraitValue(tokenId, KEY_BENEFICIARY, abi.encode(to));
+        }
     }
 
     /**
@@ -1085,6 +1321,14 @@ contract DeedNFT is
      */
     function totalSupply() public view override(ERC721EnumerableUpgradeable) returns (uint256) {
         return _activeTokenCount;
+    }
+
+    /**
+     * @notice Returns a deed's asset type. Declared by IDeedNFT and used by Subdivide (audit D-23).
+     */
+    function getAssetType(uint256 tokenId) external view returns (uint8) {
+        require(_exists(tokenId), "Token does not exist");
+        return abi.decode(_tokenTraits[tokenId][KEY_ASSET_TYPE], (uint8));
     }
 
     /**

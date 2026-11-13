@@ -21,9 +21,13 @@ import "../core/interfaces/ISubdivide.sol";
  *      Each subdivision represents a collection of units or parcels tied to the original DeedNFT.
  *      
  * Security:
- * - Only DeedNFT owners can create and manage subdivisions
+ * - Only DeedNFT owners can create subdivisions. createSubdivision takes custody of the parent deed,
+ *   which stays in this contract until deactivateSubdivision (audit D-9): it cannot be sold or burned
+ *   while units are outstanding.
+ * - Collection admin rights belong to whoever holds the subdivided deed beneficially: the depositor, or
+ *   whoever the depositor handed the subdivision to with transferCollectionAdmin (audit D-10).
  * - Burning can be enabled/disabled per subdivision
- * - Deactivation requires ownership of all active units
+ * - Deactivation requires every unit to be burned, and returns the parent deed to the collection admin
  * - Unit-level validation and metadata management
  * 
  * Integration:
@@ -90,7 +94,7 @@ contract Subdivide is
      * @param activeUnits Current number of minted and non-burned units
      * @param isActive Operational status of the subdivision
      * @param burnable Whether token holders can burn their units
-     * @param collectionAdmin Address of the collection admin
+     * @param collectionAdmin Beneficial owner of the escrowed parent deed (the depositor or its successor)
      * @param subdivisionValidator Validator for this subdivision (inherits from parent if not set)
      * @param unitMetadata Custom metadata URIs for specific units
      */
@@ -226,6 +230,15 @@ contract Subdivide is
      */
     event SubdivisionValidatorUpdated(uint256 indexed deedId, address indexed validator);
 
+    // ============ Audit-fix errors ============
+
+    /// @dev isValidated, validator, beneficiary and parentDeed are never written by the collection admin (audit D-3).
+    error ReservedUnitTrait(bytes32 traitKey);
+    /// @dev Only the unit's recorded validator, or the subdivision's chosen validator, may give a verdict.
+    error NotUnitValidator(address caller);
+    /// @dev Deed IDs and unit IDs must each fit in 128 bits for the `(deedId << 128) | unitId` packing.
+    error IdOutOfRange();
+
     // ============ Upgrade Gap ============
 
     /// @dev Storage gap for future upgrades
@@ -334,7 +347,8 @@ contract Subdivide is
         bool burnable
     ) external whenNotPaused {
         require(deedNFT.ownerOf(deedId) == msg.sender, "Not deed owner");
-        
+        if (deedId >> 128 != 0 || totalUnits > type(uint128).max) revert IdOutOfRange();
+
         // Check if deed is validated
         (bool isValidated,) = deedNFT.getValidationStatus(deedId);
         require(isValidated, "Deed must be validated");
@@ -365,6 +379,11 @@ contract Subdivide is
         newSubdivision.collectionAdmin = msg.sender;
         newSubdivision.subdivisionValidator = address(0); // Will inherit from parent DeedNFT
 
+        // Audit D-9: take custody of the parent for the life of the subdivision, so it cannot be sold
+        // or burned while units claim the land. Needs the holder's approval and this contract as an
+        // approved marketplace on DeedNFT. Released only by deactivateSubdivision.
+        deedNFT.transferFrom(msg.sender, address(this), deedId);
+
         emit SubdivisionCreated(deedId, name, totalUnits);
     }
 
@@ -373,7 +392,7 @@ contract Subdivide is
      * @param deedId ID of the DeedNFT
      * @param burnable New burnable status
      */
-    function setBurnable(uint256 deedId, bool burnable) external onlyCollectionAdmin(deedId) {
+    function setBurnable(uint256 deedId, bool burnable) external whenNotPaused onlyCollectionAdmin(deedId) {
         require(subdivisions[deedId].isActive, "Subdivision not active");
         subdivisions[deedId].burnable = burnable;
         emit BurnableStatusChanged(deedId, burnable);
@@ -385,8 +404,9 @@ contract Subdivide is
      * @param unitId ID of the unit
      * @param metadata New metadata URI
      */
-    function setUnitMetadata(uint256 deedId, uint256 unitId, string calldata metadata) 
-        external 
+    function setUnitMetadata(uint256 deedId, uint256 unitId, string calldata metadata)
+        external
+        whenNotPaused
         onlyCollectionAdmin(deedId) 
     {
         require(subdivisions[deedId].isActive, "Subdivision not active");
@@ -401,8 +421,9 @@ contract Subdivide is
      * @param deedId ID of the DeedNFT
      * @param validator Address of the validator (address(0) to inherit from parent DeedNFT)
      */
-    function setSubdivisionValidator(uint256 deedId, address validator) 
-        external 
+    function setSubdivisionValidator(uint256 deedId, address validator)
+        external
+        whenNotPaused
         onlyCollectionAdmin(deedId) 
     {
         require(subdivisions[deedId].isActive, "Subdivision not active");
@@ -527,10 +548,9 @@ contract Subdivide is
     ) external whenNotPaused {
         require(subdivisions[deedId].isActive, "Subdivision not active");
         require(unitId < subdivisions[deedId].totalUnits, "Invalid unit ID");
-        
-        address deedOwner = deedNFT.ownerOf(deedId);
-        require(msg.sender == deedOwner, "Not deed owner");
-        
+
+        address deedOwner = _requireSubdivisionOwner(deedId);
+
         address recipient = to == address(0) ? deedOwner : to;
         uint256 tokenId = _generateTokenId(deedId, unitId);
         require(_unitOwners[tokenId] == address(0), "Unit already minted");
@@ -573,9 +593,8 @@ contract Subdivide is
     ) external whenNotPaused {
         require(subdivisions[deedId].isActive, "Subdivision not active");
         require(unitIds.length == recipients.length, "Array length mismatch");
-        
-        address deedOwner = deedNFT.ownerOf(deedId);
-        require(msg.sender == deedOwner, "Not deed owner");
+
+        address deedOwner = _requireSubdivisionOwner(deedId);
         
         // Validate and mint in single loop
         for (uint256 i = 0; i < unitIds.length; i++) {
@@ -609,19 +628,44 @@ contract Subdivide is
     }
 
     /**
-     * @dev Deactivates a subdivision if all units are owned by the DeedNFT owner or burned
+     * @dev Deactivates a subdivision once every unit is burned, and returns the escrowed parent deed to
+     *      the collection admin (its beneficial owner). Not pausable: it is the holder's exit.
      * @param deedId ID of the DeedNFT
      */
     function deactivateSubdivision(uint256 deedId) external {
-        address deedOwner = deedNFT.ownerOf(deedId);
-        require(deedOwner == msg.sender, "Not deed owner");
         require(subdivisions[deedId].isActive, "Subdivision not active");
+        _requireSubdivisionOwner(deedId);
 
         // Deactivation is only allowed once all outstanding units are burned.
         require(subdivisions[deedId].activeUnits == 0, "Outstanding units exist");
 
         subdivisions[deedId].isActive = false;
+        if (deedNFT.ownerOf(deedId) == address(this)) {
+            deedNFT.transferFrom(address(this), msg.sender, deedId);
+        }
         emit SubdivisionDeactivated(deedId);
+    }
+
+    /**
+     * @dev The account that controls a subdivision: the collection admin while this contract holds the
+     *      parent deed (audit D-9/D-10), otherwise the parent's current owner (subdivisions created
+     *      before custody existed). Reverts "Not deed owner" for anyone else.
+     */
+    function _subdivisionOwner(uint256 deedId) internal view returns (address) {
+        address holder = deedNFT.ownerOf(deedId);
+        return holder == address(this) ? subdivisions[deedId].collectionAdmin : holder;
+    }
+
+    function _requireSubdivisionOwner(uint256 deedId) internal view returns (address owner_) {
+        owner_ = _subdivisionOwner(deedId);
+        require(msg.sender == owner_, "Not deed owner");
+    }
+
+    /**
+     * @notice The beneficial owner of a subdivided deed held in custody here.
+     */
+    function subdivisionOwnerOf(uint256 deedId) external view returns (address) {
+        return _subdivisionOwner(deedId);
     }
 
     // ============ Validation Functions ============
@@ -639,10 +683,10 @@ contract Subdivide is
         uint256 unitId, 
         bool isValid, 
         address validatorAddress
-    ) external onlyRole(VALIDATOR_ROLE) {
+    ) external whenNotPaused onlyRole(VALIDATOR_ROLE) {
         require(subdivisions[deedId].isActive, "Subdivision not active");
         require(unitId < subdivisions[deedId].totalUnits, "Invalid unit ID");
-        
+
         require(
             validatorAddress == address(0) || validatorAddress == msg.sender,
             "Validator mismatch"
@@ -652,9 +696,17 @@ contract Subdivide is
             IValidatorRegistry(validatorRegistry).isValidatorActive(validator),
             "Validator not active"
         );
-        
+
         uint256 tokenId = _generateTokenId(deedId, unitId);
-        
+
+        // Per-unit authority (audit D-3, mirroring D-7): the unit's recorded validator, or the validator
+        // the collection admin chose for the subdivision. Another active validator cannot overwrite it.
+        bytes memory recorded = _unitTraits[tokenId][keccak256("validator")];
+        address recordedValidator = recorded.length > 0 ? abi.decode(recorded, (address)) : address(0);
+        if (validator != recordedValidator && validator != subdivisions[deedId].subdivisionValidator) {
+            revert NotUnitValidator(validator);
+        }
+
         // Update traits
         _setUnitTraitValue(tokenId, keccak256("isValidated"), abi.encode(isValid));
         _setUnitTraitValue(tokenId, keccak256("validator"), abi.encode(validator));
@@ -704,16 +756,17 @@ contract Subdivide is
         uint256 unitId,
         bytes32 traitKey,
         bytes memory traitValue
-    ) external onlyCollectionAdmin(deedId) {
+    ) external whenNotPaused onlyCollectionAdmin(deedId) {
         require(subdivisions[deedId].isActive, "Subdivision not active");
         require(unitId < subdivisions[deedId].totalUnits, "Invalid unit ID");
-        
+
         // Validate asset type changes if traitKey is assetType
         if (traitKey == keccak256("assetType")) {
             _validateAssetTypeChange(deedId, traitValue);
         }
-        
+
         uint256 tokenId = _generateTokenId(deedId, unitId);
+        _beforeAdminTraitWrite(deedId, unitId, tokenId, traitKey);
         _setUnitTraitValue(tokenId, traitKey, traitValue);
         
         emit UnitTraitUpdated(deedId, unitId, traitKey, traitValue);
@@ -814,15 +867,18 @@ contract Subdivide is
      * @param traitName Name of the trait to remove
      */
     function removeUnitTrait(uint256 deedId, uint256 unitId, string memory traitName) 
-        external 
-        onlyCollectionAdmin(deedId) 
+        external
+        whenNotPaused
+        onlyCollectionAdmin(deedId)
     {
         require(subdivisions[deedId].isActive, "Subdivision not active");
         require(unitId < subdivisions[deedId].totalUnits, "Invalid unit ID");
-        
+
         uint256 tokenId = _generateTokenId(deedId, unitId);
         bytes32 traitKey = keccak256(bytes(traitName));
         require(_unitTraits[tokenId][traitKey].length > 0, "Trait does not exist");
+        if (traitKey == keccak256("assetType")) revert ReservedUnitTrait(traitKey);
+        _beforeAdminTraitWrite(deedId, unitId, tokenId, traitKey);
         
         delete _unitTraits[tokenId][traitKey];
         emit UnitTraitUpdated(deedId, unitId, traitKey, "");
@@ -846,7 +902,7 @@ contract Subdivide is
         bytes memory traitKey,
         bytes memory traitValue,
         uint8 valueType
-    ) external onlyCollectionAdmin(deedId) {
+    ) external whenNotPaused onlyCollectionAdmin(deedId) {
         require(subdivisions[deedId].isActive, "Subdivision not active");
         require(unitId < subdivisions[deedId].totalUnits, "Invalid unit ID");
         
@@ -887,7 +943,8 @@ contract Subdivide is
         if (key == keccak256("assetType")) {
             _validateAssetTypeChange(deedId, value);
         }
-        
+
+        _beforeAdminTraitWrite(deedId, unitId, tokenId, key);
         _setUnitTraitValue(tokenId, key, value);
         
         // If trait was provided as string, set the trait name automatically
@@ -984,7 +1041,9 @@ contract Subdivide is
         bytes memory validatorBytes = _unitTraits[tokenId][keccak256("validator")];
         if (validatorBytes.length > 0) {
             address validator = abi.decode(validatorBytes, (address));
-            if (validator != address(0)) {
+            // Only an active registered validator receives unit royalties; anything else falls back to
+            // the parent deed (audit D-3).
+            if (validator != address(0) && IValidatorRegistry(validatorRegistry).isValidatorActive(validator)) {
                 uint96 fee = IValidator(validator).getRoyaltyFeePercentage(tokenId);
                 receiver = validator;
                 royaltyAmount = (salePrice * fee) / 10000;
@@ -1075,12 +1134,14 @@ contract Subdivide is
     }
 
     /**
-     * @notice Transfers collection admin rights to a new address
+     * @notice Transfers collection admin rights to a new address. While the parent deed is in custody
+     *         here, this hands over the beneficial ownership of the subdivided deed: the new admin is
+     *         the one who gets the deed back on deactivation (audit D-10).
      * @param deedId ID of the DeedNFT
      * @param newAdmin Address of the new admin
      */
-    function transferCollectionAdmin(uint256 deedId, address newAdmin) external {
-        require(subdivisions[deedId].collectionAdmin == msg.sender, "Not collection admin");
+    function transferCollectionAdmin(uint256 deedId, address newAdmin) external whenNotPaused {
+        require(_subdivisionOwner(deedId) == msg.sender, "Not collection admin");
         require(newAdmin != address(0), "Invalid admin address");
         
         address previousAdmin = subdivisions[deedId].collectionAdmin;
@@ -1089,11 +1150,43 @@ contract Subdivide is
     }
 
     /**
-     * @notice Modifier to restrict access to collection admin
+     * @notice Modifier to restrict access to collection admin. Admin rights follow the deed's beneficial
+     *         owner, not whoever created the subdivision (audit D-10).
      */
     modifier onlyCollectionAdmin(uint256 deedId) {
-        require(subdivisions[deedId].collectionAdmin == msg.sender, "Not collection admin");
+        require(_subdivisionOwner(deedId) == msg.sender, "Not collection admin");
         _;
+    }
+
+    /**
+     * @dev Guards every collection-admin trait write (audit D-3): the validation, validator, beneficiary
+     *      and parent-link traits are never the admin's to write, and editing a validated unit withdraws
+     *      its validation until its validator looks again.
+     */
+    function _beforeAdminTraitWrite(uint256 deedId, uint256 unitId, uint256 tokenId, bytes32 key) internal {
+        if (
+            key == keccak256("isValidated") ||
+            key == keccak256("validator") ||
+            key == keccak256("beneficiary") ||
+            key == keccak256("parentDeed")
+        ) revert ReservedUnitTrait(key);
+        bytes memory v = _unitTraits[tokenId][keccak256("isValidated")];
+        if (v.length > 0 && abi.decode(v, (bool))) {
+            _setUnitTraitValue(tokenId, keccak256("isValidated"), abi.encode(false));
+            emit UnitValidated(deedId, unitId, false);
+        }
+    }
+
+    /**
+     * @dev Royalty enforcement (audit D-17): when enforced, only approved marketplaces may be approved as
+     *      operators, as on DeedNFT. Revoking is always allowed.
+     */
+    function setApprovalForAll(address operator, bool approved)
+        public
+        override(ERC1155Upgradeable, IERC1155Upgradeable)
+    {
+        if (_enforceRoyalties && approved && !_approvedMarketplaces[operator]) revert("!mkt");
+        super.setApprovalForAll(operator, approved);
     }
 
     // ============ Internal Functions ============
@@ -1164,6 +1257,13 @@ contract Subdivide is
     ) internal override {
         super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
 
+        // Royalty enforcement (audit D-17): a third-party operator must be an approved marketplace.
+        // Holder-sent transfers and burns are never blocked, and pause does not stop them: units are
+        // the holders' property.
+        if (from != address(0) && to != address(0) && _enforceRoyalties && operator != from && !_approvedMarketplaces[operator]) {
+            revert("!mkt");
+        }
+
         for (uint256 i = 0; i < ids.length; i++) {
             require(amounts[i] == 1, "Invalid unit amount");
             uint256 tokenId = ids[i];
@@ -1183,8 +1283,12 @@ contract Subdivide is
 
                 uint256 deedId = tokenId >> 128;
                 uint256 unitId = tokenId & ((1 << 128) - 1);
-                _setUnitTraitValue(tokenId, keccak256("beneficiary"), abi.encode(to));
-                emit UnitTraitUpdated(deedId, unitId, keccak256("beneficiary"), abi.encode(to));
+                // A unit going into an approved marketplace or custody contract (e.g. Fractionalize) keeps
+                // its depositor as beneficiary (audit D-19).
+                if (!_approvedMarketplaces[to]) {
+                    _setUnitTraitValue(tokenId, keccak256("beneficiary"), abi.encode(to));
+                    emit UnitTraitUpdated(deedId, unitId, keccak256("beneficiary"), abi.encode(to));
+                }
             }
         }
     }

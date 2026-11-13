@@ -229,7 +229,7 @@ describe("DeedNFT", function() {
       });
 
       await expect(
-        deedNFT.connect(user1).mintAsset(
+        deedNFT.connect(user1).mintAssetWithMaxFee(
           user1.address,
           0, // AssetType.Land
           "ipfs://metadata2",
@@ -237,7 +237,8 @@ describe("DeedNFT", function() {
           "configuration2",
           await validator.getAddress(),
           await mockERC20.getAddress(),
-          1n // salt
+          1n, // salt
+          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
         )
       ).to.emit(deedNFT, "DeedNFTMinted");
     });
@@ -277,7 +278,7 @@ describe("DeedNFT", function() {
       });
 
       await expect(
-        deedNFT.mintAsset(
+        deedNFT.mintAssetWithMaxFee(
           user1.address,
           0, // AssetType.Land
           "ipfs://metadata1",
@@ -285,7 +286,8 @@ describe("DeedNFT", function() {
           "configuration1",
           await validator.getAddress(),
           await mockERC20.getAddress(), // token address
-          0n // salt
+          0n, // salt
+          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
         )
       ).to.be.reverted;
     });
@@ -323,7 +325,7 @@ describe("DeedNFT", function() {
       });
 
       await expect(
-        deedNFT.connect(user1).mintAsset(
+        deedNFT.connect(user1).mintAssetWithMaxFee(
           user1.address,
           0, // AssetType.Land
           "ipfs://metadata1",
@@ -331,7 +333,8 @@ describe("DeedNFT", function() {
           "configuration1",
           await validator.getAddress(),
           await mockERC20.getAddress(), // token address
-          0n // salt
+          0n, // salt
+          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
         )
       ).to.emit(deedNFT, "DeedNFTMinted")
         .withArgs(2, 0, user1.address, await validator.getAddress());
@@ -730,7 +733,8 @@ describe("DeedNFT", function() {
       await deedNFT.setMetadataRenderer(await newRenderer.getAddress());
       
       expect(await deedNFT.hasRole(VALIDATOR_ROLE, await oldRenderer.getAddress())).to.be.false;
-      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await newRenderer.getAddress())).to.be.true;
+      // Audit D-2: the renderer no longer receives VALIDATOR_ROLE; it may only write display traits.
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await newRenderer.getAddress())).to.be.false;
     });
   });
 

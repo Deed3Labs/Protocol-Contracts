@@ -70,6 +70,12 @@ contract FundManager is
      * @param initialCommissionPercentage Initial commission percentage in basis points.
      * @param _feeReceiver Address that receives commission fees.
      */
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        // Audit D-20: nobody can initialize the bare implementation.
+        _disableInitializers();
+    }
+
     function initialize(
         address _validatorRegistry,
         uint256 initialCommissionPercentage,
@@ -81,7 +87,8 @@ contract FundManager is
         
         require(_validatorRegistry != address(0), "FundManager: Invalid ValidatorRegistry address");
         require(_feeReceiver != address(0), "FundManager: Invalid fee receiver address");
-        require(initialCommissionPercentage <= 10000, "FundManager: Commission percentage exceeds 100%");
+        // Same 10% cap as setCommissionPercentage (audit D-23: the initializer allowed 100%).
+        require(initialCommissionPercentage <= 1000, "FundManager: Commission percentage exceeds 10%");
         
         validatorRegistry = _validatorRegistry;
         _commissionPercentage = initialCommissionPercentage;
@@ -255,8 +262,14 @@ contract FundManager is
         commissionAmount = (serviceFee * _commissionPercentage) / 10000;
         validatorAmount = serviceFee - commissionAmount;
         
-        // Transfer tokens from payer to this contract
+        // Transfer tokens from payer to this contract. Fee-on-transfer tokens would credit the validator
+        // more than arrived and leave this contract insolvent (audit D-23), so they are refused.
+        uint256 balanceBefore = IERC20Upgradeable(token).balanceOf(address(this));
         IERC20Upgradeable(token).safeTransferFrom(payer, address(this), serviceFee);
+        require(
+            IERC20Upgradeable(token).balanceOf(address(this)) - balanceBefore == serviceFee,
+            "FundManager: Fee-on-transfer token"
+        );
             
         // Update validator balance
         validatorBalances[validatorAddress][token] += validatorAmount;

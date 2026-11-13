@@ -361,6 +361,19 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      */
     function isValidated(uint256 tokenId) external view returns (bool);
 
+    /**
+     * @dev Whether `account` may act as this deed's validator: the validator contract recorded on the
+     *      deed (if active in the registry) or an account holding VALIDATOR_ROLE inside it. Validator
+     *      powers are scoped per deed (audit D-2, D-7, D-11).
+     */
+    function isDeedValidator(uint256 tokenId, address account) external view returns (bool);
+
+    /**
+     * @dev Whether a token ID was ever minted, including burned deeds. Such an ID is never minted again
+     *      (audit D-8).
+     */
+    function wasEverMinted(uint256 tokenId) external view returns (bool);
+
     // ============ Role Management Functions ============
     
     /**

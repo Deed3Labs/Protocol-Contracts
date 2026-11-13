@@ -171,19 +171,20 @@ contract ValidatorRegistry is
      * @dev Updates VALIDATOR_ROLE assignments in DeedNFT based on registry status.
      *      Grants role to active validators and revokes from inactive ones.
      */
-    function _updateDeedNFTRoles() internal {
+    /**
+     * @dev Syncs DeedNFT VALIDATOR_ROLE for the one validator whose status changed, instead of looping
+     *      over every registered validator on each update (audit D-23).
+     */
+    function _updateDeedNFTRoles(address validator) internal {
         if (deedNFT == address(0)) return;
 
-        for (uint256 i = 0; i < validatorAddresses.length; i++) {
-            address validator = validatorAddresses[i];
-            bool isActive = validators[validator].isActive;
-            bool hasRole = IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator);
+        bool isActive = validators[validator].isActive && bytes(validators[validator].name).length > 0;
+        bool hasRole = IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator);
 
-            if (isActive && !hasRole) {
-                IDeedNFT(deedNFT).addValidator(validator);
-            } else if (!isActive && hasRole) {
-                IDeedNFT(deedNFT).removeValidator(validator);
-            }
+        if (isActive && !hasRole) {
+            IDeedNFT(deedNFT).addValidator(validator);
+        } else if (!isActive && hasRole) {
+            IDeedNFT(deedNFT).removeValidator(validator);
         }
     }
 
@@ -249,6 +250,19 @@ contract ValidatorRegistry is
             }
         }
 
+        // Prune the per-asset-type lists too (audit D-23)
+        uint256[] memory types = validators[validator].supportedAssetTypes;
+        for (uint256 t = 0; t < types.length; t++) {
+            address[] storage list = assetTypeValidators[types[t]];
+            for (uint256 i = 0; i < list.length; i++) {
+                if (list[i] == validator) {
+                    list[i] = list[list.length - 1];
+                    list.pop();
+                    break;
+                }
+            }
+        }
+
         // Revoke VALIDATOR_ROLE in DeedNFT if present
         if (deedNFT != address(0) && IDeedNFT(deedNFT).hasRole(IDeedNFT(deedNFT).VALIDATOR_ROLE(), validator)) {
             IDeedNFT(deedNFT).removeValidator(validator);
@@ -257,7 +271,6 @@ contract ValidatorRegistry is
         delete validators[validator];
         emit ValidatorRegistered(validator, "", new uint256[](0));
         _updateFundManagerRoles();
-        _updateDeedNFTRoles();
     }
 
     /**
@@ -376,7 +389,7 @@ contract ValidatorRegistry is
         validators[validator].isActive = isActive;
         emit ValidatorStatusUpdated(validator, isActive);
         _updateFundManagerRoles();
-        _updateDeedNFTRoles();
+        _updateDeedNFTRoles(validator);
     }
 
     /**
