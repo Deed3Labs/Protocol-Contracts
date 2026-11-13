@@ -54,23 +54,31 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     expect((await term.planAt(0)).ratePerCycle).to.equal(187n);
   });
 
-  it("acceptance 5: $940 in 4 at 2% carries ~$18.54, $13.91, $9.27, $4.64 -- each under the cap on what is left", async function () {
+  it("acceptance 5 (section 12.9): $940 in 4 at 2% is levelled -- four equal payments, $47.47 of carry, each cycle 2% of what is unpaid and under the cap on it", async function () {
     const { term, ctx } = core;
     await open(ctx.member, 940n * ONE_USDC, 4);
-    const expected = [940n, 705n, 470n, 235n].map((p) => thirtyDays(p * ONE_USDC * 2n / 100n));
-    const caps = [19_725_000n, 15_225_000n, 10_525_000n, 5_825_000n].map(thirtyDays);
-    const carried: bigint[] = [];
+    const [payment, total] = await term.scheduleOf(0);
+    expect(payment).to.be.closeTo(246_866_000n, 1_000n);            // $246.87 each
+    expect(total - 940n * ONE_USDC).to.be.closeTo(47_466_000n, 4_000n); // $47.47 of carry
+    // The graduated cap on what is unpaid, per month (a 30-day cycle is charged the monthly figure).
+    const capOn = (p: bigint) => p <= 900n * ONE_USDC
+      ? 5_625_000n + ((p - 225n * ONE_USDC) * 200n) / 10_000n
+      : 19_125_000n + ((p - 900n * ONE_USDC) * 150n) / 10_000n;
+    let carried = 0n;
     for (let k = 0; k < 4; k++) {
+      const plan = await term.planAt(0);
+      const unpaid = plan.principalOutstanding - (await term.carryOutstandingOf(0));
       const before = await term.carryOutstandingOf(0);
       await advance(CYCLE);
       await term.materialiseCarry(0);
       const carry = (await term.carryOutstandingOf(0)) - before;
-      carried.push(carry);
-      expect(carry).to.be.closeTo(expected[k], 20_000n);
-      expect(carry).to.be.lte(caps[k]);
+      expect(carry).to.be.closeTo((unpaid * 2n) / 100n, 2_000n);
+      expect(carry).to.be.lte(capOn(unpaid) + 1_000n);
+      carried += carry;
       await payDue(0);
     }
-    expect(carried.reduce((a, b) => a + b, 0n)).to.be.closeTo(thirtyDays(47_000_000n), 50_000n); // ~$46.36
+    expect(carried).to.be.closeTo(47_466_000n, 20_000n);
+    expect((await term.planAt(0)).principalOutstanding).to.be.lte(100n); // paid off, to accumulator rounding ($0.0001)
   });
 
   it("acceptance 5: an In-full plan and a plan under freeBelowAmount accrue $0.00 forever, even 60 days past due", async function () {
@@ -93,11 +101,14 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     await open(ctx.member, 940n * ONE_USDC, 4);
     await advance(CYCLE);
     await payDue(0);
-    expect((await term.planAt(0)).principalOutstanding - (await term.carryOutstandingOf(0))).to.be.closeTo(705n * ONE_USDC, 100n);
+    // One levelled payment of $246.87 cleared $18.80 of carry and $228.07 of principal.
+    const [payment] = await term.scheduleOf(0);
+    const left = (await term.planAt(0)).principalOutstanding - (await term.carryOutstandingOf(0));
+    expect(left).to.be.closeTo(940n * ONE_USDC - (payment - 18_800_000n), 2_000n);
 
     await expect(term.connect(ctx.member).setSplit(0, 12)).to.be.revertedWithCustomError(term, "TermIssuerResplitNeedsSignature");
 
-    const rate = await rates.effectiveMonthlyBps(CA, PARTNER, 705n * ONE_USDC);
+    const rate = await rates.effectiveMonthlyBps(CA, PARTNER, left);
     const nonce = await term.planNonces(ctx.member.address);
     const { chainId } = await ethers.provider.getNetwork();
     const sig = await ctx.member.signTypedData(
@@ -181,7 +192,8 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     // $18.80 list charge, so it is trimmed; the line's share ($17.15) is above its $15.00 list,
     // so the line is charged in full.
     const share = (33_275_000n * 940n) / 1_940n;
-    expect(await term.carryOutstandingOf(0)).to.be.closeTo(thirtyDays(share), 20_000n);
+    // A term plan is charged per 30-day cycle (section 12.9), so a full cycle is the whole share.
+    expect(await term.carryOutstandingOf(0)).to.be.closeTo(share, 20_000n);
     expect(await revolving.carryOf(ctx.member.address, INCOME)).to.be.closeTo(thirtyDays(15_000_000n), 5_000n);
 
     // Off: each loan is capped alone, and the plan pays its list rate.
@@ -190,7 +202,7 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     expect(await rates.aggregatePrincipalOf(ctx.member.address)).to.equal(0n);
     await advance(CYCLE);
     await term.materialiseCarry(0);
-    expect(await term.carryOutstandingOf(0)).to.be.closeTo(thirtyDays(18_800_000n), 20_000n);
+    expect(await term.carryOutstandingOf(0)).to.be.closeTo(18_800_000n, 20_000n);
     // Only the governor (the credit timelock in production) can flip it.
     await expect(rates.connect(ctx.member).setCflAggregation(true)).to.be.reverted;
   });

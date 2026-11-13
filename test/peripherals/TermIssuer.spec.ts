@@ -233,7 +233,7 @@ describe("TermIssuer", function () {
     // from carry-so-far is right about what is owed and wrong about what the member was told:
     // the figure climbs all term, and every rise is a support call the co-op loses.
 
-    it("asks a fixed, known amount each period: equal principal plus carry on what is still owed (compliance spec item 5)", async function () {
+    it("asks a fixed, known amount each period: one levelled payment of principal plus carry (section 12.9)", async function () {
       await setLimit(2_000n * ONE_USDC);
       await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 65n, 12);
 
@@ -246,13 +246,9 @@ describe("TermIssuer", function () {
         previous = cumulative;
       }
 
-      // The first period asks for the quoted figure; each later one asks a little less, because
-      // its carry runs on a smaller unpaid principal. Known in advance, so it never creeps up.
+      // Every period asks the quoted payment: levelled, so it never moves and never creeps up.
       const [quoted, total] = await issuer.scheduleOf(0);
-      expect(steps[0]).to.be.closeTo(quoted, 2n);
-      for (let i = 1; i < 12; i++) {
-        expect(steps[i]).to.be.lessThanOrEqual(steps[i - 1] + 1n);
-      }
+      for (let i = 0; i < 12; i++) expect(steps[i]).to.equal(quoted);
       expect(steps.reduce((a, b) => a + b, 0n)).to.equal(total);
     });
 
