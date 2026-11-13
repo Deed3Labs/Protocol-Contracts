@@ -7,6 +7,8 @@ import { heldDrawsByTier } from '../services/lithic/cardTransactionsService.js';
 import { recordUsdcRepayment } from '../services/chain/usdcRepaymentService.js';
 import { autoRepayStatus, setAutoRepayChoice } from '../services/chain/autoRepayService.js';
 import { repaymentHistory } from '../services/credit/repaymentHistory.js';
+import { prepareResplit, submitResplit } from '../services/planResplit.js';
+import { requireStepUp } from '../middleware/stepUp.js';
 
 /*
  * A member's credit line, assembled from the contracts that hold it.
@@ -66,6 +68,9 @@ creditRouter.get('/:wallet', async (req: Request, res: Response) => {
       // What of a member's savings cannot leave. Carried because it is not derivable from the
       // tiers: encumbrance follows what is drawn, not what is pledged.
       savingsEncumberedCents: credit.savingsEncumberedCents,
+      // Phase 2: lines and plans need an attested state. False means "not confirmed yet", which the
+      // app says in those words rather than as a refusal. Null: unread, or a pre-Phase 2 network.
+      stateConfirmed: credit.stateConfirmed,
       /*
        * Card authorizations the member is holding right now, per tier — OFF CHAIN, deliberately.
        *
@@ -188,6 +193,47 @@ creditRouter.post('/:wallet/auto-repay', async (req: Request, res: Response) => 
     console.error('[credit] auto-repay set failed', error);
     return res.status(500).json({ error: 'Failed to set' });
   }
+});
+
+/*
+ * Re-splitting a plan when it costs more (Phase 2, spec item 6). `prepare` says whether the new
+ * split needs the member's signature; when it does not, the member's wallet calls `setSplit` as
+ * before. When it does, the phone signs `Resplit` and posts it here, and the operator submits
+ * `resplitWithSignature`. Changing what a member owes takes a fresh Face ID, like approving a plan.
+ */
+function planParams(req: Request, res: Response): { planId: number; installments: number } | null {
+  const planId = Number(req.params.planId);
+  const installments = Number(req.body?.installments);
+  if (!Number.isInteger(planId) || planId < 0 || !Number.isInteger(installments) || installments < 1) {
+    res.status(400).json({ error: 'Invalid split', message: 'planId and installments must be whole numbers.' });
+    return null;
+  }
+  return { planId, installments };
+}
+
+creditRouter.post('/:wallet/plans/:planId/split/prepare', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const params = planParams(req, res);
+  if (!params) return;
+  const result = await prepareResplit(wallet, params.planId, params.installments);
+  if (!result.ok) return res.status(409).json({ error: 'Could not prepare', message: result.reason });
+  return res.json(result);
+});
+
+creditRouter.post('/:wallet/plans/:planId/split', requireStepUp, async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const params = planParams(req, res);
+  if (!params) return;
+  const result = await submitResplit(wallet, params.planId, {
+    installments: params.installments,
+    rateBps: String(req.body?.rateBps ?? ''),
+    deadline: Number(req.body?.deadline),
+    signature: String(req.body?.signature ?? ''),
+  });
+  if (!result.ok) return res.status(409).json({ error: 'Could not change the split', message: result.reason });
+  return res.json(result);
 });
 
 export default creditRouter;

@@ -9,15 +9,19 @@ import { alertOps } from './opsAlert.js';
 import {
   buildPlanTerms,
   dollars,
+  isOfferedPlanSplit,
   PAY_OVER_TIME_MIN_CENTS,
+  PLAN_PRODUCTS,
   PLAN_SIGNATURE_TTL_SECONDS,
   planTermsArg,
   planTermsTypedData,
   samePlanTerms,
+  type PlanQuote,
   type PlanTerms,
   type PlanTermsTypedData,
 } from '@clear/domain';
-import { decodeChainError } from './chain/chainErrors.js';
+import { decodeChainError, describeCreditRefusal } from './chain/chainErrors.js';
+import { quoteTermPlan } from './chain/planPricing.js';
 import { memberAppUrl } from './memberAppUrl.js';
 import { onlineOverTime } from './merchant/pay/overTime.js';
 
@@ -53,14 +57,20 @@ const MERCHANT_ABI = [
 /*
  * `openPlan` takes the terms the member signed (audit H-4). The struct, its EIP-712 typed data and
  * the disclosure hash are defined once, in @clear/domain's planTerms, and built here from the charge.
+ *
+ * Phase 2: the struct carries `productId` after `merchant`, and `PlanOpened` carries everything the
+ * disclosure needs to be reproduced (merchant, principal, split, rate, schedule hash, total carry,
+ * disclosure hash). Only `planId` is read from it here, but the signature has to be the contract's
+ * or the log never parses and a mined plan reads as "no PlanOpened".
  */
-const TERM_ISSUER_ABI = [
-  'function openPlan((address member, address merchant, uint256 purchase, uint256 payout, uint256 ratePerCycle, uint64 cycleLength, uint32 installments, uint64 installmentLength, bytes32 disclosureHash, uint256 deadline) terms, bytes signature) returns (uint256)',
+export const TERM_ISSUER_ABI = [
+  'function openPlan((address member, address merchant, bytes32 productId, uint256 purchase, uint256 payout, uint256 ratePerCycle, uint64 cycleLength, uint32 installments, uint64 installmentLength, bytes32 disclosureHash, uint256 deadline) terms, bytes signature) returns (uint256)',
   'function planNonces(address member) view returns (uint256)',
   'function isOfferedSplit(uint32 installments) pure returns (bool)',
   'function termLimitOf(address) view returns (uint256)',
   'function totalPrincipalOf(address member) view returns (uint256)',
-  'event PlanOpened(uint256 indexed planId, address indexed member, uint256 purchase, uint256 ratePerCycle, uint32 installments)',
+  'event PlanOpened(uint256 indexed planId, address indexed member, address indexed merchant, uint256 principal, uint32 split, uint256 rateBps, bytes32 scheduleHash, uint256 totalCarry, bytes32 disclosureHash)',
+  'event PlanTermsSigned(uint256 indexed planId, address indexed member, bytes32 disclosureHash, uint256 nonce)',
 ];
 
 const ISSUER_ABI = ['function cycleLength() view returns (uint64)'];
@@ -68,8 +78,8 @@ const ISSUER_ABI = ['function cycleLength() view returns (uint64)'];
 /** A charge is answerable for a day. The reference says so on the screen, so it is not a knob. */
 export const CHARGE_TTL_SECONDS = 24 * 60 * 60;
 
-/** 2% a cycle on what is still owed — the figure the approval screen quotes. */
-const DEFAULT_RATE_BPS = 200;
+/** A purchase at a partner shop is the RateSchedule's PARTNER product. */
+const CHARGE_PRODUCT = PLAN_PRODUCTS.PARTNER;
 
 export function chainId(): number {
   const raw = (process.env.SAVINGS_DEFAULT_CHAIN_ID || process.env.SEND_DEFAULT_CHAIN_ID || '').trim();
@@ -410,6 +420,9 @@ export async function declineCharge(code: string, member: string): Promise<Resol
  */
 export function explainChainError(error: unknown): string {
   const parsed = decodeChainError(error);
+  // Phase 2: the state gate, on-chain pricing, the large-loan term, CLRUSD pauses.
+  const phase2 = describeCreditRefusal(parsed);
+  if (phase2) return phase2;
   switch (parsed?.name) {
     case 'TermIssuerExceedsTermLimit': {
       const limit = Number(parsed.args.limit) / 1_000_000;
@@ -465,16 +478,18 @@ async function memberCycleSeconds(): Promise<bigint> {
 }
 
 /**
- * The plan terms for a charge, built the one way (@clear/domain planTerms). Same rate, cycle and
- * split rules for everyone; the member's choice is the split and nothing else. `deadline` is when
- * their signature stops being good.
+ * The plan terms for a charge, built the one way (@clear/domain planTerms). The member's choice is
+ * the split and nothing else; the rate and the payout are the chain's quote for that split
+ * (`quoteTermPlan`), because `openPlan` refuses any others. `deadline` is when their signature
+ * stops being good.
  */
 export function chargePlanTerms(
-  charge: Pick<ChargeRow, 'memberWallet' | 'merchantAddress' | 'merchantName' | 'amountCents' | 'payoutCents'>,
+  charge: Pick<ChargeRow, 'memberWallet' | 'merchantAddress' | 'merchantName' | 'amountCents'>,
   installments: number,
   cycleSeconds: bigint,
   deadline: number,
-  amounts?: { purchaseCents: number; payoutCents: number },
+  quote: Pick<PlanQuote, 'rateBps' | 'payout'>,
+  purchaseCents?: number,
 ): { terms: PlanTerms; disclosure: string[] } {
   // A charge reaches a plan only once a member has answered it, so it always has one here.
   if (!charge.memberWallet) throw new Error('a plan needs a member');
@@ -482,15 +497,49 @@ export function chargePlanTerms(
     member: ethers.getAddress(charge.memberWallet),
     merchant: ethers.getAddress(charge.merchantAddress),
     merchantName: charge.merchantName,
-    purchaseCents: amounts?.purchaseCents ?? charge.amountCents,
-    payoutCents: amounts?.payoutCents ?? charge.payoutCents,
-    ratePerCycleBps: DEFAULT_RATE_BPS,
+    productId: CHARGE_PRODUCT,
+    purchaseCents: purchaseCents ?? charge.amountCents,
+    payout: quote.payout,
+    ratePerCycleBps: quote.rateBps,
     cycleLengthSeconds: Number(cycleSeconds),
     installments,
     installmentLengthSeconds: Number(cycleSeconds),
     deadline,
     keccakUtf8: (text) => ethers.id(text),
   });
+}
+
+/**
+ * The chain's price for a charge on this split: `_quote` for the member, the shop and the PARTNER
+ * product. A refusal comes back as a sentence; a member whose state nobody has attested is told
+ * exactly that.
+ */
+async function quoteCharge(
+  charge: Pick<ChargeRow, 'memberWallet' | 'merchantAddress' | 'amountCents'>,
+  termIssuerAddress: string,
+  installments: number,
+  cycleSeconds: bigint,
+  purchaseCents?: number,
+): Promise<{ ok: true; quote: PlanQuote } | { ok: false; reason: string; code?: string }> {
+  if (!charge.memberWallet) return { ok: false, reason: 'a plan needs a member' };
+  const priced = await quoteTermPlan({
+    provider: provider(),
+    termIssuer: termIssuerAddress,
+    member: ethers.getAddress(charge.memberWallet),
+    merchant: ethers.getAddress(charge.merchantAddress),
+    productId: CHARGE_PRODUCT,
+    principal: BigInt(purchaseCents ?? charge.amountCents) * 10_000n,
+    installments,
+    installmentLength: cycleSeconds,
+  });
+  if (!priced.ok) return { ok: false, reason: priced.reason, code: priced.refusal.kind };
+  return { ok: true, quote: priced.quote };
+}
+
+/** Whether TermIssuer offers this split, with the 13-cycle option a large loan may take. */
+async function splitOffered(issuer: ethers.Contract, installments: number, largeLoan: boolean): Promise<boolean> {
+  if (installments === 13) return isOfferedPlanSplit(installments, largeLoan);
+  return Boolean(await issuer.isOfferedSplit(installments));
 }
 
 /** The server's rules a charge has to pass before it can go on a plan. Writes nothing. */
@@ -517,8 +566,9 @@ async function planPrecheck(
 }
 
 export type PrepareResult =
-  | { ok: true; typedData: PlanTermsTypedData; disclosure: string[] }
-  | { ok: false; reason: string };
+  | { ok: true; typedData: PlanTermsTypedData; disclosure: string[]; free: boolean }
+  /** `code` is `state_not_confirmed` when nobody has attested the member's state yet. */
+  | { ok: false; reason: string; code?: string };
 
 /**
  * Step one of approving over time: the terms the member is about to sign (audit H-4).
@@ -539,19 +589,24 @@ export async function prepareChargeApproval(code: string, member: string, instal
 
   try {
     const issuer = new ethers.Contract(gate.termIssuerAddress, TERM_ISSUER_ABI, provider());
-    if (!(await issuer.isOfferedSplit(installments))) {
-      return { ok: false, reason: 'That way of splitting is not offered on this purchase.' };
-    }
     const [cycle, nonce]: [bigint, bigint] = await Promise.all([
       memberCycleSeconds(),
       issuer.planNonces(existing.memberWallet),
     ]);
+    // Priced on chain (Phase 2): the rate and payout the member signs are the ones `openPlan`
+    // computes, or it reverts. The state gate is part of the same read.
+    const priced = await quoteCharge(existing, gate.termIssuerAddress, installments, cycle);
+    if (!priced.ok) return { ok: false, reason: priced.reason, code: priced.code };
+    if (!(await splitOffered(issuer, installments, priced.quote.largeLoan))) {
+      return { ok: false, reason: 'That way of splitting is not offered on this purchase.' };
+    }
     const deadline = Math.floor(Date.now() / 1000) + PLAN_SIGNATURE_TTL_SECONDS;
-    const { terms, disclosure } = chargePlanTerms(existing, installments, cycle, deadline);
+    const { terms, disclosure } = chargePlanTerms(existing, installments, cycle, deadline, priced.quote);
     return {
       ok: true,
       typedData: planTermsTypedData({ chainId: chainId(), termIssuer: ethers.getAddress(gate.termIssuerAddress), terms, nonce }),
       disclosure,
+      free: priced.quote.free,
     };
   } catch (error) {
     console.error('[charge] preparing plan terms failed for', code, error instanceof Error ? error.message : error);
@@ -617,9 +672,19 @@ export async function approveCharge(
     const signer = new ethers.Wallet(key, provider());
     const issuer = new ethers.Contract(termIssuerAddress, TERM_ISSUER_ABI, signer);
 
+    // Priced again, now: the terms submitted have to be the chain's quote at the moment `openPlan`
+    // runs, and a rate or payout that moved since the member signed is refused here rather than
+    // reverted into (TermIssuerTermsMismatch).
+    const cycle = await memberCycleSeconds();
+    const priced = await quoteCharge(claimed, termIssuerAddress, installments, cycle);
+    if (!priced.ok) {
+      await chargeStore.release(code);
+      return { ok: false, reason: priced.reason };
+    }
+
     // Asked rather than assumed: the offered splits are a contract rule, and a UI listing one the
     // chain does not take would fail at the last possible moment.
-    if (!(await issuer.isOfferedSplit(installments))) {
+    if (!(await splitOffered(issuer, installments, priced.quote.largeLoan))) {
       await chargeStore.release(code);
       return { ok: false, reason: 'That way of splitting is not offered on this purchase.' };
     }
@@ -650,15 +715,24 @@ export async function approveCharge(
     }
 
     /*
-     * The terms are rebuilt from the charge, never taken from the request. What the member signed
-     * has to be exactly this charge's plan (amount, shop, payout, rate, cycle, split and disclosure)
-     * under the deadline they signed. A client that changed any of it is refused before anything
-     * is sent; the contract checks the signature itself, at the member's current nonce.
+     * The terms are rebuilt from the charge and the chain's quote, never taken from the request.
+     * What the member signed has to be exactly this charge's plan (amount, shop, product, payout,
+     * rate, cycle, split and disclosure) under the deadline they signed. A client that changed any
+     * of it, or terms the chain would now price differently, is refused before anything is sent;
+     * the contract checks the signature itself, at the member's current nonce.
      */
-    const expected = chargePlanTerms(claimed, installments, await memberCycleSeconds(), deadline);
+    const expected = chargePlanTerms(claimed, installments, cycle, deadline, priced.quote);
     if (!samePlanTerms(expected.terms, signed.terms)) {
       await chargeStore.release(code);
-      return { ok: false, reason: 'The terms you signed are not this charge’s. Nothing was charged — approve again.' };
+      const repriced =
+        String(expected.terms.ratePerCycle) !== String(signed.terms?.ratePerCycle) ||
+        String(expected.terms.payout) !== String(signed.terms?.payout);
+      return {
+        ok: false,
+        reason: repriced
+          ? 'The plan’s rate changed after you signed. Nothing was charged. Approve again to see and sign the current terms.'
+          : 'The terms you signed are not this charge’s. Nothing was charged — approve again.',
+      };
     }
 
     const tx = await issuer.openPlan(planTermsArg(expected.terms), signed.signature.trim());
@@ -683,6 +757,9 @@ export async function approveCharge(
       splitInto: installments,
       planId,
       txHash: receipt?.hash ?? tx.hash,
+      // The chain's payout for this split (in units, floored to the cent), not the default discount
+      // the charge was raised with.
+      payoutCents: Number(BigInt(expected.terms.payout) / 10_000n),
     });
     return { ok: true, charge: done ?? undefined };
   } catch (error) {
@@ -843,7 +920,12 @@ export async function reconcileCharges(olderThanSeconds = 120): Promise<Reconcil
  *
  * A NEW plan, opened now, for what was unwound. That is how "the time it spent in dispute is added
  * back" is kept: carry and the schedule start from today, so the weeks it spent in dispute cost the
- * member nothing. Same terms as the original -- rate, cycle, and the split the member chose.
+ * member nothing. Same split as the original; the rate and the shop's payout are today's quote for
+ * what is put back (Phase 2: `openPlan` prices on chain and refuses anything else).
+ *
+ * A plan opens only on terms the member signed (audit H-4), and that includes this one. Without a
+ * signature this alerts ops and returns `needsSignature`; the member signs from their disputes list
+ * (`prepareReopenAfterDispute`, then `POST /api/disputes/:token/reopen`), and this opens it.
  */
 export async function reopenPlanAfterDispute(
   charge: ChargeRow,
@@ -854,27 +936,20 @@ export async function reopenPlanAfterDispute(
   const termIssuerAddress = getContractAddress(chainId(), 'TermIssuer');
   if (!termIssuerAddress) return { ok: false, reason: 'no term issuer on this chain' };
 
-  // The merchant's share in the sale's own proportion, floored like the refund path.
-  const amounts = {
-    purchaseCents: principalCents,
-    payoutCents: charge.amountCents > 0 ? Math.floor((charge.payoutCents * principalCents) / charge.amountCents) : 0,
-  };
-
   /*
-   * A plan opens only on terms the member signed (audit H-4), and that includes this one. The
-   * server used to reopen it on its own key; it cannot any more, and should not: a new plan is a
-   * new obligation. Until the member signs the reopened terms (a Phase 2 flow, alongside re-split),
-   * the amount stays off any plan and a person is told, with the figures, rather than it being
-   * silently forgiven or silently re-owed.
+   * The server used to reopen it on its own key; it cannot any more, and should not: a new plan is a
+   * new obligation. Until the member signs the reopened terms the amount stays off any plan and a
+   * person is told, with the figures, rather than it being silently forgiven or silently re-owed.
    */
   if (!signed) {
     await alertOps({
       key: `charge:${charge.code}:reopen-needs-signature`,
-      subject: `Charge ${charge.code}: plan not reopened after the dispute (needs the member's signature)`,
+      subject: `Charge ${charge.code}: plan not reopened after the dispute (waiting for the member's signature)`,
       body:
         `The dispute went against ${charge.memberWallet}, and ${principalCents}c of ${charge.merchantName}'s charge ` +
-        `should go back on a ${charge.splitInto ?? 1}-installment plan. TermIssuer.openPlan now needs the member's ` +
-        `EIP-712 signature over the terms, so it was not reopened. Ask the member to sign the reopened plan.`,
+        `should go back on a ${charge.splitInto ?? 1}-installment plan. TermIssuer.openPlan needs the member's ` +
+        `EIP-712 signature over the terms. The member can sign it from their disputes list in the app ` +
+        `(POST /api/disputes/<token>/reopen); until then it is on no plan.`,
     }).catch(() => {});
     return { ok: false, needsSignature: true, reason: 'reopening the plan needs the member’s signature' };
   }
@@ -884,15 +959,13 @@ export async function reopenPlanAfterDispute(
 
   try {
     const issuer = new ethers.Contract(termIssuerAddress, TERM_ISSUER_ABI, new ethers.Wallet(key, provider()));
-    const expected = chargePlanTerms(
-      charge,
-      charge.splitInto ?? 1,
-      await memberCycleSeconds(),
-      Number(signed.terms.deadline),
-      amounts,
-    );
+    const installments = charge.splitInto ?? 1;
+    const cycle = await memberCycleSeconds();
+    const priced = await quoteCharge(charge, termIssuerAddress, installments, cycle, principalCents);
+    if (!priced.ok) return { ok: false, reason: priced.reason };
+    const expected = chargePlanTerms(charge, installments, cycle, Number(signed.terms.deadline), priced.quote, principalCents);
     if (!samePlanTerms(expected.terms, signed.terms)) {
-      return { ok: false, reason: 'The terms signed are not this plan’s.' };
+      return { ok: false, reason: 'The terms signed are not this plan’s, or its rate changed since. Nothing was opened. Sign again.' };
     }
     const tx = await issuer.openPlan(planTermsArg(expected.terms), signed.signature.trim());
     const receipt = await tx.wait();
@@ -909,5 +982,34 @@ export async function reopenPlanAfterDispute(
   } catch (error) {
     console.error('[dispute] reopening plan failed for', charge.code, error);
     return { ok: false, reason: explainChainError(error) };
+  }
+}
+
+/**
+ * The terms a member signs to put a disputed purchase back on a plan: `prepareChargeApproval` for
+ * the amount that was unwound, on the split they had chosen. Writes nothing.
+ */
+export async function prepareReopenAfterDispute(charge: ChargeRow, principalCents: number): Promise<PrepareResult> {
+  if (principalCents <= 0) return { ok: false, reason: 'There is nothing to put back on a plan.' };
+  const termIssuerAddress = getContractAddress(chainId(), 'TermIssuer');
+  if (!termIssuerAddress) return { ok: false, reason: 'no term issuer on this chain' };
+  if (!charge.memberWallet) return { ok: false, reason: 'a plan needs a member' };
+  try {
+    const issuer = new ethers.Contract(termIssuerAddress, TERM_ISSUER_ABI, provider());
+    const installments = charge.splitInto ?? 1;
+    const [cycle, nonce]: [bigint, bigint] = await Promise.all([memberCycleSeconds(), issuer.planNonces(charge.memberWallet)]);
+    const priced = await quoteCharge(charge, termIssuerAddress, installments, cycle, principalCents);
+    if (!priced.ok) return { ok: false, reason: priced.reason, code: priced.code };
+    const deadline = Math.floor(Date.now() / 1000) + PLAN_SIGNATURE_TTL_SECONDS;
+    const { terms, disclosure } = chargePlanTerms(charge, installments, cycle, deadline, priced.quote, principalCents);
+    return {
+      ok: true,
+      typedData: planTermsTypedData({ chainId: chainId(), termIssuer: ethers.getAddress(termIssuerAddress), terms, nonce }),
+      disclosure,
+      free: priced.quote.free,
+    };
+  } catch (error) {
+    console.error('[dispute] preparing reopened plan failed for', charge.code, error instanceof Error ? error.message : error);
+    return { ok: false, reason: 'We could not get this plan ready. Nothing was charged — try again in a moment.' };
   }
 }

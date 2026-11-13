@@ -3,6 +3,7 @@ import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
 import { chainProvider } from './provider.js';
 import { coalesce } from './readCache.js';
+import { memberStateCode } from './planPricing.js';
 
 // 0.25%. Below this the difference is accrual between two reads, not a capacity that failed to push.
 const DRIFT_BPS = 25n;
@@ -30,7 +31,11 @@ const ISSUER_ABI = [
   'function tierAt(uint256 tierId) external view returns (bytes32 kind, uint256 ratePerCycle, bool active)',
   'function capacityOf(address member, uint256 tierId) external view returns (uint256)',
   'function drawnOf(address member, uint256 tierId) external view returns (uint256)',
+  // Phase 2: `principalOf` is what is on the ledger (principal plus materialised, unpaid carry),
+  // `carryOf` is materialised plus pending carry, and `principalOnlyOf` is the principal alone.
+  // So the principal shown is `principalOnlyOf`, and principal + carry is `drawnOf` again.
   'function principalOf(address member, uint256 tierId) external view returns (uint256)',
+  'function principalOnlyOf(address member, uint256 tierId) external view returns (uint256)',
   'function carryOf(address member, uint256 tierId) external view returns (uint256)',
   'function creditPeriods(address member) external view returns (uint256 issuedAt, uint256 expiration, uint256 graceLength, bool paused)',
   'function cycleLength() external view returns (uint64)',
@@ -83,9 +88,12 @@ export interface ChainTier {
   usedCents: number;
   /** Carry rate in basis points per cycle, as the tier charges it. */
   rateBps: number;
-  /** Principal drawn, before carry, in cents. */
+  /** Principal drawn, before carry, in cents (`principalOnlyOf`). */
   principalCents: number;
-  /** Carry accrued on it so far this cycle, in cents. `used` already includes this. */
+  /**
+   * Carry owed on it, materialised and pending, in cents (Phase 2 `carryOf`). `used` already
+   * includes this: used = principal + carry.
+   */
   carryCents: number;
   /** What the member has pledged under this kind, before haircut, in cents. */
   collateralValueCents: number;
@@ -170,6 +178,13 @@ export interface ChainCredit {
    * beside a decision about a plan promises capacity that will not be there.
    */
   term: ChainTermCeiling | null;
+  /**
+   * Whether the member's state of residence is attested on chain (`NetworkRegistry.stateCodeOf`).
+   * Phase 2 refuses lines and plans without one, so a member with `false` is told their state is
+   * not confirmed yet rather than that they were declined. Null when it could not be read, or on a
+   * network from before Phase 2.
+   */
+  stateConfirmed: boolean | null;
   complete: boolean;
 }
 
@@ -255,7 +270,9 @@ async function readTiers(
       const [written, used, principal, carry] = await Promise.all([
         issuer.capacityOf(wallet, id),
         issuer.drawnOf(wallet, id),
-        issuer.principalOf(wallet, id),
+        // An issuer from before Phase 2 has no `principalOnlyOf`; its `principalOf` was the
+        // principal alone and its `carryOf` the pending carry, so the pair still adds up.
+        (issuer.principalOnlyOf(wallet, id) as Promise<bigint>).catch(() => issuer.principalOf(wallet, id)),
         issuer.carryOf(wallet, id),
       ]);
 
@@ -669,17 +686,18 @@ async function readChainCreditUncached(
     console.error('[credit] no RPC for chain', chainId, error);
     return {
       tiers: null, plans: null, cycle: null, term: null, savingsEncumberedCents: null,
-      complete: false,
+      stateConfirmed: null, complete: false,
     };
   }
 
   // An unset issuer is no credit line, not a failed read: a member cannot have drawn against a
   // contract that does not exist.
-  const [tiers, plans, cycle, savingsEncumberedCents] = await Promise.all([
+  const [tiers, plans, cycle, savingsEncumberedCents, stateCode] = await Promise.all([
     issuer ? readTiers(provider, issuer, wallet, registry, limitCalculator) : Promise.resolve([]),
     term ? readPlans(provider, term, wallet) : Promise.resolve([]),
     issuer ? readCycle(provider, issuer, wallet) : Promise.resolve(null),
     registry ? readEncumbered(provider, registry, wallet) : Promise.resolve(0),
+    term ? memberStateCode(provider, term, wallet) : Promise.resolve(null),
   ]);
 
   /*
@@ -702,6 +720,7 @@ async function readChainCreditUncached(
     cycle,
     term: ceiling,
     savingsEncumberedCents,
+    stateConfirmed: stateCode === null ? null : stateCode !== ethers.ZeroHash,
     complete: tiers !== null && plans !== null,
   };
 }

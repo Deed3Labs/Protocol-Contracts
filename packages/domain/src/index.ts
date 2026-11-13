@@ -42,8 +42,10 @@ export { fromCents, toCents } from './units';
 
 export {
   buildPlanTerms,
+  bytes32String,
   disclosureMoney,
   PLAN_DISCLOSURE_VERSION,
+  PLAN_PRODUCTS,
   PLAN_SIGNATURE_TTL_SECONDS,
   PLAN_TERMS_DOMAIN_NAME,
   PLAN_TERMS_DOMAIN_VERSION,
@@ -52,16 +54,40 @@ export {
   planDisclosure,
   planDisclosureForTerms,
   planDisclosureText,
+  planProductOf,
+  planSchedule,
   planTermsArg,
   planTermsDomain,
   planTermsMessage,
   planTermsMismatch,
   planTermsTypedData,
+  RESPLIT_TYPE_STRING,
+  RESPLIT_TYPES,
+  resplitDisclosure,
+  resplitMessage,
+  resplitMismatch,
+  resplitTypedData,
   samePlanTerms,
+  unitsToCents,
   type PlanDisclosureInput,
+  type PlanProduct,
+  type PlanSchedule,
   type PlanTerms,
   type PlanTermsTypedData,
+  type ResplitTypedData,
+  type ScheduledInstallment,
 } from './planTerms';
+
+export {
+  CLEAR_CASH_SPLIT,
+  isOfferedPlanSplit,
+  quotePlan,
+  resplitCostRises,
+  type MerchantSplitTerms,
+  type PlanQuote,
+  type PlanQuoteRefusal,
+  type RateProductParams,
+} from './planQuote';
 
 export {
   CLAIM_ESCROW_DOMAIN_NAME,

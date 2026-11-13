@@ -11,6 +11,12 @@ import { ethers } from 'ethers';
  * live here, every service that writes to the chain decodes through `decodeChainError`, and the
  * sentences a person reads are chosen by name.
  *
+ * Phase 2 (compliance) adds the term-pricing errors (`TermIssuerProductNotEnabled`,
+ * `TermIssuerTermsMismatch`, `TermIssuerTermTooShort`, `TermIssuerResplitNeedsSignature`), the
+ * revolving state gate (`RevolvingIssuerStateNotEnabled`), CLRUSD's lapsing pauses (`ClearUSDPaused`)
+ * and the vault's pilot cap (`ESADepositVaultPilotCapReached`). `describeCreditRefusal` gives each a
+ * sentence a member can read.
+ *
  * Fragments only, copied from the contracts' error declarations. Nothing here imports Solidity.
  */
 export const CHAIN_ERROR_FRAGMENTS = [
@@ -56,6 +62,21 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error TermIssuerSuspended(address member)',
   'error TermIssuerBehindSchedule(address member)',
   'error RateTooHigh(uint256 ratePerCycle)',
+  // TermIssuer, Phase 2 (compliance): on-chain pricing, the state gate, the large-loan term and re-split
+  'error TermIssuerProductNotEnabled(address member, bytes32 stateCode, bytes32 productId)',
+  'error TermIssuerTermsMismatch(uint256 signedRate, uint256 rate, uint256 signedPayout, uint256 payout)',
+  'error TermIssuerTermTooShort(uint256 term, uint256 minimum)',
+  'error TermIssuerResplitNeedsSignature(uint256 planId)',
+  'error TermIssuerSplitLimitReached(uint256 planId)',
+  'error TermIssuerSplitTooSoon(uint256 planId, uint256 availableAt)',
+  'error TermIssuerNotPlanHolder(address caller)',
+  // RevolvingIssuer, Phase 2: no line without an attested state where the product is enabled
+  'error RevolvingIssuerStateNotEnabled(address member, bytes32 stateCode)',
+  // RateSchedule
+  'error RateScheduleUnknownProduct(bytes32 stateCode, bytes32 productId)',
+  // ClearUSD (CLRUSD), Phase 2: FRAUD_ROLE pauses one account, SECURITY_ROLE everyone; each lapses
+  'error ClearUSDPaused(address holder, uint32 reason, uint64 until)',
+  'error ClearUSDEncumbered(address holder, uint256 free, uint256 amount)',
   // PayoutPool
   'error PayoutPoolNotEligible(address holder)',
   'error PayoutPoolMerchantInactive(address merchant)',
@@ -69,6 +90,8 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error ESADepositVaultBadSignature()',
   'error ESADepositVaultTokenNotAccepted()',
   'error ESADepositVaultInsufficientLiquidity()',
+  // Phase 2: the rolling 365-day CA pilot cap on mints (redeems are never blocked)
+  'error ESADepositVaultPilotCapReached(uint256 volume, uint256 amount, uint256 cap)',
   // ClaimEscrow
   'error ClaimEscrowSignatureRequired()',
   'error ClaimEscrowBadClaimSignature()',
@@ -167,6 +190,90 @@ export function describeRedeemRefusal(decoded: DecodedChainError | null): string
       return 'Your shop is not active right now, so payouts are paused. Nothing has left your balance.';
     case 'PayoutPoolNothingToRedeem':
       return 'There is nothing to withdraw from what you are owed.';
+    default:
+      return null;
+  }
+}
+
+/** The two-letter state in a bytes32 state code, or null for none. */
+function stateName(code: unknown): string | null {
+  if (typeof code !== 'string' || /^0x0*$/.test(code)) return null;
+  try {
+    return ethers.decodeBytes32String(code) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Unix seconds as a date and time a member can read, in UTC so the server and the log agree. */
+function until(seconds: unknown): string {
+  const ms = Number(seconds) * 1000;
+  if (!Number.isFinite(ms) || ms <= 0) return 'shortly';
+  return `until ${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+export const STATE_NOT_CONFIRMED =
+  'Your state of residence isn’t confirmed yet, so Clear can’t offer you credit. Nothing was charged. You can still pay now, and credit opens once your state is confirmed.';
+
+/**
+ * Why `quoteTermPlan` (or `_quote`) refused, in a sentence. The state cases come first because they
+ * are the ones a member hits before anything is wrong with them: nobody has attested their state yet.
+ */
+export function stateRefusalSentence(
+  refusal: { kind: 'state_not_confirmed' } | { kind: 'product_not_enabled'; stateCode?: string } | { kind: 'term_too_short'; minimumSeconds?: bigint } | { kind: 'unavailable' },
+): string {
+  switch (refusal.kind) {
+    case 'state_not_confirmed':
+      return STATE_NOT_CONFIRMED;
+    case 'product_not_enabled': {
+      const state = stateName(refusal.stateCode);
+      return `Paying over time isn’t offered${state ? ` in ${state}` : ' where you live'} yet. Nothing was charged. You can still pay now.`;
+    }
+    case 'term_too_short': {
+      const days = refusal.minimumSeconds ? Math.ceil(Number(refusal.minimumSeconds) / 86_400) : 365;
+      return `A purchase this size has to be spread over at least ${days} days. Choose a longer split. Nothing was charged.`;
+    }
+    default:
+      return 'We could not price this plan just now. Nothing was charged. Try again in a moment.';
+  }
+}
+
+/**
+ * Phase 2 credit and savings refusals, in words a member can act on. Null when the error is not
+ * one of them. A missing state attestation says so, rather than reading as a refusal of the member.
+ */
+export function describeCreditRefusal(decoded: DecodedChainError | null): string | null {
+  switch (decoded?.name) {
+    case 'TermIssuerProductNotEnabled':
+      return stateName(decoded.args.stateCode) === null
+        ? STATE_NOT_CONFIRMED
+        : stateRefusalSentence({ kind: 'product_not_enabled', stateCode: String(decoded.args.stateCode) });
+    case 'RevolvingIssuerStateNotEnabled':
+      return stateName(decoded.args.stateCode) === null
+        ? 'Your state of residence isn’t confirmed yet, so your Clear credit line can’t open. It opens once your state is confirmed.'
+        : `Clear credit isn’t offered in ${stateName(decoded.args.stateCode)} yet, so your credit line can’t open.`;
+    case 'RateScheduleUnknownProduct':
+      return 'This kind of credit isn’t offered where you live yet. Nothing was charged.';
+    case 'TermIssuerTermsMismatch':
+      return 'The plan’s rate or the shop’s payout changed after you signed. Nothing was charged. Approve again to see and sign the current terms.';
+    case 'TermIssuerTermTooShort':
+      return stateRefusalSentence({ kind: 'term_too_short', minimumSeconds: BigInt(decoded.args.minimum) });
+    case 'TermIssuerResplitNeedsSignature':
+      return 'This new split costs more, so it needs your signature on the new terms. Nothing has changed yet.';
+    case 'TermIssuerSplitLimitReached':
+      return 'This plan has been re-split as many times as it can be.';
+    case 'TermIssuerSplitTooSoon':
+      return `This plan was re-split recently. You can change it again ${until(decoded.args.availableAt)}.`;
+    case 'TermIssuerNotPlanHolder':
+      return 'That plan isn’t yours to change.';
+    // The same error for one account (FRAUD_ROLE) and for everyone (SECURITY_ROLE); either lapses
+    // after 72 hours unless a second signer renews it, and `until` is when.
+    case 'ClearUSDPaused':
+      return `Clear savings are paused for a security review ${until(decoded.args.until)}. Nothing moved. Contact support if this is unexpected.`;
+    case 'ClearUSDEncumbered':
+      return 'Part of your savings backs credit you have drawn, so it can’t move until that is repaid. Nothing moved.';
+    case 'ESADepositVaultPilotCapReached':
+      return 'Clear has reached this year’s limit for new savings in your state during the pilot. Nothing was taken. Withdrawals are not affected.';
     default:
       return null;
   }

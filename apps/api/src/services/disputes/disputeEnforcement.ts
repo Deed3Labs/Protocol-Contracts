@@ -9,7 +9,7 @@ import {
 } from '../chain/cardSettlementService.js';
 import { chargeStore } from '../chargeStore.js';
 import { closePlan } from '../refundSettlement.js';
-import { reopenPlanAfterDispute } from '../chargeService.js';
+import { prepareReopenAfterDispute, reopenPlanAfterDispute, type PrepareResult, type SignedPlanTerms } from '../chargeService.js';
 import { notificationStore } from '../notificationStore.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
 import { getLithic } from '../lithic/lithicClient.js';
@@ -437,4 +437,59 @@ export async function enforceDisputes(): Promise<number> {
     }
   }
   return acted;
+}
+
+/*
+ * Reopening a lost (or withdrawn) partner dispute on the member's signature (audit H-4, Phase 2).
+ *
+ * `releasePartner` cannot reopen the plan on its own key any more: `openPlan` needs the member's
+ * EIP-712 signature over the terms. So the amount waits off-plan, the charge stays `disputed`, and
+ * the member signs from their disputes list: `prepare` returns the typed data for what was unwound
+ * on the split they had chosen, priced on chain today; `reopen` submits it and records the plan.
+ */
+async function reopenable(token: string, wallet: string) {
+  const dispute = await disputeStore.get(token);
+  if (!dispute || dispute.wallet !== wallet.trim().toLowerCase()) return { reason: 'not found' } as const;
+  if (dispute.kind !== 'partner' || (dispute.resolution !== 'merchant' && dispute.resolution !== 'withdrawn')) {
+    return { reason: 'There is nothing to put back on a plan for this dispute.' } as const;
+  }
+  const charge = await chargeStore.get(dispute.subjectRef);
+  if (!charge || charge.paidNow || charge.status !== 'disputed') {
+    return { reason: 'There is nothing to put back on a plan for this dispute.' } as const;
+  }
+  const unwound = Number((dispute.heldDetail as { unwoundCents?: number } | null)?.unwoundCents ?? 0);
+  if (unwound <= 0) return { reason: 'There is nothing to put back on a plan for this dispute.' } as const;
+  return { dispute, charge, unwound } as const;
+}
+
+/** Whether this dispute is waiting for the member to sign the reopened plan. */
+export async function awaitingReopenSignature(token: string, wallet: string): Promise<boolean> {
+  try {
+    return !('reason' in (await reopenable(token, wallet)));
+  } catch {
+    return false;
+  }
+}
+
+export async function prepareDisputeReopen(token: string, wallet: string): Promise<PrepareResult> {
+  const found = await reopenable(token, wallet);
+  if ('reason' in found) return { ok: false, reason: found.reason ?? 'not found' };
+  return prepareReopenAfterDispute(found.charge, found.unwound);
+}
+
+export async function submitDisputeReopen(
+  token: string,
+  wallet: string,
+  signed: SignedPlanTerms | null,
+): Promise<{ ok: boolean; planId?: number; reason?: string }> {
+  const found = await reopenable(token, wallet);
+  if ('reason' in found) return { ok: false, reason: found.reason ?? 'not found' };
+  if (!signed?.terms || typeof signed.signature !== 'string' || !/^0x(?:[0-9a-fA-F]{2})+$/.test(signed.signature.trim())) {
+    return { ok: false, reason: 'Sign the plan terms to put this back on a plan.' };
+  }
+  const reopened = await reopenPlanAfterDispute(found.charge, found.unwound, signed);
+  if (!reopened.ok) return { ok: false, reason: reopened.reason };
+  await chargeStore.restoreAfterDispute(found.charge.code, reopened.planId ?? null, reopened.txHash ?? null);
+  await refreshSnapshotsFor(found.dispute.wallet).catch(() => 0);
+  return { ok: true, planId: reopened.planId };
 }

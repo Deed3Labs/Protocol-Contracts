@@ -224,10 +224,12 @@ chargesRouter.post('/:code/approve/prepare', requireAuth, async (req: Request, r
 
   const prepared = await prepareChargeApproval(charge.code, charge.memberWallet, installments);
   if (!prepared.ok) {
-    res.status(409).json({ error: 'Could not prepare', message: prepared.reason });
+    // `code` names the refusals the app treats differently: `state_not_confirmed` (nobody has
+    // attested the member's state, so no credit yet; paying now still works).
+    res.status(409).json({ error: 'Could not prepare', message: prepared.reason, code: prepared.code ?? null });
     return;
   }
-  res.json({ typedData: prepared.typedData, disclosure: prepared.disclosure });
+  res.json({ typedData: prepared.typedData, disclosure: prepared.disclosure, free: prepared.free });
 });
 
 // Approving opens a credit plan the member owes: a fresh Face ID, checked here as well as in the app.

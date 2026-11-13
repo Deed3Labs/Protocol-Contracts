@@ -2,7 +2,13 @@ import { Router, type Request, type Response } from 'express';
 import { disputeStore, type DisputeKind } from '../services/disputes/disputeStore.js';
 import { disputeCandidates, findCandidate } from '../services/disputes/disputeCandidates.js';
 import { isCardReason, openCardDispute } from '../services/disputes/networkDispute.js';
-import { holdDispute, withdrawDispute } from '../services/disputes/disputeEnforcement.js';
+import {
+  awaitingReopenSignature,
+  holdDispute,
+  prepareDisputeReopen,
+  submitDisputeReopen,
+  withdrawDispute,
+} from '../services/disputes/disputeEnforcement.js';
 import { requireStepUp } from '../middleware/stepUp.js';
 
 /*
@@ -46,7 +52,17 @@ disputesRouter.get('/', async (req: Request, res: Response) => {
   const wallet = sessionWallet(req);
   if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
   try {
-    return res.json({ disputes: await disputeStore.listFor(wallet) });
+    const disputes = await disputeStore.listFor(wallet);
+    // A partner dispute that went against the member waits off-plan until they sign the reopened
+    // plan (TermIssuer.openPlan needs their signature). Flagged so the list can offer it.
+    const withReopen = await Promise.all(
+      disputes.map(async (d) =>
+        d.kind === 'partner' && (d.resolution === 'merchant' || d.resolution === 'withdrawn')
+          ? { ...d, awaitingPlanSignature: await awaitingReopenSignature(d.token, wallet) }
+          : d,
+      ),
+    );
+    return res.json({ disputes: withReopen });
   } catch (error) {
     console.error('[disputes] list failed', error);
     return res.status(500).json({ error: 'Failed to read disputes' });
@@ -147,6 +163,33 @@ disputesRouter.post('/:token/withdraw', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[disputes] withdraw failed', error);
     return res.status(500).json({ error: 'Failed to withdraw', message: 'We could not withdraw that just now. Please try again.' });
+  }
+});
+
+/**
+ * POST /api/disputes/:token/reopen/prepare — the plan terms for putting a lost partner dispute back
+ * on a plan, for the member to sign. POST /api/disputes/:token/reopen — { terms, signature }.
+ */
+disputesRouter.post('/:token/reopen/prepare', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  const prepared = await prepareDisputeReopen(String(req.params.token), wallet);
+  if (!prepared.ok) return res.status(409).json({ error: 'Could not prepare', message: prepared.reason, code: prepared.code ?? null });
+  return res.json({ typedData: prepared.typedData, disclosure: prepared.disclosure, free: prepared.free });
+});
+
+disputesRouter.post('/:token/reopen', requireStepUp, async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  const signed =
+    req.body?.terms && typeof req.body?.signature === 'string' ? { terms: req.body.terms, signature: String(req.body.signature) } : null;
+  try {
+    const result = await submitDisputeReopen(String(req.params.token), wallet, signed);
+    if (!result.ok) return res.status(409).json({ error: 'Not reopened', message: result.reason });
+    return res.json({ reopened: true, planId: result.planId ?? null });
+  } catch (error) {
+    console.error('[disputes] reopen failed', error);
+    return res.status(500).json({ error: 'Failed to reopen', message: 'We could not do that just now. Nothing was charged.' });
   }
 });
 
