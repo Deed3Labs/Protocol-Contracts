@@ -165,8 +165,20 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     IEarnBonds public earnBonds;
     /// @dev The member this contract is taking a bond from, for the length of that one call.
     address private _enforcing;
+    /// @dev Re-entry lock on every enforcement path. Packs into `_enforcing`'s slot, so the gap
+    /// is unchanged.
+    bool private _locked;
 
     uint256[36] private __gap;
+
+    error LiquidatorReentered();
+
+    modifier noReenter() {
+        if (_locked) revert LiquidatorReentered();
+        _locked = true;
+        _;
+        _locked = false;
+    }
 
     error LiquidatorInvalidAddress();
     error LiquidatorNotInDefault(address member, address issuer);
@@ -268,7 +280,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// @param tierId the savings tier.
     /// @param amount the most to settle, in ledger units.
     /// @return repaid amount settled against the member's debt.
-    function settleFromSavings(address issuer, uint256 tierId, uint256 amount) external returns (uint256 repaid) {
+    function settleFromSavings(address issuer, uint256 tierId, uint256 amount) external noReenter returns (uint256 repaid) {
         if (!trustedSavingsIssuer[issuer]) revert LiquidatorUntrustedIssuer(issuer);
         (bytes32 kind, , ) = ITierSettler(issuer).tierAt(tierId);
         if (kind != SAVINGS_KIND) revert LiquidatorNotSavingsTier(tierId, kind);
@@ -309,6 +321,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// tier's debt.
     function liquidate(address member, address issuer, uint256 tierId, bytes32 kind)
         external
+        noReenter
         returns (uint256 repaid)
     {
         if (!trustedSavingsIssuer[issuer]) revert LiquidatorUntrustedIssuer(issuer);
@@ -380,7 +393,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         uint256 tierId,
         bytes32 kind,
         address pool
-    ) external onlyRole(OPERATOR_ROLE) returns (uint256 realized, bool queued) {
+    ) external onlyRole(OPERATOR_ROLE) noReenter returns (uint256 realized, bool queued) {
         _requireNoHold(member);
         ICreditIssuer creditIssuer = ICreditIssuer(issuer);
         if (!creditIssuer.inDefault(member) && !creditIssuer.hasDefaulted(member)) {
@@ -440,6 +453,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     function settleRealized(address member, address issuer, uint256 tierId, uint256 amount)
         external
         onlyRole(OPERATOR_ROLE)
+        noReenter
     {
         reserveToken.forceApprove(issuer, amount);
         ITierSettler(issuer).settleFromCollateral(member, tierId, amount);
@@ -456,7 +470,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// @param member address of the member.
     /// @param issuer the revolving issuer that halved the limit.
     /// @return applied amount settled against BOOST and INCOME now.
-    function settleExcess(address member, address issuer) external returns (uint256 applied) {
+    function settleExcess(address member, address issuer) external noReenter returns (uint256 applied) {
         _requireTrusted(issuer);
         _requireNoHold(member);
         IMissedCycleSource source = IMissedCycleSource(issuer);
@@ -509,7 +523,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// Redeeming r of a kind with haircut h closes r x (1 - h) of its gap, so the smallest r is
     /// gap / (1 - h), rounded up. Never Savings. If the gap closed meanwhile it moves nothing and
     /// clears the notice.
-    function settleShortfall(address member, address issuer) external returns (uint256 applied) {
+    function settleShortfall(address member, address issuer) external noReenter returns (uint256 applied) {
         _requireTrusted(issuer);
         _requireNoHold(member);
         uint256 noticedAt = shortfallNoticedAt[member][issuer];
