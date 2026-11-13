@@ -52,7 +52,8 @@ import rampRouter from './routes/ramp.js';
 import lithicRouter from './routes/lithic.js';
 import sweepsRouter from './routes/sweeps.js';
 import lithicCardsRouter from './routes/lithicCards.js';
-import lithicAuthStreamRouter from './routes/lithicAuthStream.js';
+import lithicAuthStreamRouter, { onAuthorizationApproved } from './routes/lithicAuthStream.js';
+import { authorizeCardOnChain } from './services/chain/cardSettlementService.js';
 import lithicWebhookRouter from './routes/lithicWebhook.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
@@ -262,6 +263,8 @@ async function startServer() {
     // Auth Stream Access is mounted before the rate limiter on purpose: throttling this endpoint
     // would decline a member's card at a till, and it is already authenticated by HMAC signature.
     app.use('/api/webhooks/lithic/auth-stream', lithicAuthStreamRouter);
+    // An approval with a credit part is recorded on chain once it has been answered (audit M-2).
+    onAuthorizationApproved(authorizeCardOnChain);
 
     app.use('/api', rateLimiterMiddleware);
 
