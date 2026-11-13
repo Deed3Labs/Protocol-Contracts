@@ -5,8 +5,8 @@ Branch `audit/phase-2-compliance`, cut from `audit/phase-1` (PR #883, not yet me
 ## Steps (FIX-PLAN section 4, Phase 2)
 
 - [x] 1. RateSchedule (governed; owner is the credit timelock)
-- [ ] 2. Principal/carry split and per-band indexes in both issuers
-- [ ] 3. Member-level ceiling (revolving)
+- [ ] 2. Principal/carry split and per-band indexes in both issuers (revolving done; term next)
+- [x] 3. Member-level ceiling (revolving)
 - [ ] 4. Term-plan free rules; `PlanOpened` disclosure event
 - [ ] 5. Re-split with EIP-712 signature when the cost rises
 - [ ] 6. Clear Cash, including the 13-cycle option (DECISIONS #4)

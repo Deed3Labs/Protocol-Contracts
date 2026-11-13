@@ -148,6 +148,12 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
         return keccak256(abi.encode(stateCode, productId));
     }
 
+    /// @notice whether a product has been configured for a state at all, enabled or not.
+    /// @dev A disabled product still prices the positions already open under it.
+    function hasProduct(bytes32 stateCode, bytes32 productId) public view returns (bool) {
+        return products[keyOf(stateCode, productId)].exists;
+    }
+
     /// @notice whether a product may be offered in a state.
     function isEnabled(bytes32 stateCode, bytes32 productId) public view returns (bool) {
         Product storage product = products[keyOf(stateCode, productId)];
