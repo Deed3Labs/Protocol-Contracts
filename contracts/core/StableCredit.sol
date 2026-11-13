@@ -58,6 +58,10 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     error StableCreditInvalidAddress();
 
     event MerchantRegistryUpdated(address indexed merchantRegistry);
+    /// @notice a refund or reversal left `holder` owing; tracked until it is collected.
+    event RefundReceivableRecorded(address indexed holder, uint256 amount);
+    /// @notice part of `holder`'s refund debt was collected.
+    event RefundReceivableCollected(address indexed holder, uint256 amount);
     event SystemRecipientUpdated(address indexed recipient, bool allowed);
 
     /// @notice Most distinct rate bands a repayment will work down in one transfer.
@@ -109,6 +113,16 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// @dev Named by the admin, never by an operator key. A hot key that could name a recipient
     /// could name itself and turn any line into cash, which is the attack this list exists to stop.
     mapping(address => bool) public isSystemRecipient;
+
+    /// @notice What a merchant (or the co-op) owes back because a sale they were paid for was
+    /// refunded or reversed after they had drawn their payout down.
+    /// @dev Tracked separately from debt any issuer holds, because no issuer holds this: it accrues
+    /// nothing and no schedule describes it. It is collected first out of whatever reaches the
+    /// holder next -- a sale minted to them (`originatePurchase`), a transfer, a repayment -- and
+    /// never offered to an issuer as a repayment of something else (audit X-3, X-4).
+    mapping(address => uint256) public refundReceivableOf;
+    /// @notice The sum of `refundReceivableOf`.
+    uint256 public refundReceivables;
 
     /* ========== INITIALIZER ========== */
 
@@ -243,13 +257,40 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
 
         if (payout > 0) {
             if (merchant == address(0)) revert StableCreditInvalidCarryRecipient();
-            _accrueCredit(member, merchant, payout);
+            _accrueToRecipient(member, merchant, payout);
         }
         if (discount > 0) {
             if (coop == address(0)) revert StableCreditInvalidCarryRecipient();
-            _accrueCredit(member, coop, discount);
+            _accrueToRecipient(member, coop, discount);
         }
         emit PurchaseOriginated(member, merchant, purchase, payout, discount);
+    }
+
+    /// @dev Mints a sale's share to whoever earned it, after collecting any refund they still owe.
+    /// Minting it in full while they owed on a refund let a merchant redeem every new sale while
+    /// the refund debt stood untouched (audit X-4).
+    function _accrueToRecipient(address member, address recipient, uint256 amount) private {
+        uint256 netted =
+            _accrueCreditNetted(member, recipient, amount, refundReceivableOf[recipient]);
+        if (netted > 0) _collectReceivable(recipient, netted);
+    }
+
+    /// @dev Records a refund debt.
+    function _recordReceivable(address holder, uint256 amount) private {
+        if (amount == 0) return;
+        refundReceivableOf[holder] += amount;
+        refundReceivables += amount;
+        emit RefundReceivableRecorded(holder, amount);
+    }
+
+    /// @dev Marks up to `amount` of a holder's refund debt as collected, and says how much was.
+    function _collectReceivable(address holder, uint256 amount) private returns (uint256 taken) {
+        uint256 owed = refundReceivableOf[holder];
+        taken = amount < owed ? amount : owed;
+        if (taken == 0) return 0;
+        refundReceivableOf[holder] = owed - taken;
+        refundReceivables -= taken;
+        emit RefundReceivableCollected(holder, taken);
     }
 
     /// @notice unwinds a purchase: the exact inverse of `originatePurchase`, and capital-free.
@@ -315,6 +356,9 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
                 // member is released, the merchant carries it, and it comes off what they are
                 // paid next. Same entry as the burn above, with the sign flipped.
                 _transferObligation(member, merchant, shortfall);
+                // Tracked, so it is collected out of the merchant's next sale rather than left
+                // for an issuer that never heard of it (audit X-4b).
+                _recordReceivable(merchant, shortfall);
                 emit RefundOwedByMerchant(merchant, shortfall);
             }
         }
@@ -361,17 +405,26 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         if (carryWithheld > paid) revert StableCreditRefundExceedsPayment(carryWithheld, paid);
         if (address(payoutPool) == address(0)) revert StableCreditNoPayoutPool();
 
-        _takeBack(member, coop, coopShare);
-        _takeBack(member, merchant, merchantShare);
+        _takeBack(coop, coopShare);
+        _takeBack(merchant, merchantShare);
 
         /*
-         * The carry comes out of the cash, not out of the member's obligation twice. `_takeBack`
-         * has already put `paid` of obligation onto the two counterparties; settling the withheld
-         * part against the member's balance is what makes them square rather than owing carry on a
-         * purchase they no longer have.
+         * The carry comes out of the cash, and the cash kept back settles it. What is withheld
+         * stays in the payout pool as the member's money; the member's obligation falls by the
+         * same amount, so they are square rather than paying the carry once out of the refund and
+         * again on the ledger (audit X-5).
+         *
+         * Directed at the carry, not offered to the issuers: a refund's carry is left on no plan
+         * once the plan closes, and letting a revolving tier absorb it would clear the wrong debt.
+         * Bounded by what they actually owe.
          */
         uint256 returning = paid - carryWithheld;
-        if (carryWithheld > 0) emit RefundCarryWithheld(member, carryWithheld);
+        if (carryWithheld > 0) {
+            uint256 owes = creditBalanceOf(member);
+            uint256 settle = carryWithheld < owes ? carryWithheld : owes;
+            if (settle > 0) super._transfer(address(this), member, settle);
+            emit RefundCarryWithheld(member, carryWithheld);
+        }
         payoutPool.payRefund(member, returning);
         emit RefundRepaid(member, returning, carryWithheld);
     }
@@ -389,7 +442,14 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// Which is also how it comes back. Credits reaching a party with an obligation burn against it
     /// (`_afterTransfer`), so the merchant's next sale settles this before it pays them anything --
     /// the drawn line, netted automatically rather than chased.
-    function _takeBack(address member, address holder, uint256 amount) private {
+    ///
+    /// Never the member's obligation (audit X-1). The member being refunded has paid this purchase;
+    /// whatever else they owe belongs to other purchases, and moving it here forgave it while also
+    /// paying them in cash. And no claim is minted to the pool for the shortfall (audit X-3): the
+    /// refund cash comes out of members' money that was standing behind claims others still hold,
+    /// so the holder's new obligation stands behind those claims instead, and a second claim would
+    /// count it twice.
+    function _takeBack(address holder, uint256 amount) private {
         if (amount == 0) return;
         if (holder == address(0)) revert StableCreditInvalidCarryRecipient();
         uint256 held = balanceOf(holder);
@@ -398,13 +458,8 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         uint256 shortfall = amount - burnable;
         if (shortfall == 0) return;
 
-        uint256 memberOwes = creditBalanceOf(member);
-        if (memberOwes >= shortfall) {
-            // The member still owes it, so it changes hands rather than being made anew.
-            _transferObligation(member, holder, shortfall);
-        } else {
-            _accrueCredit(holder, address(payoutPool), shortfall);
-        }
+        _createObligation(holder, shortfall);
+        _recordReceivable(holder, shortfall);
         emit RefundOwedByMerchant(holder, shortfall);
     }
 
@@ -570,7 +625,7 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         }
         uint256 burned = _repaymentOf(_to, _amount);
         super._transfer(_from, _to, _amount);
-        _settleRepayment(_to, burned);
+        _settleRepayment(_to, burned - _collectReceivable(_to, burned));
     }
 
     /// @notice where a member-initiated transfer may send credit.
@@ -647,7 +702,8 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         // from outside the ledger is exactly the income half of a member's ITD.
         _notifyIssuersOf(_to, _from, _to, _amount);
         super._transfer(_from, _to, _amount);
-        _settleRepayment(_to, burned);
+        // A refund debt is collected before anything an issuer holds, and never offered to one.
+        _settleRepayment(_to, burned - _collectReceivable(_to, burned));
     }
 
     /// @notice sends repayment value where it is owed before where it might be needed.
@@ -698,9 +754,14 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     ///
     /// Payables before provisions is the intended order. A payable is a present liability; the
     /// buffer is a provision against future losses, and it still takes everything above them.
+    ///
+    /// Measured against MEMBERS' money in the pool, not against the cash it holds (audit X-2).
+    /// Funder capital is not a repayment: counting it sent members' repayments past a pre-funded
+    /// pool, so a claim the funder then paid for was one nobody still owed. Refunds the pool owes
+    /// members are a payable too, and members' money is the only thing that may pay them.
     function _payoutPoolNeeds() private view returns (uint256) {
-        uint256 payables = totalSupply();
-        uint256 funded = payoutPool.held();
+        uint256 payables = totalSupply() + payoutPool.refundsOwed();
+        uint256 funded = payoutPool.memberFunded();
         return payables > funded ? payables - funded : 0;
     }
 

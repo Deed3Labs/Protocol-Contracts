@@ -4,34 +4,35 @@ import { deployCore, advance, ONE_USDC, CYCLE, DAY, NET_30 } from "./deep-setup"
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 
 describe("DEEP AUDIT PoC 2", function () {
-  it("X-8: the treasury's advancedOf is never reduced when its claims are burned by withdrawCoopIncome -> distributeCarry underflows (DoS) / over-pays the co-op", async function () {
+  it("X-8 (fixed): the treasury's positions are not burned as income, and a stale carrier share cannot break the split", async function () {
     const { ctx, revolving, term, pool, merchant, merchant2, coop, member2 } = await deployCore();
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
-    // Merchant redeems against an empty pool; after net-30 the treasury's allowance pays it (capital).
     await pool.connect(merchant).redeem(975n * ONE_USDC);
     await ctx.usdc.connect(coop).approve(await pool.getAddress(), 10_000n * ONE_USDC);
     await advance(NET_30 + 1);
     await pool.drawForDueClaim();
     expect(await pool.advancedOf(coop.address)).to.equal(975n * ONE_USDC);
-    // Member repays; the co-op takes its money back the way the code intends (fee + the position it funded).
     await term.connect(m).payPlan(0, 2_000n * ONE_USDC);
+    // Withdrawing "income" takes the 25 fee only; the 975 position stays with what it backs.
     const held = await ctx.stableCredit.balanceOf(coop.address);
     await pool.connect(ctx.admin).withdrawCoopIncome(held);
-    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
-    // ...but the pool still thinks the co-op is carrying 975 of float.
+    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(975n * ONE_USDC);
     expect(await pool.advancedOf(coop.address)).to.equal(975n * ONE_USDC);
 
-    // Carry arrives at the pool, as designed (issuers name it as recipient).
+    // Carry arrives and is split without reverting, and never more than there is.
     await revolving.connect(ctx.operator).setTierCarryRecipient(2, await pool.getAddress());
     await revolving.connect(ctx.operator).openLine(member2.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 3650 * DAY, CYCLE);
     await ctx.stableCredit.connect(member2).transfer(merchant2.address, 100n * ONE_USDC);
     await advance(CYCLE);
     await revolving.materialiseCarry(member2.address);
-    expect(await pool.distributableCarry()).to.be.gt(0n);
-    // share = carry * 975 / ~100 > carry  ->  `left -= share` underflows.
-    await expect(pool.distributeCarry()).to.be.revertedWithPanic(0x11);
+    const carry = await pool.distributableCarry();
+    expect(carry).to.be.gt(0n);
+    const before = await ctx.stableCredit.balanceOf(coop.address);
+    await pool.distributeCarry();
+    expect((await ctx.stableCredit.balanceOf(coop.address)) - before).to.equal(carry);
+    expect(await pool.distributableCarry()).to.equal(0n);
   });
 
   it("X-9: reserves deposited in DAI/USDT are booked as USDC; reimburse() pays only USDC and reverts -> burnLostDebt bricked", async function () {
@@ -103,37 +104,38 @@ describe("DEEP AUDIT PoC 2", function () {
     await expect(h.currentIndex(key, 131n * BigInt(CYCLE))).to.be.revertedWithPanic(0x11);
   });
 
-  it("X-12: refunds are paid out of funders' capital without reducing capitalOf -- the funder silently eats the refund", async function () {
+  it("X-12 (fixed): a refund is paid only from members' money; funder capital is untouched and stays withdrawable", async function () {
     const { ctx, term, pool, merchant, funder } = await deployCore({ fundPool: 5_000n * ONE_USDC });
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
-    await term.connect(m).payPlan(0, 1_000n * ONE_USDC);       // goes to the AssurancePool (X-2)
-    await pool.connect(merchant).redeem(975n * ONE_USDC);       // paid from funder capital
-    expect(await pool.capitalOf(funder.address)).to.equal(4_025n * ONE_USDC);
+    await term.connect(m).payPlan(0, 1_000n * ONE_USDC);
+    await pool.connect(merchant).redeem(975n * ONE_USDC);   // settled out of the member's money
+    expect(await pool.capitalOf(funder.address)).to.equal(5_000n * ONE_USDC);
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
-    // 1,000 left the pool for the member; memberFunded was 0, so none of it was booked against anyone.
-    expect(await ctx.usdc.balanceOf(await pool.getAddress())).to.equal(3_025n * ONE_USDC);
-    expect(await pool.capitalOf(funder.address)).to.equal(4_025n * ONE_USDC);
-    expect(await pool.idleCapitalOf(funder.address)).to.equal(3_025n * ONE_USDC);
-    // Funder's books: 4,025 "capital" + a 975 dead position; it can actually recover 3,025.
-    expect(await ctx.stableCredit.balanceOf(funder.address)).to.equal(975n * ONE_USDC);
+    // 25 of members' money was here and went back; the other 975 is owed, not taken from capital.
+    expect(await pool.refundOwedOf(m.address)).to.equal(975n * ONE_USDC);
+    expect(await ctx.usdc.balanceOf(await pool.getAddress())).to.equal(5_000n * ONE_USDC);
+    expect(await pool.capitalOf(funder.address)).to.equal(5_000n * ONE_USDC);
+    expect(await pool.idleCapitalOf(funder.address)).to.equal(5_000n * ONE_USDC);
+    expect(await ctx.stableCredit.balanceOf(funder.address)).to.equal(0n);
   });
 
-  it("X-4b: reversePurchase after the merchant redeemed hands the merchant an obligation no issuer tracks", async function () {
+  it("X-4b (fixed): a reversal's merchant shortfall is tracked and collected out of the next sale", async function () {
     const { ctx, term, pool, merchant } = await deployCore({ fundPool: 5_000n * ONE_USDC });
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 4, CYCLE);
-    await pool.connect(merchant).redeem(975n * ONE_USDC);       // paid now (funded pool)
+    await pool.connect(merchant).redeem(975n * ONE_USDC);
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
     expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(0n);
     expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
-    // and the merchant's next term sale is minted to it in full (no netting), redeemable at once.
+    expect(await ctx.stableCredit.refundReceivableOf(merchant.address)).to.equal(975n * ONE_USDC);
     await term.connect(ctx.operator).setTermLimit(m.address, 2_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 4, CYCLE);
-    expect(await pool.redeemableOf(merchant.address)).to.equal(975n * ONE_USDC);
-    expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
+    expect(await pool.redeemableOf(merchant.address)).to.equal(0n);
+    expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(0n);
+    expect(await ctx.stableCredit.refundReceivableOf(merchant.address)).to.equal(0n);
   });
 
   it("(observation, holds) a draw at index > RAY books no carry in the same block", async function () {
@@ -149,7 +151,7 @@ describe("DEEP AUDIT PoC 2", function () {
     console.log(`      drawn-principal right after draw: ${drawn - principal} wei`);
   });
 
-  it("X-13: a refund's outcome depends on whether anyone materialised carry first; a stranger can turn a full refund into a term default", async function () {
+  it("X-13 (fixed): a full refund closes the plan whether or not anyone materialised carry first", async function () {
     const { ctx, term, merchant } = await deployCore();
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
@@ -157,28 +159,54 @@ describe("DEEP AUDIT PoC 2", function () {
     await advance(20 * DAY);
     const snap = await ethers.provider.send("evm_snapshot", []);
 
-    // B: nobody touched the plan. Full refund closes it; the carry is left as untracked residual.
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
-    let [, , outstanding, , , , , , closed] = await term.planAt(0);
+    let [, , , , , , , , closed] = await term.planAt(0);
     expect(closed).to.equal(true);
-    await advance(3 * CYCLE + 1);
-    await expect(term.declareDefault(m.address)).to.be.revertedWithCustomError(term, "TermIssuerNotDefaultable");
+    const residualB = await term.residualCarryOf(m.address);
 
     await ethers.provider.send("evm_revert", [snap]);
-    // A: a stranger calls the public materialiseCarry(planId) just before the operator's refund.
     await term.connect(ctx.outsider).materialiseCarry(0);
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
-    [, , outstanding, , , , , , closed] = await term.planAt(0);
-    expect(closed).to.equal(false);            // the plan for a returned purchase stays open over the carry
-    expect(outstanding).to.be.gt(0n);
-    expect(outstanding).to.be.lt(20n * ONE_USDC);
-    await advance(CYCLE + 1);
-    // ...and is measured against the ORIGINAL 4 x ~257 schedule, so it is "behind" by a full installment.
-    expect(await term.arrearsOf(0)).to.be.gt(200n * ONE_USDC);
-    await expect(term.connect(ctx.operator).openPlan(m.address, merchant.address, 10n * ONE_USDC, 9n * ONE_USDC, 150n, CYCLE, 1, CYCLE))
-      .to.be.revertedWithCustomError(term, "TermIssuerBehindSchedule");
-    await advance(2 * CYCLE + 1);
-    await term.connect(ctx.outsider).declareDefault(m.address);
-    expect(await term.termSuspended(m.address)).to.equal(true);
+    [, , , , , , , , closed] = await term.planAt(0);
+    expect(closed).to.equal(true);
+    // The same carry is left either way (to within the one second the extra call took).
+    expect(await term.residualCarryOf(m.address)).to.be.closeTo(residualB, 1_000n);
+    expect(await term.arrearsOf(0)).to.equal(0n);
+    await advance(3 * CYCLE + 1);
+    await expect(term.declareDefault(m.address)).to.be.revertedWithCustomError(term, "TermIssuerNotDefaultable");
+    // And a new plan is not blocked.
+    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 10n * ONE_USDC, 9n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
+  });
+
+  it("X-13 (fixed): a partial refund re-fixes the schedule over what is left", async function () {
+    const { ctx, term, merchant } = await deployCore();
+    const m = ctx.member;
+    await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
+    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
+    await term.connect(ctx.operator).closePlanForRefund(0, 400n * ONE_USDC, merchant.address, 390n * ONE_USDC);
+    const [installment, total, installments] = await term.scheduleOf(0);
+    expect(installments).to.equal(4n);
+    // About 600 spread over four, not the old ~257 a period.
+    expect(installment).to.be.lt(160n * ONE_USDC);
+    expect(total).to.be.gte(600n * ONE_USDC);
+    expect(await term.arrearsOf(0)).to.equal(0n);
+  });
+
+  it("X-20 (fixed): drawForDueClaim either pays the claim or borrows nothing", async function () {
+    const { ctx, term, pool, merchant, coop } = await deployCore();
+    const m = ctx.member;
+    await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
+    await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
+    await pool.connect(merchant).redeem(975n * ONE_USDC);
+    // The treasury can put up only part of it.
+    await ctx.usdc.connect(coop).approve(await pool.getAddress(), 500n * ONE_USDC);
+    await advance(NET_30 + 1);
+    await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+    expect(await pool.capitalOf(coop.address)).to.equal(0n);
+    expect(await ctx.usdc.balanceOf(await pool.getAddress())).to.equal(0n);
+    // With enough, it pays in full.
+    await ctx.usdc.connect(coop).approve(await pool.getAddress(), 975n * ONE_USDC);
+    await pool.drawForDueClaim();
+    expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(1_000_000n * ONE_USDC + 975n * ONE_USDC);
   });
 });

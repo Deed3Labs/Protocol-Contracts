@@ -13,8 +13,8 @@ Branch `audit/phase-1`, cut from `audit/materials` (which is `dev` @ `7eb5976` p
 - [x] 1. C-1, H-1, M-1: draw recipients, PayoutPool redeem eligibility, transferable vs term ceiling, revolving sync reverts on unplaced shortfall, no transfers out of a merchant except to the PayoutPool
 - [x] 2. H-2: roll compliant periods forward; limit with no period is invalid; operator period setters only extend or pause
 - [x] 3. C-2: savings collateral = min(pledged, balance); free CLRUSD checked at draw and card settle
-- [ ] 4. Refund path: X-1, X-3, X-4, X-5, X-12, X-13, X-14
-- [ ] 5. Pool accounting: X-2, X-8, X-20
+- [x] 4. Refund path: X-1, X-3, X-4, X-5, X-12, X-13, X-14
+- [x] 5. Pool accounting: X-2, X-8, X-20
 - [ ] 6. X-6: write-offs stay with the defaulting issuer
 - [ ] 7. H-4 (credit side) and M-2: per-function operator roles, daily caps, plan merchants active, member-signed plans, card settlement caps and authorizations
 - [ ] 8. M-3, L-2, L-1, L-5, L-6, L-7, L-8, X-11
@@ -22,8 +22,9 @@ Branch `audit/phase-1`, cut from `audit/materials` (which is `dev` @ `7eb5976` p
 Notes:
 - Step 2: H-2 proof rewritten as two regression tests.
 - Step 1: ledger `setMerchantRegistry` must be wired in deploy/22 (pending, done with the 1B merge).
-- Step 3: `test/peripherals/ClearUSDUpgradeable.spec.ts` (1B's file) needs `registry.setClrusdToken(clrusd)` in its setup; one test fails until the 1B merge adds it. deploy/20 must call `setClrusdToken` (pending).
+- Step 3: `test/peripherals/ClearUSDUpgradeable.spec.ts` (1B's file) needs `registry.setClrusdToken(clrusd)` in its setup; one test fails until the 1B merge adds it. Same for `test/peripherals/BondCollateral.spec.ts` "moves again once the credit is repaid", which draws member-to-member to fund carry. deploy/20 must call `setClrusdToken` (pending).
 - Step 3 also did L-6 (`_requiredUnits` rounds up), since it is the same function.
+- Steps 4-5 landed together (X-2's routing formula was needed to test the refund path). Fuzz at 60 steps: (i-b) holds in all seeds; (ii) "refund up" is residual carry left by a reversal that returned no cash, by design (`residualCarryOf`).
 
 ## 1B: money peripherals (subagent, branch `audit/phase-1-1b`, merged here when done)
 

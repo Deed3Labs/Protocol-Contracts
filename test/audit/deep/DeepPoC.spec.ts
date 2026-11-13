@@ -3,104 +3,78 @@ import { ethers, upgrades } from "hardhat";
 import { deployCore, advance, ONE_USDC, CYCLE, DAY, NET_30 } from "./deep-setup";
 
 /*
- * Deep-pass audit proofs of concept. Every test PASSES while the issue it describes exists.
+ * Deep-pass audit proofs of concept. A test titled "(fixed)" is a regression test asserting the
+ * attack now fails; one without it still demonstrates its issue and is fixed in a later step.
  */
 describe("DEEP AUDIT PoC", function () {
-  it("X-1: a refund of a paid plan also forgives the member's unrelated revolving debt (double refund)", async function () {
+  it("X-1 (fixed): refunding a paid plan never touches the member's other debt; the merchant owes the shortfall itself", async function () {
     const { ctx, revolving, term, pool, merchant } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
-    // An ordinary member: a revolving INCOME line, used at a registered merchant...
     await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
     await ctx.stableCredit.connect(m).transfer(merchant.address, 1_000n * ONE_USDC);
-    // ...and a 1,000 term purchase, paid off in full.
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
-    await term.connect(m).payPlan(0, 2_000n * ONE_USDC); // capped at what is owed: closes the plan
-    // Merchant redeems everything it holds (the normal case before a refund arrives).
+    await term.connect(m).payPlan(0, 2_000n * ONE_USDC);
     await pool.connect(merchant).redeem(ethers.MaxUint256);
-    expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
 
     const owedBefore = await ctx.stableCredit.creditBalanceOf(m.address);
-    expect(owedBefore).to.be.closeTo(1_000n * ONE_USDC, 100n); // the revolving debt (+ a few wei of carry)
+    const revolvingBefore = await revolving.totalPrincipalOf(m.address);
     const usdcBefore = await ctx.usdc.balanceOf(m.address);
-
-    // The merchant accepts a return; the operator processes the refund of the paid plan.
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
 
     const cashBack = (await ctx.usdc.balanceOf(m.address)) - usdcBefore;
-    const owedAfter = await ctx.stableCredit.creditBalanceOf(m.address);
-    // Member got the full 1,000 in cash...
-    expect(cashBack).to.equal(1_000n * ONE_USDC);
-    // ...AND 975 of their unrelated revolving debt moved onto the merchant.
-    expect(owedAfter).to.equal(owedBefore - 975n * ONE_USDC);
+    // The revolving debt is exactly where it was, and the revolving issuer agrees with the ledger.
+    expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(owedBefore);
+    expect(await revolving.totalPrincipalOf(m.address)).to.equal(revolvingBefore);
+    // The member is made whole for the 1,000 once: paid now or owed by the pool, never both.
+    expect(cashBack + (await pool.refundOwedOf(m.address))).to.equal(1_000n * ONE_USDC);
+    // The merchant owes its share, tracked as a refund receivable.
     expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
-    // The revolving issuer was never told: it still books 1,000 of principal and keeps charging carry on it.
-    expect(await revolving.totalPrincipalOf(m.address)).to.be.gte(1_000n * ONE_USDC);
-    // Total relief: 1,975 for a 1,000 purchase.
-    expect(cashBack + (owedBefore - owedAfter)).to.equal(1_975n * ONE_USDC);
+    expect(await ctx.stableCredit.refundReceivableOf(merchant.address)).to.equal(975n * ONE_USDC);
   });
 
-  it("X-2: a pre-funded PayoutPool diverts member repayments to the AssurancePool; funders end up holding claims nobody owes", async function () {
+  it("X-2 (fixed): a pre-funded pool still takes member repayments, and settles the claim with them instead of selling it to the funder", async function () {
     const { ctx, term, pool, merchant, funder } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
     const apBefore = (await ctx.assurancePool.primaryBalance()) + (await ctx.assurancePool.bufferBalance());
-
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
-    // Member pays the plan in full, in cash.
     await term.connect(m).payPlan(0, 2_000n * ONE_USDC);
     expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(0n);
 
-    // _payoutPoolNeeds() = totalSupply - held = 1,000 - 20,000 -> 0: the whole repayment skipped the pool.
-    expect(await pool.memberFunded()).to.equal(0n);
+    // The repayment went to the pool as members' money, not past it.
+    expect(await pool.memberFunded()).to.be.closeTo(1_000n * ONE_USDC, 100n); // + a few wei of carry
     const apAfter = (await ctx.assurancePool.primaryBalance()) + (await ctx.assurancePool.bufferBalance());
-    expect(apAfter - apBefore).to.be.closeTo(1_000n * ONE_USDC, 100n);
+    expect(apAfter - apBefore).to.equal(0n);
 
-    // Merchant redeems: paid out of the funder's capital, so the position is "sold" to the funder.
+    // The merchant is paid out of it and the claim is burned; the funder keeps all its capital.
     await pool.connect(merchant).redeem(975n * ONE_USDC);
-    expect(await ctx.stableCredit.balanceOf(funder.address)).to.equal(975n * ONE_USDC);
-    expect(await pool.advancedOf(funder.address)).to.equal(975n * ONE_USDC);
-    // ...a claim on a member who owes nothing. Nobody will ever repay it.
-    expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(0n);
-    // The funder can only take back 19,025 of its 20,000.
-    expect(await pool.idleCapitalOf(funder.address)).to.equal(19_025n * ONE_USDC);
-    // The funder is not a ledger member, so it cannot even redeem the dead position.
-    await expect(pool.connect(funder).redeem(975n * ONE_USDC)).to.be.reverted;
-
-    // Same flow with an EMPTY pool settles cleanly (claim burned, nothing stranded) -- the funding is the trigger.
+    expect(await ctx.stableCredit.balanceOf(funder.address)).to.equal(0n);
+    expect(await pool.advancedOf(funder.address)).to.equal(0n);
+    expect(await pool.idleCapitalOf(funder.address)).to.equal(20_000n * ONE_USDC);
   });
 
-  it("X-3: a refund shortfall minted to the PayoutPool is untracked and is handed out as 'carry'", async function () {
+  it("X-3 (fixed): a refund shortfall mints no claim to the pool, so nothing reaches the carry split", async function () {
     const { ctx, term, pool, merchant, coop } = await deployCore();
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
-    await term.connect(m).payPlan(0, 1_000n * ONE_USDC);       // empty pool: the cash lands as memberFunded
-    expect(await pool.memberFunded()).to.equal(1_000n * ONE_USDC);
-    await pool.connect(merchant).redeem(975n * ONE_USDC);       // settled out of the member's cash, claim burned
-    expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
-    const coopBefore = await ctx.stableCredit.balanceOf(coop.address); // the 25 fee
+    await term.connect(m).payPlan(0, 1_000n * ONE_USDC);
+    await pool.connect(merchant).redeem(975n * ONE_USDC);
+    const coopBefore = await ctx.stableCredit.balanceOf(coop.address);
 
-    // Full refund. Merchant already paid -> _takeBack mints 975 to the PayoutPool against a new merchant obligation.
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
     expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
-    expect(await ctx.stableCredit.balanceOf(await pool.getAddress())).to.equal(975n * ONE_USDC);
-    // The pool paid what cash it had (25) and owes the member the rest.
-    expect(await pool.refundOwedOf(m.address)).to.equal(975n * ONE_USDC);
-    // That 975 claim is the pool's own IOU for the refund it fronted -- but nothing tracks it, so it reads as carry.
-    expect(await pool.inFlight()).to.equal(0n);
-    expect(await pool.carryEarned()).to.equal(0n);
-    expect(await pool.distributableCarry()).to.equal(975n * ONE_USDC);
-    await pool.connect(ctx.outsider).distributeCarry();          // permissionless
-    // ...and the co-op now holds it as income, redeemable for USDC like any claim.
-    expect((await ctx.stableCredit.balanceOf(coop.address)) - coopBefore).to.equal(950n * ONE_USDC); // 975 carry - 25 fee taken back
+    expect(await ctx.stableCredit.refundReceivableOf(merchant.address)).to.equal(975n * ONE_USDC);
     expect(await ctx.stableCredit.balanceOf(await pool.getAddress())).to.equal(0n);
-    // The member's refund (975) and the co-op's new claim (975) are both "backed" by the same merchant obligation.
     expect(await pool.refundOwedOf(m.address)).to.equal(975n * ONE_USDC);
-    expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
+    expect(await pool.distributableCarry()).to.equal(0n);
+    await pool.connect(ctx.outsider).distributeCarry();
+    // The co-op gave back its 25 fee and gained nothing.
+    expect(coopBefore - (await ctx.stableCredit.balanceOf(coop.address))).to.equal(25n * ONE_USDC);
   });
 
-  it("X-4: merchant refund obligations never net: purchases mint to the merchant, so it keeps redeeming while it owes", async function () {
+  it("X-4 (fixed): a merchant's refund debt is collected out of its next sale, and that sale's repayment funds the member's refund", async function () {
     const { ctx, term, pool, merchant, member2 } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
@@ -108,29 +82,30 @@ describe("DEEP AUDIT PoC", function () {
     await term.connect(m).payPlan(0, 1_000n * ONE_USDC);
     await pool.connect(merchant).redeem(975n * ONE_USDC);
     const merchantUsdc0 = await ctx.usdc.balanceOf(merchant.address);
-    expect(merchantUsdc0).to.equal(1_000_000n * ONE_USDC + 975n * ONE_USDC);
 
-    // Goods returned; member is refunded in cash from the pool. The merchant is left owing 975 on the ledger,
-    // which the code relies on being "netted from what they are paid next" (_afterTransfer).
     const memberUsdc0 = await ctx.usdc.balanceOf(m.address);
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
-    expect((await ctx.usdc.balanceOf(m.address)) - memberUsdc0).to.equal(1_000n * ONE_USDC);
     expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
 
-    // Next sale. originatePurchase -> _accrueCredit -> _mint: no _afterTransfer, no netting.
+    // Next sale: the refund debt is cleared out of it instead of minting it.
     await term.connect(ctx.operator).setTermLimit(member2.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(member2.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
-    expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(975n * ONE_USDC);
-    expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC); // still owes
-    expect(await pool.redeemableOf(merchant.address)).to.equal(975n * ONE_USDC);
-    await pool.connect(merchant).redeem(975n * ONE_USDC);
-    // The merchant has been paid 975 twice, the member refunded 1,000, and the obligation is never collected:
-    expect((await ctx.usdc.balanceOf(merchant.address)) - merchantUsdc0).to.equal(975n * ONE_USDC);
-    expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
-    // No issuer tracks it, it accrues nothing and nothing can default it.
+    expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
+    expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(0n);
+    expect(await ctx.stableCredit.refundReceivableOf(merchant.address)).to.equal(0n);
+    expect(await pool.redeemableOf(merchant.address)).to.equal(0n);
+    await expect(pool.connect(merchant).redeem(975n * ONE_USDC))
+      .to.be.revertedWithCustomError(pool, "PayoutPoolNothingToRedeem");
+    expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(merchantUsdc0);
+
+    // The second member repays, and that is what makes the first member whole.
+    await term.connect(member2).payPlan(1, 1_000n * ONE_USDC);
+    await pool.payRefundsOwed();
+    expect((await ctx.usdc.balanceOf(m.address)) - memberUsdc0).to.equal(1_000n * ONE_USDC);
+    expect(await pool.refundsOwed()).to.equal(0n);
   });
 
-  it("X-5: carry withheld from a refund is never settled against the ledger -- the member pays it twice", async function () {
+  it("X-5 (fixed): carry withheld from a refund settles that carry; the member owes nothing after, and the event reports the net cash", async function () {
     const { ctx, term, merchant } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
@@ -138,8 +113,7 @@ describe("DEEP AUDIT PoC", function () {
     await advance(CYCLE);
     await term.connect(m).payPlan(0, 500n * ONE_USDC);
     await advance(CYCLE / 2);
-    const pendingCarry = await term.pendingCarryOn(0);
-    expect(pendingCarry).to.be.gt(0n);
+    expect(await term.pendingCarryOn(0)).to.be.gt(0n);
 
     const usdcBefore = await ctx.usdc.balanceOf(m.address);
     const tx = await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
@@ -149,14 +123,12 @@ describe("DEEP AUDIT PoC", function () {
     const [, returned, withheld] = ev!.args;
     const cashBack = (await ctx.usdc.balanceOf(m.address)) - usdcBefore;
 
-    // NB: the event's "returned" field is the GROSS cash, before the withholding.
     expect(withheld).to.be.gt(0n);
-    // Withheld from the cash...
-    expect(cashBack + withheld).to.equal(returned);
-    // ...and STILL owed on the ledger, as residual carry that no plan tracks.
-    const owed = await ctx.stableCredit.creditBalanceOf(m.address);
-    expect(owed).to.equal(withheld);
-    expect(await term.residualCarryOf(m.address)).to.equal(withheld);
+    // X-14: the event reports what actually reached the member.
+    expect(returned).to.equal(cashBack);
+    // The withheld carry was settled, not left owing.
+    expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(0n);
+    expect(await term.residualCarryOf(m.address)).to.equal(0n);
     const [, , , , , , , , closed] = await term.planAt(0);
     expect(closed).to.equal(true);
   });

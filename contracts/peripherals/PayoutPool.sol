@@ -251,9 +251,24 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev What a claim may be paid from: everything here except refunds members are still owed.
     /// That money is theirs and settled ahead of any claim, so every path that pays one asks this
     /// rather than `held()`.
+    ///
+    /// Only the members' money that refunds can actually use is held back: a refund is paid out of
+    /// members' money and nothing else (audit X-12), so reserving capital for one would only stop
+    /// that capital paying a claim it is allowed to pay.
     function _payable() private view returns (uint256) {
         uint256 balance = held();
-        return balance > refundsOwed ? balance - refundsOwed : 0;
+        uint256 reserved = _reservedForRefunds();
+        return balance > reserved ? balance - reserved : 0;
+    }
+
+    /// @dev Members' money set aside for refunds still owed.
+    function _reservedForRefunds() private view returns (uint256) {
+        return refundsOwed < memberFunded ? refundsOwed : memberFunded;
+    }
+
+    /// @dev Members' money free to settle claims, after refunds owed have first call on it.
+    function _memberFundedFree() private view returns (uint256) {
+        return memberFunded - _reservedForRefunds();
     }
 
     /// @notice what the pool would need to clear every queued claim today.
@@ -458,9 +473,17 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
                 emit DrewFromReserve(lent);
             }
         }
-        if (drawn == 0) revert PayoutPoolInsufficientFunds(held(), claim.amount);
+        /*
+         * All or nothing (audit X-20). Borrowing part of a claim left the cash idle, counted as
+         * though it were funding, while the next repayment went to the lender before the claim;
+         * the position was then handed to whoever happened to be last. If every source together
+         * cannot pay this claim, none of them lends: the revert unwinds every draw above.
+         */
+        if (drawn == 0 || _payable() < claim.amount) {
+            revert PayoutPoolInsufficientFunds(_payable(), claim.amount);
+        }
         // Funded beats queued, and it is their turn: pay it rather than making them come back.
-        if (_payable() >= claim.amount) _pay(nextUnpaid);
+        _pay(nextUnpaid);
     }
 
     /// @dev Members' money goes back to whoever fronted it before it does anything else. They put
@@ -597,7 +620,9 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         // and settling that as if it were a position would burn somebody's earnings.
         if (inFlight < amount) amount = inFlight;
         inFlight -= amount;
-        uint256 settled = amount < memberFunded ? amount : memberFunded;
+        // Members' money owed back to members on refunds is not this claim's to use.
+        uint256 freeMembers = _memberFundedFree();
+        uint256 settled = amount < freeMembers ? amount : freeMembers;
         if (settled > 0) {
             memberFunded -= settled;
             stableCredit.settleClaim(address(this), settled);
@@ -697,7 +722,20 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
                 address carrier = carriers[i];
                 uint256 carrying = advancedOf[carrier];
                 if (carrying == 0) continue;
+                // A carrier can only be carrying what it still holds. A position settled or moved
+                // somewhere this pool did not see stops earning carry here (audit X-8).
+                if (carrier != address(this)) {
+                    uint256 holds = stableCredit.balanceOf(carrier);
+                    if (carrying > holds) {
+                        advancedTotal -= carrying - holds;
+                        advancedOf[carrier] = holds;
+                        carrying = holds;
+                        if (carrying == 0) continue;
+                    }
+                }
                 uint256 share = (distributed * carrying) / float_;
+                // Never more than is left: a stale share must not underflow the split (audit X-8).
+                if (share > left) share = left;
                 if (share == 0) continue;
                 left -= share;
                 if (carrier == address(this)) {
@@ -773,8 +811,11 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev Their own unspent capital, and never more cash than is actually free: a queued claim's
     /// money is somebody else's, and members' repayments were never the funder's at all.
     function idleCapitalOf(address funder) public view returns (uint256) {
-        uint256 free = unencumbered();
-        uint256 notMembers = held() > memberFunded ? held() - memberFunded : 0;
+        uint256 balance = held();
+        // Queued claims may be paid from capital, so they hold it back. Refunds owed do not: only
+        // members' money may pay those (audit X-12), and that is excluded below already.
+        uint256 free = balance > queuedTotal ? balance - queuedTotal : 0;
+        uint256 notMembers = balance > memberFunded ? balance - memberFunded : 0;
         if (notMembers < free) free = notMembers;
         uint256 own = capitalOf[funder];
         return own < free ? own : free;
@@ -812,7 +853,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         if (_msgSender() != address(stableCredit)) revert PayoutPoolInvalidAddress();
         if (member == address(0)) revert PayoutPoolInvalidAddress();
 
-        uint256 available = held() > refundsOwed ? held() - refundsOwed : 0;
+        // Members' own money only. Funder capital paying a refund was a loss the funder never saw:
+        // `capitalOf` stayed put while the cash behind it left (audit X-12). What member money
+        // cannot cover yet is owed, and paid as repayments arrive.
+        uint256 available = _refundable();
         paid = amount < available ? amount : available;
         uint256 short = amount - paid;
         if (short > 0) {
@@ -822,29 +866,33 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
             emit RefundQueued(member, short);
         }
         if (paid > 0) {
-            // Their own money, so it stops being anybody's working capital on the way out.
-            uint256 fromMembers = paid < memberFunded ? paid : memberFunded;
-            memberFunded -= fromMembers;
+            memberFunded -= paid;
             reserveToken.safeTransfer(member, paid);
             emit RefundPaid(member, paid);
         }
+    }
+
+    /// @dev Cash a refund may be paid from: members' money that is actually here.
+    function _refundable() private view returns (uint256) {
+        uint256 balance = held();
+        return memberFunded < balance ? memberFunded : balance;
     }
 
     /// @notice pays what is still owed to members whose refunds outran the cash.
     /// @dev Before claims, and permissionless for the same reason `distributeCarry` is: a member
     /// waiting on their own money should not also be waiting on somebody remembering to run this.
     function payRefundsOwed() external returns (uint256 paid) {
-        for (uint256 i = 0; i < refundees.length && held() > 0; i++) {
+        for (uint256 i = 0; i < refundees.length && _refundable() > 0; i++) {
             address member = refundees[i];
             uint256 owed = refundOwedTo[member];
             if (owed == 0) continue;
-            uint256 available = held();
+            // Members' money only, as in `payRefund` (audit X-12).
+            uint256 available = _refundable();
             uint256 take = owed < available ? owed : available;
             refundOwedTo[member] = owed - take;
             refundsOwed -= take;
             paid += take;
-            uint256 fromMembers = take < memberFunded ? take : memberFunded;
-            memberFunded -= fromMembers;
+            memberFunded -= take;
             reserveToken.safeTransfer(member, take);
             emit RefundPaid(member, take);
         }
@@ -882,12 +930,20 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// The credits are burned: the co-op's fee is paid out of members' own repayments, so the
     /// position is settled rather than sold to anybody.
     function withdrawCoopIncome(uint256 amount) external onlyRole(OPERATOR_ROLE) returns (uint256 paid) {
-        uint256 owed = stableCredit.balanceOf(coopTreasury);
+        // Income only. Positions the treasury bought with capital sit in the same balance, and
+        // burning them as income left `advancedOf` standing for a claim that no longer existed --
+        // the carry split then underflowed or overpaid the co-op (audit X-8). The treasury
+        // recovers those by redeeming them.
+        uint256 balance = stableCredit.balanceOf(coopTreasury);
+        uint256 positions = advancedOf[coopTreasury];
+        uint256 owed = balance > positions ? balance - positions : 0;
         paid = amount < owed ? amount : owed;
         uint256 available = unencumbered();
         if (paid > available) paid = available;
-        // Only out of members' own money: capital advanced to pay merchants early is not the fee.
-        if (paid > memberFunded) paid = memberFunded;
+        // Only out of members' own money that no refund is waiting on: capital advanced to pay
+        // merchants early is not the fee.
+        uint256 freeMembers = _memberFundedFree();
+        if (paid > freeMembers) paid = freeMembers;
         if (paid == 0) revert PayoutPoolNothingToRedeem(coopTreasury);
 
         // The claim comes off the holder's balance; the money goes where the co-op wants it. A

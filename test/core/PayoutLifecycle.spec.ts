@@ -108,6 +108,14 @@ describe("a purchase, from the shop to the money", function () {
     await pool.connect(who).fund(amount);
   }
 
+  /** The merchant pays back, in USDC, the refund debt it took on. Members' money, so it may pay
+   * a refund; funder capital may not (audit X-12). */
+  async function merchantRepays(who: any, amount: bigint) {
+    await ctx.usdc.mint(who.address, amount);
+    await ctx.usdc.connect(who).approve(await ctx.stableCredit.getAddress(), amount);
+    await ctx.stableCredit.connect(who).repayCreditBalance(who.address, amount);
+  }
+
   async function elapse(seconds: number) {
     await ethers.provider.send("evm_increaseTime", [seconds]);
     await ethers.provider.send("evm_mine", []);
@@ -595,8 +603,12 @@ describe("a purchase, from the shop to the money", function () {
       // It is their money, so it is not free for the co-op's fee or anyone's capital either.
       expect(await pool.unencumbered()).to.equal(0n);
 
-      // The merchant's next payout funds it, which is the obligation they took on.
+      // Funder capital does not pay it: a refund is members' money going home (audit X-12).
       await fundPool(coop, purchase);
+      await pool.payRefundsOwed();
+      expect(await pool.refundOwedOf(ctx.member.address)).to.equal(purchase - paidNow);
+      // The merchant paying back the obligation they took on does.
+      await merchantRepays(merchant, purchase - paidNow);
       await pool.payRefundsOwed();
       expect(await pool.refundOwedOf(ctx.member.address)).to.equal(0n);
       expect((await ctx.usdc.balanceOf(ctx.member.address)) - before).to.equal(purchase);
@@ -649,8 +661,8 @@ describe("a purchase, from the shop to the money", function () {
         const payout = await saleAtOther();
         await pool.connect(other).redeem(payout);
 
-        // Exactly what the member is owed arrives, and nothing more.
-        await fundPool(coop, owed);
+        // Exactly what the member is owed arrives, as members' money, and nothing more.
+        await merchantRepays(merchant, owed);
         expect(await pool.canPayNext()).to.equal(false);
         await expect(pool.payNext()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
         expect(await pool.connect(coop).payQueue.staticCall(5)).to.equal(0n);
@@ -662,7 +674,8 @@ describe("a purchase, from the shop to the money", function () {
 
       it("does not pay a fresh redemption out of it either", async function () {
         const owed = await owedARefund();
-        await fundPool(coop, owed);
+        // Members' money arriving: the only money a refund may use, so the only money it holds back.
+        await merchantRepays(merchant, owed);
         const payout = await saleAtOther(owed);
 
         const [paidNow] = await pool.connect(other).redeem.staticCall(payout);

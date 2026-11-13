@@ -118,7 +118,14 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// live implementation knows about, never among them.
     mapping(uint256 => uint256) public refundedOf;
 
-    uint256[34] private __gap;
+    /// @notice carry a plan has materialised and not yet had paid, inside `principalOutstanding`.
+    /// @dev Tracked rather than inferred. A refund used to find the carry by materialising and
+    /// measuring the difference, so whether somebody had called the public `materialiseCarry`
+    /// first decided whether a full refund closed the plan or left it open and behind (audit X-13).
+    /// Payments clear it before principal. Appended after `refundedOf`.
+    mapping(uint256 => uint256) public carryOutstandingOf;
+
+    uint256[33] private __gap;
 
     /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
     uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
@@ -520,15 +527,15 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
          * turned away; what it cannot do is give anything back twice, which `refundedOf` is for.
          * A closed plan has nothing left to reverse, so all that is left is cash.
          */
-        uint256 principalOnly = plan.principalOutstanding;
         uint256 carry;
         if (!plan.closed) {
-            // Read before materialising: afterwards `principalOutstanding` is principal AND carry,
-            // and the difference between the two readings is exactly the carry. That difference is
-            // what must survive this call.
+            // Every unit of carry the plan has ever materialised and not had paid is tracked, so
+            // the split between principal and carry is the same whoever materialised it and when
+            // (audit X-13). That carry is what must survive this call.
             _materialiseCarry(planId);
-            carry = plan.principalOutstanding - principalOnly;
+            carry = carryOutstandingOf[planId];
         }
+        uint256 principalOnly = plan.principalOutstanding - carry;
 
         /*
          * Reverse what is still owed; repay what has already been paid.
@@ -578,7 +585,9 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
             stableCredit.repayRefund(
                 plan.member, cash, merchant, merchantCash, _feeRecipient(), cash - merchantCash, withheld
             );
-            emit PlanRefundPaid(planId, cash, withheld);
+            // The member's cash net of the carry withheld, which is what actually reached them
+            // (audit X-14).
+            emit PlanRefundPaid(planId, cash - withheld, withheld);
         }
 
         uint256 index = plan.index.currentIndex(block.timestamp);
@@ -608,9 +617,32 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         if (plan.principalOutstanding <= carry) {
             plan.principalOutstanding = 0;
             plan.normalized = 0;
+            carryOutstandingOf[planId] = 0;
             plan.closed = true;
             emit PlanClosed(planId);
+        } else if (refunded > 0) {
+            // Still open with less to pay. The old schedule was sized for the whole purchase, so
+            // it is re-fixed over what is left (audit X-13). Arrears are carried in as due now,
+            // exactly as a re-split carries them: a refund reduces the purchase, it does not
+            // forgive a missed installment.
+            _refixSchedule(planId);
         }
+    }
+
+    /// @dev Spreads what is left of a plan over the installments it has left, keeping anything
+    /// already behind as due immediately.
+    function _refixSchedule(uint256 planId) private {
+        Plan storage plan = plans[planId];
+        uint256 due = installmentsDue(planId);
+        uint32 left = due >= plan.installments ? 1 : uint32(plan.installments - due);
+        uint256 behind = arrearsOf(planId);
+        if (behind > plan.principalOutstanding) behind = plan.principalOutstanding;
+        plan.scheduleStart = uint64(block.timestamp);
+        plan.scheduleFloor = plan.repaid + behind;
+        plan.scheduleBase = plan.principalOutstanding - behind;
+        plan.installments = left;
+        _fixSchedule(plan);
+        emit PlanSplitChanged(planId, left, plan.scheduleBase, behind);
     }
 
     /// @notice where the co-op's share of a purchase is minted.
@@ -912,8 +944,9 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         plan.normalized = reduction >= plan.normalized ? 0 : plan.normalized - reduction;
         plan.principalOutstanding -= pay;
         plan.repaid += pay;
+        uint256 principalPortion = pay - _clearCarry(planId, pay);
 
-        emit PlanPaid(planId, pay, pay);
+        emit PlanPaid(planId, pay, principalPortion);
         if (plan.principalOutstanding == 0) {
             plan.closed = true;
             emit PlanClosed(planId);
@@ -972,10 +1005,11 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
             plan.normalized = reduction >= plan.normalized ? 0 : plan.normalized - reduction;
             plan.principalOutstanding = owed - pay;
             plan.repaid += pay;
+            uint256 principalPortion = pay - _clearCarry(planId, pay);
 
             remaining -= pay;
             absorbed += pay;
-            emit PlanPaid(planId, pay, pay);
+            emit PlanPaid(planId, pay, principalPortion);
             if (plan.principalOutstanding == 0) {
                 plan.closed = true;
                 emit PlanClosed(planId);
@@ -1020,6 +1054,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
             if (plan.closed) continue;
             plan.normalized = 0;
             plan.principalOutstanding = 0;
+            carryOutstandingOf[ids[i]] = 0;
             plan.closed = true;
             emit PlanClosed(ids[i]);
         }
@@ -1045,8 +1080,18 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         // Carry that has become principal is spread over the installments left, so the schedule
         // still adds up to everything owed rather than to the figure at origination.
         plan.scheduleBase += carry;
+        carryOutstandingOf[planId] += carry;
         stableCredit.accrueCarry(plan.member, carryTreasury, carry);
         emit PlanCarryMaterialised(planId, carry);
+    }
+
+    /// @dev Applies a payment to a plan's outstanding carry first, and says how much it took.
+    /// Carry before principal within a plan is the order the compliance spec proposes (pending
+    /// counsel); here it only decides what the refund path treats as carry.
+    function _clearCarry(uint256 planId, uint256 pay) private returns (uint256 cleared) {
+        uint256 carry = carryOutstandingOf[planId];
+        cleared = pay < carry ? pay : carry;
+        if (cleared > 0) carryOutstandingOf[planId] = carry - cleared;
     }
 
     function _requirePlan(uint256 planId) private view {
