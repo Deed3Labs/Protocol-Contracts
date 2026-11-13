@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
-import { deployDeedTrack, mintValidatedLand, k, coder, Ctx, AGREEMENT_BASE } from "./fixture";
+import { deployDeedTrack, mintValidatedLand, mintValidatedVehicle, k, coder, Ctx, AGREEMENT_BASE } from "./fixture";
 import { handOverDeedAdmin, assertNoDeployerPowers } from "../../../deploy/deed_admin_handover";
 
 /*
@@ -42,7 +42,7 @@ describe("AUDIT deed: deployment handover and smaller items", function () {
   // Report D-22 (deploy wiring, as deploy_all now does it): custody contracts approved, criteria real
   it("D-22: with deploy_all's wiring a deed is validated only once its required traits are set", async () => {
     const { deed, validator, alice, deployer } = ctx;
-    await deed.connect(deployer).mintAsset(alice.address, 0, "", "Parcel", "", ethers.ZeroAddress, ethers.ZeroAddress, 0);
+    await deed.connect(deployer).mintAsset(alice.address, 1, "", "VIN", "", ethers.ZeroAddress, ethers.ZeroAddress, 0);
     await validator.validateDeed(1n);
     expect((await deed.getValidationStatus(1n))[0]).to.equal(false);
     expect(await deed.isApprovedMarketplace(await ctx.subdivide.getAddress())).to.equal(true);
@@ -65,7 +65,7 @@ describe("AUDIT deed: deployment handover and smaller items", function () {
     await fot.mint(deployer.address, 10_000n);
     await fot.approve(await fundManager.getAddress(), ethers.MaxUint256);
     await fundManager.setMaxFee(await fot.getAddress(), 1000n);
-    await expect(deed.mintAsset(alice.address, 0, "", "d", "", ethers.ZeroAddress, await fot.getAddress(), 0))
+    await expect(deed.mintAsset(alice.address, 1, "", "d", "", ethers.ZeroAddress, await fot.getAddress(), 0))
       .to.be.revertedWith("FundManager: Fee-on-transfer token");
   });
 
@@ -93,7 +93,7 @@ describe("AUDIT deed: deployment handover and smaller items", function () {
 
   it("D-23: a failed re-validation withdraws an earlier verdict", async () => {
     const { deed, alice, validator, deployer } = ctx;
-    const id = await mintValidatedLand(ctx, alice);
+    const id = await mintValidatedVehicle(ctx, alice); // a trust deed's agreement is locked (v5); legacy path
     await deed.connect(deployer).setTrait(id, ethers.toUtf8Bytes("operatingAgreement"), ethers.toUtf8Bytes(AGREEMENT_BASE + "x"), 1);
     await expect(validator.validateDeed(id)).to.emit(validator, "ValidationError");
     expect((await deed.getValidationStatus(id))[0]).to.equal(false);

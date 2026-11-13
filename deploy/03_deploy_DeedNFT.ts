@@ -27,12 +27,21 @@ async function main() {
   const metadataRendererAddress = metadataRendererDeployment.address;
   const validatorAddress = validatorDeployment.address;
 
-  // Deploy DeedNFT as an upgradeable contract
+  // Deploy DeedNFT as an upgradeable contract. Trust agreement v5: its two delegatecall extensions are
+  // deployed first and passed to the implementation's constructor (EIP-3860 caps init code, so DeedNFT
+  // cannot create them itself). They are pinned as immutables: changing them is an upgrade.
+  console.log("Deploying DeedNFT extensions...");
+  const mintExt = await (await hre.ethers.getContractFactory("DeedNFTMintExtension")).deploy();
+  const trustExt = await (await hre.ethers.getContractFactory("DeedTrustExtension")).deploy();
+  await mintExt.waitForDeployment();
+  await trustExt.waitForDeployment();
   console.log("Deploying DeedNFT...");
   const DeedNFT = await hre.ethers.getContractFactory("DeedNFT");
   const deedNFT = await hre.upgrades.deployProxy(DeedNFT, [validatorAddress, validatorRegistryAddress], {
     initializer: "initialize",
-    kind: "uups"
+    kind: "uups",
+    constructorArgs: [await mintExt.getAddress(), await trustExt.getAddress()],
+    unsafeAllow: ["constructor", "delegatecall", "state-variable-immutable"],
   });
   await deedNFT.waitForDeployment();
 
@@ -57,8 +66,11 @@ async function main() {
   }
   console.log("Wired ValidatorRegistry, Validator and MetadataRenderer to DeedNFT");
 
-  // Save deployment information
-  const deedNFTAbi = deedNFT.interface.formatJson();
+  // Save deployment information. The ABI includes IDeedTrust, which DeedNFT's fallback serves.
+  // The FunctionalContractRegistry, CoopTransferAgent, Deed timelock and setTrustRegistries are wired by
+  // deploy_all.ts (Phase 3); this per-step script leaves them unset.
+  const trust = await hre.ethers.getContractAt("IDeedTrust", deedNFTAddress);
+  const deedNFTAbi = [...JSON.parse(deedNFT.interface.formatJson()), ...JSON.parse(trust.interface.formatJson())];
   saveDeployment(
     network.name,
     "DeedNFT",

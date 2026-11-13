@@ -1,30 +1,36 @@
 import { ethers, upgrades } from "hardhat";
+import { deployDeedNFT } from "../../helpers/deed";
 
 /*
  * Deed-track audit fixture. Mirrors deploy/deploy_all.ts wiring (registry -> renderer ->
  * validator -> DeedNFT -> FundManager -> Subdivide) plus deploy/06 (factory + Fractionalize).
  * Additions needed to exercise the flows: real validation criteria, a registered operating
  * agreement, Fractionalize approved as a marketplace, Validator compatible with Subdivide.
+ *
+ * Trust agreement v5 (Phase 3): a Functional Contract registry with Subdivide and Fractionalize, a
+ * MembershipRegistry, an adopted agreement version for Land and Estate, and a licensed trustee. Land and
+ * Estate deeds are trust deeds, minted with mintTrustDeed.
  */
 export const BASE_URI = "https://api.example.com/validator/";
 export const AGREEMENT_BASE = "https://api.example.com/agreements/";
+export const AGREEMENT_V5 = ethers.keccak256(ethers.toUtf8Bytes("trust-agreement-v5.0"));
+export const AGREEMENT_V5_URI = "ipfs://trust-agreement-v5.0";
 export const k = (s: string) => ethers.keccak256(ethers.toUtf8Bytes(s));
 export const coder = ethers.AbiCoder.defaultAbiCoder();
 export const enc = (s: string) => coder.encode(["string"], [s]);
 export const dec = (b: string) => coder.decode(["string"], b)[0] as string;
+export const KIND_CUSTODY = 1;
+export const KIND_COOP_AGENT = 2;
 
 export async function deployDeedTrack() {
   const s = await ethers.getSigners();
-  const [deployer, alice, bob, carol, mallory, operator2] = s;
+  const [deployer, alice, bob, carol, mallory, operator2, trustee, standby, sponsor] = s;
 
   const registry: any = await upgrades.deployProxy(await ethers.getContractFactory("ValidatorRegistry"), [], { kind: "uups" });
   const renderer: any = await upgrades.deployProxy(await ethers.getContractFactory("MetadataRenderer"), [], { kind: "uups" });
   const validator: any = await upgrades.deployProxy(await ethers.getContractFactory("Validator"), [BASE_URI, AGREEMENT_BASE], { kind: "uups" });
-  const deed: any = await upgrades.deployProxy(
-    await ethers.getContractFactory("DeedNFT"),
-    [await validator.getAddress(), await registry.getAddress()],
-    { kind: "uups" }
-  );
+  const deed: any = await deployDeedNFT([await validator.getAddress(), await registry.getAddress()]);
+  const trust: any = await ethers.getContractAt("IDeedTrust", await deed.getAddress());
   await registry.setDeedNFT(await deed.getAddress());
   await validator.setDeedNFT(await deed.getAddress());
   await renderer.setDeedNFT(await deed.getAddress());
@@ -41,6 +47,12 @@ export async function deployDeedTrack() {
   await registry.updateValidatorStatus(await validator.getAddress(), true);
   for (const t of [0, 1, 2, 3]) await validator.setupValidationCriteria(t);
   await validator.registerOperatingAgreement(AGREEMENT_BASE, "Trust Agreement v5");
+  // v5: the agreement version is adopted per asset type, Land (0) and Estate (2) only.
+  await validator.adoptAgreementVersion(0, AGREEMENT_V5, AGREEMENT_V5_URI, "Trust Agreement v5.0");
+  await validator.adoptAgreementVersion(2, AGREEMENT_V5, AGREEMENT_V5_URI, "Trust Agreement v5.0");
+  // A licensed trust company as trustee: eligible without validator powers.
+  await registry.setLicensedTrustee(trustee.address, true, ethers.ZeroHash);
+  await registry.setLicensedTrustee(standby.address, true, ethers.ZeroHash);
 
   const subdivide: any = await upgrades.deployProxy(
     await ethers.getContractFactory("Subdivide"),
@@ -66,7 +78,18 @@ export async function deployDeedTrack() {
   await deed.setApprovedMarketplace(await subdivide.getAddress(), true);
   await subdivide.setApprovedMarketplace(await fractionalize.getAddress(), true);
 
-  return { deployer, alice, bob, carol, mallory, operator2, registry, renderer, validator, deed, fundManager, subdivide, factory, fractionalize };
+  // v5: Functional Contract registry (deployer stands in for the timelock and the Foundation multisig) and the
+  // MembershipRegistry for the Verified policy.
+  const fcRegistry: any = await (await ethers.getContractFactory("FunctionalContractRegistry")).deploy(deployer.address, deployer.address);
+  await fcRegistry.register(await subdivide.getAddress(), KIND_CUSTODY);
+  await fcRegistry.register(await fractionalize.getAddress(), KIND_CUSTODY);
+  const membership: any = await upgrades.deployProxy(await ethers.getContractFactory("MembershipRegistry"), [deployer.address], { kind: "transparent" });
+  await trust.setTrustRegistries(await fcRegistry.getAddress(), await membership.getAddress());
+
+  return {
+    deployer, alice, bob, carol, mallory, operator2, trustee, standby, sponsor,
+    registry, renderer, validator, deed, trust, fundManager, subdivide, factory, fractionalize, fcRegistry, membership,
+  };
 }
 
 export type Ctx = Awaited<ReturnType<typeof deployDeedTrack>>;
@@ -85,14 +108,113 @@ export const LAND_TRAITS: Record<string, string> = {
   legalDescription: "LOT 12, BLOCK 3, TRACT 4567, AS PER MAP RECORDED IN BOOK 60 PAGE 12",
 };
 
-/** Mint a Land deed to `owner` (sequential id), set the required traits as the owner, validate it. */
-export async function mintValidatedLand(ctx: Ctx, owner: any, salt = 0n, definition = "Parcel 0123-456-78"): Promise<bigint> {
-  const tx = await ctx.deed.mintAsset(owner.address, 0, "ipfs://fallback", definition, "", ethers.ZeroAddress, ethers.ZeroAddress, salt);
+export const NO_PROGRAM = {
+  programId: ethers.ZeroHash,
+  sponsor: ethers.ZeroAddress,
+  titleAdministrator: ethers.ZeroAddress,
+  paramsHash: ethers.ZeroHash,
+  rofrPeriodDays: 0,
+  completionWindowDays: 0,
+  versionConsentRequired: false,
+};
+
+/** Default trust mint parameters; override any field. */
+export function trustParams(ctx: Ctx, owner: any, over: Record<string, any> = {}) {
+  return {
+    owner: owner.address ?? owner,
+    assetType: 0,
+    definition: "Parcel 0123-456-78",
+    parcelRef: k("San Bernardino|0123-456-78"),
+    salt: 1n,
+    agreementHash: AGREEMENT_V5,
+    riderHashes: [] as string[],
+    configuration: "",
+    uri: "ipfs://fallback",
+    validator: ethers.ZeroAddress,
+    token: ethers.ZeroAddress,
+    trustee: ctx.trustee.address,
+    protector: ethers.ZeroAddress,
+    transferPolicy: 0,
+    program: NO_PROGRAM,
+    ...over,
+  };
+}
+
+export async function deedIdFor(ctx: Ctx, p: any): Promise<bigint> {
+  const [id] = await ctx.trust.computeDeedId(
+    p.assetType, k(p.definition), p.parcelRef, p.owner, p.salt, p.agreementHash, p.riderHashes
+  );
+  return id;
+}
+
+/** EIP-712 consent signature for the DeedNFT trust domain. */
+export async function signTrust(ctx: Ctx, signer: any, primaryType: string, value: Record<string, any>) {
+  const types: Record<string, any> = {
+    TrusteeAcceptance: [
+      { name: "tokenId", type: "uint256" }, { name: "trustee", type: "address" }, { name: "nonce", type: "uint256" },
+    ],
+    StandbyAcceptance: [
+      { name: "tokenId", type: "uint256" }, { name: "standby", type: "address" }, { name: "nonce", type: "uint256" },
+    ],
+    AgreementConsent: [
+      { name: "tokenId", type: "uint256" }, { name: "agreementHash", type: "bytes32" },
+      { name: "ridersHash", type: "bytes32" }, { name: "nonce", type: "uint256" },
+    ],
+    CorrectionConsent: [
+      { name: "tokenId", type: "uint256" }, { name: "definitionHash", type: "bytes32" },
+      { name: "reasonHash", type: "bytes32" }, { name: "nonce", type: "uint256" },
+    ],
+  };
+  const domain = {
+    name: "DeedNFT Trust",
+    version: "5",
+    chainId: (await ethers.provider.getNetwork()).chainId,
+    verifyingContract: await ctx.deed.getAddress(),
+  };
+  return signer.signTypedData(domain, { [primaryType]: types[primaryType] }, value);
+}
+
+/** Mint a trust deed (Land by default) with the trustee's signed acceptance. Returns its ID. */
+export async function mintTrust(ctx: Ctx, owner: any, over: Record<string, any> = {}, trusteeSigner?: any): Promise<bigint> {
+  const p = trustParams(ctx, owner, over);
+  const id = await deedIdFor(ctx, p);
+  const resolvedTrustee = p.trustee !== ethers.ZeroAddress ? p.trustee : p.program.titleAdministrator;
+  const signer = trusteeSigner ?? (await ethers.getSigner(resolvedTrustee));
+  const sig = await signTrust(ctx, signer, "TrusteeAcceptance", { tokenId: id, trustee: resolvedTrustee, nonce: 0 });
+  await ctx.trust.mintTrustDeed(p, sig);
+  return id;
+}
+
+/** Mint a Land trust deed to `owner`, set the required traits as the owner, validate it. */
+let autoSalt = 1000n;
+export async function mintValidatedLand(ctx: Ctx, owner: any, salt = 0n, definition = "Parcel 0123-456-78", over: Record<string, any> = {}): Promise<bigint> {
+  const id = await mintTrust(ctx, owner, { salt: salt === 0n ? ++autoSalt : salt, definition, ...over });
+  for (const [name, val] of Object.entries(LAND_TRAITS)) {
+    await ctx.deed.connect(owner).setTrait(id, ethers.toUtf8Bytes(name), ethers.toUtf8Bytes(val), 1);
+  }
+  await ctx.validator.validateDeed(id);
+  return id;
+}
+
+/** Mint a legacy (non-trust) Vehicle deed via mintAsset. */
+export async function mintVehicle(ctx: Ctx, owner: any, salt = 0n, definition = "VIN 1HGCM82633A004352"): Promise<bigint> {
+  const tx = await ctx.deed.mintAsset(owner.address, 1, "ipfs://fallback", definition, "", ethers.ZeroAddress, ethers.ZeroAddress, salt);
   const rc = await tx.wait();
   const ev = rc.logs.map((l: any) => { try { return ctx.deed.interface.parseLog(l); } catch { return null; } })
     .find((e: any) => e && e.name === "DeedNFTMinted");
-  const id: bigint = ev.args.tokenId;
-  for (const [name, val] of Object.entries(LAND_TRAITS)) {
+  return ev.args.tokenId;
+}
+
+export const VEHICLE_TRAITS: Record<string, string> = { make: "Honda", model: "Accord", year: "2003", vin: "1HGCM82633A004352" };
+
+/**
+ * Mint a legacy Vehicle deed, set its required traits as the owner, validate it. Since v5 every Land and Estate
+ * deed is a trust deed with a locked definition and agreement, so the Phase 1 legacy-metadata rules (D-1, D-14,
+ * D-15, ...) are exercised on Vehicle deeds, which keep them unchanged.
+ */
+export async function mintValidatedVehicle(ctx: Ctx, owner: any, salt = 0n, definition = "VIN 1HGCM82633A004352"): Promise<bigint> {
+  const id = await mintVehicle(ctx, owner, salt, definition);
+  for (const [name, val] of Object.entries(VEHICLE_TRAITS)) {
     await ctx.deed.connect(owner).setTrait(id, ethers.toUtf8Bytes(name), ethers.toUtf8Bytes(val), 1);
   }
   await ctx.validator.validateDeed(id);
