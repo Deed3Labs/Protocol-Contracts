@@ -668,7 +668,7 @@ contract Validator is
 
     /// @dev Exact match of `base ++ suffix` against an agreement hash; an empty base never matches.
     function _isBasePlusSuffix(bytes32 agreementHash, string memory base, string memory suffix) private pure returns (bool) {
-        return bytes(base).length > 0 && keccak256(abi.encodePacked(base, suffix)) == agreementHash;
+        return bytes(base).length > 0 && keccak256(bytes.concat(bytes(base), bytes(suffix))) == agreementHash;
     }
 
     /**
