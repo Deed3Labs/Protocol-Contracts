@@ -93,3 +93,25 @@ raises Savings-backed drawn: capacity writes can't, and transfers are the member
   `settleShortfall(member)` redeems the smallest amount that closes the gap, pool shares first.
   Never Savings.
 - Savings (`liquidate`): only on the new default, and only up to Savings-backed drawn.
+
+## Section 13 (Assurance Contracts): decisions (owner, 2026-11-13, "go with your recommendations on all of them")
+
+Section 13 replaces 12.11. It is built as Phase 2c, right after 2b, on its own branch.
+1. The AssurancePool is rebuilt around compartments (CREDIT_BACKSTOP, MEMBER_ASSURANCE). This
+   replaces the RTD reserve model (primary/buffer/excess, oracle rebalance) and retires
+   AssuranceOracle, overriding two "Do NOT change" items (RTD as pool exposure, the Phase 0
+   AssurancePool role fixes). The Phase 0 test becomes "backstopFloor() = 0 with no unsecured
+   credit".
+2. The ledger's repayment remainder goes to Lending Co.'s operating address, not the pool
+   (replacing Phase 1's X-2 routing into the pool). Lending Co. pays in through
+   `deposit(CREDIT_ENHANCEMENT_FEE)`.
+3. `reimburse` (lost-debt redemption paid from the pool) is removed. Lost debt is Lending Co.'s
+   charge-off, recovered through `requestDraw` to its loss-reserve address.
+4. The pool's loans to PayoutPool and BondVault are removed. Payouts rely on Lending Co.'s
+   funding (12.10), and bonds on BondVault's own reserves.
+5. Governance: a third TimelockController (7 days), with a co-op board Safe as proposer.
+   DECISIONS #10's two instances stay for Deed and credit.
+6. Every function has in-contract two-person control (proposer ≠ approver). Parameter changes and
+   upgrades are also behind the 7-day timelock.
+7. Rewiring is in scope: the ledger's reserve token and conversion, PayoutPool, BondVault and
+   BurnerBondDeposit.
