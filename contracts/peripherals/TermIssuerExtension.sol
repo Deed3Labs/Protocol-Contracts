@@ -221,10 +221,11 @@ contract TermIssuerExtension is TermIssuerBase {
         /*
          * The member's own re-splits are bounded: not while behind (catch up first -- a re-split
          * is how a plan is reshaped, not how a missed installment is put off), at most
-         * MAX_SPLIT_CHANGES in a plan's life, and at most one an installment period. An operator
-         * re-splitting for hardship is not held to these.
+         * MAX_SPLIT_CHANGES in a plan's life, and at most one an installment period. A re-split the
+         * member signed is theirs too, whoever submits it. An operator re-splitting for hardship,
+         * unsigned (so never at a higher cost), is not held to these.
          */
-        if (msg.sender == plan.member) {
+        if (msg.sender == plan.member || signed) {
             if (arrearsOf(planId) > 0) revert TermIssuerBehindSchedule(plan.member);
             SplitLog storage log = splitLogs[planId];
             if (log.changes >= MAX_SPLIT_CHANGES) revert TermIssuerSplitLimitReached(planId);
