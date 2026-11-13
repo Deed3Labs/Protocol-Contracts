@@ -552,7 +552,7 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         // A write-off is the ledger recognising a loss, not a payment anyone is making. It cannot
         // be blocked by the state that caused it.
         if (writeOff > 0) {
-            _systemTransfer(address(this), member, writeOff);
+            _writeOffTransfer(member, writeOff);
             // The only thing that creates lost debt: an obligation gone with its credits still
             // out there.
             lostDebtOutstanding += writeOff;
@@ -704,6 +704,22 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         super._transfer(_from, _to, _amount);
         // A refund debt is collected before anything an issuer holds, and never offered to one.
         _settleRepayment(_to, burned - _collectReceivable(_to, burned));
+    }
+
+    /// @notice moves a written-off amount onto the ledger's line, attributed to the issuer that
+    /// wrote it off and to no other.
+    /// @dev Like `_systemTransfer` -- every issuer is told, so what each measures stays in step --
+    /// but the reduction is offered only to the defaulting issuer. A write-off is not a payment:
+    /// running it through the rate-band waterfall let a term default clear a dearer revolving tier
+    /// and leave the term debt untracked, and a revolving default clear a term plan's arrears
+    /// (audit X-6).
+    function _writeOffTransfer(address member, uint256 amount) private {
+        uint256 burned = _repaymentOf(member, amount);
+        _notifyIssuersOf(address(this), address(this), member, amount);
+        _notifyIssuersOf(member, address(this), member, amount);
+        super._transfer(address(this), member, amount);
+        uint256 remaining = burned - _collectReceivable(member, burned);
+        if (remaining > 0) ICreditIssuer(_msgSender()).absorbRepayment(member, remaining, 0);
     }
 
     /// @notice sends repayment value where it is owed before where it might be needed.

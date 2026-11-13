@@ -15,7 +15,7 @@ Branch `audit/phase-1`, cut from `audit/materials` (which is `dev` @ `7eb5976` p
 - [x] 3. C-2: savings collateral = min(pledged, balance); free CLRUSD checked at draw and card settle
 - [x] 4. Refund path: X-1, X-3, X-4, X-5, X-12, X-13, X-14
 - [x] 5. Pool accounting: X-2, X-8, X-20
-- [ ] 6. X-6: write-offs stay with the defaulting issuer
+- [x] 6. X-6: write-offs stay with the defaulting issuer
 - [ ] 7. H-4 (credit side) and M-2: per-function operator roles, daily caps, plan merchants active, member-signed plans, card settlement caps and authorizations
 - [ ] 8. M-3, L-2, L-1, L-5, L-6, L-7, L-8, X-11
 

@@ -133,13 +133,11 @@ describe("DEEP AUDIT PoC", function () {
     expect(closed).to.equal(true);
   });
 
-  it("X-6: a (permissionless) term default is written off against the revolving BOOST tier first", async function () {
+  it("X-6 (fixed): a term default writes off the term plan only; the revolving tier and the ledger stay in step", async function () {
     const { ctx, revolving, term, merchant } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
-    // Revolving BOOST line (300 bps), long rebalance period so the revolving side stays in good standing.
     await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 0n, 1_000n * ONE_USDC], 3650 * DAY, CYCLE);
     await ctx.stableCredit.connect(m).transfer(merchant.address, 1_000n * ONE_USDC);
-    // A cheaper (150 bps) term plan the member then stops paying.
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
     await advance(3 * CYCLE + 1);
@@ -149,22 +147,16 @@ describe("DEEP AUDIT PoC", function () {
 
     await term.connect(ctx.outsider).declareDefault(m.address);
     const writtenOff = await term.writtenOffOf(m.address);
+    expect(writtenOff).to.be.gt(1_000n * ONE_USDC);
 
-    // The write-off was meant to clear the TERM plan. It cleared the revolving BOOST tier instead.
-    const revolvingAfter = await revolving.totalPrincipalOf(m.address);
-    expect(revolvingAfter).to.be.closeTo(revolvingBefore - writtenOff, 1_000n); // a few wei of carry in the default block
+    // The revolving tier is untouched (a few wei of carry in the default block aside)...
+    expect(await revolving.totalPrincipalOf(m.address)).to.be.closeTo(revolvingBefore, 1_000n);
     expect(await term.totalPrincipalOf(m.address)).to.equal(0n);
-    // The ledger still holds (roughly) the revolving debt -- now tracked by NO issuer: no carry, no default sizing.
+    // ...and the ledger holds exactly what the revolving line tracks: no untracked residual.
     const ledger = await ctx.stableCredit.creditBalanceOf(m.address);
-    expect(ledger).to.be.gt(1_000n * ONE_USDC);
-    expect(ledger - revolvingAfter).to.be.closeTo(writtenOff, 1_000n); // untracked residual == the misdirected write-off
-    console.log("      revolving principal before:", revolvingBefore, "term written off:", writtenOff, "ledger after:", ledger);
-    expect(await term.residualCarryOf(m.address)).to.be.closeTo(writtenOff, 1_000n);
-    // Revolving headroom is "free" again from the issuer's point of view.
-    expect(await revolving.headroomOf(m.address, 3)).to.be.gt(900n * ONE_USDC);
-    // Later, when the revolving period ends, its own write-off sizes from drawn: only revolvingAfter is
-    // written off; `writtenOff` of real debt never enters lostDebt and the claims it backs stay outstanding.
-    expect(await revolving.totalDrawnOf(m.address)).to.be.closeTo(revolvingAfter, 10n);
+    expect(ledger - (await revolving.totalPrincipalOf(m.address))).to.be.lte(1_000n);
+    expect(await term.residualCarryOf(m.address)).to.be.lte(1_000n);
+    expect(await revolving.headroomOf(m.address, 3)).to.equal(0n);
   });
 
   it("X-7: LendingPool depositors front-run a loss by queueing a withdrawal and push it onto the others", async function () {
