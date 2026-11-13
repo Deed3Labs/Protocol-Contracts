@@ -49,7 +49,8 @@ contract DeedTrustExtension is DeedTrustCommon {
      *      - On a trust deed: a freezing void blocks transfers; a transfer to the current trustee reverts unless
      *        the trustee is an active Functional Contract, which then suspends the trustee (DECISIONS,
      *        Addendum 1 item 6); otherwise the transfer passes if it returns the token to the address it last
-     *        came from (9(b)), goes into an active Functional Contract (9(c)), or satisfies the policy.
+     *        came from (9(b); not a removed Functional Contract), goes into an active Functional Contract
+     *        (9(c)), or satisfies the policy.
      *      - The beneficiary trait is no longer written (item 5): see beneficialOwnerOf.
      */
     function _onTransfer(address from, address to, uint256 tokenId) internal {
@@ -79,7 +80,9 @@ contract DeedTrustExtension is DeedTrustCommon {
             emit IDeedTrust.TrusteeSuspended(tokenId, to);
         }
 
-        if (!(to == r.lastFrom || intoFc || _policyAllows(r.transferPolicy, from, to))) {
+        // A removed Functional Contract takes no new deposits, not even as the address the deed last came from.
+        bool returning = to == r.lastFrom && (kinds == 0 || active);
+        if (!(returning || intoFc || _policyAllows(r.transferPolicy, from, to))) {
             revert IDeedTrust.TransferPolicyBlocked(r.transferPolicy);
         }
         r.lastFrom = from;

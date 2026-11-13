@@ -22,12 +22,12 @@ Inputs: `specs/deed-trust-v5-brief.md`, `-addendum-1.md`, `-addendum-2.md` (wins
 
 - [x] 1. Design + progress doc
 - [x] 2. DeedNFT base + two extensions (mint, trust) passed as constructor args (EIP-3860 init-code cap); production sizes under EIP-170
-- [ ] 3. Trust core: Deed ID, reserveId, mintTrustDeed, reserved traits, burn record, status
-- [ ] 4. Trustee, protector, standby, consent (EIP-712/1271 or prior approval), licensing determination; ValidatorRegistry licensed trustees
-- [ ] 5. Agreement versions (Validator adoption per asset type), holder election, definition corrections
-- [ ] 6. Transfer policy, lastFrom, FC registry, Verified via MembershipRegistry, trustee rule; IDeedCustody in Subdivide/Fractionalize
-- [ ] 7. CoopTransferAgent
-- [ ] 8. Notices and markVoid
+- [x] 3. Trust core: Deed ID, reserveId, mintTrustDeed, reserved traits, burn record, status
+- [x] 4. Trustee, protector, standby, consent (EIP-712/1271 or prior approval), licensing determination; ValidatorRegistry licensed trustees
+- [x] 5. Agreement versions (Validator adoption per asset type), holder election, definition corrections
+- [x] 6. Transfer policy, lastFrom, FC registry, Verified via MembershipRegistry, trustee rule; IDeedCustody in Subdivide/Fractionalize
+- [x] 7. CoopTransferAgent
+- [x] 8. Notices and markVoid
 - [ ] 9. Timelock + FC registry + agent in deploy scripts and handover
 - [ ] 10. Tests (`test/audit/deed/TrustV5*.spec.ts`) and existing tests updated
 - [ ] 11. Sizes, Slither, storage layout, full suite
