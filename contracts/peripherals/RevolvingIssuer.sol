@@ -115,6 +115,9 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     error RevolvingIssuerCardFloatCannotCover(uint256 amount, uint256 held);
     error RevolvingIssuerAutoRepayNotEnabled(address member);
     error RevolvingIssuerAutoRepayAlreadyUsed(bytes32 ref);
+    /// @notice thrown when a transfer would mint more than the tiers can place.
+    /// @dev Debt no tier holds accrues nothing and no default can reach it (audit C-1).
+    error RevolvingIssuerDrawUnplaced(address member, uint256 unplaced);
 
     /* ========== EVENTS ========== */
 
@@ -599,6 +602,19 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
 
     /* ========== INTERNAL ========== */
 
+    /// @notice refuses a draw on this line that pays anyone but an active merchant or a named
+    /// system address, then applies the period rules.
+    /// @dev Phase 1 has no member-to-member payments. Without this, a member could send their line
+    /// to a wallet of their own and redeem it at the payout pool (audit C-1, M-1).
+    function _validateCreditTransaction(address sender, address recipient, uint256 amount)
+        internal
+        override
+        returns (bool)
+    {
+        if (!_drawRecipientAllowed(sender, recipient, amount)) return false;
+        return super._validateCreditTransaction(sender, recipient, amount);
+    }
+
     /// @notice records what a credit movement did to this member's tiers.
     /// @dev Runs on the mint path rather than a separate reporting call, because the shortfall
     /// about to be minted is exactly what has to be placed in a tier, and the recipient's
@@ -621,7 +637,11 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         // The sender covers what their balance cannot, and that shortfall is what gets minted.
         uint256 balance = stableCredit.balanceOf(sender);
         if (balance < amount && totalCapacityOf(sender) > 0) {
-            _draw(sender, amount - balance);
+            // Every unit minted must land in a tier. A shortfall the tiers cannot hold would be
+            // debt nothing tracks -- no carry, no schedule, nothing a default can write off -- and
+            // a term limit on the same member used to make exactly that possible (audit C-1).
+            uint256 unplaced = _draw(sender, amount - balance);
+            if (unplaced > 0) revert RevolvingIssuerDrawUnplaced(sender, unplaced);
         }
     }
 
@@ -692,8 +712,9 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     }
 
     /// @notice fills tiers in order, cheapest first.
-    function _draw(address member, uint256 amount) private {
-        uint256 remaining = amount;
+    /// @return remaining what the tiers had no room for.
+    function _draw(address member, uint256 amount) private returns (uint256 remaining) {
+        remaining = amount;
         for (uint256 i = 0; i < tiers.length && remaining > 0; i++) {
             if (!tiers[i].active) continue;
             uint256 headroom = headroomOf(member, i);
@@ -707,8 +728,8 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
             emit TierDrawn(member, i, take);
         }
         // Anything left over means the ledger allowed a draw this issuer has no room for. The
-        // ledger's ceiling is the sum of these capacities, so that cannot happen without the two
-        // having already disagreed.
+        // ledger's ceiling is the sum of every issuer's allocation, not just these capacities, so
+        // it can happen; the caller decides what to do about it.
     }
 
     /// @notice clears tiers in reverse order, most expensive first.

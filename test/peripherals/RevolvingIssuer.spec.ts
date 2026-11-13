@@ -329,7 +329,10 @@ describe("RevolvingIssuer", function () {
       expect(owed).to.be.greaterThan(100n * ONE_USDC);
       expect(await ctx.stableCredit.creditLimitLeftOf(ctx.member.address)).to.equal(0n);
 
-      await expect(spend(1n * ONE_USDC)).to.be.revertedWith("MutualCredit: Insufficient credit");
+      // The tiers have no room, so the draw is refused before anything is minted (audit C-1:
+      // every unit minted must land in a tier).
+      await expect(spend(1n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerDrawUnplaced");
     });
 
     it("lets a member repay carry once it is on the ledger", async function () {

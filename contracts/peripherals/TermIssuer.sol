@@ -426,6 +426,30 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         amounts[0] = principal;
     }
 
+    /// @inheritdoc ICreditIssuer
+    /// @dev The whole term limit is locked. It is drawn by `openPlan`, which always records a
+    /// schedule; a plain transfer drawing it instead left debt no schedule described and no
+    /// default could reach (audit C-1).
+    function lockedAllocationOf(address member)
+        external
+        view
+        override
+        returns (uint256 allocation, uint256 drawn)
+    {
+        return (termLimitOf[member], totalPrincipalOf(member));
+    }
+
+    /// @notice refuses a draw on this line that pays anyone but an active merchant or a named
+    /// system address, then applies the period rules.
+    function _validateCreditTransaction(address sender, address recipient, uint256 amount)
+        internal
+        override
+        returns (bool)
+    {
+        if (!_drawRecipientAllowed(sender, recipient, amount)) return false;
+        return super._validateCreditTransaction(sender, recipient, amount);
+    }
+
     /// @notice whether a member is current on every plan they hold.
     /// @dev Overrides cycle equilibrium. The base rule is that a member has rebalanced to zero or
     /// above; here a member carrying a term balance on schedule is doing exactly what the product

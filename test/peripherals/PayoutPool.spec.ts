@@ -102,6 +102,8 @@ describe("PayoutPool", function () {
     });
 
     it("refuses a merchant with nothing owed to them", async function () {
+      // Registered, so the eligibility check passes and the balance is what refuses it.
+      await registry.registerMerchant(second.address, NET_30, 50_000n * ONE_USDC, 200n);
       await expect(pool.connect(second).redeem(1n))
         .to.be.revertedWithCustomError(pool, "PayoutPoolNothingToRedeem");
     });

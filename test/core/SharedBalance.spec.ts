@@ -40,6 +40,9 @@ describe("a balance shared between issuers", function () {
     for (const who of [coop, merchant]) {
       await ctx.access.connect(ctx.operator).grantMember(who.address);
     }
+    // The member pays the merchant; Phase 1 only lets a draw pay a merchant or a named system
+    // address (audit C-1).
+    await ctx.stableCredit.setSystemRecipient(merchant.address, true);
 
     // The plan's revolving tiers, cheapest first.
     for (const [kind, rate] of [

@@ -176,6 +176,37 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
         return (0, false);
     }
 
+    /// @inheritdoc ICreditIssuer
+    /// @dev Nothing is locked by default: a plain transfer may draw on everything this issuer
+    /// contributes. An issuer whose allocation may only be used through a scheduled path overrides
+    /// this.
+    function lockedAllocationOf(address)
+        external
+        view
+        virtual
+        override
+        returns (uint256 allocation, uint256 drawn)
+    {
+        return (0, 0);
+    }
+
+    /// @notice whether a transfer that draws on this issuer's line pays somebody it may pay.
+    /// @dev Only draws are checked, and only the sender's own: spending a positive balance is the
+    /// ledger's business, and a member enrolled here only as a recipient is not drawing on this
+    /// line. A draw must pay an active merchant or a named system address (audit C-1). The ledger
+    /// answers, so the list lives in one place, and it fails closed while no merchant registry is
+    /// set.
+    function _drawRecipientAllowed(address sender, address recipient, uint256 amount)
+        internal
+        view
+        returns (bool)
+    {
+        if (recipient == address(0) || amount == 0) return true;
+        if (stableCredit.balanceOf(sender) >= amount) return true;
+        if (!stableCredit.networkRegistry().isEnrolled(sender, address(this))) return true;
+        return stableCredit.isEligibleRecipient(recipient);
+    }
+
     /// @notice takes what this issuer can of a repayment.
     /// @dev Nothing by default: the base issuer tracks a period, not a composition, so there is
     /// no position for a payment to land against.

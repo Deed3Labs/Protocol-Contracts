@@ -3,7 +3,8 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 
 /*
- * Audit proofs of concept. Each test PASSES when the vulnerability is present.
+ * Audit proofs of concept, flipped into regression tests once each finding was fixed. A test
+ * still titled as a proof (no "(fixed)") still demonstrates its bug and is fixed in a later step.
  */
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -62,59 +63,74 @@ describe("AUDIT PoC", function () {
     await pool.connect(funder).fund(20_000n * ONE_USDC);
   });
 
-  it("C-1a: a term-limit member cashes out their whole unsecured limit and can never be defaulted", async function () {
+  /*
+   * Regression tests. Each started life as a proof that PASSED while its bug existed; they now
+   * assert the attack fails. The ledger is wired to the merchant registry, as deploy/22 does.
+   */
+  async function wireLedgerToRegistry() {
+    await ctx.stableCredit.connect(ctx.admin).setMerchantRegistry(await registry.getAddress());
+  }
+
+  it("C-1a (fixed): a term limit cannot be drawn by plain transfer, to anyone; only openPlan uses it", async function () {
+    await wireLedgerToRegistry();
     const m = ctx.member;
-    // Underwritten on income: no plan opened, no purchase made.
     await term.connect(ctx.operator).setTermLimit(m.address, 5_000n * ONE_USDC);
 
-    // Member sends ledger credit to a wallet they control (not a registered merchant).
-    await ctx.stableCredit.connect(m).transfer(attackerWallet.address, 5_000n * ONE_USDC);
-    await ctx.stableCredit.connect(attackerWallet).approve(await pool.getAddress(), ethers.MaxUint256);
-    await pool.connect(attackerWallet).redeem(5_000n * ONE_USDC);
+    // To a wallet of their own: refused by the recipient rule.
+    await expect(ctx.stableCredit.connect(m).transfer(attackerWallet.address, 5_000n * ONE_USDC))
+      .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditRecipientNotEligible");
+    // Even to an active merchant: the term allocation is locked to the scheduled path.
+    await expect(ctx.stableCredit.connect(m).transfer(merchant.address, 1n * ONE_USDC))
+      .to.be.revertedWith("MutualCredit: Insufficient credit");
+    expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(0n);
 
-    expect(await ctx.usdc.balanceOf(attackerWallet.address)).to.equal(5_000n * ONE_USDC);
-    expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(5_000n * ONE_USDC);
-
-    // Two years later: no plan, no arrears, no period -> nothing can ever declare a default.
-    await advance(730 * DAY);
-    expect(await term.totalPrincipalOf(m.address)).to.equal(0n);
-    expect(await term.totalArrearsOf(m.address)).to.equal(0n);
-    await expect(term.declareDefault(m.address)).to.be.revertedWithCustomError(term, "TermIssuerNotDefaultable");
-    expect(await term.inDefault(m.address)).to.equal(false);
-    // ...and no carry ever accrued on it either.
-    expect(await ctx.stableCredit.creditBalanceOf(m.address)).to.equal(5_000n * ONE_USDC);
+    // The scheduled path still works, and what it creates can default.
+    await term.connect(ctx.operator).openPlan(
+      m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
+    await advance(3 * CYCLE + 1);
+    await expect(term.declareDefault(m.address)).to.emit(term, "TermDefaulted");
   });
 
-  it("C-1b: a revolving member cashes out an unsecured INCOME/BOOST line through an unregistered wallet", async function () {
+  it("C-1b (fixed): a revolving draw to an unregistered wallet is refused, with or without the registry wired", async function () {
     const m = ctx.member;
     await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 1_000n * ONE_USDC], 0, CYCLE);
-    await ctx.stableCredit.connect(m).transfer(attackerWallet.address, 3_000n * ONE_USDC);
-    await ctx.stableCredit.connect(attackerWallet).approve(await pool.getAddress(), ethers.MaxUint256);
-    const [paidNow] = await pool.connect(attackerWallet).redeem.staticCall(3_000n * ONE_USDC);
-    await pool.connect(attackerWallet).redeem(3_000n * ONE_USDC);
-    expect(paidNow).to.equal(true);
-    expect(await ctx.usdc.balanceOf(attackerWallet.address)).to.equal(3_000n * ONE_USDC);
-    expect(await registry.isRegistered(attackerWallet.address)).to.equal(false);
+    // Registry not yet wired to the ledger: the issuer's draw check fails closed.
+    await expect(ctx.stableCredit.connect(m).transfer(attackerWallet.address, 3_000n * ONE_USDC))
+      .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditTransactionInvalid");
+    await wireLedgerToRegistry();
+    await expect(ctx.stableCredit.connect(m).transfer(attackerWallet.address, 3_000n * ONE_USDC))
+      .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditRecipientNotEligible");
+    // And a holder that is not a merchant or a named co-op address cannot redeem at all.
+    await expect(pool.connect(attackerWallet).redeem(1n))
+      .to.be.revertedWithCustomError(pool, "PayoutPoolNotEligible");
+
+    // Paying an active merchant still works, and the merchant redeems it.
+    await ctx.stableCredit.connect(m).transfer(merchant.address, 3_000n * ONE_USDC);
+    await ctx.stableCredit.connect(merchant).approve(await pool.getAddress(), ethers.MaxUint256);
+    await pool.connect(merchant).redeem(3_000n * ONE_USDC);
+    expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(3_000n * ONE_USDC);
   });
 
-  it("C-1c: an unfunded pool still pays the attacker after 30 days by borrowing from the treasury", async function () {
-    // Drain the pre-funded capital first so the pool is empty.
+  it("C-1c (fixed): with nothing redeemable by the attacker, an unfunded pool has no claim to draw for", async function () {
     await pool.connect(funder).withdrawCapital(20_000n * ONE_USDC, funder.address);
+    await wireLedgerToRegistry();
     const m = ctx.member;
     await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
-    await ctx.stableCredit.connect(m).transfer(attackerWallet.address, 2_000n * ONE_USDC);
-    await ctx.stableCredit.connect(attackerWallet).approve(await pool.getAddress(), ethers.MaxUint256);
-    await pool.connect(attackerWallet).redeem(2_000n * ONE_USDC); // queued
+    await expect(ctx.stableCredit.connect(m).transfer(attackerWallet.address, 2_000n * ONE_USDC))
+      .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditRecipientNotEligible");
+    await expect(pool.connect(attackerWallet).redeem(2_000n * ONE_USDC))
+      .to.be.revertedWithCustomError(pool, "PayoutPoolNotEligible");
 
-    // Treasury Safe has an allowance to the pool (scripts/command/approve_treasury_caps.ts).
     await ctx.usdc.mint(coop.address, 10_000n * ONE_USDC);
     await ctx.usdc.connect(coop).approve(await pool.getAddress(), 10_000n * ONE_USDC);
     await advance(NET_30 + 1);
-    await pool.connect(attackerWallet).drawForDueClaim(); // permissionless
-    expect(await ctx.usdc.balanceOf(attackerWallet.address)).to.equal(2_000n * ONE_USDC);
+    await expect(pool.connect(attackerWallet).drawForDueClaim())
+      .to.be.revertedWithCustomError(pool, "PayoutPoolNothingToRedeem");
+    expect(await ctx.usdc.balanceOf(attackerWallet.address)).to.equal(0n);
   });
 
-  it("H-1: a deactivated merchant bypasses deactivation by moving its balance to a fresh wallet", async function () {
+  it("H-1 (fixed): a deactivated merchant cannot move its balance to another wallet, merchant or not", async function () {
+    await wireLedgerToRegistry();
     await term.connect(ctx.operator).setTermLimit(ctx.member.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).openPlan(
       ctx.member.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
@@ -122,10 +138,31 @@ describe("AUDIT PoC", function () {
     await ctx.stableCredit.connect(merchant).approve(await pool.getAddress(), ethers.MaxUint256);
     await expect(pool.connect(merchant).redeem(1n)).to.be.revertedWithCustomError(pool, "PayoutPoolMerchantInactive");
 
-    await ctx.stableCredit.connect(merchant).transfer(attackerWallet.address, 975n * ONE_USDC);
-    await ctx.stableCredit.connect(attackerWallet).approve(await pool.getAddress(), ethers.MaxUint256);
-    await pool.connect(attackerWallet).redeem(975n * ONE_USDC);
-    expect(await ctx.usdc.balanceOf(attackerWallet.address)).to.equal(975n * ONE_USDC);
+    await expect(ctx.stableCredit.connect(merchant).transfer(attackerWallet.address, 975n * ONE_USDC))
+      .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditMerchantMayOnlyRedeem");
+    // An accomplice that is itself an active merchant does not help either.
+    await registry.registerMerchant(member2.address, NET_30, 50_000n * ONE_USDC, 250n);
+    await expect(ctx.stableCredit.connect(merchant).transfer(member2.address, 975n * ONE_USDC))
+      .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditMerchantMayOnlyRedeem");
+    expect(await ctx.usdc.balanceOf(attackerWallet.address)).to.equal(0n);
+    expect(await ctx.usdc.balanceOf(member2.address)).to.equal(0n);
+  });
+
+  it("M-1 (fixed): welcome-offer credit can be spent at an active merchant but not sent to a wallet to redeem", async function () {
+    await wireLedgerToRegistry();
+    const OffersIssuer = await ethers.getContractFactory("OffersIssuer");
+    const offers = await upgrades.deployProxy(
+      OffersIssuer, [await ctx.stableCredit.getAddress(), coop.address, 10n * ONE_USDC, 90 * DAY], { kind: "uups" });
+    await ctx.networkRegistry.registerIssuer(
+      await offers.getAddress(), await ctx.stableCredit.getAddress(),
+      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+    await offers.connect(ctx.operator).setCap(1_000n * ONE_USDC);
+    await offers.connect(ctx.operator).grant(member2.address);
+
+    await expect(ctx.stableCredit.connect(member2).transfer(attackerWallet.address, 10n * ONE_USDC))
+      .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditRecipientNotEligible");
+    await ctx.stableCredit.connect(member2).transfer(merchant.address, 10n * ONE_USDC);
+    expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(10n * ONE_USDC);
   });
 
   it("H-2: anyone can delete a compliant member's period at expiry; the line then runs forever with no default", async function () {

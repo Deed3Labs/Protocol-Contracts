@@ -78,6 +78,10 @@ export async function deployPhase0Network() {
     await assuranceOracle.getAddress()
   );
   await stableCredit.setAssurancePool(await assurancePool.getAddress());
+  // Phase 1 has no member-to-member payments: a draw must pay an active merchant or a system
+  // address the admin has named (audit C-1). The counterparty stands for whoever the member pays,
+  // so it is named here; tests about who may be paid set up a merchant registry of their own.
+  await stableCredit.setSystemRecipient(counterparty.address, true);
   await assurancePool.setAssuranceOracle(await assuranceOracle.getAddress());
   await assurancePool.setTokenAddresses(
     await usdc.getAddress(),

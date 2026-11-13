@@ -40,6 +40,11 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
     /// @notice May move value in from somewhere already on chain.
     bytes32 public constant FUNDER_ROLE = keccak256("FUNDER_ROLE");
+    /// @notice A co-op address, named by the admin, that may redeem credit it holds.
+    /// @dev The co-op's own accounts (the treasury holding positions it paid for) are not merchants
+    /// but still need to turn a position into cash. They are named one by one, by the admin;
+    /// nobody else who merely holds credit may redeem it (audit C-1, DECISIONS #3).
+    bytes32 public constant REDEEMER_ROLE = keccak256("REDEEMER_ROLE");
 
     /// @notice A claim waiting to be paid.
     struct Claim {
@@ -178,6 +183,8 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     error PayoutPoolInvalidAddress();
     error PayoutPoolNothingToRedeem(address merchant);
     error PayoutPoolMerchantInactive(address merchant);
+    /// @dev Neither a registered, active merchant nor a named co-op address.
+    error PayoutPoolNotEligible(address holder);
     /// @dev Drawing on anybody is for a claim past its terms, never for paying one early.
     error PayoutPoolClaimNotDue(uint256 claimId, uint64 dueBy);
     error PayoutPoolClaimAlreadyPaid(uint256 claimId);
@@ -301,8 +308,20 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @return claimId the queued claim, when it was not.
     function redeem(uint256 amount) external returns (bool paidNow, uint256 claimId) {
         address merchant = _msgSender();
-        if (merchantRegistry.isRegistered(merchant) && !merchantRegistry.isActive(merchant)) {
-            revert PayoutPoolMerchantInactive(merchant);
+        /*
+         * Only a registered, active merchant, or a co-op address the admin has named, turns credit
+         * into cash. Paying any positive holder is what let a credit line become USDC at par
+         * through a wallet that was never a merchant (audit C-1, H-1, M-1). FIFO order, funding
+         * and the AssurancePool rule are untouched; this is the eligibility check only
+         * (DECISIONS #3).
+         *
+         * A funder named with FUNDER_ROLE counts as a named co-op address: it holds positions it
+         * paid for (`_placePosition`) and redeeming them is how it gets its capital back.
+         */
+        if (merchantRegistry.isRegistered(merchant)) {
+            if (!merchantRegistry.isActive(merchant)) revert PayoutPoolMerchantInactive(merchant);
+        } else if (!hasRole(REDEEMER_ROLE, merchant) && !hasRole(FUNDER_ROLE, merchant)) {
+            revert PayoutPoolNotEligible(merchant);
         }
 
         uint256 available = redeemableOf(merchant);

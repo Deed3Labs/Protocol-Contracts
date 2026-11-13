@@ -62,6 +62,16 @@ contract MutualCredit is IMutualCredit, ERC20BurnableUpgradeable {
 
     /* ========== PRIVATE FUNCTIONS ========== */
 
+    /// @notice how much of a member's ceiling a plain transfer may mint against.
+    /// @dev The whole of what is left by default. The ledger narrows it: part of a ceiling can be
+    /// reserved for a path that always records a schedule (a term plan), and a plain transfer must
+    /// not reach that part (audit C-1).
+    /// @param member address of member to query.
+    /// @return credit a transfer may still mint for the member.
+    function _drawableCreditOf(address member) internal view virtual returns (uint256) {
+        return creditLimitLeftOf(member);
+    }
+
     /// @notice transfers tokens from sender to recipient
     /// @dev overrides ERC20 _transfer to include credit line logic
     /// @param _from sender address
@@ -86,7 +96,7 @@ contract MutualCredit is IMutualCredit, ERC20BurnableUpgradeable {
         }
         CreditLine memory _creditLine = creditLines[_from];
         uint256 _missingBalance = _amount - _balanceFrom;
-        uint256 _creditLeft = creditLimitLeftOf(_from);
+        uint256 _creditLeft = _drawableCreditOf(_from);
         require(_creditLeft >= _missingBalance, "MutualCredit: Insufficient credit");
         // increment credit balance
         creditLines[_from].creditBalance = (_creditLine.creditBalance + _missingBalance).toUInt128();

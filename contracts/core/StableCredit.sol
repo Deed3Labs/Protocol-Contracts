@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "./interfaces/stable-credit/IStableCredit.sol";
 import "./interfaces/stable-credit/INetworkRegistry.sol";
 import "./interfaces/stable-credit/IPayoutSink.sol";
+import "./interfaces/stable-credit/IMerchantStatus.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./MutualCredit.sol";
 
@@ -44,6 +45,20 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     error StableCreditRefundExceedsPayment(uint256 withheld, uint256 paid);
     /// @dev A refund pays cash, and the pool is where the cash is.
     error StableCreditNoPayoutPool();
+    /// @notice thrown when credit is sent somewhere Phase 1 does not allow it to go.
+    /// @dev Credit is spent at an active merchant or paid to a named system address. Anything
+    /// else is a member-to-member transfer, which is how a credit line used to become cash at the
+    /// payout pool (audit C-1, M-1).
+    error StableCreditRecipientNotEligible(address from, address to);
+    /// @notice thrown when a merchant sends credit anywhere but the payout pool.
+    /// @dev A merchant's balance is a payable. Handing it to another wallet is how a deactivated
+    /// merchant used to get paid anyway (audit H-1).
+    error StableCreditMerchantMayOnlyRedeem(address merchant, address to);
+    /// @dev Zero is not a valid "off" value for these.
+    error StableCreditInvalidAddress();
+
+    event MerchantRegistryUpdated(address indexed merchantRegistry);
+    event SystemRecipientUpdated(address indexed recipient, bool allowed);
 
     /// @notice Most distinct rate bands a repayment will work down in one transfer.
     /// @dev A member holds a handful of tiers and a handful of plans, so this bounds a loop that
@@ -85,6 +100,16 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// behaviour and was the only option before there was a payout pool at all.
     IPayoutSink public payoutPool;
 
+    /// @notice Who the network's merchants are, and which of them are switched on.
+    /// @dev Read on every member transfer. Appended after every variable the deployed
+    /// implementation already has.
+    IMerchantStatus public merchantRegistry;
+
+    /// @notice System addresses a member may pay credit to besides a merchant.
+    /// @dev Named by the admin, never by an operator key. A hot key that could name a recipient
+    /// could name itself and turn any line into cash, which is the attack this list exists to stop.
+    mapping(address => bool) public isSystemRecipient;
+
     /* ========== INITIALIZER ========== */
 
     /// @notice initializes lost debt account with max limit and assigns access contract provided.
@@ -110,6 +135,14 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// @return amount of lost debt shared by network participants.
     function lostDebt() public view override returns (uint256) {
         return lostDebtOutstanding;
+    }
+
+    /// @inheritdoc IStableCredit
+    function isEligibleRecipient(address recipient) public view override returns (bool) {
+        if (recipient == address(0)) return false;
+        if (isSystemRecipient[recipient]) return true;
+        if (address(merchantRegistry) == address(0)) return false;
+        return merchantRegistry.isRegistered(recipient) && merchantRegistry.isActive(recipient);
     }
 
     /* ========== PUBLIC FUNCTIONS ========== */
@@ -489,6 +522,27 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         emit AssurancePoolUpdated(_assurancePool);
     }
 
+    /// @notice names the registry the ledger reads to tell a merchant from a member.
+    /// @param _merchantRegistry address of the merchant registry.
+    function setMerchantRegistry(address _merchantRegistry) external onlyAdmin {
+        if (_merchantRegistry == address(0)) revert StableCreditInvalidAddress();
+        merchantRegistry = IMerchantStatus(_merchantRegistry);
+        emit MerchantRegistryUpdated(_merchantRegistry);
+    }
+
+    /// @notice names, or un-names, a system address members may pay credit to.
+    /// @dev For the co-op's own accounts (the treasury, the card settlement float). Never the
+    /// payout pool: credit sent there outside `redeem` would be counted as carry.
+    /// @param recipient the system address.
+    /// @param allowed whether members may pay it.
+    function setSystemRecipient(address recipient, bool allowed) external onlyAdmin {
+        if (recipient == address(0) || recipient == address(payoutPool)) {
+            revert StableCreditInvalidAddress();
+        }
+        isSystemRecipient[recipient] = allowed;
+        emit SystemRecipientUpdated(recipient, allowed);
+    }
+
     /// @notice enables network admin to set the network registry address
     /// @param _networkRegistry address of the network registry
     function setNetworkRegistry(address _networkRegistry) external onlyAdmin {
@@ -510,12 +564,68 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         // settled to every integrator. It also breaks the netting invariant the mint path depends
         // on: a three-party purchase must net to zero, and it cannot if one leg can quietly
         // no-op while the others land.
+        _checkTransferPolicy(_from, _to);
         if (!_validateAcrossIssuers(_from, _to, _amount)) {
             revert StableCreditTransactionInvalid(_from, _to, _amount);
         }
         uint256 burned = _repaymentOf(_to, _amount);
         super._transfer(_from, _to, _amount);
         _settleRepayment(_to, burned);
+    }
+
+    /// @notice where a member-initiated transfer may send credit.
+    /// @dev Phase 1 has no member-to-member payments. Credit is spent at an active merchant, paid
+    /// to a named system address, or handed to the payout pool by `redeem`; a merchant's balance
+    /// goes only to the payout pool. The system's own contracts are exempt: the payout pool
+    /// handing a position to whoever funded it, or an issuer paying out of its own line.
+    ///
+    /// Applies once a merchant registry is set. Until then the ledger cannot tell a merchant from a
+    /// member, so it does not try -- but drawing on credit is still refused, because the issuers
+    /// ask `isEligibleRecipient`, which fails closed. That is the dangerous half: a positive
+    /// balance moved to a wallet that cannot redeem it has not become cash.
+    function _checkTransferPolicy(address _from, address _to) private view {
+        if (address(merchantRegistry) == address(0)) return;
+        if (_from == address(payoutPool) && _from != address(0)) return;
+        if (
+            address(networkRegistry) != address(0)
+                && networkRegistry.isIssuerOf(_from, address(this))
+        ) return;
+        bool toPool = _to == address(payoutPool) && _to != address(0);
+        if (merchantRegistry.isRegistered(_from)) {
+            if (!toPool) revert StableCreditMerchantMayOnlyRedeem(_from, _to);
+            return;
+        }
+        if (!toPool && !isEligibleRecipient(_to)) {
+            revert StableCreditRecipientNotEligible(_from, _to);
+        }
+    }
+
+    /// @notice what a plain transfer may still mint for a member.
+    /// @dev A term allocation is drawn through a plan, which always records a schedule, so a plain
+    /// transfer may mint only against what is left of the rest of the ceiling. The debt held
+    /// against the locked part is taken off the balance first, so a member with a term plan
+    /// outstanding keeps the revolving headroom they actually have (audit C-1).
+    function _drawableCreditOf(address member) internal view override returns (uint256) {
+        uint256 left = creditLimitLeftOf(member);
+        if (member == address(this) || address(networkRegistry) == address(0)) return left;
+
+        uint256 locked;
+        uint256 lockedDrawn;
+        address[] memory issuers = networkRegistry.issuersOf(member);
+        for (uint256 i = 0; i < issuers.length; i++) {
+            (uint256 allocation, uint256 drawn) = ICreditIssuer(issuers[i]).lockedAllocationOf(member);
+            locked += allocation;
+            lockedDrawn += drawn;
+        }
+        if (locked == 0) return left;
+
+        uint256 limit = creditLimitOf(member);
+        uint256 transferableLimit = limit > locked ? limit - locked : 0;
+        uint256 owed = creditBalanceOf(member);
+        uint256 transferableOwed = owed > lockedDrawn ? owed - lockedDrawn : 0;
+        uint256 transferableLeft =
+            transferableLimit > transferableOwed ? transferableLimit - transferableOwed : 0;
+        return transferableLeft < left ? transferableLeft : left;
     }
 
     /// @notice moves credit without asking any issuer's permission.

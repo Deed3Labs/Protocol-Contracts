@@ -49,6 +49,8 @@ export async function deployCore(opts: { fundPool?: bigint } = {}) {
     await registry.getAddress(), coop.address], { kind: "uups" });
   await pool.grantRole(await pool.FUNDER_ROLE(), funder.address);
   await ctx.stableCredit.connect(ctx.admin).setPayoutPool(await pool.getAddress());
+  // As deploy/22 wires it: the ledger knows who the merchants are (audit C-1, H-1).
+  await ctx.stableCredit.connect(ctx.admin).setMerchantRegistry(await registry.getAddress());
   for (const m of [merchant, merchant2]) {
     await registry.registerMerchant(m.address, NET_30, 1_000_000n * ONE_USDC, 250n);
   }
