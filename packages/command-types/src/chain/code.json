@@ -188,18 +188,18 @@
   },
   "CollateralRegistry": {
    "source": "contracts/peripherals/CollateralRegistry.sol",
-   "sha256": "3387dd322a29524205c7b42d2c50d6372ba121f33919a6af929d229c78eb144c",
+   "sha256": "77f5c87991fba71f3762d637224a8ce988a2e8a80a71da024734af5e74753764",
    "immutables": [
     [
-     3111,
+     3122,
      32
     ],
     [
-     3296,
+     3307,
      32
     ],
     [
-     4360,
+     4331,
      32
     ]
    ]
@@ -337,18 +337,18 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "e2cdd93dff26e3b6171a0a5f1c144949992d0b038abbf24e33b878304ae9df2c",
+   "sha256": "57ab88d6077dd38f4849bded83bb6522ce258513cf06ea2d6bade2aaf3014432",
    "immutables": [
     [
-     4224,
+     7995,
      32
     ],
     [
-     4409,
+     8180,
      32
     ],
     [
-     6526,
+     10283,
      32
     ]
    ]
@@ -512,38 +512,38 @@
   },
   "TermIssuer": {
    "source": "contracts/peripherals/TermIssuer.sol",
-   "sha256": "255d215cc4ee370c21aeb7bc2f86bb78bf16f177cd23c84aadb6032c6471ec2d",
+   "sha256": "f541ee1ed27829ac0b9bdf6f7b62b72551785b9677c98f367f2c4595c54f5c59",
    "immutables": [
     [
      1735,
      32
     ],
     [
-     2338,
+     2321,
      32
     ],
     [
-     3299,
+     3282,
      32
     ],
     [
-     3501,
+     3484,
      32
     ],
     [
-     3637,
+     3620,
      32
     ],
     [
-     4893,
+     4876,
      32
     ],
     [
-     11020,
+     11015,
      32
     ],
     [
-     12912,
+     12861,
      32
     ]
    ]
