@@ -144,7 +144,8 @@ describe("FundManager Contract", function() {
       console.log("Fee receiver balance before mint:", feeReceiverBalanceBefore.toString());
 
       // Create a deed through DeedNFT
-      await deedNFT.connect(user1).mintAssetWithMaxFee(
+      await fundManager.connect(user1).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
+      await deedNFT.connect(user1).mintAsset(
         user1.address,
         0, // Land
         "ipfs://metadata1",
@@ -152,8 +153,7 @@ describe("FundManager Contract", function() {
         "configuration1",
         await validator.getAddress(),
         await mockERC20.getAddress(),
-        0n, // salt
-          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
+        0n // salt
         );
 
       // Debug: Check fee receiver balance after mint
@@ -194,8 +194,9 @@ describe("FundManager Contract", function() {
       });
 
       // Try to mint through non-compatible DeedNFT
+      await fundManager.connect(user1).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await expect(
-        newDeedNFT.connect(user1).mintAssetWithMaxFee(
+        newDeedNFT.connect(user1).mintAsset(
           user1.address,
           0,
           "ipfs://metadata1",
@@ -203,8 +204,7 @@ describe("FundManager Contract", function() {
           "configuration1",
           await validator.getAddress(),
           await mockERC20.getAddress(),
-          0n,
-          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
+          0n
         )
       ).to.be.reverted;
     });
@@ -237,7 +237,8 @@ describe("FundManager Contract", function() {
       console.log("FundManager balance before mint:", fundManagerBalanceBefore.toString());
 
       // Create a deed through DeedNFT
-      await deedNFT.connect(user2).mintAssetWithMaxFee(
+      await fundManager.connect(user2).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
+      await deedNFT.connect(user2).mintAsset(
         user2.address,
         0, // Land
         "ipfs://metadata1",
@@ -245,8 +246,7 @@ describe("FundManager Contract", function() {
         "configuration1",
         await validator.getAddress(),
         await mockERC20.getAddress(),
-        0n, // salt
-          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
+        0n // salt
         );
 
       // Debug: Check balances after mint
@@ -318,7 +318,8 @@ describe("FundManager Contract", function() {
       console.log("Fee receiver balance before mint:", feeReceiverBalanceBefore.toString());
 
       // Create a deed through DeedNFT
-      await deedNFT.connect(user2).mintAssetWithMaxFee(
+      await fundManager.connect(user2).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
+      await deedNFT.connect(user2).mintAsset(
         user2.address,
         0, // Land
         "ipfs://metadata1",
@@ -326,8 +327,7 @@ describe("FundManager Contract", function() {
         "configuration1",
         await validator.getAddress(),
         await mockERC20.getAddress(),
-        0n, // salt
-          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
+        0n // salt
         );
 
       // Debug: Check fee receiver balance after mint
@@ -462,8 +462,9 @@ describe("FundManager Contract", function() {
       ]);
       await newValidator.waitForDeployment();
 
+      await fundManager.connect(user1).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await expect(
-        deedNFT.connect(user1).mintAssetWithMaxFee(
+        deedNFT.connect(user1).mintAsset(
           user1.address,
           0, // Land
           "ipfs://metadata1",
@@ -471,8 +472,7 @@ describe("FundManager Contract", function() {
           "configuration1",
           await newValidator.getAddress(), // unregistered validator
           await mockERC20.getAddress(),
-          0n, // salt
-          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
+          0n // salt
         )
       ).to.be.reverted;
     });
@@ -488,8 +488,9 @@ describe("FundManager Contract", function() {
       // Mint tokens to user1 but don't approve
       await mockERC20.mint(user1.address, ethers.parseUnits("1000", 18));
 
+      await fundManager.connect(user1).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await expect(
-        deedNFT.connect(user1).mintAssetWithMaxFee(
+        deedNFT.connect(user1).mintAsset(
           user1.address,
           0, // Land
           "ipfs://metadata1",
@@ -497,8 +498,7 @@ describe("FundManager Contract", function() {
           "configuration1",
           await validator.getAddress(),
           await mockERC20.getAddress(),
-          0n, // salt
-          ethers.MaxUint256 // maxFee (audit D-16: fee-paying mints state a bound)
+          0n // salt
         )
       ).to.be.reverted;
     });

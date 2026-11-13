@@ -726,6 +726,18 @@ contract Validator is
     }
 
     /**
+     * @notice Whether `traitKey` (keccak256 of the trait name) is a required trait for the asset type.
+     *         DeedNFT uses it to stop a holder changing what this validator vouched for (audit D-1).
+     */
+    function isRequiredTrait(uint256 assetTypeId, bytes32 traitKey) external view returns (bool) {
+        string[] storage required = validationCriteria[assetTypeId].requiredTraits;
+        for (uint256 i = 0; i < required.length; i++) {
+            if (keccak256(bytes(required[i])) == traitKey) return true;
+        }
+        return false;
+    }
+
+    /**
      * @dev Returns the name of an operating agreement
      * @param uri_ URI of the operating agreement
      * @return Name of the operating agreement

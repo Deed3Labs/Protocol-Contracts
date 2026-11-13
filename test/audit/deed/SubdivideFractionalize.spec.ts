@@ -58,11 +58,10 @@ describe("AUDIT deed: subdivision and fractionalization", function () {
     await subdivide.connect(alice).mintUnit(id, 0, carol.address);
     // The deed is in custody: alice cannot sell it on the side
     await expect(deed.connect(alice).transferFrom(alice.address, bob.address, id)).to.be.reverted;
-    expect(await subdivide.subdivisionOwnerOf(id)).to.equal(alice.address);
+    await expect(subdivide.connect(bob).setBurnable(id, false)).to.be.revertedWith("Not collection admin");
 
     // Handing over the subdivision hands over every admin right, and alice keeps none
     await subdivide.connect(alice).transferCollectionAdmin(id, bob.address);
-    expect(await subdivide.subdivisionOwnerOf(id)).to.equal(bob.address);
     await expect(subdivide.connect(alice).setUnitMetadata(id, 0, "ipfs://alice-rewrote-unit-0")).to.be.revertedWith("Not collection admin");
     await expect(subdivide.connect(alice).setBurnable(id, false)).to.be.revertedWith("Not collection admin");
     await expect(subdivide.connect(alice).mintUnit(id, 1, alice.address)).to.be.revertedWith("Not deed owner");
@@ -94,14 +93,16 @@ describe("AUDIT deed: subdivision and fractionalization", function () {
   });
 
   // Report D-17 (spec label S-04)
-  it("D-17: Subdivide enforces its marketplace list, and pause stops admin edits (holder transfers stay open by policy)", async () => {
+  it("D-17: Subdivide enforces its marketplace list on operator transfers, and pause stops admin edits (holder transfers stay open by policy)", async () => {
     const { subdivide, alice, carol, mallory, deployer } = ctx;
     const id = await mintValidatedLand(ctx, alice);
     await subdivideDeed(ctx, alice, id);
     await subdivide.connect(alice).mintUnit(id, 0, carol.address);
     expect(await subdivide.isRoyaltyEnforced()).to.equal(true);
-    await expect(subdivide.connect(carol).setApprovalForAll(mallory.address, true)).to.be.revertedWith("!mkt");
-    await subdivide.connect(carol).setApprovalForAll(mallory.address, false); // revoking always allowed
+    // an approval of a non-marketplace operator is useless: its transfer reverts
+    await subdivide.connect(carol).setApprovalForAll(mallory.address, true);
+    await expect(subdivide.connect(mallory).safeTransferFrom(carol.address, mallory.address, unit(id, 0n), 1, "0x"))
+      .to.be.revertedWith("!mkt");
 
     await subdivide.connect(deployer).pause();
     await expect(subdivide.connect(alice).setUnitMetadata(id, 0, "ipfs://x")).to.be.revertedWith("Pausable: paused");

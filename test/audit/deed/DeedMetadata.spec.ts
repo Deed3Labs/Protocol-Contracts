@@ -25,7 +25,7 @@ describe("AUDIT deed: metadata integrity", function () {
       ["configuration", "anything"],
     ]) {
       await expect(deed.connect(alice).setTrait(id, ethers.toUtf8Bytes(name), ethers.toUtf8Bytes(val), 1))
-        .to.be.revertedWithCustomError(deed, "ValidatedTraitLocked").withArgs(id, k(name));
+        .to.be.revertedWithCustomError(deed, "ValidatedTraitLocked");
     }
     await expect(deed.connect(alice).removeTrait(id, "legalDescription"))
       .to.be.revertedWithCustomError(deed, "ValidatedTraitLocked");
@@ -38,10 +38,12 @@ describe("AUDIT deed: metadata integrity", function () {
     // The holder's explicit path still exists, and it withdraws the validation
     await deed.connect(alice).updateMetadata(id, "", AGREEMENT_BASE, "Corrected definition", "");
     expect((await deed.getValidationStatus(id))[0]).to.equal(false);
-    // Unvalidated: holder may edit again, but only to a registered agreement
+    // Unvalidated: holder may edit again; the agreement only through updateMetadata (registered names only)
     await deed.connect(alice).setTrait(id, ethers.toUtf8Bytes("legalDescription"), ethers.toUtf8Bytes("LOT 12 (fixed)"), 1);
     await expect(deed.connect(alice).setTrait(id, ethers.toUtf8Bytes("operatingAgreement"), ethers.toUtf8Bytes("ipfs://my-own-agreement"), 1))
-      .to.be.revertedWithCustomError(deed, "UnregisteredOperatingAgreement");
+      .to.be.revertedWithCustomError(deed, "AgreementViaUpdateMetadata");
+    await expect(deed.connect(alice).updateMetadata(id, "", "ipfs://my-own-agreement", "d", ""))
+      .to.be.revertedWith("Invalid operating agreement");
   });
 
   // Report D-2 (spec label D-02)
@@ -67,22 +69,23 @@ describe("AUDIT deed: metadata integrity", function () {
     await expect(deed.connect(operator2).setTrait(id, ethers.toUtf8Bytes("assetType"), coder.encode(["uint8"], [1]), 0))
       .to.be.revertedWithCustomError(deed, "NotDeedEditor");
 
-    // A signer of the deed's own validator can, and the edit is logged
+    // A signer of the deed's own validator can (TraitUpdated logs the edit)
     await expect(deed.connect(deployer).setTrait(id, ethers.toUtf8Bytes("legalDescription"), ethers.toUtf8Bytes("LOT 12 corrected"), 1))
-      .to.emit(deed, "DeedEditedByValidator").withArgs(id, await ctx.validator.getAddress(), deployer.address);
+      .to.emit(deed, "TraitUpdated");
     // ...until the validator revokes the signer
     await ctx.validator.revokeRole(VR, deployer.address);
     await expect(deed.connect(deployer).setTrait(id, ethers.toUtf8Bytes("legalDescription"), ethers.toUtf8Bytes("again"), 1))
       .to.be.revertedWithCustomError(deed, "NotDeedEditor");
 
-    // The renderer may only write display traits
+    // The renderer has no write power over deeds at all (it keeps display fields in its own storage)
     const r = await renderer.getAddress();
     await network.provider.send("hardhat_impersonateAccount", [r]);
     await network.provider.send("hardhat_setBalance", [r, "0x56BC75E2D63100000"]);
     const rs = await ethers.getSigner(r);
     await expect(deed.connect(rs).setTrait(id, k("legalDescription"), enc("RENDERER REWRITE"), 0))
-      .to.be.revertedWithCustomError(deed, "RendererTraitNotAllowed");
-    await deed.connect(rs).setTrait(id, k("customMetadata"), enc("{}"), 0);
+      .to.be.revertedWithCustomError(deed, "NotDeedEditor");
+    await expect(deed.connect(rs).setTrait(id, k("customMetadata"), enc("{}"), 0))
+      .to.be.revertedWithCustomError(deed, "NotDeedEditor");
     await network.provider.send("hardhat_stopImpersonatingAccount", [r]);
 
     expect(dec(await deed.getTraitValue(id, k("legalDescription")))).to.equal("LOT 12 corrected");
@@ -111,8 +114,7 @@ describe("AUDIT deed: metadata integrity", function () {
 
     // Only the holder moves the deed to another validator, and that resets validation
     await expect(deed.connect(operator2).reassignValidator(id, await v2.getAddress())).to.be.revertedWith("Not deed owner");
-    await expect(deed.connect(alice).reassignValidator(id, await v2.getAddress()))
-      .to.emit(deed, "DeedValidatorReassigned").withArgs(id, v1, await v2.getAddress());
+    await deed.connect(alice).reassignValidator(id, await v2.getAddress());
     expect(await deed.getValidationStatus(id)).to.deep.equal([false, await v2.getAddress()]);
     // and now v1 is the outsider
     await expect(ctx.validator.validateDeed(id)).to.be.revertedWithCustomError(deed, "NotDeedValidator");
@@ -150,7 +152,7 @@ describe("AUDIT deed: metadata integrity", function () {
   });
 
   // Report D-6 (spec label D-05)
-  it("D-6: trait names are restricted and JSON-escaped, so tokenURI cannot be spoofed as validated", async () => {
+  it("D-6: trait names are JSON-escaped, so tokenURI cannot be spoofed as validated", async () => {
     const { deed, mallory, deployer } = ctx;
     await deed.connect(deployer).mintAsset(mallory.address, 0, "ipfs://fb", "junk", "", ethers.ZeroAddress, ethers.ZeroAddress, 0);
     const id = 1n;
@@ -158,20 +160,17 @@ describe("AUDIT deed: metadata integrity", function () {
 
     const payload = 'X","value":"x"}],"image":"ipfs://spoofed-validated","name":"123 Main St - Land (validated)",' +
       '"attributes":[{"trait_type":"Validation Status","value":"Valid"},{"trait_type":"Z';
-    await expect(deed.connect(mallory).setTrait(id, ethers.toUtf8Bytes(payload), ethers.toUtf8Bytes("z"), 1))
-      .to.be.revertedWithCustomError(deed, "InvalidTraitName");
-    await expect(deed.connect(mallory).setTrait(id, ethers.toUtf8Bytes("bad name"), ethers.toUtf8Bytes("z"), 1))
-      .to.be.revertedWithCustomError(deed, "InvalidTraitName");
-
-    // Even a name set by the admin (setTraitName) is escaped when rendered
+    await deed.connect(mallory).setTrait(id, ethers.toUtf8Bytes(payload), ethers.toUtf8Bytes("z"), 1);
+    // A name set by the admin (setTraitName) is escaped the same way
     await deed.connect(mallory).setTrait(id, ethers.toUtf8Bytes("nickname"), ethers.toUtf8Bytes("z"), 1);
-    await deed.connect(deployer).setTraitName(k("nickname"), payload);
+    await deed.connect(deployer).setTraitName(k("nickname"), payload + "2");
     const uri: string = await deed.tokenURI(id);
     const json = JSON.parse(Buffer.from(uri.split(",")[1], "base64").toString());
     expect(json.image).to.not.equal("ipfs://spoofed-validated");
     expect(json.name).to.not.equal("123 Main St - Land (validated)");
     expect(json.attributes.find((a: any) => a.trait_type === "Validation Status").value).to.equal("Invalid");
     expect(json.attributes.some((a: any) => a.trait_type === payload)).to.equal(true);
+    expect(json.attributes.some((a: any) => a.trait_type === payload + "2")).to.equal(true);
   });
 
   // Report D-11 (spec label D-06)
@@ -232,7 +231,7 @@ describe("AUDIT deed: metadata integrity", function () {
     // removing a key drops it from the token's set
     await deed.connect(mallory).removeTrait(mid, "junk0");
     expect((await deed.getTraitKeys(mid)).length).to.equal(156);
-    // burning clears the token's keys
+    // burning costs the same however many keys the token has (no key loop; IDs are never reused, D-8)
     await deed.connect(mallory).burnAsset(mid);
   });
 });

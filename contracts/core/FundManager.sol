@@ -65,6 +65,19 @@ contract FundManager is
     ITokenRegistry public tokenRegistry;
 
     /**
+     * @notice The most `payer` agrees to pay per service fee in `token` (audit D-16). A validator fee
+     *         manager could otherwise raise its fee between the payer's approval and the mint and drain a
+     *         standing allowance. Zero (the default) refuses every fee.
+     */
+    mapping(address => mapping(address => uint256)) public maxFeeOf;
+
+    /// @dev Emitted when a payer sets its fee cap.
+    event MaxFeeSet(address indexed payer, address indexed token, uint256 maxFee);
+
+    /// @dev The fee read at execution exceeds the payer's cap.
+    error FeeAboveMax(uint256 fee, uint256 maxFee);
+
+    /**
      * @dev Initializes the contract.
      * @param _validatorRegistry Address of the validator registry.
      * @param initialCommissionPercentage Initial commission percentage in basis points.
@@ -228,6 +241,14 @@ contract FundManager is
     }
 
     // ============ Payment Processing Functions ============
+
+    /**
+     * @notice Sets the caller's cap on any single service fee paid in `token` (audit D-16).
+     */
+    function setMaxFee(address token, uint256 maxFee) external {
+        maxFeeOf[msg.sender][token] = maxFee;
+        emit MaxFeeSet(msg.sender, token, maxFee);
+    }
     
     /**
      * @dev Processes a payment for a deed minting
@@ -257,6 +278,8 @@ contract FundManager is
         // Verify service fee matches validator's requirement
         uint256 requiredFee = IValidator(validatorAddress).getServiceFee(token);
         require(serviceFee == requiredFee, "FundManager: Service fee mismatch");
+        // ...and stays within what the payer agreed to (audit D-16)
+        if (serviceFee > maxFeeOf[payer][token]) revert FeeAboveMax(serviceFee, maxFeeOf[payer][token]);
         
         // Calculate commission amount
         commissionAmount = (serviceFee * _commissionPercentage) / 10000;

@@ -64,18 +64,20 @@ describe("AUDIT deed: deployment handover and smaller items", function () {
     await validator.setServiceFee(await fot.getAddress(), 1000n);
     await fot.mint(deployer.address, 10_000n);
     await fot.approve(await fundManager.getAddress(), ethers.MaxUint256);
-    await expect(deed.mintAssetWithMaxFee(alice.address, 0, "", "d", "", ethers.ZeroAddress, await fot.getAddress(), 0, 1000n))
+    await fundManager.setMaxFee(await fot.getAddress(), 1000n);
+    await expect(deed.mintAsset(alice.address, 0, "", "d", "", ethers.ZeroAddress, await fot.getAddress(), 0))
       .to.be.revertedWith("FundManager: Fee-on-transfer token");
   });
 
-  it("D-23: renderer treats a missing isValidated as invalid; custom metadata is encoded once; getAssetType works", async () => {
+  it("D-23: renderer display fields stay in the renderer (no double-encoded trait); a gallery trait no longer breaks tokenURI", async () => {
     const { deed, renderer, alice, deployer } = ctx;
     const id = await mintValidatedLand(ctx, alice);
-    expect(await deed.getAssetType(id)).to.equal(0n);
     await renderer.connect(alice).setTokenCustomMetadata(id, '{"a":1}');
-    expect(coder.decode(["string"], await deed.getTraitValue(id, k("customMetadata")))[0]).to.equal('{"a":1}');
-    // gallery (a string[] trait) no longer breaks tokenURI rendering
     await renderer.connect(deployer).setTokenGallery(id, ["ipfs://g1"]);
+    expect(await deed.getTraitValue(id, k("customMetadata"))).to.equal("0x");
+    expect(await renderer.getTokenGallery(id)).to.deep.equal(["ipfs://g1"]);
+    // a holder-set `gallery` trait (a string[]) used to make tokenURI's attribute decoding revert
+    await deed.connect(alice).setTrait(id, ethers.toUtf8Bytes("gallery"), coder.encode(["string[]"], [["ipfs://g2"]]), 0);
     const json = JSON.parse(Buffer.from((await deed.tokenURI(id)).split(",")[1], "base64").toString());
     expect(json.attributes.find((a: any) => a.trait_type === "Validation Status").value).to.equal("Valid");
   });

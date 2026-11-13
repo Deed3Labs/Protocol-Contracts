@@ -452,12 +452,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     function setTokenCustomMetadata(uint256 tokenId, string memory metadata) external onlyOwnerOrValidator(tokenId) {
         tokenMetadata[tokenId].customMetadata = metadata;
         emit MetadataUpdate(tokenId);
-        
-        // Sync with DeedNFT if needed
-        if (address(deedNFT) != address(0)) {
-            // valueType 1 abi-encodes the raw string bytes once (it was double-encoded before, audit D-23)
-            deedNFT.setTrait(tokenId, abi.encodePacked(TRAIT_CUSTOM_METADATA), bytes(metadata), 1);
-        }
+        // Kept in the renderer only. The renderer has no write power over DeedNFT traits (audit D-2), which
+        // also ends the double encoding of this trait (audit D-23).
     }
 
     function contractURI() external view returns (string memory) {
@@ -705,11 +701,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     function setTokenGallery(uint256 tokenId, string[] memory imageUrls) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (!_exists(tokenId)) revert Invalid();
         _setTokenGallery(tokenId, imageUrls);
-        
-        // Sync with DeedNFT if needed
-        if (address(deedNFT) != address(0)) {
-            deedNFT.setTrait(tokenId, abi.encodePacked(TRAIT_GALLERY), abi.encode(imageUrls), 0); // 0 = bytes type for arrays
-        }
+        // Kept in the renderer only: the renderer has no write power over DeedNFT traits (audit D-2).
     }
 
     function getTokenGallery(uint256 tokenId) external view returns (string[] memory) {

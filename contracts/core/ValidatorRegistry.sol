@@ -6,6 +6,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {IAccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/IAccessControlUpgradeable.sol";
 
 // Interfaces
 import "./interfaces/IValidatorRegistry.sol";
@@ -327,6 +328,22 @@ contract ValidatorRegistry is
      */
     function isValidatorActive(address validator) public view returns (bool) {
         return bytes(validators[validator].name).length > 0 && validators[validator].isActive;
+    }
+
+    /**
+     * @notice Whether `account` may act for `validator`: the validator is active, and `account` is the
+     *         validator contract itself or holds VALIDATOR_ROLE inside it (one of its signers). DeedNFT
+     *         and MetadataRenderer use this to scope validator powers to a deed's own validator
+     *         (audit D-2, D-7, D-11).
+     */
+    function isValidatorSigner(address validator, address account) external view returns (bool) {
+        if (!isValidatorActive(validator)) return false;
+        if (account == validator) return true;
+        try IAccessControlUpgradeable(validator).hasRole(keccak256("VALIDATOR_ROLE"), account) returns (bool ok) {
+            return ok;
+        } catch {
+            return false;
+        }
     }
 
     /**

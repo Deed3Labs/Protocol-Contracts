@@ -321,24 +321,8 @@ interface IDeedNFT is IERC165Upgradeable, IERC721Upgradeable {
      */
     function isRoyaltyEnforced() external view returns (bool);
 
-    /**
-     * @dev Gets the transfer validator address
-     * @return validator The address of the transfer validator
-     */
-    function getTransferValidator() external view returns (address validator);
+    // Audit D-18: the ERC721-C transfer-validator functions were removed from DeedNFT (never consulted).
 
-    /**
-     * @dev Sets the transfer validator address
-     * @param validator The address of the transfer validator
-     */
-    function setTransferValidator(address validator) external;
-
-    /**
-     * @dev Returns the function selector for the transfer validator's validation function
-     * @return functionSignature The function signature
-     * @return isViewFunction Whether the function is a view function
-     */
-    function getTransferValidationFunction() external pure returns (bytes4 functionSignature, bool isViewFunction);
 
     /**
      * @dev Checks if the contract implements an interface

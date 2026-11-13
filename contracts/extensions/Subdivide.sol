@@ -236,7 +236,7 @@ contract Subdivide is
     error ReservedUnitTrait(bytes32 traitKey);
     /// @dev Only the unit's recorded validator, or the subdivision's chosen validator, may give a verdict.
     error NotUnitValidator(address caller);
-    /// @dev Deed IDs and unit IDs must each fit in 128 bits for the `(deedId << 128) | unitId` packing.
+    /// @dev Unit IDs must fit in 128 bits for the `(deedId << 128) | unitId` packing.
     error IdOutOfRange();
 
     // ============ Upgrade Gap ============
@@ -347,7 +347,9 @@ contract Subdivide is
         bool burnable
     ) external whenNotPaused {
         require(deedNFT.ownerOf(deedId) == msg.sender, "Not deed owner");
-        if (deedId >> 128 != 0 || totalUnits > type(uint128).max) revert IdOutOfRange();
+        // Unit IDs must fit in the low 128 bits of `(deedId << 128) | unitId`. DeedNFT IDs are always below
+        // 2^128 (sequential, or salted in [2^127, 2^128)).
+        if (totalUnits > type(uint128).max) revert IdOutOfRange();
 
         // Check if deed is validated
         (bool isValidated,) = deedNFT.getValidationStatus(deedId);
@@ -486,15 +488,9 @@ contract Subdivide is
         require(subdivisions[deedId].isActive, "Subdivision not active");
         require(unitId < subdivisions[deedId].totalUnits, "Invalid unit ID");
         
-        uint256 tokenId = _generateTokenId(deedId, unitId);
-        bytes memory assetTypeBytes = _unitTraits[tokenId][keccak256("assetType")];
-        
-        if (assetTypeBytes.length > 0) {
-            return uint8(abi.decode(assetTypeBytes, (uint8)));
-        }
-        
-        // Fall back to parent DeedNFT asset type
-        return deedNFT.getAssetType(deedId);
+        // Every minted unit copies the parent's asset type at mint. (The old fallback called
+        // DeedNFT.getAssetType, which DeedNFT never implemented, audit D-23.)
+        return uint8(abi.decode(_unitTraits[_generateTokenId(deedId, unitId)][keccak256("assetType")], (uint8)));
     }
 
     /**
@@ -661,12 +657,6 @@ contract Subdivide is
         require(msg.sender == owner_, "Not deed owner");
     }
 
-    /**
-     * @notice The beneficial owner of a subdivided deed held in custody here.
-     */
-    function subdivisionOwnerOf(uint256 deedId) external view returns (address) {
-        return _subdivisionOwner(deedId);
-    }
 
     // ============ Validation Functions ============
 
@@ -1177,18 +1167,6 @@ contract Subdivide is
         }
     }
 
-    /**
-     * @dev Royalty enforcement (audit D-17): when enforced, only approved marketplaces may be approved as
-     *      operators, as on DeedNFT. Revoking is always allowed.
-     */
-    function setApprovalForAll(address operator, bool approved)
-        public
-        override(ERC1155Upgradeable, IERC1155Upgradeable)
-    {
-        if (_enforceRoyalties && approved && !_approvedMarketplaces[operator]) revert("!mkt");
-        super.setApprovalForAll(operator, approved);
-    }
-
     // ============ Internal Functions ============
 
     /**
@@ -1295,37 +1273,17 @@ contract Subdivide is
 
     /**
      * @dev Validates asset type changes for subdivision units
-     * @param deedId ID of the parent DeedNFT
      * @param newAssetTypeBytes Encoded asset type value
-     * @notice Enforces logical asset type constraints based on parent DeedNFT
-     * 
-     * Valid transitions:
-     * - Land (0) → Land (0) or Estate (2)
-     * - Estate (2) → Estate (2) or Land (0)
-     * - Vehicle (1) → Vehicle (1) only (no subdivisions allowed)
-     * - CommercialEquipment (3) → CommercialEquipment (3) only (no subdivisions allowed)
+     * @notice Units of a Land or Estate parent (the only subdividable types) may be Land or Estate.
      */
-    function _validateAssetTypeChange(uint256 deedId, bytes memory newAssetTypeBytes) internal view {
+    function _validateAssetTypeChange(uint256, bytes memory newAssetTypeBytes) internal pure {
         require(newAssetTypeBytes.length > 0, "Invalid asset type");
         
         uint8 newAssetType = uint8(abi.decode(newAssetTypeBytes, (uint8)));
-        uint8 parentAssetType = deedNFT.getAssetType(deedId);
-        
-        // Validate asset type constraints
-        if (parentAssetType == 0) { // Land
-            require(newAssetType == 0 || newAssetType == 2, "Land subdivisions can only be Land or Estate");
-        } else if (parentAssetType == 2) { // Estate
-            require(newAssetType == 0 || newAssetType == 2, "Estate subdivisions can only be Land or Estate");
-        } else if (parentAssetType == 1) { // Vehicle
-            require(newAssetType == 1, "Vehicle subdivisions must remain Vehicle");
-        } else if (parentAssetType == 3) { // CommercialEquipment
-            require(newAssetType == 3, "CommercialEquipment subdivisions must remain CommercialEquipment");
-        } else {
-            revert("Invalid parent asset type");
-        }
-        
-        // Additional validation: ensure asset type is within valid range
-        require(newAssetType <= 3, "Asset type out of range");
+        // createSubdivision only accepts Land and Estate parents, so a unit is always Land or Estate. (The
+        // Vehicle/Equipment branches were unreachable, and the parent lookup called getAssetType, which
+        // DeedNFT did not implement, audit D-23.)
+        require(newAssetType == LAND_ASSET_TYPE || newAssetType == ESTATE_ASSET_TYPE, "Land subdivisions can only be Land or Estate");
     }
 
     // ============ Missing Interface Implementations ============
@@ -1341,30 +1299,8 @@ contract Subdivide is
         return unitOwner;
     }
 
-    /**
-     * @dev Gets the transfer validator address
-     * @return validator The address of the transfer validator
-     */
-    function getTransferValidator() external view returns (address validator) {
-        return _transferValidator;
-    }
-
-    /**
-     * @dev Sets the transfer validator address
-     * @param validator The address of the transfer validator
-     */
-    function setTransferValidator(address validator) external onlyRole(ADMIN_ROLE) {
-        _transferValidator = validator;
-    }
-
-    /**
-     * @dev Returns the function selector for the transfer validator's validation function
-     * @return functionSignature The function signature
-     * @return isViewFunction Whether the function is a view function
-     */
-    function getTransferValidationFunction() external pure returns (bytes4 functionSignature, bool isViewFunction) {
-        return (bytes4(0), false);
-    }
+    // Audit D-18 (as on DeedNFT): the inert ERC721-C transfer-validator getters and setter are removed;
+    // `_transferValidator` is kept only for storage layout. Enforcement is the approved-marketplace list.
 
     /**
      * @dev Grants the VALIDATOR_ROLE to an address

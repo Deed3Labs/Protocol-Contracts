@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers, upgrades, artifacts } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { deployDeedTrack, mintValidatedLand, subdivideDeed, k, dec, coder, Ctx } from "./fixture";
 
 /*
@@ -79,11 +79,10 @@ describe("AUDIT deed: lifecycle, ids, transfers", function () {
   it("D-18: ICreatorToken is no longer advertised, and an owner can clear a token approval", async () => {
     const { deed, alice, bob, carol, deployer } = ctx;
     const id = await mintValidatedLand(ctx, alice);
-    const art = await artifacts.readArtifact("ICreatorToken");
-    const iface = new ethers.Interface(art.abi);
-    let ifaceId = 0n;
-    iface.forEachFunction((f) => { ifaceId ^= BigInt(f.selector); });
+    const sel = (sig: string) => BigInt(ethers.id(sig).slice(0, 10));
+    const ifaceId = sel("getTransferValidator()") ^ sel("setTransferValidator(address)") ^ sel("getTransferValidationFunction()");
     expect(await deed.supportsInterface(ethers.toBeHex(ifaceId, 4))).to.equal(false);
+    expect(deed.interface.getFunction("setTransferValidator")).to.equal(null); // inert setter removed
 
     await deed.connect(deployer).setApprovedMarketplace(carol.address, true);
     await deed.connect(alice).approve(carol.address, id);
@@ -94,7 +93,7 @@ describe("AUDIT deed: lifecycle, ids, transfers", function () {
   });
 
   // Report D-16 (spec label D-13)
-  it("D-16: mint fees are bounded by the minter: a raised fee reverts instead of draining the allowance", async () => {
+  it("D-16: mint fees are bounded by the payer's FundManager cap: a raised fee reverts instead of draining the allowance", async () => {
     const { deed, validator, fundManager, deployer, alice } = ctx;
     const usdc: any = await (await ethers.getContractFactory("MockERC20")).deploy("USD", "USD", 6);
     await deed.setFundManager(await fundManager.getAddress());
@@ -106,17 +105,20 @@ describe("AUDIT deed: lifecycle, ids, transfers", function () {
     await usdc.mint(deployer.address, 1_000_000n * 10n ** 6n);
     await usdc.approve(await fundManager.getAddress(), ethers.MaxUint256);   // minter's standing approval
 
-    await validator.setServiceFee(await usdc.getAddress(), 900_000n * 10n ** 6n); // fee manager raises the fee
+    const usdcAddr = await usdc.getAddress();
+    const mint = () => deed.mintAsset(alice.address, 0, "", "def", "", ethers.ZeroAddress, usdcAddr, 0);
+    // no cap set: no fee is ever paid
+    await expect(mint()).to.be.revertedWithCustomError(fundManager, "FeeAboveMax");
+    await fundManager.setMaxFee(usdcAddr, 100n * 10n ** 6n);          // the minter caps the fee
+
+    await validator.setServiceFee(usdcAddr, 900_000n * 10n ** 6n);   // fee manager raises the fee
     const bal0 = await usdc.balanceOf(deployer.address);
-    await expect(deed.mintAssetWithMaxFee(alice.address, 0, "", "def", "", ethers.ZeroAddress, await usdc.getAddress(), 0, 100n * 10n ** 6n))
-      .to.be.revertedWithCustomError(deed, "FeeAboveMax").withArgs(900_000n * 10n ** 6n, 100n * 10n ** 6n);
-    // the unbounded entry point no longer pays any fee
-    await expect(deed.mintAsset(alice.address, 0, "", "def", "", ethers.ZeroAddress, await usdc.getAddress(), 0))
-      .to.be.revertedWithCustomError(deed, "FeeAboveMax");
+    await expect(mint())
+      .to.be.revertedWithCustomError(fundManager, "FeeAboveMax").withArgs(900_000n * 10n ** 6n, 100n * 10n ** 6n);
     expect(await usdc.balanceOf(deployer.address)).to.equal(bal0);
     // at the agreed fee it works
-    await validator.setServiceFee(await usdc.getAddress(), 100n * 10n ** 6n);
-    await deed.mintAssetWithMaxFee(alice.address, 0, "", "def", "", ethers.ZeroAddress, await usdc.getAddress(), 0, 100n * 10n ** 6n);
+    await validator.setServiceFee(usdcAddr, 100n * 10n ** 6n);
+    await mint();
     expect(bal0 - (await usdc.balanceOf(deployer.address))).to.equal(100n * 10n ** 6n);
   });
 
