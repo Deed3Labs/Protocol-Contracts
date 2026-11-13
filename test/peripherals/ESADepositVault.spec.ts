@@ -38,8 +38,8 @@ describe("ClearUSD + ESADepositVault", function () {
     await clearUsd.grantRole(minterRole, await vault.getAddress());
     await clearUsd.grantRole(burnerRole, await vault.getAddress());
 
+    // One accepted token at a time (audit M-5). The 18-decimal tests below switch to DAI.
     await vault.setAcceptedToken(await usdc.getAddress(), true);
-    await vault.setAcceptedToken(await dai.getAddress(), true);
 
     await usdc.mint(user.address, 10_000n * ONE_USDC);
     await dai.mint(user.address, 10_000n * ONE_DAI);
@@ -103,7 +103,13 @@ describe("ClearUSD + ESADepositVault", function () {
     );
   });
 
+  async function acceptOnlyDai() {
+    await vault.setAcceptedToken(await usdc.getAddress(), false);
+    await vault.setAcceptedToken(await dai.getAddress(), true);
+  }
+
   it("supports exact 18->6 decimal conversion", async function () {
+    await acceptOnlyDai();
     const depositAmount = 3n * ONE_DAI;
     await dai.connect(user).approve(await vault.getAddress(), depositAmount);
     await vault.connect(user).deposit(await dai.getAddress(), depositAmount, user.address);
@@ -112,7 +118,9 @@ describe("ClearUSD + ESADepositVault", function () {
   });
 
   it("rejects non-exact decimal conversions", async function () {
+    await acceptOnlyDai();
     await dai.connect(user).approve(await vault.getAddress(), 1n);
+
     await expect(
       vault.connect(user).deposit(await dai.getAddress(), 1n, user.address)
     ).to.be.revertedWithCustomError(vault, "ESADepositVaultInvalidAmount");
