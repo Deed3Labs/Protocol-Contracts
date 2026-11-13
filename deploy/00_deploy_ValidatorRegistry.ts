@@ -34,17 +34,9 @@ async function main() {
   const validatorRegistryAddress = await validatorRegistry.getAddress();
   console.log("ValidatorRegistry deployed to:", validatorRegistryAddress);
 
-  // Setup initial roles and configuration
-  // Note: Additional roles will be managed through FundManager integration
-  const REGISTRY_ADMIN_ROLE = await validatorRegistry.REGISTRY_ADMIN_ROLE();
-  const VALIDATOR_ROLE = await validatorRegistry.VALIDATOR_ROLE();
-  const OPERATOR_ROLE = await validatorRegistry.OPERATOR_ROLE();
-
-  // Grant roles to deployer
-  await validatorRegistry.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
-  await validatorRegistry.grantRole(VALIDATOR_ROLE, deployer.address);
-  await validatorRegistry.grantRole(OPERATOR_ROLE, deployer.address);
-  console.log("Granted initial roles to deployer");
+  // initialize() already gives the deployer DEFAULT_ADMIN_ROLE, REGISTRY_ADMIN_ROLE and ownership.
+  // The registry has no VALIDATOR_ROLE or OPERATOR_ROLE (the old grants reverted, audit D-22).
+  // Hand these to the Deed timelock/Safe with deed_admin_handover.ts once wiring is done (audit D-13).
 
   // Save deployment information
   const validatorRegistryAbi = validatorRegistry.interface.formatJson();

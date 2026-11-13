@@ -228,6 +228,7 @@ describe("DeedNFT", function() {
         parcelNumber: "54321"
       });
 
+      await fundManager.connect(user1).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await expect(
         deedNFT.connect(user1).mintAsset(
           user1.address,
@@ -322,6 +323,7 @@ describe("DeedNFT", function() {
         parcelNumber: "12345"
       });
 
+      await fundManager.connect(user1).setMaxFee(await mockERC20.getAddress(), ethers.MaxUint256); // audit D-16: the payer caps the fee
       await expect(
         deedNFT.connect(user1).mintAsset(
           user1.address,
@@ -730,7 +732,8 @@ describe("DeedNFT", function() {
       await deedNFT.setMetadataRenderer(await newRenderer.getAddress());
       
       expect(await deedNFT.hasRole(VALIDATOR_ROLE, await oldRenderer.getAddress())).to.be.false;
-      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await newRenderer.getAddress())).to.be.true;
+      // Audit D-2: the renderer no longer receives VALIDATOR_ROLE; it may only write display traits.
+      expect(await deedNFT.hasRole(VALIDATOR_ROLE, await newRenderer.getAddress())).to.be.false;
     });
   });
 
@@ -791,16 +794,14 @@ describe("DeedNFT", function() {
   });
 
   describe("Transfer Validation", function() {
-    it("Should set transfer validator correctly", async function() {
-      // Use the existing validator contract instead of a non-existent TransferValidator
-      await deedNFT.setTransferValidator(await validator.getAddress());
-      expect(await deedNFT.getTransferValidator()).to.equal(await validator.getAddress());
-    });
-
-    it("Should get transfer validation function correctly", async function() {
-      const [functionSignature, isViewFunction] = await deedNFT.getTransferValidationFunction();
-      expect(functionSignature).to.equal(ethers.id("validateTransfer(address,address,address,uint256)").slice(0, 10));
-      expect(isViewFunction).to.be.true;
+    // Audit D-18: the ERC721-C transfer validator was stored but never consulted. The getters/setter are
+    // removed and ICreatorToken is no longer advertised; enforcement is the approved-marketplace list.
+    it("No longer exposes or advertises the inert ERC721-C transfer validator", async function() {
+      expect(deedNFT.interface.getFunction("setTransferValidator")).to.equal(null);
+      expect(deedNFT.interface.getFunction("getTransferValidator")).to.equal(null);
+      const sel = (sig: string) => BigInt(ethers.id(sig).slice(0, 10));
+      const creatorTokenId = sel("getTransferValidator()") ^ sel("setTransferValidator(address)") ^ sel("getTransferValidationFunction()");
+      expect(await deedNFT.supportsInterface(ethers.toBeHex(creatorTokenId, 4))).to.equal(false);
     });
   });
 

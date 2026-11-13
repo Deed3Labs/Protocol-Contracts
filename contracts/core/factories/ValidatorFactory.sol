@@ -5,6 +5,7 @@ pragma solidity ^0.8.29;
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 // Core Contracts
 import "../Validator.sol";
@@ -33,6 +34,12 @@ contract ValidatorFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable 
     // Default whitelisted tokens
     address[] public defaultWhitelistedTokens;
     mapping(address => bool) public isDefaultWhitelisted;
+
+    /**
+     * @notice Validator implementation behind every proxy createValidator deploys (audit D-22). A bare
+     *         `new Validator()` could never be initialized: its constructor disables initializers.
+     */
+    address public validatorImplementation;
     
     // ============ Events ============
     event ValidatorCreated(
@@ -45,6 +52,7 @@ contract ValidatorFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable 
 
     event TokenWhitelisted(address indexed token);
     event TokenRemovedFromWhitelist(address indexed token);
+    event ValidatorImplementationUpdated(address indexed implementation);
 
     // ============ Constructor ============
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -110,14 +118,14 @@ contract ValidatorFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable 
         require(supportedAssetTypes.length > 0, "Must support at least one asset type");
         require(defaultWhitelistedTokens.length > 0, "No whitelisted tokens available");
         
-        // Deploy new validator
-        Validator validator = new Validator();
-        
-        // Initialize the validator
-        validator.initialize(
-            baseUri,
-            operatingAgreementUri
-        );
+        require(validatorImplementation != address(0), "Validator implementation not set");
+
+        // Deploy a UUPS proxy and initialize it in the same transaction (audit D-22). The factory holds
+        // every role for the duration of this call only.
+        Validator validator = Validator(address(new ERC1967Proxy(
+            validatorImplementation,
+            abi.encodeCall(Validator.initialize, (baseUri, operatingAgreementUri))
+        )));
         
         // Set custom parameters
         validator.setRoyaltyFeePercentage(royaltyFeeBasisPoints);
@@ -129,13 +137,14 @@ contract ValidatorFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable 
             validator.setServiceFee(token, serviceFee);
         }
         
-        // Register validator in registry
-        validatorRegistry.registerValidator(
-            address(validator),
-            name,
-            description,
-            supportedAssetTypes
-        );
+        validator.setFundManager(address(fundManager));
+        validator.setRoyaltyReceiver(msg.sender);
+
+        // Hand the validator to its creator (audit D-22: it used to keep every role and ownership).
+        // Registration and activation in the ValidatorRegistry stay with the registry owner, who vets
+        // the operator; `name`, `description` and `supportedAssetTypes` are emitted for that step.
+        _handOver(validator, msg.sender);
+        emit ValidatorCreatedFor(address(validator), msg.sender, name, description, supportedAssetTypes);
         
         // Track the validator
         validators.push(address(validator));
@@ -150,6 +159,43 @@ contract ValidatorFactory is Initializable, OwnableUpgradeable, UUPSUpgradeable 
         );
         
         return address(validator);
+    }
+
+    event ValidatorCreatedFor(
+        address indexed validator,
+        address indexed operator,
+        string name,
+        string description,
+        uint256[] supportedAssetTypes
+    );
+
+    /// @dev Grants the creator every validator role and ownership, then drops the factory's own roles.
+    function _handOver(Validator validator, address operator) private {
+        bytes32[5] memory roles = [
+            validator.DEFAULT_ADMIN_ROLE(),
+            validator.VALIDATOR_ROLE(),
+            validator.METADATA_ROLE(),
+            validator.CRITERIA_MANAGER_ROLE(),
+            validator.FEE_MANAGER_ROLE()
+        ];
+        for (uint256 i = 0; i < roles.length; i++) {
+            validator.grantRole(roles[i], operator);
+        }
+        // DEFAULT_ADMIN_ROLE last: the factory needs it to grant the others.
+        for (uint256 i = roles.length; i > 0; i--) {
+            validator.renounceRole(roles[i - 1], address(this));
+        }
+        validator.transferOwnership(operator);
+    }
+
+    /**
+     * @notice Sets the Validator implementation used for new validators. Affects only validators created
+     *         afterwards; each existing validator is upgraded by its own owner.
+     */
+    function setValidatorImplementation(address implementation) external onlyOwner {
+        require(implementation != address(0) && implementation.code.length > 0, "Invalid implementation");
+        validatorImplementation = implementation;
+        emit ValidatorImplementationUpdated(implementation);
     }
 
     // ============ Helper Functions ============

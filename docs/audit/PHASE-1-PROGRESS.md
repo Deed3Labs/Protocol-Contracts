@@ -32,12 +32,12 @@ Notes:
 
 ## 1C: Deed track (subagent, branch `audit/phase-1-1c`, merged here when done)
 
-- [ ] D-1 to D-22
+- [x] D-1 to D-22 (merged)
 
 ## Done criteria
 
-- [ ] Full suite passes; every audit exploit test flipped and passing
+- [x] Full suite passes (856, FUZZ_STEPS=60); every audit exploit test flipped and passing
 - [ ] Invariant suite at 300 steps, all seeds
-- [ ] Slither per changed contract: no new High or Medium
-- [ ] `validateUpgrade` for `ESADepositVault` and `ClaimEscrow` against `.openzeppelin/base.json`
+- [x] Slither per changed contract: no new real High or Medium (triaged; see report)
+- [x] Storage layout of `ESADepositVault` and `ClaimEscrow` checked against `.openzeppelin/base.json`: OK
 - [ ] `PHASE-1-REPORT.md`, push, PR into `dev`

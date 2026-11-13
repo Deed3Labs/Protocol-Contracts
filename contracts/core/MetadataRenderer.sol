@@ -131,18 +131,56 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
 
     // Reference to the DeedNFT contract
     IDeedNFT public deedNFT;
-    
+
+    /**
+     * @dev Version counter per token for the recorded legal information and documents (audit D-11).
+     *      Each change bumps it and emits {LegalRecordUpdated} or {DocumentRecordUpdated} with the
+     *      editor, so the full history is recoverable from events even though storage holds the latest.
+     */
+    mapping(uint256 => uint256) public legalRecordVersion;
+
+    /// @dev Emitted on every change to a token's legal info. `recordHash` is keccak256 of the new record.
+    event LegalRecordUpdated(uint256 indexed tokenId, uint256 indexed version, bytes32 recordHash, address indexed editor);
+    /// @dev Emitted on every change to a token's documents.
+    event DocumentRecordUpdated(
+        uint256 indexed tokenId,
+        uint256 indexed version,
+        string docType,
+        string documentURI,
+        bool removed,
+        address indexed editor
+    );
+
     // ============ Modifiers ============
     /**
-     * @dev Ensures caller is owner, validator, or token owner
+     * @dev Display fields: renderer owner, the deed's own validator (or one of its signers), or the
+     *      token holder. A global VALIDATOR_ROLE no longer counts (audit D-2).
      */
     modifier onlyOwnerOrValidator(uint256 tokenId) {
-        if (!(msg.sender == owner() || 
-            (address(deedNFT) != address(0) && deedNFT.hasRole(VALIDATOR_ROLE, msg.sender)) ||
+        if (!(msg.sender == owner() ||
+            (address(deedNFT) != address(0) && deedNFT.isDeedValidator(tokenId, msg.sender)) ||
             (address(deedNFT) != address(0) && deedNFT.ownerOf(tokenId) == msg.sender))) {
             revert Unauthorized();
         }
         _;
+    }
+
+    /**
+     * @dev Recorded legal information and documents: only the deed's own validator (or one of its
+     *      signers). The holder could otherwise delete a recorded encumbrance, and the renderer owner
+     *      could rewrite any deed's record (audit D-11).
+     */
+    modifier onlyDeedValidator(uint256 tokenId) {
+        if (address(deedNFT) == address(0) || !deedNFT.isDeedValidator(tokenId, msg.sender)) {
+            revert Unauthorized();
+        }
+        _;
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        // Audit D-20: nobody can initialize the bare implementation.
+        _disableInitializers();
     }
 
     // ============ Initializer ============
@@ -184,7 +222,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         
         // Get asset type and validation status from DeedNFT
         uint8 assetType = 0;
-        bool isValidated = true;
+        bool isValidated = false; // a missing trait is not a validation (audit D-23)
         string memory definition = "";
         string memory configuration = "";
         if (address(deedNFT) != address(0)) {
@@ -312,8 +350,9 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
             
             bool firstAttribute = true;
             for (uint i = 0; i < traitKeys.length; i++) {
-                // Skip definition and configuration traits
-                if (traitKeys[i] == TRAIT_DEFINITION || traitKeys[i] == TRAIT_CONFIGURATION) {
+                // Skip definition and configuration traits, and the gallery (a string[] rendered above;
+                // decoding it as a string reverted the whole tokenURI, audit D-23)
+                if (traitKeys[i] == TRAIT_DEFINITION || traitKeys[i] == TRAIT_CONFIGURATION || traitKeys[i] == TRAIT_GALLERY) {
                     continue;
                 }
                 if (!firstAttribute) json = abi.encodePacked(json, ',');
@@ -338,7 +377,9 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                     // Handle string traits
                     traitValue = abi.decode(traitValues[i], (string));
                 }
-                json = abi.encodePacked(json, '{"trait_type":"', traitName, '","value":"', _escapeJSON(traitValue), '"}');
+                // Trait names are escaped too (audit D-6): an unescaped name could close the attributes
+                // array and inject top-level keys such as "image" or "name".
+                json = abi.encodePacked(json, '{"trait_type":"', _escapeJSON(traitName), '","value":"', _escapeJSON(traitValue), '"}');
             }
             
             json = abi.encodePacked(json, "]");
@@ -411,11 +452,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     function setTokenCustomMetadata(uint256 tokenId, string memory metadata) external onlyOwnerOrValidator(tokenId) {
         tokenMetadata[tokenId].customMetadata = metadata;
         emit MetadataUpdate(tokenId);
-        
-        // Sync with DeedNFT if needed
-        if (address(deedNFT) != address(0)) {
-            deedNFT.setTrait(tokenId, abi.encodePacked(TRAIT_CUSTOM_METADATA), abi.encode(metadata), 1); // 1 = string type
-        }
+        // Kept in the renderer only. The renderer has no write power over DeedNFT traits (audit D-2), which
+        // also ends the double encoding of this trait (audit D-23).
     }
 
     function contractURI() external view returns (string memory) {
@@ -541,7 +579,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         string[] memory documents,
         string[] memory restrictions,
         string memory additionalInfo
-    ) external onlyOwnerOrValidator(tokenId) {
+    ) external onlyDeedValidator(tokenId) {
         if (!_exists(tokenId)) revert Invalid();
         if (bytes(jurisdiction).length == 0) revert Empty();
         
@@ -563,7 +601,14 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
         for (uint i = 0; i < restrictions.length; i++) {
             legalInfo[tokenId].restrictions.push(restrictions[i]);
         }
-        
+
+        uint256 version = ++legalRecordVersion[tokenId];
+        emit LegalRecordUpdated(
+            tokenId,
+            version,
+            keccak256(abi.encode(jurisdiction, registrationNumber, registrationDate, documents, restrictions, additionalInfo)),
+            msg.sender
+        );
         emit MetadataUpdate(tokenId);
     }
 
@@ -597,7 +642,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     }
 
     // ============ Document Management Functions ============
-    function manageTokenDocument(uint256 tokenId, string memory docType, string memory documentURI, bool isRemove) external onlyOwnerOrValidator(tokenId) {
+    function manageTokenDocument(uint256 tokenId, string memory docType, string memory documentURI, bool isRemove) external onlyDeedValidator(tokenId) {
         if (!_exists(tokenId)) revert Invalid();
         if (!isRemove && bytes(docType).length == 0) revert Empty();
         
@@ -630,7 +675,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                 docs.push(Document(docType, documentURI));
             }
         }
-        
+
+        emit DocumentRecordUpdated(tokenId, ++legalRecordVersion[tokenId], docType, documentURI, isRemove, msg.sender);
         emit MetadataUpdate(tokenId);
     }
 
@@ -655,11 +701,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     function setTokenGallery(uint256 tokenId, string[] memory imageUrls) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (!_exists(tokenId)) revert Invalid();
         _setTokenGallery(tokenId, imageUrls);
-        
-        // Sync with DeedNFT if needed
-        if (address(deedNFT) != address(0)) {
-            deedNFT.setTrait(tokenId, abi.encodePacked(TRAIT_GALLERY), abi.encode(imageUrls), 0); // 0 = bytes type for arrays
-        }
+        // Kept in the renderer only: the renderer has no write power over DeedNFT traits (audit D-2).
     }
 
     function getTokenGallery(uint256 tokenId) external view returns (string[] memory) {

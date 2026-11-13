@@ -28,7 +28,8 @@ async function main() {
   // Deploy Validator as an upgradeable contract
   console.log("Deploying Validator...");
   const Validator = await hre.ethers.getContractFactory("Validator");
-  const validator = await hre.upgrades.deployProxy(Validator, [], {
+  const agreementUri = process.env.DEED_AGREEMENT_URI || "https://api.example.com/agreements/";
+  const validator = await hre.upgrades.deployProxy(Validator, ["https://api.example.com/validator/", agreementUri], {
     initializer: "initialize",
     kind: "uups"
   });
@@ -37,31 +38,14 @@ async function main() {
   const validatorAddress = await validator.getAddress();
   console.log("Validator deployed to:", validatorAddress);
 
-  // Setup initial roles and configuration
-  const ADMIN_ROLE = await validator.ADMIN_ROLE();
-  const REGISTRY_ADMIN_ROLE = await validator.REGISTRY_ADMIN_ROLE();
-  const VALIDATOR_ROLE = await validator.VALIDATOR_ROLE();
-  const OPERATOR_ROLE = await validator.OPERATOR_ROLE();
-
-  // Grant roles to deployer
-  await validator.grantRole(ADMIN_ROLE, deployer.address);
-  await validator.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
-  await validator.grantRole(VALIDATOR_ROLE, deployer.address);
-  await validator.grantRole(OPERATOR_ROLE, deployer.address);
-  console.log("Granted roles to deployer");
-
-  // Set up asset types
-  const assetTypes = [
-    "RESIDENTIAL",
-    "COMMERCIAL",
-    "INDUSTRIAL",
-    "LAND"
-  ];
-
-  for (const assetType of assetTypes) {
-    await validator.setAssetTypeSupported(assetType, true);
-    console.log(`Set asset type ${assetType} as supported`);
+  // initialize() gives the deployer every Validator role and ownership (handed over later with
+  // deed_admin_handover.ts, audit D-13). Asset types get real validation criteria, not bare support,
+  // and the default agreement is registered by name (audit D-22).
+  for (const assetType of [0, 1, 2, 3]) {
+    await (await validator.setupValidationCriteria(assetType)).wait();
+    console.log(`Validation criteria set for asset type ${assetType}`);
   }
+  await (await validator.registerOperatingAgreement(agreementUri, "Deed Trust Agreement")).wait();
 
   // Register validator in the registry
   const validatorRegistry = await hre.ethers.getContractAt("ValidatorRegistry", validatorRegistryAddress);

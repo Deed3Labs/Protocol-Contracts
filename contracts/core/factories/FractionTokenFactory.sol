@@ -123,6 +123,12 @@ contract FractionTokenFactory is Initializable, OwnableUpgradeable, UUPSUpgradea
             maxSharesPerWallet,
             burnable
         );
+        // Audit D-13: the factory must not stay admin of every token. Whoever controls the factory (its
+        // owner, or an upgrade) could otherwise grant itself MINTER_ROLE, mint the outstanding supply
+        // and unlock the asset. After this, only Fractionalize (MINTER_ROLE) can mint or burn, and
+        // nobody can pause the token or change its settings.
+        token.renounceRole(token.ADMIN_ROLE(), address(this));
+        token.renounceRole(token.DEFAULT_ADMIN_ROLE(), address(this));
 
         // Track the created token
         createdTokens.push(clone);

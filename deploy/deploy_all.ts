@@ -1,375 +1,167 @@
 import { ethers } from "ethers";
-import { saveDeployment, getDeployment } from "./helpers";
+import { saveDeployment } from "./helpers";
+import { handOverDeedAdmin } from "./deed_admin_handover";
 import { exec } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
 /**
- * Main deployment script that deploys and configures all contracts in the correct order:
- * 1. ValidatorRegistry (core registry for all validators)
- * 2. MetadataRenderer (handles NFT metadata)
- * 3. Validator (main validator contract)
- * 4. DeedNFT (NFT contract for deeds)
- * 5. FundManager (handles fund management)
- * 6. Subdivide (subdivision contract for DeedNFTs)
- * 
- * Dependencies:
- * - DeedNFT needs Validator and MetadataRenderer
- * - Validator needs to be registered in ValidatorRegistry
- * - FundManager needs DeedNFT and ValidatorRegistry
- * - Subdivide needs DeedNFT and ValidatorRegistry
- * - ValidatorRegistry and FundManager have bidirectional relationship for role management
+ * Deploys and wires the whole Deed track:
+ * 1. ValidatorRegistry   2. MetadataRenderer   3. Validator   4. DeedNFT   5. FundManager
+ * 6. Subdivide   7. FractionTokenFactory + Fractionalize   8. admin handover
+ *
+ * Environment:
+ * - DEED_ADMIN (required on every network except hardhat/localhost): the address that receives every
+ *   admin, upgrade and settings power. Use the Deed TimelockController whose proposer is the Foundation
+ *   multisig Safe (7-day delay, DECISIONS #10). The deployer renounces everything (audit D-13).
+ * - DEED_MINTER (optional): DeedNFT MINTER_ROLE holder; defaults to DEED_ADMIN.
+ * - DEED_VALIDATOR_SIGNER (optional): VALIDATOR_ROLE inside the default Validator (validates and corrects
+ *   the deeds that name it); defaults to DEED_ADMIN.
+ * - DEED_FEE_TOKEN + DEED_SERVICE_FEE (optional): wire FundManager into DeedNFT with this mint fee. Without
+ *   them DeedNFT mints charge no fee (setting a FundManager makes every mint require a fee).
+ * - DEED_AGREEMENT_URI (optional): default operating agreement base, registered by name.
+ *
+ * Audit D-22: this script used to leave every role with the deployer, never approve Fractionalize as a
+ * marketplace, never wire FundManager, never make the Validator compatible with Subdivide, and switch on
+ * all four asset types with no validation criteria (so every deed passed validateDeed).
  */
 async function main() {
-  // Get the hardhat runtime environment
   const hre = require("hardhat");
-  
-  // Get the signer from hardhat
   const [deployer] = await hre.ethers.getSigners();
-  console.log("Deploying contracts with the account:", deployer.address);
-  
-  // Get initial balance
-  const initialBalance = await hre.ethers.provider.getBalance(deployer.address);
-  console.log("Initial account balance:", ethers.formatEther(initialBalance), "ETH");
-
-  // Get the network
   const network = await hre.ethers.provider.getNetwork();
-  console.log("Deploying to network:", network.name);
+  // Decide "local" from Hardhat's network name, never from the chain's reported name ("unknown" for any custom chain)
+  const local = hre.network.name === "hardhat" || hre.network.name === "localhost";
+  console.log("Deploying contracts with the account:", deployer.address, "to", network.name);
 
+  const adminEnv = process.env.DEED_ADMIN;
+  if (!adminEnv && !local) {
+    throw new Error("DEED_ADMIN must be set (the Deed timelock or Foundation Safe); refusing to leave the deployer as admin");
+  }
+  if (adminEnv && !ethers.isAddress(adminEnv)) throw new Error("DEED_ADMIN is not an address");
+  const agreementUri = process.env.DEED_AGREEMENT_URI || "https://api.example.com/agreements/";
+
+  const initialBalance = await hre.ethers.provider.getBalance(deployer.address);
+  const deploy = async (name: string, args: any[]) => {
+    const F = await hre.ethers.getContractFactory(name);
+    const c = await hre.upgrades.deployProxy(F, args, { initializer: "initialize", kind: "uups" });
+    await c.waitForDeployment();
+    const addr = await c.getAddress();
+    console.log(`${name} deployed to: ${addr}`);
+    saveDeployment(network.name, name, addr, c.interface.formatJson());
+    return c;
+  };
+  const send = async (label: string, txp: Promise<any>) => {
+    const tx = await txp;
+    await tx.wait();
+    console.log(`  ${label}`);
+  };
+
+  // 1-3. Registry, renderer, validator
+  const validatorRegistry = await deploy("ValidatorRegistry", []);
+  const metadataRenderer = await deploy("MetadataRenderer", []);
+  const validator = await deploy("Validator", ["https://api.example.com/validator/", agreementUri]);
+
+  // 4. DeedNFT
+  const deedNFT = await deploy("DeedNFT", [await validator.getAddress(), await validatorRegistry.getAddress()]);
+  const deedAddr = await deedNFT.getAddress();
+  await send("registry -> DeedNFT", validatorRegistry.setDeedNFT(deedAddr));
+  await send("validator -> DeedNFT", validator.setDeedNFT(deedAddr));
+  await send("renderer -> DeedNFT", metadataRenderer.setDeedNFT(deedAddr));
+  await send("DeedNFT -> renderer", deedNFT.setMetadataRenderer(await metadataRenderer.getAddress()));
+
+  const images = {
+    land: "ipfs://bafkreihdwdcbvm3ph3hg4bxplmyqhybmuwgiaroxnqmup76ixlqy4pf6gi",
+    vehicle: "ipfs://bafkreig42cjzl6gn4w7q4sltmildfyh3m3wojrjp4egoqvfnxqcrmv5z3i",
+    equipment: "ipfs://bafkreifo4ugpkguglxwalzrznhvip5gqvgzqyqcqvz2lecwubsu7t4qhyq",
+    invalidated: "ipfs://bafkreiabag3ztnhe5pg7js4bj6sxuvkz3sdf34utvoyk7q7bhngrgxqxym",
+  };
+  await send("image Land", metadataRenderer.setAssetTypeImageURI(0, images.land));
+  await send("image Vehicle", metadataRenderer.setAssetTypeImageURI(1, images.vehicle));
+  await send("image Estate", metadataRenderer.setAssetTypeImageURI(2, images.land));
+  await send("image Equipment", metadataRenderer.setAssetTypeImageURI(3, images.equipment));
+  await send("image invalidated", metadataRenderer.setInvalidatedImageURI(images.invalidated));
+
+  // 5. FundManager
+  const fundManager = await deploy("FundManager", [await validatorRegistry.getAddress(), 500, deployer.address]);
+  const fmAddr = await fundManager.getAddress();
+  await send("registry -> FundManager", validatorRegistry.setFundManager(fmAddr));
+  await send("FundManager accepts DeedNFT", fundManager.addCompatibleDeedNFT(deedAddr));
+  await send("validator -> FundManager", validator.setFundManager(fmAddr));
+
+  // Validator: real criteria per asset type (not bare support), and a registered agreement
+  for (const t of [0, 1, 2, 3]) await send(`criteria for asset type ${t}`, validator.setupValidationCriteria(t));
+  await send("register default agreement", validator.registerOperatingAgreement(agreementUri, "Deed Trust Agreement"));
+
+  // Register and activate the validator (activation grants it DeedNFT VALIDATOR_ROLE via the registry)
+  const validatorAddr = await validator.getAddress();
+  await send("register validator", validatorRegistry.registerValidator(validatorAddr, "Default Validator", "Default deed validator", [0, 1, 2, 3]));
+  await send("activate validator", validatorRegistry.updateValidatorStatus(validatorAddr, true));
+
+  // Mint fee: wiring FundManager into DeedNFT makes every mint require a fee, so only with one configured
+  const feeToken = process.env.DEED_FEE_TOKEN;
+  const serviceFee = process.env.DEED_SERVICE_FEE;
+  if (feeToken && serviceFee) {
+    await send("whitelist fee token", validator.addWhitelistedToken(feeToken));
+    await send("set service fee", validator.setServiceFee(feeToken, BigInt(serviceFee)));
+    await send("DeedNFT -> FundManager", deedNFT.setFundManager(fmAddr));
+  } else {
+    console.log("  DEED_FEE_TOKEN/DEED_SERVICE_FEE not set: DeedNFT mints charge no fee (FundManager not wired into DeedNFT)");
+  }
+
+  // 6. Subdivide (takes custody of parent deeds, so it must be an approved marketplace on DeedNFT)
+  const subdivide = await deploy("Subdivide", [deedAddr, await validatorRegistry.getAddress()]);
+  const subAddr = await subdivide.getAddress();
+  await send("Subdivide VALIDATOR_ROLE -> validator", subdivide.grantRole(await subdivide.VALIDATOR_ROLE(), validatorAddr));
+  await send("validator accepts Subdivide units", validator.addCompatibleDeedNFT(subAddr));
+  await send("DeedNFT approves Subdivide (custody)", deedNFT.setApprovedMarketplace(subAddr, true));
+
+  // 7. Fractionalize
+  const FTF = await hre.ethers.getContractFactory("FractionTokenFactory");
+  const fractionTokenFactory = await hre.upgrades.deployProxy(FTF, [deployer.address], { initializer: "initialize", kind: "uups" });
+  await fractionTokenFactory.waitForDeployment();
+  const ftfAddr = await fractionTokenFactory.getAddress();
+  saveDeployment(network.name, "FractionTokenFactory", ftfAddr, fractionTokenFactory.interface.formatJson());
+  console.log("FractionTokenFactory deployed to:", ftfAddr);
+  const fractionalize = await deploy("Fractionalize", [deedAddr, subAddr, ftfAddr]);
+  const frAddr = await fractionalize.getAddress();
+  await send("factory -> Fractionalize", fractionTokenFactory.updateFractionalizeContract(frAddr));
+  await send("DeedNFT approves Fractionalize (custody)", deedNFT.setApprovedMarketplace(frAddr, true));
+  await send("Subdivide approves Fractionalize (custody)", subdivide.setApprovedMarketplace(frAddr, true));
+
+  // 8. Handover: no single EOA keeps admin or upgrade power (audit D-13)
+  const contracts = { validatorRegistry, metadataRenderer, validator, deedNFT, fundManager, subdivide, fractionalize, fractionTokenFactory };
+  if (adminEnv) {
+    console.log("\nHanding every Deed-track power to DEED_ADMIN:", adminEnv);
+    await handOverDeedAdmin(contracts, deployer, {
+      admin: adminEnv,
+      minter: process.env.DEED_MINTER || undefined,
+      validatorSigner: process.env.DEED_VALIDATOR_SIGNER || undefined,
+      log: (m) => console.log("  " + m),
+    });
+    console.log("Handover complete; the deployer holds no Deed-track role or ownership.");
+  } else {
+    console.log("\nWARNING: local network and no DEED_ADMIN: the deployer keeps every role. Never do this on a live network.");
+  }
+
+  console.log("\nDeployment Summary:");
+  for (const [name, c] of Object.entries(contracts)) console.log(`  ${name}: ${await (c as any).getAddress()}`);
+  const finalBalance = await hre.ethers.provider.getBalance(deployer.address);
+  console.log("Total gas spent:", ethers.formatEther(initialBalance - finalBalance), "ETH");
+
+  if (process.env.SKIP_TS_ABIS === "true") return;
   try {
-    // 1. Deploy ValidatorRegistry
-    console.log("\n1. Deploying ValidatorRegistry...");
-    const ValidatorRegistry = await hre.ethers.getContractFactory("ValidatorRegistry");
-    const validatorRegistry = await hre.upgrades.deployProxy(ValidatorRegistry, [], {
-      initializer: "initialize",
-      kind: "uups"
-    });
-    await validatorRegistry.waitForDeployment();
-    const validatorRegistryAddress = await validatorRegistry.getAddress();
-    console.log("ValidatorRegistry deployed to:", validatorRegistryAddress);
-    console.log("Transaction hash:", validatorRegistry.deploymentTransaction()?.hash);
-
-    // Setup initial roles for ValidatorRegistry
-    const REGISTRY_ADMIN_ROLE = await validatorRegistry.REGISTRY_ADMIN_ROLE();
-    const grantRoleTx = await validatorRegistry.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
-    await grantRoleTx.wait();
-    console.log("Granted REGISTRY_ADMIN_ROLE to deployer");
-    console.log("Role grant transaction hash:", grantRoleTx.hash);
-
-    // Ensure deployer is the owner
-    const owner = await validatorRegistry.owner();
-    if (owner.toLowerCase() !== deployer.address.toLowerCase()) {
-      const transferTx = await validatorRegistry.transferOwnership(deployer.address);
-      await transferTx.wait();
-      console.log("Transferred ownership to deployer");
-      console.log("Transfer transaction hash:", transferTx.hash);
-    }
-
-    // Save ValidatorRegistry deployment
-    const validatorRegistryAbi = validatorRegistry.interface.formatJson();
-    saveDeployment(network.name, "ValidatorRegistry", validatorRegistryAddress, validatorRegistryAbi);
-
-    // 2. Deploy MetadataRenderer
-    console.log("\n2. Deploying MetadataRenderer...");
-    const MetadataRenderer = await hre.ethers.getContractFactory("MetadataRenderer");
-    const metadataRenderer = await hre.upgrades.deployProxy(MetadataRenderer, [], {
-      initializer: "initialize",
-      kind: "uups"
-    });
-    await metadataRenderer.waitForDeployment();
-    const metadataRendererAddress = await metadataRenderer.getAddress();
-    console.log("MetadataRenderer deployed to:", metadataRendererAddress);
-    console.log("Transaction hash:", metadataRenderer.deploymentTransaction()?.hash);
-
-    // Setup initial roles for MetadataRenderer
-    const VALIDATOR_ROLE = await metadataRenderer.VALIDATOR_ROLE();
-    const grantValidatorRoleTx = await metadataRenderer.grantRole(VALIDATOR_ROLE, deployer.address);
-    await grantValidatorRoleTx.wait();
-    console.log("Granted VALIDATOR_ROLE to deployer in MetadataRenderer");
-    console.log("Role grant transaction hash:", grantValidatorRoleTx.hash);
-
-    // Save MetadataRenderer deployment
-    const metadataRendererAbi = metadataRenderer.interface.formatJson();
-    saveDeployment(network.name, "MetadataRenderer", metadataRendererAddress, metadataRendererAbi);
-
-    // 3. Deploy Validator
-    console.log("\n3. Deploying Validator...");
-    const Validator = await hre.ethers.getContractFactory("Validator");
-    const validator = await hre.upgrades.deployProxy(Validator, [
-      "https://api.example.com/validator/",
-      "https://api.example.com/agreements/default.pdf"
-    ], {
-      initializer: "initialize",
-      kind: "uups"
-    });
-    await validator.waitForDeployment();
-    const validatorAddress = await validator.getAddress();
-    console.log("Validator deployed to:", validatorAddress);
-    console.log("Transaction hash:", validator.deploymentTransaction()?.hash);
-
-    // Setup initial roles for Validator
-    const VALIDATOR_ROLE_VALIDATOR = await validator.VALIDATOR_ROLE();
-    const grantValidatorRoleTxValidator = await validator.grantRole(VALIDATOR_ROLE_VALIDATOR, deployer.address);
-    await grantValidatorRoleTxValidator.wait();
-    console.log("Granted VALIDATOR_ROLE to deployer in Validator");
-    console.log("Role grant transaction hash:", grantValidatorRoleTxValidator.hash);
-
-    // Save Validator deployment
-    const validatorAbi = validator.interface.formatJson();
-    saveDeployment(network.name, "Validator", validatorAddress, validatorAbi);
-
-    // 4. Deploy DeedNFT
-    console.log("\n4. Deploying DeedNFT...");
-    const DeedNFT = await hre.ethers.getContractFactory("DeedNFT");
-    const deedNFT = await hre.upgrades.deployProxy(DeedNFT, [validatorAddress, validatorRegistryAddress], {
-      initializer: "initialize",
-      kind: "uups"
-    });
-    await deedNFT.waitForDeployment();
-    const deedNFTAddress = await deedNFT.getAddress();
-    console.log("DeedNFT deployed to:", deedNFTAddress);
-    console.log("Transaction hash:", deedNFT.deploymentTransaction()?.hash);
-
-    // Save DeedNFT deployment
-    const deedNFTAbi = deedNFT.interface.formatJson();
-    saveDeployment(network.name, "DeedNFT", deedNFTAddress, deedNFTAbi);
-
-    // Set DeedNFT in ValidatorRegistry for automatic role management
-    console.log("\nSetting DeedNFT in ValidatorRegistry for automatic role management...");
-    const setDeedNFTInRegistryTx = await validatorRegistry.setDeedNFT(deedNFTAddress);
-    await setDeedNFTInRegistryTx.wait();
-    console.log("DeedNFT set in ValidatorRegistry");
-    console.log("Transaction hash:", setDeedNFTInRegistryTx.hash);
-
-    // Update Validator with DeedNFT address
-    console.log("\nUpdating Validator with DeedNFT address...");
-    const setDeedNFTTx = await validator.setDeedNFT(deedNFTAddress);
-    await setDeedNFTTx.wait();
-    console.log("Validator updated with DeedNFT address");
-    console.log("Transaction hash:", setDeedNFTTx.hash);
-
-    // Set up MetadataRenderer with DeedNFT
-    console.log("\nSetting DeedNFT in MetadataRenderer...");
-    const setDeedNFTInRendererTx = await metadataRenderer.setDeedNFT(deedNFTAddress);
-    await setDeedNFTInRendererTx.wait();
-    console.log("DeedNFT set in MetadataRenderer");
-    console.log("Transaction hash:", setDeedNFTInRendererTx.hash);
-
-    // Set MetadataRenderer in DeedNFT
-    console.log("\nSetting MetadataRenderer in DeedNFT...");
-    const setMetadataRendererTx = await deedNFT.setMetadataRenderer(metadataRendererAddress);
-    await setMetadataRendererTx.wait();
-    console.log("MetadataRenderer set in DeedNFT");
-    console.log("Transaction hash:", setMetadataRendererTx.hash);
-
-    // Set default images for asset types in MetadataRenderer
-    console.log("\nSetting default images in MetadataRenderer...");
-    
-    // Using real IPFS hashes for placeholder images
-    const defaultImages = {
-      land: "ipfs://bafkreihdwdcbvm3ph3hg4bxplmyqhybmuwgiaroxnqmup76ixlqy4pf6gi", // Simple land image
-      vehicle: "ipfs://bafkreig42cjzl6gn4w7q4sltmildfyh3m3wojrjp4egoqvfnxqcrmv5z3i", // Simple vehicle image
-      equipment: "ipfs://bafkreifo4ugpkguglxwalzrznhvip5gqvgzqyqcqvz2lecwubsu7t4qhyq", // Simple equipment image
-      invalidated: "ipfs://bafkreiabag3ztnhe5pg7js4bj6sxuvkz3sdf34utvoyk7q7bhngrgxqxym" // Invalid/placeholder image
-    };
-    
-    // Set asset type images
-    console.log("Setting default images for asset types...");
-    await metadataRenderer.setAssetTypeImageURI(0, defaultImages.land);
-    console.log("Set default image for Land (type 0)");
-    
-    await metadataRenderer.setAssetTypeImageURI(1, defaultImages.vehicle);
-    console.log("Set default image for Vehicle (type 1)");
-    
-    await metadataRenderer.setAssetTypeImageURI(2, defaultImages.land); // Estate uses same as Land
-    console.log("Set default image for Estate (type 2)");
-    
-    await metadataRenderer.setAssetTypeImageURI(3, defaultImages.equipment);
-    console.log("Set default image for Equipment (type 3)");
-    
-    // Set invalidated image
-    await metadataRenderer.setInvalidatedImageURI(defaultImages.invalidated);
-    console.log("Set default image for invalidated tokens");
-
-    // 5. Deploy FundManager
-    console.log("\n5. Deploying FundManager...");
-    const FundManager = await hre.ethers.getContractFactory("FundManager");
-    const fundManager = await hre.upgrades.deployProxy(FundManager, [
-      validatorRegistryAddress,
-      500, // 5% initial commission percentage (500 basis points) - within 10% max limit
-      deployer.address // Fee receiver address
-    ], {
-      initializer: "initialize",
-      kind: "uups"
-    });
-    await fundManager.waitForDeployment();
-    const fundManagerAddress = await fundManager.getAddress();
-    console.log("FundManager deployed to:", fundManagerAddress);
-    console.log("Transaction hash:", fundManager.deploymentTransaction()?.hash);
-
-    // Save FundManager deployment
-    const fundManagerAbi = fundManager.interface.formatJson();
-    saveDeployment(network.name, "FundManager", fundManagerAddress, fundManagerAbi);
-
-    // Set FundManager in ValidatorRegistry for role management
-    console.log("\nSetting FundManager in ValidatorRegistry for role management...");
-    const setFundManagerInRegistryTx = await validatorRegistry.setFundManager(fundManagerAddress);
-    await setFundManagerInRegistryTx.wait();
-    console.log("FundManager set in ValidatorRegistry");
-    console.log("Transaction hash:", setFundManagerInRegistryTx.hash);
-
-    // 6. Setup Validator in Registry
-    console.log("\n6. Setting up Validator in Registry...");
-    
-    // Ensure deployer has REGISTRY_ADMIN_ROLE
-    if (!(await validatorRegistry.hasRole(REGISTRY_ADMIN_ROLE, deployer.address))) {
-      const grantAdminRoleTx = await validatorRegistry.grantRole(REGISTRY_ADMIN_ROLE, deployer.address);
-      await grantAdminRoleTx.wait();
-      console.log("Granted REGISTRY_ADMIN_ROLE to deployer");
-      console.log("Role grant transaction hash:", grantAdminRoleTx.hash);
-    }
-
-    // Register validator with name
-    const registerTx = await validatorRegistry.registerValidator(
-      validatorAddress,
-      "Default Validator",
-      "A default validator for deployment",
-      [0, 1, 2, 3]
-    );
-    console.log("Registering Validator in Registry...");
-    const registerReceipt = await registerTx.wait();
-    console.log("Validator registration transaction mined");
-    console.log("Transaction hash:", registerReceipt.hash);
-    console.log("Gas used:", registerReceipt.gasUsed.toString());
-
-    // Check if validator is registered
-    const isRegisteredAfterRegistration = await validatorRegistry.isValidatorRegistered(validatorAddress);
-    console.log("Is validator registered after registration?", isRegisteredAfterRegistration);
-    
-    // Get validator name
-    const validatorName = await validatorRegistry.getValidatorName(validatorAddress);
-    console.log("Validator name:", validatorName);
-
-    // Explicitly activate validator after registration
-    if (isRegisteredAfterRegistration) {
-      console.log("Activating Validator in Registry after registration...");
-      const activateTx = await validatorRegistry.updateValidatorStatus(validatorAddress, true);
-      await activateTx.wait();
-      console.log("Validator activated in Registry after registration");
-      console.log("Transaction hash:", activateTx.hash);
-    }
-
-    // Set all asset types as supported in Validator
-    console.log("\nSetting up asset types in Validator...");
-    
-    // Ensure deployer has CRITERIA_MANAGER_ROLE in Validator
-    const CRITERIA_MANAGER_ROLE = await validator.CRITERIA_MANAGER_ROLE();
-    if (!(await validator.hasRole(CRITERIA_MANAGER_ROLE, deployer.address))) {
-      const grantCriteriaRoleTx = await validator.grantRole(CRITERIA_MANAGER_ROLE, deployer.address);
-      await grantCriteriaRoleTx.wait();
-      console.log("Granted CRITERIA_MANAGER_ROLE to deployer");
-      console.log("Role grant transaction hash:", grantCriteriaRoleTx.hash);
-    }
-
-    const assetTypes = [0, 1, 2, 3]; // Land, Vehicle, Estate, CommercialEquipment
-
-    // Set up asset types in Validator
-    for (const assetType of assetTypes) {
-      const setAssetTypeTx = await validator.setAssetTypeSupport(assetType, true);
-      await setAssetTypeTx.wait();
-      console.log(`Asset type ${assetType} configured in Validator`);
-      console.log("Transaction hash:", setAssetTypeTx.hash);
-    }
-    console.log("All asset types configured in Validator");
-
-    // Verify validator is registered
-    const isRegistered = await validatorRegistry.isValidatorRegistered(validatorAddress);
-    console.log("Is validator registered?", isRegistered);
-    
-    if (isRegistered) {
-      // Set Validator as active in Registry
-      console.log("\nActivating Validator in Registry...");
-      const activateTx = await validatorRegistry.updateValidatorStatus(validatorAddress, true);
-      await activateTx.wait();
-      console.log("Validator activated in Registry");
-      console.log("Transaction hash:", activateTx.hash);
-    } else {
-      console.log("Validator is not registered, skipping status update");
-    }
-
-    // Set FundManager in Validator
-    console.log("\nSetting FundManager in Validator...");
-    const setFundManagerTx = await validator.setFundManager(fundManagerAddress);
-    await setFundManagerTx.wait();
-    console.log("FundManager set in Validator");
-    console.log("Transaction hash:", setFundManagerTx.hash);
-
-    // 6. Deploy Subdivide
-    console.log("\n6. Deploying Subdivide...");
-    const Subdivide = await hre.ethers.getContractFactory("Subdivide");
-    const subdivide = await hre.upgrades.deployProxy(Subdivide, [deedNFTAddress, validatorRegistryAddress], {
-      initializer: "initialize",
-      kind: "uups"
-    });
-    await subdivide.waitForDeployment();
-    const subdivideAddress = await subdivide.getAddress();
-    console.log("Subdivide deployed to:", subdivideAddress);
-    console.log("Transaction hash:", subdivide.deploymentTransaction()?.hash);
-
-    // Setup initial roles for Subdivide
-    const SUBDIVIDE_ADMIN_ROLE = await subdivide.ADMIN_ROLE();
-    const SUBDIVIDE_VALIDATOR_ROLE = await subdivide.VALIDATOR_ROLE();
-
-    // Grant roles to deployer
-    await subdivide.grantRole(SUBDIVIDE_ADMIN_ROLE, deployer.address);
-    console.log("Granted ADMIN_ROLE to deployer in Subdivide");
-
-    // Grant VALIDATOR_ROLE to validator
-    await subdivide.grantRole(SUBDIVIDE_VALIDATOR_ROLE, validatorAddress);
-    console.log("Granted VALIDATOR_ROLE to validator in Subdivide");
-
-    // Save Subdivide deployment
-    const subdivideAbi = subdivide.interface.formatJson();
-    saveDeployment(network.name, "Subdivide", subdivideAddress, subdivideAbi);
-
-    console.log("\nAll contracts deployed and configured successfully!");
-    console.log("\nDeployment Summary:");
-    console.log("-------------------");
-    console.log("ValidatorRegistry:", validatorRegistryAddress);
-    console.log("MetadataRenderer:", metadataRendererAddress);
-    console.log("Validator:", validatorAddress);
-    console.log("DeedNFT:", deedNFTAddress);
-    console.log("FundManager:", fundManagerAddress);
-    console.log("Subdivide:", subdivideAddress);
-
-    // Final balance check
-    const finalBalance = await hre.ethers.provider.getBalance(deployer.address);
-    console.log("\nFinal account balance:", ethers.formatEther(finalBalance), "ETH");
-    console.log("Total gas spent:", ethers.formatEther(initialBalance - finalBalance), "ETH");
-
-    // Generate TypeScript ABIs
-    console.log("\nGenerating TypeScript ABIs...");
-    try {
-      const { stdout, stderr } = await execAsync("npx hardhat run deploy/99_generateTsAbis.ts");
-      if (stderr) console.error("ABI generation warnings:", stderr);
-      console.log("ABI generation output:", stdout);
-      console.log("✅ TypeScript ABIs generated successfully");
-    } catch (error) {
-      console.error("❌ Failed to generate TypeScript ABIs:", error);
-      // Don't throw here, as the deployment was successful
-    }
-
+    const { stdout, stderr } = await execAsync("npx hardhat run deploy/99_generateTsAbis.ts");
+    if (stderr) console.error("ABI generation warnings:", stderr);
+    console.log("ABI generation output:", stdout);
   } catch (error) {
-    console.error("\nDeployment failed!");
-    console.error("Error:", error);
-    throw error;
+    console.error("Failed to generate TypeScript ABIs:", error);
   }
 }
 
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error(error);
+    console.error("\nDeployment failed!", error);
     process.exit(1);
-  }); 
+  });

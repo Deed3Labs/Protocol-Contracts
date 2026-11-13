@@ -38,10 +38,9 @@ async function main() {
   console.log("Deploying FundManager...");
   const FundManager = await hre.ethers.getContractFactory("FundManager");
   const fundManager = await hre.upgrades.deployProxy(FundManager, [
-    deedNFTAddress,
     validatorRegistryAddress,
     500, // 5% initial commission percentage (500 basis points) - within 10% max limit
-    deployer.address // Fee receiver address
+    deployer.address // Fee receiver address (moved to the Deed admin by deed_admin_handover.ts)
   ], {
     initializer: "initialize",
     kind: "uups"
@@ -51,20 +50,14 @@ async function main() {
   const fundManagerAddress = await fundManager.getAddress();
   console.log("FundManager deployed to:", fundManagerAddress);
 
-  // Setup initial roles
-  // Note: Additional roles will be managed through ValidatorRegistry integration
-  const ADMIN_ROLE = await fundManager.ADMIN_ROLE();
-  const OPERATOR_ROLE = await fundManager.OPERATOR_ROLE();
-
-  // Grant roles to deployer
-  await fundManager.grantRole(ADMIN_ROLE, deployer.address);
-  await fundManager.grantRole(OPERATOR_ROLE, deployer.address);
-  console.log("Granted initial roles to deployer");
-
-  // Set ValidatorRegistry and DeedNFT
-  await fundManager.setValidatorRegistry(validatorRegistryAddress);
-  await fundManager.setDeedNFT(deedNFTAddress);
-  console.log("Set ValidatorRegistry and DeedNFT");
+  // initialize() gives the deployer DEFAULT_ADMIN, ADMIN, MINTER and FEE_MANAGER roles; there is no
+  // OPERATOR_ROLE or setDeedNFT (the old calls reverted, audit D-22).
+  await (await fundManager.addCompatibleDeedNFT(deedNFTAddress)).wait();
+  const validatorRegistry = await hre.ethers.getContractAt("ValidatorRegistry", validatorRegistryAddress);
+  await (await validatorRegistry.setFundManager(fundManagerAddress)).wait();
+  // DeedNFT.setFundManager makes every mint charge the validator's fee, so it is only wired when a fee
+  // is configured (DEED_FEE_TOKEN / DEED_SERVICE_FEE in deploy_all.ts).
+  console.log("FundManager accepts DeedNFT and is set in the ValidatorRegistry");
 
   // Save deployment information
   const fundManagerAbi = fundManager.interface.formatJson();
