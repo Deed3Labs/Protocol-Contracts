@@ -59,3 +59,5 @@ ESADepositVault and ClaimEscrow are live on Base mainnet, so their storage chang
 OpenZeppelin's storage upgrade report (`@openzeppelin/upgrades-core` `getStorageUpgradeReport`) finds no errors against each implementation recorded in `.openzeppelin/base.json`: the vault at 0xe626…3644 and 0x83CB…26e9, and ClaimEscrow at 0x96F0…2c4e. A slot-by-slot comparison agrees: no existing variable moved.
 
 The credit contracts exist only on Base Sepolia, where FIX-PLAN allows layout breaks; mainnet gets a fresh deployment of them. PHASE-2-REPORT.md lists the breaks.
+
+**PayoutPool (Phase 2B, addendum 12.10).** Base Sepolia only, but still append-only: the old `nextUnpaid` slot is renamed `legacyNext` in place (`@custom:oz-renamed-from`), four variables for the deadline-ordered queues follow `borrowedFromVault`, and `__gap` shrinks from 25 to 21. Claims queued before an upgrade are paid from a legacy queue in their original order, so no migration call is needed. The authority is unchanged (`DEFAULT_ADMIN_ROLE`, moved to the credit timelock). See `PHASE-2B-PAYOUT-RESERVE.md`.

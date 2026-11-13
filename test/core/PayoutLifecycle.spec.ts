@@ -284,24 +284,30 @@ describe("a purchase, from the shop to the money", function () {
       expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(100n * ONE_USDC - payout);
     });
 
-    it("falls back to the reserve, out of excess and never the primary cover", async function () {
+    it("never falls back to the reserve, even with excess to spare (addendum 12.11)", async function () {
+      // Was "falls back to the reserve, out of excess and never the primary cover". The
+      // AssurancePool is the credit-loss reserve and no payout path draws on it any more, even
+      // when it is named as a lender and holds excess.
       const { payout } = await buy();
       await pool.connect(merchant).redeem(payout);
 
-      // Primary cover first, which this must not touch, then spare on top.
       await ctx.usdc.mint(ctx.admin.address, 1_000n * ONE_USDC);
       await ctx.usdc.approve(await reserve.getAddress(), 1_000n * ONE_USDC);
       await reserve.depositIntoPrimaryReserve(400n * ONE_USDC);
       await reserve.depositIntoExcessReserve(300n * ONE_USDC);
-      const primaryBefore = await reserve.primaryBalance();
+      const held = await ctx.usdc.balanceOf(await reserve.getAddress());
       await elapse(NET_30 + DAY);
 
-      await pool.drawForDueClaim();
+      await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
 
-      expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
-      expect(await pool.borrowedFromReserve()).to.equal(payout);
-      expect(await reserve.primaryBalance()).to.equal(primaryBefore);
-      expect(await reserve.excessBalance()).to.equal(300n * ONE_USDC - payout);
+      expect(await pool.borrowedFromReserve()).to.equal(0n);
+      expect(await reserve.excessBalance()).to.equal(300n * ONE_USDC);
+      expect(await ctx.usdc.balanceOf(await reserve.getAddress())).to.equal(held);
+      // What the operator needs to know instead: the claim is overdue and this much is missing.
+      const [ids, amount, short] = await pool.dueWithin(0, 10);
+      expect(ids).to.deep.equal([0n]);
+      expect(amount).to.equal(payout);
+      expect(short).to.equal(payout);
     });
 
     it("pays the lender what it earned, out of the same repayment that carries it", async function () {
@@ -404,7 +410,7 @@ describe("a purchase, from the shop to the money", function () {
       expect(await pool.memberFunded()).to.equal(purchase - payout);
     });
 
-    describe("after the yield pool: the bond vault, then the treasury, then the reserve", function () {
+    describe("after the yield pool: the bond vault, then the treasury, never the reserve", function () {
       let vault: any;
       const MONTH = 30 * DAY;
 
@@ -460,6 +466,9 @@ describe("a purchase, from the shop to the money", function () {
       });
 
       it("takes the treasury's money as capital, up to its allowance, and it holds the position", async function () {
+        // The reserve used to lend what the treasury's allowance left over. It no longer does
+        // (addendum 12.11): with the yield pool covering the rest, the reserve is untouched, and
+        // with the treasury's allowance alone short, the draw refuses with nothing moved.
         const { payout } = await buy();
         await pool.connect(merchant).redeem(payout);
         await treasuryAllows(60n * ONE_USDC);
@@ -468,13 +477,17 @@ describe("a purchase, from the shop to the money", function () {
         await reserve.depositIntoExcessReserve(100n * ONE_USDC);
         await elapse(NET_30 + DAY);
 
+        await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+        expect(await reserve.excessBalance()).to.equal(100n * ONE_USDC);
+
+        await depositIntoYieldPool(payout - 60n * ONE_USDC);
         await expect(pool.drawForDueClaim()).to.emit(pool, "DrewFromTreasury").withArgs(60n * ONE_USDC);
 
         expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
         // The co-op's own money buys the position it pays for, as when the Safe funds by hand.
         expect(await pool.advancedOf(coop.address)).to.equal(60n * ONE_USDC);
-        expect(await pool.borrowedFromReserve()).to.equal(payout - 60n * ONE_USDC);
-        expect(await reserve.excessBalance()).to.equal(100n * ONE_USDC - (payout - 60n * ONE_USDC));
+        expect(await pool.borrowedFromReserve()).to.equal(0n);
+        expect(await reserve.excessBalance()).to.equal(100n * ONE_USDC);
       });
 
       it("pays the vault its share of the carry beside the yield pool, as each bore it", async function () {

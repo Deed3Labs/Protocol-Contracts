@@ -8,11 +8,11 @@ const MONTH = 30 * 24 * 60 * 60;
 /*
  * A maturing bond the vault cannot pay on its own.
  *
- * The vault pays from what it holds, then the treasury up to the allowance the Safe gave it, then
- * the AssurancePool as the last resort -- out of excess and buffer, never the primary cover the RTD
- * is measured on. What the reserve lends comes back from new proceeds before the Safe can take any,
- * and the part of a near-term maturity nobody can pay is counted in the RTD rather than backed
- * unmeasured.
+ * The vault pays from what it holds, then the treasury up to the allowance the Safe gave it, and
+ * nothing else. The AssurancePool used to lend as the last resort; compliance addendum 12.11 says no
+ * redemption path may touch it, so the vault no longer asks. The tests that asserted that lending
+ * now assert the reserve is untouched (PHASE-2B-PAYOUT-RESERVE.md lists each change).
+ * The part of a near-term maturity nobody can pay is still counted in the RTD.
  */
 describe("a bond the vault cannot pay alone", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
@@ -73,40 +73,48 @@ describe("a bond the vault cannot pay alone", function () {
     expect(await reserve.excessBalance()).to.equal(500n * ONE_USDC);
   });
 
-  it("takes the shortfall from the treasury up to its allowance, then the reserve", async function () {
+  it("takes the shortfall from the treasury up to its allowance, and never the reserve", async function () {
+    // Was "...then the reserve", with the reserve lending the last 50.
     await sell(1, 700n * ONE_USDC, 1_000n * ONE_USDC, 1);
     await treasuryAllows(250n * ONE_USDC);
     await intoReserve("Excess", 100n * ONE_USDC);
     await advance(MONTH + 1);
 
     await expect(vault.connect(bondContract).settle(1, holder.address))
-      .to.emit(vault, "DrewFromTreasury").withArgs(250n * ONE_USDC)
-      .and.to.emit(vault, "DrewFromReserve").withArgs(50n * ONE_USDC, 50n * ONE_USDC);
+      .to.be.revertedWithCustomError(vault, "BondVaultInsufficientFunds");
+    expect(await reserve.excessBalance()).to.equal(100n * ONE_USDC);
+
+    // With the treasury's allowance big enough, it pays, and the reserve is still untouched.
+    await usdc.connect(safe).approve(await vault.getAddress(), 300n * ONE_USDC);
+    await expect(vault.connect(bondContract).settle(1, holder.address))
+      .to.emit(vault, "DrewFromTreasury").withArgs(300n * ONE_USDC)
+      .and.not.to.emit(vault, "DrewFromReserve");
 
     expect(await usdc.balanceOf(holder.address)).to.equal(1_000n * ONE_USDC);
-    expect(await usdc.balanceOf(safe.address)).to.equal(10_000n * ONE_USDC - 250n * ONE_USDC);
-    expect(await vault.owedToReserve()).to.equal(50n * ONE_USDC);
-    expect(await reserve.lentToBondVault()).to.equal(50n * ONE_USDC);
-    expect(await reserve.excessBalance()).to.equal(50n * ONE_USDC);
+    expect(await usdc.balanceOf(safe.address)).to.equal(10_000n * ONE_USDC - 300n * ONE_USDC);
+    expect(await vault.owedToReserve()).to.equal(0n);
+    expect(await reserve.lentToBondVault()).to.equal(0n);
+    expect(await reserve.excessBalance()).to.equal(100n * ONE_USDC);
   });
 
-  it("lends out of excess, then buffer, and never the primary cover", async function () {
+  it("never draws on the reserve's excess, buffer or primary cover", async function () {
+    // Was "lends out of excess, then buffer, and never the primary cover".
     await sell(1, 950n * ONE_USDC, 1_000n * ONE_USDC, 1);
     await intoReserve("Primary", 400n * ONE_USDC);
     await intoReserve("Excess", 20n * ONE_USDC);
     await intoReserve("Buffer", 30n * ONE_USDC);
     await advance(MONTH + 1);
 
-    await vault.connect(bondContract).settle(1, holder.address);
+    await expect(vault.connect(bondContract).settle(1, holder.address))
+      .to.be.revertedWithCustomError(vault, "BondVaultInsufficientFunds");
 
-    expect(await usdc.balanceOf(holder.address)).to.equal(1_000n * ONE_USDC);
     expect(await reserve.primaryBalance()).to.equal(400n * ONE_USDC);
-    expect(await reserve.excessBalance()).to.equal(0n);
-    expect(await reserve.bufferBalance()).to.equal(0n);
-    expect(await reserve.bondBufferOwed()).to.equal(30n * ONE_USDC);
+    expect(await reserve.excessBalance()).to.equal(20n * ONE_USDC);
+    expect(await reserve.bufferBalance()).to.equal(30n * ONE_USDC);
+    expect(await reserve.bondBufferOwed()).to.equal(0n);
   });
 
-  it("refuses with nothing moved when all three together fall short", async function () {
+  it("refuses with nothing moved when the vault and the treasury together fall short", async function () {
     await sell(1, 700n * ONE_USDC, 1_000n * ONE_USDC, 1);
     await treasuryAllows(100n * ONE_USDC);
     await intoReserve("Primary", 1_000n * ONE_USDC);
@@ -122,37 +130,22 @@ describe("a bond the vault cannot pay alone", function () {
     expect(await reserve.primaryBalance()).to.equal(1_000n * ONE_USDC);
   });
 
-  it("pays the reserve back from new proceeds before the Safe can take any", async function () {
+  it("owes the reserve nothing, so the Safe's deployable excess is only the reserve rule's", async function () {
+    // Replaces "pays the reserve back from new proceeds before the Safe can take any" and "lets
+    // anyone pay the reserve back as soon as there is spare". Both needed a loan from the reserve,
+    // which the vault no longer takes; `repayReserve` stays only for a loan made before the change.
     await sell(1, 900n * ONE_USDC, 1_000n * ONE_USDC, 1);
     await intoReserve("Excess", 100n * ONE_USDC);
     await advance(MONTH + 1);
-    await vault.connect(bondContract).settle(1, holder.address);
-    expect(await vault.owedToReserve()).to.equal(100n * ONE_USDC);
+    await expect(vault.connect(bondContract).settle(1, holder.address))
+      .to.be.revertedWithCustomError(vault, "BondVaultInsufficientFunds");
+    expect(await vault.owedToReserve()).to.equal(0n);
 
-    // A new bond far out: 30% of its face is kept back, and what the reserve lent comes off too.
+    // A new bond far out: 30% of its face is kept back, and nothing else comes off.
     await sell(2, 500n * ONE_USDC, 550n * ONE_USDC, 12);
-    expect(await vault.deployableExcess()).to.equal(500n * ONE_USDC - 165n * ONE_USDC - 100n * ONE_USDC);
-
-    // The Safe withdrawing repays the reserve first, so it can only ever take what is left.
-    await vault.connect(safe).withdrawDeployable(235n * ONE_USDC, safe.address);
-    expect(await vault.owedToReserve()).to.equal(0n);
-    expect(await reserve.lentToBondVault()).to.equal(0n);
-    expect(await reserve.excessBalance()).to.equal(100n * ONE_USDC);
-    expect(await vault.held()).to.equal(165n * ONE_USDC);
-  });
-
-  it("lets anyone pay the reserve back as soon as there is spare", async function () {
-    await sell(1, 900n * ONE_USDC, 1_000n * ONE_USDC, 1);
-    await intoReserve("Excess", 100n * ONE_USDC);
-    await advance(MONTH + 1);
-    await vault.connect(bondContract).settle(1, holder.address);
-
-    await sell(2, 200n * ONE_USDC, 220n * ONE_USDC, 12);
     await vault.connect(ctx.outsider).repayReserve();
-
-    // 200 held, 66 kept back for the new bond: all 100 owed can go home.
-    expect(await vault.owedToReserve()).to.equal(0n);
     expect(await reserve.excessBalance()).to.equal(100n * ONE_USDC);
+    expect(await reserve.lentToBondVault()).to.equal(0n);
   });
 
   it("counts the near-term gap nobody can pay in the RTD, and only that", async function () {

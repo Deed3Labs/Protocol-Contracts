@@ -20,9 +20,12 @@ interface ILendingPool {
     function repay(uint256 amount) external;
 }
 
+/// @dev The payout pool borrows through this only from the bond vault. The AssurancePool also
+/// implements it, but the payout pool no longer asks it to lend (no payout path touches the pool);
+/// it only repays a loan made before that change.
 interface IAssuranceLender {
-    /// @notice lends for a claim that has come due: excess, then buffer, never the primary reserve.
-    /// @return lent what the reserve could actually put up, which may be nothing.
+    /// @notice lends for a claim that has come due, out of what the lender may spare.
+    /// @return lent what the lender could actually put up, which may be nothing.
     function lendToPayoutPool(uint256 amount) external returns (uint256 lent);
 
     /// @notice takes back what was lent, cushion first.
