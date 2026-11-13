@@ -171,7 +171,7 @@ Regression tests live under `test/audit/`. Abbreviations below: **AP** `AuditPoC
 
 **Tests:**
 - Before: full suite 816 passing, including 53 audit tests.
-- After: full suite **856 passing, 0 failing** (with `FUZZ_STEPS=60` for the invariant file; the default 300-step run is below).
+- After: full suite **856 passing, 0 failing** on the final tree, with the invariant file at its default 300 steps.
 - All runs compile with `KEEP_REVERT_STRINGS=true`, because a plain `hardhat compile` strips revert strings and `revertedWith` assertions then fail.
 
 **Invariant fuzz (`CreditInvariants.spec`, default 300 steps, all seven seeds plus both path tests): 9 passing.** At 300 steps (the same held at 60 during development):

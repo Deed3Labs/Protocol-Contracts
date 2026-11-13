@@ -37,7 +37,7 @@ Notes:
 
 ## Done criteria
 
-- [x] Full suite passes (856, FUZZ_STEPS=60); every audit exploit test flipped and passing
+- [x] Full suite passes (856 on the final tree, fuzz at 300 steps); every audit exploit test flipped and passing
 - [x] Invariant suite at 300 steps, all seeds (9 passing; (i-b) holds everywhere; (ii) only the justified refund residual)
 - [x] Slither per changed contract: no new real High or Medium (triaged; see report)
 - [x] Storage layout of `ESADepositVault` and `ClaimEscrow` checked against `.openzeppelin/base.json`: OK
