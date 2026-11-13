@@ -237,23 +237,28 @@ describe('one screen for everyone (live)', () => {
     const { token } = await json<{ token: string }>(await post(`/api/checkout/${session}/code`, { code: sent[0]!.code }));
     const quote = await json<{ splits: unknown[]; canPayNow: boolean; clearsFrom: string }>(await fetch(`${base}/api/checkout/${session}/member`, { headers: { 'X-Pay-Session': token } }));
     expect(quote).toMatchObject({ splits: [], canPayNow: true, clearsFrom: 'Chase •••• 4471' });
-    expect((await post(`/api/checkout/${session}/approve`, { installments: 4, idempotencyKey: key() }, { 'X-Pay-Session': token })).status).toBe(422);
+    // Refused either way: a live plan is approved in the Clear app (audit H-4), and none is offered.
+    expect((await post(`/api/checkout/${session}/approve`, { installments: 4, idempotencyKey: key() }, { 'X-Pay-Session': token })).status).toBe(409);
   });
 
-  test('a live member over time in the frame: the charge is theirs, the plan opened, the sale paid', async () => {
+  test('a live member over time is sent to the Clear app, where they sign the plan’s terms (audit H-4)', async () => {
     const shop = await miCasa();
-    const { payment, session } = await modalFor(shop, 'live');
+    const { session } = await modalFor(shop, 'live');
     process.env.PAY_OVER_TIME_ONLINE = 'on';
     try {
       sent.length = 0;
       approved.length = 0;
       await post(`/api/checkout/${session}/contact`, { contact: '(909) 555-0142' });
       const { token } = await json<{ token: string }>(await post(`/api/checkout/${session}/code`, { code: sent[0]!.code }));
-      const done = await json<{ installments: number }>(await post(`/api/checkout/${session}/approve`, { installments: 4, idempotencyKey: key() }, { 'X-Pay-Session': token }));
-      expect(done.installments).toBe(4);
-      expect(approved[0]).toMatchObject({ wallet: '0x' + 'a'.repeat(40), installments: 4 });
-      const v1 = await json<{ status: string }>(await fetch(`${base}/v1/payments/${payment.id}`, { headers: { Authorization: `Bearer ${shop.liveSecret}` } }));
-      expect(v1.status).toBe('succeeded');
+      const quote = await json<{ splits: Array<{ installments: number }>; approveIn: string }>(
+        await fetch(`${base}/api/checkout/${session}/member`, { headers: { 'X-Pay-Session': token } }),
+      );
+      expect(quote.splits.some((s) => s.installments === 4)).toBe(true);
+      // The frame cannot collect the member's wallet signature, which a live plan needs.
+      expect(quote.approveIn).toBe('window');
+      const res = await post(`/api/checkout/${session}/approve`, { installments: 4, idempotencyKey: key() }, { 'X-Pay-Session': token });
+      expect(res.status).toBe(409);
+      expect(approved).toHaveLength(0);
     } finally {
       delete process.env.PAY_OVER_TIME_ONLINE;
     }
