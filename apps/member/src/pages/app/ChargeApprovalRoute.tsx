@@ -24,7 +24,7 @@ import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { disclosureFor, signPlanTerms } from '@/lib/planSigning';
 import type { PlanTermsTypedData } from '@clear/domain';
 import { PAY_OVER_TIME_MIN_CENTS, shopSlug, splitsOffered } from '@clear/domain';
-import { closeOrFallback, doneLine, hasNoClearAccount, overTimeShown as showsOverTime, shopHostFor, type ApprovalView } from '@/lib/approvalPage';
+import { chooserRate, chooserSplits, closeOrFallback, doneLine, hasNoClearAccount, overTimeShown as showsOverTime, shopHostFor, type ApprovalView } from '@/lib/approvalPage';
 import ChargeApproval, { type PayMode } from './ChargeApproval';
 import { NoClearAccount } from './ApprovalPage';
 
@@ -208,11 +208,26 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
 
   const amount = useMemo(() => (charge ? charge.amountCents / 100 : 0), [charge]);
   // Under the pay-over-time minimum a charge is paid now: over time is shown greyed, with the reason.
-  const splitOptions = useMemo(() => (charge ? splitsOffered(charge.amountCents, SPLITS) : SPLITS), [charge]);
-  const payNowOnly = splitOptions.length === 1;
+  const offered = useMemo(() => (charge ? splitsOffered(charge.amountCents, SPLITS) : SPLITS), [charge]);
+  /*
+   * The chain prices every split before one is picked (the charge's `splitQuotes`), so the chooser
+   * shows the rate the member will sign rather than an estimate. Splits the chain would refuse are
+   * not offered; if it would refuse them all, they stay, and the refusal is said when one is picked.
+   */
+  const quoteFor = (n: number) => charge?.splitQuotes?.find((q) => q.installments === n) ?? null;
+  const splitOptions = useMemo(() => chooserSplits(offered, charge?.splitQuotes), [offered, charge?.splitQuotes]);
+  // Under the pay-over-time minimum, not merely because the chain refused the longer splits.
+  const payNowOnly = offered.length === 1;
+  const chosenQuote = charge ? quoteFor(charge.splitInto ?? splitInto) : null;
+  // Monthly bps over a 30-day cycle; a free split is 0. No quote (the chain unread): the default.
+  const chosenRate = chooserRate(chosenQuote);
   useEffect(() => {
     if (payNowOnly) setSplitInto(1);
   }, [payNowOnly]);
+  // A split the chain would refuse is not offered; move off it to the longest one that is.
+  useEffect(() => {
+    if (!splitOptions.includes(splitInto)) setSplitInto(splitOptions[splitOptions.length - 1]);
+  }, [splitOptions, splitInto]);
 
   /*
    * Online: the charge says so itself (`online`), or the approval page knows it from the payment.
@@ -456,10 +471,11 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
       splitInto={charge.splitInto ?? splitInto}
       onSplitChange={setSplitInto}
       splitOptions={splitOptions}
+      ratePerCycle={chosenRate ?? undefined}
       perCycleLimit={perCycleLimit}
       doneBy={(n) => `${n} cycle${n === 1 ? '' : 's'} from now`}
       busy={busy}
-      error={error}
+      error={error ?? chosenQuote?.refusal ?? null}
       planTerms={prepared?.disclosure ?? null}
       onApprove={onApprove}
       onDecline={onDecline}

@@ -10,8 +10,13 @@ import {
   prepareChargeApproval,
   declineCharge,
   raiseCharge,
+  splitQuotesForCharge,
   CHARGE_TTL_SECONDS,
 } from '../services/chargeService.js';
+import { splitsOffered } from '@clear/domain';
+
+/** The splits the member app offers on a charge (apps/member ChargeApprovalRoute). */
+const OFFERED_SPLITS = [1, 2, 4, 12];
 
 /*
  * Charges: one route a merchant posts to, and three a member answers on.
@@ -35,11 +40,14 @@ const chargesRouter = Router();
  * while they are paying now, when their own wallet is sending to it (`pay`, from the pay-now routes).
  */
 async function memberView(charge: ChargeRow) {
-  const [contents, bps, overTime, online] = await Promise.all([
+  const [contents, bps, overTime, online, splitQuotes] = await Promise.all([
     chargeContents(charge),
     paidNowBpsFor(charge).catch(() => null),
     onlineOverTime(charge.code).catch(() => null),
     onlineForCharge(charge.code).catch(() => null),
+    charge.status === 'pending'
+      ? splitQuotesForCharge(charge, splitsOffered(charge.amountCents, OFFERED_SPLITS)).catch(() => null)
+      : Promise.resolve(null),
   ]);
   return {
     code: charge.code,
@@ -58,6 +66,11 @@ async function memberView(charge: ChargeRow) {
     ...contents,
     /** What the shop pays Clear on this charge if it's paid now ("the shop pays 1.25%"). */
     paidNowBps: bps,
+    /**
+     * The chain's price for each split offered (`_quote`): what the chooser shows before a split is
+     * picked, and what the member will be asked to sign. Null when it could not be read.
+     */
+    splitQuotes,
     /**
      * Paid online, through a link or a website: false when only paying now is offered (the link's
      * choice, or over time online still off). Null at the counter, whose rules are the app's own.

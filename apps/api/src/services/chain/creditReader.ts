@@ -3,7 +3,7 @@ import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
 import { chainProvider } from './provider.js';
 import { coalesce } from './readCache.js';
-import { memberStateCode } from './planPricing.js';
+import { memberStateCode, RATE_SCHEDULE_ABI } from './planPricing.js';
 
 // 0.25%. Below this the difference is accrual between two reads, not a capacity that failed to push.
 const DRIFT_BPS = 25n;
@@ -29,6 +29,8 @@ const DRIFT_BPS = 25n;
 const ISSUER_ABI = [
   'function tierCount() external view returns (uint256)',
   'function tierAt(uint256 tierId) external view returns (bytes32 kind, uint256 ratePerCycle, bool active)',
+  'function rateSchedule() external view returns (address)',
+  'function tierProduct(uint256 tierId) external view returns (bytes32)',
   'function capacityOf(address member, uint256 tierId) external view returns (uint256)',
   'function drawnOf(address member, uint256 tierId) external view returns (uint256)',
   // Phase 2: `principalOf` is what is on the ledger (principal plus materialised, unpaid carry),
@@ -260,6 +262,27 @@ async function readTiers(
       ? new ethers.Contract(calculatorAddress, LIMITS_ABI, provider)
       : null;
     const count = Number(await issuer.tierCount());
+    /*
+     * Unsecured tiers (Income, Boost) are priced by RateSchedule for the member's state and the
+     * tier's product, not by the tier's own figure (compliance spec item 4). Read once for every
+     * tier. An issuer from before Phase 2, or one with no schedule, keeps `tierAt`'s rate.
+     */
+    const schedule: string = await (issuer.rateSchedule() as Promise<string>).catch(() => ethers.ZeroAddress);
+    const rates = schedule !== ethers.ZeroAddress ? new ethers.Contract(schedule, RATE_SCHEDULE_ABI, provider) : null;
+    const state = rates ? await memberStateCode(provider, address, wallet) : null;
+    const scheduledRate = async (id: number, principal: bigint, limit: bigint): Promise<number | null> => {
+      if (!rates || !state || state === ethers.ZeroHash) return null;
+      try {
+        const product: string = await issuer.tierProduct(id);
+        if (product === ethers.ZeroHash || !(await rates.isEnabled(state, product))) return null;
+        // min(list, cap) on what is drawn; on an empty tier, on its limit; with neither, the list.
+        const basis = principal > 0n ? principal : limit;
+        if (basis > 0n) return Number(await rates.effectiveMonthlyBps(state, product, basis));
+        return Number((await rates.paramsOf(state, product)).listMonthlyBps);
+      } catch {
+        return null;
+      }
+    };
     // Every tier at once rather than one after another: reads issued together travel together,
     // and the provider packs them into a single multicall. Order is kept by index.
     const readTier = async (id: number): Promise<ChainTier> => {
@@ -331,6 +354,7 @@ async function readTiers(
       // see the two figures that produce their limit rather than only the product of them.
       const collateralValue: bigint = backing ? backing[1] : 0n;
       const haircutBps = backing ? Number(backing[0][1]) : 0;
+      const priced = await scheduledRate(id, principal, limit);
 
       return {
         kind: ethers.decodeBytes32String(kind),
@@ -342,7 +366,9 @@ async function readTiers(
         carryCents: toCentsOwed(carry),
         collateralValueCents: toCents(collateralValue),
         haircutBps,
-        rateBps: Number(ratePerCycle),
+        // What the chain charges this member on this tier. A member-level ceiling may trim the
+        // unsecured tiers together further; this is the rate before that trim.
+        rateBps: priced ?? Number(ratePerCycle),
         active,
       };
     };

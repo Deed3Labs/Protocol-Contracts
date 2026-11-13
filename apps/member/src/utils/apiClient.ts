@@ -3700,6 +3700,11 @@ export interface ChargeView {
   /** What the shop pays Clear if it's paid now, in basis points: 125 is 1.25%. */
   paidNowBps?: number | null;
   /**
+   * The chain's price for each split offered (TermIssuer `_quote`): monthly bps (0 when free), or
+   * the refusal the chain would give, as a sentence. Null when it could not be read.
+   */
+  splitQuotes?: { installments: number; rateBps: number; free: boolean; refusal: string | null }[] | null;
+  /**
    * Paid online (a link or a website): false when only paying now is offered. Null at the counter,
    * whose rules (the $50 minimum) are the app's own.
    */

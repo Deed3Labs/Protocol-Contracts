@@ -536,6 +536,38 @@ async function quoteCharge(
   return { ok: true, quote: priced.quote };
 }
 
+/** The chain's price for one split, as the split chooser shows it. */
+export interface SplitQuote {
+  installments: number;
+  /** Monthly bps the member would be charged on this split; 0 when free. */
+  rateBps: number;
+  free: boolean;
+  /** Set when the chain would refuse this split, as a sentence a member can read. */
+  refusal: string | null;
+}
+
+/**
+ * Prices every split the chooser offers, from chain (`quoteCharge`), so what a member sees before
+ * picking is what they will be asked to sign -- not a flat estimate. Null when there is no member or
+ * no term issuer yet, and the app falls back to showing no rate rather than a guess.
+ */
+export async function splitQuotesForCharge(
+  charge: Pick<ChargeRow, 'memberWallet' | 'merchantAddress' | 'amountCents'>,
+  splits: readonly number[],
+): Promise<SplitQuote[] | null> {
+  if (!charge.memberWallet) return null;
+  const termIssuerAddress = getContractAddress(chainId(), 'TermIssuer');
+  if (!termIssuerAddress) return null;
+  const cycle = await memberCycleSeconds();
+  return Promise.all(
+    splits.map(async (installments): Promise<SplitQuote> => {
+      const priced = await quoteCharge(charge, termIssuerAddress, installments, cycle);
+      if (!priced.ok) return { installments, rateBps: 0, free: false, refusal: priced.reason };
+      return { installments, rateBps: Number(priced.quote.rateBps), free: priced.quote.free, refusal: null };
+    }),
+  );
+}
+
 /** Whether TermIssuer offers this split, with the 13-cycle option a large loan may take. */
 async function splitOffered(issuer: ethers.Contract, installments: number, largeLoan: boolean): Promise<boolean> {
   if (installments === 13) return isOfferedPlanSplit(installments, largeLoan);
