@@ -115,6 +115,23 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     expect(installments).to.equal(12n);
   });
 
+  it("a signed re-split counts as the member's own: not while behind, and within the member's limits, whoever submits it", async function () {
+    const { term, ctx } = core;
+    await open(ctx.member, 940n * ONE_USDC, 4);
+    await advance(CYCLE + DAY); // an installment is now overdue
+    const rate = await rates.effectiveMonthlyBps(CA, PARTNER, 705n * ONE_USDC);
+    const nonce = await term.planNonces(ctx.member.address);
+    const { chainId } = await ethers.provider.getNetwork();
+    const sig = await ctx.member.signTypedData(
+      { name: "Clear TermIssuer", version: "1", chainId, verifyingContract: await term.getAddress() },
+      { Resplit: [
+        { name: "planId", type: "uint256" }, { name: "installments", type: "uint32" },
+        { name: "rateBps", type: "uint256" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] },
+      { planId: 0n, installments: 12n, rateBps: rate, nonce, deadline: ethers.MaxUint256 });
+    await expect(term.connect(ctx.operator).resplitWithSignature(0, 12, rate, ethers.MaxUint256, sig))
+      .to.be.revertedWithCustomError(term, "TermIssuerBehindSchedule");
+  });
+
   it("acceptance 7: Clear Cash $3,000 over 12 x 30 days reverts; over 13 x 30 days (>= 365) at 2.5%/30d succeeds under the annual cap", async function () {
     const { term, ctx } = core;
     await expect(open(ctx.member, 3_000n * ONE_USDC, 12, CASH)).to.be.revertedWithCustomError(term, "TermIssuerTermTooShort");
