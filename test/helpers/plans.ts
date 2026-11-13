@@ -4,6 +4,9 @@ import { ethers } from "hardhat";
  * Term plans are opened on terms the member signs (audit H-4). The operator submits; the member's
  * EIP-712 signature over the terms, at their current nonce, is what authorizes it.
  *
+ * `productId` names the RateSchedule product (compliance spec items 5 and 7); tests that run without a
+ * RateSchedule leave it zero and the plan keeps the rate in its terms.
+ *
  * `signedOpenPlan` keeps the old positional shape so tests read the same: it looks up the member's
  * signer (every Hardhat account is unlocked), signs, and returns the transaction promise, so
  * `expect(signedOpenPlan(...)).to.be.revertedWith...` works as before.
@@ -23,6 +26,7 @@ export async function signPlanTerms(term: any, memberSigner: any, terms: any) {
     PlanTerms: [
       { name: "member", type: "address" },
       { name: "merchant", type: "address" },
+      { name: "productId", type: "bytes32" },
       { name: "purchase", type: "uint256" },
       { name: "payout", type: "uint256" },
       { name: "ratePerCycle", type: "uint256" },
@@ -46,10 +50,12 @@ export function planTerms(
   cycleLength: bigint | number,
   installments: bigint | number,
   installmentLength: bigint | number,
+  productId: string = ethers.ZeroHash,
 ) {
   return {
     member,
     merchant,
+    productId,
     purchase,
     payout,
     ratePerCycle: BigInt(ratePerCycle),
@@ -73,8 +79,9 @@ export async function signedOpenPlan(
   cycleLength: bigint | number,
   installments: bigint | number,
   installmentLength: bigint | number,
+  productId: string = ethers.ZeroHash,
 ) {
-  const terms = planTerms(member, merchant, purchase, payout, ratePerCycle, cycleLength, installments, installmentLength);
+  const terms = planTerms(member, merchant, purchase, payout, ratePerCycle, cycleLength, installments, installmentLength, productId);
   const signature = await signPlanTerms(term, await ethers.getSigner(member), terms);
   return term.connect(operator).openPlan(terms, signature);
 }

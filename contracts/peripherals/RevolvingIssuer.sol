@@ -224,6 +224,14 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         uint256 periodLength,
         uint256 graceLength
     ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) notInActivePeriod(member) {
+        // State gate (spec item 9): no line for a member with no attested state, or in a state
+        // where the revolving product is not enabled.
+        if (address(rateSchedule) != address(0)) {
+            bytes32 state = _stateOf(member);
+            if (state == bytes32(0) || !rateSchedule.isEnabled(state, ceilingProduct)) {
+                revert RevolvingIssuerStateNotEnabled(member, state);
+            }
+        }
         uint256 total;
         uint256 increase;
         for (uint256 i = 0; i < capacities.length && i < tiers.length; i++) {

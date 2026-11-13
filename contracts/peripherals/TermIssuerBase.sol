@@ -5,6 +5,8 @@ import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import "./RateSchedule.sol";
+import "../core/interfaces/stable-credit/IMerchantStatus.sol";
 
 /// @dev The parts of the revolving line a mandated collection reads.
 interface IRevolvingMandate {
@@ -134,7 +136,40 @@ abstract contract TermIssuerBase is CreditIssuer {
     mapping(uint256 => uint256) internal openPlanSlot;
 
     /// @dev Two more slots from the gap: openPlanIds, openPlanSlot.
-    uint256[24] private __gap;
+
+    /* ---- Phase 2: compliance pricing (spec items 2, 5-7) ---- */
+
+    /// @notice Where plans are priced: list rate, legal cap and free rules by state and product.
+    /// @dev Unset, plans keep the rate their terms carry and none of the compliance rules apply;
+    /// the deploy script sets it, and every test of the rules runs with it set.
+    RateSchedule public rateSchedule;
+
+    /// @notice How a plan is priced, fixed at opening and changed only by a re-split.
+    struct PlanPricing {
+        bytes32 state;
+        bytes32 product;
+        address merchant;
+        /// @dev Monthly bps the merchant takes off the rate.
+        uint32 subsidyBps;
+        /// @dev A free plan never accrues anything, not even when past due (spec item 5).
+        bool free;
+        /// @dev Priced from RateSchedule (rather than at the rate in its terms).
+        bool priced;
+        /// @dev When carry was last brought onto the ledger.
+        uint64 accruedAt;
+    }
+    mapping(uint256 => PlanPricing) internal planPricing;
+    /// @dev planId => RateSchedule accumulators at the last touch.
+    mapping(uint256 => RateSchedule.Snapshot) internal planSnap;
+
+    /// @dev Three more slots from the gap: rateSchedule, planPricing, planSnap.
+    uint256[21] private __gap;
+
+    uint256 internal constant RAY_ = 1e27;
+    uint256 internal constant BPS_ = 10_000;
+    /// @notice Clear Cash at $2,500 and up may run 13 thirty-day cycles (DECISIONS #4): 390 days,
+    /// the shortest offered term that clears the large-loan regime's 365-day minimum.
+    uint32 public constant CLEAR_CASH_SPLIT = 13;
 
     /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
     uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
@@ -171,19 +206,34 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// @notice thrown when the member did not sign these plan terms (audit H-4).
     error TermIssuerBadSignature(address member);
     error TermIssuerSignatureExpired(uint256 deadline);
+    /// @notice thrown when a product is not enabled in the member's state, or they have none.
+    error TermIssuerProductNotEnabled(address member, bytes32 stateCode, bytes32 productId);
+    /// @notice thrown when the rate or payout signed for is not what the chain computes.
+    error TermIssuerTermsMismatch(uint256 signedRate, uint256 rate, uint256 signedPayout, uint256 payout);
+    /// @notice thrown when a large loan is scheduled over less than its minimum term.
+    error TermIssuerTermTooShort(uint256 term, uint256 minimum);
+    /// @notice thrown when a re-split would cost the member more and they have not signed for it.
+    error TermIssuerResplitNeedsSignature(uint256 planId);
 
     /* ========== EVENTS ========== */
 
     event TermLimitUpdated(address indexed member, uint256 limit);
     event CarryTreasuryUpdated(address treasury);
     event FeeRecipientUpdated(address recipient);
+    /// @notice everything needed to reproduce a plan's loan disclosure later (spec item 5).
     event PlanOpened(
         uint256 indexed planId,
         address indexed member,
+        address indexed merchant,
         uint256 principal,
-        uint256 ratePerCycle,
-        uint32 installments
+        uint32 split,
+        uint256 rateBps,
+        bytes32 scheduleHash,
+        uint256 totalCarry,
+        bytes32 disclosureHash
     );
+    /// @notice a plan's rate changed with a re-split, from now on.
+    event PlanRepriced(uint256 indexed planId, uint256 rateBps, bool free);
     event PlanPaid(uint256 indexed planId, uint256 amount, uint256 principalPortion);
     event PlanClosed(uint256 indexed planId);
     event PlanCarryMaterialised(uint256 indexed planId, uint256 amount);
@@ -226,13 +276,31 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// Projecting the whole schedule up front prices the same carry into a figure that holds
     /// still, and prices it from the start rather than lagging the last touch -- so this never
     /// under-reports how far behind a plan is, which is what an automatic pull is sized from.
+    ///
+    /// The schedule is equal principal installments plus carry on the principal still unpaid
+    /// (spec item 5), so what is due by installment k is k shares of principal plus the carry those
+    /// k periods run on a declining balance.
     function scheduledPrincipalDue(uint256 planId) public view returns (uint256) {
-        Plan storage plan = plans[planId];
-        uint256 due = installmentsDue(planId);
-        // The last period settles the schedule rather than paying another equal share, so the
-        // rounding-up in each installment does not accumulate into a final overcharge.
-        if (due >= plan.installments) return plan.scheduleFloor + plan.scheduleTotal;
-        return plan.scheduleFloor + plan.installmentAmount * due;
+        return _dueAt(plans[planId], installmentsDue(planId));
+    }
+
+    /// @dev What the schedule asks to have been repaid once `k` installments have come due.
+    function _dueAt(Plan storage plan, uint256 k) internal view returns (uint256) {
+        uint256 n = plan.installments;
+        // The last period settles the schedule exactly, so rounding never accumulates.
+        if (k >= n) return plan.scheduleFloor + plan.scheduleTotal;
+        if (k == 0) return plan.scheduleFloor;
+        uint256 base = plan.scheduleBase;
+        uint256 periodRate = _periodRate(plan);
+        // carry over k periods = base x rate x (n + (n-1) + ... + (n-k+1)) / n
+        uint256 carry = (base * periodRate * (k * n - (k * (k - 1)) / 2)) / (n * RAY_);
+        return plan.scheduleFloor + (base * k) / n + carry;
+    }
+
+    /// @dev The plan's scheduled rate over one installment period, RAY-scaled: monthly bps
+    /// x 12 / 365 days per second (DECISIONS #1).
+    function _periodRate(Plan storage plan) internal view returns (uint256) {
+        return (plan.index.ratePerCycle * RAY_ * 12 * plan.installmentLength) / (BPS_ * 365 days);
     }
 
     /// @notice how far behind the schedule a plan is, in principal.
@@ -295,9 +363,6 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// figure the schedule is measured against, and closing it at zero.
     function _applyPlanPayment(uint256 planId, uint256 pay) internal {
         Plan storage plan = plans[planId];
-        uint256 index = plan.index.currentIndex(block.timestamp);
-        uint256 reduction = CarryIndex.normalizeUp(pay, index);
-        plan.normalized = reduction >= plan.normalized ? 0 : plan.normalized - reduction;
         plan.principalOutstanding -= pay;
         plan.repaid += pay;
         uint256 principalPortion = pay - _clearCarry(planId, pay);
@@ -314,39 +379,107 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// @dev Called when a schedule opens and again when one is re-split, because a re-split is a
     /// new schedule over a new remainder -- and quoting the old payment against it would be the
     /// drift this exists to remove, arriving by another route.
+    ///
+    /// Equal shares of principal, each period also paying the carry on what is still unpaid at the
+    /// plan's rate (spec item 5): $940 in four at 2% a month is 235 of principal a period plus
+    /// carry on 940, 705, 470 and 235. `installmentAmount` is the first, largest payment.
     function _fixSchedule(Plan storage plan) internal {
-        uint256 growth = plan.index.growthBetween(
-            plan.scheduleStart, uint256(plan.scheduleStart) + plan.installmentLength
-        );
-        uint256 total = CarryIndex.scheduleCost(plan.scheduleBase, growth, plan.installments);
-        plan.scheduleTotal = total;
-        // Rounded up, so a member who pays what is asked is never a wei short of the schedule.
-        // The last period settles against the total instead of paying another equal share, so
-        // the rounding does not accumulate across the term.
-        plan.installmentAmount = total == 0 ? 0 : (total - 1) / plan.installments + 1;
+        uint256 n = plan.installments;
+        uint256 base = plan.scheduleBase;
+        uint256 periodRate = _periodRate(plan);
+        uint256 carry = (base * periodRate * (n + 1)) / (2 * RAY_);
+        plan.scheduleTotal = base + carry;
+        plan.installmentAmount = base == 0 ? 0 : (base - 1) / n + 1 + (base * periodRate) / RAY_;
     }
 
     /// @dev Carry deepens the member's negative balance and mints the matching claim to the
     /// treasury. Raising the plan's outstanding principal to match means the same carry is never
     /// accrued twice, and that the schedule's arrears are measured against a figure the ledger
     /// agrees with.
+    ///
+    /// Compliance spec items 2 and 5. Carry is simple interest on the plan's unpaid principal alone,
+    /// never on carry already owed: the lesser of the list rate and the legal cap on that principal,
+    /// less the merchant's subsidy. A free plan accrues nothing, ever. Snapshots are reset to now,
+    /// which is what lets principal be treated as constant between touches.
     function _materialiseCarry(uint256 planId) internal {
         Plan storage plan = plans[planId];
-        if (plan.closed || plan.normalized == 0) return;
+        if (plan.closed) return;
+        uint256 carry = _pendingPlanCarry(planId);
+        if (carry > 0) {
+            plan.principalOutstanding += carry;
+            carryOutstandingOf[planId] += carry;
+            stableCredit.accrueCarry(plan.member, carryTreasury, carry);
+            emit PlanCarryMaterialised(planId, carry);
+        }
+        PlanPricing storage pricing = planPricing[planId];
+        pricing.accruedAt = uint64(block.timestamp);
+        if (pricing.priced && !pricing.free) {
+            planSnap[planId] = rateSchedule.snapshot(pricing.state, pricing.product);
+        }
+    }
 
-        uint256 owed = CarryIndex.denormalize(
-            plan.normalized, plan.index.currentIndex(block.timestamp)
-        );
-        if (owed <= plan.principalOutstanding) return;
+    /// @dev Carry a plan has accrued since its last touch.
+    function _pendingPlanCarry(uint256 planId) internal view returns (uint256) {
+        Plan storage plan = plans[planId];
+        PlanPricing storage pricing = planPricing[planId];
+        if (plan.closed || pricing.free) return 0;
+        uint256 principal = plan.principalOutstanding - carryOutstandingOf[planId];
+        if (principal == 0) return 0;
+        uint256 elapsed = block.timestamp - pricing.accruedAt;
+        uint256 charge;
+        if (pricing.priced) {
+            (uint256 list, uint256 cap,) =
+                rateSchedule.chargesSince(pricing.state, pricing.product, principal, planSnap[planId]);
+            charge = list < cap ? list : cap;
+        } else {
+            charge = (principal * plan.index.ratePerCycle * 12 * elapsed) / (BPS_ * 365 days);
+        }
+        uint256 subsidy = (principal * pricing.subsidyBps * 12 * elapsed) / (BPS_ * 365 days);
+        return charge > subsidy ? charge - subsidy : 0;
+    }
 
-        uint256 carry = owed - plan.principalOutstanding;
-        plan.principalOutstanding = owed;
-        // Carry that has become principal is spread over the installments left, so the schedule
-        // still adds up to everything owed rather than to the figure at origination.
-        plan.scheduleBase += carry;
-        carryOutstandingOf[planId] += carry;
-        stableCredit.accrueCarry(plan.member, carryTreasury, carry);
-        emit PlanCarryMaterialised(planId, carry);
+    /// @notice What a plan of these terms costs, from RateSchedule and the merchant's terms.
+    struct Quote {
+        uint256 rateBps;
+        uint256 payout;
+        uint32 subsidyBps;
+        bool free;
+        bool largeLoan;
+        bytes32 state;
+    }
+
+    /// @dev Prices a plan for `member` at `merchant` (spec items 5-9): the state gate, the free
+    /// rules, min(list, legal cap on this principal) less the merchant's subsidy, the payout after
+    /// the merchant's discount for this split, and the large-loan minimum term.
+    function _quote(
+        address member,
+        address merchant,
+        bytes32 product,
+        uint256 principal,
+        uint32 installments,
+        uint64 installmentLength
+    ) internal view returns (Quote memory q) {
+        q.state = stableCredit.networkRegistry().stateCodeOf(member);
+        if (q.state == bytes32(0) || !rateSchedule.isEnabled(q.state, product)) {
+            revert TermIssuerProductNotEnabled(member, q.state, product);
+        }
+        RateSchedule.ProductParams memory p = rateSchedule.paramsOf(q.state, product);
+        (uint256 discountBps, uint256 subsidyBps, uint32 merchantFreeMax) =
+            IMerchantSplitTerms(address(stableCredit.merchantRegistry())).splitTermsOf(merchant, installments);
+        q.payout = principal - (principal * discountBps) / BPS_;
+        q.subsidyBps = uint32(subsidyBps);
+        q.largeLoan = p.largeLoanThreshold != 0 && principal >= p.largeLoanThreshold;
+        if (q.largeLoan) {
+            uint256 term = uint256(installments) * installmentLength;
+            if (term < p.minTermSeconds) revert TermIssuerTermTooShort(term, p.minTermSeconds);
+        }
+        q.free = (p.freeInFull && installments == 1)
+            || (p.freeBelowAmount != 0 && principal < p.freeBelowAmount)
+            || (p.freeSplitMax != 0 && installments <= p.freeSplitMax)
+            || (merchantFreeMax != 0 && installments <= merchantFreeMax);
+        uint256 effective = rateSchedule.effectiveMonthlyBps(q.state, product, principal);
+        if (!q.free && subsidyBps >= effective) q.free = true;
+        q.rateBps = q.free ? 0 : effective - subsidyBps;
     }
 
     /// @dev Applies a payment to a plan's outstanding carry first, and says how much it took.
@@ -376,5 +509,75 @@ abstract contract TermIssuerBase is CreditIssuer {
 
     function _requirePlan(uint256 planId) internal view {
         if (planId >= plans.length) revert TermIssuerUnknownPlan(planId);
+    }
+
+    /// @notice the EIP-712 domain plan signatures are made in.
+    /// @dev Computed rather than stored: EIP712Upgradeable would add storage ahead of this
+    /// contract's own, which an upgrade may not do.
+    function domainSeparator() public view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256(bytes("Clear TermIssuer")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(this)
+            )
+        );
+    }
+
+    /// @notice The terms a member signs for a plan.
+    /// @dev Everything that decides what they owe and to whom, plus the hash of the disclosure
+    /// they were shown, so the signature is over what they agreed to rather than over whatever an
+    /// operator key later submits (audit H-4).
+    struct PlanTerms {
+        address member;
+        address merchant;
+        /// @dev The RateSchedule product: partner credit, Clear Cash, ... (spec items 5, 7).
+        bytes32 productId;
+        uint256 purchase;
+        uint256 payout;
+        uint256 ratePerCycle;
+        uint64 cycleLength;
+        uint32 installments;
+        uint64 installmentLength;
+        bytes32 disclosureHash;
+        uint256 deadline;
+    }
+
+    bytes32 public constant PLAN_TERMS_TYPEHASH = keccak256(
+        "PlanTerms(address member,address merchant,bytes32 productId,uint256 purchase,uint256 payout,uint256 ratePerCycle,uint64 cycleLength,uint32 installments,uint64 installmentLength,bytes32 disclosureHash,uint256 nonce,uint256 deadline)"
+    );
+
+    /// @notice the digest a member signs for these terms, at their current nonce.
+    function _planTermsDigest(PlanTerms calldata terms) internal view returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                PLAN_TERMS_TYPEHASH,
+                terms.member,
+                terms.merchant,
+                terms.productId,
+                terms.purchase,
+                terms.payout,
+                terms.ratePerCycle,
+                terms.cycleLength,
+                terms.installments,
+                terms.installmentLength,
+                terms.disclosureHash,
+                planNonces[terms.member],
+                terms.deadline
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+    }
+
+    /// @notice a member's total arrears across every plan they hold.
+    function totalArrearsOf(address member) public view returns (uint256 total) {
+        uint256[] memory ids = openPlanIds[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            total += arrearsOf(ids[i]);
+        }
     }
 }
