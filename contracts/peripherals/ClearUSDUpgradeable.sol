@@ -98,14 +98,17 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// used to lock nothing, so a bad registry upgrade -- or a caller sending just enough gas for
     /// the registry call to run out -- released every member's collateral with no sign on chain.
     /// Whether a holder has drawn credit cannot be known without the call that failed, so the
-    /// narrowest safe rule is the holder's own history: one whose last successful reading was a
-    /// non-zero lock is treated as fully locked; one never seen locked (never pledged, or last read
-    /// at zero) is not frozen. A source that breaks therefore still cannot freeze the holders who
-    /// have nothing to do with credit.
+    /// narrowest safe rule is the holder's own history: the lock held is the last one successfully
+    /// read for them. One never seen locked (never pledged, or last read at zero) is not frozen.
+    ///
+    /// The last-known amount, not the whole balance. Freezing everything a pledger holds would be
+    /// a lock wider than the drawn credit, which DECISIONS #2 rules out for CLRUSD (DFAL 10a); the
+    /// recorded lock is no more than the credit side already held. It can lag a later draw, so the
+    /// credit side should call `syncEncumbrance` after drawing on savings (Phase 1 report).
     function _encumberedOf(address holder) internal view returns (uint256) {
         (uint256 locked, bool ok) = _readLock(holder);
         if (ok) return locked;
-        return _clearUsdStorage().lastKnownLock[holder] > 0 ? type(uint256).max : 0;
+        return _clearUsdStorage().lastKnownLock[holder];
     }
 
     /// @dev The source's answer, and whether it gave one. No source is a valid answer of zero.
@@ -161,8 +164,9 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
                 // Keep the record current, so a later outage fails closed for this holder.
                 if (locked != $.lastKnownLock[from]) $.lastKnownLock[from] = locked;
             } else {
-                locked = $.lastKnownLock[from] > 0 ? type(uint256).max : 0;
-                emit EncumbranceSourceReverted(from, $.lastKnownLock[from]);
+                // The last lock read for them, and no more (see `_encumberedOf`).
+                locked = $.lastKnownLock[from];
+                emit EncumbranceSourceReverted(from, locked);
             }
             uint256 balance = balanceOf(from);
             uint256 free = balance > locked ? balance - locked : 0;

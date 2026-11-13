@@ -21,10 +21,11 @@ Branch `audit/phase-1`, cut from `audit/materials` (which is `dev` @ `7eb5976` p
 
 Notes:
 - Step 2: H-2 proof rewritten as two regression tests.
-- Step 1: ledger `setMerchantRegistry` must be wired in deploy/22 (pending, done with the 1B merge).
-- Step 3: deploy/20 must call `setClrusdToken` (pending). The 1B test files that needed it were fixed at merge.
+- Step 1: ledger `setMerchantRegistry` is wired in deploy/22.
+- Step 3: deploy/20 calls `setClrusdToken`. The 1B test files that needed it were fixed at merge.
 - Step 3 also did L-6 (`_requiredUnits` rounds up), since it is the same function.
 - Steps 4-5 landed together (X-2's routing formula was needed to test the refund path). Fuzz at 60 steps: (i-b) holds in all seeds; (ii) "refund up" is residual carry left by a reversal that returned no cash, by design (`residualCarryOf`).
+- After the merges: production bytecode sizes fixed (CreditIssuer modifiers out of line; TermIssuer split into base/extension). M-3 CLRUSD outage lock narrowed to the last-known lock (DECISIONS #2). Deploy scripts wired.
 
 ## 1B: money peripherals (subagent, branch `audit/phase-1-1b`, merged here when done)
 
@@ -37,7 +38,8 @@ Notes:
 ## Done criteria
 
 - [x] Full suite passes (856, FUZZ_STEPS=60); every audit exploit test flipped and passing
-- [ ] Invariant suite at 300 steps, all seeds
+- [x] Invariant suite at 300 steps, all seeds (9 passing; (i-b) holds everywhere; (ii) only the justified refund residual)
 - [x] Slither per changed contract: no new real High or Medium (triaged; see report)
 - [x] Storage layout of `ESADepositVault` and `ClaimEscrow` checked against `.openzeppelin/base.json`: OK
-- [ ] `PHASE-1-REPORT.md`, push, PR into `dev`
+- [x] `PHASE-1-REPORT.md` written
+- [ ] Push and PR into `dev`

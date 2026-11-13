@@ -460,7 +460,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
 
   /* ================================================================ ClearUSDUpgradeable */
 
-  it("M-3: CLRUSD stays locked for a holder with a recorded lock when the source reverts, and moves for one who never pledged", async function () {
+  it("M-3: CLRUSD keeps a holder's last recorded lock (and only that) when the source reverts, and moves for one who never pledged", async function () {
     const [admin, pledger, saver, liquidator] = await ethers.getSigners();
     const Token = await ethers.getContractFactory("ClearUSDUpgradeable");
     const clrusd: any = await upgrades.deployProxy(
@@ -481,10 +481,14 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
     expect(await clrusd.lastKnownLockOf(pledger.address)).to.equal(400n * ONE_USDC);
 
     await signals.setBroken(true);
-    // This used to return 0 and let the pledger walk away with all 1,000.
+    // This used to return 0 and let the pledger walk away with all 1,000. Now the recorded 400
+    // stays locked -- and only that: the rest is theirs (DECISIONS #2, DFAL 10a).
     await expect(clrusd.connect(pledger).transfer(saver.address, 1_000n * ONE_USDC))
       .to.be.revertedWithCustomError(clrusd, "ClearUSDEncumbered");
-    expect(await clrusd.freeBalanceOf(pledger.address)).to.equal(0n);
+    expect(await clrusd.freeBalanceOf(pledger.address)).to.equal(600n * ONE_USDC);
+    await clrusd.connect(pledger).transfer(saver.address, 600n * ONE_USDC);
+    await expect(clrusd.connect(pledger).transfer(saver.address, 1n))
+      .to.be.revertedWithCustomError(clrusd, "ClearUSDEncumbered");
     await expect(clrusd.connect(saver).transfer(pledger.address, 10n * ONE_USDC))
       .to.emit(clrusd, "EncumbranceSourceReverted")
       .withArgs(saver.address, 0n);
@@ -493,7 +497,8 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
 
     // Back up: the lock is exactly what the source says again.
     await signals.setBroken(false);
-    await clrusd.connect(pledger).transfer(saver.address, 600n * ONE_USDC);
+    await signals.setLock(pledger.address, 0n);
+    await clrusd.connect(pledger).transfer(saver.address, 400n * ONE_USDC);
   });
 
   /* ================================================================ AssurancePool / oracle */
