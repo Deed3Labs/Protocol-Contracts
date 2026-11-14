@@ -102,6 +102,26 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         return tierCapacity[member][tierId];
     }
 
+    /// @notice when the member's current line was opened; zero for a line opened before Phase 4b.
+    function lineOpenedAtOf(address member) external view returns (uint64) {
+        return lineOpenedAt[member];
+    }
+
+    /// @notice whether the member's current line is the one that defaulted (Phase 4b, M-C).
+    /// @dev What the Liquidator reads. `hasDefaulted` stays true for ever, for underwriting and the
+    /// record; a member who defaulted, settled and was given a new line is current on that line, and
+    /// a stranger must not be able to liquidate it. A default on or after the line's opening is this
+    /// line's. A line opened before this upgrade has no opening time, so any default counts, as before.
+    function hasDefaultedOnCurrentLine(address member) external view returns (bool) {
+        uint64 at = defaultedAt[member];
+        return at != 0 && at >= lineOpenedAt[member];
+    }
+
+    /// @notice the CLRUSD token a Savings draw refreshes the lock of (Phase 4b, L-B); zero if unset.
+    function clrusdTokenOf() external view returns (address) {
+        return clrusdToken;
+    }
+
 
     /// @notice what a member owes in a tier that is already on the ledger: principal and
     /// materialised, unpaid carry.
@@ -229,50 +249,9 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _syncLedgerLimit(member);
     }
 
-    /// @notice opens a member's line with a starting ceiling in each tier.
-    /// @param member address of the member.
-    /// @param capacities ceiling contribution per tier, in tier order.
-    /// @param periodLength length of the credit period.
-    /// @param graceLength length of the grace period.
-    function openLine(
-        address member,
-        uint256[] calldata capacities,
-        uint256 periodLength,
-        uint256 graceLength
-    ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) notInActivePeriod(member) {
-        // State gate (spec item 9): no line for a member with no attested state, or in a state
-        // where the revolving product is not enabled.
-        if (address(rateSchedule) != address(0)) {
-            bytes32 state = _stateOf(member);
-            if (state == bytes32(0) || !rateSchedule.isEnabled(state, ceilingProduct)) {
-                revert RevolvingIssuerStateNotEnabled(member, state);
-            }
-        }
-        uint256 total;
-        uint256 increase;
-        for (uint256 i = 0; i < capacities.length && i < tiers.length; i++) {
-            uint256 previous = tierCapacity[member][i];
-            if (capacities[i] > previous) increase += capacities[i] - previous;
-            tierCapacity[member][i] = capacities[i];
-            total += capacities[i];
-            emit TierCapacityUpdated(member, i, capacities[i]);
-        }
-        _checkCreditCaps(member);
-        // Opening a line is new credit like any other limit raised (audit H-4).
-        _consumeDailyCap(capacityIncreaseCap, "CAPACITY", increase);
-        stableCredit.createCreditLine(member, total, 0);
-        // Zero means "this network's cycle", which is what every caller should want and what
-        // nothing previously supplied -- the period was whatever the caller happened to pass, so
-        // two members could be on different clocks with nothing saying so.
-        //
-        // Not forced to equal it. The rebalance period and the carry cycle are different
-        // questions: one is how long a member has to return to zero, the other is how often carry
-        // compounds. The plan makes them coincide at thirty days, and that is now the default
-        // rather than a coincidence -- but a longer period is a policy choice, not a bug, and
-        // refusing it would mean a member carrying a balance across cycles could never be modelled
-        // at all.
-        uint256 period = periodLength == 0 ? cycleLength() : periodLength;
-        _updateCreditPeriod(member, block.timestamp + period, graceLength);
+    /// @notice see RevolvingIssuerExtension.openLine. Runs in the extension since Phase 4b, for room.
+    function openLine(address, uint256[] calldata, uint256, uint256) external {
+        _forward();
     }
 
     /* ========== CARD SETTLEMENT ========== */
@@ -320,6 +299,13 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         external
         onlyCreditRole(CREDIT_SETTINGS_ROLE)
     {
+        // Each is set once (Phase 4, M-B): members hold snapshots of this schedule's accumulators
+        // and of the ceiling product's bands, and another schedule's or product's would not compare.
+        // The schedule upgrades in place behind the credit timelock instead.
+        if (
+            (address(rateSchedule) != address(0) && address(rateSchedule) != rateSchedule_)
+                || (ceilingProduct != bytes32(0) && ceilingProduct != ceilingProduct_)
+        ) revert RevolvingIssuerPricingSet();
         rateSchedule = RateSchedule(rateSchedule_);
         ceilingProduct = ceilingProduct_;
         emit PricingUpdated(rateSchedule_, ceilingProduct_);
@@ -458,9 +444,12 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _materialiseCarry(member);
 
         uint256 remaining = available;
+        // Judged by what each tier costs now, after the caps (Phase 4b, L-G), in the same unit
+        // `nextRepaymentRate` reports the band in.
+        uint256[] memory rates = _effectiveRates(member);
         for (uint256 i = tiers.length; i > 0 && remaining > 0; i--) {
             uint256 tierId = i - 1;
-            if (tiers[tierId].index.ratePerCycle < minRate) continue;
+            if (rates[tierId] < minRate) continue;
             uint256 principal = tierPrincipal[member][tierId];
             if (principal == 0) continue;
 
@@ -472,19 +461,48 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     }
 
     /// @inheritdoc ICreditIssuer
+    /// @dev The effective monthly rate after the caps, scaled by RATE_SCALE (Phase 4b, L-G). Tiers
+    /// ascend by configured rate, but a binding member ceiling is trimmed from the dearest priced
+    /// tier first, which can leave it cheaper than the one below. So every tier is considered.
     function nextRepaymentRate(address member)
         external
         view
         override
         returns (uint256 rate, bool hasPosition)
     {
-        for (uint256 i = tiers.length; i > 0; i--) {
-            uint256 tierId = i - 1;
-            if (tierPrincipal[member][tierId] == 0) continue;
-            // Tiers ascend by rate, so the first one found walking back is the dearest.
-            return (tiers[tierId].index.ratePerCycle, true);
+        uint256[] memory rates = _effectiveRates(member);
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tierPrincipal[member][i] == 0) continue;
+            if (!hasPosition || rates[i] > rate) {
+                rate = rates[i];
+                hasPosition = true;
+            }
         }
-        return (0, false);
+    }
+
+    /// @notice the unit repayment rates are compared in: monthly basis points times 1e18.
+    uint256 public constant RATE_SCALE = 1e18;
+
+    /// @dev What each tier costs the member from now, as a monthly rate scaled by RATE_SCALE (Phase
+    /// 4b, L-G): a tier on its own rate costs that rate; a priced tier costs its list rate under the
+    /// member's pricing state, less its part of any excess over the member-level ceiling, trimmed
+    /// dearest tier first as accrual trims it. RateSchedule does the arithmetic, so the comparison
+    /// and the accrual read the same parameters.
+    function _effectiveRates(address member) private view returns (uint256[] memory rates) {
+        uint256 n = tiers.length;
+        bytes32[] memory products = new bytes32[](n);
+        uint256[] memory principals = new uint256[](n);
+        rates = new uint256[](n);
+        for (uint256 i = 0; i < n; i++) {
+            products[i] = tierProduct[i];
+            principals[i] = principalOnlyOf(member, i);
+            rates[i] = tiers[i].index.ratePerCycle;
+        }
+        if (address(rateSchedule) == address(0)) {
+            for (uint256 i = 0; i < n; i++) rates[i] *= RATE_SCALE;
+            return rates;
+        }
+        return rateSchedule.revolvingRatesOf(member, _pricingState(member), ceilingProduct, products, principals, rates);
     }
 
 
@@ -590,6 +608,11 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
 
     /// @notice see RevolvingIssuerExtension.setTierRate.
     function setTierRate(uint256, uint256) external {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension.setClrusdToken.
+    function setClrusdToken(address) external {
         _forward();
     }
 

@@ -263,6 +263,18 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
     log("! No ClearUSDUpgradeable yet: run deploy/21, then re-run this to name it (savings back nothing until then).");
   }
 
+  // Re-review L-B: every Savings draw refreshes CLRUSD's recorded lock, so a registry outage cannot
+  // fail open for a holder who drew after their last CLRUSD move. Set once, by the issuer's owner
+  // (the deployer until the credit timelock handover; after it, a timelock proposal).
+  if (clrusdRecord && (await revolving.clrusdTokenOf()) === ethers.ZeroAddress) {
+    if ((await revolving.owner()) === deployer.address) {
+      await (await revolving.setClrusdToken(clrusdRecord.address)).wait();
+      log("  RevolvingIssuer clrusdToken -> ClearUSDUpgradeable");
+    } else {
+      log(`! RevolvingIssuer has no CLRUSD token: propose setClrusdToken(${clrusdRecord.address}) through the credit timelock.`);
+    }
+  }
+
   /*
    * The credit operator's powers are split by job (audit H-4). The deployer is the AccessManager
    * admin and passes every role; these grants are for the keys that do each job day to day.
@@ -321,13 +333,24 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
   }
 
   // ---- Issuers, registered against the ledger and nothing else ----
+  // Re-review M-E: registration is NetworkRegistry's admin power. On a fresh deploy the deployer
+  // holds it until the credit timelock handover; on a re-run after the handover, print the proposal.
+  const deployerIsRegistryAdmin = await networkRegistry.hasRole(
+    await networkRegistry.DEFAULT_ADMIN_ROLE(),
+    deployer.address
+  );
   for (const [label, issuerAddress] of [
     ["RevolvingIssuer", revolvingAddress],
     ["TermIssuer", termAddress],
   ] as const) {
     if (!(await networkRegistry.isIssuer(issuerAddress))) {
-      await (await networkRegistry.registerIssuer(issuerAddress, ledgerAddress)).wait();
-      log(`  registered ${label} against the ledger`);
+      if (deployerIsRegistryAdmin) {
+        await (await networkRegistry.registerIssuer(issuerAddress, ledgerAddress)).wait();
+        log(`  registered ${label} against the ledger`);
+      } else {
+        log(`! ${label} is not registered and the deployer is not NetworkRegistry's admin: propose`);
+        log(`  registerIssuer(${issuerAddress}, ${ledgerAddress}) through the credit timelock.`);
+      }
     }
   }
 

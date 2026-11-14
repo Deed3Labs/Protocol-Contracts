@@ -65,13 +65,14 @@ contract TermIssuerOrigination is TermIssuerBase {
         bool largeLoan;
         if (address(rateSchedule) != address(0)) {
             Quote memory q = _quote(
-                member, terms.merchant, terms.productId, purchase, terms.installments, terms.installmentLength
+                member, terms.merchant, terms.productId, purchase, terms.installments, terms.installmentLength,
+                IOpenPrincipal(address(this)).openPrincipalOf(member, terms.productId, type(uint256).max)
             );
             if (q.rateBps != terms.ratePerCycle || q.payout != terms.payout) {
                 revert TermIssuerTermsMismatch(terms.ratePerCycle, q.rateBps, terms.payout, q.payout);
             }
             rateBps = q.rateBps;
-            largeLoan = q.largeLoan;
+            largeLoan = q.largeTerm;
             pricing = PlanPricing({
                 state: q.state,
                 product: terms.productId,
@@ -79,12 +80,17 @@ contract TermIssuerOrigination is TermIssuerBase {
                 subsidyBps: q.subsidyBps,
                 free: q.free,
                 priced: true,
-                accruedAt: 0
+                accruedAt: 0,
+                payout: 0,
+                refundTermsRecorded: false
             });
         } else {
             pricing.merchant = terms.merchant;
             pricing.free = rateBps == 0;
         }
+        // What a refund will take back, and from whom (Phase 4, H-A).
+        pricing.payout = uint128(terms.payout);
+        pricing.refundTermsRecorded = true;
         // The 13-cycle option exists for large loans only (DECISIONS #4).
         if (!isOfferedSplit(terms.installments) && !(largeLoan && terms.installments == CLEAR_CASH_SPLIT)) {
             revert TermIssuerSplitNotOffered(terms.installments);

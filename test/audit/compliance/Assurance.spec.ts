@@ -8,6 +8,7 @@ import {
   deployAssurancePool, setFloorInputs, fund, balances, advance,
   AssuranceSetup, BACKSTOP, ASSURANCE, TAG, MASK, DAY, ASSURANCE_DELAY,
 } from "../../helpers/assurance";
+import { pledgeSigned } from "../../helpers/pledge";
 
 /*
  * Compliance section 13 (Assurance Contracts), acceptance tests 31-33.
@@ -423,7 +424,7 @@ describe("COMPLIANCE section 13: Assurance Contracts (acceptance 31-33)", functi
       await usdc.mint(ctx.member.address, usd(5_000));
       await usdc.connect(ctx.member).approve(await vault.getAddress(), ethers.MaxUint256);
       await vault.connect(ctx.member).deposit(await usdc.getAddress(), usd(3_000), ctx.member.address);
-      await pledges.pledge(ctx.member.address, SAVINGS, usd(3_000));
+      await pledgeSigned(pledges, ctx.member.address, SAVINGS, usd(3_000));
       await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, usd(1_000));
       await payoutPool.connect(merchant).redeem(usd(500));
 

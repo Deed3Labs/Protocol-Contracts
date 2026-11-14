@@ -36,6 +36,11 @@ contract MockMissedCycleIssuer {
         return false;
     }
 
+    /// @dev What the Liquidator reads since Phase 4b (M-C).
+    function hasDefaultedOnCurrentLine(address) external pure returns (bool) {
+        return false;
+    }
+
     function setPrincipal(address member, uint256 tierId, uint256 amount) external {
         principalOf[member][tierId] = amount;
     }

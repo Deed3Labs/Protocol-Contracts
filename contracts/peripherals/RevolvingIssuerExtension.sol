@@ -84,8 +84,12 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
                 savingsTier = i;
                 savingsCap = tierCapacity[member][i];
                 savingsBefore = tierPrincipal[member][i];
-                uint256 allowed = savingsBefore + savingsDrawAllowance[member];
-                if (allowed < savingsCap) tierCapacity[member][i] = allowed;
+                // Saturating: an unlimited allowance (type(uint256).max) narrows nothing, and
+                // adding it to what is drawn must not overflow (Phase 4, L-A).
+                uint256 allowance = savingsDrawAllowance[member];
+                if (allowance < savingsCap && savingsBefore + allowance < savingsCap) {
+                    tierCapacity[member][i] = savingsBefore + allowance;
+                }
                 break;
             }
         }
@@ -292,5 +296,65 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         localAccAt[tierId] = uint64(block.timestamp);
         tiers[tierId].index.setRate(ratePerCycle, block.timestamp);
         emit TierRateUpdated(tierId, ratePerCycle);
+    }
+
+    /// @notice opens a member's line with a starting ceiling in each tier.
+    /// @param member address of the member.
+    /// @param capacities ceiling contribution per tier, in tier order.
+    /// @param periodLength length of the credit period.
+    /// @param graceLength length of the grace period.
+    function openLine(
+        address member,
+        uint256[] calldata capacities,
+        uint256 periodLength,
+        uint256 graceLength
+    ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) notInActivePeriod(member) {
+        // State gate (spec item 9): no line for a member with no attested state, or in a state
+        // where the revolving product is not enabled.
+        if (address(rateSchedule) != address(0)) {
+            bytes32 state = _stateOf(member);
+            if (state == bytes32(0) || !rateSchedule.isEnabled(state, ceilingProduct)) {
+                revert RevolvingIssuerStateNotEnabled(member, state);
+            }
+        }
+        uint256 total;
+        uint256 increase;
+        for (uint256 i = 0; i < capacities.length && i < tiers.length; i++) {
+            uint256 previous = tierCapacity[member][i];
+            if (capacities[i] > previous) increase += capacities[i] - previous;
+            tierCapacity[member][i] = capacities[i];
+            total += capacities[i];
+            emit TierCapacityUpdated(member, i, capacities[i]);
+        }
+        _checkCreditCaps(member);
+        // Opening a line is new credit like any other limit raised (audit H-4).
+        _consumeDailyCap(capacityIncreaseCap, "CAPACITY", increase);
+        stableCredit.createCreditLine(member, total, 0);
+        // Zero means "this network's cycle", which is what every caller should want and what
+        // nothing previously supplied -- the period was whatever the caller happened to pass, so
+        // two members could be on different clocks with nothing saying so.
+        //
+        // Not forced to equal it. The rebalance period and the carry cycle are different
+        // questions: one is how long a member has to return to zero, the other is how often carry
+        // compounds. The plan makes them coincide at thirty days, and that is now the default
+        // rather than a coincidence -- but a longer period is a policy choice, not a bug, and
+        // refusing it would mean a member carrying a balance across cycles could never be modelled
+        // at all.
+        uint256 period = periodLength != 0 ? periodLength : tiers.length == 0 ? 0 : tiers[0].index.cycleLength;
+        _updateCreditPeriod(member, block.timestamp + period, graceLength);
+        // A new line starts a new default episode (Phase 4b, M-C): a default recorded before now
+        // stays on record, but no longer lets anyone liquidate this line.
+        lineOpenedAt[member] = uint64(block.timestamp);
+    }
+
+    /// @notice names the CLRUSD token whose lock a Savings draw refreshes (Phase 4b, L-B).
+    /// @dev The owner's (the credit timelock after the handover), and set once: every Savings draw
+    /// calls it and reverts if it reverts, so pointing it elsewhere later would be a way to stop
+    /// Savings draws, or to call arbitrary code on them. Changing it takes an upgrade, which is the
+    /// owner's power already, so this adds none.
+    function setClrusdToken(address token) external onlyOwner {
+        if (token == address(0) || clrusdToken != address(0)) revert RevolvingIssuerClrusdSet();
+        clrusdToken = token;
+        emit ClrusdTokenSet(token);
     }
 }

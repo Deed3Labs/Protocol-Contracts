@@ -239,15 +239,82 @@ contract DeedNFT is DeedNFTBase {
         emit DeedValidated(tokenId, isValid);
     }
 
+    /// @dev Re-review M-F: a trust deed's validator changes only after this delay, unless governance sets
+    ///      another within the bounds below.
+    uint64 private constant DEFAULT_REASSIGN_DELAY = 7 days;
+    uint64 private constant MIN_REASSIGN_DELAY = 1 days;
+    uint64 private constant MAX_REASSIGN_DELAY = 30 days;
+    uint8 private constant STATUS_VOID = 2;
+
+    event ValidatorReassignmentRequested(uint256 indexed tokenId, address indexed newValidator, uint64 effectiveAt);
+    event ValidatorReassigned(uint256 indexed tokenId, address indexed newValidator);
+    event ValidatorReassignDelayUpdated(uint64 delay);
+
+    error ReassignmentNotDue(uint64 effectiveAt);
+    error NoReassignmentPending();
+    error ReassignDelayOutOfRange(uint64 delay);
+
     /**
      * @notice The holder moves the deed to another active (registry-vetted) validator. Validation resets; this
      *         is the only way a deed changes validator (audit D-7); no admin path exists.
+     * @dev Re-review M-F: on a trust deed this only records the request. It takes effect when the holder calls
+     *      completeValidatorReassignment after `validatorReassignDelay()`, and until then the old validator is
+     *      still the deed's validator and may still void it, so a holder who sees a freezing markVoid coming
+     *      cannot move the deed out of its reach first. Neither step runs while the deed is Void. A new request
+     *      replaces a pending one and restarts the clock. A legacy deed (not in trust, never voidable) changes
+     *      validator at once, as before.
      */
     function reassignValidator(uint256 tokenId, address newValidator) external whenNotPaused {
         require(ownerOf(tokenId) == msg.sender, "Not deed owner");
         if (!IValidatorRegistry(validatorRegistry).isValidatorActive(newValidator)) revert ValidatorNotUsable();
+        IDeedTrust.TrustRecord storage r = _trust[tokenId];
+        if (r.agreementHash == bytes32(0)) {
+            _applyValidator(tokenId, newValidator);
+            return;
+        }
+        if (r.status == STATUS_VOID) revert IDeedTrust.NotActive();
+        uint64 effectiveAt = uint64(block.timestamp) + validatorReassignDelay();
+        _pendingValidator[tokenId] = PendingValidator(newValidator, effectiveAt);
+        emit ValidatorReassignmentRequested(tokenId, newValidator, effectiveAt);
+    }
+
+    /// @notice Re-review M-F: the holder completes a trust deed's validator reassignment once the delay has
+    ///         passed. The new validator must still be active, and the deed must not be Void.
+    function completeValidatorReassignment(uint256 tokenId) external whenNotPaused {
+        require(ownerOf(tokenId) == msg.sender, "Not deed owner");
+        PendingValidator memory pending = _pendingValidator[tokenId];
+        if (pending.validator == address(0)) revert NoReassignmentPending();
+        if (block.timestamp < pending.effectiveAt) revert ReassignmentNotDue(pending.effectiveAt);
+        if (_trust[tokenId].status == STATUS_VOID) revert IDeedTrust.NotActive();
+        if (!IValidatorRegistry(validatorRegistry).isValidatorActive(pending.validator)) revert ValidatorNotUsable();
+        delete _pendingValidator[tokenId];
+        _applyValidator(tokenId, pending.validator);
+    }
+
+    /// @notice A trust deed's pending validator reassignment, and when it may be completed (zero if none).
+    function pendingValidatorOf(uint256 tokenId) external view returns (address validator, uint64 effectiveAt) {
+        PendingValidator memory pending = _pendingValidator[tokenId];
+        return (pending.validator, pending.effectiveAt);
+    }
+
+    /// @notice How long a trust deed's validator reassignment waits (re-review M-F).
+    function validatorReassignDelay() public view returns (uint64) {
+        uint64 delay = _validatorReassignDelay;
+        return delay == 0 ? DEFAULT_REASSIGN_DELAY : delay;
+    }
+
+    /// @notice Sets the reassignment delay, between 1 and 30 days. Admin only (the Deed timelock). It can only
+    ///         delay a holder's change of validator, never block it, and it applies to requests made after it.
+    function setValidatorReassignDelay(uint64 delay) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (delay < MIN_REASSIGN_DELAY || delay > MAX_REASSIGN_DELAY) revert ReassignDelayOutOfRange(delay);
+        _validatorReassignDelay = delay;
+        emit ValidatorReassignDelayUpdated(delay);
+    }
+
+    function _applyValidator(uint256 tokenId, address newValidator) private {
         _setTraitValue(tokenId, KEY_IS_VALIDATED, abi.encode(false));
         _setTraitValue(tokenId, KEY_VALIDATOR, abi.encode(newValidator));
+        emit ValidatorReassigned(tokenId, newValidator);
     }
 
     /**

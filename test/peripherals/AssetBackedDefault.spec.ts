@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { driveToDefault } from "../helpers/default";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { pledgeSigned } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -79,7 +80,7 @@ describe("asset-backed default", function () {
     await ctx.usdc.mint(ctx.member.address, 1_000n * ONE_USDC);
     await ctx.usdc.connect(ctx.member).approve(await pool.getAddress(), 1_000n * ONE_USDC);
     await pool.connect(ctx.member).deposit(1_000n * ONE_USDC, ctx.member.address);
-    await registry.pledge(ctx.member.address, POOL_SHARE, 1_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, POOL_SHARE, 1_000n * ONE_USDC);
 
     await issuer
       .connect(ctx.operator)
@@ -237,6 +238,11 @@ describe("asset-backed default", function () {
       );
       const stillOwed = await issuer.principalOf(ctx.member.address, 0);
       expect(stillOwed).to.be.greaterThan(0n);
+      // What is queued is recorded against this member, at its value when queued, and no more than
+      // that may be applied to them (Phase 4, L-H). Carry since then is still owed.
+      const queuedFor = await liquidator.realizedPendingOf(ctx.member.address);
+      expect(queuedFor).to.be.greaterThan(0n);
+      expect(queuedFor).to.be.lessThanOrEqual(stillOwed);
 
       // The loan comes back, the queued claim pays out, and the co-op applies it.
       await ctx.usdc.mint(borrower.address, 900n * ONE_USDC);
@@ -251,7 +257,10 @@ describe("asset-backed default", function () {
         ctx.member.address, await issuer.getAddress(), 0, stillOwed
       );
 
-      expect(await issuer.principalOf(ctx.member.address, 0)).to.be.lessThan(1_000n);
+      // Exactly the queued proceeds were applied; the rest is the member's to pay, not forgiven and
+      // not taken from anybody else's queued cash.
+      expect(await liquidator.realizedPendingOf(ctx.member.address)).to.equal(0n);
+      expect(await issuer.principalOf(ctx.member.address, 0)).to.be.closeTo(stillOwed - queuedFor, 1_000n);
     });
   });
 });

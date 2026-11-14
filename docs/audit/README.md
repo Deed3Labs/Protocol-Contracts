@@ -11,4 +11,6 @@ The November 2026 security audit of this repo (commit `7eb5976`), the decisions 
 | `FIX-PLAN.md` | The brief every fix session follows |
 | `PROMPTS.md` | The prompt for each cloud session |
 | `specs/` | The compliance spec and the trust agreement v5 brief and addendum |
+| `REREVIEW.md` | Phase 4: the independent re-review, what it found and fixed, and the decisions left for the owner |
+| `rereview/BLIND-REVIEW.md` | The blind reviewer's findings, as delivered |
 | `../../test/audit/` | 53 audit tests (exploit proofs plus invariant fuzzing) |

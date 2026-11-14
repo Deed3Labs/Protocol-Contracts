@@ -10,6 +10,11 @@ import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
 import "./RateSchedule.sol";
 
+/// @dev The one CLRUSD call a Savings draw makes (Phase 4b, L-B).
+interface IClrusdLockSync {
+    function syncEncumbrance(address holder) external returns (uint256 locked);
+}
+
 /// @title RevolvingIssuerBase
 /// @notice Everything RevolvingIssuer and RevolvingIssuerExtension share: storage, events, errors and internals.
 /// @dev RevolvingIssuer outgrew the 24 KiB contract size limit, so some of its functions run in
@@ -170,7 +175,29 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     mapping(address => uint256) public memberNonces;
 
     /// @dev Seven slots from the gap for the block above.
-    uint256[11] private __gap;
+
+    /* ---- Phase 4: snapshot basis (M-B) ---- */
+
+    /// @dev member => which accumulator each snapshot above was taken from: bit i set when tier i
+    /// was snapshotted on the RateSchedule, clear when on its own local accumulator; bit 255 set
+    /// when `ceilingSnap` holds a snapshot of the ceiling product. Pricing switched on, or a
+    /// state's products launched, after a member was snapshotted changes which accumulator a tier
+    /// reads; comparing numbers from two different accumulators underflowed or read past an empty
+    /// snapshot and bricked the member. One slot from the gap.
+    mapping(address => uint256) internal snapBasis;
+
+    /* ---- Phase 4b: the owner's decisions on the re-review ---- */
+
+    /// @dev member => when their current line was opened (M-C). A default recorded before it ended
+    /// an earlier line, which the member has since settled and been re-onboarded from, so the
+    /// Liquidator may act only on a default of this line. Zero for a line opened before this
+    /// upgrade, which keeps the old rule for it. One slot from the gap.
+    mapping(address => uint64) internal lineOpenedAt;
+    /// @dev The CLRUSD token whose recorded lock a Savings draw refreshes (L-B). Set once, by the
+    /// owner. One slot from the gap.
+    address internal clrusdToken;
+
+    uint256[8] private __gap;
 
     bytes32 internal constant BOOST_KIND = "BOOST";
     bytes32 internal constant SAVINGS_KIND = "SAVINGS";
@@ -233,6 +260,8 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     event TierProductSet(uint256 indexed tierId, bytes32 productId);
     /// @notice carry above the member-level ceiling that was not charged (spec item 4).
     event CarryTrimmed(address indexed member, uint256 indexed tierId, uint256 amount);
+    /// @notice the CLRUSD token a Savings draw refreshes the lock of (Phase 4b, L-B).
+    event ClrusdTokenSet(address token);
 
     /* ---- section 12 ---- */
     event CycleJudged(address indexed member, bool clean, uint8 missedInRow, uint8 cleanStreak, bool deposited);
@@ -253,6 +282,10 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     error RevolvingIssuerBadScope(uint8 scope);
     error RevolvingIssuerSignatureExpired(uint256 deadline);
     error RevolvingIssuerBadSignature(address member);
+    /// @notice thrown when the RateSchedule or ceiling product is changed once set (Phase 4, M-B).
+    error RevolvingIssuerPricingSet();
+    /// @notice thrown when the CLRUSD token is set twice, or to zero (Phase 4b, L-B).
+    error RevolvingIssuerClrusdSet();
 
     /// @notice moves carry accrued in each tier onto the ledger.
     /// @dev Carry deepens the member's negative balance and mints the matching claim to whoever
@@ -286,26 +319,34 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         uint256 n = tiers.length;
         carries = new uint256[](n);
         bytes32 state = snapState[member];
-        bool priced = address(rateSchedule) != address(0);
+        uint256 basis = snapBasis[member];
         uint256 unsecuredPrincipal;
         uint256 unsecuredCarry;
         for (uint256 i = 0; i < n; i++) {
             uint256 principal = principalOnlyOf(member, i);
             if (principal == 0) continue;
-            bytes32 product = tierProduct[i];
-            if (priced && product != bytes32(0) && rateSchedule.hasProduct(state, product)) {
-                uint256 acc = rateSchedule.snapshot(state, product).list;
-                carries[i] = (principal * (acc - tierSnap[member][i])) / RAY;
+            bool onSchedule = _onSchedule(state, tierProduct[i]);
+            // The accumulator this tier reads changed since its snapshot (pricing switched on, or
+            // the state's product launched): the two numbers do not compare, so nothing is charged
+            // across the change, and the next touch snapshots on the new basis (Phase 4, M-B).
+            if (onSchedule != ((basis >> i) & 1 == 1)) continue;
+            uint256 acc = onSchedule ? rateSchedule.snapshot(state, tierProduct[i]).list : _localAcc(i);
+            uint256 snap = tierSnap[member][i];
+            if (acc > snap) carries[i] = (principal * (acc - snap)) / RAY;
+            if (onSchedule) {
                 unsecuredPrincipal += principal;
                 unsecuredCarry += carries[i];
-            } else {
-                carries[i] = (principal * (_localAcc(i) - tierSnap[member][i])) / RAY;
             }
         }
-        if (
-            unsecuredCarry == 0 || ceilingProduct == bytes32(0)
-                || !rateSchedule.hasProduct(state, ceilingProduct)
-        ) return carries;
+        if (unsecuredCarry == 0 || !_onSchedule(state, ceilingProduct)) return carries;
+        if (basis >> 255 == 0) {
+            // The ceiling applies but there is no snapshot to measure it from: charge no unsecured
+            // carry for this interval rather than risk charging above the ceiling (M-B).
+            for (uint256 i = 0; i < n; i++) {
+                if (tierProduct[i] != bytes32(0)) carries[i] = 0;
+            }
+            return carries;
+        }
         uint256 cap = rateSchedule.capFor(member, state, ceilingProduct, unsecuredPrincipal, ceilingSnap[member]);
         if (unsecuredCarry <= cap) return carries;
         // Over the member's ceiling: trim the excess from the dearest unsecured tier first.
@@ -321,20 +362,56 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
 
     /// @dev Resets every snapshot to now, under the member's current state.
     function _resnapshot(address member) internal {
-        bytes32 state = address(stableCredit.networkRegistry()) == address(0)
-            ? bytes32(0)
-            : _stateOf(member);
+        bytes32 state = _pricingState(member);
         snapState[member] = state;
-        bool priced = address(rateSchedule) != address(0);
+        uint256 basis;
         for (uint256 i = 0; i < tiers.length; i++) {
             bytes32 product = tierProduct[i];
-            tierSnap[member][i] = priced && product != bytes32(0) && rateSchedule.hasProduct(state, product)
-                ? rateSchedule.snapshot(state, product).list
-                : _localAcc(i);
+            if (_onSchedule(state, product)) {
+                tierSnap[member][i] = rateSchedule.snapshot(state, product).list;
+                basis |= 1 << i;
+            } else {
+                tierSnap[member][i] = _localAcc(i);
+            }
         }
-        if (priced && ceilingProduct != bytes32(0) && rateSchedule.hasProduct(state, ceilingProduct)) {
+        if (_onSchedule(state, ceilingProduct)) {
             ceilingSnap[member] = rateSchedule.snapshot(state, ceilingProduct);
+            basis |= 1 << 255;
         }
+        if (snapBasis[member] != basis) snapBasis[member] = basis;
+    }
+
+    /// @dev Whether `product` is priced from the RateSchedule for `state` right now.
+    function _onSchedule(bytes32 state, bytes32 product) internal view returns (bool) {
+        return address(rateSchedule) != address(0) && product != bytes32(0) && rateSchedule.hasProduct(state, product);
+    }
+
+    /// @dev The state a member's priced tiers are priced under from the next touch: the attested
+    /// state, unless that state lacks a product the member's last state priced their line on. Then
+    /// the member keeps the last state's products until the new state's launch (Phase 4b, O-1), so
+    /// a re-attestation never moves them onto a tier's own local rate with no ceiling over it. The
+    /// whole line moves together, because the member-level ceiling is one product in one state.
+    function _pricingState(address member) internal view returns (bytes32 state) {
+        if (address(stableCredit.networkRegistry()) == address(0)) return bytes32(0);
+        state = _stateOf(member);
+        bytes32 last = snapState[member];
+        if (last == state || last == bytes32(0)) return state;
+        if (_onSchedule(last, ceilingProduct) && !_onSchedule(state, ceilingProduct)) return last;
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tierCapacity[member][i] == 0 && tierPrincipal[member][i] == 0) continue;
+            bytes32 product = tierProduct[i];
+            if (_onSchedule(last, product) && !_onSchedule(state, product)) return last;
+        }
+    }
+
+    /// @notice whether a member has rebalanced their revolving line: nothing owed in any tier.
+    /// @dev Judged on this issuer's own positions, not on the whole ledger balance (Phase 4, H-C).
+    /// A member's credit balance also holds term-plan principal, which its own schedule governs
+    /// (TermIssuer judges that), so reading the ledger failed every revolving cycle for a member
+    /// current on a plan and drove the line into default. Carry is materialised into the tiers,
+    /// and pending carry accrues only on principal a tier holds, so zero principal is zero owed.
+    function inCompliance(address member) public view virtual override returns (bool) {
+        return totalPrincipalOf(member) == 0;
     }
 
     /// @dev A member's attested state, or zero if the registry has none for them.
@@ -358,6 +435,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// @return remaining what the tiers had no room for.
     function _draw(address member, uint256 amount) internal returns (uint256 remaining) {
         remaining = amount;
+        bool savingsDrawn;
         for (uint256 i = 0; i < tiers.length && remaining > 0; i++) {
             if (!tiers[i].active) continue;
             uint256 headroom = _headroom(member, i, tierPrincipal[member][i]);
@@ -366,11 +444,19 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
             uint256 take = headroom < remaining ? headroom : remaining;
             tierPrincipal[member][i] += take;
             remaining -= take;
+            if (tiers[i].kind == SAVINGS_KIND) savingsDrawn = true;
             emit TierDrawn(member, i, take);
         }
         // Anything left over means the ledger allowed a draw this issuer has no room for. The
         // ledger's ceiling is the sum of every issuer's allocation, not just these capacities, so
         // it can happen; the caller decides what to do about it.
+
+        // A draw on Savings raises the member's CLRUSD lock. CLRUSD falls back to the last lock it
+        // read when the registry cannot answer, so it must read the new one now (Phase 4b, L-B).
+        // Every draw comes through here: a plain transfer and a card settlement alike. Not caught:
+        // if the registry is down, the draw reverts rather than leave the record stale.
+        address token = clrusdToken;
+        if (savingsDrawn && token != address(0)) IClrusdLockSync(token).syncEncumbrance(member);
     }
 
     /// @dev Headroom given what is drawn. Draws pass the ledger figure directly: they run right

@@ -156,32 +156,32 @@
   },
   "ClearUSDUpgradeable": {
    "source": "contracts/peripherals/ClearUSDUpgradeable.sol",
-   "sha256": "e61d2cebd2e7738698d2efac3bb1ffe3cc5bacf0c25dc103a66ee67057c5afba",
+   "sha256": "0605bf46b9dc94f82aa5a815377f2b11067d2280e4892effd9d836e42f1bca46",
    "immutables": [
     [
-     6263,
+     6444,
      32
     ],
     [
-     6428,
+     6609,
      32
     ]
    ]
   },
   "CollateralRegistry": {
    "source": "contracts/peripherals/CollateralRegistry.sol",
-   "sha256": "77f5c87991fba71f3762d637224a8ce988a2e8a80a71da024734af5e74753764",
+   "sha256": "8295ca99ed98468225c1b442b2ce6fe7370cd4cc2f4d0a0d3c098c4b9bd66d99",
    "immutables": [
     [
-     3122,
+     3376,
      32
     ],
     [
-     3307,
+     3516,
      32
     ],
     [
-     4331,
+     5114,
      32
     ]
    ]
@@ -193,68 +193,68 @@
   },
   "DeedNFT": {
    "source": "contracts/core/DeedNFT.sol",
-   "sha256": "a570f862e523aad79fdbd882135151cb799f95e11eb9d7b646e5e7ae1a495c1c",
+   "sha256": "308eb8b3ac839758ee5a7813c2c8a671e796f81772734020a3a182ffadee5448",
    "immutables": [
     [
-     3440,
+     3607,
      32
     ],
     [
-     4514,
+     4723,
      32
     ],
     [
-     5087,
+     5296,
      32
     ],
     [
-     5555,
+     6145,
      32
     ],
     [
-     6522,
+     7272,
      32
     ],
     [
-     6652,
+     7402,
      32
     ],
     [
-     8570,
+     9129,
      32
     ],
     [
-     12145,
+     12798,
      32
     ],
     [
-     13685,
+     14775,
      32
     ],
     [
-     13723,
+     14813,
      32
     ],
     [
-     18828,
+     20029,
      32
     ]
    ]
   },
   "ESADepositVault": {
    "source": "contracts/peripherals/ESADepositVault.sol",
-   "sha256": "392b4915ece14e3c645e9231eac088d9f38c58cbb77d7473f0ebdb5d13b97725",
+   "sha256": "53354a2781378833c82b10ad5d3676c7fc1dca660d51e4701956c6ff4b3f60ae",
    "immutables": [
     [
-     4181,
+     4536,
      32
     ],
     [
-     4321,
+     4676,
      32
     ],
     [
-     6589,
+     6983,
      32
     ]
    ]
@@ -351,18 +351,18 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "53b67ba9b2fb2612d3e38c7551c6ce432f07dccebdfa6213f56fd62595907368",
+   "sha256": "d743cc4aa07d51190ef0f5032841aa5f0a08bb6a90af564c6e3f09be628ecf3c",
    "immutables": [
     [
-     8335,
+     8229,
      32
     ],
     [
-     8520,
+     8414,
      32
     ],
     [
-     10684,
+     10326,
      32
     ]
    ]
@@ -410,7 +410,7 @@
   },
   "NetworkRegistry": {
    "source": "contracts/peripherals/NetworkRegistry.sol",
-   "sha256": "ec0b4586e3caad8807375d6307e292093ae0c0f505d8c378468a1b44a91feceb",
+   "sha256": "67f507a6f25d0787b88d9433e731b34ad41b19022bddf5b96dfe8bcdcb4642bf",
    "immutables": [
     [
      2870,
@@ -464,62 +464,66 @@
   },
   "RevolvingIssuer": {
    "source": "contracts/peripherals/RevolvingIssuer.sol",
-   "sha256": "1e55bc1c794b10a0ad5ca2f72df9a6226db0fa05a469be8d040de83b03178fae",
+   "sha256": "bb337db0d4a1a20ca5e329c324994cd1a669e5754f8a60638c56c57ab1149ffc",
    "immutables": [
     [
-     1887,
+     1967,
      32
     ],
     [
-     2156,
+     2236,
      32
     ],
     [
-     2281,
+     2361,
      32
     ],
     [
-     2804,
+     2884,
      32
     ],
     [
-     3569,
+     3676,
      32
     ],
     [
-     3686,
+     3793,
      32
     ],
     [
-     3962,
+     4069,
      32
     ],
     [
-     4886,
+     5063,
      32
     ],
     [
-     5285,
+     5462,
      32
     ],
     [
-     6174,
+     6311,
      32
     ],
     [
-     6966,
+     6629,
      32
     ],
     [
-     8764,
+     7296,
      32
     ],
     [
-     12333,
+     9411,
      32
     ],
     [
-     21785,
+     12937,
+     32
+    ],
+    [
+     22160,
      32
     ]
    ]
@@ -562,38 +566,38 @@
   },
   "TermIssuer": {
    "source": "contracts/peripherals/TermIssuer.sol",
-   "sha256": "f541ee1ed27829ac0b9bdf6f7b62b72551785b9677c98f367f2c4595c54f5c59",
+   "sha256": "63f37937ab80f39c91f1c320c4f592577bce19641ac75f64326cd9ca0202da16",
    "immutables": [
     [
-     1735,
+     1767,
      32
     ],
     [
-     2321,
+     2530,
      32
     ],
     [
-     3282,
+     3483,
      32
     ],
     [
-     3484,
+     3685,
      32
     ],
     [
-     3620,
+     3821,
      32
     ],
     [
-     4876,
+     5078,
      32
     ],
     [
-     11015,
+     11326,
      32
     ],
     [
-     12861,
+     13524,
      32
     ]
    ]

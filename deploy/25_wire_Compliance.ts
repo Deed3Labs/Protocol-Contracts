@@ -125,8 +125,15 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
   // ---- revolving: ceiling product and unsecured tier products ----
   const ceiling = table.find((p: any) => p.role === "revolving-ceiling");
   if (ceiling && ((await revolving.rateSchedule()) !== ratesAddress || (await revolving.ceilingProduct()) !== ceiling.product)) {
-    await (await revolving.setPricing(ratesAddress, ceiling.product)).wait();
-    log("  RevolvingIssuer -> RateSchedule");
+    // Each is set once (Phase 4, M-B): positions hold snapshots of the schedule they were priced on.
+    const heldRates = await revolving.rateSchedule();
+    const heldCeiling = await revolving.ceilingProduct();
+    if ((heldRates !== ethers.ZeroAddress && heldRates !== ratesAddress) || (heldCeiling !== ethers.ZeroHash && heldCeiling !== ceiling.product)) {
+      log("! RevolvingIssuer already prices from another RateSchedule or ceiling product; it is set once. Upgrade the schedule in place.");
+    } else {
+      await (await revolving.setPricing(ratesAddress, ceiling.product)).wait();
+      log("  RevolvingIssuer -> RateSchedule");
+    }
   }
   const tierCount = Number(await revolving.tierCount());
   for (const p of table.filter((x: any) => x.role === "revolving-tier")) {
@@ -166,7 +173,10 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
   }
 
   // ---- term ----
-  if ((await term.rateSchedule()) !== ratesAddress) {
+  const heldTermRates = await term.rateSchedule();
+  if (heldTermRates !== ratesAddress && heldTermRates !== ethers.ZeroAddress) {
+    log("! TermIssuer already prices from another RateSchedule; it is set once. Upgrade the schedule in place.");
+  } else if (heldTermRates !== ratesAddress) {
     await (await term.setRateSchedule(ratesAddress)).wait();
     log("  TermIssuer -> RateSchedule");
   }

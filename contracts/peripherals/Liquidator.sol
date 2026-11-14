@@ -34,6 +34,11 @@ interface ICollateralSeizureSink {
 /// @dev `unsecuredExcessOf` is unsecured (INCOME + BOOST) drawn less the halved limit after a miss,
 /// and zero otherwise; `missedInRowOf` counts consecutive missed cycles. RevolvingIssuer adds both
 /// in Phase 2b; until it does, a trusted issuer without them cannot be settled this way.
+/// @dev Whether the default an issuer recorded belongs to the member's current line (Phase 4b, M-C).
+interface ICurrentLineDefault {
+    function hasDefaultedOnCurrentLine(address member) external view returns (bool);
+}
+
 interface IMissedCycleSource {
     function unsecuredExcessOf(address member) external view returns (uint256);
     function missedInRowOf(address member) external view returns (uint8);
@@ -173,7 +178,12 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// again only with new evidence (owner decision, 2026-11-13).
     mapping(address => bytes32) public holdEvidence;
 
-    uint256[35] private __gap;
+    /// @notice member => what their seized pool shares still owe this contract from the withdrawal
+    /// queue, valued when queued (Phase 4, L-H). `settleRealized` may apply no more than this to
+    /// the member, so one member's queued proceeds cannot pay another's debt. One slot from the gap.
+    mapping(address => uint256) public realizedPendingOf;
+
+    uint256[34] private __gap;
 
     error LiquidatorReentered();
 
@@ -335,12 +345,11 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         // more savings than Savings-backed drawn.
         (bytes32 tierKind, , ) = ITierSettler(issuer).tierAt(tierId);
         if (kind != SAVINGS_KIND || tierKind != SAVINGS_KIND) revert LiquidatorNotSavingsTier(tierId, tierKind);
-        ICreditIssuer creditIssuer = ICreditIssuer(issuer);
         // `inDefault` reads the credit period, and expiring one deletes it, so a member
-        // liquidated after the write-off would read as never having defaulted at all.
-        if (!creditIssuer.inDefault(member) && !creditIssuer.hasDefaulted(member)) {
-            revert LiquidatorNotInDefault(member, issuer);
-        }
+        // liquidated after the write-off would read as never having defaulted at all. The recorded
+        // default must be this line's, though (Phase 4b, M-C): `hasDefaulted` is for ever, and a
+        // member who settled and was given a new line is current on it.
+        _requireCurrentDefault(member, issuer);
 
         // Never take more than the tier the collateral was pledged against still owes. Collateral
         // beyond that is still the member's; a default is not a forfeiture of everything they
@@ -399,10 +408,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         address pool
     ) external onlyRole(OPERATOR_ROLE) noReenter returns (uint256 realized, bool queued) {
         _requireNoHold(member);
-        ICreditIssuer creditIssuer = ICreditIssuer(issuer);
-        if (!creditIssuer.inDefault(member) && !creditIssuer.hasDefaulted(member)) {
-            revert LiquidatorNotInDefault(member, issuer);
-        }
+        _requireCurrentDefault(member, issuer);
 
         ISeizableShares shares = ISeizableShares(pool);
         uint256 held = shares.balanceOf(member);
@@ -441,6 +447,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         uint256 leftover = count - redeemableNow;
         if (leftover > 0) {
             queuedValue = pool.previewRedeem(leftover);
+            realizedPendingOf[member] += queuedValue;
             pool.requestWithdrawal(leftover, address(this));
             queued = true;
         }
@@ -453,12 +460,17 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// @param member address of the member.
     /// @param issuer address of the issuer holding the position.
     /// @param tierId tier to settle.
-    /// @param amount amount of reserve token to apply.
+    /// @param amount amount of reserve token to apply; capped at the member's own queued proceeds.
     function settleRealized(address member, address issuer, uint256 tierId, uint256 amount)
         external
         onlyRole(OPERATOR_ROLE)
         noReenter
     {
+        // Only this member's own queued proceeds (Phase 4, L-H).
+        uint256 pending = realizedPendingOf[member];
+        if (amount > pending) amount = pending;
+        if (amount == 0) revert LiquidatorNothingToSeize(member);
+        realizedPendingOf[member] = pending - amount;
         reserveToken.forceApprove(issuer, amount);
         ITierSettler(issuer).settleFromCollateral(member, tierId, amount);
     }
@@ -685,6 +697,16 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         if (block.timestamp < hold.until) revert LiquidatorOnHold(member, hold.reason, hold.until);
         delete _holds[member];
         emit HoldLapsed(member);
+    }
+
+    /// @dev Reverts unless the member is in default with `issuer` now, or the default it recorded
+    /// is a default of the line the member holds today (Phase 4b, M-C). A default before the line
+    /// was opened ended an earlier line; liquidation reaches only the episode that triggered it.
+    function _requireCurrentDefault(address member, address issuer) private view {
+        if (
+            !ICreditIssuer(issuer).inDefault(member)
+                && !ICurrentLineDefault(issuer).hasDefaultedOnCurrentLine(member)
+        ) revert LiquidatorNotInDefault(member, issuer);
     }
 
     /* ========== SECTION 12: BOND SEIZE GATE ========== */
