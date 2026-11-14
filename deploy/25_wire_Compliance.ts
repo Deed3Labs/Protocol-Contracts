@@ -269,6 +269,12 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
       await (await term.setHoldSource(liquidatorRecord.address)).wait();
       log("  TermIssuer reads the Liquidation Hold from the Liquidator");
     }
+    // 12.14: a recorded secured-plan default lets a pledged bond's payPledged pay those plans. A
+    // trusted term issuer (no tiers) is refused by every tier path (CLRUSD, Savings, pool shares).
+    if (!(await liquidator.trustedSavingsIssuer(await term.getAddress()))) {
+      await (await liquidator.setTrustedSavingsIssuer(await term.getAddress(), true)).wait();
+      log("  Liquidator trusts TermIssuer (12.14: pledged bonds pay defaulted secured plans only)");
+    }
   } else {
     log("! No Liquidator: TermIssuer has no hold source, so no secured term plan can default (12.14 fails closed).");
   }
