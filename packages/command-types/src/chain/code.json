@@ -156,14 +156,14 @@
   },
   "ClearUSDUpgradeable": {
    "source": "contracts/peripherals/ClearUSDUpgradeable.sol",
-   "sha256": "8b03dc93a68b7261e72149bc3f48727db9c62cc3cd1915ad60920e9c15c45d7f",
+   "sha256": "2ea1dc0fbe535e32030d0c767352089e044d83a5b9c8c50f9e9996e600058de8",
    "immutables": [
     [
-     5685,
+     5877,
      32
     ],
     [
-     5850,
+     6042,
      32
     ]
    ]
@@ -243,18 +243,18 @@
   },
   "ESADepositVault": {
    "source": "contracts/peripherals/ESADepositVault.sol",
-   "sha256": "1446b8264c9f3f6510067a2fe237f204f36a7b6cd9e619537973e4304d4168f8",
+   "sha256": "b8e3b12cfe1df2a9e07ac05a7d63ff95d99d14b70b9979ca0b8c2508b24161f6",
    "immutables": [
     [
-     4145,
+     4181,
      32
     ],
     [
-     4285,
+     4321,
      32
     ],
     [
-     6503,
+     6539,
      32
     ]
    ]
@@ -530,18 +530,18 @@
   },
   "SavingsIntentFactory": {
    "source": "contracts/peripherals/SavingsIntentFactory.sol",
-   "sha256": "6d8d4677f968ec6b195ff2f8146636ef605c94b03faa4da8bdab590245951800",
+   "sha256": "168200a7d58c91507fcaa7457dd2831bbf16556b9ce45a1b0a2be8d43bc2c470",
    "immutables": [
     [
-     228,
+     250,
      32
     ],
     [
-     1190,
+     1316,
      32
     ],
     [
-     2340,
+     2656,
      32
     ]
    ]
@@ -566,7 +566,7 @@
   },
   "TermIssuer": {
    "source": "contracts/peripherals/TermIssuer.sol",
-   "sha256": "63f37937ab80f39c91f1c320c4f592577bce19641ac75f64326cd9ca0202da16",
+   "sha256": "682fd9c6fa4b4d1511a785a98ea31cc6b42f6537630d92e73ac369ba533d513b",
    "immutables": [
     [
      1767,
@@ -577,27 +577,27 @@
      32
     ],
     [
-     3483,
+     3500,
      32
     ],
     [
-     3685,
+     3702,
      32
     ],
     [
-     3821,
+     3838,
      32
     ],
     [
-     5078,
+     5095,
      32
     ],
     [
-     11326,
+     11343,
      32
     ],
     [
-     13524,
+     13541,
      32
     ]
    ]

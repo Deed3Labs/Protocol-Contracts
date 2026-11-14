@@ -1,6 +1,6 @@
 # Phase 2d report: DFAL control, ESA vault roles, pilot switch, members-only CLRUSD
 
-Branch `audit/phase-2d-dfal-vault`, based on `dev` with every phase merged, Phase 4 (#891) included. Spec: `specs/dfal-vault-send.md` (the addendum verbatim, and the owner's decisions of 2026-11-14 on its conflicts). Also built: rows L-D and L-E of `REREVIEW-DECISIONS.md`.
+Branch `audit/phase-2d-dfal-vault`, based on `dev` with every phase merged, Phase 4 (#891) included; `dev` with Phase 4b (#892) is merged in too (no rebase). Spec: `specs/dfal-vault-send.md` (the addendum verbatim, and the owner's decisions of 2026-11-14 on its conflicts). Also built: rows L-D and L-E of `REREVIEW-DECISIONS.md`, and the owner's decisions on the three conflicts this report first listed (section 4).
 
 Nothing was deployed, no key was used, and no live network was touched.
 
@@ -17,7 +17,9 @@ Nothing was deployed, no key was used, and no live network was touched.
 | 11, decision 7: pilot | The counter, `caVolume`, `setPilotCap`, `PilotAlert` and the revert at the cap are gone; the six retired fields stay in place. New: `pauseCaMints`/`unpauseCaMints(reason)` (two PILOT_ROLE holders, `CaMintsPauseSet` event; only new CA mints; never redemptions or non-CA mints; never automatic), and `setPilotOff` (governance). `deploy/25` no longer sets a cap. | `ESADepositVault.sol`, `deploy/25_wire_Compliance.ts` | `Section2d` 37; `Dfal` 12 (amended) |
 | L-E | A mint needs the receiver's state attestation while the pilot is on and a state source is named. A mint is CA when the receiver's state is CA or missing, or the depositor's is CA (see section 3.4). | `ESADepositVault.sol` | `Section2d` "L-E" |
 | L-D | `claimToPayoutTreasury(bytes32)` now reverts `ClaimEscrowSignatureRequired`. `claimToPayoutTreasuryWithSignature(transferId, payoutRefHash, signature)` (SETTLER_ROLE) needs an EIP-712 `PayoutClaim(transferId, payoutTreasury, payoutRefHash)` from the claim key or the sender, and logs `PayoutClaimAuthorized`. Card and bank payouts stay (decision 5). No storage change. | `ClaimEscrow.sol` | `Section2d` "L-D"; `ClaimEscrow.spec`; `PeripheralRegressions` H-4 |
-| 10f | Checked, nothing to change in the contracts (section 4.1). | none | `Section2d` 34 |
+| 10f | Checked. One path took a member's wallet USDC, `TermIssuer.collectForMember`; it is retired (section 4.1). | `TermIssuer.sol`, `TermIssuerExtension.sol`, `TermIssuerBase.sol` | `Section2d` 34; `TermIssuer.spec` |
+| Owner's decision: redeem intents | The savings-intent factory records its redeem escrows, and CLRUSD exempts them when it is the registered intent factory (`setIntentFactory`, the timelock only). An escrow redeems to itself and forwards the USDC (section 4.2). | `SavingsIntentFactory.sol`, `SavingsIntentEscrow.sol`, `ClearUSDUpgradeable.sol`, `deploy/25_wire_Compliance.ts` | `Section2d` 38 "redeem escrows" |
+| Owner's decision: redemption receivers | A plain `redeem` pays only its caller; another receiver needs the holder's signed `Redeem` (section 4.3). | `ESADepositVault.sol` | `Section2d` 35 "a redemption pays the holder" |
 
 Also: `contracts/mocks/MockSafe.sol`, a stand-in Safe with owners and a threshold, for the handover tests. The protocol guide (`docs/protocol/savings.md`), the operator guide (`docs/operators/deploying-contracts.md`), `UPGRADEABILITY.md`, and notes on items 11 and 16 in `specs/compliance-changes.md` are updated.
 
@@ -32,6 +34,13 @@ All seven of the addendum's decisions, and L-D and L-E as recorded:
 6. Members-only, receipt only, logged by the registry, with the listed exemptions.
 7. The pilot measure is off chain. On chain: no revert at a cap, the two-person `pauseCaMints`, and an off switch. Acceptance 36 is off chain (section 5).
 
+Then the owner's decisions on the three conflicts the first draft listed (section 4):
+- the wallet-USDC pull in `TermIssuer.collectForMember` is retired;
+- registered savings-intent escrows are exempt from members-only CLRUSD;
+- a redemption pays the holder, or a receiver named only by the holder's signature.
+
+No conflict is open.
+
 ## 3. Interpretations (not conflicts)
 
 1. **Two-person pauses.** 10c lets one signer pause and a second renew. Decision 2 makes every pause power two-person, so setting, renewing and ending a pause each take two distinct holders. The 10c and M-A rules (72-hour window; the last signer cannot renew, or start a new pause for 30 days) apply to the second signer. Acceptance 15 still holds as written. One effect: a fraud pause needs two people available, which makes it slower to start.
@@ -41,11 +50,31 @@ All seven of the addendum's decisions, and L-D and L-E as recorded:
 5. **No registered reserve address.** The reserve is the vault's own balance, so none is added. The only outflow is the redemption.
 6. **The token pool** is not built in this repo (its address is recorded by `deploy/15`). The handover begins its two-step ownership transfer when a record exists, and the Safe accepts through the timelock. Inbound CCIP mints to a non-member are exempt, as mints.
 
-## 4. Conflicts found (not resolved: for the owner)
+## 4. The three conflicts, as the owner decided them
 
-1. **TermIssuer's autopay takes Ready-to-allocate USDC.** `TermIssuerExtension.collectForMember` lets a card settler (a Clear key) pull USDC from the member's own wallet, through the member's allowance to the ledger. It is limited to members who switched automatic repayment on, to what is due, and to once per ref. The addendum's 10f clarification says automatic clearing never uses Ready-to-allocate USDC. Decision 4 allows Autopay from "a member-signed, capped, revocable mandate". The mandate here is the member's own `setAutoRepay` call or signed `AutoClear`, and it is revocable, but its cap is "what is due", not an amount the member set. Options: (a) accept it under decision 4; (b) cap it by an amount the member signs; (c) pull from the settler's funds, as `RevolvingIssuerCycles.repayForMember` already does. TermIssuer is Phase 4b's file, so nothing is changed here. It is the one entry in acceptance 34's reviewed list that needs a ruling.
-2. **Savings redeem intents and members-only CLRUSD.** A redeem intent has the member send CLRUSD to a predicted `SavingsIntentEscrow` address, which is not a member. Once `membershipSource` is set, that transfer reverts. Decision 6 exempts the vault, the Liquidator, the pool and burns, not intent escrows. Options: (a) the API registers the predicted address as a member before the member funds it; (b) retire redeem intents for the signed gasless redeem; (c) a governed list of exempt receivers. Deposit intents are not affected.
-3. **"A 1:1 redemption to the redeeming holder."** The vault pays whatever receiver the redeemer names in their own call or signature, and two contracts rely on that: the SavingsIntentEscrow, and the Liquidator, which redeems to itself and settles the debt. This was kept. A member redeeming to another address is the same as redeeming and then sending USDC, which 12.15 allows. If 10g means the receiver must be the redeemer, the change is small, but it breaks redeem intents.
+The first draft of this report listed three conflicts. The owner decided each one, and they are built here.
+
+1. **The wallet-USDC pull in `TermIssuer.collectForMember` is retired.**
+   - It let a card settler (a Clear key) take what was due on a member's term plans from the member's own wallet, through their allowance to the ledger. The 10f clarification says recovery never uses Ready to allocate USDC.
+   - Term dues are swept from Spendable at the bank instead (apps #887).
+   - `collectForMember` now reverts `TermIssuerWalletCollectionRetired`. Its code is removed from `TermIssuerExtension`, and the selector stays so callers get a reason.
+   - `mandateCollections` stays where it is, no longer written, so no storage moves.
+   - The member still pays a plan with their own `payPlan`, and residual carry with `payResidualCarry`; both pull only from the caller.
+   - Acceptance 34's reviewed list loses the entry, and the scan now finds no pull from a member's wallet other than the member-signed vault and escrow authorizations.
+2. **Registered savings-intent escrows are exempt from members-only CLRUSD.**
+   - Escrows are counted only through a factory that Clear Financial registers on CLRUSD (`setIntentFactory`, default admin only, so a Safe proposal and 7 days), as with the other contract-held roles.
+   - A redeem escrow is funded before it exists, so the factory records its address when it is announced (`announceIntent`, `CREATOR_ROLE`, deploys nothing; redeem intents only) or provisioned (`isIntentEscrow`).
+   - Each escrow is not registered through the timelock one at a time, because that would put 7 days in front of every intent. The two-person step is registering the factory. A recorded address is derived from the config's hash, so it can only ever become the escrow for that config, and its CLRUSD can only be redeemed to that config's receiver or refunded to its depositor. The API's key can announce only such addresses, and cannot make any other address receive.
+   - An escrow's own outflows are exempt on receipt, so a refund reaches a depositor de-listed in the meantime. An escrow whose factory is unregistered can still send, since the rule is about receipt.
+   - Redeem intents work end to end again: the escrow redeems to itself and forwards the USDC (point 3).
+   - The factory is not upgradeable, so this needs a new deployment of it (`deploy/19`), which `deploy/25` then registers or names for a timelock proposal.
+3. **A redemption pays the holder, or a receiver named by the holder's signature** (as with MB-05 §7.9).
+   - A plain `redeem` must pay its caller (`ESADepositVaultReceiverNotRedeemer`).
+   - `redeemWithSignature` and `redeemWithAuthorization` already check the holder's EIP-712 `Redeem`, which names the receiver, the amount, a nonce and a deadline. The relayer cannot change any of them; acceptance 35 now shows that.
+   - No role can redeem a holder's CLRUSD at all: `burnFrom` needs the holder's own allowance, and only the holder's call or signature reaches it.
+   - The Liquidator already redeems to itself. The savings-intent escrow now redeems to itself and forwards exactly what it received to its config's receiver, which the depositor fixed by funding that address.
+
+A gap found while testing, and not changed here: an escrow can only be initialized before its expiry, so an intent that was never provisioned before it expired cannot be refunded. `docs/protocol/savings.md` already says so. The settler should provision every intent before its expiry.
 
 ## 5. Acceptance 36 (off chain)
 
@@ -53,7 +82,7 @@ Decision 7 moves it off chain: a mint for a member with no stateCode raises the 
 
 ## 6. Tests, sizes, storage, Slither
 
-- **Tests.** New: `test/audit/compliance/Section2d.spec.ts` (12 tests: acceptance 34 ×2, 35 ×2, 37 ×3 including L-E, 38 ×4, L-D) and `test/deploy/Vault.deploy.spec.ts` (5). Acceptance 34 scans every non-mock contract for ERC-20 pulls from an address other than the caller, and holds each against a reviewed list with its reason. A new pull path, or a stale entry, fails the test. Acceptance 35 lists the vault's state-changing functions exactly. It calls each of the others from every key with seeded random arguments (3 rounds) and checks the reserve is unchanged after each call. Then it runs a redemption and a 10b liquidation, and checks each paid out exactly what it burned.
+- **Tests.** New: `test/audit/compliance/Section2d.spec.ts` (14 tests: acceptance 34 ×2, 35 ×3, 37 ×3 including L-E, 38 ×5, L-D) and `test/deploy/Vault.deploy.spec.ts` (5). Acceptance 34 scans every non-mock contract for ERC-20 pulls from an address other than the caller, and holds each against a reviewed list with its reason. A new pull path, or a stale entry, fails the test. Acceptance 35 lists the vault's state-changing functions exactly. It calls each of the others from every key with seeded random arguments (3 rounds) and checks the reserve is unchanged after each call. Then it runs a redemption and a 10b liquidation, and checks each paid out exactly what it burned. A third test shows a redemption reaches only the holder, or a receiver the holder signed for; the relayer cannot change the receiver or the amount, and no role can redeem the holder's CLRUSD.
 
   Existing tests changed:
 
@@ -63,19 +92,29 @@ Decision 7 moves it off chain: a mint for a member with no stateCode raises the 
   | `audit/rereview/BlindReview.spec.ts` | M-A: rewritten for two-person pauses with three keys. Each M-A property is still asserted, with the second signer as the pause's signer. |
   | `peripherals/ESADepositVault.spec.ts` | The pause takes two pausers. |
   | `peripherals/ClaimEscrow.spec.ts`, `audit/deep/PeripheralRegressions.spec.ts` | The treasury claim is signed (L-D). |
+  | `peripherals/TermIssuer.spec.ts` | "takes only what is due, from the member…" becomes "collectForMember is retired…": the settler is refused even with a mandate and an allowance, nothing leaves the member's wallet, and the member's own `payPlan` clears what is due. "a mandated collection clears residual carry too" becomes the member clearing it with `payResidualCarry`. |
+  | `audit/compliance/Section2d.spec.ts` | After the 4b merge, pledges take the member's signature (4b's L-I), through the shared `pledgeSigned` helper. |
 
-  Full suite (`npx hardhat test`, which keeps revert strings; fuzz at the default 300 steps): **1003 passing, 0 failing**, in 26 minutes. That is the 17 new tests on top of `dev`'s count; the changed tests keep their counts. The ClaimEscrow signer check was restructured after that run (section 6, Slither), so its specs were run again on the final source: `Section2d`, `ClaimEscrow`, `PeripheralRegressions` and `Vault.deploy`, 44 passing.
-- **Sizes** (production build, `npx hardhat compile --force`): 
+  Full suite on the branch with `dev` (Phase 4b) merged in: `npx hardhat test` keeps revert strings, and the fuzz runs at the default 300 steps. **1030 passing, 0 failing**, in 27 minutes. The first draft's run, before the merge and the owner's decisions, was 1003 passing.
+- **Sizes** (production build, `npx hardhat compile --force`). No contract is over 24,576 bytes runtime or 49,152 bytes of creation code.
 
   | Contract | Runtime | Creation code |
   |---|---|---|
-  | ClearUSDUpgradeable | 15,571 | 15,811 |
-  | ESADepositVault | 14,944 | 15,081 |
+  | TermIssuerExtension | 23,252 | 23,389 |
+  | TermIssuer | 22,325 | 23,008 |
+  | ClearUSDUpgradeable | 15,989 | 16,229 |
+  | ESADepositVault | 14,980 | 15,117 |
   | ClaimEscrow | 8,767 | 8,904 |
+  | SavingsIntentFactory | 5,034 | 9,203 |
+  | SavingsIntentEscrow | 3,319 | 3,429 |
   | MockSafe (test only) | 1,415 | 1,951 |
-
-  No contract is over 24,576 bytes runtime or 49,152 bytes of creation code.
-- **Storage.** OpenZeppelin's `getStorageUpgradeReport` finds no errors for ESADepositVault against both of its implementations in `.openzeppelin/base.json` (0xe626…3644, 0x83CB…26e9), or for ClaimEscrow against 0x96F0…2c4e. Against `.openzeppelin/base-sepolia.json`, the vault's four implementations and ClaimEscrow's one also pass. That manifest has no ClearUSDUpgradeable entry. Its namespaced layout, from the same OpenZeppelin tooling, keeps slots 0 to 4 as on `dev` (`encumbranceSource`, `lastKnownLock`, `accountPause`, `globalPause`, `pauseWindow`) and appends `proposerOf` (5) and `membershipSource` (6). The vault appends two slots after `s_lastDepositAt`, and its `__gap` goes from 33 to 31. CLRUSD appends two members to the end of its ERC-7201 struct. ClaimEscrow adds no storage.
+- **Storage.**
+  - OpenZeppelin's `getStorageUpgradeReport` finds no errors for ESADepositVault against both of its implementations in `.openzeppelin/base.json` (0xe626…3644, 0x83CB…26e9), or for ClaimEscrow against 0x96F0…2c4e.
+  - Against `.openzeppelin/base-sepolia.json`: the vault's four implementations, ClaimEscrow's one and TermIssuer's six all pass.
+  - The vault appends two slots after `s_lastDepositAt`, and its `__gap` goes from 33 to 31.
+  - CLRUSD (no manifest entry): its ERC-7201 namespace keeps slots 0 to 4 as on `dev` and appends `proposerOf` (5), `membershipSource` (6) and `intentFactory` (7).
+  - ClaimEscrow and TermIssuer add no storage.
+  - SavingsIntentFactory is not upgradeable: a new deployment.
 - **Slither** (Medium and High, per contract, the FIX-PLAN section 6 way, against the same run on `dev`):
 
   | Contract | `dev` | this branch | New |
@@ -83,10 +122,15 @@ Decision 7 moves it off chain: a mint for a member with no stateCode raises the 
   | ESADepositVault | 1 | 1 | none (the audited `arbitrary-send-erc20` on the signed mandate pull) |
   | ClearUSDUpgradeable | 0 | 0 | none |
   | ClaimEscrow | 0 | 0 | none (a first draft drew `uninitialized-local`, a false positive; restructured) |
-- **Generated files and checks.**
+  | SavingsIntentFactory / SavingsIntentEscrow | 2 | 2 | none (the existing `incorrect-equality` in `refund` and `reentrancy-no-eth` in `finalize`; the escrow is single-use and factory-only) |
+  | TermIssuer | 49 | 43 | none: six fewer, all from removing `collectForMember` |
+  | TermIssuerExtension | 34 | 29 | none: five fewer, the same reason |
+
+  `dev` here means `dev` with Phase 4b.
+- **Generated files and checks** (after the merge):
   - `npx hardhat compile --force && node scripts/command/code-fingerprints.mjs`: `packages/command-types/src/chain/code.json` regenerated (34 contracts), and `--check` passes.
-  - `node scripts/docs/contract-reference.mjs --check`: current (36 pages, built from the deployment ABIs, so they are unchanged).
-  - `node scripts/check-doc-links.mjs`: 198 files, no broken links.
+  - `node scripts/docs/contract-reference.mjs`, then `--check`: current (36 pages, built from the deployment ABIs).
+  - `node scripts/check-doc-links.mjs`: 199 files, no broken links.
   - `npx turbo run typecheck test --affected`: 32 of 32 tasks passed (28 from turbo's cache).
 
 ## 7. App and API follow-up (not in this PR)
@@ -98,7 +142,9 @@ Decision 7 moves it off chain: a mint for a member with no stateCode raises the 
    - Pause tooling: every vault and CLRUSD pause, and the CA mint pause, needs two keys making the same call.
    - The relayer and pause keys are Clear Financial's. `scripts/command/ops-roles.map.json` still maps the vault's legacy `OPERATOR_ROLE` to the savings relayer; it should be `RELAYER_ROLE`, on a Clear Financial key.
    - Attest members' states before naming the vault's state source on a network, or their deposits revert (L-E).
-   - Redeem intents: see conflict 2.
+   - Term collections: `apps/api/src/services/chain/termLifecycle.ts` calls `collectForMember`, which now reverts. Clear term dues from Spendable at the bank (apps #887) and retire that job.
+   - Redeem intents: deploy the new `SavingsIntentFactory`, register it on CLRUSD through the vault timelock, and call `announceIntent(salt, config)` before showing a redeem address. The API's factory ABI is also stale: `predictIntentAddress` takes `(salt, config)` since H-4.
+   - Redemptions: a plain `redeem` must name the caller as receiver. To pay anyone else, the member signs a `Redeem` and the relayer submits it.
 4. **Members-only Send UX.**
    - Check `mayReceive(recipient)` before a CLRUSD Send, and explain the refusal.
    - Say that a de-listed member can still send to members and redeem.

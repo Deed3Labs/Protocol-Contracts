@@ -58,7 +58,7 @@ How each power is two-person:
 
 | Power | Holder | Two-person by |
 |---|---|---|
-| Upgrades, every setting (accepted token, CLRUSD address, state source, pause window, encumbrance and membership sources, CCIP admin), the pilot off switch | `DEFAULT_ADMIN_ROLE` / `UPGRADER_ROLE`: the vault timelock | the Clear Financial Safe (threshold at least 2) proposes, and 7 days pass |
+| Upgrades, every setting (accepted token, CLRUSD address, state source, pause window, encumbrance and membership sources, the savings-intent factory whose redeem escrows may receive CLRUSD, CCIP admin), the pilot off switch | `DEFAULT_ADMIN_ROLE` / `UPGRADER_ROLE`: the vault timelock | the Clear Financial Safe (threshold at least 2) proposes, and 7 days pass |
 | Granting or revoking any role, including the contract-held MINTER_ROLE/BURNER_ROLE (the vault, the token pool) and LIQUIDATOR_ROLE (the Liquidator) | the default admin of each contract: the vault timelock | the same |
 | Vault pause, renewal, early end | `PAUSER_ROLE` keys | in contract: two distinct holders make the identical call (`_secondSigner`) |
 | CA mint pause, set and clear (spec 11) | `PILOT_ROLE` keys | in contract, the same way |
@@ -100,7 +100,9 @@ ESADepositVault and ClaimEscrow are live on Base mainnet, so their storage chang
 - **ESADepositVault:** Phase 2 adds `s_stateSource`, `s_pilotCap`, `s_pilotAlert`, `s_caVolumeByDay`, `s_caWindowTotal`, `s_caWindowFrom`, `s_pilotCapOn`, `s_pausedUntil`, `s_pauseSigner` and `s_pauseWindow`. `__gap` shrinks from 42 to 34, so the layout still ends at slot 400.
 - **ESADepositVault, Phase 2d:** the pilot counter's fields (`s_pilotCap`, `s_pilotAlert`, `s_caVolumeByDay`, `s_caWindowTotal`, `s_caWindowFrom`, `s_pilotCapOn`) are retired in place, never read or written. Appended after `s_lastDepositAt`: `s_proposerOf` (one slot) and `s_pilotOff`, `s_caMintsPaused`, `s_caPauseReason` (one slot together). `__gap` shrinks from 33 to 31, so the layout still ends where it did.
 - **ClaimEscrow:** unchanged by Phase 2 and Phase 2d (L-D adds a function and a type hash, no storage). Its layout still ends at slot 299.
-- **ClearUSDUpgradeable, Phase 2d:** `proposerOf` and `membershipSource` are appended to the end of its ERC-7201 namespaced struct; nothing else lives after them in that namespace.
+- **ClearUSDUpgradeable, Phase 2d:** `proposerOf`, `membershipSource` and `intentFactory` are appended to the end of its ERC-7201 namespaced struct; nothing else lives after them in that namespace.
+- **TermIssuer, Phase 2d:** no storage change. `collectForMember` is retired, and `mandateCollections` stays in place, no longer written.
+- **SavingsIntentFactory, Phase 2d:** not upgradeable. Recording redeem escrows (`isIntentEscrow`) needs a new deployment of the factory (`deploy/19`), which CLRUSD's admin then registers.
 
 OpenZeppelin's storage upgrade report (`@openzeppelin/upgrades-core` `getStorageUpgradeReport`) finds no errors against each implementation recorded in `.openzeppelin/base.json`: the vault at 0xe626…3644 and 0x83CB…26e9, and ClaimEscrow at 0x96F0…2c4e. A slot-by-slot comparison agrees: no existing variable moved. Re-run for Phase 2d with the same result.
 

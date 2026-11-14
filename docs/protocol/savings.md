@@ -137,7 +137,10 @@ are bounded by the token to what is encumbered. The rest is in [Credit](./credit
 
 `deposit(token, amount, receiver)` pulls `amount` of an accepted token from the caller and mints
 CLRUSD to `receiver`. `redeem(token, clrusdAmount, receiver)` burns the caller's CLRUSD with
-`burnFrom` and sends the reserve token to `receiver`. Both are `whenNotPaused`.
+`burnFrom` and sends the reserve token back to the caller: `receiver` must be the caller
+(`ESADepositVaultReceiverNotRedeemer`). A redemption pays anyone else only on the holder's signed
+`Redeem`, which names the receiver and which the relayer submits unchanged (Phase 2d). Both are
+`whenNotPaused`.
 
 Conversion is by decimals only (`_convertToClrUsd`, `_convertFromClrUsd`). With USDC and CLRUSD both
 at six, the amounts are equal. For a token with more decimals, both directions revert with
@@ -243,6 +246,18 @@ The escrow accepts calls only from its factory (`onlyFactory`).
   escrow as caller. It does not check `expiry`.
 - `refund` requires status `Pending` and `block.timestamp > expiry`, and returns the escrow's whole
   balance of `transferToken` to `depositor`.
+
+A redeem escrow redeems to itself and forwards the reserve token to `receiver`, because the vault
+pays a plain `redeem` only to its caller.
+
+**Redeem intents and members-only CLRUSD (Phase 2d).** The member funds a redeem escrow before it
+exists, and CLRUSD is received only by members. So the factory records each redeem escrow's address
+when it is announced (`announceIntent`, `CREATOR_ROLE`, deploys nothing) or provisioned
+(`isIntentEscrow`). CLRUSD exempts those addresses while this factory is its registered
+`intentFactory`, which only CLRUSD's default admin (the vault timelock) sets. An escrow's own
+transfers out are exempt on receipt, so a refund reaches a depositor who has since been de-listed.
+If the factory is unregistered, an escrow still sends, since the rule is about receipt. The factory
+is not upgradeable, so this needs a new deployment of it.
 
 `initialize` rejects an `expiry` that has already passed, and `refund` rejects one that has not. An
 escrow must therefore be provisioned (by `createIntentDeterministic` or a settle attempt) before its
