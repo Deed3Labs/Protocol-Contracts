@@ -119,6 +119,9 @@ interface IDeedTrust {
     event DeedVoided(uint256 indexed tokenId, uint8 reasonCode, bytes32 recordingRefHash, string uri, bool transferable);
     /// @notice A Void was lifted by the deed's validator with the protector's consent (re-review M-F).
     event DeedRestored(uint256 indexed tokenId, address indexed validator, string reasonURI);
+    /// @notice A freezing Void took two distinct signers of the deed's validator (Phase 4c): `proposer`
+    ///         consented (FreezeConsent) and `confirmer` made the call.
+    event DeedFreezeConfirmed(uint256 indexed tokenId, address indexed proposer, address indexed confirmer);
     event TrustActionApproved(address indexed signer, bytes32 indexed digest);
     event TrustRegistriesSet(address functionalContractRegistry, address membershipRegistry);
 
@@ -148,6 +151,9 @@ interface IDeedTrust {
     error UnknownDeed();
     error RegistryAlreadySet();
     error NotVoid();
+    /// @dev Phase 4c: a freezing Void needs a second signer of the deed's validator, other than the caller
+    ///      and the trustee.
+    error FreezeNeedsSecondSigner(address cosigner);
 
     // ============ Mint and IDs ============
 
@@ -191,7 +197,17 @@ interface IDeedTrust {
     // ============ Status and notices ============
 
     function postNotice(uint256 tokenId, bytes32 docHash, string calldata uri) external;
-    function markVoid(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string calldata uri) external;
+    /// @dev Phase 4c: a freezing code (from 128) needs `cosigner`, a second signer of the deed's validator
+    ///      (not the caller, not the trustee), to consent by FreezeConsent: by signature in `cosignerConsent`,
+    ///      or by a prior approveTrustAction with `cosignerConsent` empty. Both are ignored below 128.
+    function markVoid(
+        uint256 tokenId,
+        uint8 reasonCode,
+        bytes32 recordingRefHash,
+        string calldata uri,
+        address cosigner,
+        bytes calldata cosignerConsent
+    ) external;
     /// @notice Re-review M-F: the deed's validator lifts a Void with the protector's consent (RestoreConsent).
     function restoreFromVoid(uint256 tokenId, string calldata reasonURI, bytes calldata protectorConsent) external;
 
@@ -204,6 +220,7 @@ interface IDeedTrust {
     function correctionConsentDigest(uint256 tokenId, string calldata newDefinition, string calldata reasonURI) external view returns (bytes32);
     function restoreConsentDigest(uint256 tokenId, string calldata reasonURI) external view returns (bytes32);
     function licensingConsentDigest(uint256 tokenId, address standby, bytes32 docHash) external view returns (bytes32);
+    function freezeConsentDigest(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string calldata uri) external view returns (bytes32);
 
     // ============ Views ============
 
