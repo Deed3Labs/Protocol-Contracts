@@ -4,6 +4,7 @@ import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { driveToDefault } from "../helpers/default";
 import { issuerProxyOptions } from "../helpers/issuers";
 import { pledgeSigned } from "../helpers/pledge";
+import { deployBarePool } from "../helpers/yieldPool";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -19,22 +20,17 @@ const ASSET_INT = 3;
 describe("asset-backed default", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
   let pool: any, registry: any, issuer: any, liquidator: any;
-  let coop: any, depositor: any, borrower: any;
+  let coop: any, depositor: any, lending: any;
+  let deploy: (amount: bigint) => Promise<any>;
 
   beforeEach(async function () {
     ctx = await deployPhase0Network();
     const signers = await ethers.getSigners();
-    [coop, depositor, borrower] = [signers[8], signers[9], signers[10]];
+    [coop, depositor, lending] = [signers[8], signers[9], signers[10]];
 
-    const LendingPool = await ethers.getContractFactory("LendingPool");
-    pool = await upgrades.deployProxy(
-      LendingPool,
-      [ctx.admin.address, await ctx.usdc.getAddress(), "Clear Lending Pool", "clrLP"],
-      { kind: "uups" }
-    );
-    await pool.grantRole(await pool.BORROWER_ROLE(), borrower.address);
-    // A borrower draws only to its stored destination, within a daily cap (audit H-4).
-    await pool.setBorrower(borrower.address, borrower.address, ethers.MaxUint256);
+    // Phase 2f: the pool is the Yield Pool. Money leaves it only as a two-person Deployment to
+    // Clear Lending's lending account (decision 17), not a borrower's draw.
+    ({ pool, deploy } = await deployBarePool(ctx.admin, ctx.usdc, lending, [signers[11], signers[12]]));
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     issuer = await upgrades.deployProxy(
@@ -221,7 +217,7 @@ describe("asset-backed default", function () {
       // The timing risk a haircut does not price. The collateral is sufficient; it is just not
       // available today, because it is out on loan to somebody else.
       await spendAndDefault(700n * ONE_USDC);
-      await pool.connect(borrower).borrow(900n * ONE_USDC, borrower.address);
+      await deploy(900n * ONE_USDC);
 
       const [realized, queued] = await liquidator.liquidateShares.staticCall(
         ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
@@ -238,7 +234,7 @@ describe("asset-backed default", function () {
 
     it("settles the remainder once the co-op collects", async function () {
       await spendAndDefault(700n * ONE_USDC);
-      await pool.connect(borrower).borrow(900n * ONE_USDC, borrower.address);
+      await deploy(900n * ONE_USDC);
       await liquidator.liquidateShares(
         ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
       );
@@ -250,10 +246,12 @@ describe("asset-backed default", function () {
       expect(queuedFor).to.be.greaterThan(0n);
       expect(queuedFor).to.be.lessThanOrEqual(stillOwed);
 
-      // The loan comes back, the queued claim pays out, and the co-op applies it.
-      await ctx.usdc.mint(borrower.address, 900n * ONE_USDC);
-      await ctx.usdc.connect(borrower).approve(await pool.getAddress(), 900n * ONE_USDC);
-      await pool.connect(borrower).repay(900n * ONE_USDC);
+      // Clear Lending returns the funds, the queue fills in order, and the co-op applies it.
+      // (Changed: a fill is pushed to the request's receiver by `fillQueue`, not claimed.)
+      await ctx.usdc.mint(lending.address, 900n * ONE_USDC);
+      await ctx.usdc.connect(lending).approve(await pool.getAddress(), 900n * ONE_USDC);
+      await pool.connect(lending).returnFunds(900n * ONE_USDC);
+      await pool.fillQueue(10);
       await pool.connect(await ethers.getSigner(await liquidator.getAddress()));
 
       // The claim belongs to the liquidator; an operator applies whatever it collected.

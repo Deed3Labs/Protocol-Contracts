@@ -27,14 +27,39 @@ export async function setNext(ts: number) {
 }
 
 /**
+ * Just the pool, for suites that bring their own token and signers: mock Earn controls (everyone
+ * eligible), the holder cap off, `lending` as Clear Lending's lending account and `deployers` as
+ * the two DEPLOYER_ROLE signers. `deploy(amount)` makes a two-person Deployment.
+ */
+export async function deployBarePool(admin: any, usdc: any, lending: any, deployers: [any, any]) {
+  const controls: any = await (await ethers.getContractFactory("MockEarnControls")).deploy();
+  const pool: any = await upgrades.deployProxy(
+    await ethers.getContractFactory("LendingPool", admin),
+    [admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"],
+    await poolProxyOptions(admin)
+  );
+  await pool.connect(admin).setEarnControls(await controls.getAddress());
+  await pool.connect(admin).setDeploymentAccount(lending.address);
+  await pool.connect(admin).setHolderCapBps(10_000);
+  for (const d of deployers) await pool.connect(admin).grantRole(await pool.DEPLOYER_ROLE(), d.address);
+  let ref = 0;
+  async function deploy(amount: bigint) {
+    const r = ethers.toBeHex(++ref, 32);
+    await pool.connect(deployers[0]).deploy(amount, r);
+    return pool.connect(deployers[1]).deploy(amount, r);
+  }
+  return { pool, controls, deploy };
+}
+
+/**
  * A Yield Pool with mock Earn controls, Clear Lending's lending account registered, the holder cap
  * off (each test that checks it turns it on), and the two-person roles handed out.
  */
-export async function deployYieldPool() {
+export async function deployYieldPool(opts: { usdc?: any } = {}) {
   const signers = await ethers.getSigners();
   const [admin, alice, bob, carol, v1, v2, d1, d2, s1, s2, cco, enforcer, lending, destination, outsider, alice2] = signers;
 
-  const usdc: any = await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
+  const usdc: any = opts.usdc ?? await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
   const controls: any = await (await ethers.getContractFactory("MockEarnControls")).deploy();
   const pool: any = await upgrades.deployProxy(
     await ethers.getContractFactory("LendingPool"),

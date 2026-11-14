@@ -6,6 +6,7 @@ import { passCycleEnd } from "../../helpers/default";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { pledgeSigned, pledgeItemSigned } from "../../helpers/pledge";
 import { deployBondFactory } from "../../helpers/bonds";
+import { deployBarePool } from "../../helpers/yieldPool";
 
 /*
  * Section 12 addendum, the Liquidator side: 12.5 (a missed cycle's excess is settled from Earn,
@@ -72,8 +73,9 @@ async function deployStack(enrolMock = true) {
   await clrusd.setEncumbranceSource(await registry.getAddress());
 
   // Earn: the lending pool, and the bond collection with its vault.
-  const pool: any = await upgrades.deployProxy(await ethers.getContractFactory("LendingPool"),
-    [ctx.admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"], { kind: "uups" });
+  // Phase 2f: the Yield Pool, with its valuation module and mock Earn controls (signers 17-19:
+  // Clear Lending's lending account and the two Deployment signers).
+  const { pool, controls } = await deployBarePool(ctx.admin, usdc, signers[17], [signers[18], signers[19]]);
   await pool.setEncumbranceSource(await registry.getAddress(), POOL_SHARE);
 
   const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
@@ -108,7 +110,7 @@ async function deployStack(enrolMock = true) {
   await liquidator.setEarnSources(await pool.getAddress(), await bond.getAddress());
   for (const s of [holdA, holdB, holdC]) await liquidator.grantRole(await liquidator.HOLD_ROLE(), s.address);
 
-  return { ctx, usdc, clrusd, vault, issuer, registry, pool, bond, bondVault, deposit, liquidator, holdA, holdB, holdC, stranger };
+  return { ctx, usdc, clrusd, vault, issuer, registry, pool, controls, bond, bondVault, deposit, liquidator, holdA, holdB, holdC, stranger };
 }
 
 describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
@@ -130,7 +132,17 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
   async function poolShares(amount: bigint) {
     await s.usdc.mint(m, amount);
     await s.usdc.connect(s.ctx.member).approve(await s.pool.getAddress(), amount);
-    await s.pool.connect(s.ctx.member).deposit(amount, m);
+    // Phase 2f: a subscription is at least $250 (Earn §6, FIXED). A smaller holding is a $250
+    // subscription with the rest redeemed before anything is pledged.
+    const floor = U(250);
+    if (amount < floor) {
+      await s.usdc.mint(m, floor - amount);
+      await s.usdc.connect(s.ctx.member).approve(await s.pool.getAddress(), floor);
+      await s.pool.connect(s.ctx.member).deposit(floor, m);
+      await s.pool.connect(s.ctx.member).redeem(floor - amount, m, m);
+    } else {
+      await s.pool.connect(s.ctx.member).deposit(amount, m);
+    }
     await pledgeSigned(s.registry, m, POOL_SHARE, amount);
   }
 
@@ -328,6 +340,9 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
 
       // The member's own transfers of what is not encumbered go through during the hold.
       await clrusd.connect(s.ctx.member).transfer(stranger.address, U(700)); // 300 stays locked
+      // (Phase 2f: Pool Shares move only between one Holder's accounts, so "stranger" is linked
+      // as the member's other account here.)
+      await s.controls.link(m, stranger.address);
       await pool.connect(s.ctx.member).transfer(stranger.address, U(850)); // 150 held by the excess
       await expect(clrusd.connect(s.ctx.member).transfer(stranger.address, 1n)).to.be.reverted; // the lock, not the hold
       expect(await clrusd.balanceOf(m)).to.equal(U(300));

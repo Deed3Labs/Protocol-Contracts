@@ -4,6 +4,7 @@ import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { ONE_USDC, DAY } from "./rates";
 import { pledgeSigned, pledgeItemSigned, signPledgeItem, MATURITY_INSTRUCTION } from "../../helpers/pledge";
 import { deployBondFactory } from "../../helpers/bonds";
+import { deployBarePool } from "../../helpers/yieldPool";
 
 /*
  * Phase 2e, the Earn addendum (pledged bonds) and founder answer G:
@@ -63,8 +64,9 @@ async function deployStack() {
   await registry.registerCollateralType(INCOME, UNSECURED, 0n, 0n);
   await registry.registerCollateralType(BOOST, UNSECURED, 0n, 0n);
 
-  const pool: any = await upgrades.deployProxy(await ethers.getContractFactory("LendingPool"),
-    [ctx.admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"], { kind: "uups" });
+  // Phase 2f: the Yield Pool, with its valuation module and mock Earn controls (signers 17-19:
+  // Clear Lending's lending account and the two Deployment signers).
+  const { pool, controls } = await deployBarePool(ctx.admin, usdc, signers[17], [signers[18], signers[19]]);
   await pool.setEncumbranceSource(await registry.getAddress(), POOL_SHARE);
 
   const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
@@ -102,7 +104,7 @@ async function deployStack() {
   await liquidator.setEarnSources(await pool.getAddress(), await bond.getAddress());
   for (const s of [holdA, holdB]) await liquidator.grantRole(await liquidator.HOLD_ROLE(), s.address);
 
-  return { ctx, usdc, issuer, registry, pool, factory, bond, bondVault, deposit, liquidator, keeper, stranger, holdA, holdB };
+  return { ctx, usdc, issuer, registry, pool, controls, factory, bond, bondVault, deposit, liquidator, keeper, stranger, holdA, holdB };
 }
 
 describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)", function () {

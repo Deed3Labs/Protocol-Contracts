@@ -4,6 +4,7 @@ import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
 import { issuerProxyOptions } from "../helpers/issuers";
 import { deployAssurancePool, fund as fundAssurance, balances, TAG } from "../helpers/assurance";
+import { deployBarePool } from "../helpers/yieldPool";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -247,8 +248,29 @@ describe("a purchase, from the shop to the money", function () {
   describe("a claim that has come due", function () {
     let yieldLender: any;
 
+    // Phase 2f: the LendingPool is the Yield Pool and lends to no one but Clear Lending, as recorded
+    // Deployments (decision 17). The PayoutPool's yield-pool leg is unchanged code, switched off by
+    // configuration once its loans are repaid, so these tests keep exercising it against the pool
+    // it was written for (`LendingPoolPre2f`, the pre-2f source). The last test shows that with the
+    // Yield Pool itself named, the leg takes nothing.
+    it("takes nothing from the Yield Pool itself, which lends only to Clear Lending (decision 17)", async function () {
+      const signers = await ethers.getSigners();
+      const { pool: yieldPool } = await deployBarePool(ctx.admin, ctx.usdc, signers[17], [signers[18], signers[19]]);
+      await pool.connect(ctx.admin).setYieldPool(await yieldPool.getAddress());
+      await ctx.usdc.mint(ctx.admin.address, 500n * ONE_USDC);
+      await ctx.usdc.approve(await yieldPool.getAddress(), 500n * ONE_USDC);
+      await yieldPool.deposit(500n * ONE_USDC, ctx.admin.address);
+      const { payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+      await elapse(NET_30 + DAY);
+
+      await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+      expect(await yieldPool.vaultCash()).to.equal(500n * ONE_USDC);
+      expect(await pool.borrowedFromYield()).to.equal(0n);
+    });
+
     beforeEach(async function () {
-      const LendingPool = await ethers.getContractFactory("LendingPool");
+      const LendingPool = await ethers.getContractFactory("LendingPoolPre2f");
       yieldLender = await upgrades.deployProxy(
         LendingPool,
         [ctx.admin.address, await ctx.usdc.getAddress(), "Clear Yield", "cYLD"],

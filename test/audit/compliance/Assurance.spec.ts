@@ -10,6 +10,7 @@ import {
 } from "../../helpers/assurance";
 import { pledgeSigned } from "../../helpers/pledge";
 import { deployBondFactory } from "../../helpers/bonds";
+import { deployBarePool } from "../../helpers/yieldPool";
 
 /*
  * Compliance section 13 (Assurance Contracts), acceptance tests 31-33.
@@ -378,8 +379,9 @@ describe("COMPLIANCE section 13: Assurance Contracts (acceptance 31-33)", functi
       await clrusd.setEncumbranceSource(await pledges.getAddress());
       await revolving.connect(ctx.operator).setExposureSource(await pledges.getAddress());
 
-      const lending: any = await upgrades.deployProxy(await ethers.getContractFactory("LendingPool"),
-        [ctx.admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"], { kind: "uups" });
+      // Phase 2f: the Yield Pool, with its valuation module and mock Earn controls.
+      const ys = await ethers.getSigners();
+      const { pool: lending } = await deployBarePool(ctx.admin, usdc, ys[17], [ys[18], ys[19]]);
       await lending.setEncumbranceSource(await pledges.getAddress(), POOL_SHARE);
 
       const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
