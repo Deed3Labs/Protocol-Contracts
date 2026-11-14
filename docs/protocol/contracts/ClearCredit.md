@@ -18,7 +18,7 @@ Source: [`contracts/core/ClearCredit.sol`](../../../contracts/core/ClearCredit.s
 | `approve(address spender, uint256 amount)` | The token holder |  |
 | `burn(uint256 amount)` | Anyone |  |
 | `burnFrom(address account, uint256 amount)` | Anyone |  |
-| `burnLostDebt(address member, uint256 amount)` | Checked inside the function |  |
+| `burnLostDebt(address member, uint256 amount)` | Anyone; acts on the caller's own account |  |
 | `createCreditLine(address member, uint256 limit, uint256 initialBalance)` | `onlyCreditIssuer` |  |
 | `decreaseAllowance(address spender, uint256 subtractedValue)` | The token holder |  |
 | `increaseAllowance(address spender, uint256 addedValue)` | The token holder |  |
@@ -29,7 +29,7 @@ Source: [`contracts/core/ClearCredit.sol`](../../../contracts/core/ClearCredit.s
 | `repayRefund(address member, uint256 paid, address merchant, uint256 merchantShare, address coop, uint256 coopShare, uint256 carryWithheld)` | `onlyCreditIssuer` |  |
 | `reversePurchase(address member, uint256 purchase, address merchant, uint256 payout, address coop, uint256 discount)` | `onlyCreditIssuer` |  |
 | `setAccessManager(address _access)` | `onlyAdmin` |  |
-| `setAssurancePool(address _assurancePool)` | `onlyAdmin` |  |
+| `setAssurancePool(address _assurancePool)` | Not in the current source |  |
 | `setNetworkRegistry(address _networkRegistry)` | `onlyAdmin` |  |
 | `setPayoutPool(address _payoutPool)` | `onlyAdmin` |  |
 | `settleClaim(address holder, uint256 amount)` | Checked inside the function |  |

@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network, drawCredit } from "../helpers/phase0-fixture";
+import { deployAssurancePool, fund as fundAssurance, balances, TAG } from "../helpers/assurance";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -10,6 +11,9 @@ const NET_30 = 30 * DAY;
 // the merchant holding the positive side of the purchase that created it. It used to go straight
 // into the AssurancePool's buffer reserve, which a payout may only borrow from as a last resort,
 // so the working capital for net-30 piled up exactly where it could not be spent.
+//
+// Section 13 (decision 2): whatever the payout pool is not owed goes to Lending Co.'s operating
+// address, never the co-op's AssurancePool. "Lending Co." below is `ctx.lenderOperating`.
 describe("repayment routing", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
   let registry: any, pool: any;
@@ -52,12 +56,29 @@ describe("repayment routing", function () {
     await ctx.stableCredit.repayCreditBalance(ctx.member.address, amount);
   }
 
-  it("sends everything to the reserve when there is no payout pool", async function () {
-    // The inherited behaviour, and the only option before there was anywhere else to send it:
-    // the primary reserve up to the target RTD first (20% of the 1,000 out), the rest the buffer.
+  async function lendingCo() {
+    return ctx.usdc.balanceOf(ctx.lenderOperating.address);
+  }
+
+  it("sends everything to Lending Co. when there is no payout pool", async function () {
+    // Was "sends everything to the reserve": the primary reserve up to the target RTD, the rest
+    // the buffer. Lending Co. is the lender of record and carries the loss, so the surplus is its
+    // money; it pays the co-op's Credit Backstop through the pool's own `deposit`.
     await repay(1_000n * ONE_USDC);
-    expect(await ctx.assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
-    expect(await ctx.assurancePool.bufferBalance()).to.equal(800n * ONE_USDC);
+    expect(await lendingCo()).to.equal(1_000n * ONE_USDC);
+    expect(await ctx.usdc.balanceOf(await ctx.stableCredit.getAddress())).to.equal(0n);
+  });
+
+  it("refuses to settle a remainder with nowhere to send it, rather than keep it", async function () {
+    const Ledger = await ethers.getContractFactory("ClearCredit");
+    const bare: any = await upgrades.deployProxy(Ledger, ["x", "x", await ctx.access.getAddress()], { kind: "uups" });
+    await expect(bare.convertStableCreditToReserveToken(1n))
+      .to.be.revertedWithCustomError(bare, "StableCreditNoReserveToken");
+    await bare.setReserveToken(await ctx.usdc.getAddress());
+    await expect(bare.setReserveToken(await ctx.usdc.getAddress()))
+      .to.be.revertedWithCustomError(bare, "StableCreditReserveTokenSet");
+    await expect(bare.connect(ctx.outsider).setLenderOperating(ctx.outsider.address))
+      .to.be.revertedWith("StableCredit: Unauthorized caller");
   });
 
   describe("with a payout pool", function () {
@@ -65,7 +86,7 @@ describe("repayment routing", function () {
       await ctx.stableCredit.connect(ctx.admin).setPayoutPool(await pool.getAddress());
     });
 
-    it("pays the merchant who is waiting before topping up the reserve", async function () {
+    it("pays the merchant who is waiting before anything goes to Lending Co.", async function () {
       // The merchant redeemed and is queued; the member then repays. That repayment is the money
       // the merchant is owed.
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
@@ -75,7 +96,7 @@ describe("repayment routing", function () {
 
       expect(await pool.shortfall()).to.equal(0n);
       expect(await pool.held()).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.assurancePool.bufferBalance()).to.equal(0n);
+      expect(await lendingCo()).to.equal(0n);
     });
 
     it("lets the queued merchant actually collect", async function () {
@@ -95,7 +116,7 @@ describe("repayment routing", function () {
       await repay(1_000n * ONE_USDC);
 
       expect(await pool.held()).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.assurancePool.bufferBalance()).to.equal(0n);
+      expect(await lendingCo()).to.equal(0n);
     });
 
     it("does not count funder capital as members' money (audit X-2)", async function () {
@@ -110,8 +131,7 @@ describe("repayment routing", function () {
 
       expect(await pool.held()).to.equal(1_400n * ONE_USDC);
       expect(await pool.memberFunded()).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.assurancePool.primaryBalance()).to.equal(0n);
-      expect(await ctx.assurancePool.bufferBalance()).to.equal(0n);
+      expect(await lendingCo()).to.equal(0n);
     });
 
     it("covers what it can when the repayment is smaller than the queue", async function () {
@@ -120,7 +140,7 @@ describe("repayment routing", function () {
 
       expect(await pool.held()).to.equal(300n * ONE_USDC);
       expect(await pool.shortfall()).to.equal(700n * ONE_USDC);
-      expect(await ctx.assurancePool.bufferBalance()).to.equal(0n);
+      expect(await lendingCo()).to.equal(0n);
     });
 
     // Who ends up holding the position when a claim is paid, which is decided by whose money paid
@@ -293,16 +313,21 @@ describe("repayment routing", function () {
       });
     });
 
-    it("keeps the reserve out of it entirely", async function () {
-      // The routing decides where new money lands. It never moves money that has already landed,
-      // so the reserve cannot be drained to pay a merchant by this or any other path.
-      await ctx.usdc.mint(ctx.admin.address, 2_000n * ONE_USDC);
-      await ctx.usdc.approve(await ctx.assurancePool.getAddress(), 2_000n * ONE_USDC);
-      await ctx.assurancePool.depositIntoPrimaryReserve(2_000n * ONE_USDC);
+    it("keeps the AssurancePool out of it entirely", async function () {
+      // The routing decides where new money lands, and none of it lands in the co-op's
+      // AssurancePool: a repayment past the payout pool goes to Lending Co., and a merchant
+      // waiting is never paid out of a compartment.
+      const a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry);
+      await fundAssurance(a, ctx.usdc, a.treasury, TAG.BOARD_ALLOCATION, 2_000n * ONE_USDC);
+      const before = await balances(a.pool);
 
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
       expect(await pool.shortfall()).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.assurancePool.reserveBalance()).to.equal(2_000n * ONE_USDC);
+      await repay(1_000n * ONE_USDC);
+      await pool.payNext();
+
+      expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
+      expect(await ctx.usdc.balanceOf(await a.pool.getAddress())).to.equal(2_000n * ONE_USDC);
     });
 
     // The co-op's 2.5% was never the merchant's money, so it does not queue for it -- but it also

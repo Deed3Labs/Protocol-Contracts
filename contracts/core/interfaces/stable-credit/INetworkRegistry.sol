@@ -9,10 +9,12 @@ pragma solidity ^0.8.29;
 /// member has exactly one.
 ///
 /// A second issuer is not a second reserve. Every issuer registered against one network writes to
-/// the same StableCredit and draws on the same AssurancePool; the reserve-splitting objection
-/// applies to a second network, not to a second issuer inside one.
+/// the same StableCredit. No issuer draws on a reserve: the co-op's AssurancePool is walled off
+/// from every credit path (compliance section 13).
 interface INetworkRegistry {
     /// @notice What an issuer is wired to.
+    /// @dev `assurancePool` and `assuranceOracle` are retired (section 13) and are zero for every
+    /// issuer registered since. They stay in the struct so the registry's storage keeps its shape.
     struct Network {
         address stableCredit;
         address assurancePool;
@@ -47,14 +49,13 @@ interface INetworkRegistry {
     /// @notice a member's attested state of residence, or zero if none has been attested.
     function stateCodeOf(address member) external view returns (bytes32);
 
+    /// @notice whether `account` is a credit issuer or a listed money-path contract. The
+    /// AssurancePool refuses deposits from any of them (section 13c).
+    function isMoneyPath(address account) external view returns (bool);
+
     /* ========== EVENTS ========== */
 
-    event IssuerRegistered(
-        address indexed issuer,
-        address indexed stableCredit,
-        address assurancePool,
-        address assuranceOracle
-    );
+    event IssuerRegistered(address indexed issuer, address indexed stableCredit);
     event IssuerDeregistered(address indexed issuer);
     event MemberEnrolled(address indexed member, address indexed issuer);
     event MemberWithdrawn(address indexed member, address indexed issuer);

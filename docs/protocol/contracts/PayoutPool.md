@@ -28,7 +28,7 @@ Source: [`contracts/peripherals/PayoutPool.sol`](../../../contracts/peripherals/
 | `setBondVault(address vault)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setCoopIncomeRecipient(address recipient)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setCoopTreasury(address treasury)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `setLenders(address yieldPool_, address reserve_)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setLenders(address yieldPool_, address reserve_)` | Not in the current source |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |
 | `withdrawCapital(uint256 amount, address to)` | Anyone; acts on the caller's own account |  |

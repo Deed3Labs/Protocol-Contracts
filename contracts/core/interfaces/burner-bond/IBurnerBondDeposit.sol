@@ -133,7 +133,4 @@ interface IBurnerBondDeposit {
     /// @param _factory Address of the BurnerBondFactory contract
     function setFactory(address _factory) external;
     
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external;
 }

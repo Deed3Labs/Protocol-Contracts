@@ -31,9 +31,7 @@ describe("the asset-backed tier", function () {
     );
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await issuer.getAddress());
     await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);
@@ -70,7 +68,6 @@ describe("the asset-backed tier", function () {
     // It sets tier capacity, which is the limits role (audit H-4).
     await ctx.access.grantRole(ethers.id("CREDIT_LIMITS_ROLE"), await limits.getAddress());
     await registry.grantRole(await registry.OPERATOR_ROLE(), await limits.getAddress());
-    await ctx.assurancePool.connect(ctx.admin).setExposureSource(await registry.getAddress());
 
     await issuer
       .connect(ctx.operator)
@@ -135,8 +132,8 @@ describe("the asset-backed tier", function () {
       .transfer(ctx.counterparty.address, 9_500n * ONE_USDC);
     await registry.refresh(ctx.member.address);
 
-    expect(await ctx.assurancePool.poolExposure()).to.equal(0n);
-    expect(await ctx.assurancePool.neededReserves()).to.equal(0n);
+    // Nothing for the co-op's Credit Backstop to cover (section 13 reads this figure).
+    expect(await registry.poolExposure()).to.equal(0n);
   });
 
   it("contracts the limit when a bond is marked down", async function () {

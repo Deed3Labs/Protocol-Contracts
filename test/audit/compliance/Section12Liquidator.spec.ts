@@ -54,8 +54,7 @@ async function deployStack(enrolMock = true) {
   // The issuer after a missed cycle (mock; see the header).
   const issuer: any = await (await ethers.getContractFactory("MockMissedCycleIssuer"))
     .deploy(await usdc.getAddress(), [SAVINGS, BOND, POOL_SHARE, INCOME, BOOST]);
-  await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress(),
-    await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+  await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress());
   if (enrolMock) await ctx.networkRegistry.enrolMember(ctx.member.address, await issuer.getAddress());
 
   const registry: any = await upgrades.deployProxy(await ethers.getContractFactory("CollateralRegistry"),
@@ -75,7 +74,7 @@ async function deployStack(enrolMock = true) {
   await pool.setEncumbranceSource(await registry.getAddress(), POOL_SHARE);
 
   const factory: any = await (await ethers.getContractFactory("BurnerBondFactory"))
-    .deploy(await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress(), "ipfs://bonds");
+    .deploy(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
   const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
   await factory.createCollection(await usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
   const bond: any = await ethers.getContractAt("BurnerBond",
@@ -518,8 +517,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     const CYCLE = 30 * DAY, GRACE = 5 * DAY;
     const R = await ethers.getContractFactory("RevolvingIssuer");
     const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), (await ethers.getSigners())[8].address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
-    await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+    await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress());
     await ctx.access.grantOperator(await issuer.getAddress());
     await ctx.access.grantOperator(await liquidator.getAddress()); // settleFromCollateral
     for (const [kind, rate] of [[SAVINGS, 0n], [BOND, 65n], [POOL_SHARE, 75n], [INCOME, 150n], [BOOST, 300n]] as const) {

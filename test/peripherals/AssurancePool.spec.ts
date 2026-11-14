@@ -1,646 +1,543 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { deployPhase0Network, drawCredit } from "../helpers/phase0-fixture";
+import { ethers, upgrades } from "hardhat";
+import { deployPhase0Network } from "../helpers/phase0-fixture";
+import {
+  deployAssurancePool, setFloorInputs, fund, balances, advance,
+  AssuranceSetup, BACKSTOP, ASSURANCE, TAG, MASK, DAY, ASSURANCE_DELAY,
+} from "../helpers/assurance";
 
 const ONE_USDC = 10n ** 6n;
+const usd = (n: number | bigint) => BigInt(n) * ONE_USDC;
 
-describe("AssurancePool", function () {
+/*
+ * The co-op's AssurancePool (compliance section 13): segregated compartments, two-person control
+ * on every action, and a 7-day governance timelock for parameters and upgrades. The acceptance
+ * tests (31-33) are in test/audit/compliance/Assurance.spec.ts; this file covers each function.
+ *
+ * Replaces the Phase 1 pool's spec (primary/buffer/excess tiers, oracle rebalancing, RTD), which
+ * section 13 retired with the contract.
+ */
+describe("AssurancePool (section 13)", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
+  let a: AssuranceSetup;
+  let pool: any, usdc: any, gov: any;
+
+  /** The governance timelock, impersonated: the timelock's own delay is shown separately. */
+  async function governance() {
+    const address = await a.timelock.getAddress();
+    await ethers.provider.send("hardhat_impersonateAccount", [address]);
+    await ethers.provider.send("hardhat_setBalance", [address, "0x56BC75E2D63100000"]);
+    return ethers.getSigner(address);
+  }
+
+  async function approve(fn: string, args: any[]) {
+    const action = ethers.keccak256(pool.interface.encodeFunctionData(fn, args));
+    await pool.connect(a.signerA).approveAction(action);
+    await pool.connect(a.signerB).approveAction(action);
+    return action;
+  }
+
+  /** A governed call: two signers approve its calldata, then governance makes it. */
+  async function governed(fn: string, args: any[]) {
+    await approve(fn, args);
+    return pool.connect(gov)[fn](...args);
+  }
 
   beforeEach(async function () {
     ctx = await deployPhase0Network();
+    usdc = ctx.usdc;
+    a = await deployAssurancePool(usdc, ctx.networkRegistry);
+    pool = a.pool;
+    gov = await governance();
   });
 
-  /// Puts `amount` of reserve token into the excess reserve, which is the only withdrawable tier.
-  async function fundExcess(amount: bigint) {
-    const { usdc, assurancePool, admin } = ctx;
-    await usdc.mint(admin.address, amount);
-    await usdc.approve(await assurancePool.getAddress(), amount);
-    await assurancePool.depositIntoExcessReserve(amount);
-  }
-
-  async function fundBuffer(amount: bigint) {
-    const { usdc, assurancePool, admin } = ctx;
-    await usdc.mint(admin.address, amount);
-    await usdc.approve(await assurancePool.getAddress(), amount);
-    await assurancePool.depositIntoBufferReserve(amount);
-  }
-
-  async function fundPrimary(amount: bigint) {
-    const { usdc, assurancePool, admin } = ctx;
-    await usdc.mint(admin.address, amount);
-    await usdc.approve(await assurancePool.getAddress(), amount);
-    await assurancePool.depositIntoPrimaryReserve(amount);
-  }
-
-  /// A token the pool holds from before the reserve-token-only rule (audit X-9): registered as
-  /// held (here through a reserve-token change and back) and sitting in the pool, unbooked.
-  async function holdLegacy(token: any, amount: bigint) {
-    const { assurancePool, admin, usdc } = ctx;
-    await assurancePool.connect(admin).setReserveToken(await token.getAddress());
-    await assurancePool.connect(admin).setReserveToken(await usdc.getAddress());
-    await token.mint(await assurancePool.getAddress(), amount);
-  }
-
-  describe("withdrawal access control", function () {
-    // The inherited contract left both withdrawal entry points public with only a reentrancy
-    // guard, so any address could take the excess reserve. Nobody withdraws directly now: every
-    // claim routes through an instrument that was explicitly wired in.
-
-    it("reverts withdraw for an address that is not an approved instrument", async function () {
-      const { assurancePool, outsider } = ctx;
-      await fundExcess(100n * ONE_USDC);
-
-      await expect(assurancePool.connect(outsider).withdraw(100n * ONE_USDC))
-        .to.be.revertedWithCustomError(assurancePool, "AssurancePoolUnauthorizedWithdrawal")
-        .withArgs(outsider.address);
+  describe("initialization", function () {
+    it("starts with the two fixed compartments at 50/50, a 5% floor and a 14-day transfer delay", async function () {
+      expect(await pool.compartments()).to.deep.equal([BACKSTOP, ASSURANCE]);
+      expect(await pool.allocationOf(BACKSTOP)).to.equal(5_000n);
+      expect(await pool.allocationOf(ASSURANCE)).to.equal(5_000n);
+      expect(await pool.floorBps()).to.equal(500n);
+      expect(await pool.transferDelay()).to.equal(BigInt(14 * DAY));
+      expect(await pool.signerCount()).to.equal(3n);
+      expect(await pool.governance()).to.equal(await a.timelock.getAddress());
     });
 
-    it("reverts withdrawToken for an address that is not an approved instrument", async function () {
-      const { assurancePool, outsider, usdc } = ctx;
-      await fundExcess(100n * ONE_USDC);
-
-      await expect(
-        assurancePool.connect(outsider).withdrawToken(await usdc.getAddress(), 100n * ONE_USDC)
-      )
-        .to.be.revertedWithCustomError(assurancePool, "AssurancePoolUnauthorizedWithdrawal")
-        .withArgs(outsider.address);
+    it("cannot be initialized again, nor its implementation at all", async function () {
+      await expect(pool.initialize(await usdc.getAddress(), await a.timelock.getAddress(), await ctx.networkRegistry.getAddress(), [a.signerA.address, a.signerB.address]))
+        .to.be.revertedWith("Initializable: contract is already initialized");
+      const impl: any = await (await ethers.getContractFactory("AssurancePool")).deploy();
+      await expect(impl.initialize(await usdc.getAddress(), await a.timelock.getAddress(), await ctx.networkRegistry.getAddress(), [a.signerA.address, a.signerB.address]))
+        .to.be.revertedWith("Initializable: contract is already initialized");
     });
 
-    it("does not let an operator withdraw", async function () {
-      // Operator access configures the pool. That is not the same authority as taking reserve
-      // out of it, and collapsing the two rebuilds the original bug one rung up.
-      const { assurancePool, operator } = ctx;
-      await fundExcess(100n * ONE_USDC);
+    it("refuses a governance delay under 7 days, fewer than two signers, and a governance signer", async function () {
+      const F = await ethers.getContractFactory("AssurancePool");
+      const T = await ethers.getContractFactory("TimelockController");
+      const short: any = await T.deploy(6 * DAY, [a.board.address], [a.board.address], ethers.ZeroAddress);
 
-      await expect(
-        assurancePool.connect(operator).withdraw(100n * ONE_USDC)
-      ).to.be.revertedWithCustomError(assurancePool, "AssurancePoolUnauthorizedWithdrawal");
+      await expect(upgrades.deployProxy(F, [await usdc.getAddress(), await short.getAddress(), await ctx.networkRegistry.getAddress(), [a.signerA.address, a.signerB.address]], { kind: "uups" }))
+        .to.be.revertedWithCustomError(F, "AssurancePoolGovernanceDelayTooShort");
+      await expect(upgrades.deployProxy(F, [await usdc.getAddress(), await a.timelock.getAddress(), await ctx.networkRegistry.getAddress(), [a.signerA.address, a.signerA.address]], { kind: "uups" }))
+        .to.be.revertedWithCustomError(F, "AssurancePoolTooFewSigners");
+      const tl = await a.timelock.getAddress();
+      await expect(upgrades.deployProxy(F, [await usdc.getAddress(), tl, await ctx.networkRegistry.getAddress(), [a.signerA.address, tl]], { kind: "uups" }))
+        .to.be.revertedWithCustomError(F, "AssurancePoolRoleConflict");
     });
+  });
 
-    it("does not let an admin withdraw", async function () {
-      const { assurancePool, admin } = ctx;
-      await fundExcess(100n * ONE_USDC);
+  describe("two-person control on governed calls (13a)", function () {
+    const cases: [string, (s: AssuranceSetup) => any[]][] = [
+      ["setSigner", (s) => [s.signerC.address, false]],
+      ["setPayer", (s) => [s.treasury.address, MASK.treasury]],
+      ["setLendingCoAddresses", (s) => [s.drawer.address, s.lossReserve.address]],
+      ["setAssuranceDisbursementAddress", (s) => [s.disbursement.address]],
+      ["setFloorBps", () => [600n]],
+      ["setExposureSources", (s) => [[s.board.address]]],
+      ["setTransferDelay", () => [BigInt(21 * DAY)]],
+      ["setAllocation", () => [[6_000, 4_000]]],
+      ["addCompartment", () => [ethers.encodeBytes32String("RESEARCH")]],
+      ["setNetworkRegistry", (s) => [s.board.address]],
+    ];
 
-      await expect(
-        assurancePool.connect(admin).withdraw(100n * ONE_USDC)
-      ).to.be.revertedWithCustomError(assurancePool, "AssurancePoolUnauthorizedWithdrawal");
-    });
+    for (const [fn, argsOf] of cases) {
+      it(`${fn}: governance only, and only once two different signers approved the exact call`, async function () {
+        const args = argsOf(a);
+        // A signer, or anybody else, calling it directly.
+        await expect(pool.connect(a.signerA)[fn](...args)).to.be.revertedWithCustomError(pool, "AssurancePoolNotGovernance");
+        await expect(pool.connect(a.lendingCo)[fn](...args)).to.be.revertedWithCustomError(pool, "AssurancePoolNotGovernance");
+        // Governance with no approval, then with one signer's.
+        await expect(pool.connect(gov)[fn](...args)).to.be.revertedWithCustomError(pool, "AssurancePoolNotApproved");
+        const action = ethers.keccak256(pool.interface.encodeFunctionData(fn, args));
+        await pool.connect(a.signerA).approveAction(action);
+        await expect(pool.connect(gov)[fn](...args)).to.be.revertedWithCustomError(pool, "AssurancePoolNotApproved");
+        // The same signer cannot approve its own proposal.
+        await expect(pool.connect(a.signerA).approveAction(action)).to.be.revertedWithCustomError(pool, "AssurancePoolSameSigner");
+        // A non-signer cannot approve at all.
+        await expect(pool.connect(a.board).approveAction(action)).to.be.revertedWithCustomError(pool, "AssurancePoolNotSigner");
+        await pool.connect(a.signerB).approveAction(action);
+        expect(await pool.approvedAction(action)).to.equal(true);
+        await pool.connect(gov)[fn](...args);
+        // Used once.
+        expect(await pool.approvedAction(action)).to.equal(false);
+      });
+    }
 
-    it("has no withdrawal path at all on a fresh deployment", async function () {
-      const { assurancePool, admin, operator, outsider, instrument } = ctx;
-      for (const signer of [admin, operator, outsider, instrument]) {
-        expect(await assurancePool.withdrawalCallers(signer.address)).to.equal(false);
+    it("removeCompartment: the same, and never for the two fixed compartments", async function () {
+      const id = ethers.encodeBytes32String("RESEARCH");
+      await governed("addCompartment", [id]);
+      await expect(pool.connect(gov).removeCompartment(id)).to.be.revertedWithCustomError(pool, "AssurancePoolNotApproved");
+      await governed("removeCompartment", [id]);
+      expect(await pool.compartments()).to.deep.equal([BACKSTOP, ASSURANCE]);
+      for (const fixed of [BACKSTOP, ASSURANCE]) {
+        await approve("removeCompartment", [fixed]);
+        await expect(pool.connect(gov).removeCompartment(fixed)).to.be.revertedWithCustomError(pool, "AssurancePoolCompartmentFixed");
       }
     });
 
-    it("lets an approved instrument withdraw, and stops it once revoked", async function () {
-      const { assurancePool, admin, instrument, usdc } = ctx;
-      await fundExcess(100n * ONE_USDC);
-
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
-      await assurancePool.connect(instrument).withdraw(40n * ONE_USDC);
-
-      expect(await usdc.balanceOf(instrument.address)).to.equal(40n * ONE_USDC);
-      expect(await assurancePool.excessBalance()).to.equal(60n * ONE_USDC);
-
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, false);
-      await expect(
-        assurancePool.connect(instrument).withdraw(10n * ONE_USDC)
-      ).to.be.revertedWithCustomError(assurancePool, "AssurancePoolUnauthorizedWithdrawal");
+    it("setGovernance: the same, and never to a timelock under 7 days", async function () {
+      const T = await ethers.getContractFactory("TimelockController");
+      const short: any = await T.deploy(DAY, [a.board.address], [a.board.address], ethers.ZeroAddress);
+      const longer: any = await T.deploy(10 * DAY, [a.board.address], [a.board.address], ethers.ZeroAddress);
+      await expect(pool.connect(gov).setGovernance(await longer.getAddress())).to.be.revertedWithCustomError(pool, "AssurancePoolNotApproved");
+      await approve("setGovernance", [await short.getAddress()]);
+      await expect(pool.connect(gov).setGovernance(await short.getAddress())).to.be.revertedWithCustomError(pool, "AssurancePoolGovernanceDelayTooShort");
+      await governed("setGovernance", [await longer.getAddress()]);
+      expect(await pool.governance()).to.equal(await longer.getAddress());
     });
 
-    it("only lets an admin manage the allowlist", async function () {
-      const { assurancePool, operator, outsider, instrument } = ctx;
+    it("upgrades: through governance with two signers, and every compartment balance survives", async function () {
+      await fund(a, usdc, a.treasury, TAG.INTERCHANGE, usd(1_000));
+      await fund(a, usdc, a.lendingCo, TAG.RECOVERY, usd(300));
+      const before = await balances(pool);
+      const impl = await (await ethers.getContractFactory("AssurancePool")).deploy();
+      const implAddress = await impl.getAddress();
 
-      await expect(
-        assurancePool.connect(operator).setWithdrawalCaller(instrument.address, true)
-      ).to.be.revertedWith("AssurancePool: caller does not have admin access");
-      await expect(
-        assurancePool.connect(outsider).setWithdrawalCaller(outsider.address, true)
-      ).to.be.revertedWith("AssurancePool: caller does not have admin access");
+      await expect(pool.connect(a.signerA).upgradeTo(implAddress)).to.be.revertedWithCustomError(pool, "AssurancePoolNotGovernance");
+      await expect(pool.connect(gov).upgradeTo(implAddress)).to.be.revertedWithCustomError(pool, "AssurancePoolNotApproved");
+      await governed("upgradeTo", [implAddress]);
+      expect(await upgrades.erc1967.getImplementationAddress(await pool.getAddress())).to.equal(implAddress);
+      expect((await balances(pool)).byId).to.deep.equal(before.byId);
+      expect(await pool.totalAccounted()).to.equal(usd(1_300));
     });
 
-    it("rejects the zero address as an instrument", async function () {
-      const { assurancePool, admin } = ctx;
-      await expect(
-        assurancePool.connect(admin).setWithdrawalCaller(ethers.ZeroAddress, true)
-      ).to.be.revertedWithCustomError(assurancePool, "AssurancePoolInvalidAddress");
+    it("waits out the real timelock: scheduled by the board, not executable before 7 days", async function () {
+      const data = pool.interface.encodeFunctionData("setFloorBps", [700n]);
+      const action = ethers.keccak256(data);
+      await pool.connect(a.signerA).approveAction(action);
+      await pool.connect(a.signerC).approveAction(action);
+      const target = await pool.getAddress();
+      const salt = ethers.id("floor-700");
+      await expect(a.timelock.connect(a.signerA).schedule(target, 0, data, ethers.ZeroHash, salt, ASSURANCE_DELAY)).to.be.reverted;
+      await a.timelock.connect(a.board).schedule(target, 0, data, ethers.ZeroHash, salt, ASSURANCE_DELAY);
+      await advance(ASSURANCE_DELAY - 60);
+      await expect(a.timelock.connect(a.board).execute(target, 0, data, ethers.ZeroHash, salt))
+        .to.be.revertedWith("TimelockController: operation is not ready");
+      await advance(60);
+      await a.timelock.connect(a.board).execute(target, 0, data, ethers.ZeroHash, salt);
+      expect(await pool.floorBps()).to.equal(700n);
     });
 
-    it("survives a sustained drain attempt with reserves untouched", async function () {
-      // Adversarial: the original defect was that this loop emptied the pool.
-      const { assurancePool, outsider, usdc } = ctx;
-      await fundPrimary(500n * ONE_USDC);
-      await fundExcess(300n * ONE_USDC);
-
-      const poolBefore = await usdc.balanceOf(await assurancePool.getAddress());
-
-      for (const amount of [1n, ONE_USDC, 300n * ONE_USDC, 800n * ONE_USDC]) {
-        await expect(
-          assurancePool.connect(outsider).withdraw(amount)
-        ).to.be.revertedWithCustomError(assurancePool, "AssurancePoolUnauthorizedWithdrawal");
-        await expect(
-          assurancePool.connect(outsider).withdrawToken(await usdc.getAddress(), amount)
-        ).to.be.revertedWithCustomError(assurancePool, "AssurancePoolUnauthorizedWithdrawal");
+    it("keeps at least two signers, and never makes Lending Co., a payer or a money path a signer", async function () {
+      await approve("setSigner", [a.signerC.address, false]);
+      await pool.connect(gov).setSigner(a.signerC.address, false);
+      await approve("setSigner", [a.signerB.address, false]);
+      await expect(pool.connect(gov).setSigner(a.signerB.address, false)).to.be.revertedWithCustomError(pool, "AssurancePoolTooFewSigners");
+      for (const who of [a.drawer, a.lossReserve, a.lendingCo, a.treasury]) {
+        await approve("setSigner", [who.address, true]);
+        await expect(pool.connect(gov).setSigner(who.address, true)).to.be.revertedWithCustomError(pool, "AssurancePoolRoleConflict");
       }
+      const issuer = await ctx.creditIssuer.getAddress();
+      await approve("setSigner", [issuer, true]);
+      await expect(pool.connect(gov).setSigner(issuer, true)).to.be.revertedWithCustomError(pool, "AssurancePoolRoleConflict");
+      // Nor a signer a payer or Lending Co.
+      await approve("setPayer", [a.signerA.address, MASK.treasury]);
+      await expect(pool.connect(gov).setPayer(a.signerA.address, MASK.treasury)).to.be.revertedWithCustomError(pool, "AssurancePoolRoleConflict");
+      await approve("setLendingCoAddresses", [a.signerA.address, a.lossReserve.address]);
+      await expect(pool.connect(gov).setLendingCoAddresses(a.signerA.address, a.lossReserve.address)).to.be.revertedWithCustomError(pool, "AssurancePoolRoleConflict");
+    });
 
-      expect(await usdc.balanceOf(await assurancePool.getAddress())).to.equal(poolBefore);
-      expect(await assurancePool.primaryBalance()).to.equal(500n * ONE_USDC);
-      expect(await assurancePool.excessBalance()).to.equal(300n * ONE_USDC);
-      expect(await usdc.balanceOf(outsider.address)).to.equal(0n);
+    it("forgets a proposal whose proposer is no longer a signer", async function () {
+      const action = ethers.keccak256(pool.interface.encodeFunctionData("setFloorBps", [800n]));
+      await pool.connect(a.signerC).approveAction(action);
+      await governed("setSigner", [a.signerC.address, false]);
+      // signerA's approval now starts afresh instead of completing signerC's.
+      await pool.connect(a.signerA).approveAction(action);
+      expect(await pool.approvedAction(action)).to.equal(false);
+      await pool.connect(a.signerB).approveAction(action);
+      expect(await pool.approvedAction(action)).to.equal(true);
     });
   });
 
-  describe("loss absorption", function () {
-    // The withdrawable tier is the excess reserve and only the excess reserve. Primary and buffer
-    // exist to make losses survivable; the multi-token payout path pays out of raw balances rather
-    // than a per-tier ledger, so the contract asserts on every withdrawal that neither moved.
-
-    it("leaves primary and buffer untouched when paying out in the reserve token", async function () {
-      const { assurancePool, admin, instrument, usdc } = ctx;
-      await fundPrimary(100n * ONE_USDC);
-      await fundBuffer(25n * ONE_USDC);
-      await fundExcess(50n * ONE_USDC);
-
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
-      await assurancePool.connect(instrument).withdraw(50n * ONE_USDC);
-
-      expect(await assurancePool.primaryBalance()).to.equal(100n * ONE_USDC);
-      expect(await assurancePool.bufferBalance()).to.equal(25n * ONE_USDC);
-      expect(await assurancePool.excessBalance()).to.equal(0n);
-      expect(await usdc.balanceOf(instrument.address)).to.equal(50n * ONE_USDC);
+  describe("deposit (13c)", function () {
+    it("takes each tag only from a payer allowed it", async function () {
+      await usdc.mint(a.lendingCo.address, usd(100));
+      await usdc.connect(a.lendingCo).approve(await pool.getAddress(), ethers.MaxUint256);
+      await expect(pool.connect(a.lendingCo).deposit(TAG.INTERCHANGE, usd(10))).to.be.revertedWithCustomError(pool, "AssurancePoolNotPayer");
+      await expect(pool.connect(a.lendingCo).deposit(TAG.BOARD_ALLOCATION, usd(10))).to.be.revertedWithCustomError(pool, "AssurancePoolNotPayer");
+      await pool.connect(a.lendingCo).deposit(TAG.CREDIT_ENHANCEMENT_FEE, usd(10));
+      await pool.connect(a.lendingCo).deposit(TAG.RECOVERY, usd(10));
+      await usdc.mint(a.treasury.address, usd(100));
+      await usdc.connect(a.treasury).approve(await pool.getAddress(), ethers.MaxUint256);
+      await expect(pool.connect(a.treasury).deposit(TAG.RECOVERY, usd(10))).to.be.revertedWithCustomError(pool, "AssurancePoolNotPayer");
+      await pool.connect(a.treasury).deposit(TAG.INTERCHANGE, usd(10));
+      await expect(pool.connect(a.treasury).deposit(TAG.INTERCHANGE, 0n)).to.be.revertedWithCustomError(pool, "AssurancePoolInvalidAmount");
+      await expect(pool.connect(ctx.outsider).deposit(TAG.INTERCHANGE, usd(1))).to.be.revertedWithCustomError(pool, "AssurancePoolNotPayer");
     });
 
-    it("refuses deposits in anything but the reserve token (X-9)", async function () {
-      // Changed by the X-9 fix. This test used to fund excess in DAI and then pay a USDC claim
-      // out of the USDC backing primary. Every tier is booked in reserve-token units and every
-      // payout pays the reserve token, so another token on the books is value the pool cannot
-      // hand over; it now refuses one at the door.
-      const { assurancePool, admin, dai, usdt } = ctx;
-      const daiAmount = 60n * 10n ** 18n;
-      await dai.mint(admin.address, daiAmount);
-      await dai.approve(await assurancePool.getAddress(), daiAmount);
-      for (const token of [dai, usdt]) {
-        const at = await token.getAddress();
-        await expect(assurancePool.depositTokenIntoExcess(at, 1n)).to.be.revertedWith("Token not accepted for deposits");
-        await expect(assurancePool.depositTokenIntoPrimary(at, 1n)).to.be.revertedWith("Token not accepted for deposits");
-        await expect(assurancePool.depositTokenIntoBuffer(at, 1n)).to.be.revertedWith("Token not accepted for deposits");
-        await expect(assurancePool.depositToken(at, 1n)).to.be.revertedWith("Token not accepted for deposits");
+    it("refuses an allowlisted payer once it is listed as a money path", async function () {
+      await fund(a, usdc, a.treasury, TAG.INTERCHANGE, usd(10));
+      await ctx.networkRegistry.listMoneyPath(a.treasury.address, ethers.encodeBytes32String("PAYOUT_POOL"));
+      await usdc.mint(a.treasury.address, usd(10));
+      await usdc.connect(a.treasury).approve(await pool.getAddress(), usd(10));
+      await expect(pool.connect(a.treasury).deposit(TAG.INTERCHANGE, usd(10))).to.be.revertedWithCustomError(pool, "AssurancePoolMoneyPath");
+      // And will not allowlist one.
+      await approve("setPayer", [await ctx.creditIssuer.getAddress(), MASK.treasury]);
+      await expect(pool.connect(gov).setPayer(await ctx.creditIssuer.getAddress(), MASK.treasury)).to.be.revertedWithCustomError(pool, "AssurancePoolMoneyPath");
+    });
+
+    it("keeps rounding dust in the Credit Backstop", async function () {
+      await governed("setAllocation", [[6_667, 3_333]]);
+      await fund(a, usdc, a.treasury, TAG.INTERCHANGE, 10n);
+      // 10 x 33.33% = 3.333 -> 3 to assurance; the backstop keeps 7, the dust included.
+      expect(await pool.balanceOf(ASSURANCE)).to.equal(3n);
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(7n);
+      expect((await balances(pool)).sum).to.equal(await usdc.balanceOf(await pool.getAddress()));
+    });
+
+    it("emits CompartmentCredited per compartment", async function () {
+      await usdc.mint(a.treasury.address, usd(100));
+      await usdc.connect(a.treasury).approve(await pool.getAddress(), usd(100));
+      await expect(pool.connect(a.treasury).deposit(TAG.BOARD_ALLOCATION, usd(100)))
+        .to.emit(pool, "CompartmentCredited").withArgs(TAG.BOARD_ALLOCATION, BACKSTOP, usd(50))
+        .and.to.emit(pool, "CompartmentCredited").withArgs(TAG.BOARD_ALLOCATION, ASSURANCE, usd(50));
+    });
+
+    it("splits across a governed third compartment once it has an allocation", async function () {
+      const id = ethers.encodeBytes32String("RESEARCH");
+      await governed("addCompartment", [id]);
+      expect(await pool.allocationOf(id)).to.equal(0n);
+      await fund(a, usdc, a.treasury, TAG.INTERCHANGE, usd(100));
+      expect(await pool.balanceOf(id)).to.equal(0n);
+      await governed("setAllocation", [[5_000, 3_000, 2_000]]);
+      await fund(a, usdc, a.treasury, TAG.INTERCHANGE, usd(100));
+      expect(await pool.balanceOf(id)).to.equal(usd(20));
+      await approve("setAllocation", [[5_000, 5_000]]);
+      await expect(pool.connect(gov).setAllocation([5_000, 5_000])).to.be.revertedWithCustomError(pool, "AssurancePoolBadAllocation");
+      await approve("setAllocation", [[5_000, 3_000, 1_000]]);
+      await expect(pool.connect(gov).setAllocation([5_000, 3_000, 1_000])).to.be.revertedWithCustomError(pool, "AssurancePoolBadAllocation");
+      // A compartment with money in it cannot be removed.
+      await approve("removeCompartment", [id]);
+      await expect(pool.connect(gov).removeCompartment(id)).to.be.revertedWithCustomError(pool, "AssurancePoolCompartmentNotEmpty");
+    });
+  });
+
+  describe("floor inputs (13d), two signers each month", function () {
+    it("applies only when a second, different signer sends the same figures", async function () {
+      const ev = ethers.id("2026-11");
+      await expect(pool.connect(a.lendingCo).setFloorInputs(1n, 2n, 3n, ev)).to.be.revertedWithCustomError(pool, "AssurancePoolNotSigner");
+      await pool.connect(a.signerA).setFloorInputs(usd(1), usd(2), usd(3), ev);
+      expect(await pool.coverageCap()).to.equal(0n);
+      await expect(pool.connect(a.signerA).setFloorInputs(usd(1), usd(2), usd(3), ev)).to.be.revertedWithCustomError(pool, "AssurancePoolSameSigner");
+      // Different figures are a different proposal.
+      await pool.connect(a.signerB).setFloorInputs(usd(1), usd(2), usd(4), ev);
+      expect(await pool.coverageCap()).to.equal(0n);
+      await expect(pool.connect(a.signerB).setFloorInputs(usd(1), usd(2), usd(3), ev))
+        .to.emit(pool, "FloorInputsSet").withArgs(usd(1), usd(2), usd(3), ev, a.signerA.address, a.signerB.address);
+      expect(await pool.timingBufferShortfall()).to.equal(usd(1));
+      expect(await pool.coverageCap()).to.equal(usd(2));
+      expect(await pool.attestedCoveredBook()).to.equal(usd(3));
+      expect(await pool.floorEvidenceHash()).to.equal(ev);
+      await expect(pool.connect(a.signerA).setFloorInputs(1n, 1n, 1n, ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "AssurancePoolInvalidAmount");
+    });
+
+    it("floor = max(shortfall, floorBps x covered book); covered book = max(sources, attested)", async function () {
+      const source: any = await (await ethers.getContractFactory("MockExposureSource")).deploy();
+      await governed("setExposureSources", [[await source.getAddress()]]);
+      await source.setFixedExposure(usd(100_000));
+      expect(await pool.coveredBookPrincipal()).to.equal(usd(100_000));
+      expect(await pool.backstopFloor()).to.equal(usd(5_000));
+      await setFloorInputs(a, usd(7_000), 0n, usd(50_000));
+      expect(await pool.backstopFloor()).to.equal(usd(7_000));
+      await setFloorInputs(a, 0n, 0n, usd(200_000), ethers.id("m2"));
+      expect(await pool.coveredBookPrincipal()).to.equal(usd(200_000));
+      expect(await pool.backstopFloor()).to.equal(usd(10_000));
+      await governed("setFloorBps", [1_000n]);
+      expect(await pool.backstopFloor()).to.equal(usd(20_000));
+    });
+
+    it("a source that cannot answer counts as nothing, and does not block deposits", async function () {
+      await governed("setExposureSources", [[await usdc.getAddress()]]); // has no poolExposure()
+      expect(await pool.coveredBookPrincipal()).to.equal(0n);
+      await fund(a, usdc, a.treasury, TAG.INTERCHANGE, usd(10));
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(usd(5));
+    });
+  });
+
+  describe("draws (13e)", function () {
+    beforeEach(async function () {
+      await fund(a, usdc, a.lendingCo, TAG.RECOVERY, usd(10_000));
+      await setFloorInputs(a, 0n, usd(8_000), 0n);
+    });
+
+    it("only Lending Co.'s Registered Draw Address requests, once per period", async function () {
+      for (const who of [a.lendingCo, a.lossReserve, a.signerA, a.treasury, ctx.outsider]) {
+        await expect(pool.connect(who).requestDraw(1, usd(1), ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "AssurancePoolNotDrawAddress");
       }
+      await expect(pool.connect(a.drawer).requestDraw(1, usd(1_000), ethers.id("e")))
+        .to.emit(pool, "DrawRequested").withArgs(0n, 1n, usd(1_000), ethers.id("e"));
+      await expect(pool.connect(a.drawer).requestDraw(1, usd(1), ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "AssurancePoolPeriodAlreadyDrawn");
+      await expect(pool.connect(a.drawer).requestDraw(2, 0n, ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "AssurancePoolInvalidAmount");
+      expect(await pool.pendingDrawRequests()).to.equal(usd(1_000));
     });
 
-    it("cannot withdraw more than the accounted excess", async function () {
-      const { assurancePool, admin, instrument, usdc } = ctx;
-      await fundPrimary(100n * ONE_USDC);
-      await fundExcess(10n * ONE_USDC);
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
+    it("approved by one signer, released by another, to the loss-reserve address only", async function () {
+      await pool.connect(a.drawer).requestDraw(1, usd(1_000), ethers.id("e"));
+      await expect(pool.connect(a.drawer).approveDraw(0, usd(1_000))).to.be.revertedWithCustomError(pool, "AssurancePoolNotSigner");
+      await expect(pool.connect(a.signerA).approveDraw(0, usd(1_001))).to.be.revertedWithCustomError(pool, "AssurancePoolBadDrawState");
+      await expect(pool.connect(a.signerA).approveDraw(0, usd(800)))
+        .to.emit(pool, "DrawApproved").withArgs(0n, usd(800), a.signerA.address);
+      expect(await pool.pendingDrawRequests()).to.equal(0n);
+      expect(await pool.approvedUnpaidDraws()).to.equal(usd(800));
+      expect(await pool.backstopBalance()).to.equal(usd(9_200));
+      await expect(pool.connect(a.signerA).approveDraw(0, usd(800))).to.be.revertedWithCustomError(pool, "AssurancePoolBadDrawState");
 
-      await expect(
-        assurancePool.connect(instrument).withdraw(11n * ONE_USDC)
-      ).to.be.revertedWith("AssurancePool: Insufficient excess reserve");
-      await expect(
-        assurancePool.connect(instrument).withdrawToken(await usdc.getAddress(), 11n * ONE_USDC)
-      ).to.be.revertedWith("AssurancePool: Insufficient excess reserve");
-
-      expect(await assurancePool.primaryBalance()).to.equal(100n * ONE_USDC);
+      await expect(pool.connect(a.signerA).releaseDraw(0)).to.be.revertedWithCustomError(pool, "AssurancePoolSameSigner");
+      await expect(pool.connect(a.drawer).releaseDraw(0)).to.be.revertedWithCustomError(pool, "AssurancePoolNotSigner");
+      await expect(pool.connect(a.signerB).releaseDraw(0))
+        .to.emit(pool, "DrawReleased").withArgs(0n, usd(800), a.lossReserve.address, a.signerB.address);
+      expect(await usdc.balanceOf(a.lossReserve.address)).to.equal(usd(800));
+      // The disputed 200 stayed in the backstop.
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(usd(9_200));
+      expect(await pool.approvedUnpaidDraws()).to.equal(0n);
+      await expect(pool.connect(a.signerC).releaseDraw(0)).to.be.revertedWithCustomError(pool, "AssurancePoolBadDrawState");
     });
 
-    it("reports held value against the accounted total, for drift monitoring", async function () {
-      // Held value is a view, not an enforcement hook: it is priced through the oracle and moves
-      // with valuation drift, which belongs to monitoring that alerts rather than corrects.
-      const { assurancePool } = ctx;
-      await fundPrimary(100n * ONE_USDC);
-      await fundBuffer(25n * ONE_USDC);
-      await fundExcess(50n * ONE_USDC);
-
-      expect(await assurancePool.heldReserveValue()).to.equal(175n * ONE_USDC);
-      expect(await assurancePool.reserveBalance()).to.equal(125n * ONE_USDC);
-    });
-  });
-
-  describe("held tokens", function () {
-    // Acceptance is wider than the reserve token and the three configured stablecoins: anything
-    // the oracle whitelists is accepted. Accounting and payout used to enumerate only those four,
-    // so a whitelisted token that arrived was invisible to held value and to RTD, and could never
-    // be handed back.
-
-    async function whitelistedToken() {
-      // A token that is accepted but is neither the reserve token nor a configured stablecoin.
-      const { assuranceOracle, tokenRegistry, admin } = ctx;
-      const MockERC20 = await ethers.getContractFactory("MockERC20");
-      const token = await MockERC20.deploy("Pool Token", "POOL", 18);
-
-      await tokenRegistry.registerToken(
-        await token.getAddress(), 31337, await token.getAddress(), ethers.parseEther("1")
-      );
-      await tokenRegistry.setStablecoin(await token.getAddress(), false);
-      // Priced from the registry rather than a pool, since there is no market for it here.
-      await assuranceOracle.connect(admin).setForceRegistryFallback(await token.getAddress(), true);
-      return token;
-    }
-
-    it("accounts for the reserve token alone until something else arrives", async function () {
-      const { assurancePool, usdc, usdt, dai } = ctx;
-      expect(await assurancePool.heldTokens()).to.deep.equal([await usdc.getAddress()]);
-
-      await fundPrimary(100n * ONE_USDC);
-      expect(await assurancePool.heldTokens()).to.deep.equal([await usdc.getAddress()]);
-
-      // The payout order is a different set: the configured stablecoins are valid targets
-      // whether or not the pool has ever received them.
-      const priority = await assurancePool.withdrawalPriority();
-      expect(priority[0]).to.equal(await usdc.getAddress());
-      expect(priority).to.include(await usdt.getAddress());
-      expect(priority).to.include(await dai.getAddress());
+    it("approving zero closes a fully disputed request", async function () {
+      await pool.connect(a.drawer).requestDraw(1, usd(1_000), ethers.id("e"));
+      await pool.connect(a.signerA).approveDraw(0, 0n);
+      expect((await pool.drawAt(0)).status).to.equal(4n); // Closed
+      expect(await pool.pendingDrawRequests()).to.equal(0n);
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(usd(10_000));
     });
 
-    it("counts a legacy holding in held value", async function () {
-      // Changed by the X-9 fix: a whitelisted token can no longer be deposited, but one the pool
-      // already holds is still enumerated and priced.
-      const { assurancePool } = ctx;
-      const token = await whitelistedToken();
-      await holdLegacy(token, 40n * 10n ** 18n);
-
-      expect(await assurancePool.heldTokens()).to.include(await token.getAddress());
-      expect(await assurancePool.heldReserveValue()).to.equal(40n * ONE_USDC);
+    it("releases in request order", async function () {
+      await pool.connect(a.drawer).requestDraw(1, usd(100), ethers.ZeroHash);
+      await pool.connect(a.drawer).requestDraw(2, usd(200), ethers.ZeroHash);
+      await pool.connect(a.signerA).approveDraw(1, usd(200));
+      await expect(pool.connect(a.signerB).releaseDraw(1)).to.be.revertedWithCustomError(pool, "AssurancePoolDrawOutOfOrder");
+      await pool.connect(a.signerA).approveDraw(0, usd(100));
+      await pool.connect(a.signerB).releaseDraw(0);
+      await pool.connect(a.signerB).releaseDraw(1);
+      // A closed request is stepped over.
+      await pool.connect(a.drawer).requestDraw(3, usd(50), ethers.ZeroHash);
+      await pool.connect(a.drawer).requestDraw(4, usd(60), ethers.ZeroHash);
+      await pool.connect(a.signerA).approveDraw(2, 0n);
+      await pool.connect(a.signerA).approveDraw(3, usd(60));
+      await pool.connect(a.signerB).releaseDraw(3);
+      expect(await usdc.balanceOf(a.lossReserve.address)).to.equal(usd(360));
     });
 
-    it("can pay a legacy holding back out again", async function () {
-      // The trap this closes: value that could enter but never leave. Booked by a rebalance and
-      // paid through the equivalent-value sweep.
-      const { assurancePool, admin, instrument, operator, usdc } = ctx;
-      const token = await whitelistedToken();
-      const amount = 40n * 10n ** 18n;
-      await holdLegacy(token, amount);
-      await assurancePool.connect(operator).rebalanceRTD();
-      expect(await assurancePool.excessBalance()).to.equal(40n * ONE_USDC);
-
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
-      await assurancePool.connect(instrument).withdrawToken(await usdc.getAddress(), 40n * ONE_USDC);
-
-      expect(await token.balanceOf(instrument.address)).to.equal(amount);
-      expect(await assurancePool.excessBalance()).to.equal(0n);
-    });
-
-    it("keeps accounting when a held token becomes unpriceable", async function () {
-      // Enumerating what actually arrived means the accounting now depends on pricing tokens the
-      // pool did not used to look at. A token that is de-whitelisted, or whose pool cannot serve
-      // a TWAP window, has no price -- and that must not take the reserve accounting down with it.
-      const { assurancePool, tokenRegistry, admin, instrument, usdc } = ctx;
-      const token = await whitelistedToken();
-      await holdLegacy(token, 40n * 10n ** 18n);
-      await fundPrimary(100n * ONE_USDC);
-
-      expect(await assurancePool.heldReserveValue()).to.equal(140n * ONE_USDC);
-
-      // The operator de-whitelists it. It is still sitting in the pool.
-      await tokenRegistry.removeToken(await token.getAddress());
-
-      // Accounting continues on what it can still value, and says what it could not.
-      expect(await assurancePool.heldReserveValue()).to.equal(100n * ONE_USDC);
-      expect(await assurancePool.unpricedTokenCount()).to.equal(1n);
-
-      // And the pool is not bricked: reserve-token withdrawals still work.
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
-      await fundExcess(10n * ONE_USDC);
-      await assurancePool.connect(instrument).withdraw(10n * ONE_USDC);
-      expect(await usdc.balanceOf(instrument.address)).to.equal(10n * ONE_USDC);
-    });
-
-    it("still refuses to pay out a token it cannot value", async function () {
-      // Tolerance belongs to the accounting, not the payout. Handing over an amount nobody can
-      // price is how a pool is drained by arithmetic rather than by access.
-      const { assurancePool, tokenRegistry, admin, instrument, operator, usdc } = ctx;
-      const token = await whitelistedToken();
-      await holdLegacy(token, 40n * 10n ** 18n);
-      await assurancePool.connect(operator).rebalanceRTD(); // books it as excess
-
-      await tokenRegistry.removeToken(await token.getAddress());
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
-
-      await expect(
-        assurancePool.connect(instrument).withdrawToken(await usdc.getAddress(), 40n * ONE_USDC)
-      ).to.be.reverted;
-    });
-
-    it("keeps holding the old reserve token after the reserve token changes", async function () {
-      // Dropping it would make the balance invisible to accounting and unreachable by the payout
-      // path at the same moment.
-      const { assurancePool, admin, usdc, usdt, tokenRegistry, assuranceOracle } = ctx;
-      await fundPrimary(100n * ONE_USDC);
-      // USDT is no longer priced at a fixed dollar (audit X-15); give it a price to be read in.
-      await tokenRegistry.registerToken(await usdt.getAddress(), 31337, await usdt.getAddress(), ethers.parseEther("1"));
-      await assuranceOracle.connect(admin).setForceRegistryFallback(await usdt.getAddress(), true);
-
-      await assurancePool.connect(admin).setReserveToken(await usdt.getAddress());
-
-      const held = await assurancePool.heldTokens();
-      expect(held).to.include(await usdc.getAddress());
-      expect(held).to.include(await usdt.getAddress());
-      expect(await assurancePool.heldReserveValue()).to.equal(100n * ONE_USDC);
-    });
-
-    it("does not record the same token twice", async function () {
-      const { assurancePool, usdc } = ctx;
-      await fundPrimary(10n * ONE_USDC);
-      await fundBuffer(10n * ONE_USDC);
-      await fundExcess(10n * ONE_USDC);
-
-      expect(await assurancePool.heldTokens()).to.deep.equal([await usdc.getAddress()]);
-      expect(await assurancePool.withdrawalPriority()).to.have.lengthOf(3); // usdc, usdt, dai
+    it("reverts above availableCoverage() at approval and at release", async function () {
+      await pool.connect(a.drawer).requestDraw(1, usd(9_000), ethers.ZeroHash);
+      // Coverage cap is 8,000.
+      await expect(pool.connect(a.signerA).approveDraw(0, usd(8_001))).to.be.revertedWithCustomError(pool, "AssurancePoolAboveCoverage");
+      await pool.connect(a.signerA).approveDraw(0, usd(8_000));
+      // The cap is cut before release: the release refuses.
+      await setFloorInputs(a, 0n, usd(5_000), 0n, ethers.id("cut"));
+      await expect(pool.connect(a.signerB).releaseDraw(0)).to.be.revertedWithCustomError(pool, "AssurancePoolAboveCoverage");
+      await setFloorInputs(a, 0n, usd(8_000), 0n, ethers.id("restored"));
+      await pool.connect(a.signerB).releaseDraw(0);
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(usd(2_000));
     });
   });
 
-  describe("RTD against pool exposure", function () {
-    // RTD answers one question: if every member defaulted tomorrow, what would this pool pay?
-    // The inherited formula divided by every credit in circulation, which over-reserves against
-    // collateral already inside the network. Reserving against unsecured credit alone is wrong in
-    // the other direction: asset-backed collateral has to be sold at an uncertain price.
-
-    let SAVINGS: string, ASSET_EXTERNAL: string, ASSET_INTERNAL: string, INCOME: string;
-
-    async function attachExposureSource() {
-      const MockExposureSource = await ethers.getContractFactory("MockExposureSource");
-      const source = await MockExposureSource.deploy();
-      await ctx.assurancePool.connect(ctx.admin).setExposureSource(await source.getAddress());
-
-      const ExposureMathHarness = await ethers.getContractFactory("ExposureMathHarness");
-      const math = await ExposureMathHarness.deploy();
-      [SAVINGS, ASSET_EXTERNAL, ASSET_INTERNAL, INCOME] = await Promise.all([
-        math.SAVINGS(), math.ASSET_EXTERNAL(), math.ASSET_INTERNAL(), math.INCOME(),
-      ]);
-      return source;
-    }
-
-    it("needs no reserves when all credit is savings-backed", async function () {
-      // The plan's test: with only savings-backed credit live the correct figure is exactly zero.
-      const { assurancePool, stableCredit } = ctx;
-      await drawCredit(ctx, 1_000n * ONE_USDC);
-
-      const source = await attachExposureSource();
-      await source.addPosition(SAVINGS, 1_000n * ONE_USDC, 1_000n * ONE_USDC, 10_000n);
-
-      // Credit is outstanding and the primary reserve is empty.
-      expect(await stableCredit.totalSupply()).to.equal(1_000n * ONE_USDC);
-      expect(await assurancePool.primaryBalance()).to.equal(0n);
-
-      expect(await assurancePool.poolExposure()).to.equal(0n);
-      expect(await assurancePool.neededReserves()).to.equal(0n);
-      expect(await assurancePool.hasValidRTD()).to.equal(true);
+  describe("Assurance grants (13e)", function () {
+    beforeEach(async function () {
+      await fund(a, usdc, a.treasury, TAG.BOARD_ALLOCATION, usd(1_000));
     });
 
-    it("counts an under-collateralized asset-backed position at exactly its shortfall", async function () {
-      // The plan's second test: collateral below debt / haircut contributes the gap and no more.
-      const { assurancePool } = ctx;
-      await drawCredit(ctx, 2_000n * ONE_USDC);
-
-      const source = await attachExposureSource();
-      await source.addPosition(ASSET_EXTERNAL, 2_000n * ONE_USDC, 2_600n * ONE_USDC, 7000n);
-
-      // 2,600 x 0.70 = 1,820 realizable, so the pool covers 180.
-      expect(await assurancePool.poolExposure()).to.equal(180n * ONE_USDC);
-      expect(await assurancePool.neededReserves()).to.equal(36n * ONE_USDC); // 20% of 180
+    it("two signers, from MEMBER_ASSURANCE only, to the disbursement address, once per grant", async function () {
+      const g = ethers.id("grant-1");
+      await expect(pool.connect(a.lendingCo).releaseAssurance(g, usd(100), ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "AssurancePoolNotSigner");
+      await pool.connect(a.signerA).releaseAssurance(g, usd(100), ethers.id("ev"));
+      expect(await usdc.balanceOf(a.disbursement.address)).to.equal(0n);
+      await expect(pool.connect(a.signerA).releaseAssurance(g, usd(100), ethers.id("ev"))).to.be.revertedWithCustomError(pool, "AssurancePoolSameSigner");
+      await expect(pool.connect(a.signerB).releaseAssurance(g, usd(100), ethers.id("ev")))
+        .to.emit(pool, "AssuranceReleased").withArgs(g, usd(100), ethers.id("ev"), a.disbursement.address, a.signerA.address);
+      expect(await usdc.balanceOf(a.disbursement.address)).to.equal(usd(100));
+      expect(await pool.balanceOf(ASSURANCE)).to.equal(usd(400));
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(usd(500));
+      await expect(pool.connect(a.signerA).releaseAssurance(g, usd(1), ethers.id("ev"))).to.be.revertedWithCustomError(pool, "AssurancePoolGrantAlreadyPaid");
     });
 
-    it("stops counting an asset-backed position once its collateral clears the debt", async function () {
-      const { assurancePool } = ctx;
-      await drawCredit(ctx, 2_000n * ONE_USDC);
-
-      const source = await attachExposureSource();
-      await source.addPosition(ASSET_EXTERNAL, 2_000n * ONE_USDC, 3_000n * ONE_USDC, 7000n);
-
-      expect(await assurancePool.poolExposure()).to.equal(0n);
-      expect(await assurancePool.neededReserves()).to.equal(0n);
-    });
-
-    it("counts an unsecured position in full", async function () {
-      const { assurancePool } = ctx;
-      await drawCredit(ctx, 1_200n * ONE_USDC);
-
-      const source = await attachExposureSource();
-      await source.addPosition(INCOME, 1_200n * ONE_USDC, 0n, 0n);
-
-      expect(await assurancePool.poolExposure()).to.equal(1_200n * ONE_USDC);
-      expect(await assurancePool.neededReserves()).to.equal(240n * ONE_USDC); // 20% of 1,200
-    });
-
-    it("reserves against a mixed book at neither extreme", async function () {
-      // The worked example, scaled to the credit actually outstanding here. Reserving against
-      // total debt or against unsecured debt alone both give a different, wrong answer.
-      const { assurancePool } = ctx;
-      await drawCredit(ctx, 7_140n * ONE_USDC);
-
-      const source = await attachExposureSource();
-      await source.addPosition(SAVINGS, 3_000n * ONE_USDC, 3_000n * ONE_USDC, 10_000n);
-      await source.addPosition(INCOME, 1_200n * ONE_USDC, 0n, 0n);
-      await source.addPosition(ASSET_EXTERNAL, 2_000n * ONE_USDC, 2_600n * ONE_USDC, 7000n);
-      await source.addPosition(INCOME, 940n * ONE_USDC, 0n, 0n);
-
-      expect(await assurancePool.poolExposure()).to.equal(2_320n * ONE_USDC);
-      expect(await assurancePool.neededReserves()).to.equal(464n * ONE_USDC); // 20% of 2,320
-
-      // Not 20% of the full 7,140, and not 20% of the 2,140 that is unsecured.
-      expect(await assurancePool.neededReserves()).to.not.equal(1_428n * ONE_USDC);
-      expect(await assurancePool.neededReserves()).to.not.equal(428n * ONE_USDC);
-    });
-
-    it("haircuts an internal claim on its own terms, not a market's", async function () {
-      // A bond backing a member's debt is a claim on the co-op. Seizing it cancels an obligation
-      // rather than realizing an asset, so it is haircut near par -- and the pool must not
-      // reserve against a market swing that cannot happen to it.
-      const { assurancePool } = ctx;
-      await drawCredit(ctx, 8_000n * ONE_USDC);
-
-      const source = await attachExposureSource();
-      await source.addPosition(ASSET_INTERNAL, 8_000n * ONE_USDC, 10_000n * ONE_USDC, 9500n);
-
-      expect(await assurancePool.poolExposure()).to.equal(0n);
-      expect(await assurancePool.neededReserves()).to.equal(0n);
-    });
-
-    it("treats all credit as unsecured while no exposure source is set", async function () {
-      // Regression guard on the fallback: over-reserving is the conservative direction to be
-      // wrong in, and must survive until Phase 1 wires a real source.
-      const { assurancePool, stableCredit } = ctx;
-      await drawCredit(ctx, 1_000n * ONE_USDC);
-
-      expect(await assurancePool.poolExposure()).to.equal(await stableCredit.totalSupply());
-      expect(await assurancePool.neededReserves()).to.equal(200n * ONE_USDC);
-    });
-
-    it("clamps an exposure source that over-reports", async function () {
-      // The pool cannot pay out more than the credit that exists.
-      const { assurancePool, stableCredit } = ctx;
-      await drawCredit(ctx, 1_000n * ONE_USDC);
-
-      const source = await attachExposureSource();
-      await source.addPosition(INCOME, 10_000n * ONE_USDC, 0n, 0n);
-
-      expect(await assurancePool.poolExposure()).to.equal(await stableCredit.totalSupply());
-    });
-
-    it("reports a valid RTD once the exposure is reserved against", async function () {
-      const { assurancePool } = ctx;
-      await drawCredit(ctx, 1_000n * ONE_USDC);
-
-      const source = await attachExposureSource();
-      await source.addPosition(INCOME, 500n * ONE_USDC, 0n, 0n);
-
-      expect(await assurancePool.hasValidRTD()).to.equal(false);
-      await fundPrimary(100n * ONE_USDC); // 20% of the 500 exposed
-      expect(await assurancePool.hasValidRTD()).to.equal(true);
-      expect(await assurancePool.neededReserves()).to.equal(0n);
-    });
-
-    it("draws its numerator from this pool alone", async function () {
-      // RTD reads the AssurancePool and nothing else. Value sitting in the pool that the primary
-      // reserve does not account for -- another instrument's money, an unallocated transfer --
-      // must not raise the ratio.
-      const { assurancePool, usdc, admin } = ctx;
-      await drawCredit(ctx, 1_000n * ONE_USDC);
-      await fundPrimary(100n * ONE_USDC);
-
-      const before = await assurancePool.RTD();
-      await usdc.mint(await assurancePool.getAddress(), 5_000n * ONE_USDC);
-
-      expect(await assurancePool.RTD()).to.equal(before);
-      expect(await assurancePool.primaryBalance()).to.equal(100n * ONE_USDC);
-    });
-
-    it("only lets an admin set the exposure source", async function () {
-      const { assurancePool, operator } = ctx;
-      await expect(
-        assurancePool.connect(operator).setExposureSource(ethers.ZeroAddress)
-      ).to.be.revertedWith("AssurancePool: caller does not have admin access");
+    it("reverts when MEMBER_ASSURANCE is short, with the backstop full", async function () {
+      await expect(pool.connect(a.signerA).releaseAssurance(ethers.id("big"), usd(501), ethers.ZeroHash))
+        .to.be.revertedWithCustomError(pool, "AssurancePoolCompartmentShort");
     });
   });
 
-  describe("moving between the tiers", function () {
-    // The pool on Base Sepolia held everything in the buffer and nothing in primary: repayments
-    // only ever reached the buffer, nothing could move buffer into primary with no exposure out,
-    // and a rebalance -- from anyone -- turned the whole pool into excess, the spendable tier.
+  describe("transfers between compartments (13f)", function () {
+    beforeEach(async function () {
+      await fund(a, usdc, a.treasury, TAG.BOARD_ALLOCATION, usd(2_000));
+    });
 
-    async function pricedToken() {
-      const { assuranceOracle, tokenRegistry, admin } = ctx;
-      const MockERC20 = await ethers.getContractFactory("MockERC20");
-      const token = await MockERC20.deploy("Pool Token", "POOL", 18);
-      await tokenRegistry.registerToken(await token.getAddress(), 31337, await token.getAddress(), ethers.parseEther("1"));
-      await tokenRegistry.setStablecoin(await token.getAddress(), false);
-      await assuranceOracle.connect(admin).setForceRegistryFallback(await token.getAddress(), true);
-      return token;
+    it("proposed by one signer, executed by another after the delay", async function () {
+      await expect(pool.connect(a.lendingCo).proposeTransfer(BACKSTOP, ASSURANCE, usd(100), ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "AssurancePoolNotSigner");
+      await expect(pool.connect(a.signerA).proposeTransfer(BACKSTOP, ethers.encodeBytes32String("NOPE"), usd(100), ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "AssurancePoolUnknownCompartment");
+      await expect(pool.connect(a.signerA).proposeTransfer(BACKSTOP, BACKSTOP, usd(100), ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "AssurancePoolInvalidAmount");
+      await expect(pool.connect(a.signerA).proposeTransfer(BACKSTOP, ASSURANCE, usd(100), ethers.id("r")))
+        .to.emit(pool, "TransferProposed").withArgs(0n, BACKSTOP, ASSURANCE, usd(100), ethers.id("r"), a.signerA.address);
+      await expect(pool.connect(a.signerA).executeTransfer(0)).to.be.revertedWithCustomError(pool, "AssurancePoolSameSigner");
+      await expect(pool.connect(a.signerB).executeTransfer(0)).to.be.revertedWithCustomError(pool, "AssurancePoolTransferTooEarly");
+      await advance(14 * DAY);
+      await expect(pool.connect(a.signerB).executeTransfer(0))
+        .to.emit(pool, "TransferExecuted").withArgs(0n, BACKSTOP, ASSURANCE, usd(100), a.signerB.address);
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(usd(900));
+      expect(await pool.balanceOf(ASSURANCE)).to.equal(usd(1_100));
+      await expect(pool.connect(a.signerC).executeTransfer(0)).to.be.revertedWithCustomError(pool, "AssurancePoolBadTransfer");
+    });
+
+    it("into the Credit Backstop: two signers, no delay", async function () {
+      await pool.connect(a.signerA).proposeTransfer(ASSURANCE, BACKSTOP, usd(300), ethers.ZeroHash);
+      await pool.connect(a.signerB).executeTransfer(0);
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(usd(1_300));
+    });
+
+    it("never takes the backstop below its floor plus pending draw requests", async function () {
+      await setFloorInputs(a, usd(600), usd(1_000), 0n);
+      await pool.connect(a.drawer).requestDraw(1, usd(200), ethers.ZeroHash);
+      // 1,000 held; floor 600 + pending 200 leaves 200 movable.
+      await pool.connect(a.signerA).proposeTransfer(BACKSTOP, ASSURANCE, usd(201), ethers.ZeroHash);
+      await pool.connect(a.signerA).proposeTransfer(BACKSTOP, ASSURANCE, usd(200), ethers.ZeroHash);
+      await advance(14 * DAY);
+      await expect(pool.connect(a.signerB).executeTransfer(0)).to.be.revertedWithCustomError(pool, "AssurancePoolBelowFloor");
+      await pool.connect(a.signerB).executeTransfer(1);
+      expect(await pool.backstopBalance()).to.equal(usd(800));
+    });
+
+    it("a governed transfer delay can only lengthen", async function () {
+      await approve("setTransferDelay", [BigInt(13 * DAY)]);
+      await expect(pool.connect(gov).setTransferDelay(13 * DAY)).to.be.revertedWithCustomError(pool, "AssurancePoolInvalidAmount");
+      await governed("setTransferDelay", [BigInt(20 * DAY)]);
+      await pool.connect(a.signerA).proposeTransfer(BACKSTOP, ASSURANCE, usd(1), ethers.ZeroHash);
+      await advance(14 * DAY);
+      await expect(pool.connect(a.signerB).executeTransfer(0)).to.be.revertedWithCustomError(pool, "AssurancePoolTransferTooEarly");
+    });
+  });
+
+  describe("security pause (13g)", function () {
+    beforeEach(async function () {
+      await fund(a, usdc, a.treasury, TAG.BOARD_ALLOCATION, usd(2_000));
+      await setFloorInputs(a, 0n, usd(1_000), 0n);
+      await pool.connect(a.drawer).requestDraw(1, usd(100), ethers.ZeroHash);
+      await pool.connect(a.signerA).approveDraw(0, usd(100));
+      await pool.connect(a.signerA).proposeTransfer(ASSURANCE, BACKSTOP, usd(10), ethers.ZeroHash);
+    });
+
+    async function pauseBy(first: any, second: any, fn = "pause") {
+      await pool.connect(first)[fn]();
+      return pool.connect(second)[fn]();
     }
 
-    it("lets an operator move buffer into primary, where the RTD counts it", async function () {
-      const { assurancePool, operator } = ctx;
-      await fundBuffer(125n * ONE_USDC);
-      await drawCredit(ctx, 1_000n * ONE_USDC); // no exposure source: all of it is exposure
-      expect(await assurancePool.RTD()).to.equal(0n);
+    it("takes two signers, blocks only outflows and transfers, and lapses after 72 hours", async function () {
+      await expect(pool.connect(a.lendingCo).pause()).to.be.revertedWithCustomError(pool, "AssurancePoolNotSigner");
+      await pool.connect(a.signerA).pause();
+      expect(await pool.paused()).to.equal(false);
+      await expect(pool.connect(a.signerA).pause()).to.be.revertedWithCustomError(pool, "AssurancePoolSameSigner");
+      await expect(pool.connect(a.signerB).pause()).to.emit(pool, "SecurityPaused");
+      expect(await pool.paused()).to.equal(true);
 
-      await expect(assurancePool.connect(operator).moveBufferToPrimary(100n * ONE_USDC))
-        .to.emit(assurancePool, "BufferMovedToPrimary")
-        .withArgs(100n * ONE_USDC, 100n * ONE_USDC);
+      await expect(pool.connect(a.signerB).releaseDraw(0)).to.be.revertedWithCustomError(pool, "AssurancePoolPaused");
+      await expect(pool.connect(a.signerB).executeTransfer(0)).to.be.revertedWithCustomError(pool, "AssurancePoolPaused");
+      await pool.connect(a.signerA).releaseAssurance(ethers.id("g"), usd(10), ethers.ZeroHash);
+      await expect(pool.connect(a.signerB).releaseAssurance(ethers.id("g"), usd(10), ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "AssurancePoolPaused");
+      // Money still comes in, and Lending Co. can still ask.
+      await fund(a, usdc, a.treasury, TAG.INTERCHANGE, usd(10));
+      await pool.connect(a.drawer).requestDraw(2, usd(5), ethers.ZeroHash);
 
-      expect(await assurancePool.primaryBalance()).to.equal(100n * ONE_USDC);
-      expect(await assurancePool.bufferBalance()).to.equal(25n * ONE_USDC);
-      expect(await assurancePool.RTD()).to.equal(ethers.parseEther("0.1"));
+      await advance(72 * 60 * 60);
+      expect(await pool.paused()).to.equal(false);
+      await pool.connect(a.signerB).releaseDraw(0);
     });
 
-    it("moves buffer only for an operator, and never more than the buffer holds", async function () {
-      const { assurancePool, operator, outsider } = ctx;
-      await fundBuffer(50n * ONE_USDC);
-      await expect(assurancePool.connect(outsider).moveBufferToPrimary(10n * ONE_USDC)).to.be.revertedWith(
-        "AssurancePool: caller does not have operator access"
-      );
-      await expect(assurancePool.connect(operator).moveBufferToPrimary(51n * ONE_USDC)).to.be.revertedWith(
-        "AssurancePool: Insufficient buffer reserve"
-      );
-      await expect(assurancePool.connect(operator).moveBufferToPrimary(0n)).to.be.revertedWith("AssurancePool: Cannot move 0");
+    it("renews only by two signers while it stands, and can be lifted early by two", async function () {
+      await expect(pool.connect(a.signerA).renewPause()).to.be.revertedWithCustomError(pool, "AssurancePoolNotPaused");
+      await pauseBy(a.signerA, a.signerB);
+      await advance(70 * 60 * 60);
+      await pool.connect(a.signerB).renewPause();
+      await expect(pool.connect(a.signerB).renewPause()).to.be.revertedWithCustomError(pool, "AssurancePoolSameSigner");
+      await pool.connect(a.signerC).renewPause();
+      await advance(70 * 60 * 60);
+      expect(await pool.paused()).to.equal(true);
+      await pool.connect(a.signerA).unpause();
+      expect(await pool.paused()).to.equal(true);
+      await pool.connect(a.signerC).unpause();
+      expect(await pool.paused()).to.equal(false);
+      await pool.connect(a.signerB).releaseDraw(0);
+    });
+  });
+
+  describe("prohibited (13g)", function () {
+    it("has no sweep, rescue, withdraw, approve or admin transfer", async function () {
+      const names = pool.interface.fragments
+        .filter((f: any) => f.type === "function" && f.stateMutability !== "view" && f.stateMutability !== "pure")
+        .map((f: any) => f.name)
+        .sort();
+      expect(names).to.deep.equal([
+        "addCompartment", "approveAction", "approveDraw", "deposit", "executeTransfer", "initialize",
+        "pause", "proposeTransfer", "releaseAssurance", "releaseDraw", "removeCompartment", "renewPause",
+        "requestDraw", "setAllocation", "setAssuranceDisbursementAddress", "setExposureSources",
+        "setFloorBps", "setFloorInputs", "setGovernance", "setLendingCoAddresses", "setNetworkRegistry",
+        "setPayer", "setSigner", "setTransferDelay", "unpause", "upgradeTo", "upgradeToAndCall",
+      ].sort());
     });
 
-    it("rebalances without emptying the buffer or the primary reserve into excess", async function () {
-      const { assurancePool, operator, outsider } = ctx;
-      await fundBuffer(125n * ONE_USDC);
-      await fundPrimary(50n * ONE_USDC);
-
-      await assurancePool.connect(outsider).rebalanceRTDPublic();
-      await assurancePool.connect(operator).rebalanceRTD();
-
-      expect(await assurancePool.bufferBalance()).to.equal(125n * ONE_USDC);
-      expect(await assurancePool.primaryBalance()).to.equal(50n * ONE_USDC);
-      expect(await assurancePool.excessBalance()).to.equal(0n);
-    });
-
-    it("takes a repricing loss from excess, then buffer, and books the gain back to the tier that lost (X-16)", async function () {
-      // Changed by the X-9 and X-16 fixes: a held token can no longer be deposited into a tier,
-      // so the holding is a legacy one; and a later gain now restores the tier the loss came out
-      // of before any of it is excess. It used to land in excess, the withdrawable tier.
-      const { assurancePool, tokenRegistry, admin, operator, instrument } = ctx;
-      const token = await pricedToken();
-      await fundBuffer(50n * ONE_USDC);
-      await holdLegacy(token, 40n * 10n ** 18n);
-      await assurancePool.connect(operator).rebalanceRTD(); // books the 40 as excess
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
-      await assurancePool.connect(instrument).withdraw(38n * ONE_USDC); // excess 2
-      expect(await assurancePool.excessBalance()).to.equal(2n * ONE_USDC);
-
-      // half its price: 20 lost, 2 from excess and 18 from the buffer
-      await tokenRegistry.setFallbackPrice(await token.getAddress(), ethers.parseEther("0.5"));
-      await expect(assurancePool.connect(operator).rebalanceRTD())
-        .to.emit(assurancePool, "ReservesRepriced")
-        .withArgs(52n * ONE_USDC, 32n * ONE_USDC);
-      expect(await assurancePool.excessBalance()).to.equal(0n);
-      expect(await assurancePool.bufferBalance()).to.equal(32n * ONE_USDC);
-      expect(await assurancePool.repricingLossFromBuffer()).to.equal(18n * ONE_USDC);
-
-      // back to where it was: the buffer gets its 18 back first, only the rest is excess
-      await tokenRegistry.setFallbackPrice(await token.getAddress(), ethers.parseEther("1"));
-      await assurancePool.connect(ctx.outsider).rebalanceRTDPublic();
-      expect(await assurancePool.bufferBalance()).to.equal(50n * ONE_USDC);
-      expect(await assurancePool.excessBalance()).to.equal(2n * ONE_USDC);
-      expect(await assurancePool.repricingLossFromBuffer()).to.equal(0n);
-    });
-
-
-    it("lets anyone top the primary reserve up, but only an operator move it out", async function () {
-      const { assurancePool, operator, outsider } = ctx;
-      await drawCredit(ctx, 1_000n * ONE_USDC); // 20% target: 200 needed
-      await fundPrimary(500n * ONE_USDC);
-
-      await assurancePool.connect(outsider).rebalanceRTDPublic();
-      expect(await assurancePool.primaryBalance()).to.equal(500n * ONE_USDC);
-
-      await assurancePool.connect(operator).rebalanceRTD();
-      expect(await assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
-    });
-
-    it("tops primary up from the buffer for anyone, below target", async function () {
-      const { assurancePool, outsider } = ctx;
-      await fundBuffer(300n * ONE_USDC);
-      await drawCredit(ctx, 1_000n * ONE_USDC);
-
-      await assurancePool.connect(outsider).rebalanceRTDPublic();
-      expect(await assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
-      expect(await assurancePool.bufferBalance()).to.equal(100n * ONE_USDC);
-      expect(await assurancePool.hasValidRTD()).to.equal(true);
-    });
-
-    it("takes a repayment into primary up to the target, the rest into the buffer", async function () {
-      const { assurancePool, usdc, admin } = ctx;
-      const pay = async (amount: bigint) => {
-        await usdc.mint(admin.address, amount);
-        await usdc.approve(await assurancePool.getAddress(), amount);
-        await assurancePool.depositRepayment(amount);
-      };
-      // nothing out: nothing needed, so all of it is buffer
-      await pay(50n * ONE_USDC);
-      expect([await assurancePool.primaryBalance(), await assurancePool.bufferBalance()]).to.deep.equal([0n, 50n * ONE_USDC]);
-
-      await drawCredit(ctx, 1_000n * ONE_USDC);
-      await pay(300n * ONE_USDC);
-      expect(await assurancePool.primaryBalance()).to.equal(200n * ONE_USDC);
-      expect(await assurancePool.bufferBalance()).to.equal(150n * ONE_USDC);
-      expect(await assurancePool.hasValidRTD()).to.equal(true);
+    it("never approves its asset to anybody", async function () {
+      await fund(a, usdc, a.treasury, TAG.BOARD_ALLOCATION, usd(100));
+      for (const who of [a.signerA, a.lossReserve, a.disbursement, a.timelock]) {
+        const address = typeof who.getAddress === "function" ? await who.getAddress() : who.address;
+        expect(await usdc.allowance(await pool.getAddress(), address)).to.equal(0n);
+      }
     });
   });
 });

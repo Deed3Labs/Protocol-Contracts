@@ -6,38 +6,20 @@
    "sha256": "d3c17fc503544dbefc6cd6552be03aecebc584ca97e5361c135d6fba8dfa980f",
    "immutables": []
   },
-  "AssuranceOracle": {
-   "source": "contracts/peripherals/AssuranceOracle.sol",
-   "sha256": "f5c51aa07a5396b49a7c1899b55458593a5f2ac1800c54bb2e0a79cc64907397",
-   "immutables": [
-    [
-     2333,
-     32
-    ],
-    [
-     2518,
-     32
-    ],
-    [
-     3630,
-     32
-    ]
-   ]
-  },
   "AssurancePool": {
    "source": "contracts/peripherals/AssurancePool.sol",
-   "sha256": "8f201657616ac21ebf7722d566f75719f4321cd5fe7da6dfb4801008f7b39633",
+   "sha256": "6d873902f5e86930d9085b601f9c63ce30641f775045a1822d92d6aee23cce07",
    "immutables": [
     [
-     7622,
+     8844,
      32
     ],
     [
-     7807,
+     9198,
      32
     ],
     [
-     9727,
+     10436,
      32
     ]
    ]
@@ -58,62 +40,62 @@
   },
   "BondVault": {
    "source": "contracts/peripherals/BondVault.sol",
-   "sha256": "3052dd40b9f70b5757606bbd6e508c01d1e2185c0bfbbd78b9501d3b3950a4c4",
+   "sha256": "0105e2b68bcc3efbe5362b51ed361252a6ffb559fbaaa97026a6ccce4d4f2eed",
    "immutables": [
     [
-     3936,
+     3903,
      32
     ],
     [
-     4347,
+     4088,
      32
     ],
     [
-     4927,
+     4568,
      32
     ]
    ]
   },
   "BurnerBond": {
    "source": "contracts/peripherals/BurnerBond.sol",
-   "sha256": "7462df5b6f5b8f34a0912a336ef3b505dbe32af0d4f5b395665f81dc7b9bbec5",
+   "sha256": "2fcd4827504be7ed7c824a9532e3a303c280265e1f07859ea26577e767a37b02",
    "immutables": []
   },
   "BurnerBondDeposit": {
    "source": "contracts/peripherals/BurnerBondDeposit.sol",
-   "sha256": "bf81d8826cdcff5c5dfc2b1a65753c55937f8793a761cc9897e813b99eaab9f8",
+   "sha256": "7ea5e9f01c0e89cf68dd7f2e57218612190e59e055b0bb14d2f91e3072ee47d3",
    "immutables": []
   },
   "BurnerBondFactory": {
    "source": "contracts/core/factories/BurnerBondFactory.sol",
-   "sha256": "16bb369cf0ab3d03a205030b5e8b9afb50f582aebcf35de0a3b8de08973a4373",
+   "sha256": "70d3900adf121c8a7aa507ea006137babaa6b7686cf33827269e996502ca241b",
    "immutables": [
     [
-     927,
+     905,
      32
     ],
     [
-     1802,
+     1743,
      32
     ],
     [
-     2930,
+     2882,
      32
     ],
     [
-     3622,
+     3529,
      32
     ],
     [
-     3905,
+     3797,
      32
     ],
     [
-     3946,
+     3837,
      32
     ],
     [
-     5570,
+     5538,
      32
     ]
    ]
@@ -138,18 +120,18 @@
   },
   "ClearCredit": {
    "source": "contracts/core/ClearCredit.sol",
-   "sha256": "0986798c7110c63328444f02477a11e0b7cc6dfbae2a721d29b35f95b14a071d",
+   "sha256": "02ce5825d0a3c80a4aae2efc52aaf7f6f4e27bcd2842b1fd4576b5a56559a733",
    "immutables": [
     [
-     9304,
+     8472,
      32
     ],
     [
-     10086,
+     9254,
      32
     ],
     [
-     12791,
+     11445,
      32
     ]
    ]
@@ -428,25 +410,25 @@
   },
   "NetworkRegistry": {
    "source": "contracts/peripherals/NetworkRegistry.sol",
-   "sha256": "d06d993ab92f19e5a80e31d3cc8759b19f76ebc77aa50f21cc3a079cc23a087b",
+   "sha256": "ec0b4586e3caad8807375d6307e292093ae0c0f505d8c378468a1b44a91feceb",
    "immutables": [
     [
-     2211,
+     2870,
      32
     ],
     [
-     2396,
+     3055,
      32
     ],
     [
-     3096,
+     3755,
      32
     ]
    ]
   },
   "OffersIssuer": {
    "source": "contracts/peripherals/OffersIssuer.sol",
-   "sha256": "732f9ae4153d0ab0677fd0dbfe6151a8462fa74eabd3bdb126a71ee767026b67",
+   "sha256": "8ab121c2c3597ac8cc0690c34f88ba0c66cb839e62086b47bb2bcdaaa80164a8",
    "immutables": [
     [
      4696,
@@ -464,18 +446,18 @@
   },
   "PayoutPool": {
    "source": "contracts/peripherals/PayoutPool.sol",
-   "sha256": "db3dbdbde707b06af62215df8c3602dfbfb12454b1582b41f5638fe38aaec24d",
+   "sha256": "774804ff53dc21c9e87617aae7184272615a604077fd1292f084e0293fc84f6f",
    "immutables": [
     [
-     3680,
+     3617,
      32
     ],
     [
-     4889,
+     4826,
      32
     ],
     [
-     11282,
+     11151,
      32
     ]
    ]

@@ -18,10 +18,10 @@ Source: [`contracts/peripherals/BondVault.sol`](../../../contracts/peripherals/B
 | `recordPurchase(uint256 bondId, uint256 principal, uint256 faceValue, uint64 maturity)` | `onlyRole(BOND_ROLE)` |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `repayFromPayoutPool(uint256 amount)` | Checked inside the function |  |
-| `repayReserve()` | Checked inside the function |  |
+| `repayReserve()` | Not in the current source |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)` | `onlyRole(BOND_ROLE)` |  |
-| `setBackstops(address _treasury, address _assurancePool, address _payoutPool)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `setBackstops(address _treasury, address _assurancePool, address _payoutPool)` | Not in the current source |  |
 | `setEncumbranceSource(address source, bytes32 kind)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `setReserveTerms(uint64 window, uint256 floorBps)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `settle(uint256 bondId, address to)` | `onlyRole(BOND_ROLE)` |  |

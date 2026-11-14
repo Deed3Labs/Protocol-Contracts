@@ -28,9 +28,7 @@ describe("TermIssuer", function () {
 
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await issuer.getAddress());
     for (const who of [coop, merchant]) {
@@ -107,9 +105,11 @@ describe("TermIssuer", function () {
 
     it("requires no capital: nothing is transferred in at origination", async function () {
       await setLimit(2_000n * ONE_USDC);
-      const reserveBefore = await ctx.assurancePool.reserveBalance();
+      const usdcBefore = await ctx.usdc.balanceOf(await ctx.stableCredit.getAddress());
+      const lenderBefore = await ctx.usdc.balanceOf(ctx.lenderOperating.address);
       await openPlan(1_000n * ONE_USDC, 970n * ONE_USDC);
-      expect(await ctx.assurancePool.reserveBalance()).to.equal(reserveBefore);
+      expect(await ctx.usdc.balanceOf(await ctx.stableCredit.getAddress())).to.equal(usdcBefore);
+      expect(await ctx.usdc.balanceOf(ctx.lenderOperating.address)).to.equal(lenderBefore);
     });
 
     it("refuses a purchase whose legs do not sum to zero", async function () {
@@ -756,7 +756,9 @@ describe("TermIssuer", function () {
       await expect(setLimit(1_000n * ONE_USDC)).to.be.revertedWithCustomError(issuer, "TermIssuerSuspended");
     });
 
-    it("paying back what was written off funds the reserve, and reinstates", async function () {
+    // Section 13: the write-off is Lending Co.'s charge-off, so the recovery goes to its operating
+    // address. It used to be deposited into the AssurancePool; no credit path calls the pool now.
+    it("paying back what was written off pays Lending Co., and reinstates", async function () {
       await openFlat();
       await advance(3 * MONTH + ONE_DAY);
       await issuer.declareDefault(ctx.member.address);
@@ -765,8 +767,7 @@ describe("TermIssuer", function () {
         .to.be.revertedWithCustomError(issuer, "TermIssuerNotReinstatable");
 
       await ctx.usdc.connect(payer).approve(await issuer.getAddress(), PLAN);
-      // The pool tops its primary reserve up to target and keeps the rest as excess.
-      const held = async () => (await ctx.assurancePool.reserveBalance()) + (await ctx.assurancePool.excessBalance());
+      const held = async () => ctx.usdc.balanceOf(ctx.lenderOperating.address);
       const before = await held();
       await issuer.connect(payer).repayWrittenOff(ctx.member.address, PLAN + 1n);
       expect(await held()).to.equal(before + PLAN);

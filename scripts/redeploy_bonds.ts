@@ -134,10 +134,10 @@ async function main() {
   const current = rec("BurnerBondFactory");
   let factoryAddress = current && current.address !== legacy.factory.address ? current.address : null;
   if (!factoryAddress) {
-    const assurancePool = rec("AssurancePool")!.address;
-    const oracle = rec("AssuranceOracle")!.address;
+    // Section 13: the factory gates collections on the TokenRegistry and takes no AssurancePool.
+    const tokenRegistry = rec("TokenRegistry")!.address;
     const Factory = await ethers.getContractFactory("BurnerBondFactory", signer);
-    const factory = await Factory.deploy(assurancePool, oracle, BASE_URI);
+    const factory = await Factory.deploy(tokenRegistry, BASE_URI);
     await factory.waitForDeployment();
     factoryAddress = await factory.getAddress();
     save("BurnerBondFactory", factoryAddress, JSON.parse(factory.interface.formatJson()));

@@ -7,8 +7,9 @@
  * of those: `assertNoCreditAdmin` checks that, and the handover throws if it fails.
  *
  * What moves:
- * - Ownable (`owner()` authorizes upgrades): RevolvingIssuer, TermIssuer, OffersIssuer, RateSchedule, and the
- *   AssurancePool/AssuranceOracle if given.
+ * - Ownable (`owner()` authorizes upgrades): RevolvingIssuer, TermIssuer, OffersIssuer, RateSchedule.
+ *   The co-op's AssurancePool is not here: it has its own timelock, with the board Safe proposing
+ *   (`assurance_timelock_handover.ts`, section 13). AssuranceOracle is retired.
  * - DEFAULT_ADMIN_ROLE (authorizes upgrades and settings): NetworkRegistry, CollateralRegistry,
  *   LimitCalculator, Liquidator, MerchantRegistry, ESADepositVault, ClaimEscrow, MembershipRegistry,
  *   PayoutPool, LendingPool, BondVault,
@@ -37,8 +38,6 @@ export interface CreditContracts {
   revolving?: any;
   term?: any;
   rateSchedule?: any;
-  assurancePool?: any;
-  assuranceOracle?: any;
   networkRegistry?: any;
   collateral?: any;
   limits?: any;
@@ -55,7 +54,7 @@ export interface CreditContracts {
   clrusd?: any;
 }
 
-const OWNABLE: (keyof CreditContracts)[] = ["revolving", "term", "offers", "rateSchedule", "assurancePool", "assuranceOracle"];
+const OWNABLE: (keyof CreditContracts)[] = ["revolving", "term", "offers", "rateSchedule"];
 const ADMIN_ONLY: (keyof CreditContracts)[] = [
   "networkRegistry", "collateral", "limits", "liquidator", "merchantRegistry", "vault", "claimEscrow", "access",
   "membershipRegistry", "payoutPool", "lendingPool", "bondVault",
@@ -158,8 +157,6 @@ async function main() {
     revolving: await at("RevolvingIssuer"),
     term: await at("TermIssuer"),
     rateSchedule: await at("RateSchedule"),
-    assurancePool: await at("AssurancePool"),
-    assuranceOracle: await at("AssuranceOracle"),
     networkRegistry: await at("NetworkRegistry"),
     collateral: await at("CollateralRegistry"),
     limits: await at("LimitCalculator"),

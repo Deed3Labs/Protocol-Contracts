@@ -337,18 +337,18 @@ contract TermIssuerExtension is TermIssuerBase {
         emit CollectedForMember(ref, member, collected);
     }
 
-    /// @notice pays back what a term default wrote off, into the assurance reserve that covered it.
+    /// @notice pays back what a term default wrote off, to Lending Co., whose charge-off it was.
     /// @dev Anyone may pay for a member. Paying it all back is one way to term credit again.
+    /// Section 13: the write-off is Lending Co.'s loss, so the recovery is its money, paid to its
+    /// operating address. If the co-op's Credit Backstop covered the loss, Lending Co. pays it back
+    /// itself with `deposit(RECOVERY)`; no credit path calls the Assurance contracts.
     function repayWrittenOff(address member, uint256 amount) external notNull(member) returns (uint256 pay) {
         uint256 outstanding = writtenOffOf[member] - recoveredOf[member];
         pay = amount < outstanding ? amount : outstanding;
         if (pay == 0) revert TermIssuerNothingToPay(type(uint256).max);
-        IAssurancePool pool = stableCredit.assurancePool();
-        IERC20Upgradeable token = pool.reserveToken();
-        SafeERC20Upgradeable.safeTransferFrom(token, msg.sender, address(this), pay);
-        SafeERC20Upgradeable.safeApprove(token, address(pool), 0);
-        SafeERC20Upgradeable.safeApprove(token, address(pool), pay);
-        pool.deposit(pay);
+        address lender = stableCredit.lenderOperating();
+        if (lender == address(0)) revert TermIssuerNothingToPay(type(uint256).max);
+        SafeERC20Upgradeable.safeTransferFrom(stableCredit.reserveToken(), msg.sender, lender, pay);
         recoveredOf[member] += pay;
         emit WrittenOffRepaid(member, msg.sender, pay);
     }

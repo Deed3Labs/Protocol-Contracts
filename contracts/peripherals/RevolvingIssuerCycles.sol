@@ -49,7 +49,7 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
 
         // The settler delivers the cash that landed in Spendable. Nothing is taken from the
         // member's wallet: Ready to allocate USDC and CLRUSD are never swept (section 12.2).
-        IERC20Upgradeable reserve = stableCredit.assurancePool().reserveToken();
+        IERC20Upgradeable reserve = stableCredit.reserveToken();
         reserve.safeTransferFrom(_msgSender(), address(this), applied);
         reserve.forceApprove(address(stableCredit), applied);
         stableCredit.repayCreditBalanceFor(address(this), member, uint128(applied));

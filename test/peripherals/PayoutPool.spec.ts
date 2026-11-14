@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network, drawCredit } from "../helpers/phase0-fixture";
+import { deployAssurancePool, fund as fundAssurance, balances, TAG } from "../helpers/assurance";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -279,31 +280,33 @@ describe("PayoutPool", function () {
     });
   });
 
-  describe("it pays merchants without the AssurancePool, which never funds or lends here (addendum 12.11)", function () {
-    it("pays merchants without the reserve moving", async function () {
-      // Redemption there is capped by lost debt outstanding, so paying merchants from it would
-      // mean a merchant can only be paid when a member has defaulted.
-      await ctx.usdc.mint(ctx.admin.address, 5_000n * ONE_USDC);
-      await ctx.usdc.approve(await ctx.assurancePool.getAddress(), 5_000n * ONE_USDC);
-      await ctx.assurancePool.depositIntoPrimaryReserve(2_000n * ONE_USDC);
+  // Section 13: the co-op's AssurancePool is walled off. The payout pool holds no address to call
+  // it with, so a funded payout and an unfunded one both leave every compartment where it was.
+  describe("it pays merchants without the AssurancePool, which never funds or lends here (section 13)", function () {
+    it("pays merchants without any compartment moving", async function () {
+      const a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry);
+      await fundAssurance(a, ctx.usdc, a.treasury, TAG.BOARD_ALLOCATION, 2_000n * ONE_USDC);
+      const before = await balances(a.pool);
 
       await fund(1_000n * ONE_USDC);
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
 
-      expect(await ctx.assurancePool.reserveBalance()).to.equal(2_000n * ONE_USDC);
+      expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
+      expect(await ctx.usdc.balanceOf(await a.pool.getAddress())).to.equal(2_000n * ONE_USDC);
     });
 
-    it("cannot reach the reserve when the reserve isn't named as a lender", async function () {
-      await ctx.usdc.mint(ctx.admin.address, 5_000n * ONE_USDC);
-      await ctx.usdc.approve(await ctx.assurancePool.getAddress(), 5_000n * ONE_USDC);
-      await ctx.assurancePool.depositIntoPrimaryReserve(2_000n * ONE_USDC);
+    it("queues a claim it cannot pay rather than reaching for the AssurancePool", async function () {
+      const a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry);
+      await fundAssurance(a, ctx.usdc, a.treasury, TAG.BOARD_ALLOCATION, 2_000n * ONE_USDC);
+      const before = await balances(a.pool);
 
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
       expect(await pool.shortfall()).to.equal(1_000n * ONE_USDC);
 
-      // The pool is not, and cannot make itself, a withdrawal caller on the reserve.
-      expect(await ctx.assurancePool.withdrawalCallers(await pool.getAddress())).to.equal(false);
-      expect(await ctx.assurancePool.reserveBalance()).to.equal(2_000n * ONE_USDC);
+      expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
+      // And the payout pool could not pay in either: it is a money path.
+      await ctx.networkRegistry.listMoneyPath(await pool.getAddress(), ethers.encodeBytes32String("PAYOUT_POOL"));
+      expect(await ctx.networkRegistry.isMoneyPath(await pool.getAddress())).to.equal(true);
     });
   });
 });

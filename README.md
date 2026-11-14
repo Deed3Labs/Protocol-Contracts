@@ -424,7 +424,6 @@ npm run clrusd:validate       -- base-sepolia
 npx hardhat run scripts/grant_collateral_operator.ts --network base-sepolia
 npx hardhat run scripts/rotate_credit_operator.ts    --network base-sepolia
 npx hardhat run scripts/register_merchant.ts         --network base-sepolia
-npx hardhat run scripts/set_target_rtd.ts            --network base-sepolia
 npx hardhat run scripts/sync_savings_collateral.ts   --network base-sepolia
 ```
 

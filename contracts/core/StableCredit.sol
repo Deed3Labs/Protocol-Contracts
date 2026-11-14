@@ -59,6 +59,14 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     error StableCreditInvalidAddress();
     /// @notice thrown by `burn` and `burnFrom`, which the ledger does not offer.
     error StableCreditBurnDisabled();
+    /// @notice thrown by `burnLostDebt`: lost debt is Lending Co.'s charge-off (section 13).
+    error StableCreditLostDebtNotRedeemable();
+    /// @notice thrown by `setReserveToken` once a reserve token is set.
+    error StableCreditReserveTokenSet();
+    /// @notice thrown when money must move and no reserve token is set.
+    error StableCreditNoReserveToken();
+    /// @notice thrown when a repayment's remainder has nowhere to go.
+    error StableCreditNoLenderOperating();
 
     event MerchantRegistryUpdated(address indexed merchantRegistry);
     /// @notice a refund or reversal left `holder` owing; tracked until it is collected.
@@ -75,12 +83,17 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /* ========== STATE VARIABLES ========== */
 
     IAccessManager public access;
-    IAssurancePool public assurancePool;
+    /// @dev Retired (compliance section 13): the ledger no longer calls the AssurancePool for
+    /// anything. Its reserve token and conversion are the ledger's own (`reserveToken`), and a
+    /// repayment's remainder goes to Lending Co. (`lenderOperating`). The slot stays so nothing
+    /// below it moves.
+    /// @custom:oz-renamed-from assurancePool
+    address private retiredAssurancePool;
 
     /// @notice Resolves which issuers write to this ledger and which a member is enrolled with.
     /// @dev One ledger, several issuers. The revolving line and term plans are separate rule sets
     /// -- per-tier accrual against per-position accrual, cycle equilibrium against none -- but
-    /// they are not separate networks: both write here and both draw on one AssurancePool.
+    /// they are not separate networks: both write here.
     INetworkRegistry public networkRegistry;
 
     /// @notice Each issuer's share of a member's ceiling.
@@ -97,9 +110,10 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// just arrived in the reserve. Reading one number for both reported a member who paid their
     /// balance in full as having created lost debt.
     ///
-    /// It mattered beyond the reporting: redemption capacity equals lost debt outstanding, so an
-    /// overstated figure let positive holders draw on the AssurancePool for supply that was never
-    /// orphaned -- ordinary repayment activity quietly opening a drain.
+    /// It mattered beyond the reporting: redemption capacity used to equal lost debt outstanding, so
+    /// an overstated figure let positive holders draw on the AssurancePool for supply that was never
+    /// orphaned. Lost debt is no longer redeemable at all (section 13): it is Lending Co.'s
+    /// charge-off, which it recovers through its own draw on the co-op's Credit Backstop.
     uint256 private lostDebtOutstanding;
 
     /// @notice Where repayment value goes first, when there is somewhere for it to go.
@@ -126,6 +140,21 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     mapping(address => uint256) public refundReceivableOf;
     /// @notice The sum of `refundReceivableOf`.
     uint256 public refundReceivables;
+
+    /// @notice The token repayments are made in (USDC), and what the payout pool pays out.
+    /// @dev The ledger's own setting since section 13. It used to be read from the AssurancePool,
+    /// which put a call into the co-op's Assurance contract on every repayment, refund and
+    /// collateral settlement. Set once: changing what "a dollar repaid" means under live balances
+    /// would reprice every obligation.
+    IERC20Upgradeable public reserveToken;
+
+    /// @notice Lending Co.'s operating address: where a repayment goes once the payout pool has
+    /// what it is owed, and where written-off debt is repaid.
+    /// @dev Section 13, decision 2. Lending Co. is the lender of record and carries the loss, so
+    /// the surplus is its money; it pays the co-op's Credit Backstop through the pool's own
+    /// `deposit(CREDIT_ENHANCEMENT_FEE)`. Replaces Phase 1's routing into
+    /// `AssurancePool.depositRepayment` (X-2) and is the same admin power that named the pool.
+    address public lenderOperating;
 
     /* ========== INITIALIZER ========== */
 
@@ -169,28 +198,13 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
 
     /* ========== PUBLIC FUNCTIONS ========== */
 
-    /// @notice Reduces lost debt in exchange for assurance reimbursement.
-    /// @dev Must have sufficient lost debt to service.
-    /// @return reimbursement amount from assurance pool
-    function burnLostDebt(address member, uint256 amount)
-        public
-        virtual
-        override
-        returns (uint256)
-    {
-        require(
-            member == _msgSender() || access.isOperator(_msgSender()),
-            "StableCredit: Unauthorized caller"
-        );
-        require(balanceOf(member) >= amount, "StableCredit: Insufficient balance");
-        require(amount <= lostDebt(), "StableCredit: Insufficient lost debt");
-        _transfer(member, address(this), amount);
-        // Redemption is how lost debt is deleted, so the figure falls by what was redeemed.
-        lostDebtOutstanding -= amount;
-        uint256 reimbursement =
-            assurancePool.reimburse(member, assurancePool.convertStableCreditToReserveToken(amount));
-        emit LostDebtBurned(member, amount);
-        return reimbursement;
+    /// @notice lost debt is not redeemable.
+    /// @dev Section 13, decision 3. Redemption used to pay the holder out of the AssurancePool
+    /// (`reimburse`). Lost debt is now Lending Co.'s charge-off, recovered through its own
+    /// `requestDraw` on the co-op's Credit Backstop to its loss-reserve address; no member path
+    /// reaches the Assurance contracts. Kept, reverting, so the selector does not silently vanish.
+    function burnLostDebt(address, uint256) public pure virtual override returns (uint256) {
+        revert StableCreditLostDebtNotRedeemable();
     }
 
     /// @notice Repays referenced member's credit balance by amount.
@@ -221,11 +235,9 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     function _repay(address payer, address member, uint128 amount, bool notify) private {
         uint256 creditBalance = creditBalanceOf(member);
         require(amount <= creditBalance, "StableCredit: invalid payment amount");
-        uint256 reserveTokenAmount = assurancePool.convertStableCreditToReserveToken(amount);
+        uint256 reserveTokenAmount = convertStableCreditToReserveToken(amount);
         // Safe transfer: a reserve token that returns false must not read as paid (audit L-5).
-        SafeERC20Upgradeable.safeTransferFrom(
-            assurancePool.reserveToken(), payer, address(this), reserveTokenAmount
-        );
+        SafeERC20Upgradeable.safeTransferFrom(_reserve(), payer, address(this), reserveTokenAmount);
         _routeRepayment(reserveTokenAmount);
         // A repayment is a system move. A frozen member paying down what froze them must not be
         // refused by the freeze.
@@ -595,12 +607,39 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         emit AccessManagerUpdated(_access);
     }
 
-    /// @notice enables network admin to set the assurance pool address
-    /// @param _assurancePool address of assurance pool contract
-    function setAssurancePool(address _assurancePool) public onlyAdmin {
-        if (_assurancePool == address(0)) revert StableCreditInvalidAddress();
-        assurancePool = IAssurancePool(_assurancePool);
-        emit AssurancePoolUpdated(_assurancePool);
+    /// @notice sets the reserve token, once.
+    /// @param token the reserve token (USDC).
+    function setReserveToken(address token) external onlyAdmin {
+        if (token == address(0)) revert StableCreditInvalidAddress();
+        if (address(reserveToken) != address(0)) revert StableCreditReserveTokenSet();
+        reserveToken = IERC20Upgradeable(token);
+        emit ReserveTokenSet(token);
+    }
+
+    /// @notice names Lending Co.'s operating address (section 13, decision 2).
+    /// @param operating the address.
+    function setLenderOperating(address operating) external onlyAdmin {
+        if (operating == address(0)) revert StableCreditInvalidAddress();
+        lenderOperating = operating;
+        emit LenderOperatingUpdated(operating);
+    }
+
+    /// @inheritdoc IStableCredit
+    function convertStableCreditToReserveToken(uint256 amount) public view override returns (uint256) {
+        if (amount == 0) return 0;
+        uint8 reserveDecimals = IERC20Metadata(address(_reserve())).decimals();
+        uint8 creditDecimals = decimals();
+        if (creditDecimals == reserveDecimals) return amount;
+        return creditDecimals > reserveDecimals
+            ? amount / 10 ** (creditDecimals - reserveDecimals)
+            : amount * 10 ** (reserveDecimals - creditDecimals);
+    }
+
+    /// @dev The reserve token, or a revert while none is set: a repayment in nothing is no
+    /// repayment.
+    function _reserve() private view returns (IERC20Upgradeable token) {
+        token = reserveToken;
+        if (address(token) == address(0)) revert StableCreditNoReserveToken();
     }
 
     /// @notice names the registry the ledger reads to tell a merchant from a member.
@@ -757,12 +796,12 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// money somewhere else while its own repayments piled up next door.
     ///
     /// The payout pool is offered only what it is actually short. It is a timing buffer, not a
-    /// place to accumulate, so anything above the claims outstanding carries on to loss
-    /// absorption where it does some good: the AssurancePool's primary reserve up to its target
-    /// RTD first, the rest its buffer. All of it used to go to the buffer, which the RTD does not
-    /// count, so the primary reserve never filled from repayments.
+    /// place to accumulate, so anything above the claims outstanding goes to Lending Co.'s
+    /// operating address (section 13, decision 2). It used to go into the AssurancePool; the
+    /// co-op's Assurance contract now takes money only from allowlisted payers, Lending Co. among
+    /// them, and no credit path calls it.
     function _routeRepayment(uint256 amount) private {
-        IERC20Upgradeable reserve = assurancePool.reserveToken();
+        IERC20Upgradeable reserve = _reserve();
         uint256 toPayout;
 
         if (address(payoutPool) != address(0)) {
@@ -777,9 +816,10 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
 
         uint256 remainder = amount - toPayout;
         if (remainder > 0) {
-            reserve.approve(address(assurancePool), remainder);
-            assurancePool.depositRepayment(remainder);
-            emit RepaymentRouted(address(assurancePool), remainder);
+            address lender = lenderOperating;
+            if (lender == address(0)) revert StableCreditNoLenderOperating();
+            SafeERC20Upgradeable.safeTransfer(reserve, lender, remainder);
+            emit RepaymentRouted(lender, remainder);
         }
     }
 
@@ -809,8 +849,8 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     }
 
     /// @notice sets the pool repayment value is offered to first.
-    /// @param _payoutPool address of the payout pool, or address(0) to send everything to the
-    /// reserve.
+    /// @param _payoutPool address of the payout pool, or address(0) to send everything to Lending
+    /// Co.'s operating address.
     function setPayoutPool(address _payoutPool) external onlyAdmin {
         payoutPool = IPayoutSink(_payoutPool);
         emit PayoutPoolUpdated(_payoutPool);

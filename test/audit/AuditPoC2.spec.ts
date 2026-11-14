@@ -21,8 +21,7 @@ describe("AUDIT PoC 2 — savings-backed credit without savings", function () {
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     const revolving: any = await upgrades.deployProxy(RevolvingIssuer,
       [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
-    await ctx.networkRegistry.registerIssuer(await revolving.getAddress(), await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+    await ctx.networkRegistry.registerIssuer(await revolving.getAddress(), await ctx.stableCredit.getAddress());
     await ctx.access.grantOperator(await revolving.getAddress());
     await revolving.connect(ctx.operator).addTier(SAVINGS, 0n, CYCLE);
 
@@ -33,7 +32,7 @@ describe("AUDIT PoC 2 — savings-backed credit without savings", function () {
     await registry.setClrusdKind(SAVINGS);
     await clrusd.setEncumbranceSource(await registry.getAddress());
     await revolving.connect(ctx.operator).setExposureSource(await registry.getAddress());
-    await ctx.assurancePool.setExposureSource(await registry.getAddress());
+
 
     const LimitCalculator = await ethers.getContractFactory("LimitCalculator");
     const limits: any = await upgrades.deployProxy(LimitCalculator,

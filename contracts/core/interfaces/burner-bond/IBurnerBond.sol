@@ -218,9 +218,6 @@ interface IBurnerBond is IERC1155Upgradeable {
     
     /* ========== ADMIN FUNCTIONS ========== */
     
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external;
     
     /// @notice Set the underlying token address
     /// @param _underlyingToken Address of the underlying token
@@ -242,19 +239,6 @@ interface IBurnerBond is IERC1155Upgradeable {
     /// @return Address of the underlying token
     function getUnderlyingToken() external view returns (address);
     
-    /// @notice Get collection metadata
-    /// @return name Collection name
-    /// @return symbol Collection symbol
-    /// @return description Collection description
-    /// @return underlyingToken Address of underlying token
-    /// @return totalSupply Total bonds minted
-    function getCollectionMetadata() external view returns (
-        string memory name,
-        string memory symbol,
-        string memory description,
-        address underlyingToken,
-        uint256 totalSupply
-    );
     
     /// @notice Get contract-level metadata URI (ERC-7572)
     /// @dev Returns JSON metadata for the entire collection

@@ -14,10 +14,10 @@ import "./interfaces/IPayoutLenders.sol";
 /// @dev A merchant's positive StableCredit is the payables ledger: what the co-op owes them,
 /// on-chain, with no parallel record to reconcile against. This is where it becomes cash.
 ///
-/// **The AssurancePool never funds and never lends here** (compliance addendum 12.11). A
-/// merchant's balance is a payable -- certain, owed, due on a schedule -- and the reserve covers a
-/// contingency that may never happen, so no redemption, payout or force-settlement path touches
-/// it. `drawForDueClaim` used to borrow from it as a last resort; it no longer asks.
+/// **The AssurancePool never funds and never lends here** (compliance addendum 12.11, section
+/// 13). A merchant's balance is a payable -- certain, owed, due on a schedule -- and the co-op's
+/// Assurance compartments cover a contingency that may never happen, so no redemption, payout or
+/// force-settlement path touches them. This contract holds no address to call the pool with.
 ///
 /// **A merchant is paid by drawdown first.** One holding credit of their own has it reduced
 /// before any surplus becomes redeemable, and only the surplus can be withdrawn. That falls out
@@ -150,17 +150,22 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     uint256 public refundsOwed;
 
     /// @notice where the pool draws when a claim has come due and there is nothing to pay it with.
-    /// @dev The yield pool's unlent cash first, then the bond vault, the treasury, and the reserve
-    /// last (`drawForDueClaim`). The lenders are REPAID rather than
-    /// handed the position: the yield pool's share price is cash plus what is out on loan, and the
-    /// reserve's cover is denominated in reserve tokens, so a credit claim sitting in either would
-    /// read as a hole in their books until somebody redeemed it. The co-op funding directly is
+    /// @dev The yield pool's unlent cash first, then the bond vault, then the treasury
+    /// (`drawForDueClaim`). The lenders are REPAID rather than handed the position: the yield
+    /// pool's share price is cash plus what is out on loan, so a credit claim sitting there would
+    /// read as a hole in its books until somebody redeemed it. The co-op funding directly is
     /// different and still holds what it pays for -- it has no such books to hold straight.
     address public yieldPool;
-    address public reserve;
+    /// @dev Retired (section 13, decision 4): the AssurancePool never lends here and the payout
+    /// pool holds no address to call it with. The slot stays so nothing below it moves.
+    /// @custom:oz-renamed-from reserve
+    address private retiredReserve;
     /// @notice what the pool owes each of them, and in total.
     uint256 public borrowedFromYield;
-    uint256 public borrowedFromReserve;
+    /// @dev Retired with the pool's loans. A loan the old Base Sepolia pool made is not repaid to
+    /// the new one: the old pool is retired with its books.
+    /// @custom:oz-renamed-from borrowedFromReserve
+    uint256 private retiredBorrowedFromReserve;
     /// @notice carry this pool has earned on positions it bought with borrowed money.
     /// @dev The lenders' return, held as credits until the member's repayment arrives -- and it
     /// arrives with it, because carry is added to what the member owes and paid in the same cash.
@@ -233,13 +238,9 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     event CarryPaid(address indexed to, uint256 amount);
     event RefundPaid(address indexed member, uint256 amount);
     event RefundQueued(address indexed member, uint256 amount);
-    event LendersUpdated(address indexed yieldPool, address indexed reserve);
+    event YieldPoolUpdated(address indexed yieldPool);
     event DrewFromYieldPool(uint256 amount);
-    /// @dev No longer emitted: the AssurancePool is not drawn on (addendum 12.11). Kept so indexers
-    /// can still decode past logs.
-    event DrewFromReserve(uint256 amount);
     event RepaidYieldPool(uint256 amount);
-    event RepaidReserve(uint256 amount);
     event DrewFromBondVault(uint256 amount);
     event DrewFromTreasury(uint256 amount);
     event RepaidBondVault(uint256 amount);
@@ -536,22 +537,19 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         emit Redeemed(merchant, redeeming, paidNow, claimId);
     }
 
-    /// @notice names where the pool draws when a claim has come due.
+    /// @notice names the yield pool the pool draws on first when a claim has come due.
     /// @dev Admin, not operator, like every setting below that decides where money goes: an
     /// operator hot key that could repoint the treasury, the income recipient or a lender could
-    /// send positions and income to itself (audit H-4). Zero switches a lender off.
-    ///
-    /// `reserve` is no longer drawn on (addendum 12.11). It is kept only so that a loan the
-    /// AssurancePool made before that change can still be repaid to it.
-    function setLenders(address yieldPool_, address reserve_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    /// send positions and income to itself (audit H-4). Zero switches it off. Replaces
+    /// `setLenders(yieldPool, reserve)`: there is no reserve lender any more (section 13).
+    function setYieldPool(address yieldPool_) external onlyRole(DEFAULT_ADMIN_ROLE) {
         yieldPool = yieldPool_;
-        reserve = reserve_;
-        emit LendersUpdated(yieldPool_, reserve_);
+        emit YieldPoolUpdated(yieldPool_);
     }
 
     /// @notice what the pool owes its lenders.
     function borrowed() public view returns (uint256) {
-        return borrowedFromYield + borrowedFromVault + borrowedFromReserve;
+        return borrowedFromYield + borrowedFromVault;
     }
 
     /// @notice names the bond vault the pool may borrow from.
@@ -607,7 +605,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
             }
         }
         if (short > 0 && bondVault != address(0)) {
-            uint256 lent = IAssuranceLender(bondVault).lendToPayoutPool(short);
+            uint256 lent = IPayoutLender(bondVault).lendToPayoutPool(short);
             if (lent > 0) {
                 borrowedFromVault += lent;
                 drawn += lent;
@@ -658,7 +656,6 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         // part of the float the carry was charged for.
         uint256 owed = borrowed();
         uint256 fromVault = borrowedFromVault;
-        uint256 fromReserve = borrowedFromReserve;
         left = _repayPrincipal(available);
         if (left == 0 || carryEarned == 0) return left;
 
@@ -667,8 +664,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         // division's remainder goes to the yield pool, as all of it does when nothing was owed, so a
         // lender that put up nothing is never handed dust.
         uint256 toVault = owed == 0 ? 0 : (interest * fromVault) / owed;
-        uint256 toReserve = owed == 0 ? 0 : (interest * fromReserve) / owed;
-        uint256 toYield = interest - toVault - toReserve;
+        uint256 toYield = interest - toVault;
 
         // Only what actually reaches a lender counts as paid. A lender unnamed since it lent keeps
         // its return owed here, with its principal, until it is named again.
@@ -684,15 +680,9 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         }
         if (toVault > 0 && bondVault != address(0)) {
             reserveToken.approve(bondVault, toVault);
-            IAssuranceLender(bondVault).repayFromPayoutPool(toVault);
+            IPayoutLender(bondVault).repayFromPayoutPool(toVault);
             handed += toVault;
             emit InterestPaid(bondVault, toVault);
-        }
-        if (toReserve > 0 && reserve != address(0)) {
-            reserveToken.approve(reserve, toReserve);
-            IAssuranceLender(reserve).repayFromPayoutPool(toReserve);
-            handed += toReserve;
-            emit InterestPaid(reserve, toReserve);
         }
         if (handed > 0) {
             carryEarned -= handed;
@@ -721,18 +711,8 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
                 borrowedFromVault -= pay;
                 left -= pay;
                 reserveToken.approve(bondVault, pay);
-                IAssuranceLender(bondVault).repayFromPayoutPool(pay);
+                IPayoutLender(bondVault).repayFromPayoutPool(pay);
                 emit RepaidBondVault(pay);
-            }
-        }
-        if (borrowedFromReserve > 0 && reserve != address(0) && left > 0) {
-            uint256 pay = borrowedFromReserve < left ? borrowedFromReserve : left;
-            if (pay > 0) {
-                borrowedFromReserve -= pay;
-                left -= pay;
-                reserveToken.approve(reserve, pay);
-                IAssuranceLender(reserve).repayFromPayoutPool(pay);
-                emit RepaidReserve(pay);
             }
         }
     }
@@ -817,7 +797,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
          *
          * A lender is repaid in cash rather than handed the position, which means somebody has to
          * hold it in the meantime -- and it must not be the co-op, which would collect the carry on
-         * a float the yield pool or the reserve was bearing. The pool holds it, and the carry it
+         * a float the yield pool or the bond vault was bearing. The pool holds it, and the carry it
          * earns on it is the lenders' return to pass on.
          */
         uint256 owed = borrowed();
