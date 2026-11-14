@@ -221,7 +221,23 @@ abstract contract TermIssuerBase is CreditIssuer {
 
     /// @dev Six slots from the gap: feeTerms, feeRecipientProposal (3), combinedRevolving,
     /// combinedProduct.
-    uint256[15] private __gap;
+
+    /// @notice A plan secured under MB-05, and its 12.14 default record.
+    struct SecuredPlan {
+        bool secured; // the member's signed instruction that MB-05 secures this plan
+        address noticeProposer; // proposer of a pending cure-notice timestamp
+        uint64 noticeAt; // the cure-notice timestamp: the approval's block time
+        uint64 defaultedAt; // when the 12.14 default was recorded; zero if not
+        uint128 noticeDue; // what the schedule asked by the notice: the past-due amount it concerns
+    }
+    /// @notice a secured plan's 12.14 record: secured, the pending proposer, the cure-notice
+    /// timestamp, when its default was recorded, and the past-due amount the notice concerns.
+    mapping(uint256 => SecuredPlan) public securedPlans;
+    /// @notice Where the Liquidation Hold (12.6) is read: the Liquidator. Set once.
+    address public holdSource;
+
+    /// @dev Two more slots from the gap: securedPlans, holdSource.
+    uint256[13] private __gap;
 
     uint256 internal constant RAY_ = 1e27;
     uint256 internal constant BPS_ = 10_000;
@@ -231,8 +247,14 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// @dev A term plan's cycle: its monthly rate is charged per 30 days (section 12.9).
     uint256 internal constant TERM_CYCLE = 30 days;
 
-    /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
+    /// @notice An unsecured plan defaults once its oldest missed installment is this many
+    /// installments overdue. A plan secured under MB-05 follows 12.14 instead.
     uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
+    /// @notice 12.14: a secured plan's scheduled payment must be this long past due (FIXED: MB-06 13.7),
+    /// and this long must pass after the cure-notice timestamp (MB-06 13.8).
+    uint256 internal constant SECURED_PAST_DUE = 60 days;
+    uint256 internal constant SECURED_CURE = 30 days;
+    bytes32 internal constant ATTESTER_ROLE = keccak256("CREDIT_ATTESTER_ROLE");
     /// @notice A plan may be re-split this many times in its life, and no more than once an
     /// installment period.
     uint8 public constant MAX_SPLIT_CHANGES = 3;
@@ -290,6 +312,11 @@ abstract contract TermIssuerBase is CreditIssuer {
     error TermIssuerNoProposal();
     /// @notice 12.3: the Combined Ceiling's inputs are set once.
     error TermIssuerCombinedSet();
+    /// @notice 12.14 (secured term plans).
+    error TermIssuerNotSecured(uint256 planId);
+    error TermIssuerNotPastDue(uint256 planId);
+    error TermIssuerOnHold(address member);
+    error TermIssuerHoldSourceSet();
 
     /* ========== EVENTS ========== */
 
@@ -303,6 +330,11 @@ abstract contract TermIssuerBase is CreditIssuer {
     );
     event FeeTermsUpdated(uint64 maxFeeSmall, uint64 maxFeeLarge, uint64 largeFrom);
     event CombinedCeilingSet(address revolving, bytes32 product);
+    event PlanSecured(uint256 indexed planId, address indexed member);
+    event PlanNoticeProposed(uint256 indexed planId, address indexed proposer);
+    event PlanNoticeRecorded(uint256 indexed planId, uint64 noticeAt, uint256 pastDue, uint64 defaultFrom);
+    event SecuredPlanDefaulted(uint256 indexed planId, address indexed member);
+    event HoldSourceSet(address source);
     /// @notice carry a plan would have accrued above the Combined Ceiling, not charged (12.3).
     event PlanCarryTrimmed(uint256 indexed planId, uint256 amount);
     /// @notice everything needed to reproduce a plan's loan disclosure later (spec item 5).
@@ -378,6 +410,30 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// closed-end schedule is quoted per cycle, and a 30-day cycle is never longer than a month.
     function _periodRate(Plan storage plan) internal view returns (uint256) {
         return (plan.index.ratePerCycle * RAY_ * plan.installmentLength) / (BPS_ * TERM_CYCLE);
+    }
+
+    /// @dev When a plan fell behind: the due date of its oldest installment not yet covered; zero
+    /// when on time.
+    function _delinquentSince(uint256 planId) internal view returns (uint256) {
+        if (arrearsOf(planId) == 0) return 0;
+        Plan storage plan = plans[planId];
+        if (plan.repaid < plan.scheduleFloor) return plan.scheduleStart;
+        uint256 n = plan.installments;
+        uint256 k = 1;
+        while (k < n && plan.repaid >= _dueAt(plan, k)) k++;
+        return plan.scheduleStart + k * plan.installmentLength;
+    }
+
+    /// @dev Whether a plan secured under MB-05 is in default (12.14): a scheduled payment at least
+    /// 60 days past due, a cure-notice timestamp recorded for it, 30 days since that timestamp, and
+    /// the past-due amount it concerns still unpaid. Computed; with no timestamp, never. (The
+    /// Liquidation Hold is checked by the trigger.)
+    function _securedDefaultable(uint256 planId) internal view returns (bool) {
+        SecuredPlan storage sp = securedPlans[planId];
+        Plan storage plan = plans[planId];
+        if (!sp.secured || plan.closed || sp.noticeAt == 0 || plan.repaid >= sp.noticeDue) return false;
+        uint256 since = _delinquentSince(planId);
+        return since != 0 && block.timestamp >= since + SECURED_PAST_DUE && block.timestamp >= sp.noticeAt + SECURED_CURE;
     }
 
     /// @notice how far behind the schedule a plan is, in principal.

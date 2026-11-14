@@ -238,6 +238,9 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         bytes32 autoClearAuthHash; // 12.2: hash of the authorization text the member approved
         uint64 cardDay; // 4c item 1: the day `cardUsed` counts
         uint128 cardUsed;
+        bool graceEligible; // 12.13: Cycle Assurance enabled by a two-person MB-10 attestation
+        address graceProposer; // proposer of a pending eligibility attestation
+        uint256 graceUses; // 12.13: the due points of the last four graces used, newest lowest
     }
     mapping(address => CycleState) internal cycleState;
 
@@ -250,6 +253,8 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         uint64 cardMemberDailyCap; // 4c item 1: card settlements per member per day; zero is unset
         uint8 incomePauseMaxCycles; // 12.13: 3
         address termIssuer; // 12.3: the term issuer whose plans share the Combined Ceiling (set once)
+        uint8 graceCyclesPerWindow; // 12.13: graces per rolling window (1); zero means the initial figure
+        uint64 graceWindow; // 12.13: the rolling window (365 days); zero means the initial figure
     }
     DueTerms internal dueTerms;
 
@@ -359,6 +364,10 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     event DueTermsUpdated(uint16 securedMinimumBps, uint64 raisedFrom, uint64 floor, uint64 cardMemberDailyCap, uint8 incomePauseMaxCycles);
     event AutoClearAuthorized(address indexed member, uint8 level, bytes32 authHash);
     event TermIssuerSet(address termIssuer);
+    event GraceEligibilityProposed(address indexed member, address indexed proposer);
+    event GraceEligibilitySet(address indexed member);
+    event GraceCycleUsed(address indexed member, uint64 dueAt);
+    event GraceTermsUpdated(uint8 cyclesPerWindow, uint64 window);
 
     error RevolvingIssuerUnsecuredCap(uint256 capacity, uint256 cap);
     error RevolvingIssuerExtensionMismatch();

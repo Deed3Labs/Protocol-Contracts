@@ -174,6 +174,13 @@ on), until the payments since that close reach Rebalance Amount + Secured Minimu
 same transaction. No role sets it. `duesOf(member)` returns the unpaid Rebalance Amount, the unpaid
 Secured Minimum and whether the pause is on; `cycleStateOf(member)` the whole record.
 
+**Cycle Assurance (12.13).** An MB-10 attestation by two `CREDIT_ATTESTER_ROLE` holders
+(`proposeGraceEligibility`, then `approveGraceEligibility` by a different one) makes a member eligible;
+nothing withdraws it. At a due point where an eligible member's Rebalance Amount is unpaid, a grace is
+used automatically (`GraceCycleUsed`) if one is left: at most `graceCyclesPerWindow` (1) per rolling
+`graceWindow` (365 days), both governed (`setGraceTerms`). The limit is not halved, nothing settles,
+and the cycle does not count toward default. Past the window's graces an unpaid cycle is a miss.
+
 **Income Assurance (12.13).** `incomePause` (at most `incomePauseMaxCycles`, 3) is set by two
 `CREDIT_ATTESTER_ROLE` holders (`proposeIncomePause`, then `approveIncomePause` by a different one).
 While it is above zero nothing is due, no miss is recorded, no pause arises and nothing counts toward
@@ -244,7 +251,8 @@ they go into `scheduleFloor` and are due at once. A member's own re-split revert
 functions never open a credit period, so falling behind refuses new plans and the member's own
 re-splits but not ledger transfers. `delinquentSince` is the due date of the oldest installment not
 yet covered; `defaultableAt` adds `DEFAULT_AFTER_INSTALLMENTS` (2) installment lengths, after which
-anyone may call `declareDefault(member)` — see [Default](#default).
+anyone may call `declareDefault(member)` — see [Default](#default). A plan the member has secured
+under MB-05 (`securePlanWithSignature`) is left out of that rule and follows 12.14 instead.
 
 **Refunds.** `closePlanForRefund(planId, amount, merchant, payout)` (`onlyOperator`) reverses up to
 the principal still owed and pays back, in cash, up to what was repaid and not already refunded
@@ -371,7 +379,7 @@ flowchart TD
   WR --> OD["_onDefault: tier capacities 0,<br/>MEMBER role revoked"]
   OD --> LQ["Liquidator.liquidate<br/>or liquidateShares"]
   LQ -->|"seize, redeem"| SF["settleFromCollateral<br/>on the pledged tier"]
-  T["Term: past defaultableAt"] -->|"declareDefault (anyone)"| WT["writeOffCreditLine<br/>totalPrincipalOf"]
+  T["Term: past defaultableAt"] -->|"declareDefault (anyone)"| WT["writeOffCreditLine<br/>unsecured plans' principal"]
   WT --> TS["plans closed, termLimitOf 0,<br/>termSuspended"]
   WR --> LD["lostDebt()"]
   WT --> LD
@@ -394,7 +402,7 @@ With no timestamp there is no default. After the second miss the line is frozen 
 paid. Income Assurance holds default off while it runs. `triggerDefault(member)` (anyone) records a
 computed default and reverts otherwise; the Liquidator's `_requireCurrentDefault` reads the same
 `inDefault`. A member whose only debt is secured never misses, so never defaults on the revolving
-line: an unpaid Secured Minimum only pauses secured draws. Secured term plans keep TermIssuer's own
+line: an unpaid Secured Minimum only pauses secured draws. Unsecured term plans keep TermIssuer's own
 default (below).
 
 **Re-onboarding (Phase 4c item 3).** `openLine` reverts while collateral pledged against an earlier
@@ -429,12 +437,32 @@ issuer the Liquidator trusts, without being in default. The Liquidator needs Acc
 (`settleFromCollateral` is `onlyOperator`), the registry's `OPERATOR_ROLE` and CLRUSD's
 `LIQUIDATOR_ROLE`.
 
-**Term.** `declareDefault` materialises carry on every plan, writes off `totalPrincipalOf`, adds it
-to `writtenOffOf`, closes every open plan, sets `termLimitOf` to 0 and `termSuspended`. Membership is
+**Term.** `declareDefault` materialises carry on every plan, writes off the principal of the
+unsecured open plans, adds it to `writtenOffOf`, closes those plans, sets `termLimitOf` to 0 and
+`termSuspended`. Plans secured under MB-05 stay open and owed. Membership is
 not revoked. `repayWrittenOff` (anyone) deposits reserve token into the AssurancePool against
 `writtenOffOf − recoveredOf`. `reinstate` lifts the suspension for anyone once that is fully repaid,
 and for an operator at any time; a new `setTermLimit` is still needed. What the AssurancePool holds
 and how `reimburse` pays is in [`reserve.md`](./reserve.md).
+
+**Secured term plans (12.14, Phase 2e).** A plan the member has secured under MB-05
+(`securePlanWithSignature`, EIP-712 `SecurePlan(uint256 planId,uint256 nonce,uint256 deadline)`)
+defaults only when all of these hold:
+
+1. a scheduled payment is at least 60 days past due, counted from its due date;
+2. a cure-notice timestamp was recorded for it by two `CREDIT_ATTESTER_ROLE` holders
+   (`proposePlanNotice`, then `approvePlanNotice` by a different one). The time recorded is the
+   approval's, and it can be recorded only while a payment is past due;
+3. 30 days have passed since the timestamp; and
+4. what was past due at the notice is still unpaid. Paying it cancels the notice.
+
+`declarePlanDefault(planId)` (anyone) records it and reverts otherwise, and it fails closed. It
+reverts while a Liquidation Hold is active, read from `holdSource` (the Liquidator, set once), and
+when no hold source is named. It writes nothing off: it records `defaultedAt`, cuts the term limit
+to 0 and suspends term credit. `hasDefaultedOnCurrentLine(member)` reports it for the pledge module,
+which may reach only the Earn collateral pledged to secure plans, never CLRUSD. There is no on-chain
+hardship plan, so a re-split does not cancel a notice. `inDefault` on TermIssuer keeps its
+inherited meaning.
 
 ## Access
 

@@ -676,6 +676,18 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _forwardTo(terms);
     }
 
+    function proposeGraceEligibility(address) external {
+        _forwardTo(terms);
+    }
+
+    function approveGraceEligibility(address) external {
+        _forwardTo(terms);
+    }
+
+    function setGraceTerms(uint8, uint64) external {
+        _forwardTo(terms);
+    }
+
     function setHybridMode(bool) external {
         _forwardTo(terms);
     }

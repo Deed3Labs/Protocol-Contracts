@@ -7,7 +7,7 @@ Nothing was deployed, no key was used, and no live network was touched. ESADepos
 ## Summary
 
 - Every credit item is built, with acceptance tests 39–48, the amended tests 1, 3, 18, 25 and 28, and regressions for the four Phase 4c items.
-- **No new conflict** with an earlier decision, a "Do NOT change" item, an audit finding or live storage that the founder's answers A–G leave open. The overrides used are the ones the answers grant: A (calendar months), B (the cure-notice timestamp replaces Phase 2b decision #4), C (term list carry), D (the Combined Ceiling replaces DECISIONS #7's switch and pro-rata design) and E (the third leg of the mint). Section 4 lists the judgement calls and two gaps worth the owner's attention (12.13's `graceCycle`, and 12.14's notice for secured term plans, neither built before nor in scope here).
+- **No new conflict** with an earlier decision, a "Do NOT change" item, an audit finding or live storage that the founder's answers A–G leave open. The overrides used are the ones the answers grant: A (calendar months), B (the cure-notice timestamp replaces Phase 2b decision #4), C (term list carry), D (the Combined Ceiling replaces DECISIONS #7's switch and pro-rata design) and E (the third leg of the mint). The two gaps the first draft listed are built too, at the owner's request: 12.13's `graceCycle` (Cycle Assurance) and 12.14's default of a secured term plan. Section 4 lists the judgement calls.
 - **Admin powers only narrow.** No role can set a cycle end, a due amount, a pause, a default or `autoClear`. Six credit-period setters now revert on the revolving line, the Combined Ceiling cannot be switched off, and the fee recipient takes two people.
 - **Sizes, storage, Slither, generated files:** section 5.
 
@@ -56,7 +56,7 @@ Nothing was deployed, no key was used, and no live network was touched. ESADepos
 - **The trigger.** `triggerDefault(member)` (anyone) records a computed default and reverts `RevolvingIssuerNotInDefault` otherwise; `syncCreditPeriod` records one too but never reverts. The Liquidator's `_requireCurrentDefault` is unchanged and reads the same view. Carry to the moment of default is materialised first, so the write-off reaches all of it.
 - After the second miss the line is frozen (new draws refused) until the amount is paid; the calendar keeps running.
 - **Collateral never cures.** A settlement out of pledged collateral (`settleFromCollateral`: liquidation, `settleExcess`, a member's own `settleFromSavings`) reduces the debt and counts toward the cycle's dues, but not toward the cure amount: enforcement cannot undo the default it enforces.
-- This replaces Phase 2b decision #4 (the chain-dated notice). Secured term plans stay on TermIssuer's default as built (`declareDefault`).
+- This replaces Phase 2b decision #4 (the chain-dated notice). A term plan secured under MB-05 follows 12.14 (below), and unsecured plans keep TermIssuer's `declareDefault`.
 - **Consequence to note:** only unsecured debt can be missed, so a member whose only revolving debt is savings- or asset-backed never defaults on the revolving line; an unpaid Secured Minimum only pauses secured draws. Their collateral is reachable through an unsecured default, or for Earn through the 12.8 shortfall rule.
 
 ### 12.12 Permissions
@@ -65,7 +65,24 @@ Documentation and app notes: the Automatic Clearing authorization is its own scr
 
 ### 12.13 Income Assurance
 
-`incomePause` did not exist on chain; it is built minimally here because 12.13's amendment needs it. Two `CREDIT_ATTESTER_ROLE` holders set it (`proposeIncomePause`, `approveIncomePause`), at most `incomePauseMaxCycles` (3); a second attestation can only lengthen it; the member ends it early (`endIncomePause`); it falls by one at each cycle end. While it is above zero: no Rebalance Amount or Secured Minimum is due, no miss is recorded, no `securedDrawPause` arises, and no default can be computed. A paused cycle also breaks a run of misses. `graceCycle` (Cycle Assurance) is not built (section 4).
+Neither flag raises a drawn amount, moves funds, charges a fee, or causes a miss, a settlement or a default. Both are set only by an MB-10 attestation of two `CREDIT_ATTESTER_ROLE` holders (propose, then approve by a different one), and both can only give relief.
+
+- **`incomePause` (Income Assurance)** did not exist on chain before this phase. It is set by `proposeIncomePause` and `approveIncomePause`, at most `incomePauseMaxCycles` (3). A second attestation can only lengthen it. It falls by one at each cycle end, and only that expiry or the member (`endIncomePause`, which acts on the caller's own line) ends it early: no role can. While it is above zero, no Rebalance Amount or Secured Minimum is due, no miss is recorded, no `securedDrawPause` arises, and no default can be computed. A paused cycle also breaks a run of misses.
+- **`graceCycle` (Cycle Assurance).** Eligibility is set by `proposeGraceEligibility` and `approveGraceEligibility`. It can only be enabled: no function withdraws it, and none spends a grace. At a due point where an eligible member's Rebalance Amount is unpaid, a grace is used automatically (`GraceCycleUsed`), if one is left in the rolling window. There is no halving, nothing settles, the cycle does not count toward default (`missedInRow` stays as it was), and the clean streak resets. The window is at most `graceCyclesPerWindow` (1) per `graceWindow` (365 days), both governed (`setGraceTerms`, `CREDIT_SETTINGS_ROLE`, at most 4 per window as a gas bound; zero means the initial figure). Uses are counted by due point: the last four are kept in `cycleStateOf(member).graceUses`. Once the window's graces are used, an unpaid cycle is an ordinary miss. While Income Assurance runs nothing is due, so no grace is used.
+
+### 12.14 Default of a term plan secured under MB-05
+
+- **Which plans.** A plan is secured once the member signs `SecurePlan(uint256 planId,uint256 nonce,uint256 deadline)` (EIP-712, domain "Clear TermIssuer" v1; `securePlanWithSignature`). No role can secure a plan or undo it. From then on the plan defaults only under 12.14, never under the installment rule (`defaultableAt` is 0 for it, and `declareDefault` neither counts nor writes it off).
+- **Default needs all of these** (`declarePlanDefault(planId)`; anyone may call it, and it reverts `TermIssuerNotDefaultable` otherwise):
+  1. a scheduled payment at least 60 days past due, measured from its due date (`delinquentSince`);
+  2. a cure-notice timestamp recorded for it by two `CREDIT_ATTESTER_ROLE` holders (`proposePlanNotice`, then `approvePlanNotice` by a different one). The recorded time is the approval's block time, and it can be recorded only while a payment is past due;
+  3. 30 days since the timestamp; and
+  4. the past-due amount still unpaid. The notice records what the schedule asked for by then; once the plan's repayments reach it, the notice no longer counts, and a later arrears needs its own notice.
+- **Fails closed.** With no timestamp there is no default. The trigger reads the Liquidation Hold (12.6) from `holdSource`, the Liquidator, which is set once (`setHoldSource`; `deploy/25` names the Liquidator when it is deployed). It reverts `TermIssuerOnHold` while a hold is active, and also when no hold source is named or the read fails.
+- **What it does.** It records the default (`securedPlans(planId).defaultedAt`, `defaultedAt[member]`), sets the term limit to 0 and suspends term credit. It writes nothing off and moves nothing: the plan stays owed. `hasDefaultedOnCurrentLine(member)` on TermIssuer (new there) is true while a defaulted secured plan is open. That is the signal for the pledge module to reach the Earn collateral pledged to secure plans. CLRUSD is never reachable from it: every Liquidator path requires `trustedSavingsIssuer[issuer]`, which only the RevolvingIssuer is given, and TermIssuer has no `settleFromCollateral`.
+- **`inDefault` on TermIssuer is unchanged** (the inherited period rule). A 12.14 default exists only once recorded, so the Hold check cannot be bypassed through a view.
+- **Unsecured plans keep the rule as built** (owner's decision): `declareDefault` once a plan is `DEFAULT_AFTER_INSTALLMENTS` (2) installments behind, writing off the unsecured plans' principal. A member holding both kinds keeps the secured plans open and owed when the unsecured ones are written off.
+- **No on-chain hardship plan exists**, so only payment of the past-due amount cancels a notice. A re-split (`resplitWithSignature`) does not cancel it; if the owner wants a hardship re-split to count, it would clear `noticeAt` there.
 
 ### 12.16 The origination fee leg (decision E)
 
@@ -101,6 +118,7 @@ RevolvingIssuer gains a third delegatecall module, **`RevolvingIssuerTerms`** (A
 - **New:**
   - `test/audit/compliance/Addendum2.spec.ts` (13): acceptance 39, 40, 41, 42, 44 (four cases), 45, 46, and the amended 18, 25 (Automatic Clearing) and 28. It resets the chain per test (`hardhat_reset`), because the spec's dates are absolute; Pacific time is checked against the platform's own time-zone data (`Intl`), not the contract's rule.
   - `test/audit/compliance/Addendum2Term.spec.ts` (5): acceptance 43 (three cases), 47 and 48.
+  - `test/audit/compliance/Addendum2Relief.spec.ts` (10), following the references' wording. 12.13: two-signer eligibility that only enables relief and moves nothing; a grace used automatically, at most once per rolling 365 days, with no halving, nothing settled and no count toward default, then available again in a new window; no eligibility means a miss; the governed count and window; Income Assurance that only lengthens and ends only by expiry or the member. 12.14: 60 days past due + notice + 30 days, reverting until then and failing closed without a notice; the 60 days run from the due date; notices only while past due and only for secured plans, cancelled by payment; the Liquidation Hold blocks the trigger; no hold source means no default; unsecured plans keep the installment rule, and no role can declare a secured plan's default.
   - `test/audit/rereview/Decisions.spec.ts`: Phase 4c items 1, 2, 3 and 7 (5 tests).
   - `test/peripherals/AssurancePool.spec.ts`: the §13 Hardship Grant test.
   - `contracts/mocks/PacificCalendarHarness.sol` for the default-day rules.
@@ -127,7 +145,7 @@ RevolvingIssuer gains a third delegatecall module, **`RevolvingIssuerTerms`** (A
 | RevolvingIssuer period setters | revert `RevolvingIssuerCyclesComputed` |
 | RevolvingIssuer constructor `(extension, cycles)` | `(extension, cycles, terms)` |
 
-New: `triggerDefault`, `setCycleEndDayWithSignature`, `proposeCureNotice`/`approveCureNotice`, `proposeIncomePause`/`approveIncomePause`/`endIncomePause`, `setHybridMode`, `setPayerExclusionWithSignature`, `addDefaultExcludedPayer`, `setDueTerms`, `setTermIssuer`, `cycleStateOf`, `dueTermsOf`, `duesOf`, `isPayerExcluded`, `combinedInputsOf`; on TermIssuer `materialiseMember`, `combinedPlanCarryOf`, `setFeeTerms`, `feeTermsOf`, `feeRecipientProposalOf`, `setCombinedCeiling`. The default views (`inDefault`, `hasDefaulted`, `hasDefaultedOnCurrentLine`, `defaultedAt`, `missedInRowOf`, `unsecuredExcessOf`) keep their names and signatures.
+New: `triggerDefault`, `setCycleEndDayWithSignature`, `proposeCureNotice`/`approveCureNotice`, `proposeIncomePause`/`approveIncomePause`/`endIncomePause`, `setHybridMode`, `setPayerExclusionWithSignature`, `addDefaultExcludedPayer`, `setDueTerms`, `setTermIssuer`, `cycleStateOf`, `dueTermsOf`, `duesOf`, `isPayerExcluded`, `combinedInputsOf`; `proposeGraceEligibility`/`approveGraceEligibility`, `setGraceTerms`; on TermIssuer `materialiseMember`, `combinedPlanCarryOf`, `setFeeTerms`, `feeTermsOf`, `feeRecipientProposalOf`, `setCombinedCeiling`, `securePlanWithSignature`, `proposePlanNotice`/`approvePlanNotice`, `declarePlanDefault`, `setHoldSource`, `holdSource`, `securedPlans`, `hasDefaultedOnCurrentLine`. The default views (`inDefault`, `hasDefaulted`, `hasDefaultedOnCurrentLine`, `defaultedAt`, `missedInRowOf`, `unsecuredExcessOf`) keep their names and signatures.
 
 ## 4. Judgement calls, gaps and conflicts
 
@@ -146,10 +164,15 @@ New: `triggerDefault`, `setCycleEndDayWithSignature`, `proposeCureNotice`/`appro
 11. **Legacy lines** (opened before this upgrade, Base Sepolia only) are put on the calendar at their first judgement, never ending before the period they had. A legacy period left paused stays unjudged until touched by a draw; `pausePeriodOf` can no longer set one.
 12. **Fee cap defaults.** Unset fee-cap fields mean $50 / $75 / $2,500 in 6-decimal units, so a deployment that forgets `setFeeTerms` is still capped.
 
-**Gaps outside this scope, for the owner:**
+13. **A grace leaves the run of misses as it was.** The cycle is not counted, so a miss before a grace and a miss after it are still consecutive. Only a paid cycle or Income Assurance breaks the run.
+14. **Grace eligibility covers `graceCycle` only.** Income Assurance has its own attestation, as 12.13 describes them separately.
+15. **A secured plan is chosen by the member's signature**, not by a role, so no role can move a plan out of the installment rule. Any plan may be secured, before or after it falls behind. If the owner wants securing tied to an MB-05 pledge on chain, the pledge module would call it.
+16. **A secured default writes nothing off.** 12.14 makes the plan defaultable so the pledged Earn collateral can be applied; the debt stays owed until it is. The term limit is cut to 0 and term credit is suspended, as `declareDefault` does.
+17. **The notice records the amount past due when it is approved.** A payment that brings `repaid` to it cancels the notice for good. A later arrears needs a new notice, which waits 30 days again.
 
-- **12.13 `graceCycle` (Cycle Assurance) and the MB-10 eligibility attestation are not built** on any branch. Only `incomePause` is, because the 12.13 amendment needs it.
-- **12.14 (the 60-day, notice-dated default of a secured term plan) is not built.** TermIssuer's default is still `declareDefault` after `DEFAULT_AFTER_INSTALLMENTS`. The brief says "keep secured term plans on 12.14 as built"; as built is TermIssuer's own rule, which this phase does not touch.
+**Interface follow-ups (bond side, not built here):**
+
+- The pledge module would read TermIssuer's `hasDefaultedOnCurrentLine` to apply the Earn collateral securing a defaulted plan. Its payment path (`pledgePaymentDue`/`applyPledgePayment` on the bond branch) would need to count term debt and pay the plan (`payPlan`), and the Liquidator would need to trust TermIssuer for that path only. None of that touches CLRUSD.
 
 ## 5. Checks
 
@@ -192,6 +215,8 @@ Nothing under `apps/` was changed. Needed before this is deployed:
 - **Cycle-day change**: a signature flow (`CycleEndDay`), at most once per 365 days; show the new first due date (never earlier).
 - **Secured Minimum display**: Rebalance Amount, Secured Minimum and the pause from `duesOf`; explain that an unpaid Secured Minimum only pauses secured draws.
 - **Cure-notice two-person tooling** for ops (`proposeCureNotice` / `approveCureNotice`, two `CREDIT_ATTESTER_ROLE` keys), and the letter sent with it; the same keys attest Income Assurance.
+- **Cycle Assurance and Income Assurance attestations** for ops (`proposeGraceEligibility` / `approveGraceEligibility`, and the Income Assurance pair), with the MB-10 record kept off chain; show the member when a grace was used (`GraceCycleUsed`) and when the next is available.
+- **Secured term plans**: a member signature flow (`SecurePlan`) when a plan is secured under MB-05; two-person plan cure-notice tooling (`proposePlanNotice` / `approvePlanNotice`) with the letter; a keeper that calls `declarePlanDefault` once 12.14 holds (it reverts otherwise).
 - **Keeper**: sync each revolving line at each cycle end (`syncCreditPeriod`), and call `triggerDefault` only when `inDefault` is true.
 - **Fee recipient**: name Clear Lending's recipient by two signers (`FEE_RECIPIENT` in `deploy/25`), then plans with a fee can open; update any dashboard that showed the discount as co-op income.
 - **Generated ABIs** follow the contracts; the command app's fingerprints are regenerated.

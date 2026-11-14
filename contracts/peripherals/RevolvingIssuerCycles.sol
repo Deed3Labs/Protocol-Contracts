@@ -149,6 +149,12 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
             c.missedInRow = 0;
             c.cureNoticeAt = 0;
             c.unsecuredCeiling = 0;
+        } else if (_useGrace(s, end)) {
+            // Cycle Assurance (12.13): an eligible member's unpaid Rebalance Amount uses a grace, if
+            // one is left in the window. The limit is not halved, nothing settles and the cycle does
+            // not count toward default; the run of misses stands as it was.
+            c.cleanStreak = 0;
+            emit GraceCycleUsed(member, end);
         } else if (c.missedInRow == 0) {
             // First miss: halve the unsecured limit, even below what is drawn. The excess is settled
             // from pledged bonds or pool shares by the Liquidator, never from Savings.
@@ -193,6 +199,25 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
         s.rebalanceAmount = 0;
         s.securedMinimum = 0;
         emit CycleJudged(member, clean, c.missedInRow, c.cleanStreak, deposited);
+    }
+
+    /// @dev Uses a grace (12.13) when the member is eligible and has one left in the rolling window:
+    /// at most `graceCyclesPerWindow` (1, up to 4) per `graceWindow` (365 days), counted by due point.
+    /// Computed; no role uses or grants a grace.
+    function _useGrace(CycleState storage s, uint64 end) private returns (bool) {
+        if (!s.graceEligible) return false;
+        DueTerms memory t = dueTerms;
+        uint256 max = t.graceCyclesPerWindow == 0 ? 1 : t.graceCyclesPerWindow;
+        uint256 window = t.graceWindow == 0 ? 365 days : t.graceWindow;
+        uint256 uses = s.graceUses;
+        uint256 used;
+        for (uint256 i = 0; i < 4; i++) {
+            uint256 at = (uses >> (64 * i)) & type(uint64).max;
+            if (at != 0 && at + window > end) used++;
+        }
+        if (used >= max) return false;
+        s.graceUses = (uses << 64) | end;
+        return true;
     }
 
     /// @dev Closes a cycle at `end`: what is due at the next end (12.1).

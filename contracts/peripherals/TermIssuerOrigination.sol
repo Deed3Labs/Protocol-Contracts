@@ -202,6 +202,92 @@ contract TermIssuerOrigination is TermIssuerBase {
         emit CombinedCeilingSet(revolving, product);
     }
 
+    /* ---- 12.14: default of a plan secured under MB-05 (Phase 2e) ---- */
+
+    bytes32 public constant SECURE_PLAN_TYPEHASH =
+        keccak256("SecurePlan(uint256 planId,uint256 nonce,uint256 deadline)");
+
+    /// @notice records the member's signed instruction that MB-05 secures this plan. From then on it
+    /// defaults only under 12.14, never under the installment-count rule. No role can undo it.
+    function securePlanWithSignature(uint256 planId, uint256 deadline, bytes calldata signature) external {
+        _requirePlan(planId);
+        Plan storage plan = plans[planId];
+        if (plan.closed) revert TermIssuerPlanClosed(planId);
+        if (block.timestamp > deadline) revert TermIssuerSignatureExpired(deadline);
+        address member = plan.member;
+        bytes32 digest = keccak256(abi.encodePacked(
+            "\x19\x01",
+            domainSeparator(),
+            keccak256(abi.encode(SECURE_PLAN_TYPEHASH, planId, planNonces[member], deadline))
+        ));
+        if (!SignatureChecker.isValidSignatureNow(member, digest, signature)) revert TermIssuerBadSignature(member);
+        planNonces[member]++;
+        securedPlans[planId].secured = true;
+        emit PlanSecured(planId, member);
+    }
+
+    /// @notice proposes the cure-notice timestamp for a secured plan's past-due payment. A different
+    /// signer approves it; nothing is recorded until then.
+    function proposePlanNotice(uint256 planId) external onlyCreditRole(ATTESTER_ROLE) {
+        _requirePastDue(planId);
+        securedPlans[planId].noticeProposer = _msgSender();
+        emit PlanNoticeProposed(planId, _msgSender());
+    }
+
+    /// @notice the second signer approves: the recorded time is this block's, never earlier, and
+    /// only while the payment is past due. Paying the past-due amount cancels it.
+    function approvePlanNotice(uint256 planId) external onlyCreditRole(ATTESTER_ROLE) {
+        _requirePastDue(planId);
+        SecuredPlan storage sp = securedPlans[planId];
+        address proposer = sp.noticeProposer;
+        if (proposer == address(0)) revert TermIssuerNoProposal();
+        if (proposer == _msgSender()) revert TermIssuerSameSigner(proposer);
+        sp.noticeProposer = address(0);
+        uint64 at = uint64(block.timestamp);
+        sp.noticeAt = at;
+        sp.noticeDue = uint128(scheduledPrincipalDue(planId));
+        uint256 from = _delinquentSince(planId) + SECURED_PAST_DUE;
+        if (at + SECURED_CURE > from) from = at + SECURED_CURE;
+        emit PlanNoticeRecorded(planId, at, arrearsOf(planId), uint64(from));
+    }
+
+    /// @notice records the default of a secured plan once 12.14 holds, and reverts otherwise.
+    /// @dev Permissionless; fails closed (no timestamp, no default). It respects the Liquidation Hold
+    /// (12.6): with a hold active, or no hold source to ask, it reverts. It writes nothing off and
+    /// moves nothing: the plan stays owed, term credit is suspended, and the default is what the
+    /// pledge module reads (`hasDefaultedOnCurrentLine`) to reach only the Earn
+    /// collateral pledged to secure plans. CLRUSD is never reachable from here.
+    function declarePlanDefault(uint256 planId) external {
+        _requirePlan(planId);
+        if (!_securedDefaultable(planId)) revert TermIssuerNotDefaultable(plans[planId].member);
+        address member = plans[planId].member;
+        address source = holdSource;
+        if (source == address(0)) revert TermIssuerOnHold(member);
+        (bool ok, bytes memory data) = source.staticcall(abi.encodeWithSignature("holdOf(address)", member));
+        if (!ok || data.length < 256) revert TermIssuerOnHold(member);
+        (,,,,,,, bool active) = abi.decode(data, (address, uint8, bool, uint64, address, uint64, address, bool));
+        if (active) revert TermIssuerOnHold(member);
+        securedPlans[planId].defaultedAt = uint64(block.timestamp);
+        defaultedAt[member] = uint64(block.timestamp);
+        termLimitOf[member] = 0;
+        termSuspended[member] = true;
+        emit SecuredPlanDefaulted(planId, member);
+    }
+
+    /// @notice names where the Liquidation Hold is read (the Liquidator). Set once.
+    function setHoldSource(address source) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
+        if (source == address(0) || holdSource != address(0)) revert TermIssuerHoldSourceSet();
+        holdSource = source;
+        emit HoldSourceSet(source);
+    }
+
+    /// @dev A secured, open plan with a payment past due.
+    function _requirePastDue(uint256 planId) private view {
+        _requirePlan(planId);
+        if (!securedPlans[planId].secured) revert TermIssuerNotSecured(planId);
+        if (plans[planId].closed || arrearsOf(planId) == 0) revert TermIssuerNotPastDue(planId);
+    }
+
     /* ---- settings moved here from TermIssuer in Phase 2e, for room ---- */
 
     /// @notice sets a member's ceiling for term plans.

@@ -116,6 +116,33 @@ contract RevolvingIssuerTerms is RevolvingIssuerBase {
         emit IncomePauseSet(_msgSender(), 0);
     }
 
+    /// @notice proposes the member's MB-10 eligibility for Cycle Assurance (12.13). A different
+    /// signer approves it. It can only enable relief: nothing withdraws it.
+    function proposeGraceEligibility(address member) external onlyCreditRole(ATTESTER_ROLE) {
+        cycleState[member].graceProposer = _msgSender();
+        emit GraceEligibilityProposed(member, _msgSender());
+    }
+
+    /// @notice the second signer approves the eligibility.
+    function approveGraceEligibility(address member) external onlyCreditRole(ATTESTER_ROLE) {
+        CycleState storage s = cycleState[member];
+        address proposer = s.graceProposer;
+        if (proposer == address(0)) revert RevolvingIssuerNoProposal(member);
+        if (proposer == _msgSender()) revert RevolvingIssuerSameSigner(proposer);
+        s.graceProposer = address(0);
+        s.graceEligible = true;
+        emit GraceEligibilitySet(member);
+    }
+
+    /// @notice the governed Cycle Assurance terms: graces per rolling window (1, at most 4) and the
+    /// window (365 days). Zero means the initial figure.
+    function setGraceTerms(uint8 cyclesPerWindow, uint64 window) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
+        if (cyclesPerWindow > 4) revert RevolvingIssuerPauseTooLong(cyclesPerWindow, 4);
+        dueTerms.graceCyclesPerWindow = cyclesPerWindow;
+        dueTerms.graceWindow = window;
+        emit GraceTermsUpdated(cyclesPerWindow, window);
+    }
+
     /* ---- 12.2: the member's own switches ---- */
 
     /// @notice the member turns hybridMode on or off: it stops Automatic Clearing (and, off chain,

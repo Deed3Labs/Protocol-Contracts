@@ -264,6 +264,13 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
       await (await liquidator.setTrustedSavingsIssuer(await revolving.getAddress(), true)).wait();
       log("  Liquidator trusts RevolvingIssuer");
     }
+    // 12.14: a secured term plan's default respects the Liquidation Hold, read here (set once).
+    if ((await term.holdSource()) === ethers.ZeroAddress) {
+      await (await term.setHoldSource(liquidatorRecord.address)).wait();
+      log("  TermIssuer reads the Liquidation Hold from the Liquidator");
+    }
+  } else {
+    log("! No Liquidator: TermIssuer has no hold source, so no secured term plan can default (12.14 fails closed).");
   }
 
   // ---- section 12.5 / 12.8: the Liquidator's Earn sources and the bond collection's gates ----

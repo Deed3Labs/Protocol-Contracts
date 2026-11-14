@@ -295,6 +295,18 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         }
     }
 
+    /// @notice whether a secured plan of the member's has a recorded 12.14 default and is still owed:
+    /// what the pledge module reads to reach the Earn collateral securing plans.
+    /// @dev A 12.14 default exists only once recorded by `declarePlanDefault` (permissionless, and
+    /// refused under a Liquidation Hold), so `inDefault` keeps its inherited meaning unchanged.
+    function hasDefaultedOnCurrentLine(address member) external view returns (bool) {
+        uint256[] memory ids = openPlanIds[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (securedPlans[ids[i]].defaultedAt != 0) return true;
+        }
+        return false;
+    }
+
     /// @notice how a plan is priced: its state and product, merchant subsidy, and whether it is
     /// free.
     function pricingOf(uint256 planId) external view returns (PlanPricing memory) {
@@ -310,18 +322,15 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     /// schedule began. Past that, installment k is covered once `repaid` reaches what the schedule
     /// asks for after k installments; the first uncovered one is when the plan fell behind.
     function delinquentSince(uint256 planId) public view returns (uint256) {
-        if (arrearsOf(planId) == 0) return 0;
-        Plan storage plan = plans[planId];
-        if (plan.repaid < plan.scheduleFloor) return plan.scheduleStart;
-        uint256 n = plan.installments;
-        uint256 k = 1;
-        while (k < n && plan.repaid >= _dueAt(plan, k)) k++;
-        return plan.scheduleStart + k * plan.installmentLength;
+        return _delinquentSince(planId);
     }
 
-    /// @notice when a plan that is behind becomes defaultable. Zero for a plan that is on time.
+    /// @notice when an unsecured plan that is behind becomes defaultable under the installment-count
+    /// rule. Zero for a plan that is on time, and always for a plan secured under MB-05, which
+    /// follows 12.14 (`declarePlanDefault`).
     function defaultableAt(uint256 planId) public view returns (uint256) {
-        uint256 since = delinquentSince(planId);
+        if (securedPlans[planId].secured) return 0;
+        uint256 since = _delinquentSince(planId);
         if (since == 0) return 0;
         return since + DEFAULT_AFTER_INSTALLMENTS * plans[planId].installmentLength;
     }
@@ -455,6 +464,27 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         _forwardTo(origination);
     }
 
+    /// @notice see TermIssuerOrigination: 12.14 for plans secured under MB-05.
+    function securePlanWithSignature(uint256, uint256, bytes calldata) external {
+        _forwardTo(origination);
+    }
+
+    function proposePlanNotice(uint256) external {
+        _forwardTo(origination);
+    }
+
+    function approvePlanNotice(uint256) external {
+        _forwardTo(origination);
+    }
+
+    function declarePlanDefault(uint256) external {
+        _forwardTo(origination);
+    }
+
+    function setHoldSource(address) external {
+        _forwardTo(origination);
+    }
+
     /// @notice see TermIssuerOrigination.setFeeTerms.
     function setFeeTerms(uint64, uint64, uint64) external {
         _forwardTo(origination);
@@ -540,7 +570,8 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         if (at == 0 || block.timestamp < at) revert TermIssuerNotDefaultable(member);
 
         materialiseMember(member);
-        writtenOff = totalPrincipalOf(member);
+        // Only the unsecured plans: a plan secured under MB-05 stays owed and follows 12.14.
+        writtenOff = _writeOffAmount(member);
         defaultedAt[member] = uint64(block.timestamp);
         stableCredit.writeOffCreditLine(member, writtenOff);
         writtenOffOf[member] += writtenOff;
@@ -647,8 +678,12 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     /// @notice this issuer's share of a member's debt.
     /// @dev Only what sits in its plans. A member who also holds a revolving balance has debt this
     /// issuer does not own and must not write off.
-    function _writeOffAmount(address member) internal view override returns (uint256) {
-        return totalPrincipalOf(member);
+    function _writeOffAmount(address member) internal view override returns (uint256 total) {
+        uint256[] memory ids = openPlanIds[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (plans[ids[i]].closed || securedPlans[ids[i]].secured) continue;
+            total += plans[ids[i]].principalOutstanding;
+        }
     }
 
     /// @notice clears the member's plans on default, and suspends their term credit.
@@ -659,7 +694,7 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
             Plan storage plan = plans[ids[i]];
-            if (plan.closed) continue;
+            if (plan.closed || securedPlans[ids[i]].secured) continue;
             plan.principalOutstanding = 0;
             carryOutstandingOf[ids[i]] = 0;
             plan.closed = true;
