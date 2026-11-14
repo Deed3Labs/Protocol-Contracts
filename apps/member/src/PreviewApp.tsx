@@ -16,6 +16,8 @@ import { unreadThreads, withOnTrack } from '@/lib/clearModel';
 import HomePage from '@/pages/app/HomePage';
 import type { YourShop } from '@/utils/apiClient';
 import type { AccountDetailsSource } from '@/lib/accountDetails';
+import type { ElpaState } from '@/lib/elpa';
+import { ELPA_ACTIVE, ELPA_CHECK_IN, ELPA_REDEEMED } from '@/data/elpaPreview';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
@@ -99,7 +101,8 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 ];
 
 /**
- * Savings in the reference's four states — /savings?preview=1&state=day1|saving|paused|done.
+ * Savings in the reference's four states — /savings?preview=1&state=day1|saving|paused|done — and
+ * with an ELPA: state=elpa|elpa-checkin|redeemed.
  *
  * The figures are the reference's own (docs/reference/savings-reference.html), so a screenshot can be
  * laid beside it. Without a state the page follows the harness's populated/empty toggle as before.
@@ -128,9 +131,12 @@ function SavingsPreview({ empty }: { empty: boolean }) {
       backingSpending: 0,
     },
   };
+  // The ELPA's three moments (Addendum 3): saving equity, the six-month check-in, and redeemed.
+  const elpas: Record<string, ElpaState> = { elpa: ELPA_ACTIVE, 'elpa-checkin': ELPA_CHECK_IN, redeemed: ELPA_REDEEMED };
   const state = params.get('state');
-  const data = (state && states[state]) || (empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE);
-  return <SavingsPage key={state ?? String(empty)} data={data} />;
+  const elpa = state ? elpas[state] : undefined;
+  const data = (state && (states[state] ?? (elpa ? states.done : undefined))) || (empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE);
+  return <SavingsPage key={state ?? String(empty)} data={data} elpa={elpa} />;
 }
 
 /**
@@ -223,17 +229,14 @@ function RepayPreview() {
  */
 function TermPlansPreview() {
   const joined = HOME_IN_USE.termPlans;
-  // Years in: a dental split nearly done, a cash plan mid-way, and the home actually bought. Ordered
-  // by how soon the member reaches them, not by size — which is why a $248k mortgage sits last.
+  // Years in: a dental split nearly done and a cash plan mid-way. A member's ELPA is never here: it is
+  // not a term plan (Addendum 3), and Savings shows it (/savings?preview=1&state=elpa).
   const later = {
     ...joined,
     plans: [
       { id: 'valley-dental', name: 'Valley Dental', openedOn: 'May', balance: 410, splitInto: 2, cyclesLeft: 1, rate: '2% / cycle', ratePerCycle: 0.02 },
       { id: 'cash-plan', name: 'Clear Cash', balance: 2500, splitInto: 12, cyclesLeft: 9, rate: '2.5% / cycle', ratePerCycle: 0.025 },
-      { id: 'elpa', name: 'ELPA · 1042 Julia St', balance: 250000, perCycle: 1410, progressNote: 'payment 7 of 360' },
     ],
-    // No balance cap once the mortgage is on the shelf — it was never inside one.
-    balanceLimit: undefined,
   };
   const shelves = [
     {
@@ -245,7 +248,7 @@ function TermPlansPreview() {
       },
     },
     { name: 'signed up directly — everything locked', data: HOME_DAY_ONE.termPlans },
-    { name: 'later — three active plans', data: later },
+    { name: 'later — two active plans', data: later },
   ];
 
   return (
@@ -1125,7 +1128,7 @@ export default function PreviewApp() {
                               data={{
                                 ...HOME_IN_USE,
                                 // The reference's all-clear member: cash in hand, nothing parked, and
-                                // only the locked ELPA left on the shelf.
+                                // no plans left on the shelf.
                                 cash: 2000,
                                 cashAccount: { ...HOME_IN_USE.cashAccount, spendable: 2000, readyToAllocate: 0 },
                                 termPlans: {

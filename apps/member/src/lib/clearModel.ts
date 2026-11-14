@@ -1672,13 +1672,15 @@ export const TIER_TEXT: Record<TierKey, string> = {
 
 /* ---- Term plans — design spec §4c -------------------------------------------------------------
  *
- * Everything with a set amount and a schedule: a merchant split, a cash plan, a ground lease, an
- * ELPA mortgage. What makes something a term plan is not its size but what backs it — an ACH
+ * Credit over a set number of cycles: a merchant split or a cash plan. What makes something a term
+ * plan is not its size but what backs it — an ACH
  * authorisation on a linked external account. That's more direct than a card, and it's why the
  * co-op can issue to a member who may never route their paycheck to Clear.
  *
- * Locked rows are part of the shelf from the first minute, on both signup paths. A member who
- * joined at a tire counter should see the home on the same shelf as the repair.
+ * Locked rows are part of the shelf from the first minute, on both signup paths.
+ *
+ * The ELPA is NOT a term plan, credit or a mortgage (Addendum 3). It never appears on this shelf, in
+ * these limits or in the credit view; it lives in lib/elpa and is shown on Savings.
  */
 
 export interface TermPlan {
@@ -1694,7 +1696,7 @@ export interface TermPlan {
    * Not what's left: that's derived from the cycles still to run, so the two can't disagree.
    */
   balance?: number;
-  /** How many cycles the amount is spread over. Absent for amortising plans like an ELPA. */
+  /** How many cycles the amount is spread over. */
   splitInto?: number;
   perCycle?: number;
   cyclesLeft?: number;
@@ -1702,8 +1704,6 @@ export interface TermPlan {
   rate?: string;
   /** The same rate as a fraction, for quoting what a split costs. */
   ratePerCycle?: number;
-  /** Long-dated plans count payments instead of cycles left, e.g. "payment 7 of 360". */
-  progressNote?: string;
   /** What it takes to unlock, e.g. "Unlocks after six clean cycles · 2.5% / cycle". */
   lockedNote?: string;
   /** What clears it today, carry included. Only on a live plan. */
@@ -1740,13 +1740,7 @@ export interface LinkedAccount {
 
 export interface TermPlans {
   plans: TermPlan[];
-  /**
-   * Cap on total outstanding across cycle-scale plans, stated beside the headline as "of $X".
-   *
-   * Absent once the shelf carries something this cap was never meant to bound — an ELPA mortgage is
-   * amortising and sits outside it, and "$250,910.00 of $656.00" would be a category error rather
-   * than a limit. The headline simply stops comparing.
-   */
+  /** Cap on total outstanding across plans, stated beside the headline as "of $X". */
   balanceLimit?: number;
   /**
    * What can be scheduled per cycle, and where it comes from. A different quantity from
@@ -1771,7 +1765,7 @@ export interface TermPlans {
  * What's still to pay on a plan, in principal.
  *
  * Derived from the cycles left rather than stored, so a plan can't claim a figure its own schedule
- * contradicts. Amortising plans state their balance directly — there's no even split to count down.
+ * contradicts. A plan without a split states its balance directly.
  */
 export function planRemaining(plan: TermPlan): number {
   // A plan read from chain knows what it owes; the cycle count is an estimate that a payment made
@@ -1807,11 +1801,6 @@ export function planClearedShare(plan: TermPlan): number {
   }
   if (!plan.balance) return 0;
   return Math.max(0, Math.min(1, planPaid(plan) / plan.balance));
-}
-
-/** Amortising plans — an ELPA mortgage — run on their own schedule, outside the shelf's limits. */
-export function hasAmortisingPlan(data: TermPlans): boolean {
-  return activePlans(data).some((p) => p.splitInto === undefined);
 }
 
 /** A plan is live once it has a balance; everything else on the shelf is a locked row. */
@@ -1880,8 +1869,7 @@ export { splitQuote };
  * What a plan bills each cycle.
  *
  * Derived wherever the parts are known, so the shelf row and the chooser can't quote different
- * figures for the same plan. Amortising plans like an ELPA state their payment outright — there's no
- * even split to compute one from.
+ * figures for the same plan. A plan without the parts states its payment outright.
  */
 export function planPerCycle(plan: TermPlan): number | undefined {
   // The contract fixes the installment; quoting an estimate beside it would disagree by cents.

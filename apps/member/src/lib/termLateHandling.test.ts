@@ -34,14 +34,14 @@ describe('the shelf', () => {
     expect(plan.behind).toBe(25.5);
   });
   test('a default pauses term plans, with what is left to pay back', () => {
-    const shelf = toTermPlans([], HOME_DAY_ONE.termPlans, undefined, {
+    const shelf = toTermPlans([], HOME_DAY_ONE.termPlans, {
       limitCents: 0, usedCents: 0, availableCents: 0, carryOwedCents: 0,
       suspended: true, writtenOffCents: 10_000, recoveredCents: 2_500,
     });
     expect(shelf.paused).toEqual({ toPayBack: 75 });
   });
   test('not paused, no pause', () => {
-    expect(toTermPlans([], HOME_DAY_ONE.termPlans, undefined, null).paused).toBeUndefined();
+    expect(toTermPlans([], HOME_DAY_ONE.termPlans, null).paused).toBeUndefined();
   });
 });
 

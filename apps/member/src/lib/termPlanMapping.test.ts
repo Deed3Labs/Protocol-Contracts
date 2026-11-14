@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { toTermPlans } from '@/lib/creditMapping';
-import { HOME_DAY_ONE } from '@/data/clearPlaceholder';
+import { HOME_DAY_ONE, HOME_IN_USE } from '@/data/clearPlaceholder';
 import type { CreditTermPlanRow } from '@/utils/apiClient';
 
 const plan = (over: Partial<CreditTermPlanRow> = {}): CreditTermPlanRow => ({
@@ -44,7 +44,7 @@ describe('the term-plan shelf, from chain', () => {
   });
 
   test('the locked products survive a real plan arriving', () => {
-    // Partner credit and an ELPA are products nobody has unlocked yet, not fields that failed to
+    // Partner credit and Clear Cash are products nobody has unlocked yet, not fields that failed to
     // load. Dropping them because the chain returned one plan would delete the component's point.
     const lockedBefore = HOME_DAY_ONE.termPlans.plans.filter((p) => p.lockedNote).length;
     expect(lockedBefore).toBeGreaterThan(0);
@@ -82,40 +82,14 @@ describe('day one leads with whichever one they are here for', () => {
 });
 
 /*
- * The ELPA row is the one place a member watches a balance climb toward the thing they are saving
- * for, and it read a hardcoded "0 of 15,000" — the same for a member with nothing and a member
- * with fourteen thousand.
+ * The ELPA is not credit, a term plan or a mortgage (Addendum 3). It used to sit on this shelf as a
+ * locked row and, in the preview, as a $250,000 "plan"; neither is true of it.
  */
-describe('the ELPA row shows real progress', () => {
-  const elpaIn = (data: ReturnType<typeof toTermPlans>) => data.plans.find((p) => p.id === 'elpa');
-
-  test('reads the member’s actual credits', () => {
-    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans, { credits: 130, goal: 15_000 }));
-    expect(row?.lockedNote).toBe('130 of 15,000 credits');
-  });
-
-  test('and not the hardcoded zero it used to show', () => {
-    // Exact, not a substring: "130 of 15,000" contains "0 of 15,000".
-    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans, { credits: 130, goal: 15_000 }));
-    expect(row?.lockedNote).not.toBe('0 of 15,000 credits');
-  });
-
-  test('unlocks when the goal is met', () => {
-    // Leaving it greyed out would tell a member they cannot have the thing they just spent two
-    // years qualifying for. The shelf treats a row as locked precisely when it carries a reason.
-    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans, { credits: 15_000, goal: 15_000 }));
-    expect(row?.lockedNote).toBeUndefined();
-  });
-
-  test('stays locked one credit short', () => {
-    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans, { credits: 14_999, goal: 15_000 }));
-    expect(row?.lockedNote).toBe('14,999 of 15,000 credits');
-  });
-
-  test('is left alone before credits have been read', () => {
-    // Unread is not zero. Rewriting the row with a figure we do not have would be inventing one.
-    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans));
-    expect(row?.lockedNote).toBeDefined();
+describe('the ELPA is not a term plan', () => {
+  test('it is on no shelf, locked or live', () => {
+    for (const data of [HOME_DAY_ONE.termPlans, HOME_IN_USE.termPlans, toTermPlans([], HOME_DAY_ONE.termPlans), toTermPlans([plan()], HOME_DAY_ONE.termPlans)]) {
+      expect(data.plans.some((p) => p.id === 'elpa' || /elpa/i.test(p.name))).toBe(false);
+    }
   });
 });
 
@@ -130,6 +104,6 @@ describe('the ground lease is not a term plan', () => {
     // Removing it moved every index after it, and `LOCKED_PLANS[2]` silently became undefined in
     // a list that renders. The fixtures pick rows by id now.
     expect(HOME_DAY_ONE.termPlans.plans.every(Boolean)).toBe(true);
-    expect(HOME_DAY_ONE.termPlans.plans.some((p) => p.id === 'elpa')).toBe(true);
+    expect(HOME_DAY_ONE.termPlans.plans.some((p) => p.id === 'cash-plan')).toBe(true);
   });
 });
