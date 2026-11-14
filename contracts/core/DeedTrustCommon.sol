@@ -89,6 +89,9 @@ abstract contract DeedTrustCommon is DeedNFTBase {
     /// @dev Re-review M-G: the protector's consent to the standby's promotion on its own determination.
     bytes32 internal constant LICENSING_CONSENT_TYPEHASH =
         keccak256("LicensingConsent(uint256 tokenId,address standby,bytes32 docHash,uint256 nonce)");
+    /// @dev Phase 4c: a second signer of the deed's validator consents to a freezing Void.
+    bytes32 internal constant FREEZE_CONSENT_TYPEHASH =
+        keccak256("FreezeConsent(uint256 tokenId,uint8 reasonCode,bytes32 recordingRefHash,bytes32 uriHash,uint256 nonce)");
 
     /// @dev The trust agreement applies only to Land and Estate (Addendum 1).
     function _inScope(uint8 assetType) internal pure returns (bool) {
@@ -136,6 +139,17 @@ abstract contract DeedTrustCommon is DeedNFTBase {
         } else if (!SignatureCheckerUpgradeable.isValidSignatureNow(signer, digest, signature)) {
             revert IDeedTrust.ConsentMissing(signer);
         }
+    }
+
+    /// @dev Phase 4c: what the second validator signer consents to when a Void freezes the deed.
+    function _freezeConsentHash(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string calldata uri, uint64 nonce)
+        internal
+        pure
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(
+            FREEZE_CONSENT_TYPEHASH, tokenId, reasonCode, recordingRefHash, keccak256(bytes(uri)), uint256(nonce)
+        ));
     }
 
     function _trusteeAcceptanceHash(uint256 tokenId, address trustee, uint256 nonce) internal pure returns (bytes32) {
