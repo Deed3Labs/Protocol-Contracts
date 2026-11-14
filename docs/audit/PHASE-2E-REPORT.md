@@ -83,7 +83,7 @@ Neither flag raises a drawn amount, moves funds, charges a fee, or causes a miss
 - **What it does.** It records the default (`securedPlans(planId).defaultedAt`, `defaultedAt[member]`), sets the term limit to 0 and suspends term credit. It writes nothing off and moves nothing: the plan stays owed. `hasDefaultedOnCurrentLine(member)` on TermIssuer (new there) is true while a defaulted secured plan is open.
 - **Enforcement: a pledged bond pays the plan.** Once a default is recorded, the member's pledged bond becomes payable through `payPledged`. The Liquidator's `pledgePaymentDue` counts a trusted term issuer (one with no tiers) under 12.14 only. The need is what the member's open plans with a recorded 12.14 default owe (`owedOn`), and the requested bond is chosen as for any default (the smallest that covers it, else the largest). `applyPledgePayment` pays those plans, oldest first, with `payPlan` from the bond's proceeds, and sends any surplus to the Holder. The Liquidation Hold stops it, both in `pledgePaymentDue` and again in `applyPledgePayment`. No unsecured plan, revolving tier, CLRUSD or Savings is touched.
 - **The trust.** `deploy/25` trusts TermIssuer on the Liquidator, through the operator's existing `setTrustedSavingsIssuer` switch. To keep that trust to this one path, every tier path now refuses a trusted issuer that has no tiers: `liquidate`, `settleFromSavings`, `settleExcess`, `noticeShortfall` and `settleShortfall` all go through `_requireTrusted`. So trusting TermIssuer opens no CLRUSD, Savings or pool-share enforcement, which a test checks. `maturityToDebt` and `applyMaturityInstruction` already skipped tierless issuers. The operator's `liquidateShares` and `settleRealized` (which never checked trust) read or settle a tier on the issuer, which TermIssuer does not have, so they revert before anything moves; a test checks `liquidateShares` with the default recorded. The Liquidator grows by 865 bytes, to 23,817 (759 bytes of headroom).
-- **Not wired: pool shares.** 12.14 also names pool shares pledged to secure plans, by queued redemption. The Liquidator's pool-share paths settle tiers only, and a term issuer has none, so a secured-plan default does not reach pool shares. Pool-share pledges back the `POOL_SHARE` tier, and on-chain records do not tie any pledge to a plan, so routing them would need a decision on which pledges secure plans. Recommendation: Phase 2f, alongside the pledge-to-plan link.
+- **Not wired: pool shares.** 12.14 also names pool shares pledged to secure plans, by queued redemption. The Liquidator's pool-share paths settle tiers only, and a term issuer has none, so a secured-plan default does not reach pool shares. Pool-share pledges back the `POOL_SHARE` tier, and on-chain records do not tie any pledge to a plan, so routing them would need a decision on which pledges secure plans. Recorded as a Phase 2f item (section 5).
 - **`inDefault` on TermIssuer is unchanged** (the inherited period rule). A 12.14 default exists only once recorded, so the Hold check cannot be bypassed through a view.
 - **Unsecured plans keep the rule as built** (owner's decision): `declareDefault` once a plan is `DEFAULT_AFTER_INSTALLMENTS` (2) installments behind, writing off the unsecured plans' principal. A member holding both kinds keeps the secured plans open and owed when the unsecured ones are written off.
 - **No on-chain hardship plan exists**, so only payment of the past-due amount cancels a notice. A re-split (`resplitWithSignature`) does not cancel it; if the owner wants a hardship re-split to count, it would clear `noticeAt` there.
@@ -238,7 +238,7 @@ Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSet
 - **New:**
   - `test/audit/compliance/Addendum2.spec.ts` (13): acceptance 39, 40, 41, 42, 44 (four cases), 45, 46, and the amended 18, 25 (Automatic Clearing) and 28. It resets the chain per test (`hardhat_reset`), because the spec's dates are absolute; Pacific time is checked against the platform's own time-zone data (`Intl`), not the contract's rule.
   - `test/audit/compliance/Addendum2Term.spec.ts` (5): acceptance 43 (three cases), 47 and 48.
-  - `test/audit/compliance/Addendum2Relief.spec.ts` (10), following the references' wording. 12.13: two-signer eligibility that only enables relief and moves nothing; a grace used automatically, at most once per rolling 365 days, with no halving, nothing settled and no count toward default, then available again in a new window; no eligibility means a miss; the governed count and window; Income Assurance that only lengthens and ends only by expiry or the member. 12.14: 60 days past due + notice + 30 days, reverting until then and failing closed without a notice; the 60 days run from the due date; notices only while past due and only for secured plans, cancelled by payment; the Liquidation Hold blocks the trigger; no hold source means no default; unsecured plans keep the installment rule, and no role can declare a secured plan's default.
+  - `test/audit/compliance/Addendum2Relief.spec.ts` (11), following the references' wording. 12.13: two-signer eligibility that only enables relief and moves nothing; a grace used automatically, at most once per rolling 365 days, with no halving, nothing settled and no count toward default, then available again in a new window; no eligibility means a miss; the governed count and window; Income Assurance that only lengthens and ends only by expiry or the member. 12.14: 60 days past due + notice + 30 days, reverting until then and failing closed without a notice; the 60 days run from the due date; notices only while past due and only for secured plans, cancelled by payment; the Liquidation Hold blocks the trigger; no hold source means no default; a recorded default makes `payPledged` pay a bond the member pledged into the defaulted plan, and nothing before the default is recorded, while trusting TermIssuer opens no tier path; unsecured plans keep the installment rule, and no role can declare a secured plan's default.
   - `test/audit/rereview/Decisions.spec.ts`: Phase 4c items 1, 2, 3 and 7 (5 tests).
   - `test/peripherals/AssurancePool.spec.ts`: the §13 Hardship Grant test.
   - `contracts/mocks/PacificCalendarHarness.sol` for the default-day rules.
@@ -250,7 +250,7 @@ Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSet
   - The fee leg (`TermIssuer.spec`, `PayoutLifecycle.spec`, `DeepPoC` X-3, `DeepPoC2` X-8, `BlindReview` H-A): the third leg is asserted at Clear Lending's fee recipient, and the co-op receives nothing. `test/helpers/plans.ts` names a recipient by two signers before a plan opens (`feeRecipientOf`); `deep-setup` does the same.
   - DECISIONS #7 (`Term.spec`, `Decisions` L-F, `Compliance.deploy`): the switch tests become "the switch is gone" and the Combined Ceiling's figures. `AccrualInvariants` drops the pro-rata share from bounds (a) and (b).
   - `Decisions` L-G across issuers: under the Combined Ceiling the trimmed plan is the cheapest position, so the repayment past Income reaches Boost, not the plan.
-- **Full suite (credit half, before the merge)**: `KEEP_REVERT_STRINGS=true npx hardhat test`, one process, every fuzz at its default 300 steps: **1,056 passing, 0 failing** (35 min).
+- **Full suite:** section 6. Before the merge, the credit half alone ran 1,066 passing and 0 failing in one local process; the bond half alone ran 1,052 passing.
 
 **New (bond half):** `test/audit/compliance/PledgedBonds.spec.ts`, 21 tests.
 
@@ -356,40 +356,75 @@ New: `triggerDefault`, `setCycleEndDayWithSignature`, `proposeCureNotice`/`appro
 
 **The one widening.** `Liquidator.applyMaturityInstruction(member, toDebt)` used to accept only the collection. It now also accepts the collection's own vault (`earnBonds.bondVault()`), which calls it from `completeSettlement` to apply the rest of a debt part recorded at settlement. The vault passes only the holder and the amount fixed in `pendingSettlement`; the function still applies only to that member's `BOND` tier at issuers the Liquidator trusts, and sends anything the tier no longer owes to the member. No role gains a call.
 
-**Between the halves (built after the merge).** A recorded 12.14 default makes `payPledged` pay the member's pledged bond into the defaulted secured plans (section 1, 12.14). Two notes:
+**Between the halves (built after the merge).** A recorded 12.14 default makes `payPledged` pay the member's pledged bond into the defaulted secured plans (section 1, 12.14).
 
-- No pledge is tied to a plan on chain. Any bond the member has pledged can be requested for a defaulted secured plan, just as any pledged bond can for a revolving default.
-- Pool shares are not reached by a secured-plan default. This is left for Phase 2f.
+**Phase 2f items** (recorded at the coordinator's direction):
+
+1. **A pledge-to-plan link for bonds.** No pledge is tied to a plan on chain, so any bond the member has pledged can be requested for a defaulted secured plan, as any pledged bond can for a revolving default. 12.14 speaks of collateral "pledged to secure plans"; tying a bond pledge to the plans it secures would narrow that.
+2. **Pool shares for a secured-plan default.** The Liquidator's pool-share paths settle tiers only, so a 12.14 default does not reach pool shares. The queued-redemption path would pay plans once the same pledge-to-plan link exists.
 
 ## 6. Checks
 
+All at the branch head after the merge and the 12.14 wiring, unless a line says otherwise.
+
 **Sizes** (production build, `npx hardhat compile --force`; EIP-170 24,576 runtime, EIP-3860 49,152 creation). Every contract is within both. The changed ones:
 
-| Contract | Runtime before (`dev`) | Runtime now | Headroom | Creation |
+| Contract | Runtime on `dev` | Runtime now | Headroom | Creation now |
 |---|---|---|---|---|
 | RevolvingIssuerExtension | 22,348 | 24,413 | 163 | 24,550 |
-| TermIssuer | 22,325 | 23,263 | 1,313 | 23,960 |
-| RevolvingIssuer | 24,138 | 23,001 | 1,575 | 24,006 |
-| TermIssuerExtension | 23,252 | 22,357 | 2,219 | 22,494 |
-| RevolvingIssuerTerms (new) | — | 22,308 | 2,268 | 22,445 |
-| RevolvingIssuerCycles | 19,683 | 22,222 | 2,354 | 22,276 |
-| TermIssuerOrigination | 17,258 | 20,938 | 3,638 | 21,075 |
-| Liquidator (untouched) | 20,380 | 20,380 | 4,196 | 20,517 |
+| TermIssuer | 22,325 | 24,009 | 567 | 24,713 |
+| Liquidator | 20,380 | 23,817 | 759 | 23,954 |
+| TermIssuerOrigination | 17,258 | 23,733 | 843 | 23,870 |
+| BurnerBond | 24,168 | 23,294 | 1,282 | 23,721 |
+| RevolvingIssuer | 24,138 | 23,110 | 1,466 | 24,115 |
+| RevolvingIssuerTerms (new) | — | 23,056 | 1,520 | 23,193 |
+| RevolvingIssuerCycles | 19,683 | 22,682 | 1,894 | 22,736 |
+| TermIssuerExtension | 23,252 | 22,546 | 2,030 | 22,683 |
+| CollateralRegistry | 13,503 | 15,596 | 8,980 | 15,733 |
+| BondVault | 10,290 | 11,888 | 12,688 | 12,025 |
 | RateSchedule | 10,548 | 10,989 | 13,587 | 11,126 |
+| BurnerBondPledges (new) | — | 9,617 | 14,959 | 9,644 |
+| BurnerBondFactory | 7,270 | 7,270 | 17,306 | 46,475 (was 46,956) |
+| LimitCalculator | — | 6,951 | 17,625 | 7,088 |
 
-**Storage.** OpenZeppelin's storage report (`@openzeppelin/upgrades-core` `getStorageUpgradeReport`) between the `dev` build and this branch: RevolvingIssuer and its three modules, TermIssuer and its two, RateSchedule, AssurancePool, ESADepositVault and ClaimEscrow all pass (append-only; RevolvingIssuer's layout still ends at slot 303, TermIssuer's at its old end). Against `.openzeppelin/base-sepolia.json`: RevolvingIssuer passes against five of its six recorded implementations and TermIssuer against all six; the sixth RevolvingIssuer implementation (0x0D0A…8784) and the two retired Phase 1 AssurancePool implementations fail as they already did on `dev` (layouts replaced before Phase 2b and in Phase 2c), since this branch is append-only against `dev`. ESADepositVault and ClaimEscrow are not changed, so their reports against `.openzeppelin/base.json` stand.
+**Storage.** OpenZeppelin's `getStorageUpgradeReport`:
+- **Earliest build of this worktree (the `dev` layout) vs now:** RevolvingIssuer, TermIssuer, RateSchedule, AssurancePool, Liquidator, BondVault, CollateralRegistry, ESADepositVault and ClaimEscrow all pass, append-only. RevolvingIssuer still ends at its `__gap` from slot 300; TermIssuer's gap goes 21 → 13 and ends where it did; BondVault's gap goes 33 → 31. BurnerBond's layout changes, but it is a clone with no proxy (section 2).
+  The Liquidator was checked again at the head: it adds no storage, and its layout still ends at its `__gap` from slot 265.
+- **Against `.openzeppelin/base-sepolia.json`:**
+  - TermIssuer passes against all six recorded implementations, and RevolvingIssuer against five of its six.
+  - Liquidator ×2, CollateralRegistry ×2, NetworkRegistry, MerchantRegistry ×2, ESADepositVault ×4 and ClaimEscrow all pass.
+  - The failures already exist on `dev`: the sixth RevolvingIssuer implementation (0x0D0A…8784, layout replaced before Phase 2b) and the four Phase 1 AssurancePool implementations (`_owner` deleted in Phase 2c). The manifests are unchanged, and AssurancePool gains only NatSpec here.
+- **Against `.openzeppelin/base.json`:** ESADepositVault ×2 and ClaimEscrow pass. Both contracts are unchanged.
 
-**Slither** (per contract, via-IR, Medium and High only, against `dev`). Nothing new is a defect. New entries, by class:
+**Slither** (per contract, via-IR, Medium and High only, against `dev` at 7032c929; run after the merge, and for the Liquidator again at the head). Nothing new is a defect. New entries, by class:
 
-- `uninitialized-state` (High): the module-split false positive Phases 1–4b triaged. `cycleState`, `dueTerms`, `defaultExcludedPayer`, `payerChoice`, `feeTerms`, `feeRecipientProposal`, `combinedRevolving` and `combinedProduct` are written in a module the analysed contract delegates to.
+- `uninitialized-state` (High): the module-split false positive Phases 1–4b triaged. These variables are written in a module the analysed contract delegates to:
+  - RevolvingIssuerBase: `cycleState`, `dueTerms`, `defaultExcludedPayer`, `payerChoice`, and the views' variables that moved to the main contract;
+  - TermIssuerBase: `feeTerms`, `feeRecipientProposal`, `combinedRevolving`, `combinedProduct`, `securedPlans` and the other module-written ones.
+
+  RateSchedule's `bandsOf` is written through a storage pointer in `setProduct`.
 - `controlled-delegatecall` (High) on `RevolvingIssuer.delegateView`: only the issuer itself may call it (`msg.sender == address(this)`), only with the pinned terms module as the target, and only through the static self-call in `_forwardView`, so it can run nothing else and write nothing.
-- `reentrancy-no-eth` (Medium): the Combined Ceiling's call from the revolving line into the term issuer (`materialiseMember`, which calls back only into views), the modules' self-call to `materialiseCarry`, and `openPlan`'s self-call. Each target is fixed at wiring and set once; none reaches a state-changing function of the caller.
-- `divide-before-multiply` (Medium) in `PacificCalendar`: the integer date algorithms, by design (exhaustively checked in acceptance 39 against the platform's time-zone data).
-- `uninitialized-local`, `incorrect-equality` (day comparisons) and `unused-return` (tuple fields not needed): intended, as before.
+- `reentrancy-no-eth` (Medium), on calls whose targets are fixed at wiring and set once; none reaches a state-changing function of the caller:
+  - the Combined Ceiling's call from the revolving line into the term issuer (`materialiseMember`, which calls back only into views);
+  - the modules' self-call to `materialiseCarry`;
+  - `openPlan`'s self-call.
+- `divide-before-multiply` (Medium):
+  - `PacificCalendar`: the integer date algorithms, by design (exhaustively checked in acceptance 39 against the platform's time-zone data);
+  - `RateSchedule.termChargeFor`: the list carry is rounded down before the 365/360 scale-up, so it is at most 1 unit low, in the member's favour, and the cap still bounds it.
+- `uninitialized-local`, `incorrect-equality` (day, arrears and nonce comparisons) and `unused-return` (tuple fields not needed): intended, as before. CreditIssuer and CarryIndex entries that appear through derived contracts are in code this branch does not change.
+- **Bond contracts:** nothing new. BurnerBond, BurnerBondBase, BurnerBondPledges, CollateralRegistry, BurnerBondFactory and AssurancePool are the same as `dev` or lower. Liquidator goes from 19 findings on `dev` to 15 at the head. That is the bond half's six fewer, plus two from the 12.14 wiring: an `incorrect-equality` on the `pay == 0` skip, and an `unused-return` on the `securedPlans` tuple fields that are not needed. BondVault's one entry is the audited treasury `arbitrary-send-erc20`, moved from `_cover` to `_coverUpTo`.
 
-**Generated files.** Fingerprints (`packages/command-types/src/chain/code.json`) regenerated from the production build; `code-fingerprints.mjs --check` passes. Contract reference regenerated (RevolvingIssuer, TermIssuer); `contract-reference.mjs --check` passes. `check-doc-links.mjs`: no broken links.
+**Generated files.** At the head, after a production build:
+- `node scripts/command/code-fingerprints.mjs` regenerated `packages/command-types/src/chain/code.json` (34 contracts), and `--check` passes;
+- `node scripts/docs/contract-reference.mjs --check` passes (36 pages);
+- `node scripts/check-doc-links.mjs` finds no broken links.
 
-**`npx turbo run typecheck test --affected`** (Node 22, bun installed, `TURBO_SCM_BASE=origin/dev`): 3 of 3 tasks passed.
+**`npx turbo run typecheck test --affected`** (Node 22, bun installed, `TURBO_SCM_BASE=origin/dev`; after the merge): 3 of 3 tasks passed.
+
+**Full Hardhat suite.**
+- **At the head:** CI's Contracts job on [#896](https://github.com/Deed3Labs/Protocol-Contracts/pull/896) runs the whole suite (in four shards, since #897) and is the merge gate. Its run and result are linked in the PR description.
+- **Locally, at the merge commit before the 12.14 Liquidator wiring:** `KEEP_REVERT_STRINGS=true npx hardhat test`, one process, every fuzz at its default 300 steps. 1,084 passing and 1 failing. The failure was environmental: the shared disk filled (ENOSPC) while a TermIssuer `beforeEach` wrote an OpenZeppelin dev-network manifest. That spec passes on rerun.
+- **Locally, at the head:** the specs the 12.14 wiring touched (Addendum2Relief, PledgedBonds, Liquidator, Section12Liquidator, TermIssuer, and all four deploy specs) pass, 143 tests.
 
 ## 7. App and API follow-ups
 

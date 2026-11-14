@@ -33,4 +33,5 @@ A revolving default is recorded (and the Liquidator's `_requireCurrentDefault` p
 - [x] Phase 4c items 1, 2, 3, 7
 - [x] TermIssuer NatSpec (ELPA)
 - [x] Tests: amend 1, 3, 18, 25, 28; add 39-48; 4c regressions
-- [ ] Merge the bond half; checks; report; draft PR
+- [x] 12.14 enforcement: a recorded secured-plan default makes `payPledged` pay the defaulted plans (Liquidator trusts TermIssuer for that path only)
+- [x] Merge the bond half; checks; report (`PHASE-2E-REPORT.md`); draft PR #896
