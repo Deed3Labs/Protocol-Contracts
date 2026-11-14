@@ -137,6 +137,9 @@ abstract contract DeedNFTBase is
     event DeedValidated(uint256 indexed tokenId, bool isValid);
     event MarketplaceApproved(address indexed marketplace, bool approved);
     event RoyaltyEnforcementChanged(bool enforced);
+    /// @notice Phase 4c: a trust deed changed hands (or was burned) with a validator reassignment pending, so the
+    ///         request lapsed; the new holder decides.
+    event ValidatorReassignmentCancelled(uint256 indexed tokenId, address indexed validator);
 
     // ============ Errors ============
     /// @dev Caller is neither the deed's holder nor a signer of the deed's own validator.

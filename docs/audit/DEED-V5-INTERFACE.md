@@ -16,7 +16,7 @@ Sections:
 | Contract | Role |
 | --- | --- |
 | `DeedNFT` (UUPS proxy) | The ERC-721. Its storage and inheritance are in `DeedNFTBase`. |
-| `DeedNFTMintExtension` | Runs `mintAsset`, `mintTrustDeed`, `reserveId`, `computeDeedId`, `setTrait`, `removeTrait`. |
+| `DeedNFTMintExtension` | Runs `mintAsset`, `mintTrustDeed`, `reserveId`, `computeDeedId`, `setTrait`, `removeTrait`, and (Phase 4c, for room) the `freezeConsentDigest` view. |
 | `DeedTrustExtension` | Runs the rest of `IDeedTrust` and the transfer rules for every mint, transfer and burn. |
 | `IDeedTrust` | The ABI of the trust surface. |
 | `FunctionalContractRegistry` | The contracts a deed may be deposited into under any policy, plus the Coop agents. |
@@ -73,6 +73,7 @@ Keys are `keccak256(name)`. Values are abi-encoded as shown. Nobody can write a 
   - `CorrectionConsent(uint256 tokenId,bytes32 definitionHash,bytes32 reasonHash,uint256 nonce)`
   - `RestoreConsent(uint256 tokenId,bytes32 reasonHash,uint256 nonce)` (Phase 4b, re-review M-F)
   - `LicensingConsent(uint256 tokenId,address standby,bytes32 docHash,uint256 nonce)` (Phase 4b, re-review M-G)
+  - `FreezeConsent(uint256 tokenId,uint8 reasonCode,bytes32 recordingRefHash,bytes32 uriHash,uint256 nonce)` (Phase 4c: the second validator signer of a freeze)
 - **A prior call, with an empty `bytes` argument.** The "second call" form: the party first calls `approveTrustAction(bytes32 digest)`. Each approval is used once.
 
 `nonce` is the deed's `trustRecordOf(tokenId).nonce`. It is 0 for the mint acceptance, and every role change or consumed consent moves it. The digest views below return what to sign or approve:
@@ -83,8 +84,9 @@ Keys are `keccak256(name)`. Values are abi-encoded as shown. Nobody can write a 
 - `correctionConsentDigest(tokenId, newDefinition, reasonURI)`
 - `restoreConsentDigest(tokenId, reasonURI)`
 - `licensingConsentDigest(tokenId, standby, docHash)`
+- `freezeConsentDigest(tokenId, reasonCode, recordingRefHash, uri)` (Phase 4c)
 
-In these structs, `ridersHash = keccak256(abi.encodePacked(riderHashes))`, `definitionHash = keccak256(bytes(newDefinition))` and `reasonHash = keccak256(bytes(reasonURI))`.
+In these structs, `ridersHash = keccak256(abi.encodePacked(riderHashes))`, `definitionHash = keccak256(bytes(newDefinition))`, `reasonHash = keccak256(bytes(reasonURI))` and `uriHash = keccak256(bytes(uri))`.
 
 ### Item 1: burning keeps the record
 
@@ -268,12 +270,19 @@ The rules are enforced in the transfer hook (`DeedTrustExtension`).
   - Anyone may call it, for any deed ever minted.
   - `event NoticePosted(uint256 indexed tokenId, address indexed sender, bytes32 docHash, string uri, address trustee, address protector)`.
   - `trustee` and `protector` are as of the posting, and `protector` is the effective protector.
-- **`markVoid(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string uri)`**
+- **`markVoid(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string uri, address cosigner, bytes cosignerConsent)`**
   - Callable by the deed's validator, or a signer of it, or the unsuspended trustee. Trust deeds only.
   - `event DeedVoided(uint256 indexed tokenId, uint8 reasonCode, bytes32 recordingRefHash, string uri, bool transferable)`.
   - Reason codes below `128` leave the token transferable. Codes from `128` up freeze it, which blocks every transfer but burning. Only the validator may use them, and never while acting as the trustee.
+  - **Phase 4c (two signers to freeze).** A freezing code takes two distinct signers of the deed's validator, as lifting a Void takes two parties. `cosigner` proposes the freeze by consenting to `FreezeConsent`, by signature in `cosignerConsent` or by a prior `approveTrustAction(freezeConsentDigest(...))` with `cosignerConsent` empty. The caller, a different signer, confirms it.
+    - Neither may be the trustee, and the cosigner must still be a signer of the deed's validator when the freeze is confirmed. Otherwise the call reverts `FreezeNeedsSecondSigner(cosigner)`; a missing or wrong consent reverts `ConsentMissing(cosigner)`.
+    - The consent names the reason code, the recording reference, the URI and the deed's nonce, and the freeze moves the nonce on, so it is used once.
+    - A freeze also emits `DeedFreezeConfirmed(uint256 indexed tokenId, address indexed proposer, address indexed confirmer)`.
+    - Below `128`, `cosigner` and `cosignerConsent` are ignored (pass `address(0)` and `0x`).
+    - This changes the `IDeedTrust` ABI: `markVoid` gains the two arguments.
   - **Phase 4b (re-review M-F).** A Void is no longer permanent. `restoreFromVoid(uint256 tokenId, string reasonURI, bytes protectorConsent)` lifts it, freezing or not: the deed's validator (or a signer of it, not acting as the trustee) calls, and the effective protector consents (`RestoreConsent`). It emits `DeedRestored(uint256 indexed tokenId, address indexed validator, string reasonURI)` and reverts `NotVoid` on a deed that is not Void. Burning a frozen deed stays allowed; its record is kept (brief item 1).
   - **Phase 4b (re-review M-F).** On a trust deed, `DeedNFT.reassignValidator(tokenId, newValidator)` only records the request (`ValidatorReassignmentRequested(tokenId, newValidator, effectiveAt)`). The holder completes it with `completeValidatorReassignment(tokenId)` once `validatorReassignDelay()` has passed (default 7 days; the Deed timelock may set 1 to 30 days with `setValidatorReassignDelay`), which emits `ValidatorReassigned`. Until then the old validator is still the deed's validator and may still void it. Neither step runs while the deed is Void (`NotActive`). `pendingValidatorOf(tokenId)` reads a pending request. Legacy (non-trust) deeds change validator at once, as before.
+  - **Phase 4c.** A transfer of a trust deed (to anyone, into a Functional Contract or back to where it came from) cancels a pending request, and so does a burn: DeedNFT emits `ValidatorReassignmentCancelled(uint256 indexed tokenId, address indexed validator)`. The new holder decides, with a request of its own and a fresh delay. Legacy deeds never have a pending request, so they are unchanged.
   - The suggested reason codes:
     - `1`: tax sale
     - `2`: foreclosure
@@ -293,7 +302,7 @@ The rules are enforced in the transfer hook (`DeedTrustExtension`).
 `TrusteeNotEligible(address)`, `RoleConflict`, `ConsentMissing(address)`, `NotProtector`, `NotHolder`, `NotTrustParty`,
 `InvalidTransferPolicy`, `ProgramRequired`, `ProtectorNotSponsor`, `TransferToTrustee`,
 `TransferPolicyBlocked(uint8)`, `DeedFrozen`, `NotActive`, `FreezeNeedsValidator`, `DefinitionLocked`, `UseTrustPaths`,
-`UnknownDeed`, `RegistryAlreadySet`, `NotVoid` (Phase 4b).
+`UnknownDeed`, `RegistryAlreadySet`, `NotVoid` (Phase 4b), `FreezeNeedsSecondSigner(address)` (Phase 4c).
 
 DeedNFT itself adds `HookOnly` and `ExtensionMismatch`, and since Phase 4b `ReassignmentNotDue(uint64)`, `NoReassignmentPending` and `ReassignDelayOutOfRange(uint64)`.
 
@@ -334,8 +343,8 @@ DeedNFT itself adds `HookOnly` and `ExtensionMismatch`, and since Phase 4b `Reas
 
 ### Status and voids
 
-15. **Void reason codes are a fixed table in code.** Item 10 asks for a per-reason-code toggle. The table is fixed (below 128 transferable, from 128 up frozen) rather than admin-configurable, because a configurable table would be a new admin power to freeze deeds. Freezing codes are validator-only and never usable by the trustee, because Addendum 1 says the trustee can never freeze.
-    - Void is final: there is no un-void.
+15. **Void reason codes are a fixed table in code.** Item 10 asks for a per-reason-code toggle. The table is fixed (below 128 transferable, from 128 up frozen) rather than admin-configurable, because a configurable table would be a new admin power to freeze deeds. Freezing codes are validator-only and never usable by the trustee, because Addendum 1 says the trustee can never freeze. Since Phase 4c a freeze takes two distinct signers of the deed's validator.
+    - Since Phase 4b a Void can be lifted (`restoreFromVoid`, the validator with the protector's consent); before that it was final.
     - Only trust deeds can be voided. Retired applies to every burned deed.
 16. **`NoticePosted.protector` is the effective protector** (the holder while the record is zero), because that is who receives notices.
 

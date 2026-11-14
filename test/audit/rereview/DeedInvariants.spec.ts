@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { prng } from "../deep/fuzz-engine";
-import { deployDeedTrack, mintTrust, trustParams, deedIdFor, signTrust, k, coder, dec, Ctx } from "../deed/fixture";
+import { deployDeedTrack, mintTrust, trustParams, deedIdFor, signTrust, signFreeze, addValidatorSigner, k, coder, dec, Ctx } from "../deed/fixture";
 
 /*
  * Phase 4, step 3: invariant fuzz for the Deed track (trust agreement v5).
@@ -21,7 +21,9 @@ import { deployDeedTrack, mintTrust, trustParams, deedIdFor, signTrust, k, coder
  *  (4) the trustee is never the holder nor the protector, and the standby never the protector;
  *  (5) a deed under a freezing void never changes hands;
  *  (6) beneficialOwnerOf is the holder, or the depositor while the deed sits in Subdivide;
- *  (7) a transfer to the current trustee (outside a Functional Contract) never succeeds.
+ *  (7) a transfer to the current trustee (outside a Functional Contract) never succeeds;
+ *  (8) (Phase 4c) a freeze never lands on one signer's word: a validator signer cosigning its own
+ *      freeze always fails.
  */
 const STEPS = Number(process.env.FUZZ_STEPS ?? 300);
 
@@ -37,7 +39,9 @@ type Model = {
 
 async function runDeedFuzz(seed: number) {
   const ctx: Ctx = await deployDeedTrack();
-  const { deed, trust, subdivide, alice, bob, carol, mallory, trustee, standby, deployer } = ctx;
+  const { deed, trust, subdivide, alice, bob, carol, mallory, trustee, standby, deployer, operator2 } = ctx;
+  // Phase 4c: a second signer of the default validator, so a freeze can have its two.
+  await addValidatorSigner(ctx, operator2);
   const people = [alice, bob, carol, mallory];
   const rnd = prng(seed);
   const pick = <T>(xs: T[]) => xs[Math.floor(rnd() * xs.length)];
@@ -108,8 +112,19 @@ async function runDeedFuzz(seed: number) {
     } else if (r < 0.58) {
       const code = rnd() < 0.5 ? 1 : 128;
       const who = pick([deployer, trustee, mallory]);
-      if (await attempt("markVoid", () => trust.connect(who).markVoid(d.id, code, k(`rec${step}`), ""))) {
-        if (code >= 128) d.frozen = true;
+      const ref = k(`rec${step}`);
+      if (code < 128) {
+        await attempt("markVoid", () => trust.connect(who).markVoid(d.id, code, ref, "", ethers.ZeroAddress, "0x"));
+      } else {
+        // Phase 4c: alone (cosigning itself) it must fail; with the other validator signer's consent it may pass.
+        const alone = await signFreeze(ctx, who, d.id, code, ref, "");
+        if (await attempt("freezeAlone", () => trust.connect(who).markVoid(d.id, code, ref, "", who.address, alone))) {
+          breaks.push(`(8) deed ${d.id} frozen by one signer`);
+          d.frozen = true;
+        }
+        const co = who === deployer ? operator2 : deployer;
+        const consent = await signFreeze(ctx, co, d.id, code, ref, "");
+        if (await attempt("markVoid", () => trust.connect(who).markVoid(d.id, code, ref, "", co.address, consent))) d.frozen = true;
       }
     } else if (r < 0.64) {
       // Edit attempts on the locked traits, by everybody who might try.

@@ -32,6 +32,17 @@ contract DeedNFTMintExtension is DeedTrustCommon {
         _activeTokenCount++;
     }
 
+    /// @notice Phase 4c: the digest a second signer of the deed's validator signs (or approves with
+    ///         approveTrustAction) to consent to a freezing markVoid. Served here rather than with markVoid in
+    ///         DeedTrustExtension, for room; DeedNFT's fallback routes it.
+    function freezeConsentDigest(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string calldata uri)
+        external
+        view
+        returns (bytes32)
+    {
+        return _digest(_freezeConsentHash(tokenId, reasonCode, recordingRefHash, uri, _trust[tokenId].nonce));
+    }
+
     // =====================================================================
     // Minting
     // =====================================================================
