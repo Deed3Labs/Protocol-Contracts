@@ -4,7 +4,9 @@ import { stepUpDenied } from './stepUp';
  * Spendable account details — the numbers a member gives an employer or another bank.
  *
  * Read from the API (which reads Lithic) each time the surface opens. The masked read carries the
- * account number's last four only. The full number comes from a second read behind Face ID, lives in
+ * account number's last four only. The full number comes from a second read behind re-authentication
+ * (Face ID, or for a member without it a sign-in made minutes ago with a code: the server's
+ * requireReauth, which never lets the session through on its own), lives in
  * the surface's own React state while it is open, and is dropped when it closes. It never goes to
  * localStorage, sessionStorage, IndexedDB, the service worker's cache or a remembered page state:
  * nothing in this file or the surface writes anywhere but component memory and, on the member's own
@@ -52,16 +54,30 @@ export interface MaskedAccountDetails {
 }
 
 export type MaskedRead = { configured: boolean; details: MaskedAccountDetails | null } | { error: string };
-export type FullNumberRead = { accountNumber: string } | { error: string };
+
+/**
+ * What the member can do when the server refused the full number for want of re-authentication:
+ * `sign_in` -- no Face ID, so sign in again with a code (the app's existing way back, as on the lock
+ * screen); `set_up` -- no way to confirm it's them yet, so turn on Face ID.
+ */
+export type Reauth = 'sign_in' | 'set_up';
+export type FullNumberRead = { accountNumber: string } | { error: string; reauth?: Reauth };
+
+export const SIGN_IN_AGAIN_ACTION = 'Send me a code';
+export const SET_UP_FACE_ID_ACTION = 'Turn on Face ID';
 
 /** Where the surface reads from. The app's is the API; the preview harness hands in fixtures. */
 export interface AccountDetailsSource {
   readMasked(): Promise<MaskedRead>;
-  /** The full account number. The server refuses it without a fresh Face ID. */
+  /** The full account number. The server refuses it without a fresh Face ID or a fresh sign-in. */
   readFullNumber(): Promise<FullNumberRead>;
 }
 
-/** Face ID first, then the full number — or the full number already held, without asking again. */
+/**
+ * Face ID first (for a member who has it), then the full number -- or the full number already held,
+ * without asking again. A member without Face ID is asked by the server instead (a fresh sign-in),
+ * and its refusal comes back with what to do (`reauth`).
+ */
 export async function obtainFullNumber(
   held: string | null,
   source: AccountDetailsSource,
@@ -86,6 +102,8 @@ export interface AccountDetailsState {
   shown: boolean;
   /** Why a reveal did not happen, for the line under the rows. */
   problem: string | null;
+  /** What would let it happen: sign in again, or turn on Face ID. */
+  reauth: Reauth | null;
 }
 
 export type AccountDetailsAction =
@@ -93,7 +111,7 @@ export type AccountDetailsAction =
   | { type: 'close' }
   | { type: 'loaded'; session: number; read: MaskedRead }
   | { type: 'revealed'; session: number; accountNumber: string; show: boolean }
-  | { type: 'failed'; session: number; error: string }
+  | { type: 'failed'; session: number; error: string; reauth?: Reauth }
   | { type: 'hide' };
 
 export const CLOSED: AccountDetailsState = {
@@ -103,6 +121,7 @@ export const CLOSED: AccountDetailsState = {
   fullNumber: null,
   shown: false,
   problem: null,
+  reauth: null,
 };
 
 export function accountDetailsReducer(state: AccountDetailsState, action: AccountDetailsAction): AccountDetailsState {
@@ -121,10 +140,10 @@ export function accountDetailsReducer(state: AccountDetailsState, action: Accoun
     }
     case 'revealed':
       if (action.session !== state.session || state.status !== 'ready') return state;
-      return { ...state, fullNumber: action.accountNumber, shown: action.show || state.shown, problem: null };
+      return { ...state, fullNumber: action.accountNumber, shown: action.show || state.shown, problem: null, reauth: null };
     case 'failed':
       if (action.session !== state.session || state.status === 'closed') return state;
-      return { ...state, problem: action.error };
+      return { ...state, problem: action.error, reauth: action.reauth ?? null };
     case 'hide':
       return { ...state, shown: false };
   }

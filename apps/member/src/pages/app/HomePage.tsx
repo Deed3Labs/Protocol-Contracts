@@ -54,7 +54,10 @@ export default function HomePage({
   savingsFree,
   yourShops = [],
   accountDetails,
+  onSignInAgain,
 }: {
+  /** Sign out and send a code (Spendable's full number, for a member without Face ID). Absent in the preview harness. */
+  onSignInAgain?: () => void;
   /** Shops whose rewards they've joined (rewards spec, section 6): a list and links, once there's one. */
   yourShops?: YourShop[];
   /** Where Spendable's account details are read from. The API unless the preview harness hands in fixtures. */
@@ -248,7 +251,13 @@ export default function HomePage({
         onPickAccount={() => setPayAccountOpen(true)}
       />
       {/* Reads its own numbers from Lithic when it opens: nothing on Home holds them. */}
-      <AccountDetailsDialog open={accountOpen} onOpenChange={setAccountOpen} source={accountDetails} />
+      <AccountDetailsDialog
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        source={accountDetails}
+        onSignInAgain={onSignInAgain}
+        onSetUpFaceId={() => navigate('/settings/security')}
+      />
       {/* Savings deposit is the same surface Savings uses; the credit limit it quotes comes from this
           page's own tiers so the two can't disagree. */}
       <ConnectedMoveMoney

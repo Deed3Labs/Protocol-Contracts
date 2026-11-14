@@ -11,7 +11,7 @@ import { grantStarterLimit } from '../services/credit/termLimitService.js';
 import { grantOffer } from '../services/credit/offersService.js';
 import { lithicStore } from '../services/lithic/lithicStore.js';
 import { readFullAccountNumber, readMaskedAccountDetails } from '../services/lithic/accountDetailsService.js';
-import { requireStepUp } from '../middleware/stepUp.js';
+import { requireReauth } from '../middleware/stepUp.js';
 
 const router = express.Router();
 
@@ -106,12 +106,16 @@ router.get('/account-details', noStore, async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/lithic/account-details/account-number — the full account number, after step-up.
+ * GET /api/lithic/account-details/account-number — the full account number, after re-authentication.
+ *
+ * Face ID for payments, or for a member without it a sign-in made in the last ten minutes (a code to
+ * their own email or phone): `requireReauth`, which never lets a session through on its own. A member
+ * with neither is told how to set Face ID up. Show, copy and the direct deposit form all come here.
  *
  * Fetched from Lithic for this request and sent once: not stored, not cached, not logged. The app
  * holds it in component memory while the details are open and drops it when they close.
  */
-router.get('/account-details/account-number', noStore, requireStepUp, async (req: Request, res: Response) => {
+router.get('/account-details/account-number', noStore, requireReauth, async (req: Request, res: Response) => {
   const wallet = sessionWallet(req);
   if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
 

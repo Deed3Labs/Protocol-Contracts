@@ -41,6 +41,11 @@ if (import.meta.env.DEV) {
 interface ApiResponse<T> {
   data?: T;
   error?: string;
+  /**
+   * The server's reason, where the app acts on it: REAUTH_REQUIRED (sign in again with a code) and
+   * STEP_UP_UNAVAILABLE (no way to confirm it's you yet), from middleware/stepUp's requireReauth.
+   */
+  code?: string;
   cached?: boolean;
   timestamp?: number;
 }
@@ -127,6 +132,11 @@ async function apiRequestOnce<T>(
         }
         if (response.status === 403 && (errorData as { code?: unknown } | null)?.code === 'STEP_UP_REQUIRED') {
           return { error: STEP_UP_DECLINED, stepUpRequired: true };
+        }
+        const reauthCode = (errorData as { code?: unknown } | null)?.code;
+        if (response.status === 403 && (reauthCode === 'REAUTH_REQUIRED' || reauthCode === 'STEP_UP_UNAVAILABLE')) {
+          const said = (errorData as { error?: unknown }).error;
+          return { error: typeof said === 'string' && said ? said : 'Confirm it\u2019s you to continue.', code: reauthCode };
         }
         if (errorData && typeof errorData === 'object') {
           // Routes in this codebase are inconsistent: some return { message }, many return { error }.
@@ -2079,15 +2089,21 @@ export async function getSpendableAccountDetails(): Promise<MaskedRead> {
 }
 
 /**
- * The full account number. The server refuses it without a fresh Face ID (middleware/stepUp), and
- * apiRequest asks for one and retries once when it does. Callers ask first (lib/accountDetails'
- * obtainFullNumber), as for card numbers. Held by the caller in component memory, never stored.
+ * The full account number. The server never serves it on the session alone (middleware/stepUp's
+ * requireReauth): with Face ID it wants a fresh check, which apiRequest asks for and retries once;
+ * without Face ID it wants a sign-in made in the last ten minutes, and its refusal says so (`reauth`).
+ * Callers ask first (lib/accountDetails' obtainFullNumber). Held by the caller in component memory,
+ * never stored.
  */
 export async function getSpendableAccountNumber(): Promise<FullNumberRead> {
   const r = await apiRequest<{ accountNumber: string }>('/api/lithic/account-details/account-number', {
     cache: 'no-store',
   });
-  if (r.error || !r.data?.accountNumber) return { error: r.error || 'We could not load your account number.' };
+  if (r.error || !r.data?.accountNumber) {
+    // Without Face ID the server wants a fresh sign-in; with no way to confirm at all, Face ID set up.
+    const reauth = r.code === 'REAUTH_REQUIRED' ? 'sign_in' : r.code === 'STEP_UP_UNAVAILABLE' ? 'set_up' : undefined;
+    return { error: r.error || 'We could not load your account number.', ...(reauth ? { reauth } : {}) };
+  }
   return { accountNumber: r.data.accountNumber };
 }
 

@@ -2,6 +2,7 @@ import CycleStandingNotice from '@/components/clear/CycleStandingNotice';
 import PendingFigures from '@/components/clear/PendingFigures';
 import { useEffect, useState } from 'react';
 import HomePage from './HomePage';
+import { useLogout } from '@/hooks/useLogout';
 import { HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
@@ -78,6 +79,8 @@ export default function HomeRoute() {
   // Your shops (rewards spec, section 6): shown on Home once they've joined one.
   const yourShops = useYourShops(address);
   const repay = useCreditRepay();
+  // Spendable's full number, for a member without Face ID: a fresh sign-in, as the lock screen does.
+  const logout = useLogout();
   const payPlan = usePayPlan();
   const setSplit = useSetPlanSplit();
   const payBack = useRepayWrittenOff();
@@ -226,6 +229,7 @@ export default function HomeRoute() {
       onPayBack={payBack}
       savingsFree={savingsFree}
       yourShops={yourShops}
+      onSignInAgain={() => void logout({ sendCode: true })}
     />
     </PendingFigures>
   );

@@ -5,7 +5,8 @@ import type { Server } from 'node:http';
 
 /*
  * Spendable's account details: the masked read never carries the full number, the full number needs
- * a fresh Face ID, and neither may be cached.
+ * re-authentication (a fresh Face ID, or without Face ID a sign-in made minutes ago), and neither may
+ * be cached.
  *
  * The real router and the real step-up guard, behind a stand-in for requireAuth. Lithic, the account
  * table and the Face ID credential table are stood in for, and only while these tests run: outside
@@ -22,6 +23,10 @@ const UNBANKED = '0xabc0000000000000000000000000000000000002';
 let active = false;
 /** Members with a server-held Face ID credential. */
 const enrolled = new Set<string>();
+/** Sessions that began in the last ten minutes (a sign-in just made, with a code). */
+const freshSessions = new Set<string>();
+/** Whether the server can read sessions at all (its database is up). */
+let sessionsReadable = true;
 const lithicCalls: string[] = [];
 
 const realClient = await import('../services/lithic/lithicClient.js');
@@ -83,6 +88,17 @@ mock.module('../services/stepUp/stepUpStore.js', () => ({
   },
 }));
 
+const realSessionLock = await import('../services/session/sessionLock.js');
+mock.module('../services/session/sessionLock.js', () => ({
+  ...realSessionLock,
+  sessionLock: {
+    ...realSessionLock.sessionLock,
+    available: () => (active ? sessionsReadable : realSessionLock.sessionLock.available()),
+    freshSignIn: async (sessionId: string, now?: number) =>
+      active ? freshSessions.has(sessionId) : realSessionLock.sessionLock.freshSignIn(sessionId, now),
+  },
+}));
+
 const { default: lithicRouter } = await import('./lithic');
 const { issueStepUpToken } = await import('../services/stepUp/stepUpToken.js');
 
@@ -106,7 +122,10 @@ beforeAll(() => {
   app.use((req, _res, next) => {
     const user = req.header('x-test-user');
     const wallet = req.header('x-test-wallet') || WALLET;
-    if (user) req.auth = { walletAddress: wallet, profileUuid: user, sessionId: `session:${user}`, token: 't' };
+    // Every member signs in with an email by default; 'none' is one with neither email nor phone.
+    const login = req.header('x-test-login') || 'email';
+    const contact = login === 'email' ? { email: 'ada@example.com' } : login === 'phone' ? { phone: '+15555550100' } : {};
+    if (user) req.auth = { walletAddress: wallet, profileUuid: user, sessionId: `session:${user}`, token: 't', ...contact };
     next();
   });
   app.use('/api/lithic', lithicRouter);
@@ -124,15 +143,18 @@ afterAll(() => {
 
 beforeEach(() => {
   enrolled.clear();
+  freshSessions.clear();
+  sessionsReadable = true;
   lithicCalls.length = 0;
   delete process.env.LITHIC_PARTNER_BANK_NAME;
 });
 
-async function call(path: string, user: string, init: { token?: string; wallet?: string } = {}) {
+async function call(path: string, user: string, init: { token?: string; wallet?: string; login?: 'email' | 'phone' | 'none' } = {}) {
   const r = await fetch(base + path, {
     headers: {
       'x-test-user': user,
       ...(init.wallet ? { 'x-test-wallet': init.wallet } : {}),
+      ...(init.login ? { 'x-test-login': init.login } : {}),
       ...(init.token ? { 'x-step-up': init.token } : {}),
     },
   });
@@ -220,8 +242,72 @@ describe('GET /api/lithic/account-details/account-number: behind step-up', () =>
   });
 
   test('no cash account is a 404, not an empty number', async () => {
+    freshSessions.add('session:did:bob');
     const r = await call('/api/lithic/account-details/account-number', 'did:bob', { wallet: UNBANKED });
     expect(r.status).toBe(404);
+  });
+
+  test('an enrolled member needs Face ID even just after signing in', async () => {
+    enrolled.add('did:ada');
+    freshSessions.add('session:did:ada');
+    const r = await call('/api/lithic/account-details/account-number', 'did:ada');
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('STEP_UP_REQUIRED');
+    expect(r.text).not.toContain(FULL);
+  });
+});
+
+describe('without Face ID: re-authentication by a fresh sign-in, never skipped', () => {
+  const PATH = '/api/lithic/account-details/account-number';
+
+  test('the session alone is refused (REAUTH_REQUIRED), with no-store and before Lithic is asked', async () => {
+    const r = await call(PATH, 'did:ada');
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('REAUTH_REQUIRED');
+    expect(r.body.error).toContain('sign in again with the code');
+    expect(r.text).not.toContain(FULL);
+    expect(r.cache).toBe('no-store');
+    expect(lithicCalls).toEqual([]);
+  });
+
+  test('a sign-in made in the last ten minutes (a code to their email) shows the full number', async () => {
+    freshSessions.add('session:did:ada');
+    const r = await call(PATH, 'did:ada');
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ accountNumber: FULL });
+    expect(r.cache).toBe('no-store');
+  });
+
+  test('the same for a member who signs in with a phone code', async () => {
+    freshSessions.add('session:did:ada');
+    expect((await call(PATH, 'did:ada', { login: 'phone' })).status).toBe(200);
+    freshSessions.clear();
+    expect((await call(PATH, 'did:ada', { login: 'phone' })).body.code).toBe('REAUTH_REQUIRED');
+  });
+
+  test('a step-up token is no way round it for a member without Face ID', async () => {
+    const r = await call(PATH, 'did:ada', { token: issueStepUpToken('did:ada').token });
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('REAUTH_REQUIRED');
+  });
+
+  test('no Face ID and nowhere to send a code: refused, and told how to set Face ID up', async () => {
+    freshSessions.add('session:did:ada');
+    const r = await call(PATH, 'did:ada', { login: 'none' });
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe('STEP_UP_UNAVAILABLE');
+    expect(r.body.error).toContain('turn on Face ID in Settings › Security');
+    expect(r.text).not.toContain(FULL);
+    expect(lithicCalls).toEqual([]);
+  });
+
+  test('when the server cannot check, it refuses rather than letting the session through', async () => {
+    sessionsReadable = false;
+    freshSessions.add('session:did:ada');
+    const r = await call(PATH, 'did:ada');
+    expect(r.status).toBe(503);
+    expect(r.text).not.toContain(FULL);
+    expect(lithicCalls).toEqual([]);
   });
 });
 

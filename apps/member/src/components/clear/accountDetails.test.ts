@@ -354,3 +354,47 @@ describe('Get direct deposit form', () => {
     expect(DIALOG).toMatch(/const accountNumber = await fullNumber\(false\);[\s\S]{0,80}downloadDirectDepositForm\(/);
   });
 });
+
+describe('without Face ID: re-authentication by a fresh sign-in, never skipped', () => {
+  const ROUTE = read('../../pages/app/HomeRoute.tsx');
+
+  test('the server\'s refusal comes back with the way through: sign in again, or turn on Face ID', () => {
+    expect(API).toContain("reauthCode === 'REAUTH_REQUIRED' || reauthCode === 'STEP_UP_UNAVAILABLE'");
+    expect(API).toContain("r.code === 'REAUTH_REQUIRED' ? 'sign_in' : r.code === 'STEP_UP_UNAVAILABLE' ? 'set_up' : undefined");
+  });
+
+  test('obtainFullNumber hands the refusal on as it is, and shows nothing', async () => {
+    const source: AccountDetailsSource = {
+      readMasked: async () => ({ configured: true, details: DETAILS }),
+      readFullNumber: async () => ({ error: 'Confirm it’s you…', reauth: 'sign_in' }),
+    };
+    // No Face ID on this member: the app's gate is open, and the server is what asks.
+    expect(await obtainFullNumber(null, source, async () => null)).toEqual({ error: 'Confirm it’s you…', reauth: 'sign_in' });
+  });
+
+  test('the surface keeps the reason and the way through, and drops them once revealed or closed', () => {
+    const s = loaded();
+    const refused = accountDetailsReducer(s, { type: 'failed', session: s.session, error: 'sign in again', reauth: 'sign_in' });
+    expect(refused.reauth).toBe('sign_in');
+    expect(accountNumberShown(refused)).toBe('····4192');
+    const noWay = accountDetailsReducer(s, { type: 'failed', session: s.session, error: 'turn on Face ID', reauth: 'set_up' });
+    expect(noWay.reauth).toBe('set_up');
+    const revealed = accountDetailsReducer(refused, { type: 'revealed', session: s.session, accountNumber: FULL, show: true });
+    expect(revealed.reauth).toBeNull();
+    expect(accountDetailsReducer(refused, { type: 'close' }).reauth).toBeNull();
+    // A plain failure offers nothing to press.
+    expect(accountDetailsReducer(s, { type: 'failed', session: s.session, error: 'x' }).reauth).toBeNull();
+  });
+
+  test('"Send me a code" signs out and sends a code, as the lock screen does; "Turn on Face ID" goes to Security', () => {
+    expect(DIALOG).toMatch(/state\.reauth === 'sign_in' && onSignInAgain[\s\S]{0,120}SIGN_IN_AGAIN_ACTION/);
+    expect(DIALOG).toMatch(/state\.reauth === 'set_up' && onSetUpFaceId[\s\S]{0,120}SET_UP_FACE_ID_ACTION/);
+    expect(ROUTE).toContain('onSignInAgain={() => void logout({ sendCode: true })}');
+    expect(HOME).toContain("onSetUpFaceId={() => navigate('/settings/security')}");
+  });
+
+  test('nothing home-made: the surface asks for no code, PIN or passcode of its own', () => {
+    expect(DIALOG).not.toMatch(/PinBox|passcode|type="password"|inputMode="numeric"/i);
+    expect(LIB).not.toMatch(/passcode|\bpin\b/i);
+  });
+});

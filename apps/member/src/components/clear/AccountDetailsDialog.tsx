@@ -9,6 +9,8 @@ import {
   CLOSED,
   DIRECT_DEPOSIT_FORM_ACTION,
   MISSING,
+  SET_UP_FACE_ID_ACTION,
+  SIGN_IN_AGAIN_ACTION,
   accountDetailsReducer,
   accountNumberShown,
   bankDisclosure,
@@ -81,9 +83,12 @@ function DetailRow({
  * Spendable account details — behind Details on Spendable. Centred sheet on desktop, bottom sheet on
  * the phone (Modal does both).
  *
- * Read from Lithic, through the API, each time it opens. The account number rests as ····1234. Show
- * and copying it both need the full number, which takes Face ID (lib/accountDetails'
- * obtainFullNumber, and the server's step-up behind it); once fetched it is held in this surface's
+ * Read from Lithic, through the API, each time it opens. The account number rests as ····1234. Show,
+ * copying it and the direct deposit form all need the full number, which takes re-authentication:
+ * Face ID, or for a member without it a sign-in made minutes ago (lib/accountDetails'
+ * obtainFullNumber, and the server's requireReauth behind it). Refused, the surface says why and
+ * offers the way through: "Send me a code" (sign in again, as on the lock screen) or "Turn on Face
+ * ID". Nothing here asks for a code or a PIN of its own. Once fetched the number is held in this surface's
  * state and nowhere else, and closing it drops it. No currency here: these are numbers to hand over,
  * not balances.
  */
@@ -91,11 +96,17 @@ export default function AccountDetailsDialog({
   open,
   onOpenChange,
   source = liveAccountDetails,
+  onSignInAgain,
+  onSetUpFaceId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** The API in the app; fixtures in the preview harness. */
   source?: AccountDetailsSource;
+  /** Sign out and send a code, so the next sign-in is fresh. Absent in the preview harness. */
+  onSignInAgain?: () => void;
+  /** Settings › Security, where Face ID is turned on. */
+  onSetUpFaceId?: () => void;
 }) {
   const [state, dispatch] = useReducer(accountDetailsReducer, CLOSED);
   const [forming, setForming] = useState(false);
@@ -125,7 +136,7 @@ export default function AccountDetailsDialog({
     const asked = state.session;
     const read = await obtainFullNumber(state.fullNumber, source);
     if ('error' in read) {
-      dispatch({ type: 'failed', session: asked, error: read.error });
+      dispatch({ type: 'failed', session: asked, error: read.error, reauth: read.reauth });
       throw new Error(read.error);
     }
     dispatch({ type: 'revealed', session: asked, accountNumber: read.accountNumber, show });
@@ -209,6 +220,16 @@ export default function AccountDetailsDialog({
             <DetailRow label="Account type" value={details.accountType} copy={() => details.accountType} />
           </Rows>
           {state.problem && <p className="c-det c-errline mt-s2">{state.problem}</p>}
+          {state.reauth === 'sign_in' && onSignInAgain && (
+            <Btn className="mt-s2" onClick={onSignInAgain}>
+              {SIGN_IN_AGAIN_ACTION}
+            </Btn>
+          )}
+          {state.reauth === 'set_up' && onSetUpFaceId && (
+            <Btn className="mt-s2" onClick={onSetUpFaceId}>
+              {SET_UP_FACE_ID_ACTION}
+            </Btn>
+          )}
           <p className="c-det mt-s3">{ACCOUNT_DETAILS_NOTE}</p>
         </>
       )}
