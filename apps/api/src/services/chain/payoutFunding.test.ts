@@ -37,18 +37,18 @@ describe('PayoutPool.dueWithin, read inline', () => {
   });
 
   test('says what is due, and what to fund, in cents', async () => {
-    let asked: [bigint, bigint] | null = null;
+    const seen: { asked: [bigint, bigint] | null } = { asked: null };
     const due = await payoutDueWithin({
       chainId: 84532,
       nowSeconds: WED,
       pool: {
         dueWithin: async (horizon, max) => {
-          asked = [horizon, max];
+          seen.asked = [horizon, max];
           return [[3n, 7n], 1_250_005_000n, 400_000_000n];
         },
       },
     });
-    expect(asked).toEqual([BigInt(businessDayHorizon(WED)), 200n]);
+    expect(seen.asked).toEqual([BigInt(businessDayHorizon(WED)), 200n]);
     expect(due).toMatchObject({ claimIds: [3, 7], amountCents: 125_001, shortCents: 40_000, businessDays: 2, truncated: false });
   });
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { ethers } from 'ethers';
-import { CHAIN_ERROR_FRAGMENTS, CHAIN_ERRORS, chainErrorReason, decodeChainError, describeCreditRefusal, describeRedeemRefusal, STATE_NOT_CONFIRMED } from './chainErrors';
+import { CHAIN_ERROR_FRAGMENTS, CHAIN_ERRORS, chainErrorReason, decodeChainError, describeCreditRefusal, describeLiquidatorRefusal, describeRedeemRefusal, STATE_NOT_CONFIRMED } from './chainErrors';
 
 const redemption = readFileSync(new URL('../merchant/payoutRedemption.ts', import.meta.url), 'utf8');
 const SHOP = '0x00000000000000000000000000000000000000b2';
@@ -120,5 +120,28 @@ describe('Phase 2b: the caps say their figures', () => {
   test('Boost $500 and the unsecured $2,499', () => {
     expect(describeCreditRefusal(decodeChainError({ data: data('RevolvingIssuerBoostCap', [600_000_000n, 500_000_000n]) }))).toContain('$500.00');
     expect(describeCreditRefusal(decodeChainError({ data: data('RevolvingIssuerUnsecuredCap', [1n, 2_499_000_000n]) }))).toContain('$2,499.00');
+  });
+});
+
+describe('Phase 2b: the Liquidator’s errors decode, and match the Solidity (enums as uint8)', () => {
+  test('every Liquidator error in the contract has its fragment, argument for argument', () => {
+    let solidity: string;
+    try {
+      solidity = readFileSync(new URL('../../../../../contracts/peripherals/Liquidator.sol', import.meta.url), 'utf8');
+    } catch {
+      return;
+    }
+    const declared = [...solidity.matchAll(/error (Liquidator\w+)\(([^)]*)\);/g)];
+    expect(declared.length).toBeGreaterThan(10);
+    for (const [, name, params] of declared) {
+      const fragment: string | undefined = (CHAIN_ERROR_FRAGMENTS as readonly string[]).find((f) => f.startsWith(`error ${name}(`));
+      expect(fragment).toBe(`error ${name}(${params.replace(/HoldReason /g, 'uint8 ')})`);
+    }
+  });
+
+  test('a hold and the second signer are said plainly', () => {
+    const held = decodeChainError({ data: data('LiquidatorOnHold', [SHOP, 2, 1_900_000_000n]) });
+    expect(describeLiquidatorRefusal(held)).toContain('death');
+    expect(describeLiquidatorRefusal(decodeChainError({ data: data('LiquidatorSameSigner', [SHOP]) }))).toContain('different HOLD_ROLE signer');
   });
 });

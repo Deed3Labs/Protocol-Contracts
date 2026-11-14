@@ -1,4 +1,5 @@
 // @ts-nocheck: ported from the redesign's MONEY2 module (design/command-center-ui) with scripts/port/module.cjs; its data is its own.
+import { LiquidationHolds } from './liquidationHolds';
 import { Fragment } from 'react';
 import { attrs, css, hasHtml, html } from '../runtime/dom';
 import { run } from '../live/actions';
@@ -747,10 +748,11 @@ function makeMoney() {
         const lmxL = Math.max(1, ...CR.limits.map(x => x[1])),
           top = [...CR.limits].sort((a, b) => b[1] - a[1])[0];
         const limL = cell('s5', 'Limit sizes', <span className="lbl">{CR.limits.reduce((a, x) => a + x[1], 0)}{" with a limit"}</span>, CR.limits.length ? <div className="nlm">{CR.limits.map(([k, v], __k) => <div key={__k}><span>{v}</span><i style={css(`height:${v / lmxL * 100}%`)} className={v === lmxL ? 'hi' : ''} /><s>{k}</s></div>)}</div> : <p className="nmv-e">No member has a limit yet.</p>, <><span>{top ? `Most common limit ${top[0]} · ${top[1]} ${top[1] === 1 ? 'member' : 'members'}` : 'No limits set'}</span><span /></>);
-        return html(document.getElementById('nv'), <>{band(octL, 1)}{band(<>{back}{ageL}{lossL}</>)}{band(<>{shops}{limL}</>)}</>);
+        // live, Phase 2b: Liquidation Holds and shortfall notices, each hold step sent from the signer's own wallet
+        return html(document.getElementById('nv'), <>{band(octL, 1)}{band(<>{back}{ageL}{lossL}</>)}{band(<>{shops}{limL}</>)}<LiquidationHolds /></>);
       }
       // live, before the API reads the chain's book: it says so
-      if (L) return html(document.getElementById('nv'), <>{band(notReal('s12', CR.month ?? 'This month', 'Needs the credit ledger for the month: what was owed on the 1st, what was spent and repaid, and what’s on autopay.'), 1)}{band(<>{back}{notReal('s4', 'How old', 'Needs how late each member’s balance is: current, 1–30, 31–60 and over 60 days.')}{notReal('s4', 'Losses', 'Needs the credit ledger’s charge-offs: each balance written off and what the AssurancePool paid.')}</>)}{band(<>{shops}{notReal('s5', 'Limit sizes', 'Needs each member’s credit limit.')}</>)}</>);
+      if (L) return html(document.getElementById('nv'), <>{band(notReal('s12', CR.month ?? 'This month', 'Needs the credit ledger for the month: what was owed on the 1st, what was spent and repaid, and what’s on autopay.'), 1)}{band(<>{back}{notReal('s4', 'How old', 'Needs how late each member’s balance is: current, 1–30, 31–60 and over 60 days.')}{notReal('s4', 'Losses', 'Needs the credit ledger’s charge-offs: each balance written off and what the AssurancePool paid.')}</>)}{band(<>{shops}{notReal('s5', 'Limit sizes', 'Needs each member’s credit limit.')}</>)}<LiquidationHolds /></>);
       html(document.getElementById('nv'), <>{band(oct, 1)}{band(<>{back}{age}{loss}</>)}{band(<>{shops}{lim}</>)}</>);
     }
 

@@ -89,6 +89,7 @@ import { startMonthlyStatements } from './jobs/monthlyStatements.js';
 import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startCycleKeeper } from './jobs/cycleKeeper.js';
+import { startEnforcementKeeper } from './jobs/enforcementKeeper.js';
 import { startTermLimitReviewer } from './jobs/termLimitReviewer.js';
 import { startOffersGranter } from './jobs/offersGranter.js';
 import { startReconciler } from './jobs/reconciler.js';
@@ -444,6 +445,10 @@ async function startServer() {
     // Phase 2b: cycles are judged only when somebody syncs them. This does, once each is due.
     startCycleKeeper().catch((error) => {
       console.error('Failed to start the cycle keeper:', error);
+    });
+    // Phase 2b: settle an excess after a missed cycle, and notice and settle Earn shortfalls.
+    startEnforcementKeeper().catch((error) => {
+      console.error('Failed to start the enforcement keeper:', error);
     });
     // Nothing else sets a term limit: without this a member's split plans all revert at zero.
     startTermLimitReviewer();
