@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployCore, advance } from "../deep/deep-setup";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../../helpers/issuers";
+import { passCycleEnd } from "../../helpers/default";
 import { signedOpenPlan } from "../../helpers/plans";
 import { CA, NY, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule } from "../compliance/rates";
 
@@ -70,16 +71,18 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
 
     it("the split comes from the recorded payout: a caller passing payout = 0 cannot push the merchant's share onto the co-op", async function () {
       const core = await termWithPricing();
-      const { term, ctx, merchant, coop } = core;
+      const { term, ctx, merchant } = core;
       await openPriced(core, ctx.member, 1_000n * ONE_USDC, 1, 0n);
+      // The fee leg is Clear Lending's since Addendum 2 (12.16), not the co-op's.
+      const fee = await term.feeRecipient();
       const merchantBefore = await ctx.stableCredit.balanceOf(merchant.address);
-      const coopBefore = await ctx.stableCredit.balanceOf(coop.address);
+      const coopBefore = await ctx.stableCredit.balanceOf(fee);
       await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 0n);
       // The merchant gives back its $975 payout and the co-op its $25 discount -- and nobody is
       // left owing anything.
       expect(merchantBefore - (await ctx.stableCredit.balanceOf(merchant.address))).to.equal(975n * ONE_USDC);
-      expect(coopBefore - (await ctx.stableCredit.balanceOf(coop.address))).to.equal(25n * ONE_USDC);
-      expect(await ctx.stableCredit.creditBalanceOf(coop.address)).to.equal(0n);
+      expect(coopBefore - (await ctx.stableCredit.balanceOf(fee))).to.equal(25n * ONE_USDC);
+      expect(await ctx.stableCredit.creditBalanceOf(fee)).to.equal(0n);
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
       expect((await term.pricingOf(0)).payout).to.equal(975n * ONE_USDC);
     });
@@ -132,14 +135,16 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
     it("a member current on a term plan, who never drew the revolving line, earns Clean Cycles and never defaults", async function () {
       const core = await deployCore();
       const { ctx, revolving, term, merchant, coop } = core;
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], CYCLE, GRACE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
       await term.connect(ctx.operator).setTermLimit(ctx.member.address, 2_000n * ONE_USDC);
       await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 1_200n * ONE_USDC, 1_170n * ONE_USDC, 150n, CYCLE, 12, CYCLE);
+      // Addendum 2: calendar cycles; the first end only closes a cycle, the next ones are judged.
+      await passCycleEnd(revolving.connect(coop), ctx.member.address);
       for (let cycle = 1; cycle <= 3; cycle++) {
         await advance(CYCLE + GRACE + 1);
         await payDue(term, ctx.member, 0);
         expect(await term.arrearsOf(0)).to.equal(0n);
-        await revolving.connect(coop).syncCreditPeriod(ctx.member.address);
+        await passCycleEnd(revolving.connect(coop), ctx.member.address);
         const c = await revolving.cycleOf(ctx.member.address);
         expect(c.missedInRow, `cycle ${cycle}`).to.equal(0n);
         expect(c.cleanStreak, `cycle ${cycle}`).to.equal(BigInt(cycle));
@@ -153,18 +158,21 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
     it("an undrawn revolving balance still has to be rebalanced: a revolving draw left unpaid misses the cycle", async function () {
       const core = await deployCore();
       const { ctx, revolving, merchant, coop } = core;
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], CYCLE, GRACE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 100n * ONE_USDC);
-      await advance(CYCLE + GRACE + 1);
-      await revolving.connect(coop).syncCreditPeriod(ctx.member.address);
+      await passCycleEnd(revolving.connect(coop), ctx.member.address); // the close: $100 is due
+      await passCycleEnd(revolving.connect(coop), ctx.member.address); // unpaid at its due point
       expect((await revolving.cycleOf(ctx.member.address)).missedInRow).to.equal(1n);
     });
   });
 
   describe("M-A: one signer cannot keep a pause going, and the window has a ceiling", function () {
+    // Since Phase 2d (decision 2) every pause action takes two distinct holders of the role: the
+    // first call proposes, the second carries it out, and the 10c and M-A rules apply to the
+    // second signer. Three keys, so a refused signer can be replaced by another.
     async function clrusdStack() {
       const ctx = await deployPhase0Network();
-      const [, , , , , , , , , fraudA, fraudB] = await ethers.getSigners();
+      const [, , , , , , , , , fraudA, fraudB, fraudC] = await ethers.getSigners();
       const ClearUSD = await ethers.getContractFactory("ClearUSDUpgradeable");
       const clrusd: any = await upgrades.deployProxy(ClearUSD,
         ["Clear USD", "CLRUSD", 6, 0, 0, ctx.admin.address, ctx.admin.address],
@@ -172,41 +180,54 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       await clrusd.grantRole(await clrusd.MINTER_ROLE(), ctx.admin.address);
       await clrusd.mint(ctx.member.address, 100n * ONE_USDC);
       for (const role of [await clrusd.FRAUD_ROLE(), await clrusd.SECURITY_ROLE()]) {
-        await clrusd.grantRole(role, fraudA.address);
-        await clrusd.grantRole(role, fraudB.address);
+        for (const k of [fraudA, fraudB, fraudC]) await clrusd.grantRole(role, k.address);
       }
       const Vault = await ethers.getContractFactory("ESADepositVault");
       const vault: any = await upgrades.deployProxy(Vault, [await clrusd.getAddress(), ctx.admin.address], { kind: "uups" });
-      await vault.grantRole(await vault.PAUSER_ROLE(), fraudA.address);
-      await vault.grantRole(await vault.PAUSER_ROLE(), fraudB.address);
-      return { ctx, clrusd, vault, fraudA, fraudB };
+      for (const k of [fraudA, fraudB, fraudC]) await vault.grantRole(await vault.PAUSER_ROLE(), k.address);
+      return { ctx, clrusd, vault, fraudA, fraudB, fraudC };
     }
 
-    it("CLRUSD account pause: the same signer cannot re-pause after a lapse, or unpause and pause again", async function () {
-      const { ctx, clrusd, fraudA, fraudB } = await clrusdStack();
+    it("CLRUSD account pause: two signers act; the last signer cannot re-pause after a lapse, or unpause and pause again", async function () {
+      const { ctx, clrusd, fraudA, fraudB, fraudC } = await clrusdStack();
       const m = ctx.member.address;
-      await clrusd.connect(fraudA).pauseAccount(m, 1);
-      await advance(72 * 3600 + 1);
+      // One signer's call only proposes, and the same signer cannot complete it.
+      await expect(clrusd.connect(fraudA).pauseAccount(m, 1)).to.emit(clrusd, "ActionProposed");
       expect(await clrusd.pausedUntil(m)).to.equal(0n);
       await expect(clrusd.connect(fraudA).pauseAccount(m, 1)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
-      // A second signer may.
-      await clrusd.connect(fraudB).pauseAccount(m, 2);
-      await clrusd.connect(fraudB).unpauseAccount(m);
+      await expect(clrusd.connect(fraudB).pauseAccount(m, 1)).to.emit(clrusd, "AccountPaused");
+      await advance(72 * 3600 + 1);
+      expect(await clrusd.pausedUntil(m)).to.equal(0n);
+      // B signed the pause that lapsed: it cannot carry out a new one inside the cool-down.
+      await clrusd.connect(fraudA).pauseAccount(m, 2);
       await expect(clrusd.connect(fraudB).pauseAccount(m, 2)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
-      await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n);
-      // After the cool-down a signer may act alone again.
-      await advance(Number(await clrusd.REPAUSE_COOLDOWN()));
+      await clrusd.connect(fraudC).pauseAccount(m, 2);
+      // Ending it takes two as well; it keeps C as the last signer.
+      await clrusd.connect(fraudA).unpauseAccount(m);
+      expect(await clrusd.pausedUntil(m)).to.be.gt(0n);
+      await clrusd.connect(fraudB).unpauseAccount(m);
+      expect(await clrusd.pausedUntil(m)).to.equal(0n);
       await clrusd.connect(fraudA).pauseAccount(m, 3);
+      await expect(clrusd.connect(fraudC).pauseAccount(m, 3)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
+      await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n);
+      // After the cool-down C may sign again.
+      await advance(Number(await clrusd.REPAUSE_COOLDOWN()));
+      await clrusd.connect(fraudC).pauseAccount(m, 3);
+      expect(await clrusd.pausedUntil(m)).to.be.gt(0n);
     });
 
     it("CLRUSD security pause follows the same rule", async function () {
-      const { clrusd, fraudA, fraudB } = await clrusdStack();
+      const { clrusd, fraudA, fraudB, fraudC } = await clrusdStack();
       await clrusd.connect(fraudA).pauseForSecurity(1);
+      await clrusd.connect(fraudB).pauseForSecurity(1);
       await advance(72 * 3600 + 1);
-      await expect(clrusd.connect(fraudA).pauseForSecurity(1)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
-      await clrusd.connect(fraudB).pauseForSecurity(2);
-      await clrusd.connect(fraudB).unpauseSecurity();
+      await clrusd.connect(fraudA).pauseForSecurity(2);
       await expect(clrusd.connect(fraudB).pauseForSecurity(2)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
+      await clrusd.connect(fraudC).pauseForSecurity(2);
+      await clrusd.connect(fraudA).unpauseSecurity();
+      await clrusd.connect(fraudB).unpauseSecurity();
+      await clrusd.connect(fraudA).pauseForSecurity(3);
+      await expect(clrusd.connect(fraudC).pauseForSecurity(3)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
     });
 
     it("the pause window is capped at 72 hours, on CLRUSD and on the vault", async function () {
@@ -220,20 +241,29 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       }
     });
 
-    it("vault pause: the same signer cannot re-pause after a lapse, or unpause and pause again", async function () {
-      const { vault, fraudA, fraudB } = await clrusdStack();
+    it("vault pause: two signers act; the last signer cannot re-pause after a lapse, or unpause and pause again", async function () {
+      const { vault, fraudA, fraudB, fraudC } = await clrusdStack();
       await vault.connect(fraudA).pause();
-      await advance(72 * 3600 + 1);
       expect(await vault.paused()).to.equal(false);
       await expect(vault.connect(fraudA).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
       await vault.connect(fraudB).pause();
       expect(await vault.paused()).to.equal(true);
-      await vault.connect(fraudB).unpause();
-      await expect(vault.connect(fraudB).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
-      // An active pause is extended only by a second signer's renewal.
+      await advance(72 * 3600 + 1);
+      expect(await vault.paused()).to.equal(false);
       await vault.connect(fraudA).pause();
-      await expect(vault.connect(fraudA).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
-      await vault.connect(fraudB).renewPause();
+      await expect(vault.connect(fraudB).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
+      await vault.connect(fraudC).pause();
+      expect(await vault.paused()).to.equal(true);
+      await vault.connect(fraudA).unpause();
+      await vault.connect(fraudB).unpause();
+      expect(await vault.paused()).to.equal(false);
+      await vault.connect(fraudA).pause();
+      await expect(vault.connect(fraudC).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
+      await vault.connect(fraudB).pause();
+      // An active pause is extended only by a renewal whose second signer is not the last one.
+      await vault.connect(fraudA).renewPause();
+      await expect(vault.connect(fraudB).renewPause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
+      await expect(vault.connect(fraudC).renewPause()).to.emit(vault, "PauseExpiresAt");
     });
   });
 
@@ -267,7 +297,7 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
 
     it("pricing set while members hold balances: positions stay readable and repayable, and carry is never over the cap", async function () {
       const { ctx, revolving, price } = await revolvingStack(false);
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 1_500n * ONE_USDC);
       await advance(10 * DAY);
       await price();
@@ -286,7 +316,7 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
 
     it("a member re-attested to a state whose products launch later can still repay", async function () {
       const { ctx, revolving, rates } = await revolvingStack(true);
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 0n], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 500n * ONE_USDC);
       await advance(CYCLE);
       await ctx.networkRegistry.attestStateCode(ctx.member.address, NY);
@@ -379,7 +409,7 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       await revolving.connect(ctx.operator).addTier(ethers.encodeBytes32String("SAVINGS"), 0n, CYCLE);
       await revolving.connect(ctx.operator).setCardSettler(settler.address, true);
       await revolving.connect(ctx.operator).setCardSettlementAccount(float.address);
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, GRACE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [500n * ONE_USDC], 0);
       await revolving.connect(ctx.member).setSavingsDrawAllowance(ethers.MaxUint256);
       for (const [ref, amount] of [["c1", 100n], ["c2", 50n]] as const) {
         await revolving.connect(settler).authorizeCardSpend(ethers.id(ref), ctx.member.address, amount * ONE_USDC);

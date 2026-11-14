@@ -97,7 +97,12 @@ describe("a purchase, from the shop to the money", function () {
       .approve(await ctx.stableCredit.getAddress(), ethers.MaxUint256);
   });
 
-  /** A $100 purchase at the shop, 2.5% to the co-op, split over four cycles. */
+  /** Clear Lending's fee recipient: the third leg of the mint since Addendum 2 (12.16). */
+  async function feeTo() {
+    return term.feeRecipient();
+  }
+
+  /** A $100 purchase at the shop, a 2.5% fee to Clear Lending (12.16), split over four cycles. */
   async function buy(purchase = 100n * ONE_USDC) {
     const payout = (purchase * 975n) / 1000n;
     await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
@@ -128,7 +133,8 @@ describe("a purchase, from the shop to the money", function () {
 
     expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(purchase);
     expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(payout);
-    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(discount);
+    expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(discount);
+    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
     // Nobody lent anything: the three legs are the whole of it.
     expect(await ctx.stableCredit.totalSupply()).to.equal(purchase);
   });
@@ -166,8 +172,9 @@ describe("a purchase, from the shop to the money", function () {
     expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
     // The member still owes it, so the claim did not go -- it changed hands.
     expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(100n * ONE_USDC);
-    // The co-op holds what it funded, on top of the fee it was minted at the sale.
-    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(payout + (100n * ONE_USDC - payout));
+    // The co-op holds what it funded; the fee minted at the sale is Clear Lending's (12.16).
+    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(payout);
+    expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(100n * ONE_USDC - payout);
     expect(await pool.advancedOf(coop.address)).to.equal(payout);
   });
 
@@ -281,7 +288,8 @@ describe("a purchase, from the shop to the money", function () {
       // And the pool holds what that money bought, NOT the co-op -- which never bore this float
       // and must not collect the carry on it.
       expect(await pool.advancedOf(await pool.getAddress())).to.equal(payout);
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(100n * ONE_USDC - payout);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(100n * ONE_USDC - payout);
     });
 
     it("never falls back to the AssurancePool, even with money in it (section 13)", async function () {
@@ -574,7 +582,7 @@ describe("a purchase, from the shop to the money", function () {
       expect(back).to.be.lessThanOrEqual(6n * ONE_USDC);
     });
 
-    it("takes it back off the merchant and the co-op, so the legs still net", async function () {
+    it("takes it back off the merchant and the fee recipient, so the legs still net", async function () {
       const { purchase, payout, discount } = await buy();
       await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, purchase);
       // Paid in full, so the whole refund is cash and nothing is left to cancel.
@@ -586,7 +594,7 @@ describe("a purchase, from the shop to the money", function () {
       expect((await ctx.usdc.balanceOf(ctx.member.address)) - before).to.equal(purchase);
       // Both gave back what they were paid for the sale.
       expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(0n);
       expect(discount).to.be.greaterThan(0n);
       expect(await ctx.stableCredit.totalSupply()).to.equal(0n);
     });
@@ -714,19 +722,19 @@ describe("a purchase, from the shop to the money", function () {
   // carryTreasury at the pool -- the only way carry reaches the split -- used to take the co-op's
   // 2.5% with it, and the split would have handed funders a share of the co-op's income.
   describe("the fee and the carry are not one thing", function () {
-    it("keeps minting the fee where it always went, until somebody says otherwise", async function () {
+    it("mints the fee to Clear Lending's fee recipient, never the co-op (12.16)", async function () {
       const { discount } = await buy();
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(discount);
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(discount);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
     });
 
-    it("leaves the fee with the co-op when carry moves to the pool", async function () {
-      await term.connect(ctx.operator).setFeeRecipient(coop.address);
+    it("leaves the fee with Clear Lending when carry moves to the pool", async function () {
       await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
 
       const { purchase, payout, discount } = await buy();
 
-      // The sale's fee is the co-op's, wherever carry now goes.
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(discount);
+      // The sale's fee is Clear Lending's, wherever carry now goes.
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(discount);
       expect(await pool.distributableCarry()).to.equal(0n);
 
       // And carry alone arrives at the pool to be split.
@@ -746,24 +754,24 @@ describe("a purchase, from the shop to the money", function () {
     });
 
     it("unwinds a refund against the address that holds the fee", async function () {
-      // A plan opened before the split and refunded after it: the fee is burned from where it was
-      // minted, because the recipient did not move -- only carry did.
       const { purchase, payout, discount } = await buy();
-      await term.connect(ctx.operator).setFeeRecipient(coop.address);
       await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
 
       await term.connect(ctx.operator).closePlanForRefund(0, purchase, merchant.address, payout);
 
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(0n);
       expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
       expect(discount).to.be.greaterThan(0n);
     });
 
-    it("is an operator's call, and never nobody", async function () {
-      await expect(term.connect(ctx.outsider).setFeeRecipient(ctx.outsider.address)).to.be.reverted;
-      await expect(
-        term.connect(ctx.operator).setFeeRecipient(ethers.ZeroAddress)
-      ).to.be.revertedWithCustomError(term, "TermIssuerNoCarryRecipient");
+    it("is two signers' call, and never nobody or the co-op", async function () {
+      const reason = ethers.encodeBytes32String("ROTATE");
+      await expect(term.connect(ctx.outsider).proposeFeeRecipient(ctx.outsider.address, reason)).to.be.reverted;
+      await expect(term.connect(ctx.operator).proposeFeeRecipient(ethers.ZeroAddress, reason))
+        .to.be.revertedWithCustomError(term, "TermIssuerFeeRecipientNotAllowed");
+      await expect(term.connect(ctx.operator).proposeFeeRecipient(coop.address, reason))
+        .to.be.revertedWithCustomError(term, "TermIssuerFeeRecipientNotAllowed");
+      expect(term.interface.getFunction("setFeeRecipient")).to.equal(null);
     });
   });
 

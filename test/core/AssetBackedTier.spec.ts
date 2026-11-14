@@ -72,7 +72,7 @@ describe("the asset-backed tier", function () {
 
     await issuer
       .connect(ctx.operator)
-      .openLine(ctx.member.address, [0n, 0n, 0n, 0n], ONE_YEAR, CYCLE);
+      .openLine(ctx.member.address, [0n, 0n, 0n, 0n], 0);
   });
 
   it("lights the tier up when a bond is pledged", async function () {

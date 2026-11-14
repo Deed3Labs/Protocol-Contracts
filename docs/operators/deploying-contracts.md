@@ -157,7 +157,15 @@ the live network first:
    `scripts/command/drill_safe_handover.ts`. It surveys who holds each admin role and `owner()`,
    grants each to the Safe, and only then has the deployer renounce. It moves admin roles only;
    operational roles stay unless named in `INCLUDE_ROLES`. Contracts that want ownership accepted
-   (`Ownable2Step`, and `ClearUSDUpgradeable`'s delayed admin) need a Safe transaction to finish.
+   (`Ownable2Step`) need a Safe transaction to finish. It leaves out `ESADepositVault`,
+   `ClearUSDUpgradeable` and the CLRUSD token pool, which are Clear Financial Co.'s (step 3).
+3. **The ESA vault and CLRUSD to the vault timelock** — `deploy/vault_timelock_handover.ts`
+   (Phase 2d, addendum 10g). A 7-day timelock with a Clear Financial Co. Safe (two signers at
+   least; the script checks) as proposer gets every admin and upgrade power over the vault, CLRUSD
+   and the token pool. The relayer, pause, CA-mint-pause, fraud and security keys named in the
+   environment are granted first, and the deployer then renounces every vault and CLRUSD role. The
+   Safe finishes it by accepting CLRUSD's admin (and the pool's ownership) through the timelock.
+   See [UPGRADEABILITY.md](../audit/UPGRADEABILITY.md).
 
 ```bash
 SAFE_ADDRESS=0x… DEPLOYER=0x… npx hardhat run scripts/command/safe-handover.ts --network base-sepolia                    # survey

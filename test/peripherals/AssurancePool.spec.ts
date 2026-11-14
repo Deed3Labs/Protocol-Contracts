@@ -414,6 +414,31 @@ describe("AssurancePool (section 13)", function () {
       await expect(pool.connect(a.signerA).releaseAssurance(ethers.id("big"), usd(501), ethers.ZeroHash))
         .to.be.revertedWithCustomError(pool, "AssurancePoolCompartmentShort");
     });
+
+    it("Phase 2e (section 13 addition): a Hardship Grant (MB-10 Schedule 5) is paid by releaseAssurance under the same two signers and to the same address; the Credit Backstop never funds one", async function () {
+      // No new function: a Hardship Grant is a grant like any other, from MEMBER_ASSURANCE only.
+      const names = pool.interface.fragments.filter((f: any) => f.type === "function").map((f: any) => f.name);
+      expect(names.filter((n: string) => /hardship/i.test(n))).to.deep.equal([]);
+      const hardship = ethers.id("hardship-grant:landlord");
+      const backstopBefore = await pool.balanceOf(BACKSTOP);
+      // More than Member Assurance holds, with the Credit Backstop holding enough: refused, no fallback.
+      await expect(pool.connect(a.signerA).releaseAssurance(hardship, usd(600), ethers.id("mb10")))
+        .to.be.revertedWithCustomError(pool, "AssurancePoolCompartmentShort");
+      expect(backstopBefore).to.be.gte(usd(500));
+      // Within it: two signers, paid to the co-op's disbursement address (which pays the landlord,
+      // lender or servicer off chain), and the backstop is untouched.
+      await pool.connect(a.signerA).releaseAssurance(hardship, usd(250), ethers.id("mb10"));
+      await expect(pool.connect(a.signerA).releaseAssurance(hardship, usd(250), ethers.id("mb10")))
+        .to.be.revertedWithCustomError(pool, "AssurancePoolSameSigner");
+      await pool.connect(a.signerB).releaseAssurance(hardship, usd(250), ethers.id("mb10"));
+      expect(await usdc.balanceOf(a.disbursement.address)).to.equal(usd(250));
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(backstopBefore);
+      expect(await pool.balanceOf(ASSURANCE)).to.equal(usd(250));
+      // Even emptied, Member Assurance is never topped up from the backstop by a grant.
+      await expect(pool.connect(a.signerA).releaseAssurance(ethers.id("hardship-grant:2"), usd(251), ethers.ZeroHash))
+        .to.be.revertedWithCustomError(pool, "AssurancePoolCompartmentShort");
+      expect(await pool.balanceOf(BACKSTOP)).to.equal(backstopBefore);
+    });
   });
 
   describe("transfers between compartments (13f)", function () {

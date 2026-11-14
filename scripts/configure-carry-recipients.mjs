@@ -57,7 +57,6 @@ const ISSUER_ABI = [
 ];
 const FEE_ABI = [
   'function feeRecipient() view returns (address)',
-  'function setFeeRecipient(address recipient) external',
 ];
 
 const where = ADDRESSES[CHAIN];
@@ -76,7 +75,11 @@ const provider = new ethers.JsonRpcProvider(where.rpc);
 const signer = key ? new ethers.Wallet(key, provider) : null;
 
 /*
- * Step 1, and only TermIssuer has a fee to move. Done first so that step 2 cannot take it along.
+ * Step 1, report only. Since Addendum 2 (12.16, Phase 2e) the origination fee is Clear Lending's,
+ * never the co-op's: `feeRecipient` is changed only by two CREDIT_SETTINGS_ROLE holders
+ * (`proposeFeeRecipient` then `approveFeeRecipient`, with a reason code), and the co-op's treasury
+ * is refused. An unset recipient no longer falls back to the carry treasury; a plan with a fee
+ * simply cannot open, so step 2 cannot take the fee along.
  */
 const term = new ethers.Contract(where.termIssuer, FEE_ABI, provider);
 const fee = await term.feeRecipient().catch(() => null);
@@ -86,12 +89,7 @@ if (fee === null) {
 }
 const coop = where.coopTreasury || (await new ethers.Contract(where.termIssuer, ISSUER_ABI, provider).carryTreasury());
 if (fee === ethers.ZeroAddress) {
-  console.log(`TermIssuer feeRecipient: unset -> ${coop}`);
-  if (APPLY) {
-    const tx = await term.connect(signer).setFeeRecipient(coop);
-    await tx.wait(1);
-    console.log(`  done (${tx.hash})`);
-  }
+  console.log(`TermIssuer feeRecipient: unset. Clear Lending's recipient is named by two signers (never the co-op, ${coop}).`);
 } else {
   console.log(`TermIssuer feeRecipient: already ${fee}`);
 }

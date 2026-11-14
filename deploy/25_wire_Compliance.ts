@@ -16,10 +16,20 @@ import { saveDeployment, getDeployment } from "./helpers";
  *   follow no state rules -- the legacy mode Phase 1 left.
  * - Sets the Clear Credit Agreement's terms from `deploy/config/credit-terms.json` (section 12) and
  *   names ESADepositVault as where ESA deposits are read for the Boost cap.
+ * - Addendum 2 (Phase 2e): the Secured Minimum, the per-member card cap and Income Assurance's
+ *   length (`setDueTerms`), the federal-benefit payers excluded from Automatic Clearing by default,
+ *   the Combined Ceiling wired once both ways, and the fee cap. Clear Lending's fee recipient takes
+ *   two people: this proposes `FEE_RECIPIENT` and says who must approve it.
  * - Grants STATE_ATTESTER_ROLE on NetworkRegistry to `STATE_ATTESTER_KEY` when set.
  * - Trusts the revolving issuer on the Liquidator (permissionless liquidation only seizes for
- *   trusted issuers), and names NetworkRegistry as the vault's state source.
- * - Sets the vault's CA pilot cap only when `PILOT_CAP_USD` is given; it is off otherwise.
+ *   trusted issuers), and names NetworkRegistry as the vault's state source. From then on every
+ *   vault mint needs the receiver's state attestation while the pilot item is on (Phase 2d, L-E).
+ *   The pilot measure itself is off chain (Phase 2d, decision 7): there is no cap to set.
+ * - Names the AccessManager as CLRUSD's membership source, so CLRUSD is received only by member
+ *   wallets (spec 12.15, Phase 2d decision 6), and the SavingsIntentFactory as its intent factory,
+ *   whose redeem escrows may receive.
+ * Both of the last two need the vault's or CLRUSD's admin. After `vault_timelock_handover.ts` they
+ * are Clear Financial Safe proposals through the vault timelock, and the script says so.
  *
  * Idempotent: every step checks before it writes. It never deploys a contract other than
  * RateSchedule and never moves an admin power; the handover is a separate, explicit step.
@@ -35,8 +45,6 @@ export interface ComplianceOptions {
   quiet?: boolean;
   configPath?: string;
   stateAttester?: string;
-  pilotCapUsd?: bigint;
-  pilotAlertUsd?: bigint;
 }
 
 export function loadRateTable(configPath = path.join(__dirname, "config", "rate-schedule.json")) {
@@ -172,6 +180,61 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     log("  RevolvingIssuer deposit source -> ESADepositVault");
   }
 
+  // ---- Addendum 2 (Phase 2e): dues, the per-member card cap, federal-benefit exclusions ----
+  const due = await revolving.dueTermsOf();
+  const wantDue = {
+    bps: Number(terms.securedMinimumBps ?? 100),
+    floor: BigInt(terms.securedMinimumFloorUsd ?? 1) * ONE_USD,
+    card: BigInt(terms.cardMemberDailyCapUsd ?? 0) * ONE_USD,
+    pause: Number(terms.incomePauseMaxCycles ?? 3),
+  };
+  const bpsHeld = Number(due.raisedFrom) !== 0 ? Number(due.raisedBps) : Number(due.securedMinimumBps);
+  if (bpsHeld !== wantDue.bps || due.securedMinimumFloor !== wantDue.floor
+    || due.cardMemberDailyCap !== wantDue.card || Number(due.incomePauseMaxCycles) !== wantDue.pause) {
+    await (await revolving.setDueTerms(wantDue.bps, wantDue.floor, wantDue.card, wantDue.pause)).wait();
+    log(`  due terms: Secured Minimum ${wantDue.bps} bps (at least ${terms.securedMinimumFloorUsd ?? 1} USD), card ${terms.cardMemberDailyCapUsd ?? 0} USD/member/day, Income Assurance ${wantDue.pause} cycles`);
+  }
+  for (const payer of (terms.defaultExcludedPayers ?? []) as string[]) {
+    const id = ethers.id(payer);
+    if (!(await revolving.defaultExcludedPayer(id))) {
+      await (await revolving.addDefaultExcludedPayer(id)).wait();
+      log(`  excluded from Automatic Clearing by default: ${payer}`);
+    }
+  }
+
+  // ---- 12.3: the Combined Ceiling, wired once, both ways (it can never be switched off) ----
+  if (ceiling) {
+    if ((await term.combinedProduct()) === ethers.ZeroHash) {
+      await (await term.setCombinedCeiling(await revolving.getAddress(), ceiling.product)).wait();
+      log("  TermIssuer Combined Ceiling -> RevolvingIssuer, graduated schedule of the ceiling product");
+    }
+    if ((await revolving.dueTermsOf()).termIssuer === ethers.ZeroAddress) {
+      await (await revolving.setTermIssuer(await term.getAddress())).wait();
+      log("  RevolvingIssuer Combined Ceiling -> TermIssuer");
+    }
+  }
+
+  // ---- 12.16: the fee cap, and Clear Lending's fee recipient (two people) ----
+  const fees = await term.feeTermsOf();
+  const wantFees = [terms.maxFeeSmallUsd ?? 50, terms.maxFeeLargeUsd ?? 75, terms.feeCapLargeFromUsd ?? 2500].map((n: number) => BigInt(n) * ONE_USD);
+  if (fees.maxFeeSmall !== wantFees[0] || fees.maxFeeLarge !== wantFees[1] || fees.largeFrom !== wantFees[2]) {
+    await (await term.setFeeTerms(wantFees[0], wantFees[1], wantFees[2])).wait();
+    log(`  fee cap: ${terms.maxFeeSmallUsd ?? 50} USD up to ${terms.feeCapLargeFromUsd ?? 2500} USD, ${terms.maxFeeLargeUsd ?? 75} USD above`);
+  }
+  const feeTo = process.env.FEE_RECIPIENT;
+  if ((await term.feeRecipient()) === ethers.ZeroAddress) {
+    if (feeTo && ethers.isAddress(feeTo)) {
+      const reason = ethers.encodeBytes32String("INITIAL");
+      const pending = await term.feeRecipientProposalOf();
+      if (pending.recipient !== ethers.getAddress(feeTo)) {
+        await (await term.proposeFeeRecipient(feeTo, reason)).wait();
+      }
+      log(`! Fee recipient ${feeTo} proposed: a second CREDIT_SETTINGS_ROLE holder approves it with approveFeeRecipient(${feeTo}, "INITIAL"). Plans with a fee cannot open until then.`);
+    } else {
+      log("! FEE_RECIPIENT unset: no plan with a fee can open until Clear Lending's fee recipient is named by two people.");
+    }
+  }
+
   // ---- term ----
   const heldTermRates = await term.rateSchedule();
   if (heldTermRates !== ratesAddress && heldTermRates !== ethers.ZeroAddress) {
@@ -201,6 +264,19 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
       await (await liquidator.setTrustedSavingsIssuer(await revolving.getAddress(), true)).wait();
       log("  Liquidator trusts RevolvingIssuer");
     }
+    // 12.14: a secured term plan's default respects the Liquidation Hold, read here (set once).
+    if ((await term.holdSource()) === ethers.ZeroAddress) {
+      await (await term.setHoldSource(liquidatorRecord.address)).wait();
+      log("  TermIssuer reads the Liquidation Hold from the Liquidator");
+    }
+    // 12.14: a recorded secured-plan default lets a pledged bond's payPledged pay those plans. A
+    // trusted term issuer (no tiers) is refused by every tier path (CLRUSD, Savings, pool shares).
+    if (!(await liquidator.trustedSavingsIssuer(await term.getAddress()))) {
+      await (await liquidator.setTrustedSavingsIssuer(await term.getAddress(), true)).wait();
+      log("  Liquidator trusts TermIssuer (12.14: pledged bonds pay defaulted secured plans only)");
+    }
+  } else {
+    log("! No Liquidator: TermIssuer has no hold source, so no secured term plan can default (12.14 fails closed).");
   }
 
   // ---- section 12.5 / 12.8: the Liquidator's Earn sources and the bond collection's gates ----
@@ -212,39 +288,67 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
       await (await liquidator.setEarnSources(poolRecord.address, bondRecord.address)).wait();
       log("  Liquidator Earn sources -> LendingPool, BurnerBond");
     }
+    // Phase 2e (founder answer G): the collection no longer has a default source or a settlement
+    // gate, and the Liquidator takes no bond. The collection's `liquidator` is the pledge module's
+    // enforcement side for `payPledged` and the pledged maturity split; naming it once bonds exist
+    // waits seven days (audit M-6), so it is proposed here and applied by the owner later.
     const bond = await ethers.getContractAt("BurnerBond", bondRecord.address);
-    // The default gate is the issuer's computed default; the Liquidator is only the narrow
-    // settlement gate for missed-cycle excess and matured shortfalls (owner decision).
     if ((await bond.owner()) === deployer.address) {
-      if ((await bond.defaultSource()) !== (await revolving.getAddress())) {
-        await (await bond.setDefaultSource(await revolving.getAddress())).wait();
-        log("  BurnerBond default source -> RevolvingIssuer");
-      }
-      if ((await bond.settlementGate()) !== liquidatorRecord.address) {
-        await (await bond.setSettlementGate(liquidatorRecord.address)).wait();
-        log("  BurnerBond settlement gate -> Liquidator");
+      if ((await bond.liquidator()) !== liquidatorRecord.address
+          && (await bond.pendingLiquidator()) !== liquidatorRecord.address) {
+        await (await bond.setLiquidator(liquidatorRecord.address)).wait();
+        log("  BurnerBond pledge module -> Liquidator (proposed; executeLiquidatorChange after 7 days if bonds exist)");
       }
     } else {
-      log("! BurnerBond is owned elsewhere: its owner sets setDefaultSource(RevolvingIssuer) and setSettlementGate(Liquidator).");
+      log("! BurnerBond is owned elsewhere: its owner calls setLiquidator(Liquidator), then executeLiquidatorChange after the delay.");
     }
   }
 
-  // ---- vault: state source, and the CA pilot cap only when asked for ----
+  // ---- vault: state source (the pilot measure is off chain; Phase 2d, decision 7) ----
   const vaultRecord = getDeployment(network, "ESADepositVault");
   if (vaultRecord) {
     const vault = await ethers.getContractAt("ESADepositVault", vaultRecord.address);
     const registryAddress = await networkRegistry.getAddress();
-    // The source is private storage on a live contract; setting it again is harmless.
-    await (await vault.setStateSource(registryAddress)).wait();
-    log("  ESADepositVault state source -> NetworkRegistry");
-    const capUsd = options.pilotCapUsd ?? (process.env.PILOT_CAP_USD ? BigInt(process.env.PILOT_CAP_USD) : undefined);
-    if (capUsd !== undefined) {
-      const alertUsd = options.pilotAlertUsd ??
-        (process.env.PILOT_ALERT_USD ? BigInt(process.env.PILOT_ALERT_USD) : (capUsd * 8n) / 10n);
-      await (await vault.setPilotCap(capUsd * ONE_USD, alertUsd * ONE_USD, true)).wait();
-      log(`  CA pilot cap ${capUsd} USD, alert at ${alertUsd} USD`);
+    if ((await vault.stateSource()) === registryAddress) {
+      log("  ESADepositVault state source is NetworkRegistry");
+    } else if (await vault.hasRole(ethers.ZeroHash, deployer.address)) {
+      await (await vault.setStateSource(registryAddress)).wait();
+      log("  ESADepositVault state source -> NetworkRegistry");
     } else {
-      log("! PILOT_CAP_USD unset: the CA pilot cap is off.");
+      log(`! The vault is governed by the vault timelock: propose setStateSource(${registryAddress}) there.`);
+    }
+  }
+
+  // ---- CLRUSD: members only (spec 12.15) ----
+  const clrusdRecord = getDeployment(network, "ClearUSDUpgradeable");
+  const accessRecord = getDeployment(network, "AccessManager");
+  if (clrusdRecord && accessRecord) {
+    const clrusd = await ethers.getContractAt("ClearUSDUpgradeable", clrusdRecord.address);
+    if ((await clrusd.membershipSource()) === ethers.getAddress(accessRecord.address)) {
+      log("  CLRUSD membership source is the AccessManager");
+    } else if ((await clrusd.defaultAdmin()) === deployer.address) {
+      await (await clrusd.setMembershipSource(accessRecord.address)).wait();
+      log("  CLRUSD membership source -> AccessManager (transfers to members only)");
+    } else {
+      log(`! CLRUSD is governed by the vault timelock: propose setMembershipSource(${accessRecord.address}) there.`);
+    }
+    // Redeem intents fund an escrow address before it exists, so the factory that records them is
+    // registered on CLRUSD (Phase 2d). Only a factory built with that record qualifies.
+    const factoryRecord = getDeployment(network, "SavingsIntentFactory");
+    if (factoryRecord) {
+      const factory = ethers.getAddress(factoryRecord.address);
+      const f = await ethers.getContractAt(["function isIntentEscrow(address) view returns (bool)"], factory);
+      const recordsEscrows = await f.isIntentEscrow(ethers.ZeroAddress).then(() => true, () => false);
+      if (!recordsEscrows) {
+        log("! SavingsIntentFactory predates Phase 2d (no isIntentEscrow): redeploy it (deploy/19) before redeem intents can receive CLRUSD.");
+      } else if ((await clrusd.intentFactory()) === factory) {
+        log("  CLRUSD intent factory is SavingsIntentFactory");
+      } else if ((await clrusd.defaultAdmin()) === deployer.address) {
+        await (await clrusd.setIntentFactory(factory)).wait();
+        log("  CLRUSD intent factory -> SavingsIntentFactory (redeem escrows may receive)");
+      } else {
+        log(`! CLRUSD is governed by the vault timelock: propose setIntentFactory(${factory}) there.`);
+      }
     }
   }
 

@@ -16,15 +16,17 @@ describe("DEEP AUDIT PoC 2", function () {
     await pool.drawForDueClaim();
     expect(await pool.advancedOf(coop.address)).to.equal(975n * ONE_USDC);
     await term.connect(m).payPlan(0, 2_000n * ONE_USDC);
-    // Withdrawing "income" takes the 25 fee only; the 975 position stays with what it backs.
+    // Withdrawing "income" takes none of the 975 position, which stays with what it backs. (Since
+    // Addendum 2 the 25 fee is Clear Lending's, so the co-op holds no income here at all.)
     const held = await ctx.stableCredit.balanceOf(coop.address);
-    await pool.connect(ctx.admin).withdrawCoopIncome(held);
+    expect(held).to.equal(975n * ONE_USDC);
+    await expect(pool.connect(ctx.admin).withdrawCoopIncome(held)).to.be.revertedWithCustomError(pool, "PayoutPoolNothingToRedeem");
     expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(975n * ONE_USDC);
     expect(await pool.advancedOf(coop.address)).to.equal(975n * ONE_USDC);
 
     // Carry arrives and is split without reverting, and never more than there is.
     await revolving.connect(ctx.operator).setTierCarryRecipient(2, await pool.getAddress());
-    await revolving.connect(ctx.operator).openLine(member2.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 3650 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(member2.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
     await ctx.stableCredit.connect(member2).transfer(merchant2.address, 100n * ONE_USDC);
     await advance(CYCLE);
     await revolving.materialiseCarry(member2.address);
@@ -85,7 +87,7 @@ describe("DEEP AUDIT PoC 2", function () {
   it("(observation, holds) a draw at index > RAY books no carry in the same block", async function () {
     const { ctx, revolving, merchant } = await deployCore();
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 3650 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     await advance(10 * DAY + 17); // index on the INCOME tier is now > RAY
     await ctx.stableCredit.connect(m).transfer(merchant.address, 1_000_000_001n);
     // same block: no time has passed for this position
