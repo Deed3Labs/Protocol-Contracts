@@ -322,8 +322,13 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         return _planTermsDigest(terms);
     }
 
-    /// @notice names the RateSchedule plans are priced from.
+    /// @notice names the RateSchedule plans are priced from. Set once (Phase 4, M-B): a priced
+    /// plan holds the schedule's accumulator snapshots, and another schedule's numbers would not
+    /// compare with them. The schedule upgrades in place behind the credit timelock instead.
     function setRateSchedule(address rateSchedule_) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
+        if (address(rateSchedule) != address(0) && address(rateSchedule) != rateSchedule_) {
+            revert TermIssuerRateScheduleSet();
+        }
         rateSchedule = RateSchedule(rateSchedule_);
     }
 

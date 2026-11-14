@@ -275,6 +275,29 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
         capCarry = capFor(member, stateCode, productId, principal, from);
     }
 
+    /// @notice what a term plan of `principal` may be charged since `from`.
+    /// @dev A term plan is charged its monthly rate per 30-day cycle (section 12.9), so the list
+    /// carry and the graduated cap, which accrue at monthly x 12 / 365 per second, are scaled by
+    /// 365 / 360. The large-loan cap is annual and is NOT scaled (Phase 4, M-D): once the plan, or
+    /// the member's aggregate under DECISIONS #7, is at or above the threshold, the charge is never
+    /// more than `annualCapBps` a year on this principal.
+    function termChargeFor(address member, bytes32 stateCode, bytes32 productId, uint256 principal, Snapshot memory from)
+        external
+        view
+        returns (uint256 charge)
+    {
+        if (principal == 0) return 0;
+        Snapshot memory now_ = snapshot(stateCode, productId);
+        uint256 listCarry = (principal * (now_.list - from.list)) / RAY;
+        uint256 capCarry = capFor(member, stateCode, productId, principal, from);
+        charge = ((listCarry < capCarry ? listCarry : capCarry) * 365) / 360;
+        uint256 threshold = products[keyOf(stateCode, productId)].params.largeLoanThreshold;
+        if (threshold != 0 && (principal >= threshold || aggregatePrincipalOf(member) >= threshold)) {
+            uint256 annual = (principal * (now_.annual - from.annual)) / RAY;
+            if (annual < charge) charge = annual;
+        }
+    }
+
     /// @notice the monthly rate the cap allows on `principal`, in bps: what a full month of the
     /// graduated (or large-loan) schedule would charge, divided by the principal.
     function capMonthlyBps(bytes32 stateCode, bytes32 productId, uint256 principal)
