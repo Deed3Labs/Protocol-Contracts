@@ -260,7 +260,7 @@ contract TermIssuerExtension is TermIssuerBase {
         uint256 oldInstallment = plan.installmentAmount;
         if (unsigned) {
             uint256 dueNow = installmentsDue(planId);
-            if (installments < (plan.installments > dueNow ? plan.installments - dueNow : 0)) {
+            if (plan.installments > dueNow && installments < plan.installments - dueNow) {
                 revert TermIssuerResplitShortens(planId);
             }
         }

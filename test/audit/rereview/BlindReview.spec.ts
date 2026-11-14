@@ -346,6 +346,28 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
     });
   });
 
+  describe("L-H: queued share proceeds settle only the member they were seized from", function () {
+    it("the operator cannot apply pooled cash to a member with nothing queued", async function () {
+      const ctx = await deployPhase0Network();
+      const coop = (await ethers.getSigners())[8];
+      const ClearUSD = await ethers.getContractFactory("ClearUSDUpgradeable");
+      const clrusd: any = await upgrades.deployProxy(ClearUSD,
+        ["Clear USD", "CLRUSD", 6, 0, 0, ctx.admin.address, ctx.admin.address],
+        { kind: "uups", unsafeAllow: ["missing-initializer", "missing-initializer-call"] });
+      const vault: any = await upgrades.deployProxy(await ethers.getContractFactory("ESADepositVault"), [await clrusd.getAddress(), ctx.admin.address], { kind: "uups" });
+      const registry: any = await upgrades.deployProxy(await ethers.getContractFactory("CollateralRegistry"), [ctx.admin.address, await ctx.networkRegistry.getAddress()], { kind: "uups" });
+      const R = await ethers.getContractFactory("RevolvingIssuer");
+      const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")), kind: "uups" });
+      const liquidator: any = await upgrades.deployProxy(await ethers.getContractFactory("Liquidator"), [ctx.admin.address, await ctx.stableCredit.getAddress(),
+        await clrusd.getAddress(), await vault.getAddress(), await ctx.usdc.getAddress(), await registry.getAddress()], { kind: "uups" });
+      // Cash sitting in the Liquidator that belongs to somebody else's queued redemption.
+      await ctx.usdc.mint(await liquidator.getAddress(), 500n * ONE_USDC);
+      expect(await liquidator.realizedPendingOf(ctx.member.address)).to.equal(0n);
+      await expect(liquidator.settleRealized(ctx.member.address, await issuer.getAddress(), 0, 500n * ONE_USDC))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+    });
+  });
+
   describe("L-A: an unlimited Savings allowance", function () {
     it("does not overflow card settlement once Savings is drawn", async function () {
       const ctx = await deployPhase0Network();
