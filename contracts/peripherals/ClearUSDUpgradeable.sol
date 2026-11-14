@@ -10,6 +10,11 @@ interface IMembershipSource {
     function isMember(address account) external view returns (bool);
 }
 
+/// @dev The savings-intent factory, which records its redeem escrows (SavingsIntentFactory).
+interface IIntentEscrows {
+    function isIntentEscrow(address account) external view returns (bool);
+}
+
 /// @title ClearUSDUpgradeable
 /// @notice CLRUSD, upgradeable, and unwilling to let collateral walk out of the door.
 /// @dev Replaces the deployed ClearUSD, which is not upgradeable and cannot be taught to enforce
@@ -44,9 +49,11 @@ interface IMembershipSource {
 /// checked: a wallet that stops being a member can still send to members and redeem, and the
 /// registry logs the de-listing (AccessManager `MemberRemoved`, MembershipRegistry
 /// `MemberStatusUpdated`/`WalletUnlinked`). Exempt: mints, burns (so every redemption), the
-/// Liquidator's seizure, and transfers to an address holding MINTER_ROLE, BURNER_ROLE or
-/// LIQUIDATOR_ROLE (the vault, the token pool, the Liquidator). Nothing here screens a transfer:
-/// sanctions screening is the app's, before it submits a Send (12.15).
+/// Liquidator's seizure, transfers to an address holding MINTER_ROLE, BURNER_ROLE or
+/// LIQUIDATOR_ROLE (the vault, the token pool, the Liquidator), and transfers to or from a redeem
+/// escrow of the registered savings-intent factory (`intentFactory`, set only by the default admin,
+/// the vault timelock). Nothing here screens a transfer: sanctions screening is the app's, before it
+/// submits a Send (12.15).
 contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @custom:storage-location erc7201:clear.storage.ClearUSD
     struct ClearUSDStorage {
@@ -66,6 +73,8 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         /// @dev Phase 2d, appended: the member registry receipt is checked against. Unset means
         /// unrestricted, as for a token not yet wired.
         IMembershipSource membershipSource;
+        /// @dev Phase 2d, appended: the savings-intent factory whose redeem escrows may receive.
+        IIntentEscrows intentFactory;
     }
 
     // keccak256(abi.encode(uint256(keccak256("clear.storage.ClearUSD")) - 1)) & ~bytes32(uint256(0xff))
@@ -120,6 +129,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     event SecurityUnpaused(address indexed signer);
     event PauseWindowUpdated(uint64 window);
     event MembershipSourceUpdated(address indexed source);
+    event IntentFactoryUpdated(address indexed factory);
     /// @notice the first half of a two-person pause action: `action` is the hash of its calldata.
     event ActionProposed(bytes32 indexed action, address indexed proposer, bytes4 selector);
     /// @notice the second half, by a different holder of the role; the action ran.
@@ -241,6 +251,17 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         return address(_clearUsdStorage().membershipSource);
     }
 
+    /// @notice registers the savings-intent factory whose redeem escrows may receive CLRUSD. Governed:
+    /// like the contract-held roles, only the default admin (the vault timelock) sets or clears it.
+    function setIntentFactory(address factory) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _clearUsdStorage().intentFactory = IIntentEscrows(factory);
+        emit IntentFactoryUpdated(factory);
+    }
+
+    function intentFactory() external view returns (address) {
+        return address(_clearUsdStorage().intentFactory);
+    }
+
     /// @notice whether `account` may receive a CLRUSD transfer now.
     function mayReceive(address account) public view returns (bool) {
         IMembershipSource source = _clearUsdStorage().membershipSource;
@@ -248,7 +269,19 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         if (hasRole(MINTER_ROLE, account) || hasRole(BURNER_ROLE, account) || hasRole(LIQUIDATOR_ROLE, account)) {
             return true;
         }
-        return source.isMember(account);
+        return _isIntentEscrow(account) || source.isMember(account);
+    }
+
+    /// @dev A redeem escrow of the registered intent factory. An unset or unanswering factory
+    /// answers no, which only ever narrows who may receive.
+    function _isIntentEscrow(address account) private view returns (bool) {
+        IIntentEscrows factory = _clearUsdStorage().intentFactory;
+        if (address(factory) == address(0)) return false;
+        try factory.isIntentEscrow(account) returns (bool yes) {
+            return yes;
+        } catch {
+            return false;
+        }
     }
 
     /// @dev One hook covers every way out. Transfers, redemptions and bridging all pass through
@@ -270,8 +303,10 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
             uint256 balance = balanceOf(from);
             uint256 free = balance > locked ? balance - locked : 0;
             if (value > free) revert ClearUSDEncumbered(from, free, value);
-            // Members only (12.15): receipt, never sending. A burn has no receiver.
-            if (!mayReceive(to)) revert ClearUSDReceiverNotMember(to);
+            // Members only (12.15): receipt, never sending. A burn has no receiver. A registered
+            // redeem escrow's own outflows (its refund to the depositor) are exempt: it cannot send
+            // anywhere its config does not name.
+            if (!mayReceive(to) && !_isIntentEscrow(from)) revert ClearUSDReceiverNotMember(to);
         }
 
         super._update(from, to, value);

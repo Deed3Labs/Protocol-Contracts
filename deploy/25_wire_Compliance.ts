@@ -22,7 +22,8 @@ import { saveDeployment, getDeployment } from "./helpers";
  *   vault mint needs the receiver's state attestation while the pilot item is on (Phase 2d, L-E).
  *   The pilot measure itself is off chain (Phase 2d, decision 7): there is no cap to set.
  * - Names the AccessManager as CLRUSD's membership source, so CLRUSD is received only by member
- *   wallets (spec 12.15, Phase 2d decision 6).
+ *   wallets (spec 12.15, Phase 2d decision 6), and the SavingsIntentFactory as its intent factory,
+ *   whose redeem escrows may receive.
  * Both of the last two need the vault's or CLRUSD's admin. After `vault_timelock_handover.ts` they
  * are Clear Financial Safe proposals through the vault timelock, and the script says so.
  *
@@ -259,6 +260,24 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
       log("  CLRUSD membership source -> AccessManager (transfers to members only)");
     } else {
       log(`! CLRUSD is governed by the vault timelock: propose setMembershipSource(${accessRecord.address}) there.`);
+    }
+    // Redeem intents fund an escrow address before it exists, so the factory that records them is
+    // registered on CLRUSD (Phase 2d). Only a factory built with that record qualifies.
+    const factoryRecord = getDeployment(network, "SavingsIntentFactory");
+    if (factoryRecord) {
+      const factory = ethers.getAddress(factoryRecord.address);
+      const f = await ethers.getContractAt(["function isIntentEscrow(address) view returns (bool)"], factory);
+      const recordsEscrows = await f.isIntentEscrow(ethers.ZeroAddress).then(() => true, () => false);
+      if (!recordsEscrows) {
+        log("! SavingsIntentFactory predates Phase 2d (no isIntentEscrow): redeploy it (deploy/19) before redeem intents can receive CLRUSD.");
+      } else if ((await clrusd.intentFactory()) === factory) {
+        log("  CLRUSD intent factory is SavingsIntentFactory");
+      } else if ((await clrusd.defaultAdmin()) === deployer.address) {
+        await (await clrusd.setIntentFactory(factory)).wait();
+        log("  CLRUSD intent factory -> SavingsIntentFactory (redeem escrows may receive)");
+      } else {
+        log(`! CLRUSD is governed by the vault timelock: propose setIntentFactory(${factory}) there.`);
+      }
     }
   }
 

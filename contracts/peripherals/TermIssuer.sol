@@ -393,7 +393,7 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
 
 
 
-    /// @notice what a mandated collection ref took, zero if unused.
+    /// @notice what a mandated collection ref took before `collectForMember` was retired, zero if unused.
     function mandateCollectionOf(bytes32 ref) external view returns (uint256) {
         return mandateCollections[ref];
     }
@@ -594,9 +594,12 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         _forward();
     }
 
-    /// @notice see TermIssuerExtension.collectForMember.
-    function collectForMember(bytes32, address, uint256) external returns (uint256) {
-        _forward();
+    /// @notice Retired (Phase 2d, the owner's decision on 10f): it let a card settler take what was
+    /// due on a member's plans from the member's own wallet USDC. Recovery never uses Ready to
+    /// allocate USDC; term dues are cleared from Spendable at the bank, and the member pays a plan
+    /// themselves with `payPlan`. Kept so callers fail with a reason, not an unknown selector.
+    function collectForMember(bytes32, address, uint256) external pure returns (uint256) {
+        revert TermIssuerWalletCollectionRetired();
     }
 
     /// @notice see TermIssuerExtension.repayWrittenOff.

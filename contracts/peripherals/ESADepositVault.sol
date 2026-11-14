@@ -61,8 +61,8 @@ interface IERC3009 {
 ///
 ///      **Reserve custody (10g).** The reserve is the accepted token held by this contract; there is
 ///      no separate reserve address. It leaves in exactly one place, `_executeRedeem`, which burns
-///      the redeemer's CLRUSD one-for-one and pays the receiver the redeemer chose by their own call
-///      or signature. The Liquidator reaches the reserve the same way, as the holder of the CLRUSD it
+///      the redeemer's CLRUSD one-for-one and pays the redeemer, or a receiver the redeemer named in
+///      a signed `Redeem` (the relayer submits it and cannot change it). The Liquidator reaches the reserve the same way, as the holder of the CLRUSD it
 ///      seized under 10b, and settles the debt with what it receives. There is no sweep, rescue or
 ///      admin withdrawal, and none of the admin setters moves a token. The vault earns nothing on the
 ///      reserve: it lends, stakes and approves nothing. Rewards on USDC, if Clear Financial ever
@@ -160,6 +160,8 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     error ESADepositVaultReceiverNotAuthorized();
     /// @notice thrown when a gasless redeem's signature does not come from the redeemer.
     error ESADepositVaultBadSignature();
+    /// @notice thrown when a plain `redeem` names a receiver other than the caller (Phase 2d).
+    error ESADepositVaultReceiverNotRedeemer(address receiver);
     /// @notice thrown when accepting a token while a different one is already accepted.
     error ESADepositVaultOneTokenOnly(address accepted);
 
@@ -280,7 +282,15 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     }
 
     // ── Redeem (sender-signed; sender pays gas) ────────────────────────────────
+    /// @notice Redeems the caller's own CLRUSD, paying the caller.
+    /// @dev Phase 2d (owner's decision on 10g): a redemption pays someone other than the holder
+    /// only on the holder's signature naming that receiver (`redeemWithSignature` and
+    /// `redeemWithAuthorization`, where the signed `Redeem` carries the receiver), as with MB-05
+    /// §7.9. A bare call -- which a session key or module on a smart account could make -- cannot
+    /// send the reserve anywhere but back to the holder. `receiver` stays in the signature for the
+    /// interface, and must be the caller.
     function redeem(address token, uint256 clrusdAmount, address receiver) external override whenNotPaused returns (uint256 returnedAmount) {
+        if (receiver != msg.sender) revert ESADepositVaultReceiverNotRedeemer(receiver);
         returnedAmount = _executeRedeem(msg.sender, token, clrusdAmount, receiver);
     }
 

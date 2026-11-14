@@ -97,6 +97,7 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// ones a mandated collection here honours. One switch for the member, one key for the co-op.
     address public mandateSource;
     /// @dev ref => amount collected under the mandate. Once per ref.
+    /// @dev What each mandated collection took, while `collectForMember` existed. Never written now.
     mapping(bytes32 => uint256) internal mandateCollections;
 
     /// @notice where the co-op's share of a purchase is minted, when that is not the carry treasury.
@@ -214,9 +215,8 @@ abstract contract TermIssuerBase is CreditIssuer {
     error TermIssuerSplitTooSoon(uint256 planId, uint256 availableAt);
     error TermIssuerNotDefaultable(address member);
     error TermIssuerNotReinstatable(address member);
-    error TermIssuerNotCollector(address caller);
-    error TermIssuerMandateOff(address member);
-    error TermIssuerCollectionUsed(bytes32 ref);
+    /// @notice `collectForMember` is retired: nothing takes a member's wallet USDC (Phase 2d, 10f).
+    error TermIssuerWalletCollectionRetired();
     /// @notice thrown when a plan's merchant is not a registered, active merchant (audit H-4).
     error TermIssuerMerchantNotActive(address merchant);
     /// @notice thrown when the member did not sign these plan terms (audit H-4).
@@ -270,6 +270,7 @@ abstract contract TermIssuerBase is CreditIssuer {
     event WrittenOffRepaid(address indexed member, address indexed payer, uint256 amount);
     event TermReinstated(address indexed member);
     event MandateSourceUpdated(address source);
+    /// @dev Emitted by the retired `collectForMember`; kept so past logs still decode.
     event CollectedForMember(bytes32 indexed ref, address indexed member, uint256 amount);
     event ResidualCarryPaid(address indexed member, address indexed payer, uint256 amount);
     /// @notice the terms the member signed for a plan, and the disclosure they were shown.

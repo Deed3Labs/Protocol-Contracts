@@ -6,6 +6,7 @@ import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { driveToDefault } from "../../helpers/default";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { CA, ONE_USDC, CYCLE, DAY } from "./rates";
+import { pledgeSigned } from "../../helpers/pledge";
 
 /*
  * Phase 2d: the "DFAL control, ESA vault roles, pilot cap and Send" addendum
@@ -149,7 +150,6 @@ const REVIEWED_PULLS: Record<string, string> = {
   "ESADepositVault.sol:safeTransferFrom:depositor": "autopay: the depositor's signed DepositMandate (amount per run, runs, cadence, expiry), revocable by cancelOwnMandate or the allowance",
   "ClaimEscrow.sol:receiveWithAuthorization:sender": "EIP-3009: the sender's own signature, committing to every term",
   "StableCredit.sol:safeTransferFrom:payer": "a repayment: payer is the caller, or what a registered issuer passes (below)",
-  "TermIssuerExtension.sol:repayCreditBalanceFor:member": "collectForMember: the member's own auto-repay mandate, bounded by what is due (decision 4; see PHASE-2D-REPORT section 3)",
   "BondVault.sol:safeTransferFrom:treasury": "Clear's own treasury, not a member",
   "OffersIssuer.sol:safeTransferFrom:treasury": "Clear's own treasury, not a member",
   "PayoutPool.sol:safeTransferFrom:coopTreasury": "the co-op treasury, not a member",
@@ -303,7 +303,7 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
       expect(sBefore - (await supply())).to.equal(200n * ONE_USDC);
 
       // 10b liquidation: the seized CLRUSD is burned one-for-one and the USDC settles the debt.
-      await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
       await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 30 * DAY, 30 * DAY);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 400n * ONE_USDC);
       await driveToDefault(issuer, ctx.member.address, ctx.operator);
@@ -316,6 +316,47 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
       expect(debt - (await ctx.stableCredit.creditBalanceOf(ctx.member.address))).to.equal(paid);
       // The reserve still covers every CLRUSD outstanding, plus the donation nobody can take.
       expect(await reserve()).to.equal((await supply()) + 7n * ONE_USDC);
+    });
+
+    it("a redemption pays the holder, or a receiver only the holder's signature names: no call or role can redirect it", async function () {
+      const { ctx, vault, clrusd, relayer, keyA, stranger } = s;
+      const usdc = await ctx.usdc.getAddress();
+      const holder = ctx.member;
+      await deposit(s, holder, 300n * ONE_USDC);
+      await clrusd.connect(holder).approve(await vault.getAddress(), ethers.MaxUint256);
+      const types = { Redeem: [{ name: "redeemer", type: "address" }, { name: "token", type: "address" }, { name: "clrusdAmount", type: "uint256" },
+        { name: "receiver", type: "address" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] };
+      const sign = async (who: any, receiver: string, amount: bigint) => who.signTypedData(await vaultDomain(vault), types,
+        { redeemer: holder.address, token: usdc, clrusdAmount: amount, receiver, nonce: await vault.redeemNonces(holder.address), deadline: ethers.MaxUint256 });
+
+      // A plain redeem pays only its caller.
+      await expect(vault.connect(holder).redeem(usdc, ONE_USDC, stranger.address))
+        .to.be.revertedWithCustomError(vault, "ESADepositVaultReceiverNotRedeemer").withArgs(stranger.address);
+      await vault.connect(holder).redeem(usdc, 100n * ONE_USDC, holder.address);
+      expect(await ctx.usdc.balanceOf(holder.address)).to.equal(100n * ONE_USDC);
+
+      // A receiver the holder signed for: the relayer cannot change it, the amount, or forge it.
+      const sig = await sign(holder, keyA.address, 50n * ONE_USDC);
+      await expect(vault.connect(relayer).redeemWithSignature(holder.address, usdc, 50n * ONE_USDC, relayer.address, ethers.MaxUint256, sig))
+        .to.be.revertedWithCustomError(vault, "ESADepositVaultBadSignature");
+      await expect(vault.connect(relayer).redeemWithSignature(holder.address, usdc, 60n * ONE_USDC, keyA.address, ethers.MaxUint256, sig))
+        .to.be.revertedWithCustomError(vault, "ESADepositVaultBadSignature");
+      const forged = await sign(relayer, relayer.address, 50n * ONE_USDC);
+      await expect(vault.connect(relayer).redeemWithSignature(holder.address, usdc, 50n * ONE_USDC, relayer.address, ethers.MaxUint256, forged))
+        .to.be.revertedWithCustomError(vault, "ESADepositVaultBadSignature");
+      const split = ethers.Signature.from(sig);
+      await expect(vault.connect(relayer).redeemWithAuthorization(holder.address, usdc, 50n * ONE_USDC, relayer.address, ethers.MaxUint256, split.v, split.r, split.s))
+        .to.be.revertedWithCustomError(vault, "ESADepositVaultBadSignature");
+      await vault.connect(relayer).redeemWithAuthorization(holder.address, usdc, 50n * ONE_USDC, keyA.address, ethers.MaxUint256, split.v, split.r, split.s);
+      expect(await ctx.usdc.balanceOf(keyA.address)).to.equal(50n * ONE_USDC);
+      // Nobody but the relayer submits it, and only once.
+      await expect(vault.connect(stranger).redeemWithSignature(holder.address, usdc, 50n * ONE_USDC, keyA.address, ethers.MaxUint256, sig)).to.be.reverted;
+
+      // No role holder can redeem the holder's CLRUSD at all, to anyone.
+      for (const k of [ctx.admin, relayer, keyA, stranger]) {
+        await expect(vault.connect(k).redeem(usdc, ONE_USDC, k.address)).to.be.reverted;
+      }
+      expect(await clrusd.balanceOf(holder.address)).to.equal(150n * ONE_USDC);
     });
   });
 
@@ -471,7 +512,7 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
       for (const k of [keyA, keyB]) await clrusd.connect(k).unpauseAccount(ctx.member.address);
 
       // A de-listed member in default is still liquidated: the seizure is exempt, and the lock holds.
-      await registry.pledge(ctx.member.address, SAVINGS, 999n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 999n * ONE_USDC);
       await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 30 * DAY, 30 * DAY);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 300n * ONE_USDC);
       await ctx.access.connect(ctx.operator).revokeMember(ctx.member.address);
@@ -479,6 +520,64 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
       await driveToDefault(issuer, ctx.member.address, ctx.operator);
       await liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
       expect(await clrusd.balanceOf(ctx.member.address)).to.equal(699n * ONE_USDC);
+    });
+
+    it("exempts the registered savings-intent factory's redeem escrows, so redeem intents work end to end, and an escrow can always return its funds", async function () {
+      const { ctx, clrusd, vault, stranger, keyA } = s;
+      await members();
+      const factory: any = await (await ethers.getContractFactory("SavingsIntentFactory")).deploy(ctx.admin.address);
+      const now = (await ethers.provider.getBlock("latest"))!.timestamp;
+      const config = (amount: bigint, receiver: string, action = 1) => ({
+        depositor: ctx.member.address, receiver, transferToken: action === 1 ? s.clrusd.target : ctx.usdc.target,
+        vaultToken: ctx.usdc.target, vault: vault.target, amount, expiry: now + 7 * DAY, action });
+      const redeemTo = config(100n * ONE_USDC, keyA.address);
+      const salt = ethers.id("redeem-1");
+      const escrow = await factory.predictIntentAddress(salt, redeemTo);
+
+      // Before a factory is registered, the escrow is a non-member like any other.
+      await factory.announceIntent(salt, redeemTo);
+      await expect(clrusd.connect(ctx.member).transfer(escrow, 100n * ONE_USDC)).to.be.revertedWithCustomError(clrusd, "ClearUSDReceiverNotMember");
+      // Only the admin (after handover, Clear Financial's timelock) registers it.
+      await expect(clrusd.connect(stranger).setIntentFactory(factory.target)).to.be.reverted;
+      await expect(clrusd.setIntentFactory(factory.target)).to.emit(clrusd, "IntentFactoryUpdated").withArgs(factory.target);
+      // An address the factory never announced is still refused.
+      const other = await factory.predictIntentAddress(ethers.id("not-announced"), redeemTo);
+      await expect(clrusd.connect(ctx.member).transfer(other, ONE_USDC)).to.be.revertedWithCustomError(clrusd, "ClearUSDReceiverNotMember");
+      // Deposit intents hold USDC and are never announced.
+      await expect(factory.announceIntent(salt, config(1n, keyA.address, 0))).to.be.revertedWithCustomError(factory, "SavingsIntentFactoryNotRedeem");
+
+      // End to end: fund the predicted address, settle, the receiver the depositor fixed gets USDC.
+      await clrusd.connect(ctx.member).transfer(escrow, 100n * ONE_USDC);
+      await factory.settleDeterministic(salt, redeemTo);
+      expect(await ctx.usdc.balanceOf(keyA.address)).to.equal(100n * ONE_USDC);
+      expect(await clrusd.balanceOf(escrow)).to.equal(0n);
+
+      // An escrow returns its funds even when its depositor has been de-listed meanwhile.
+      const refundable = config(50n * ONE_USDC, keyA.address);
+      const salt2 = ethers.id("redeem-2");
+      const escrow2 = await factory.predictIntentAddress(salt2, refundable);
+      await factory.announceIntent(salt2, refundable);
+      await clrusd.connect(ctx.member).transfer(escrow2, 50n * ONE_USDC);
+      await factory.createIntentDeterministic(salt2, refundable); // provisioned before expiry, as the settler does
+      await ctx.access.connect(ctx.operator).revokeMember(ctx.member.address);
+      await advance(8 * DAY);
+      await factory.refundDeterministic(salt2, refundable);
+      expect(await clrusd.balanceOf(escrow2)).to.equal(0n);
+
+      // And when the escrow itself is de-listed (the factory unregistered), it can still send.
+      await ctx.access.connect(ctx.operator).grantMember(ctx.member.address);
+      const now2 = (await ethers.provider.getBlock("latest"))!.timestamp;
+      const third = { ...refundable, expiry: now2 + DAY };
+      const salt3 = ethers.id("redeem-3");
+      const escrow3 = await factory.predictIntentAddress(salt3, third);
+      await factory.announceIntent(salt3, third);
+      await clrusd.connect(ctx.member).transfer(escrow3, 50n * ONE_USDC);
+      await factory.createIntentDeterministic(salt3, third);
+      await clrusd.setIntentFactory(ethers.ZeroAddress);
+      await advance(2 * DAY);
+      const before = await clrusd.balanceOf(ctx.member.address);
+      await factory.refundDeterministic(salt3, third);
+      expect(await clrusd.balanceOf(ctx.member.address)).to.equal(before + 50n * ONE_USDC);
     });
 
     it("has no screening or blocking power beyond receipt by members", async function () {

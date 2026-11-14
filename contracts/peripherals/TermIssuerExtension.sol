@@ -313,56 +313,6 @@ contract TermIssuerExtension is TermIssuerBase {
         emit PlanSplitChanged(planId, installments, spread, behind);
     }
 
-    /// @notice collects what is due on a member's plans from their own USDC, under the mandate they
-    /// set on the revolving line.
-    /// @dev The term half of "there is no pay button". Bounded like the revolving half: only a
-    /// card settler, only for a member who switched automatic repayment on, only once per ref, and
-    /// only toward what is DUE -- each plan's arrears, oldest first, then residual carry. Never an
-    /// installment early: that would be lending the member their own money.
-    /// @param ref idempotency key.
-    /// @param member address being collected for; also the payer.
-    /// @param amount the most to collect.
-    /// @return collected what was actually taken.
-    function collectForMember(bytes32 ref, address member, uint256 amount)
-        external
-        notNull(member)
-        returns (uint256 collected)
-    {
-        if (mandateSource == address(0) || !IRevolvingMandate(mandateSource).isCardSettler(msg.sender)) {
-            revert TermIssuerNotCollector(msg.sender);
-        }
-        if (!IRevolvingMandate(mandateSource).autoRepayEnabled(member)) revert TermIssuerMandateOff(member);
-        if (mandateCollections[ref] != 0) revert TermIssuerCollectionUsed(ref);
-
-        uint256 remaining = amount;
-        uint256[] memory ids = openPlanIds[member];
-        for (uint256 i = 0; i < ids.length && remaining > 0; i++) {
-            uint256 planId = ids[i];
-            if (plans[planId].closed) continue;
-            uint256 behind = arrearsOf(planId);
-            if (behind == 0) continue;
-            _materialiseCarry(planId);
-            uint256 owed = plans[planId].principalOutstanding;
-            uint256 pay = behind < remaining ? behind : remaining;
-            if (pay > owed) pay = owed;
-            if (pay == 0) continue;
-            stableCredit.repayCreditBalanceFor(member, member, uint128(pay));
-            _applyPlanPayment(planId, pay);
-            remaining -= pay;
-            collected += pay;
-        }
-        uint256 residual = residualCarryOf(member);
-        if (remaining > 0 && residual > 0) {
-            uint256 pay = residual < remaining ? residual : remaining;
-            stableCredit.repayCreditBalanceFor(member, member, uint128(pay));
-            emit ResidualCarryPaid(member, member, pay);
-            collected += pay;
-        }
-        if (collected == 0) revert TermIssuerNothingToPay(type(uint256).max);
-        mandateCollections[ref] = collected;
-        emit CollectedForMember(ref, member, collected);
-    }
-
     /// @notice pays back what a term default wrote off, to Lending Co., whose charge-off it was.
     /// @dev Anyone may pay for a member. Paying it all back is one way to term credit again.
     /// Section 13: the write-off is Lending Co.'s loss, so the recovery is its money, paid to its
