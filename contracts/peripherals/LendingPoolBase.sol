@@ -17,6 +17,11 @@ import "./IExtensionKind.sol";
 /// `YieldPoolValuation` by delegatecall. Both inherit this contract and declare no storage of
 /// their own, so they read and write the same slots. Never add a state variable to either child.
 ///
+/// The pool's transfer hook (the pledge lock and the transfer allowlist) is `LendingPool`'s alone.
+/// Share movements made in the module run without it, so the module moves shares only where the
+/// hook would let them through anyway: out of the pool's escrow (a cancellation), an enforcement
+/// escrow and the Liquidator's seizure (both exempt), and a run-off of shares already checked free.
+///
 /// Storage is append-only against the Base Sepolia implementation recorded in
 /// `.openzeppelin/base-sepolia.json` (slots 351-360, then a 40-slot gap). Slots 361-369 hold the
 /// Phase 1 audit fields, which were never deployed there; the Yield Pool fields follow from 370.
@@ -447,6 +452,48 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
         _queuedShares -= shares;
         _queuedSharesOf[r.owner] -= shares;
         if (r.enforcement) _enforcementQueuedOf[r.owner] -= shares;
+    }
+
+    function _enqueue(address owner, address receiver, uint256 shares, bool enforcement) internal returns (uint256 id) {
+        if (receiver == address(0) || shares == 0) revert LendingPoolInvalidAmount();
+        escrowMode = enforcement ? 2 : 1;
+        _transfer(owner, address(this), shares);
+        escrowMode = 0;
+        id = queue.length;
+        queue.push(QueueRequest(owner, uint64(block.timestamp), enforcement, receiver, uint128(shares)));
+        _queuedShares += shares;
+        _queuedSharesOf[owner] += shares;
+        emit QueueRequested(id, owner, receiver, shares, enforcement);
+    }
+
+    function _readLock(address holder) internal view returns (uint256 locked, bool ok) {
+        if (address(encumbranceSource) == address(0) || collateralKind == bytes32(0)) return (0, true);
+        try encumbranceSource.encumberedOfKind(holder, collateralKind) returns (uint256 value) {
+            return (value, true);
+        } catch {
+            return (0, false);
+        }
+    }
+
+    /// @dev The lock still on a holder's own balance: pledged shares already queued by an
+    /// enforcement redemption count against it.
+    function _lockOnBalance(address holder, uint256 locked) internal view returns (uint256) {
+        uint256 queued = _enforcementQueuedOf[holder];
+        return locked > queued ? locked - queued : 0;
+    }
+
+    /// @dev Fails closed for pledgers, open for everyone else (audit M-3).
+    function _encumberedOf(address holder) internal view returns (uint256) {
+        (uint256 locked, bool ok) = _readLock(holder);
+        if (ok) return locked;
+        return lastKnownLock[holder] > 0 ? type(uint256).max : 0;
+    }
+
+    function _freeSharesOf(address holder) internal view returns (uint256) {
+        uint256 locked = _encumberedOf(holder);
+        if (locked != type(uint256).max) locked = _lockOnBalance(holder, locked);
+        uint256 balance = balanceOf(holder);
+        return balance > locked ? balance - locked : 0;
     }
 
     /// @dev The two-person rule: the first authorized signer's call proposes `action`; the same

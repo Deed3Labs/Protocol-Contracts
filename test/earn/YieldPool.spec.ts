@@ -487,6 +487,23 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
       expect(await pool.holdbackOf(alice.address)).to.equal(0n);
     });
 
+    it("withdraw pays exactly the amount asked; it records a holdback only while holdbackBps > 0", async function () {
+      await pool.connect(f.alice).deposit(U(10_000), f.alice.address);
+      await f.deploy(U(1_000));
+      await increase(30 * DAY); // a Share Value that is not a round number
+      const a0 = await usdc.balanceOf(f.alice.address);
+      await pool.connect(f.alice).withdraw(U(333), f.alice.address, f.alice.address);
+      expect(await usdc.balanceOf(f.alice.address) - a0).to.equal(U(333));
+      expect(await pool.holdbackCount()).to.equal(0n);
+      await f.allowanceForBps(150n);
+      const a1 = await usdc.balanceOf(f.alice.address);
+      await pool.connect(f.alice).withdraw(U(333), f.alice.address, f.alice.address);
+      expect(await usdc.balanceOf(f.alice.address) - a1).to.equal(U(333));
+      const [, , , gross, held] = await pool.holdbackAt(0);
+      expect(held).to.equal((gross * 150n + BPS - 1n) / BPS);
+      expect(gross - held).to.be.greaterThanOrEqual(U(333));
+    });
+
     it("never rounds in the leaver's favour", async function () {
       await pool.connect(f.alice).deposit(U(10_000), f.alice.address);
       await f.allowance(U(150));

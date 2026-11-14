@@ -98,6 +98,44 @@ contract YieldPoolValuation is LendingPoolBase {
 
     /* ========== MOVED FROM THE POOL FOR SIZE ========== */
 
+    /// @notice after the Final Maturity Date, queues all of a holder's free shares to that holder,
+    /// in queue order (decision 15). Permissionless. Only free shares are taken, so the pool's
+    /// transfer hook, which this module's escrow does not run, would have nothing to refuse.
+    function requestRunOff(address holder) external returns (uint256 requestId) {
+        if (!_maturedAt()) revert LendingPoolNotFinalMaturity();
+        uint256 shares = _freeSharesOf(holder);
+        requestId = _enqueue(holder, holder, shares, false);
+        emit RunOffRequested(holder, requestId, shares);
+    }
+
+    /// @notice An MB-05 enforcement redemption: queues `shares` of `holder`'s pledged shares, in
+    /// order behind every earlier request, to be filled at Share Value. The proceeds go only to
+    /// the recorded `enforcementDestination`; any holdback is recorded to the holder (§6A).
+    /// @dev For stage 2's `PoolShareEnforcer`. Only pledged shares, read from the source. The
+    /// escrow runs here, in the module, without the pool's transfer hook, which would wave an
+    /// enforcement escrow through anyway.
+    function enforcementRedeem(address holder, uint256 shares) external onlyRole(ENFORCER_ROLE) returns (uint256 requestId) {
+        address destination = _enforcementDestination;
+        if (destination == address(0)) revert LendingPoolInvalidAddress();
+        (uint256 locked, bool ok) = _readLock(holder);
+        if (!ok) revert LendingPoolEncumbranceUnreadable(holder);
+        uint256 queued = _enforcementQueuedOf[holder];
+        uint256 pledged = locked > queued ? locked - queued : 0;
+        if (shares > pledged) revert LendingPoolSeizureExceedsEncumbrance(holder, pledged, shares);
+        _enforcementQueuedOf[holder] = queued + shares;
+        requestId = _enqueue(holder, destination, shares, true);
+    }
+
+    /// @notice takes shares that are backing drawn credit. Removed in stage 2 with the
+    /// Liquidator's exemption, when `PoolShareEnforcer` redeems through `enforcementRedeem` (C5).
+    function seizeShares(address holder, address to, uint256 shares) external onlyRole(LIQUIDATOR_ROLE) {
+        (uint256 encumbered, bool ok) = _readLock(holder);
+        if (!ok) revert LendingPoolEncumbranceUnreadable(holder);
+        if (shares > encumbered) revert LendingPoolSeizureExceedsEncumbrance(holder, encumbered, shares);
+        _transfer(holder, to, shares);
+        emit SharesSeized(holder, to, shares);
+    }
+
     /// @notice cancels all or part of an unfilled request, at any time, a Suspension included.
     /// The shares go back to the owner. An enforcement request is cancelled only by the enforcer.
     function cancelRequest(uint256 requestId, uint256 shares) external {

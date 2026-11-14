@@ -483,13 +483,17 @@ contract LendingPool is LendingPoolBase {
         uint256 cash = _vaultCash();
         if (gross > cash) revert LendingPoolInsufficientCash(cash, gross);
         _burn(owner, shares);
-        paid = _finish(owner, receiver, gross, net == type(uint256).max ? _net(gross) : net);
+        paid = _finish(owner, receiver, gross, net);
         emit Withdraw(msg.sender, receiver, owner, paid, shares);
     }
 
-    /// @dev Pays `paid` of `gross` and records the rest as the holder's holdback (§6A).
-    function _finish(address holder, address receiver, uint256 gross, uint256 paid) internal returns (uint256) {
-        uint256 held = gross - paid;
+    /// @dev Burned shares worth `gross`: records H = G × holdbackBps (rounded up) as the holder's
+    /// holdback (§6A) and pays G − H, or `cap` if less (a `withdraw` for an exact amount). What
+    /// the cap leaves, a unit or two of rounding, stays in Vault Cash for the remaining holders.
+    function _finish(address holder, address receiver, uint256 gross, uint256 cap) internal returns (uint256 paid) {
+        uint256 held = gross.mulDiv(_holdbackBps, BPS, MathUpgradeable.Rounding.Up);
+        paid = gross - held;
+        if (paid > cap) paid = cap;
         if (held > 0) {
             uint256 id = holdbacks.length;
             holdbacks.push(Holdback(holder, uint64(block.timestamp), uint32(_holdbackMaxAge), uint128(gross), uint128(held)));
@@ -499,7 +503,6 @@ contract LendingPool is LendingPoolBase {
             emit HoldbackRecorded(holder, id, gross, held);
         }
         _send(receiver, paid);
-        return paid;
     }
 
     /* ========== THE QUEUE ========== */
@@ -519,43 +522,6 @@ contract LendingPool is LendingPoolBase {
     /// @notice queues all of `shares` (kept for the Liquidator and the apps).
     function requestWithdrawal(uint256 shares, address receiver) external returns (uint256) {
         return _enqueue(msg.sender, receiver, shares, false);
-    }
-
-    /// @notice after the Final Maturity Date, queues all of a holder's free shares to that holder,
-    /// in queue order (decision 15). Permissionless.
-    function requestRunOff(address holder) external returns (uint256 requestId) {
-        if (!_matured()) revert LendingPoolNotFinalMaturity();
-        uint256 shares = freeSharesOf(holder);
-        requestId = _enqueue(holder, holder, shares, false);
-        emit RunOffRequested(holder, requestId, shares);
-    }
-
-    /// @notice An MB-05 enforcement redemption: queues `shares` of `holder`'s pledged shares, in
-    /// order behind every earlier request, to be filled at Share Value. The proceeds go only to
-    /// the recorded `enforcementDestination`; any holdback is recorded to the holder (§6A).
-    /// @dev For stage 2's `PoolShareEnforcer`. Only pledged shares, read from the source.
-    function enforcementRedeem(address holder, uint256 shares) external onlyRole(ENFORCER_ROLE) returns (uint256 requestId) {
-        address destination = _enforcementDestination;
-        if (destination == address(0)) revert LendingPoolInvalidAddress();
-        (uint256 locked, bool ok) = _readLock(holder);
-        if (!ok) revert LendingPoolEncumbranceUnreadable(holder);
-        uint256 queued = _enforcementQueuedOf[holder];
-        uint256 pledged = locked > queued ? locked - queued : 0;
-        if (shares > pledged) revert LendingPoolSeizureExceedsEncumbrance(holder, pledged, shares);
-        _enforcementQueuedOf[holder] = queued + shares;
-        requestId = _enqueue(holder, destination, shares, true);
-    }
-
-    function _enqueue(address owner, address receiver, uint256 shares, bool enforcement) internal returns (uint256 id) {
-        if (receiver == address(0) || shares == 0) revert LendingPoolInvalidAmount();
-        escrowMode = enforcement ? 2 : 1;
-        _transfer(owner, address(this), shares);
-        escrowMode = 0;
-        id = queue.length;
-        queue.push(QueueRequest(owner, uint64(block.timestamp), enforcement, receiver, uint128(shares)));
-        _queuedShares += shares;
-        _queuedSharesOf[owner] += shares;
-        emit QueueRequested(id, owner, receiver, shares, enforcement);
     }
 
     /// @notice fills the queue in order, whole or partial, up to Vault Cash, at the Share Value
@@ -583,7 +549,7 @@ contract LendingPool is LendingPoolBase {
             r.shares = uint128(left);
             _dequeue(r, take);
             _burn(address(this), take);
-            uint256 paid = _finish(r.owner, r.receiver, gross, _net(gross));
+            uint256 paid = _finish(r.owner, r.receiver, gross, type(uint256).max);
             emit QueueFilled(i, take, gross, paid, left);
             ++filled;
             if (left > 0) break;
@@ -604,43 +570,12 @@ contract LendingPool is LendingPoolBase {
     /// @notice how many of a holder's shares are pledged.
     /// @dev Fails closed for pledgers, open for everyone else (audit M-3).
     function encumberedOf(address holder) public view returns (uint256) {
-        (uint256 locked, bool ok) = _readLock(holder);
-        if (ok) return locked;
-        return lastKnownLock[holder] > 0 ? type(uint256).max : 0;
-    }
-
-    function _readLock(address holder) internal view returns (uint256 locked, bool ok) {
-        if (address(encumbranceSource) == address(0) || collateralKind == bytes32(0)) return (0, true);
-        try encumbranceSource.encumberedOfKind(holder, collateralKind) returns (uint256 value) {
-            return (value, true);
-        } catch {
-            return (0, false);
-        }
-    }
-
-    /// @dev The lock still on a holder's own balance: pledged shares already queued by an
-    /// enforcement redemption count against it.
-    function _lockOnBalance(address holder, uint256 locked) internal view returns (uint256) {
-        uint256 queued = _enforcementQueuedOf[holder];
-        return locked > queued ? locked - queued : 0;
+        return _encumberedOf(holder);
     }
 
     /// @notice how many of a holder's shares may leave.
     function freeSharesOf(address holder) public view returns (uint256) {
-        uint256 locked = encumberedOf(holder);
-        if (locked != type(uint256).max) locked = _lockOnBalance(holder, locked);
-        uint256 balance = balanceOf(holder);
-        return balance > locked ? balance - locked : 0;
-    }
-
-    /// @notice takes shares that are backing drawn credit. Removed in stage 2 with the
-    /// Liquidator's exemption, when `PoolShareEnforcer` redeems through `enforcementRedeem` (C5).
-    function seizeShares(address holder, address to, uint256 shares) external onlyRole(LIQUIDATOR_ROLE) {
-        (uint256 encumbered, bool ok) = _readLock(holder);
-        if (!ok) revert LendingPoolEncumbranceUnreadable(holder);
-        if (shares > encumbered) revert LendingPoolSeizureExceedsEncumbrance(holder, encumbered, shares);
-        _transfer(holder, to, shares);
-        emit SharesSeized(holder, to, shares);
+        return _freeSharesOf(holder);
     }
 
     /// @dev The transfer allowlist (FIXED, §6) and the pledge lock. A mint, the pool's own escrow
@@ -676,6 +611,21 @@ contract LendingPool is LendingPoolBase {
     }
 
     /* ========== VALUATION MODULE (delegatecall) ========== */
+
+    /// @notice see YieldPoolValuation.requestRunOff.
+    function requestRunOff(address) external returns (uint256) {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.enforcementRedeem.
+    function enforcementRedeem(address, uint256) external returns (uint256) {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.seizeShares.
+    function seizeShares(address, address, uint256) external {
+        _forward();
+    }
 
     /// @notice see YieldPoolValuation.cancelRequest.
     function cancelRequest(uint256, uint256) external {
