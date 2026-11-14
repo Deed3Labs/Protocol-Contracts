@@ -8,70 +8,9 @@ import "./RevolvingIssuerBase.sol";
 /// @dev Runs only by delegatecall from RevolvingIssuer, against its storage, like
 /// RevolvingIssuerExtension. Split out to keep both under the EIP-170 size limit.
 contract RevolvingIssuerCycles is RevolvingIssuerBase {
-    using SafeERC20Upgradeable for IERC20Upgradeable;
-
     /// @notice what RevolvingIssuer's constructor checks before pinning this as its cycles module.
     function extensionKind() external pure returns (bytes32) {
         return keccak256("RevolvingIssuerCycles.v3");
-    }
-
-    /// @notice Automatic Clearing (12.2): records a deposit that landed in the member's Spendable at
-    /// the bank as a repayment, at the level the member chose.
-    /// @dev The settler delivers the cash; nothing is taken from the member's wallet, so Ready to
-    /// allocate USDC and CLRUSD are never swept. Refused while the member is in hybridMode (the only
-    /// thing that switches clearing off besides the member), for a deposit from an excluded payer
-    /// (federal benefits unless the member removed them), and once per ref.
-    ///
-    /// UNSECURED (the default) clears Boost and income-backed, then any unpaid Secured Minimum, and
-    /// stops. DUE_ONLY clears exactly the unpaid Rebalance Amount and any unpaid Secured Minimum.
-    /// EVERYTHING clears every tier. Within each, dearest first by what each tier costs now (4c
-    /// item 7). What is not applied stays in Spendable.
-    /// @param ref idempotency key.
-    /// @param member address being repaid for.
-    /// @param amount the deposit available to clear, in ledger units.
-    /// @param payer the deposit's originator (hashed ACH company id), checked against exclusions.
-    function repayForMember(bytes32 ref, address member, uint256 amount, bytes32 payer) external notNull(member) {
-        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
-        if (!autoRepayEnabled[member]) revert RevolvingIssuerAutoRepayNotEnabled(member);
-        if (cycleState[member].hybridMode) revert RevolvingIssuerHybridMode(member);
-        if (_payerExcluded(member, payer)) revert RevolvingIssuerExcludedPayer(member, payer);
-        if (amount == 0) revert RevolvingIssuerCardAmountZero();
-        if (autoRepayments[ref] != 0) revert RevolvingIssuerAutoRepayAlreadyUsed(ref);
-
-        _touch(member);
-        uint8 level = autoClearScopeOf[member];
-        uint256 unsecuredMask = _tierMask(true);
-        uint256 first;
-        uint256 second;
-        if (level == SCOPE_ALL) {
-            first = _min(amount, _totalPrincipal(member));
-        } else {
-            (uint256 owedUnsecured, uint256 owedSecured) = _owedBySide(member);
-            (uint256 dueU, uint256 dueT) = _dues(member);
-            first = _min(amount, owedUnsecured);
-            if (level == LEVEL_DUE_ONLY) first = _min(first, dueU);
-            // What the first part leaves of the Secured Minimum: every due figure falls with it.
-            uint256 leftU = dueU > first ? dueU - first : 0;
-            uint256 leftT = dueT > first ? dueT - first : 0;
-            second = _min(_min(amount - first, leftT - leftU), owedSecured);
-        }
-        uint256 applied = first + second;
-        if (applied == 0) revert RevolvingIssuerNothingToClear(member);
-        autoRepayments[ref] = applied;
-
-        IERC20Upgradeable reserve = stableCredit.reserveToken();
-        reserve.safeTransferFrom(_msgSender(), address(this), applied);
-        reserve.forceApprove(address(stableCredit), applied);
-        stableCredit.repayCreditBalanceFor(address(this), member, uint128(applied));
-
-        if (level == SCOPE_ALL) {
-            _repay(member, first, type(uint256).max);
-        } else {
-            _repay(member, first, unsecuredMask);
-            _repay(member, second, ~unsecuredMask);
-        }
-        emit AutoRepaid(ref, member, applied);
-        emit AutoCleared(ref, member, applied, amount - applied);
     }
 
     /* ---- section 12: cycles, terms and the member's own switches ---- */
@@ -84,6 +23,12 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
     /// close against the Rebalance Amount; a missed Secured Minimum only pauses secured draws), Income
     /// Assurance falls by one, and the cycle closes: the Rebalance Amount and Secured Minimum due at
     /// the next end are fixed. The next end is computed from the member's Cycle End Day.
+    ///
+    /// 10c (decision 5): paused time since a close pushes its due point back by as much, and no due
+    /// point is judged while a pause is in force, so a payment a pause prevented is never a miss. A
+    /// close whose pushed due point is still ahead at the next end is held and judged once it passes;
+    /// the next close is recorded at its own end all the same (12.17). One close is held at a time: a
+    /// pause that outlasts a second cycle makes the line wait on the calendar until the first is judged.
     function judgeCycle(address member) external returns (uint8) {
         CycleState storage s = cycleState[member];
         CreditPeriod storage period = creditPeriods[member];
@@ -94,19 +39,17 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
             uint256 from = period.expiration > block.timestamp ? period.expiration : block.timestamp;
             s.cycleEnd = uint64(PacificCalendar.endOnOrAfter(from, day));
         }
+        _judgeHeld(member, s);
         while (s.cycleEnd <= block.timestamp) {
             uint64 end = s.cycleEnd;
             if (s.cureAmount == 0) {
                 if (s.closedAt != 0) {
-                    // 10c (decision 5): paused time since this close pushes its due point back by as
-                    // much, and no due point is judged while a pause is in force, so a payment a pause
-                    // prevented is never a miss. The line waits on the calendar until then.
-                    uint256 due = end + _pauseClockOf(member) - s.closeClock;
-                    if (due > block.timestamp || _pauseInForce(member)) {
-                        period.expiration = due > block.timestamp ? due : block.timestamp + 1;
+                    if (s.heldClosedAt != 0) {
+                        period.expiration = block.timestamp + 1;
                         return 0;
                     }
-                    _judgeDues(member, s, end);
+                    if (_dueAt(member, end, s.closeClock) <= block.timestamp) _judgeDues(member, s, end, s.closeClock);
+                    else _hold(s, end);
                 }
                 _countDownIncomePause(s, end);
                 if (s.cureAmount == 0) _close(member, s, end);
@@ -125,14 +68,59 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
             period.expiration = s.cureDueAt;
             if (!_computedDefault(member)) return 1;
             // Carry to now goes on the ledger first, so the write-off reaches all of it.
-            _touch(member);
+            IRevolvingCloseCarry(address(this)).closeCarry(member, uint64(block.timestamp));
             return 2;
         }
+        // The period ends at the next cycle end, or at a held close's due point if that is sooner.
+        uint256 expiration = s.cycleEnd;
+        if (s.heldClosedAt != 0) {
+            uint256 due = _dueAt(member, s.heldDueAt, s.heldClock);
+            if (due < expiration) expiration = due > block.timestamp ? due : block.timestamp + 1;
+        }
         period.issuedAt = s.closedAt != 0 ? s.closedAt : block.timestamp;
-        period.expiration = s.cycleEnd;
+        period.expiration = expiration;
         period.graceLength = 0;
-        emit CreditPeriodCreated(member, s.cycleEnd, 0);
+        emit CreditPeriodCreated(member, expiration, 0);
         return 0;
+    }
+
+    /// @dev A due point `end`, pushed back by the paused time since the close it belongs to, whose
+    /// pause clock read `clock` (10c). Never while a pause is in force.
+    function _dueAt(address member, uint256 end, uint256 clock) private view returns (uint256) {
+        if (_pauseInForce(member)) return type(uint256).max;
+        return end + _pauseClockOf(member) - clock;
+    }
+
+    /// @dev Holds the open close for judging at its pushed due point `end` + paused time (10c).
+    function _hold(CycleState storage s, uint64 end) private {
+        s.heldClosedAt = s.closedAt;
+        s.heldDueAt = end;
+        s.heldRA = s.rebalanceAmount;
+        s.heldSM = s.securedMinimum;
+        s.heldPaid = s.paidSinceClose;
+        s.heldClock = s.closeClock;
+        s.heldWorkout = s.closedWorkout;
+        s.closedAt = 0;
+    }
+
+    /// @dev Judges a held close once its pushed due point has passed, in the open close's place,
+    /// which is put back after.
+    function _judgeHeld(address member, CycleState storage s) private {
+        if (s.heldClosedAt == 0 || _dueAt(member, s.heldDueAt, s.heldClock) > block.timestamp) return;
+        (uint64 closedAt, uint128 ra, uint128 sm, uint128 paid, uint8 workout) =
+            (s.closedAt, s.rebalanceAmount, s.securedMinimum, s.paidSinceClose, s.closedWorkout);
+        s.closedAt = s.heldClosedAt;
+        s.rebalanceAmount = s.heldRA;
+        s.securedMinimum = s.heldSM;
+        s.paidSinceClose = s.heldPaid;
+        s.closedWorkout = s.heldWorkout;
+        s.heldClosedAt = 0;
+        _judgeDues(member, s, s.heldDueAt, s.heldClock);
+        s.closedAt = closedAt;
+        s.rebalanceAmount = ra;
+        s.securedMinimum = sm;
+        s.paidSinceClose = paid;
+        s.closedWorkout = workout;
     }
 
     /// @dev Income Assurance falls by one at each cycle end; the end it runs out at is kept, so a
@@ -141,8 +129,9 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
         if (s.incomePause != 0 && --s.incomePause == 0) s.hardshipLastEnd = end;
     }
 
-    /// @dev Judges the dues of the cycle that closed at `s.closedAt`, at its due point `end`.
-    function _judgeDues(address member, CycleState storage s, uint64 end) private {
+    /// @dev Judges the dues of the cycle that closed at `s.closedAt`, at its due point `end`. `clock`
+    /// is the pause clock at that close.
+    function _judgeDues(address member, CycleState storage s, uint64 end, uint256 clock) private {
         CycleRecord storage c = cycleOf[member];
         uint256 ra = s.rebalanceAmount;
         uint256 owed = ra + s.securedMinimum;
@@ -208,8 +197,9 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
             s.noticeProposer = address(0);
             s.cureAmount = uint128(ra - paid);
             s.cureDueAt = end;
-            // 10c: the grace period from here runs longer by any paused time from now.
-            s.cureClock = _pauseClockOf(member);
+            // 10c: the grace period runs longer by the paused time since this close: what pushed the
+            // due point back, and whatever falls inside the grace period itself.
+            s.cureClock = clock;
         }
         // A missed Secured Minimum is never a miss (12.1): it only pauses secured draws until the
         // payments since this close reach the Rebalance Amount plus the Secured Minimum.
@@ -373,16 +363,81 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
         );
     }
 
-    /// @dev What the member owes on the unsecured tiers and on the rest.
-    function _owedBySide(address member) private view returns (uint256 unsecured, uint256 secured) {
-        for (uint256 i = 0; i < tiers.length; i++) {
-            if (_isUnsecured(i)) unsecured += tierPrincipal[member][i];
-            else secured += tierPrincipal[member][i];
+    /* ---- moved here from the workouts module (Phase 2g, for room) ---- */
+
+    /// @notice opens a member's line with a starting ceiling in each tier.
+    /// @dev Cycles are calendar months (12.1, Addendum 2): each ends at 23:59:59 Pacific on the
+    /// member's Cycle End Day, and the first on the first such day at least 14 days from now. The
+    /// day is the member's choice at opening; zero takes the default (the day before today, or the
+    /// 28th). Automatic Clearing is set separately, from the member's own choice and signature.
+    /// @param member address of the member.
+    /// @param capacities ceiling contribution per tier, in tier order.
+    /// @param cycleEndDay the member's Cycle End Day (1-28), or zero for the default.
+    function openLine(
+        address member,
+        uint256[] calldata capacities,
+        uint8 cycleEndDay
+    ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) {
+        // Only a member with no live line: reopening one would restart its clock and its dues,
+        // which no role may do (12.1). A default deletes the period, so re-onboarding still works.
+        if (inInitializedPeriod(member)) revert RevolvingIssuerCyclesComputed();
+        if (cycleEndDay > 28) revert RevolvingIssuerBadCycleDay(cycleEndDay);
+        // 4c item 3: re-onboarding waits until collateral pledged against an earlier default has
+        // been applied, so a new line can never cut that recovery short.
+        if (_defaultedOnCurrentLine(member) && address(exposureSource) != address(0)) {
+            for (uint256 i = 0; i < tiers.length; i++) {
+                if (_isUnsecured(i) || tierPrincipal[member][i] == 0) continue;
+                (bool ok, bytes memory data) = address(exposureSource).staticcall(
+                    abi.encodeWithSignature("collateralValueOf(address,bytes32)", member, tiers[i].kind)
+                );
+                if (ok && data.length >= 32 && abi.decode(data, (uint256)) != 0) {
+                    revert RevolvingIssuerDefaultCollateralUnapplied(member);
+                }
+            }
         }
+        // State gate (spec item 9): no line for a member with no attested state, or in a state
+        // where the revolving product is not enabled.
+        if (address(rateSchedule) != address(0)) {
+            bytes32 state = _stateOf(member);
+            if (state == bytes32(0) || !rateSchedule.isEnabled(state, ceilingProduct)) {
+                revert RevolvingIssuerStateNotEnabled(member, state);
+            }
+        }
+        // A new line starts its own record: misses, a halved ceiling or a streak of an earlier line
+        // do not carry over.
+        delete cycleOf[member];
+        uint256 total;
+        uint256 increase;
+        for (uint256 i = 0; i < capacities.length && i < tiers.length; i++) {
+            uint256 previous = tierCapacity[member][i];
+            if (capacities[i] > previous) increase += capacities[i] - previous;
+            tierCapacity[member][i] = capacities[i];
+            total += capacities[i];
+            emit TierCapacityUpdated(member, i, capacities[i]);
+        }
+        _checkCreditCaps(member);
+        // Opening a line is new credit like any other limit raised (audit H-4).
+        _consumeDailyCap(capacityIncreaseCap, "CAPACITY", increase);
+        stableCredit.createCreditLine(member, total, 0);
+        uint8 day = cycleEndDay != 0 ? cycleEndDay : PacificCalendar.defaultDay(block.timestamp);
+        uint64 firstEnd = uint64(PacificCalendar.endOnOrAfter(block.timestamp + 14 days, day));
+        CycleState storage s = cycleState[member];
+        // A fresh clock and no dues; the Automatic Clearing choice and hybridMode are the member's
+        // and stay as they set them.
+        s.cycleEnd = firstEnd;
+        s.cycleEndDay = day;
+        s.closedAt = 0;
+        s.rebalanceAmount = 0;
+        s.securedMinimum = 0;
+        s.paidSinceClose = 0;
+        s.securedPastDue = 0;
+        s.pastDueSM = 0;
+        s.cureAmount = 0;
+        s.noticeProposer = address(0);
+        _updateCreditPeriod(member, firstEnd, 0);
+        emit CycleEndDaySet(member, day, firstEnd);
+        // A new line starts a new default episode (Phase 4b, M-C): a default recorded before now
+        // stays on record, but no longer lets anyone liquidate this line.
+        lineOpenedAt[member] = uint64(block.timestamp);
     }
-
-    function _min(uint256 a, uint256 b) private pure returns (uint256) {
-        return a < b ? a : b;
-    }
-
 }

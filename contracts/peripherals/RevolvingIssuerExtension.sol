@@ -272,11 +272,15 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         onlyCreditRole(CREDIT_SETTINGS_ROLE)
         returns (uint256 tierId)
     {
-        if (tiers.length > 0) {
-            uint256 previous = tiers[tiers.length - 1].index.ratePerCycle;
-            if (ratePerCycle < previous) {
-                revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
+        if (kind == WORKOUT_KIND) {
+            // The workout plan's position (12.18): one, at a fixed 0%, outside the draw order.
+            for (uint256 i = 0; i < tiers.length; i++) {
+                if (tiers[i].kind == WORKOUT_KIND) ratePerCycle = 1;
             }
+            if (ratePerCycle != 0) revert RevolvingIssuerWorkoutTerms(0, 0);
+        } else {
+            (bool found, uint256 previous) = _neighbourRate(tiers.length, false);
+            if (found && ratePerCycle < previous) revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
         }
         // Every tier shares one clock. Two tiers accruing on different periods would make
         // "cheapest first" meaningless, because the rates would stop being comparable and draw
@@ -300,22 +304,30 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
     /// one. The ascending order still has to hold afterwards, in both directions.
     function setTierRate(uint256 tierId, uint256 ratePerCycle) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         _requireTier(tierId);
-        if (tierId > 0) {
-            uint256 previous = tiers[tierId - 1].index.ratePerCycle;
-            if (ratePerCycle < previous) {
-                revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
-            }
-        }
-        if (tierId + 1 < tiers.length) {
-            uint256 next = tiers[tierId + 1].index.ratePerCycle;
-            if (ratePerCycle > next) revert RevolvingIssuerRatesMustAscend(ratePerCycle, next);
-        }
+        // The workout plan's position stays at 0% (12.18), and is left out of the order.
+        if (tiers[tierId].kind == WORKOUT_KIND) revert RevolvingIssuerWorkoutTerms(0, 0);
+        (bool found, uint256 previous) = _neighbourRate(tierId, false);
+        if (found && ratePerCycle < previous) revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
+        uint256 next;
+        (found, next) = _neighbourRate(tierId, true);
+        if (found && ratePerCycle > next) revert RevolvingIssuerRatesMustAscend(ratePerCycle, next);
         // Bring the tier's own accumulator to now at the old rate first (spec item 3: a new rate
         // only ever applies going forward).
         localAcc[tierId] = _localAcc(tierId);
         localAccAt[tierId] = uint64(block.timestamp);
         tiers[tierId].index.setRate(ratePerCycle, block.timestamp);
         emit TierRateUpdated(tierId, ratePerCycle);
+    }
+
+    /// @dev The rate of the nearest tier below `tierId` (or above it, when `up`) other than the
+    /// workout plan's, and whether there is one.
+    function _neighbourRate(uint256 tierId, bool up) private view returns (bool, uint256) {
+        uint256 i = tierId;
+        while (up ? i + 1 < tiers.length : i > 0) {
+            i = up ? i + 1 : i - 1;
+            if (tiers[i].kind != WORKOUT_KIND) return (true, tiers[i].index.ratePerCycle);
+        }
+        return (false, 0);
     }
 
     /// @notice names the CLRUSD token whose lock a Savings draw refreshes (Phase 4b, L-B).
@@ -329,4 +341,74 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         emit ClrusdTokenSet(token);
     }
 
+    /// @notice Automatic Clearing (12.2): records a deposit that landed in the member's Spendable at
+    /// the bank as a repayment, at the level the member chose.
+    /// @dev The settler delivers the cash; nothing is taken from the member's wallet, so Ready to
+    /// allocate USDC and CLRUSD are never swept. Refused while the member is in hybridMode (the only
+    /// thing that switches clearing off besides the member), for a deposit from an excluded payer
+    /// (federal benefits unless the member removed them), and once per ref.
+    ///
+    /// UNSECURED (the default) clears Boost and income-backed, then any unpaid Secured Minimum, and
+    /// stops. DUE_ONLY clears exactly the unpaid Rebalance Amount and any unpaid Secured Minimum.
+    /// EVERYTHING clears every tier. Within each, dearest first by what each tier costs now (4c
+    /// item 7). What is not applied stays in Spendable.
+    /// @param ref idempotency key.
+    /// @param member address being repaid for.
+    /// @param amount the deposit available to clear, in ledger units.
+    /// @param payer the deposit's originator (hashed ACH company id), checked against exclusions.
+    function repayForMember(bytes32 ref, address member, uint256 amount, bytes32 payer) external notNull(member) {
+        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
+        if (!autoRepayEnabled[member]) revert RevolvingIssuerAutoRepayNotEnabled(member);
+        if (cycleState[member].hybridMode) revert RevolvingIssuerHybridMode(member);
+        if (_payerExcluded(member, payer)) revert RevolvingIssuerExcludedPayer(member, payer);
+        if (amount == 0) revert RevolvingIssuerCardAmountZero();
+        if (autoRepayments[ref] != 0) revert RevolvingIssuerAutoRepayAlreadyUsed(ref);
+
+        _touch(member);
+        uint8 level = autoClearScopeOf[member];
+        uint256 unsecuredMask = _tierMask(true);
+        uint256 first;
+        uint256 second;
+        if (level == SCOPE_ALL) {
+            first = _min(amount, _totalPrincipal(member));
+        } else {
+            (uint256 owedUnsecured, uint256 owedSecured) = _owedBySide(member);
+            (uint256 dueU, uint256 dueT) = _dues(member);
+            first = _min(amount, owedUnsecured);
+            if (level == LEVEL_DUE_ONLY) first = _min(first, dueU);
+            // What the first part leaves of the Secured Minimum: every due figure falls with it.
+            uint256 leftU = dueU > first ? dueU - first : 0;
+            uint256 leftT = dueT > first ? dueT - first : 0;
+            second = _min(_min(amount - first, leftT - leftU), owedSecured);
+        }
+        uint256 applied = first + second;
+        if (applied == 0) revert RevolvingIssuerNothingToClear(member);
+        autoRepayments[ref] = applied;
+
+        IERC20Upgradeable reserve = stableCredit.reserveToken();
+        reserve.safeTransferFrom(_msgSender(), address(this), applied);
+        reserve.forceApprove(address(stableCredit), applied);
+        stableCredit.repayCreditBalanceFor(address(this), member, uint128(applied));
+
+        if (level == SCOPE_ALL) {
+            _repay(member, first, type(uint256).max);
+        } else {
+            _repay(member, first, unsecuredMask);
+            _repay(member, second, ~unsecuredMask);
+        }
+        emit AutoRepaid(ref, member, applied);
+        emit AutoCleared(ref, member, applied, amount - applied);
+    }
+
+    /// @dev What the member owes on the unsecured tiers and on the rest.
+    function _owedBySide(address member) private view returns (uint256 unsecured, uint256 secured) {
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (_isUnsecured(i)) unsecured += tierPrincipal[member][i];
+            else secured += tierPrincipal[member][i];
+        }
+    }
+
+    function _min(uint256 a, uint256 b) private pure returns (uint256) {
+        return a < b ? a : b;
+    }
 }

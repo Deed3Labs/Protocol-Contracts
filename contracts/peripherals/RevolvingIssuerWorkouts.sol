@@ -179,14 +179,21 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
     /// @notice pays the member's workout plan, from the caller (who approves StableCredit for the
     /// reserve token). Directed: it reduces the plan's position and nothing else.
     function payWorkoutPlan(address member, uint256 amount) external {
+        // Closes any cycle end that has passed and brings the position's principal-seconds up to
+        // now before it changes (12.17).
+        _touch(member);
         uint256 planTier = _workoutTier();
         uint256 owed = tierPrincipal[member][planTier];
-        if (workoutOf[member].state != WORKOUT_PLAN || owed == 0 || amount == 0) revert RevolvingIssuerNothingDue(member);
+        Workout storage w = workoutOf[member];
+        if (w.state != WORKOUT_PLAN || owed == 0 || amount == 0) revert RevolvingIssuerNothingDue(member);
         uint256 pay = amount < owed ? amount : owed;
-        // Brings the position's principal-seconds up to now before it changes (12.17).
-        _touch(member);
         stableCredit.repayCreditBalanceFor(_msgSender(), member, uint128(pay));
         _repayTier(member, planTier, pay);
+        // A PLAN ends when it is paid off (decision 32).
+        if (pay == owed) {
+            w.state = 0;
+            emit WorkoutEnded(member, WORKOUT_PLAN);
+        }
     }
 
     /* ---- 12.18: the workout plan's default follows 12.14's timing ---- */
@@ -253,6 +260,26 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
 
     /* ---- views ---- */
 
+    /// @notice a member's unsecured revolving principal, carry excluded: the tiers priced from
+    /// RateSchedule, which are the revolving part of their small loan under the CFL (DECISIONS #7).
+    function cflPrincipalOf(address member) external view returns (uint256 total) {
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tierProduct[i] != bytes32(0)) total += _principalOnly(member, i);
+        }
+    }
+
+    /// @notice consecutive missed rebalances, for the Liquidator.
+    function missedInRowOf(address member) external view returns (uint8) {
+        return cycleOf[member].missedInRow;
+    }
+
+    /// @notice what an authorization recorded for a ref still allows.
+    function cardAuthorizationOf(bytes32 ref) external view returns (address member, uint256 amount) {
+        CardAuthorization memory authorization = cardAuthorizations[ref];
+        return (authorization.member, authorization.amount);
+    }
+
+
     /// @notice the member's workout record (12.18).
     function workoutStateOf(address member) external view returns (Workout memory) {
         return workoutOf[member];
@@ -272,82 +299,6 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
     /// cycle is readable without recomputation.
     function positionStatOf(address member, uint256 tierId) external view returns (PositionStat memory) {
         return positionStat[member][tierId];
-    }
-
-    /// @notice opens a member's line with a starting ceiling in each tier.
-    /// @dev Cycles are calendar months (12.1, Addendum 2): each ends at 23:59:59 Pacific on the
-    /// member's Cycle End Day, and the first on the first such day at least 14 days from now. The
-    /// day is the member's choice at opening; zero takes the default (the day before today, or the
-    /// 28th). Automatic Clearing is set separately, from the member's own choice and signature.
-    /// @param member address of the member.
-    /// @param capacities ceiling contribution per tier, in tier order.
-    /// @param cycleEndDay the member's Cycle End Day (1-28), or zero for the default.
-    function openLine(
-        address member,
-        uint256[] calldata capacities,
-        uint8 cycleEndDay
-    ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) {
-        // Only a member with no live line: reopening one would restart its clock and its dues,
-        // which no role may do (12.1). A default deletes the period, so re-onboarding still works.
-        if (inInitializedPeriod(member)) revert RevolvingIssuerCyclesComputed();
-        if (cycleEndDay > 28) revert RevolvingIssuerBadCycleDay(cycleEndDay);
-        // 4c item 3: re-onboarding waits until collateral pledged against an earlier default has
-        // been applied, so a new line can never cut that recovery short.
-        if (_defaultedOnCurrentLine(member) && address(exposureSource) != address(0)) {
-            for (uint256 i = 0; i < tiers.length; i++) {
-                if (_isUnsecured(i) || tierPrincipal[member][i] == 0) continue;
-                (bool ok, bytes memory data) = address(exposureSource).staticcall(
-                    abi.encodeWithSignature("collateralValueOf(address,bytes32)", member, tiers[i].kind)
-                );
-                if (ok && data.length >= 32 && abi.decode(data, (uint256)) != 0) {
-                    revert RevolvingIssuerDefaultCollateralUnapplied(member);
-                }
-            }
-        }
-        // State gate (spec item 9): no line for a member with no attested state, or in a state
-        // where the revolving product is not enabled.
-        if (address(rateSchedule) != address(0)) {
-            bytes32 state = _stateOf(member);
-            if (state == bytes32(0) || !rateSchedule.isEnabled(state, ceilingProduct)) {
-                revert RevolvingIssuerStateNotEnabled(member, state);
-            }
-        }
-        // A new line starts its own record: misses, a halved ceiling or a streak of an earlier line
-        // do not carry over.
-        delete cycleOf[member];
-        uint256 total;
-        uint256 increase;
-        for (uint256 i = 0; i < capacities.length && i < tiers.length; i++) {
-            uint256 previous = tierCapacity[member][i];
-            if (capacities[i] > previous) increase += capacities[i] - previous;
-            tierCapacity[member][i] = capacities[i];
-            total += capacities[i];
-            emit TierCapacityUpdated(member, i, capacities[i]);
-        }
-        _checkCreditCaps(member);
-        // Opening a line is new credit like any other limit raised (audit H-4).
-        _consumeDailyCap(capacityIncreaseCap, "CAPACITY", increase);
-        stableCredit.createCreditLine(member, total, 0);
-        uint8 day = cycleEndDay != 0 ? cycleEndDay : PacificCalendar.defaultDay(block.timestamp);
-        uint64 firstEnd = uint64(PacificCalendar.endOnOrAfter(block.timestamp + 14 days, day));
-        CycleState storage s = cycleState[member];
-        // A fresh clock and no dues; the Automatic Clearing choice and hybridMode are the member's
-        // and stay as they set them.
-        s.cycleEnd = firstEnd;
-        s.cycleEndDay = day;
-        s.closedAt = 0;
-        s.rebalanceAmount = 0;
-        s.securedMinimum = 0;
-        s.paidSinceClose = 0;
-        s.securedPastDue = 0;
-        s.pastDueSM = 0;
-        s.cureAmount = 0;
-        s.noticeProposer = address(0);
-        _updateCreditPeriod(member, firstEnd, 0);
-        emit CycleEndDaySet(member, day, firstEnd);
-        // A new line starts a new default episode (Phase 4b, M-C): a default recorded before now
-        // stays on record, but no longer lets anyone liquidate this line.
-        lineOpenedAt[member] = uint64(block.timestamp);
     }
 
     /* ---- moved here from the cycles module (Phase 2g, for room) ---- */

@@ -567,7 +567,11 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     /// reserve covers.
     function declareDefault(address member) external notNull(member) returns (uint256 writtenOff) {
         uint256 at = memberDefaultableAt(member);
-        if (at == 0 || block.timestamp < at) revert TermIssuerNotDefaultable(member);
+        // 10c (Phase 2g): no default is declared while a pause affecting the member is in force.
+        address clock = _pauseClock();
+        if (at == 0 || block.timestamp < at || (clock != address(0) && IPauseClock(clock).inForce(member))) {
+            revert TermIssuerNotDefaultable(member);
+        }
 
         materialiseMember(member);
         // Only the unsecured plans: a plan secured under MB-05 stays owed and follows 12.14.

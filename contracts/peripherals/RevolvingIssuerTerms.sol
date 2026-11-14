@@ -386,7 +386,10 @@ contract RevolvingIssuerTerms is RevolvingIssuerBase {
         onlyCreditRole(CREDIT_SETTINGS_ROLE)
     {
         _requireTier(tierId);
-        if (tierProduct[tierId] != bytes32(0)) revert RevolvingIssuerTierProductSet(tierId);
+        // The workout plan's position is a fixed 0% (12.18): it is never priced.
+        if (tierProduct[tierId] != bytes32(0) || tiers[tierId].kind == WORKOUT_KIND) {
+            revert RevolvingIssuerTierProductSet(tierId);
+        }
         tierProduct[tierId] = productId;
         emit TierProductSet(tierId, productId);
     }

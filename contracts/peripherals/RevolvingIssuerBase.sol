@@ -259,7 +259,17 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         uint64 lastRecordedAt; // and when that close was recorded
         bool lastStatementRequired; // and whether it needs a statement (decision 22)
         uint256 closeClock; // 10c: the pause clock when the open close was recorded
-        uint256 cureClock; // 10c: the pause clock when the second consecutive miss was recorded
+        uint256 cureClock; // 10c: the pause clock at the close whose second consecutive miss is unpaid
+        // 10c (decision 5): a close whose due point a pause pushed past the next cycle end. The next
+        // close is still recorded at its own end (12.17), and this one is judged at its pushed due
+        // point. One at a time.
+        uint64 heldClosedAt;
+        uint64 heldDueAt; // its due point before the push
+        uint8 heldWorkout;
+        uint128 heldRA;
+        uint128 heldSM;
+        uint128 heldPaid; // every repayment since its close
+        uint256 heldClock; // the pause clock at its close
     }
     mapping(address => CycleState) internal cycleState;
 
@@ -569,7 +579,9 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         return _pendingCarry(member, block.timestamp);
     }
 
-    /// @dev The same, up to `at`. A DEFERRAL (12.18) accrues nothing on the unsecured positions.
+    /// @dev The same, up to `at`. A DEFERRAL (12.18) accrues nothing on the unsecured positions. The
+    /// workout plan's position accrues nothing either: its tier is added at 0%, and neither its rate
+    /// nor its product can be changed (`addTier`, `setTierRate`, `setTierProduct`).
     function _pendingCarry(address member, uint256 at) internal view returns (uint256[] memory carries) {
         uint256 n = tiers.length;
         carries = new uint256[](n);
@@ -802,6 +814,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     function _notePayment(address member, uint256 pay, bool cures) internal {
         CycleState storage s = cycleState[member];
         s.paidSinceClose += uint128(pay);
+        if (s.heldClosedAt != 0) s.heldPaid += uint128(pay);
         uint256 pastDue = s.securedPastDue;
         if (pastDue != 0) s.securedPastDue = uint128(pay < pastDue ? pastDue - pay : 0);
         uint256 cure = s.cureAmount;
@@ -832,6 +845,14 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         dueUnsecured = ra > paid ? ra - paid : 0;
         if (s.cureAmount > dueUnsecured) dueUnsecured = s.cureAmount;
         dueTotal = owed > paid ? owed - paid : 0;
+        if (s.heldClosedAt != 0) {
+            // A close a pause held past the next end is still open (10c).
+            uint256 hra = s.heldRA;
+            uint256 hOwed = hra + s.heldSM;
+            paid = s.heldPaid;
+            if (hra > paid && hra - paid > dueUnsecured) dueUnsecured = hra - paid;
+            if (hOwed > paid && hOwed - paid > dueTotal) dueTotal = hOwed - paid;
+        }
         if (s.securedPastDue > dueTotal) dueTotal = s.securedPastDue;
         if (dueUnsecured > dueTotal) dueTotal = dueUnsecured;
     }

@@ -87,13 +87,6 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         return (tier.kind, tier.index.ratePerCycle, tier.active);
     }
 
-    /// @notice a member's unsecured revolving principal, carry excluded: the tiers priced from
-    /// RateSchedule, which are the revolving part of their small loan under the CFL (DECISIONS #7).
-    function cflPrincipalOf(address member) external view returns (uint256 total) {
-        for (uint256 i = 0; i < tiers.length; i++) {
-            if (tierProduct[i] != bytes32(0)) total += _principalOnly(member, i);
-        }
-    }
 
     /// @notice seconds in this network's credit cycle.
     /// @dev Derived, not stored. The clock already exists on the tiers -- every rate here is
@@ -177,10 +170,6 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         return drawn > capacity ? drawn - capacity : 0;
     }
 
-    /// @notice consecutive missed rebalances, for the Liquidator.
-    function missedInRowOf(address member) external view returns (uint8) {
-        return cycleOf[member].missedInRow;
-    }
 
     /// @notice the CLRUSD token a Savings draw refreshes the lock of (Phase 4b, L-B); zero if unset.
     function clrusdTokenOf() external view returns (address) {
@@ -262,6 +251,7 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// touched can still be brought current.
     /// @param member address of the member.
     function materialiseCarry(address member) public {
+        _judgeFirst(member);
         _materialiseCarry(member);
     }
 
@@ -274,9 +264,10 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     }
 
 
-    /// @notice see RevolvingIssuerExtension.openLine. Runs in the extension since Phase 4b, for room.
+    /// @notice see RevolvingIssuerCycles.openLine (moved for room: the extension since Phase 4b, the
+    /// cycles module since Phase 2g).
     function openLine(address, uint256[] calldata, uint8) external {
-        _forwardTo(workouts);
+        _forwardTo(cycles);
     }
 
     /* ---- cycles are computed (12.1, Phase 2e): no role writes or moves a cycle end ---- */
@@ -331,11 +322,6 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
 
 
 
-    /// @notice what an authorization recorded for a ref still allows.
-    function cardAuthorizationOf(bytes32 ref) external view returns (address member, uint256 amount) {
-        CardAuthorization memory authorization = cardAuthorizations[ref];
-        return (authorization.member, authorization.amount);
-    }
 
 
 
@@ -377,6 +363,15 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// extension, against this contract's storage.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
     function expireCreditPeriod(address member) internal override returns (bool) {
+        uint8 outcome = _judge(member);
+        // 2: default now. The base path writes off and closes the line with this contract's own
+        // `_writeOffAmount` and `_onDefault`, which the extension does not have.
+        if (outcome == 2) return super.expireCreditPeriod(member);
+        return outcome == 0;
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function _judge(address member) private returns (uint8) {
         (bool ok, bytes memory data) =
             cycles.delegatecall(abi.encodeWithSignature("judgeCycle(address)", member));
         if (!ok) {
@@ -384,11 +379,19 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
                 revert(add(data, 32), mload(data))
             }
         }
-        uint8 outcome = abi.decode(data, (uint8));
-        // 2: default now. The base path writes off and closes the line with this contract's own
-        // `_writeOffAmount` and `_onDefault`, which the extension does not have.
-        if (outcome == 2) return super.expireCreditPeriod(member);
-        return outcome == 0;
+        return abi.decode(data, (uint8));
+    }
+
+    /// @dev Before anything changes a live line's positions, every cycle end that has passed is
+    /// closed, and a close a pause held is judged once due (Phase 2g). So a close's figures are as
+    /// at its end (12.17, decision 18), and a payment after a due point never counts toward it. A
+    /// default this finds is recorded by the next transaction that expires the period, never here.
+    function _judgeFirst(address member) private {
+        CycleState storage s = cycleState[member];
+        uint256 end = s.cycleEnd;
+        if (((end != 0 && end <= block.timestamp) || s.heldClosedAt != 0) && creditPeriods[member].expiration != 0) {
+            _judge(member);
+        }
     }
 
     /// @notice in default (12.5, 10b; Phase 2e): two consecutive missed Rebalance Amounts, a
@@ -416,8 +419,8 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         // Bring both parties current before deciding anything. Carry that has accrued since the
         // last touch is part of what is owed, so it belongs on the ledger before a draw measures
         // headroom against it or a repayment is allocated over it.
-        _materialiseCarry(sender);
-        if (recipient != address(0)) _materialiseCarry(recipient);
+        materialiseCarry(sender);
+        if (recipient != address(0)) materialiseCarry(recipient);
 
         // The sender covers what their balance cannot, and that shortfall is what gets minted.
         uint256 balance = stableCredit.balanceOf(sender);
@@ -441,7 +444,7 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         returns (uint256 absorbed)
     {
         if (available == 0) return 0;
-        _materialiseCarry(member);
+        materialiseCarry(member);
 
         uint256 remaining = available;
         // Judged by what each tier costs now, after the caps (Phase 4b, L-G), in the same unit
@@ -574,9 +577,9 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _forward();
     }
 
-    /// @notice see RevolvingIssuerCycles.repayForMember.
+    /// @notice see RevolvingIssuerExtension.repayForMember (in the cycles module until Phase 2g).
     function repayForMember(bytes32, address, uint256, bytes32) external {
-        _forwardTo(cycles);
+        _forward();
     }
 
     /// @notice see RevolvingIssuerExtension.settleFromCollateral.
