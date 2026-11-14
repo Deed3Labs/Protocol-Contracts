@@ -246,6 +246,8 @@ contract TermIssuerOrigination is TermIssuerBase {
         uint64 at = uint64(block.timestamp);
         sp.noticeAt = at;
         sp.noticeDue = uint128(scheduledPrincipalDue(planId));
+        address clock = _pauseClock();
+        if (clock != address(0)) sp.noticeClock = IPauseClock(clock).pausedSeconds(plans[planId].member);
         uint256 from = _delinquentSince(planId) + SECURED_PAST_DUE;
         if (at + SECURED_CURE > from) from = at + SECURED_CURE;
         emit PlanNoticeRecorded(planId, at, arrearsOf(planId), uint64(from));

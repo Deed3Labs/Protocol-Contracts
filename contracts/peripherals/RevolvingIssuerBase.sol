@@ -10,6 +10,7 @@ import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
 import "./RateSchedule.sol";
 import "../libraries/PacificCalendar.sol";
+import "./PauseClock.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @dev The term issuer's half of the Combined Ceiling (12.3): it brings a member's plans to now.
@@ -25,13 +26,6 @@ interface IRevolvingTouch {
 /// @dev The one CLRUSD call a Savings draw makes (Phase 4b, L-B).
 interface IClrusdLockSync {
     function syncEncumbrance(address holder) external returns (uint256 locked);
-}
-
-/// @dev Phase 2g (10c, decisions 3 and 4): the member's pause clock. Paused seconds, cumulative and
-/// monotonic: CLRUSD's security pause or the member's own account pause, plus the vault-wide pause.
-interface IPauseClock {
-    function pausedSeconds(address member) external view returns (uint256);
-    function inForce(address member) external view returns (bool);
 }
 
 /// @dev The issuer's own entry point for carry as at a past cycle end (12.17), called by the cycles

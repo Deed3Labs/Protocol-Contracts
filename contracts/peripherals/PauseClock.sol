@@ -13,6 +13,12 @@ interface IVaultPauseClock {
     function isPauseInForce() external view returns (bool);
 }
 
+/// @dev What the issuers and the Liquidator read (Phase 2g, 10c): the member's pause clock.
+interface IPauseClock {
+    function pausedSeconds(address member) external view returns (uint256);
+    function inForce(address member) external view returns (bool);
+}
+
 /// @title PauseClock
 /// @notice One member's pause clock (Addendum 4, 10c; decisions 3 and 4): the seconds any pause
 /// affecting them has been in force, cumulative and monotonic, and whether one is in force now. Any
@@ -22,7 +28,7 @@ interface IVaultPauseClock {
 /// are fixed at deployment; it has no owner, role or setter. The issuers measure the paused time
 /// inside a grace or cure period as the change in `pausedSeconds` over it. A CLRUSD pause and a vault
 /// pause in force at once are each counted, which can only lengthen a period.
-contract PauseClock {
+contract PauseClock is IPauseClock {
     address public immutable clrusd;
     address public immutable vault;
 
