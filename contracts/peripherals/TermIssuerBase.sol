@@ -158,6 +158,13 @@ abstract contract TermIssuerBase is CreditIssuer {
         bool priced;
         /// @dev When carry was last brought onto the ledger.
         uint64 accruedAt;
+        /// @dev The merchant's payout at opening, so a refund takes back exactly what was paid, from
+        /// whom it was paid (Phase 4, H-A). Appended to a struct that lives only in a mapping, in
+        /// the slot `accruedAt` already occupies, so no other storage moves.
+        uint128 payout;
+        /// @dev Whether `merchant` and `payout` were recorded when the plan opened. Plans opened
+        /// before Phase 4 recorded no payout and cannot be refunded through the issuer.
+        bool refundTermsRecorded;
     }
     mapping(uint256 => PlanPricing) internal planPricing;
     /// @dev planId => RateSchedule accumulators at the last touch.
@@ -218,6 +225,15 @@ abstract contract TermIssuerBase is CreditIssuer {
     error TermIssuerTermTooShort(uint256 term, uint256 minimum);
     /// @notice thrown when a re-split would cost the member more and they have not signed for it.
     error TermIssuerResplitNeedsSignature(uint256 planId);
+    /// @notice thrown when a refund names a merchant other than the plan's own (Phase 4, H-A).
+    error TermIssuerRefundTermsMismatch(address merchant, address planMerchant);
+    /// @notice thrown when a plan predates recorded refund terms.
+    error TermIssuerRefundTermsUnknown(uint256 planId);
+    /// @notice thrown when an unsigned operator re-split would shorten a plan or raise its
+    /// installment (Phase 4, H-B).
+    error TermIssuerResplitShortens(uint256 planId);
+    /// @notice thrown when the RateSchedule is named a second time (Phase 4, M-B).
+    error TermIssuerRateScheduleSet();
 
     /* ========== EVENTS ========== */
 
@@ -433,11 +449,9 @@ abstract contract TermIssuerBase is CreditIssuer {
         uint256 elapsed = block.timestamp - pricing.accruedAt;
         uint256 charge;
         if (pricing.priced) {
-            (uint256 list, uint256 cap) =
-                rateSchedule.chargesFor(plan.member, pricing.state, pricing.product, principal, planSnap[planId]);
-            // RateSchedule accrues monthly x 12 / 365 per second; a term plan is charged the monthly
-            // rate per 30-day cycle (section 12.9), so x 365 / 360. Both list and cap scale alike.
-            charge = ((list < cap ? list : cap) * 365) / 360;
+            // The monthly rate per 30-day cycle (section 12.9), and never above `annualCapBps` once
+            // the large-loan regime applies (Phase 4, M-D): RateSchedule does both.
+            charge = rateSchedule.termChargeFor(plan.member, pricing.state, pricing.product, principal, planSnap[planId]);
         } else {
             charge = (principal * plan.index.ratePerCycle * elapsed) / (BPS_ * TERM_CYCLE);
         }
@@ -485,6 +499,13 @@ abstract contract TermIssuerBase is CreditIssuer {
             || (p.freeSplitMax != 0 && installments <= p.freeSplitMax)
             || (merchantFreeMax != 0 && installments <= merchantFreeMax);
         uint256 effective = rateSchedule.effectiveMonthlyBps(q.state, product, principal);
+        // The schedule charges its rate per 30-day cycle, so a large loan's rate is the annual cap
+        // per 30 days, not per twelfth of a year: annualCapBps / 12 per cycle would disclose and
+        // schedule about 1.4% a year over the cap (Phase 4, M-D).
+        if (q.largeLoan) {
+            uint256 perCycle = (uint256(p.annualCapBps) * 30) / 365;
+            if (effective > perCycle) effective = perCycle;
+        }
         if (!q.free && subsidyBps >= effective) q.free = true;
         q.rateBps = q.free ? 0 : effective - subsidyBps;
     }

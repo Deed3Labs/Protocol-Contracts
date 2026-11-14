@@ -50,6 +50,13 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @notice May pause every member transfer during a security incident. Cannot move funds.
     bytes32 public constant SECURITY_ROLE = keccak256("SECURITY_ROLE");
     uint64 public constant DEFAULT_PAUSE_WINDOW = 72 hours;
+    /// @notice The longest a pause may run before it lapses (spec 10c). Governance may shorten the
+    /// window, never lengthen it past this (Phase 4, M-A).
+    uint64 public constant MAX_PAUSE_WINDOW = 72 hours;
+    /// @notice How long after a pause ends the signer who set or last renewed it must wait before
+    /// pausing the same account (or everyone) again on their own (Phase 4, M-A). Any other signer
+    /// may act at once; this only stops one key chaining pauses into an indefinite freeze.
+    uint64 public constant REPAUSE_COOLDOWN = 30 days;
 
     /// @notice A pause in force: until when, why, and who last set or renewed it.
     struct Pause {
@@ -67,6 +74,8 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @dev The two-person rule (spec 10c): nobody keeps a member frozen on their own say-so.
     error ClearUSDSameSigner(address signer);
     error ClearUSDNoPause();
+    /// @notice thrown when a pause window above MAX_PAUSE_WINDOW is set.
+    error ClearUSDPauseWindowTooLong(uint64 window);
 
     event EncumbranceSourceUpdated(address indexed source);
     /// @notice The encumbrance source reverted while a holder's CLRUSD moved (audit M-3). Monitoring
@@ -229,8 +238,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     function pauseAccount(address account, uint32 reason) external onlyRole(FRAUD_ROLE) {
         ClearUSDStorage storage $ = _clearUsdStorage();
         Pause storage p = $.accountPause[account];
-        // An active pause is extended only by renewal, which needs a second signer.
-        if (p.until > block.timestamp) revert ClearUSDSameSigner(_msgSender());
+        _requireMayPause(p);
         uint64 until = uint64(block.timestamp) + _window();
         $.accountPause[account] = Pause({until: until, reason: reason, lastSigner: _msgSender()});
         emit AccountPaused(account, reason, until, _msgSender());
@@ -245,8 +253,10 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     }
 
     /// @notice ends an account's pause early.
+    /// @dev Ends it now rather than deleting it, so who set it is remembered: unpausing and pausing
+    /// again is not a way for one signer to restart the clock (Phase 4, M-A).
     function unpauseAccount(address account) external onlyRole(FRAUD_ROLE) {
-        delete _clearUsdStorage().accountPause[account];
+        _end(_clearUsdStorage().accountPause[account]);
         emit AccountUnpaused(account, _msgSender());
     }
 
@@ -255,7 +265,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// unless a second signer renews it.
     function pauseForSecurity(uint32 reason) external onlyRole(SECURITY_ROLE) {
         ClearUSDStorage storage $ = _clearUsdStorage();
-        if ($.globalPause.until > block.timestamp) revert ClearUSDSameSigner(_msgSender());
+        _requireMayPause($.globalPause);
         uint64 until = uint64(block.timestamp) + _window();
         $.globalPause = Pause({until: until, reason: reason, lastSigner: _msgSender()});
         emit SecurityPaused(reason, until, _msgSender());
@@ -268,12 +278,14 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     }
 
     function unpauseSecurity() external onlyRole(SECURITY_ROLE) {
-        delete _clearUsdStorage().globalPause;
+        _end(_clearUsdStorage().globalPause);
         emit SecurityUnpaused(_msgSender());
     }
 
     /// @notice sets how long a pause lasts before it lapses. Governed: the admin is the timelock.
+    /// At most MAX_PAUSE_WINDOW (spec 10c's 72 hours); zero means the default.
     function setPauseWindow(uint64 window) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (window > MAX_PAUSE_WINDOW) revert ClearUSDPauseWindowTooLong(window);
         _clearUsdStorage().pauseWindow = window;
         emit PauseWindowUpdated(window);
     }
@@ -284,6 +296,20 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         p.until = uint64(block.timestamp) + _window();
         p.reason = reason;
         p.lastSigner = _msgSender();
+    }
+
+    /// @dev A new pause is refused while one is active (that is a renewal, by a second signer), and
+    /// for the signer of the last one until REPAUSE_COOLDOWN after it ended (Phase 4, M-A).
+    function _requireMayPause(Pause storage p) private view {
+        if (p.until > block.timestamp) revert ClearUSDSameSigner(_msgSender());
+        if (p.lastSigner == _msgSender() && block.timestamp < uint256(p.until) + REPAUSE_COOLDOWN) {
+            revert ClearUSDSameSigner(_msgSender());
+        }
+    }
+
+    /// @dev Ends a pause now, keeping its record.
+    function _end(Pause storage p) private {
+        if (p.until > block.timestamp) p.until = uint64(block.timestamp);
     }
 
     function _window() private view returns (uint64) {

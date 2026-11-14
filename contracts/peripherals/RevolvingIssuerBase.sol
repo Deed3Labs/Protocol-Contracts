@@ -170,7 +170,18 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     mapping(address => uint256) public memberNonces;
 
     /// @dev Seven slots from the gap for the block above.
-    uint256[11] private __gap;
+
+    /* ---- Phase 4: snapshot basis (M-B) ---- */
+
+    /// @dev member => which accumulator each snapshot above was taken from: bit i set when tier i
+    /// was snapshotted on the RateSchedule, clear when on its own local accumulator; bit 255 set
+    /// when `ceilingSnap` holds a snapshot of the ceiling product. Pricing switched on, or a
+    /// state's products launched, after a member was snapshotted changes which accumulator a tier
+    /// reads; comparing numbers from two different accumulators underflowed or read past an empty
+    /// snapshot and bricked the member. One slot from the gap.
+    mapping(address => uint256) internal snapBasis;
+
+    uint256[10] private __gap;
 
     bytes32 internal constant BOOST_KIND = "BOOST";
     bytes32 internal constant SAVINGS_KIND = "SAVINGS";
@@ -253,6 +264,8 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     error RevolvingIssuerBadScope(uint8 scope);
     error RevolvingIssuerSignatureExpired(uint256 deadline);
     error RevolvingIssuerBadSignature(address member);
+    /// @notice thrown when the RateSchedule or ceiling product is changed once set (Phase 4, M-B).
+    error RevolvingIssuerPricingSet();
 
     /// @notice moves carry accrued in each tier onto the ledger.
     /// @dev Carry deepens the member's negative balance and mints the matching claim to whoever
@@ -286,26 +299,34 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         uint256 n = tiers.length;
         carries = new uint256[](n);
         bytes32 state = snapState[member];
-        bool priced = address(rateSchedule) != address(0);
+        uint256 basis = snapBasis[member];
         uint256 unsecuredPrincipal;
         uint256 unsecuredCarry;
         for (uint256 i = 0; i < n; i++) {
             uint256 principal = principalOnlyOf(member, i);
             if (principal == 0) continue;
-            bytes32 product = tierProduct[i];
-            if (priced && product != bytes32(0) && rateSchedule.hasProduct(state, product)) {
-                uint256 acc = rateSchedule.snapshot(state, product).list;
-                carries[i] = (principal * (acc - tierSnap[member][i])) / RAY;
+            bool onSchedule = _onSchedule(state, tierProduct[i]);
+            // The accumulator this tier reads changed since its snapshot (pricing switched on, or
+            // the state's product launched): the two numbers do not compare, so nothing is charged
+            // across the change, and the next touch snapshots on the new basis (Phase 4, M-B).
+            if (onSchedule != ((basis >> i) & 1 == 1)) continue;
+            uint256 acc = onSchedule ? rateSchedule.snapshot(state, tierProduct[i]).list : _localAcc(i);
+            uint256 snap = tierSnap[member][i];
+            if (acc > snap) carries[i] = (principal * (acc - snap)) / RAY;
+            if (onSchedule) {
                 unsecuredPrincipal += principal;
                 unsecuredCarry += carries[i];
-            } else {
-                carries[i] = (principal * (_localAcc(i) - tierSnap[member][i])) / RAY;
             }
         }
-        if (
-            unsecuredCarry == 0 || ceilingProduct == bytes32(0)
-                || !rateSchedule.hasProduct(state, ceilingProduct)
-        ) return carries;
+        if (unsecuredCarry == 0 || !_onSchedule(state, ceilingProduct)) return carries;
+        if (basis >> 255 == 0) {
+            // The ceiling applies but there is no snapshot to measure it from: charge no unsecured
+            // carry for this interval rather than risk charging above the ceiling (M-B).
+            for (uint256 i = 0; i < n; i++) {
+                if (tierProduct[i] != bytes32(0)) carries[i] = 0;
+            }
+            return carries;
+        }
         uint256 cap = rateSchedule.capFor(member, state, ceilingProduct, unsecuredPrincipal, ceilingSnap[member]);
         if (unsecuredCarry <= cap) return carries;
         // Over the member's ceiling: trim the excess from the dearest unsecured tier first.
@@ -325,16 +346,36 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
             ? bytes32(0)
             : _stateOf(member);
         snapState[member] = state;
-        bool priced = address(rateSchedule) != address(0);
+        uint256 basis;
         for (uint256 i = 0; i < tiers.length; i++) {
             bytes32 product = tierProduct[i];
-            tierSnap[member][i] = priced && product != bytes32(0) && rateSchedule.hasProduct(state, product)
-                ? rateSchedule.snapshot(state, product).list
-                : _localAcc(i);
+            if (_onSchedule(state, product)) {
+                tierSnap[member][i] = rateSchedule.snapshot(state, product).list;
+                basis |= 1 << i;
+            } else {
+                tierSnap[member][i] = _localAcc(i);
+            }
         }
-        if (priced && ceilingProduct != bytes32(0) && rateSchedule.hasProduct(state, ceilingProduct)) {
+        if (_onSchedule(state, ceilingProduct)) {
             ceilingSnap[member] = rateSchedule.snapshot(state, ceilingProduct);
+            basis |= 1 << 255;
         }
+        if (snapBasis[member] != basis) snapBasis[member] = basis;
+    }
+
+    /// @dev Whether `product` is priced from the RateSchedule for `state` right now.
+    function _onSchedule(bytes32 state, bytes32 product) internal view returns (bool) {
+        return address(rateSchedule) != address(0) && product != bytes32(0) && rateSchedule.hasProduct(state, product);
+    }
+
+    /// @notice whether a member has rebalanced their revolving line: nothing owed in any tier.
+    /// @dev Judged on this issuer's own positions, not on the whole ledger balance (Phase 4, H-C).
+    /// A member's credit balance also holds term-plan principal, which its own schedule governs
+    /// (TermIssuer judges that), so reading the ledger failed every revolving cycle for a member
+    /// current on a plan and drove the line into default. Carry is materialised into the tiers,
+    /// and pending carry accrues only on principal a tier holds, so zero principal is zero owed.
+    function inCompliance(address member) public view virtual override returns (bool) {
+        return totalPrincipalOf(member) == 0;
     }
 
     /// @dev A member's attested state, or zero if the registry has none for them.

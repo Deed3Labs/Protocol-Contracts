@@ -84,8 +84,12 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
                 savingsTier = i;
                 savingsCap = tierCapacity[member][i];
                 savingsBefore = tierPrincipal[member][i];
-                uint256 allowed = savingsBefore + savingsDrawAllowance[member];
-                if (allowed < savingsCap) tierCapacity[member][i] = allowed;
+                // Saturating: an unlimited allowance (type(uint256).max) narrows nothing, and
+                // adding it to what is drawn must not overflow (Phase 4, L-A).
+                uint256 allowance = savingsDrawAllowance[member];
+                if (allowance < savingsCap && savingsBefore + allowance < savingsCap) {
+                    tierCapacity[member][i] = savingsBefore + allowance;
+                }
                 break;
             }
         }
