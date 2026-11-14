@@ -245,8 +245,10 @@ contract LegacyContactModule {
         address previousOwner = IKernelECDSAValidator(ECDSA_VALIDATOR).ecdsaValidatorStorage(account);
         // The one call: built here, never taken from a caller.
         bytes memory call = abi.encodeCall(IKernelECDSAValidator.onInstall, (abi.encodePacked(r.newOwner)));
-        IKernelAccount(account).executeFromExecutor(EXEC_MODE_SINGLE, abi.encodePacked(ECDSA_VALIDATOR, uint256(0), call));
-        if (IKernelECDSAValidator(ECDSA_VALIDATOR).ecdsaValidatorStorage(account) != r.newOwner) {
+        bytes[] memory results =
+            IKernelAccount(account).executeFromExecutor(EXEC_MODE_SINGLE, abi.encodePacked(ECDSA_VALIDATOR, uint256(0), call));
+        // One call ran, and it left the named key as the owner.
+        if (results.length != 1 || IKernelECDSAValidator(ECDSA_VALIDATOR).ecdsaValidatorStorage(account) != r.newOwner) {
             revert LegacyContactRotationFailed(account);
         }
         emit OwnerRotated(account, msg.sender, previousOwner, r.newOwner);

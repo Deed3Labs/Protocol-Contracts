@@ -650,7 +650,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         ClearUSDStorage storage $ = _clearUsdStorage();
         SecuritySpan[] storage spans = $.securitySpans;
         uint256 n = spans.length;
-        uint256 lo;
+        uint256 lo = 0;
         uint256 hi = n;
         while (lo < hi) {
             uint256 mid = (lo + hi) / 2;

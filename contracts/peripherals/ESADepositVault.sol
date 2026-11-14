@@ -590,11 +590,12 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @notice the seconds, up to now, in which the vault pause was in force (Phase 2g, decisions 3
     /// and 4). It never decreases, so the paused time inside any period is the difference of two
     /// readings. Only pauses set after Phase 2g are counted.
-    function pauseClock() external view returns (uint256) {
+    function pauseClock() external view returns (uint256 total) {
+        total = s_pauseClockBefore;
         uint256 start = s_pauseStartedAt;
-        if (start == 0) return s_pauseClockBefore;
         uint256 end = s_pausedUntil < block.timestamp ? s_pausedUntil : block.timestamp;
-        return s_pauseClockBefore + (end > start ? end - start : 0);
+        // A pause from before Phase 2g has no recorded start and is not counted.
+        if (start > 0 && end > start) total += end - start;
     }
 
     /// @notice whether the vault pause is in force now (the same as `paused()`).
