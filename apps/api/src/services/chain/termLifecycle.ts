@@ -129,10 +129,11 @@ async function collect(
 
   // Bounded by what the member holds and approved: the contract would revert past either.
   const stableCredit = String(await revolving.stableCredit());
-  const ledger = new ethers.Contract(stableCredit, ['function assurancePool() view returns (address)'], provider);
-  const pool = new ethers.Contract(String(await ledger.assurancePool()), ['function reserveToken() view returns (address)'], provider);
+  // Phase 2c: the reserve token is the ledger's own (`StableCredit.reserveToken`); the ledger no
+  // longer names an AssurancePool.
+  const ledger = new ethers.Contract(stableCredit, ['function reserveToken() view returns (address)'], provider);
   const usdc = new ethers.Contract(
-    String(await pool.reserveToken()),
+    String(await ledger.reserveToken()),
     ['function balanceOf(address) view returns (uint256)', 'function allowance(address,address) view returns (uint256)'],
     provider,
   );

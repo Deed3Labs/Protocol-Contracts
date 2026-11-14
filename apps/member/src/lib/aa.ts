@@ -7,6 +7,7 @@ import { create7702KernelAccount, create7702KernelAccountClient } from '@zerodev
 import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings } from '@/utils/apiClient';
+import { pledgeWhatIsHeld } from '@/lib/pledgeSigning';
 
 /*
  * Account-abstraction layer (ZeroDev Kernel + EIP-7702). The user's EOA is delegated to a Kernel
@@ -148,6 +149,8 @@ export async function aaDeposit(args: { ownerWallet: string; amount: string; cha
   ]);
   // Equity-credit ledger (best-effort; the AA path bypasses the relayer route that normally records it).
   await recordGaslessSavings({ action: 'deposit', amount: amt.toString(), txHash, chainId: args.chainId }).catch(() => {});
+  // The member signs the pledge that makes it back their line (Phase 4b, L-I). Not awaited.
+  void pledgeWhatIsHeld({ kind: 'SAVINGS', member: args.ownerWallet, chainId: args.chainId }).catch(() => {});
   return txHash;
 }
 

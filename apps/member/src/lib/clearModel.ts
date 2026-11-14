@@ -1919,6 +1919,11 @@ export interface MemberDispute {
   holdState: 'held' | 'not_held' | 'released' | null;
   resolution: 'member' | 'merchant' | 'withdrawn' | null;
   createdAt: string;
+  /**
+   * A partner purchase that went against the member (or was withdrawn) waits off any plan until
+   * they sign the reopened plan's terms: `TermIssuer.openPlan` needs their signature (audit H-4).
+   */
+  awaitingPlanSignature?: boolean;
 }
 
 /** A payment the member can dispute, as the server read it. */

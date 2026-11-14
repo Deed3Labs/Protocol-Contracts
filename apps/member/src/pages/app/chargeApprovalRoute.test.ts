@@ -69,7 +69,14 @@ describe('the limit on the footer is the one that will be enforced', () => {
   });
 
   test('an unread ceiling stays null rather than becoming a zero', () => {
-    expect(SOURCE).toContain('if (cancelled || !credit?.term) return;');
+    expect(SOURCE).toContain('if (!credit?.term) return;');
+  });
+
+  test('Phase 2: a member whose state is not attested is told so, and nothing is signed', () => {
+    expect(SOURCE).toContain('if (credit?.stateConfirmed === false) setStateUnconfirmed(true);');
+    const approve = SOURCE.slice(SOURCE.indexOf('const onApprove = useCallback'));
+    expect(approve.indexOf('setError(STATE_NOT_CONFIRMED)')).toBeLessThan(approve.indexOf('prepareChargeApproval('));
+    expect(SOURCE).toContain('state of residence isn’t confirmed yet');
   });
 });
 

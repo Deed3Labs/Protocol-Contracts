@@ -3,13 +3,19 @@ import { getPayPool } from '../config/postgres.js';
 import { encryptSendContact, decryptSendContact } from '../utils/sendEncryption.js';
 
 /*
- * Autopay rules — "sign once, then recurring gasless deposits" via a ZeroDev session key. The user
- * approves a session scoped to USDC.approve + ESA vault.deposit (lib/autopay on the client); the
- * serialized permission account (which embeds the session key) is stored ENCRYPTED here. The autopay
- * runner (jobs/autopayRunner) executes due rules server-side with that session, no further signing.
+ * Autopay rules: "sign once, then recurring gasless deposits" through the vault's on-chain
+ * `DepositMandate`. No session key is held here, and none exists: the server cannot sign for the
+ * member.
  *
- * Stored in the Pay DB (getPayPool). Kind is 'savings_deposit' for now (rent→ownership); the session
- * scope is what makes this safe — the key can ONLY approve + deposit, capped by rate + expiry on-chain.
+ * The member signs, once and without gas (apps/member/src/lib/autopay.ts): a USDC allowance to the
+ * vault (an EIP-2612 `permit`, or a sponsored `approve` from a smart account) and the vault's EIP-712
+ * `DepositMandate` (amount per run, interval, number of runs, expiry). `approval_enc` stores that
+ * signed mandate, encrypted at rest. The autopay runner (jobs/autopayRunner, services/autopayService)
+ * submits `executeMandateDeposit` with it when a rule is due, through the savings relayer
+ * (`RELAYER_ROLE`). The vault enforces the amount, cadence, run count and expiry on chain, so the
+ * relayer can only make the deposits the member signed for, into the member's own savings.
+ *
+ * Stored in the Pay DB (getPayPool). Kind is 'savings_deposit' for now (rent to ownership).
  */
 
 export type AutopayCadence = 'weekly' | 'monthly';
@@ -101,7 +107,7 @@ class AutopayStore {
     return Boolean(getPayPool());
   }
 
-  /** Create a rule. `approval` is the serialized ZeroDev permission account (encrypted at rest). */
+  /** Create a rule. `approval` is the member's signed `DepositMandate`, as JSON (encrypted at rest). */
   async create(input: {
     wallet: string;
     chainId: number;

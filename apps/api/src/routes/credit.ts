@@ -7,6 +7,14 @@ import { heldDrawsByTier } from '../services/lithic/cardTransactionsService.js';
 import { recordUsdcRepayment } from '../services/chain/usdcRepaymentService.js';
 import { autoRepayStatus, setAutoRepayChoice } from '../services/chain/autoRepayService.js';
 import { repaymentHistory } from '../services/credit/repaymentHistory.js';
+import { prepareResplit, submitResplit } from '../services/planResplit.js';
+import {
+  prepareAutoClear,
+  prepareSavingsDrawAllowance,
+  submitAutoClear,
+  submitSavingsDrawAllowance,
+} from '../services/chain/memberSwitches.js';
+import { requireStepUp } from '../middleware/stepUp.js';
 
 /*
  * A member's credit line, assembled from the contracts that hold it.
@@ -66,6 +74,12 @@ creditRouter.get('/:wallet', async (req: Request, res: Response) => {
       // What of a member's savings cannot leave. Carried because it is not derivable from the
       // tiers: encumbrance follows what is drawn, not what is pledged.
       savingsEncumberedCents: credit.savingsEncumberedCents,
+      // Phase 2: lines and plans need an attested state. False means "not confirmed yet", which the
+      // app says in those words rather than as a refusal. Null: unread, or a pre-Phase 2 network.
+      stateConfirmed: credit.stateConfirmed,
+      // Phase 2b (12.3-12.5): Clean Cycles, a missed cycle or a cure notice, the Boost cap, and any
+      // excess over a halved limit. Null on an issuer from before Phase 2b.
+      standing: credit.standing,
       /*
        * Card authorizations the member is holding right now, per tier — OFF CHAIN, deliberately.
        *
@@ -181,13 +195,109 @@ creditRouter.post('/:wallet/auto-repay', async (req: Request, res: Response) => 
   if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
   try {
     // Recorded only once the member's own wallet has set it on chain -- never on the request's word.
-    const result = await setAutoRepayChoice(wallet, req.body?.enabled === true);
+    // Phase 2b: the scope travels with the switch (0 = income-backed and Boost only, 1 = everything).
+    const scope = req.body?.scope === 0 || req.body?.scope === 1 ? Number(req.body.scope) : undefined;
+    const result = await setAutoRepayChoice(wallet, req.body?.enabled === true, scope);
     if (!result.ok) return res.status(409).json({ error: 'Not set', message: result.reason });
     return res.json({ ok: true });
   } catch (error) {
     console.error('[credit] auto-repay set failed', error);
     return res.status(500).json({ error: 'Failed to set' });
   }
+});
+
+/*
+ * Re-splitting a plan when it costs more (Phase 2, spec item 6). `prepare` says whether the new
+ * split needs the member's signature; when it does not, the member's wallet calls `setSplit` as
+ * before. When it does, the phone signs `Resplit` and posts it here, and the operator submits
+ * `resplitWithSignature`. Changing what a member owes takes a fresh Face ID, like approving a plan.
+ */
+function planParams(req: Request, res: Response): { planId: number; installments: number } | null {
+  const planId = Number(req.params.planId);
+  const installments = Number(req.body?.installments);
+  if (!Number.isInteger(planId) || planId < 0 || !Number.isInteger(installments) || installments < 1) {
+    res.status(400).json({ error: 'Invalid split', message: 'planId and installments must be whole numbers.' });
+    return null;
+  }
+  return { planId, installments };
+}
+
+creditRouter.post('/:wallet/plans/:planId/split/prepare', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const params = planParams(req, res);
+  if (!params) return;
+  const result = await prepareResplit(wallet, params.planId, params.installments);
+  if (!result.ok) return res.status(409).json({ error: 'Could not prepare', message: result.reason });
+  return res.json(result);
+});
+
+creditRouter.post('/:wallet/plans/:planId/split', requireStepUp, async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const params = planParams(req, res);
+  if (!params) return;
+  const result = await submitResplit(wallet, params.planId, {
+    installments: params.installments,
+    rateBps: String(req.body?.rateBps ?? ''),
+    deadline: Number(req.body?.deadline),
+    signature: String(req.body?.signature ?? ''),
+  });
+  if (!result.ok) return res.status(409).json({ error: 'Could not change the split', message: result.reason });
+  return res.json(result);
+});
+
+/*
+ * The member's own switches, signed (Phase 2b): auto-clear on/off and scope (12.2), and how much card
+ * spending may draw against Savings (12.7). `prepare` returns the EIP-712 typed data at the member's
+ * `memberNonces`; the phone signs it; the POST submits it. Onboarding turns auto-clear on this way.
+ */
+creditRouter.post('/:wallet/auto-clear/prepare', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const result = await prepareAutoClear(wallet, req.body?.on === true, Number(req.body?.scope ?? 0));
+  if (!result.ok) return res.status(409).json({ error: 'Could not prepare', message: result.reason });
+  return res.json(result);
+});
+
+creditRouter.post('/:wallet/auto-clear', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const result = await submitAutoClear(wallet, {
+    on: req.body?.on === true,
+    scope: Number(req.body?.scope ?? 0),
+    deadline: Number(req.body?.deadline),
+    signature: String(req.body?.signature ?? ''),
+  });
+  if (!result.ok) return res.status(409).json({ error: 'Not set', message: result.reason });
+  return res.json(result);
+});
+
+creditRouter.post('/:wallet/savings-draw-allowance/prepare', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  let amount: bigint;
+  try {
+    amount = BigInt(String(req.body?.allowance ?? '0'));
+  } catch {
+    return res.status(400).json({ error: 'Invalid amount', message: 'allowance must be whole ledger units.' });
+  }
+  const result = await prepareSavingsDrawAllowance(wallet, amount);
+  if (!result.ok) return res.status(409).json({ error: 'Could not prepare', message: result.reason });
+  return res.json(result);
+});
+
+// Raising what card spending may take from Savings is a money permission: a fresh Face ID.
+creditRouter.post('/:wallet/savings-draw-allowance', requireStepUp, async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const result = await submitSavingsDrawAllowance(wallet, {
+    amount: String(req.body?.allowance ?? ''),
+    deadline: Number(req.body?.deadline),
+    signature: String(req.body?.signature ?? ''),
+  });
+  if (!result.ok) return res.status(409).json({ error: 'Not set', message: result.reason });
+  return res.json(result);
 });
 
 export default creditRouter;

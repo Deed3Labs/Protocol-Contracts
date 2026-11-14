@@ -3,6 +3,9 @@ import { getPayPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainProvider, writesAs } from './provider.js';
 import { recordPoolMovements } from './poolFunding.js';
+import { CHAIN_ERROR_FRAGMENTS, chainErrorReason, decodeChainError, describeCardRefusal } from './chainErrors.js';
+import { syncClrusdEncumbrance } from './encumbranceSync.js';
+import { notificationStore } from '../notificationStore.js';
 
 /*
  * A settled card purchase becomes debt on chain — build plan §4, step 4.
@@ -36,6 +39,13 @@ import { recordPoolMovements } from './poolFunding.js';
  *
  * Refunds after settlement run the other way: when a settled purchase's credit part falls, the
  * difference is given back with `reverseCardSpend`.
+ *
+ * Authorized first (audit M-2). Settlement may draw only up to an authorization recorded for the
+ * same ref and member, while the member was in good standing, within a per-purchase cap
+ * (`cardTxCap`) and a per-day cap. The Auth Stream answers Lithic from a snapshot and never calls
+ * out, so the authorization is recorded on chain straight after it answers (`authorizeCardOnChain`);
+ * settlement records it then if that did not land. A refusal (frozen or defaulted member, a cap, no
+ * room on the line) is stored as a sentence, and the purchase goes to a person rather than a loop.
  */
 
 const DECISIONS = 'lithic_auth_decisions';
@@ -44,6 +54,8 @@ const MAX_ATTEMPTS = 5;
 const CENTS_TO_UNITS = 10n ** 4n;
 
 const ISSUER_ABI = [
+  'function authorizeCardSpend(bytes32 ref, address member, uint256 amount)',
+  'function cardAuthorizationOf(bytes32 ref) view returns (address member, uint256 amount)',
   'function settleCardSpend(bytes32 ref, address member, uint256 amount)',
   'function reverseCardSpend(bytes32 ref, uint256 amount)',
   'function cardSettlementOf(bytes32 ref) view returns (address member, uint256 amount)',
@@ -55,6 +67,12 @@ const ISSUER_ABI = [
   'function drawnOf(address member, uint256 tierId) view returns (uint256)',
   'function carryRecipientOf(uint256 tierId) view returns (address)',
   'function cardSettlementAccount() view returns (address)',
+  // Phase 2b (12.7): card spending draws against Savings only within the member's own allowance.
+  'function savingsDrawAllowance(address member) view returns (uint256)',
+  'function tierAt(uint256 tierId) view returns (bytes32 kind, uint256 ratePerCycle, bool active)',
+  'function headroomOf(address member, uint256 tierId) view returns (uint256)',
+  // The custom errors, so a revert arrives decoded rather than as calldata.
+  ...CHAIN_ERROR_FRAGMENTS,
 ];
 
 /**
@@ -129,6 +147,10 @@ async function ensureColumns(): Promise<void> {
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_at TIMESTAMPTZ;
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_ref TEXT;
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS dispute_token TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_auth_status TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_auth_cents BIGINT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_auth_tx TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_auth_error TEXT;
   `);
   ensured = true;
 }
@@ -140,8 +162,66 @@ function issuerFor(signerOrProvider: ethers.ContractRunner): ethers.Contract | n
 
 /** Why a call failed, short enough to store and specific enough to act on. */
 function reasonOf(error: unknown): string {
-  const e = error as { shortMessage?: string; reason?: string; message?: string; revert?: { name?: string } };
-  return (e?.revert?.name || e?.reason || e?.shortMessage || e?.message || String(error)).slice(0, 400);
+  return (describeCardRefusal(decodeChainError(error)) ?? chainErrorReason(error)).slice(0, 400);
+}
+
+/**
+ * Phase 2b (12.7): when the line has no room, say whether it is because Savings count only as far as
+ * the member authorized card spending against them. `authorizeCardSpend` takes the Savings tier's
+ * room only up to `savingsDrawAllowance(member)`, so a member with savings and no allowance is
+ * refused for "no room" while their savings sit there. Null when that is not the reason.
+ */
+export async function savingsAllowanceShort(issuer: ethers.Contract, member: string, error: unknown): Promise<string | null> {
+  if (decodeChainError(error)?.name !== 'RevolvingIssuerCardHeadroom') return null;
+  try {
+    const count = Number(await issuer.tierCount());
+    for (let i = 0; i < count; i++) {
+      const [kind, , active] = (await issuer.tierAt(i)) as [string, bigint, boolean];
+      if (!active || ethers.decodeBytes32String(kind) !== 'SAVINGS') continue;
+      const [room, allowed] = (await Promise.all([issuer.headroomOf(member, i), issuer.savingsDrawAllowance(member)])) as [bigint, bigint];
+      if (room <= allowed) return null;
+      const dollars = (units: bigint) =>
+        (Number(units / CENTS_TO_UNITS) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+      return allowed === 0n
+        ? `Savings can back card spending only once the member allows it, and they have not (${dollars(room)} of savings room unused). They can allow it in Settings.`
+        : `Savings can back only ${dollars(allowed)} more of card spending, the amount the member allowed (${dollars(room)} of savings room). They can raise it in Settings.`;
+    }
+  } catch {
+    /* the plain reason stands */
+  }
+  return null;
+}
+
+/** A card rule refused it: no retry will change that, so a person looks. */
+function isCardRefusal(error: unknown): boolean {
+  return describeCardRefusal(decodeChainError(error)) !== null;
+}
+
+/**
+ * Make sure the chain holds an authorization for this ref and member before it is settled, and say
+ * how much it allows.
+ *
+ * An authorization recorded at approval is used as it is. One that never landed is recorded now,
+ * for what is being settled: the contract applies the same standing, cap and headroom checks either
+ * way, so a late one can only be refused, never widen anything.
+ */
+async function ensureAuthorized(
+  issuer: ethers.Contract,
+  ref: string,
+  member: string,
+  units: bigint,
+): Promise<{ authorized: bigint; tx?: string }> {
+  const [authorizedFor, amount] = (await issuer.cardAuthorizationOf(ref)) as [string, bigint];
+  if (authorizedFor !== ethers.ZeroAddress) {
+    if (authorizedFor.toLowerCase() !== member.toLowerCase()) {
+      throw new Error(`the authorization for this purchase names ${authorizedFor}, not ${member}`);
+    }
+    return { authorized: amount };
+  }
+  const tx = await issuer.authorizeCardSpend(ref, member, units);
+  // Draws nothing, but read like every other write here, so no receipt is ever skipped.
+  await recordPoolMovements(await tx.wait(1));
+  return { authorized: units, tx: tx.hash };
 }
 
 async function record(
@@ -241,10 +321,24 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
           await record(token, { status: 'issued', cents, error: null });
           return { transactionToken: token, action: 'recovered' };
         }
-        const tx = await issuer.settleCardSpend(ref, row.wallet, BigInt(target) * CENTS_TO_UNITS);
+        // Only up to what was authorized for this purchase and member (audit M-2).
+        const units = BigInt(target) * CENTS_TO_UNITS;
+        const { authorized } = await ensureAuthorized(issuer, ref, row.wallet, units);
+        if (authorized < units) {
+          // Cleared above its authorization (a tip, a fuel pump). The chain settles a purchase once
+          // and no further than it was approved, so the difference is a person's decision.
+          await record(token, {
+            status: 'needs_review',
+            error: `settled credit ${target}c is more than the ${Number(authorized / CENTS_TO_UNITS)}c authorized on chain`,
+          });
+          return { transactionToken: token, action: 'needs_review' };
+        }
+        const tx = await issuer.settleCardSpend(ref, row.wallet, units);
         await recordPoolMovements(await tx.wait(1));
         await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true });
         console.log(`[card-settlement] ${token} issued ${target}c on chain for ${row.wallet} (${tx.hash})`);
+        // A draw on savings moves the CLRUSD lock: keep its last-known record current (audit M-3).
+        await syncClrusdEncumbrance(resolveChainId(), row.wallet, writesAs(signer));
         return { transactionToken: token, action: 'settled', txHash: tx.hash };
       }
 
@@ -266,7 +360,8 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
     } catch (error) {
       const reason = reasonOf(error);
       const attempts = (row.onchain_attempts ?? 0) + 1;
-      const status: OnchainStatus = attempts >= MAX_ATTEMPTS ? 'needs_review' : 'failed';
+      // A card rule saying no (standing, a cap, no room) says it again on every retry.
+      const status: OnchainStatus = attempts >= MAX_ATTEMPTS || isCardRefusal(error) ? 'needs_review' : 'failed';
       await record(token, { status, error: reason, attempt: true });
       console.error(`[card-settlement] ${token} ${status} (attempt ${attempts}): ${reason}`);
       return { transactionToken: token, action: status, error: reason };
@@ -316,9 +411,17 @@ export async function sweepCardSettlements(limit = 25): Promise<SettlementSync[]
  * covers the common case of a member paying before a purchase has even settled: it settles, then it
  * is cleared on the next pass.
  *
- * Carry included. Carry accrued on the tiers is written into our ledger as it accrues (so a deposit
- * pays it, first) and measured on chain through the tiers' own figures, so a repayment that covers
- * carry clears carry too. The one exception is carry owed to a pool — see readCardDebt.
+ * Carry included. Carry accrued on the tiers is written into our ledger as it accrues and measured
+ * on chain through the tiers' own figures, so a repayment that covers carry clears carry too. The
+ * one exception is carry owed to a pool — see readCardDebt.
+ *
+ * Phase 2b (section 12.2 as replaced): a deposit no longer pays the line. With auto-clear OFF a
+ * Spendable deposit changes no credit position (acceptance 19), and with it ON the clearing happens
+ * on chain (`repayForMember`, the auto-clear sweep) and is booked from that transaction, on the
+ * `chain` rail. So nothing books a fiat repayment from a deposit any more, and this target-based
+ * netting acts only on fiat settlements already in the books from before. It is left running because
+ * the target is still right: with no fiat repayment booked, what should be on chain is everything
+ * owed, and it clears nothing.
  */
 
 const NETTING = 'card_repayment_netting';
@@ -719,9 +822,19 @@ export async function reissueAfterDispute(transactionToken: string, cents: numbe
   const [member] = (await issuer.cardSettlementOf(ref)) as [string, bigint];
   let hash: string | null = null;
   if (member === ethers.ZeroAddress) {
-    const tx = await issuer.settleCardSpend(ref, row.wallet, BigInt(cents) * CENTS_TO_UNITS);
-    await recordPoolMovements(await tx.wait(1));
-    hash = tx.hash;
+    // A fresh ref is a fresh purchase to the contract: it is authorized before it settles (audit
+    // M-2), under the same standing and caps. A member in default cannot be re-issued; that refusal
+    // is thrown as a sentence and the sweep leaves it for a person.
+    const units = BigInt(cents) * CENTS_TO_UNITS;
+    try {
+      await ensureAuthorized(issuer, ref, row.wallet, units);
+      const tx = await issuer.settleCardSpend(ref, row.wallet, units);
+      await recordPoolMovements(await tx.wait(1));
+      hash = tx.hash;
+    } catch (error) {
+      throw new Error(`re-issue refused: ${reasonOf(error)}`);
+    }
+    await syncClrusdEncumbrance(resolveChainId(), row.wallet, issuer.runner as ethers.ContractRunner);
   }
   await pool.query(
     `UPDATE ${DECISIONS} SET onchain_status = 'issued', onchain_cents = COALESCE(onchain_cents, 0) + $2,
@@ -731,4 +844,80 @@ export async function reissueAfterDispute(transactionToken: string, cents: numbe
   );
   console.log(`[card-settlement] ${transactionToken} ${cents}c back on chain after a dispute (${hash ?? 'already there'})`);
   return hash;
+}
+
+// ---- Authorization at approval (audit M-2) ---------------------------------------------------------
+
+export type AuthorizationOutcome = 'authorized' | 'already' | 'not_needed' | 'refused' | 'failed' | 'skipped';
+
+/**
+ * Record on chain what the Auth Stream just approved: the credit part of the purchase, for this ref
+ * and member.
+ *
+ * Called straight after the Auth Stream has answered Lithic, never before: that endpoint answers
+ * from a snapshot and must not wait on a chain. So this cannot change the card's answer; what it
+ * does is put the approval on chain while the member's standing is the one the approval was given
+ * under, which is what `settleCardSpend` later requires. A refusal here (frozen or defaulted, over
+ * the per-purchase cap, more than the line can hold) is stored beside the decision as a sentence;
+ * settlement then tries once more and, refused again, hands the purchase to a person.
+ */
+export async function authorizeCardOnChain(transactionToken: string): Promise<AuthorizationOutcome> {
+  const token = transactionToken.trim();
+  if (!token || !isCardSettlementConfigured()) return 'skipped';
+  await ensureColumns();
+  const pool = getPayPool()!;
+  const { rows } = await pool.query<{ wallet: string | null; result: string; draws: unknown; onchain_auth_status: string | null; onchain_ref: string | null }>(
+    `SELECT wallet, result, draws, onchain_auth_status, onchain_ref FROM ${DECISIONS} WHERE transaction_token = $1`,
+    [token],
+  );
+  const row = rows[0];
+  if (!row || row.result !== 'APPROVED' || !row.wallet) return 'skipped';
+  if (row.onchain_auth_status === 'authorized') return 'already';
+  const cents = creditCentsOf(row.draws);
+  const setAuth = (status: string, fields: { cents?: number; tx?: string | null; error?: string | null }) =>
+    pool.query(
+      `UPDATE ${DECISIONS} SET onchain_auth_status = $2, onchain_auth_cents = COALESCE($3, onchain_auth_cents),
+              onchain_auth_tx = COALESCE($4, onchain_auth_tx), onchain_auth_error = $5
+        WHERE transaction_token = $1`,
+      [token, status, fields.cents ?? null, fields.tx ?? null, fields.error ?? null],
+    );
+  if (cents <= 0) {
+    await setAuth('not_needed', { cents: 0 });
+    return 'not_needed';
+  }
+
+  const signer = new ethers.Wallet(settlerKey(), chainProvider(resolveChainId()));
+  const issuer = issuerFor(writesAs(signer));
+  if (!issuer) return 'skipped';
+  const ref = refFor(token, row.onchain_ref);
+  try {
+    const [settledFor] = (await issuer.cardSettlementOf(ref)) as [string, bigint];
+    if (settledFor !== ethers.ZeroAddress) {
+      await setAuth('authorized', { cents, error: null });
+      return 'already';
+    }
+    const { tx } = await ensureAuthorized(issuer, ref, row.wallet, BigInt(cents) * CENTS_TO_UNITS);
+    await setAuth('authorized', { cents, tx: tx ?? null, error: null });
+    return tx ? 'authorized' : 'already';
+  } catch (error) {
+    const refused = isCardRefusal(error);
+    const allowanceShort = await savingsAllowanceShort(issuer, row.wallet, error);
+    const reason = (allowanceShort ?? reasonOf(error)).slice(0, 400);
+    await setAuth(refused ? 'refused' : 'failed', { error: reason });
+    // Phase 2b (12.7): the member can fix this one themselves, so they are told how.
+    if (allowanceShort) {
+      await notificationStore
+        .emit({
+          wallet: row.wallet,
+          kind: 'card',
+          title: 'Your card needs your OK to use Savings',
+          body: 'This purchase needed your Savings, and card spending can draw on them only as far as you allow. Set how much in Settings, Permissions.',
+          data: { transactionToken: token },
+          dedupeKey: `savings-allowance:${token}`,
+        })
+        .catch(() => null);
+    }
+    console.error(`[card-authorization] ${token} ${refused ? 'refused' : 'failed'}: ${reason}`);
+    return refused ? 'refused' : 'failed';
+  }
 }

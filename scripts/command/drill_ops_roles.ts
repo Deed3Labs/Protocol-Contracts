@@ -68,7 +68,11 @@ async function main() {
 
   // 3. each job still works, and the deployer can't
   const am = new Contract(byName.AccessManager.address, byName.AccessManager.abi, ethers.provider);
-  check(!(await am.isOperator(deployer)) && (await am.isOperator(wallets["credit-operator"])), "AccessManager: the credit operator is an operator, the deployer isn't");
+  // Audit H-4 split the credit powers out of OPERATOR: the credit operator holds CREDIT_LINES_ROLE and CREDIT_LIMITS_ROLE.
+  for (const role of ["CREDIT_LINES_ROLE", "CREDIT_LIMITS_ROLE"]) {
+    const hash = ethers.id(role);
+    check(!(await am.hasRole(hash, deployer)) && (await am.hasRole(hash, wallets["credit-operator"])), `AccessManager: the credit operator holds ${role}, the deployer doesn't`);
+  }
   const reg = new Contract(byName.MembershipRegistry.address, byName.MembershipRegistry.abi, ethers.provider);
   check(await reg.hasRole(await reg.REGISTRAR_ROLE(), wallets["credit-operator"]), "MembershipRegistry: the credit operator can register members");
   const mr = new Contract(byName.MerchantRegistry.address, byName.MerchantRegistry.abi, sf);

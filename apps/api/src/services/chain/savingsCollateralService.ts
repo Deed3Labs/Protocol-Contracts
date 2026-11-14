@@ -5,6 +5,8 @@ import { savingsRelayerService } from '../savingsRelayerService.js';
 import { websocketService } from '../websocketService.js';
 import { chainProvider } from './provider.js';
 import { invalidate } from './readCache.js';
+import { decodeChainError, describePledgeRefusal } from './chainErrors.js';
+import { PLEDGE_SIGNATURE_TTL_SECONDS, pledgeTypedData, type CollateralTypedData } from '@clear/domain';
 
 /*
  * Making savings back a credit line.
@@ -13,8 +15,18 @@ import { invalidate } from './readCache.js';
  * member's balance, so five dollars of savings sat there backing nothing and the savings tier
  * stayed at zero. Two calls close it.
  *
- *   pledge(member, SAVINGS, amount)   records the collateral. Operator-only.
+ *   pledge(member, SAVINGS, amount, deadline, signature)   records the collateral.
  *   pushCapacities(member)            derives the tier ceilings and writes them onto the issuer.
+ *
+ * ## The member signs every pledge (Phase 4b, decision L-I)
+ *
+ * `pledge` and `pledgeItem` take the member's EIP-712 signature (`Pledge` / `PledgeItem` in
+ * @clear/domain's pledge, at `pledgeNonces(member)`); the operator submits it. So the sync no longer
+ * pledges on its own: it releases what is free, pushes capacities, and reports what is waiting for
+ * the member's signature (`needsSignature`). The app then asks for it: `preparePledge` builds the
+ * typed data from what the chain says should be pledged, the member's wallet signs it, and
+ * `submitPledge` checks it is still within what they hold and sends it. Releasing needs no
+ * signature: it only gives the member back what is theirs.
  *
  * Pledging costs a member nothing. Encumbrance is computed from what is *drawn*, not from what is
  * pledged -- `_requiredUnits` returns zero when nothing is drawn -- so savings pledged against an
@@ -42,11 +54,13 @@ import { invalidate } from './readCache.js';
  * question -- "make the pledge match the balance" -- and one answer serves both.
  */
 
-const REGISTRY_ABI = [
-  'function pledge(address member, bytes32 kind, uint256 amount)',
+/** Checked against `CollateralRegistry.sol` (Phase 4b) by savingsCollateralSignature.test. */
+export const REGISTRY_ABI = [
+  'function pledge(address member, bytes32 kind, uint256 amount, uint256 deadline, bytes signature)',
   'function release(address member, bytes32 kind, uint256 amount)',
   'function pledgedOf(address, bytes32) view returns (uint256)',
   'function freeCollateralOf(address member, bytes32 kind) view returns (uint256)',
+  'function pledgeNonces(address member) view returns (uint256)',
 ];
 
 const CALCULATOR_ABI = ['function pushCapacities(address member) returns (uint256)'];
@@ -146,6 +160,11 @@ export interface CollateralSyncResult {
   reason?: string;
   pledgedUnits?: string;
   txHash?: string;
+  /**
+   * What should be pledged and is not, because a pledge takes the member's signature (L-I): an
+   * amount for SAVINGS and POOL_SHARE, item ids for BOND. The app asks for it (`preparePledge`).
+   */
+  needsSignature?: { kind: string; amount?: string; itemIds?: string[] };
 }
 
 /**
@@ -247,9 +266,11 @@ async function runSync(wallet: string, kind: string, targetUnits: bigint): Promi
 
     const current: bigint = await registry.pledgedOf(member, kind);
     let txHash: string | undefined;
+    let needsSignature: CollateralSyncResult['needsSignature'];
 
     if (targetUnits > current) {
-      txHash = await sendCollateralTx(registryAddress, REGISTRY_ABI, 'pledge', [member, kind, targetUnits - current]);
+      // A pledge takes the member's signature (L-I): reported, and asked for by the app.
+      needsSignature = { kind, amount: (targetUnits - current).toString() };
     } else if (targetUnits < current) {
       // Only what is actually free. The rest is holding up drawn credit and the registry will
       // refuse to let it go -- correctly.
@@ -290,7 +311,7 @@ async function runSync(wallet: string, kind: string, targetUnits: bigint): Promi
     // After the writes, not before: the point is that the figures are already new when a device
     // is told to read them again.
     await announceChainChanged(member, kind);
-    return { ok: true, pledgedUnits: targetUnits.toString(), txHash };
+    return { ok: true, pledgedUnits: (needsSignature ? current : targetUnits).toString(), txHash, needsSignature };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';
     console.error('[savings] collateral sync failed for', wallet, message);
@@ -364,7 +385,7 @@ const BOND_COLLECTION_ABI = [
 ];
 
 const REGISTRY_ITEM_ABI = [
-  'function pledgeItem(address member, bytes32 kind, uint256 itemId)',
+  'function pledgeItem(address member, bytes32 kind, uint256 itemId, uint256 deadline, bytes signature)',
   'function releaseItem(address member, bytes32 kind, uint256 itemId)',
   'function pledgedItemsOf(address member, bytes32 kind) view returns (uint256[])',
 ];
@@ -414,10 +435,8 @@ export async function syncBondCollateral(wallet: string): Promise<CollateralSync
     const pledgedIds: bigint[] = await registry.pledgedItemsOf(member, BOND_KIND);
     const pledged = new Set(pledgedIds.map((id) => id.toString()));
 
-    for (const id of held) {
-      if (pledged.has(id)) continue;
-      await sendCollateralTx(registryAddress, REGISTRY_ITEM_ABI, 'pledgeItem', [member, BOND_KIND, id]);
-    }
+    // Held and not pledged: each takes the member's signature (L-I), so they are reported.
+    const unpledged = [...held].filter((id) => !pledged.has(id));
     for (const id of pledged) {
       if (held.has(id)) continue;
       // `releaseItem` refuses while the bond is holding up drawn credit, which is correct — the
@@ -434,10 +453,132 @@ export async function syncBondCollateral(wallet: string): Promise<CollateralSync
     }
 
     await announceChainChanged(member, 'BOND');
-    return { ok: true, pledgedUnits: String(held.size) };
+    return {
+      ok: true,
+      pledgedUnits: String(held.size - unpledged.length),
+      ...(unpledged.length ? { needsSignature: { kind: BOND_KIND, itemIds: unpledged } } : {}),
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';
     console.error('[bond] collateral sync failed for', wallet, message);
     return { ok: false, reason: message };
+  }
+}
+
+// ---- The member's signed pledge (Phase 4b, L-I) --------------------------------------------------
+
+export const PLEDGE_KINDS = { SAVINGS: SAVINGS_KIND, POOL_SHARE: POOL_SHARE_KIND, BOND: BOND_KIND } as const;
+export type PledgeKindName = keyof typeof PLEDGE_KINDS;
+
+const SIGNATURE_HEX = /^0x[0-9a-fA-F]{130,}$/;
+
+/** What should be pledged now and is not: an amount, or the first bond held and not pledged. */
+async function pledgeable(member: string, name: PledgeKindName): Promise<{ amount?: bigint; itemId?: bigint } | null> {
+  const registryAddress = getContractAddress(chainId(), 'CollateralRegistry');
+  if (!registryAddress) return null;
+  const rpc = chainProvider(chainId());
+  if (name === 'BOND') {
+    const collectionAddress = getContractAddress(chainId(), 'BurnerBond');
+    if (!collectionAddress) return null;
+    const collection = new ethers.Contract(collectionAddress, BOND_COLLECTION_ABI, rpc);
+    const registry = new ethers.Contract(registryAddress, REGISTRY_ITEM_ABI, rpc);
+    const pledged = new Set(((await registry.pledgedItemsOf(member, BOND_KIND)) as bigint[]).map(String));
+    for (const id of (await collection.getBondIdsByCreator(member)) as bigint[]) {
+      if (pledged.has(id.toString())) continue;
+      if (((await collection.balanceOf(member, id)) as bigint) > 0n) return { itemId: id };
+    }
+    return {};
+  }
+  let target: bigint | null;
+  if (name === 'SAVINGS') {
+    target = await readSavingsUnits(member);
+  } else {
+    const pool = getContractAddress(chainId(), 'LendingPool');
+    if (!pool) return null;
+    const contract = new ethers.Contract(pool, POOL_ABI, rpc);
+    const shares: bigint = await contract.balanceOf(member);
+    target = shares === 0n ? 0n : await contract.convertToAssets(shares);
+  }
+  if (target === null) return null;
+  const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, rpc);
+  const current: bigint = await registry.pledgedOf(member, PLEDGE_KINDS[name]);
+  return target > current ? { amount: target - current } : {};
+}
+
+export type PreparePledgeResult =
+  | { ok: true; needsSignature: false }
+  | { ok: true; needsSignature: true; kind: PledgeKindName; typedData: CollateralTypedData }
+  | { ok: false; reason: string };
+
+/**
+ * Step one: what the member is asked to sign, read from the chain (what they hold against what is
+ * pledged), at their current `pledgeNonces`. Writes nothing.
+ */
+export async function preparePledge(wallet: string, name: PledgeKindName): Promise<PreparePledgeResult> {
+  const registryAddress = getContractAddress(chainId(), 'CollateralRegistry');
+  if (!registryAddress) return { ok: false, reason: 'Pledging is not available on this network.' };
+  try {
+    const member = ethers.getAddress(wallet);
+    const wanted = await pledgeable(member, name);
+    if (!wanted) return { ok: false, reason: 'Pledging is not available on this network.' };
+    if (wanted.amount === undefined && wanted.itemId === undefined) return { ok: true, needsSignature: false };
+    const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, chainProvider(chainId()));
+    const nonce: bigint = await registry.pledgeNonces(member);
+    const deadline = Math.floor(Date.now() / 1000) + PLEDGE_SIGNATURE_TTL_SECONDS;
+    const common = { chainId: chainId(), registry: ethers.getAddress(registryAddress), member, kind: PLEDGE_KINDS[name], nonce, deadline };
+    const typedData = wanted.itemId !== undefined ? pledgeTypedData({ ...common, itemId: wanted.itemId }) : pledgeTypedData({ ...common, amount: wanted.amount! });
+    return { ok: true, needsSignature: true, kind: name, typedData };
+  } catch (error) {
+    console.error('[collateral] pledge prepare failed for', wallet, error instanceof Error ? error.message : error);
+    return { ok: false, reason: 'We could not get this pledge ready. Nothing was pledged. Try again in a moment.' };
+  }
+}
+
+export type SubmitPledgeResult = { ok: true; txHash: string } | { ok: false; reason: string };
+
+/**
+ * Step two: the member's signed pledge, submitted by the operator. Checked first against what the
+ * chain says they hold and have not pledged, so a signature can never pledge more than that.
+ */
+export async function submitPledge(
+  wallet: string,
+  input: { kind: PledgeKindName; amount?: string; itemId?: string; deadline: number; signature: string },
+): Promise<SubmitPledgeResult> {
+  const signature = String(input.signature ?? '').trim();
+  if (!SIGNATURE_HEX.test(signature)) return { ok: false, reason: 'Sign the pledge to back your line with it.' };
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(input.deadline) || input.deadline <= now || input.deadline > now + PLEDGE_SIGNATURE_TTL_SECONDS + 60) {
+    return { ok: false, reason: 'Your signature timed out. Nothing was pledged. Try again to sign it afresh.' };
+  }
+  const registryAddress = getContractAddress(chainId(), 'CollateralRegistry');
+  const calculatorAddress = getContractAddress(chainId(), 'LimitCalculator');
+  if (!registryAddress || !(input.kind in PLEDGE_KINDS)) return { ok: false, reason: 'Pledging is not available on this network.' };
+  try {
+    const member = ethers.getAddress(wallet);
+    const kind = PLEDGE_KINDS[input.kind];
+    let txHash: string;
+    if (input.kind === 'BOND') {
+      if (!input.itemId || !/^\d+$/.test(input.itemId)) return { ok: false, reason: 'Which bond? Nothing was pledged.' };
+      // Any bond held and not yet pledged; `pledgeable` names the first, so check this one directly.
+      const collection = new ethers.Contract(getContractAddress(chainId(), 'BurnerBond') ?? ethers.ZeroAddress, BOND_COLLECTION_ABI, chainProvider(chainId()));
+      const registry = new ethers.Contract(registryAddress, REGISTRY_ITEM_ABI, chainProvider(chainId()));
+      const pledged = ((await registry.pledgedItemsOf(member, BOND_KIND)) as bigint[]).map(String);
+      const balance: bigint = await collection.balanceOf(member, BigInt(input.itemId));
+      if (balance === 0n || pledged.includes(input.itemId)) return { ok: false, reason: 'That bond is not yours to pledge, or it is pledged already.' };
+      txHash = await sendCollateralTx(registryAddress, REGISTRY_ITEM_ABI, 'pledgeItem', [member, kind, BigInt(input.itemId), BigInt(input.deadline), signature]);
+    } else {
+      if (!input.amount || !/^\d+$/.test(input.amount) || BigInt(input.amount) === 0n) return { ok: false, reason: 'How much? Nothing was pledged.' };
+      const wanted = await pledgeable(member, input.kind);
+      if (!wanted || wanted.amount === undefined || BigInt(input.amount) > wanted.amount) {
+        return { ok: false, reason: 'That is more than you hold and have not pledged. Nothing was pledged. Try again.' };
+      }
+      txHash = await sendCollateralTx(registryAddress, REGISTRY_ABI, 'pledge', [member, kind, BigInt(input.amount), BigInt(input.deadline), signature]);
+    }
+    if (calculatorAddress) await sendCollateralTx(calculatorAddress, CALCULATOR_ABI, 'pushCapacities', [member]);
+    await announceChainChanged(member, input.kind);
+    return { ok: true, txHash };
+  } catch (error) {
+    console.error('[collateral] pledge submit failed for', wallet, error instanceof Error ? error.message : error);
+    return { ok: false, reason: describePledgeRefusal(decodeChainError(error)) ?? 'That did not go through. Nothing was pledged.' };
   }
 }

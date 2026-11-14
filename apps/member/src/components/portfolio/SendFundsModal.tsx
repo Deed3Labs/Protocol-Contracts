@@ -183,6 +183,8 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [claimUrl, setClaimUrl] = useState<string | null>(null);
   const [preparedTransfer, setPreparedTransfer] = useState<SendTransferSummary | null>(null);
+  /** The claim token and key from prepare (audit H-4): the lock commits the key, the link carries it. */
+  const [preparedClaim, setPreparedClaim] = useState<{ token: string; signer: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [stripeOnrampLoading, setStripeOnrampLoading] = useState(false);
@@ -227,6 +229,7 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
       setError(null);
       setClaimUrl(null);
       setPreparedTransfer(null);
+      setPreparedClaim(null);
       setCopied(false);
       setReviewSubmitting(false);
       setStripeOnrampLoading(false);
@@ -310,7 +313,7 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, step, inputScreen, onOpenChange, handleBackspace, handleInputContinue, handleNumberPress]);
 
-  const submitEscrowLock = async (transfer: SendTransferSummary): Promise<string> => {
+  const submitEscrowLock = async (transfer: SendTransferSummary, claim: { token: string; signer: string }): Promise<string> => {
     const supportedChains = getSendSupportedChainIds();
     if (!supportedChains.includes(transfer.chainId)) {
       throw new Error(`Send funds only supports chains: ${supportedChains.join(', ')}`);
@@ -355,13 +358,14 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
     }
 
     setPendingPhase('Submitting escrow lock transaction...');
-    const createTx = await escrow.createTransfer(
-      transfer.transferId,
-      principalMicros,
-      sponsorMicros,
-      expirySeconds,
-      transfer.recipientHintHash
-    );
+    const createTx = await escrow.createTransferWithClaimKey({
+      transferId: transfer.transferId,
+      principalUsdc: principalMicros,
+      sponsorFeeUsdc: sponsorMicros,
+      expiry: expirySeconds,
+      recipientHintHash: transfer.recipientHintHash,
+      claimSigner: claim.signer,
+    });
 
     setPendingPhase('Waiting for on-chain confirmation...');
     const createReceipt = await createTx.wait();
@@ -372,14 +376,19 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
     return createTx.hash as string;
   };
 
-  const completeEscrowLock = async (transfer: SendTransferSummary): Promise<void> => {
+  const completeEscrowLock = async (
+    transfer: SendTransferSummary,
+    claim: { token: string; signer: string } | null,
+  ): Promise<void> => {
+    if (!claim) throw new Error('Transfer session is missing. Please start again.');
     setStep('pending');
-    const escrowTxHash = await submitEscrowLock(transfer);
+    const escrowTxHash = await submitEscrowLock(transfer, claim);
 
     setPendingPhase('Finalizing claim link...');
     const lock = await confirmSendTransferLock(transfer.id, {
       transferId: transfer.transferId,
       escrowTxHash,
+      claimToken: claim.token,
     });
 
     if (!lock) {
@@ -577,11 +586,12 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
       }
 
       setPreparedTransfer(prepared.transfer);
+      setPreparedClaim(prepared.claim ?? null);
 
       if (fundingSource === 'CARD_ONRAMP') {
         setStep('funding');
       } else {
-        await completeEscrowLock(prepared.transfer);
+        await completeEscrowLock(prepared.transfer, prepared.claim ?? null);
       }
     } catch (err) {
       setError(formatWalletError(err));
@@ -602,7 +612,7 @@ export function SendFundsModal({ open, onOpenChange }: SendFundsModalProps) {
     setLockingFromFunding(true);
 
     try {
-      await completeEscrowLock(preparedTransfer);
+      await completeEscrowLock(preparedTransfer, preparedClaim);
     } catch (err) {
       setError(formatWalletError(err));
       setStep('failed');

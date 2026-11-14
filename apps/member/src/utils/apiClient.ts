@@ -21,6 +21,7 @@ import type {
   RefundSavingsIntentResponse,
 } from '@/types/savings';
 import { getAccessToken } from '@privy-io/react-auth';
+import type { AutoClearTypedData, CollateralTypedData, PlanTerms, PlanTermsTypedData, ResplitTypedData, payoutClaimTypedData } from '@clear/domain';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
 import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
@@ -1277,12 +1278,13 @@ export async function resendClaimOtp(
 
 export async function claimPayoutDebit(
   claimSessionToken: string,
-  options?: { bridgeFullName?: string; bridgeEmail?: string }
+  options?: { bridgeFullName?: string; bridgeEmail?: string; payoutSignature?: string }
 ): Promise<ClaimPayoutResponse | null> {
   const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/debit', {
     method: 'POST',
     body: JSON.stringify({
       claimSessionToken,
+      ...(options?.payoutSignature ? { payoutSignature: options.payoutSignature } : {}),
       ...(options?.bridgeFullName ? { bridgeFullName: options.bridgeFullName } : {}),
       ...(options?.bridgeEmail ? { bridgeEmail: options.bridgeEmail } : {}),
     }),
@@ -1297,12 +1299,13 @@ export async function claimPayoutDebit(
 
 export async function claimPayoutBank(
   claimSessionToken: string,
-  options?: { bridgeFullName?: string; bridgeEmail?: string }
+  options?: { bridgeFullName?: string; bridgeEmail?: string; payoutSignature?: string }
 ): Promise<ClaimPayoutResponse | null> {
   const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/bank', {
     method: 'POST',
     body: JSON.stringify({
       claimSessionToken,
+      ...(options?.payoutSignature ? { payoutSignature: options.payoutSignature } : {}),
       ...(options?.bridgeFullName ? { bridgeFullName: options.bridgeFullName } : {}),
       ...(options?.bridgeEmail ? { bridgeEmail: options.bridgeEmail } : {}),
     }),
@@ -1315,13 +1318,19 @@ export async function claimPayoutBank(
   return response.data;
 }
 
+/**
+ * Claim to a wallet. `claimSignature` is the claim key's EIP-712 signature over
+ * Claim(transferId, recipientWallet), made in this browser from the claim link (lib/claimKey):
+ * ClaimEscrow releases the money only to the wallet the key signed for (audit H-4).
+ */
 export async function claimPayoutWallet(
   claimSessionToken: string,
-  recipientWallet: string
+  recipientWallet: string,
+  claimSignature: string,
 ): Promise<ClaimPayoutResponse | null> {
   const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/wallet', {
     method: 'POST',
-    body: JSON.stringify({ claimSessionToken, recipientWallet }),
+    body: JSON.stringify({ claimSessionToken, recipientWallet, claimSignature }),
   });
 
   if (response.error || !response.data) {
@@ -1544,7 +1553,7 @@ export async function recordGaslessSavings(p: {
   await apiRequest('/api/savings/gasless/record', { method: 'POST', body: JSON.stringify(p) });
 }
 
-export async function prepareSendLockAuthorization(id: number): Promise<{
+export async function prepareSendLockAuthorization(id: number, claimToken: string): Promise<{
   transferId: string;
   chainId: number;
   escrowAddress: string;
@@ -1552,7 +1561,7 @@ export async function prepareSendLockAuthorization(id: number): Promise<{
 }> {
   const response = await apiRequest<{ transferId: string; chainId: number; escrowAddress: string; typedData: Eip712TypedData }>(
     `/api/send/transfers/${id}/lock-authorization`,
-    { method: 'POST', body: JSON.stringify({}) },
+    { method: 'POST', body: JSON.stringify({ claimToken }) },
   );
   if (response.error || !response.data) {
     throw new Error(response.error || 'Failed to prepare send.');
@@ -1563,10 +1572,11 @@ export async function prepareSendLockAuthorization(id: number): Promise<{
 export async function submitSendLockAuthorization(
   id: number,
   signature: string,
+  claimToken: string,
 ): Promise<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }> {
   const response = await apiRequest<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }>(
     `/api/send/transfers/${id}/submit-authorization`,
-    { method: 'POST', body: JSON.stringify({ signature }), timeout: 120000 },
+    { method: 'POST', body: JSON.stringify({ signature, claimToken }), timeout: 120000 },
   );
   if (response.error || !response.data) {
     throw new Error(response.error || 'Failed to complete send.');
@@ -2639,6 +2649,14 @@ export interface CreditState {
    * no line.
    */
   term: CreditTermCeiling | null;
+  /**
+   * Phase 2: whether the member's state of residence is attested on chain. Lines and plans need it,
+   * so `false` means credit waits for it ("not confirmed yet"), not that the member was declined.
+   * Null or absent: unread, or a network from before Phase 2.
+   */
+  stateConfirmed?: boolean | null;
+  /** Phase 2b (12.3-12.5): cycles judged, cure notice, Boost cap, excess. Null before Phase 2b. */
+  standing?: import('@/lib/cycleStanding').CycleStanding | null;
   source: string;
   complete: boolean;
 }
@@ -2879,18 +2897,55 @@ export async function recordCreditRepayment(
 }
 
 /** Whether USDC deposits repay card debt automatically, and what is waiting to be repaid. */
-export async function getAutoRepay(wallet: string): Promise<{ enabled: boolean; dueCents: number } | null> {
-  const r = await apiRequest<{ enabled: boolean; dueCents: number }>(`/api/credit/${wallet.toLowerCase()}/auto-repay`);
+/** Auto-clear as the chain has it (Phase 2b, 12.2), plus the Savings draw allowance (12.7). */
+export interface AutoRepayState {
+  enabled: boolean;
+  dueCents: number;
+  /** 0 = income-backed and Boost only (the default), 1 = everything. Null when unread. */
+  scope?: number | null;
+  /** Switched off network-wide by the governed switch. */
+  pausedForEveryone?: boolean;
+  /** Owed within the scope now, for "Clear $X now?". Null when unread. */
+  owedInScopeCents?: number | null;
+  /** What card spending may still draw against Savings; -1 = no limit. Null when unread. */
+  savingsDrawAllowanceCents?: number | null;
+}
+
+export async function getAutoRepay(wallet: string): Promise<AutoRepayState | null> {
+  const r = await apiRequest<AutoRepayState>(`/api/credit/${wallet.toLowerCase()}/auto-repay`);
   return r.error || !r.data ? null : r.data;
 }
 
 /** Tell the server the member's wallet set it on chain. The server checks the chain before recording. */
-export async function recordAutoRepay(wallet: string, enabled: boolean): Promise<{ ok: boolean; error?: string }> {
+export async function recordAutoRepay(wallet: string, enabled: boolean, scope?: number): Promise<{ ok: boolean; error?: string }> {
   const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/auto-repay`, {
     method: 'POST',
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(scope === undefined ? { enabled } : { enabled, scope }),
   });
   return r.error || !r.data ? { ok: false, error: r.error || 'Could not save that just now.' } : { ok: true };
+}
+
+/**
+ * Auto-clear by signature (Phase 2b): the `AutoClear` typed data to sign, then the signature for the
+ * server to submit (`setAutoClearWithSignature`). How onboarding turns it on.
+ */
+export async function prepareAutoClear(wallet: string, on: boolean, scope: number): Promise<{ typedData?: AutoClearTypedData; error?: string }> {
+  const r = await apiRequest<{ typedData: AutoClearTypedData }>(`/api/credit/${wallet.toLowerCase()}/auto-clear/prepare`, {
+    method: 'POST',
+    body: JSON.stringify({ on, scope }),
+  });
+  return r.error || !r.data?.typedData ? { error: r.error || 'Could not get that ready.' } : { typedData: r.data.typedData };
+}
+
+export async function submitAutoClear(
+  wallet: string,
+  input: { on: boolean; scope: number; deadline: string; signature: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/auto-clear`, {
+    method: 'POST',
+    body: JSON.stringify({ ...input, deadline: Number(input.deadline) }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'Could not set that just now.' } : { ok: true };
 }
 
 // --- The server-side lock (api middleware/sessionLock) ---
@@ -2955,6 +3010,100 @@ export async function removeStepUp(): Promise<boolean> {
 export async function getMyDisputes(): Promise<import('@/lib/clearModel').MemberDispute[] | null> {
   const r = await apiRequest<{ disputes: import('@/lib/clearModel').MemberDispute[] }>('/api/disputes');
   return r.error || !r.data ? null : r.data.disputes;
+}
+
+/**
+ * Put a lost (or withdrawn) partner dispute back on a plan: the terms to sign, then the signature.
+ * `TermIssuer.openPlan` opens it only on the member's own signature (audit H-4).
+ */
+export async function prepareDisputeReopen(token: string): Promise<{ typedData?: PlanTermsTypedData; error?: string }> {
+  const r = await apiRequest<{ typedData: PlanTermsTypedData }>(`/api/disputes/${encodeURIComponent(token)}/reopen/prepare`, { method: 'POST' });
+  return r.error || !r.data?.typedData ? { error: r.error || 'We could not get this plan ready. Nothing was charged.' } : { typedData: r.data.typedData };
+}
+
+export async function submitDisputeReopen(token: string, signed: { terms: PlanTerms; signature: string }): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ reopened: boolean }>(`/api/disputes/${encodeURIComponent(token)}/reopen`, {
+    method: 'POST',
+    body: JSON.stringify({ terms: signed.terms, signature: signed.signature }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'We could not do that just now. Nothing was charged.' } : { ok: true };
+}
+
+/**
+ * Re-split, Phase 2 (spec item 6). Whether the new split needs the member's signature; when it does,
+ * the `Resplit` typed data, what the new schedule spreads (ledger units) and the installment length.
+ */
+export async function prepareResplit(
+  wallet: string,
+  planId: number,
+  installments: number,
+): Promise<
+  | { needsSignature: false; error?: undefined }
+  | { needsSignature: true; typedData: ResplitTypedData; remaining: string; installmentLength: string; error?: undefined }
+  | { error: string }
+> {
+  const r = await apiRequest<
+    { needsSignature: false } | { needsSignature: true; typedData: ResplitTypedData; remaining: string; installmentLength: string }
+  >(`/api/credit/${wallet.toLowerCase()}/plans/${planId}/split/prepare`, { method: 'POST', body: JSON.stringify({ installments }) });
+  if (r.error || !r.data) return { error: r.error || 'We could not get this change ready. Nothing has changed.' };
+  return r.data;
+}
+
+export async function submitResplit(
+  wallet: string,
+  planId: number,
+  input: { installments: number; rateBps: string; deadline: string; signature: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/plans/${planId}/split`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'That did not go through. The split is unchanged.' } : { ok: true };
+}
+
+/** The kinds a member pledges (Phase 4b, L-I). */
+export type PledgeKindName = 'SAVINGS' | 'POOL_SHARE' | 'BOND';
+
+/**
+ * What the member is asked to sign to pledge what they hold and have not pledged: `Pledge` (an
+ * amount) or `PledgeItem` (a bond), read by the server from the chain.
+ */
+export async function preparePledge(
+  kind: PledgeKindName,
+): Promise<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData } | { error: string }> {
+  const r = await apiRequest<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData }>('/api/savings/pledge/prepare', {
+    method: 'POST',
+    body: JSON.stringify({ kind }),
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not get this pledge ready. Nothing was pledged.' };
+  return r.data;
+}
+
+/** The member's signed pledge, for the server to submit. */
+export async function submitPledge(input: {
+  kind: PledgeKindName;
+  amount?: string;
+  itemId?: string;
+  deadline: number;
+  signature: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>('/api/savings/pledge/submit', { method: 'POST', body: JSON.stringify(input) });
+  return r.error || !r.data ? { ok: false, error: r.error || 'That did not go through. Nothing was pledged.' } : { ok: true };
+}
+
+/**
+ * What the claim link signs to pay a transfer out by card or bank (Phase 2d, L-D):
+ * `PayoutClaim(transferId, payoutTreasury, payoutRefHash)` in the escrow's domain.
+ */
+export async function prepareClaimPayout(
+  claimSessionToken: string,
+  method: 'DEBIT' | 'BANK',
+): Promise<{ typedData: ReturnType<typeof payoutClaimTypedData> } | { error: string }> {
+  const r = await apiRequest<{ typedData: ReturnType<typeof payoutClaimTypedData> }>('/api/send/claim/payout/prepare', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionToken, method }),
+  });
+  return r.error || !r.data ? { error: r.error || 'We could not get this payout ready.' } : r.data;
 }
 
 /** Take a dispute back before it is decided. */
@@ -3637,6 +3786,11 @@ export interface ChargeView {
   /** What the shop pays Clear if it's paid now, in basis points: 125 is 1.25%. */
   paidNowBps?: number | null;
   /**
+   * The chain's price for each split offered (TermIssuer `_quote`): monthly bps (0 when free), or
+   * the refusal the chain would give, as a sentence. Null when it could not be read.
+   */
+  splitQuotes?: { installments: number; rateBps: number; free: boolean; refusal: string | null }[] | null;
+  /**
    * Paid online (a link or a website): false when only paying now is offered. Null at the counter,
    * whose rules (the $50 minimum) are the app's own.
    */
@@ -3705,19 +3859,42 @@ export interface ChargeActionResult {
 }
 
 /**
- * Approve, with the split chosen here and only here.
+ * Approve over time, step one: the plan terms to sign (audit H-4).
+ *
+ * The server builds the terms as EIP-712 typed data from the charge; the member's own wallet signs
+ * them (lib/planSigning) after the phone has checked them against the screen. No Face ID here:
+ * nothing is spent until the signed terms are submitted.
+ */
+export async function prepareChargeApproval(
+  code: string,
+  installments: number,
+): Promise<{ typedData?: PlanTermsTypedData; error?: string }> {
+  const r = await apiRequest<{ typedData: PlanTermsTypedData; disclosure: string[] }>(
+    `/api/charges/${encodeURIComponent(code)}/approve/prepare`,
+    { method: 'POST', body: JSON.stringify({ installments }) },
+  );
+  if (r.error || !r.data?.typedData) return { error: r.error || 'We could not get this plan ready. Nothing was charged.' };
+  return { typedData: r.data.typedData };
+}
+
+/**
+ * Approve, with the split chosen here and only here, on the terms the member signed.
  *
  * The error is surfaced rather than swallowed: approving opens a real term plan, and the failures
  * a member can do something about — a lapsed charge, a split the contracts do not offer, a limit
  * that will not stretch — are all things they need told rather than a spinner that stops.
  */
-export async function approveCharge(code: string, installments: number): Promise<ChargeActionResult> {
+export async function approveCharge(
+  code: string,
+  installments: number,
+  signed: { terms: PlanTerms; signature: string },
+): Promise<ChargeActionResult> {
   // Approving a charge is spending: Face ID first (lib/stepUp).
   const denied = await stepUpDenied();
   if (denied) return { error: denied };
   const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}/approve`, {
     method: 'POST',
-    body: JSON.stringify({ installments }),
+    body: JSON.stringify({ installments, terms: signed.terms, signature: signed.signature }),
   });
   if (r.error || !r.data) return { error: r.error || 'We could not approve this charge.' };
   return { charge: r.data };

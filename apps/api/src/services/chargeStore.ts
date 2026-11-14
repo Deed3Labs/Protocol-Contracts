@@ -394,7 +394,14 @@ export const chargeStore = {
 
   async finish(
     code: string,
-    input: { status: ChargeStatus; splitInto?: number; planId?: number; txHash?: string },
+    input: {
+      status: ChargeStatus;
+      splitInto?: number;
+      planId?: number;
+      txHash?: string;
+      /** What the plan actually paid the shop: Phase 2 prices the discount per split, on chain. */
+      payoutCents?: number;
+    },
   ): Promise<ChargeRow | null> {
     const pool = getPostgresPool();
     if (!pool) return null;
@@ -403,7 +410,8 @@ export const chargeStore = {
       // Only a row this request claimed. Without it a late retry could overwrite a charge that had
       // already been resolved some other way.
       `UPDATE ${TABLE}
-          SET status = $2, split_into = $3, plan_id = $4, tx_hash = $5, resolved_at = now()
+          SET status = $2, split_into = $3, plan_id = $4, tx_hash = $5, resolved_at = now(),
+              payout_cents = COALESCE($6, payout_cents)
         WHERE code = $1 AND status = 'resolving' AND pay_now_until IS NULL
         RETURNING ${COLUMNS}`,
       [
@@ -412,6 +420,7 @@ export const chargeStore = {
         input.splitInto ?? null,
         input.planId ?? null,
         input.txHash ?? null,
+        input.payoutCents ?? null,
       ],
     );
     const row = r.rows[0] ? toRow(r.rows[0]) : null;

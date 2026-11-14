@@ -52,7 +52,8 @@ import rampRouter from './routes/ramp.js';
 import lithicRouter from './routes/lithic.js';
 import sweepsRouter from './routes/sweeps.js';
 import lithicCardsRouter from './routes/lithicCards.js';
-import lithicAuthStreamRouter from './routes/lithicAuthStream.js';
+import lithicAuthStreamRouter, { onAuthorizationApproved } from './routes/lithicAuthStream.js';
+import { authorizeCardOnChain } from './services/chain/cardSettlementService.js';
 import lithicWebhookRouter from './routes/lithicWebhook.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
@@ -87,6 +88,8 @@ import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
 import { startMonthlyStatements } from './jobs/monthlyStatements.js';
 import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
+import { startCycleKeeper } from './jobs/cycleKeeper.js';
+import { startEnforcementKeeper } from './jobs/enforcementKeeper.js';
 import { startTermLimitReviewer } from './jobs/termLimitReviewer.js';
 import { startOffersGranter } from './jobs/offersGranter.js';
 import { startReconciler } from './jobs/reconciler.js';
@@ -262,6 +265,8 @@ async function startServer() {
     // Auth Stream Access is mounted before the rate limiter on purpose: throttling this endpoint
     // would decline a member's card at a till, and it is already authenticated by HMAC signature.
     app.use('/api/webhooks/lithic/auth-stream', lithicAuthStreamRouter);
+    // An approval with a credit part is recorded on chain once it has been answered (audit M-2).
+    onAuthorizationApproved(authorizeCardOnChain);
 
     app.use('/api', rateLimiterMiddleware);
 
@@ -437,6 +442,14 @@ async function startServer() {
     startSessionCleanup();
     // Nothing else rolls a cycle over: without this every member's period runs out and stays out.
     startCreditPeriodRenewer();
+    // Phase 2b: cycles are judged only when somebody syncs them. This does, once each is due.
+    startCycleKeeper().catch((error) => {
+      console.error('Failed to start the cycle keeper:', error);
+    });
+    // Phase 2b: settle an excess after a missed cycle, and notice and settle Earn shortfalls.
+    startEnforcementKeeper().catch((error) => {
+      console.error('Failed to start the enforcement keeper:', error);
+    });
     // Nothing else sets a term limit: without this a member's split plans all revert at zero.
     startTermLimitReviewer();
     // Nothing else gives a new member the co-op's $10, or takes an unspent one back.

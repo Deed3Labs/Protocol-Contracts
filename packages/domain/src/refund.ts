@@ -15,7 +15,7 @@
  */
 
 import { merchantPayout } from './merchant';
-import { splitQuote } from './split';
+import { levelPayment, splitQuote } from './split';
 
 export interface RefundQuote {
   /** The charge being unwound. The plan closes at this figure. */
@@ -33,9 +33,10 @@ export interface RefundQuote {
 /**
  * Carry accrued over the cycles already cleared.
  *
- * Charged each cycle on the balance still outstanding at its start, so for an even principal split
- * the k-th cycle carries `amount × rate × (1 − (k−1)/n)`. On $412 at 2% split in 4 that runs
- * $8.24, $6.18, $4.12, $2.06 — summing to the $20.60 `splitQuote` quotes for the whole plan.
+ * Charged each cycle on the principal still unpaid at its start, under the levelled schedule
+ * (section 12.9): each level payment pays that cycle's carry, and the rest pays principal down. On
+ * $412 at 2% split in 4 that runs $8.24, $6.24, $4.20, $2.12 — summing to the $20.80 `splitQuote`
+ * quotes for the whole plan.
  */
 export function carryAccrued(
   amount: number,
@@ -45,8 +46,14 @@ export function carryAccrued(
 ): number {
   const n = Math.max(1, splitInto);
   const cleared = Math.min(Math.max(0, cyclesCleared), n);
+  const payment = levelPayment(amount, n, ratePerCycle);
+  let unpaid = amount;
   let carry = 0;
-  for (let k = 1; k <= cleared; k++) carry += amount * ratePerCycle * (1 - (k - 1) / n);
+  for (let k = 1; k <= cleared; k++) {
+    const c = unpaid * ratePerCycle;
+    carry += c;
+    unpaid -= payment - c;
+  }
   return carry;
 }
 

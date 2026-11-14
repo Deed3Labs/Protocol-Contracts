@@ -43,6 +43,8 @@ export const SEND_USDC_ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
 ] as const;
 
+// The lock commits the claim key the link carries (audit H-4); plain createTransfer would leave the
+// sender as the only one who could send it to a wallet.
 export const CLAIM_ESCROW_ABI = [
-  'function createTransfer(bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash)',
+  'function createTransferWithClaimKey((bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash, address claimSigner) terms)',
 ] as const;
