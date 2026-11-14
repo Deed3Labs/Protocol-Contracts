@@ -49,7 +49,7 @@ jobs:
             echo "api=$(match '^apps/api/')"
             echo "docs=$(match "$content")"
             # and Build's code fingerprints: what each deployed contract compiles to (scripts/command/code-fingerprints.mjs)
-            echo "contracts=$(match "^(contracts|test|deploy|deployments/base-sepolia)/|^hardhat\.config\.ts$|^scripts/command/code-fingerprints\.mjs$|^packages/command-types/src/chain/code\.json$|$root")"
+            echo "contracts=$(match "^(contracts|test|deploy|deployments/base-sepolia)/|^hardhat\.config\.ts$|^scripts/command/code-fingerprints\.mjs$|^scripts/ci/test-shard\.mjs$|^packages/command-types/src/chain/code\.json$|$root")"
           } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
@@ -90,7 +90,33 @@ jobs:
           TURBO_SCM_BASE: origin/${{ github.base_ref }}
 
   contracts:
-    name: Contracts (hardhat test)
+    name: Contracts (hardhat test ${{ matrix.shard }}/4)
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    # The suite is split into four parallel shards by file size (scripts/ci/test-shard.mjs), so it
+    # takes about a quarter of the time. Each shard compiles on its own; the solc cache is shared.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: solc-${{ hashFiles('hardhat.config.ts') }}
+      - run: npm ci --no-audit --no-fund
+      # Every test file is in exactly one shard: the same discovery as a bare `hardhat test`.
+      - run: node scripts/ci/test-shard.mjs --check 4
+      - run: npx hardhat test $(node scripts/ci/test-shard.mjs ${{ matrix.shard }} 4)
+
+  fingerprints:
+    name: Contracts (code fingerprints)
     needs: changes
     if: needs.changes.outputs.contracts == 'true'
     runs-on: ubuntu-latest
@@ -105,7 +131,6 @@ jobs:
           path: ~/.cache/hardhat-nodejs
           key: solc-${{ hashFiles('hardhat.config.ts') }}
       - run: npm ci --no-audit --no-fund
-      - run: npx hardhat test
       # Build compares each deployed contract with what dev compiles: the fingerprints must be this source's,
       # as deployed. `hardhat test` keeps revert strings (hardhat.config.ts); a deploy's compile strips them
       - run: npx hardhat compile
@@ -124,13 +149,13 @@ jobs:
 
   ci:
     name: ci
-    needs: [changes, apps, contracts, docs]
+    needs: [changes, apps, contracts, fingerprints, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Every job that had to run passed
         run: |
-          echo "changes=${{ needs.changes.result }} apps=${{ needs.apps.result }} contracts=${{ needs.contracts.result }} docs=${{ needs.docs.result }}"
-          case "${{ needs.changes.result }} ${{ needs.apps.result }} ${{ needs.contracts.result }} ${{ needs.docs.result }}" in
+          echo "changes=${{ needs.changes.result }} apps=${{ needs.apps.result }} contracts=${{ needs.contracts.result }} fingerprints=${{ needs.fingerprints.result }} docs=${{ needs.docs.result }}"
+          case "${{ needs.changes.result }} ${{ needs.apps.result }} ${{ needs.contracts.result }} ${{ needs.fingerprints.result }} ${{ needs.docs.result }}" in
             *failure*|*cancelled*) exit 1 ;;
           esac
