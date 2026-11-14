@@ -98,8 +98,9 @@ Decision 7 moves it off chain: a mint for a member with no stateCode raises the 
   | `peripherals/ClaimEscrow.spec.ts`, `audit/deep/PeripheralRegressions.spec.ts` | The treasury claim is signed (L-D). |
   | `peripherals/TermIssuer.spec.ts` | "takes only what is due, from the member…" becomes "collectForMember is retired…": the settler is refused even with a mandate and an allowance, nothing leaves the member's wallet, and the member's own `payPlan` clears what is due. "a mandated collection clears residual carry too" becomes the member clearing it with `payResidualCarry`. |
   | `audit/compliance/Section2d.spec.ts` | After the 4b merge, pledges take the member's signature (4b's L-I), through the shared `pledgeSigned` helper. |
+  | `peripherals/SavingsIntentFactory.spec.ts` | The redeem test uses ClearUSDUpgradeable: the factory asks the token whether the depositor may receive it, and the legacy ClearUSD cannot answer. A new test shows the factory refuses a redeem intent on such a token (fail closed). |
 
-  Full suite on the branch with `dev` (Phase 4b) merged in: `npx hardhat test` keeps revert strings, and the fuzz runs at the default 300 steps. **1030 passing, 0 failing**, in 27 minutes. The first draft's run, before the merge and the owner's decisions, was 1003 passing.
+  Full suite on the branch with `dev` (Phase 4b) merged in: `npx hardhat test` keeps revert strings, and the fuzz runs at the default 300 steps. **1031 passing, 0 failing**, in 27 minutes, after the depositor-membership fix. The first draft's run, before the merge and the owner's decisions, was 1003 passing.
 - **Sizes** (production build, `npx hardhat compile --force`). No contract is over 24,576 bytes runtime or 49,152 bytes of creation code.
 
   | Contract | Runtime | Creation code |
@@ -109,7 +110,7 @@ Decision 7 moves it off chain: a mint for a member with no stateCode raises the 
   | ClearUSDUpgradeable | 15,989 | 16,229 |
   | ESADepositVault | 14,980 | 15,117 |
   | ClaimEscrow | 8,767 | 8,904 |
-  | SavingsIntentFactory | 5,034 | 9,203 |
+  | SavingsIntentFactory | 5,273 | 9,442 |
   | SavingsIntentEscrow | 3,319 | 3,429 |
   | MockSafe (test only) | 1,415 | 1,951 |
 - **Storage.**

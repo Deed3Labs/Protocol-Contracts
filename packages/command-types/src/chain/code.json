@@ -530,18 +530,18 @@
   },
   "SavingsIntentFactory": {
    "source": "contracts/peripherals/SavingsIntentFactory.sol",
-   "sha256": "168200a7d58c91507fcaa7457dd2831bbf16556b9ce45a1b0a2be8d43bc2c470",
+   "sha256": "8860b37e8a39bbc73853193d9e908a71a304ce32bdcba8864ab3bbdb33fb45d6",
    "immutables": [
     [
      250,
      32
     ],
     [
-     1316,
+     1301,
      32
     ],
     [
-     2656,
+     2641,
      32
     ]
    ]
