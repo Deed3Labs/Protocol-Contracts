@@ -22,19 +22,19 @@ Branch `audit/phase-2b-credit-agreements`, cut from `dev` after Phases 1 and 2 m
 
 ## Items
 
-- [ ] 12.1 (replaced) 30-day cycles stay. Acceptance 25: a full 30-day cycle accrues no more than the monthly cap on every position.
-- [ ] 12.2 (replaced) `autoClear` (member-controlled, default ON at onboarding by the member's signature), `autoClearScope` (UNSECURED_ONLY default, or ALL), governed `autoClearEnabledGlobal`. Repayment is recorded from an attested fiat receipt via the operator path, most-expensive-first within scope, with events. Ready-to-allocate USDC and CLRUSD are never swept. Acceptance 18, 19.
-- [ ] 12.3 `unsecuredLineCap` ($2,499, governed). The graduated cap applies to the combined unsecured principal (already the member ceiling). Acceptance 20.
-- [ ] 12.4 Boost limit $500, rising to $750 after 6 consecutive Clean Cycles and ESA deposits in at least 5 of the last 6 cycles. Nothing reads or stores Acceleration. Acceptance 21.
-- [ ] 12.5 One missed rebalance halves the unsecured limit, and any excess is settled from bonds/pool shares, never Savings. Default per decision 4. Savings are used only on Default, and only up to Savings-backed drawn. Acceptance 22.
-- [ ] 12.6 Liquidation Hold per decision 5. Acceptance 23.
-- [ ] 12.7 Member-signed authorization for Savings-backed card draws. No admin or signer write raises Savings-backed drawn. Acceptance 24.
-- [ ] 12.8 Earn shortfall: a notice event, then 72 hours, then the smallest redemption that closes the gap, pool shares before bonds. Never Savings. Bonds at no less than 100% of present value. Acceptance 26.
-- [ ] 12.9 Levelled term payments ($940 in 4 at 2% = $47.47 total carry); `freeBelowAmount` = $100. Update acceptance 5.
-- [ ] 12.10 PayoutPool by deadline, then FIFO (helper agent, branch `audit/phase-2b-payout-reserve`). Acceptance 27.
-- [ ] 12.11 Separate AssuranceReserve; no bond principal into either reserve (helper agent).
-- [ ] 12.12 ACH and Autopay authorizations revocable by the member (autoClear is member-toggled). Only the pledge stays locked while drawn, and only for the encumbered amount (already the computed lock).
-- [ ] Report, UPGRADEABILITY update, PR
+- [x] 12.1 (replaced) 30-day cycles stay. Acceptance 25: a full 30-day cycle accrues no more than the monthly cap on every position.
+- [x] 12.2 (replaced) `autoClear` (member-controlled, default ON at onboarding by the member's signature), `autoClearScope` (UNSECURED_ONLY default, or ALL), governed `autoClearEnabledGlobal`. Repayment is recorded from an attested fiat receipt via the operator path, most-expensive-first within scope, with events. Ready-to-allocate USDC and CLRUSD are never swept. Acceptance 18, 19.
+- [x] 12.3 `unsecuredLineCap` ($2,499, governed). The graduated cap applies to the combined unsecured principal (already the member ceiling). Acceptance 20.
+- [x] 12.4 Boost limit $500, rising to $750 after 6 consecutive Clean Cycles and ESA deposits in at least 5 of the last 6 cycles. Nothing reads or stores Acceleration. Acceptance 21.
+- [x] 12.5 One missed rebalance halves the unsecured limit, and any excess is settled from bonds/pool shares, never Savings. Default per decision 4. Savings are used only on Default, and only up to Savings-backed drawn. Acceptance 22.
+- [x] 12.6 Liquidation Hold per decision 5. Acceptance 23.
+- [x] 12.7 Member-signed authorization for Savings-backed card draws. No admin or signer write raises Savings-backed drawn. Acceptance 24.
+- [x] 12.8 Earn shortfall: a notice event, then 72 hours, then the smallest redemption that closes the gap, pool shares before bonds. Never Savings. Bonds at no less than 100% of present value. Acceptance 26.
+- [x] 12.9 Levelled term payments ($940 in 4 at 2% = $47.47 total carry); `freeBelowAmount` = $100. Update acceptance 5.
+- [x] 12.10 PayoutPool by deadline, then FIFO (helper agent, branch `audit/phase-2b-payout-reserve`). Acceptance 27.
+- [x] 12.11 Separate AssuranceReserve; no bond principal into either reserve (helper agent).
+- [x] 12.12 ACH and Autopay authorizations revocable by the member (autoClear is member-toggled). Only the pledge stays locked while drawn, and only for the encumbered amount (already the computed lock).
+- [x] Report (PHASE-2B-REPORT.md), UPGRADEABILITY update, PR
 
 ## Design (so a resumed session does not re-derive it)
 

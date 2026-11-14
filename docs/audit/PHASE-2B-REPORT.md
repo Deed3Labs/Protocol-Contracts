@@ -73,7 +73,7 @@ Draft PR #887 tracks Phase 2's contracts. These changes are needed for 2b:
 ## 5. Numbers
 
 - **Tests:**
-  - full suite: SEE-SUITE;
+  - full suite: 957 passing, 0 failing (956 in one run, plus the L-1 implementation test fixed for the issuers' constructor arguments and rerun on its own);
   - section 12 specs: `Section12Revolving` (11), `Section12Liquidator` (15, including an end-to-end missed cycle with the real RevolvingIssuer), `PayoutDeadline`, `ReserveUntouched`;
   - existing tests that assumed a one-miss default now use `test/helpers/default.ts`.
 - **Storage:**
