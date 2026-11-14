@@ -53,3 +53,18 @@ The spec text is in `addendum-12-17-statement-data.md`. The owner accepted every
     - Check the existing events, and add the member and amount wherever they are missing.
 22. **Statement-required** is set when any position, secured ones included, ends the cycle with a nonzero balance, carry included. There is no threshold. It applies to revolving cycles only.
 23. **Contract size:** split modules as needed (RevolvingIssuerExtension has about 163 bytes left), using the constructor-argument module pattern.
+
+## 12.18 Workout states (owner, Nov 14, 2026), binding
+The spec text is in `addendum-12-18-workout-states.md`. The owner accepted every recommendation:
+24. **Built in Phase 2g**, by the credit-side agent.
+25. **The PLAN is a dedicated workout-plan position inside RevolvingIssuer, not a TermIssuer plan.**
+    - It moves the unsecured revolving principal plus accrued carry across, with no mint, no fee leg and no merchant.
+    - It has a fixed 0% rate and equal cycle payments, with any rounding on the last payment (test 57: $912 = 12 × $76).
+    - The unsecured revolving positions go to zero.
+26. **Default of the workout plan:** it takes 12.14's timing and notice rules (60 days past due, then a two-person cure-notice timestamp, then 30 days, extended by `pausedSeconds`, failing closed). Its enforcement reaches only what an unsecured default reaches, never Savings or other collateral.
+27. **A second workout within 365 days** needs a second two-person attestation with its own reference hash. The 365-day limit is computed on chain, and no role can reset it.
+28. **Re-age:** only REDUCED or PLAN cycles in which the required amount was actually paid count toward the 3 consecutive cycles. DEFERRAL cycles don't count. The limits of once per rolling 365 days and twice per rolling 5 years are computed on chain.
+29. **Workout plus `incomePause`:** both may be active at once. The lower amount due applies, and neither causes a miss, default or liquidation.
+30. **Combined Ceiling:** the 0% workout plan's principal is excluded from it.
+31. **Statements (12.17):** the cycle-close event records the active workout state and its `workoutRef`. Moving balances into a PLAN emits its own event.
+32. **Ending early:** the member may end DEFERRAL or REDUCED early with their own signature. A PLAN ends when it is paid off.
