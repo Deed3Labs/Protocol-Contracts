@@ -4,6 +4,18 @@ import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings, recordGaslessPool, recordGaslessBond } from '@/utils/apiClient';
 import { requireStepUp, walletEnforcesMfa } from '@/lib/stepUp';
+import { pledgeWhatIsHeld } from '@/lib/pledgeSigning';
+
+/*
+ * After savings, the pool or a bond lands: pledge it so it backs the line. The member signs each
+ * pledge (Phase 4b, L-I); the server only submits. Not awaited: the deposit is done, and a pledge
+ * declined or failed leaves savings that back nothing yet, which the next deposit asks for again.
+ */
+function askToPledge(kind: 'SAVINGS' | 'POOL_SHARE' | 'BOND', member: string, chainId: number): void {
+  void pledgeWhatIsHeld({ kind, member, chainId })
+    .then((r) => r.error && console.warn(`[pledge] ${kind}:`, r.error))
+    .catch((error) => console.warn(`[pledge] ${kind} not signed:`, error instanceof Error ? error.message : error));
+}
 
 /*
  * 3-TIER gasless money router (see [[clearpath-privy-migration]]).
@@ -169,6 +181,7 @@ export async function scDeposit(args: { smartWalletClient?: unknown; ownerWallet
   // The money has moved; what is left is recording the credits (the progress dots follow this).
   args.onConfirmed?.();
   await recordGaslessSavings({ action: 'deposit', amount: amt.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
+  askToPledge('SAVINGS', args.ownerWallet, args.chainId);
   return hash;
 }
 
@@ -215,6 +228,7 @@ export async function scPoolDeposit(args: { smartWalletClient?: unknown; ownerWa
     { to: c.lendingPool, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'deposit', args: [amt, receiver] }) },
   ]);
   await recordGaslessPool({ action: 'deposit', amount: amt.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
+  askToPledge('POOL_SHARE', args.ownerWallet, args.chainId);
   return hash;
 }
 
@@ -302,6 +316,7 @@ export async function scBuyBond(args: {
       }) },
   ]);
   await recordGaslessBond({ txHash: hash, chainId: args.chainId }).catch(() => {});
+  askToPledge('BOND', args.ownerWallet, args.chainId);
   return hash;
 }
 

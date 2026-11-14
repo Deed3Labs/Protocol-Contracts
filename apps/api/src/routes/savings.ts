@@ -1,5 +1,13 @@
 import { Router, type Request, type Response } from 'express';
-import { syncSavingsCollateralFromBalance, syncPoolCollateral, syncBondCollateral } from '../services/chain/savingsCollateralService.js';
+import {
+  PLEDGE_KINDS,
+  preparePledge,
+  submitPledge,
+  syncSavingsCollateralFromBalance,
+  syncPoolCollateral,
+  syncBondCollateral,
+  type PledgeKindName,
+} from '../services/chain/savingsCollateralService.js';
 import { ethers } from 'ethers';
 import { requireWalletMatch, requireVerifiedWallet } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
@@ -579,7 +587,8 @@ savingsRouter.post('/pool/record', async (req: Request, res: Response) => {
     // Answered as accepted either way. The movement is already on chain; a failed pledge leaves a
     // position that backs nothing yet, which the next movement or a manual sync repairs -- and
     // reporting failure here would tell a member their deposit did not work when it did.
-    res.json({ success: true, pledged: result.ok });
+    // A pledge takes the member's signature (L-I): the app asks for it when this says so.
+    res.json({ success: true, pledged: result.ok && !result.needsSignature, needsSignature: Boolean(result.needsSignature) });
   } catch (error) {
     console.error('[pool/record] failed:', error);
     res.status(500).json({ error: 'Failed to record pool movement' });
@@ -606,11 +615,48 @@ savingsRouter.post('/bond/record', async (req: Request, res: Response) => {
 
     // Accepted either way: the purchase is already on chain, and reporting failure here would tell
     // a member their bond did not mint when it did.
-    res.json({ success: true, pledged: result.ok });
+    res.json({ success: true, pledged: result.ok && !result.needsSignature, needsSignature: Boolean(result.needsSignature) });
   } catch (error) {
     console.error('[bond/record] failed:', error);
     res.status(500).json({ error: 'Failed to record bond purchase' });
   }
+});
+
+const pledgeKindOf = (value: unknown): PledgeKindName | null =>
+  typeof value === 'string' && value in PLEDGE_KINDS ? (value as PledgeKindName) : null;
+
+/**
+ * POST /api/savings/pledge/prepare { kind } — what the member is asked to sign to pledge what they
+ * hold and have not pledged (Phase 4b, L-I): `Pledge` for SAVINGS and POOL_SHARE, `PledgeItem` for a
+ * bond. Read from the chain, not the body. Writes nothing.
+ */
+savingsRouter.post('/pledge/prepare', async (req: Request, res: Response) => {
+  const wallet = req.auth?.walletAddress;
+  if (!wallet || !ethers.isAddress(wallet)) return res.status(401).json({ error: 'Unauthorized' });
+  const kind = pledgeKindOf(req.body?.kind);
+  if (!kind) return res.status(400).json({ error: 'Invalid kind' });
+  const result = await preparePledge(ethers.getAddress(wallet), kind);
+  return res.status(result.ok ? 200 : 409).json(result);
+});
+
+/**
+ * POST /api/savings/pledge/submit { kind, amount | itemId, deadline, signature } — the member's signed
+ * pledge, submitted by the operator after checking it is within what they hold and have not pledged.
+ */
+savingsRouter.post('/pledge/submit', async (req: Request, res: Response) => {
+  const wallet = req.auth?.walletAddress;
+  if (!wallet || !ethers.isAddress(wallet)) return res.status(401).json({ error: 'Unauthorized' });
+  const kind = pledgeKindOf(req.body?.kind);
+  if (!kind) return res.status(400).json({ error: 'Invalid kind' });
+  const body = req.body as { amount?: unknown; itemId?: unknown; deadline?: unknown; signature?: unknown };
+  const result = await submitPledge(ethers.getAddress(wallet), {
+    kind,
+    amount: typeof body.amount === 'string' ? body.amount : undefined,
+    itemId: typeof body.itemId === 'string' ? body.itemId : undefined,
+    deadline: Number(body.deadline),
+    signature: typeof body.signature === 'string' ? body.signature : '',
+  });
+  return res.status(result.ok ? 200 : 409).json(result);
 });
 
 savingsRouter.post('/gasless/record', async (req: Request, res: Response) => {

@@ -6,12 +6,19 @@ import { ethers } from 'ethers';
  * ClaimEscrow after audit H-4. The settler alone no longer chooses where a claim goes: `claimToWallet`
  * reverts, and `claimToWalletWithSignature` releases a transfer only to the wallet its claim key
  * signed for (permissionless; the signature decides). A gasless lock commits the claim key through
- * the sender's EIP-3009 nonce (`createTransferWithAuthorizationAndClaimKey`). `claimToPayoutTreasury`
- * (the bank and debit payouts) still needs SETTLER_ROLE.
+ * the sender's EIP-3009 nonce (`createTransferWithAuthorizationAndClaimKey`).
+ *
+ * Card and bank payouts (Phase 2d, L-D): `claimToPayoutTreasury` now reverts. The settler submits
+ * `claimToPayoutTreasuryWithSignature(transferId, payoutRefHash, signature)`, with the claim key's
+ * signature (made in the recipient's browser, which has the link) or the sender's, over
+ * `PayoutClaim(transferId, payoutTreasury, payoutRefHash)` (@clear/domain claimKey). The escrow
+ * tries the claim key first, then the sender. Checked against ClaimEscrow.sol on
+ * audit/phase-2d-dfal-vault (#893) by sendPayoutClaim.test.
  */
-const CLAIM_ESCROW_ABI = [
+export const CLAIM_ESCROW_ABI = [
   'function claimToWalletWithSignature(bytes32 transferId, address recipientWallet, bytes signature)',
-  'function claimToPayoutTreasury(bytes32 transferId)',
+  'function claimToPayoutTreasuryWithSignature(bytes32 transferId, bytes32 payoutRefHash, bytes signature)',
+  'function PAYOUT_TREASURY() view returns (address)',
   'function createTransferWithAuthorizationAndClaimKey(address sender, (bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash, address claimSigner) terms, (uint256 validAfter, uint256 validBefore, bytes32 nonce, uint8 v, bytes32 r, bytes32 s) auth)',
 ] as const;
 const CLAIM_ESCROW_INTERFACE = new ethers.Interface(CLAIM_ESCROW_ABI);
@@ -43,7 +50,7 @@ type RelayerMode = 'local_key' | 'managed_webhook' | 'cdp_server_wallet';
 
 type ManagedRelayerAction =
   | 'claimToWalletWithSignature'
-  | 'claimToPayoutTreasury'
+  | 'claimToPayoutTreasuryWithSignature'
   | 'createTransferWithAuthorizationAndClaimKey';
 
 interface ManagedRelayerRequest {
@@ -637,7 +644,24 @@ class SendRelayerService {
     };
   }
 
-  async claimToPayoutTreasury(transferId: string, chainId?: number): Promise<RelayerTxResult> {
+  /** The co-op's payout treasury, as the escrow names it: what a `PayoutClaim` signature binds. */
+  async payoutTreasury(chainId?: number): Promise<string | null> {
+    const escrowAddress = this.resolveEscrowAddress(chainId);
+    const rpcUrl = this.resolveRpcUrl(chainId);
+    if (!escrowAddress || !ethers.isAddress(escrowAddress) || !rpcUrl) return null;
+    const escrow = new ethers.Contract(escrowAddress, CLAIM_ESCROW_ABI, new ethers.JsonRpcProvider(rpcUrl));
+    return ethers.getAddress(String(await escrow.PAYOUT_TREASURY()));
+  }
+
+  /**
+   * Pay a claim out through the treasury, for a card or bank payout. Needs the claim key's (or the
+   * sender's) `PayoutClaim` signature for this `payoutRefHash` (L-D).
+   */
+  async claimToPayoutTreasury(
+    transferId: string,
+    chainId: number | undefined,
+    auth: { payoutRefHash: string; signature: string },
+  ): Promise<RelayerTxResult> {
     const escrowAddress = this.resolveEscrowAddress(chainId);
     if (!escrowAddress || !ethers.isAddress(escrowAddress)) {
       return this.simulationOrThrow(
@@ -647,9 +671,9 @@ class SendRelayerService {
     }
 
     if (this.relayerMode() === 'managed_webhook') {
-      const data = CLAIM_ESCROW_INTERFACE.encodeFunctionData('claimToPayoutTreasury', [transferId]);
+      const data = CLAIM_ESCROW_INTERFACE.encodeFunctionData('claimToPayoutTreasuryWithSignature', [transferId, auth.payoutRefHash, auth.signature]);
       return this.callManagedSigner({
-        action: 'claimToPayoutTreasury',
+        action: 'claimToPayoutTreasuryWithSignature',
         transferId,
         chainId,
         escrowAddress,
@@ -662,9 +686,9 @@ class SendRelayerService {
     }
 
     if (this.relayerMode() === 'cdp_server_wallet') {
-      const data = CLAIM_ESCROW_INTERFACE.encodeFunctionData('claimToPayoutTreasury', [transferId]);
+      const data = CLAIM_ESCROW_INTERFACE.encodeFunctionData('claimToPayoutTreasuryWithSignature', [transferId, auth.payoutRefHash, auth.signature]);
       return this.callCdpServerWallet({
-        action: 'claimToPayoutTreasury',
+        action: 'claimToPayoutTreasuryWithSignature',
         transferId,
         chainId,
         escrowAddress,
@@ -684,7 +708,7 @@ class SendRelayerService {
     }
 
     const contract = new ethers.Contract(signerContext.escrowAddress, CLAIM_ESCROW_ABI, signerContext.signer);
-    const tx = await contract.claimToPayoutTreasury(transferId);
+    const tx = await contract.claimToPayoutTreasuryWithSignature(transferId, auth.payoutRefHash, auth.signature);
     const receipt = await tx.wait();
 
     if (!receipt || receipt.status !== 1) {

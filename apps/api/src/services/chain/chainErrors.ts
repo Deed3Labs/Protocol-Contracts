@@ -126,6 +126,11 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error ClaimEscrowExpired(uint64 expiry)',
   'error ClaimEscrowTermsNotAuthorized()',
   'error ClaimEscrowInvalidClaimSigner()',
+  // CollateralRegistry (Phase 4b, L-I): pledges take the member's signature
+  'error CollateralRegistryUnknownType(bytes32 kind)',
+  'error CollateralRegistrySignatureExpired(uint256 deadline)',
+  'error CollateralRegistryBadSignature(address member)',
+  'error CollateralRegistryEncumbered(address member, bytes32 kind, uint256 free, uint256 amount)',
 ] as const;
 
 export const CHAIN_ERRORS = new ethers.Interface(CHAIN_ERROR_FRAGMENTS as unknown as string[]);
@@ -330,6 +335,19 @@ const HOLD_REASON_WORDS = ['none', 'bankruptcy', 'death', 'a billing dispute', '
  * The Liquidator's refusals (Phase 2b), in words an operator can act on. Null when the error is not
  * the Liquidator's.
  */
+export function describePledgeRefusal(decoded: DecodedChainError | null): string | null {
+  switch (decoded?.name) {
+    case 'CollateralRegistrySignatureExpired':
+      return 'Your signature timed out before it reached the network. Nothing was pledged. Try again to sign it afresh.';
+    case 'CollateralRegistryBadSignature':
+      return 'That signature is not your wallet’s for this pledge, or another pledge used it first. Nothing was pledged. Try again.';
+    case 'CollateralRegistryUnknownType':
+      return 'This kind of collateral cannot back a line on this network yet. Nothing was pledged.';
+    default:
+      return null;
+  }
+}
+
 export function describeLiquidatorRefusal(decoded: DecodedChainError | null): string | null {
   switch (decoded?.name) {
     case 'LiquidatorOnHold':

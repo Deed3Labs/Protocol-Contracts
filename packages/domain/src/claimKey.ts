@@ -77,6 +77,54 @@ export function claimTypedData(input: { chainId: number; escrow: string; transfe
   };
 }
 
+// ---- Card and bank payouts (Phase 2d, decision L-D) ----------------------------------------------
+
+/**
+ * `PayoutClaim(bytes32 transferId,address payoutTreasury,bytes32 payoutRefHash)`: the claim key's (or
+ * the sender's) consent to pay a transfer out through the co-op's payout treasury, to the off-chain
+ * payout `payoutRefHash` names. `ClaimEscrow.claimToPayoutTreasuryWithSignature` takes it; the old
+ * `claimToPayoutTreasury` reverts. The settler still submits, and still pays the claimant from the
+ * treasury.
+ */
+export const PAYOUT_CLAIM_TYPES = {
+  PayoutClaim: [
+    { name: 'transferId', type: 'bytes32' },
+    { name: 'payoutTreasury', type: 'address' },
+    { name: 'payoutRefHash', type: 'bytes32' },
+  ],
+} as const;
+
+export const PAYOUT_CLAIM_TYPE_STRING = `PayoutClaim(${PAYOUT_CLAIM_TYPES.PayoutClaim.map((f) => `${f.type} ${f.name}`).join(',')})`;
+
+/** The card and bank payouts the treasury makes. */
+export type ClaimPayoutMethod = 'DEBIT' | 'BANK';
+
+export const PAYOUT_REF_PREFIX = 'clear-payout/v1:';
+
+/**
+ * The string whose keccak-256 is `payoutRefHash`: the payout the signer chose, for this transfer.
+ * No account data: the hash commits to the method, and the claim session carries the rest.
+ */
+export function payoutRefSeed(transferId: string, method: ClaimPayoutMethod): string {
+  return `${PAYOUT_REF_PREFIX}${transferId.toLowerCase()}:${method}`;
+}
+
+/** The typed data the claim key (or the sender) signs to pay a transfer out by card or bank. */
+export function payoutClaimTypedData(input: {
+  chainId: number;
+  escrow: string;
+  transferId: string;
+  payoutTreasury: string;
+  payoutRefHash: string;
+}) {
+  return {
+    domain: claimEscrowDomain(input.chainId, input.escrow),
+    types: PAYOUT_CLAIM_TYPES,
+    primaryType: 'PayoutClaim' as const,
+    message: { transferId: input.transferId, payoutTreasury: input.payoutTreasury, payoutRefHash: input.payoutRefHash },
+  };
+}
+
 /** Claims stop at expiry (inclusive); after it, the transfer can only be refunded to the sender. */
 export function claimWindowOpen(expiresAt: Date | string, now: Date = new Date()): boolean {
   const expiry = Math.floor(new Date(expiresAt).getTime() / 1000);

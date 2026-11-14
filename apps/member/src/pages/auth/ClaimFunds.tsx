@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAppKit, useAppKitAccount } from '@/lib/walletCompat';
 import {
+  prepareClaimPayout,
   claimPayoutBank,
   claimPayoutDebit,
   claimPayoutWallet,
@@ -12,7 +13,7 @@ import {
 import type { ClaimPayoutMethod, ClaimPayoutResponse, ClaimSession, VerifyClaimOtpResponse } from '@/types/send';
 import { AlertCircle, Building2, CheckCircle2, CreditCard, Loader2, RefreshCcw, Wallet } from 'lucide-react';
 import Wordmark from '@/components/app-ui/Wordmark';
-import { signClaimToWallet } from '@/lib/claimKey';
+import { signClaimToWallet, signPayoutClaim } from '@/lib/claimKey';
 import { clearContracts } from '@/lib/clearNetwork';
 import { getSendClaimEscrowAddress } from '@/config/send';
 
@@ -215,10 +216,40 @@ export default function ClaimFunds() {
 
     let response: ClaimPayoutResponse | null = null;
 
+    /*
+     * A card or bank payout goes through the co-op's treasury, and the escrow pays it there only on
+     * this link's signature over PayoutClaim (Phase 2d, L-D). Signed here, with the key the link
+     * derives; only the signature leaves.
+     */
+    let payoutSignature: string | undefined;
+    if (method === 'DEBIT' || method === 'BANK') {
+      const transfer = verifiedClaim.transfer;
+      const escrow =
+        transfer.escrowAddress || getSendClaimEscrowAddress(transfer.chainId) || clearContracts(transfer.chainId)?.claimEscrow;
+      const prepared = await prepareClaimPayout(verifiedClaim.claimSessionToken, method);
+      if (!escrow || 'error' in prepared) {
+        setError(('error' in prepared && prepared.error) || 'This payout is not available on this network yet.');
+        setStep('method');
+        return;
+      }
+      try {
+        payoutSignature = await signPayoutClaim({
+          claimToken: token,
+          typedData: prepared.typedData,
+          expected: { chainId: transfer.chainId, escrow, transferId: transfer.transferId },
+        });
+      } catch (signError) {
+        setError(signError instanceof Error ? signError.message : 'This payout could not be signed.');
+        setStep('method');
+        return;
+      }
+    }
+
     if (method === 'DEBIT') {
       response = await claimPayoutDebit(verifiedClaim.claimSessionToken, {
         bridgeFullName: bridgeFullName.trim() || undefined,
         bridgeEmail: bridgeEmail.trim().toLowerCase() || undefined,
+        payoutSignature,
       });
       if (response && response.success === false && response.fallbackMethod === 'BANK') {
         setPayoutResult(response);
@@ -232,6 +263,7 @@ export default function ClaimFunds() {
       response = await claimPayoutBank(verifiedClaim.claimSessionToken, {
         bridgeFullName: bridgeFullName.trim() || undefined,
         bridgeEmail: bridgeEmail.trim().toLowerCase() || undefined,
+        payoutSignature,
       });
     }
 

@@ -1,3 +1,5 @@
+import { ethers } from 'ethers';
+import { payoutRefSeed, type ClaimPayoutMethod } from '@clear/domain';
 import { decodeChainError } from './chain/chainErrors.js';
 import { sendRelayerService } from './sendRelayerService.js';
 import { sendBridgePayoutService } from './sendBridgePayoutService.js';
@@ -7,7 +9,37 @@ import type { StripeRecipientContext } from './sendStripePayoutService.js';
 import type { BridgeRecipientContext } from './sendBridgePayoutService.js';
 import { disputeStore } from './disputes/disputeStore.js';
 
-type ClaimRecipientContext = StripeRecipientContext & BridgeRecipientContext;
+type ClaimRecipientContext = StripeRecipientContext &
+  BridgeRecipientContext & {
+    /**
+     * The claim key's (or the sender's) signature over `PayoutClaim(transferId, payoutTreasury,
+     * payoutRefHash)` for this method (Phase 2d, L-D). Made where the link is, never here.
+     */
+    payoutSignature?: string;
+  };
+
+/** `payoutRefHash` for a card or bank payout of this transfer: what the signature commits to. */
+export function payoutRefHash(transferId: string, method: ClaimPayoutMethod): string {
+  return ethers.keccak256(ethers.toUtf8Bytes(payoutRefSeed(transferId, method)));
+}
+
+const PAYOUT_SIGNATURE_HEX = /^0x[0-9a-fA-F]{130,}$/;
+
+/** The payout's authorization, or why there is none. Checked before anything is sent. */
+function payoutAuth(
+  transferId: string,
+  method: ClaimPayoutMethod,
+  context?: ClaimRecipientContext,
+): { payoutRefHash: string; signature: string } | { failureCode: string; failureReason: string } {
+  const signature = (context?.payoutSignature ?? '').trim();
+  if (!PAYOUT_SIGNATURE_HEX.test(signature)) {
+    return {
+      failureCode: 'PAYOUT_SIGNATURE_REQUIRED',
+      failureReason: 'This payout needs the claim link’s signature. Open the link you were sent and try again.',
+    };
+  }
+  return { payoutRefHash: payoutRefHash(transferId, method), signature };
+}
 
 /**
  * A send under an open dispute is held: nobody can claim it until the dispute is decided. That is
@@ -18,7 +50,7 @@ type ClaimRecipientContext = StripeRecipientContext & BridgeRecipientContext;
 function claimRefusal(error: unknown): string | null {
   switch (decodeChainError(error)?.name) {
     case 'ClaimEscrowBadClaimSignature':
-      return 'This claim link could not authorize that wallet. Open the link you were sent and try again.';
+      return 'This claim link could not authorize that. Open the link you were sent and try again.';
     case 'ClaimEscrowExpired':
       return 'This transfer has expired and can no longer be claimed. It goes back to the sender.';
     case 'ClaimEscrowSignatureRequired':
@@ -155,8 +187,11 @@ class SendPayoutService {
       return eligibility;
     }
 
+    const debitAuth = payoutAuth(transfer.transferId, 'DEBIT', recipientContext);
+    if ('failureCode' in debitAuth) return { status: 'FAILED', provider: this.debitProvider, ...debitAuth };
+
     try {
-      const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId);
+      const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId, debitAuth);
       if (treasuryTx.mode !== 'onchain') {
         return {
           status: 'FAILED',
@@ -205,7 +240,7 @@ class SendPayoutService {
         status: 'FAILED',
         provider: this.debitProvider,
         failureCode: 'DEBIT_PAYOUT_ERROR',
-        failureReason: error instanceof Error ? error.message : 'Debit payout execution failed',
+        failureReason: claimRefusal(error) ?? (error instanceof Error ? error.message : 'Debit payout execution failed'),
       };
     }
   }
@@ -309,8 +344,11 @@ class SendPayoutService {
       }
     }
 
+    const bankAuth = payoutAuth(transfer.transferId, 'BANK', recipientContext);
+    if ('failureCode' in bankAuth) return { status: 'FAILED', provider: this.bankProvider, ...bankAuth };
+
     try {
-      const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId);
+      const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId, bankAuth);
       if (treasuryTx.mode !== 'onchain') {
         return {
           status: 'FAILED',
@@ -378,7 +416,7 @@ class SendPayoutService {
         status: 'FAILED',
         provider: this.bankProvider,
         failureCode: 'BANK_PAYOUT_ERROR',
-        failureReason: error instanceof Error ? error.message : 'Bank payout execution failed',
+        failureReason: claimRefusal(error) ?? (error instanceof Error ? error.message : 'Bank payout execution failed'),
       };
     }
   }

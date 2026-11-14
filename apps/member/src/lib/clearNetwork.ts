@@ -44,6 +44,8 @@ export interface ClearContracts {
   liquidator?: `0x${string}`;
   /** Term plans: a member pays one down by naming it (`payPlan`), and re-splits it (`setSplit`). */
   termIssuer?: `0x${string}`;
+  /** Where a member's signed pledges are recorded (Phase 4b, L-I): the domain they sign in. */
+  collateralRegistry?: `0x${string}`;
 }
 const CONTRACTS: Record<number, ClearContracts> = {
   8453: {
@@ -62,6 +64,7 @@ const CONTRACTS: Record<number, ClearContracts> = {
     revolvingIssuer: '0x7f15E45aB5eAF0307200274211a90FcbD6716070',
     liquidator: '0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593',
     termIssuer: '0xe467d87756FDF9645D751485CDB72A1E14683721',
+    collateralRegistry: '0x62fBdf62Ad0C3f52d898b28b2d1FB31e9EB152Cf',
     // Replacement pair. The vault and token these succeed are still deployed and still
     // mutually redeemable -- ESADepositVaultLegacy holds the USDC behind the CLRUSD that was
     // outstanding when the swap happened, so nobody who held the old token is stranded.

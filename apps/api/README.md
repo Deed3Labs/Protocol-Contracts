@@ -277,14 +277,14 @@ is the map the role handover reads.
 |---|---|---|
 | `CREDIT_OPERATOR_PRIVATE_KEY` | `RevolvingIssuer.openLine`, `updateCreditPeriod` (renewals; may only extend), `TermIssuer.openPlan` (on the member's signed terms), `closePlanForRefund`, `OffersIssuer.grant` | AccessManager `CREDIT_LINES_ROLE` |
 | `CREDIT_OPERATOR_PRIVATE_KEY` | `TermIssuer.setTermLimit` (`apps/api/scripts/set_term_limit.ts`, termLimitService), tier capacity | AccessManager `CREDIT_LIMITS_ROLE` |
-| `CREDIT_OPERATOR_PRIVATE_KEY` | `CollateralRegistry.pledge`/`release` (unless the savings relayer signs them), `MembershipRegistry` writes | CollateralRegistry `OPERATOR_ROLE`, MembershipRegistry `REGISTRAR_ROLE` (unchanged) |
+| `CREDIT_OPERATOR_PRIVATE_KEY` | `CollateralRegistry.pledge`/`pledgeItem` (Phase 4b, L-I: only with the member's EIP-712 `Pledge`/`PledgeItem` signature, which the app asks for after a deposit or bond purchase: `POST /api/savings/pledge/prepare`, then `/submit`) and `release` (no signature: it only gives back), unless the savings relayer signs them; `MembershipRegistry` writes | CollateralRegistry `OPERATOR_ROLE`, MembershipRegistry `REGISTRAR_ROLE` (unchanged) |
 | `CARD_SETTLER_PRIVATE_KEY` | `RevolvingIssuer.authorizeCardSpend` (after the Auth Stream approves), `settleCardSpend`, `reverseCardSpend`, `repayCardSpend`, `repayForMember`; `TermIssuer.collectForMember`, `declareDefault`, `reinstate`; `ClearUSD.syncEncumbrance` | a card settler (`setCardSettler`, the Safe's); `LendingPool` `BORROWER_ROLE` plus `setBorrower(settler, destination, dailyCap)` |
 | `CARD_SETTLER_PRIVATE_KEY` (auto-clear, Phase 2b) | `RevolvingIssuer.repayForMember` now pulls the reserve token from the **settler** (`msg.sender`): the sweep approves the RevolvingIssuer for exactly what it pays, and the settler must hold that USDC. The member's dollars for it move to the Lithic settlement account (below) | a card settler; USDC for the clearings, and the approval this service sends |
 | `CARD_SETTLER_PRIVATE_KEY` (cycle keeper, Phase 2b) | `RevolvingIssuer.syncCreditPeriod(member)` (jobs/cycleKeeper, hourly), and `setAutoClearWithSignature` / `setSavingsDrawAllowanceWithSignature` with the member's signature | no role, only gas: all three are permissionless (the member's signature decides the last two) |
 | `CARD_SETTLER_PRIVATE_KEY` (enforcement keeper, Phase 2b) | `Liquidator.settleExcess(member, issuer)`, `noticeShortfall`, `settleShortfall` (jobs/enforcementKeeper, hourly; skips a member under an active Liquidation Hold) | no role, only gas: all three are permissionless. The Liquidator must trust the RevolvingIssuer (`setTrustedSavingsIssuer`) and have its Earn sources set |
 | none (a person's own wallet) | `Liquidator.proposeHold`, `confirmHold`, `renewHold`, `clearHold`, from Command (Money → Credit). The API only encodes each step (`POST /api/command/liquidation-holds/prepare`); the signer sends it | Liquidator `HOLD_ROLE`, held by at least two people: confirming, renewing and finishing a clear must each come from a different signer than the step before |
 | `SAVINGS_RELAYER_*` | `ESADepositVault.depositWithAuthorization(For)`, `redeemWithSignature`, `executeMandateDeposit`; `SavingsIntentFactory.settle/refundDeterministic` | ESADepositVault `RELAYER_ROLE` (no function accepts `OPERATOR_ROLE` now); SavingsIntentFactory `SETTLER_ROLE` |
-| `SEND_RELAYER_*` | `ClaimEscrow.createTransferWithAuthorizationAndClaimKey`, `claimToPayoutTreasury`, `claimToWalletWithSignature` | ClaimEscrow `SETTLER_ROLE` (the wallet claim needs none: the claim key's signature decides) |
+| `SEND_RELAYER_*` | `ClaimEscrow.createTransferWithAuthorizationAndClaimKey`, `claimToPayoutTreasuryWithSignature` (Phase 2d, L-D: with the claim link's or the sender's `PayoutClaim` signature, made in the recipient's browser after `POST /api/send/claim/payout/prepare`), `claimToWalletWithSignature` | ClaimEscrow `SETTLER_ROLE` (the wallet claim needs none: the claim key's signature decides) |
 | `PRIVY_AUTHORIZATION_PRIVATE_KEY` | a shop's own wallet: `PayoutPool.redeem` | the shop registered and active in MerchantRegistry |
 
 The plain AccessManager `OPERATOR` role passes no credit check any more, so a credit operator that
@@ -300,7 +300,7 @@ an alert instead.
 **Claim keys.** A Send's claim link is its claim key: `keccak256("clear-claim-key/v1:" + token)`
 (`@clear/domain` `claimKey`). The lock commits the key's address; a wallet claim is signed in the
 recipient's browser. A link rotated by `send:recover-claim` derives a different key, so a recovered
-link can still be paid out to a bank or card (`claimToPayoutTreasury`) but not to a wallet.
+link can still be paid out to a bank or card (`claimToPayoutTreasuryWithSignature`, signed with the key the recovered link derives) but not to a wallet.
 
 ### Auto-clear moves the dollars, not just the line (Phase 2b, 12.2)
 
