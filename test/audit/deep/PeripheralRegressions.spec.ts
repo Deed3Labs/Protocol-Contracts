@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { advance, ONE_USDC, DAY } from "./deep-setup";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { deployAssurancePool, fund as fundAssurance, balances, TAG } from "../../helpers/assurance";
+import { deployBondFactory } from "../../helpers/bonds";
 
 /*
  * Phase 1, workstream 1B: regression tests for the money peripherals.
@@ -564,7 +565,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       // The RTD is retired (section 13); the vault's own required-reserve read stands in for it.
       const ctx = await deployPhase0Network();
       const { admin, usdc, tokenRegistry, outsider } = ctx;
-      const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
+      const factory: any = await deployBondFactory(
         await tokenRegistry.getAddress(), "ipfs://x"
       );
       const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.burnerBondDeposit());
@@ -601,7 +602,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       const ctx = await deployPhase0Network();
       const signers = await ethers.getSigners();
       const [buyer, liquidator, owner] = [signers[8], signers[10], ctx.admin];
-      const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
+      const factory: any = await deployBondFactory(
         await ctx.tokenRegistry.getAddress(), "ipfs://b"
       );
       const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
@@ -620,33 +621,34 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       return { ctx, factory, bond, buyer, liquidator, owner };
     }
 
-    it("M-6: seizeBond takes only a pledged bond from a member in default", async function () {
+    it("M-6, superseded by founder answer G: no seizeBond; a pledged bond is not movable by the liquidator, pledged or in default", async function () {
       const { bond, buyer, liquidator } = await bondSetup();
-      // No sources configured: nothing is seizable (it used to take any bond from anyone).
-      await expect(bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address))
-        .to.be.revertedWithCustomError(bond, "BurnerBondNotSeizable");
+      // The seize path is gone (Phase 2e): the function does not exist, and nothing reaches it.
+      expect(bond.interface.getFunction("seizeBond")).to.equal(null);
+      const legacy = new ethers.Interface(["function seizeBond(uint256,address,address)"]);
+      await expect(liquidator.sendTransaction({
+        to: await bond.getAddress(), data: legacy.encodeFunctionData("seizeBond", [1, buyer.address, liquidator.address]),
+      })).to.be.reverted;
 
+      // Pledged and "in default": the named liquidator still cannot move it. Only the bond's own
+      // `payPledged`, asked by a pledge module that reports MB-05 permits it, pays it.
       const signals: any = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
       await bond.setEncumbranceSource(await signals.getAddress(), ethers.id("BOND"));
-      await bond.setDefaultSource(await signals.getAddress());
       await signals.setInDefault(buyer.address, true);
-      await expect(bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address))
-        .to.be.revertedWithCustomError(bond, "BurnerBondNotSeizable"); // in default, but not pledged
-      await signals.setInDefault(buyer.address, false);
       await signals.setItemEncumbered(buyer.address, 1, true);
-      await expect(bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address))
-        .to.be.revertedWithCustomError(bond, "BurnerBondNotSeizable"); // pledged, but not in default
-      await signals.setInDefault(buyer.address, true);
-      await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-      expect(await bond.balanceOf(liquidator.address, 1)).to.equal(1n);
+      await bond.connect(buyer).setApprovalForAll(liquidator.address, true);
+      await expect(bond.connect(liquidator).safeTransferFrom(buyer.address, liquidator.address, 1, 1, "0x"))
+        .to.be.revertedWithCustomError(bond, "BurnerBondPledged");
+      expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
     });
 
-    it("M-6: once bonds exist, the owner cannot name itself liquidator and seize in the same breath", async function () {
+    it("M-6: once bonds exist, the owner cannot name a new liquidator (pledge module) in the same breath", async function () {
       const { bond, buyer, owner, liquidator } = await bondSetup();
       await bond.connect(owner).setLiquidator(owner.address);
       expect(await bond.liquidator()).to.equal(liquidator.address); // unchanged: only proposed
       expect(await bond.pendingLiquidator()).to.equal(owner.address);
-      await expect(bond.connect(owner).seizeBond(1, buyer.address, owner.address)).to.be.revertedWith("Only liquidator can seize");
+      // Nor does a proposed pledge module get any say over a bond while it waits.
+      expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
       await expect(bond.connect(owner).executeLiquidatorChange())
         .to.be.revertedWithCustomError(bond, "BurnerBondLiquidatorNotReady");
       await advance(7 * DAY);
@@ -659,7 +661,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
 
     it("X-19: a stranger cannot create (squat) a bond collection", async function () {
       const ctx = await deployPhase0Network();
-      const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
+      const factory: any = await deployBondFactory(
         await ctx.tokenRegistry.getAddress(), "ipfs://b"
       );
       await expect(

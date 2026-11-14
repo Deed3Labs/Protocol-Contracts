@@ -106,11 +106,14 @@ contract LimitCalculator is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev Collateral-backed kinds are valued live, so a member who has just pledged sees it at
     /// once. Kinds with no collateral behind them come from the attested figure, which changes
     /// only at a cycle boundary.
+    ///
+    /// Phase 2e (section 9): the advance rate is the one stored with each pledge when it was made
+    /// (95% of a bond's Present Value, 70% of Pool Share Value, as governed then), not the kind's
+    /// rate today, so a later governed change never shrinks a limit already granted on a pledge.
     function capacityOf(address member, bytes32 kind) public view returns (uint256) {
         uint256 collateralValue = collateralRegistry.collateralValueOf(member, kind);
         if (collateralValue > 0) {
-            (, uint256 haircutBps,,,) = collateralRegistry.collateralTypes(kind);
-            return (collateralValue * haircutBps) / ExposureMath.BPS;
+            return collateralRegistry.advancedValueOf(member, kind, 0);
         }
         return effectiveAttestationOf(member, kind);
     }

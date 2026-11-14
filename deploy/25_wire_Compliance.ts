@@ -216,20 +216,19 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
       await (await liquidator.setEarnSources(poolRecord.address, bondRecord.address)).wait();
       log("  Liquidator Earn sources -> LendingPool, BurnerBond");
     }
+    // Phase 2e (founder answer G): the collection no longer has a default source or a settlement
+    // gate, and the Liquidator takes no bond. The collection's `liquidator` is the pledge module's
+    // enforcement side for `payPledged` and the pledged maturity split; naming it once bonds exist
+    // waits seven days (audit M-6), so it is proposed here and applied by the owner later.
     const bond = await ethers.getContractAt("BurnerBond", bondRecord.address);
-    // The default gate is the issuer's computed default; the Liquidator is only the narrow
-    // settlement gate for missed-cycle excess and matured shortfalls (owner decision).
     if ((await bond.owner()) === deployer.address) {
-      if ((await bond.defaultSource()) !== (await revolving.getAddress())) {
-        await (await bond.setDefaultSource(await revolving.getAddress())).wait();
-        log("  BurnerBond default source -> RevolvingIssuer");
-      }
-      if ((await bond.settlementGate()) !== liquidatorRecord.address) {
-        await (await bond.setSettlementGate(liquidatorRecord.address)).wait();
-        log("  BurnerBond settlement gate -> Liquidator");
+      if ((await bond.liquidator()) !== liquidatorRecord.address
+          && (await bond.pendingLiquidator()) !== liquidatorRecord.address) {
+        await (await bond.setLiquidator(liquidatorRecord.address)).wait();
+        log("  BurnerBond pledge module -> Liquidator (proposed; executeLiquidatorChange after 7 days if bonds exist)");
       }
     } else {
-      log("! BurnerBond is owned elsewhere: its owner sets setDefaultSource(RevolvingIssuer) and setSettlementGate(Liquidator).");
+      log("! BurnerBond is owned elsewhere: its owner calls setLiquidator(Liquidator), then executeLiquidatorChange after the delay.");
     }
   }
 

@@ -9,6 +9,7 @@ import {
   AssuranceSetup, BACKSTOP, ASSURANCE, TAG, MASK, DAY, ASSURANCE_DELAY,
 } from "../../helpers/assurance";
 import { pledgeSigned } from "../../helpers/pledge";
+import { deployBondFactory } from "../../helpers/bonds";
 
 /*
  * Compliance section 13 (Assurance Contracts), acceptance tests 31-33.
@@ -383,7 +384,7 @@ describe("COMPLIANCE section 13: Assurance Contracts (acceptance 31-33)", functi
 
       const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
         [ctx.admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
-      const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(await ctx.tokenRegistry.getAddress(), "ipfs://b");
+      const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://b");
       const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
       await factory.createCollection(await usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
       const bond: any = await ethers.getContractAt("BurnerBond", (await factory.getCollectionInfo(await usdc.getAddress())).collectionAddress);

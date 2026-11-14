@@ -539,10 +539,10 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       const BOND = ethers.encodeBytes32String("BOND");
       await registry.connect(ctx.admin).registerCollateralType(BOND, SAVINGS_BACKED, 9_000n, 10n ** 18n);
       const bad = await signPledgeItem(registry, ctx.member, BOND, 8n);
-      await expect(registry.pledgeItem(m, BOND, 7n, bad.deadline, bad.signature))
+      await expect(registry.pledgeItem(m, BOND, 7n, bad.maturityInstruction, bad.deadline, bad.signature))
         .to.be.revertedWithCustomError(registry, "CollateralRegistryBadSignature");
       const ok = await signPledgeItem(registry, ctx.member, BOND, 7n);
-      await expect(registry.pledgeItem(m, BOND, 7n, ok.deadline, ok.signature))
+      await expect(registry.pledgeItem(m, BOND, 7n, ok.maturityInstruction, ok.deadline, ok.signature))
         .to.emit(registry, "ItemPledged").withArgs(m, BOND, 7n);
     });
   });

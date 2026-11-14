@@ -347,7 +347,9 @@ export interface BondLive {
   closed: boolean;
 }
 
-const BOND_EVENTS = ['BondMinted', 'BondRedeemed', 'RedeemedEarly', 'BondRolled', 'TransferSingle', 'TransferBatch'];
+// RedeemedEarly is the legacy collections' seize-and-redeem path; a Phase 2e collection closes a
+// pledged bond with PledgePaid (its pledge payment term) or PledgedMaturitySplit (settled at maturity).
+const BOND_EVENTS = ['BondMinted', 'BondRedeemed', 'RedeemedEarly', 'PledgePaid', 'PledgedMaturitySplit', 'BondRolled', 'TransferSingle', 'TransferBatch'];
 
 /**
  * Every BurnerBond, from its events: what it was minted for (face value, price paid, maturity), who

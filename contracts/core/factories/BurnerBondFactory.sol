@@ -80,13 +80,16 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     /// @notice Initialize the BurnerBondFactory
     /// @param _tokenRegistry Address of the TokenRegistry whose whitelist gates collections
     /// @param _baseURI Base URI template for new collections
-    constructor(address _tokenRegistry, string memory _baseURI) {
+    /// @param _bondPledges The BurnerBondPledges module every collection's pledged-bond terms run
+    /// in (Phase 2e). Deployed on its own and passed in, so its creation code is not inside this
+    /// factory's; the bond implementation checks its kind and pins it.
+    constructor(address _tokenRegistry, string memory _baseURI, address _bondPledges) {
         require(_tokenRegistry != address(0), "Invalid TokenRegistry address");
         tokenRegistry = ITokenRegistry(_tokenRegistry);
         baseURI = _baseURI;
-        
+
         // The implementations. Deployed once here, cloned from for every collection after.
-        bondImplementation = address(new BurnerBond());
+        bondImplementation = address(new BurnerBond(_bondPledges));
         depositImplementation = address(new BurnerBondDeposit());
         bondTraits = address(new BondTraits());
         bondDiscountCurve = address(new BondDiscountCurve());

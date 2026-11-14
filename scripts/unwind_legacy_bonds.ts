@@ -23,6 +23,18 @@ const { ethers, network } = hre as any;
 
 const USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 
+const LEGACY_BOND_ABI = [
+  "function owner() view returns (address)",
+  "function liquidator() view returns (address)",
+  "function setLiquidator(address)",
+  "function seizeBond(uint256 bondId, address from, address to)",
+  "function redeemEarly(uint256 bondId) returns (uint256)",
+  "function presentValueOf(uint256 bondId) view returns (uint256)",
+  "function balanceOf(address account, uint256 id) view returns (uint256)",
+  "function getBondIdsByCreator(address creator) view returns (uint256[])",
+  "function getBondInfo(uint256 bondId) view returns ((uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, uint256 purchasePrice, bool isRedeemed, address creator, uint64 issuedAt))",
+];
+
 async function main() {
   const fork = network.name === "hardhat";
   const records = fork ? "base-sepolia" : network.name;
@@ -42,7 +54,10 @@ async function main() {
   const legacy = getDeployment(records, "BurnerBondLegacy");
   const vaultRec = getDeployment(records, "BondVault");
   if (!legacy || !vaultRec) throw new Error("No BurnerBondLegacy or BondVault on record.");
-  const bond = await ethers.getContractAt("BurnerBond", legacy.address, signer);
+  // The legacy collection's own ABI: Phase 2e removed `seizeBond` and `redeemEarly` from BurnerBond's
+  // source (a pledged bond is now paid only under `payPledged`), but the legacy collection is a clone
+  // of the old implementation and still has them.
+  const bond = new ethers.Contract(legacy.address, LEGACY_BOND_ABI, signer);
   const vault = await ethers.getContractAt("BondVault", vaultRec.address, signer);
   const usdc = await ethers.getContractAt("@openzeppelin/contracts/token/ERC20/IERC20.sol:IERC20", USDC, signer);
   if ((await bond.owner()).toLowerCase() !== signer.address.toLowerCase()) throw new Error("The signer doesn't own the legacy collection.");

@@ -1,5 +1,6 @@
 import hre from "hardhat";
 import { getDeployment, saveDeployment } from "../deploy/helpers";
+import { deployBondFactory } from "../deploy/bondModules";
 
 /*
  * Replaces the bond factory and its USDC collection with ones built from the current source, and
@@ -136,9 +137,8 @@ async function main() {
   if (!factoryAddress) {
     // Section 13: the factory gates collections on the TokenRegistry and takes no AssurancePool.
     const tokenRegistry = rec("TokenRegistry")!.address;
-    const Factory = await ethers.getContractFactory("BurnerBondFactory", signer);
-    const factory = await Factory.deploy(tokenRegistry, BASE_URI);
-    await factory.waitForDeployment();
+    // Phase 2e: with the BurnerBondPledges module its bond implementation pins.
+    const factory = await deployBondFactory(tokenRegistry, BASE_URI, signer);
     factoryAddress = await factory.getAddress();
     save("BurnerBondFactory", factoryAddress, JSON.parse(factory.interface.formatJson()));
     log(`  + BurnerBondFactory ${factoryAddress}`);
@@ -257,17 +257,19 @@ async function rehearse(signer: any, vault: any, deposit: any, collection: any, 
   const oldSells = await old.makeDeposit(USDC, face, maturity, 0n).then(() => true, () => false);
   check(!oldSells, "the old deposit contract can no longer sell");
   // Re-review L-I: a pledge carries the member's EIP-712 signature. Here the signer is both the bond's
-  // holder and the operator submitting it.
+  // holder and the operator submitting it. Phase 2e (section 9): the signature also covers the hash
+  // of the bond's Maturity Instruction (MB-05 5.6); a stand-in hash here, the app's text in production.
   const deadline = BigInt((await ethers.provider.getBlock("latest"))!.timestamp) + 3600n;
+  const maturityInstruction = ethers.id("Maturity Instruction (MB-05 5.6), redeploy check");
   const pledgeSignature = await signer.signTypedData(
     { name: "Clear CollateralRegistry", version: "1", chainId: (await ethers.provider.getNetwork()).chainId, verifyingContract: await registry.getAddress() },
     { PledgeItem: [
       { name: "member", type: "address" }, { name: "kind", type: "bytes32" }, { name: "itemId", type: "uint256" },
-      { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
+      { name: "maturityInstruction", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
     ] },
-    { member: signer.address, kind: BOND, itemId: id, nonce: await registry.pledgeNonces(signer.address), deadline }
+    { member: signer.address, kind: BOND, itemId: id, maturityInstruction, nonce: await registry.pledgeNonces(signer.address), deadline }
   );
-  await (await registry.pledgeItem(signer.address, BOND, id, deadline, pledgeSignature)).wait();
+  await (await registry.pledgeItem(signer.address, BOND, id, maturityInstruction, deadline, pledgeSignature)).wait();
   check((await registry.collateralValueOf(signer.address, BOND)) > 0n, "a new bond pledges and is valued");
 }
 

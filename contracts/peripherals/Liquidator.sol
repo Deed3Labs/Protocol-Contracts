@@ -24,6 +24,10 @@ interface ICollateralSeizureSink {
     function isItemEncumbered(address holder, bytes32 kind, uint256 itemId) external view returns (bool);
     function collateralValueOf(address member, bytes32 kind) external view returns (uint256);
     function pledgedItemsOf(address member, bytes32 kind) external view returns (uint256[] memory);
+    function isItemPledged(address holder, bytes32 kind, uint256 itemId) external view returns (bool);
+    function advancedValueOf(address member, bytes32 kind, uint256 excludeItem) external view returns (uint256);
+    function advanceBpsOf(address member, bytes32 kind) external view returns (uint256);
+    function networkRegistry() external view returns (address);
     function collateralTypes(bytes32 kind)
         external
         view
@@ -44,10 +48,11 @@ interface IMissedCycleSource {
     function missedInRowOf(address member) external view returns (uint8);
 }
 
-/// @notice The bond collection whose pledged bonds the Liquidator may take and redeem early.
+/// @notice The bond collection whose pledged bonds this contract answers for (Phase 2e).
+/// @dev It takes no bond and redeems none. A pledged bond is paid under its own terms, by the
+/// collection's `payPledged` and `settle`; this contract says whether MB-05 permits enforcement
+/// and applies what the bond pays to the Holder's own debt.
 interface IEarnBonds {
-    function seizeBond(uint256 bondId, address from, address to) external;
-    function redeemEarly(uint256 bondId) external returns (uint256);
     function presentValueOf(uint256 bondId) external view returns (uint256);
     function balanceOf(address account, uint256 id) external view returns (uint256);
     function collateralKind() external view returns (bytes32);
@@ -62,6 +67,10 @@ interface ISeizableShares {
     function requestWithdrawal(uint256 shares, address receiver) external returns (uint256);
     function previewWithdraw(uint256 assets) external view returns (uint256);
     function collateralKind() external view returns (bytes32);
+}
+
+interface IMemberIssuers {
+    function issuersOf(address member) external view returns (address[] memory);
 }
 
 interface ITierSettler {
@@ -91,10 +100,16 @@ interface ITierSettler {
 ///
 /// Section 12 adds three paths and one brake, all in this contract:
 ///  - `settleExcess` (12.5): after one missed cycle halves the unsecured limit, the excess is
-///    settled from pledged pool shares, then bonds. Never Savings.
+///    settled from pledged pool shares. Never Savings, and since Phase 2e never bonds: a missed
+///    cycle is not a case in which MB-05 permits enforcement against a bond.
 ///  - `noticeShortfall` / `settleShortfall` (12.8): when an Earn pledge no longer backs what is
-///    drawn against it, a notice, a governed wait, then the smallest redemption that closes the
-///    gap, pool shares first. Never Savings.
+///    drawn against it, a notice, a governed wait, then the smallest redemption of pool shares
+///    that closes the gap. Never Savings. A bond gap is closed by the bonds' own `payPledged`.
+///  - Pledged bonds (Phase 2e, founder answer G): this contract no longer takes or redeems a bond.
+///    The bond is paid under its own terms -- `payPledged` (IV-01 §4.9) and the pledged maturity
+///    split in `settle` (MB-05 §5.6) -- and this contract only reports whether MB-05 permits
+///    enforcement against it (`pledgePaymentDue`), computes the split (`maturityToDebt`) and
+///    applies what the bond pays to the Holder's own debt, the surplus to the Holder.
 ///  - Savings (`liquidate`) only on a computed default, only against the savings tier, and only up
 ///    to what the savings lock holds.
 ///  - The Liquidation Hold (12.6) delays every enforcement path for one member. It moves nothing
@@ -166,11 +181,13 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     ISeizableShares public earnPool;
     /// @dev Governed wait after a shortfall notice. Zero reads as `MIN_SHORTFALL_WAIT`.
     uint64 private _shortfallWait;
-    /// @notice The bond collection whose pledged bonds the section 12 paths take. Admin-set.
+    /// @notice The bond collection whose pledged bonds this contract answers for. Admin-set.
     IEarnBonds public earnBonds;
-    /// @dev The member this contract is taking a bond from, for the length of that one call.
-    address private _enforcing;
-    /// @dev Re-entry lock on every enforcement path. Packs into `_enforcing`'s slot, so the gap
+    /// @dev Retired in Phase 2e with the seize-and-redeem path: it held the member a bond was being
+    /// taken from. The slot stays so nothing below it moves.
+    /// @custom:oz-renamed-from _enforcing
+    address private retiredEnforcing;
+    /// @dev Re-entry lock on every enforcement path. Packs into `retiredEnforcing`'s slot, so the gap
     /// is unchanged.
     bool private _locked;
 
@@ -209,7 +226,8 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     error LiquidatorNoShortfall(address member);
     error LiquidatorShortfallNoticed(address member);
     error LiquidatorShortfallNotDue(address member, uint256 dueAt);
-    error LiquidatorBelowPresentValue(uint256 bondId, uint256 received, uint256 presentValue);
+    /// @dev Only the bond collection, paying a bond under its own terms, applies a bond payment.
+    error LiquidatorNotEarnBonds(address caller);
 
     event SharesSeized(
         address indexed member, address indexed pool, uint256 shares, uint256 realized, bool queued
@@ -234,7 +252,12 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     event MaxHoldUpdated(HoldReason reason, uint64 maxSeconds);
     event ShortfallWaitUpdated(uint64 waitSeconds);
     event EarnSourcesUpdated(address indexed pool, address indexed bonds);
-    event BondRedeemed(address indexed member, uint256 indexed bondId, uint256 presentValue);
+    /// @notice A pledged bond's payment under its pledge payment term was applied (IV-01 §4.9).
+    event PledgePaymentApplied(
+        address indexed member, address indexed issuer, bool onDefault, uint256 amount, uint256 applied, uint256 surplus
+    );
+    /// @notice A pledged bond's Maturity Instruction was applied to the Holder's Asset-Backed Drawn.
+    event MaturityInstructionApplied(address indexed member, uint256 toDebt, uint256 applied);
     event ExcessSettled(address indexed member, address indexed issuer, uint256 excess, uint256 realized, uint256 applied);
     event ShortfallNoticed(address indexed member, uint256 gap);
     event ShortfallSettled(address indexed member, address indexed issuer, uint256 realized, uint256 applied, uint256 gapAfter);
@@ -479,10 +502,10 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
 
     /// @notice settles the unsecured excess a missed cycle left, out of the member's pledged Earn.
     /// @dev Permissionless, and only for a trusted issuer: the issuer computes the excess (unsecured
-    /// drawn less the halved limit) and nobody declares it. Pool shares go first, then bonds at
-    /// their full present value, for the smallest amount that covers the excess; the proceeds
-    /// settle BOOST, then INCOME. Savings are never touched: a missed cycle is not a default.
-    /// A bond is indivisible, so what it realizes above the excess goes back to the member in cash.
+    /// drawn less the halved limit) and nobody declares it. Pool shares are redeemed for the
+    /// smallest amount that covers the excess; the proceeds settle BOOST, then INCOME. Savings are
+    /// never touched: a missed cycle is not a default. Bonds are not taken either (Phase 2e): a
+    /// pledged bond is paid only under its own terms, when MB-05 permits enforcement against it.
     /// @param member address of the member.
     /// @param issuer the revolving issuer that halved the limit.
     /// @return applied amount settled against BOOST and INCOME now.
@@ -494,16 +517,10 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         if (excess == 0) revert LiquidatorNoExcess(member);
 
         (uint256 realized, uint256 queuedValue) = _realizeShares(member, excess);
-        (bytes32 poolKind, bytes32 bondKind) = _earnKinds();
-        bytes32 spill = poolKind;
-        if (realized + queuedValue < excess) {
-            uint256 fromBonds = _realizeBonds(member, excess - realized - queuedValue);
-            if (fromBonds > 0) (realized, spill) = (realized + fromBonds, bondKind);
-        }
+        (bytes32 spill, ) = _earnKinds();
         if (realized == 0 && queuedValue == 0) revert LiquidatorNothingToSeize(member);
 
-        // What is queued is settled through `settleRealized` when the pool pays it. What a whole
-        // bond realizes above the excess goes to the tier that bond backed, then to the member.
+        // What is queued is settled through `settleRealized` when the pool pays it.
         applied = _settle(member, issuer, [BOOST_KIND, INCOME_KIND, spill], realized, excess - _min(queuedValue, excess));
         emit ExcessSettled(member, issuer, excess, realized, applied);
     }
@@ -533,11 +550,13 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         emit ShortfallNoticed(member, gap);
     }
 
-    /// @notice after the wait, redeems the smallest amount of Earn pledge that closes the gap.
-    /// @dev Permissionless, and only once the notice is `shortfallWait` old. Pool shares first,
-    /// then bonds at their full present value; the proceeds settle the tier that pledge backs.
-    /// Redeeming r of a kind with haircut h closes r x (1 - h) of its gap, so the smallest r is
-    /// gap / (1 - h), rounded up. Never Savings. If the gap closed meanwhile it moves nothing and
+    /// @notice after the wait, redeems the smallest amount of pledged pool shares that closes the
+    /// pool gap.
+    /// @dev Permissionless, and only once the notice is `shortfallWait` old. The proceeds settle the
+    /// tier the shares back. Redeeming r of a kind with advance rate h closes r x (1 - h) of its
+    /// gap, so the smallest r is gap / (1 - h), rounded up. Never Savings. A bond gap is not closed
+    /// here: once the same notice is `shortfallWait` old, the bonds the module requests are paid
+    /// by their own `payPledged` (Phase 2e). If both gaps closed meanwhile it moves nothing and
     /// clears the notice.
     function settleShortfall(address member, address issuer) external noReenter returns (uint256 applied) {
         _requireTrusted(issuer);
@@ -546,29 +565,27 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         uint256 dueAt = noticedAt + shortfallWait();
         if (noticedAt == 0 || block.timestamp < dueAt) revert LiquidatorShortfallNotDue(member, dueAt);
 
-        (bytes32 poolKind, bytes32 bondKind) = _earnKinds();
+        (bytes32 poolKind, ) = _earnKinds();
         uint256 realized;
         uint256 need = _closing(member, issuer, poolKind);
         if (need > 0) {
-            (uint256 now_, ) = _realizeShares(member, need);
-            realized = now_;
-            applied = _settle(member, issuer, [poolKind, bytes32(0), bytes32(0)], now_, now_);
-        }
-        need = _closing(member, issuer, bondKind);
-        if (need > 0) {
-            uint256 got = _realizeBonds(member, need);
-            realized += got;
-            // A bond is indivisible: all it realizes settles the tier it backed, so the tier is
-            // not left drawn against a bond that is gone.
-            applied += _settle(member, issuer, [bondKind, bytes32(0), bytes32(0)], got, got);
+            (realized, ) = _realizeShares(member, need);
+            applied = _settle(member, issuer, [poolKind, bytes32(0), bytes32(0)], realized, realized);
         }
 
+        uint256 gap = _clearShortfallIfClosed(member, issuer);
+        emit ShortfallSettled(member, issuer, realized, applied, gap);
+    }
+
+    /// @dev Clears a member's shortfall notice with an issuer once both Earn gaps are closed, and
+    /// returns what is left of them.
+    function _clearShortfallIfClosed(address member, address issuer) private returns (uint256 gap) {
         (uint256 poolGap, uint256 bondGap) = earnGapOf(member, issuer);
-        if (poolGap + bondGap == 0) {
+        gap = poolGap + bondGap;
+        if (gap == 0 && shortfallNoticedAt[member][issuer] != 0) {
             delete shortfallNoticedAt[member][issuer];
             emit ShortfallCleared(member, issuer);
         }
-        emit ShortfallSettled(member, issuer, realized, applied, poolGap + bondGap);
     }
 
     /// @notice the governed wait between a shortfall notice and its settlement.
@@ -709,22 +726,122 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         ) revert LiquidatorNotInDefault(member, issuer);
     }
 
-    /* ========== SECTION 12: BOND SEIZE GATE ========== */
+    /* ========== PLEDGED BONDS (Phase 2e, founder answer G) ========== */
 
-    /// @notice answers BurnerBond's settlement gate (owner decision on 12.5/12.8 vs audit M-6).
-    /// @dev BurnerBond's default gate stays the issuer's computed default. This second gate is true
-    /// only for the member this contract is taking a bond from, inside that one `settleExcess` or
-    /// `settleShortfall` call, after it has checked on chain that an excess stands or a shortfall
-    /// notice has matured. It declares no default and takes only the smallest covering bond, and
-    /// `redeemEarly` must realize at least present value.
-    function mayTakeBond(address member) external view returns (bool) {
-        return member != address(0) && member == _enforcing;
+    /// @notice whether MB-05 permits enforcement against this pledged bond now, and the pledge
+    /// module requests it (IV-01 §4.9(a); MB-05 §§6.1, 7.3(c)). The collection's `payPledged`
+    /// pays only when this says so.
+    /// @dev Read from on-chain state only; no role sets any of it:
+    ///  - the bond is pledged by `member` in the registry and they hold it;
+    ///  - no Liquidation Hold is active for them (12.6);
+    ///  - with one of their trusted issuers, either (a) a default after notice and cure as that
+    ///    issuer computes it (`inDefault`, or `hasDefaultedOnCurrentLine`: the credit agent's views),
+    ///    and then the need is the secured debt with that issuer; or (b) a shortfall notice at least
+    ///    `shortfallWait` (72 hours or more) old with the bond gap still open, and then the need is
+    ///    the bond value whose payment closes that gap;
+    ///  - and this bond is the one the module requests for that need: the smallest pledged bond
+    ///    that covers it, or else the largest (MB-05 §7.3(c): only as many as are needed).
+    /// @return due whether `payPledged` may pay it now.
+    /// @return issuer the issuer whose debt it pays.
+    /// @return onDefault true for (a), false for (b).
+    function pledgePaymentDue(address member, uint256 bondId)
+        public
+        view
+        returns (bool due, address issuer, bool onDefault)
+    {
+        IEarnBonds bonds = earnBonds;
+        if (address(bonds) == address(0)) return (false, address(0), false);
+        bytes32 kind = bonds.collateralKind();
+        if (!collateralRegistry.isItemPledged(member, kind, bondId) || bonds.balanceOf(member, bondId) == 0) {
+            return (false, address(0), false);
+        }
+        Hold storage hold = _holds[member];
+        if (hold.confirmed && block.timestamp < hold.until) return (false, address(0), false);
+
+        address[] memory issuers = _issuersOf(member);
+        for (uint256 i = 0; i < issuers.length; i++) {
+            issuer = issuers[i];
+            if (!trustedSavingsIssuer[issuer] || _tierCountOf(issuer) == 0) continue;
+            uint256 need;
+            onDefault = ICreditIssuer(issuer).inDefault(member)
+                || ICurrentLineDefault(issuer).hasDefaultedOnCurrentLine(member);
+            if (onDefault) {
+                need = _owedIn(member, issuer, _defaultOrder(kind));
+            } else {
+                uint256 noticedAt = shortfallNoticedAt[member][issuer];
+                if (noticedAt != 0 && block.timestamp >= noticedAt + shortfallWait()) {
+                    need = _closing(member, issuer, kind);
+                }
+            }
+            if (need > 0 && _requestedBond(member, kind, need) == bondId) return (true, issuer, onDefault);
+        }
+        return (false, address(0), false);
     }
 
-    /// @dev A seized bond arrives here for the length of one enforcement call, and nothing else may.
-    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external view returns (bytes4) {
-        if (_enforcing == address(0)) revert LiquidatorBadParameter();
-        return this.onERC1155Received.selector;
+    /// @notice applies a pledged bond's payment to its Holder's MB-05 secured debt, and pays the
+    /// surplus to the Holder (IV-01 §4.9(c)).
+    /// @dev Only the bond collection, from inside its `payPledged`, after `pledgePaymentDue` said
+    /// yes and the vault paid the bond's whole Accreted Value here. The order: on a shortfall, the
+    /// tier the bond backs and nothing else; on a default, that tier, then pool shares' tier, then
+    /// BOOST and INCOME. Never Savings, which has its own collateral. Whatever is left goes to the
+    /// Holder and nowhere else.
+    function applyPledgePayment(address member, address issuer, bool onDefault, uint256 amount)
+        external
+        noReenter
+        returns (uint256 applied)
+    {
+        if (_msgSender() != address(earnBonds)) revert LiquidatorNotEarnBonds(_msgSender());
+        _requireNoHold(member);
+        bytes32 kind = earnBonds.collateralKind();
+        bytes32[4] memory order = onDefault ? _defaultOrder(kind) : [kind, bytes32(0), bytes32(0), bytes32(0)];
+        applied = _applyInOrder(member, issuer, order, amount);
+        if (amount > applied) reserveToken.safeTransfer(member, amount - applied);
+        if (!onDefault) _clearShortfallIfClosed(member, issuer);
+        emit PledgePaymentApplied(member, issuer, onDefault, amount, applied, amount - applied);
+    }
+
+    /// @notice what a matured pledged bond's Maturity Instruction applies to its Holder's debt
+    /// (MB-05 §5.6): min(Maturity Amount, max(0, Asset-Backed Drawn - limitWithout)).
+    /// @dev Computed from on-chain values in this block. Asset-Backed Drawn is what the Holder owes
+    /// in the tier this bond kind backs, across their trusted issuers; `limitWithout` is their
+    /// pledges of this kind without this bond, each at the advance rate stored with it (section 9).
+    function maturityToDebt(address member, uint256 bondId, uint256 maturityAmount)
+        external
+        view
+        returns (uint256)
+    {
+        bytes32 kind = earnBonds.collateralKind();
+        uint256 drawn;
+        address[] memory issuers = _issuersOf(member);
+        for (uint256 i = 0; i < issuers.length; i++) {
+            if (!trustedSavingsIssuer[issuers[i]] || _tierCountOf(issuers[i]) == 0) continue;
+            (bool found, uint256 tierId) = _tierOf(issuers[i], kind);
+            if (found) drawn += ITierSettler(issuers[i]).principalOf(member, tierId);
+        }
+        uint256 limitWithout = collateralRegistry.advancedValueOf(member, kind, bondId);
+        if (drawn <= limitWithout) return 0;
+        return _min(maturityAmount, drawn - limitWithout);
+    }
+
+    /// @notice applies a matured pledged bond's `toDebt` to its Holder's Asset-Backed Drawn.
+    /// @dev Only the bond collection, from inside its `settle`, with `toDebt` it computed with
+    /// `maturityToDebt` in the same transaction and the vault paid here. An application on the
+    /// Holder's own instruction (MB-05 §7.9), not enforcement, so a Liquidation Hold does not stop
+    /// it. Anything the tiers no longer owe goes to the Holder.
+    function applyMaturityInstruction(address member, uint256 toDebt)
+        external
+        noReenter
+        returns (uint256 applied)
+    {
+        if (_msgSender() != address(earnBonds)) revert LiquidatorNotEarnBonds(_msgSender());
+        bytes32 kind = earnBonds.collateralKind();
+        address[] memory issuers = _issuersOf(member);
+        for (uint256 i = 0; i < issuers.length && applied < toDebt; i++) {
+            if (!trustedSavingsIssuer[issuers[i]] || _tierCountOf(issuers[i]) == 0) continue;
+            applied += _applyInOrder(member, issuers[i], [kind, bytes32(0), bytes32(0), bytes32(0)], toDebt - applied);
+        }
+        if (toDebt > applied) reserveToken.safeTransfer(member, toDebt - applied);
+        emit MaturityInstructionApplied(member, toDebt, applied);
     }
 
     /* ========== SECTION 12: HELPERS ========== */
@@ -753,15 +870,12 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         return (false, 0);
     }
 
-    function _haircutOf(bytes32 kind) private view returns (uint256 haircutBps) {
-        (, haircutBps, , , ) = collateralRegistry.collateralTypes(kind);
-    }
-
     function _gapOf(address member, address issuer, bytes32 kind) private view returns (uint256) {
         (bool found, uint256 tierId) = _tierOf(issuer, kind);
         if (!found) return 0;
         uint256 drawn = ITierSettler(issuer).principalOf(member, tierId);
-        uint256 backing = (collateralRegistry.collateralValueOf(member, kind) * _haircutOf(kind)) / BPS;
+        // At the advance rates stored with the member's pledges (section 9).
+        uint256 backing = collateralRegistry.advancedValueOf(member, kind, 0);
         return drawn > backing ? drawn - backing : 0;
     }
 
@@ -771,7 +885,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         uint256 gap = _gapOf(member, issuer, kind);
         if (gap == 0) return 0;
         uint256 value = collateralRegistry.collateralValueOf(member, kind);
-        uint256 haircut = _haircutOf(kind);
+        uint256 haircut = collateralRegistry.advanceBpsOf(member, kind);
         need = haircut >= BPS ? value : Math.mulDiv(gap, BPS, BPS - haircut, Math.Rounding.Up);
         if (need > value) need = value;
     }
@@ -787,51 +901,65 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         (realized, queuedValue, ) = _takeShares(member, kind, pool, count);
     }
 
-    /// @dev Takes pledged bonds until their present value covers `need`: the smallest bond that
-    /// covers what is left, or else the largest and on again. Each is redeemed early and must pay
-    /// at least its present value.
-    function _realizeBonds(address member, uint256 need) private returns (uint256 realized) {
-        IEarnBonds bonds = earnBonds;
-        if (address(bonds) == address(0)) return 0;
-        bytes32 kind = bonds.collateralKind();
+    /// @dev The pledged bond the module requests for `need`: the smallest held, pledged bond whose
+    /// value covers it, or else the largest. Zero when there is none.
+    function _requestedBond(address member, bytes32 kind, uint256 need) private view returns (uint256 pick) {
         uint256[] memory items = collateralRegistry.pledgedItemsOf(member, kind);
-        uint256[] memory values = new uint256[](items.length);
+        uint256 best;
+        bool covers;
         for (uint256 i = 0; i < items.length; i++) {
-            if (bonds.balanceOf(member, items[i]) > 0 && collateralRegistry.isItemEncumbered(member, kind, items[i])) {
-                values[i] = bonds.presentValueOf(items[i]);
+            if (earnBonds.balanceOf(member, items[i]) == 0) continue;
+            uint256 v = earnBonds.presentValueOf(items[i]);
+            if (v == 0) continue;
+            if (v >= need ? (!covers || v < best) : (!covers && v > best)) {
+                (pick, best, covers) = (items[i], v, v >= need);
             }
-        }
-        while (realized < need) {
-            uint256 left = need - realized;
-            uint256 pick = type(uint256).max;
-            uint256 best;
-            bool covers;
-            for (uint256 i = 0; i < values.length; i++) {
-                uint256 v = values[i];
-                if (v == 0) continue;
-                if (v >= left ? (!covers || v < best) : (!covers && v > best)) {
-                    (pick, best, covers) = (i, v, v >= left);
-                }
-            }
-            if (pick == type(uint256).max) break;
-            values[pick] = 0;
-            realized += _redeemBond(member, kind, items[pick], best);
         }
     }
 
-    function _redeemBond(address member, bytes32 kind, uint256 bondId, uint256 presentValue)
+    /// @dev On a default, a bond's payment settles the tier it backs, then pool shares' tier, then
+    /// the unsecured tiers, dearest first. Never Savings.
+    function _defaultOrder(bytes32 bondKind) private view returns (bytes32[4] memory) {
+        (bytes32 poolKind, ) = _earnKinds();
+        return [bondKind, poolKind, BOOST_KIND, INCOME_KIND];
+    }
+
+    /// @dev What a member owes with an issuer across the tiers of `order`.
+    function _owedIn(address member, address issuer, bytes32[4] memory order) private view returns (uint256 owed) {
+        for (uint256 k = 0; k < 4; k++) {
+            (bool found, uint256 tierId) = _tierOf(issuer, order[k]);
+            if (found) owed += ITierSettler(issuer).principalOf(member, tierId);
+        }
+    }
+
+    /// @dev Settles up to `amount` held here against the tiers of `order`, in turn.
+    function _applyInOrder(address member, address issuer, bytes32[4] memory order, uint256 amount)
         private
-        returns (uint256 received)
+        returns (uint256 applied)
     {
-        _enforcing = member;
-        earnBonds.seizeBond(bondId, member, address(this));
-        _enforcing = address(0);
-        collateralRegistry.recordItemSeizure(member, kind, bondId);
-        uint256 before = reserveToken.balanceOf(address(this));
-        earnBonds.redeemEarly(bondId);
-        received = reserveToken.balanceOf(address(this)) - before;
-        if (received < presentValue) revert LiquidatorBelowPresentValue(bondId, received, presentValue);
-        emit BondRedeemed(member, bondId, received);
+        for (uint256 k = 0; k < 4 && applied < amount; k++) {
+            (bool found, uint256 tierId) = _tierOf(issuer, order[k]);
+            if (!found) continue;
+            uint256 pay = _min(ITierSettler(issuer).principalOf(member, tierId), amount - applied);
+            if (pay == 0) continue;
+            reserveToken.forceApprove(issuer, pay);
+            ITierSettler(issuer).settleFromCollateral(member, tierId, pay);
+            applied += pay;
+        }
+    }
+
+    /// @dev The member's issuers, as the network registry lists them.
+    function _issuersOf(address member) private view returns (address[] memory) {
+        return IMemberIssuers(collateralRegistry.networkRegistry()).issuersOf(member);
+    }
+
+    /// @dev How many tiers an issuer has; zero for one without tiers (a term issuer).
+    function _tierCountOf(address issuer) private view returns (uint256) {
+        try ITierSettler(issuer).tierCount() returns (uint256 count) {
+            return count;
+        } catch {
+            return 0;
+        }
     }
 
     /// @dev Settles up to `target` of `realized` against the tiers of `order[0]` then `order[1]`,

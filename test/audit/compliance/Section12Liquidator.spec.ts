@@ -4,6 +4,7 @@ import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { ONE_USDC, DAY, CA, P, CA_BANDS, params, deployRateSchedule } from "./rates";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { pledgeSigned, pledgeItemSigned } from "../../helpers/pledge";
+import { deployBondFactory } from "../../helpers/bonds";
 
 /*
  * Section 12 addendum, the Liquidator side: 12.5 (a missed cycle's excess is settled from Earn,
@@ -74,8 +75,7 @@ async function deployStack(enrolMock = true) {
     [ctx.admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"], { kind: "uups" });
   await pool.setEncumbranceSource(await registry.getAddress(), POOL_SHARE);
 
-  const factory: any = await (await ethers.getContractFactory("BurnerBondFactory"))
-    .deploy(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
+  const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
   const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
   await factory.createCollection(await usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
   const bond: any = await ethers.getContractAt("BurnerBond",
@@ -98,12 +98,11 @@ async function deployStack(enrolMock = true) {
   await clrusd.grantRole(await clrusd.LIQUIDATOR_ROLE(), await liquidator.getAddress());
   await registry.grantRole(await registry.OPERATOR_ROLE(), await liquidator.getAddress());
   await pool.grantRole(await pool.LIQUIDATOR_ROLE(), await liquidator.getAddress());
-  // Named before any bond exists, so it takes effect at once; the Liquidator answers the
-  // collection's seize gate only for its own computed enforcement.
+  // Named before any bond exists, so it takes effect at once. Since Phase 2e the Liquidator is the
+  // pledge module's enforcement side: it takes no bond; the bond's own `payPledged` asks it.
   await bond.setLiquidator(await liquidator.getAddress());
-  // BurnerBond's default gate stays the issuer's computed default; the Liquidator is only the
-  // narrow settlement gate for section 12's missed-cycle and shortfall paths.
-  await bond.setSettlementGate(await liquidator.getAddress());
+  // The collection releases a paid bond's pledge itself, with the role it rolls pledges with.
+  await registry.grantRole(await registry.ITEM_ROLLER_ROLE(), await bond.getAddress());
   await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
   await liquidator.setEarnSources(await pool.getAddress(), await bond.getAddress());
   for (const s of [holdA, holdB, holdC]) await liquidator.grantRole(await liquidator.HOLD_ROLE(), s.address);
@@ -146,15 +145,15 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     return id;
   }
 
-  async function settledBondValue(tx: any, bondId: bigint) {
+  async function pledgePaid(tx: any, bondId: bigint) {
     const receipt = await tx.wait();
     for (const log of receipt.logs) {
       try {
-        const parsed = s.liquidator.interface.parseLog(log);
-        if (parsed?.name === "BondRedeemed" && parsed.args.bondId === bondId) return parsed.args.presentValue as bigint;
+        const parsed = s.bond.interface.parseLog(log);
+        if (parsed?.name === "PledgePaid" && parsed.args.bondId === bondId) return parsed.args.amount as bigint;
       } catch { /* other contracts' logs */ }
     }
-    throw new Error("no BondRedeemed");
+    throw new Error("no PledgePaid");
   }
 
   async function holdOn(reason = Reason.DEATH, duration = 30 * DAY) {
@@ -195,8 +194,11 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       expect(await pool.freeSharesOf(m)).to.equal(U(850));
     });
 
-    it("takes pool shares first, then the smallest bond that covers the rest, at its full present value", async function () {
-      const { issuer, liquidator, pool, bond, usdc, registry } = s;
+    it("takes pool shares only: a missed cycle never reaches a pledged bond (Phase 2e, founder answer G)", async function () {
+      // A missed cycle is not a default after notice and cure, nor a Shortfall, so MB-05 does not
+      // permit enforcement against a bond: the excess is settled from pool shares and the rest of
+      // it stays owed.
+      const { issuer, liquidator, pool, bond, usdc, stranger } = s;
       await poolShares(U(100));
       const small = await buyBond(U(500));
       const large = await buyBond(U(1_000));
@@ -204,27 +206,21 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       await issuer.setPrincipal(m, T_INCOME, U(2_000));
       await issuer.setPrincipal(m, T_BOOST, U(300));
       await issuer.setMissedCycle(m, 1, U(450));
-      // While the excess stands the pledged bonds are held too.
-      expect(await registry.isItemEncumbered(m, BOND, large)).to.equal(true);
 
-      const pvBefore = await bond.presentValueOf(small);
       const usdcBefore = await usdc.balanceOf(m);
-      const tx = await liquidator.settleExcess(m, await issuer.getAddress());
-      const pv = await settledBondValue(tx, small);
+      await expect(liquidator.connect(stranger).settleExcess(m, await issuer.getAddress()))
+        .to.emit(liquidator, "ExcessSettled").withArgs(m, await issuer.getAddress(), U(450), U(100), U(100));
 
-      // 100 of pool shares, then 350 from bonds: the $500 bond covers it on its own.
       expect(await pool.balanceOf(m)).to.equal(0n);
-      expect(await bond.balanceOf(m, small)).to.equal(0n);
+      expect(await bond.balanceOf(m, small)).to.equal(1n);
       expect(await bond.balanceOf(m, large)).to.equal(1n);
-      // At no less than present value (present value only grows with time).
-      expect(pv).to.be.gte(pvBefore);
-      expect(await bond.presentValueOf(small)).to.equal(0n); // redeemed
-      // BOOST 300 then INCOME 150 settled; the bond's surplus goes back to the member in cash.
-      expect(await issuer.principalOf(m, T_BOOST)).to.equal(0n);
-      expect(await issuer.principalOf(m, T_INCOME)).to.equal(U(1_850));
-      expect((await usdc.balanceOf(m)) - usdcBefore).to.equal(pv - U(350));
-      expect(await registry.isItemEncumbered(m, BOND, large)).to.equal(false);
-      await bond.connect(s.ctx.member).safeTransferFrom(m, s.stranger.address, large, 1, "0x");
+      expect(await issuer.principalOf(m, T_BOOST)).to.equal(U(200));
+      expect(await usdc.balanceOf(m)).to.equal(usdcBefore);
+      // And the bonds' own pledge payment term does not run for it either.
+      for (const id of [small, large]) {
+        expect((await liquidator.pledgePaymentDue(m, id))[0]).to.equal(false);
+        await expect(bond.connect(stranger).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
+      }
     });
 
     it("runs only on a computed miss, only for a trusted issuer, and only against Earn", async function () {
@@ -448,8 +444,8 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       expect(await liquidator.shortfallNoticedAt(m, I)).to.equal(0n);
     });
 
-    it("closes the pool gap with shares, then the bond gap with bonds at present value", async function () {
-      const { issuer, liquidator, pool, bond, registry, usdc } = s;
+    it("closes the pool gap with shares; the bond gap is closed by the bond's own payPledged", async function () {
+      const { issuer, liquidator, pool, bond, registry, usdc, stranger } = s;
       const I = await issuer.getAddress();
       await poolShares(U(100));
       await issuer.setPrincipal(m, T_POOL, U(100)); // 100 of shares back 70: gap 30, closed only by all 100
@@ -458,22 +454,32 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       const backing = ((await registry.collateralValueOf(m, BOND)) * 9_500n) / 10_000n;
       await issuer.setPrincipal(m, T_BOND, backing + U(10)); // a 10 gap: about 200 of bond closes it
       await liquidator.noticeShortfall(m, I);
+      // Before the wait, no bond is payable.
+      await expect(bond.connect(stranger).payPledged(bondId)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
       await advance(72 * HOUR);
+
+      await liquidator.settleShortfall(m, I);
+      expect(await pool.balanceOf(m)).to.equal(0n);
+      expect(await issuer.principalOf(m, T_POOL)).to.equal(0n);
+      // settleShortfall takes no bond any more, and the notice stays open for the bond gap.
+      expect(await bond.balanceOf(m, bondId)).to.equal(1n);
+      expect((await liquidator.earnGapOf(m, I))[1]).to.be.greaterThan(0n);
+      expect(await liquidator.shortfallNoticedAt(m, I)).to.not.equal(0n);
 
       const usdcBefore = await usdc.balanceOf(m);
       const drawnBond = await issuer.principalOf(m, T_BOND);
-      const tx = await liquidator.settleShortfall(m, I);
-      const pv = await settledBondValue(tx, bondId);
+      const tx = await bond.connect(stranger).payPledged(bondId);
+      const paid = await pledgePaid(tx, bondId);
 
-      expect(await pool.balanceOf(m)).to.equal(0n);
-      expect(await issuer.principalOf(m, T_POOL)).to.equal(0n);
-      // The whole bond goes, so what it realized settles the bond tier it backed first; only what
-      // is left after that tier is paid off goes back to the member.
+      // The whole bond is paid at its Accreted Value: it settles the bond tier it backed, and only
+      // what is left after that goes back to the member.
       expect(await bond.balanceOf(m, bondId)).to.equal(0n);
-      expect(pv).to.be.greaterThan(drawnBond);
+      expect(paid).to.be.greaterThan(drawnBond);
       expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
-      expect((await usdc.balanceOf(m)) - usdcBefore).to.equal(pv - drawnBond);
+      expect((await usdc.balanceOf(m)) - usdcBefore).to.equal(paid - drawnBond);
       expect([...(await liquidator.earnGapOf(m, I))]).to.deep.equal([0n, 0n]);
+      expect(await liquidator.shortfallNoticedAt(m, I)).to.equal(0n);
+      expect(await registry.pledgedItemsOf(m, BOND)).to.deep.equal([]);
     });
 
     it("does nothing and clears the notice if the gap closed meanwhile", async function () {
@@ -505,8 +511,8 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     const { liquidator, holdA, stranger } = s;
     await expect(liquidator.connect(holdA).setEarnSources(stranger.address, stranger.address)).to.be.reverted;
     await expect(liquidator.connect(stranger).setEarnSources(stranger.address, stranger.address)).to.be.reverted;
-    // The bond gate answers only inside the Liquidator's own call.
-    expect(await liquidator.mayTakeBond(m)).to.equal(false);
+    // Phase 2e: the seize gate is gone with the seize path.
+    expect(liquidator.interface.getFunction("mayTakeBond")).to.equal(null);
   });
 
   it("end to end (12.5) with the real RevolvingIssuer: a missed cycle halves the line, and settleExcess clears the excess from pool shares, Savings untouched", async function () {
@@ -552,7 +558,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     expect(await issuer.inDefault(m)).to.equal(false);
   });
 
-  it("owner decisions: a lapsed hold is proposed again only with new evidence; the bond gate opens only inside a settlement", async function () {
+  it("owner decisions: a lapsed hold is proposed again only with new evidence", async function () {
     const { ctx, liquidator, holdA, holdB } = s;
     const m = ctx.member.address;
     await liquidator.connect(holdA).proposeHold(m, 2, DAY, ethers.id("death-report:1"));
@@ -562,7 +568,5 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       .to.be.revertedWithCustomError(liquidator, "LiquidatorBadParameter");
     await liquidator.connect(holdA).proposeHold(m, 2, DAY, ethers.id("death-report:2"));
     expect(await liquidator.holdEvidence(m)).to.equal(ethers.id("death-report:2"));
-    // Outside its own settlement call the Liquidator lets no bond go.
-    expect(await liquidator.mayTakeBond(m)).to.equal(false);
   });
 });

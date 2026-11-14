@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../helpers/issuers";
 import { pledgeItemSigned } from "../helpers/pledge";
+import { deployBondFactory } from "../helpers/bonds";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -26,8 +27,7 @@ describe("bonds as collateral", function () {
     const signers = await ethers.getSigners();
     [coop, other] = [signers[8], signers[9]];
 
-    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
-    factory = await BurnerBondFactory.deploy(
+    factory = await deployBondFactory(
       await ctx.tokenRegistry.getAddress(),
       "ipfs://bonds"
     );
@@ -116,7 +116,13 @@ describe("bonds as collateral", function () {
         .openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, CYCLE);
     });
 
-    it("moves freely while nothing is drawn against it", async function () {
+    it("does not move while pledged, even with nothing drawn against it (Phase 2e, section 9)", async function () {
+      // A pledged position leaves only through MB-05: `settle` at maturity or `payPledged`. The
+      // member asks for the pledge to be released first if they want to move the bond.
+      await expect(
+        bond.connect(ctx.member).safeTransferFrom(ctx.member.address, other.address, bondId, 1, "0x")
+      ).to.be.revertedWithCustomError(bond, "BurnerBondPledged").withArgs(bondId);
+      await registry.releaseItem(ctx.member.address, BOND, bondId);
       await bond
         .connect(ctx.member)
         .safeTransferFrom(ctx.member.address, other.address, bondId, 1, "0x");
@@ -133,7 +139,7 @@ describe("bonds as collateral", function () {
         bond
           .connect(ctx.member)
           .safeTransferFrom(ctx.member.address, other.address, bondId, 1, "0x")
-      ).to.be.revertedWith("Bond is pledged as collateral");
+      ).to.be.revertedWithCustomError(bond, "BurnerBondPledged").withArgs(bondId);
     });
 
     it("moves again once the credit is repaid", async function () {
@@ -153,30 +159,32 @@ describe("bonds as collateral", function () {
 
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
       expect(await registry.isItemEncumbered(ctx.member.address, BOND, bondId)).to.equal(false);
+      // Released once nothing is drawn (Phase 2e: a pledged bond stays put until then).
+      await registry.releaseItem(ctx.member.address, BOND, bondId);
       await bond
         .connect(ctx.member)
         .safeTransferFrom(ctx.member.address, other.address, bondId, 1, "0x");
       expect(await bond.balanceOf(other.address, bondId)).to.equal(1n);
     });
 
-    it("still lets the co-op take it", async function () {
+    it("nobody takes it: the seize path is gone, and the liquidator is not exempt (founder answer G)", async function () {
       await ctx.stableCredit
         .connect(ctx.member)
         .transfer(ctx.counterparty.address, 500n * ONE_USDC);
 
-      // The lock is there to stop the member emptying the collateral, not to stop the co-op
-      // collecting it. A lock that also binds the liquidator secures nothing.
-      // Audit M-6: naming a liquidator once bonds exist waits out LIQUIDATOR_DELAY, and a
-      // seizure needs the member in default as well as the bond pledged.
+      // A pledged bond is paid only under its own pledge payment term (`payPledged`), when MB-05
+      // permits enforcement. Naming the co-op as the collection's liquidator gives it nothing to
+      // take with: no seizeBond, and the pledge lock binds it like anyone else.
       await bond.setLiquidator(coop.address);
       await ethers.provider.send("evm_increaseTime", [7 * 24 * 3600]);
       await ethers.provider.send("evm_mine", []);
       await bond.executeLiquidatorChange();
-      const signals = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
-      await signals.setInDefault(ctx.member.address, true);
-      await bond.setDefaultSource(await signals.getAddress());
-      await bond.connect(coop).seizeBond(bondId, ctx.member.address, coop.address);
-      expect(await bond.balanceOf(coop.address, bondId)).to.equal(1n);
+      expect(bond.interface.getFunction("seizeBond")).to.equal(null);
+      await bond.connect(ctx.member).setApprovalForAll(coop.address, true);
+      await expect(
+        bond.connect(coop).safeTransferFrom(ctx.member.address, coop.address, bondId, 1, "0x")
+      ).to.be.revertedWithCustomError(bond, "BurnerBondPledged").withArgs(bondId);
+      expect(await bond.balanceOf(ctx.member.address, bondId)).to.equal(1n);
     });
 
     it("leaves an unpledged bond alone", async function () {
@@ -217,8 +225,9 @@ describe("bonds as collateral", function () {
     });
 
     it("refuses while the credit is drawn", async function () {
+      // Phase 2e: a pledged bond pays out only through `settle`, under its Maturity Instruction.
       await expect(bond.connect(ctx.member).redeemBond(bondId))
-        .to.be.revertedWithCustomError(vault, "BondVaultBondPledged")
+        .to.be.revertedWithCustomError(bond, "BurnerBondPledged")
         .withArgs(bondId);
       expect(await bond.balanceOf(ctx.member.address, bondId)).to.equal(1n);
     });
@@ -233,6 +242,8 @@ describe("bonds as collateral", function () {
       }
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
 
+      // The member's pledge is released once nothing is drawn, and then the bond redeems.
+      await registry.releaseItem(ctx.member.address, BOND, bondId);
       const before = await ctx.usdc.balanceOf(ctx.member.address);
       await bond.connect(ctx.member).redeemBond(bondId);
       expect((await ctx.usdc.balanceOf(ctx.member.address)) - before).to.equal(1_000n * ONE_USDC);
@@ -278,7 +289,7 @@ describe("bonds as collateral", function () {
         bond
           .connect(ctx.member)
           .safeTransferFrom(ctx.member.address, other.address, bondId + 1n, 1, "0x")
-      ).to.be.revertedWith("Bond is pledged as collateral");
+      ).to.be.revertedWithCustomError(bond, "BurnerBondPledged").withArgs(bondId + 1n);
     });
 
     it("leaves an unpledged bond's roll alone", async function () {
@@ -347,13 +358,10 @@ describe("bonds as collateral", function () {
 
     it("counts a bond the member no longer holds as worth nothing", async function () {
       const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
-      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
-      // Nothing drawn, so the bond is free to leave -- but the registry still lists the pledge.
-      await bond
-        .connect(ctx.member)
-        .safeTransferFrom(ctx.member.address, other.address, bondId, 1, "0x");
-
-      expect(await registry.collateralValueOf(ctx.member.address, BOND)).to.equal(0n);
+      // Phase 2e: a pledged bond no longer leaves while pledged, so the valuer's own rule is checked
+      // directly -- whoever does not hold a bond is credited nothing for it.
+      expect(await valuer.valueOfItems(other.address, [bondId])).to.equal(0n);
+      expect(await valuer.valueOfItems(ctx.member.address, [bondId])).to.equal(await bond.presentValueOf(bondId));
     });
 
     it("sums a member's pledged bonds", async function () {
