@@ -1,6 +1,6 @@
 # 12.17 Statement data
 
-Verbatim from the owner (Nov 14, 2026). The conflict list and the owner's answers will be recorded in `addendum-4-decisions.md` once decided.
+Verbatim from the owner (Nov 14, 2026). The owner's binding decisions are in `addendum-4-decisions.md`, items 16 to 23.
 
 ---
 

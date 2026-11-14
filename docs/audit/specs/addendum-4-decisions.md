@@ -35,3 +35,21 @@ The owner accepted every recommendation below. They control where they differ fr
     - The 7-day limit uses Phase 2e's `PacificCalendar` library.
     - The 90-day full reserve is built together with the BondVault reserve schedule.
     - The EIP-712 confirmation from the Holder's smart account (an EIP-1271 signature) still needs a real-device test of Privy signatures before launch.
+
+## 12.17 Statement data (owner, Nov 14, 2026), binding
+The spec text is in `addendum-12-17-statement-data.md`. The owner accepted every recommendation:
+16. **Built in Phase 2g** with Addendum 4. 2g splits between two agents:
+    - one for the credit side: pause clocks, `pausedSeconds`, `incomePause` per hardship, and 12.17;
+    - one for the CLRUSD de-listing status and the Legacy Contact module.
+17. **Events, plus one stored snapshot.**
+    - At each cycle close, emit an event with each position's principal and carry at the end, its carry for the cycle, the Rebalance Amount, the Secured Minimum and their total, and the statement-required flag. The cycle's start figures are the previous cycle's end figures, which the event repeats.
+    - Store only the most recently closed cycle, for views.
+    - Test 56's "readable for a closed cycle" is met by the events plus that snapshot.
+18. **Figures as at the cycle end, even when the close is recorded late.** A keeper records the close after the cycle end. Carry is deterministic, so the close event carries figures exactly as at the cycle-end timestamp. It records both the cycle-end timestamp and the time it was recorded.
+19. **A running principal-seconds total per position per cycle**, updated on every draw and payment, so the statement's average daily balance needs no recomputation.
+20. **Payment events break out carry and principal for each position reduced**, not only totals.
+21. **Collateral changes:**
+    - Every change to encumbered CLRUSD, and every Earn pledge, release, roll and force-settlement (`payPledged`, the maturity split and `completeSettlement`), emits an event with the member, the amount and the position. Time is the block time.
+    - Check the existing events, and add the member and amount wherever they are missing.
+22. **Statement-required** is set when any position, secured ones included, ends the cycle with a nonzero balance, carry included. There is no threshold. It applies to revolving cycles only.
+23. **Contract size:** split modules as needed (RevolvingIssuerExtension has about 163 bytes left), using the constructor-argument module pattern.
