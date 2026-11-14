@@ -68,7 +68,7 @@ async function savingsStack() {
     await pledgeSigned(registry, m, SAVINGS, amount);
   };
   const openLine = (savingsCap: bigint, incomeCap: bigint) =>
-    issuer.connect(ctx.operator).openLine(m.address, [savingsCap, incomeCap], CYCLE, CYCLE);
+    issuer.connect(ctx.operator).openLine(m.address, [savingsCap, incomeCap], 0);
   const spend = (amount: bigint) => ctx.stableCredit.connect(m).transfer(ctx.counterparty.address, amount);
   return { ctx, clrusd, vault, issuer, registry, liquidator, coop, settler, float, stranger, save, openLine, spend };
 }
@@ -454,7 +454,7 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       const core = await pricedCredit();
       const { ctx, revolving, merchant } = core;
       const m = ctx.member.address;
-      await revolving.connect(ctx.operator).openLine(m, [0n, 0n, 1_000n * ONE_USDC, 2_000n * ONE_USDC], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(m, [0n, 0n, 1_000n * ONE_USDC, 2_000n * ONE_USDC], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 3_000n * ONE_USDC);
       // On $3,000 the ceiling allows 146.25 bps; at list (150 on $1,000 and 300 on $2,000) the excess
       // is trimmed from Boost first, leaving it at 144.375 bps against Income's 150.
@@ -471,7 +471,7 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       const core = await pricedCredit();
       const { ctx, revolving, term, merchant } = core;
       const m = ctx.member.address;
-      await revolving.connect(ctx.operator).openLine(m, [0n, 0n, 1_000n * ONE_USDC, 2_000n * ONE_USDC], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(m, [0n, 0n, 1_000n * ONE_USDC, 2_000n * ONE_USDC], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 3_000n * ONE_USDC);
       // A $500 partner plan, signed at 200 bps (its own cap on $500 is 222.5). On the member's
       // $3,500 aggregate it costs 139.64 bps per 30 days now: less than Income's 150, though its
@@ -581,7 +581,7 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
     it("re-attested to a state with no product yet, the member stays on CA's price, never the tier's own rate", async function () {
       const { ctx, revolving, rates } = await revolvingStack();
       const m = ctx.member.address;
-      await revolving.connect(ctx.operator).openLine(m, [0n, 1_000n * ONE_USDC], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(m, [0n, 1_000n * ONE_USDC], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 1_000n * ONE_USDC);
       const inCa = await carryOver(revolving, m, CYCLE);
       await ctx.networkRegistry.attestStateCode(m, NY);

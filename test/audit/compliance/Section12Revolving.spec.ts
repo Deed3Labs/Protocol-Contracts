@@ -60,7 +60,7 @@ describe("COMPLIANCE section 12: the revolving line", function () {
   });
 
   async function open(savings: bigint, income: bigint, boost: bigint) {
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [savings, income, boost].map((n) => n * ONE_USDC), CYCLE, GRACE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [savings, income, boost].map((n) => n * ONE_USDC), 0);
   }
   async function spend(amount: bigint) {
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount * ONE_USDC);

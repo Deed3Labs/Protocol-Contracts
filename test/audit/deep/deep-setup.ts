@@ -1,6 +1,7 @@
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../../helpers/issuers";
+import { feeRecipientOf } from "../../helpers/plans";
 
 /*
  * Shared wiring for the deep-pass audit tests: the credit core as AuditPoC.spec.ts wires it
@@ -68,6 +69,8 @@ export async function deployCore(opts: { fundPool?: bigint } = {}) {
   await ctx.usdc.mint(funder.address, 1_000_000n * ONE_USDC);
   await ctx.usdc.connect(funder).approve(await pool.getAddress(), ethers.MaxUint256);
   if (opts.fundPool && opts.fundPool > 0n) await pool.connect(funder).fund(opts.fundPool);
+  // 12.16: the fee leg's recipient, Clear Lending's (signer 19), named by two people.
+  const feeRecipient = await feeRecipientOf(term);
 
-  return { ctx, revolving, term, registry, pool, coop, merchant, merchant2, funder, attacker, member2, member3 };
+  return { ctx, revolving, term, registry, pool, coop, merchant, merchant2, funder, attacker, member2, member3, feeRecipient };
 }

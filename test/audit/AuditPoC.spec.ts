@@ -95,7 +95,7 @@ describe("AUDIT PoC", function () {
 
   it("C-1b (fixed): a revolving draw to an unregistered wallet is refused, with or without the registry wired", async function () {
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 1_000n * ONE_USDC], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 1_000n * ONE_USDC], 0);
     // Registry not yet wired to the ledger: the issuer's draw check fails closed.
     await expect(ctx.stableCredit.connect(m).transfer(attackerWallet.address, 3_000n * ONE_USDC))
       .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditTransactionInvalid");
@@ -117,7 +117,7 @@ describe("AUDIT PoC", function () {
     await pool.connect(funder).withdrawCapital(20_000n * ONE_USDC, funder.address);
     await wireLedgerToRegistry();
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     await expect(ctx.stableCredit.connect(m).transfer(attackerWallet.address, 2_000n * ONE_USDC))
       .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditRecipientNotEligible");
     await expect(pool.connect(attackerWallet).redeem(2_000n * ONE_USDC))
@@ -169,7 +169,7 @@ describe("AUDIT PoC", function () {
   it("H-2 (fixed): syncing a compliant member at expiry rolls the period forward, and the line can still default", async function () {
     await wireLedgerToRegistry();
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     // Cycle and grace run out while compliant (balance zero).
     await advance(CYCLE + CYCLE + 1);
     // Permissionless, as before -- but now it renews instead of deleting.
@@ -192,7 +192,7 @@ describe("AUDIT PoC", function () {
 
   it("H-2 (fixed): operators may extend or pause a period, never bring a deadline closer", async function () {
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     const [, expiration, grace] = await revolving.creditPeriods(m.address);
     await expect(revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration - 1n))
       .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");

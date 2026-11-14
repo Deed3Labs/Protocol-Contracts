@@ -168,9 +168,9 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     // The revolving line is gated the same way.
     await rates.setProduct(CA, P("REVOLVING"), params(), CA_BANDS);
     await revolving.connect(ctx.admin).setPricing(await rates.getAddress(), P("REVOLVING"));
-    await expect(revolving.connect(ctx.operator).openLine(member2.address, [0n, 0n, 100n, 0n], 0, CYCLE))
+    await expect(revolving.connect(ctx.operator).openLine(member2.address, [0n, 0n, 100n, 0n], 0))
       .to.be.revertedWithCustomError(revolving, "RevolvingIssuerStateNotEnabled");
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 100n, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 100n, 0n], 0);
   });
 
   it("DECISIONS #7: term plans and unsecured revolving principal are one loan for the cap, until governance turns it off", async function () {
@@ -183,7 +183,7 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     await rates.setCflSources([await revolving.getAddress(), await term.getAddress()]);
     expect(await rates.cflAggregationOff()).to.equal(false); // on by default
 
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 1_000n * ONE_USDC);
     await open(ctx.member, 940n * ONE_USDC, 4);
     expect(await rates.aggregatePrincipalOf(ctx.member.address)).to.equal(1_940n * ONE_USDC);

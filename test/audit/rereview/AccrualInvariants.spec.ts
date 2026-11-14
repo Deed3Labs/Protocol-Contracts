@@ -82,7 +82,7 @@ async function setup() {
   const members = [ctx.member, member2, member3];
   for (const m of members) {
     await ctx.networkRegistry.attestStateCode(m.address, CA);
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_000n * ONE_USDC, 500n * ONE_USDC], CYCLE, 5 * DAY);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 0);
     await term.connect(ctx.operator).setTermLimit(m.address, 10_000n * ONE_USDC);
   }
   return { ...core, rates, members };

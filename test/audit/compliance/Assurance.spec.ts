@@ -92,7 +92,7 @@ describe("COMPLIANCE section 13: Assurance Contracts (acceptance 31-33)", functi
     });
 
     async function unsecured(amount: bigint) {
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, amount, 0n], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, amount, 0n], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
       await registry.refresh(ctx.member.address);
     }
@@ -420,7 +420,7 @@ describe("COMPLIANCE section 13: Assurance Contracts (acceptance 31-33)", functi
       }
 
       // Some life in the system: savings pledged, a revolving draw at a merchant, a redemption.
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [usd(2_000), 0n, 0n, 0n], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [usd(2_000), 0n, 0n, 0n], 0);
       await usdc.mint(ctx.member.address, usd(5_000));
       await usdc.connect(ctx.member).approve(await vault.getAddress(), ethers.MaxUint256);
       await vault.connect(ctx.member).deposit(await usdc.getAddress(), usd(3_000), ctx.member.address);

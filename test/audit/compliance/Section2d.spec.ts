@@ -304,7 +304,7 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
 
       // 10b liquidation: the seized CLRUSD is burned one-for-one and the USDC settles the debt.
       await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
-      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 30 * DAY, 30 * DAY);
+      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 400n * ONE_USDC);
       await driveToDefault(issuer, ctx.member.address, ctx.operator);
       const r1 = await reserve(), s1 = await supply(), debt = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
@@ -513,7 +513,7 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
 
       // A de-listed member in default is still liquidated: the seizure is exempt, and the lock holds.
       await pledgeSigned(registry, ctx.member.address, SAVINGS, 999n * ONE_USDC);
-      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 30 * DAY, 30 * DAY);
+      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 300n * ONE_USDC);
       await ctx.access.connect(ctx.operator).revokeMember(ctx.member.address);
       await expect(clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 900n * ONE_USDC)).to.be.revertedWithCustomError(clrusd, "ClearUSDEncumbered");

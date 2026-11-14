@@ -63,7 +63,7 @@ describe("ClearUSDUpgradeable", function () {
     await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
     await revolving
       .connect(ctx.operator)
-      .openLine(ctx.member.address, [1_000n * ONE_USDC], ONE_YEAR, CYCLE);
+      .openLine(ctx.member.address, [1_000n * ONE_USDC], 0);
   });
 
   async function spend(amount: bigint) {

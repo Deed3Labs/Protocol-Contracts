@@ -11,7 +11,7 @@ describe("DEEP AUDIT PoC", function () {
   it("X-1 (fixed): refunding a paid plan never touches the member's other debt; the merchant owes the shortfall itself", async function () {
     const { ctx, revolving, term, pool, merchant } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     await ctx.stableCredit.connect(m).transfer(merchant.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
@@ -138,7 +138,7 @@ describe("DEEP AUDIT PoC", function () {
   it("X-6 (fixed): a term default writes off the term plan only; the revolving tier and the ledger stay in step", async function () {
     const { ctx, revolving, term, merchant } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 0n, 1_000n * ONE_USDC], 3650 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 0n, 1_000n * ONE_USDC], 0);
     await ctx.stableCredit.connect(m).transfer(merchant.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);

@@ -537,7 +537,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
 
     await save(U(300));
     await poolShares(U(1_000));
-    await issuer.connect(ctx.operator).openLine(m, [0n, 0n, 0n, U(1_000), U(500)], CYCLE, GRACE);
+    await issuer.connect(ctx.operator).openLine(m, [0n, 0n, 0n, U(1_000), U(500)], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, U(1_500));
 
     await advance(CYCLE + GRACE + 1);

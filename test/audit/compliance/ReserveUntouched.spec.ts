@@ -190,7 +190,7 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       await ctx.usdc.connect(ctx.member).approve(await vault.getAddress(), ethers.MaxUint256);
       await vault.connect(ctx.member).deposit(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, ctx.member.address);
       await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
-      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 30 * DAY, 30 * DAY);
+      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 400n * ONE_USDC);
       // Section 12.5: two missed rebalances in a row, each judged, then the cure window.
       await driveToDefault(issuer, ctx.member.address, ctx.operator);

@@ -100,7 +100,7 @@ describe("Liquidator", function () {
   async function openLine(savingsCap: bigint, incomeCap: bigint, periodLength: number) {
     await issuer
       .connect(ctx.operator)
-      .openLine(ctx.member.address, [savingsCap, incomeCap], periodLength, CYCLE);
+      .openLine(ctx.member.address, [savingsCap, incomeCap], 0);
   }
 
   async function spend(amount: bigint) {

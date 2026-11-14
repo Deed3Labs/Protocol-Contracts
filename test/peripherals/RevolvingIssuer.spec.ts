@@ -50,7 +50,7 @@ describe("RevolvingIssuer", function () {
   async function openLine(capacities: bigint[]) {
     await issuer
       .connect(ctx.operator)
-      .openLine(ctx.member.address, capacities, ONE_YEAR, CYCLE);
+      .openLine(ctx.member.address, capacities, 0);
   }
 
   async function spend(amount: bigint) {
@@ -220,7 +220,7 @@ describe("RevolvingIssuer", function () {
     it("opens a line on the network's cycle when asked for no particular one", async function () {
       await issuer
         .connect(ctx.operator)
-        .openLine(ctx.member.address, [100n * ONE_USDC], 0, CYCLE);
+        .openLine(ctx.member.address, [100n * ONE_USDC], 0);
 
       const [issuedAt, expiration] = await issuer.creditPeriods(ctx.member.address);
       expect(expiration - issuedAt).to.equal(BigInt(CYCLE));
@@ -232,7 +232,7 @@ describe("RevolvingIssuer", function () {
       // not by arithmetic.
       await issuer
         .connect(ctx.operator)
-        .openLine(ctx.member.address, [100n * ONE_USDC], ONE_YEAR, CYCLE);
+        .openLine(ctx.member.address, [100n * ONE_USDC], 0);
 
       const [issuedAt, expiration] = await issuer.creditPeriods(ctx.member.address);
       expect(expiration - issuedAt).to.equal(BigInt(ONE_YEAR));

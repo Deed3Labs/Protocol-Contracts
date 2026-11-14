@@ -132,7 +132,7 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
     it("a member current on a term plan, who never drew the revolving line, earns Clean Cycles and never defaults", async function () {
       const core = await deployCore();
       const { ctx, revolving, term, merchant, coop } = core;
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], CYCLE, GRACE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
       await term.connect(ctx.operator).setTermLimit(ctx.member.address, 2_000n * ONE_USDC);
       await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 1_200n * ONE_USDC, 1_170n * ONE_USDC, 150n, CYCLE, 12, CYCLE);
       for (let cycle = 1; cycle <= 3; cycle++) {
@@ -153,7 +153,7 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
     it("an undrawn revolving balance still has to be rebalanced: a revolving draw left unpaid misses the cycle", async function () {
       const core = await deployCore();
       const { ctx, revolving, merchant, coop } = core;
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], CYCLE, GRACE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 100n * ONE_USDC);
       await advance(CYCLE + GRACE + 1);
       await revolving.connect(coop).syncCreditPeriod(ctx.member.address);
@@ -292,7 +292,7 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
 
     it("pricing set while members hold balances: positions stay readable and repayable, and carry is never over the cap", async function () {
       const { ctx, revolving, price } = await revolvingStack(false);
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 1_500n * ONE_USDC);
       await advance(10 * DAY);
       await price();
@@ -311,7 +311,7 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
 
     it("a member re-attested to a state whose products launch later can still repay", async function () {
       const { ctx, revolving, rates } = await revolvingStack(true);
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 0n], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 500n * ONE_USDC);
       await advance(CYCLE);
       await ctx.networkRegistry.attestStateCode(ctx.member.address, NY);
@@ -404,7 +404,7 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       await revolving.connect(ctx.operator).addTier(ethers.encodeBytes32String("SAVINGS"), 0n, CYCLE);
       await revolving.connect(ctx.operator).setCardSettler(settler.address, true);
       await revolving.connect(ctx.operator).setCardSettlementAccount(float.address);
-      await revolving.connect(ctx.operator).openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, GRACE);
+      await revolving.connect(ctx.operator).openLine(ctx.member.address, [500n * ONE_USDC], 0);
       await revolving.connect(ctx.member).setSavingsDrawAllowance(ethers.MaxUint256);
       for (const [ref, amount] of [["c1", 100n], ["c2", 50n]] as const) {
         await revolving.connect(settler).authorizeCardSpend(ethers.id(ref), ctx.member.address, amount * ONE_USDC);

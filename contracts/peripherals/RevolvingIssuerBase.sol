@@ -264,6 +264,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     uint256[3] private __gap;
 
     bytes32 internal constant BOOST_KIND = "BOOST";
+    bytes32 internal constant INCOME_KIND = "INCOME";
     bytes32 internal constant SAVINGS_KIND = "SAVINGS";
     uint8 internal constant SCOPE_ALL = 1;
     uint8 internal constant LEVEL_DUE_ONLY = 2;
@@ -715,9 +716,9 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         return s.securedPastDue != 0 && s.incomePause == 0;
     }
 
-    /// @dev Asset-backed: neither Savings nor priced (unsecured).
+    /// @dev Asset-backed: neither Savings nor unsecured.
     function _isAssetBacked(uint256 tierId) internal view returns (bool) {
-        return tierProduct[tierId] == bytes32(0) && tiers[tierId].kind != SAVINGS_KIND;
+        return !_isUnsecured(tierId) && tiers[tierId].kind != SAVINGS_KIND;
     }
 
     /// @dev Whether the member's recorded default belongs to the line they hold today (Phase 4b
@@ -783,9 +784,11 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
 
     /* ---- section 12 helpers ---- */
 
-    /// @dev Income-backed and Boost: the tiers priced from RateSchedule, nothing pledged behind them.
+    /// @dev Income-backed and Boost: nothing pledged behind them. A tier priced from RateSchedule,
+    /// or one of those kinds on its own rate.
     function _isUnsecured(uint256 tierId) internal view returns (bool) {
-        return tierProduct[tierId] != bytes32(0);
+        bytes32 kind = tiers[tierId].kind;
+        return tierProduct[tierId] != bytes32(0) || kind == BOOST_KIND || kind == INCOME_KIND;
     }
 
     /// @dev The member's unsecured capacity and drawn amount together. Drawn includes carry accrued

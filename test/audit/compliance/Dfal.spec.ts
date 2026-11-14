@@ -78,7 +78,7 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
 
   async function drawSavings(amount: bigint, period = 30 * DAY) {
     const { ctx, issuer } = s;
-    await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], period, CYCLE);
+    await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
   }
 

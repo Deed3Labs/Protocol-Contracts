@@ -17,7 +17,7 @@ describe("AUDIT H-4 / M-2: credit hot keys", function () {
     await ctx.access.grantOperator(attacker.address);
     await expect(term.connect(attacker).setTermLimit(attacker.address, 1_000n * ONE_USDC))
       .to.be.revertedWithCustomError(term, "CreditIssuerMissingRole");
-    await expect(revolving.connect(attacker).openLine(attacker.address, [0n, 0n, 1n, 0n], 0, CYCLE))
+    await expect(revolving.connect(attacker).openLine(attacker.address, [0n, 0n, 1n, 0n], 0))
       .to.be.revertedWithCustomError(revolving, "CreditIssuerMissingRole");
     await expect(revolving.connect(attacker).setTierCarryRecipient(2, attacker.address))
       .to.be.revertedWithCustomError(revolving, "CreditIssuerMissingRole");
@@ -34,7 +34,7 @@ describe("AUDIT H-4 / M-2: credit hot keys", function () {
     await ctx.access.revokeRole(LINES, attacker.address);
     await ctx.access.grantRole(LIMITS, attacker.address);
     // A limits key cannot open a plan or change a setting.
-    await expect(revolving.connect(attacker).openLine(ctx.member.address, [0n, 0n, 1n, 0n], 0, CYCLE))
+    await expect(revolving.connect(attacker).openLine(ctx.member.address, [0n, 0n, 1n, 0n], 0))
       .to.be.revertedWithCustomError(revolving, "CreditIssuerMissingRole");
     await expect(term.connect(attacker).setCarryTreasury(attacker.address))
       .to.be.revertedWithCustomError(term, "CreditIssuerMissingRole");
@@ -85,7 +85,7 @@ describe("AUDIT H-4 / M-2: credit hot keys", function () {
     await expect(signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 400n * ONE_USDC, 390n * ONE_USDC, 150n, CYCLE, 1, CYCLE))
       .to.be.revertedWithCustomError(term, "CreditIssuerDailyCapExceeded");
 
-    await revolving.connect(ctx.operator).openLine(member2.address, [0n, 0n, 800n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(member2.address, [0n, 0n, 800n * ONE_USDC, 0n], 0);
     await expect(revolving.connect(ctx.operator).setTierCapacity(member2.address, 2, 1_100n * ONE_USDC))
       .to.be.revertedWithCustomError(revolving, "CreditIssuerDailyCapExceeded");
 
@@ -102,7 +102,7 @@ describe("AUDIT H-4 / M-2: credit hot keys", function () {
     await revolving.connect(ctx.admin).setCardSettlementAccount(float.address);
     await revolving.connect(ctx.admin).setCardCaps(300n * ONE_USDC, 500n * ONE_USDC);
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
 
     // No authorization, no settlement: a settler key cannot invent purchases after the fact.
     const R1 = ethers.id("r1");

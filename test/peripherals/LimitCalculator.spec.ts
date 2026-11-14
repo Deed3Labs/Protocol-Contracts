@@ -71,7 +71,7 @@ describe("LimitCalculator", function () {
     // The member has a line open with no capacity yet.
     await issuer
       .connect(ctx.operator)
-      .openLine(ctx.member.address, [0n, 0n, 0n, 0n], ONE_YEAR, CYCLE);
+      .openLine(ctx.member.address, [0n, 0n, 0n, 0n], 0);
   });
 
   async function now() {

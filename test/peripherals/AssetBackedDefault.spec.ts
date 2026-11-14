@@ -84,7 +84,7 @@ describe("asset-backed default", function () {
 
     await issuer
       .connect(ctx.operator)
-      .openLine(ctx.member.address, [700n * ONE_USDC], CYCLE, CYCLE);
+      .openLine(ctx.member.address, [700n * ONE_USDC], 0);
   });
 
   async function spendAndDefault(amount: bigint) {

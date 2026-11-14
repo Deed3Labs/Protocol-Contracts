@@ -51,7 +51,7 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
   }
 
   it("acceptance 3: Boost $500 at 3% plus income $1,000 at 1.5% is trimmed to the $28.125 ceiling on $1,500, Boost first", async function () {
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 365 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 0);
     await spend(1_500n * ONE_USDC); // cheapest first: income 1,000, then Boost 500
     await advance(CYCLE);
     await revolving.materialiseCarry(ctx.member.address);
@@ -68,7 +68,7 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
   });
 
   it("acceptance 4: no interest on interest -- three untouched cycles charge three times one cycle, on principal alone", async function () {
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 0n], 0);
     await spend(1_000n * ONE_USDC);
     const snap = await ethers.provider.send("evm_snapshot", []);
 
@@ -90,7 +90,7 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
   });
 
   it("a payment inside a tier clears carry before principal", async function () {
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 0n], 0);
     await spend(1_000n * ONE_USDC);
     await advance(CYCLE);
     await revolving.materialiseCarry(ctx.member.address);
@@ -123,7 +123,7 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
     });
 
     await clrusd.mint(ctx.member.address, 2_000n * ONE_USDC);
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [2_000n * ONE_USDC, 0n, 0n], 365 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [2_000n * ONE_USDC, 0n, 0n], 0);
     await pledgeSigned(registry, ctx.member.address, SAV, 2_000n * ONE_USDC);
     await spend(1_500n * ONE_USDC);
     await advance(CYCLE);

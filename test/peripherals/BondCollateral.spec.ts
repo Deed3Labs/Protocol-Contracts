@@ -113,7 +113,7 @@ describe("bonds as collateral", function () {
       await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
       await issuer
         .connect(ctx.operator)
-        .openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, CYCLE);
+        .openLine(ctx.member.address, [500n * ONE_USDC], 0);
     });
 
     it("moves freely while nothing is drawn against it", async function () {
@@ -207,7 +207,7 @@ describe("bonds as collateral", function () {
       await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
       await issuer
         .connect(ctx.operator)
-        .openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, CYCLE);
+        .openLine(ctx.member.address, [500n * ONE_USDC], 0);
       await ctx.stableCredit
         .connect(ctx.member)
         .transfer(ctx.counterparty.address, 400n * ONE_USDC);
@@ -256,7 +256,7 @@ describe("bonds as collateral", function () {
       await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
       await issuer
         .connect(ctx.operator)
-        .openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, CYCLE);
+        .openLine(ctx.member.address, [500n * ONE_USDC], 0);
       await ctx.stableCredit
         .connect(ctx.member)
         .transfer(ctx.counterparty.address, 400n * ONE_USDC);
@@ -392,7 +392,7 @@ describe("bonds as collateral", function () {
       await registry.grantRole(await registry.OPERATOR_ROLE(), await limits.getAddress());
       // A ceiling has to have somewhere to land: the calculator sets a line's capacity, it does
       // not open the line.
-      await issuer.connect(ctx.operator).openLine(ctx.member.address, [0n], CYCLE, CYCLE);
+      await issuer.connect(ctx.operator).openLine(ctx.member.address, [0n], 0);
     });
 
     it("gives a member with no collateral and no attestation nothing", async function () {

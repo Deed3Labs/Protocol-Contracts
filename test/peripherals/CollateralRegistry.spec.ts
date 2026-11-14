@@ -64,7 +64,7 @@ describe("CollateralRegistry", function () {
   async function openLine(capacities: bigint[]) {
     await revolving
       .connect(ctx.operator)
-      .openLine(ctx.member.address, capacities, ONE_YEAR, CYCLE);
+      .openLine(ctx.member.address, capacities, 0);
   }
 
   async function spend(amount: bigint) {

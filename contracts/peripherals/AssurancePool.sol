@@ -449,6 +449,9 @@ contract AssurancePool is IAssurancePool, UUPSUpgradeable, ReentrancyGuardUpgrad
     /// @notice pays a member Assurance grant to the co-op's disbursement address, from
     /// MEMBER_ASSURANCE only. Two signers: the first call proposes, the same call from a different
     /// signer pays. Reverts if MEMBER_ASSURANCE is short; never falls back to another compartment.
+    /// It also pays Hardship Grants (MB-10 Schedule 5; Addendum 2, section 13 addition) under the
+    /// same rule and to the same address; the co-op then pays the landlord, lender or servicer off
+    /// chain. The Credit Backstop can never fund a grant: nothing here reads it.
     /// @dev `grantId` is the co-op's own reference. No member data goes on chain.
     function releaseAssurance(bytes32 grantId, uint256 amount, bytes32 evidenceHash) external nonReentrant {
         if (amount == 0 || grantId == bytes32(0)) revert AssurancePoolInvalidAmount();
