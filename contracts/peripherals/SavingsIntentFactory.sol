@@ -166,7 +166,7 @@ contract SavingsIntentFactory is AccessControl {
     ///      no, refuses the record. A token with no membership source answers yes for everyone; then
     ///      recording is harmless, since nothing is members-only to escape.
     function _recordRedeemEscrow(address escrow, IntentConfig calldata config) private {
-        bool may;
+        bool may = false;
         try IReceiptRule(config.transferToken).mayReceive(config.depositor) returns (bool yes) {
             may = yes;
         } catch {}
