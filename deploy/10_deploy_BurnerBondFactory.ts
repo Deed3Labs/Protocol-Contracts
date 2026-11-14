@@ -7,7 +7,7 @@ import { saveDeployment, getDeployment } from "./helpers";
  * - Creates token-specific BurnerBond collections
  * - Manages unified BurnerBondDeposit contract
  * - Sets global parameters for all collections
- * - Validates tokens via AssuranceOracle
+ * - Validates tokens against the TokenRegistry whitelist
  */
 async function main() {
   // Get the hardhat runtime environment
@@ -21,36 +21,23 @@ async function main() {
   const network = await hre.ethers.provider.getNetwork();
   console.log("Deploying to network:", network.name, "(chainId:", network.chainId, ")");
 
-  // Get AssurancePool deployment
-  const assurancePoolDeployment = getDeployment(network.name, "AssurancePool");
-  if (!assurancePoolDeployment) {
-    throw new Error("AssurancePool not found. Please deploy it first using 08_deploy_AssurancePool.ts");
+  // The TokenRegistry's whitelist gates which tokens get a collection (section 13 retired the
+  // AssuranceOracle that used to answer this, and the bond contracts take no AssurancePool).
+  const tokenRegistryDeployment = getDeployment(network.name, "TokenRegistry");
+  if (!tokenRegistryDeployment) {
+    throw new Error("TokenRegistry not found. Please deploy it first using 07_deploy_TokenRegistry.ts");
   }
-  console.log("Found AssurancePool at:", assurancePoolDeployment.address);
-
-  // Get AssuranceOracle deployment
-  const assuranceOracleDeployment = getDeployment(network.name, "AssuranceOracle");
-  if (!assuranceOracleDeployment) {
-    throw new Error("AssuranceOracle not found. Please deploy it first using 09_deploy_AssuranceOracle.ts");
-  }
-  console.log("Found AssuranceOracle at:", assuranceOracleDeployment.address);
-
-  // Base URI for bond metadata
+  console.log("Found TokenRegistry at:", tokenRegistryDeployment.address);
   const baseURI = "https://protocol.com/api/bonds";
 
   console.log("\nDeployment parameters:");
-  console.log(`- AssurancePool: ${assurancePoolDeployment.address}`);
-  console.log(`- AssuranceOracle: ${assuranceOracleDeployment.address}`);
+  console.log(`- TokenRegistry: ${tokenRegistryDeployment.address}`);
   console.log(`- Base URI: ${baseURI}`);
 
   // Deploy BurnerBondFactory
   console.log("\nDeploying BurnerBondFactory...");
   const BurnerBondFactory = await hre.ethers.getContractFactory("BurnerBondFactory");
-  const burnerBondFactory = await BurnerBondFactory.deploy(
-    assurancePoolDeployment.address,
-    assuranceOracleDeployment.address,
-    baseURI
-  );
+  const burnerBondFactory = await BurnerBondFactory.deploy(tokenRegistryDeployment.address, baseURI);
 
   await burnerBondFactory.waitForDeployment();
   const burnerBondFactoryAddress = await burnerBondFactory.getAddress();
@@ -62,12 +49,10 @@ async function main() {
 
   // Verify deployment
   console.log("\nVerifying deployment...");
-  const assurancePool = await burnerBondFactory.assurancePool();
-  const assuranceOracle = await burnerBondFactory.assuranceOracle();
+  const tokenRegistry = await burnerBondFactory.tokenRegistry();
   const collectionCount = await burnerBondFactory.getCollectionCount();
   
-  console.log(`- AssurancePool: ${assurancePool} (${assurancePool === assurancePoolDeployment.address ? "✓" : "✗"})`);
-  console.log(`- AssuranceOracle: ${assuranceOracle} (${assuranceOracle === assuranceOracleDeployment.address ? "✓" : "✗"})`);
+  console.log(`- TokenRegistry: ${tokenRegistry} (${tokenRegistry === tokenRegistryDeployment.address ? "ok" : "MISMATCH"})`);
   console.log(`- Collection Count: ${collectionCount}`);
 
   // Display global parameters
@@ -145,15 +130,14 @@ async function main() {
     
   } catch (error: any) {
     console.log("⚠️  Failed to create USDC collection:", error.message);
-    console.log("   This may be because USDC is not whitelisted in AssuranceOracle");
+    console.log("   This may be because USDC is not whitelisted in the TokenRegistry");
     console.log("   Collections will be created automatically on first deposit for whitelisted tokens");
   }
 
   return {
     factory: burnerBondFactoryAddress,
     deposit: burnerBondDepositAddress,
-    assurancePool: assurancePoolDeployment.address,
-    assuranceOracle: assuranceOracleDeployment.address,
+    tokenRegistry: tokenRegistryDeployment.address,
   };
 }
 

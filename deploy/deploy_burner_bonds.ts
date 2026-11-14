@@ -5,9 +5,12 @@ import { saveDeployment } from "./helpers";
  * 
  * Deploys in order:
  * 1. TokenRegistry - Token whitelist and pricing
- * 2. AssurancePool - Reserve management (upgradeable)
- * 3. AssuranceOracle - Price oracle and token validation
- * 4. BurnerBondFactory - Bond collection factory (also deploys BurnerBondDeposit)
+ * 2. BurnerBondFactory - Bond collection factory (also deploys BurnerBondDeposit), gated on the
+ *    TokenRegistry's whitelist
+ *
+ * Section 13: bond principal never enters the co-op's AssurancePool, and the bond contracts hold no
+ * address for it. The AssurancePool is deployed by 08_deploy_AssurancePool.ts on its own, and the
+ * AssuranceOracle is retired.
  */
 async function main() {
   // Get the hardhat runtime environment
@@ -102,71 +105,6 @@ async function main() {
     console.log("  ✓ Deployment saved\n");
 
     // ═══════════════════════════════════════════════════════════
-    // 2. Deploy AssurancePool
-    // ═══════════════════════════════════════════════════════════
-    console.log("┌─────────────────────────────────────────────────────────┐");
-    console.log("│ 2️⃣  Deploying AssurancePool (Upgradeable)               │");
-    console.log("└─────────────────────────────────────────────────────────┘");
-    
-    const AssurancePool = await hre.ethers.getContractFactory("AssurancePool");
-    const assurancePool = await hre.upgrades.deployProxy(
-      AssurancePool,
-      [stableCreditAddress, reserveTokenAddress],
-      { initializer: "initialize", kind: "uups" }
-    );
-    await assurancePool.waitForDeployment();
-    const assurancePoolAddress = await assurancePool.getAddress();
-    deployedContracts.assurancePool = assurancePoolAddress;
-    
-    console.log("✓ AssurancePool deployed:", assurancePoolAddress);
-    
-    const implementationAddress = await hre.upgrades.erc1967.getImplementationAddress(assurancePoolAddress);
-    console.log("  Implementation:", implementationAddress);
-    
-    await assurancePool.setTokenAddresses(usdcAddress, usdtAddress, daiAddress);
-    console.log("  ✓ Token addresses configured");
-    
-    saveDeployment(network.name, "AssurancePool", assurancePoolAddress, JSON.parse(assurancePool.interface.formatJson()));
-    console.log("  ✓ Deployment saved\n");
-
-    // ═══════════════════════════════════════════════════════════
-    // 3. Deploy AssuranceOracle
-    // ═══════════════════════════════════════════════════════════
-    console.log("┌─────────────────────────────────────────────────────────┐");
-    console.log("│ 3️⃣  Deploying AssuranceOracle                            │");
-    console.log("└─────────────────────────────────────────────────────────┘");
-    
-    const targetRTD = hre.ethers.parseEther("1.0");
-    const AssuranceOracle = await hre.ethers.getContractFactory("AssuranceOracle");
-    const assuranceOracle = await hre.upgrades.deployProxy(
-      AssuranceOracle,
-      [
-        assurancePoolAddress,
-        targetRTD,
-        uniswapFactoryAddress,
-        wethAddress,
-        usdcAddress,
-        usdtAddress,
-        daiAddress,
-        tokenRegistryAddress,
-      ],
-      { initializer: "initialize", kind: "uups" }
-    );
-    await assuranceOracle.waitForDeployment();
-    const assuranceOracleAddress = await assuranceOracle.getAddress();
-    deployedContracts.assuranceOracle = assuranceOracleAddress;
-    
-    console.log("✓ AssuranceOracle deployed:", assuranceOracleAddress);
-    console.log("  Target RTD: 100%");
-    
-    // Set oracle in AssurancePool
-    await assurancePool.setAssuranceOracle(assuranceOracleAddress);
-    console.log("  ✓ Oracle configured in AssurancePool");
-    
-    saveDeployment(network.name, "AssuranceOracle", assuranceOracleAddress, JSON.parse(assuranceOracle.interface.formatJson()));
-    console.log("  ✓ Deployment saved\n");
-
-    // ═══════════════════════════════════════════════════════════
     // 4. Deploy BurnerBondFactory (and BurnerBondDeposit)
     // ═══════════════════════════════════════════════════════════
     console.log("┌─────────────────────────────────────────────────────────┐");
@@ -175,11 +113,7 @@ async function main() {
     
     const baseURI = "https://protocol.com/api/bonds";
     const BurnerBondFactory = await hre.ethers.getContractFactory("BurnerBondFactory");
-    const burnerBondFactory = await BurnerBondFactory.deploy(
-      assurancePoolAddress,
-      assuranceOracleAddress,
-      baseURI
-    );
+    const burnerBondFactory = await BurnerBondFactory.deploy(tokenRegistryAddress, baseURI);
     await burnerBondFactory.waitForDeployment();
     const burnerBondFactoryAddress = await burnerBondFactory.getAddress();
     deployedContracts.factory = burnerBondFactoryAddress;
@@ -233,8 +167,6 @@ async function main() {
     console.log("\n📋 Deployed Contracts:");
     console.log("─────────────────────────────────────────────────────────");
     console.log("TokenRegistry:        ", deployedContracts.tokenRegistry);
-    console.log("AssurancePool:        ", deployedContracts.assurancePool);
-    console.log("AssuranceOracle:      ", deployedContracts.assuranceOracle);
     console.log("BurnerBondFactory:    ", deployedContracts.factory);
     console.log("BurnerBondDeposit:    ", deployedContracts.deposit);
     if (deployedContracts.usdcCollection) {
