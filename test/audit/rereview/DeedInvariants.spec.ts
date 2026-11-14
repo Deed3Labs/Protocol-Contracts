@@ -180,6 +180,11 @@ async function runDeedFuzz(seed: number) {
 
 describe("PHASE 4 step 3: Deed track invariants (trust agreement v5)", function () {
   this.timeout(3_600_000);
+  // These runs move the chain's clock by years. Put it back afterwards, so later suites in the same
+  // Hardhat process (bond maturities are bounded) start where they would have.
+  let snap: string;
+  beforeEach(async () => { snap = await ethers.provider.send("evm_snapshot", []); });
+  afterEach(async () => { await ethers.provider.send("evm_revert", [snap]); });
   for (const seed of [71, 72]) {
     it(`seed ${seed}: holders, locked traits, roles, freezes and IDs hold under random calls`, async function () {
       const res = await runDeedFuzz(seed);

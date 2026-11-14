@@ -316,6 +316,11 @@ async function runAccrualFuzz(seed: number) {
 
 describe("PHASE 4 step 3: accrual invariants (RateSchedule, member ceiling, CFL aggregation, levelled plans)", function () {
   this.timeout(3_600_000);
+  // These runs move the chain's clock by years. Put it back afterwards, so later suites in the same
+  // Hardhat process (bond maturities are bounded) start where they would have.
+  let snap: string;
+  beforeEach(async () => { snap = await ethers.provider.send("evm_snapshot", []); });
+  afterEach(async () => { await ethers.provider.send("evm_revert", [snap]); });
   for (const seed of [41, 42, 43]) {
     it(`seed ${seed}: every interval's carry is within the legal bound, and nothing panics`, async function () {
       const res = await runAccrualFuzz(seed);
