@@ -38,17 +38,26 @@ All seven recommendations were accepted:
 
 Section 13 decisions are recorded in `PHASE-2B-PROGRESS.md`.
 
-## 3. Open questions for the owner
+## 3. Owner decisions on the Liquidator (2026-11-14), applied
 
-1. **Bonds after a missed cycle or shortfall vs audit M-6.** BurnerBond lets the Liquidator take a bond only from a member in default. The helper's interim wiring points the collection's default source at the Liquidator, which answers true only inside its own computed enforcement. That works, but it lets the Liquidator define default for bonds.
-   - My recommendation: a narrow second gate in BurnerBond instead. It allows taking a pledged bond only when the issuer reports an unsecured excess (12.5) or a shortfall notice older than 72 hours (12.8), only up to that amount, and only at no less than present value.
-   - The pool-share legs work either way.
-2. **The excess lock (12.12).** While an excess stands, pledged pool shares and bonds can't leave.
-   - My recommendation: cap the lock for pool shares at the excess amount. Bonds can't be split, so a whole bond stays locked.
-3. **Re-proposing a lapsed hold.**
-   - My recommendation: allow it, as a new two-person action with new evidence, running its own maximum.
-4. **Rate figures and terms** in `rate-schedule.json` and `credit-terms.json` are pending counsel.
-5. **Cycles are judged lazily**, when the member transacts or anyone calls `syncCreditPeriod`. A member nobody syncs earns no Clean Cycles. A keeper should sync each member once a cycle.
+1. **Bonds after a missed cycle or a shortfall (audit M-6).** BurnerBond's default gate stays the issuer's computed default. A separate `settlementGate` (`Liquidator.mayTakeBond`) opens only inside the Liquidator's own `settleExcess` or `settleShortfall` for that member, after it has checked on chain that an excess stands or a shortfall notice has matured. It takes the smallest covering bond, and `redeemEarly` must realize at least present value. The Liquidator no longer answers "in default" for anyone.
+2. **Excess lock (12.12).** Pool shares are locked only up to the excess; bonds can't be split, so a whole bond stays locked.
+3. **Lapsed holds.** A lapsed hold can be proposed again only with different evidence (`proposeHold` now takes an evidence hash). The new hold needs the same two signers and runs its own maximum.
+
+## 3a. Found and fixed: the issuers could not be deployed (EIP-3860)
+
+TermIssuer created both of its delegatecall modules in its constructor, which put their creation code inside its own: 62,992 bytes of initcode, over EIP-3860's 49,152-byte limit. It was merged in Phase 2 (#886) and could not have been deployed on Base. Hardhat's test network allows unlimited contract size whenever revert strings are kept, which is how the suite runs, so no test could catch it. RevolvingIssuer was at 48,975 bytes, and its extension went over the runtime limit with section 12.
+
+The fix:
+- Both main contracts now take their modules as constructor arguments, check each one's `extensionKind()`, and pin them as immutables, the pattern Phase 3 used for DeedNFT.
+- `RevolvingIssuerCycles` (new) holds section 12's code.
+- `deploy/issuerModules.ts` deploys the modules; `deploy/20`, the upgrade scripts and every test use it.
+- `UPGRADEABILITY.md` is updated.
+
+## 3b. Still open
+
+1. **Rate figures and credit terms** in `rate-schedule.json` and `credit-terms.json` are pending counsel.
+2. **Cycles are judged lazily**, when the member transacts or anyone calls `syncCreditPeriod`. A member nobody syncs earns no Clean Cycles. A keeper should sync each member once a cycle.
 
 ## 4. Apps and API follow-up (after this merges)
 
@@ -71,7 +80,7 @@ Draft PR #887 tracks Phase 2's contracts. These changes are needed for 2b:
   - ESADepositVault and ClaimEscrow pass OpenZeppelin's storage report against every implementation in `.openzeppelin/base.json` (the vault appends `s_lastDepositAt`; its gap goes from 34 to 33);
   - against `dev`, RevolvingIssuer, Liquidator, TermIssuer, CollateralRegistry, BondVault, LimitCalculator, NetworkRegistry and MerchantRegistry are append-only, each ending at the same slot;
   - PayoutPool renames slot 257 `nextUnpaid` to `legacyNext` (same meaning) and appends.
-- **Sizes:** SEE-SIZES.
+- **Sizes** (production; every contract under 24,576 runtime and 49,152 initcode): BurnerBond 24,516, TermIssuerExtension 24,164, RevolvingIssuer 23,599 (initcode 24,324), PayoutPool 21,563, TermIssuer 21,488 (initcode 22,171), RevolvingIssuerExtension 20,584, Liquidator 20,432, RevolvingIssuerCycles 19,671.
 - **Slither** (Medium and High only, per contract, compared with `dev`). Nothing new in BondVault, BurnerBondDeposit, CollateralRegistry, ESADepositVault or TermIssuerExtension. The new entries:
   - **`reentrancy-balance` (High) in `Liquidator.settleExcess` / `_redeemBond`: no live path, hardened.** It measures what `redeemEarly` delivered by reading the balance before and after. The callee is the governed bond collection, and USDC has no transfer hook. A re-entry lock now guards every Liquidator enforcement path (it packs into an existing slot).
   - **`uninitialized-state` (High): false positives.** In RevolvingIssuer they are the Base/Extension split: `creditTerms`, `boostBaseCap`, `boostEarnedCap` and `cycleOf` are written in the extension. In PayoutPool, `windowQueue` is filled with `push` through a storage reference.

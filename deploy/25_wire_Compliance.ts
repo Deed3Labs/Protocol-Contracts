@@ -193,6 +193,32 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     }
   }
 
+  // ---- section 12.5 / 12.8: the Liquidator's Earn sources and the bond collection's gates ----
+  const poolRecord = getDeployment(network, "LendingPool");
+  const bondRecord = getDeployment(network, "BurnerBond");
+  if (liquidatorRecord && poolRecord && bondRecord) {
+    const liquidator = await ethers.getContractAt("Liquidator", liquidatorRecord.address);
+    if ((await liquidator.earnPool()) !== poolRecord.address || (await liquidator.earnBonds()) !== bondRecord.address) {
+      await (await liquidator.setEarnSources(poolRecord.address, bondRecord.address)).wait();
+      log("  Liquidator Earn sources -> LendingPool, BurnerBond");
+    }
+    const bond = await ethers.getContractAt("BurnerBond", bondRecord.address);
+    // The default gate is the issuer's computed default; the Liquidator is only the narrow
+    // settlement gate for missed-cycle excess and matured shortfalls (owner decision).
+    if ((await bond.owner()) === deployer.address) {
+      if ((await bond.defaultSource()) !== (await revolving.getAddress())) {
+        await (await bond.setDefaultSource(await revolving.getAddress())).wait();
+        log("  BurnerBond default source -> RevolvingIssuer");
+      }
+      if ((await bond.settlementGate()) !== liquidatorRecord.address) {
+        await (await bond.setSettlementGate(liquidatorRecord.address)).wait();
+        log("  BurnerBond settlement gate -> Liquidator");
+      }
+    } else {
+      log("! BurnerBond is owned elsewhere: its owner sets setDefaultSource(RevolvingIssuer) and setSettlementGate(Liquidator).");
+    }
+  }
+
   // ---- vault: state source, and the CA pilot cap only when asked for ----
   const vaultRecord = getDeployment(network, "ESADepositVault");
   if (vaultRecord) {
