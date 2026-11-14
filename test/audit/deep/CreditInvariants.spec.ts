@@ -50,7 +50,7 @@ describe("DEEP AUDIT: credit-core invariants (seeded stateful fuzz)", function (
     dump("seed4-funded", res);
   });
 
-  it("seed 5: overdraw allowed (the known C-1 path) -- (ii) breaks on draw", async function () {
+  it("seed 5: overdraw attempted (the audited C-1 path) -- refused since Phase 1 (RevolvingIssuerDrawUnplaced)", async function () {
     const res = await runFuzz({ seed: 5, steps: STEPS, allowOverdraw: true });
     dump("seed5-overdraw", res);
   });

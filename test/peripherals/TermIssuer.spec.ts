@@ -388,14 +388,18 @@ describe("TermIssuer", function () {
       await setLimit(2_000n * ONE_USDC);
       await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 12);
       await advance(3 * MONTH + ONE_DAY);
-      await issuer.connect(ctx.operator).setSplit(0, 6);
+      // The co-op's unsigned re-split may only lengthen what is left (Phase 4, H-B): nine
+      // installments are left, so six would shorten it.
+      await expect(issuer.connect(ctx.operator).setSplit(0, 6))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerResplitShortens");
+      await issuer.connect(ctx.operator).setSplit(0, 12);
 
       await issuer.connect(payer).payPlan(0, 300n * ONE_USDC);
       expect(await issuer.arrearsOf(0)).to.equal(0n);
 
-      // 900 left over six cycles.
+      // 900 left over twelve cycles.
       await advance(MONTH);
-      expect(await issuer.arrearsOf(0)).to.equal(150n * ONE_USDC);
+      expect(await issuer.arrearsOf(0)).to.equal(75n * ONE_USDC);
     });
 
     it("still sums to the principal after a re-split", async function () {
@@ -656,10 +660,15 @@ describe("TermIssuer", function () {
       expect((await issuer.planAt(0)).closed).to.equal(true);
     });
 
-    it("refuses legs that do not add up", async function () {
+    it("takes the legs from the plan, not the caller (Phase 4, H-A)", async function () {
+      // Another merchant is refused: a refund takes back only what this plan's merchant was paid.
       await expect(
-        issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PURCHASE + 1n)
-      ).to.be.reverted;
+        issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, payer.address, PAYOUT)
+      ).to.be.revertedWithCustomError(issuer, "TermIssuerRefundTermsMismatch");
+      // A payout that does not add up is ignored: the payout recorded at opening is used.
+      const before = await ctx.stableCredit.balanceOf(merchant.address);
+      await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PURCHASE + 1n);
+      expect(before - (await ctx.stableCredit.balanceOf(merchant.address))).to.equal(PAYOUT);
     });
 
     it("a partial refund leaves the rest of the plan running", async function () {

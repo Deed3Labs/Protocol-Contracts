@@ -79,12 +79,17 @@ contract TermIssuerOrigination is TermIssuerBase {
                 subsidyBps: q.subsidyBps,
                 free: q.free,
                 priced: true,
-                accruedAt: 0
+                accruedAt: 0,
+                payout: 0,
+                refundTermsRecorded: false
             });
         } else {
             pricing.merchant = terms.merchant;
             pricing.free = rateBps == 0;
         }
+        // What a refund will take back, and from whom (Phase 4, H-A).
+        pricing.payout = uint128(terms.payout);
+        pricing.refundTermsRecorded = true;
         // The 13-cycle option exists for large loans only (DECISIONS #4).
         if (!isOfferedSplit(terms.installments) && !(largeLoan && terms.installments == CLEAR_CASH_SPLIT)) {
             revert TermIssuerSplitNotOffered(terms.installments);

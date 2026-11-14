@@ -35,14 +35,16 @@ contract TermIssuerExtension is TermIssuerBase {
     /// reversal below because only principal is unwound. Refunding the carry too would mean the
     /// co-op paid a member to hold a balance.
     ///
-    /// The merchant and payout are arguments rather than plan state: the plan never recorded them,
-    /// and appending fields to a struct inside a dynamic array would move every element of it,
-    /// which is not something an upgrade may do. StableCredit asserts the legs net, exactly as it
-    /// does on the way in, so a caller cannot invent a split that does not add up.
+    /// The merchant and the payout are the ones the plan recorded when it opened (Phase 4, H-A),
+    /// never the caller's. A refund takes back only what that merchant was paid for this sale, so
+    /// it cannot create an obligation on anyone else, or move the merchant's share onto the co-op.
+    /// `merchant` must name the plan's merchant, as a check on the caller; `payout` is kept in the
+    /// signature so existing callers keep working, and is ignored -- the merchant's share of the
+    /// refund is the recorded payout in proportion to the purchase.
     /// @param planId the plan being unwound.
     /// @param amount principal to give back, capped at what is still outstanding.
-    /// @param merchant address whose claim is taken back.
-    /// @param payout the merchant's share of `amount`.
+    /// @param merchant the plan's merchant; anything else reverts.
+    /// @param payout ignored (see above).
     /// @return refunded principal actually unwound.
     function closePlanForRefund(uint256 planId, uint256 amount, address merchant, uint256 payout)
         external
@@ -51,6 +53,12 @@ contract TermIssuerExtension is TermIssuerBase {
     {
         _requirePlan(planId);
         Plan storage plan = plans[planId];
+        {
+            PlanPricing storage terms = planPricing[planId];
+            if (!terms.refundTermsRecorded) revert TermIssuerRefundTermsUnknown(planId);
+            if (merchant != terms.merchant) revert TermIssuerRefundTermsMismatch(merchant, terms.merchant);
+            payout = terms.payout;
+        }
 
         /*
          * A plan a member has PAID OFF is closed, and giving that purchase back is the commonest
@@ -89,7 +97,8 @@ contract TermIssuerExtension is TermIssuerBase {
         uint256 returnable = plan.repaid > refundedOf[planId] ? plan.repaid - refundedOf[planId] : 0;
         if (cash > returnable) cash = returnable;
         if (refunded == 0 && cash == 0) revert TermIssuerPlanClosed(planId);
-        if (payout > refundable) revert TermIssuerInvalidSchedule();
+        // The merchant's share of what is being given back, in the proportion it was paid.
+        payout = (payout * refundable) / plan.principal;
 
         // The merchant's share of the whole refund, split between the two legs in the same
         // proportion, with the remainder falling to the co-op rather than clawing a cent from a
@@ -241,6 +250,21 @@ contract TermIssuerExtension is TermIssuerBase {
             log.lastChangedAt = uint64(block.timestamp);
         }
 
+        /*
+         * Anyone else's re-split -- the operator's, unsigned -- may only help the member (Phase 4,
+         * H-B): never fewer installments than are left, never a higher installment, and it carries
+         * no arrears in that were not already there. Shortening a plan the member did not sign
+         * for would bring payments forward and could put them into default.
+         */
+        bool unsigned = msg.sender != plan.member && !signed;
+        uint256 oldInstallment = plan.installmentAmount;
+        if (unsigned) {
+            uint256 dueNow = installmentsDue(planId);
+            if (plan.installments > dueNow && installments < plan.installments - dueNow) {
+                revert TermIssuerResplitShortens(planId);
+            }
+        }
+
         // Bring the plan current first, at the old rate, so the remainder being re-split is what is
         // really owed and nothing before now is charged at the new one.
         _materialiseCarry(planId);
@@ -283,6 +307,7 @@ contract TermIssuerExtension is TermIssuerBase {
         plan.scheduleBase = spread;
         plan.installments = installments;
         _fixSchedule(plan);
+        if (unsigned && plan.installmentAmount > oldInstallment) revert TermIssuerResplitShortens(planId);
 
         emit PlanSplitChanged(planId, installments, spread, behind);
     }

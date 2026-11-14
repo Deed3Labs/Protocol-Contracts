@@ -173,7 +173,12 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// again only with new evidence (owner decision, 2026-11-13).
     mapping(address => bytes32) public holdEvidence;
 
-    uint256[35] private __gap;
+    /// @notice member => what their seized pool shares still owe this contract from the withdrawal
+    /// queue, valued when queued (Phase 4, L-H). `settleRealized` may apply no more than this to
+    /// the member, so one member's queued proceeds cannot pay another's debt. One slot from the gap.
+    mapping(address => uint256) public realizedPendingOf;
+
+    uint256[34] private __gap;
 
     error LiquidatorReentered();
 
@@ -441,6 +446,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         uint256 leftover = count - redeemableNow;
         if (leftover > 0) {
             queuedValue = pool.previewRedeem(leftover);
+            realizedPendingOf[member] += queuedValue;
             pool.requestWithdrawal(leftover, address(this));
             queued = true;
         }
@@ -453,12 +459,17 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// @param member address of the member.
     /// @param issuer address of the issuer holding the position.
     /// @param tierId tier to settle.
-    /// @param amount amount of reserve token to apply.
+    /// @param amount amount of reserve token to apply; capped at the member's own queued proceeds.
     function settleRealized(address member, address issuer, uint256 tierId, uint256 amount)
         external
         onlyRole(OPERATOR_ROLE)
         noReenter
     {
+        // Only this member's own queued proceeds (Phase 4, L-H).
+        uint256 pending = realizedPendingOf[member];
+        if (amount > pending) amount = pending;
+        if (amount == 0) revert LiquidatorNothingToSeize(member);
+        realizedPendingOf[member] = pending - amount;
         reserveToken.forceApprove(issuer, amount);
         ITierSettler(issuer).settleFromCollateral(member, tierId, amount);
     }

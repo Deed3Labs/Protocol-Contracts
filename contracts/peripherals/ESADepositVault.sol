@@ -109,6 +109,8 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     error ESADepositVaultNotPaused();
     /// @notice the two-person rule: the last signer cannot renew their own pause.
     error ESADepositVaultSameSigner();
+    /// @notice thrown when a pause window above 72 hours is set (spec 10c; Phase 4, M-A).
+    error ESADepositVaultPauseWindowTooLong(uint64 window);
 
     event PilotCapUpdated(uint256 cap, uint256 alertAt, bool enabled);
     event StateSourceUpdated(address indexed source);
@@ -472,6 +474,14 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// CLRUSD transaction, so it is limited the same way the token's pauses are -- it lapses on its
     /// own after the window (72 hours by default) unless a different signer renews it.
     function pause() external onlyRole(PAUSER_ROLE) {
+        // An active pause is extended only by a second signer's renewal; and the signer of the
+        // last pause may not start another on their own until 30 days after it ended, so one key
+        // cannot chain pauses -- by re-pausing at the lapse, or unpausing and pausing again --
+        // into an indefinite freeze (Phase 4, M-A). Any other pauser may act at once.
+        if (paused()) revert ESADepositVaultSameSigner();
+        if (msg.sender == s_pauseSigner && block.timestamp < uint256(s_pausedUntil) + 30 days) {
+            revert ESADepositVaultSameSigner();
+        }
         _pause();
         s_pausedUntil = uint64(block.timestamp) + _pauseWindow();
         s_pauseSigner = msg.sender;
@@ -487,9 +497,11 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         emit PauseExpiresAt(s_pausedUntil, msg.sender);
     }
 
+    /// @dev Ends the pause now and keeps when it ended and who set it, so unpausing is not a way
+    /// to restart the clock (Phase 4, M-A).
     function unpause() external onlyRole(PAUSER_ROLE) {
         if (super.paused()) _unpause();
-        s_pausedUntil = 0;
+        if (s_pausedUntil > block.timestamp) s_pausedUntil = uint64(block.timestamp);
     }
 
     /// @notice paused only until the window lapses (spec 10c). A pause set before this rule
@@ -499,7 +511,9 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     }
 
     /// @notice how long a pause lasts before it lapses. Governed (admin is the timelock).
+    /// At most 72 hours (spec 10c); zero means the default.
     function setPauseWindow(uint64 window) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (window > 72 hours) revert ESADepositVaultPauseWindowTooLong(window);
         s_pauseWindow = window;
         emit PauseWindowUpdated(window);
     }

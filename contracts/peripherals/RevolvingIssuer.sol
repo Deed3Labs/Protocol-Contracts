@@ -320,6 +320,13 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         external
         onlyCreditRole(CREDIT_SETTINGS_ROLE)
     {
+        // Each is set once (Phase 4, M-B): members hold snapshots of this schedule's accumulators
+        // and of the ceiling product's bands, and another schedule's or product's would not compare.
+        // The schedule upgrades in place behind the credit timelock instead.
+        if (
+            (address(rateSchedule) != address(0) && address(rateSchedule) != rateSchedule_)
+                || (ceilingProduct != bytes32(0) && ceilingProduct != ceilingProduct_)
+        ) revert RevolvingIssuerPricingSet();
         rateSchedule = RateSchedule(rateSchedule_);
         ceilingProduct = ceilingProduct_;
         emit PricingUpdated(rateSchedule_, ceilingProduct_);
