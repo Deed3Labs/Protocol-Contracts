@@ -338,8 +338,10 @@ contract AssurancePool is IAssurancePool, UUPSUpgradeable, ReentrancyGuardUpgrad
             shares[i] = (rest * compartmentOf[compartmentList[i]].allocationBps) / BPS;
             toOthers += shares[i];
         }
-        // The backstop's own share, the floor fill and any rounding dust: dust never leaves it.
-        _credit(sourceTag, CREDIT_BACKSTOP, fill + rest - toOthers);
+        // The floor fill first, then the backstop's own share with any rounding dust: dust never
+        // leaves it.
+        _credit(sourceTag, CREDIT_BACKSTOP, fill);
+        _credit(sourceTag, CREDIT_BACKSTOP, rest - toOthers);
         for (uint256 i = 1; i < compartmentList.length; i++) {
             if (shares[i] > 0) _credit(sourceTag, compartmentList[i], shares[i]);
         }
