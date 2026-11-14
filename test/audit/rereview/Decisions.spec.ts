@@ -6,7 +6,7 @@ import { issuerProxyOptions } from "../../helpers/issuers";
 import { signedOpenPlan } from "../../helpers/plans";
 import { pledgeSigned, signPledge, signPledgeItem } from "../../helpers/pledge";
 import { CA, NY, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule } from "../compliance/rates";
-import { deployDeedTrack, mintValidatedLand, mintValidatedVehicle, signTrust, k, Ctx } from "../deed/fixture";
+import { deployDeedTrack, mintValidatedLand, mintValidatedVehicle, signTrust, freeze, k, Ctx } from "../deed/fixture";
 
 /*
  * Phase 4b: the owner's decisions on the Phase 4 re-review (`docs/audit/REREVIEW-DECISIONS.md`).
@@ -204,7 +204,7 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
         .to.emit(deed, "ValidatorReassignmentRequested");
       // Still v1's deed: v1 freezes it.
       expect((await deed.getValidationStatus(id))[1]).to.equal(v1);
-      await trust.connect(deployer).markVoid(id, 128, k("order"), "ipfs://order");
+      await freeze(ctx, id);
       await advance(7 * DAY);
       // Neither completing nor a fresh request moves a Void deed.
       await expect(deed.connect(alice).completeValidatorReassignment(id)).to.be.revertedWithCustomError(trust, "NotActive");
@@ -247,7 +247,7 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
     it("un-void takes the validator and the protector: neither alone, and never the trustee", async function () {
       const { deed, trust, alice, bob, deployer, trustee, mallory } = ctx;
       const id = await mintValidatedLand(ctx, alice);
-      await trust.connect(deployer).markVoid(id, 128, k("order"), "ipfs://order");
+      await freeze(ctx, id);
       await expect(trust.connect(deployer).restoreFromVoid(id, "ipfs://vacated", "0x"))
         .to.be.revertedWithCustomError(trust, "ConsentMissing");
       await expect(trust.connect(trustee).restoreFromVoid(id, "ipfs://vacated", "0x"))
@@ -272,7 +272,7 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
     it("the protector may also consent by a prior approval", async function () {
       const { trust, alice, deployer } = ctx;
       const id = await mintValidatedLand(ctx, alice);
-      await trust.connect(deployer).markVoid(id, 1, k("sale"), "");
+      await trust.connect(deployer).markVoid(id, 1, k("sale"), "", ethers.ZeroAddress, "0x");
       await trust.connect(alice).approveTrustAction(await trust.restoreConsentDigest(id, "ipfs://redeemed"));
       await trust.connect(deployer).restoreFromVoid(id, "ipfs://redeemed", "0x");
       expect(await trust.statusOf(id)).to.equal(0);

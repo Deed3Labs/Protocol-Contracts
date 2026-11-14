@@ -52,6 +52,7 @@ contract DeedTrustExtension is DeedTrustCommon {
      *        came from (9(b); not a removed Functional Contract), goes into an active Functional Contract
      *        (9(c)), or satisfies the policy.
      *      - The beneficiary trait is no longer written (item 5): see beneficialOwnerOf.
+     *      - Phase 4c: DeedNFT itself cancels a pending validator reassignment once these rules pass.
      */
     function _onTransfer(address from, address to, uint256 tokenId) internal {
         if (from == address(0)) {
@@ -344,14 +345,35 @@ contract DeedTrustExtension is DeedTrustCommon {
      *         so wind-up proceeds travel with it; codes from 128 freeze it and need the validator acting as
      *         someone other than the trustee, because the trustee can never freeze a deed (Addendum 1). Burning
      *         stays possible either way.
+     * @dev Phase 4c: a freeze takes two distinct signers of the deed's validator, as lifting one takes two
+     *      parties (restoreFromVoid). `cosigner` proposes it by consenting to FreezeConsent, by EIP-712
+     *      signature in `cosignerConsent` or by a prior approveTrustAction (`cosignerConsent` empty), and the
+     *      caller, a different signer, confirms it. Neither may be the trustee. The consent is bound to the
+     *      reason code, the recording reference, the URI and the trust nonce, which the freeze moves on. Both
+     *      arguments are ignored below 128.
      */
-    function markVoid(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string calldata uri) external {
+    function markVoid(
+        uint256 tokenId,
+        uint8 reasonCode,
+        bytes32 recordingRefHash,
+        string calldata uri,
+        address cosigner,
+        bytes calldata cosignerConsent
+    ) external {
         IDeedTrust.TrustRecord storage r = _liveTrust(tokenId);
         if (r.status != STATUS_ACTIVE) revert IDeedTrust.NotActive();
         bool byValidator = _isDeedValidator(tokenId, msg.sender);
         if (!byValidator && (msg.sender != r.trustee || r.trusteeSuspended)) revert IDeedTrust.NotTrustParty();
         bool freezes = reasonCode >= VOID_FREEZES_FROM;
-        if (freezes && (!byValidator || msg.sender == r.trustee)) revert IDeedTrust.FreezeNeedsValidator();
+        if (freezes) {
+            if (!byValidator || msg.sender == r.trustee) revert IDeedTrust.FreezeNeedsValidator();
+            if (cosigner == msg.sender || cosigner == r.trustee || !_isDeedValidator(tokenId, cosigner)) {
+                revert IDeedTrust.FreezeNeedsSecondSigner(cosigner);
+            }
+            _consume(cosigner, _freezeConsentHash(tokenId, reasonCode, recordingRefHash, uri, r.nonce), cosignerConsent);
+            r.nonce++;
+            emit IDeedTrust.DeedFreezeConfirmed(tokenId, cosigner, msg.sender);
+        }
         r.status = STATUS_VOID;
         r.voidReason = reasonCode;
         _setTraitRaw(tokenId, KEY_STATUS, abi.encode(STATUS_VOID));
@@ -431,6 +453,8 @@ contract DeedTrustExtension is DeedTrustCommon {
             LICENSING_CONSENT_TYPEHASH, tokenId, standby, docHash, uint256(_trust[tokenId].nonce)
         )));
     }
+
+    // freezeConsentDigest is served by DeedNFTMintExtension, which has the room (Phase 4c).
 
     // =====================================================================
     // Views
