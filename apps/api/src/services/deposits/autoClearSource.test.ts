@@ -42,19 +42,13 @@ mock.module('../chain/cardSettlementService.js', () => ({
     cardRepaymentSyncs += 1;
   },
 }));
+// The real term booking (ledger legs and a term clearing per plan); only the chain read is stood in.
+const realTerm = await import('../chain/termCollection');
 mock.module('../chain/termCollection.js', () => ({
+  ...realTerm,
   readTermDue: async () => {
     termReads += 1;
     return [{ planId: 4, cents: 3_000 }];
-  },
-  allocateTermDue: (amount: number, due: { cents: number }[]) => {
-    const paid = due.map((d) => ({ ...d, cents: Math.min(d.cents, amount) }));
-    return { paid, remainingCents: amount - paid.reduce((a, d) => a + d.cents, 0) };
-  },
-  bookTermPayments: async (c: typeof client, input: { paid: { cents: number }[] }) => {
-    const cents = input.paid.reduce((a, d) => a + d.cents, 0);
-    if (cents > 0) await c.query(`INSERT INTO lithic_ledger_entries ... 'term_settlement'`, [cents]);
-    return cents;
   },
 }));
 
@@ -70,11 +64,14 @@ mock.module('./autoClearRuns.js', () => ({
 const { depositApplication, recordDeposit, AUTO_CLEAR_RAILS } = await import('./depositReceiptService');
 
 const WALLET = '0x00000000000000000000000000000000000000a1';
-const earmarks = () => queries.filter((q) => /INSERT INTO auto_clear_runs/.test(q.sql));
+const clearings = () => queries.filter((q) => /INSERT INTO auto_clear_runs/.test(q.sql));
+/** The line's clearing (the term ones are written with kind 'term'). */
+const earmarks = () => clearings().filter((q) => !/'term'/.test(q.sql));
+const termClearings = () => clearings().filter((q) => /'term'/.test(q.sql));
 const settlements = () => queries.filter((q) => /'credit_settlement'/.test(q.sql));
 const termPayments = () => queries.filter((q) => /'term_settlement'/.test(q.sql));
 /** Anything a deposit could write that changes a credit position. */
-const creditWrites = () => [...earmarks(), ...settlements(), ...termPayments()];
+const creditWrites = () => [...clearings(), ...settlements(), ...termPayments()];
 
 beforeEach(() => {
   queries = [];
@@ -130,7 +127,16 @@ describe('a deposit, end to end against the Pay DB', () => {
     // derived from this receipt (the same ref goes on chain and roots the Lithic tokens).
     const ref = realRuns.refFor('lithic_ach', 'ach-on');
     expect(earmarks()[0].params).toEqual([ref, WALLET, 'lithic_ach', 'ach-on', 5_000]);
-    expect(holdsAsked).toEqual([ref]);
+    // The $30 to the plan is its own clearing, keyed by the receipt and the plan: held, paid on
+    // chain, and moved out of Spendable like the line's.
+    const termRef = realRuns.termRefFor('lithic_ach', 'ach-on', 4);
+    expect(termClearings()).toHaveLength(1);
+    expect(termClearings()[0].params).toEqual([termRef, 4, WALLET, 'lithic_ach', 'ach-on', 3_000]);
+    expect(termRef).not.toBe(ref);
+    // Both are held right after the deposit, the plan's first.
+    expect(holdsAsked).toEqual([termRef, ref]);
+    // Nothing is queued on the old path, which paid from the float without moving the dollars.
+    expect(queries.some((q) => /INSERT INTO term_collections/.test(q.sql))).toBe(false);
     expect(settlements()).toEqual([]);
     expect(cardRepaymentSyncs).toBe(0);
   });

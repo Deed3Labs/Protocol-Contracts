@@ -45,7 +45,9 @@ import { alertOps } from '../opsAlert.js';
  *   submitting  Recorded BEFORE `repayForMember(ref, member, amount)` is sent, with the amount.
  *               After a crash the chain is asked (`autoRepaymentOf(ref)`); a transaction that
  *               reverted or was dropped goes back to `held` and is resent with the same ref, which
- *               the contract can apply at most once.
+ *               the contract can apply at most once. (A term clearing reads its recorded
+ *               transaction instead; see below.) A call refused in simulation, before any hash,
+ *               sent nothing and goes back to `held`.
  *   applied     The chain applied X. The books are written from the transaction. X is transferred
  *               from the member's account to Clear's settlement account: settling the hold when X is
  *               what it holds, otherwise after voiding it (the rest stays spendable).
@@ -66,6 +68,23 @@ import { alertOps } from '../opsAlert.js';
  * Only Spendable bank deposits reach this: the deposit service creates a run only for the Lithic
  * rail with auto-clear ON. Ready to allocate USDC and CLRUSD are never touched: the chain takes the
  * settler's USDC, and the transfer moves only fiat out of the Spendable account.
+ *
+ * TWO KINDS OF CLEARING, one machine. What differs is only the chain side (`ChainSide`, chosen per
+ * run by `deps.chainFor`):
+ *
+ *   line  The revolving line: `RevolvingIssuer.repayForMember(ref, ...)`. The ref is the on-chain
+ *         idempotency key, so a transaction that may not have landed is simply resent with it.
+ *   term  A term plan's arrears (`TermIssuer.payPlan(planId, ...)`) or carry owed on nothing
+ *         (`StableCredit.repayCreditBalance`), paid from the same deposit before the line, as part
+ *         of auto-clear (the deposit pays them only with auto-clear ON). Keyed by a ref from the
+ *         deposit receipt and the plan id. `payPlan` has no idempotency key on chain, so its side
+ *         never resends blind: what it applied is read from the recorded transaction's own events,
+ *         and a send with no recorded hash, or a hash that never lands, goes to `needs_review`
+ *         with the money still held. The deposit already booked the payment, so whatever the chain
+ *         did not take (or all of it, on release) is booked back to the member's cash (`unbook`).
+ *
+ *   needs_review  The chain's outcome cannot be known without a person (term clearings only). The
+ *               hold stays; ops are alerted.
  */
 
 export type AutoClearState =
@@ -75,7 +94,10 @@ export type AutoClearState =
   | 'applied'
   | 'transferred'
   | 'transfer_declined'
+  | 'needs_review'
   | 'released';
+
+export type AutoClearKind = 'line' | 'term';
 
 export const OPEN_STATES: readonly AutoClearState[] = ['earmarked', 'held', 'submitting', 'applied', 'transfer_declined'];
 /** Before the chain has applied anything: what auto-save and the member see as set aside. */
@@ -83,6 +105,10 @@ export const PENDING_STATES: readonly AutoClearState[] = ['earmarked', 'held', '
 
 export interface AutoClearRun {
   ref: string;
+  /** `line`: the revolving line (`repayForMember`). `term`: a term plan's arrears, or carry. */
+  kind: AutoClearKind;
+  /** The term plan paid; null for the line, and for carry owed on no plan. */
+  planId: number | null;
   wallet: string;
   rail: string;
   externalId: string;
@@ -108,6 +134,11 @@ export interface AutoClearRun {
 /** The clearing's ref: on chain as `repayForMember`'s ref, and the root of every Lithic token. */
 export function refFor(rail: string, externalId: string): string {
   return ethers.id(`clear.auto-clear:${rail}:${externalId}`);
+}
+
+/** A term clearing's ref: the deposit receipt and the plan (or carry), never the line's. */
+export function termRefFor(rail: string, externalId: string, planId: number | null): string {
+  return refFor(rail, `${externalId}#term:${planId === null ? 'carry' : `plan:${planId}`}`);
 }
 
 /** A Lithic token (a UUID) derived from the ref, so the same step always carries the same token. */
@@ -157,23 +188,34 @@ export interface SpendableMoves {
   }): Promise<{ status: LithicTxStatus }>;
 }
 
-/** The chain side: `RevolvingIssuer.repayForMember`, paid by the card settler. */
+/**
+ * The chain side of a clearing, paid by the card settler: `repayForMember` for the line, `payPlan`
+ * (or `repayCreditBalance` for carry) for a term clearing.
+ */
 export interface ChainSide {
+  /** The member's auto-clear switch (`RevolvingIssuer.autoRepayEnabled`): it governs both kinds. */
   enabled(wallet: string): Promise<boolean>;
   pausedForEveryone(): Promise<boolean>;
-  /** What is owed within the member's scope, in whole cents, rounded down. */
-  owedInScopeCents(wallet: string): Promise<number>;
-  /** `autoRepaymentOf(ref)` in whole cents: what the chain applied for this ref, 0 if nothing. */
-  appliedOf(ref: string): Promise<number>;
-  txState(hash: string): Promise<'pending' | 'mined' | 'failed' | 'unknown'>;
+  /** What this clearing could pay now, in whole cents, rounded down. */
+  owedCents(run: AutoClearRun): Promise<number>;
+  /**
+   * With nothing owed yet: keep the hold and wait (true: a card purchase still pending becomes
+   * debt), or release now (false: a plan's arrears were already due when the deposit arrived).
+   */
+  waitsForDebt(run: AutoClearRun): boolean;
+  /**
+   * What the chain applied for this clearing, in whole cents: 0 when nothing (safe to send again),
+   * 'pending' while a sent transaction has no receipt yet, null when only a person can tell.
+   */
+  appliedOf(run: AutoClearRun): Promise<number | 'pending' | null>;
   /** Null when the settler can pay `cents`; otherwise why not (ops are told by the caller). */
-  settlerCannotPay(cents: number): Promise<string | null>;
-  /** Sends the transaction; `applied` resolves once it is mined, from `AutoCleared`. */
-  submit(ref: string, wallet: string, cents: number): Promise<{ hash: string; applied: Promise<number> }>;
-  /** The transaction that applied this ref, from its `AutoCleared` event, when the hash was lost. */
-  findClearingTx(ref: string): Promise<string | null>;
-  /** The books, from the transaction's own events (`recordUsdcRepayment`). Idempotent by hash. */
-  book(wallet: string, hash: string): Promise<void>;
+  settlerCannotPay(run: AutoClearRun, cents: number): Promise<string | null>;
+  /** Sends the transaction; `applied` resolves once it is mined, from the transaction's events. */
+  submit(run: AutoClearRun, cents: number): Promise<{ hash: string; applied: Promise<number> }>;
+  /** The transaction that applied this clearing, when its hash was lost (the line's `AutoCleared`). */
+  findClearingTx(run: AutoClearRun): Promise<string | null>;
+  /** The books, from the transaction's own events. Idempotent by hash. */
+  book(run: AutoClearRun): Promise<void>;
   /** The custom error's name, or null. */
   errorName(error: unknown): string | null;
 }
@@ -181,7 +223,13 @@ export interface ChainSide {
 export interface AutoClearDeps {
   store: RunStore;
   moves: SpendableMoves;
-  chain: ChainSide;
+  chainFor(run: AutoClearRun): ChainSide;
+  /**
+   * Books back to the member's cash whatever the deposit booked for this clearing and the chain did
+   * not take (`earmarkCents - appliedCents`), once per ref. Nothing for the line, whose deposit
+   * booked nothing.
+   */
+  unbook(run: AutoClearRun): Promise<void>;
   alert(input: { key: string; subject: string; body: string }): Promise<void>;
   notify(input: { wallet: string; title: string; body: string; data: Record<string, unknown>; dedupeKey: string }): Promise<void>;
   now(): number;
@@ -190,7 +238,7 @@ export interface AutoClearDeps {
 export interface AutoClearStep {
   wallet: string;
   ref: string;
-  action: 'repaid' | 'held' | 'waiting' | 'off' | 'paused' | 'released' | 'failed';
+  action: 'repaid' | 'held' | 'waiting' | 'off' | 'paused' | 'released' | 'failed' | 'needs_review';
   cents?: number;
   /** What was left of the earmark once the chain had what it needed: the member's to spend. */
   releasedCents?: number;
@@ -224,8 +272,14 @@ async function voidIfHeld(run: AutoClearRun, deps: AutoClearDeps): Promise<void>
   await deps.store.save(run);
 }
 
-async function release(run: AutoClearRun, deps: AutoClearDeps, reason: string): Promise<AutoClearStep> {
-  await voidIfHeld(run, deps);
+async function release(
+  run: AutoClearRun,
+  deps: Pick<AutoClearDeps, 'store' | 'moves' | 'unbook'>,
+  reason: string,
+): Promise<AutoClearStep> {
+  await voidIfHeld(run, deps as AutoClearDeps);
+  run.appliedCents = 0;
+  await deps.unbook(run);
   run.state = 'released';
   run.lastError = reason;
   await deps.store.save(run);
@@ -236,10 +290,13 @@ async function release(run: AutoClearRun, deps: AutoClearDeps, reason: string): 
  * earmarked → held. Also run on its own right after the deposit is recorded, so the money is out of
  * the card's reach before the next sweep.
  */
-export async function placeHold(run: AutoClearRun, deps: Pick<AutoClearDeps, 'store' | 'moves' | 'alert' | 'now'>): Promise<AutoClearStep> {
+export async function placeHold(
+  run: AutoClearRun,
+  deps: Pick<AutoClearDeps, 'store' | 'moves' | 'alert' | 'now' | 'unbook'>,
+): Promise<AutoClearStep> {
   const full = deps as AutoClearDeps;
   if (run.state !== 'earmarked') return { wallet: run.wallet, ref: run.ref, action: 'waiting', reason: run.state };
-  if (deps.now() - run.createdAt > maxHoldMs()) return release(run, full, 'nothing was held within the wait');
+  if (deps.now() - run.createdAt > maxHoldMs()) return release(run, deps, 'nothing was held within the wait');
   const settlement = deps.moves.settlementAccount();
   const account = await deps.moves.cashAccountOf(run.wallet);
   if (!settlement || !account) {
@@ -294,7 +351,8 @@ export async function advanceRun(run: AutoClearRun, deps: AutoClearDeps): Promis
 
 /** One transition. Returns a result to stop, or null to go on to the next state. */
 async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<AutoClearStep | null> {
-  const { chain, moves, store } = deps;
+  const { moves, store } = deps;
+  const chain = deps.chainFor(run);
   const wait = (reason: string, action: AutoClearStep['action'] = 'waiting'): AutoClearStep => ({
     wallet: run.wallet,
     ref: run.ref,
@@ -327,10 +385,14 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
       }
       if (await chain.pausedForEveryone()) return wait('switched off network-wide', 'paused');
 
-      const owed = await chain.owedInScopeCents(run.wallet);
+      const owed = await chain.owedCents(run);
       const amount = Math.min(run.holdCents, Math.max(0, Math.floor(owed)));
-      // A card purchase still pending is a hold at Lithic, not debt on chain: wait for it.
-      if (amount <= 0) return wait('nothing in scope owed on chain yet');
+      if (amount <= 0) {
+        // The line: a card purchase still pending is a hold at Lithic, not debt on chain, so wait
+        // for it. A plan's arrears paid off in between: nothing to wait for, the money is theirs.
+        if (chain.waitsForDebt(run)) return wait('nothing in scope owed on chain yet');
+        return release(run, deps, 'nothing left to pay');
+      }
 
       if (amount < run.holdCents) {
         // Less is owed in scope than was set aside: hold exactly what the chain will take, so what
@@ -349,7 +411,7 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
         await store.save(run);
       }
 
-      const cannot = await chain.settlerCannotPay(amount);
+      const cannot = await chain.settlerCannotPay(run, amount);
       if (cannot) {
         await deps
           .alert({
@@ -368,11 +430,12 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
       run.txHash = null;
       await store.save(run);
       try {
-        const sent = await chain.submit(run.ref, run.wallet, amount);
+        const sent = await chain.submit(run, amount);
         run.txHash = sent.hash;
         await store.save(run);
         const applied = await sent.applied;
-        run.appliedCents = applied > 0 ? applied : await chain.appliedOf(run.ref);
+        if (applied <= 0) return null; // `submitting` asks the chain what happened
+        run.appliedCents = applied;
         run.state = 'applied';
         await store.save(run);
         return null;
@@ -386,23 +449,43 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
           if (name === 'RevolvingIssuerAutoRepayNotEnabled') return null;
           return wait(name === 'RevolvingIssuerAutoClearOff' ? 'switched off network-wide' : 'nothing in scope owed on chain', name === 'RevolvingIssuerAutoClearOff' ? 'paused' : 'waiting');
         }
+        if (name && !run.txHash) {
+          // Refused in simulation, before anything was broadcast: nothing was sent. Back to held;
+          // it is tried again until the hold's wait runs out.
+          run.state = 'held';
+          run.lastError = `refused on chain: ${name}`;
+          await store.save(run);
+          return wait(run.lastError, 'failed');
+        }
         throw error; // outcome unknown: stays `submitting`, resolved next pass
       }
     }
 
     case 'submitting': {
-      const applied = await chain.appliedOf(run.ref);
+      const applied = await chain.appliedOf(run);
+      if (applied === 'pending') return wait('transaction pending');
+      if (applied === null) {
+        // Only a person can tell whether this landed. The money stays held meanwhile.
+        run.state = 'needs_review';
+        await store.save(run);
+        await deps
+          .alert({
+            key: `auto-clear:review:${run.ref}`,
+            subject: 'Auto-clear: a clearing needs a person',
+            body: `Clearing ${run.ref} (${run.kind}${run.planId !== null ? `, plan ${run.planId}` : ''}) for ${run.wallet}: the chain's outcome cannot be read (tx ${run.txHash ?? 'not recorded'}), and it has no on-chain key to resend safely. ${run.holdCents}c stay held in the member's Spendable account until it is resolved.`,
+          })
+          .catch(() => {});
+        return wait('the chain outcome is unknown', 'needs_review');
+      }
       if (applied > 0) {
-        if (!run.txHash) run.txHash = await chain.findClearingTx(run.ref);
+        if (!run.txHash) run.txHash = await chain.findClearingTx(run);
         run.appliedCents = applied;
         run.state = 'applied';
         await store.save(run);
         return null;
       }
-      if (run.txHash && run.submittedAt !== null && deps.now() - run.submittedAt < SUBMIT_STALE_MS) {
-        if ((await chain.txState(run.txHash)) === 'pending') return wait('transaction pending');
-      }
-      // Reverted, dropped or never sent: nothing was applied for this ref. Resend with the same ref.
+      // Reverted, dropped or never sent: nothing was applied. Back to held, which sends again (the
+      // line with the same ref) or releases if nothing is owed any more.
       run.state = 'held';
       await store.save(run);
       return null;
@@ -411,7 +494,9 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
     case 'applied': {
       if (!run.booked) {
         if (run.txHash) {
-          await chain.book(run.wallet, run.txHash);
+          await chain.book(run);
+          // What the deposit booked and the chain did not take is the member's again.
+          await deps.unbook(run);
           run.booked = true;
           await store.save(run);
         } else {
@@ -471,11 +556,13 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
         await deps
           .notify({
             wallet: run.wallet,
-            title: 'Cleared from your deposit',
+            title: run.kind === 'term' ? 'Paid on your plan from your deposit' : 'Cleared from your deposit',
             body:
-              releasedCents > 0
-                ? `${money(run.appliedCents)} cleared · ${money(releasedCents)} now spendable`
-                : `${money(run.appliedCents)} cleared`,
+              run.kind === 'term'
+                ? `${money(run.appliedCents)} paid${releasedCents > 0 ? ` · ${money(releasedCents)} now spendable` : ''}`
+                : releasedCents > 0
+                  ? `${money(run.appliedCents)} cleared · ${money(releasedCents)} now spendable`
+                  : `${money(run.appliedCents)} cleared`,
             data: { txHash: run.txHash, appliedCents: run.appliedCents, spendableCents: releasedCents, ref: run.ref },
             dedupeKey: `auto-clear:${run.ref}`,
           })
@@ -518,6 +605,7 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
 
     case 'transferred':
     case 'released':
+    case 'needs_review':
       return wait(run.state);
   }
 }
@@ -528,6 +616,8 @@ export async function ensureAutoClearRuns(client: { query: PoolClient['query'] }
   await client.query(`
     CREATE TABLE IF NOT EXISTS auto_clear_runs (
       ref TEXT PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'line',
+      plan_id BIGINT,
       wallet TEXT NOT NULL,
       rail TEXT NOT NULL,
       external_id TEXT NOT NULL,
@@ -557,6 +647,8 @@ export async function ensureAutoClearRuns(client: { query: PoolClient['query'] }
 
 interface RunRow {
   ref: string;
+  kind: AutoClearKind;
+  plan_id: string | null;
   wallet: string;
   rail: string;
   external_id: string;
@@ -582,6 +674,8 @@ interface RunRow {
 function fromRow(r: RunRow): AutoClearRun {
   return {
     ref: r.ref,
+    kind: r.kind,
+    planId: r.plan_id === null ? null : Number(r.plan_id),
     wallet: r.wallet,
     rail: r.rail,
     externalId: r.external_id,
@@ -736,9 +830,31 @@ export const lithicMoves: SpendableMoves = {
   },
 };
 
-/** Right after a Spendable deposit is recorded: reserve the earmark before the card can spend it. */
+/**
+ * Books back what a term clearing's deposit booked and the chain did not take: the payment's legs
+ * reversed, to the member's cash. Once per ref. The line's deposit books nothing, so nothing to do.
+ */
+export async function pgUnbook(run: AutoClearRun): Promise<void> {
+  if (run.kind !== 'term') return;
+  const cents = Math.max(0, run.earmarkCents - run.appliedCents);
+  if (cents <= 0) return;
+  const pool = getPayPool();
+  if (!pool) throw new Error('no Pay database');
+  const key = `term-return:${run.ref}`;
+  const done = await pool.query(`SELECT 1 FROM lithic_ledger_entries WHERE external_id = $1 LIMIT 1`, [key]);
+  if (done.rowCount) return;
+  const account = run.planId === null ? 'member_term_carry' : 'member_term_plan';
+  await pool.query(
+    `INSERT INTO lithic_ledger_entries (entry_group, wallet, account, direction, amount_cents, rail, event_type, external_id, metadata)
+     VALUES ($1, $2, $3, 'debit', $4, 'fiat', 'term_settlement_return', $1, $5::jsonb),
+            ($1, $2, 'member_cash_fiat', 'credit', $4, 'fiat', 'term_settlement_return', $1, $5::jsonb)`,
+    [key, run.wallet, account, cents, JSON.stringify({ planId: run.planId, ref: run.ref })],
+  );
+}
+
+/** Right after a Spendable deposit is recorded: reserve each earmark before the card can spend it. */
 export async function holdAutoClear(ref: string): Promise<AutoClearStep | null> {
   const run = await pgRunStore.get(ref);
   if (!run) return null;
-  return placeHold(run, { store: pgRunStore, moves: lithicMoves, alert: alertOps, now: () => Date.now() });
+  return placeHold(run, { store: pgRunStore, moves: lithicMoves, alert: alertOps, now: () => Date.now(), unbook: pgUnbook });
 }

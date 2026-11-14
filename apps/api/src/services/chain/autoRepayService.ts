@@ -11,11 +11,14 @@ import {
   advanceRun,
   lithicMoves,
   pgRunStore,
+  pgUnbook,
   PENDING_STATES,
+  SUBMIT_STALE_MS,
   type AutoClearDeps,
   type AutoClearStep,
   type ChainSide,
 } from '../deposits/autoClearRuns.js';
+import { termChainSide } from './termCollection.js';
 
 /*
  * Auto-clear (Phase 2b, section 12.2 as replaced) — "there is no pay button".
@@ -200,23 +203,28 @@ export async function autoRepayStatus(walletInput: string): Promise<AutoRepaySta
 
 export type AutoRepayResult = AutoClearStep;
 
-/** The chain side of a clearing, as the card settler. */
+/** The line's chain side (`repayForMember`), as the card settler. */
 function settlerChain(issuer: ethers.Contract, usdc: ethers.Contract, settler: string, provider: ethers.Provider): ChainSide {
   return {
     enabled: async (wallet) => (await issuer.autoRepayEnabled(wallet)) as boolean,
     pausedForEveryone: async () => Boolean(((await issuer.creditTerms()) as { autoClearOffGlobal: boolean }).autoClearOffGlobal),
-    owedInScopeCents: async (wallet) => {
-      const scope = Number(await issuer.autoClearScopeOf(wallet));
-      return Number((await owedInScope(issuer, wallet, scope)) / CENTS);
+    owedCents: async (run) => {
+      const scope = Number(await issuer.autoClearScopeOf(run.wallet));
+      return Number((await owedInScope(issuer, run.wallet, scope)) / CENTS);
     },
-    appliedOf: async (ref) => Number(((await issuer.autoRepaymentOf(ref)) as bigint) / CENTS),
-    txState: async (hash) => {
-      const receipt = await provider.getTransactionReceipt(hash).catch(() => null);
-      if (receipt) return receipt.status === 1 ? 'mined' : 'failed';
-      const tx = await provider.getTransaction(hash).catch(() => null);
-      return tx ? 'pending' : 'unknown';
+    // A card purchase still pending at Lithic is not debt on chain yet: the hold waits for it.
+    waitsForDebt: () => true,
+    appliedOf: async (run) => {
+      // The ref is the on-chain key: what it applied is on record, and nothing else can apply it.
+      const applied = Number(((await issuer.autoRepaymentOf(run.ref)) as bigint) / CENTS);
+      if (applied > 0) return applied;
+      if (run.txHash && run.submittedAt !== null && Date.now() - run.submittedAt < SUBMIT_STALE_MS) {
+        const receipt = await provider.getTransactionReceipt(run.txHash).catch(() => null);
+        if (!receipt && (await provider.getTransaction(run.txHash).catch(() => null))) return 'pending';
+      }
+      return 0; // safe to resend: the contract refuses the ref a second time
     },
-    settlerCannotPay: async (cents) => {
+    settlerCannotPay: async (_run, cents) => {
       const amount = BigInt(cents) * CENTS;
       const issuerAddress = await issuer.getAddress();
       const [held, allowed] = (await Promise.all([usdc.balanceOf(settler), usdc.allowance(settler, issuerAddress)])) as [bigint, bigint];
@@ -228,8 +236,8 @@ function settlerChain(issuer: ethers.Contract, usdc: ethers.Contract, settler: s
       }
       return null;
     },
-    submit: async (ref, wallet, cents) => {
-      const tx = await issuer.repayForMember(ref, wallet, BigInt(cents) * CENTS);
+    submit: async (run, cents) => {
+      const tx = await issuer.repayForMember(run.ref, run.wallet, BigInt(cents) * CENTS);
       const applied = (async () => {
         const receipt = await tx.wait(1);
         for (const log of receipt?.logs ?? []) {
@@ -244,14 +252,15 @@ function settlerChain(issuer: ethers.Contract, usdc: ethers.Contract, settler: s
       })();
       return { hash: tx.hash as string, applied };
     },
-    findClearingTx: async (ref) => {
+    findClearingTx: async (run) => {
       const latest = await provider.getBlockNumber();
-      const logs = await issuer.queryFilter(issuer.filters.AutoCleared(ref), Math.max(0, latest - 9_000), latest).catch(() => []);
+      const logs = await issuer.queryFilter(issuer.filters.AutoCleared(run.ref), Math.max(0, latest - 9_000), latest).catch(() => []);
       return logs[0]?.transactionHash ?? null;
     },
-    book: async (wallet, hash) => {
+    book: async (run) => {
       // The books, and the pool's side, from the transaction itself -- as for a Repay tap.
-      const recorded = await recordUsdcRepayment(wallet, hash, 'auto');
+      const hash = run.txHash ?? '';
+      const recorded = await recordUsdcRepayment(run.wallet, hash, 'auto');
       if (!recorded.ok) throw new Error(`could not book ${hash}: ${recorded.reason ?? 'unknown'}`);
     },
     errorName: (error) => decodeChainError(error)?.name ?? null,
@@ -260,8 +269,9 @@ function settlerChain(issuer: ethers.Contract, usdc: ethers.Contract, settler: s
 
 /**
  * Clear what Spendable deposits set aside: on chain with the settler's cash, and the same amount out
- * of the member's Spendable account to Clear's settlement account. One clearing per deposit, each
- * advanced through the state machine in `autoClearRuns.ts`.
+ * of the member's Spendable account to Clear's settlement account. One clearing per deposit for the
+ * line, and one per term plan (or carry) the deposit paid, each advanced through the state machine
+ * in `autoClearRuns.ts`.
  */
 export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
   const pool = getPayPool();
@@ -286,10 +296,18 @@ export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
   const ledger = new ethers.Contract(String(await issuer.stableCredit()), ['function reserveToken() view returns (address)'], signer.provider);
   const usdc = new ethers.Contract(String(await ledger.reserveToken()), ERC20_ABI, writesAs(signer));
 
+  const line = settlerChain(issuer, usdc, signer.address, signer.provider);
+  // Term plans: the same switch and pause, `payPlan` (or carry) for the rest. Null without a TermIssuer.
+  const term = await termChainSide(signer, line);
   const deps: AutoClearDeps = {
     store: pgRunStore,
     moves: lithicMoves,
-    chain: settlerChain(issuer, usdc, signer.address, signer.provider),
+    chainFor: (run) => {
+      if (run.kind !== 'term') return line;
+      if (!term) throw new Error('no TermIssuer on this chain');
+      return term;
+    },
+    unbook: pgUnbook,
     alert: alertOps,
     notify: async (n) => {
       await notificationStore.emit({ wallet: n.wallet, kind: 'credit', title: n.title, body: n.body, data: n.data, dedupeKey: n.dedupeKey });

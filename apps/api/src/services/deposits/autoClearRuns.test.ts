@@ -3,6 +3,7 @@ import {
   advanceRun,
   placeHold,
   refFor,
+  termRefFor,
   tokenFor,
   MAX_TRANSFER_ATTEMPTS,
   type AutoClearDeps,
@@ -15,7 +16,8 @@ import {
  * Auto-clear moves the money as well as the line: what `repayForMember` applied leaves the member's
  * Spendable account in a Lithic book transfer, and nothing else does. Against a stand-in Lithic (a
  * member account with holds and book transfers) and a stand-in chain (the contract's own rules:
- * min(amount, owed), one application per ref). No live Lithic, no keys.
+ * min(amount, owed), one application per ref for the line; `payPlan`, with no key, for a term plan).
+ * No live Lithic, no keys.
  */
 
 const WALLET = '0x00000000000000000000000000000000000000a1';
@@ -109,16 +111,24 @@ class FakeChain implements ChainSide {
   on = true;
   paused = false;
   owed: number;
+  /** The line (`repayForMember`, keyed by ref on chain) or a term plan (`payPlan`, no key). */
+  keyed: boolean;
+  /** The line's on-chain record: ref -> applied. */
   applied = new Map<string, number>();
+  /** Every transaction sent: hash -> what it applied, and whether it has landed. */
+  txs = new Map<string, { applied: number; mined: boolean }>();
   sends = 0;
   booked: string[] = [];
   /** The transaction lands, but the wait for its receipt fails (an RPC that dropped). */
   loseNextReceipt = false;
   /** Someone else repays this much between our read and our transaction. */
   repaidUnderUs = 0;
+  /** The next call is refused in simulation (estimateGas), before anything is broadcast. */
+  refuseNext: string | null = null;
 
-  constructor(owedCents: number) {
+  constructor(owedCents: number, keyed = true) {
     this.owed = owedCents;
+    this.keyed = keyed;
   }
   async enabled() {
     return this.on;
@@ -126,21 +136,34 @@ class FakeChain implements ChainSide {
   async pausedForEveryone() {
     return this.paused;
   }
-  async owedInScopeCents() {
+  async owedCents() {
     return this.owed;
   }
-  async appliedOf(ref: string) {
-    return this.applied.get(ref) ?? 0;
+  waitsForDebt() {
+    return this.keyed;
   }
-  async txState() {
-    return 'mined' as const;
+  async appliedOf(run: AutoClearRun) {
+    if (this.keyed) return this.applied.get(run.ref) ?? 0;
+    if (!run.txHash) return null;
+    const tx = this.txs.get(run.txHash);
+    if (!tx) return null;
+    return tx.mined ? tx.applied : ('pending' as const);
   }
   async settlerCannotPay() {
     return null;
   }
-  async submit(ref: string, _wallet: string, cents: number) {
+  /** Dollars the chain was paid in total, across every send. */
+  paidOnChain(): number {
+    return [...this.txs.values()].reduce((a, t) => a + t.applied, 0);
+  }
+  async submit(run: AutoClearRun, cents: number) {
+    if (this.refuseNext) {
+      const name_ = this.refuseNext;
+      this.refuseNext = null;
+      throw Object.assign(new Error('execution reverted (estimateGas)'), { name_ });
+    }
     this.sends += 1;
-    if (this.applied.has(ref)) {
+    if (this.keyed && this.applied.has(run.ref)) {
       const error = Object.assign(new Error('reverted'), { name_: 'RevolvingIssuerAutoRepayAlreadyUsed' });
       throw error;
     }
@@ -148,10 +171,11 @@ class FakeChain implements ChainSide {
     this.owed -= this.repaidUnderUs;
     this.repaidUnderUs = 0;
     const applied = Math.min(cents, this.owed);
-    if (applied === 0) throw Object.assign(new Error('reverted'), { name_: 'RevolvingIssuerNothingToClear' });
+    if (applied === 0 && this.keyed) throw Object.assign(new Error('reverted'), { name_: 'RevolvingIssuerNothingToClear' });
     this.owed -= applied;
-    this.applied.set(ref, applied);
+    if (this.keyed) this.applied.set(run.ref, applied);
     const hash = `0x${String(this.sends).padStart(64, '0')}`;
+    this.txs.set(hash, { applied, mined: true });
     if (this.loseNextReceipt) {
       this.loseNextReceipt = false;
       return { hash, applied: Promise.reject(new Error('receipt wait timed out')) };
@@ -161,22 +185,27 @@ class FakeChain implements ChainSide {
   async findClearingTx() {
     return null;
   }
-  async book(_wallet: string, hash: string) {
-    this.booked.push(hash);
+  async book(run: AutoClearRun) {
+    this.booked.push(run.txHash!);
   }
   errorName(error: unknown) {
     return (error as { name_?: string }).name_ ?? null;
   }
 }
 
-function setup(input: { depositCents: number; earmarkCents: number; owedCents: number }) {
+function setup(input: { depositCents: number; earmarkCents: number; owedCents: number; kind?: 'line' | 'term' }) {
+  const kind = input.kind ?? 'line';
   const lithic = new FakeLithic(input.depositCents);
-  const chain = new FakeChain(input.owedCents);
+  const chain = new FakeChain(input.owedCents, kind === 'line');
   const alerts: string[] = [];
   const notices: string[] = [];
   const saved: AutoClearRun[] = [];
+  /** What the deposit booked for a term plan and was booked back to the member's cash, per ref. */
+  const unbooked = new Map<string, number>();
   const run: AutoClearRun = {
-    ref: refFor('lithic_ach', 'ach-1'),
+    ref: kind === 'line' ? refFor('lithic_ach', 'ach-1') : termRefFor('lithic_ach', 'ach-1', 4),
+    kind,
+    planId: kind === 'line' ? null : 4,
     wallet: WALLET,
     rail: 'lithic_ach',
     externalId: 'ach-1',
@@ -201,12 +230,18 @@ function setup(input: { depositCents: number; earmarkCents: number; owedCents: n
   const deps: AutoClearDeps = {
     store: { save: async (r) => void saved.push({ ...r }) },
     moves: lithic,
-    chain,
+    chainFor: () => chain,
+    unbook: async (r) => {
+      // As pgUnbook: term clearings only, once per ref.
+      if (r.kind !== 'term' || unbooked.has(r.ref)) return;
+      const cents = Math.max(0, r.earmarkCents - r.appliedCents);
+      if (cents > 0) unbooked.set(r.ref, cents);
+    },
     alert: async (a) => void alerts.push(a.subject),
     notify: async (n) => void notices.push(n.body),
     now: () => Date.now(),
   };
-  return { lithic, chain, run, deps, alerts, notices, saved };
+  return { lithic, chain, run, deps, alerts, notices, saved, unbooked };
 }
 
 describe('the ref and the Lithic tokens', () => {
@@ -218,6 +253,15 @@ describe('the ref and the Lithic tokens', () => {
     expect(t).toBe(tokenFor(refFor('lithic_ach', 'ach-1'), 'transfer:0'));
     expect(t).not.toBe(tokenFor(refFor('lithic_ach', 'ach-1'), 'transfer:1'));
     expect(t).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  test('a term clearing is keyed by the receipt and the plan, apart from the line and other plans', () => {
+    const line = refFor('lithic_ach', 'ach-1');
+    expect(termRefFor('lithic_ach', 'ach-1', 4)).toBe(termRefFor('lithic_ach', 'ach-1', 4));
+    expect(termRefFor('lithic_ach', 'ach-1', 4)).not.toBe(line);
+    expect(termRefFor('lithic_ach', 'ach-1', 4)).not.toBe(termRefFor('lithic_ach', 'ach-1', 5));
+    expect(termRefFor('lithic_ach', 'ach-1', null)).not.toBe(termRefFor('lithic_ach', 'ach-1', 4));
+    expect(termRefFor('lithic_ach', 'ach-1', 4)).not.toBe(termRefFor('lithic_ach', 'ach-2', 4));
   });
 });
 
@@ -384,5 +428,115 @@ describe('auto-clear off moves nothing', () => {
     expect(chain.sends).toBe(0);
     expect(lithic.available).toBe(10_000);
     expect(lithic.transfers.size).toBe(0);
+  });
+});
+
+describe('term plan dues paid from a Spendable deposit', () => {
+  test('the book transfer is exactly what payPlan applied; the member is told it was paid', async () => {
+    const { lithic, chain, run, deps, notices, unbooked } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 9_000 });
+    const step = await advanceRun(run, deps);
+    expect(step).toMatchObject({ action: 'repaid', cents: 3_000 });
+    expect(chain.paidOnChain()).toBe(3_000);
+    expect(lithic.settled()).toEqual([
+      { amount: 3_000, status: 'SETTLED', from: MEMBER_FA, to: SETTLEMENT_FA, holdToken: run.holdToken! },
+    ]);
+    expect(lithic.available).toBe(7_000);
+    expect(chain.booked).toHaveLength(1);
+    expect(unbooked.size).toBe(0);
+    expect(notices).toEqual(['$30.00 paid']);
+  });
+
+  test('less owed on the plan than booked: the chain amount moves, the rest is booked back and stays', async () => {
+    const { lithic, chain, run, deps, unbooked } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 1_200 });
+    const step = await advanceRun(run, deps);
+    expect(step).toMatchObject({ action: 'repaid', cents: 1_200, releasedCents: 1_800 });
+    expect(chain.paidOnChain()).toBe(1_200);
+    expect(lithic.moved()).toBe(1_200);
+    expect(lithic.available).toBe(8_800);
+    expect(unbooked.get(run.ref)).toBe(1_800);
+  });
+
+  test('the plan was paid off in between: released at once, nothing paid or moved, the booking undone', async () => {
+    const { lithic, chain, run, deps, unbooked } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 0 });
+    const step = await advanceRun(run, deps);
+    expect(step.action).toBe('released');
+    expect(chain.sends).toBe(0);
+    expect(lithic.transfers.size).toBe(0);
+    expect(lithic.available).toBe(10_000);
+    expect(unbooked.get(run.ref)).toBe(3_000);
+  });
+
+  test('a lost receipt is read back from the recorded transaction, never paid twice', async () => {
+    const { lithic, chain, run, deps } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 9_000 });
+    chain.loseNextReceipt = true;
+    expect((await advanceRun(run, deps)).action).toBe('failed');
+    expect(run.state).toBe('submitting');
+    expect((await advanceRun(run, deps)).action).toBe('repaid');
+    expect(chain.sends).toBe(1);
+    expect(chain.paidOnChain()).toBe(3_000);
+    expect(lithic.moved()).toBe(3_000);
+  });
+
+  test('a transaction still pending waits, and is not sent again', async () => {
+    const { lithic, chain, run, deps } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 9_000 });
+    chain.loseNextReceipt = true;
+    await advanceRun(run, deps);
+    chain.txs.get(run.txHash!)!.mined = false;
+    expect((await advanceRun(run, deps)).action).toBe('waiting');
+    expect(chain.sends).toBe(1);
+    expect(lithic.transfers.size).toBe(0);
+    chain.txs.get(run.txHash!)!.mined = true;
+    expect((await advanceRun(run, deps)).action).toBe('repaid');
+    expect(chain.sends).toBe(1);
+    expect(lithic.moved()).toBe(3_000);
+  });
+
+  test('a crash before the hash was recorded goes to a person: no blind resend, the money stays held', async () => {
+    const { lithic, chain, run, deps, alerts } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 9_000 });
+    await placeHold(run, deps);
+    run.state = 'submitting'; // payPlan may or may not have been sent; nothing on chain can say
+    const step = await advanceRun(run, deps);
+    expect(step.action).toBe('needs_review');
+    expect(run.state as string).toBe('needs_review');
+    expect(chain.sends).toBe(0);
+    expect(lithic.transfers.size).toBe(0);
+    expect(lithic.available).toBe(7_000);
+    expect(alerts.some((a) => a.includes('needs a person'))).toBe(true);
+    // Later passes leave it alone.
+    expect((await advanceRun(run, deps)).action).toBe('waiting');
+    expect(chain.sends).toBe(0);
+  });
+
+  test('payPlan refused in simulation sent nothing: back to held and tried again, never to review', async () => {
+    const { lithic, chain, run, deps } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 9_000 });
+    chain.refuseNext = 'TermIssuerPlanClosed';
+    expect((await advanceRun(run, deps)).action).toBe('failed');
+    expect(run.state).toBe('held');
+    expect(lithic.available).toBe(7_000);
+    expect((await advanceRun(run, deps)).action).toBe('repaid');
+    expect(chain.sends).toBe(1);
+    expect(lithic.moved()).toBe(3_000);
+  });
+
+  test('a transfer that fails after payPlan applied is retried with the same token, moved once', async () => {
+    const { lithic, chain, run, deps } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 9_000 });
+    lithic.failNextTransferRequest = true;
+    expect((await advanceRun(run, deps)).action).toBe('failed');
+    expect(lithic.available).toBe(7_000); // still held
+    expect((await advanceRun(run, deps)).action).toBe('repaid');
+    expect(chain.sends).toBe(1);
+    expect(lithic.transfers.size).toBe(1);
+    expect(lithic.moved()).toBe(3_000);
+  });
+
+  test('auto-clear turned off before the sweep: nothing paid or moved, the hold voided, the booking undone', async () => {
+    const { lithic, chain, run, deps, unbooked } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 9_000 });
+    await placeHold(run, deps);
+    chain.on = false;
+    expect((await advanceRun(run, deps)).action).toBe('off');
+    expect(chain.sends).toBe(0);
+    expect(lithic.transfers.size).toBe(0);
+    expect(lithic.available).toBe(10_000);
+    expect(unbooked.get(run.ref)).toBe(3_000);
   });
 });

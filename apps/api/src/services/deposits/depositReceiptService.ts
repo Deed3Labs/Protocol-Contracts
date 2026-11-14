@@ -278,16 +278,20 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
      * deposit changes no credit position (12.2, acceptance 19): the card debt stays on the line
      * until the member taps "Clear $X now?" or turns auto-clear on. A Bridge deposit is the member's
      * USDC, never swept. With auto-clear ON, term plans' dues come first (falling behind is what a
-     * plan defaults on; the co-op pays them on chain from its float), then the line is earmarked for
-     * the auto-clear sweep below.
+     * plan defaults on), as part of auto-clear: each is a term clearing keyed by this receipt and the
+     * plan, paid on chain from the settler's float and moved out of Spendable like the line's. Then
+     * the line is earmarked for the auto-clear sweep below.
      */
     const term = allocateTermDue(amount, termDue);
-    const termCents = await bookTermPayments(client, {
+    const booked = await bookTermPayments(client, {
       wallet,
       group,
       externalId: `${receipt.rail}:${receipt.externalId}`,
       paid: term.paid,
+      rail: receipt.rail,
+      receiptId: receipt.externalId,
     });
+    const termCents = booked.cents;
 
     const outstanding = await readOutstanding(client, wallet);
     const carryOwed = autoClearOn ? await readCarryOwed(client, wallet) : 0;
@@ -384,10 +388,10 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
 
     await client.query('COMMIT');
 
-    // Reserve what was set aside before the card can spend it. Best effort: the sweep places the
-    // hold if this does not (the same token, so never twice).
-    if (clearingRef) {
-      await holdAutoClear(clearingRef).catch((error) =>
+    // Reserve what was set aside (term plans' dues, then the line) before the card can spend it.
+    // Best effort: the sweep places a hold if this does not (the same token, so never twice).
+    for (const ref of [...booked.refs, ...(clearingRef ? [clearingRef] : [])]) {
+      await holdAutoClear(ref).catch((error) =>
         console.error('[auto-clear] hold after deposit failed; the sweep retries:', error instanceof Error ? error.message : error),
       );
     }

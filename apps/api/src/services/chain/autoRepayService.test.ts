@@ -23,8 +23,8 @@ describe('repaid on chain under the member’s mandate, bounded by the chain', (
   // How a clearing behaves (hold, chain, transfer, retries) is tested against stand-ins in
   // deposits/autoClearRuns.test.ts. These check the wiring to the real chain.
   test('Phase 2b: capped at what is owed in the member’s scope, never at their USDC or approval', () => {
-    expect(service).toContain('return Number((await owedInScope(issuer, wallet, scope)) / CENTS);');
-    expect(service).toContain('await issuer.repayForMember(ref, wallet, BigInt(cents) * CENTS)');
+    expect(service).toContain('return Number((await owedInScope(issuer, run.wallet, scope)) / CENTS);');
+    expect(service).toContain('await issuer.repayForMember(run.ref, run.wallet, BigInt(cents) * CENTS)');
     // Nothing reads the member's balance or allowance any more: the settler delivers the cash.
     expect(service).not.toContain('usdc.balanceOf(wallet)');
     expect(service).not.toContain('usdc.allowance(wallet');
@@ -37,8 +37,8 @@ describe('repaid on chain under the member’s mandate, bounded by the chain', (
 
   test('AutoCleared says what was applied; the chain is asked by ref after a crash', () => {
     expect(service).toContain("parsed?.name === 'AutoCleared'");
-    expect(service).toContain('issuer.autoRepaymentOf(ref)');
-    expect(service).toContain('issuer.filters.AutoCleared(ref)');
+    expect(service).toContain('issuer.autoRepaymentOf(run.ref)');
+    expect(service).toContain('issuer.filters.AutoCleared(run.ref)');
   });
 
   test('the network-wide switch and the member’s own switch are read from the chain', () => {
@@ -51,8 +51,14 @@ describe('repaid on chain under the member’s mandate, bounded by the chain', (
     expect(service).toMatch(/step\.action === 'off'[\s\S]{0,200}SET enabled = false/);
   });
 
+  test('term clearings go through the same sweep, with the term chain side and the same switch', () => {
+    expect(service).toContain('const term = await termChainSide(signer, line);');
+    expect(service).toContain("if (run.kind !== 'term') return line;");
+    expect(service).toContain('unbook: pgUnbook,');
+  });
+
   test('books and the pool’s side are written from the transaction, like a Repay tap', () => {
-    expect(service).toContain("await recordUsdcRepayment(wallet, hash, 'auto');");
+    expect(service).toContain("await recordUsdcRepayment(run.wallet, hash, 'auto');");
   });
 
   test('the repayment token comes from the chain, not a hardcoded address', () => {

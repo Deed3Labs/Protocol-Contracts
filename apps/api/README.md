@@ -314,6 +314,12 @@ transfer tokens are derived from it. The order is hold, then chain, then the tra
 hold; the states, retries and compensating steps are documented in
 `src/services/deposits/autoClearRuns.ts` (table `auto_clear_runs`).
 
+Term plans' dues a Spendable deposit pays (only with auto-clear ON: paying them is part of
+auto-clear) go through the same machine, one clearing per plan keyed by the deposit receipt and the
+plan id: held, paid on chain with `payPlan` from the settler's float, and exactly what `PlanPaid`
+says moves to the settlement account. `payPlan` has no on-chain key, so a send whose outcome cannot
+be read is never resent: it goes to `needs_review` with the money still held, and ops are alerted.
+
 Before it runs:
 
 | Setting | What it is |
