@@ -29,9 +29,7 @@ describe("LimitCalculator", function () {
     );
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await issuer.getAddress());
     await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);

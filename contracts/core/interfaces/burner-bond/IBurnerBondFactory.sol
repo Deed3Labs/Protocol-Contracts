@@ -2,8 +2,6 @@
 pragma solidity ^0.8.29;
 
 import "./IBurnerBond.sol";
-import "../stable-credit/IAssurancePool.sol";
-import "../stable-credit/IAssuranceOracle.sol";
 
 /// @title IBurnerBondFactory
 /// @notice Interface for BurnerBond factory that creates token-specific collections
@@ -158,13 +156,9 @@ interface IBurnerBondFactory {
     
     /* ========== ADMIN FUNCTIONS ========== */
     
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external;
-    
-    /// @notice Set the AssuranceOracle contract address
-    /// @param _assuranceOracle Address of the AssuranceOracle contract
-    function setAssuranceOracle(address _assuranceOracle) external;
+    /// @notice Set the TokenRegistry whose whitelist gates new collections
+    /// @param _tokenRegistry Address of the TokenRegistry
+    function setTokenRegistry(address _tokenRegistry) external;
     
     /// @notice Set the base URI for new collections
     /// @param _baseURI New base URI template

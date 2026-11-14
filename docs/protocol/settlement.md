@@ -209,8 +209,8 @@ repays.
 - **Depositing.** The standard ERC-4626 calls (`deposit`, `mint`, `withdraw`, `redeem`) are not
   overridden. No role or membership check gates a deposit. `maxWithdraw` and `maxRedeem` are capped
   by `availableCash()`, so a withdrawal larger than the free cash has to queue.
-- **Borrowing.** `borrow(amount, to)` needs `BORROWER_ROLE`. Nothing grants it at deploy.
-  `scripts/upgrade_reserve_draw.ts` grants it to the PayoutPool, and `scripts/grant_pool_borrower.ts`
+- **Borrowing.** `borrow(amount, to)` needs `BORROWER_ROLE`.
+  `deploy/22_deploy_BondsAndPool.ts` grants it to the PayoutPool, and `scripts/grant_pool_borrower.ts`
   to the card-settler wallet.
 - **Repaying.** `repay(amount)` is open to anyone and is treated as principal while anything is
   owed. Interest arrives as a plain transfer (see above).

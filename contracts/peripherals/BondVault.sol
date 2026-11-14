@@ -5,7 +5,6 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "./interfaces/IBondBackstop.sol";
 
 /// @dev The CollateralRegistry's answer to "is this bond spoken for".
 interface IBondEncumbranceSource {
@@ -86,17 +85,18 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice The co-op's treasury, the Safe. Pays a bond the vault cannot, up to the allowance it
     /// has given this vault.
     address public treasury;
-    /// @notice The AssurancePool, named only so a loan it made before addendum 12.11 can be repaid.
-    /// @dev It is no longer asked for anything: a bond redemption never draws on the credit-loss
-    /// reserve.
-    address public assurancePool;
+    /// @dev Retired (section 13): the vault holds no AssurancePool address and never calls one.
+    /// The slot stays so nothing below it moves.
+    /// @custom:oz-renamed-from assurancePool
+    address private retiredAssurancePool;
     /// @notice The payout pool, which may borrow the deployable excess for a claim that has come due.
     address public payoutPool;
     /// @notice Reserve tokens out with the payout pool, repaid with carry.
     uint256 public lentToPayoutPool;
-    /// @notice What the AssurancePool lent for a bond, repaid from new proceeds before the Safe
-    /// can take anything.
-    uint256 public owedToReserve;
+    /// @dev Retired with the pool's loans (section 13, decision 4). A loan the old Base Sepolia
+    /// pool made is not repaid to the new one: the old pool is retired with its books.
+    /// @custom:oz-renamed-from owedToReserve
+    uint256 private retiredOwedToReserve;
 
     /* ========== ADDED AFTER DEPLOYMENT: two more slots from the gap ========== */
 
@@ -148,11 +148,9 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     );
     event DeployableWithdrawn(address indexed to, uint256 amount);
     event ReserveTermsUpdated(uint64 window, uint256 minReserveBps);
-    event BackstopsUpdated(address indexed treasury, address indexed assurancePool, address indexed payoutPool);
+    event BackstopsUpdated(address indexed treasury, address indexed payoutPool);
     event EncumbranceSourceUpdated(address indexed source, bytes32 kind);
     event DrewFromTreasury(uint256 amount);
-    event DrewFromReserve(uint256 amount, uint256 owed);
-    event RepaidReserve(uint256 amount, uint256 owed);
     event LentToPayoutPool(uint256 amount, uint256 outstanding);
     event RepaidFromPayoutPool(uint256 amount, uint256 outstanding);
     /// @notice A payout-pool repayment carried carry on top of principal (audit X-17).
@@ -260,11 +258,9 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice what the Safe may take.
-    /// @dev What the AssurancePool lent for a bond comes off first: it is going back there, and
-    /// the Safe taking it would leave the reserve holding the bondholders' shortfall.
     function deployableExcess() public view returns (uint256) {
         uint256 balance = held();
-        uint256 reserve = requiredReserve() + owedToReserve;
+        uint256 reserve = requiredReserve();
         return balance > reserve ? balance - reserve : 0;
     }
 
@@ -278,8 +274,8 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice face value due inside the window that neither the vault nor the treasury can pay.
-    /// @dev The AssurancePool's RTD still counts it, though the pool no longer lends for it
-    /// (addendum 12.11): what a bond the vault cannot pay is waiting on.
+    /// @dev What a bond the vault cannot pay is waiting on. The co-op's AssurancePool never covers
+    /// it (section 13): bonds rely on the vault's own reserves and the treasury.
     function uncoveredNearTerm() external view returns (uint256) {
         uint256 due = faceDueWithin(reserveWindow);
         uint256 have = held() + treasuryAvailable();
@@ -419,7 +415,6 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// vault and the redemption reserve is restored afterwards.
     function withdrawDeployable(uint256 amount, address to) external onlyRole(TREASURY_ROLE) {
         if (to == address(0)) revert BondVaultInvalidAddress();
-        _repayReserve();
         uint256 deployable = deployableExcess();
         if (amount > deployable) revert BondVaultWouldBreachReserve(deployable, amount);
 
@@ -445,28 +440,6 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         }
         balance = held();
         if (balance < amount) revert BondVaultInsufficientFunds(balance, amount);
-    }
-
-    /// @notice pays the AssurancePool back what it lent before addendum 12.11, from what the vault
-    /// does not owe soon. Nothing can add to that loan any more.
-    /// @dev Permissionless: new proceeds arriving should restore the reserve without anybody having
-    /// to remember. The treasury is not repaid here; what it put in comes back as deployable excess,
-    /// which the Safe takes in the ordinary way.
-    function repayReserve() external returns (uint256 paid) {
-        return _repayReserve();
-    }
-
-    function _repayReserve() private returns (uint256 paid) {
-        if (owedToReserve == 0 || assurancePool == address(0)) return 0;
-        uint256 balance = held();
-        uint256 reserve = requiredReserve();
-        uint256 spare = balance > reserve ? balance - reserve : 0;
-        paid = spare < owedToReserve ? spare : owedToReserve;
-        if (paid == 0) return 0;
-        owedToReserve -= paid;
-        reserveToken.approve(assurancePool, paid);
-        IBondReserve(assurancePool).repayFromBondVault(paid);
-        emit RepaidReserve(paid, owedToReserve);
     }
 
     /// @notice lends the deployable excess for a payout claim that has come due.
@@ -499,16 +472,15 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
 
     /* ========== RESTRICTED ========== */
 
-    /// @notice names the treasury, the reserve of last resort, and the payout pool.
+    /// @notice names the treasury and the payout pool.
     /// @dev Zero is a valid "none" for each. The payout pool is not re-pointed while it owes the
-    /// vault, because only the tracked payout pool may repay (audit M-8).
-    function setBackstops(address _treasury, address _assurancePool, address _payoutPool) external onlyRole(OPERATOR_ROLE) {
+    /// vault, because only the tracked payout pool may repay (audit M-8). There is no reserve to
+    /// name: the co-op's AssurancePool never backs a bond (section 13).
+    function setBackstops(address _treasury, address _payoutPool) external onlyRole(OPERATOR_ROLE) {
         if (_payoutPool != payoutPool && lentToPayoutPool != 0) revert BondVaultLoanOutstanding(lentToPayoutPool);
         treasury = _treasury;
-
-        assurancePool = _assurancePool;
         payoutPool = _payoutPool;
-        emit BackstopsUpdated(_treasury, _assurancePool, _payoutPool);
+        emit BackstopsUpdated(_treasury, _payoutPool);
     }
 
     /// @notice names what reports a bond pledged against drawn credit, and the kind to ask about.

@@ -39,8 +39,9 @@ async function main() {
 
   const ledger = need("ClearCredit");
   const collateralRegistry = need("CollateralRegistry");
-  const assurancePool = need("AssurancePool");
-  const assuranceOracle = need("AssuranceOracle");
+  // The bond factory gates collections on the TokenRegistry's whitelist. Nothing here takes the
+  // co-op's AssurancePool: bond principal never enters it, and no payout or bond path calls it.
+  const tokenRegistry = need("TokenRegistry");
   const clrusd = need("ClearUSDUpgradeable");
   const vault = need("ESADepositVault");
   const reserveToken = process.env.RESERVE_TOKEN ?? "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
@@ -106,8 +107,7 @@ async function main() {
   if (!factoryAddress) {
     const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
     const factory = await BurnerBondFactory.deploy(
-      assurancePool,
-      assuranceOracle,
+      tokenRegistry,
       process.env.BOND_BASE_URI ?? "ipfs://clear-bonds/"
     );
     await factory.waitForDeployment();
@@ -153,8 +153,8 @@ async function main() {
     log("  LendingPool encumbrance -> CollateralRegistry");
   }
 
-  // Repayments reach the merchants owed before they reach loss absorption. Without this the
-  // working capital for net-30 accumulates in the one fund forbidden from spending it.
+  // Repayments reach the merchants owed before anything goes to Lending Co. (section 13). Without
+  // this the working capital for net-30 would leave the network as Lending Co.'s surplus.
   const credit = await ethers.getContractAt("ClearCredit", ledger);
   if ((await credit.payoutPool()) !== payoutPoolAddress) {
     await (await credit.setPayoutPool(payoutPoolAddress)).wait();

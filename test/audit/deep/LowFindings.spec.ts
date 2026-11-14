@@ -15,7 +15,7 @@ describe("AUDIT credit Lows: L-1, L-2, L-7, L-8", function () {
       ["RevolvingIssuer", [await ctx.stableCredit.getAddress(), ctx.admin.address]],
       ["TermIssuer", [await ctx.stableCredit.getAddress(), ctx.admin.address]],
       ["OffersIssuer", [await ctx.stableCredit.getAddress(), ctx.admin.address, 1n, 1n]],
-      ["AssurancePool", [await ctx.stableCredit.getAddress(), await ctx.usdc.getAddress()]],
+      ["AssurancePool", [await ctx.usdc.getAddress(), ctx.admin.address, await ctx.networkRegistry.getAddress(), [ctx.admin.address, ctx.operator.address]]],
     ] as [string, any[]][]) {
       const F = await ethers.getContractFactory(name);
       // The issuers take their delegatecall modules as constructor arguments (EIP-3860).
@@ -78,7 +78,7 @@ describe("AUDIT credit Lows: L-1, L-2, L-7, L-8", function () {
 
   it("L-8 (fixed): the ledger refuses a zero address where zero is not an off switch", async function () {
     const { ctx, pool } = await deployCore();
-    for (const fn of ["setAccessManager", "setAssurancePool", "setNetworkRegistry", "setMerchantRegistry"]) {
+    for (const fn of ["setAccessManager", "setLenderOperating", "setNetworkRegistry", "setMerchantRegistry"]) {
       await expect((ctx.stableCredit.connect(ctx.admin) as any)[fn](ethers.ZeroAddress))
         .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditInvalidAddress");
     }
@@ -87,7 +87,7 @@ describe("AUDIT credit Lows: L-1, L-2, L-7, L-8", function () {
     await pool.grantRole(await pool.OPERATOR_ROLE(), op.address);
     await expect(pool.connect(op).setCoopTreasury(op.address)).to.be.reverted;
     await expect(pool.connect(op).setCoopIncomeRecipient(op.address)).to.be.reverted;
-    await expect(pool.connect(op).setLenders(op.address, op.address)).to.be.reverted;
+    await expect(pool.connect(op).setYieldPool(op.address)).to.be.reverted;
   });
 
   it("X-11 (fixed): a position at the rate ceiling for years can still be touched", async function () {

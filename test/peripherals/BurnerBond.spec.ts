@@ -21,12 +21,14 @@ describe("BurnerBond", function () {
 
     const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
     factory = await BurnerBondFactory.deploy(
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress(),
+      await ctx.tokenRegistry.getAddress(),
       "ipfs://bonds"
     );
 
     deposit = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
+    // The factory reads the TokenRegistry's whitelist (section 13 retired the AssuranceOracle,
+    // which whitelisted USDT by default). USDC is registered by the fixture; USDT is here.
+    await ctx.tokenRegistry.registerToken(await ctx.usdt.getAddress(), 31337, await ctx.usdt.getAddress(), 0);
 
     await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
     const info = await factory.getCollectionInfo(await ctx.usdc.getAddress());
@@ -84,8 +86,8 @@ describe("BurnerBond", function () {
     });
 
     it("sells only in the token its vault holds and pays out", async function () {
-      // WETH is whitelisted, so a collection would be made for it -- but the vault holds USDC, and
-      // proceeds in anything else would sit there uncounted.
+      // The vault holds USDC, and proceeds in anything else would sit there uncounted, so this is
+      // refused before any collection is looked up.
       await expect(
         deposit
           .connect(buyer)
@@ -100,7 +102,7 @@ describe("BurnerBond", function () {
 
       const Next = await ethers.getContractFactory("BurnerBondFactory");
       const nextFactory = await Next.deploy(
-        await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress(), "ipfs://bonds"
+        await ctx.tokenRegistry.getAddress(), "ipfs://bonds"
       );
       await nextFactory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
       const next = await ethers.getContractAt(
@@ -274,14 +276,15 @@ describe("BurnerBond", function () {
 
     it("sends the proceeds to the vault rather than the AssurancePool", async function () {
       // The seniority fix, seen from the buying side: principal never enters loss absorption.
+      // Since section 13 the bond contracts hold no AssurancePool address at all.
       const maturity = (await now()) + BigInt(6 * MONTH);
       const cost = await costOf(1_000n * ONE_USDC, maturity);
 
       await buyBond(1_000n * ONE_USDC, maturity);
 
       expect(await vault.held()).to.equal(cost);
-      expect(await ctx.assurancePool.excessBalance()).to.equal(0n);
-      expect(await ctx.assurancePool.reserveBalance()).to.equal(0n);
+      expect(await ctx.usdc.balanceOf(await deposit.getAddress())).to.equal(0n);
+      expect(await ctx.usdc.balanceOf(await bond.getAddress())).to.equal(0n);
     });
 
     it("books the face value as owed the moment it takes the money", async function () {
@@ -466,7 +469,7 @@ describe("BurnerBond", function () {
       );
       await expect(
         implementation.initialize(
-          buyer.address, buyer.address, buyer.address, buyer.address, "", "", "", "",
+          buyer.address, buyer.address, buyer.address, "", "", "", "",
           buyer.address, buyer.address
         )
       ).to.be.revertedWith("Initializable: contract is already initialized");
@@ -529,7 +532,7 @@ describe("BurnerBond as collateral", function () {
 
     const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
     factory = await BurnerBondFactory.deploy(
-      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress(), "ipfs://b"
+      await ctx.tokenRegistry.getAddress(), "ipfs://b"
     );
     deposit = await ethers.getContractAt(
       "BurnerBondDeposit", await factory.getUnifiedDepositContract()
@@ -657,7 +660,7 @@ describe("auto-roll", function () {
 
     const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
     factory = await BurnerBondFactory.deploy(
-      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress(), "ipfs://b"
+      await ctx.tokenRegistry.getAddress(), "ipfs://b"
     );
     deposit = await ethers.getContractAt(
       "BurnerBondDeposit", await factory.getUnifiedDepositContract()

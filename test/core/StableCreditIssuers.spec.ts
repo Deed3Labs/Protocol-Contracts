@@ -24,9 +24,7 @@ describe("StableCredit across issuers", function () {
 
     await ctx.networkRegistry.registerIssuer(
       await second.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await second.getAddress());
   });
@@ -136,7 +134,7 @@ describe("StableCredit across issuers", function () {
     });
 
     it("refuses an issuer registered against a different ledger", async function () {
-      const { stableCredit, networkRegistry, assurancePool, assuranceOracle, member } = ctx;
+      const { stableCredit, networkRegistry, member } = ctx;
       const ScopedCreditIssuerHarness =
         await ethers.getContractFactory("ScopedCreditIssuerHarness");
       const foreign = await ScopedCreditIssuerHarness.deploy();
@@ -145,9 +143,7 @@ describe("StableCredit across issuers", function () {
       // Registered, but against somebody else's ledger.
       await networkRegistry.registerIssuer(
         await foreign.getAddress(),
-        ethers.Wallet.createRandom().address,
-        await assurancePool.getAddress(),
-        await assuranceOracle.getAddress()
+        ethers.Wallet.createRandom().address
       );
 
       await expect(
@@ -158,16 +154,14 @@ describe("StableCredit across issuers", function () {
     });
 
     it("refuses an issuer that has no line with the member", async function () {
-      const { stableCredit, networkRegistry, assurancePool, assuranceOracle, member } = ctx;
+      const { stableCredit, networkRegistry, member } = ctx;
       const ScopedCreditIssuerHarness =
         await ethers.getContractFactory("ScopedCreditIssuerHarness");
       const stranger = await ScopedCreditIssuerHarness.deploy();
       await stranger.initialize(await stableCredit.getAddress());
       await networkRegistry.registerIssuer(
         await stranger.getAddress(),
-        await stableCredit.getAddress(),
-        await assurancePool.getAddress(),
-        await assuranceOracle.getAddress()
+        await stableCredit.getAddress()
       );
 
       await openFirst(1_000n * ONE_USDC);

@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { advance, ONE_USDC, DAY } from "./deep-setup";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
+import { deployAssurancePool, fund as fundAssurance, balances, TAG } from "../../helpers/assurance";
 
 /*
  * Phase 1, workstream 1B: regression tests for the money peripherals.
@@ -503,102 +504,33 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
 
   /* ================================================================ AssurancePool / oracle */
 
-  describe("AssurancePool and AssuranceOracle", function () {
-    it("X-9: reserves can no longer be booked in DAI/USDT, so a booked reserve is always payable in the reserve token", async function () {
-      // Flipped from DeepPoC2.spec.ts > X-9, where 10,000 DAI was booked as 10,000 USDC of primary
-      // reserve and burnLostDebt then reverted for lack of USDC.
+  // Section 13 retired the reserve these findings were about (primary, buffer and excess tiers,
+  // multi-token deposits priced by the AssuranceOracle, loans to the payout pool and bond vault)
+  // and the oracle with it. The regressions are kept as tests that the new pool cannot recur them.
+  describe("AssurancePool (section 13) against the old pool's findings", function () {
+    it("X-9, X-15, X-16: one asset, booked at face, so nothing is booked in another token, priced or repriced", async function () {
+      // X-9 booked DAI as USDC of reserve; X-15 priced an unpriced stablecoin at $1; X-16 handed a
+      // repricing gain to the withdrawable tier. The new pool takes its one asset through one
+      // entry point, and every compartment sums to exactly what it holds.
       const ctx = await deployPhase0Network();
-      const { assurancePool, dai, usdt, counterparty } = ctx;
-      await dai.mint(counterparty.address, 10_000n * 10n ** 18n);
-      await dai.connect(counterparty).approve(await assurancePool.getAddress(), ethers.MaxUint256);
-      await expect(
-        assurancePool.connect(counterparty).depositTokenIntoPrimary(await dai.getAddress(), 10_000n * 10n ** 18n)
-      ).to.be.revertedWith("Token not accepted for deposits");
-      await expect(assurancePool.connect(counterparty).depositToken(await usdt.getAddress(), 1n))
-        .to.be.revertedWith("Token not accepted for deposits");
-      expect(await assurancePool.primaryBalance()).to.equal(0n);
+      const a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry);
+      expect(await a.pool.asset()).to.equal(await ctx.usdc.getAddress());
+      expect(a.pool.interface.getFunction("depositToken", [ethers.ZeroAddress, 1n])).to.equal(null);
+      expect(a.pool.interface.getFunction("rebalanceRTDPublic", [])).to.equal(null);
+      await fundAssurance(a, ctx.usdc, a.treasury, TAG.INTERCHANGE, 100n * ONE_USDC);
+      // Another token sent straight to the pool is not booked anywhere.
+      await ctx.dai.mint(await a.pool.getAddress(), 10_000n * 10n ** 18n);
+      const b = await balances(a.pool);
+      expect(b.sum).to.equal(100n * ONE_USDC);
+      expect(await a.pool.totalAccounted()).to.equal(await ctx.usdc.balanceOf(await a.pool.getAddress()));
     });
 
-    it("X-15: the oracle prices only USDC at a fixed dollar; a stablecoin without a price is unpriceable, not $1", async function () {
+    it("M-8 / X-17: the pool lends to nobody, so there is no borrower to track", async function () {
       const ctx = await deployPhase0Network();
-      const { assuranceOracle, usdc, usdt, dai, tokenRegistry, admin } = ctx;
-      expect(await assuranceOracle.getTokenPriceInUSD(await usdc.getAddress())).to.equal(ethers.parseEther("1"));
-      await expect(assuranceOracle.getTokenPriceInUSD(await dai.getAddress())).to.be.revertedWith("No price data");
-      expect(await assuranceOracle.hasPricingData(await usdt.getAddress())).to.equal(false);
-      // A depegged USDT is now valued at its price, not at par.
-      await tokenRegistry.registerToken(await usdt.getAddress(), 31337, await usdt.getAddress(), ethers.parseEther("0.9"));
-      await assuranceOracle.connect(admin).setForceRegistryFallback(await usdt.getAddress(), true);
-      expect(await assuranceOracle.quote(await usdt.getAddress(), await usdc.getAddress(), 100n * ONE_USDC)).to.equal(90n * ONE_USDC);
-    });
-
-    it("X-16: a repricing gain goes back to the tier the loss came out of before any of it is withdrawable", async function () {
-      const ctx = await deployPhase0Network();
-      const { assurancePool, assuranceOracle, tokenRegistry, admin, operator, instrument, outsider, usdc } = ctx;
-      const vol: any = await (await ethers.getContractFactory("MockERC20")).deploy("Vol", "VOL", 18);
-      await tokenRegistry.registerToken(await vol.getAddress(), 31337, await vol.getAddress(), ethers.parseEther("1"));
-      await tokenRegistry.setStablecoin(await vol.getAddress(), false);
-      await assuranceOracle.connect(admin).setForceRegistryFallback(await vol.getAddress(), true);
-      // 50 of buffer in USDC, plus a legacy holding of 40 VOL (booked as excess by a rebalance).
-      await usdc.mint(admin.address, 50n * ONE_USDC);
-      await usdc.approve(await assurancePool.getAddress(), 50n * ONE_USDC);
-      await assurancePool.depositIntoBufferReserve(50n * ONE_USDC);
-      await assurancePool.connect(admin).setReserveToken(await vol.getAddress());
-      await assurancePool.connect(admin).setReserveToken(await usdc.getAddress());
-      await vol.mint(await assurancePool.getAddress(), 40n * 10n ** 18n);
-      await assurancePool.connect(operator).rebalanceRTD();
-      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
-      await assurancePool.connect(instrument).withdraw(40n * ONE_USDC); // the excess, paid in USDC
-
-      // VOL halves: 20 lost, all of it from the buffer (excess is empty).
-      await tokenRegistry.setFallbackPrice(await vol.getAddress(), ethers.parseEther("0.5"));
-      await assurancePool.connect(outsider).rebalanceRTDPublic();
-      expect(await assurancePool.bufferBalance()).to.equal(30n * ONE_USDC);
-      // VOL recovers: the 20 goes back to the buffer, not to the withdrawable excess.
-      await tokenRegistry.setFallbackPrice(await vol.getAddress(), ethers.parseEther("1"));
-      await assurancePool.connect(outsider).rebalanceRTDPublic();
-      expect(await assurancePool.bufferBalance()).to.equal(50n * ONE_USDC);
-      expect(await assurancePool.excessBalance()).to.equal(0n);
-    });
-
-    it("M-8 / X-17: lender repayments come only from the tracked borrower, and interest is kept apart from principal", async function () {
-      const ctx = await deployPhase0Network();
-      const { assurancePool, operator, admin, usdc, outsider } = ctx;
-      const [, , , , , , , , , , , borrower] = await ethers.getSigners();
-      await usdc.mint(admin.address, 1_000n * ONE_USDC);
-      await usdc.approve(await assurancePool.getAddress(), 1_000n * ONE_USDC);
-      await assurancePool.depositIntoBufferReserve(300n * ONE_USDC);
-      await assurancePool.connect(operator).setPayoutPool(borrower.address);
-      await expect(assurancePool.connect(operator).setPayoutPool(ethers.ZeroAddress))
-        .to.be.revertedWithCustomError(assurancePool, "AssurancePoolInvalidAddress");
-
-      await assurancePool.connect(borrower).lendToPayoutPool(200n * ONE_USDC);
-      expect(await assurancePool.lentToPayoutPool()).to.equal(200n * ONE_USDC);
-      expect(await assurancePool.bufferOwed()).to.equal(200n * ONE_USDC);
-      // Not re-pointed while it owes.
-      await expect(assurancePool.connect(operator).setPayoutPool(outsider.address))
-        .to.be.revertedWithCustomError(assurancePool, "AssurancePoolLoanOutstanding");
-
-      // A third party's payment used to clear the books on one side only.
-      await usdc.mint(outsider.address, 200n * ONE_USDC);
-      await usdc.connect(outsider).approve(await assurancePool.getAddress(), ethers.MaxUint256);
-      await expect(assurancePool.connect(outsider).repayFromPayoutPool(200n * ONE_USDC))
-        .to.be.revertedWithCustomError(assurancePool, "AssurancePoolNotTrackedBorrower");
-
-      // 150 of principal and 10 of interest in one payment: only the 150 reduces the loan and
-      // restores the buffer; the 10 is income.
-      await usdc.mint(borrower.address, 160n * ONE_USDC);
-      await usdc.connect(borrower).approve(await assurancePool.getAddress(), ethers.MaxUint256);
-      await assurancePool.connect(borrower).repayFromPayoutPool(150n * ONE_USDC);
-      expect(await assurancePool.lentToPayoutPool()).to.equal(50n * ONE_USDC);
-      expect(await assurancePool.bufferBalance()).to.equal(250n * ONE_USDC);
-      await usdc.mint(borrower.address, 60n * ONE_USDC);
-      await expect(assurancePool.connect(borrower).repayFromPayoutPool(60n * ONE_USDC))
-        .to.emit(assurancePool, "LenderInterestReceived")
-        .withArgs(borrower.address, 50n * ONE_USDC, 10n * ONE_USDC);
-      expect(await assurancePool.lentToPayoutPool()).to.equal(0n);
-      expect(await assurancePool.bufferOwed()).to.equal(0n);
-      expect(await assurancePool.bufferBalance()).to.equal(300n * ONE_USDC);
-      expect(await assurancePool.excessBalance()).to.equal(10n * ONE_USDC);
+      const a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry, { bare: true });
+      for (const fn of ["lendToPayoutPool", "repayFromPayoutPool", "lendToBondVault", "repayFromBondVault", "reimburse", "depositRepayment"]) {
+        expect(a.pool.interface.getFunction(fn, [1n]), fn).to.equal(null);
+      }
     });
   });
 
@@ -609,7 +541,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       const [admin, payout, outsider] = await ethers.getSigners();
       const usdc: any = await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
       const vault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"), [admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
-      await vault.setBackstops(ethers.ZeroAddress, ethers.ZeroAddress, payout.address);
+      await vault.setBackstops(ethers.ZeroAddress, payout.address);
       await usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
       await vault.connect(payout).lendToPayoutPool(100n * ONE_USDC);
 
@@ -619,7 +551,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       }
       await expect(vault.connect(outsider).repayFromPayoutPool(100n * ONE_USDC))
         .to.be.revertedWithCustomError(vault, "BondVaultNotTrackedBorrower");
-      await expect(vault.setBackstops(ethers.ZeroAddress, ethers.ZeroAddress, outsider.address))
+      await expect(vault.setBackstops(ethers.ZeroAddress, outsider.address))
         .to.be.revertedWithCustomError(vault, "BondVaultLoanOutstanding");
       await expect(vault.connect(payout).repayFromPayoutPool(105n * ONE_USDC))
         .to.emit(vault, "InterestReceived")
@@ -629,16 +561,16 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
 
     it("X-10: reading face due within the window costs the same however many bonds are outstanding, and the minimum face is raised", async function () {
       // Flipped from DeepPoC2.spec.ts > X-10, where each $100 bond added ~8,000 gas to every RTD read.
+      // The RTD is retired (section 13); the vault's own required-reserve read stands in for it.
       const ctx = await deployPhase0Network();
-      const { admin, operator, usdc, assurancePool, assuranceOracle, outsider } = ctx;
+      const { admin, usdc, tokenRegistry, outsider } = ctx;
       const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
-        await assurancePool.getAddress(), await assuranceOracle.getAddress(), "ipfs://x"
+        await tokenRegistry.getAddress(), "ipfs://x"
       );
       const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.burnerBondDeposit());
       const vault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"), [admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
       await deposit.setBondVault(await vault.getAddress());
       await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
-      await assurancePool.connect(operator).setBondVault(await vault.getAddress());
       await usdc.mint(outsider.address, 10_000_000n * ONE_USDC);
       await usdc.connect(outsider).approve(await deposit.getAddress(), ethers.MaxUint256);
       const t0 = await now();
@@ -648,13 +580,13 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
         deposit.connect(outsider).makeDeposit(await usdc.getAddress(), 100n * ONE_USDC, t0 + 60 * DAY, 0)
       ).to.be.revertedWith("Face value too low");
 
-      const before = await assurancePool.neededReserves.estimateGas();
+      const before = await vault.requiredReserve.estimateGas();
       const N = 40;
       for (let i = 0; i < N; i++) {
         const maturity = t0 + 60 * DAY + i * DAY; // inside and outside the 90-day window
         await deposit.connect(outsider).makeDeposit(await usdc.getAddress(), 500n * ONE_USDC, maturity, 0);
       }
-      const after = await assurancePool.neededReserves.estimateGas();
+      const after = await vault.requiredReserve.estimateGas();
       expect(after - before).to.be.lessThan(50_000n); // a fixed number of bucket reads, not N
       expect(await vault.outstandingCount()).to.equal(BigInt(N));
       // And the bucketed sum is right: maturities at day 60..89 fall inside the 90-day window. The
@@ -670,7 +602,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       const signers = await ethers.getSigners();
       const [buyer, liquidator, owner] = [signers[8], signers[10], ctx.admin];
       const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
-        await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress(), "ipfs://b"
+        await ctx.tokenRegistry.getAddress(), "ipfs://b"
       );
       const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
       await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
@@ -728,7 +660,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
     it("X-19: a stranger cannot create (squat) a bond collection", async function () {
       const ctx = await deployPhase0Network();
       const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
-        await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress(), "ipfs://b"
+        await ctx.tokenRegistry.getAddress(), "ipfs://b"
       );
       await expect(
         factory.connect(ctx.outsider).createCollection(await ctx.usdc.getAddress(), "USDC", "Squatted", "ipfs://evil")

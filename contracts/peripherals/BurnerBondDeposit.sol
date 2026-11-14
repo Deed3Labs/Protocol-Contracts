@@ -9,7 +9,6 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "../core/interfaces/burner-bond/IBurnerBondDeposit.sol";
 import "../core/interfaces/burner-bond/IBurnerBond.sol";
-import "../core/interfaces/stable-credit/IAssurancePool.sol";
 import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
@@ -39,11 +38,6 @@ contract BurnerBondDeposit is
     /// @notice Factory contract for managing collections (single source of truth for parameters)
     IBurnerBondFactory public factory;
     
-    /// @notice The AssurancePool. Recorded for the factory's wiring only.
-    /// @dev Bond principal is never sent to it (compliance addendum 12.11): every deposit goes to
-    /// `bondVault`.
-    IAssurancePool public assurancePool;
-
     /// @notice Where bond proceeds are held.
     /// @dev Not the AssurancePool. Bondholders are creditors and their principal must not be put
     /// to work absorbing other people's defaults.
@@ -85,16 +79,15 @@ contract BurnerBondDeposit is
 
     /// @notice sets the deposit contract up.
     /// @param _factory Address of the parameter source
-    /// @param _assurancePool Address of the AssurancePool contract
-    function initialize(address _factory, address _assurancePool) external initializer {
+    /// @dev Takes no AssurancePool (section 13): bond principal never enters it, and the bond
+    /// contracts hold no address to send it there with.
+    function initialize(address _factory) external initializer {
         __Ownable_init();
         __ReentrancyGuard_init();
 
         require(_factory != address(0), "Invalid factory address");
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
         
         factory = IBurnerBondFactory(_factory);
-        assurancePool = IAssurancePool(_assurancePool);
         
         // Start deposit ID counter at 1
         _depositIdCounter.increment();
@@ -378,13 +371,6 @@ contract BurnerBondDeposit is
         bondVault = IBondVault(_bondVault);
     }
 
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external override onlyOwner {
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
-        assurancePool = IAssurancePool(_assurancePool);
-    }
-    
     /// @notice Emergency function to recover stuck tokens (owner only)
     /// @param token Token address to recover
     /// @param amount Amount to recover
@@ -419,7 +405,7 @@ contract BurnerBondDeposit is
         }
         
         // Call factory to create collection
-        // This will revert if token is not whitelisted by AssuranceOracle
+        // This will revert if the token is not whitelisted in the TokenRegistry
         IBurnerBondFactory(factory).createCollection(
             tokenAddress,
             tokenSymbol,

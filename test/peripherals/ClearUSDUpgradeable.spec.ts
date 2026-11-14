@@ -40,9 +40,7 @@ describe("ClearUSDUpgradeable", function () {
     );
     await ctx.networkRegistry.registerIssuer(
       await revolving.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await revolving.getAddress());
     await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);

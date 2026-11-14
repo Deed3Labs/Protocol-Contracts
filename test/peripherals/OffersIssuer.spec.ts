@@ -30,9 +30,7 @@ describe("OffersIssuer", function () {
     );
     await ctx.networkRegistry.registerIssuer(
       await offers.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await offers.connect(ctx.operator).setCap(1_000n * ONE_USDC);
     await ctx.access.connect(ctx.operator).grantMember(shop.address);
@@ -147,7 +145,7 @@ describe("OffersIssuer", function () {
 
     it("takes the Safe's USDC up to its allowance and repays the line", async function () {
       await safeAllows(100n * ONE_USDC);
-      const reserveBefore = await ctx.assurancePool.reserveBalance();
+      const lenderBefore = await ctx.usdc.balanceOf(ctx.lenderOperating.address);
 
       await expect(offers.connect(ctx.outsider).settle())
         .to.emit(offers, "LineSettled")
@@ -155,8 +153,9 @@ describe("OffersIssuer", function () {
 
       expect(await offers.owed()).to.equal(0n);
       expect(await ctx.usdc.balanceOf(safe.address)).to.equal(1_000n * ONE_USDC - OFFER);
-      // Routed as any repayment is: with no payout pool on this ledger, into loss absorption.
-      expect(await ctx.assurancePool.reserveBalance()).to.equal(reserveBefore + OFFER);
+      // Routed as any repayment is: with no payout pool on this ledger, to Lending Co.'s operating
+      // address (section 13; it used to go into the AssurancePool).
+      expect(await ctx.usdc.balanceOf(ctx.lenderOperating.address)).to.equal(lenderBefore + OFFER);
       expect(await offers.totalSettled()).to.equal(OFFER);
     });
 
@@ -213,7 +212,7 @@ describe("OffersIssuer", function () {
     });
   });
 
-  describe("not something the AssurancePool reserves against", function () {
+  describe("not part of the covered book the Credit Backstop's floor is read from", function () {
     it("reports no position for its own line or for anyone it enrolled", async function () {
       await offers.connect(ctx.operator).grant(newcomer.address);
       const [kinds] = await offers.debtByKind(await offers.getAddress());
