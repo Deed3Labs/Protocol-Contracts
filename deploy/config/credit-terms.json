@@ -1,10 +1,19 @@
 {
-  "_note": "Clear Credit Agreement terms (section 12). Every figure is pending counsel and governed: after the credit timelock handover, a change is a 7-day proposal.",
+  "_note": "Clear Credit Agreement terms (section 12, Addendum 2). Every figure is pending counsel and governed: after the credit timelock handover, a change is a 7-day proposal. autoClearEnabledGlobal is kept for the struct but no longer read: only the member's hybridMode switches Automatic Clearing off (12.2).",
   "unsecuredLineCapUsd": 2499,
   "cureWindowDays": 15,
   "boostBaseCapUsd": 500,
   "boostEarnedCapUsd": 750,
   "boostCleanCycles": 6,
   "boostDepositCycles": 5,
-  "autoClearEnabledGlobal": true
+  "autoClearEnabledGlobal": true,
+  "securedMinimumBps": 100,
+  "securedMinimumFloorUsd": 1,
+  "cardMemberDailyCapUsd": 500,
+  "incomePauseMaxCycles": 3,
+  "maxFeeSmallUsd": 50,
+  "maxFeeLargeUsd": 75,
+  "feeCapLargeFromUsd": 2500,
+  "_federalBenefitPayers": "Hashed ACH originator ids excluded from Automatic Clearing by default (12.2). Fill in the Social Security, SSI, VA and other U.S. Treasury benefit originators the bank reports; the hash is keccak256 of the id as the settler names it.",
+  "defaultExcludedPayers": []
 }

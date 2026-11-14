@@ -50,7 +50,31 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
   }
 
-  it("acceptance 3: Boost $500 at 3% plus income $1,000 at 1.5% is trimmed to the $28.125 ceiling on $1,500, Boost first", async function () {
+  it("acceptance 3 (amended, Addendum 2): the same example at a 2.5% Boost list rate is under the $28.125 ceiling, and a calendar cycle of d days accrues 12 x d / 365 of each monthly figure", async function () {
+    await rates.setProduct(CA, P("BOOST"), params({ listMonthlyBps: 250 }), CA_BANDS);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 0);
+    await spend(1_500n * ONE_USDC); // cheapest first: income 1,000, then Boost 500
+    // One whole calendar cycle, end to end, as the chain computes it.
+    const e1 = Number((await revolving.cycleStateOf(ctx.member.address)).cycleEnd);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [e1]);
+    await revolving.materialiseCarry(ctx.member.address);
+    const income0 = await revolving.carryOf(ctx.member.address, INCOME);
+    const boost0 = await revolving.carryOf(ctx.member.address, BOOST);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [e1 + 1]);
+    await revolving.syncCreditPeriod(ctx.member.address);
+    const e2 = Number((await revolving.cycleStateOf(ctx.member.address)).cycleEnd);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [e2]);
+    await revolving.materialiseCarry(ctx.member.address);
+    const seconds = BigInt(e2 - e1);
+    const income = (await revolving.carryOf(ctx.member.address, INCOME)) - income0;
+    const boost = (await revolving.carryOf(ctx.member.address, BOOST)) - boost0;
+    // $15.00 and $12.50 a month, $27.50 in all: under the $28.125 ceiling, so nothing is trimmed.
+    expect(income).to.be.closeTo((15_000_000n * 12n * seconds) / (365n * 86_400n), 3_000n);
+    expect(boost).to.be.closeTo((12_500_000n * 12n * seconds) / (365n * 86_400n), 3_000n);
+    expect(income + boost).to.be.lte((28_125_000n * 12n * seconds) / (365n * 86_400n));
+  });
+
+  it("acceptance 3 (Phase 2, at 3%): Boost $500 at 3% plus income $1,000 at 1.5% is trimmed to the $28.125 ceiling on $1,500, Boost first", async function () {
     await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 0);
     await spend(1_500n * ONE_USDC); // cheapest first: income 1,000, then Boost 500
     await advance(CYCLE);

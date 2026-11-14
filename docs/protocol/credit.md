@@ -11,7 +11,8 @@ write to the same ledger through the same `NetworkRegistry`. Deployed addresses 
 | `StableCredit.sol` | The ledger's rules: issuer gating, the three-party mint, repayment routing, lost debt |
 | `ClearCredit.sol` | The deployable ledger. Adds an external `initialize` to `StableCredit` and nothing else |
 | `CreditIssuer.sol` | Base issuer: credit periods, compliance, freeze, default, write-off, ITD |
-| `RevolvingIssuer.sol` | The tiered revolving line and card settlement |
+| `RevolvingIssuer.sol` | The tiered revolving line and card settlement; calendar cycles and dues (with `RevolvingIssuerExtension`, `RevolvingIssuerCycles`, `RevolvingIssuerTerms` by delegatecall) |
+| `PacificCalendar.sol` | Calendar dates and US Pacific time for revolving cycle ends |
 | `TermIssuer.sol` | Term plans with split schedules, under their own `termLimitOf` |
 | `OffersIssuer.sol` | A capped line the co-op draws to give new members a one-time offer |
 | `CollateralRegistry.sol` | Pledges per member, exposure per member, the CLRUSD lock |
@@ -145,6 +146,75 @@ leg. All four functions require `isCardSettler[msg.sender]`. `settleCardSpend`, 
 | `repayCardSpend(ref, member, amount)` | A fiat repayment. Requires `amount <= totalPrincipalOf(member)` and the float to hold `amount`, then clears tiers and burns the float's claim against the member's obligation with `reversePurchase`. No reserve token moves |
 | `repayForMember(ref, member, amount)` | Only while the member has called `setAutoRepay(true)`. Pulls the member's USDC with `repayCreditBalanceFor(member, member, amount)` and clears tiers dearest first |
 
+### Cycles, dues and Automatic Clearing (Addendum 2, Phase 2e)
+
+**A revolving cycle is a calendar month.** Each line has a `cycleEndDay` (1-28) chosen at
+`openLine(member, capacities, cycleEndDay)`; 0 takes the default, the day before the opening day or
+the 28th. Every cycle ends at 23:59:59 Pacific on that day (UTC−7 from the second Sunday in March to
+the first Sunday in November, otherwise UTC−8), computed by `PacificCalendar`. The first ends on the
+first Cycle End Day at least 14 days after opening. No role writes or moves a cycle end: the credit
+period setters (`updateCreditPeriod`, `setPeriodExpirationOf`, `setGraceLengthOf`, `pausePeriodOf`,
+`unpausePeriodOf`, `initializeCreditLine`) revert `RevolvingIssuerCyclesComputed` on this issuer,
+and `openLine` refuses a member with a live line. The member alone moves their day, by EIP-712
+signature (`setCycleEndDayWithSignature`, type `CycleEndDay(address member,uint8 day,uint256 nonce,
+uint256 deadline)`), at most once per rolling 365 days; the running cycle then ends on the first new
+Cycle End Day on or after its existing end. Term plans keep 30-day cycles.
+
+**What is due.** At each close the chain fixes, for the next cycle end (the Payment Due Date):
+
+| Figure | Definition |
+|---|---|
+| Rebalance Amount | The unsecured revolving balance (income-backed and Boost, materialised carry included) at the close |
+| Secured Minimum | Asset-backed carry accrued in the cycle, plus — when no unsecured principal is out at the close — `securedMinimumBps` (100) of savings- and asset-backed principal, at least $1 or the secured principal if less. A raise binds only cycles closing 45 days or more after it |
+
+Every repayment of the line counts toward both (`paidSinceClose`). Equilibrium and 12.5 are measured
+on the Rebalance Amount only. **A missed Secured Minimum is never a miss**: its only effect is a
+computed pause on new savings- and asset-backed draws (those tiers are skipped, unsecured draws go
+on), until the payments since that close reach Rebalance Amount + Secured Minimum, lifting in the
+same transaction. No role sets it. `duesOf(member)` returns the unpaid Rebalance Amount, the unpaid
+Secured Minimum and whether the pause is on; `cycleStateOf(member)` the whole record.
+
+**Income Assurance (12.13).** `incomePause` (at most `incomePauseMaxCycles`, 3) is set by two
+`CREDIT_ATTESTER_ROLE` holders (`proposeIncomePause`, then `approveIncomePause` by a different one).
+While it is above zero nothing is due, no miss is recorded, no pause arises and nothing counts toward
+default; it falls by one at each cycle end, and only expiry or the member (`endIncomePause`) ends it.
+A second attestation can only lengthen it.
+
+**Automatic Clearing (12.2).** The member's authorization runs to the Bank, Clear Financial and Clear
+Lending. It is set at line opening from the member's own choice on a separate screen: "Approve
+automatic clearing" signs `AutoClear(address member,bool on,uint8 level,bytes32 authHash,uint256
+nonce,uint256 deadline)`, which sets it on and records `autoClearAuthHash`; "Turn off" signs nothing.
+The member changes it any time (`setAutoClear(on, level, authHash)` or the signature); no role does,
+and the governed `autoClearOffGlobal` is no longer read. `repayForMember(ref, member, amount, payer)`
+is the settler recording a deposit that landed in Spendable:
+
+| Level | Clears |
+|---|---|
+| 0 `UNSECURED` (default) | Boost and income-backed, dearest first, then any unpaid Secured Minimum from the secured tiers, and stops |
+| 1 `EVERYTHING` (the old ALL) | Every tier, dearest first; the rest stays in Spendable |
+| 2 `DUE_ONLY` | Exactly the unpaid Rebalance Amount, then any unpaid Secured Minimum |
+
+It reverts while the member's `hybridMode` is on (the only switch besides the member's own; it never
+changes a cycle), and for an excluded payer: federal benefit originators are excluded by default
+(`addDefaultExcludedPayer`, add-only), and only the member's signature removes one
+(`setPayerExclusionWithSignature`). A sweep that names no payer is refused. Ready to allocate USDC and
+CLRUSD are never swept: the settler delivers the cash. The ledger order — each deposit posts to
+Spendable first, and the clearing is a separate debit after posting and before availability — is the
+bank's, off chain.
+
+**Permissions (12.12).** The Automatic Clearing authorization is its own screen at line opening,
+revocable any time and listed on the Permissions page; the onboarding line is notice only, sets
+nothing and is never listed among required permissions.
+
+**Default (12.5, 10b).** See [Default](#default): two consecutive missed Rebalance Amounts, a
+two-person cure-notice timestamp for the second, and the grace period.
+
+**The card (Phase 4c items 1, 2 and 7).** `settleCardSpend` also counts against a governed
+per-member daily cap (`cardMemberDailyCap`, set with `setDueTerms`). Authorization and settlement
+refuse a member whose current line defaulted (`hasDefaultedOnCurrentLine`), so a re-onboarded member
+can use the card. `repayCardSpend`, `reverseCardSpend` and Automatic Clearing clear tiers dearest
+first by what each costs now after the caps, the same order as the ledger's band walk.
+
 ### TermIssuer — plans
 
 **A plan is a purchase with its own rate, clock and schedule.** `openPlan` (`onlyOperator`)
@@ -181,8 +251,31 @@ the principal still owed and pays back, in cash, up to what was repaid and not a
 (`refundedOf`). Carry materialised in the call is withheld from the cash, up to the cash. The plan
 closes once what is outstanding is no more than that carry.
 
-**Fee and carry are separate recipients.** The co-op's leg of each purchase is minted to
-`_feeRecipient()` — `feeRecipient`, or `carryTreasury` while unset — and refunds burn it from there.
+**The fee leg (12.16, Addendum 2).** The third leg of each purchase is Clear Lending's fee, minted to
+`feeRecipient` — Clear Lending's own multisig, or an account Clear Financial holds as its agent, never
+the co-op's treasury. fee = min(`discountBpsBySplit` × amount, cap), the cap $50 up to $2,500 and $75
+above (`setFeeTerms`); the merchant is paid the amount less the fee and the member is never charged
+it. A plan with a fee will not open while no recipient is named. Changing it takes two
+`CREDIT_SETTINGS_ROLE` holders (`proposeFeeRecipient(recipient, reasonCode)`, then
+`approveFeeRecipient` by a different one), emits `FeeRecipientChanged`, and applies to later charges
+only: each plan records where its fee went (`pricingOf(planId).feeTo`), and a refund or reversal
+reverses the fee pro rata from there. Plans opened before Phase 2e reverse from `feeRecipient`, or
+the carry treasury while it was unset, as before.
+
+**Carry (decision C, Addendum 2).** A plan is charged its list rate per 30-day cycle on remaining
+principal ($47.47 on $940 in 4 at 2%), trimmed so it never exceeds the per-second-fitted cap on that
+principal, then the Combined Ceiling.
+
+**The Combined Ceiling (12.3).** The unsecured revolving tiers and every plan opened under $2,500 are
+one loan: their monthly carry never exceeds the graduated schedule on their combined principal (1% a
+month on every dollar above $1,650). The revolving tiers keep theirs (they are held to the schedule on
+their own principal, Boost trimmed first); what is left is shared by the plans oldest first, so the
+excess comes off the newest plan first. Clear Cash of $2,500 or more is outside it. It is permanent:
+`setCombinedCeiling` (term issuer) and `setTermIssuer` (revolving issuer) are each set once, and
+DECISIONS #7's switch is gone. Every plan of a member is brought to now together
+(`materialiseMember`), and the revolving line calls it before it changes the member's unsecured
+principal, so the shares hold over every stretch they are applied to. `combinedPlanCarryOf(member)`
+reads each plan's monthly figure.
 
 ### Two lines, not one
 
@@ -284,6 +377,29 @@ flowchart TD
   WT --> LD
   LD -->|"burnLostDebt"| AP["AssurancePool.reimburse"]
 ```
+
+**Revolving default is computed, never declared, and fails closed (12.5, 10b; Addendum 2).** A
+line is in default (`inDefault`) only when:
+
+1. two consecutive Rebalance Amounts were missed at their due points;
+2. a cure-notice timestamp was recorded for the second by two people: a `CREDIT_ATTESTER_ROLE` holder
+   calls `proposeCureNotice(member)` and a different one `approveCureNotice(member)`; the recorded
+   time is the approval's block time, never earlier, and it can be recorded only while that amount is
+   unpaid;
+3. that amount is still unpaid; paying it cancels the timestamp (`CureNoticeCancelled`); and
+4. the grace period is over: the later of `cureWindow` (15 days) after the second due point and
+   864,000 s after the timestamp.
+
+With no timestamp there is no default. After the second miss the line is frozen until that amount is
+paid. Income Assurance holds default off while it runs. `triggerDefault(member)` (anyone) records a
+computed default and reverts otherwise; the Liquidator's `_requireCurrentDefault` reads the same
+`inDefault`. A member whose only debt is secured never misses, so never defaults on the revolving
+line: an unpaid Secured Minimum only pauses secured draws. Secured term plans keep TermIssuer's own
+default (below).
+
+**Re-onboarding (Phase 4c item 3).** `openLine` reverts while collateral pledged against an earlier
+default's debt is unapplied (a secured tier still owes and the registry values a pledge behind it),
+so a new line never cuts that recovery short.
 
 **Revolving.** `_writeOffAmount` is `CollateralRegistry.exposureOf(member)` — which counts every
 issuer the member is enrolled with — capped at `totalDrawnOf(member)`, or the whole drawn amount

@@ -16,6 +16,10 @@ import { saveDeployment, getDeployment } from "./helpers";
  *   follow no state rules -- the legacy mode Phase 1 left.
  * - Sets the Clear Credit Agreement's terms from `deploy/config/credit-terms.json` (section 12) and
  *   names ESADepositVault as where ESA deposits are read for the Boost cap.
+ * - Addendum 2 (Phase 2e): the Secured Minimum, the per-member card cap and Income Assurance's
+ *   length (`setDueTerms`), the federal-benefit payers excluded from Automatic Clearing by default,
+ *   the Combined Ceiling wired once both ways, and the fee cap. Clear Lending's fee recipient takes
+ *   two people: this proposes `FEE_RECIPIENT` and says who must approve it.
  * - Grants STATE_ATTESTER_ROLE on NetworkRegistry to `STATE_ATTESTER_KEY` when set.
  * - Trusts the revolving issuer on the Liquidator (permissionless liquidation only seizes for
  *   trusted issuers), and names NetworkRegistry as the vault's state source. From then on every
@@ -174,6 +178,61 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
   if (vaultForDeposits && (await revolving.depositSource()) !== vaultForDeposits.address) {
     await (await revolving.setDepositSource(vaultForDeposits.address)).wait();
     log("  RevolvingIssuer deposit source -> ESADepositVault");
+  }
+
+  // ---- Addendum 2 (Phase 2e): dues, the per-member card cap, federal-benefit exclusions ----
+  const due = await revolving.dueTermsOf();
+  const wantDue = {
+    bps: Number(terms.securedMinimumBps ?? 100),
+    floor: BigInt(terms.securedMinimumFloorUsd ?? 1) * ONE_USD,
+    card: BigInt(terms.cardMemberDailyCapUsd ?? 0) * ONE_USD,
+    pause: Number(terms.incomePauseMaxCycles ?? 3),
+  };
+  const bpsHeld = Number(due.raisedFrom) !== 0 ? Number(due.raisedBps) : Number(due.securedMinimumBps);
+  if (bpsHeld !== wantDue.bps || due.securedMinimumFloor !== wantDue.floor
+    || due.cardMemberDailyCap !== wantDue.card || Number(due.incomePauseMaxCycles) !== wantDue.pause) {
+    await (await revolving.setDueTerms(wantDue.bps, wantDue.floor, wantDue.card, wantDue.pause)).wait();
+    log(`  due terms: Secured Minimum ${wantDue.bps} bps (at least ${terms.securedMinimumFloorUsd ?? 1} USD), card ${terms.cardMemberDailyCapUsd ?? 0} USD/member/day, Income Assurance ${wantDue.pause} cycles`);
+  }
+  for (const payer of (terms.defaultExcludedPayers ?? []) as string[]) {
+    const id = ethers.id(payer);
+    if (!(await revolving.defaultExcludedPayer(id))) {
+      await (await revolving.addDefaultExcludedPayer(id)).wait();
+      log(`  excluded from Automatic Clearing by default: ${payer}`);
+    }
+  }
+
+  // ---- 12.3: the Combined Ceiling, wired once, both ways (it can never be switched off) ----
+  if (ceiling) {
+    if ((await term.combinedProduct()) === ethers.ZeroHash) {
+      await (await term.setCombinedCeiling(await revolving.getAddress(), ceiling.product)).wait();
+      log("  TermIssuer Combined Ceiling -> RevolvingIssuer, graduated schedule of the ceiling product");
+    }
+    if ((await revolving.dueTermsOf()).termIssuer === ethers.ZeroAddress) {
+      await (await revolving.setTermIssuer(await term.getAddress())).wait();
+      log("  RevolvingIssuer Combined Ceiling -> TermIssuer");
+    }
+  }
+
+  // ---- 12.16: the fee cap, and Clear Lending's fee recipient (two people) ----
+  const fees = await term.feeTermsOf();
+  const wantFees = [terms.maxFeeSmallUsd ?? 50, terms.maxFeeLargeUsd ?? 75, terms.feeCapLargeFromUsd ?? 2500].map((n: number) => BigInt(n) * ONE_USD);
+  if (fees.maxFeeSmall !== wantFees[0] || fees.maxFeeLarge !== wantFees[1] || fees.largeFrom !== wantFees[2]) {
+    await (await term.setFeeTerms(wantFees[0], wantFees[1], wantFees[2])).wait();
+    log(`  fee cap: ${terms.maxFeeSmallUsd ?? 50} USD up to ${terms.feeCapLargeFromUsd ?? 2500} USD, ${terms.maxFeeLargeUsd ?? 75} USD above`);
+  }
+  const feeTo = process.env.FEE_RECIPIENT;
+  if ((await term.feeRecipient()) === ethers.ZeroAddress) {
+    if (feeTo && ethers.isAddress(feeTo)) {
+      const reason = ethers.encodeBytes32String("INITIAL");
+      const pending = await term.feeRecipientProposalOf();
+      if (pending.recipient !== ethers.getAddress(feeTo)) {
+        await (await term.proposeFeeRecipient(feeTo, reason)).wait();
+      }
+      log(`! Fee recipient ${feeTo} proposed: a second CREDIT_SETTINGS_ROLE holder approves it with approveFeeRecipient(${feeTo}, "INITIAL"). Plans with a fee cannot open until then.`);
+    } else {
+      log("! FEE_RECIPIENT unset: no plan with a fee can open until Clear Lending's fee recipient is named by two people.");
+    }
   }
 
   // ---- term ----

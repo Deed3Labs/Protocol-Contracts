@@ -5,6 +5,7 @@ import * as path from "path";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { CA, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule, thirtyDays } from "./rates";
 import { issuerProxyOptions } from "../../helpers/issuers";
+import { passCycleEnd, driveToSecondMiss, recordCureNotice, NOTICE_GRACE } from "../../helpers/default";
 
 async function advance(seconds: number) {
   await ethers.provider.send("evm_increaseTime", [seconds]);
@@ -14,9 +15,15 @@ async function advance(seconds: number) {
 /*
  * Section 12 (credit agreements addendum, with the owner's correction to 12.1 and 12.2) on the
  * revolving line: auto-clear from Spendable, the unsecured cap, Boost earned by Clean Cycles and
- * deposits, a missed cycle halving the limit, default after two misses and the cure window, and
+ * deposits, a missed cycle halving the limit, default after two misses and the cure notice, and
  * Savings drawn by card only with the member's own authorization. Acceptance 18-22, 24, 25.
+ *
+ * Since Addendum 2 (Phase 2e) cycles are calendar months judged on the Rebalance Amount, Automatic
+ * Clearing has three levels and names the deposit's payer, and default needs a two-person cure
+ * notice. Addendum2.spec.ts holds the new acceptance tests; these keep section 12's.
  */
+const AUTH = ethers.id("Automatic clearing authorization v1");
+const PAYROLL = ethers.id("ACH:payroll-employer");
 describe("COMPLIANCE section 12: the revolving line", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
   let revolving: any, rates: any, coop: any, settler: any, float: any;
@@ -65,10 +72,9 @@ describe("COMPLIANCE section 12: the revolving line", function () {
   async function spend(amount: bigint) {
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount * ONE_USDC);
   }
-  /** Ends the cycle and its grace window, and has the chain judge it. Anyone may. */
+  /** Moves past the running cycle end and has the chain judge it. Anyone may. */
   async function judge() {
-    await advance(CYCLE + GRACE + 1);
-    await revolving.connect(coop).syncCreditPeriod(ctx.member.address);
+    await passCycleEnd(revolving.connect(coop), ctx.member.address);
   }
   async function fundSettler() {
     await ctx.usdc.mint(settler.address, 10_000n * ONE_USDC);
@@ -97,6 +103,7 @@ describe("COMPLIANCE section 12: the revolving line", function () {
     const source: any = await Source.deploy();
     await revolving.connect(ctx.operator).setDepositSource(await source.getAddress());
     await open(0n, 1_000n, 500n);
+    await judge(); // the first cycle end only closes a cycle; the next six are judged
     for (let cycle = 0; cycle < 6; cycle++) {
       if (cycle !== 2) await source.deposit(ctx.member.address); // 5 of 6
       await judge();
@@ -112,6 +119,7 @@ describe("COMPLIANCE section 12: the revolving line", function () {
     const source: any = await Source.deploy();
     await revolving.connect(ctx.operator).setDepositSource(await source.getAddress());
     await open(0n, 1_000n, 500n);
+    await judge();
     for (let cycle = 0; cycle < 6; cycle++) {
       if (cycle % 3 !== 0) await source.deposit(ctx.member.address); // 4 of 6
       await judge();
@@ -135,30 +143,37 @@ describe("COMPLIANCE section 12: the revolving line", function () {
     expect(revolving.interface.getFunction("boostCapOf")!.inputs.length).to.equal(1);
   });
 
-  it("acceptance 22 (issuer): a missed cycle halves the unsecured limit and leaves Savings alone; default needs a second miss and the cure window", async function () {
+  it("acceptance 22 (issuer): a missed cycle halves the unsecured limit and leaves Savings alone; default needs a second miss, the cure notice and the grace period", async function () {
     await open(200n, 1_000n, 500n);
     await spend(1_700n); // savings 200, income 1,000, boost 500
     const savingsDrawn = await revolving.drawnOf(ctx.member.address, SAVINGS);
-    await expect(judge()).to.not.be.reverted;
+    await judge(); // the close: $1,500 unsecured is the Rebalance Amount
+    await expect(judge()).to.not.be.reverted; // unpaid at its due point: the first miss
     const c1 = await revolving.cycleOf(ctx.member.address);
     expect(c1.missedInRow).to.equal(1n);
     expect(await revolving.capacityOf(ctx.member.address, INCOME)).to.equal(500n * ONE_USDC);
     expect(await revolving.capacityOf(ctx.member.address, BOOST)).to.equal(250n * ONE_USDC);
     expect(await revolving.capacityOf(ctx.member.address, SAVINGS)).to.equal(200n * ONE_USDC);
-    expect(await revolving.drawnOf(ctx.member.address, SAVINGS)).to.equal(savingsDrawn);
+    expect(await revolving.drawnOf(ctx.member.address, SAVINGS)).to.be.closeTo(savingsDrawn, 0n);
     expect(await revolving.unsecuredExcessOf(ctx.member.address)).to.be.gte(750n * ONE_USDC);
     expect(await revolving.inDefault(ctx.member.address)).to.equal(false);
     // The halved ceiling holds: capacity can't be pushed back up until a Clean Cycle.
     await expect(revolving.connect(ctx.operator).setTierCapacity(ctx.member.address, INCOME, 1_100n * ONE_USDC))
       .to.be.revertedWithCustomError(revolving, "RevolvingIssuerUnsecuredCap");
 
-    // Second miss in a row: the chain dates the cure notice; still no default for 15 days.
-    await advance(CYCLE + GRACE + 1);
-    await expect(revolving.connect(coop).syncCreditPeriod(ctx.member.address)).to.emit(revolving, "CureNotice");
+    // Second miss in a row: the line freezes on the unpaid amount, and nothing is a default until a
+    // cure notice is recorded by two people (Addendum 2: no timestamp, no default).
+    await judge();
+    const s = await revolving.cycleStateOf(ctx.member.address);
+    expect(s.cureAmount).to.be.gt(0n);
+    await advance(30 * DAY);
     expect(await revolving.inDefault(ctx.member.address)).to.equal(false);
-    await advance(15 * DAY - 60);
+    await recordCureNotice(revolving, ctx.member.address);
+    const noticeAt = Number((await revolving.cycleOf(ctx.member.address)).cureNoticeAt);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [noticeAt + NOTICE_GRACE - 1]);
+    await ethers.provider.send("evm_mine", []);
     expect(await revolving.inDefault(ctx.member.address)).to.equal(false);
-    await advance(61);
+    await advance(1);
     expect(await revolving.inDefault(ctx.member.address)).to.equal(true);
     await revolving.connect(coop).syncCreditPeriod(ctx.member.address);
     expect(await revolving.hasDefaulted(ctx.member.address)).to.equal(true);
@@ -167,6 +182,7 @@ describe("COMPLIANCE section 12: the revolving line", function () {
   it("12.5: rebalancing during the cure window clears the record; a Clean Cycle lifts the halved ceiling", async function () {
     await open(0n, 1_000n, 500n);
     await spend(600n);
+    await judge(); // the close
     await judge(); // first miss
     await ctx.usdc.mint(ctx.member.address, 1_000n * ONE_USDC);
     await ctx.usdc.connect(ctx.member).approve(await ctx.stableCredit.getAddress(), ethers.MaxUint256);
@@ -181,16 +197,16 @@ describe("COMPLIANCE section 12: the revolving line", function () {
     await revolving.connect(ctx.operator).setTierCapacity(ctx.member.address, INCOME, 1_000n * ONE_USDC);
   });
 
-  it("acceptance 18: auto-clear ON, UNSECURED_ONLY: a Spendable deposit clears Boost then income-backed and stops; secured tiers unchanged, the rest stays spendable", async function () {
+  it("acceptance 18 (section 12): auto-clear ON, UNSECURED: a Spendable deposit clears Boost then income-backed and stops; secured tiers unchanged, the rest stays spendable", async function () {
     await open(200n, 1_000n, 500n);
     await spend(1_700n);
-    await revolving.connect(ctx.member).setAutoClear(true, 0);
+    await revolving.connect(ctx.member).setAutoClear(true, 0, AUTH);
     await fundSettler();
     await ctx.usdc.mint(ctx.member.address, 300n * ONE_USDC); // Ready to allocate: never swept
     const savingsBefore = await revolving.drawnOf(ctx.member.address, SAVINGS);
     const unsecured = (await revolving.drawnOf(ctx.member.address, INCOME)) + (await revolving.drawnOf(ctx.member.address, BOOST));
     const deposit = 1_600n * ONE_USDC;
-    const tx = revolving.connect(settler).repayForMember(ethers.id("receipt:1"), ctx.member.address, deposit);
+    const tx = revolving.connect(settler).repayForMember(ethers.id("receipt:1"), ctx.member.address, deposit, PAYROLL);
     await expect(tx).to.emit(revolving, "AutoCleared");
     expect(await revolving.drawnOf(ctx.member.address, BOOST)).to.equal(0n);
     expect(await revolving.drawnOf(ctx.member.address, INCOME)).to.equal(0n);
@@ -204,7 +220,7 @@ describe("COMPLIANCE section 12: the revolving line", function () {
     await open(0n, 1_000n, 500n);
     await spend(1_500n);
     await fundSettler();
-    await expect(revolving.connect(settler).repayForMember(ethers.id("receipt:2"), ctx.member.address, 500n * ONE_USDC))
+    await expect(revolving.connect(settler).repayForMember(ethers.id("receipt:2"), ctx.member.address, 500n * ONE_USDC, PAYROLL))
       .to.be.revertedWithCustomError(revolving, "RevolvingIssuerAutoRepayNotEnabled");
     const income = await revolving.drawnOf(ctx.member.address, INCOME);
     const boost = await revolving.drawnOf(ctx.member.address, BOOST);
@@ -215,28 +231,32 @@ describe("COMPLIANCE section 12: the revolving line", function () {
     expect(await revolving.drawnOf(ctx.member.address, INCOME)).to.be.closeTo(income, 50_000n);
   });
 
-  it("12.2: onboarding turns auto-clear on by the member's signature; a replay or anyone else's signature fails; only the member changes it", async function () {
+  it("12.2: the member's signature turns auto-clear on (Addendum 2: on the Automatic clearing screen, with the text's hash); a replay or anyone else's signature fails; only the member changes it", async function () {
     const { chainId } = await ethers.provider.getNetwork();
     const domain = { name: "Clear RevolvingIssuer", version: "1", chainId, verifyingContract: await revolving.getAddress() };
     const types = { AutoClear: [
-      { name: "member", type: "address" }, { name: "on", type: "bool" }, { name: "scope", type: "uint8" },
-      { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] };
-    const value = { member: ctx.member.address, on: true, scope: 0, nonce: 0n, deadline: ethers.MaxUint256 };
+      { name: "member", type: "address" }, { name: "on", type: "bool" }, { name: "level", type: "uint8" },
+      { name: "authHash", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] };
+    const value = { member: ctx.member.address, on: true, level: 0, authHash: AUTH, nonce: 0n, deadline: ethers.MaxUint256 };
     const sig = await ctx.member.signTypedData(domain, types, value);
-    await revolving.connect(ctx.operator).setAutoClearWithSignature(ctx.member.address, true, 0, ethers.MaxUint256, sig);
+    await revolving.connect(ctx.operator).setAutoClearWithSignature(ctx.member.address, true, 0, AUTH, ethers.MaxUint256, sig);
     expect(await revolving.autoRepayEnabled(ctx.member.address)).to.equal(true);
-    await expect(revolving.connect(ctx.operator).setAutoClearWithSignature(ctx.member.address, true, 0, ethers.MaxUint256, sig))
+    await expect(revolving.connect(ctx.operator).setAutoClearWithSignature(ctx.member.address, true, 0, AUTH, ethers.MaxUint256, sig))
       .to.be.revertedWithCustomError(revolving, "RevolvingIssuerBadSignature");
     const forged = await ctx.counterparty.signTypedData(domain, types, { ...value, on: false, nonce: 1n });
-    await expect(revolving.connect(ctx.operator).setAutoClearWithSignature(ctx.member.address, false, 0, ethers.MaxUint256, forged))
+    await expect(revolving.connect(ctx.operator).setAutoClearWithSignature(ctx.member.address, false, 0, AUTH, ethers.MaxUint256, forged))
       .to.be.revertedWithCustomError(revolving, "RevolvingIssuerBadSignature");
-    await revolving.connect(ctx.member).setAutoClear(false, 0);
+    // Turning it on needs the authorization's hash; turning it off does not.
+    await expect(revolving.connect(ctx.member).setAutoClear(true, 0, ethers.ZeroHash))
+      .to.be.revertedWithCustomError(revolving, "RevolvingIssuerBadScope");
+    await revolving.connect(ctx.member).setAutoClear(false, 0, ethers.ZeroHash);
     expect(await revolving.autoRepayEnabled(ctx.member.address)).to.equal(false);
-    // The network-wide switch (governed) stops it for everyone.
-    await revolving.connect(ctx.member).setAutoClear(true, 0);
+    // The governed network-wide switch no longer reaches it: only the member's hybridMode does (12.2).
+    await revolving.connect(ctx.member).setAutoClear(true, 0, AUTH);
     await revolving.connect(ctx.operator).setCreditTerms({ ...TERMS, autoClearOffGlobal: true }, 500n * ONE_USDC, 750n * ONE_USDC);
-    await expect(revolving.connect(settler).repayForMember(ethers.id("r"), ctx.member.address, ONE_USDC))
-      .to.be.revertedWithCustomError(revolving, "RevolvingIssuerAutoClearOff");
+    await revolving.connect(ctx.member).setHybridMode(true);
+    await expect(revolving.connect(settler).repayForMember(ethers.id("r"), ctx.member.address, ONE_USDC, PAYROLL))
+      .to.be.revertedWithCustomError(revolving, "RevolvingIssuerHybridMode");
   });
 
   it("acceptance 24: card spending draws on Savings only as far as the member authorized; no admin write raises Savings drawn", async function () {
@@ -268,10 +288,16 @@ describe("COMPLIANCE section 12: the revolving line", function () {
     await revolving.connect(settler).authorizeCardSpend(ethers.id("c2"), ctx.member.address, 50n * ONE_USDC);
   });
 
-  it("acceptance 25: a full 30-day cycle accrues no more than the monthly cap on any position", async function () {
+  it("acceptance 25 (amended, Addendum 2): any 30 days accrue no more than the monthly cap, and no day more than 1/30 of it, on every position", async function () {
     await open(0n, 1_000n, 500n);
     await spend(1_500n);
-    await advance(CYCLE);
+    await revolving.materialiseCarry(ctx.member.address);
+    const day0 = (await revolving.carryOf(ctx.member.address, INCOME)) + (await revolving.carryOf(ctx.member.address, BOOST));
+    await advance(DAY);
+    await revolving.materialiseCarry(ctx.member.address);
+    const day1 = (await revolving.carryOf(ctx.member.address, INCOME)) + (await revolving.carryOf(ctx.member.address, BOOST));
+    expect(day1 - day0).to.be.lte(28_125_000n / 30n); // the ceiling on $1,500 is $28.125 a month
+    await advance(CYCLE - DAY);
     await revolving.materialiseCarry(ctx.member.address);
     // Income-backed and Boost are ONE loan for the cap (12.3), so the position is the two together;
     // each tier's own list carry also stays within the cap on its own principal where it is the dearer.

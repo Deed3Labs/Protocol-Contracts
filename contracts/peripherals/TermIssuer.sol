@@ -204,6 +204,7 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         uint256 n = ids.length;
         carries = new uint256[](n);
         rates = new uint256[](n);
+        if (n == 0) return (ids, carries, rates);
         uint256[] memory principals = new uint256[](n);
         uint256[] memory monthly = new uint256[](n);
         bytes32 product = combinedProduct;
