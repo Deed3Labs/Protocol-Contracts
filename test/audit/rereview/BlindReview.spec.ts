@@ -162,9 +162,12 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
   });
 
   describe("M-A: one signer cannot keep a pause going, and the window has a ceiling", function () {
+    // Since Phase 2d (decision 2) every pause action takes two distinct holders of the role: the
+    // first call proposes, the second carries it out, and the 10c and M-A rules apply to the
+    // second signer. Three keys, so a refused signer can be replaced by another.
     async function clrusdStack() {
       const ctx = await deployPhase0Network();
-      const [, , , , , , , , , fraudA, fraudB] = await ethers.getSigners();
+      const [, , , , , , , , , fraudA, fraudB, fraudC] = await ethers.getSigners();
       const ClearUSD = await ethers.getContractFactory("ClearUSDUpgradeable");
       const clrusd: any = await upgrades.deployProxy(ClearUSD,
         ["Clear USD", "CLRUSD", 6, 0, 0, ctx.admin.address, ctx.admin.address],
@@ -172,41 +175,54 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       await clrusd.grantRole(await clrusd.MINTER_ROLE(), ctx.admin.address);
       await clrusd.mint(ctx.member.address, 100n * ONE_USDC);
       for (const role of [await clrusd.FRAUD_ROLE(), await clrusd.SECURITY_ROLE()]) {
-        await clrusd.grantRole(role, fraudA.address);
-        await clrusd.grantRole(role, fraudB.address);
+        for (const k of [fraudA, fraudB, fraudC]) await clrusd.grantRole(role, k.address);
       }
       const Vault = await ethers.getContractFactory("ESADepositVault");
       const vault: any = await upgrades.deployProxy(Vault, [await clrusd.getAddress(), ctx.admin.address], { kind: "uups" });
-      await vault.grantRole(await vault.PAUSER_ROLE(), fraudA.address);
-      await vault.grantRole(await vault.PAUSER_ROLE(), fraudB.address);
-      return { ctx, clrusd, vault, fraudA, fraudB };
+      for (const k of [fraudA, fraudB, fraudC]) await vault.grantRole(await vault.PAUSER_ROLE(), k.address);
+      return { ctx, clrusd, vault, fraudA, fraudB, fraudC };
     }
 
-    it("CLRUSD account pause: the same signer cannot re-pause after a lapse, or unpause and pause again", async function () {
-      const { ctx, clrusd, fraudA, fraudB } = await clrusdStack();
+    it("CLRUSD account pause: two signers act; the last signer cannot re-pause after a lapse, or unpause and pause again", async function () {
+      const { ctx, clrusd, fraudA, fraudB, fraudC } = await clrusdStack();
       const m = ctx.member.address;
-      await clrusd.connect(fraudA).pauseAccount(m, 1);
-      await advance(72 * 3600 + 1);
+      // One signer's call only proposes, and the same signer cannot complete it.
+      await expect(clrusd.connect(fraudA).pauseAccount(m, 1)).to.emit(clrusd, "ActionProposed");
       expect(await clrusd.pausedUntil(m)).to.equal(0n);
       await expect(clrusd.connect(fraudA).pauseAccount(m, 1)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
-      // A second signer may.
-      await clrusd.connect(fraudB).pauseAccount(m, 2);
-      await clrusd.connect(fraudB).unpauseAccount(m);
+      await expect(clrusd.connect(fraudB).pauseAccount(m, 1)).to.emit(clrusd, "AccountPaused");
+      await advance(72 * 3600 + 1);
+      expect(await clrusd.pausedUntil(m)).to.equal(0n);
+      // B signed the pause that lapsed: it cannot carry out a new one inside the cool-down.
+      await clrusd.connect(fraudA).pauseAccount(m, 2);
       await expect(clrusd.connect(fraudB).pauseAccount(m, 2)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
-      await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n);
-      // After the cool-down a signer may act alone again.
-      await advance(Number(await clrusd.REPAUSE_COOLDOWN()));
+      await clrusd.connect(fraudC).pauseAccount(m, 2);
+      // Ending it takes two as well; it keeps C as the last signer.
+      await clrusd.connect(fraudA).unpauseAccount(m);
+      expect(await clrusd.pausedUntil(m)).to.be.gt(0n);
+      await clrusd.connect(fraudB).unpauseAccount(m);
+      expect(await clrusd.pausedUntil(m)).to.equal(0n);
       await clrusd.connect(fraudA).pauseAccount(m, 3);
+      await expect(clrusd.connect(fraudC).pauseAccount(m, 3)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
+      await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n);
+      // After the cool-down C may sign again.
+      await advance(Number(await clrusd.REPAUSE_COOLDOWN()));
+      await clrusd.connect(fraudC).pauseAccount(m, 3);
+      expect(await clrusd.pausedUntil(m)).to.be.gt(0n);
     });
 
     it("CLRUSD security pause follows the same rule", async function () {
-      const { clrusd, fraudA, fraudB } = await clrusdStack();
+      const { clrusd, fraudA, fraudB, fraudC } = await clrusdStack();
       await clrusd.connect(fraudA).pauseForSecurity(1);
+      await clrusd.connect(fraudB).pauseForSecurity(1);
       await advance(72 * 3600 + 1);
-      await expect(clrusd.connect(fraudA).pauseForSecurity(1)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
-      await clrusd.connect(fraudB).pauseForSecurity(2);
-      await clrusd.connect(fraudB).unpauseSecurity();
+      await clrusd.connect(fraudA).pauseForSecurity(2);
       await expect(clrusd.connect(fraudB).pauseForSecurity(2)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
+      await clrusd.connect(fraudC).pauseForSecurity(2);
+      await clrusd.connect(fraudA).unpauseSecurity();
+      await clrusd.connect(fraudB).unpauseSecurity();
+      await clrusd.connect(fraudA).pauseForSecurity(3);
+      await expect(clrusd.connect(fraudC).pauseForSecurity(3)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
     });
 
     it("the pause window is capped at 72 hours, on CLRUSD and on the vault", async function () {
@@ -220,20 +236,29 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       }
     });
 
-    it("vault pause: the same signer cannot re-pause after a lapse, or unpause and pause again", async function () {
-      const { vault, fraudA, fraudB } = await clrusdStack();
+    it("vault pause: two signers act; the last signer cannot re-pause after a lapse, or unpause and pause again", async function () {
+      const { vault, fraudA, fraudB, fraudC } = await clrusdStack();
       await vault.connect(fraudA).pause();
-      await advance(72 * 3600 + 1);
       expect(await vault.paused()).to.equal(false);
       await expect(vault.connect(fraudA).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
       await vault.connect(fraudB).pause();
       expect(await vault.paused()).to.equal(true);
-      await vault.connect(fraudB).unpause();
-      await expect(vault.connect(fraudB).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
-      // An active pause is extended only by a second signer's renewal.
+      await advance(72 * 3600 + 1);
+      expect(await vault.paused()).to.equal(false);
       await vault.connect(fraudA).pause();
-      await expect(vault.connect(fraudA).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
-      await vault.connect(fraudB).renewPause();
+      await expect(vault.connect(fraudB).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
+      await vault.connect(fraudC).pause();
+      expect(await vault.paused()).to.equal(true);
+      await vault.connect(fraudA).unpause();
+      await vault.connect(fraudB).unpause();
+      expect(await vault.paused()).to.equal(false);
+      await vault.connect(fraudA).pause();
+      await expect(vault.connect(fraudC).pause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
+      await vault.connect(fraudB).pause();
+      // An active pause is extended only by a renewal whose second signer is not the last one.
+      await vault.connect(fraudA).renewPause();
+      await expect(vault.connect(fraudB).renewPause()).to.be.revertedWithCustomError(vault, "ESADepositVaultSameSigner");
+      await expect(vault.connect(fraudC).renewPause()).to.emit(vault, "PauseExpiresAt");
     });
   });
 

@@ -67,7 +67,10 @@ describe("DEEP AUDIT: credit-core invariants (seeded stateful fuzz)", function (
     const at = async (t: number) => ethers.provider.send("evm_setNextBlockTimestamp", [t]);
     const run = async (daily: boolean) => {
       await at(t0); await ctx.stableCredit.connect(m).transfer(merchant.address, 1_700n * ONE_USDC + 123_457n);
-      await at(t0 + 1); await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC + 7n, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
+      // 140 bps per 30-day cycle, under the Income tier's 150 a month. Since Phase 4b (L-G) repayment
+      // order compares what each position really costs, and a plan at 150 per 30 days costs more than
+      // 150 a month, so the undirected repayments below would close the plan before its own payments.
+      await at(t0 + 1); await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC + 7n, 975n * ONE_USDC, 140n, CYCLE, 4, CYCLE);
       for (let d = 1; d <= 120; d++) {
         const t = t0 + d * DAY;
         if (daily) { await at(t); await revolving.materialiseCarry(m.address); await at(t + 1); await term.materialiseCarry(0); }

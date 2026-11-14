@@ -384,13 +384,18 @@ describe("AUDIT deed: trust agreement v5", function () {
     });
 
     it("applyLicensingDetermination posts a notice and promotes the standby", async () => {
+      // Phase 4b (re-review M-G): the standby's own call promotes it only with the protector's consent
+      // (here the holder, as the protector record is zero). Without it, see Decisions.spec M-G.
       const { trust, alice, standby, trustee, mallory } = ctx;
       const id = await mintValidatedLand(ctx, alice);
       const nonce = (await trust.trustRecordOf(id)).nonce;
       await trust.connect(alice).setStandbyTrustee(id, standby.address,
         await signTrust(ctx, standby, "StandbyAcceptance", { tokenId: id, standby: standby.address, nonce }));
-      await expect(trust.connect(mallory).applyLicensingDetermination(id, k("doc"), "ipfs://det")).to.be.revertedWithCustomError(trust, "NotTrustParty");
-      await expect(trust.connect(standby).applyLicensingDetermination(id, k("doc"), "ipfs://det"))
+      await expect(trust.connect(mallory).applyLicensingDetermination(id, k("doc"), "ipfs://det", "0x")).to.be.revertedWithCustomError(trust, "NotTrustParty");
+      const consent = await signTrust(ctx, alice, "LicensingConsent", {
+        tokenId: id, standby: standby.address, docHash: k("doc"), nonce: (await trust.trustRecordOf(id)).nonce,
+      });
+      await expect(trust.connect(standby).applyLicensingDetermination(id, k("doc"), "ipfs://det", consent))
         .to.emit(trust, "NoticePosted").withArgs(id, standby.address, k("doc"), "ipfs://det", trustee.address, alice.address)
         .and.to.emit(trust, "StandbyPromoted").withArgs(id, trustee.address, standby.address);
       const r = await trust.trustRecordOf(id);
@@ -402,7 +407,7 @@ describe("AUDIT deed: trust agreement v5", function () {
     it("without a standby the trustee is suspended and loses its powers until the protector names one", async () => {
       const { deed, trust, alice, trustee, standby } = ctx;
       const id = await mintValidatedLand(ctx, alice);
-      await expect(trust.connect(trustee).applyLicensingDetermination(id, k("doc"), "ipfs://det"))
+      await expect(trust.connect(trustee).applyLicensingDetermination(id, k("doc"), "ipfs://det", "0x"))
         .to.emit(trust, "TrusteeSuspended").withArgs(id, trustee.address);
       expect(coder.decode(["bool"], await deed.getTraitValue(id, k("trusteeSuspended")))[0]).to.equal(true);
       await expect(trust.connect(trustee).markVoid(id, 1, ethers.ZeroHash, "")).to.be.revertedWithCustomError(trust, "NotTrustParty");

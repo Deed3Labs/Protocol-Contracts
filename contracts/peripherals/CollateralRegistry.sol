@@ -5,6 +5,7 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
 import "../core/interfaces/stable-credit/IEncumbranceSource.sol";
 import "../core/interfaces/stable-credit/ICollateralValuer.sol";
@@ -93,7 +94,18 @@ contract CollateralRegistry is
     /// than what was pledged (audit C-2, DECISIONS #2). Appended from the gap.
     address public clrusdToken;
 
-    uint256[41] private __gap;
+    /// @notice The next nonce a member's signature over a pledge must carry (Phase 4b, L-I).
+    /// @dev Appended from the gap.
+    mapping(address => uint256) public pledgeNonces;
+
+    uint256[40] private __gap;
+
+    /// @notice What a member signs to pledge an amount of a kind (Phase 4b, L-I).
+    bytes32 public constant PLEDGE_TYPEHASH =
+        keccak256("Pledge(address member,bytes32 kind,uint256 amount,uint256 nonce,uint256 deadline)");
+    /// @notice What a member signs to pledge one item of a kind (Phase 4b, L-I).
+    bytes32 public constant PLEDGE_ITEM_TYPEHASH =
+        keccak256("PledgeItem(address member,bytes32 kind,uint256 itemId,uint256 nonce,uint256 deadline)");
 
     error CollateralRegistryInvalidAddress();
     error CollateralRegistryUnknownType(bytes32 kind);
@@ -104,6 +116,10 @@ contract CollateralRegistry is
     /// @dev Compliance spec 10a: the lock is computed from on-chain state and no admin can set,
     /// extend or hold one -- including indirectly, by re-pricing the collateral it is computed from.
     error CollateralRegistryClrusdTermsFixed();
+    /// @notice thrown when a pledge's signature has expired (Phase 4b, L-I).
+    error CollateralRegistrySignatureExpired(uint256 deadline);
+    /// @notice thrown when a pledge is not signed by the member it pledges for (Phase 4b, L-I).
+    error CollateralRegistryBadSignature(address member);
 
     event CollateralTypeRegistered(
         bytes32 indexed kind, ExposureMath.Backing backing, uint256 haircutBps
@@ -406,11 +422,22 @@ contract CollateralRegistry is
     /// @dev Records rather than escrows. The member's smart account holds the collateral, and an
     /// ERC-7579 module on that account is what actually stops it moving while encumbered. This is
     /// the ledger of what was promised; enforcement lives where the asset does.
+    ///
+    /// The member consents to every pledge (Phase 4b, L-I): the operator submits, but only with the
+    /// member's EIP-712 signature over this pledge (EIP-1271 for a smart account), the same shape as
+    /// plan terms. A pledge encumbers what is pledged -- under 12.5's excess lock even an Earn asset
+    /// -- so an operator key alone must not be able to put a member's assets behind their credit.
     /// @param member address pledging.
     /// @param kind collateral type.
     /// @param amount units pledged.
-    function pledge(address member, bytes32 kind, uint256 amount) external onlyRole(OPERATOR_ROLE) {
+    /// @param deadline last second the signature is good for.
+    /// @param signature the member's signature over `Pledge` at their current nonce.
+    function pledge(address member, bytes32 kind, uint256 amount, uint256 deadline, bytes calldata signature)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
         if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
+        _consumePledgeSignature(member, PLEDGE_TYPEHASH, kind, amount, deadline, signature);
         pledgedOf[member][kind] += amount;
         emit Pledged(member, kind, amount);
         refresh(member);
@@ -418,12 +445,13 @@ contract CollateralRegistry is
 
     /// @notice records a pledge of one specific thing.
     /// @dev For collateral with an identity. The registry records which one, because refusing to
-    /// let it move and valuing it both need to know that.
-    function pledgeItem(address member, bytes32 kind, uint256 itemId)
+    /// let it move and valuing it both need to know that. Signed by the member, like `pledge`.
+    function pledgeItem(address member, bytes32 kind, uint256 itemId, uint256 deadline, bytes calldata signature)
         external
         onlyRole(OPERATOR_ROLE)
     {
         if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
+        _consumePledgeSignature(member, PLEDGE_ITEM_TYPEHASH, kind, itemId, deadline, signature);
         if (itemPledged[member][kind][itemId]) return;
         itemPledged[member][kind][itemId] = true;
         pledgedItems[member][kind].push(itemId);
@@ -471,6 +499,60 @@ contract CollateralRegistry is
         _dropItem(member, kind, itemId);
         emit ItemSeized(member, kind, itemId);
         refresh(member);
+    }
+
+    /// @notice the EIP-712 domain pledge signatures are made in.
+    /// @dev Computed rather than stored: EIP712Upgradeable would add storage ahead of this
+    /// contract's own, which an upgrade may not do.
+    function domainSeparator() public view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes("Clear CollateralRegistry")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(this)
+            )
+        );
+    }
+
+    /// @notice the digest a member signs to pledge `amountOrItem` of `kind`, at their current nonce.
+    /// @param item true for `pledgeItem` (an item id), false for `pledge` (an amount).
+    function pledgeDigest(address member, bytes32 kind, uint256 amountOrItem, uint256 deadline, bool item)
+        public
+        view
+        returns (bytes32)
+    {
+        bytes32 typehash = item ? PLEDGE_ITEM_TYPEHASH : PLEDGE_TYPEHASH;
+        return _pledgeDigest(typehash, member, kind, amountOrItem, pledgeNonces[member], deadline);
+    }
+
+    function _pledgeDigest(
+        bytes32 typehash,
+        address member,
+        bytes32 kind,
+        uint256 amountOrItem,
+        uint256 nonce,
+        uint256 deadline
+    ) private view returns (bytes32) {
+        bytes32 structHash = keccak256(abi.encode(typehash, member, kind, amountOrItem, nonce, deadline));
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+    }
+
+    /// @dev Checks the member's signature over this pledge and uses up their nonce.
+    function _consumePledgeSignature(
+        address member,
+        bytes32 typehash,
+        bytes32 kind,
+        uint256 amountOrItem,
+        uint256 deadline,
+        bytes calldata signature
+    ) private {
+        if (block.timestamp > deadline) revert CollateralRegistrySignatureExpired(deadline);
+        bytes32 digest = _pledgeDigest(typehash, member, kind, amountOrItem, pledgeNonces[member]++, deadline);
+        if (!SignatureChecker.isValidSignatureNow(member, digest, signature)) {
+            revert CollateralRegistryBadSignature(member);
+        }
     }
 
     function _dropItem(address member, bytes32 kind, uint256 itemId) private {

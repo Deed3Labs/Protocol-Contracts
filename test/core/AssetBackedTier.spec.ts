@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { pledgeSigned } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -79,7 +80,7 @@ describe("the asset-backed tier", function () {
     expect(await limits.capacityOf(ctx.member.address, ASSET_INTERNAL)).to.equal(0n);
 
     // A bond worth 10,000 at 95% of present value.
-    await registry.pledge(ctx.member.address, ASSET_INTERNAL, 10_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 10_000n * ONE_USDC);
     await limits.pushCapacities(ctx.member.address);
 
     expect(await issuer.capacityOf(ctx.member.address, 1)).to.equal(9_500n * ONE_USDC);
@@ -99,8 +100,8 @@ describe("the asset-backed tier", function () {
   });
 
   it("keeps a deed on market terms and a bond on redemption terms", async function () {
-    await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
-    await registry.pledge(ctx.member.address, ASSET_EXTERNAL, 1_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, ASSET_EXTERNAL, 1_000n * ONE_USDC);
     await limits.pushCapacities(ctx.member.address);
 
     // The same value pledged, lent against differently, because it would be realised differently.
@@ -109,8 +110,8 @@ describe("the asset-backed tier", function () {
   });
 
   it("draws the cheap tiers before the dear ones, across collateral types", async function () {
-    await registry.pledge(ctx.member.address, SAVINGS, 500n * ONE_USDC);
-    await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, SAVINGS, 500n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
     await limits.pushCapacities(ctx.member.address);
 
     await ctx.stableCredit
@@ -124,7 +125,7 @@ describe("the asset-backed tier", function () {
   });
 
   it("leaves the pool covering nothing while the member is inside their limit", async function () {
-    await registry.pledge(ctx.member.address, ASSET_INTERNAL, 10_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 10_000n * ONE_USDC);
     await limits.pushCapacities(ctx.member.address);
 
     await ctx.stableCredit
@@ -137,7 +138,7 @@ describe("the asset-backed tier", function () {
   });
 
   it("contracts the limit when a bond is marked down", async function () {
-    await registry.pledge(ctx.member.address, ASSET_INTERNAL, 10_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 10_000n * ONE_USDC);
     await limits.pushCapacities(ctx.member.address);
     expect(await issuer.capacityOf(ctx.member.address, 1)).to.equal(9_500n * ONE_USDC);
 
@@ -149,9 +150,9 @@ describe("the asset-backed tier", function () {
   });
 
   it("shows the whole ceiling as the tiers it is made of", async function () {
-    await registry.pledge(ctx.member.address, SAVINGS, 500n * ONE_USDC);
-    await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
-    await registry.pledge(ctx.member.address, ASSET_EXTERNAL, 2_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, SAVINGS, 500n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, ASSET_EXTERNAL, 2_000n * ONE_USDC);
     await limits.pushCapacities(ctx.member.address);
 
     const tiers = await limits.tiersOf(ctx.member.address);

@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { driveToDefault } from "../helpers/default";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { pledgeSigned } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -79,7 +80,7 @@ describe("asset-backed default", function () {
     await ctx.usdc.mint(ctx.member.address, 1_000n * ONE_USDC);
     await ctx.usdc.connect(ctx.member).approve(await pool.getAddress(), 1_000n * ONE_USDC);
     await pool.connect(ctx.member).deposit(1_000n * ONE_USDC, ctx.member.address);
-    await registry.pledge(ctx.member.address, POOL_SHARE, 1_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, POOL_SHARE, 1_000n * ONE_USDC);
 
     await issuer
       .connect(ctx.operator)

@@ -147,6 +147,21 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         }
     }
 
+    /// @notice a member's open principal under `product`, carry excluded, leaving out plan `skip`:
+    /// what the large-loan minimum term is judged on, with the new plan added (Phase 4b, L-F).
+    /// @dev The same aggregation as the rate cap (DECISIONS #7): zero while governance has CFL
+    /// aggregation off, so the term rule is then judged per plan, as the cap is. The modules ask
+    /// this contract for it, which keeps the loop out of the size-bound extension.
+    function openPrincipalOf(address member, bytes32 product, uint256 skip) external view returns (uint256 total) {
+        if (address(rateSchedule) == address(0) || rateSchedule.cflAggregationOff()) return 0;
+        uint256[] memory ids = openPlanIds[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            uint256 id = ids[i];
+            if (id == skip || plans[id].closed || planPricing[id].product != product) continue;
+            total += plans[id].principalOutstanding - carryOutstandingOf[id];
+        }
+    }
+
     /// @notice how a plan is priced: its state and product, merchant subsidy, and whether it is
     /// free.
     function pricingOf(uint256 planId) external view returns (PlanPricing memory) {
@@ -378,7 +393,7 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
 
 
 
-    /// @notice what a mandated collection ref took, zero if unused.
+    /// @notice what a mandated collection ref took before `collectForMember` was retired, zero if unused.
     function mandateCollectionOf(bytes32 ref) external view returns (uint256) {
         return mandateCollections[ref];
     }
@@ -441,7 +456,8 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
             uint256 planId = ids[i];
             Plan storage plan = plans[planId];
             if (plan.closed || plan.principalOutstanding == 0) continue;
-            if (plan.index.ratePerCycle < minRate) continue;
+            // What the plan costs now, after the caps, in the unit the band is in (Phase 4b, L-G).
+            if (_effectiveRate(planId) < minRate) continue;
 
             _materialiseCarry(planId);
             uint256 owed = plan.principalOutstanding;
@@ -474,11 +490,35 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
             Plan storage plan = plans[ids[i]];
             if (plan.closed || plan.principalOutstanding == 0) continue;
             // Plans are not ordered by rate, so every open one has to be considered.
-            if (!hasPosition || plan.index.ratePerCycle > rate) {
-                rate = plan.index.ratePerCycle;
+            uint256 planRate = _effectiveRate(ids[i]);
+            if (!hasPosition || planRate > rate) {
+                rate = planRate;
                 hasPosition = true;
             }
         }
+    }
+
+    /// @notice the unit repayment rates are compared in: monthly basis points times 1e18, the same
+    /// unit RevolvingIssuer reports, so the ledger's band walk compares like with like.
+    uint256 public constant RATE_SCALE = 1e18;
+
+    /// @dev What a plan costs the member from now, as a monthly rate scaled by RATE_SCALE (Phase
+    /// 4b, L-G). The rate the plan was scheduled at was min(list, cap) when it opened; the cap moves
+    /// with the plan's principal and the member's aggregate, so the most expensive position is
+    /// judged on what RateSchedule would charge now, less the merchant's subsidy. A free plan costs
+    /// nothing. A plan priced from its own terms costs that rate per 30 days, stated per month.
+    function _effectiveRate(uint256 planId) private view returns (uint256) {
+        PlanPricing storage pricing = planPricing[planId];
+        if (pricing.free) return 0;
+        Plan storage plan = plans[planId];
+        if (!pricing.priced) return (plan.index.ratePerCycle * RATE_SCALE * 365) / 360;
+        return rateSchedule.termRateOf(
+            plan.member,
+            pricing.state,
+            pricing.product,
+            plan.principalOutstanding - carryOutstandingOf[planId],
+            pricing.subsidyBps
+        );
     }
 
     /// @notice this issuer's share of a member's debt.
@@ -554,9 +594,12 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         _forward();
     }
 
-    /// @notice see TermIssuerExtension.collectForMember.
-    function collectForMember(bytes32, address, uint256) external returns (uint256) {
-        _forward();
+    /// @notice Retired (Phase 2d, the owner's decision on 10f): it let a card settler take what was
+    /// due on a member's plans from the member's own wallet USDC. Recovery never uses Ready to
+    /// allocate USDC; term dues are cleared from Spendable at the bank, and the member pays a plan
+    /// themselves with `payPlan`. Kept so callers fail with a reason, not an unknown selector.
+    function collectForMember(bytes32, address, uint256) external pure returns (uint256) {
+        revert TermIssuerWalletCollectionRetired();
     }
 
     /// @notice see TermIssuerExtension.repayWrittenOff.

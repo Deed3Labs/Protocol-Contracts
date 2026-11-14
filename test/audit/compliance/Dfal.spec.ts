@@ -3,11 +3,15 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { CA, ONE_USDC, CYCLE, DAY } from "./rates";
 import { issuerProxyOptions } from "../../helpers/issuers";
+import { pledgeSigned } from "../../helpers/pledge";
 
 /*
  * Compliance spec items 10-11 (DFAL "control", pilot cap). Acceptance tests 9, 12, 13, 14, 15, 16
  * and 17. No Clear key may execute or indefinitely block a member's CLRUSD transaction except the
  * computed pledge lock, liquidation on computed default, and an expiring fraud or security pause.
+ * Phase 2d amends three of them: every pause action takes two signers (decision 2), 12 no longer
+ * reverts at a cap (decision 7; the measure is off chain), and 16 allows de-listing to stop
+ * receipt only (decision 6). The rest of Phase 2d is in Section2d.spec.ts.
  */
 const SAVINGS = ethers.encodeBytes32String("SAVINGS");
 
@@ -18,7 +22,7 @@ async function advance(seconds: number) {
 
 async function deployStack() {
   const ctx = await deployPhase0Network();
-  const [, , , , , , , , coop, fraudA, fraudB, stranger] = await ethers.getSigners();
+  const [, , , , , , , , coop, fraudA, fraudB, stranger, , , , , fraudC] = await ethers.getSigners();
   const ClearUSD = await ethers.getContractFactory("ClearUSDUpgradeable");
   const clrusd: any = await upgrades.deployProxy(ClearUSD,
     ["Clear USD", "CLRUSD", 6, 0, 0, ctx.admin.address, ctx.admin.address],
@@ -53,7 +57,8 @@ async function deployStack() {
 
   await clrusd.grantRole(await clrusd.FRAUD_ROLE(), fraudA.address);
   await clrusd.grantRole(await clrusd.FRAUD_ROLE(), fraudB.address);
-  return { ctx, clrusd, vault, issuer, registry, liquidator, fraudA, fraudB, stranger };
+  await clrusd.grantRole(await clrusd.FRAUD_ROLE(), fraudC.address);
+  return { ctx, clrusd, vault, issuer, registry, liquidator, fraudA, fraudB, fraudC, stranger };
 }
 
 describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function () {
@@ -68,7 +73,7 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     await ctx.usdc.mint(ctx.member.address, amount);
     await ctx.usdc.connect(ctx.member).approve(await vault.getAddress(), amount);
     await vault.connect(ctx.member).deposit(await ctx.usdc.getAddress(), amount, ctx.member.address);
-    await registry.pledge(ctx.member.address, SAVINGS, amount);
+    await pledgeSigned(registry, ctx.member.address, SAVINGS, amount);
   }
 
   async function drawSavings(amount: bigint, period = 30 * DAY) {
@@ -93,7 +98,7 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     await expect(registry.setCollateralTerms(SAVINGS, 5_000n, 10n ** 18n)).to.be.revertedWithCustomError(registry, "CollateralRegistryClrusdTermsFixed");
     await expect(registry.setClrusdKind(ethers.encodeBytes32String("OTHER"))).to.be.reverted;
     await expect(registry.setCollateralValuer(SAVINGS, ctx.admin.address)).to.be.revertedWithCustomError(registry, "CollateralRegistryClrusdTermsFixed");
-    await registry.pledge(ctx.member.address, SAVINGS, 5_000n * ONE_USDC); // pledging more locks nothing
+    await pledgeSigned(registry, ctx.member.address, SAVINGS, 5_000n * ONE_USDC); // pledging more locks nothing
     expect(await clrusd.freeBalanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC);
 
     // FRAUD_ROLE has no way to move a member's CLRUSD.
@@ -140,7 +145,7 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     const m = ctx.member.address;
     await ctx.networkRegistry.grantRole(await ctx.networkRegistry.STATE_ATTESTER_ROLE(), ctx.admin.address);
     await ctx.networkRegistry.attestStateCode(m, CA);
-    await registry.pledge(m, SAVINGS, 1n);
+    await pledgeSigned(registry, m, SAVINGS, 1n);
     await registry.refresh(m);
     await issuer.connect(ctx.operator).setTierCapacity(m, 0, 2_000n * ONE_USDC);
     await issuer.connect(ctx.operator).pausePeriodOf(m);
@@ -153,28 +158,34 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     expect(1_000n * ONE_USDC - (await clrusd.freeBalanceOf(m))).to.equal(lock);
   });
 
-  it("acceptance 15: a fraud pause lifts by itself at 72 hours; the signer that set it cannot renew it, a second signer can, and it is logged", async function () {
-    const { ctx, clrusd, fraudA, fraudB } = s;
+  it("acceptance 15: a fraud pause takes two signers and lifts by itself at 72 hours; the signer that set it cannot renew it, a second signer can, and it is logged", async function () {
+    const { ctx, clrusd, fraudA, fraudB, fraudC } = s;
     await save(100n * ONE_USDC);
+    // Phase 2d: one signer only proposes; a second carries it out (and is the pause's signer).
     await clrusd.connect(fraudA).pauseAccount(ctx.member.address, 7);
+    await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n);
+    await clrusd.connect(fraudB).pauseAccount(ctx.member.address, 7);
     await expect(clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n)).to.be.revertedWithCustomError(clrusd, "ClearUSDPaused");
-    await expect(clrusd.connect(fraudA).renewAccountPause(ctx.member.address, 8)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
+    await clrusd.connect(fraudA).renewAccountPause(ctx.member.address, 8);
+    await expect(clrusd.connect(fraudB).renewAccountPause(ctx.member.address, 8)).to.be.revertedWithCustomError(clrusd, "ClearUSDSameSigner");
     await advance(72 * 3600 - 10);
-    await expect(clrusd.connect(fraudB).renewAccountPause(ctx.member.address, 8)).to.emit(clrusd, "AccountPauseRenewed");
+    await expect(clrusd.connect(fraudC).renewAccountPause(ctx.member.address, 8)).to.emit(clrusd, "AccountPauseRenewed");
     await advance(72 * 3600 - 10);
     await expect(clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n)).to.be.revertedWithCustomError(clrusd, "ClearUSDPaused");
     await advance(20);
     await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n); // lapsed on its own
     // The security pause follows the same rule.
     await clrusd.grantRole(await clrusd.SECURITY_ROLE(), fraudA.address);
+    await clrusd.grantRole(await clrusd.SECURITY_ROLE(), fraudB.address);
     await clrusd.connect(fraudA).pauseForSecurity(1);
+    await clrusd.connect(fraudB).pauseForSecurity(1);
     await expect(clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n)).to.be.revertedWithCustomError(clrusd, "ClearUSDPaused");
     await advance(72 * 3600 + 1);
     await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n);
   });
 
-  it("acceptance 16: no role can pause, freeze or blacklist member transfers outside the 10c pauses, and burnFrom needs the member's allowance", async function () {
-    const { ctx, clrusd, vault } = s;
+  it("acceptance 16: no role can pause, freeze or blacklist member transfers outside the 10c pauses; de-listing stops receipt only; burnFrom needs the member's allowance", async function () {
+    const { ctx, clrusd, vault, fraudA } = s;
     const names = clrusd.interface.fragments.filter((f: any) => f.type === "function").map((f: any) => f.name)
       .filter((n: string) => n !== n.toUpperCase()); // constants are not powers
     const blocking = names.filter((n: string) => /pause|freeze|blacklist|block|forceTransfer/i.test(n));
@@ -185,11 +196,27 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     const burner = (await ethers.getSigners())[15];
     await clrusd.grantRole(await clrusd.BURNER_ROLE(), burner.address);
     await expect(clrusd.connect(burner).burnFrom(ctx.member.address, 1n)).to.be.reverted;
-    // The vault's own pause is a security pause too: it lapses after 72 hours.
+    // The vault's own pause is a security pause too: two signers, and it lapses after 72 hours.
+    await vault.grantRole(await vault.PAUSER_ROLE(), fraudA.address);
     await vault.pause();
+    await vault.connect(fraudA).pause();
     expect(await vault.paused()).to.equal(true);
     await advance(72 * 3600 + 1);
     expect(await vault.paused()).to.equal(false);
+
+    // Members-only CLRUSD (12.15, Phase 2d decision 6): de-listing a wallet stops what it can
+    // receive, and nothing else. The de-listing is logged by the registry.
+    for (const w of [ctx.member, ctx.counterparty]) {
+      if (!(await ctx.access.isMember(w.address))) await ctx.access.connect(ctx.operator).grantMember(w.address);
+    }
+    await clrusd.setMembershipSource(await ctx.access.getAddress());
+    await expect(ctx.access.connect(ctx.operator).revokeMember(ctx.member.address)).to.emit(ctx.access, "MemberRemoved");
+    expect(await ctx.access.isMember(ctx.member.address)).to.equal(false);
+    await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n);
+    await expect(clrusd.connect(ctx.counterparty).transfer(ctx.member.address, 1n))
+      .to.be.revertedWithCustomError(clrusd, "ClearUSDReceiverNotMember");
+    await clrusd.connect(ctx.member).approve(await vault.getAddress(), 1n);
+    await vault.connect(ctx.member).redeem(await ctx.usdc.getAddress(), 1n, ctx.member.address);
   });
 
   it("acceptance 17: an upgrade cannot take effect before the 7-day timelock ends, and a member can withdraw during the delay", async function () {
@@ -217,29 +244,23 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     expect(await vault.getAddress()).to.not.equal(ethers.ZeroAddress);
   });
 
-  it("acceptance 12: CA mint volume above the cap reverts; members without a CA attestation are unaffected; it alerts first", async function () {
+  it("acceptance 12 (amended by Phase 2d, decision 7): no mint reverts at a volume cap; CA and non-CA mints alike go through unless the two-person CA mint pause is on", async function () {
     const { ctx, vault } = s;
     const [, , , , , , , , , , , , , ca, wy] = await ethers.getSigners();
     await ctx.networkRegistry.grantRole(await ctx.networkRegistry.STATE_ATTESTER_ROLE(), ctx.admin.address);
     await ctx.networkRegistry.attestStateCode(ca.address, CA);
+    await ctx.networkRegistry.attestStateCode(wy.address, ethers.encodeBytes32String("WY"));
     await vault.setStateSource(await ctx.networkRegistry.getAddress());
-    await vault.setPilotCap(50_000n * ONE_USDC, 45_000n * ONE_USDC, true);
     async function deposit(who: any, amount: bigint) {
       await ctx.usdc.mint(who.address, amount);
       await ctx.usdc.connect(who).approve(await vault.getAddress(), amount);
       return vault.connect(who).deposit(await ctx.usdc.getAddress(), amount, who.address);
     }
-    await expect(deposit(ca, 46_000n * ONE_USDC)).to.emit(vault, "PilotAlert");
-    await expect(deposit(ca, 5_000n * ONE_USDC)).to.be.revertedWithCustomError(vault, "ESADepositVaultPilotCapReached");
-    await deposit(wy, 100_000n * ONE_USDC); // no CA attestation: counted as WY (DECISIONS #6)
-    // Redemptions are counted but never refused.
-    const clrusd = await ethers.getContractAt("ClearUSDUpgradeable", await vault.clrusd());
-    await clrusd.connect(ca).approve(await vault.getAddress(), 1_000n * ONE_USDC);
-    await vault.connect(ca).redeem(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, ca.address);
-    expect(await vault.caVolume()).to.equal(47_000n * ONE_USDC);
-    // A year later the window has rolled.
-    await advance(366 * DAY);
-    expect(await vault.caVolume()).to.equal(0n);
-    await deposit(ca, 5_000n * ONE_USDC);
+    // $60,000 of CA mints, past the old $50,000 cap: nothing reverts and nothing is counted on chain.
+    await deposit(ca, 46_000n * ONE_USDC);
+    await deposit(ca, 14_000n * ONE_USDC);
+    await deposit(wy, 100_000n * ONE_USDC);
+    expect(vault.interface.getFunction("caVolume")).to.equal(null);
+    expect(vault.interface.getFunction("setPilotCap")).to.equal(null);
   });
 });

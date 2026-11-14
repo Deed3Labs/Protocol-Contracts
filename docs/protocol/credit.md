@@ -78,6 +78,14 @@ positions at or above that rate and returns what it took. The ledger repeats for
 `MAX_WATERFALL_BANDS` (16) bands. Anything unattributed stays visible as a gap between the ledger
 and the issuers rather than being corrected.
 
+Since Phase 4b (re-review L-G) the rate is the **effective** monthly rate at the moment of
+repayment, after the caps, not the configured tier or plan rate: monthly basis points times
+`RATE_SCALE` (1e18). `RateSchedule.revolvingRatesOf` prices each revolving tier (its own rate, or
+its list rate trimmed by the member-level ceiling, dearest priced tier first, as accrual trims it),
+and `RateSchedule.termRateOf` prices each plan (min(list, the cap on the plan and on the member's
+CFL aggregate), the annual cap once large, less the merchant's subsidy, stated per month). Pending
+counsel on what "most expensive" means for a capped position.
+
 **Lost debt.** The ledger's own address has a credit line of `type(uint128).max − 1`.
 `writeOffCreditLine` transfers from it to the member, burning their debt and leaving the credits
 they spent in circulation. `lostDebtOutstanding` rises only there and falls only in `burnLostDebt`,
@@ -158,7 +166,7 @@ they go into `scheduleFloor` and are due at once. A member's own re-split revert
 | Payment | Caller | Notes |
 |---|---|---|
 | `payPlan(planId, amount)` | anyone, paying | Directed: `repayCreditBalanceFor`, then the plan records it |
-| `collectForMember(ref, member, amount)` | a card settler on `mandateSource` | Only while the member's `autoRepayEnabled` is on in the revolving issuer. Pays each plan's arrears in opening order, then residual carry. Never ahead of schedule |
+| `collectForMember(ref, member, amount)` | nobody | Retired in Phase 2d: it reverts `TermIssuerWalletCollectionRetired`. Recovery never takes Ready to allocate USDC from a member's wallet (10f); term dues are cleared from Spendable at the bank |
 | `payResidualCarry(member, amount)` | anyone, paying | Clears `residualCarryOf`: what the member owes beyond every open plan and revolving tier. Zero until `mandateSource` is set |
 | undirected repayment | — | `_absorbRepayment` takes plans at or above the band, oldest first |
 
@@ -233,7 +241,9 @@ and neither treasury can be zero. What the PayoutPool does with carry it holds i
 **A collateralised tier's capacity is the pledge after the same haircut exposure uses.**
 
 `CollateralRegistry` records pledges (`pledge`, `pledgeItem`, `OPERATOR_ROLE`); it does not hold
-them. `collateralValueOf` asks the kind's valuer when one is set — zero if it reverts — and is
+them. Since Phase 4b (re-review L-I) each pledge carries the member's EIP-712 signature (`Pledge` or
+`PledgeItem`, domain `Clear CollateralRegistry` / `1`, with `pledgeNonces(member)` and a deadline);
+the operator only submits it. `collateralValueOf` asks the kind's valuer when one is set — zero if it reverts — and is
 otherwise `units × unitPrice / 1e18`. `haircutBps` is the realisable share, at most 10,000.
 
 `LimitCalculator.capacityOf(member, kind)` is `collateralValue × haircutBps / 10_000` when anything
@@ -288,7 +298,10 @@ tier drawn for liquidation. A term write-off on a member who also holds a dearer
 absorbed by that tier first; `TermIssuer._onDefault` then closes the plans regardless.
 
 **Liquidation.** `Liquidator.liquidate(member, issuer, tierId, kind)` (`OPERATOR_ROLE`) requires
-`inDefault` or `hasDefaulted` on that issuer. It seizes `min(principalOf(member, tierId), CLRUSD
+`inDefault` or `hasDefaulted` on that issuer. Since Phase 4b (re-review M-C) the recorded default
+must be the current line's: `hasDefaultedOnCurrentLine`, true when `defaultedAt >= lineOpenedAtOf`
+(`openLine` records it). `hasDefaulted` stays true for ever, for the record and underwriting; a
+member who defaulted, settled and was given a new line is current on it and cannot be liquidated. It seizes `min(principalOf(member, tierId), CLRUSD
 balance)` with `ClearUSD.seize`, records the seizure in the registry, redeems the CLRUSD at
 `ESADepositVault`, and calls `settleFromCollateral(member, tierId, redeemed)`. That settles the named
 tier through `repayCreditBalanceFor`, so the waterfall is not told. `liquidateShares` does the same
@@ -336,5 +349,6 @@ The co-op's own definition of membership (the savings account, as in a credit un
 
 `NetworkRegistry.registerIssuer` binds an issuer to a ledger, AssurancePool and oracle;
 `enrolMember` is open to the issuer, its ledger or an operator; `deregisterIssuer` refuses while
-anyone is enrolled. `deploy/20` makes `ClearCredit`, both issuers and `LimitCalculator` AccessManager
+anyone is enrolled. Since Phase 4b (re-review M-E) registering and deregistering an issuer are
+`DEFAULT_ADMIN_ROLE` (the credit timelock after the handover), not the operator's. `deploy/20` makes `ClearCredit`, both issuers and `LimitCalculator` AccessManager
 operators.

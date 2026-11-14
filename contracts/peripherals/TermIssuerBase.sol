@@ -16,6 +16,12 @@ interface IRevolvingMandate {
     function totalPrincipalOf(address member) external view returns (uint256);
 }
 
+/// @dev The view the modules read the member's open principal under a product from (Phase 4b, L-F).
+/// Served by TermIssuer itself; a module runs by delegatecall, so `address(this)` is the issuer.
+interface IOpenPrincipal {
+    function openPrincipalOf(address member, bytes32 product, uint256 skip) external view returns (uint256);
+}
+
 /// @title TermIssuerBase
 /// @notice Everything TermIssuer and TermIssuerExtension share: storage, events, errors and the
 /// internal plan bookkeeping.
@@ -91,6 +97,7 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// ones a mandated collection here honours. One switch for the member, one key for the co-op.
     address public mandateSource;
     /// @dev ref => amount collected under the mandate. Once per ref.
+    /// @dev What each mandated collection took, while `collectForMember` existed. Never written now.
     mapping(bytes32 => uint256) internal mandateCollections;
 
     /// @notice where the co-op's share of a purchase is minted, when that is not the carry treasury.
@@ -208,9 +215,8 @@ abstract contract TermIssuerBase is CreditIssuer {
     error TermIssuerSplitTooSoon(uint256 planId, uint256 availableAt);
     error TermIssuerNotDefaultable(address member);
     error TermIssuerNotReinstatable(address member);
-    error TermIssuerNotCollector(address caller);
-    error TermIssuerMandateOff(address member);
-    error TermIssuerCollectionUsed(bytes32 ref);
+    /// @notice `collectForMember` is retired: nothing takes a member's wallet USDC (Phase 2d, 10f).
+    error TermIssuerWalletCollectionRetired();
     /// @notice thrown when a plan's merchant is not a registered, active merchant (audit H-4).
     error TermIssuerMerchantNotActive(address merchant);
     /// @notice thrown when the member did not sign these plan terms (audit H-4).
@@ -264,6 +270,7 @@ abstract contract TermIssuerBase is CreditIssuer {
     event WrittenOffRepaid(address indexed member, address indexed payer, uint256 amount);
     event TermReinstated(address indexed member);
     event MandateSourceUpdated(address source);
+    /// @dev Emitted by the retired `collectForMember`; kept so past logs still decode.
     event CollectedForMember(bytes32 indexed ref, address indexed member, uint256 amount);
     event ResidualCarryPaid(address indexed member, address indexed payer, uint256 amount);
     /// @notice the terms the member signed for a plan, and the disclosure they were shown.
@@ -467,18 +474,24 @@ abstract contract TermIssuerBase is CreditIssuer {
         bool free;
         bool largeLoan;
         bytes32 state;
+        /// @dev The large-loan term rule applies: this plan, or the member's open principal under
+        /// the product with this plan added, is at or above the threshold (Phase 4b, L-F).
+        bool largeTerm;
     }
 
     /// @dev Prices a plan for `member` at `merchant` (spec items 5-9): the state gate, the free
     /// rules, min(list, legal cap on this principal) less the merchant's subsidy, the payout after
-    /// the merchant's discount for this split, and the large-loan minimum term.
+    /// the merchant's discount for this split, and the large-loan minimum term. `openPrincipal` is
+    /// the member's other open principal under this product (`openPrincipalOf`), which the minimum
+    /// term is judged on together with this plan.
     function _quote(
         address member,
         address merchant,
         bytes32 product,
         uint256 principal,
         uint32 installments,
-        uint64 installmentLength
+        uint64 installmentLength,
+        uint256 openPrincipal
     ) internal view returns (Quote memory q) {
         q.state = stableCredit.networkRegistry().stateCodeOf(member);
         if (q.state == bytes32(0) || !rateSchedule.isEnabled(q.state, product)) {
@@ -490,7 +503,11 @@ abstract contract TermIssuerBase is CreditIssuer {
         q.payout = principal - (principal * discountBps) / BPS_;
         q.subsidyBps = uint32(subsidyBps);
         q.largeLoan = p.largeLoanThreshold != 0 && principal >= p.largeLoanThreshold;
-        if (q.largeLoan) {
+        // The minimum term is judged on the member's open principal under this product, this plan
+        // included, so two $2,400 Clear Cash plans cannot each slip under the $2,500 rule (Phase 4b,
+        // L-F). The rate below is still judged on this plan alone, as before.
+        q.largeTerm = p.largeLoanThreshold != 0 && principal + openPrincipal >= p.largeLoanThreshold;
+        if (q.largeTerm) {
             uint256 term = uint256(installments) * installmentLength;
             if (term < p.minTermSeconds) revert TermIssuerTermTooShort(term, p.minTermSeconds);
         }

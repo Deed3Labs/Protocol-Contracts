@@ -198,8 +198,18 @@ contract DeedTrustExtension is DeedTrustCommon {
      *         trustee or the standby. Posts it as a notice, then promotes the standby to trustee if one is set
      *         and still eligible (and is not the holder or the protector); otherwise marks the trustee suspended.
      *         A suspended trustee has no trustee powers until the protector names a new one.
+     * @dev Re-review M-G (changes Addendum 2): the standby's own call posts the determination, but acts on it
+     *      only with the protector's consent (the holder's while the protector record is zero), by EIP-712
+     *      signature over LicensingConsent or a prior approveTrustAction. Without it the notice is posted and
+     *      nothing else changes, so a standby cannot oust the trustee on its own word. `protectorConsent` is
+     *      ignored on the protector's and the trustee's calls, which are unchanged.
      */
-    function applyLicensingDetermination(uint256 tokenId, bytes32 docHash, string calldata uri) external {
+    function applyLicensingDetermination(
+        uint256 tokenId,
+        bytes32 docHash,
+        string calldata uri,
+        bytes calldata protectorConsent
+    ) external {
         IDeedTrust.TrustRecord storage r = _liveTrust(tokenId);
         address holder = ownerOf(tokenId);
         address protector = _protector(r, holder);
@@ -208,6 +218,13 @@ contract DeedTrustExtension is DeedTrustCommon {
             revert IDeedTrust.NotTrustParty();
         }
         emit IDeedTrust.NoticePosted(tokenId, msg.sender, docHash, uri, r.trustee, protector);
+
+        if (msg.sender != protector && msg.sender != r.trustee) {
+            bytes32 consent = keccak256(abi.encode(LICENSING_CONSENT_TYPEHASH, tokenId, standby, docHash, uint256(r.nonce)));
+            if (protectorConsent.length == 0 && !_trustApprovals[protector][_digest(consent)]) return;
+            _consume(protector, consent, protectorConsent);
+            r.nonce++;
+        }
 
         if (standby != address(0) && standby != holder && standby != r.protector && _isEligible(standby)) {
             address previous = r.trustee;
@@ -341,6 +358,29 @@ contract DeedTrustExtension is DeedTrustCommon {
         emit IDeedTrust.DeedVoided(tokenId, reasonCode, recordingRefHash, uri, !freezes);
     }
 
+    /**
+     * @notice Re-review M-F: lifts a Void, freezing or not. Two parties: the deed's validator (or a signer of
+     *         it, acting as someone other than the trustee, as for a freeze) calls, and the protector (the
+     *         holder while the record is zero) consents by EIP-712 signature over RestoreConsent or a prior
+     *         approveTrustAction. Answers Phase 3's open question 2: a freeze is no longer permanent, and one
+     *         signer can neither impose a freeze for good nor lift one alone.
+     */
+    function restoreFromVoid(uint256 tokenId, string calldata reasonURI, bytes calldata protectorConsent) external {
+        IDeedTrust.TrustRecord storage r = _liveTrust(tokenId);
+        if (r.status != STATUS_VOID) revert IDeedTrust.NotVoid();
+        if (!_isDeedValidator(tokenId, msg.sender) || msg.sender == r.trustee) revert IDeedTrust.FreezeNeedsValidator();
+        _consume(
+            _protector(r, ownerOf(tokenId)),
+            keccak256(abi.encode(RESTORE_CONSENT_TYPEHASH, tokenId, keccak256(bytes(reasonURI)), uint256(r.nonce))),
+            protectorConsent
+        );
+        r.nonce++;
+        r.status = STATUS_ACTIVE;
+        r.voidReason = 0;
+        _setTraitRaw(tokenId, KEY_STATUS, abi.encode(STATUS_ACTIVE));
+        emit IDeedTrust.DeedRestored(tokenId, msg.sender, reasonURI);
+    }
+
     // =====================================================================
     // Consent
     // =====================================================================
@@ -377,6 +417,18 @@ contract DeedTrustExtension is DeedTrustCommon {
     {
         return _digest(keccak256(abi.encode(
             CORRECTION_CONSENT_TYPEHASH, tokenId, keccak256(bytes(newDefinition)), keccak256(bytes(reasonURI)), uint256(_trust[tokenId].nonce)
+        )));
+    }
+
+    function restoreConsentDigest(uint256 tokenId, string calldata reasonURI) external view returns (bytes32) {
+        return _digest(keccak256(abi.encode(
+            RESTORE_CONSENT_TYPEHASH, tokenId, keccak256(bytes(reasonURI)), uint256(_trust[tokenId].nonce)
+        )));
+    }
+
+    function licensingConsentDigest(uint256 tokenId, address standby, bytes32 docHash) external view returns (bytes32) {
+        return _digest(keccak256(abi.encode(
+            LICENSING_CONSENT_TYPEHASH, tokenId, standby, docHash, uint256(_trust[tokenId].nonce)
         )));
     }
 

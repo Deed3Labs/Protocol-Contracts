@@ -17,6 +17,12 @@ import { getDeployment } from "../deploy/helpers";
  *
  * Idempotent: it reads the current pledge and moves it to the balance, so re-running changes
  * nothing. Run by an operator.
+ *
+ * Re-review L-I: raising a pledge needs the member's EIP-712 signature over it (CollateralRegistry
+ * `Pledge`, at their current nonce); the operator only submits. Pass the signatures collected from
+ * members as PLEDGE_SIGNATURES=<file.json>, `{ "<member>": { "amount": "<units>", "deadline": "<unix>",
+ * "signature": "0x…" } }`. A member with no signature on file is skipped, and the typed data they
+ * need to sign is printed. Releasing a free pledge needs no signature.
  */
 const { ethers } = hre as typeof hre & { ethers: typeof import("hardhat").ethers };
 
@@ -33,6 +39,10 @@ async function main() {
   const wallets = raw.split(",").map((w) => w.trim()).filter(Boolean);
 
   const registry = await ethers.getContractAt("CollateralRegistry", registryRecord.address);
+  const signatures: Record<string, { amount: string; deadline: string; signature: string }> =
+    process.env.PLEDGE_SIGNATURES
+      ? JSON.parse(require("fs").readFileSync(process.env.PLEDGE_SIGNATURES, "utf8"))
+      : {};
   const token = await ethers.getContractAt("ClearUSDUpgradeable", clrusdRecord.address);
   const SAVINGS = ethers.encodeBytes32String("SAVINGS");
 
@@ -47,8 +57,17 @@ async function main() {
     console.log("  pledged     ", ethers.formatUnits(pledged, 6));
 
     if (balance > pledged) {
-      await (await registry.pledge(member, SAVINGS, balance - pledged)).wait();
-      console.log("  pledged +   ", ethers.formatUnits(balance - pledged, 6));
+      const amount = balance - pledged;
+      const signed = signatures[member] ?? signatures[member.toLowerCase()];
+      if (!signed || BigInt(signed.amount) !== amount) {
+        const nonce = await registry.pledgeNonces(member);
+        console.log("  needs the member's signature over Pledge(member, kind, amount, nonce, deadline):");
+        console.log(`    domain  Clear CollateralRegistry / 1 / ${registryRecord.address}`);
+        console.log(`    message member=${member} kind=${SAVINGS} amount=${amount} nonce=${nonce} deadline=<unix>`);
+      } else {
+        await (await registry.pledge(member, SAVINGS, amount, BigInt(signed.deadline), signed.signature)).wait();
+        console.log("  pledged +   ", ethers.formatUnits(amount, 6));
+      }
     } else if (balance < pledged) {
       // Only what is free. The rest is holding up drawn credit, and the registry refuses to
       // release it -- correctly.

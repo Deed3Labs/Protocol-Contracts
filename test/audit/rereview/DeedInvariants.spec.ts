@@ -148,7 +148,7 @@ async function runDeedFuzz(seed: number) {
       const sig = await signTrust(ctx, standby, "StandbyAcceptance", { tokenId: d.id, standby: standby.address, nonce: rec.nonce });
       await attempt("setStandby", async () => trust.connect(await signerOf(protector)).setStandbyTrustee(d.id, standby.address, sig));
     } else if (r < 0.88) {
-      await attempt("determination", () => trust.connect(pick([standby, trustee, carol, mallory])).applyLicensingDetermination(d.id, k(`det${step}`), ""));
+      await attempt("determination", () => trust.connect(pick([standby, trustee, carol, mallory])).applyLicensingDetermination(d.id, k(`det${step}`), "", "0x"));
     } else {
       await attempt("notice", () => trust.connect(pick([...people, trustee])).postNotice(d.id, k(`n${step}`), ""));
     }

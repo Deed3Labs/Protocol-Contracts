@@ -65,13 +65,14 @@ contract TermIssuerOrigination is TermIssuerBase {
         bool largeLoan;
         if (address(rateSchedule) != address(0)) {
             Quote memory q = _quote(
-                member, terms.merchant, terms.productId, purchase, terms.installments, terms.installmentLength
+                member, terms.merchant, terms.productId, purchase, terms.installments, terms.installmentLength,
+                IOpenPrincipal(address(this)).openPrincipalOf(member, terms.productId, type(uint256).max)
             );
             if (q.rateBps != terms.ratePerCycle || q.payout != terms.payout) {
                 revert TermIssuerTermsMismatch(terms.ratePerCycle, q.rateBps, terms.payout, q.payout);
             }
             rateBps = q.rateBps;
-            largeLoan = q.largeLoan;
+            largeLoan = q.largeTerm;
             pricing = PlanPricing({
                 state: q.state,
                 product: terms.productId,

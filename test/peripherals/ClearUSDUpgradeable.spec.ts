@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { pledgeSigned } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -59,7 +60,7 @@ describe("ClearUSDUpgradeable", function () {
     await clrusd.setEncumbranceSource(await registry.getAddress());
 
     await clrusd.mint(ctx.member.address, 1_000n * ONE_USDC);
-    await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
     await revolving
       .connect(ctx.operator)
       .openLine(ctx.member.address, [1_000n * ONE_USDC], ONE_YEAR, CYCLE);

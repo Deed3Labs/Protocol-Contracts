@@ -4,6 +4,7 @@ import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { CA, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule, thirtyDays } from "./rates";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { deployAssurancePool } from "../../helpers/assurance";
+import { pledgeSigned } from "../../helpers/pledge";
 
 async function advance(seconds: number) {
   await ethers.provider.send("evm_increaseTime", [seconds]);
@@ -123,7 +124,7 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
 
     await clrusd.mint(ctx.member.address, 2_000n * ONE_USDC);
     await revolving.connect(ctx.operator).openLine(ctx.member.address, [2_000n * ONE_USDC, 0n, 0n], 365 * DAY, CYCLE);
-    await registry.pledge(ctx.member.address, SAV, 2_000n * ONE_USDC);
+    await pledgeSigned(registry, ctx.member.address, SAV, 2_000n * ONE_USDC);
     await spend(1_500n * ONE_USDC);
     await advance(CYCLE);
     await revolving.materialiseCarry(ctx.member.address);

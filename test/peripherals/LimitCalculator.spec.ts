@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { pledgeSigned } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -84,8 +85,8 @@ describe("LimitCalculator", function () {
 
   describe("collateral becomes capacity", function () {
     it("lends the whole of savings, and most of a bond", async function () {
-      await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
 
       expect(await limits.capacityOf(ctx.member.address, SAVINGS)).to.equal(1_000n * ONE_USDC);
       expect(await limits.capacityOf(ctx.member.address, ASSET_INTERNAL))
@@ -95,13 +96,13 @@ describe("LimitCalculator", function () {
     it("takes effect immediately, because the member caused it", async function () {
       // A member moving collateral expects the causation they just created.
       expect(await limits.capacityOf(ctx.member.address, SAVINGS)).to.equal(0n);
-      await registry.pledge(ctx.member.address, SAVINGS, 500n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 500n * ONE_USDC);
       expect(await limits.capacityOf(ctx.member.address, SAVINGS)).to.equal(500n * ONE_USDC);
     });
 
     it("writes the ceiling onto the issuer and the ledger", async function () {
-      await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
       await limits.pushCapacities(ctx.member.address);
 
       expect(await issuer.capacityOf(ctx.member.address, 0)).to.equal(1_000n * ONE_USDC);
@@ -111,7 +112,7 @@ describe("LimitCalculator", function () {
     });
 
     it("shrinks the ceiling when collateral is marked down", async function () {
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
       await limits.pushCapacities(ctx.member.address);
       expect(await issuer.capacityOf(ctx.member.address, 1)).to.equal(950n * ONE_USDC);
 
@@ -126,7 +127,7 @@ describe("LimitCalculator", function () {
     it("shows no exposure on a member drawn to their limit", async function () {
       // The capacity and the exposure haircut are the same number, not two that happen to agree.
       // What the limit refused to lend is exactly the shortfall exposure would have counted.
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
       await limits.pushCapacities(ctx.member.address);
 
       await ctx.stableCredit
@@ -139,7 +140,7 @@ describe("LimitCalculator", function () {
     });
 
     it("shows exposure only once carry pushes the position past the limit", async function () {
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
       await limits.pushCapacities(ctx.member.address);
       await ctx.stableCredit
         .connect(ctx.member)
@@ -209,7 +210,7 @@ describe("LimitCalculator", function () {
     it("refuses to grant capacity against collateral that out-earns its carry", async function () {
       // A bond paying more than it costs to borrow against is a member drawing free money out of
       // the co-op. The cheapest place to refuse it is before the capacity is granted.
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
       await limits.setCollateralYield(ASSET_INTERNAL, 65n); // equal to the tier's carry
 
       await expect(limits.pushCapacities(ctx.member.address))
@@ -217,7 +218,7 @@ describe("LimitCalculator", function () {
     });
 
     it("allows it once the carry is above the yield", async function () {
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
       await limits.setCollateralYield(ASSET_INTERNAL, 60n); // bond yields less than it costs
 
       await limits.pushCapacities(ctx.member.address);
@@ -233,7 +234,7 @@ describe("LimitCalculator", function () {
 
   describe("the tiered ceiling", function () {
     it("reports each slice, what it costs and what is drawn", async function () {
-      await registry.pledge(ctx.member.address, SAVINGS, 500n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 500n * ONE_USDC);
       await limits.pushCapacities(ctx.member.address);
       await ctx.stableCredit
         .connect(ctx.member)

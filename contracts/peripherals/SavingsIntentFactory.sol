@@ -5,6 +5,12 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "./SavingsIntentEscrow.sol";
 
+/// @dev CLRUSD's receipt rule (ClearUSDUpgradeable.mayReceive): true for a member wallet, or for
+///      anyone while the token has no membership source.
+interface IReceiptRule {
+    function mayReceive(address account) external view returns (bool);
+}
+
 /// @title SavingsIntentFactory
 /// @notice Predicts deterministic escrow addresses so users can fund them in one transaction,
 ///         then lets a sponsored settler deploy and finalize the escrow later.
@@ -14,6 +20,18 @@ import "./SavingsIntentEscrow.sol";
 ///      approved that vault. The clone salt is now `keccak256(abi.encode(userSalt, config))`, so a
 ///      member who funds `predictIntentAddress(userSalt, config)` has fixed every field of `config`
 ///      -- any other config deploys somewhere else, where none of their money is.
+///
+///      **Redeem escrows and members-only CLRUSD (Phase 2d).** CLRUSD is received only by member
+///      wallets, so a redeem intent's escrow -- funded with CLRUSD before it exists -- must be known
+///      in advance. The factory records every redeem escrow it announces or provisions
+///      (`isIntentEscrow`), and CLRUSD exempts them when this factory is its registered intent factory,
+///      which only Clear Financial's timelock can set. Two-person control sits on registering this
+///      factory, not on each escrow. A recorded address can only ever become an escrow with the
+///      config it was derived from, so its CLRUSD can only be redeemed to that config's receiver or
+///      returned to its depositor. What keeps the return on members-only rails is that an escrow is
+///      recorded only while its depositor may receive CLRUSD (`_recordRedeemEscrow`), checked
+///      through the token itself and failing closed. A depositor de-listed later still gets the
+///      refund: the escrow is already recorded and the check is not repeated.
 contract SavingsIntentFactory is AccessControl {
     bytes32 public constant CREATOR_ROLE = keccak256("CREATOR_ROLE");
     bytes32 public constant SETTLER_ROLE = keccak256("SETTLER_ROLE");
@@ -32,10 +50,18 @@ contract SavingsIntentFactory is AccessControl {
     }
 
     error SavingsIntentFactoryInvalidAddress();
+    error SavingsIntentFactoryNotRedeem();
+    /// @notice the redeem intent's depositor may not receive CLRUSD now, or the token did not answer.
+    error SavingsIntentFactoryDepositorNotMember(address depositor);
+
+    /// @notice Redeem escrows this factory has announced or provisioned (Phase 2d).
+    mapping(address => bool) public isIntentEscrow;
 
     event IntentCreated(bytes32 indexed salt, address indexed escrow, address indexed depositor, uint8 action, uint256 amount);
     event IntentSettled(bytes32 indexed salt, address indexed escrow, uint256 resultAmount);
     event IntentRefunded(bytes32 indexed salt, address indexed escrow, uint256 refundedAmount);
+    /// @notice A redeem escrow's address was recorded before it was funded.
+    event IntentAnnounced(bytes32 indexed salt, address indexed escrow, address indexed depositor, uint256 amount);
 
     constructor(address admin) {
         if (admin == address(0)) revert SavingsIntentFactoryInvalidAddress();
@@ -56,6 +82,22 @@ contract SavingsIntentFactory is AccessControl {
     ///         funder to exactly this config.
     function predictIntentAddress(bytes32 userSalt, IntentConfig calldata config) public view returns (address) {
         return Clones.predictDeterministicAddress(escrowImplementation, intentSalt(userSalt, config), address(this));
+    }
+
+    /// @notice Records a redeem intent's escrow address before the member funds it, so CLRUSD lets
+    ///         it receive (Phase 2d). Deploys nothing. Only redeem intents: a deposit escrow holds
+    ///         USDC, which has no members-only rule.
+    function announceIntent(bytes32 salt, IntentConfig calldata config)
+        external
+        onlyRole(CREATOR_ROLE)
+        returns (address escrow)
+    {
+        if (config.action != uint8(SavingsIntentEscrow.Action.Redeem)) revert SavingsIntentFactoryNotRedeem();
+        escrow = predictIntentAddress(salt, config);
+        if (!isIntentEscrow[escrow]) {
+            _recordRedeemEscrow(escrow, config);
+            emit IntentAnnounced(salt, escrow, config.depositor, config.amount);
+        }
     }
 
     function createIntentDeterministic(bytes32 salt, IntentConfig calldata config)
@@ -91,6 +133,9 @@ contract SavingsIntentFactory is AccessControl {
     function _provisionIntent(bytes32 salt, IntentConfig calldata config) internal returns (address escrow) {
         bytes32 cloneSalt = intentSalt(salt, config);
         escrow = Clones.predictDeterministicAddress(escrowImplementation, cloneSalt, address(this));
+        if (config.action == uint8(SavingsIntentEscrow.Action.Redeem) && !isIntentEscrow[escrow]) {
+            _recordRedeemEscrow(escrow, config);
+        }
 
         if (escrow.code.length == 0) {
             escrow = Clones.cloneDeterministic(escrowImplementation, cloneSalt);
@@ -115,6 +160,19 @@ contract SavingsIntentFactory is AccessControl {
         _assertConfigMatches(escrow, config);
     }
 
+
+    /// @dev Records a redeem escrow only if its depositor may receive the transfer token now, asked of
+    ///      the token (CLRUSD's `mayReceive`). Fails closed: a token that does not answer, or answers
+    ///      no, refuses the record. A token with no membership source answers yes for everyone; then
+    ///      recording is harmless, since nothing is members-only to escape.
+    function _recordRedeemEscrow(address escrow, IntentConfig calldata config) private {
+        bool may = false;
+        try IReceiptRule(config.transferToken).mayReceive(config.depositor) returns (bool yes) {
+            may = yes;
+        } catch {}
+        if (!may) revert SavingsIntentFactoryDepositorNotMember(config.depositor);
+        isIntentEscrow[escrow] = true;
+    }
 
     function _assertConfigMatches(address escrow, IntentConfig calldata config) internal view {
         SavingsIntentEscrow intent = SavingsIntentEscrow(payable(escrow));
