@@ -16,9 +16,9 @@ import { issuerProxyOptions } from "../deploy/issuerModules";
  * Add --dry-run (as TERM_FEE_UPGRADE_DRY_RUN=1) to validate and report without sending anything.
  * Needs the owner of TermIssuer.
  *
- * Afterwards: scripts/configure-carry-recipients.mjs --apply, which names the co-op as the fee
- * recipient FIRST and only then points carry at the pool. In between, the fee would be minted
- * wherever carry had gone -- which is the mistake this exists to make impossible.
+ * Superseded for the recipient by Addendum 2 (12.16, Phase 2e): the fee goes to Clear Lending's
+ * `feeRecipient`, named by two people (`proposeFeeRecipient` / `approveFeeRecipient`), never the
+ * co-op, and an unset recipient no longer falls back to the carry treasury.
  */
 const { ethers, upgrades } = hre as typeof hre & {
   upgrades: typeof import("@openzeppelin/hardhat-upgrades").upgrades;

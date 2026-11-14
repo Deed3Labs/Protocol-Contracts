@@ -5,6 +5,7 @@ import { driveToDefault } from "../../helpers/default";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { deployAssurancePool, fund, balances, TAG, AssuranceSetup } from "../../helpers/assurance";
 import { pledgeSigned } from "../../helpers/pledge";
+import { deployBondFactory } from "../../helpers/bonds";
 
 /*
  * Compliance addendum 12.11 (restated by section 13): no redemption, payout or force-settlement
@@ -55,7 +56,7 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       const ctx = await fillReserve(await deployPhase0Network());
       const signers = await ethers.getSigners();
       const [buyer, safe] = [signers[8], signers[9]];
-      const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
+      const factory: any = await deployBondFactory(
         await ctx.tokenRegistry.getAddress(), "ipfs://b"
       );
       const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
@@ -163,6 +164,7 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress());
       await ctx.access.grantOperator(await issuer.getAddress());
       await issuer.connect(ctx.operator).addTier(SAVINGS, 0n, 30 * DAY);
+      await issuer.connect(ctx.operator).addTier(ethers.encodeBytes32String("INCOME"), 150n, 30 * DAY);
       const registry: any = await upgrades.deployProxy(await ethers.getContractFactory("CollateralRegistry"), [ctx.admin.address, await ctx.networkRegistry.getAddress()], { kind: "uups" });
       await registry.registerCollateralType(SAVINGS, 1, 10_000n, 10n ** 18n);
       await registry.setClrusdKind(SAVINGS);
@@ -190,8 +192,9 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       await ctx.usdc.connect(ctx.member).approve(await vault.getAddress(), ethers.MaxUint256);
       await vault.connect(ctx.member).deposit(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, ctx.member.address);
       await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
-      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 30 * DAY, 30 * DAY);
-      await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 400n * ONE_USDC);
+      // $400 on Savings and $10 unsecured: only an unpaid Rebalance Amount is a miss (Addendum 2).
+      await issuer.connect(ctx.operator).openLine(ctx.member.address, [400n * ONE_USDC, 50n * ONE_USDC], 0);
+      await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 410n * ONE_USDC);
       // Section 12.5: two missed rebalances in a row, each judged, then the cure window.
       await driveToDefault(issuer, ctx.member.address, ctx.operator);
 

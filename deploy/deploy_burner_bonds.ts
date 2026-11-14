@@ -1,4 +1,5 @@
 import { saveDeployment } from "./helpers";
+import { deployBondFactory } from "./bondModules";
 
 /**
  * Comprehensive deployment script for the entire BurnerBond system
@@ -112,9 +113,8 @@ async function main() {
     console.log("└─────────────────────────────────────────────────────────┘");
     
     const baseURI = "https://protocol.com/api/bonds";
-    const BurnerBondFactory = await hre.ethers.getContractFactory("BurnerBondFactory");
-    const burnerBondFactory = await BurnerBondFactory.deploy(tokenRegistryAddress, baseURI);
-    await burnerBondFactory.waitForDeployment();
+    // Phase 2e: with the BurnerBondPledges module its bond implementation pins.
+    const burnerBondFactory = await deployBondFactory(tokenRegistryAddress, baseURI);
     const burnerBondFactoryAddress = await burnerBondFactory.getAddress();
     deployedContracts.factory = burnerBondFactoryAddress;
     

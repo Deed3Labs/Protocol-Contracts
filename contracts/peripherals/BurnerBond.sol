@@ -1,148 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
-import "../core/interfaces/burner-bond/IBurnerBond.sol";
-import "../core/interfaces/burner-bond/IBurnerBondDeposit.sol";
-import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "../core/interfaces/burner-bond/IBurnerBond.sol";
+import "./BurnerBondBase.sol";
+import "./IExtensionKind.sol";
 
 /// @title BurnerBond
 /// @notice ERC-1155 based bond system that allows users to mint bonds at a discount
-/// @dev Bonds are backed by the proceeds held in the BondVault, never the AssurancePool
-interface IBondEncumbrance {
-    function isItemEncumbered(address holder, bytes32 kind, uint256 itemId)
-        external view returns (bool);
-    function rollItem(address member, bytes32 kind, uint256 oldItemId, uint256 newItemId) external;
-}
-
-/// @dev Liquidator's narrow gate for section 12 settlements (see `seizeBond`).
-interface ISettlementGate {
-    function mayTakeBond(address member) external view returns (bool);
-}
-
-/// @dev Whether a member is in default -- the shape of `ICreditIssuer.inDefault`.
-interface IMemberDefaultSource {
-    function inDefault(address member) external view returns (bool);
-}
-
-interface IBondTraitStore {
-    function setTrait(uint256 bondId, bytes32 key, bytes calldata value) external;
-    function setTraits(uint256 bondId, bytes32[] calldata keys, bytes[] calldata values) external;
-    function setCustomName(bytes32 key, string calldata name) external;
-    function removeTrait(uint256 bondId, bytes32 key) external;
-    function traitOf(address collection, uint256 bondId, bytes32 key)
-        external view returns (bytes memory);
-    function traitsOf(address collection, uint256 bondId, bytes32[] calldata keys)
-        external view returns (bytes[] memory);
-    function keysOf(address collection, uint256 bondId) external view returns (bytes32[] memory);
-    function nameOf(address collection, bytes32 key) external view returns (string memory);
-}
-
-interface IBondDiscountCurve {
-    function curveOf(address collection) external view returns (uint8, uint256);
-    function setCurve(uint8 curveType, uint256 parameter) external;
-    function discountFor(
-        address collection,
-        uint256 timeToMaturity,
-        uint256 minMaturity,
-        uint256 maxMaturity,
-        uint256 minDiscount,
-        uint256 maxDiscount
-    ) external view returns (uint256);
-}
-
-interface IBondVaultSettlement {
-    function settle(uint256 bondId, address to) external returns (uint256);
-    function settleEarly(uint256 bondId, address to, uint256 presentValue) external;
-    function roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)
-        external;
-}
-
-contract BurnerBond is
-    Initializable,
-    ERC1155Upgradeable,
-    OwnableUpgradeable,
-    ReentrancyGuardUpgradeable,
-    IBurnerBond
-{
+/// @dev Bonds are backed by the proceeds held in the BondVault, never the AssurancePool.
+///
+/// Storage is BurnerBondBase's. The pledged-bond terms -- `payPledged` (IV-01 §4.9) and the pledged
+/// maturity split in `settle` (MB-05 §5.6) -- run in BurnerBondPledges, a delegatecall module this
+/// implementation pins in its constructor, because the collection had no room for them.
+contract BurnerBond is BurnerBondBase, IBurnerBond {
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
 
-    /* ========== STATE VARIABLES ========== */
-    
-    /// @notice Counter for generating unique bond IDs
-    Counters.Counter private _bondIdCounter;
-    
-    /// @notice BurnerBondDeposit contract for financial operations
-    IBurnerBondDeposit public burnerBondDeposit;
-    
-    /// @notice BurnerBondFactory contract (single source of truth for parameters)
-    IBurnerBondFactory public factory;
-
-    /// @notice Where the money to redeem a bond comes from.
-    /// @dev The vault, never the AssurancePool. A bondholder is a creditor and must not be
-    /// exposed to how the credit book is performing.
-    IBondVaultSettlement public bondVault;
-
-    /// @notice May take a pledged bond, and redeem one before it matures.
-    /// @dev Both restricted to the co-op or a contract acting for it. Early redemption exists so
-    /// a defaulted position can be covered without waiting out the term, not so a holder can
-    /// change their mind -- a bond anyone could exit early is not a term instrument.
-    address public liquidator;
-
-    /// @notice Reports whether a given bond is standing behind drawn credit.
-    /// @dev Same reasoning as CLRUSD and pool shares: the member holds the bond, so a registry
-    /// entry saying it is pledged does not stop them handing it to somebody else. A pledge that
-    /// only exists in a ledger is a note about an asset nobody controls.
-    IBondEncumbrance public encumbranceSource;
-    /// @notice The collateral kind these bonds are pledged as.
-    bytes32 public collateralKind;
-
-    /// @notice Bonds their holder has asked to be paid out rather than rolled at maturity.
-    mapping(uint256 => bool) public autoRollOptedOut;
-
-    /// @notice How long a rolled bond runs for.
-    uint256 public rollTerm;
-
-    event AutoRollOptOutSet(uint256 indexed bondId, bool optedOut);
-    event BondRolled(uint256 indexed oldBondId, uint256 indexed newBondId, uint256 rolledValue);
-    event BondSeized(uint256 indexed bondId, address indexed from, address indexed to);
-    event RedeemedEarly(uint256 indexed bondId, address indexed holder, uint256 presentValue);
-    event LiquidatorUpdated(address indexed liquidator);
-    event LiquidatorProposed(address indexed liquidator, uint256 readyAt);
-    event DefaultSourceUpdated(address indexed source);
+    /// @notice Where `payPledged` and `settle` run (BurnerBondPledges). Fixed for the life of this
+    /// implementation, and so for every collection cloned from it.
+    address public immutable pledges;
 
     /// @notice How long a new liquidator waits between being proposed and taking effect (audit M-6).
-    /// @dev The liquidator can take pledged bonds and redeem them early, so naming one is a power
-    /// over every bondholder; a week gives them time to see it coming.
+    /// @dev The liquidator is the pledge module's enforcement side for every pledged bond, so naming
+    /// one is a power over every pledged bondholder; a week gives them time to see it coming.
     uint256 internal constant LIQUIDATOR_DELAY = 7 days;
 
-    error BurnerBondNotSeizable(uint256 bondId, address from);
     error BurnerBondLiquidatorNotReady(uint256 readyAt);
-    
-    /// @notice Underlying token contract (can be USDC, WETH, etc.)
-    IERC20 public underlyingToken;
-    
-    /// @notice Collection name (e.g., "WETH BurnerBonds")
-    string public collectionName;
-    
-    /// @notice Collection symbol (e.g., "WETH-BB")
-    string public collectionSymbol;
-    
-    /// @notice Collection description
-    string public collectionDescription;
-    
-    // ============ DISCOUNT CURVE SYSTEM ============
-
-    /// @notice Shared pricing policy. See BondDiscountCurve for why it is not held inline.
-    IBondDiscountCurve public discountCurveEngine;
+    error BurnerBondModuleMismatch();
 
     /// @notice Current discount curve shape (0=linear, 1=bonding, 2=logarithmic, 3=custom).
     function curveType() public view returns (uint8) {
@@ -156,66 +45,19 @@ contract BurnerBond is
         return p;
     }
 
-    /// @notice Mapping from bond ID to bond information
-    mapping(uint256 => BondInfo) public bonds;
-    
-    /// @notice Mapping from creator to number of bonds created
-    mapping(address => uint256) public bondsCreatedBy;
-    
-    /// @notice Mapping from creator to array of bond IDs they created
-    mapping(address => uint256[]) public bondIdsByCreator;
-    
-    /// @notice Mapping from bond ID to creator (for quick lookup)
-    mapping(uint256 => address) public bondCreator;
-    
-    /// @notice Total bonds minted
-    uint256 public totalBondsMinted;
-    
-    /// @notice Total USDC deposited through bond purchases
-    uint256 public totalUSDCDeposited;
-    
-    /// @notice Total USDC redeemed through bond redemptions
-    uint256 public totalUSDCRedeemed;
-
-    // ============ ERC-7496 Trait Storage ============
-    /**
-     * @dev Mapping from bond ID to trait key to trait value
-     * @notice Implements ERC-7496 trait storage for bonds
-     */
-    /// @notice Where a bond's metadata lives.
-    /// @dev Not here. All of it is display and none of it decides whether a bond can be issued or
-    /// redeemed, and this contract had reached the size a contract may be -- so it sheds what it
-    /// does not need to be correct before it sheds anything it does.
-    IBondTraitStore public traitStore;
-
-    /* ========== ADDED BY THE AUDIT FIXES (appended) ========== */
-
-    /// @notice A liquidator proposed and not yet in effect (audit M-6).
-    address public pendingLiquidator;
-    /// @notice When `pendingLiquidator` may take effect.
-    uint256 public pendingLiquidatorReadyAt;
-    /// @notice Answers whether a member is in default; `seizeBond` requires it (audit M-6).
-    /// @dev Anything with `inDefault(address) returns (bool)`, e.g. the member's credit issuer.
-    address public defaultSource;
-    /// @dev Section 12.5/12.8: the Liquidator, whose `mayTakeBond` is true only inside its own
-    /// settlement of a missed cycle's excess or a matured Earn shortfall for that member.
-    address public settlementGate;
-    
-    /**
-     * @dev Mapping from trait key to trait name
-     * @notice Used for ERC-7496 trait metadata
-     */
-    
-    /**
-     * @dev Array of all possible trait keys
-     * @notice Used for ERC-7496 trait enumeration
-     */
-
     /* ========== CONSTRUCTOR ========== */
     
+    /// @dev The pledge module is deployed on its own and passed in: creating it here would put its
+    /// creation code inside this contract's, and so inside the factory's. It is checked for its kind
+    /// and fixed for the life of this implementation, so no role can swap the code that pays a
+    /// pledged bond.
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(address pledges_) {
         _disableInitializers();
+        if (IExtensionKind(pledges_).extensionKind() != keccak256("BurnerBondPledges.v1")) {
+            revert BurnerBondModuleMismatch();
+        }
+        pledges = pledges_;
     }
 
     /// @notice sets a collection up.
@@ -269,7 +111,7 @@ contract BurnerBond is
     /// @notice Get bond information by ID
     /// @param bondId Unique bond identifier
     /// @return BondInfo struct containing all bond details
-    function getBondInfo(uint256 bondId) external view override returns (BondInfo memory) {
+    function getBondInfo(uint256 bondId) external view override returns (IBurnerBond.BondInfo memory) {
         require(bonds[bondId].creator != address(0), "Bond does not exist");
         return bonds[bondId];
     }
@@ -617,26 +459,19 @@ contract BurnerBond is
         require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
         require(!bonds[bondId].isRedeemed, "Bond already redeemed");
         require(isBondMature(bondId), "Bond not yet mature");
+        // A pledged bond pays out only under its Maturity Instruction, through `settle`, which
+        // splits it and releases the pledge in the same transaction (MB-05 §5.6).
+        if (_isPledged(msg.sender, bondId)) revert BurnerBondPledged(bondId);
 
-        BondInfo storage bond = bonds[bondId];
-        bond.isRedeemed = true;
-
-        bytes memory redeemedFlag = abi.encode(true);
-        bytes memory redeemedAt = abi.encode(block.timestamp);
-        _setBondTraitValue(bondId, keccak256("isRedeemed"), redeemedFlag);
-        _setBondTraitValue(bondId, keccak256("redeemedAt"), redeemedAt);
-        emit BondTraitUpdated(bondId, keccak256("isRedeemed"), redeemedFlag);
-        emit BondTraitUpdated(bondId, keccak256("redeemedAt"), redeemedAt);
-
-        totalUSDCRedeemed += bond.faceValue;
-        _burn(msg.sender, bondId, 1);
+        uint256 faceValue = bonds[bondId].faceValue;
+        _retire(bondId, msg.sender, faceValue);
 
         // Paid out of the bond vault, which holds the proceeds and nothing else's. Redemption
         // does not compete with default coverage, and cannot fail because the credit book had a
         // bad quarter.
         bondVault.settle(bondId, msg.sender);
 
-        emit BondRedeemed(bondId, msg.sender, bond.faceValue);
+        emit BondRedeemed(bondId, msg.sender, faceValue);
     }
 
     /* ========== ADMIN FUNCTIONS ========== */
@@ -650,75 +485,59 @@ contract BurnerBond is
     /// @dev A zero-coupon bond accretes from what was paid for it toward what it will pay,
     /// straight-line across its term. Half way through, half the discount has been earned.
     ///
-    /// This is the number a bond is worth as collateral, and the number the co-op gets if it
-    /// takes one early. Paying face for a bond that has not matured would hand over interest
-    /// nobody has waited for.
+    /// This is the number a bond is worth as collateral, and the number `payPledged` pays.
+    /// Paying face for a bond that has not matured would hand over interest nobody has waited for.
     /// @param bondId the bond
     /// @return the bond's value now
     function presentValueOf(uint256 bondId) public view returns (uint256) {
-        BondInfo storage bond = bonds[bondId];
-        if (bond.creator == address(0) || bond.isRedeemed) return 0;
-        if (block.timestamp >= bond.maturityDate) return bond.faceValue;
+        return _presentValue(bondId);
+    }
 
-        // Read, not reconstructed. Deriving the issue date by subtracting a standard term from
-        // the maturity date is right only for bonds that happened to have that term, and a
-        // six-month bond would be valued as though it had been accreting for a year.
-        uint256 issuedAt = bond.issuedAt;
-        if (block.timestamp <= issuedAt || bond.maturityDate <= issuedAt) {
-            return bond.purchasePrice;
+    /// @notice a bond's Accreted Value in this block: its Present Value under MB-05, and what
+    /// `payPledged` pays (IV-01 §4.9(b)).
+    /// @dev The same figure as `presentValueOf`. Phase 2f replaces straight-line accretion with
+    /// the Earn spec's compounding at the Issue Yield; both answer here.
+    function accretedValue(uint256 bondId) external view returns (uint256) {
+        return _presentValue(bondId);
+    }
+
+    /// @notice pays a pledged bond under its pledge payment term (IV-01 §4.9; MB-05 §7.3(a)).
+    /// @dev Anyone may call it. It succeeds only when the pledge module (the Liquidator) reports
+    /// that MB-05 permits enforcement against this bond -- a default after notice and cure as
+    /// recorded on chain, or a Shortfall uncured past its wait -- and only for the bond the module
+    /// requests. It pays `accretedValue` in this block, in full (FIXED: never less than Present
+    /// Value), applies it only to the Holder's MB-05 secured debt in the module's order, sends any
+    /// surplus in USDC to the Holder, releases the pledge and burns the bond. No argument but the
+    /// id, so no caller chooses an amount, a destination or a debt. Not a buyback.
+    /// Runs in BurnerBondPledges.
+    function payPledged(uint256) external returns (uint256) {
+        _forward();
+    }
+
+    /// @notice settles a matured bond that pays out rather than rolls. Anyone may call it.
+    /// @dev An unpledged bond pays its face value to its holder. A pledged one is split under its
+    /// Maturity Instruction (MB-05 §5.6): `toDebt` is what keeps the Holder's Asset-Backed Drawn
+    /// within their limit once this bond is gone, applied to that debt on their own instruction;
+    /// `toHolder` is the rest, in USDC, unrestricted. The pledge releases and the bond burns in the
+    /// same transaction. Runs in BurnerBondPledges.
+    /// @return toDebt applied to the Holder's Asset-Backed Drawn.
+    /// @return toHolder owed to the Holder (paid now, or recorded as a settlement shortfall).
+    function settle(uint256) external returns (uint256, uint256) {
+        _forward();
+    }
+
+    /// @dev Runs the pledge module's implementation of this call against this contract's storage,
+    /// and returns or reverts exactly as it did.
+    function _forward() private {
+        address target = pledges;
+        assembly {
+            calldatacopy(0, 0, calldatasize())
+            let ok := delegatecall(gas(), target, 0, calldatasize(), 0, 0)
+            returndatacopy(0, 0, returndatasize())
+            switch ok
+            case 0 { revert(0, returndatasize()) }
+            default { return(0, returndatasize()) }
         }
-
-        uint256 elapsed = block.timestamp - issuedAt;
-        uint256 term = bond.maturityDate - issuedAt;
-        uint256 earned = ((bond.faceValue - bond.purchasePrice) * elapsed) / term;
-        return bond.purchasePrice + earned;
-    }
-
-    /// @notice takes a pledged bond and hands it to the co-op.
-    /// @dev A bond is one token with an id, not a balance, so seizing it is a transfer of that
-    /// id rather than an amount. Bounded the way CLRUSD's `seize` is (audit M-6): only a bond the
-    /// encumbrance source reports as backing drawn credit, and only from a member the default
-    /// source reports in default. It used to take any bond from any holder, which made the
-    /// collection's owner -- who names the liquidator -- the effective holder of every bond.
-    /// @param bondId the bond
-    /// @param from the member it is taken from
-    /// @param to where it goes, which should be the co-op treasury
-    function seizeBond(uint256 bondId, address from, address to) external {
-        require(msg.sender == liquidator, "Only liquidator can seize");
-        require(balanceOf(from, bondId) > 0, "Not bond holder");
-        if (
-            address(encumbranceSource) == address(0)
-                || !encumbranceSource.isItemEncumbered(from, collateralKind, bondId)
-                || !(
-                    (defaultSource != address(0) && IMemberDefaultSource(defaultSource).inDefault(from))
-                        || (settlementGate != address(0) && ISettlementGate(settlementGate).mayTakeBond(from))
-                )
-        ) revert BurnerBondNotSeizable(bondId, from);
-        _safeTransferFrom(from, to, bondId, 1, "");
-        emit BondSeized(bondId, from, to);
-    }
-
-    /// @notice pays out a bond before it matures, at what it is worth today.
-    /// @dev Only the co-op, and only through the liquidator. A bond taken from a defaulted member
-    /// is collateral somebody is waiting on, and waiting out the term would put the recovery
-    /// months away -- the whole reason asset-backed collateral is haircut is that realising it is
-    /// not free. Paying present value rather than face is what makes it not free: the vault keeps
-    /// the interest the term did not run for.
-    /// @param bondId the bond
-    /// @return presentValue what was paid
-    function redeemEarly(uint256 bondId) external nonReentrant returns (uint256 presentValue) {
-        require(msg.sender == liquidator, "Only liquidator can redeem early");
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
-        require(!bonds[bondId].isRedeemed, "Bond already redeemed");
-
-        presentValue = presentValueOf(bondId);
-        bonds[bondId].isRedeemed = true;
-        totalUSDCRedeemed += presentValue;
-        _burn(msg.sender, bondId, 1);
-
-        bondVault.settleEarly(bondId, msg.sender, presentValue);
-        emit RedeemedEarly(bondId, msg.sender, presentValue);
     }
 
     /// @notice whether a bond will roll when it matures.
@@ -741,13 +560,10 @@ contract BurnerBond is
     /// money bought at a discount again. No cash leaves the vault and the collateral behind the
     /// position never lapses, which is the point.
     ///
-    /// The co-op cannot roll a bond it has taken. A seized bond is collateral somebody is waiting
-    /// on, and rolling it would put that recovery another term away -- so a bond held by the
-    /// liquidator is redeemed early instead, which is what that path is for.
+    /// A pledged bond rolls like any other; its pledge moves to the replacement.
     /// @param bondId the matured bond
     /// @return newBondId the replacement
     function rollBond(uint256 bondId) external nonReentrant returns (uint256 newBondId) {
-        require(msg.sender != liquidator, "Seized bonds are redeemed, not rolled");
         require(bonds[bondId].creator != address(0), "Bond does not exist");
         require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
         require(isBondMature(bondId), "Bond not yet mature");
@@ -794,7 +610,7 @@ contract BurnerBond is
         collateralKind = kind;
     }
 
-    /// @notice names the contract that may seize and redeem early -- after a delay (audit M-6).
+    /// @notice names the pledge module's enforcement side (the Liquidator) -- after a delay (audit M-6).
     /// @dev Takes effect at once only where nobody can be harmed by it: removing the liquidator
     /// (which only takes power away), or naming the first one before any bond exists. Otherwise
     /// it is a proposal that `executeLiquidatorChange` applies after `LIQUIDATOR_DELAY`, so the
@@ -821,19 +637,6 @@ contract BurnerBond is
         pendingLiquidatorReadyAt = 0;
         emit LiquidatorUpdated(liquidator);
     }
-
-    /// @notice names what reports a member in default, which `seizeBond` requires (audit M-6).
-    function setDefaultSource(address source) external onlyOwner {
-        defaultSource = source;
-        emit DefaultSourceUpdated(source);
-    }
-
-    /// @notice names the settlement gate for section 12's missed-cycle and shortfall paths.
-    function setSettlementGate(address gate) external onlyOwner {
-        settlementGate = gate;
-        emit DefaultSourceUpdated(gate);
-    }
-
 
     /// @notice sets the vault redemptions are paid from.
     /// @dev Without this a collection can be created but never redeem, because the vault it pays
@@ -884,50 +687,6 @@ contract BurnerBond is
 
     /* ========== INTERNAL FUNCTIONS ========== */
     
-    /// @notice Override to prevent transfers of redeemed bonds and update current holder trait
-    function _beforeTokenTransfer(
-        address operator,
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory amounts,
-        bytes memory data
-    ) internal virtual override {
-        super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
-        
-        // Prevent transfers of redeemed bonds and update current holder trait
-        for (uint256 i = 0; i < ids.length; i++) {
-            uint256 bondId = ids[i];
-            
-            // Prevent transfers of redeemed bonds -- but not their destruction. Redemption marks
-            // the bond redeemed and then burns it, and a burn is a transfer to the zero address,
-            // so a check that did not make this distinction refused the second half of the
-            // operation the first half had just committed to. The instrument could take money in
-            // and had no reachable way to pay it out.
-            // A pledged bond does not leave. Burns are exempt -- redemption and rolling both
-            // destroy the bond, and the liquidator is exempt because taking it is the one move
-            // the lock exists to permit.
-            // An unregistered kind reports nothing pledged, so it needs no check of its own.
-            if (
-                to != address(0) && operator != liquidator
-                    && address(encumbranceSource) != address(0)
-                    && encumbranceSource.isItemEncumbered(from, collateralKind, bondId)
-            ) {
-                revert("Bond is pledged as collateral");
-            }
-
-            if (bonds[bondId].isRedeemed && to != address(0)) {
-                revert("Cannot transfer redeemed bond");
-            }
-            
-            // Update current holder trait on transfers (not minting or burning)
-            if (from != address(0) && to != address(0)) {
-                _setBondTraitValue(bondId, keccak256("currentHolder"), abi.encode(to));
-                emit BondTraitUpdated(bondId, keccak256("currentHolder"), abi.encode(to));
-            }
-        }
-    }
-    
     /// @notice Initialize trait keys and names
     /// @notice Records what a bond is, for anything that wants to show it to somebody.
     /// @dev Written in one call rather than a dozen, and written somewhere else -- see traitStore.
@@ -959,15 +718,6 @@ contract BurnerBond is
         traitStore.setTraits(bondId, keys, vals);
     }
 
-    /// @notice Records one trait against a bond.
-    function _setBondTraitValue(uint256 bondId, bytes32 traitKey, bytes memory traitValue)
-        internal
-    {
-        traitStore.setTrait(bondId, traitKey, traitValue);
-    }
-
-    
-    
     /// @notice Convert address to string
     /// @param _addr Address to convert
     /// @return String representation of address

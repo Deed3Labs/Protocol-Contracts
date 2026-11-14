@@ -27,13 +27,13 @@ Source: [`contracts/peripherals/TermIssuer.sol`](../../../contracts/peripherals/
 | `reinstate(address member)` | Anyone |  |
 | `renounceOwnership()` | The owner |  |
 | `repayWrittenOff(address member, uint256 amount)` | Anyone |  |
-| `setCarryTreasury(address treasury)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
-| `setFeeRecipient(address recipient)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
+| `setCarryTreasury(address treasury)` | Anyone |  |
+| `setFeeRecipient(address recipient)` | Not in the current source |  |
 | `setGraceLengthOf(address member, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
-| `setMandateSource(address source)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
+| `setMandateSource(address source)` | Anyone |  |
 | `setPeriodExpirationOf(address member, uint256 periodExpiration)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
 | `setSplit(uint256 planId, uint32 installments)` | Anyone |  |
-| `setTermLimit(address member, uint256 limit)` | `onlyCreditRole(CREDIT_LIMITS_ROLE)` | `notNull(member)` |
+| `setTermLimit(address member, uint256 limit)` | Anyone |  |
 | `syncCreditPeriod(address member)` | Anyone |  |
 | `syncCreditPositions(address sender, address recipient, uint256 amount)` | `onlyStableCredit` |  |
 | `transferOwnership(address newOwner)` | The owner |  |

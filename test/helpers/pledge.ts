@@ -22,6 +22,7 @@ const PLEDGE_ITEM_TYPES = {
     { name: "member", type: "address" },
     { name: "kind", type: "bytes32" },
     { name: "itemId", type: "uint256" },
+    { name: "maturityInstruction", type: "bytes32" },
     { name: "nonce", type: "uint256" },
     { name: "deadline", type: "uint256" },
   ],
@@ -61,8 +62,21 @@ export async function signPledge(registry: any, member: any, kind: string, amoun
   return { member: memberAddress, deadline: until, signature };
 }
 
-/** The member's signature over a pledge of item `itemId` of `kind`. */
-export async function signPledgeItem(registry: any, member: any, kind: string, itemId: bigint, deadline?: bigint) {
+/**
+ * The hash of the Maturity Instruction a member approves when pledging a bond (Phase 2e, section 9;
+ * MB-05 §5.6). The app hashes the instruction text the member saw; tests use a fixed stand-in.
+ */
+export const MATURITY_INSTRUCTION = ethers.id("Maturity Instruction (MB-05 5.6), test text v1");
+
+/** The member's signature over a pledge of item `itemId` of `kind`, with its Maturity Instruction. */
+export async function signPledgeItem(
+  registry: any,
+  member: any,
+  kind: string,
+  itemId: bigint,
+  deadline?: bigint,
+  maturityInstruction: string = MATURITY_INSTRUCTION,
+) {
   const signer = await signerOf(member);
   const memberAddress = await signer.getAddress();
   const nonce = await registry.pledgeNonces(memberAddress);
@@ -71,10 +85,11 @@ export async function signPledgeItem(registry: any, member: any, kind: string, i
     member: memberAddress,
     kind,
     itemId,
+    maturityInstruction,
     nonce,
     deadline: until,
   });
-  return { member: memberAddress, deadline: until, signature };
+  return { member: memberAddress, deadline: until, signature, maturityInstruction };
 }
 
 /** Pledges `amount` of `kind` for `member`, signed by the member and submitted through `registry`. */
@@ -86,5 +101,5 @@ export async function pledgeSigned(registry: any, member: any, kind: string, amo
 /** Pledges item `itemId` of `kind` for `member`, signed by the member and submitted through `registry`. */
 export async function pledgeItemSigned(registry: any, member: any, kind: string, itemId: bigint) {
   const s = await signPledgeItem(registry, member, kind, itemId);
-  return registry.pledgeItem(s.member, kind, itemId, s.deadline, s.signature);
+  return registry.pledgeItem(s.member, kind, itemId, s.maturityInstruction, s.deadline, s.signature);
 }

@@ -217,7 +217,7 @@ describe("PHASE 4c: the owner's decisions on Phase 4b's open questions", functio
       const core = await deployCore();
       const { ctx, revolving, term, merchant } = core;
       const m = ctx.member;
-      await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0); // Phase 2e: the third argument is the Cycle End Day (0 = the default day)
       await ctx.stableCredit.connect(m).transfer(merchant.address, 100n * ONE_USDC);
       await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
       for (let i = 0; i < 16; i++) {
