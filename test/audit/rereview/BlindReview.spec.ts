@@ -301,6 +301,7 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 1_500n * ONE_USDC);
       await advance(10 * DAY);
       await price();
+      const pricedAt = (await ethers.provider.getBlock("latest"))!.timestamp;
       await advance(CYCLE);
       await revolving.drawnOf(ctx.member.address, 1);
       await revolving.drawnOf(ctx.member.address, 2);
@@ -310,7 +311,11 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       await revolving.materialiseCarry(ctx.member.address);
       const carry = (await revolving.carryOf(ctx.member.address, 1)) + (await revolving.carryOf(ctx.member.address, 2));
       expect(carry).to.be.gt(0n);
-      expect(carry).to.be.lte(30_000_000n); // under the graduated cap on $1,500 for two months of carry at most
+      // Never over the graduated cap on $1,500 ($28.125 a month) for the time since pricing. Nothing
+      // is charged across the change itself; since Phase 2g the first touch on the new basis can be
+      // the close of the cycle end that passed, which re-snapshots as at that end.
+      const elapsed = BigInt((await ethers.provider.getBlock("latest"))!.timestamp - pricedAt);
+      expect(carry).to.be.lte((28_125_000n * 12n * elapsed) / (365n * BigInt(DAY)));
       expect(await revolving.totalPrincipalOf(ctx.member.address)).to.equal(await ctx.stableCredit.creditBalanceOf(ctx.member.address));
     });
 

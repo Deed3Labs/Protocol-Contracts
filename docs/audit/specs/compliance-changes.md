@@ -149,6 +149,7 @@ Goal: no Clear key can execute a member's CLRUSD transaction or block one indefi
 15. Pause expiry: a fraud pause lifts automatically at 72 hours. A renewal by the same signer that set the pause reverts; a renewal by a second signer succeeds and is logged.
 16. Token powers: no address can pause, freeze or blacklist member-to-member CLRUSD transfers outside 10c (test every role).
     - *Amended by `dfal-vault-send.md` (12.15, decision 6), Phase 2d:* CLRUSD is received only by member wallets. De-listing a wallet stops its receipt only, never its sending or redemption, and the registry logs it. That is the one exception, and it is not a pause, freeze or blacklist of a member-to-member transfer.
+    - *Amended by Addendum 4 (10d, decision 7), Phase 2g:* "A de-listing may stop receipt only, never sending or redemption (10d)." The de-listing is CLRUSD's own listing status, cleared only by a two-person `delist` with a reason code (MEMBERSHIP_ENDED, HOLDER_REQUEST, or FRAUD after a notice 10 days before) and logged by `WalletDelisted`; registry changes no longer affect a listed wallet's receipt.
 17. Upgrade delay: an upgrade to the module or CLRUSD can't take effect before the timelock ends, and a member's unencumbered withdrawal succeeds during the delay.
 
 ## Return

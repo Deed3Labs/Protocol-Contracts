@@ -17,7 +17,7 @@ Source: [`contracts/peripherals/RevolvingIssuer.sol`](../../../contracts/periphe
 | `addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength_)` | Anyone |  |
 | `initialize(address _stableCredit, address _carryTreasury)` | Once, when the proxy is initialised |  |
 | `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | Anyone |  |
-| `materialiseCarry(address member)` | Anyone |  |
+| `materialiseCarry(address member)` | Checked inside the function |  |
 | `openLine(address member, uint256[] capacities, uint256 periodLength, uint256 graceLength)` | Not in the current source |  |
 | `pausePeriodOf(address member)` | Anyone |  |
 | `renounceOwnership()` | The owner |  |
