@@ -374,11 +374,9 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// @param debtTo the pledge module
     /// @param toDebt the part applied to the Holder's debt
     /// @param holder the Holder, who is paid the rest
-    /// @return paid what the Holder received now
     function settlePledged(uint256 bondId, address debtTo, uint256 toDebt, address holder)
         external
         onlyRole(BOND_ROLE)
-        returns (uint256 paid)
     {
         Obligation storage obligation = obligations[bondId];
         uint256 faceValue = obligation.faceValue;
@@ -389,7 +387,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         uint256 have = _coverUpTo(faceValue);
         if (have < toDebt) revert BondVaultInsufficientFunds(have, toDebt);
         uint256 toHolder = faceValue - toDebt;
-        paid = have - toDebt < toHolder ? have - toDebt : toHolder;
+        uint256 paid = have - toDebt < toHolder ? have - toDebt : toHolder;
 
         obligation.settled = true;
         totalFaceOutstanding -= faceValue;
@@ -413,10 +411,9 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// can. Anyone may call it; the money goes only to the Holder recorded at settlement.
     function completeSettlement(uint256 bondId) external returns (uint256 paid) {
         uint256 owed = settlementOwed[bondId];
-        if (owed == 0) revert BondVaultNothingOwed(bondId);
-        uint256 have = _coverUpTo(owed);
-        if (have == 0) revert BondVaultInsufficientFunds(0, owed);
-        paid = have < owed ? have : owed;
+        if (owed < 1) revert BondVaultNothingOwed(bondId);
+        paid = _coverUpTo(owed); // never more than owed
+        if (paid < 1) revert BondVaultInsufficientFunds(0, owed);
         settlementOwed[bondId] = owed - paid;
         totalSettlementOwed -= paid;
         address holder = settlementPayee[bondId];

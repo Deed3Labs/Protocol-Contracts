@@ -40,26 +40,35 @@
   },
   "BondVault": {
    "source": "contracts/peripherals/BondVault.sol",
-   "sha256": "0105e2b68bcc3efbe5362b51ed361252a6ffb559fbaaa97026a6ccce4d4f2eed",
+   "sha256": "8ee9ea8e9cd11784378922f9a9777484d7383b019f5d3699dd13c01cc2671cd8",
    "immutables": [
     [
-     3903,
+     4886,
      32
     ],
     [
-     4088,
+     5071,
      32
     ],
     [
-     4568,
+     5604,
      32
     ]
    ]
   },
   "BurnerBond": {
    "source": "contracts/peripherals/BurnerBond.sol",
-   "sha256": "2fcd4827504be7ed7c824a9532e3a303c280265e1f07859ea26577e767a37b02",
-   "immutables": []
+   "sha256": "ff4783537b2e1e098abca130c02b58afc1946bca64ea61ad55321509fa92aa27",
+   "immutables": [
+    [
+     5658,
+     32
+    ],
+    [
+     6629,
+     32
+    ]
+   ]
   },
   "BurnerBondDeposit": {
    "source": "contracts/peripherals/BurnerBondDeposit.sol",
@@ -170,18 +179,18 @@
   },
   "CollateralRegistry": {
    "source": "contracts/peripherals/CollateralRegistry.sol",
-   "sha256": "8295ca99ed98468225c1b442b2ce6fe7370cd4cc2f4d0a0d3c098c4b9bd66d99",
+   "sha256": "720dbb16fcd5da0538e205258abc3262c60f3da1b7463e39a4c9fc2c4b1b2bab",
    "immutables": [
     [
-     3376,
+     3624,
      32
     ],
     [
-     3516,
+     3764,
      32
     ],
     [
-     5114,
+     5623,
      32
     ]
    ]
@@ -333,7 +342,7 @@
   },
   "LimitCalculator": {
    "source": "contracts/peripherals/LimitCalculator.sol",
-   "sha256": "b240e11245d8744d66b0e90e3989e0462d9925c9d8e73a415380f7824a7f5431",
+   "sha256": "466f44d550664adf9d6b4a4e73f16fcd1c44d1c5ce844e088afb723e22d3792d",
    "immutables": [
     [
      2615,
@@ -351,18 +360,18 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "d743cc4aa07d51190ef0f5032841aa5f0a08bb6a90af564c6e3f09be628ecf3c",
+   "sha256": "dc0c81ac7c32f8a3c9c3924c3678d16db9ac6706241aa230298391bf24875ad5",
    "immutables": [
     [
-     8229,
+     8385,
      32
     ],
     [
-     8414,
+     8570,
      32
     ],
     [
-     10326,
+     10504,
      32
     ]
    ]

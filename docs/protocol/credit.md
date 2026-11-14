@@ -16,7 +16,7 @@ write to the same ledger through the same `NetworkRegistry`. Deployed addresses 
 | `OffersIssuer.sol` | A capped line the co-op draws to give new members a one-time offer |
 | `CollateralRegistry.sol` | Pledges per member, exposure per member, the CLRUSD lock |
 | `LimitCalculator.sol` | Collateral value × haircut, or an attested figure, written onto the revolving tiers |
-| `Liquidator.sol` | Seizes pledged CLRUSD or pool shares and settles the tier they backed |
+| `Liquidator.sol` | Seizes pledged CLRUSD or pool shares and settles the tier they backed; answers and applies a pledged bond's own payments |
 | `AccessManager.sol` | Admin, operator and member roles |
 | `MembershipRegistry.sol`, `NetworkRegistry.sol` | Membership records `AccessManager.isMember` reads; issuer → (ledger, pool, oracle) and member → issuers |
 | `CreditPool.sol` | Legacy: credits deposited for reserve token at `discountRate`, serviced from a queue. No deploy script or spec uses it |
@@ -243,11 +243,14 @@ and neither treasury can be zero. What the PayoutPool does with carry it holds i
 `CollateralRegistry` records pledges (`pledge`, `pledgeItem`, `OPERATOR_ROLE`); it does not hold
 them. Since Phase 4b (re-review L-I) each pledge carries the member's EIP-712 signature (`Pledge` or
 `PledgeItem`, domain `Clear CollateralRegistry` / `1`, with `pledgeNonces(member)` and a deadline);
-the operator only submits it. `collateralValueOf` asks the kind's valuer when one is set — zero if it reverts — and is
+the operator only submits it. Since Phase 2e an item (bond) pledge's signature also covers the hash
+of its Maturity Instruction, which is stored, and every pledge stores its advance rate: the kind's
+`haircutBps` when it was made (`itemAdvanceBpsOf`; for an amount, `advanceBpsOf`, blended by units). `collateralValueOf` asks the kind's valuer when one is set — zero if it reverts — and is
 otherwise `units × unitPrice / 1e18`. `haircutBps` is the realisable share, at most 10,000.
 
-`LimitCalculator.capacityOf(member, kind)` is `collateralValue × haircutBps / 10_000` when anything
-is pledged under that kind, else the attested figure (`attest`, `ATTESTOR_ROLE`), which takes effect
+`LimitCalculator.capacityOf(member, kind)` is `CollateralRegistry.advancedValueOf(member, kind, 0)` —
+each pledge's value at the advance rate stored with it (section 9) — when anything is pledged under
+that kind, else the attested figure (`attest`, `ATTESTOR_ROLE`), which takes effect
 at its `effectiveFrom`. `pushCapacities(member)` is permissionless: it writes every tier through
 `setTierCapacity`, reverts with `LimitCalculatorYieldExceedsCarry` when `collateralYieldOf[kind]` is
 at or above the tier's rate, and calls `refresh(member)`.
@@ -306,7 +309,10 @@ balance)` with `ClearUSD.seize`, records the seizure in the registry, redeems th
 `ESADepositVault`, and calls `settleFromCollateral(member, tierId, redeemed)`. That settles the named
 tier through `repayCreditBalanceFor`, so the waterfall is not told. `liquidateShares` does the same
 with pool shares, redeems what the pool can pay now and queues the rest; `settleRealized` applies
-cash the Liquidator holds to the tier later. The Liquidator has no call that claims its queued
+cash the Liquidator holds to the tier later. Pledged bonds are not taken: since Phase 2e (founder
+answer G) a bond is paid under its own `payPledged`, which asks `Liquidator.pledgePaymentDue` and has
+the Liquidator apply the payment ([Bonds](./bonds.md)). `settleExcess` (a missed cycle) takes pool
+shares only, and `settleShortfall` closes the pool gap; the bond gap closes by `payPledged`. The Liquidator has no call that claims its queued
 request, and it needs the pool's `LIQUIDATOR_ROLE`, which no deploy script grants
 ([Settlement → LendingPool](./settlement.md#lendingpool)). `settleFromSavings` lets a member do the same to their own `SAVINGS` tier at an
 issuer the Liquidator trusts, without being in default. The Liquidator needs AccessManager operator

@@ -28,7 +28,7 @@ interface IBondPledgeEnforcer {
         external returns (uint256 applied);
     function maturityToDebt(address member, uint256 bondId, uint256 maturityAmount)
         external view returns (uint256 toDebt);
-    function applyMaturityInstruction(address member, uint256 toDebt) external returns (uint256 applied);
+    function applyMaturityInstruction(address member, uint256 toDebt) external;
 }
 
 interface IBondTraitStore {
@@ -60,8 +60,7 @@ interface IBondDiscountCurve {
 interface IBondVaultSettlement {
     function settle(uint256 bondId, address to) external returns (uint256);
     function settleEarly(uint256 bondId, address to, uint256 presentValue) external;
-    function settlePledged(uint256 bondId, address debtTo, uint256 toDebt, address holder)
-        external returns (uint256 paidToHolder);
+    function settlePledged(uint256 bondId, address debtTo, uint256 toDebt, address holder) external;
     function roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)
         external;
 }
@@ -86,6 +85,10 @@ abstract contract BurnerBondBase is
 
     /* ========== STATE VARIABLES ========== */
 
+    // The `slither-disable` notes below are for BurnerBondPledges: it is a delegatecall module that
+    // reads the collection's storage, which BurnerBond's `initialize` and setters write, so Slither
+    // sees variables the module reads and never writes.
+
     /// @notice Counter for generating unique bond IDs
     Counters.Counter internal _bondIdCounter;
 
@@ -98,6 +101,7 @@ abstract contract BurnerBondBase is
     /// @notice Where the money to redeem a bond comes from.
     /// @dev The vault, never the AssurancePool. A bondholder is a creditor and must not be
     /// exposed to how the credit book is performing.
+    // slither-disable-next-line uninitialized-state
     IBondVaultSettlement public bondVault;
 
     /// @notice The pledge module's enforcement side: the Liquidator.
@@ -106,15 +110,19 @@ abstract contract BurnerBondBase is
     /// bond, set no price and send nothing anywhere the bond's terms do not: `payPledged` and
     /// `settle` decide the amount here, from this contract's own state, and burn the bond here.
     /// Naming one is still a power over every pledged bond, so a change waits `LIQUIDATOR_DELAY`.
+    // slither-disable-next-line uninitialized-state
     address public liquidator;
 
     /// @notice Reports whether a given bond is pledged, and whether it is standing behind drawn
     /// credit: the CollateralRegistry.
+    // slither-disable-next-line uninitialized-state
     IBondEncumbrance public encumbranceSource;
     /// @notice The collateral kind these bonds are pledged as.
+    // slither-disable-next-line uninitialized-state
     bytes32 public collateralKind;
 
     /// @notice Bonds their holder has asked to be paid out rather than rolled at maturity.
+    // slither-disable-next-line uninitialized-state
     mapping(uint256 => bool) public autoRollOptedOut;
 
     /// @notice How long a rolled bond runs for.
@@ -159,6 +167,7 @@ abstract contract BurnerBondBase is
     /// @notice Where a bond's metadata lives.
     /// @dev Not here. All of it is display and none of it decides whether a bond can be issued or
     /// redeemed.
+    // slither-disable-next-line uninitialized-state
     IBondTraitStore public traitStore;
 
     /// @notice A liquidator proposed and not yet in effect (audit M-6).

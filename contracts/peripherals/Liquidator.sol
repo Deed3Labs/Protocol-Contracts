@@ -762,7 +762,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         for (uint256 i = 0; i < issuers.length; i++) {
             issuer = issuers[i];
             if (!trustedSavingsIssuer[issuer] || _tierCountOf(issuer) == 0) continue;
-            uint256 need;
+            uint256 need = 0;
             onDefault = ICreditIssuer(issuer).inDefault(member)
                 || ICurrentLineDefault(issuer).hasDefaultedOnCurrentLine(member);
             if (onDefault) {
@@ -811,7 +811,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         returns (uint256)
     {
         bytes32 kind = earnBonds.collateralKind();
-        uint256 drawn;
+        uint256 drawn = 0;
         address[] memory issuers = _issuersOf(member);
         for (uint256 i = 0; i < issuers.length; i++) {
             if (!trustedSavingsIssuer[issuers[i]] || _tierCountOf(issuers[i]) == 0) continue;
@@ -828,12 +828,9 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// `maturityToDebt` in the same transaction and the vault paid here. An application on the
     /// Holder's own instruction (MB-05 §7.9), not enforcement, so a Liquidation Hold does not stop
     /// it. Anything the tiers no longer owe goes to the Holder.
-    function applyMaturityInstruction(address member, uint256 toDebt)
-        external
-        noReenter
-        returns (uint256 applied)
-    {
+    function applyMaturityInstruction(address member, uint256 toDebt) external noReenter {
         if (_msgSender() != address(earnBonds)) revert LiquidatorNotEarnBonds(_msgSender());
+        uint256 applied = 0;
         bytes32 kind = earnBonds.collateralKind();
         address[] memory issuers = _issuersOf(member);
         for (uint256 i = 0; i < issuers.length && applied < toDebt; i++) {
@@ -905,8 +902,8 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// value covers it, or else the largest. Zero when there is none.
     function _requestedBond(address member, bytes32 kind, uint256 need) private view returns (uint256 pick) {
         uint256[] memory items = collateralRegistry.pledgedItemsOf(member, kind);
-        uint256 best;
-        bool covers;
+        uint256 best = 0;
+        bool covers = false;
         for (uint256 i = 0; i < items.length; i++) {
             if (earnBonds.balanceOf(member, items[i]) == 0) continue;
             uint256 v = earnBonds.presentValueOf(items[i]);
@@ -941,10 +938,11 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
             (bool found, uint256 tierId) = _tierOf(issuer, order[k]);
             if (!found) continue;
             uint256 pay = _min(ITierSettler(issuer).principalOf(member, tierId), amount - applied);
-            if (pay == 0) continue;
-            reserveToken.forceApprove(issuer, pay);
-            ITierSettler(issuer).settleFromCollateral(member, tierId, pay);
-            applied += pay;
+            if (pay > 0) {
+                reserveToken.forceApprove(issuer, pay);
+                ITierSettler(issuer).settleFromCollateral(member, tierId, pay);
+                applied += pay;
+            }
         }
     }
 

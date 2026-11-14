@@ -61,9 +61,9 @@ contract BurnerBondPledges is BurnerBondBase {
         uint256 maturityAmount = bond.faceValue;
         if (!_isPledged(holder, bondId)) {
             _retire(bondId, holder, maturityAmount);
-            bondVault.settle(bondId, holder);
-            emit IBurnerBond.BondRedeemed(bondId, holder, maturityAmount);
-            return (0, maturityAmount);
+            toHolder = bondVault.settle(bondId, holder);
+            emit IBurnerBond.BondRedeemed(bondId, holder, toHolder);
+            return (0, toHolder);
         }
 
         // The Maturity Instruction (MB-05 §5.6). toDebt is computed from on-chain values in this

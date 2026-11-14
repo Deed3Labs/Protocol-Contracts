@@ -17,16 +17,16 @@ Source: [`contracts/peripherals/BurnerBond.sol`](../../../contracts/peripherals/
 | `initialize(address _burnerBondDeposit, address _factory, address _assurancePool, address _underlyingToken, string _uri, string _collectionName, string _collectionSymbol, string _collectionDescription, address _traitStore, address _discountCurve)` | Not in the current source |  |
 | `mintBond(uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, address creator)` | Checked inside the function | `nonReentrant` |
 | `redeemBond(uint256 bondId)` | Anyone; acts on the caller's own account | `nonReentrant` |
-| `redeemEarly(uint256 bondId)` | Checked inside the function | `nonReentrant` |
+| `redeemEarly(uint256 bondId)` | Not in the current source |  |
 | `removeBondTrait(uint256 bondId, string traitName)` | `onlyOwner` |  |
 | `renounceOwnership()` | The owner |  |
-| `rollBond(uint256 bondId)` | Checked inside the function | `nonReentrant` |
+| `rollBond(uint256 bondId)` | Anyone; acts on the caller's own account | `nonReentrant` |
 | `safeBatchTransferFrom(address from, address to, uint256[] ids, uint256[] amounts, bytes data)` | The holder, or an approved operator |  |
 | `safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)` | The holder, or an approved operator |  |
-| `seizeBond(uint256 bondId, address from, address to)` | Checked inside the function |  |
+| `seizeBond(uint256 bondId, address from, address to)` | Not in the current source |  |
 | `setApprovalForAll(address operator, bool approved)` | The holder |  |
 | `setAssurancePool(address _assurancePool)` | Not in the current source |  |
-| `setAutoRollOptOut(uint256 bondId, bool optOut)` | Checked inside the function |  |
+| `setAutoRollOptOut(uint256 bondId, bool optOut)` | Anyone; acts on the caller's own account |  |
 | `setBondTrait(uint256 bondId, bytes32 traitKey, bytes traitValue)` | `onlyOwner` |  |
 | `setBondTraitFlexible(uint256 bondId, bytes traitKey, bytes traitValue, uint8 valueType)` | `onlyOwner` |  |
 | `setBondVault(address _bondVault)` | `onlyOwner` |  |
