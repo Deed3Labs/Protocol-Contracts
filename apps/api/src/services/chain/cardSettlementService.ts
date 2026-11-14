@@ -66,6 +66,10 @@ const ISSUER_ABI = [
   'function drawnOf(address member, uint256 tierId) view returns (uint256)',
   'function carryRecipientOf(uint256 tierId) view returns (address)',
   'function cardSettlementAccount() view returns (address)',
+  // Phase 2b (12.7): card spending draws against Savings only within the member's own allowance.
+  'function savingsDrawAllowance(address member) view returns (uint256)',
+  'function tierAt(uint256 tierId) view returns (bytes32 kind, uint256 ratePerCycle, bool active)',
+  'function headroomOf(address member, uint256 tierId) view returns (uint256)',
   // The custom errors, so a revert arrives decoded rather than as calldata.
   ...CHAIN_ERROR_FRAGMENTS,
 ];
@@ -158,6 +162,33 @@ function issuerFor(signerOrProvider: ethers.ContractRunner): ethers.Contract | n
 /** Why a call failed, short enough to store and specific enough to act on. */
 function reasonOf(error: unknown): string {
   return (describeCardRefusal(decodeChainError(error)) ?? chainErrorReason(error)).slice(0, 400);
+}
+
+/**
+ * Phase 2b (12.7): when the line has no room, say whether it is because Savings count only as far as
+ * the member authorized card spending against them. `authorizeCardSpend` takes the Savings tier's
+ * room only up to `savingsDrawAllowance(member)`, so a member with savings and no allowance is
+ * refused for "no room" while their savings sit there. Null when that is not the reason.
+ */
+export async function savingsAllowanceShort(issuer: ethers.Contract, member: string, error: unknown): Promise<string | null> {
+  if (decodeChainError(error)?.name !== 'RevolvingIssuerCardHeadroom') return null;
+  try {
+    const count = Number(await issuer.tierCount());
+    for (let i = 0; i < count; i++) {
+      const [kind, , active] = (await issuer.tierAt(i)) as [string, bigint, boolean];
+      if (!active || ethers.decodeBytes32String(kind) !== 'SAVINGS') continue;
+      const [room, allowed] = (await Promise.all([issuer.headroomOf(member, i), issuer.savingsDrawAllowance(member)])) as [bigint, bigint];
+      if (room <= allowed) return null;
+      const dollars = (units: bigint) =>
+        (Number(units / CENTS_TO_UNITS) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+      return allowed === 0n
+        ? `Savings can back card spending only once the member allows it, and they have not (${dollars(room)} of savings room unused). They can allow it in Settings.`
+        : `Savings can back only ${dollars(allowed)} more of card spending, the amount the member allowed (${dollars(room)} of savings room). They can raise it in Settings.`;
+    }
+  } catch {
+    /* the plain reason stands */
+  }
+  return null;
 }
 
 /** A card rule refused it: no retry will change that, so a person looks. */
@@ -861,8 +892,9 @@ export async function authorizeCardOnChain(transactionToken: string): Promise<Au
     return tx ? 'authorized' : 'already';
   } catch (error) {
     const refused = isCardRefusal(error);
-    await setAuth(refused ? 'refused' : 'failed', { error: reasonOf(error) });
-    console.error(`[card-authorization] ${token} ${refused ? 'refused' : 'failed'}: ${reasonOf(error)}`);
+    const reason = ((await savingsAllowanceShort(issuer, row.wallet, error)) ?? reasonOf(error)).slice(0, 400);
+    await setAuth(refused ? 'refused' : 'failed', { error: reason });
+    console.error(`[card-authorization] ${token} ${refused ? 'refused' : 'failed'}: ${reason}`);
     return refused ? 'refused' : 'failed';
   }
 }

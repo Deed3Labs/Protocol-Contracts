@@ -187,7 +187,34 @@ export interface ChainCredit {
    * network from before Phase 2.
    */
   stateConfirmed: boolean | null;
+  /**
+   * Phase 2b (12.3-12.5): how the member's cycles have been judged, the Boost cap they have, and
+   * anything a missed cycle left over the halved limit. Null when unread, or on an issuer from
+   * before Phase 2b.
+   */
+  standing: ChainCycleStanding | null;
   complete: boolean;
+}
+
+export interface ChainCycleStanding {
+  /** Clean Cycles in a row. Six (with deposits in five of the last six) earns the higher Boost cap. */
+  cleanStreak: number;
+  /** Missed rebalances in a row: 1 halves the unsecured limit, 2 dates a cure notice. */
+  missedInRow: number;
+  /** Unix seconds the chain dated the cure notice, or null. */
+  cureNoticeAt: number | null;
+  /** Unix seconds default can begin if the line is still not rebalanced, or null. */
+  defaultFrom: number | null;
+  /** Unsecured drawn above the halved limit, in cents: settled from pledged bonds or pool shares. */
+  unsecuredExcessCents: number;
+  /** The Boost cap this member has now, in cents ($500, or $750 once earned). Null when not enforced. */
+  boostCapCents: number | null;
+  /** Whether the higher Boost cap has been earned. */
+  boostCapEarned: boolean;
+  /** The higher cap, in cents, for "rises to $750". Null when not enforced. */
+  boostEarnedCapCents: number | null;
+  /** Clean Cycles needed to earn it (12.4: 6). */
+  boostCleanCycles: number;
 }
 
 export interface ChainTermCeiling {
@@ -643,6 +670,53 @@ async function readCycle(
   }
 }
 
+const STANDING_ABI = [
+  'function cycleOf(address) view returns (uint8 missedInRow, uint8 cleanStreak, uint8 depositBits, uint64 cureNoticeAt, uint128 unsecuredCeiling)',
+  'function creditTerms() view returns (uint128 unsecuredLineCap, uint64 cureWindow, uint8 boostCleanCycles, uint8 boostDepositCycles, bool autoClearOffGlobal)',
+  'function boostCapOf(address) view returns (uint256)',
+  'function boostEarnedCap() view returns (uint128)',
+  'function unsecuredExcessOf(address) view returns (uint256)',
+];
+
+/**
+ * Phase 2b (12.3-12.5): the member's cycle record, read as the contract judges it. Cycles are judged
+ * lazily (the member transacting, or the cycle keeper calling `syncCreditPeriod`), so this is what
+ * has been recorded so far.
+ */
+async function readStanding(provider: ethers.JsonRpcProvider, address: string, wallet: string): Promise<ChainCycleStanding | null> {
+  try {
+    const issuer = new ethers.Contract(address, STANDING_ABI, provider);
+    const [cycle, terms, boostCap, earnedCap, excess] = (await Promise.all([
+      issuer.cycleOf(wallet),
+      issuer.creditTerms(),
+      issuer.boostCapOf(wallet),
+      issuer.boostEarnedCap(),
+      issuer.unsecuredExcessOf(wallet),
+    ])) as [
+      { missedInRow: bigint; cleanStreak: bigint; cureNoticeAt: bigint },
+      { cureWindow: bigint; boostCleanCycles: bigint },
+      bigint,
+      bigint,
+      bigint,
+    ];
+    const cureNoticeAt = Number(cycle.cureNoticeAt);
+    return {
+      cleanStreak: Number(cycle.cleanStreak),
+      missedInRow: Number(cycle.missedInRow),
+      cureNoticeAt: cureNoticeAt > 0 ? cureNoticeAt : null,
+      defaultFrom: cureNoticeAt > 0 ? cureNoticeAt + Number(terms.cureWindow) : null,
+      unsecuredExcessCents: toCentsOwed(excess),
+      boostCapCents: boostCap > 0n ? toCents(boostCap) : null,
+      boostCapEarned: earnedCap > 0n && boostCap === earnedCap,
+      boostEarnedCapCents: earnedCap > 0n ? toCents(earnedCap) : null,
+      boostCleanCycles: Number(terms.boostCleanCycles),
+    };
+  } catch {
+    // An issuer from before Phase 2b has none of these.
+    return null;
+  }
+}
+
 /** A member's credit line, as the contracts hold it. */
 /**
  * Savings that cannot move because credit is drawn against them.
@@ -712,7 +786,7 @@ async function readChainCreditUncached(
     console.error('[credit] no RPC for chain', chainId, error);
     return {
       tiers: null, plans: null, cycle: null, term: null, savingsEncumberedCents: null,
-      stateConfirmed: null, complete: false,
+      stateConfirmed: null, standing: null, complete: false,
     };
   }
 
@@ -725,6 +799,7 @@ async function readChainCreditUncached(
     registry ? readEncumbered(provider, registry, wallet) : Promise.resolve(0),
     term ? memberStateCode(provider, term, wallet) : Promise.resolve(null),
   ]);
+  const standing = issuer ? await readStanding(provider, issuer, wallet) : null;
 
   /*
    * After the tiers, not beside them: the ceiling read subtracts what the tiers already account
@@ -747,6 +822,7 @@ async function readChainCreditUncached(
     term: ceiling,
     savingsEncumberedCents,
     stateConfirmed: stateCode === null ? null : stateCode !== ethers.ZeroHash,
+    standing,
     complete: tiers !== null && plans !== null,
   };
 }

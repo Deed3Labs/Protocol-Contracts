@@ -88,6 +88,7 @@ import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
 import { startMonthlyStatements } from './jobs/monthlyStatements.js';
 import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
+import { startCycleKeeper } from './jobs/cycleKeeper.js';
 import { startTermLimitReviewer } from './jobs/termLimitReviewer.js';
 import { startOffersGranter } from './jobs/offersGranter.js';
 import { startReconciler } from './jobs/reconciler.js';
@@ -440,6 +441,10 @@ async function startServer() {
     startSessionCleanup();
     // Nothing else rolls a cycle over: without this every member's period runs out and stays out.
     startCreditPeriodRenewer();
+    // Phase 2b: cycles are judged only when somebody syncs them. This does, once each is due.
+    startCycleKeeper().catch((error) => {
+      console.error('Failed to start the cycle keeper:', error);
+    });
     // Nothing else sets a term limit: without this a member's split plans all revert at zero.
     startTermLimitReviewer();
     // Nothing else gives a new member the co-op's $10, or takes an unspent one back.

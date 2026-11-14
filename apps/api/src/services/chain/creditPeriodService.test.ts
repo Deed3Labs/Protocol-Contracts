@@ -20,6 +20,7 @@ const chain = new Map<string, Member>();
 const sent: { wallet: string; expiration: number; graceLength: number }[] = [];
 
 const wallets: string[] = [];
+let judgesOwnCycles = false;
 /*
  * Only the members database answers, and that is the assertion.
  *
@@ -48,6 +49,11 @@ mock.module('ethers', () => {
   class Contract {
     constructor(_address: string, _abi: string[], readonly runner: unknown) {}
     cycleLength = async () => BigInt(CYCLE);
+    // Phase 2b issuers have creditTerms(); an older one reverts on it.
+    creditTerms = async () => {
+      if (!judgesOwnCycles) throw new Error('call revert exception');
+      return { cureWindow: 15n * BigInt(DAY) };
+    };
     creditPeriods = async (wallet: string) => {
       const m = chain.get(wallet)!;
       return [BigInt(m.issuedAt), BigInt(m.expiration), BigInt(m.graceLength), m.paused];
@@ -82,6 +88,14 @@ describe('rolling the cycle over', () => {
     wallets.length = 0;
     sent.length = 0;
     chain.clear();
+    judgesOwnCycles = false;
+  });
+
+  test('Phase 2b: an issuer that judges its own cycles is left to the cycle keeper', async () => {
+    judgesOwnCycles = true;
+    member('0xclear', { expiration: now - 3 * DAY });
+    expect(await renewExpiredPeriods(now)).toEqual([]);
+    expect(sent).toEqual([]);
   });
 
   test('a member who cleared their line gets a full cycle from today, not from the old expiry', async () => {

@@ -77,6 +77,9 @@ creditRouter.get('/:wallet', async (req: Request, res: Response) => {
       // Phase 2: lines and plans need an attested state. False means "not confirmed yet", which the
       // app says in those words rather than as a refusal. Null: unread, or a pre-Phase 2 network.
       stateConfirmed: credit.stateConfirmed,
+      // Phase 2b (12.3-12.5): Clean Cycles, a missed cycle or a cure notice, the Boost cap, and any
+      // excess over a halved limit. Null on an issuer from before Phase 2b.
+      standing: credit.standing,
       /*
        * Card authorizations the member is holding right now, per tier — OFF CHAIN, deliberately.
        *
