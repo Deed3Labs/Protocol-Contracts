@@ -173,6 +173,12 @@ part as a pending hold. The function reference is in
 
 ## 4. Borrowing from the LendingPool
 
+> **Phase 2f (decision 17):** the `LendingPool` is now the Yield Pool and lends only to Clear
+> Lending, as recorded two-person Deployments. Its `borrow` reverts, so the card-funding wallet no
+> longer draws from it; Clear Lending funds card settlement from what it deploys. This section
+> describes the pre-2f flow until the API follows (held PRs #887, #890). See
+> [Settlement → LendingPool](./settlement.md#lendingpool).
+
 Credit on a pool-funded tier is funded by the `LendingPool`'s depositors. The borrowing is driven
 by the API, not by a contract ([`poolFunding.ts`](../../apps/api/src/services/chain/poolFunding.ts)).
 

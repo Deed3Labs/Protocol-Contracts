@@ -12,29 +12,29 @@ Source: [`contracts/peripherals/LendingPool.sol`](../../../contracts/peripherals
 
 | Function | Who can call | Also |
 |---|---|---|
-| `absorbLoss(uint256 amount)` | `onlyRole(LOSS_REPORTER_ROLE)` |  |
+| `absorbLoss(uint256 amount)` | Not in the current source |  |
 | `approve(address spender, uint256 amount)` | The token holder |  |
-| `borrow(uint256 amount, address to)` | `onlyRole(BORROWER_ROLE)` |  |
-| `claimWithdrawal(uint256 requestId)` | Checked inside the function |  |
+| `borrow(uint256 amount, address to)` | Anyone |  |
+| `claimWithdrawal(uint256 requestId)` | Anyone |  |
 | `decreaseAllowance(address spender, uint256 subtractedValue)` | The token holder |  |
-| `deposit(uint256 assets, address receiver)` | Anyone |  |
+| `deposit(uint256 assets, address receiver)` | Anyone; acts on the caller's own account |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `increaseAllowance(address spender, uint256 addedValue)` | The token holder |  |
 | `initialize(address admin, address reserveToken, string name_, string symbol_)` | Once, when the proxy is initialised |  |
-| `mint(uint256 shares, address receiver)` | Anyone (ERC-4626) |  |
-| `redeem(uint256 shares, address receiver, address owner)` | The share owner, or an approved spender |  |
+| `mint(uint256 shares, address receiver)` | Anyone; acts on the caller's own account |  |
+| `redeem(uint256 shares, address receiver, address owner)` | Checked inside the function |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
-| `repay(uint256 amount)` | Anyone; acts on the caller's own account |  |
+| `repay(uint256 amount)` | Anyone |  |
 | `requestWithdrawal(uint256 shares, address receiver)` | Anyone; acts on the caller's own account |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
-| `seizeShares(address holder, address to, uint256 shares)` | `onlyRole(LIQUIDATOR_ROLE)` |  |
-| `setEncumbranceSource(address source, bytes32 kind)` | `onlyRole(OPERATOR_ROLE)` |  |
-| `setRateCurve(uint256 base, uint256 slope1, uint256 slope2, uint256 kink)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `seizeShares(address holder, address to, uint256 shares)` | Anyone |  |
+| `setEncumbranceSource(address source, bytes32 kind)` | Anyone |  |
+| `setRateCurve(uint256 base, uint256 slope1, uint256 slope2, uint256 kink)` | Not in the current source |  |
 | `transfer(address to, uint256 amount)` | The token holder |  |
 | `transferFrom(address from, address to, uint256 amount)` | The holder, or an approved spender |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |
-| `withdraw(uint256 assets, address receiver, address owner)` | The share owner, or an approved spender |  |
+| `withdraw(uint256 assets, address receiver, address owner)` | Checked inside the function |  |
 
 ## Read functions
 
