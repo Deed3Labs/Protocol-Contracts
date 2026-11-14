@@ -4,6 +4,7 @@ import {
   BPS, DAY, EVIDENCE, HOUR, LEGAL_ORDER, LOSS_EVENT, U, USDC_OR_NETWORK, VALUATION_PENDING, WAD,
   deployYieldPool, increase, latest, setNext,
 } from "../helpers/yieldPool";
+import { attestation, withRealControls } from "../helpers/earnControls";
 
 /*
  * Phase 2f: LendingPool is the Yield Pool. Acceptance tests 11–15 and 20–25 of
@@ -688,18 +689,28 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
 
   /* ------------------------------------------------------------------ 24 */
   describe("24. Exemption tag and Equity Cushion pause", function () {
+    // Stage 1, agent B: these run against the real EarnControls, not MockEarnControls.
+    let c: Awaited<ReturnType<typeof withRealControls>>;
+    beforeEach(async function () {
+      c = await withRealControls(f);
+    });
+
     it("stores and emits the exemptionCode, and the tag changes nothing else", async function () {
-      const tag = (s: string) => ethers.AbiCoder.defaultAbiCoder().encode(["bytes32"], [ethers.encodeBytes32String(s)]);
-      await expect(pool.connect(f.alice).subscribe(U(1_000), f.alice.address, tag("506B")))
+      const as = async (who: any, tag: string) => attestation(c.controls, c.attester, who.address, tag);
+      await expect(pool.connect(f.alice).subscribe(U(1_000), f.alice.address, await as(f.alice, "506B")))
         .to.emit(pool, "Subscribed").withArgs(f.alice.address, f.alice.address, U(1_000), U(1_000), ethers.encodeBytes32String("506B"));
-      await expect(pool.connect(f.bob).subscribe(U(1_000), f.bob.address, tag("147A")))
+      await expect(pool.connect(f.bob).subscribe(U(1_000), f.bob.address, await as(f.bob, "147A")))
         .to.emit(pool, "Subscribed").withArgs(f.bob.address, f.bob.address, U(1_000), U(1_000), ethers.encodeBytes32String("147A"));
       expect(await pool.balanceOf(f.alice.address)).to.equal(await pool.balanceOf(f.bob.address));
     });
 
-    it("while the Equity Cushion pause is set, subscriptions revert and withdrawals succeed", async function () {
+    it("while the Equity Cushion pause is set, subscriptions revert and withdrawals succeed; one signer cannot set or clear it", async function () {
       await pool.connect(f.alice).deposit(U(1_000), f.alice.address);
-      await f.controls.setPaused(true);
+      await c.controls.connect(c.ec1).setEquityCushionPause(true, EVIDENCE);
+      await expect(c.controls.connect(c.ec1).setEquityCushionPause(true, EVIDENCE))
+        .to.be.revertedWithCustomError(c.controls, "EarnControlsSameSigner");
+      expect(await pool.maxDeposit(f.bob.address)).to.equal(ethers.MaxUint256);
+      await c.controls.connect(c.ec2).setEquityCushionPause(true, EVIDENCE);
       expect(await pool.maxDeposit(f.bob.address)).to.equal(0n);
       await expect(pool.connect(f.bob).deposit(U(1_000), f.bob.address))
         .to.be.revertedWithCustomError(pool, "LendingPoolSubscriptionsPaused");
@@ -707,6 +718,12 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
         .to.be.revertedWithCustomError(pool, "LendingPoolSubscriptionsPaused");
       await pool.connect(f.alice).redeem(U(500), f.alice.address, f.alice.address);
       await pool.connect(f.alice).withdraw(U(100), f.alice.address, f.alice.address);
+      await c.controls.connect(c.ec2).setEquityCushionPause(false, EVIDENCE);
+      await expect(c.controls.connect(c.ec2).setEquityCushionPause(false, EVIDENCE))
+        .to.be.revertedWithCustomError(c.controls, "EarnControlsSameSigner");
+      expect(await c.controls.equityCushionPaused()).to.equal(true);
+      await c.controls.connect(c.ec1).setEquityCushionPause(false, EVIDENCE);
+      await pool.connect(f.bob).deposit(U(1_000), f.bob.address);
     });
   });
 
