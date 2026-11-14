@@ -35,14 +35,16 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// creation code inside this one and over EIP-3860's 48 KiB limit. Each is checked for its
     /// kind and fixed for the life of this implementation.
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor(address extension_, address cycles_) {
+    constructor(address extension_, address cycles_, address terms_) {
         _disableInitializers();
         if (
-            IExtensionKind(extension_).extensionKind() != keccak256("RevolvingIssuerExtension.v2")
-                || IExtensionKind(cycles_).extensionKind() != keccak256("RevolvingIssuerCycles.v1")
+            IExtensionKind(extension_).extensionKind() != keccak256("RevolvingIssuerExtension.v3")
+                || IExtensionKind(cycles_).extensionKind() != keccak256("RevolvingIssuerCycles.v2")
+                || IExtensionKind(terms_).extensionKind() != keccak256("RevolvingIssuerTerms.v1")
         ) revert RevolvingIssuerExtensionMismatch();
         extension = extension_;
         cycles = cycles_;
+        terms = terms_;
     }
 
     /// @param _stableCredit the ledger this issuer writes to.
@@ -80,7 +82,7 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// RateSchedule, which are the revolving part of their small loan under the CFL (DECISIONS #7).
     function cflPrincipalOf(address member) external view returns (uint256 total) {
         for (uint256 i = 0; i < tiers.length; i++) {
-            if (tierProduct[i] != bytes32(0)) total += principalOnlyOf(member, i);
+            if (tierProduct[i] != bytes32(0)) total += _principalOnly(member, i);
         }
     }
 
@@ -113,8 +115,62 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// a stranger must not be able to liquidate it. A default on or after the line's opening is this
     /// line's. A line opened before this upgrade has no opening time, so any default counts, as before.
     function hasDefaultedOnCurrentLine(address member) external view returns (bool) {
-        uint64 at = defaultedAt[member];
-        return at != 0 && at >= lineOpenedAt[member];
+        return _defaultedOnCurrentLine(member);
+    }
+
+    /// @notice whether a member has rebalanced their revolving line: nothing owed in any tier.
+    /// @dev Judged on this issuer's own positions, not on the whole ledger balance (Phase 4, H-C).
+    /// Since Phase 2e a cycle is judged on its Rebalance Amount (12.1), not on this.
+    function inCompliance(address member) public view override returns (bool) {
+        return _totalPrincipal(member) == 0;
+    }
+
+    /// @notice who is owed carry accrued in a tier: its own recipient, or the treasury.
+    function carryRecipientOf(uint256 tierId) external view returns (address) {
+        return _carryRecipient(tierId);
+    }
+
+    /// @notice how much more a member may draw in a tier.
+    /// @dev Carry consumes headroom as it accrues, because the ceiling bounds what is owed rather
+    /// than what was spent. Capped, for a collateral-backed tier, at what the collateral backs right
+    /// now (audit C-2).
+    function headroomOf(address member, uint256 tierId) external view returns (uint256) {
+        return _headroom(member, tierId, drawnOf(member, tierId));
+    }
+
+    /// @notice what a member owes in a tier, carry included, as of now.
+    function drawnOf(address member, uint256 tierId) public view returns (uint256) {
+        _requireTier(tierId);
+        return tierPrincipal[member][tierId] + _pendingCarry(member)[tierId];
+    }
+
+    /// @notice a member's total principal across every tier, materialised carry included: the
+    /// figure that reconciles with the ledger.
+    function totalPrincipalOf(address member) external view returns (uint256) {
+        return _totalPrincipal(member);
+    }
+
+    /// @notice the principal alone: what carry accrues on (spec item 2).
+    function principalOnlyOf(address member, uint256 tierId) external view returns (uint256) {
+        return _principalOnly(member, tierId);
+    }
+
+    /// @notice the Boost cap this member has (12.4). Zero means not enforced.
+    function boostCapOf(address member) external view returns (uint256) {
+        return _boostCap(member);
+    }
+
+    /// @notice what a member owes on income-backed and Boost above their halved limit, after a
+    /// missed cycle (12.5). Settled from pledged bonds or pool shares, never Savings. Zero otherwise.
+    function unsecuredExcessOf(address member) external view returns (uint256) {
+        if (cycleOf[member].missedInRow == 0) return 0;
+        (uint256 capacity, uint256 drawn) = _unsecuredTotals(member);
+        return drawn > capacity ? drawn - capacity : 0;
+    }
+
+    /// @notice consecutive missed rebalances, for the Liquidator.
+    function missedInRowOf(address member) external view returns (uint8) {
+        return cycleOf[member].missedInRow;
     }
 
     /// @notice the CLRUSD token a Savings draw refreshes the lock of (Phase 4b, L-B); zero if unset.
@@ -189,32 +245,8 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
 
 
 
-    /// @notice opens or closes a tier to new draws.
-    /// @dev Closing does not call in what is drawn. Existing positions keep accruing and can be
-    /// repaid; they simply cannot grow.
-    function setTierActive(uint256 tierId, bool active) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        _requireTier(tierId);
-        tiers[tierId].active = active;
-    }
 
-    /// @notice moves the co-op treasury, and with it the fallback for every tier that has not
-    /// named someone else.
-    /// @dev Cannot be cleared. There is no state in which carry has nowhere to go.
-    function setCarryTreasury(address treasury) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        if (treasury == address(0)) revert RevolvingIssuerNoCarryRecipient();
-        carryTreasury = treasury;
-        emit CarryTreasuryUpdated(treasury);
-    }
 
-    /// @notice sets who is owed carry accrued in one tier.
-    /// @dev Pass address(0) to return the tier to the treasury. That is how a funding source is
-    /// retired: carry keeps accruing and keeps landing somewhere, and where it landed in the
-    /// meantime can be settled by hand.
-    function setTierCarryRecipient(uint256 tierId, address recipient) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        _requireTier(tierId);
-        tierCarryRecipient[tierId] = recipient;
-        emit CarryRecipientUpdated(tierId, recipient);
-    }
 
     /// @notice brings a member's accrued carry onto the ledger.
     /// @dev Runs on every interaction, and is callable directly so a position that nobody has
@@ -224,34 +256,49 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _materialiseCarry(member);
     }
 
-    /// @notice sets a member's ceiling contribution in a tier.
-    /// @dev The operator sets this today. In the finished shape LimitCalculator does, by valuing
-    /// what the member has pledged and applying the haircut for that collateral type.
-    /// @param member address of the member.
-    /// @param tierId index of the tier.
-    /// @param capacity new ceiling contribution.
-    function setTierCapacity(address member, uint256 tierId, uint256 capacity)
-        public
-        onlyCreditRole(CREDIT_LIMITS_ROLE)
-    {
-        _requireTier(tierId);
-        uint256 drawn = drawnOf(member, tierId);
-        if (capacity < drawn) {
-            revert RevolvingIssuerCapacityBelowDrawn(tierId, capacity, drawn);
-        }
-        uint256 previous = tierCapacity[member][tierId];
-        if (capacity > previous) {
-            _consumeDailyCap(capacityIncreaseCap, "CAPACITY", capacity - previous);
-        }
-        tierCapacity[member][tierId] = capacity;
-        _checkCreditCaps(member);
-        emit TierCapacityUpdated(member, tierId, capacity);
-        _syncLedgerLimit(member);
-    }
 
     /// @notice see RevolvingIssuerExtension.openLine. Runs in the extension since Phase 4b, for room.
-    function openLine(address, uint256[] calldata, uint256, uint256) external {
+    function openLine(address, uint256[] calldata, uint8) external {
         _forward();
+    }
+
+    /* ---- cycles are computed (12.1, Phase 2e): no role writes or moves a cycle end ---- */
+
+    /// @notice retired for this line: a revolving cycle ends on the member's Cycle End Day.
+    function initializeCreditLine(address, uint256, uint256, uint256, uint256) external pure override {
+        revert RevolvingIssuerCyclesComputed();
+    }
+
+    /// @notice retired for this line (see `initializeCreditLine`).
+    function updateCreditPeriod(address, uint256, uint256) public pure override {
+        revert RevolvingIssuerCyclesComputed();
+    }
+
+    /// @notice retired for this line (see `initializeCreditLine`).
+    function setPeriodExpirationOf(address, uint256) public pure override {
+        revert RevolvingIssuerCyclesComputed();
+    }
+
+    /// @notice retired for this line (see `initializeCreditLine`).
+    function setGraceLengthOf(address, uint256) public pure override {
+        revert RevolvingIssuerCyclesComputed();
+    }
+
+    /// @notice retired for this line (see `initializeCreditLine`).
+    function pausePeriodOf(address) external pure override {
+        revert RevolvingIssuerCyclesComputed();
+    }
+
+    /// @notice retired for this line (see `initializeCreditLine`).
+    function unpausePeriodOf(address) external pure override {
+        revert RevolvingIssuerCyclesComputed();
+    }
+
+    /// @notice records a revolving default once it is computed, and reverts otherwise (12.5, 10b).
+    /// @dev Permissionless. Fails closed: with no cure-notice timestamp there is no default.
+    function triggerDefault(address member) external {
+        if (!inDefault(member)) revert RevolvingIssuerNotInDefault(member);
+        expireCreditPeriod(member);
     }
 
     /* ========== CARD SETTLEMENT ========== */
@@ -263,17 +310,7 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         return (settlement.member, settlement.amount);
     }
 
-    /// @notice allows or revokes a key that records card purchases as settled.
-    function setCardSettler(address settler, bool allowed) external onlyCreditRole(CREDIT_SETTINGS_ROLE) notNull(settler) {
-        isCardSettler[settler] = allowed;
-        emit CardSettlerUpdated(settler, allowed);
-    }
 
-    /// @notice sets the account a settled card purchase's claim is minted to.
-    function setCardSettlementAccount(address account) external onlyCreditRole(CREDIT_SETTINGS_ROLE) notNull(account) {
-        cardSettlementAccount = account;
-        emit CardSettlementAccountUpdated(account);
-    }
 
 
 
@@ -283,51 +320,9 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         return (authorization.member, authorization.amount);
     }
 
-    /// @notice caps on card settlement: per purchase and per day, across every member.
-    function setCardCaps(uint256 txCap, uint256 dailyCap)
-        external
-        onlyCreditRole(CREDIT_SETTINGS_ROLE)
-    {
-        cardTxCap = txCap;
-        cardSpendCap.cap = dailyCap;
-        emit CardCapsUpdated(txCap, dailyCap);
-    }
 
-    /// @notice names the RateSchedule unsecured tiers are priced from, and the product whose
-    /// graduated schedule is the member-level ceiling.
-    function setPricing(address rateSchedule_, bytes32 ceilingProduct_)
-        external
-        onlyCreditRole(CREDIT_SETTINGS_ROLE)
-    {
-        // Each is set once (Phase 4, M-B): members hold snapshots of this schedule's accumulators
-        // and of the ceiling product's bands, and another schedule's or product's would not compare.
-        // The schedule upgrades in place behind the credit timelock instead.
-        if (
-            (address(rateSchedule) != address(0) && address(rateSchedule) != rateSchedule_)
-                || (ceilingProduct != bytes32(0) && ceilingProduct != ceilingProduct_)
-        ) revert RevolvingIssuerPricingSet();
-        rateSchedule = RateSchedule(rateSchedule_);
-        ceilingProduct = ceilingProduct_;
-        emit PricingUpdated(rateSchedule_, ceilingProduct_);
-    }
 
-    /// @notice prices an unsecured tier as a RateSchedule product. Set once: positions snapshot the
-    /// product's accumulator, and switching product under them would compare unrelated numbers.
-    function setTierProduct(uint256 tierId, bytes32 productId)
-        external
-        onlyCreditRole(CREDIT_SETTINGS_ROLE)
-    {
-        _requireTier(tierId);
-        if (tierProduct[tierId] != bytes32(0)) revert RevolvingIssuerTierProductSet(tierId);
-        tierProduct[tierId] = productId;
-        emit TierProductSet(tierId, productId);
-    }
 
-    /// @notice caps how much new revolving capacity may be granted in a day, across every member.
-    function setDailyCapacityCap(uint256 cap) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        capacityIncreaseCap.cap = cap;
-        emit DailyCapUpdated("CAPACITY", cap);
-    }
 
 
     /// @notice what a fiat repayment ref cleared, zero if it has not been recorded.
@@ -336,13 +331,6 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     }
 
 
-    /// @notice the member turns automatic repayment from their USDC deposits on or off.
-    /// @dev Only for the caller. Turning it on is the whole mandate; the member also approves the
-    /// ledger to take their USDC, and revoking either stops it.
-    function setAutoRepay(bool enabled) external {
-        autoRepayEnabled[_msgSender()] = enabled;
-        emit AutoRepaySet(_msgSender(), enabled);
-    }
 
 
     /// @notice what an auto-repay ref repaid, zero if unused.
@@ -386,18 +374,13 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         return outcome == 0;
     }
 
-    /// @notice in default: two consecutive missed rebalances, still not rebalanced, and the cure
-    /// window after the chain-dated notice has passed (section 12.5). Computed; no role sets it.
+    /// @notice in default (12.5, 10b; Phase 2e): two consecutive missed Rebalance Amounts, a
+    /// cure-notice timestamp recorded for the second by two people, that amount still unpaid, and
+    /// the grace period over: the later of `cureWindow` (15 days) after the second due point and
+    /// 864,000 s after the timestamp. Computed; no role sets it. No timestamp, no default; never
+    /// while Income Assurance runs (12.13).
     function inDefault(address member) public view override returns (bool) {
-        CycleRecord memory c = cycleOf[member];
-        if (c.missedInRow < 2 || c.cureNoticeAt == 0) return false;
-        return super.inDefault(member) && block.timestamp >= c.cureNoticeAt + creditTerms.cureWindow;
-    }
-
-    /// @notice a rolled-over revolving period runs one network cycle.
-    function _rolloverLength(address member) internal view override returns (uint256) {
-        uint256 cycle = cycleLength();
-        return cycle == 0 ? super._rolloverLength(member) : cycle;
+        return _computedDefault(member);
     }
 
     /// @notice records what a credit movement did to this member's tiers.
@@ -460,6 +443,9 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         }
     }
 
+    /// @notice the unit repayment rates are compared in: monthly basis points times 1e18.
+    uint256 public constant RATE_SCALE = RATE_SCALE_;
+
     /// @inheritdoc ICreditIssuer
     /// @dev The effective monthly rate after the caps, scaled by RATE_SCALE (Phase 4b, L-G). Tiers
     /// ascend by configured rate, but a binding member ceiling is trimmed from the dearest priced
@@ -480,30 +466,6 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         }
     }
 
-    /// @notice the unit repayment rates are compared in: monthly basis points times 1e18.
-    uint256 public constant RATE_SCALE = 1e18;
-
-    /// @dev What each tier costs the member from now, as a monthly rate scaled by RATE_SCALE (Phase
-    /// 4b, L-G): a tier on its own rate costs that rate; a priced tier costs its list rate under the
-    /// member's pricing state, less its part of any excess over the member-level ceiling, trimmed
-    /// dearest tier first as accrual trims it. RateSchedule does the arithmetic, so the comparison
-    /// and the accrual read the same parameters.
-    function _effectiveRates(address member) private view returns (uint256[] memory rates) {
-        uint256 n = tiers.length;
-        bytes32[] memory products = new bytes32[](n);
-        uint256[] memory principals = new uint256[](n);
-        rates = new uint256[](n);
-        for (uint256 i = 0; i < n; i++) {
-            products[i] = tierProduct[i];
-            principals[i] = principalOnlyOf(member, i);
-            rates[i] = tiers[i].index.ratePerCycle;
-        }
-        if (address(rateSchedule) == address(0)) {
-            for (uint256 i = 0; i < n; i++) rates[i] *= RATE_SCALE;
-            return rates;
-        }
-        return rateSchedule.revolvingRatesOf(member, _pricingState(member), ceilingProduct, products, principals, rates);
-    }
 
 
 
@@ -547,16 +509,8 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         super._onDefault(member);
     }
 
-    /// @notice sets the contract reporting what a member's collateral does not cover.
-    function setExposureSource(address _exposureSource) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        exposureSource = IExposureSource(_exposureSource);
-    }
 
 
-    /// @notice writes this issuer's contribution to the member's ledger ceiling.
-    function _syncLedgerLimit(address member) private {
-        stableCredit.updateCreditLimit(member, totalCapacityOf(member));
-    }
 
     /* ========== FORWARDED TO THE EXTENSION ========== */
 
@@ -570,6 +524,10 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// @notice Where the section 12 functions run (RevolvingIssuerCycles). Fixed like `extension`.
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable cycles;
+
+    /// @notice Where the Addendum 2 functions run (RevolvingIssuerTerms). Fixed like `extension`.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable terms;
 
     /// @notice see RevolvingIssuerExtension.settleCardSpend.
     function settleCardSpend(bytes32, address, uint256) external {
@@ -591,8 +549,8 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _forward();
     }
 
-    /// @notice see RevolvingIssuerExtension.repayForMember.
-    function repayForMember(bytes32, address, uint256) external {
+    /// @notice see RevolvingIssuerCycles.repayForMember.
+    function repayForMember(bytes32, address, uint256, bytes32) external {
         _forwardTo(cycles);
     }
 
@@ -625,11 +583,11 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _forwardTo(cycles);
     }
 
-    function setAutoClear(bool, uint8) external {
+    function setAutoClear(bool, uint8, bytes32) external {
         _forwardTo(cycles);
     }
 
-    function setAutoClearWithSignature(address, bool, uint8, uint256, bytes calldata) external {
+    function setAutoClearWithSignature(address, bool, uint8, bytes32, uint256, bytes calldata) external {
         _forwardTo(cycles);
     }
 
@@ -641,11 +599,150 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _forwardTo(cycles);
     }
 
+    /* ---- settings, forwarded to RevolvingIssuerTerms since Phase 2e (for room) ---- */
+
+    function setTierActive(uint256, bool) external {
+        _forwardTo(terms);
+    }
+
+    function setCarryTreasury(address) external {
+        _forwardTo(terms);
+    }
+
+    function setTierCarryRecipient(uint256, address) external {
+        _forwardTo(terms);
+    }
+
+    function setTierCapacity(address, uint256, uint256) external {
+        _forwardTo(terms);
+    }
+
+    function setCardSettler(address, bool) external {
+        _forwardTo(terms);
+    }
+
+    function setCardSettlementAccount(address) external {
+        _forwardTo(terms);
+    }
+
+    function setCardCaps(uint256, uint256) external {
+        _forwardTo(terms);
+    }
+
+    function setPricing(address, bytes32) external {
+        _forwardTo(terms);
+    }
+
+    function setTierProduct(uint256, bytes32) external {
+        _forwardTo(terms);
+    }
+
+    function setDailyCapacityCap(uint256) external {
+        _forwardTo(terms);
+    }
+
+    function setAutoRepay(bool) external {
+        _forwardTo(terms);
+    }
+
+    function setExposureSource(address) external {
+        _forwardTo(terms);
+    }
+
+    /* ---- forwarded to RevolvingIssuerTerms (Addendum 2) ---- */
+
+    function setCycleEndDayWithSignature(address, uint8, uint256, bytes calldata) external {
+        _forwardTo(terms);
+    }
+
+    function proposeCureNotice(address) external {
+        _forwardTo(terms);
+    }
+
+    function approveCureNotice(address) external {
+        _forwardTo(terms);
+    }
+
+    function proposeIncomePause(address, uint8) external {
+        _forwardTo(terms);
+    }
+
+    function approveIncomePause(address, uint8) external {
+        _forwardTo(terms);
+    }
+
+    function endIncomePause() external {
+        _forwardTo(terms);
+    }
+
+    function setHybridMode(bool) external {
+        _forwardTo(terms);
+    }
+
+    function setPayerExclusionWithSignature(address, bytes32, bool, uint256, bytes calldata) external {
+        _forwardTo(terms);
+    }
+
+    function addDefaultExcludedPayer(bytes32) external {
+        _forwardTo(terms);
+    }
+
+    function setDueTerms(uint16, uint64, uint64, uint8) external {
+        _forwardTo(terms);
+    }
+
+    function setTermIssuer(address) external {
+        _forwardTo(terms);
+    }
+
+    function cycleStateOf(address) external view returns (CycleState memory) {
+        _forwardView(terms);
+    }
+
+    function dueTermsOf() external view returns (DueTerms memory) {
+        _forwardView(terms);
+    }
+
+    function duesOf(address) external view returns (uint256, uint256, bool) {
+        _forwardView(terms);
+    }
+
+    function isPayerExcluded(address, bytes32) external view returns (bool) {
+        _forwardView(terms);
+    }
+
+    function combinedInputsOf(address) external view returns (bytes32, bytes32, uint256, uint256) {
+        _forwardView(terms);
+    }
+
     /// @dev Runs the extension's implementation of this call against this contract's storage, and
     /// returns or reverts exactly as it did.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
     function _forward() private {
         _forwardTo(extension);
+    }
+
+    /// @dev A view that runs in the terms module: this contract calls itself under STATICCALL, through
+    /// `delegateView`, so the module reads this storage and nothing can be written on the way.
+    function _forwardView(address target) private view {
+        (bool ok, bytes memory data) =
+            address(this).staticcall(abi.encodeWithSelector(this.delegateView.selector, target, msg.data));
+        assembly {
+            if iszero(ok) { revert(add(data, 32), mload(data)) }
+            return(add(data, 32), mload(data))
+        }
+    }
+
+    /// @notice internal: the far side of `_forwardView`. Only this contract may call it, and only
+    /// with the terms module as the target, so it can run nothing else.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function delegateView(address target, bytes calldata data) external {
+        if (msg.sender != address(this) || target != terms) revert RevolvingIssuerExtensionMismatch();
+        (bool ok, bytes memory ret) = target.delegatecall(data);
+        assembly {
+            if iszero(ok) { revert(add(ret, 32), mload(ret)) }
+            return(add(ret, 32), mload(ret))
+        }
     }
 
     /// @custom:oz-upgrades-unsafe-allow delegatecall

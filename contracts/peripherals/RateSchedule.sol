@@ -84,9 +84,10 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     mapping(bytes32 => Band[]) private bandsOf;
     mapping(bytes32 => uint256[]) private bandAcc;
 
-    /// @dev DECISIONS #7: a member's credit across the issuers in `cflSources` is one loan for the
-    /// legal cap. Stored inverted so the default, before governance says otherwise, is ON.
-    bool public cflAggregationOff;
+    /// @dev Retired in Phase 2e: DECISIONS #7's switch. The Combined Ceiling (12.3, Addendum 2) is
+    /// permanent, so nothing reads this any more and nothing can set it. Kept for the layout.
+    /// @custom:oz-renamed-from cflAggregationOff
+    bool private __retiredCflAggregationOff;
     address[] private cflSources;
 
     uint256[45] private __gap;
@@ -97,7 +98,6 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
 
     event ProductSet(bytes32 indexed stateCode, bytes32 indexed productId, ProductParams params);
     event BandsSet(bytes32 indexed stateCode, bytes32 indexed productId, Band[] bands);
-    event CflAggregationSet(bool on);
     event CflSourcesSet(address[] sources);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -222,12 +222,6 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
         capCarry = _cap(stateCode, productId, principal, from, now_);
     }
 
-    /// @notice turns CFL aggregation on or off (DECISIONS #7; default on, pending counsel).
-    function setCflAggregation(bool on) external onlyOwner {
-        cflAggregationOff = !on;
-        emit CflAggregationSet(on);
-    }
-
     /// @notice the issuers whose principal is aggregated into one loan for the cap.
     function setCflSources(address[] calldata sources) external onlyOwner {
         cflSources = sources;
@@ -238,29 +232,87 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
         return cflSources;
     }
 
-    /// @notice a member's principal across every aggregated issuer, or zero while aggregation is off.
+    /// @notice a member's principal across every aggregated issuer (DECISIONS #7, always on since
+    /// Phase 2e): what the large-loan regime and its minimum term are judged on.
     function aggregatePrincipalOf(address member) public view returns (uint256 total) {
-        if (cflAggregationOff) return 0;
         for (uint256 i = 0; i < cflSources.length; i++) {
             total += ICflPrincipalSource(cflSources[i]).cflPrincipalOf(member);
         }
     }
 
     /// @notice the cap on one of `member`'s positions of `principal` since `from`.
-    /// @dev The lower of the cap on the position alone and its pro-rata share of the cap on the
-    /// member's aggregate principal. Taking the lower keeps aggregation from ever raising a charge,
-    /// as it otherwise could when the aggregate crosses into the large-loan regime -- the
-    /// positions themselves are still small loans.
-    function capFor(address member, bytes32 stateCode, bytes32 productId, uint256 principal, Snapshot memory from)
+    /// @dev Since Phase 2e the cap on the position alone: the pro-rata share of the cap on the
+    /// member's aggregate (DECISIONS #7) is replaced by the Combined Ceiling (12.3), which the
+    /// issuers apply with `graduatedSince` and `combinedTrim`. `member` is kept for the ABI.
+    function capFor(address, bytes32 stateCode, bytes32 productId, uint256 principal, Snapshot memory from)
         public
         view
         returns (uint256 cap)
     {
-        cap = capSince(stateCode, productId, principal, from);
-        uint256 aggregate = aggregatePrincipalOf(member);
-        if (aggregate > principal) {
-            uint256 share = (capSince(stateCode, productId, aggregate, from) * principal) / aggregate;
-            if (share < cap) cap = share;
+        return capSince(stateCode, productId, principal, from);
+    }
+
+    /* ---- Phase 2e: the Combined Ceiling (12.3, Addendum 2) ---- */
+
+    /// @notice the graduated schedule alone on `principal` since `from`: each slice at its band's
+    /// rate, per second at monthly x 12 / 365. Never the flat alternative and never the large-loan
+    /// rate: the Combined Ceiling is "1% a month on every dollar above $1,650" whatever the total.
+    function graduatedSince(bytes32 stateCode, bytes32 productId, uint256 principal, Snapshot memory from)
+        external
+        view
+        returns (uint256 total)
+    {
+        if (principal == 0) return 0;
+        Snapshot memory now_ = snapshot(stateCode, productId);
+        Band[] storage bands = bandsOf[keyOf(stateCode, productId)];
+        uint256 lower;
+        for (uint256 i = 0; i < bands.length && lower < principal; i++) {
+            uint256 upper = bands[i].upperBound;
+            total += ((principal < upper ? principal : upper) - lower) * (now_.bands[i] - from.bands[i]);
+            lower = upper;
+        }
+        total /= RAY;
+    }
+
+    /// @notice the graduated schedule's monthly charge on `principal`, as principal x monthly bps x
+    /// RATE_SCALE (the unit the issuers' monthly figures are in).
+    function graduatedMonthly(bytes32 stateCode, bytes32 productId, uint256 principal) public view returns (uint256 total) {
+        Band[] storage bands = bandsOf[keyOf(stateCode, productId)];
+        uint256 lower;
+        for (uint256 i = 0; i < bands.length && lower < principal; i++) {
+            uint256 upper = bands[i].upperBound;
+            total += ((principal < upper ? principal : upper) - lower) * bands[i].monthlyBps;
+            lower = upper;
+        }
+        total *= RATE_SCALE;
+    }
+
+    /// @notice the Combined Ceiling's trim on a member's term plans (12.3).
+    /// @dev Monthly figures (principal x monthly bps x RATE_SCALE): the revolving tiers' carry after
+    /// their own caps, then each eligible plan's carry per 30-day cycle at its list rate after its own
+    /// cap (decision C), oldest plan first. Their total never exceeds the graduated schedule on their
+    /// combined principal: the revolving tiers come first, then the plans in the order given, so any
+    /// excess comes off the newest plan first, then earlier plans. (The revolving tiers already keep
+    /// within the schedule on their own principal, Boost trimmed first, so they are never trimmed
+    /// here.) Returns what each plan may carry a month.
+    function combinedTrim(
+        bytes32 stateCode,
+        bytes32 productId,
+        uint256 revolvingPrincipal,
+        uint256 revolvingMonthly,
+        uint256[] calldata planPrincipals,
+        uint256[] calldata planMonthly
+    ) external view returns (uint256[] memory allowed) {
+        uint256 n = planPrincipals.length;
+        allowed = new uint256[](n);
+        uint256 total = revolvingPrincipal;
+        for (uint256 i = 0; i < n; i++) total += planPrincipals[i];
+        uint256 cap = graduatedMonthly(stateCode, productId, total);
+        uint256 budget = cap > revolvingMonthly ? cap - revolvingMonthly : 0;
+        for (uint256 i = 0; i < n; i++) {
+            uint256 take = planMonthly[i] < budget ? planMonthly[i] : budget;
+            allowed[i] = take;
+            budget -= take;
         }
     }
 
@@ -276,11 +328,13 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice what a term plan of `principal` may be charged since `from`.
-    /// @dev A term plan is charged its monthly rate per 30-day cycle (section 12.9), so the list
-    /// carry and the graduated cap, which accrue at monthly x 12 / 365 per second, are scaled by
-    /// 365 / 360. The large-loan cap is annual and is NOT scaled (Phase 4, M-D): once the plan, or
-    /// the member's aggregate under DECISIONS #7, is at or above the threshold, the charge is never
-    /// more than `annualCapBps` a year on this principal.
+    /// @dev Decision C (Addendum 2): the plan's list rate per 30-day cycle on its remaining principal
+    /// (the list accumulator, which runs at monthly x 12 / 365 per second, scaled by 365 / 360), then
+    /// trimmed so it never exceeds the per-second-fitted cap on that principal, which is NOT scaled:
+    /// the per-second index governs every cap. The large-loan cap is annual (Phase 4, M-D): once the
+    /// plan, or the member's aggregate under DECISIONS #7, is at or above the threshold, the charge is
+    /// never more than `annualCapBps` a year on this principal. The Combined Ceiling (12.3) is applied
+    /// on top by the term issuer.
     function termChargeFor(address member, bytes32 stateCode, bytes32 productId, uint256 principal, Snapshot memory from)
         external
         view
@@ -289,8 +343,9 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
         if (principal == 0) return 0;
         Snapshot memory now_ = snapshot(stateCode, productId);
         uint256 listCarry = (principal * (now_.list - from.list)) / RAY;
-        uint256 capCarry = capFor(member, stateCode, productId, principal, from);
-        charge = ((listCarry < capCarry ? listCarry : capCarry) * 365) / 360;
+        uint256 capCarry = _cap(stateCode, productId, principal, from, now_);
+        listCarry = (listCarry * 365) / 360;
+        charge = listCarry < capCarry ? listCarry : capCarry;
         uint256 threshold = products[keyOf(stateCode, productId)].params.largeLoanThreshold;
         if (threshold != 0 && (principal >= threshold || aggregatePrincipalOf(member) >= threshold)) {
             uint256 annual = (principal * (now_.annual - from.annual)) / RAY;
@@ -319,12 +374,11 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     /// scaled by RATE_SCALE, after the member-level ceiling (Phase 4b, L-G).
     /// @dev The issuer passes its tiers in tier order. A tier with no product, or whose product
     /// does not exist in `stateCode`, costs its own rate (`ownRates`, monthly bps). A priced tier
-    /// costs its list rate, unless the list carry on all priced tiers together is over the ceiling
-    /// product's cap on their total (and on the member's CFL aggregate, as `capFor` takes it); then
-    /// the excess is taken off the last priced tier first, exactly as `_pendingCarry` trims accrual.
-    /// So the order the ledger repays in follows what the member is actually charged.
+    /// costs its list rate, unless the list carry on all priced tiers together is over the graduated
+    /// schedule on their total (the Combined Ceiling on the revolving tiers, 12.3); then the excess
+    /// is taken off the last priced tier first, exactly as `_pendingCarry` trims accrual. So the order
+    /// the ledger repays in follows what the member is actually charged.
     function revolvingRatesOf(
-        address member,
         bytes32 stateCode,
         bytes32 ceilingProduct,
         bytes32[] calldata productIds,
@@ -347,7 +401,7 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
             carry += principals[i] * rates[i];
         }
         if (carry == 0 || !hasProduct(stateCode, ceilingProduct)) return rates;
-        uint256 allowed = unsecured * _capRateFor(member, stateCode, ceilingProduct, unsecured);
+        uint256 allowed = graduatedMonthly(stateCode, ceilingProduct, unsecured);
         if (carry <= allowed) return rates;
         uint256 excess = carry - allowed;
         for (uint256 i = n; i > 0 && excess > 0; i--) {
@@ -361,8 +415,10 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice what a term plan of `principal` costs from now, as a monthly rate scaled by
-    /// RATE_SCALE (Phase 4b, L-G): what `termChargeFor` charges per 30 days, less the merchant's
-    /// subsidy, then stated per twelfth of a year (x 365 / 360) so it compares with a revolving rate.
+    /// RATE_SCALE (Phase 4b, L-G): what `termChargeFor` charges, less the merchant's subsidy, stated
+    /// per twelfth of a year so it compares with a revolving rate: the list rate per 30 days is x 365
+    /// / 360 a month, and the per-second-fitted cap is the monthly cap itself (decision C). The
+    /// Combined Ceiling's trim (12.3) is applied on top by the term issuer.
     function termRateOf(
         address member,
         bytes32 stateCode,
@@ -372,16 +428,16 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     ) external view returns (uint256 rate) {
         if (principal == 0) return 0;
         ProductParams storage p = _product(stateCode, productId).params;
-        rate = uint256(p.listMonthlyBps) * RATE_SCALE;
-        uint256 cap = _capRateFor(member, stateCode, productId, principal);
+        rate = (uint256(p.listMonthlyBps) * RATE_SCALE * 365) / 360;
+        uint256 cap = _capRate(stateCode, productId, principal);
         if (cap < rate) rate = cap;
         uint256 threshold = p.largeLoanThreshold;
         if (threshold != 0 && (principal >= threshold || aggregatePrincipalOf(member) >= threshold)) {
-            uint256 annual = (uint256(p.annualCapBps) * RATE_SCALE * 30) / 365;
+            uint256 annual = (uint256(p.annualCapBps) * RATE_SCALE) / 12;
             if (annual < rate) rate = annual;
         }
-        uint256 subsidy = subsidyBps * RATE_SCALE;
-        rate = rate > subsidy ? ((rate - subsidy) * 365) / 360 : 0;
+        uint256 subsidy = (subsidyBps * RATE_SCALE * 365) / 360;
+        rate = rate > subsidy ? rate - subsidy : 0;
     }
 
     /// @notice min(list rate, legal cap for this principal), per month, in bps.
@@ -421,21 +477,6 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
         uint256 graduated = (charge * RATE_SCALE) / principal;
         uint256 flat = uint256(p.flatMonthlyBps) * RATE_SCALE;
         return flat > graduated ? flat : graduated;
-    }
-
-    /// @dev `_capRate` as `capFor` applies it to one of `member`'s positions: the lower of the rate
-    /// on the position alone and the rate on the member's CFL aggregate.
-    function _capRateFor(address member, bytes32 stateCode, bytes32 productId, uint256 principal)
-        internal
-        view
-        returns (uint256 rate)
-    {
-        rate = _capRate(stateCode, productId, principal);
-        uint256 aggregate = aggregatePrincipalOf(member);
-        if (aggregate > principal) {
-            uint256 onAggregate = _capRate(stateCode, productId, aggregate);
-            if (onAggregate < rate) rate = onAggregate;
-        }
     }
 
     function _cap(

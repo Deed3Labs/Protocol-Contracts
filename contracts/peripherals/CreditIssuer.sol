@@ -422,7 +422,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @dev by default the caller must have operator authorization.
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to pause terms for.
-    function pausePeriodOf(address member) external onlyCreditRole(CREDIT_LINES_ROLE) {
+    function pausePeriodOf(address member) external virtual onlyCreditRole(CREDIT_LINES_ROLE) {
         creditPeriods[member].paused = true;
         emit CreditTermsPaused(member);
     }
@@ -431,7 +431,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @dev by default the caller must have operator authorization.
     /// Child implementations should employ authorization logic that is appropriate for the given use case.
     /// @param member address of member to unpause period for.
-    function unpausePeriodOf(address member) external onlyCreditRole(CREDIT_LINES_ROLE) {
+    function unpausePeriodOf(address member) external virtual onlyCreditRole(CREDIT_LINES_ROLE) {
         CreditPeriod storage period = creditPeriods[member];
         period.paused = false;
         // Lifting a pause must not land the member straight in default: a pause that outlasted
@@ -451,6 +451,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @param periodExpiration expiration timestamp of credit period.
     function setPeriodExpirationOf(address member, uint256 periodExpiration)
         public
+        virtual
         onlyCreditRole(CREDIT_LINES_ROLE)
     {
         if (!inInitializedPeriod(member)) revert CreditIssuerNoPeriod(member);
@@ -467,6 +468,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @param graceLength length of grace period.
     function setGraceLengthOf(address member, uint256 graceLength)
         public
+        virtual
         onlyCreditRole(CREDIT_LINES_ROLE)
     {
         if (!inInitializedPeriod(member)) revert CreditIssuerNoPeriod(member);

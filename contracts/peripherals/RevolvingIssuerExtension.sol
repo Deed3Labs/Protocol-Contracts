@@ -12,7 +12,7 @@ import "./RevolvingIssuerBase.sol";
 contract RevolvingIssuerExtension is RevolvingIssuerBase {
     /// @notice what RevolvingIssuer's constructor checks before pinning this as its extension.
     function extensionKind() external pure returns (bytes32) {
-        return keccak256("RevolvingIssuerExtension.v2");
+        return keccak256("RevolvingIssuerExtension.v3");
     }
 
     using CarryIndex for CarryIndex.Index;
@@ -65,14 +65,17 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
             revert RevolvingIssuerCardExceedsAuthorization(ref, amount, authorization.amount);
         }
         if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
-        if (inDefault(member) || hasDefaulted(member)) {
+        // The card follows the current line (4c item 2): a default of an earlier line, settled
+        // before the member was re-onboarded, does not stop this one.
+        if (_computedDefault(member) || _defaultedOnCurrentLine(member)) {
             revert RevolvingIssuerMemberNotInGoodStanding(member);
         }
         _consumeDailyCap(cardSpendCap, "CARD", amount);
+        _consumeMemberCardCap(member, amount);
         delete cardAuthorizations[ref];
 
         // Carry accrued since the last touch is part of what is owed; bring it on before measuring.
-        _materialiseCarry(member);
+        _touch(member);
 
         // Card spending draws against Savings only as far as the member has authorized (12.7): the
         // Savings tier is narrowed to that for this draw, and the rest falls to the next tiers.
@@ -128,18 +131,21 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         if (cardAuthorizations[ref].member != address(0) || cardSettlements[ref].member != address(0)) {
             revert RevolvingIssuerCardAlreadyAuthorized(ref);
         }
-        if (isFrozen(member) || inDefault(member) || hasDefaulted(member)) {
+        if (isFrozen(member) || _computedDefault(member) || _defaultedOnCurrentLine(member)) {
             revert RevolvingIssuerMemberNotInGoodStanding(member);
         }
         if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
-        uint256 headroom = _activeHeadroom(member);
-        // Savings count only as far as the member has authorized card draws against them (12.7).
+        // What the line could hold right now, carry brought on first. Savings count only as far as
+        // the member has authorized card draws against them (12.7), and not at all while an unpaid
+        // Secured Minimum pauses secured draws (12.1).
+        _touch(member);
+        bool paused = _securedDrawPaused(member);
+        uint256 headroom;
         for (uint256 i = 0; i < tiers.length; i++) {
-            if (tiers[i].kind != SAVINGS_KIND || !tiers[i].active) continue;
-            uint256 room = headroomOf(member, i);
-            uint256 allowed = savingsDrawAllowance[member];
-            if (room > allowed) headroom -= room - allowed;
-            break;
+            if (!tiers[i].active || (paused && !_isUnsecured(i))) continue;
+            uint256 room = _headroom(member, i, tierPrincipal[member][i]);
+            if (tiers[i].kind == SAVINGS_KIND && room > savingsDrawAllowance[member]) room = savingsDrawAllowance[member];
+            headroom += room;
         }
         if (headroom < amount) revert RevolvingIssuerCardHeadroom(member, amount, headroom);
         cardAuthorizations[ref] = CardAuthorization({member: member, amount: amount});
@@ -161,8 +167,8 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
             revert RevolvingIssuerCardReversalExceedsSettlement(ref, amount, settlement.amount);
         }
 
-        _materialiseCarry(settlement.member);
-        _repay(settlement.member, amount);
+        _touch(settlement.member);
+        _repay(settlement.member, amount, type(uint256).max);
         cardSettlements[ref].amount = settlement.amount - amount;
         stableCredit.reversePurchase(
             settlement.member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
@@ -195,13 +201,13 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         if (amount == 0) revert RevolvingIssuerCardAmountZero();
         if (cardRepayments[ref] != 0) revert RevolvingIssuerCardAlreadyRepaid(ref);
 
-        _materialiseCarry(member);
-        uint256 principal = totalPrincipalOf(member);
+        _touch(member);
+        uint256 principal = _totalPrincipal(member);
         if (amount > principal) revert RevolvingIssuerCardRepaymentExceedsDrawn(member, amount, principal);
         uint256 held = IERC20Upgradeable(address(stableCredit)).balanceOf(cardSettlementAccount);
         if (held < amount) revert RevolvingIssuerCardFloatCannotCover(amount, held);
 
-        _repay(member, amount);
+        _repay(member, amount, type(uint256).max);
         cardRepayments[ref] = amount;
         stableCredit.reversePurchase(
             member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
@@ -226,7 +232,7 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         onlyOperator
     {
         _requireTier(tierId);
-        _materialiseCarry(member);
+        _touch(member);
 
         uint256 principal = tierPrincipal[member][tierId];
         uint256 pay = principal < amount ? principal : amount;
@@ -299,16 +305,35 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
     }
 
     /// @notice opens a member's line with a starting ceiling in each tier.
+    /// @dev Cycles are calendar months (12.1, Addendum 2): each ends at 23:59:59 Pacific on the
+    /// member's Cycle End Day, and the first on the first such day at least 14 days from now. The
+    /// day is the member's choice at opening; zero takes the default (the day before today, or the
+    /// 28th). Automatic Clearing is set separately, from the member's own choice and signature.
     /// @param member address of the member.
     /// @param capacities ceiling contribution per tier, in tier order.
-    /// @param periodLength length of the credit period.
-    /// @param graceLength length of the grace period.
+    /// @param cycleEndDay the member's Cycle End Day (1-28), or zero for the default.
     function openLine(
         address member,
         uint256[] calldata capacities,
-        uint256 periodLength,
-        uint256 graceLength
-    ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) notInActivePeriod(member) {
+        uint8 cycleEndDay
+    ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) {
+        // Only a member with no live line: reopening one would restart its clock and its dues,
+        // which no role may do (12.1). A default deletes the period, so re-onboarding still works.
+        if (inInitializedPeriod(member)) revert RevolvingIssuerCyclesComputed();
+        if (cycleEndDay > 28) revert RevolvingIssuerBadCycleDay(cycleEndDay);
+        // 4c item 3: re-onboarding waits until collateral pledged against an earlier default has
+        // been applied, so a new line can never cut that recovery short.
+        if (_defaultedOnCurrentLine(member) && address(exposureSource) != address(0)) {
+            for (uint256 i = 0; i < tiers.length; i++) {
+                if (_isUnsecured(i) || tierPrincipal[member][i] == 0) continue;
+                (bool ok, bytes memory data) = address(exposureSource).staticcall(
+                    abi.encodeWithSignature("collateralValueOf(address,bytes32)", member, tiers[i].kind)
+                );
+                if (ok && data.length >= 32 && abi.decode(data, (uint256)) != 0) {
+                    revert RevolvingIssuerDefaultCollateralUnapplied(member);
+                }
+            }
+        }
         // State gate (spec item 9): no line for a member with no attested state, or in a state
         // where the revolving product is not enabled.
         if (address(rateSchedule) != address(0)) {
@@ -330,21 +355,40 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         // Opening a line is new credit like any other limit raised (audit H-4).
         _consumeDailyCap(capacityIncreaseCap, "CAPACITY", increase);
         stableCredit.createCreditLine(member, total, 0);
-        // Zero means "this network's cycle", which is what every caller should want and what
-        // nothing previously supplied -- the period was whatever the caller happened to pass, so
-        // two members could be on different clocks with nothing saying so.
-        //
-        // Not forced to equal it. The rebalance period and the carry cycle are different
-        // questions: one is how long a member has to return to zero, the other is how often carry
-        // compounds. The plan makes them coincide at thirty days, and that is now the default
-        // rather than a coincidence -- but a longer period is a policy choice, not a bug, and
-        // refusing it would mean a member carrying a balance across cycles could never be modelled
-        // at all.
-        uint256 period = periodLength != 0 ? periodLength : tiers.length == 0 ? 0 : tiers[0].index.cycleLength;
-        _updateCreditPeriod(member, block.timestamp + period, graceLength);
+        uint8 day = cycleEndDay != 0 ? cycleEndDay : PacificCalendar.defaultDay(block.timestamp);
+        uint64 firstEnd = uint64(PacificCalendar.endOnOrAfter(block.timestamp + 14 days, day));
+        CycleState storage s = cycleState[member];
+        // A fresh clock and no dues; the Automatic Clearing choice and hybridMode are the member's
+        // and stay as they set them.
+        s.cycleEnd = firstEnd;
+        s.cycleEndDay = day;
+        s.closedAt = 0;
+        s.rebalanceAmount = 0;
+        s.securedMinimum = 0;
+        s.paidSinceClose = 0;
+        s.securedPastDue = 0;
+        s.pastDueSM = 0;
+        s.cureAmount = 0;
+        s.noticeProposer = address(0);
+        cycleOf[member].cureNoticeAt = 0;
+        _updateCreditPeriod(member, firstEnd, 0);
+        emit CycleEndDaySet(member, day, firstEnd);
         // A new line starts a new default episode (Phase 4b, M-C): a default recorded before now
         // stays on record, but no longer lets anyone liquidate this line.
         lineOpenedAt[member] = uint64(block.timestamp);
+    }
+
+    /// @dev 4c item 1: today's card settlements for one member, against the governed per-member cap,
+    /// so the settler key's reach over any one member is bounded. Zero means not set.
+    function _consumeMemberCardCap(address member, uint256 amount) private {
+        uint256 cap = dueTerms.cardMemberDailyCap;
+        if (cap == 0) return;
+        CycleState storage s = cycleState[member];
+        uint64 today = uint64(block.timestamp / 1 days);
+        uint256 used = s.cardDay == today ? s.cardUsed : 0;
+        if (used + amount > cap) revert RevolvingIssuerCardMemberDailyCap(member, amount, cap > used ? cap - used : 0);
+        s.cardDay = today;
+        s.cardUsed = uint128(used + amount);
     }
 
     /// @notice names the CLRUSD token whose lock a Savings draw refreshes (Phase 4b, L-B).

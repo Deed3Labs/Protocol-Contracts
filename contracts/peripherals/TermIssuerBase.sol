@@ -20,6 +20,16 @@ interface IRevolvingMandate {
 /// Served by TermIssuer itself; a module runs by delegatecall, so `address(this)` is the issuer.
 interface IOpenPrincipal {
     function openPrincipalOf(address member, bytes32 product, uint256 skip) external view returns (uint256);
+    /// @dev Brings every open plan of the member to now under the Combined Ceiling (12.3).
+    function materialiseMember(address member) external;
+}
+
+/// @dev The revolving line's half of the Combined Ceiling (12.3, Addendum 2).
+interface ICombinedCeilingRevolving {
+    function combinedInputsOf(address member)
+        external
+        view
+        returns (bytes32 state, bytes32 product, uint256 principal, uint256 monthlyCarry);
 }
 
 /// @title TermIssuerBase
@@ -172,13 +182,46 @@ abstract contract TermIssuerBase is CreditIssuer {
         /// @dev Whether `merchant` and `payout` were recorded when the plan opened. Plans opened
         /// before Phase 4 recorded no payout and cannot be refunded through the issuer.
         bool refundTermsRecorded;
+        /// @dev Where this plan's origination fee went (12.16, Phase 2e), so a refund reverses it
+        /// from there even after `feeRecipient` changes. Zero for a plan opened before Phase 2e,
+        /// which reverses from `_feeRecipient()` as before. Appended; a new slot of the struct.
+        address feeTo;
     }
     mapping(uint256 => PlanPricing) internal planPricing;
     /// @dev planId => RateSchedule accumulators at the last touch.
     mapping(uint256 => RateSchedule.Snapshot) internal planSnap;
 
     /// @dev Three more slots from the gap: rateSchedule, planPricing, planSnap.
-    uint256[21] private __gap;
+
+    /* ---- Phase 2e: the fee leg (12.16) and the Combined Ceiling (12.3), Addendum 2 ---- */
+
+    /// @notice The governed origination fee cap: fee = min(discountBpsBySplit x amount, cap), where
+    /// the cap is `maxFeeSmall` ($50) up to `largeFrom` ($2,500) and `maxFeeLarge` ($75) above.
+    /// Zero in any field means the initial figure.
+    struct FeeTerms {
+        uint64 maxFeeSmall;
+        uint64 maxFeeLarge;
+        uint64 largeFrom;
+    }
+    FeeTerms internal feeTerms;
+
+    /// @notice A pending change of `feeRecipient`: one signer proposes, a different one approves.
+    struct FeeRecipientProposal {
+        address recipient;
+        address proposer;
+        bytes32 reasonCode;
+    }
+    FeeRecipientProposal internal feeRecipientProposal;
+
+    /// @notice The revolving line whose unsecured tiers share the member's Combined Ceiling (12.3),
+    /// and the RateSchedule product whose graduated schedule it is. Each set once: the ceiling is
+    /// permanent, and no function switches it off.
+    address public combinedRevolving;
+    bytes32 public combinedProduct;
+
+    /// @dev Six slots from the gap: feeTerms, feeRecipientProposal (3), combinedRevolving,
+    /// combinedProduct.
+    uint256[15] private __gap;
 
     uint256 internal constant RAY_ = 1e27;
     uint256 internal constant BPS_ = 10_000;
@@ -240,12 +283,28 @@ abstract contract TermIssuerBase is CreditIssuer {
     error TermIssuerResplitShortens(uint256 planId);
     /// @notice thrown when the RateSchedule is named a second time (Phase 4, M-B).
     error TermIssuerRateScheduleSet();
+    /// @notice 12.16: the fee leg needs a fee recipient, and it is never a Clear Collective address.
+    error TermIssuerNoFeeRecipient();
+    error TermIssuerFeeRecipientNotAllowed(address recipient);
+    error TermIssuerSameSigner(address signer);
+    error TermIssuerNoProposal();
+    /// @notice 12.3: the Combined Ceiling's inputs are set once.
+    error TermIssuerCombinedSet();
 
     /* ========== EVENTS ========== */
 
     event TermLimitUpdated(address indexed member, uint256 limit);
     event CarryTreasuryUpdated(address treasury);
     event FeeRecipientUpdated(address recipient);
+    /// @notice 12.16: a two-person change of the fee recipient, for later charges only.
+    event FeeRecipientProposed(address indexed recipient, bytes32 indexed reasonCode, address indexed proposer);
+    event FeeRecipientChanged(
+        address indexed previous, address indexed recipient, bytes32 indexed reasonCode, address proposer, address approver
+    );
+    event FeeTermsUpdated(uint64 maxFeeSmall, uint64 maxFeeLarge, uint64 largeFrom);
+    event CombinedCeilingSet(address revolving, bytes32 product);
+    /// @notice carry a plan would have accrued above the Combined Ceiling, not charged (12.3).
+    event PlanCarryTrimmed(uint256 indexed planId, uint256 amount);
     /// @notice everything needed to reproduce a plan's loan disclosure later (spec item 5).
     event PlanOpened(
         uint256 indexed planId,
@@ -372,9 +431,16 @@ abstract contract TermIssuerBase is CreditIssuer {
         emit PlanSplitChanged(planId, left, plan.scheduleBase, behind);
     }
 
-    /// @dev The fee's home, falling back to the carry treasury while nobody has named one.
+    /// @dev Where a plan opened before Phase 2e had its fee minted: the recipient then, or the carry
+    /// treasury while nobody had named one. A refund of such a plan still reverses from there.
     function _feeRecipient() internal view returns (address) {
         return feeRecipient == address(0) ? carryTreasury : feeRecipient;
+    }
+
+    /// @dev Where a refund of `planId` reverses the fee from: the recipient its fee was paid to.
+    function _feeFrom(uint256 planId) internal view returns (address) {
+        address to = planPricing[planId].feeTo;
+        return to == address(0) ? _feeRecipient() : to;
     }
 
     /// @dev What a payment does to a plan, however it arrived: carry-aware reduction, the repaid
@@ -429,25 +495,20 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// never on carry already owed: the lesser of the list rate and the legal cap on that principal,
     /// less the merchant's subsidy. A free plan accrues nothing, ever. Snapshots are reset to now,
     /// which is what lets principal be treated as constant between touches.
+    ///
+    /// Since Phase 2e every open plan of the member is brought to now together, by TermIssuer's
+    /// `materialiseMember`: the Combined Ceiling (12.3) divides one ceiling among them, so they must
+    /// share one stretch. A module reaches it by calling the issuer, which keeps the code in one place.
     function _materialiseCarry(uint256 planId) internal {
         Plan storage plan = plans[planId];
         if (plan.closed) return;
-        uint256 carry = _pendingPlanCarry(planId);
-        if (carry > 0) {
-            plan.principalOutstanding += carry;
-            carryOutstandingOf[planId] += carry;
-            stableCredit.accrueCarry(plan.member, carryTreasury, carry);
-            emit PlanCarryMaterialised(planId, carry);
-        }
-        PlanPricing storage pricing = planPricing[planId];
-        pricing.accruedAt = uint64(block.timestamp);
-        if (pricing.priced && !pricing.free) {
-            planSnap[planId] = rateSchedule.snapshot(pricing.state, pricing.product);
-        }
+        IOpenPrincipal(address(this)).materialiseMember(plan.member);
     }
 
-    /// @dev Carry a plan has accrued since its last touch.
-    function _pendingPlanCarry(uint256 planId) internal view returns (uint256) {
+    /// @dev Carry a plan has accrued since its last touch on its own terms (decision C: the list
+    /// rate per 30-day cycle, trimmed to the per-second-fitted cap on its principal, less the
+    /// merchant's subsidy), before the Combined Ceiling.
+    function _listCharge(uint256 planId) internal view returns (uint256) {
         Plan storage plan = plans[planId];
         PlanPricing storage pricing = planPricing[planId];
         if (plan.closed || pricing.free) return 0;
@@ -500,7 +561,10 @@ abstract contract TermIssuerBase is CreditIssuer {
         RateSchedule.ProductParams memory p = rateSchedule.paramsOf(q.state, product);
         (uint256 discountBps, uint256 subsidyBps, uint32 merchantFreeMax) =
             IMerchantSplitTerms(address(stableCredit.merchantRegistry())).splitTermsOf(merchant, installments);
-        q.payout = principal - (principal * discountBps) / BPS_;
+        // 12.16: the fee leg is the discount for this split, capped at $50 up to $2,500 and $75 above.
+        uint256 fee = (principal * discountBps) / BPS_;
+        uint256 cap = principal <= _feeTerm(feeTerms.largeFrom, 2_500e6) ? _feeTerm(feeTerms.maxFeeSmall, 50e6) : _feeTerm(feeTerms.maxFeeLarge, 75e6);
+        q.payout = principal - (fee < cap ? fee : cap);
         q.subsidyBps = uint32(subsidyBps);
         q.largeLoan = p.largeLoanThreshold != 0 && principal >= p.largeLoanThreshold;
         // The minimum term is judged on the member's open principal under this product, this plan
@@ -525,6 +589,11 @@ abstract contract TermIssuerBase is CreditIssuer {
         }
         if (!q.free && subsidyBps >= effective) q.free = true;
         q.rateBps = q.free ? 0 : effective - subsidyBps;
+    }
+
+    /// @dev A governed fee figure, or its initial value while unset (ledger units: USDC, 6 decimals).
+    function _feeTerm(uint64 value, uint256 initial) internal pure returns (uint256) {
+        return value == 0 ? initial : value;
     }
 
     /// @dev Applies a payment to a plan's outstanding carry first, and says how much it took.
