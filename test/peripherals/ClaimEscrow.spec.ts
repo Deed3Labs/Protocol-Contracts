@@ -118,13 +118,22 @@ describe("ClaimEscrow", function () {
   });
 
 
-  it("allows claim to payout treasury", async function () {
+  it("allows claim to payout treasury with the sender's signature (Phase 2d, L-D)", async function () {
     const transferId = ethers.keccak256(ethers.toUtf8Bytes("t4"));
     await createTransfer(transferId);
 
     const treasuryBefore = await usdc.balanceOf(treasury.address);
 
-    await claimEscrow.connect(settler).claimToPayoutTreasury(transferId);
+    // The settler alone cannot route it any more.
+    await expect(claimEscrow.connect(settler).claimToPayoutTreasury(transferId))
+      .to.be.revertedWithCustomError(claimEscrow, "ClaimEscrowSignatureRequired");
+    const payoutRef = ethers.id("bank-payout-1");
+    const sig = await sender.signTypedData(
+      { name: "ClaimEscrow", version: "1", chainId: (await ethers.provider.getNetwork()).chainId, verifyingContract: await claimEscrow.getAddress() },
+      { PayoutClaim: [{ name: "transferId", type: "bytes32" }, { name: "payoutTreasury", type: "address" }, { name: "payoutRefHash", type: "bytes32" }] },
+      { transferId, payoutTreasury: treasury.address, payoutRefHash: payoutRef }
+    );
+    await claimEscrow.connect(settler).claimToPayoutTreasuryWithSignature(transferId, payoutRef, sig);
 
     expect(await usdc.balanceOf(treasury.address) - treasuryBefore).to.equal(total);
 

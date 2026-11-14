@@ -166,7 +166,7 @@ they go into `scheduleFloor` and are due at once. A member's own re-split revert
 | Payment | Caller | Notes |
 |---|---|---|
 | `payPlan(planId, amount)` | anyone, paying | Directed: `repayCreditBalanceFor`, then the plan records it |
-| `collectForMember(ref, member, amount)` | a card settler on `mandateSource` | Only while the member's `autoRepayEnabled` is on in the revolving issuer. Pays each plan's arrears in opening order, then residual carry. Never ahead of schedule |
+| `collectForMember(ref, member, amount)` | nobody | Retired in Phase 2d: it reverts `TermIssuerWalletCollectionRetired`. Recovery never takes Ready to allocate USDC from a member's wallet (10f); term dues are cleared from Spendable at the bank |
 | `payResidualCarry(member, amount)` | anyone, paying | Clears `residualCarryOf`: what the member owes beyond every open plan and revolving tier. Zero until `mandateSource` is set |
 | undirected repayment | — | `_absorbRepayment` takes plans at or above the band, oldest first |
 
