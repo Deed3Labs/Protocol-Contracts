@@ -17,7 +17,7 @@ Nothing was deployed, no key was used, and no live network was touched.
 
 ## 1. Step 1: the original attacks against the merged code
 
-`KEEP_REVERT_STRINGS=true npx hardhat test test/audit/*.spec.ts test/audit/deed/*.spec.ts test/audit/deep/*.spec.ts --no-compile` gave **125 passing, 0 failing** on `dev` (fuzz at 60 steps). Every one of the 53 original proofs is present in flipped form, asserting that the attack now fails; the rest are the phases' own regression tests.
+`KEEP_REVERT_STRINGS=true npx hardhat test test/audit/*.spec.ts test/audit/deed/*.spec.ts test/audit/deep/*.spec.ts --no-compile` gave **125 passing, 0 failing** on `dev` (fuzz at 60 steps). Every original proof is present in flipped form, asserting that the attack now fails. The exceptions are X-9, X-15, X-16 and M-8/X-17, which were rewritten when Phase 2c retired the pool and oracle they attacked (see the table below). The rest of the 125 are the phases' own regression tests.
 
 The deep invariant fuzz (`CreditInvariants.spec.ts`) behaves as Phase 1 described it:
 - (i-b), every claim backed, holds in every seed;
@@ -46,7 +46,7 @@ The deep invariant fuzz (`CreditInvariants.spec.ts`) behaves as Phase 1 describe
 | H-A | **Confirmed, reproduced.** A paid $1,000 plan, refunded with a stranger named as merchant, gave the member $1,000 cash and put $1,000 of debt on the stranger, and the merchant kept its $975. On an unpaid plan, the member's $1,000 obligation moved to the stranger. | **Fixed.** `openPlan` records the payout beside the merchant (in `PlanPricing`, in the slot `accruedAt` already used, so no storage moves). `closePlanForRefund` reverts `TermIssuerRefundTermsMismatch` unless `merchant` is the plan's own. Both legs come from the recorded payout, in proportion to the refund. The caller's `payout` argument stays in the ABI so the refund service keeps working, and is ignored. Plans opened before this upgrade (Base Sepolia only) revert `TermIssuerRefundTermsUnknown`. | "H-A: …" (3 tests); `TermIssuer.spec` "takes the legs from the plan, not the caller" |
 | H-B | **Confirmed, reproduced.** An operator's `setSplit(0, 1)` on a current In-12 plan put $1,110.43 in arrears one cycle later, and a stranger's `declareDefault` then suspended the member. | **Fixed.** An unsigned re-split by anyone other than the member must keep at least the installments left, and must not raise the installment (`TermIssuerResplitShortens`). The existing rule still refuses it at a higher cost without the member's signature. Arrears already owed are carried as before; none are added. The member's own re-splits are unchanged. | "H-B: …" (3 tests); `TermIssuer.spec` "spreads the rest over the new term…" |
 | H-C | **Confirmed, reproduced** (`missedInRow` = 1 at the first cycle for a member current on a term plan who never drew the line). | **Fixed** (see the note below). `RevolvingIssuerBase.inCompliance` is now `totalPrincipalOf(member) == 0`: the revolving tiers, with their materialised carry. Before, it read the whole ledger balance, which includes term-plan principal. | "H-C: …" (2 tests) |
-| M-A | **Confirmed.** | **Fixed in the pause logic only** (Phase 2d reworks vault and CLRUSD governance and the pilot cap):<br>- `setPauseWindow` refuses anything above 72 hours, on CLRUSD and the vault;<br>- unpausing ends a pause rather than deleting its record;<br>- the signer of the last pause cannot start a new one on the same account, the security pause or the vault until 30 days after it ended (`REPAUSE_COOLDOWN`);<br>- any other signer may pause at once, and a second signer's renewal is unchanged.<br>No storage was added; the vault's layout is unchanged. | "M-A: …" (4 tests) |
+| M-A | **Confirmed, reproduced.** The same signer re-paused right after a lapse, and again after unpausing. The window had no ceiling (the blind review set 100 years). | **Fixed in the pause logic only** (Phase 2d reworks vault and CLRUSD governance and the pilot cap):<br>- `setPauseWindow` refuses anything above 72 hours, on CLRUSD and the vault;<br>- unpausing ends a pause rather than deleting its record;<br>- the signer of the last pause cannot start a new one on the same account, the security pause or the vault until 30 days after it ended (`REPAUSE_COOLDOWN`);<br>- any other signer may pause at once, and a second signer's renewal is unchanged.<br>No storage was added; the vault's layout is unchanged. | "M-A: …" (4 tests) |
 | M-B | **Confirmed, reproduced.** `setPricing` with balances open panicked 0x32; a member re-attested to NY before NY's products launched panicked 0x11. Either bricks every repayment. | **Fixed.**<br>- Each member records which accumulator every snapshot was taken from (`snapBasis`, one slot from the gap).<br>- If a tier's basis has changed since its snapshot, nothing is charged for that interval and the next touch re-snapshots. If the ceiling applies but has no snapshot, unsecured carry for that interval is zero. Both errors are in the member's favour.<br>- Accumulator differences saturate at zero.<br>- `setPricing` and `TermIssuer.setRateSchedule` cannot point at a different schedule or ceiling product once one is set. A schedule change is an in-place RateSchedule upgrade behind the timelock. | "M-B: …" (3 tests); `AccrualInvariants` (state move and product launch mid-run) |
 | M-C | **Confirmed by reading** (not run): `hasDefaulted` is never cleared, `openLine` does not refuse a past default, and `liquidate` accepts `hasDefaulted`. | Decision (section 3) | — |
 | M-D | **Confirmed, reproduced.** $3,000 of Clear Cash under a 20% annual cap accrued $608.33 in 365 days. | **Fixed.**<br>- New `RateSchedule.termChargeFor` scales the list rate and the graduated cap by 365/360 (section 12.9: the monthly rate per 30-day cycle, unchanged), then bounds the result by `annualCapBps` a year whenever the plan or the member's aggregate is at or above the large-loan threshold.<br>- The quoted rate for a large loan is clamped to `annualCapBps × 30 / 365` per cycle, so the schedule and the disclosure stay under the cap too. That is 164 bps, not 166, at 20%. | "M-D: …" (2 tests); `AccrualInvariants` (b) |
@@ -183,7 +183,11 @@ Each item has options, a recommendation and its effect. Nothing here was changed
 
 **Results:**
 - At 60 steps during development, every seed held, with no breaks.
-- At the default 300 steps in the full suite: __FUZZ300__.
+- At the default 300 steps, in the full suite, every seed of both new specs held with no break:
+  - the accrual fuzz measured 900 revolving intervals and 617–716 plan intervals per seed, over 9–12 plans each;
+  - the Deed fuzz minted 44–49 deeds, burned 23–29 and attempted 34 thefts per seed.
+- The original `CreditInvariants` seeds at 300 steps show only Phase 1's justified drift: (i-b) empty in every seed, and (ii) only "refund up" (with seed 2's "repayment down" as that residual is paid).
+- **A finding about the suite, fixed.** The accrual fuzz moves the chain's clock by decades, and Hardhat runs every test file on one chain. On the first full run, three BurnerBond tests that ran later failed `BondVaultMaturityOutOfRange`, because the clock was past 2106. Both new fuzz specs now snapshot the chain before each seed and revert after it.
 - The accrual fuzz measured every interval it ran: about 180 revolving and 90–140 plan intervals per seed at 60 steps.
 
 ## 5. Step 4: Slither
@@ -221,7 +225,25 @@ The recommendation is still a fresh credit deployment.
 
 **Sizes.** Production build (`npx hardhat compile --force`, revert strings stripped). EIP-170 caps runtime at 24,576 bytes and EIP-3860 caps creation code at 49,152.
 
-__SIZES__
+Every contract is within both limits. The closest, and every contract changed here:
+
+| Contract | Runtime | Headroom | Creation code | Runtime in the Phase 2b/2c reports |
+|---|---|---|---|---|
+| Subdivide (unchanged) | 24,574 | 2 | 24,711 | 24,574 |
+| MetadataRenderer (unchanged) | 24,493 | 83 | 24,630 | 24,493 |
+| BurnerBond (unchanged) | 24,168 | 408 | 24,278 | 24,168 |
+| TermIssuerExtension | 23,815 | 761 | 23,952 | 23,595 |
+| RevolvingIssuer | 23,507 | 1,069 | 24,232 | 23,599 |
+| TermIssuer | 21,567 | 3,009 | 22,250 | 21,488 |
+| Liquidator | 20,608 | 3,968 | 20,745 | 20,432 |
+| RevolvingIssuerExtension | 20,335 | 4,241 | 20,472 | 20,467 |
+| RevolvingIssuerCycles | 19,393 | 5,183 | 19,447 | 19,553 |
+| TermIssuerOrigination | 17,067 | 7,509 | 17,204 | |
+| ESADepositVault | 14,565 | 10,011 | 14,702 | |
+| ClearUSDUpgradeable | 14,026 | 10,550 | 14,266 | |
+| RateSchedule | 8,902 | 15,674 | 9,039 | |
+
+The largest creation code is still BurnerBondFactory's, at 46,956 bytes (unchanged).
 
 **Storage** (solc storage layouts, slot by slot, against `dev`):
 - **RevolvingIssuer:** `snapBasis` appended at slot 292; `__gap` 11 → 10; still ends at slot 302.
@@ -247,13 +269,13 @@ Bonds and LendingPool can follow. The decisions in section 3 should be settled f
 
 - **Tests.**
   - Before (`dev` at `8bd2f75`, Phase 2c's report): 962 passing.
-  - After: __FULLSUITE__.
+  - After: **986 passing, 0 failing** (`KEEP_REVERT_STRINGS=true npx hardhat test --no-compile`, every fuzz at its default 300 steps). That is 962 + 24 new.
   - New in this phase:
     - `rereview/BlindReview.spec.ts`: 19 tests;
     - `rereview/AccrualInvariants.spec.ts`: 3 seeds;
     - `rereview/DeedInvariants.spec.ts`: 2 seeds.
-- **Generated files.** __GENERATED__
-- **`npx turbo run typecheck test --affected`:** __TURBO__
+- **Generated files.** Fingerprints (`packages/command-types/src/chain/code.json`) regenerated from the production build; `code-fingerprints.mjs --check` and `contract-reference.mjs --check` pass (the contract reference describes what is deployed, so no page changed); `check-doc-links.mjs`: 195 files, no broken links.
+- **`npx turbo run typecheck test --affected`** (Node 22, bun): 32 of 32 tasks passed.
 
 ## 9. Apps and API follow-up
 
