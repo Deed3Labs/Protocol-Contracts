@@ -18,7 +18,7 @@ Source: [`contracts/peripherals/RevolvingIssuer.sol`](../../../contracts/periphe
 | `initialize(address _stableCredit, address _carryTreasury)` | Once, when the proxy is initialised |  |
 | `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)`, `notInActivePeriod(member)` |
 | `materialiseCarry(address member)` | Anyone |  |
-| `openLine(address member, uint256[] capacities, uint256 periodLength, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)`, `notInActivePeriod(member)` |
+| `openLine(address member, uint256[] capacities, uint256 periodLength, uint256 graceLength)` | Anyone |  |
 | `pausePeriodOf(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
 | `renounceOwnership()` | The owner |  |
 | `repayCardSpend(bytes32 ref, address member, uint256 amount)` | Anyone |  |

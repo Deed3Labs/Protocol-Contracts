@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { pledgeSigned } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -93,7 +94,7 @@ describe("Liquidator", function () {
     await ctx.usdc.mint(ctx.member.address, amount);
     await ctx.usdc.connect(ctx.member).approve(await vault.getAddress(), amount);
     await vault.connect(ctx.member).deposit(await ctx.usdc.getAddress(), amount, ctx.member.address);
-    await registry.pledge(ctx.member.address, SAVINGS, amount);
+    await pledgeSigned(registry, ctx.member.address, SAVINGS, amount);
   }
 
   async function openLine(savingsCap: bigint, incomeCap: bigint, periodLength: number) {

@@ -117,6 +117,12 @@ describe("AUDIT deed: metadata integrity", function () {
     // Only the holder moves the deed to another validator, and that resets validation
     await expect(deed.connect(operator2).reassignValidator(id, await v2.getAddress())).to.be.revertedWith("Not deed owner");
     await deed.connect(alice).reassignValidator(id, await v2.getAddress());
+    // Phase 4b (re-review M-F): on a trust deed the change waits out the delay, and v1 stays the
+    // validator meanwhile; the holder completes it afterwards.
+    expect(await deed.getValidationStatus(id)).to.deep.equal([true, v1]);
+    await ethers.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+    await ethers.provider.send("evm_mine", []);
+    await deed.connect(alice).completeValidatorReassignment(id);
     expect(await deed.getValidationStatus(id)).to.deep.equal([false, await v2.getAddress()]);
     // and now v1 is the outsider
     await expect(ctx.validator.validateDeed(id)).to.be.revertedWithCustomError(deed, "NotDeedValidator");

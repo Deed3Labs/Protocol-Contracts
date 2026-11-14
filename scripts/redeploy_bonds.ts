@@ -256,7 +256,18 @@ async function rehearse(signer: any, vault: any, deposit: any, collection: any, 
   await (await usdc.approve(oldDeposit, face)).wait();
   const oldSells = await old.makeDeposit(USDC, face, maturity, 0n).then(() => true, () => false);
   check(!oldSells, "the old deposit contract can no longer sell");
-  await (await registry.pledgeItem(signer.address, BOND, id)).wait();
+  // Re-review L-I: a pledge carries the member's EIP-712 signature. Here the signer is both the bond's
+  // holder and the operator submitting it.
+  const deadline = BigInt((await ethers.provider.getBlock("latest"))!.timestamp) + 3600n;
+  const pledgeSignature = await signer.signTypedData(
+    { name: "Clear CollateralRegistry", version: "1", chainId: (await ethers.provider.getNetwork()).chainId, verifyingContract: await registry.getAddress() },
+    { PledgeItem: [
+      { name: "member", type: "address" }, { name: "kind", type: "bytes32" }, { name: "itemId", type: "uint256" },
+      { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" },
+    ] },
+    { member: signer.address, kind: BOND, itemId: id, nonce: await registry.pledgeNonces(signer.address), deadline }
+  );
+  await (await registry.pledgeItem(signer.address, BOND, id, deadline, pledgeSignature)).wait();
   check((await registry.collateralValueOf(signer.address, BOND)) > 0n, "a new bond pledges and is valued");
 }
 

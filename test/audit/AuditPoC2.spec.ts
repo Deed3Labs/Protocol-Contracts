@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { pledgeSigned } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -49,7 +50,7 @@ describe("AUDIT PoC 2 — savings-backed credit without savings", function () {
     const m = ctx.member;
     await clrusd.mint(m.address, 3_000n * ONE_USDC);
     await revolving.connect(ctx.operator).openLine(m.address, [0n], 0, CYCLE);
-    await registry.pledge(m.address, SAVINGS, 3_000n * ONE_USDC);
+    await pledgeSigned(registry, m.address, SAVINGS, 3_000n * ONE_USDC);
     await limits.pushCapacities(m.address);
     expect(await revolving.capacityOf(m.address, 0)).to.equal(3_000n * ONE_USDC);
 
