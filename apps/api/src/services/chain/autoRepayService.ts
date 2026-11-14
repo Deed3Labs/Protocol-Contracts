@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import { getPayPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainProvider, writesAs } from './provider.js';
-import { ensureAutoRepayTables } from '../deposits/depositReceiptService.js';
+import { AUTO_CLEAR_SOURCE, ensureAutoRepayTables } from '../deposits/depositReceiptService.js';
 import { recordUsdcRepayment } from './usdcRepaymentService.js';
 import { decodeChainError } from './chainErrors.js';
 import { notificationStore } from '../notificationStore.js';
@@ -10,6 +10,10 @@ import { alertOps } from '../opsAlert.js';
 
 /*
  * Auto-clear (Phase 2b, section 12.2 as replaced) — "there is no pay button".
+ *
+ * Only on Spendable deposits (owner's option 1, `depositApplication`): a fiat deposit at the partner
+ * bank is earmarked; a USDC (Bridge) deposit never is, because that USDC is the member's own and the
+ * settler would be paying their debt for them. The sweep pays only `source = 'spendable'` earmarks.
  *
  * A member who switched it on (`RevolvingIssuer.setAutoClear(on, scope)`, or their `AutoClear`
  * signature at onboarding) has what they owe cleared from a deposit as it lands, dearest tier first,
@@ -186,8 +190,20 @@ export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
   const pool = getPayPool();
   if (!pool || !settlerKey()) return [];
   await ensureAutoRepayTables(pool);
+  /*
+   * Only earmarks from Spendable deposits (fiat at the partner bank) are cleared with the settler's
+   * cash. One from anywhere else -- a USDC (Bridge) deposit earmarked before this rule -- is the
+   * member's own money in their own wallet: it is released, never paid by the settler.
+   */
+  const released = await pool.query(
+    `UPDATE auto_repay_due SET due_cents = 0, updated_at = now()
+      WHERE due_cents > 0 AND source IS DISTINCT FROM '${AUTO_CLEAR_SOURCE}'`,
+  );
+  if (released.rowCount) console.log(`[auto-clear] released ${released.rowCount} earmark(s) not from a Spendable deposit`);
   const { rows } = await pool.query<{ wallet: string; due_cents: string }>(
-    `SELECT wallet, due_cents FROM auto_repay_due WHERE due_cents > 0 ORDER BY updated_at LIMIT $1`,
+    `SELECT wallet, due_cents FROM auto_repay_due
+      WHERE due_cents > 0 AND source = '${AUTO_CLEAR_SOURCE}'
+      ORDER BY updated_at LIMIT $1`,
     [limit],
   );
   if (!rows.length) return [];

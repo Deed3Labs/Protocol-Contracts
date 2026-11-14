@@ -57,7 +57,7 @@ export default function PermissionsPanel({
               ) : autoRepay?.pausedForEveryone ? (
                 'Paused across Clear for now. Nothing is cleared automatically.'
               ) : (
-                'What you owe is cleared from a deposit first, the rest is yours to spend'
+                'What you owe is cleared first from bank deposits to Spendable, the rest is yours to spend. USDC deposits are never touched'
               )
             }
             trailing={
@@ -83,7 +83,13 @@ export default function PermissionsPanel({
           {autoRepay?.clearNow && (
             <TwoLineRow
               title={autoRepay.clearNow.done ?? `Clear $${autoRepay.clearNow.amount.toFixed(2)} now?`}
-              detail={autoRepay.clearNow.done ? 'From your cash. Your card limit is free again.' : 'Auto-clear is off, so this waits for you. One tap, from your cash.'}
+              detail={
+                autoRepay.clearNow.done
+                  ? 'From your cash. Your card limit is free again.'
+                  : autoRepay.enabled
+                    ? 'Auto-clear waits for a bank deposit to Spendable. USDC deposits stay yours: one tap clears from them.'
+                    : 'Auto-clear is off, so this waits for you. One tap, from your cash.'
+              }
               trailing={
                 autoRepay.clearNow.done ? null : (
                   <RowBtn disabled={autoRepay.busy} onClick={autoRepay.clearNow.onClear}>

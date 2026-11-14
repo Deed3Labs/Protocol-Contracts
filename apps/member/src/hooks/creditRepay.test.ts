@@ -68,7 +68,9 @@ describe('automatic repayment from USDC deposits', () => {
   test('scope, "Clear $X now?" when off, and the Savings draw allowance are on the same page', () => {
     expect(panel).toContain("autoRepay.scope === 1 ? 'Everything you owe, dearest first' : 'Income-backed credit and Boost only'");
     expect(panel).toContain('`Clear $${autoRepay.clearNow.amount.toFixed(2)} now?`');
-    expect(autoHook).toContain('clearNow: !enabled && owedCents && owedCents > 0');
+    // Offered with auto-clear on too: a USDC deposit never auto-clears (option 1).
+    expect(autoHook).toContain('clearNow: owedCents && owedCents > 0');
+    expect(panel).toContain('USDC deposits stay yours: one tap clears from them.');
     // The one-tap clear is a Repay the member signs: their own wallet, not the settler.
     expect(autoHook).toContain('void repay(owedCents / 100)');
     expect(panel).toContain('Card spending from Savings');

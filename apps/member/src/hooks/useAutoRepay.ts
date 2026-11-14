@@ -18,8 +18,8 @@ export interface AutoRepay {
   /** Auto-clear is switched off across Clear by the governed switch. */
   pausedForEveryone?: boolean;
   /**
-   * With auto-clear off: what is owed within the chosen scope, in dollars, for a one-tap
-   * "Clear $X now?". Null when nothing is owed or it could not be read.
+   * What is owed within the chosen scope, in dollars, for a one-tap "Clear $X now?" (a Repay the
+   * member signs). Null when nothing is owed or it could not be read.
    */
   clearNow?: { amount: number; onClear: () => void; done: string | null } | null;
   /** Card spending against Savings (12.7): what may still be drawn, in dollars; null when unread. */
@@ -35,7 +35,10 @@ export interface AutoRepay {
  * never swept), then asks the server to record it; a server that has not seen the chain catch up
  * says so rather than pretending.
  *
- * Off, it offers a one-tap "Clear $X now?": a Repay the member signs themselves.
+ * Auto-clear runs only on bank deposits to Spendable (owner's option 1): Clear's settler pays the
+ * clearing, which is only right when the dollars arrived at Clear's partner bank. A USDC deposit
+ * lands in the member's own wallet and is never swept, so whenever something is owed this also
+ * offers a one-tap "Clear $X now?": a Repay the member signs themselves, from their own USDC.
  *
  * Also the Savings draw allowance (12.7): how much card spending may draw against Savings, set or
  * revoked to 0 by the member's own call.
@@ -139,7 +142,10 @@ export function useAutoRepay(): AutoRepay {
     scope,
     onScopeChange,
     pausedForEveryone: paused,
-    clearNow: !enabled && owedCents && owedCents > 0 ? { amount: owedCents / 100, onClear, done: cleared } : cleared ? { amount: 0, onClear, done: cleared } : null,
+    // Offered whenever something in scope is owed: with auto-clear off, and also with it on, because
+    // only a bank deposit to Spendable auto-clears (option 1). A USDC deposit stays the member's, and
+    // this is how they clear from it themselves.
+    clearNow: owedCents && owedCents > 0 ? { amount: owedCents / 100, onClear, done: cleared } : cleared ? { amount: 0, onClear, done: cleared } : null,
     savingsAllowance: {
       amount: allowanceCents === null || allowanceCents < 0 ? null : allowanceCents / 100,
       unlimited: allowanceCents === -1,

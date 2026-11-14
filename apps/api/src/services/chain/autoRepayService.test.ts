@@ -6,15 +6,16 @@ const deposits = readFileSync(new URL('../deposits/depositReceiptService.ts', im
 const route = readFileSync(new URL('../../routes/credit.ts', import.meta.url), 'utf8');
 const sweeper = readFileSync(new URL('../../jobs/cardSettlementSweeper.ts', import.meta.url), 'utf8');
 
-describe('a USDC deposit repays what is owed first, then the rest is theirs', () => {
+describe('a Spendable deposit clears what is owed first, then the rest is theirs (option 1)', () => {
   test('owed amount (carry and tiers) is earmarked, and auto-save only sees the rest', () => {
-    expect(deposits).toContain('const owed = totalOutstanding(outstanding) + (await readCarryOwed(client, wallet));');
-    expect(deposits).toContain('earmarkCents = Math.min(amount, owed);');
+    expect(deposits).toContain('owedCents: spendable ? totalOutstanding(outstanding) + carryOwed : 0,');
+    expect(deposits).toContain('earmarkCents: Math.max(0, Math.min(input.availableCents, input.owedCents))');
     expect(deposits).toContain('plan.remainingCents = Math.max(0, plan.remainingCents - earmarkCents);');
   });
 
-  test('only for a member who switched it on; ACH keeps settling on arrival as before', () => {
-    expect(deposits).toContain("if (receipt.rail !== 'lithic_ach' && (await autoRepayEnabledFor(client, wallet)))");
+  test('only Spendable deposits, only for a member who switched it on; Bridge never', () => {
+    expect(deposits).toContain("new Set<DepositRail>(['lithic_ach'])");
+    expect(deposits).toContain('const autoClearOn = spendable && (await autoRepayEnabledFor(client, wallet));');
   });
 });
 
