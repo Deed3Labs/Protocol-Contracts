@@ -60,7 +60,7 @@ describe("COMPLIANCE addendum 12.10: PayoutPool deadline order (acceptance 27)",
     yieldLender = await upgrades.deployProxy(LendingPool, [ctx.admin.address, await ctx.usdc.getAddress(), "Clear Yield", "cYLD"], { kind: "uups" });
     await yieldLender.grantRole(await yieldLender.BORROWER_ROLE(), await pool.getAddress());
     await yieldLender.setBorrower(await pool.getAddress(), await pool.getAddress(), ethers.MaxUint256);
-    await pool.setLenders(await yieldLender.getAddress(), ethers.ZeroAddress);
+    await pool.setYieldPool(await yieldLender.getAddress());
 
     // Two older net-30 claims are queued first, then a newer net-14 claim.
     await sale(net30, 2_000n * ONE_USDC);

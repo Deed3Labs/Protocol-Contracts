@@ -1,124 +1,20 @@
-import { saveDeployment, getDeployment } from "./helpers";
+import { runAssuranceDeploy } from "./assurance_timelock_handover";
 
 /**
- * Deploys the AssurancePool contract (upgradeable)
- * 
- * This contract:
- * - Manages primary, buffer, and excess reserves
- * - Handles multi-token deposits and withdrawals
- * - Maintains target Reserve-to-Debt (RTD) ratio
- * - Integrates with AssuranceOracle for pricing
+ * The co-op's AssurancePool (compliance section 13).
+ *
+ * The Phase 1 pool this script used to deploy (primary, buffer and excess reserves, an oracle
+ * rebalancing them toward a target RTD, wired into the ledger) is retired, and so is
+ * AssuranceOracle (the old 09). The new pool is a separate contract with a new layout, governed by
+ * its own 7-day timelock from its first block, and no credit, savings, payout or bond contract holds
+ * its address. `assurance_timelock_handover.ts` does the work; this runs it.
+ *
+ *   BOARD_SAFE=0x... ASSURANCE_SIGNERS=0xA,0xB ASSURANCE_DEPLOY=1 \
+ *     npx hardhat run deploy/08_deploy_AssurancePool.ts --network base-sepolia
  */
-async function main() {
-  // Get the hardhat runtime environment
-  const hre = require("hardhat");
-  
-  // Get the signer from hardhat
-  const [deployer] = await hre.ethers.getSigners();
-  console.log("Deploying contracts with the account:", deployer.address);
-
-  // Get the network
-  const network = await hre.ethers.provider.getNetwork();
-  console.log("Deploying to network:", network.name, "(chainId:", network.chainId, ")");
-
-  // Network-specific configuration
-  let reserveTokenAddress: string;
-  let stableCreditAddress: string;
-
-  if (network.chainId === 84532n) {
-    // Base Sepolia
-    reserveTokenAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // USDC on Base Sepolia
-  } else if (network.chainId === 8453n) {
-    // Base Mainnet
-    reserveTokenAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
-  } else {
-    throw new Error(`Unsupported network: ${network.name} (${network.chainId})`);
-  }
-
-  // The ledger this pool assures, read from what is actually deployed. This used to be a zero
-  // address with a TODO beside it, which deploys perfectly and then reverts on the first
-  // reimbursement -- a pool assuring nothing, discovered at the worst moment.
-  const ledger = getDeployment(network.name, "ClearCredit");
-  if (!ledger) {
-    throw new Error(
-      "No ClearCredit on this network. Run deploy/20_deploy_CreditCore.ts first — the pool " +
-        "reserves against a ledger and cannot be pointed at one that does not exist."
-    );
-  }
-  stableCreditAddress = ledger.address;
-
-  console.log("\nDeployment parameters:");
-  console.log(`- Reserve Token: ${reserveTokenAddress}`);
-  console.log(`- StableCredit: ${stableCreditAddress}`);
-
-  // Deploy AssurancePool as an upgradeable contract
-  console.log("\nDeploying AssurancePool (upgradeable)...");
-  const AssurancePool = await hre.ethers.getContractFactory("AssurancePool");
-  
-  const assurancePool = await hre.upgrades.deployProxy(
-    AssurancePool,
-    [stableCreditAddress, reserveTokenAddress],
-    {
-      initializer: "initialize",
-      kind: "uups"
-    }
-  );
-  
-  await assurancePool.waitForDeployment();
-  const assurancePoolAddress = await assurancePool.getAddress();
-  console.log("✓ AssurancePool deployed to:", assurancePoolAddress);
-
-  // Get the implementation address (for verification)
-  const implementationAddress = await hre.upgrades.erc1967.getImplementationAddress(assurancePoolAddress);
-  console.log("✓ Implementation address:", implementationAddress);
-
-  // Set token addresses for withdrawal priority
-  console.log("\nConfiguring token addresses...");
-  const usdcAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-  const usdtAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-  const daiAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-  
-  await assurancePool.setTokenAddresses(usdcAddress, usdtAddress, daiAddress);
-  console.log("✓ Token addresses configured");
-
-  // Verify deployment
-  console.log("\nVerifying deployment...");
-  const reserveToken = await assurancePool.reserveToken();
-  const primaryBalance = await assurancePool.primaryBalance();
-  const bufferBalance = await assurancePool.bufferBalance();
-  const excessBalance = await assurancePool.excessBalance();
-  
-  console.log(`- Reserve Token: ${reserveToken}`);
-  console.log(`- Primary Balance: ${hre.ethers.formatUnits(primaryBalance, 6)} USDC`);
-  console.log(`- Buffer Balance: ${hre.ethers.formatUnits(bufferBalance, 6)} USDC`);
-  console.log(`- Excess Balance: ${hre.ethers.formatUnits(excessBalance, 6)} USDC`);
-
-  // Save deployment information
-  const assurancePoolAbi = JSON.parse(assurancePool.interface.formatJson());
-  saveDeployment(
-    network.name,
-    "AssurancePool",
-    assurancePoolAddress,
-    assurancePoolAbi
-  );
-  console.log("\n✓ Deployment information saved for AssurancePool");
-
-  console.log("\n⚠️  IMPORTANT: Remember to:");
-  console.log("1. Set the AssuranceOracle address using setAssuranceOracle() (deploy 09_deploy_AssuranceOracle.ts next)");
-  console.log("2. Update StableCredit address if using placeholder");
-  console.log("3. Grant necessary roles for pool management");
-
-  return {
-    assurancePool: assurancePoolAddress,
-    implementation: implementationAddress,
-    reserveToken: reserveTokenAddress,
-  };
-}
-
-main()
+runAssuranceDeploy()
   .then(() => process.exit(0))
   .catch((error) => {
     console.error(error);
     process.exit(1);
   });
-

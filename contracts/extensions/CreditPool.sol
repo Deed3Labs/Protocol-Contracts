@@ -66,7 +66,7 @@ contract CreditPool is ICreditPool, PausableUpgradeable {
         }
         // service credits
         if (amountToService > 0) {
-            stableCredit.assurancePool().reserveToken().transfer(
+            stableCredit.reserveToken().transfer(
                 _msgSender(), convertCreditsToTokensWithDiscount(amountToService)
             );
         }
@@ -90,7 +90,7 @@ contract CreditPool is ICreditPool, PausableUpgradeable {
         // update withdrawn credits
         creditsWithdrawn += creditAmount;
         // collect reserve tokens from caller
-        stableCredit.assurancePool().reserveToken().safeTransferFrom(
+        stableCredit.reserveToken().safeTransferFrom(
             _msgSender(), address(this), convertCreditsToTokensWithDiscount(creditAmount)
         );
         // transfer caller credits
@@ -115,7 +115,7 @@ contract CreditPool is ICreditPool, PausableUpgradeable {
     /// @notice Enables members to withdraw their reserve token balance from the credit pool.
     function withdrawBalance() external {
         require(balance[_msgSender()] > 0, "CreditPool: no balance to withdraw");
-        stableCredit.assurancePool().reserveToken().transfer(_msgSender(), balance[_msgSender()]);
+        stableCredit.reserveToken().transfer(_msgSender(), balance[_msgSender()]);
         balance[_msgSender()] = 0;
         emit BalanceWithdrawn(_msgSender(), balance[_msgSender()]);
     }
@@ -163,7 +163,7 @@ contract CreditPool is ICreditPool, PausableUpgradeable {
         returns (uint256)
     {
         uint256 tokenAmount =
-            stableCredit.assurancePool().convertStableCreditToReserveToken(creditAmount);
+            stableCredit.convertStableCreditToReserveToken(creditAmount);
         uint256 scalingFactor = 1 ether;
         return tokenAmount * (scalingFactor - discountRate) / scalingFactor;
     }

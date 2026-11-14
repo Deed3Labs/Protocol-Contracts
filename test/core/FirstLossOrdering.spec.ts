@@ -1,23 +1,30 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { deployAssurancePool, fund, balances, TAG, BACKSTOP, AssuranceSetup } from "../helpers/assurance";
 
 const ONE_USDC = 10n ** 6n;
 
 // The waterfall has an order, and the order is the whole point. Depositors in the LendingPool earn
-// the return on unsecured lending, so they carry its first loss; the AssurancePool is what stands
-// behind them once they are exhausted. It is an ordering fact rather than a reserve arrangement,
-// which is why the AssurancePool never registers the pool as a reserve source.
+// the return on unsecured lending, so they carry its first loss. What they cannot take is Lending
+// Co.'s charge-off, and the co-op's Credit Backstop stands behind THAT under the I-11 agreement --
+// reached only by Lending Co.'s own draw request, approved by one co-op signer and released by
+// another (section 13). It is an ordering fact, not a wire between the two pools: neither holds
+// the other's address, and nothing in the LendingPool can move a compartment.
 describe("first loss ordering", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
-  let pool: any;
-  let depositor: any, borrower: any, instrument: any;
+  let pool: any, a: AssuranceSetup;
+  let depositor: any, borrower: any;
 
   beforeEach(async function () {
     ctx = await deployPhase0Network();
     const signers = await ethers.getSigners();
     [depositor, borrower] = [signers[8], signers[9]];
-    instrument = ctx.instrument;
+
+    // The co-op's AssurancePool standing behind Lending Co. Set up first: its governance waits
+    // out the timelock, and the loan below should not age through that.
+    a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry);
+    await fund(a, ctx.usdc, a.lendingCo, TAG.RECOVERY, 2_000n * ONE_USDC);
 
     const LendingPool = await ethers.getContractFactory("LendingPool");
     pool = await upgrades.deployProxy(
@@ -34,11 +41,6 @@ describe("first loss ordering", function () {
     await ctx.usdc.connect(depositor).approve(await pool.getAddress(), 10_000n * ONE_USDC);
     await pool.connect(depositor).deposit(1_000n * ONE_USDC, depositor.address);
     await pool.connect(borrower).borrow(1_000n * ONE_USDC, borrower.address);
-
-    // The AssurancePool standing behind it.
-    await ctx.usdc.mint(ctx.admin.address, 5_000n * ONE_USDC);
-    await ctx.usdc.approve(await ctx.assurancePool.getAddress(), 5_000n * ONE_USDC);
-    await ctx.assurancePool.depositIntoPrimaryReserve(2_000n * ONE_USDC);
   });
 
   /// The waterfall: offer the loss to first loss, and escalate only what it could not take.
@@ -49,56 +51,63 @@ describe("first loss ordering", function () {
   }
 
   it("takes a loss the pool can cover without touching the AssurancePool", async function () {
-    const reserveBefore = await ctx.assurancePool.reserveBalance();
+    const before = await balances(a.pool);
 
     const { absorbed, uncovered } = await applyLoss(400n * ONE_USDC);
 
     expect(absorbed).to.equal(400n * ONE_USDC);
     expect(uncovered).to.equal(0n);
-    expect(await ctx.assurancePool.reserveBalance()).to.equal(reserveBefore);
+    expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
     // The depositors wear it.
     expect(await pool.totalAssets()).to.equal(600n * ONE_USDC);
   });
 
-  it("escalates only what first loss could not reach", async function () {
+  it("escalates only what first loss could not reach, and only through Lending Co.'s draw", async function () {
+    const before = await balances(a.pool);
     const { absorbed, uncovered } = await applyLoss(1_500n * ONE_USDC);
 
     expect(absorbed).to.equal(1_000n * ONE_USDC);
     expect(uncovered).to.equal(500n * ONE_USDC);
-    // The AssurancePool is asked for the remainder, and only the remainder.
-    expect(uncovered).to.be.lessThan(1_500n * ONE_USDC);
+    // Reporting the loss moves nothing in the pool.
+    expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
+
+    // The remainder is Lending Co.'s charge-off: it asks, one signer approves, another releases.
+    await a.pool.connect(a.signerA).setFloorInputs(0n, 10_000n * ONE_USDC, 0n, ethers.id("m1"));
+    await a.pool.connect(a.signerB).setFloorInputs(0n, 10_000n * ONE_USDC, 0n, ethers.id("m1"));
+    await a.pool.connect(a.drawer).requestDraw(1, uncovered, ethers.id("charge-off"));
+    await a.pool.connect(a.signerA).approveDraw(0, uncovered);
+    await a.pool.connect(a.signerB).releaseDraw(0);
+    expect(await ctx.usdc.balanceOf(a.lossReserve.address)).to.equal(500n * ONE_USDC);
+    expect(await a.pool.balanceOf(BACKSTOP)).to.equal(1_500n * ONE_USDC);
   });
 
-  it("exhausts the pool before the reserve moves at all", async function () {
-    const reserveBefore = await ctx.assurancePool.reserveBalance();
+  it("exhausts the pool before anything reaches the next layer", async function () {
+    const before = await balances(a.pool);
 
     await applyLoss(1_000n * ONE_USDC);
     expect(await pool.totalBorrowed()).to.equal(0n);
-    expect(await ctx.assurancePool.reserveBalance()).to.equal(reserveBefore);
+    expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
 
-    // Only now does anything reach the next layer.
+    // Only now is anything left over.
     const { absorbed, uncovered } = await applyLoss(300n * ONE_USDC);
     expect(absorbed).to.equal(0n);
     expect(uncovered).to.equal(300n * ONE_USDC);
   });
 
-  it("keeps the two pools apart: neither is a reserve source for the other", async function () {
-    // RTD reads the AssurancePool and nothing else. A healthy LendingPool must not make the
-    // reserve look deeper than it is, or the reserve would be counting money that is already
-    // committed to absorbing a different loss.
+  it("keeps the two pools apart: neither counts the other's money", async function () {
+    // A healthy LendingPool must not make the backstop look deeper than it is, or it would be
+    // counting money already committed to absorbing a different loss.
     await ctx.usdc.mint(await pool.getAddress(), 5_000n * ONE_USDC);
 
-    const held = await ctx.assurancePool.heldReserveValue();
-    expect(await ctx.assurancePool.reserveBalance()).to.equal(2_000n * ONE_USDC);
-    expect(held).to.equal(2_000n * ONE_USDC);
+    expect(await a.pool.backstopBalance()).to.equal(2_000n * ONE_USDC);
+    expect((await balances(a.pool)).sum).to.equal(2_000n * ONE_USDC);
   });
 
-  it("does not let the AssurancePool refill the pool either", async function () {
-    // The AssurancePool's withdrawal path is gated to instruments, and the LendingPool draw is
-    // one of them -- but only once somebody wires it in, and never by default.
-    expect(await ctx.assurancePool.withdrawalCallers(await pool.getAddress())).to.equal(false);
-    await expect(
-      ctx.assurancePool.connect(ctx.admin).withdraw(1n * ONE_USDC)
-    ).to.be.revertedWithCustomError(ctx.assurancePool, "AssurancePoolUnauthorizedWithdrawal");
+  it("does not let the AssurancePool refill the pool either, nor the pool pay into it", async function () {
+    // Was: the reserve's withdrawal path is gated to instruments the admin names. The new pool has
+    // no withdrawal path at all, and refuses a deposit from a money-path contract.
+    expect(a.pool.interface.getFunction("withdraw", [1n])).to.equal(null);
+    await ctx.networkRegistry.listMoneyPath(await pool.getAddress(), ethers.encodeBytes32String("LENDING_POOL"));
+    expect(await ctx.networkRegistry.isMoneyPath(await pool.getAddress())).to.equal(true);
   });
 });

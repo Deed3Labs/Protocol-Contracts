@@ -87,7 +87,10 @@ describe('a fiat repayment comes off the chain too', () => {
 
   test('only fiat repayments count — USDC did not refill the float', () => {
     expect(service).toContain("AND NOT (direction = 'credit' AND event_type = 'credit_settlement' AND rail = 'chain')");
-    expect(deposits).toMatch(/if \(plan && receipt\.rail === 'lithic_ach'\) \{\s*void syncCardRepayment\(wallet\)/);
+    // Phase 2b: a deposit no longer books a fiat repayment, so it starts no netting; the line changes
+    // only through auto-clear's on-chain sweep or the member's own Clear (acceptance 19).
+    expect(deposits).not.toContain('void syncCardRepayment(wallet)');
+    expect(deposits).toContain("const plan = planSettlement(term.remainingCents, { boost: 0, income: 0, asset: 0, savings: 0 });");
   });
 
   test('a retry resumes under its own ref and asks the chain first', () => {
@@ -126,9 +129,9 @@ describe('carry is owed, paid, and cleared too', () => {
     expect(service).toMatch(/if \(!carryHeldElsewhere\) \{\s*if \(record\) await recordCarry/);
   });
 
-  test('a deposit pays carry before any principal', () => {
+  test('a settlement pays carry before any principal; auto-clear counts carry in what it earmarks', () => {
     expect(settlement).toMatch(/const carry = Math\.max\(0, Math\.round\(carryCents\)\);[\s\S]{0,120}settlements\.push\(\{ tier: 'carry'/);
-    expect(deposits).toContain('planSettlement(term.remainingCents, outstanding, await readCarryOwed(client, wallet))');
+    expect(deposits).toContain('owedCents: autoClearOn ? totalOutstanding(outstanding) + carryOwed : 0,');
   });
 });
 

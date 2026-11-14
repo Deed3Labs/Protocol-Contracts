@@ -169,8 +169,10 @@ export function moneyLive() {
     bvNeed: num(bvFig?.required),
     bvRule: bvFig ? `Due within ${bvFig.windowDays} days, or ${bvFig.floorPct}% of all owed` : 'What BondVault keeps back isn’t read yet',
     reserve: fig('money.reserve') ?? null,
-    // the AssurancePool's tiers as the chain has them: the RTD counts the primary reserve alone
-    pool: fig('money.rtd') ?? null,
+    // the AssurancePool as the chain has it (Phase 2c): its compartments, the Credit Backstop's floor and the
+    // coverage above it, and its draws. Read only: every pool action is two-person, from the signers' own wallets.
+    assurance: fig('money.assurance') ?? null,
+    pool: null,
     // the Ops Safe: its owners and how many must sign, once GET /safe has answered
     safe: null,
     signers: [],

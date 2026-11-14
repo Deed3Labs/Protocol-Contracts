@@ -32,8 +32,8 @@ export async function deployCore(opts: { fundPool?: bigint } = {}) {
 
   for (const issuer of [revolving, term]) {
     await ctx.networkRegistry.registerIssuer(
-      await issuer.getAddress(), await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+      await issuer.getAddress(), await ctx.stableCredit.getAddress()
+);
     await ctx.access.grantOperator(await issuer.getAddress());
   }
   for (const [name, rate] of TIERS) {

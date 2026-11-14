@@ -87,6 +87,24 @@ export const CHAIN_ERROR_FRAGMENTS = [
   // ClearUSD (CLRUSD), Phase 2: FRAUD_ROLE pauses one account, SECURITY_ROLE everyone; each lapses
   'error ClearUSDPaused(address holder, uint32 reason, uint64 until)',
   'error ClearUSDEncumbered(address holder, uint256 free, uint256 amount)',
+  // Liquidator, Phase 2b (12.5, 12.6, 12.8). `HoldReason` is an enum, so uint8 in the selector.
+  'error LiquidatorReentered()',
+  'error LiquidatorInvalidAddress()',
+  'error LiquidatorNotInDefault(address member, address issuer)',
+  'error LiquidatorNothingToSeize(address member)',
+  'error LiquidatorNotRealizable(address collateral, uint256 seized)',
+  'error LiquidatorUntrustedIssuer(address issuer)',
+  'error LiquidatorNotSavingsTier(uint256 tierId, bytes32 kind)',
+  'error LiquidatorOnHold(address member, uint8 reason, uint64 until)',
+  'error LiquidatorHoldExists(address member)',
+  'error LiquidatorNoHold(address member)',
+  'error LiquidatorSameSigner(address signer)',
+  'error LiquidatorBadParameter()',
+  'error LiquidatorNoExcess(address member)',
+  'error LiquidatorNoShortfall(address member)',
+  'error LiquidatorShortfallNoticed(address member)',
+  'error LiquidatorShortfallNotDue(address member, uint256 dueAt)',
+  'error LiquidatorBelowPresentValue(uint256 bondId, uint256 received, uint256 presentValue)',
   // PayoutPool
   'error PayoutPoolNotEligible(address holder)',
   'error PayoutPoolMerchantInactive(address merchant)',
@@ -301,6 +319,45 @@ export function describeCreditRefusal(decoded: DecodedChainError | null): string
       return 'Your signature did not match this change. Nothing changed. Try again to sign it afresh.';
     case 'RevolvingIssuerExtensionMismatch':
       return 'Clear’s credit line is being upgraded. Nothing changed. Try again later.';
+    default:
+      return null;
+  }
+}
+
+const HOLD_REASON_WORDS = ['none', 'bankruptcy', 'death', 'a billing dispute', 'a late default notice'];
+
+/**
+ * The Liquidator's refusals (Phase 2b), in words an operator can act on. Null when the error is not
+ * the Liquidator's.
+ */
+export function describeLiquidatorRefusal(decoded: DecodedChainError | null): string | null {
+  switch (decoded?.name) {
+    case 'LiquidatorOnHold':
+      return `A Liquidation Hold (${HOLD_REASON_WORDS[Number(decoded.args.reason)] ?? 'a hold'}) pauses enforcement ${until(decoded.args.until)}. Nothing was taken.`;
+    case 'LiquidatorSameSigner':
+      return 'This step needs a different HOLD_ROLE signer from the one who took the last step. Send it from the second person’s wallet.';
+    case 'LiquidatorHoldExists':
+      return 'This member already has an active hold. Renew or clear it instead.';
+    case 'LiquidatorNoHold':
+      return 'There is no hold in that state to act on: it was never proposed, is already confirmed, or has lapsed.';
+    case 'LiquidatorBadParameter':
+      return 'The hold’s reason, length or evidence is not allowed: the length must be within the reason’s maximum, and a lapsed hold needs new evidence.';
+    case 'LiquidatorNoExcess':
+      return 'Nothing is drawn above the halved limit any more. Nothing was taken.';
+    case 'LiquidatorNoShortfall':
+      return 'The member’s Earn pledge backs what is drawn against it. No shortfall to notice.';
+    case 'LiquidatorShortfallNoticed':
+      return 'A shortfall notice is already open for this member.';
+    case 'LiquidatorShortfallNotDue':
+      return `The shortfall can be settled once its wait has passed, ${until(decoded.args.dueAt)}.`;
+    case 'LiquidatorUntrustedIssuer':
+      return 'The Liquidator does not trust this issuer (setTrustedSavingsIssuer).';
+    case 'LiquidatorNothingToSeize':
+      return 'The member has no pledged pool shares or bonds to settle it from. Savings are never used for this.';
+    case 'LiquidatorBelowPresentValue':
+      return 'A bond would have redeemed below its present value, so it was not taken.';
+    case 'LiquidatorReentered':
+      return 'The Liquidator refused a re-entrant call. Nothing was taken.';
     default:
       return null;
   }

@@ -411,9 +411,17 @@ export async function sweepCardSettlements(limit = 25): Promise<SettlementSync[]
  * covers the common case of a member paying before a purchase has even settled: it settles, then it
  * is cleared on the next pass.
  *
- * Carry included. Carry accrued on the tiers is written into our ledger as it accrues (so a deposit
- * pays it, first) and measured on chain through the tiers' own figures, so a repayment that covers
- * carry clears carry too. The one exception is carry owed to a pool — see readCardDebt.
+ * Carry included. Carry accrued on the tiers is written into our ledger as it accrues and measured
+ * on chain through the tiers' own figures, so a repayment that covers carry clears carry too. The
+ * one exception is carry owed to a pool — see readCardDebt.
+ *
+ * Phase 2b (section 12.2 as replaced): a deposit no longer pays the line. With auto-clear OFF a
+ * Spendable deposit changes no credit position (acceptance 19), and with it ON the clearing happens
+ * on chain (`repayForMember`, the auto-clear sweep) and is booked from that transaction, on the
+ * `chain` rail. So nothing books a fiat repayment from a deposit any more, and this target-based
+ * netting acts only on fiat settlements already in the books from before. It is left running because
+ * the target is still right: with no fiat repayment booked, what should be on chain is everything
+ * owed, and it clears nothing.
  */
 
 const NETTING = 'card_repayment_netting';

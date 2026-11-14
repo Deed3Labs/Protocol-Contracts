@@ -2,22 +2,18 @@
 pragma solidity ^0.8.29;
 
 /// @title IExposureSource
-/// @notice Reports what the AssurancePool would actually pay if every member defaulted.
-/// @dev This is the denominator of RTD, and it is neither total credit outstanding nor unsecured
-/// credit. Total credit over-reserves, because a savings-backed position is covered by collateral
-/// already inside the network and seizable at par. Unsecured-only under-reserves, because
-/// asset-backed collateral has to be sold at an uncertain price and the pool covers the gap. See
-/// ExposureMath for the per-position rule.
+/// @notice Reports the credit exposure collateral does not cover: what a default would actually
+/// cost after savings and pledged assets are realized.
+/// @dev Section 13: the co-op's AssurancePool reads this as the covered book behind its Credit
+/// Backstop floor (`coveredBookPrincipal`). It is neither total credit outstanding nor every
+/// unsecured line. A savings-backed position contributes nothing, because the collateral is
+/// already inside the network and seizable at par; income-backed, Clear Boost and term-plan debt
+/// contribute in full; asset-backed collateral contributes the shortfall left after its haircut.
+/// See ExposureMath for the per-position rule.
 ///
-/// Nothing here is a reserve source. The numerator of RTD is the AssurancePool's own primary
-/// balance and nothing else -- no registry, no other contract address. This interface supplies
-/// the exposure being reserved against, which the pool cannot compute itself: it holds one signed
-/// balance per member and knows nothing about what backs it.
-///
-/// Phase 1's CollateralRegistry implements this by valuing what each member has pledged and
-/// applying the governed per-collateral-type haircuts. Until then the AssurancePool falls back to
-/// treating every credit as unsecured at full value, which over-reserves -- the conservative
-/// direction to be wrong in.
+/// The CollateralRegistry implements this from every issuer's `debtByKind`, valuing what each
+/// member has pledged with the governed per-collateral-type haircuts. The read is one-way: the
+/// pool asks the registry, and nothing on the credit side holds an address to call the pool.
 interface IExposureSource {
     /// @notice what the pool would pay across every position outstanding.
     /// @dev Denominated in stable credit, directly comparable to `IStableCredit.totalSupply()`,

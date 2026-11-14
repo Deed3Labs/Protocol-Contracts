@@ -16,7 +16,7 @@ Source: [`contracts/peripherals/NetworkRegistry.sol`](../../../contracts/periphe
 | `enrolMember(address member, address issuer)` | Anyone; acts on the caller's own account |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address admin)` | Once, when the proxy is initialised |  |
-| `registerIssuer(address issuer, address stableCredit, address assurancePool, address assuranceOracle)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `registerIssuer(address issuer, address stableCredit, address assurancePool, address assuranceOracle)` | Not in the current source |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |

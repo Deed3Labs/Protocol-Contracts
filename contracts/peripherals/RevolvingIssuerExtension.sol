@@ -228,7 +228,7 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         uint256 pay = principal < amount ? principal : amount;
         if (pay == 0) return;
 
-        IERC20Upgradeable reserve = stableCredit.assurancePool().reserveToken();
+        IERC20Upgradeable reserve = stableCredit.reserveToken();
         reserve.safeTransferFrom(_msgSender(), address(this), pay);
         reserve.forceApprove(address(stableCredit), pay);
         stableCredit.repayCreditBalanceFor(address(this), member, uint128(pay));

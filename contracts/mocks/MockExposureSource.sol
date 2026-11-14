@@ -2,7 +2,6 @@
 pragma solidity ^0.8.29;
 
 import "../core/interfaces/stable-credit/IExposureSource.sol";
-import "../core/interfaces/stable-credit/ITargetRTDSource.sol";
 import "../libraries/ExposureMath.sol";
 
 /// @notice Test-only stand-in for the Phase 1 CollateralRegistry.
@@ -28,6 +27,13 @@ contract MockExposureSource is IExposureSource {
         positions.push(Position(kind, debt, collateralValue, haircutBps));
     }
 
+    /// @notice a fixed exposure, for tests that only need the figure.
+    uint256 public fixedExposure;
+
+    function setFixedExposure(uint256 value) external {
+        fixedExposure = value;
+    }
+
     function clear() external {
         delete positions;
     }
@@ -37,25 +43,13 @@ contract MockExposureSource is IExposureSource {
     }
 
     function poolExposure() external view override returns (uint256 exposure) {
+        exposure = fixedExposure;
         for (uint256 i = 0; i < positions.length; i++) {
             Position storage p = positions[i];
             exposure += ExposureMath.positionExposure(
                 p.kind, p.debt, p.collateralValue, p.haircutBps
             );
         }
-    }
-}
-
-/// @notice Test-only stand-in for the risk model that will supply the target RTD.
-contract MockTargetRTDSource is ITargetRTDSource {
-    uint256 private _targetRTD;
-
-    function setTargetRTD(uint256 value) external {
-        _targetRTD = value;
-    }
-
-    function targetRTD() external view override returns (uint256) {
-        return _targetRTD;
     }
 }
 

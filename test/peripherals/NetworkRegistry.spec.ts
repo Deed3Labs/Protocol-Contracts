@@ -5,7 +5,7 @@ describe("NetworkRegistry", function () {
   let registry: any;
   let admin: any, operator: any, outsider: any, member: any, other: any;
   let revolving: any, term: any, partner: any;
-  let stableCredit: string, assurancePool: string, oracle: string;
+  let stableCredit: string;
 
   beforeEach(async function () {
     [admin, operator, outsider, member, other, revolving, term, partner] =
@@ -17,24 +17,24 @@ describe("NetworkRegistry", function () {
 
     // The issuers are EOAs here so they can call in as themselves.
     stableCredit = ethers.Wallet.createRandom().address;
-    assurancePool = ethers.Wallet.createRandom().address;
-    oracle = ethers.Wallet.createRandom().address;
   });
 
   async function register(issuer: any, credit: string = stableCredit) {
     await registry
       .connect(operator)
-      .registerIssuer(issuer.address, credit, assurancePool, oracle);
+      .registerIssuer(issuer.address, credit);
   }
 
   describe("issuer registration", function () {
+    // Section 13: an issuer is wired to its ledger and nothing else. The retired pool and oracle
+    // fields stay in the struct, at zero.
     it("resolves an issuer to its network", async function () {
       await register(revolving);
 
       const network = await registry.networkOf(revolving.address);
       expect(network.stableCredit).to.equal(stableCredit);
-      expect(network.assurancePool).to.equal(assurancePool);
-      expect(network.assuranceOracle).to.equal(oracle);
+      expect(network.assurancePool).to.equal(ethers.ZeroAddress);
+      expect(network.assuranceOracle).to.equal(ethers.ZeroAddress);
       expect(await registry.isIssuer(revolving.address)).to.equal(true);
     });
 
@@ -62,20 +62,48 @@ describe("NetworkRegistry", function () {
     it("rejects a zero address anywhere in the wiring", async function () {
       const z = ethers.ZeroAddress;
       for (const args of [
-        [z, stableCredit, assurancePool, oracle],
-        [revolving.address, z, assurancePool, oracle],
-        [revolving.address, stableCredit, z, oracle],
-        [revolving.address, stableCredit, assurancePool, z],
+        [z, stableCredit],
+        [revolving.address, z],
       ]) {
-        await expect(registry.connect(operator).registerIssuer(...(args as [string, string, string, string])))
+        await expect(registry.connect(operator).registerIssuer(...(args as [string, string])))
           .to.be.revertedWithCustomError(registry, "NetworkRegistryInvalidAddress");
       }
     });
 
     it("is operator gated", async function () {
       await expect(
-        registry.connect(outsider).registerIssuer(revolving.address, stableCredit, assurancePool, oracle)
+        registry.connect(outsider).registerIssuer(revolving.address, stableCredit)
       ).to.be.reverted;
+    });
+  });
+
+  // Section 13c: the AssurancePool refuses a deposit from any credit issuer or money-path
+  // contract, and reads which ones they are from here.
+  describe("the money-path list", function () {
+    const PAYOUT = ethers.encodeBytes32String("PAYOUT_POOL");
+
+    it("counts every registered issuer, and every listed contract", async function () {
+      expect(await registry.isMoneyPath(revolving.address)).to.equal(false);
+      await register(revolving);
+      expect(await registry.isMoneyPath(revolving.address)).to.equal(true);
+
+      await expect(registry.listMoneyPath(other.address, PAYOUT))
+        .to.emit(registry, "MoneyPathListed").withArgs(other.address, PAYOUT);
+      expect(await registry.isMoneyPath(other.address)).to.equal(true);
+      expect(await registry.moneyPathKindOf(other.address)).to.equal(PAYOUT);
+    });
+
+    it("is set once per address and never cleared", async function () {
+      await registry.listMoneyPath(other.address, PAYOUT);
+      await expect(registry.listMoneyPath(other.address, ethers.encodeBytes32String("OTHER")))
+        .to.be.revertedWithCustomError(registry, "NetworkRegistryMoneyPathSet");
+      await expect(registry.listMoneyPath(member.address, ethers.ZeroHash))
+        .to.be.revertedWithCustomError(registry, "NetworkRegistryInvalidAddress");
+    });
+
+    it("is the admin's, not an operator's", async function () {
+      await expect(registry.connect(operator).listMoneyPath(other.address, PAYOUT)).to.be.reverted;
+      await expect(registry.connect(outsider).listMoneyPath(other.address, PAYOUT)).to.be.reverted;
     });
   });
 

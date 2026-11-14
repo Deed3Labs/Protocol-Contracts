@@ -35,9 +35,7 @@ describe("a balance shared between issuers", function () {
     for (const issuer of [revolving, term]) {
       await ctx.networkRegistry.registerIssuer(
         await issuer.getAddress(),
-        await ctx.stableCredit.getAddress(),
-        await ctx.assurancePool.getAddress(),
-        await ctx.assuranceOracle.getAddress()
+        await ctx.stableCredit.getAddress()
       );
       await ctx.access.grantOperator(await issuer.getAddress());
     }

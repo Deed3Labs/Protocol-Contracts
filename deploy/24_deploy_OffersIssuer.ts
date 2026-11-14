@@ -6,8 +6,8 @@ import { saveDeployment, getDeployment } from "./helpers";
  * The contract holds a credit line and gives each new member the offer from it, so nothing is
  * funded in advance. It is registered as an issuer against the ledger like the revolving and term
  * issuers (it opens lines and reverses expired offers on it), and its line is opened at the cap.
- * Nothing about it is exposure: its `debtByKind` reports no position, so the AssurancePool's RTD
- * does not reserve against the co-op owing itself.
+ * Nothing about it is exposure: its `debtByKind` reports no position, so the covered book behind
+ * the co-op's Credit Backstop floor does not count the co-op owing itself.
  *
  * Idempotent: an OffersIssuer already recorded in `deployments/<network>/` is reused, and every
  * wiring call is a set.
@@ -30,10 +30,8 @@ async function main() {
 
   const ledger = getDeployment(network, "ClearCredit");
   const registry = getDeployment(network, "NetworkRegistry");
-  const pool = getDeployment(network, "AssurancePool");
-  const oracle = getDeployment(network, "AssuranceOracle");
   const payout = getDeployment(network, "PayoutPool");
-  if (!ledger || !registry || !pool || !oracle) throw new Error(`Missing the credit core on ${network}: run 20_deploy_CreditCore first.`);
+  if (!ledger || !registry) throw new Error(`Missing the credit core on ${network}: run 20_deploy_CreditCore first.`);
 
   const treasury =
     process.env.OFFERS_TREASURY?.trim() ||
@@ -67,7 +65,7 @@ async function main() {
 
   const networkRegistry = await ethers.getContractAt("NetworkRegistry", registry.address);
   if (!(await networkRegistry.isIssuer(address))) {
-    await (await networkRegistry.registerIssuer(address, ledger.address, pool.address, oracle.address)).wait();
+    await (await networkRegistry.registerIssuer(address, ledger.address)).wait();
     console.log("  registered against the ledger");
   }
   if ((await offers.cap()) !== cap) {

@@ -7,22 +7,42 @@ import { recordUsdcRepayment } from './usdcRepaymentService.js';
 import { decodeChainError } from './chainErrors.js';
 import { notificationStore } from '../notificationStore.js';
 import { alertOps } from '../opsAlert.js';
+import {
+  advanceRun,
+  lithicMoves,
+  pgRunStore,
+  pgUnbook,
+  PENDING_STATES,
+  SUBMIT_STALE_MS,
+  type AutoClearDeps,
+  type AutoClearStep,
+  type ChainSide,
+} from '../deposits/autoClearRuns.js';
+import { termChainSide } from './termCollection.js';
 
 /*
  * Auto-clear (Phase 2b, section 12.2 as replaced) — "there is no pay button".
  *
+ * Only on Spendable deposits (owner's option 1, `depositApplication`): a fiat deposit at the partner
+ * bank is earmarked; a USDC (Bridge) deposit never is, because that USDC is the member's own and the
+ * settler would be paying their debt for them.
+ *
  * A member who switched it on (`RevolvingIssuer.setAutoClear(on, scope)`, or their `AutoClear`
  * signature at onboarding) has what they owe cleared from a deposit as it lands, dearest tier first,
  * within the scope they chose: UNSECURED_ONLY (income-backed and Boost, the default) or ALL. When a
- * deposit arrives, what they owe is earmarked (`auto_repay_due`) and auto-save runs only on the
- * rest. This sweep clears the earmark ON CHAIN with `repayForMember(ref, member, amount)`.
+ * deposit arrives, what they owe is earmarked as one clearing (`auto_clear_runs`, keyed by a ref
+ * derived from the deposit receipt) and auto-save runs only on the rest. This sweep clears it ON
+ * CHAIN with `repayForMember(ref, member, amount)`, and moves exactly what the chain applied out of
+ * the member's Spendable account to Clear's settlement account (a Lithic book transfer, against a
+ * hold placed first). The ordering, the compensating steps and the states are in `autoClearRuns.ts`.
  *
  * **The settler delivers the cash.** `repayForMember` pulls the reserve token from the card settler
  * (`msg.sender`), never from the member: the member's USDC and CLRUSD are never swept, and the member
  * approves nothing. So the settler keeps an allowance to the RevolvingIssuer (approved here, exactly
  * what is needed, when it runs short) and holds the USDC it pays. The contract applies
  * min(amount, owed within scope) and emits `AutoCleared(ref, member, applied, remainder)`; the
- * member is told "$X cleared · $Y now spendable", and the remainder leaves the earmark.
+ * member is told "$X cleared · $Y now spendable" once the dollars have moved, and the remainder is
+ * never held or moved.
  *
  * It reverts `RevolvingIssuerNothingToClear` when nothing in scope is owed (a card purchase still
  * pending is a hold, not debt: the earmark waits for it), and `RevolvingIssuerAutoClearOff` while the
@@ -109,7 +129,16 @@ export async function setAutoRepayChoice(
      ON CONFLICT (wallet) DO UPDATE SET enabled = EXCLUDED.enabled, verified_at = now()`,
     [wallet, enabled],
   );
-  if (!enabled) await pool.query(`UPDATE auto_repay_due SET due_cents = 0, updated_at = now() WHERE wallet = $1`, [wallet]);
+  if (!enabled) {
+    await pool.query(`UPDATE auto_repay_due SET due_cents = 0, updated_at = now() WHERE wallet = $1`, [wallet]);
+    // Nothing held yet: released here. A clearing already holding money is released by the sweep,
+    // which voids the hold; one the chain has applied still completes its transfer.
+    await pool.query(
+      `UPDATE auto_clear_runs SET state = 'released', last_error = 'auto-clear is off', updated_at = now()
+        WHERE wallet = $1 AND state = 'earmarked'`,
+      [wallet],
+    );
+  }
   return { ok: true };
 }
 
@@ -134,7 +163,11 @@ export async function autoRepayStatus(walletInput: string): Promise<AutoRepaySta
   if (pool) {
     await ensureAutoRepayTables(pool);
     const e = await pool.query<{ enabled: boolean }>(`SELECT enabled FROM member_auto_repay WHERE wallet = $1`, [wallet]);
-    const d = await pool.query<{ due_cents: string }>(`SELECT due_cents FROM auto_repay_due WHERE wallet = $1`, [wallet]);
+    // Set aside and not yet cleared on chain, across this member's open clearings.
+    const d = await pool.query<{ due_cents: string }>(
+      `SELECT COALESCE(SUM(earmark_cents), 0) AS due_cents FROM auto_clear_runs WHERE wallet = $1 AND state = ANY($2::text[])`,
+      [wallet, PENDING_STATES],
+    );
     enabled = e.rows[0]?.enabled === true;
     dueCents = Number(d.rows[0]?.due_cents ?? 0);
   }
@@ -168,147 +201,129 @@ export async function autoRepayStatus(walletInput: string): Promise<AutoRepaySta
   return status;
 }
 
-export interface AutoRepayResult {
-  wallet: string;
-  action: 'repaid' | 'waiting' | 'off' | 'paused' | 'failed';
-  cents?: number;
-  /** What was left of the earmark once everything in scope was cleared: the member's again. */
-  releasedCents?: number;
-  txHash?: string;
-  reason?: string;
-}
+export type AutoRepayResult = AutoClearStep;
 
-const money = (cents: number) =>
-  (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
-
-/** Clear what is earmarked, as far as the chain allows right now, with the settler's cash. */
-export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
-  const pool = getPayPool();
-  if (!pool || !settlerKey()) return [];
-  await ensureAutoRepayTables(pool);
-  const { rows } = await pool.query<{ wallet: string; due_cents: string }>(
-    `SELECT wallet, due_cents FROM auto_repay_due WHERE due_cents > 0 ORDER BY updated_at LIMIT $1`,
-    [limit],
-  );
-  if (!rows.length) return [];
-
-  const signer = new ethers.Wallet(settlerKey(), chainProvider(chainId()));
-  const issuer = issuerAt(writesAs(signer));
-  if (!issuer) return [];
-
-  // The governed network-wide switch: while it is off nothing is cleared for anyone, and the
-  // earmarks wait rather than being guessed at.
-  const terms = (await issuer.creditTerms()) as { autoClearOffGlobal: boolean };
-  if (terms.autoClearOffGlobal) {
-    console.warn('[auto-clear] switched off network-wide (creditTerms.autoClearOffGlobal); earmarks wait');
-    return rows.map((r) => ({ wallet: r.wallet, action: 'paused' as const }));
-  }
-
-  const issuerAddress = await issuer.getAddress();
-  const stableCredit = String(await issuer.stableCredit());
-  // The token repayments are made in, as the chain defines it -- never an address typed in here.
-  const ledger = new ethers.Contract(stableCredit, ['function assurancePool() view returns (address)'], signer.provider);
-  const assurance = new ethers.Contract(String(await ledger.assurancePool()), ['function reserveToken() view returns (address)'], signer.provider);
-  const usdc = new ethers.Contract(String(await assurance.reserveToken()), ERC20_ABI, writesAs(signer));
-  const settler = signer.address;
-  const results: AutoRepayResult[] = [];
-
-  for (const row of rows) {
-    const wallet = row.wallet;
-    const due = BigInt(row.due_cents) * CENTS;
-    try {
-      if (!((await issuer.autoRepayEnabled(wallet)) as boolean)) {
-        // Turned off on chain: the earmark is released and the money is simply theirs.
-        await pool.query(`UPDATE auto_repay_due SET due_cents = 0, updated_at = now() WHERE wallet = $1`, [wallet]);
-        await pool.query(`UPDATE member_auto_repay SET enabled = false, verified_at = now() WHERE wallet = $1`, [wallet]);
-        results.push({ wallet, action: 'off' });
-        continue;
+/** The line's chain side (`repayForMember`), as the card settler. */
+function settlerChain(issuer: ethers.Contract, usdc: ethers.Contract, settler: string, provider: ethers.Provider): ChainSide {
+  return {
+    enabled: async (wallet) => (await issuer.autoRepayEnabled(wallet)) as boolean,
+    pausedForEveryone: async () => Boolean(((await issuer.creditTerms()) as { autoClearOffGlobal: boolean }).autoClearOffGlobal),
+    owedCents: async (run) => {
+      const scope = Number(await issuer.autoClearScopeOf(run.wallet));
+      return Number((await owedInScope(issuer, run.wallet, scope)) / CENTS);
+    },
+    // A card purchase still pending at Lithic is not debt on chain yet: the hold waits for it.
+    waitsForDebt: () => true,
+    appliedOf: async (run) => {
+      // The ref is the on-chain key: what it applied is on record, and nothing else can apply it.
+      const applied = Number(((await issuer.autoRepaymentOf(run.ref)) as bigint) / CENTS);
+      if (applied > 0) return applied;
+      if (run.txHash && run.submittedAt !== null && Date.now() - run.submittedAt < SUBMIT_STALE_MS) {
+        const receipt = await provider.getTransactionReceipt(run.txHash).catch(() => null);
+        if (!receipt && (await provider.getTransaction(run.txHash).catch(() => null))) return 'pending';
       }
-      // Bounded by what is owed in the member's scope. Not by the member's own USDC or approval:
-      // the settler pays, and nothing is taken from the member's wallet.
-      const scope = Number(await issuer.autoClearScopeOf(wallet));
-      const owed = await owedInScope(issuer, wallet, scope);
-      let amount = owed < due ? owed : due;
-      amount = (amount / CENTS) * CENTS; // whole cents
-      if (amount <= 0n) {
-        await pool.query(`UPDATE auto_repay_due SET updated_at = now() WHERE wallet = $1`, [wallet]);
-        results.push({ wallet, action: 'waiting', reason: 'nothing in scope settled on chain yet' });
-        continue;
-      }
-
+      return 0; // safe to resend: the contract refuses the ref a second time
+    },
+    settlerCannotPay: async (_run, cents) => {
+      const amount = BigInt(cents) * CENTS;
+      const issuerAddress = await issuer.getAddress();
       const [held, allowed] = (await Promise.all([usdc.balanceOf(settler), usdc.allowance(settler, issuerAddress)])) as [bigint, bigint];
-      if (held < amount) {
-        await alertOps({
-          key: 'auto-clear:settler-balance',
-          subject: 'Auto-clear: the card settler is short of USDC',
-          body: `The card settler ${settler} holds ${held} units and needs ${amount} to clear ${wallet}'s deposit. Auto-clear delivers the cash from the settler (repayForMember pulls from msg.sender); top it up.`,
-        }).catch(() => {});
-        results.push({ wallet, action: 'failed', reason: 'settler balance too low' });
-        continue;
-      }
+      if (held < amount) return `The card settler ${settler} holds ${held} units and needs ${amount}; top it up`;
       if (allowed < amount) {
         // Exactly what this clearing needs: the issuer can pull no more than the settler meant.
         const approval = await usdc.approve(issuerAddress, amount);
         await approval.wait(1);
       }
-
-      // A fresh ref per clearing; the earmark only shrinks once the chain has it.
-      const ref = ethers.id(`auto-clear:${wallet}:${Date.now()}`);
-      const tx = await issuer.repayForMember(ref, wallet, amount);
-      const receipt = await tx.wait(1);
-      let applied = amount;
-      let remainder = 0n;
-      for (const log of receipt?.logs ?? []) {
-        try {
-          const parsed = issuer.interface.parseLog({ topics: [...log.topics], data: log.data });
-          if (parsed?.name === 'AutoCleared') {
-            applied = parsed.args.applied as bigint;
-            remainder = parsed.args.remainder as bigint;
+      return null;
+    },
+    submit: async (run, cents) => {
+      const tx = await issuer.repayForMember(run.ref, run.wallet, BigInt(cents) * CENTS);
+      const applied = (async () => {
+        const receipt = await tx.wait(1);
+        for (const log of receipt?.logs ?? []) {
+          try {
+            const parsed = issuer.interface.parseLog({ topics: [...log.topics], data: log.data });
+            if (parsed?.name === 'AutoCleared') return Number((parsed.args.applied as bigint) / CENTS);
+          } catch {
+            /* not ours */
           }
-        } catch {
-          /* not ours */
         }
-      }
-      const cents = Number(applied / CENTS);
-      // What the chain did not need is no longer owed in scope: it leaves the earmark with what was
-      // applied, and is the member's to spend.
-      const releasedCents = Number(remainder / CENTS);
-      await pool.query(
-        `UPDATE auto_repay_due SET due_cents = GREATEST(0, due_cents - $2), updated_at = now() WHERE wallet = $1`,
-        [wallet, cents + releasedCents],
-      );
+        return 0;
+      })();
+      return { hash: tx.hash as string, applied };
+    },
+    findClearingTx: async (run) => {
+      const latest = await provider.getBlockNumber();
+      const logs = await issuer.queryFilter(issuer.filters.AutoCleared(run.ref), Math.max(0, latest - 9_000), latest).catch(() => []);
+      return logs[0]?.transactionHash ?? null;
+    },
+    book: async (run) => {
       // The books, and the pool's side, from the transaction itself -- as for a Repay tap.
-      await recordUsdcRepayment(wallet, tx.hash, 'auto');
-      await notificationStore
-        .emit({
-          wallet,
-          kind: 'credit',
-          title: 'Cleared from your deposit',
-          body:
-            releasedCents > 0
-              ? `${money(cents)} cleared · ${money(releasedCents)} now spendable`
-              : `${money(cents)} cleared`,
-          data: { txHash: tx.hash, appliedCents: cents, spendableCents: releasedCents },
-          dedupeKey: `auto-clear:${tx.hash}`,
-        })
-        .catch(() => {});
-      console.log(`[auto-clear] ${wallet} cleared ${cents}c with the settler's cash (${tx.hash})`);
-      results.push({ wallet, action: 'repaid', cents, releasedCents, txHash: tx.hash });
-    } catch (error) {
-      const decoded = decodeChainError(error);
-      if (decoded?.name === 'RevolvingIssuerNothingToClear') {
-        await pool.query(`UPDATE auto_repay_due SET updated_at = now() WHERE wallet = $1`, [wallet]);
-        results.push({ wallet, action: 'waiting', reason: 'nothing in scope owed on chain' });
-        continue;
-      }
-      if (decoded?.name === 'RevolvingIssuerAutoClearOff') {
-        results.push({ wallet, action: 'paused', reason: 'switched off network-wide' });
-        continue;
-      }
-      const reason = (error instanceof Error ? error.message : String(error)).slice(0, 300);
-      console.error(`[auto-clear] ${wallet} failed: ${reason}`);
-      results.push({ wallet, action: 'failed', reason });
+      const hash = run.txHash ?? '';
+      const recorded = await recordUsdcRepayment(run.wallet, hash, 'auto');
+      if (!recorded.ok) throw new Error(`could not book ${hash}: ${recorded.reason ?? 'unknown'}`);
+    },
+    errorName: (error) => decodeChainError(error)?.name ?? null,
+  };
+}
+
+/**
+ * Clear what Spendable deposits set aside: on chain with the settler's cash, and the same amount out
+ * of the member's Spendable account to Clear's settlement account. One clearing per deposit for the
+ * line, and one per term plan (or carry) the deposit paid, each advanced through the state machine
+ * in `autoClearRuns.ts`.
+ */
+export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
+  const pool = getPayPool();
+  if (!pool || !settlerKey()) return [];
+  await ensureAutoRepayTables(pool);
+  /*
+   * Earmarks from before clearings were per deposit carry no ref and no hold, so nothing could
+   * move the dollars that would pay them. They are released: the money is the member's, and the
+   * debt stays on the line until their next Spendable deposit or their own Clear.
+   */
+  const released = await pool.query(`UPDATE auto_repay_due SET due_cents = 0, updated_at = now() WHERE due_cents > 0`);
+  if (released.rowCount) console.log(`[auto-clear] released ${released.rowCount} earmark(s) from before per-deposit clearing`);
+
+  const runs = await pgRunStore.listOpen(limit);
+  if (!runs.length) return [];
+
+  const signer = new ethers.Wallet(settlerKey(), chainProvider(chainId()));
+  const issuer = issuerAt(writesAs(signer));
+  if (!issuer || !signer.provider) return [];
+  // The token repayments are made in, as the chain defines it -- never an address typed in here.
+  // Phase 2c: it is the ledger's own (`StableCredit.reserveToken`); the ledger names no pool.
+  const ledger = new ethers.Contract(String(await issuer.stableCredit()), ['function reserveToken() view returns (address)'], signer.provider);
+  const usdc = new ethers.Contract(String(await ledger.reserveToken()), ERC20_ABI, writesAs(signer));
+
+  const line = settlerChain(issuer, usdc, signer.address, signer.provider);
+  // Term plans: the same switch and pause, `payPlan` (or carry) for the rest. Null without a TermIssuer.
+  const term = await termChainSide(signer, line);
+  const deps: AutoClearDeps = {
+    store: pgRunStore,
+    moves: lithicMoves,
+    chainFor: (run) => {
+      if (run.kind !== 'term') return line;
+      if (!term) throw new Error('no TermIssuer on this chain');
+      return term;
+    },
+    unbook: pgUnbook,
+    alert: alertOps,
+    notify: async (n) => {
+      await notificationStore.emit({ wallet: n.wallet, kind: 'credit', title: n.title, body: n.body, data: n.data, dedupeKey: n.dedupeKey });
+    },
+    now: () => Date.now(),
+  };
+
+  const results: AutoRepayResult[] = [];
+  for (const run of runs) {
+    const step = await advanceRun(run, deps);
+    if (step.action === 'off') {
+      await pool.query(`UPDATE member_auto_repay SET enabled = false, verified_at = now() WHERE wallet = $1`, [run.wallet]);
     }
+    if (step.action === 'repaid') console.log(`[auto-clear] ${run.wallet} cleared ${step.cents}c and moved it from Spendable (${step.txHash})`);
+    if (step.action === 'failed') console.error(`[auto-clear] ${run.wallet} ${run.ref}: ${step.reason}`);
+    results.push(step);
   }
   return results;
 }

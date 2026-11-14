@@ -37,7 +37,8 @@ describe("DEEP AUDIT PoC", function () {
   it("X-2 (fixed): a pre-funded pool still takes member repayments, and settles the claim with them instead of selling it to the funder", async function () {
     const { ctx, term, pool, merchant, funder } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
-    const apBefore = (await ctx.assurancePool.primaryBalance()) + (await ctx.assurancePool.bufferBalance());
+    // Section 13: past the payout pool, a repayment now goes to Lending Co.'s operating address.
+    const apBefore = await ctx.usdc.balanceOf(ctx.lenderOperating.address);
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
     await term.connect(m).payPlan(0, 2_000n * ONE_USDC);
@@ -45,7 +46,7 @@ describe("DEEP AUDIT PoC", function () {
 
     // The repayment went to the pool as members' money, not past it.
     expect(await pool.memberFunded()).to.be.closeTo(1_000n * ONE_USDC, 100n); // + a few wei of carry
-    const apAfter = (await ctx.assurancePool.primaryBalance()) + (await ctx.assurancePool.bufferBalance());
+    const apAfter = await ctx.usdc.balanceOf(ctx.lenderOperating.address);
     expect(apAfter - apBefore).to.equal(0n);
 
     // The merchant is paid out of it and the claim is burned; the funder keeps all its capital.

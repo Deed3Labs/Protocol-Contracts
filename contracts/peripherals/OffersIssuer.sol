@@ -121,7 +121,7 @@ contract OffersIssuer is CreditIssuer, ICreditPositionSource {
     /// capped at what it holds.
     function treasuryAvailable() public view returns (uint256) {
         if (treasury == address(0)) return 0;
-        IERC20Upgradeable reserve = stableCredit.assurancePool().reserveToken();
+        IERC20Upgradeable reserve = stableCredit.reserveToken();
         uint256 allowed = reserve.allowance(treasury, address(this));
         uint256 balance = reserve.balanceOf(treasury);
         return allowed < balance ? allowed : balance;
@@ -198,17 +198,16 @@ contract OffersIssuer is CreditIssuer, ICreditPositionSource {
     function settle() external returns (uint256 credits) {
         uint256 o = owed();
         if (o == 0) return 0;
-        IAssurancePool pool = stableCredit.assurancePool();
-        uint256 needed = pool.convertStableCreditToReserveToken(o);
+        uint256 needed = stableCredit.convertStableCreditToReserveToken(o);
         uint256 available = treasuryAvailable();
         if (available == 0 || needed == 0) return 0;
 
         credits = o;
         if (available < needed) credits = (o * available) / needed;
-        uint256 reserveAmount = pool.convertStableCreditToReserveToken(credits);
+        uint256 reserveAmount = stableCredit.convertStableCreditToReserveToken(credits);
         if (credits == 0 || reserveAmount == 0) return 0;
 
-        IERC20Upgradeable reserve = pool.reserveToken();
+        IERC20Upgradeable reserve = stableCredit.reserveToken();
         reserve.safeTransferFrom(treasury, address(this), reserveAmount);
         reserve.safeApprove(address(stableCredit), 0);
         reserve.safeApprove(address(stableCredit), reserveAmount);

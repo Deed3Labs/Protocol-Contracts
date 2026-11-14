@@ -90,7 +90,8 @@ beforeAll(async () => {
   // last month: a sale (not this month's) and a line written off, the AssurancePool paying for it
   await put('ClearCredit', 'PurchaseOriginated', { member: B, merchant: OTHER, purchase: String(usdc(999)), payout: '0', discount: '0' }, Date.parse('2026-09-20T10:00:00Z'));
   await put('ClearCredit', 'CreditLineWrittenOff', { member: B, amount: String(usdc(80)) }, Date.parse('2026-09-30T10:00:00Z'));
-  await put('AssurancePool', 'AccountReimbursed', { account: B, amount: String(usdc(80)) }, Date.parse('2026-09-30T10:00:00Z'));
+  // Phase 2c: what the Credit Backstop paid is a released draw to Lending Co.'s loss reserve, not a reimbursement
+  await put('AssurancePool', 'DrawReleased', { drawId: '0', amount: String(usdc(80)), to: B, releaser: A }, Date.parse('2026-09-30T10:00:00Z'));
   // the $10 offers' own line, and an unspent offer of A's taken back: neither is members' credit
   const offers = String(C.OffersIssuer.address);
   await put('ClearCredit', 'CreditLineCreated', { member: offers, creditLimit: String(usdc(1000)), balance: '0' }, NOW - 30 * DAY);

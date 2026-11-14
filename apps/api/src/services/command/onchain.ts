@@ -2,7 +2,7 @@ import chain from '@clear/command-types/src/chain/base-sepolia.json';
 import FINGERPRINTS from '@clear/command-types/src/chain/code.json';
 import { createHash } from 'node:crypto';
 import { DAY } from '@clear/command-types';
-import { erc20Abi, getAddress, keccak256, toHex, type Abi, type Address } from 'viem';
+import { erc20Abi, getAddress, hexToString, keccak256, parseAbi, toHex, type Abi, type Address } from 'viem';
 import type { Queryable } from '../../db/db.js';
 import { publicFirst } from './indexer.js';
 
@@ -24,6 +24,12 @@ export interface ChainCall {
   fn: string;
   args?: unknown[];
   address?: string;
+  /**
+   * An inline ABI, for a contract whose generated ABI (packages/command-types) predates it: the
+   * Phase 2c AssurancePool, until the redeploy regenerates them. With it, `address` (or the
+   * contract's generated address) is called with this ABI.
+   */
+  abi?: Abi;
 }
 /** Reads from the deployed contracts, every call in one request. */
 export interface ChainReader {
@@ -48,9 +54,11 @@ export function liveChainReader(chainId = chain.chainId): ChainReader {
         c.multicall({
           allowFailure: false,
           contracts: calls.map((k) =>
-            k.contract === 'ERC20'
-              ? { address: getAddress(k.address!), abi: erc20Abi, functionName: k.fn, args: k.args ?? [] }
-              : { address: getAddress(C[k.contract].address), abi: C[k.contract].functions, functionName: k.fn, args: k.args ?? [] },
+            k.abi
+              ? { address: getAddress(k.address ?? C[k.contract].address), abi: k.abi, functionName: k.fn, args: k.args ?? [] }
+              : k.contract === 'ERC20'
+                ? { address: getAddress(k.address!), abi: erc20Abi, functionName: k.fn, args: k.args ?? [] }
+                : { address: getAddress(C[k.contract].address), abi: C[k.contract].functions, functionName: k.fn, args: k.args ?? [] },
           ) as any,
         }),
       ) as Promise<unknown[]>,
@@ -379,67 +387,100 @@ export async function bondsLive(db: Queryable, reader: ChainReader): Promise<Bon
   return [...bonds.values()].map((b) => ({ ...b, holder: holders.get(b.id) ?? null }));
 }
 
+/**
+ * The AssurancePool's views (Phase 2c, section 13), inline: the generated ABIs still describe the
+ * retired pool (RTD, buffer, AssuranceOracle) until the redeploy regenerates them. Checked against
+ * AssurancePool.sol by onchain.test.ts. Read only: every pool action is two-person, from the signers'
+ * own wallets, and nothing in Command or the API signs one.
+ */
+export const ASSURANCE_POOL_VIEWS = parseAbi([
+  'function asset() view returns (address)',
+  'function compartments() view returns (bytes32[])',
+  'function balanceOf(bytes32 compartment) view returns (uint256)',
+  'function allocationOf(bytes32 compartment) view returns (uint256)',
+  'function backstopFloor() view returns (uint256)',
+  'function backstopBalance() view returns (uint256)',
+  'function availableCoverage() view returns (uint256)',
+  'function coveredBookPrincipal() view returns (uint256)',
+  'function pendingDrawRequests() view returns (uint256)',
+  'function approvedUnpaidDraws() view returns (uint256)',
+  'function drawCount() view returns (uint256)',
+  'function drawAt(uint256 drawId) view returns ((uint64 periodId, uint8 status, address approver, uint128 requested, uint128 approved, bytes32 evidenceHash))',
+  'function paused() view returns (bool)',
+]);
+
+const DRAW_STATUS = ['None', 'Requested', 'Approved', 'Released', 'Closed'] as const;
+
 export interface AssurancePoolLive {
+  /** Everything the pool holds, across its compartments, in USDC. */
   total: number;
-  primary: number;
-  buffer: number;
-  excess: number;
-  /** The target RTD, as a fraction (the AssuranceOracle's). */
-  target: number;
-  /** The pool's exposure, in the reserve token: what it would pay if every member defaulted. */
-  exposure: number;
-  /** Bond face due inside BondVault's window that neither the vault nor the treasury can pay: the part of bondholders' money the pool backs as the last resort. */
-  bonds: number;
-  /** Primary reserve ÷ exposure, as a fraction; null with nothing out, when the contract calls it undefined. */
-  rtd: number | null;
-  /** Whether the pool is reserved to its target: always, with nothing out. */
-  valid: boolean;
-  /** Primary reserve less what the target needs against the exposure and the bond gap: above it when positive, below when negative. */
-  gap: number;
-  /** More exposure the primary reserve could take before RTD falls under the target. */
-  room: number;
+  /** Each compartment: its name (CREDIT_BACKSTOP, MEMBER_ASSURANCE, …), balance and allocation share. */
+  compartments: { key: string; balance: number; allocationBps: number }[];
+  /** What the Credit Backstop must keep: max(timing-buffer shortfall, floorBps × covered book). */
+  floor: number;
+  /** The Credit Backstop's balance. */
+  backstop: number;
+  /** What Lending Co. could draw now: the backstop above its floor, less what is requested or approved. */
+  coverage: number;
+  /** The principal the floor is measured against. */
+  coveredBook: number;
+  /** Draws requested and not decided, and approved and not paid. */
+  pendingDraws: number;
+  approvedUnpaid: number;
+  /** The most recent draws, newest first. */
+  draws: { id: number; status: (typeof DRAW_STATUS)[number]; requested: number; approved: number }[];
+  /** The 72-hour pause on releases and transfers, set by two signers. */
+  paused: boolean;
 }
 
 /**
- * What the AssurancePool holds against losses (its primary, buffer and excess reserves) and its RTD as
- * the contract has it: the primary reserve alone against the pool's exposure, never the buffer or
- * anything outside the pool. Amounts in its reserve token.
+ * The Phase 2c AssurancePool, as the contract has it: two compartments (Credit Backstop and Member
+ * Assurance), the backstop's floor and the coverage it leaves, and its draws. Read only. `address`
+ * defaults to the generated record's, so the new pool is read once the API's address book names it.
  */
-export async function assurancePoolLive(reader: ChainReader): Promise<AssurancePoolLive> {
-  const [primary, buffer, excess, token, target, rtd, exposure, valid] = await reader.read([
-    { contract: 'AssurancePool', fn: 'primaryBalance' },
-    { contract: 'AssurancePool', fn: 'bufferBalance' },
-    { contract: 'AssurancePool', fn: 'excessBalance' },
-    { contract: 'AssurancePool', fn: 'reserveToken' },
-    { contract: 'AssurancePool', fn: 'targetRTD' },
-    { contract: 'AssurancePool', fn: 'RTD' },
-    { contract: 'AssurancePool', fn: 'poolExposure' },
-    { contract: 'AssurancePool', fn: 'hasValidRTD' },
+export async function assurancePoolLive(reader: ChainReader, address?: string): Promise<AssurancePoolLive> {
+  const at = (fn: string, args?: unknown[]): ChainCall => ({ contract: 'AssurancePool', address, abi: ASSURANCE_POOL_VIEWS, fn, args });
+  const [token, keys, floor, backstop, coverage, covered, pending, approved, count, paused] = await reader.read([
+    at('asset'),
+    at('compartments'),
+    at('backstopFloor'),
+    at('backstopBalance'),
+    at('availableCoverage'),
+    at('coveredBookPrincipal'),
+    at('pendingDrawRequests'),
+    at('approvedUnpaidDraws'),
+    at('drawCount'),
+    at('paused'),
   ]);
-  const [decimals, exposureReserve] = await reader.read([
+  const ids = (keys as string[]) ?? [];
+  const n = Number(big(count));
+  const recent = Array.from({ length: Math.min(n, 12) }, (_, i) => n - 1 - i);
+  const [decimals, ...rest] = await reader.read([
     { contract: 'ERC20', address: String(token), fn: 'decimals' },
-    { contract: 'AssurancePool', fn: 'convertStableCreditToReserveToken', args: [big(exposure)] },
+    ...ids.flatMap((k) => [at('balanceOf', [k]), at('allocationOf', [k])]),
+    ...recent.map((id) => at('drawAt', [BigInt(id)])),
   ]);
-  // the bond gap the pool backs, already in reserve tokens; an AssurancePool from before the bond backstop has none
-  const [bondGap] = await reader.read([{ contract: 'AssurancePool', fn: 'bondExposure' }]).catch(() => [0n]);
   const usd = (v: unknown) => Math.round((Number(big(v)) / 10 ** Number(decimals)) * 100) / 100;
-  const frac = (v: unknown) => Number(big(v)) / 1e18;
-  const [p, b, e, x, bonds] = [usd(primary), usd(buffer), usd(excess), usd(exposureReserve), usd(bondGap)];
-  // the RTD's denominator: members' exposure and the bond gap together, as the contract divides
-  const all = Math.round((x + bonds) * 100) / 100;
-  const t = frac(target);
+  const compartments = ids.map((k, i) => ({
+    key: hexToString(k as `0x${string}`, { size: 32 }).replace(/\0+$/, ''),
+    balance: usd(rest[i * 2]),
+    allocationBps: Number(big(rest[i * 2 + 1])),
+  }));
+  const draws = recent.map((id, j) => {
+    const d = rest[ids.length * 2 + j] as { status: number | bigint; requested: bigint; approved: bigint };
+    return { id, status: DRAW_STATUS[Number(d?.status ?? 0)] ?? 'None', requested: usd(d?.requested ?? 0n), approved: usd(d?.approved ?? 0n) };
+  });
   return {
-    total: Math.round((p + b + e) * 100) / 100,
-    primary: p,
-    buffer: b,
-    excess: e,
-    target: t,
-    exposure: x,
-    bonds,
-    rtd: all ? frac(rtd) : null,
-    valid: valid === true || valid === 'true',
-    gap: Math.round((p - t * all) * 100) / 100,
-    room: t ? Math.max(0, Math.round((p / t - all) * 100) / 100) : 0,
+    total: Math.round(compartments.reduce((a, c) => a + c.balance, 0) * 100) / 100,
+    compartments,
+    floor: usd(floor),
+    backstop: usd(backstop),
+    coverage: usd(coverage),
+    coveredBook: usd(covered),
+    pendingDraws: usd(pending),
+    approvedUnpaid: usd(approved),
+    draws,
+    paused: paused === true || paused === 'true',
   };
 }
 
