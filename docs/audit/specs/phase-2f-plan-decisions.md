@@ -44,9 +44,34 @@ The owner accepted every recommendation on the decision list drawn from `docs/au
 17. **Only Clear Lending draws from the pool, and each draw is a recorded Deployment.** Borrowing is limited to Clear Lending's deployment address. PayoutPool's and the card settler's direct borrowing is switched off by configuration (consistent with C1), and Clear Lending funds card settlement from what it draws.
     - App follow-up: the card and auto-clear funding paths in the held app PRs (#887, #890) must stop drawing from the pool directly.
 
-## Documents needed
-- **IV-10 Exhibit A:** the Collateral Agent waits for it. The spec says to follow it exactly.
-- **MB-05 in full:** for Article 7's order and the "Secured Obligations" definition.
+## MB-05 and IV-10 (owner, Nov 14, 2026)
+The full texts are `MB-05-security-and-pledge-agreement.md` and `IV-10-burnerbond-collateral-agency-agreement.md` in this folder. MB-05 controls on the pledge and its enforcement, and IV-10 Exhibit A controls on the BondVault roles; behaviour controls over function names.
+
+18. **The Collateral Agent follows IV-10 Exhibit A exactly.**
+    - The Agent Key has only the seven Part 2 powers: `enforce`, `releaseEnforcement`, `postDistribution`, `toCollateralAccount`, `withdrawCosts` within the on-chain cap, the `approveChange` co-signature, and `rotateAgentKey` after 48 hours.
+    - Part 3's limits are enforced in code, along with Part 4's key replacement (7-day timelock, which the Required Holders can block on chain), Part 5's treasury role and Part 6's events.
+    - The Agent Key has no power over the pledge module, roll confirmations or the Loss Holdback, and tests prove it.
+19. **During an Enforcement Period, no roll is executed,** even a confirmed one (IV-10 §7.2); the bond is paid through the Agent's distribution rounds.
+    - **A pledged bond's share of each round is routed** to the Holder's MB-05 Defaulted Amount first, only while MB-05 §6.1 permits enforcement against it. The rest goes to the Holder's Smart Account.
+    - The bond's ratable share is unchanged (Exhibit A Part 2, item 3); only the destination of the pledged part differs.
+    - `payPledged` itself stays blocked while an Enforcement Notice is in force (C3).
+    - Counsel is to confirm this reading against IV-10 §7.6.
+20. **Enforcement order follows MB-05 §7.1.** Within each kind, the bond nearest to maturity is applied first, unless the member has set a different order among their Pledged Earn Positions. The member sets that order by signature, and only before a Default Notice or Shortfall notice is recorded.
+    - This replaces Phase 2e's "smallest bond that covers the need, else the largest".
+21. **A Shortfall is one combined Shortfall:** Asset-Backed Drawn above the total Asset-Backed Limit (MB-05 §1.3). After 72 hours it is settled from Pledged Pool Shares first, then Pledged BurnerBonds (§7.1(c)), in the smallest amount that ends it (§6.5(c)).
+    - This replaces Phase 2e's separate per-kind gaps.
+22. **Enforcement is capped at the Defaulted Amount** (MB-05 §§1.3, 7.2, 7.3(c)): the amount past due when the grace or cure period ends, as recorded on chain.
+    - The full unpaid balance counts only once it has itself come due: a term plan at its end, or the line on its closing.
+    - A default does not by itself make the whole balance due.
+    - This replaces Phase 2e's need computations (`_owedIn` over whole tiers, `_securedOwedOn` over whole plans).
+
+## Notes for counsel
+- **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
+- **Decision 19 versus IV-10 §7.6.**
+- **MB-05 §5.3:** a raise in an advance rate may benefit existing pledges, while Phase 2e stores the rate at pledging. Use the higher of the stored and current rate, so a raise helps existing pledges and a cut does not hurt them.
+
+## Documents
+- IV-10 (with Exhibit A) and MB-05 in full were received on Nov 14, 2026, and are in this folder.
 
 ## Build order
 1. **Stage 1, new files only, alongside Phase 2g:**
