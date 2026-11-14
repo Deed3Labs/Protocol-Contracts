@@ -684,7 +684,7 @@ describe("ADDENDUM 4, credit half: pauses, Income Assurance per hardship, statem
 
 describe("ADDENDUM 4, 10c on term plans: test 51 and the installment rule", function () {
   let core: Awaited<ReturnType<typeof deployCore>>;
-  let liquidator: any, clrusdPause: any, vaultPause: any;
+  let liquidator: any, clrusdPause: any, vaultPause: any, clock: any;
 
   beforeEach(async function () {
     core = await deployCore();
@@ -703,7 +703,7 @@ describe("ADDENDUM 4, 10c on term plans: test 51 and the installment rule", func
     const Mock = await ethers.getContractFactory("MockPauseSource");
     clrusdPause = await Mock.deploy();
     vaultPause = await Mock.deploy();
-    const clock = await (await ethers.getContractFactory("PauseClock"))
+    clock = await (await ethers.getContractFactory("PauseClock"))
       .deploy(await clrusdPause.getAddress(), await vaultPause.getAddress());
     await expect(liquidator.connect(ctx.outsider).setPauseClock(await clock.getAddress())).to.be.reverted;
     await liquidator.connect(ctx.admin).setPauseClock(await clock.getAddress());
@@ -758,6 +758,48 @@ describe("ADDENDUM 4, 10c on term plans: test 51 and the installment rule", func
     await expect(term.connect(ctx.outsider).declarePlanDefault(0)).to.be.revertedWithCustomError(term, "TermIssuerNotDefaultable");
     await vaultPause.unpauseAll();
     await expect(term.connect(ctx.outsider).declarePlanDefault(0)).to.emit(term, "SecuredPlanDefaulted");
+  });
+
+  it("owner decision 34: a pause that began after the plan fell behind and has already ended still pushes the installment default back by its length", async function () {
+    const { term, ctx } = core;
+    const m = ctx.member.address;
+    await advance(CYCLE + DAY); // the first installment is a day late
+    const since = Number(await term.delinquentSince(0));
+    expect(since).to.be.gt(0);
+    const before = Number(await term.defaultableAt(0));
+    expect(before).to.equal(since + 2 * CYCLE); // DEFAULT_AFTER_INSTALLMENTS installments after it
+    // A 6-day pause of the member's account, after the plan fell behind, long over by the deadline.
+    await advance(10 * DAY);
+    await clrusdPause.pauseAccount(m);
+    await advance(6 * DAY);
+    await clrusdPause.unpauseAccount(m);
+    const paused = Number(await clock.pausedSeconds(m));
+    expect(paused).to.be.gte(6 * DAY);
+    const after = Number(await term.defaultableAt(0));
+    expect(after).to.equal(before + paused);
+    await at(before + DAY);
+    await expect(term.connect(ctx.outsider).declareDefault(m)).to.be.revertedWithCustomError(term, "TermIssuerNotDefaultable");
+    await at(after - 1);
+    await expect(term.connect(ctx.outsider).declareDefault(m)).to.be.revertedWithCustomError(term, "TermIssuerNotDefaultable");
+    await at(after);
+    await expect(term.connect(ctx.outsider).declareDefault(m)).to.emit(term, "TermDefaulted");
+  });
+
+  it("owner decision 34: a payment that leaves the plan on time takes a new reading, so a pause while it was on time does not count against a later arrears", async function () {
+    const { term, ctx } = core;
+    const m = ctx.member.address;
+    await clrusdPause.pauseAccount(m);
+    await advance(3 * DAY);
+    await clrusdPause.unpauseAccount(m); // paused while the plan was on time
+    await advance(CYCLE);
+    // Pay what is due: on time again, and the reading moves up to now.
+    const due = (await term.scheduledPrincipalDue(0)) - (await term.planAt(0)).repaid;
+    await ctx.usdc.connect(ctx.member).approve(await ctx.stableCredit.getAddress(), ethers.MaxUint256);
+    await term.connect(ctx.member).payPlan(0, due);
+    expect(await term.delinquentSince(0)).to.equal(0n);
+    await advance(CYCLE + DAY); // the next installment is missed
+    const since = Number(await term.delinquentSince(0));
+    expect(Number(await term.defaultableAt(0))).to.equal(since + 2 * CYCLE);
   });
 
   it("an unsecured plan's installment default is not declared while a pause is in force", async function () {

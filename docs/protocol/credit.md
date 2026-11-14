@@ -205,7 +205,10 @@ the next cycle end is held (`heldClosedAt`) and judged once it passes, while the
 recorded at its own end. 12.5's grace period runs longer by the paused time since the close of the
 second missed cycle, and `inDefault` is false while a pause is in force. TermIssuer reads the same
 clock through its hold source (the Liquidator): 12.14's 30-day cure runs longer by the paused time
-since the notice, and no secured or installment default is declared while a pause is in force. The
+since the notice, and no secured or installment default is declared while a pause is in force. An
+unsecured plan's installment default (`defaultableAt`) runs later by the paused time since the plan was
+last on time: each plan records the clock at opening and after every payment that leaves it on time
+(owner decision 34). The
 Liquidator refuses every enforcement path, `payPledged` included, while a pause affecting the member
 is in force, and a Shortfall's 72-hour wait runs longer by the paused time since its notice.
 

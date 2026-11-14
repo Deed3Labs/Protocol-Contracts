@@ -332,7 +332,13 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         if (securedPlans[planId].secured) return 0;
         uint256 since = _delinquentSince(planId);
         if (since == 0) return 0;
-        return since + DEFAULT_AFTER_INSTALLMENTS * plans[planId].installmentLength;
+        Plan storage plan = plans[planId];
+        since += DEFAULT_AFTER_INSTALLMENTS * plan.installmentLength;
+        // 10c (owner decision 34): later by the paused time since the plan was last on time, which
+        // covers every pause since it fell behind.
+        address clock = _pauseClock();
+        if (clock != address(0)) since += IPauseClock(clock).pausedSeconds(plan.member) - currentClock[planId];
+        return since;
     }
 
     /// @notice the soonest any of a member's plans becomes defaultable. Zero when none is behind.
@@ -621,18 +627,11 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
             uint256 owed = plan.principalOutstanding;
             uint256 pay = owed < remaining ? owed : remaining;
 
-            plan.principalOutstanding = owed - pay;
-            plan.repaid += pay;
-            uint256 principalPortion = pay - _clearCarry(planId, pay);
-
             remaining -= pay;
             absorbed += pay;
-            emit PlanPaid(planId, pay, principalPortion);
-            if (plan.principalOutstanding == 0) {
-                plan.closed = true;
-                _untrackOpen(planId);
-                emit PlanClosed(planId);
-            }
+            // The same bookkeeping as a directed payment: carry first, closing a plan paid off,
+            // and the pause clock noted when it leaves the plan on time (owner decision 34).
+            _applyPlanPayment(planId, pay);
         }
     }
 

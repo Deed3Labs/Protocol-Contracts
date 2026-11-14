@@ -136,6 +136,7 @@ contract TermIssuerOrigination is TermIssuerBase {
         planPricing[planId] = pricing;
         if (pricing.priced) planSnap[planId] = rateSchedule.snapshot(pricing.state, pricing.product);
         _fixSchedule(plan);
+        _noteCurrent(planId);
         memberPlans[member].push(planId);
         _trackOpen(member, planId);
 

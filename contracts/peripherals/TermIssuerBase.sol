@@ -244,8 +244,14 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// @notice Where the Liquidation Hold (12.6) is read: the Liquidator. Set once.
     address public holdSource;
 
-    /// @dev Two more slots from the gap: securedPlans, holdSource.
-    uint256[13] private __gap;
+    /// @dev plan => the member's pause clock (10c) when the plan was last known to be current: at
+    /// opening, and after every payment that leaves it on time (Phase 2g, owner decision 34). Its
+    /// installment default runs later by the paused time since. The plan fell behind after this
+    /// reading, so the paused time since it is never less than since the plan fell behind.
+    mapping(uint256 => uint256) internal currentClock;
+
+    /// @dev Two more slots from the gap: securedPlans, holdSource; and one for currentClock.
+    uint256[12] private __gap;
 
     uint256 internal constant RAY_ = 1e27;
     uint256 internal constant BPS_ = 10_000;
@@ -452,6 +458,14 @@ abstract contract TermIssuerBase is CreditIssuer {
         return since != 0 && block.timestamp >= since + SECURED_PAST_DUE && block.timestamp >= cure;
     }
 
+    /// @dev Records the pause clock for a plan that is on time now (owner decision 34).
+    function _noteCurrent(uint256 planId) internal {
+        address clock = _pauseClock();
+        if (clock != address(0) && _delinquentSince(planId) == 0) {
+            currentClock[planId] = IPauseClock(clock).pausedSeconds(plans[planId].member);
+        }
+    }
+
     /// @dev The member's pause clock (10c), as the Liquidator (`holdSource`) names it. None while
     /// either is unset.
     function _pauseClock() internal view returns (address) {
@@ -536,6 +550,7 @@ abstract contract TermIssuerBase is CreditIssuer {
             _untrackOpen(planId);
             emit PlanClosed(planId);
         }
+        _noteCurrent(planId);
     }
 
     /// @notice fixes the payment schedule for whatever the plan is spreading.

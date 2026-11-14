@@ -627,7 +627,7 @@
   },
   "TermIssuer": {
    "source": "contracts/peripherals/TermIssuer.sol",
-   "sha256": "185d3d98374c01c06f2c44ec6e1acf9c66ab4ffae5db31d5b03f3bd13a742431",
+   "sha256": "a66c1996527f3ce530fbfe906f21bf028af9430d33d8164352536f280891fe11",
    "immutables": [
     [
      1976,
@@ -670,7 +670,7 @@
      32
     ],
     [
-     14519,
+     14723,
      32
     ]
    ]

@@ -23,7 +23,7 @@ Nothing was deployed, no key was used, and no live network was touched.
 | 12.17 statement data (decisions 16–23) | Done | 56 (three tests) |
 | 12.18 workout states (decisions 24–32) | Done | 57 (six tests) |
 
-- **No new conflict needs the owner's decision.** Section A5 lists the judgement calls and two recommendations.
+- **No new conflict needs the owner's decision.** Section A5 lists the judgement calls. The owner decided its two recommendations: owner decision 34 is built (paused time lengthens the installment default), and owner decision 35 keeps the workout plan's default as built, with a counsel note.
 - **Admin powers.** The credit half adds three set-once settings and nothing else:
   - `RevolvingIssuer.setPauseClock` (`CREDIT_SETTINGS_ROLE`);
   - `Liquidator.setPauseClock` (`DEFAULT_ADMIN_ROLE`);
@@ -53,7 +53,7 @@ Nothing was deployed, no key was used, and no live network was touched.
 - **12.5 grace.** The grace end is the later of the cure window after the second due point and 864,000 s after the timestamp, plus the paused time since that cycle's close. This is what pushed the due point, plus whatever falls inside the grace period. `inDefault` is false while a pause is in force, so `triggerDefault` and the Liquidator's default paths revert (test 50).
 - **12.14 cure.**
   - `approvePlanNotice` records the clock (`SecuredPlan.noticeClock`). The 30 days run longer by the paused time since the notice, and `declarePlanDefault` reverts while a pause is in force (test 51).
-  - The unsecured plans' installment default (`declareDefault`) also reverts while a pause is in force (section A5).
+  - The unsecured plans' installment default (`declareDefault`) also reverts while a pause is in force. `defaultableAt` runs later by the paused time since the plan was last on time (owner decision 34, section A5).
 - **The Liquidator.**
   - Every enforcement path goes through `_requireNoHold`, which now reverts `LiquidatorPauseInForce` while a pause affecting the member is in force.
   - `pledgePaymentDue` answers false, so `payPledged` reverts.
@@ -140,7 +140,7 @@ Nothing was deployed, no key was used, and no live network was touched.
 
 ### A2. Tests
 
-New: `test/audit/compliance/Addendum4Credit.spec.ts`, with 17 tests.
+New: `test/audit/compliance/Addendum4Credit.spec.ts`, with 19 tests.
 
 - **Test 50.** The grace ends on day 22. A 5-day account pause from day 20 moves it to day 27. The trigger reverts past day 22 while the pause is in force, on day 26, and one second before day 27. A vault-wide pause after day 27 holds it again and lengthens it by its own two minutes. A random caller then succeeds.
 - **Decision 5.** A pause across a due point. Nothing is judged while the pause is in force. The March close is recorded at its own end while the February close is held. A payment four days after the original due point, inside the pushed window, is no miss. An unpaused member's identical payment is a miss, judged before the payment lands.
@@ -157,7 +157,7 @@ New: `test/audit/compliance/Addendum4Credit.spec.ts`, with 17 tests.
   - PLAN: exactly $900 + $12 into 12 × $76, the unsecured positions at zero, 0% and unpriceable, paid off and ended.
   - The plan's default: timing, pause, write-off of the plan only, no line default.
   - The Combined Ceiling exclusion.
-- **Test 51** and the installment default under a pause, on TermIssuer.
+- **Test 51** and the installment default under a pause, on TermIssuer, including owner decision 34's two tests (A5).
 - **`PledgedBonds.spec.ts`** gains two:
   - `payPledged` and the Liquidator's paths revert under an account pause and under a vault pause, then pay;
   - the 72-hour Shortfall wait becomes 78 hours after a 6-hour pause.
@@ -183,8 +183,8 @@ Changed:
   | Liquidator | 24,454 | 122 | 24,591 |
   | RevolvingIssuer | 24,435 | 141 | 25,646 |
   | RevolvingIssuerTerms | 24,396 | 180 | 24,533 |
-  | TermIssuerOrigination | 24,334 | 242 | 24,471 |
-  | TermIssuer | 24,281 | 295 | 24,985 |
+  | TermIssuerOrigination | 24,519 | 57 | 24,656 |
+  | TermIssuer | 24,534 | 42 | 25,238 |
   | RevolvingIssuerExtension | 23,620 | 956 | 23,757 |
   | RevolvingIssuerCycles | 22,688 | 1,888 | 22,742 |
   | RevolvingIssuerWorkouts (new) | 20,619 | 3,957 | 20,756 |
@@ -225,8 +225,16 @@ It names no clock before both contracts are upgraded: an issuer reading a clock 
 
 ### A5. Judgement calls and recommendations
 
-1. **The installment default under a pause (recommendation).** Decisions 3–6 name grace and cure periods: 12.5, 12.14 and the Shortfall wait. An unsecured plan's default under `DEFAULT_AFTER_INSTALLMENTS` has neither. It now reverts while a pause is in force (10c: "a pause never causes a default"), but its two-installment count is not lengthened by past paused time. Lengthening it would need the clock recorded when a plan falls behind. Recommendation: record the clock at `delinquentSince` and lengthen `defaultableAt` by the paused time since then. That costs about 300 bytes in TermIssuer, which has 295.
-2. **Decision 26's reach.** "Only what an unsecured default reaches" is built as the narrowest version: the plan's own position is written off and no line default is recorded. An unsecured revolving default could also reach pledged bonds and pool shares through the Liquidator, and this one reaches none of them. Say if the plan's default should open the same Liquidator paths as a revolving default.
+1. **The installment default under a pause: decided (owner decision 34) and built.** Decisions 3–6 name grace and cure periods (12.5, 12.14 and the Shortfall wait), and an unsecured plan's default under `DEFAULT_AFTER_INSTALLMENTS` has neither. The owner adopted the recommendation.
+   - **What is recorded.** A past reading of the clock cannot be taken later, so each plan records the member's pause clock whenever it is known to be on time (`currentClock`): at opening, and after every payment, directed or absorbed, that leaves it on time. The plan fell behind after that reading, so the paused time since the reading is never less than the paused time since `delinquentSince`. A pause between the last on-time moment and the fall behind also counts, which favours the member.
+   - **The deadline.** `defaultableAt` (and so `memberDefaultableAt` and `declareDefault`) is later by the paused time since that reading. `declareDefault` also reverts while a pause is in force, as before.
+   - **When the clock is unknown.** With no clock named, nothing is counted, as for every other deadline. A clock that cannot be read reverts the trigger, so it fails closed. A plan opened before the clock was named reads its starting clock as zero, which counts every pause since the clocks began.
+   - **Room.** `_absorbRepayment` now uses the shared `_applyPlanPayment`, which was its exact duplicate. TermIssuer has 42 bytes free and TermIssuerOrigination 57.
+   - **Storage.** One gap slot (`__gap` 13 → 12).
+   - **Tests** (`Addendum4Credit`):
+     - a 6-day pause that began after the plan fell behind, and ended long before the deadline, moves `defaultableAt` by exactly its length; the trigger reverts one second before and succeeds at it;
+     - a payment that leaves the plan on time takes a new reading, so an earlier pause does not count against a later arrears.
+2. **Decision 26's reach: decided as built (owner decision 35).** The workout plan's default writes off the plan's own position only and opens no Liquidator path. This follows decision 26's text ("never Savings or other collateral") and costs the Liquidator no bytes. **Counsel note:** MB-05 §2.4 and §2.5(b) make a Defaulted Amount under MB-04 a Secured Obligation, and pledged Earn Positions secure it "while they remain pledged". Counsel should confirm that 12.18 or MB-04 carves the workout plan out. Otherwise the build can be widened later by an upgrade.
 3. **Test 56's "$0.50 of carry and no principal".** Within a position a payment clears carry before principal (spec item 2), so a position can never hold carry without principal at a close. The test shows that a $0.50 balance is statement-required and zero is not. The flag is computed on principal plus carry, as decision 22 says.
 4. **When a close is recorded.** The clock is read when a close is recorded. Every touch records it first, but a pause that falls between a cycle end and the first touch after it is not counted toward that close's due point. A keeper calling `syncCreditPeriod` at each end closes the gap. Carry and principal are exact either way.
 5. **Paused time before the cure notice also lengthens 12.5's notice leg.** Using one reading (the clock at the close) for both legs is the member-favourable reading.
