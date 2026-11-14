@@ -244,7 +244,9 @@ The ones without which nothing works:
 
 Then, per provider as you enable it: `PLAID_*`, `BRIDGE_*` (including `BRIDGE_WEBHOOK_PUBLIC_KEY`),
 `LITHIC_*` (`LITHIC_API_KEY`, `LITHIC_WEBHOOK_SECRET`; production needs **both** `LITHIC_ENV=production`
-and `LITHIC_ALLOW_PRODUCTION=true`, because one mistyped variable should not move real money),
+and `LITHIC_ALLOW_PRODUCTION=true`, because one mistyped variable should not move real money;
+`LITHIC_PARTNER_BANK_NAME` is the partner bank shown on Spendable's account details and in its
+disclosure, since Lithic's API does not name it — unset, the app shows a dash rather than a guess),
 `STRIPE_*`, `SEND_*` and `SAVINGS_*` for the relayers, and the at-rest encryption keys
 (`PLAID_TOKEN_MASTER_KEY`, `MEMBER_PRIVATE_DATA_MASTER_KEY`, `SEND_CONTACT_ENCRYPTION_KEY`), each
 32 bytes, base64 or hex, with an optional keyring for rotation.
