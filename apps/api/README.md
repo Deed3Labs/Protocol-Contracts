@@ -310,8 +310,19 @@ moves from the member's Lithic cash account to Clear's settlement account in a L
 Only a Spendable (Lithic ACH) deposit with auto-clear ON starts one; Bridge deposits, Ready to
 allocate USDC and CLRUSD are never touched. One clearing per deposit, keyed by a ref derived from the
 deposit receipt: the same ref is `repayForMember`'s on-chain idempotency key, and the Lithic hold and
-transfer tokens are derived from it. The order is hold, then chain, then the transfer that settles the
-hold; the states, retries and compensating steps are documented in
+transfer tokens are derived from it (UUIDv5s, sent as each object's `token` and as the
+`Idempotency-Key` header, which Lithic requires to be a valid UUID). The order:
+
+1. read on chain what the clearing will apply, A = min(what the deposit set aside, what is owed now);
+2. hold exactly A in the member's account (the rest of the deposit is never held);
+3. send `repayForMember` / `payPlan` for A;
+4. book-transfer exactly what was applied with `hold_token`, which settles the hold.
+
+There is no window between releasing the money and moving it. The one exception is the chain
+applying less than A (the member repaid in between): Lithic does not document settling part of a
+hold, so the hold is voided, the applied amount transferred without it, and ops are alerted. Holds
+expire an hour after the release (`AUTO_CLEAR_MAX_HOLD_HOURS` + 1h), so Lithic frees one if nothing
+voids it. The states, retries and compensating steps are documented in
 `src/services/deposits/autoClearRuns.ts` (table `auto_clear_runs`).
 
 Term plans' dues a Spendable deposit pays (only with auto-clear ON: paying them is part of
@@ -325,14 +336,17 @@ Before it runs:
 | Setting | What it is |
 |---|---|
 | `LITHIC_AUTO_CLEAR_SETTLEMENT_ACCOUNT_TOKEN` | Clear's own financial account at Lithic that receives the cleared dollars (the program's settlement or operating account, from which the settler's USDC is replenished). **Without it nothing is held, cleared or moved**, and ops get one alert |
-| `LITHIC_AUTO_CLEAR_TRANSFER_CATEGORY`, `_TYPE`, `_SUBTYPE` | The book transfer's classification, which is program-specific at Lithic. Defaults: `TRANSFER`, `TRANSFER`, `AUTO_CLEAR`. Use the values Lithic configures for the program |
-| `AUTO_CLEAR_MAX_HOLD_HOURS` | How long a deposit may stay held while nothing in scope is owed on chain yet (a card purchase still pending), default 72. Then the hold is voided and the money is the member's |
+| `LITHIC_AUTO_CLEAR_TRANSFER_SUBTYPE` | **Required.** The subtype Lithic's implementation specialist issues for this transfer (e.g. `001`). There is no default: **without it nothing is held, cleared or moved** |
+| `LITHIC_AUTO_CLEAR_TRANSFER_CATEGORY`, `_TYPE` | Defaults `BALANCE_OR_FUNDING` and `COLLECTION` (Lithic: "moving funds from a cash-funded account to a credit account, to collect on a credit statement"). Use whatever Lithic enables for the program |
+| `AUTO_CLEAR_MAX_HOLD_HOURS` | How long a clearing may wait for something to be owed on chain (a card purchase still pending), default 72. Nothing is held while it waits; after it, the clearing is released and the money is the member's |
 
 What the program needs from Lithic: the **Holds** API (`POST /v1/financial_accounts/{token}/holds`,
 `GET /v1/holds/{token}`, `POST /v1/holds/{token}/void`) and the **Book Transfers** API
 (`POST`/`GET /v1/book_transfers`, including `hold_token`) enabled for `LITHIC_API_KEY`, and book
 transfers allowed from members' cash accounts to the settlement account with the classification
-above. Earmarks recorded before this change (`auto_repay_due`) had no hold and are released, not paid.
+above. Book transfer types and subtypes are set up with Lithic's implementation specialist, and
+Lithic notes they "typically require approval from your sponsor bank": agree the type and subtype
+for automatic clearing with both before turning this on. Earmarks recorded before this change (`auto_repay_due`) had no hold and are released, not paid.
 A declined transfer after the chain has applied means Clear is owed that amount: ops are alerted, it
 is retried with a new token only once the last one is confirmed declined, and after five attempts it
 waits for a person.
