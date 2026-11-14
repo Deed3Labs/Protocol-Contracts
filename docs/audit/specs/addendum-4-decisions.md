@@ -71,3 +71,7 @@ The spec text is in `addendum-12-18-workout-states.md`. The owner accepted every
 
 ## Pause continuation (owner, Nov 14, 2026), binding
 33. A new pause set within 30 days of the end of the last pause of the same kind continues it: its 30-day cap counts from the first pause's start. Same kind means the same account, the security pause, or the vault-wide pause. Going past the cap still needs the two-person renewal with a recorded legal basis. This closes the gap where a pause lapses at day 30 and a fresh one starts a new 30 days. It is built on `audit/phase-2g-delisting-legacy`.
+
+## Phase 2g report A5 (owner, Nov 14, 2026), binding
+34. **Installment default under a pause.** An unsecured plan's `DEFAULT_AFTER_INSTALLMENTS` default is pushed back by every pause in force since the plan fell behind, including pauses that have already ended. The pause clock is recorded at `delinquentSince`, and `defaultableAt` is lengthened by the paused time since then, failing closed. It is built on `audit/phase-2g-pauses-workouts`.
+35. **Decision 26's reach.** It stays as built: a workout plan's default writes off the plan's own position and opens no Liquidator path, so it never reaches Savings, pledged bonds or pool shares. Counsel note: MB-05 §2.4 and §2.5(b) make a Defaulted Amount under MB-04 a Secured Obligation, which pledged Earn Positions secure "while they remain pledged". Counsel should confirm that 12.18 or MB-04 carve the workout plan out. If not, the reach can be widened later by upgrade.
