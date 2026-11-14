@@ -20,7 +20,7 @@ Verbatim from the owner. Treat each as a REQUIREMENT; stop and list conflicts wi
 - Governance can switch the whole item off once a DFAL licence or other cover is in place.
 
 ## 12.15: CLRUSD transfers and Send
-- CLRUSD transfers stay members-only: the token allows transfers only between registered member wallets, enabled at launch through Send. Do NOT make CLRUSD non-transferable. De-listing a wallet may stop receipt only, never sending or redemption.
+- CLRUSD transfers stay members-only: the token allows transfers only between registered member wallets, enabled at launch through Send. Do NOT make CLRUSD non-transferable. A de-listing may stop receipt only, never sending or redemption (10d). *(Edited by Addendum 4, 12.15; it read "De-listing a wallet may stop receipt only, never sending or redemption.")*
 - USDC Sends are member-signed transfers from the member's own wallet to any address; Clear never signs, holds or moves the funds.
 - Before the app submits any CLRUSD or USDC Send, it checks the recipient against the digital currency addresses on OFAC's SDN list (refreshed at least daily), blocks a match and logs the result. This check lives in the app, not the token: no contract function may block a member's transfer on screening grounds.
 
