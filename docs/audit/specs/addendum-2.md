@@ -120,3 +120,12 @@ Tests
 - **Timing:** Phase 4b and 2d finish first; this is built as Phase 2e.
 - **The Hardship Grant** needs no contract change.
 - **§13 addition:** `releaseAssurance` also pays Hardship Grants (MB-10 Schedule 5), with the same two-signer rule and destination. Clear then pays the landlord, lender or servicer off chain. No new function, and the Credit Backstop compartment can never fund a grant.
+
+## Also built in Phase 2e (owner, Nov 14, 2026)
+- Phase 4c items 1, 2, 3 and 7 from `docs/audit/PHASE-4B-OPEN-DECISIONS.md` are folded into 2e, because they change the same RevolvingIssuer code:
+  1. a per-member daily card cap;
+  2. the card follows the current line;
+  3. `openLine` waits until an earlier default's collateral has been applied;
+  7. issuer-internal repayments follow the effective-rate order.
+- Items 4, 5 and 9 are built separately in Phase 4c.
+- Correct TermIssuer's description: ELPA is not a term plan ("the ELPA that buys a home" is wrong; see `phase-2f-decisions.md` on `audit/phase-2f-earn-pool`).
