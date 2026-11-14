@@ -263,6 +263,18 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
     log("! No ClearUSDUpgradeable yet: run deploy/21, then re-run this to name it (savings back nothing until then).");
   }
 
+  // Re-review L-B: every Savings draw refreshes CLRUSD's recorded lock, so a registry outage cannot
+  // fail open for a holder who drew after their last CLRUSD move. Set once, by the issuer's owner
+  // (the deployer until the credit timelock handover; after it, a timelock proposal).
+  if (clrusdRecord && (await revolving.clrusdTokenOf()) === ethers.ZeroAddress) {
+    if ((await revolving.owner()) === deployer.address) {
+      await (await revolving.setClrusdToken(clrusdRecord.address)).wait();
+      log("  RevolvingIssuer clrusdToken -> ClearUSDUpgradeable");
+    } else {
+      log(`! RevolvingIssuer has no CLRUSD token: propose setClrusdToken(${clrusdRecord.address}) through the credit timelock.`);
+    }
+  }
+
   /*
    * The credit operator's powers are split by job (audit H-4). The deployer is the AccessManager
    * admin and passes every role; these grants are for the keys that do each job day to day.

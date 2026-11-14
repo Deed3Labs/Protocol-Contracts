@@ -14,11 +14,11 @@ Source: [`contracts/peripherals/CollateralRegistry.sol`](../../../contracts/peri
 |---|---|---|
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address admin, address _networkRegistry)` | Once, when the proxy is initialised |  |
-| `pledge(address member, bytes32 kind, uint256 amount)` | `onlyRole(OPERATOR_ROLE)` |  |
-| `pledgeItem(address member, bytes32 kind, uint256 itemId)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `pledge(address member, bytes32 kind, uint256 amount)` | Not in the current source |  |
+| `pledgeItem(address member, bytes32 kind, uint256 itemId)` | Not in the current source |  |
 | `recordItemSeizure(address member, bytes32 kind, uint256 itemId)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `recordSeizure(address member, bytes32 kind, uint256 amount)` | `onlyRole(OPERATOR_ROLE)` |  |
-| `refresh(address member)` | Checked inside the function |  |
+| `refresh(address member)` | Anyone |  |
 | `registerCollateralType(bytes32 kind, uint8 backing, uint256 haircutBps, uint256 unitPrice)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `release(address member, bytes32 kind, uint256 amount)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `releaseItem(address member, bytes32 kind, uint256 itemId)` | `onlyRole(OPERATOR_ROLE)` |  |
