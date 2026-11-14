@@ -28,9 +28,29 @@ interface SavingsChainConfig {
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const TRANSFER_EVENT_TOPIC = ethers.id('Transfer(address,address,uint256)');
+/*
+ * The clone salt is `keccak256(userSalt, config)` (audit H-4), so the escrow address commits to every
+ * field of the intent: funding it agrees to exactly that config. Predicting it needs the config.
+ */
+const INTENT_CONFIG_TUPLE =
+  '(address depositor,address receiver,address transferToken,address vaultToken,address vault,uint256 amount,uint64 expiry,uint8 action)';
 const FACTORY_ABI = [
-  'function predictIntentAddress(bytes32 salt) external view returns (address)',
+  `function predictIntentAddress(bytes32 userSalt, ${INTENT_CONFIG_TUPLE} config) external view returns (address)`,
 ] as const;
+
+/** The factory's IntentConfig for an intent: what the escrow address commits to, and what settle and refund pass. */
+export function intentConfigOf(payload: Omit<SavingsIntentPayload, 'escrowAddress' | 'chainId' | 'salt'>) {
+  return {
+    depositor: payload.ownerWallet,
+    receiver: payload.receiverWallet,
+    transferToken: payload.transferToken,
+    vaultToken: payload.vaultToken,
+    vault: payload.vaultAddress,
+    amount: BigInt(payload.amount),
+    expiry: BigInt(payload.expiry),
+    action: payload.action === 'deposit' ? 0 : 1,
+  };
+}
 
 const DEFAULT_USDC_BY_CHAIN: Record<number, string> = {
   1: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
@@ -160,11 +180,15 @@ class SavingsIntentService {
     return fraction ? `${whole}.${fraction}` : whole.toString();
   }
 
-  async predictEscrowAddress(chainId: number, salt: string): Promise<string> {
+  async predictEscrowAddress(
+    chainId: number,
+    salt: string,
+    intent: Omit<SavingsIntentPayload, 'escrowAddress' | 'chainId' | 'salt'>,
+  ): Promise<string> {
     const config = this.resolveChainConfig(chainId);
     const provider = new ethers.JsonRpcProvider(config.rpcUrl);
     const factory = new ethers.Contract(config.factoryAddress, FACTORY_ABI, provider);
-    const predicted = (await factory.predictIntentAddress(salt)) as string;
+    const predicted = (await factory.predictIntentAddress(salt, intentConfigOf(intent))) as string;
     return normalizeAddress(predicted);
   }
 
@@ -231,10 +255,7 @@ class SavingsIntentService {
       input.action === 'deposit' ? config.usdcAddress : config.clrusdAddress;
     const vaultToken = config.usdcAddress;
 
-    return this.predictEscrowAddress(config.chainId, salt).then((escrowAddress) => ({
-      chainId: config.chainId,
-      salt,
-      escrowAddress,
+    const intent = {
       ownerWallet,
       receiverWallet,
       transferToken,
@@ -243,6 +264,12 @@ class SavingsIntentService {
       amount: amountMicros.toString(),
       expiry,
       action: input.action,
+    };
+    return this.predictEscrowAddress(config.chainId, salt, intent).then((escrowAddress) => ({
+      chainId: config.chainId,
+      salt,
+      escrowAddress,
+      ...intent,
     }));
   }
 

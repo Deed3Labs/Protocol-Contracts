@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { track } from '@/lib/analytics';
 import {
   approveCharge,
+  prepareChargeApproval,
   declineCharge,
   getCharge,
   getCredit,
@@ -19,7 +20,9 @@ import { KycProvider } from '@/context/KycContext';
 import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
 import AddMoneyModal from '@/components/app-ui/AddMoneyModal';
 import { getNetworkByChainId } from '@/config/networks';
-import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
+import { disclosureFor, signPlanTerms } from '@/lib/planSigning';
+import type { PlanTermsTypedData } from '@clear/domain';
 import { PAY_OVER_TIME_MIN_CENTS, shopSlug, splitsOffered } from '@clear/domain';
 import { closeOrFallback, doneLine, hasNoClearAccount, overTimeShown as showsOverTime, shopHostFor, type ApprovalView } from '@/lib/approvalPage';
 import ChargeApproval, { type PayMode } from './ChargeApproval';
@@ -88,6 +91,8 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
   const [splitInto, setSplitInto] = useState(4);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The plan terms fetched to sign, and the disclosure rebuilt from them (audit H-4). */
+  const [prepared, setPrepared] = useState<{ typedData: PlanTermsTypedData; disclosure: string[] } | null>(null);
   const [perCycleLimit, setPerCycleLimit] = useState<number | null>(null);
   const [mode, setMode] = useState<PayMode>('choose');
   const [paying, setPaying] = useState<PayNowStep | null>(null);
@@ -274,19 +279,63 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
     [charge],
   );
 
+  // Terms are for one split: choosing another means fetching (and reading) them again.
+  useEffect(() => {
+    setPrepared(null);
+  }, [splitInto]);
+
+  /**
+   * Approving over time is reading the terms, then signing them (audit H-4).
+   *
+   * The first press fetches the plan's terms and shows them, rebuilt on this phone from the fields
+   * being signed. The second signs them with the member's own wallet, after checking them against
+   * the screen, and the server submits that signature: TermIssuer opens a plan only on it.
+   */
   const onApprove = useCallback(async () => {
-    if (!charge) return;
+    if (!charge || !address) return;
     setBusy(true);
     setError(null);
-    const result = await approveCharge(charge.code, splitInto);
-    setBusy(false);
-    if (result.error || !result.charge) {
-      setError(result.error ?? 'We could not approve this charge.');
-      return;
+    try {
+      const fresh =
+        prepared &&
+        Number(prepared.typedData.message.installments) === splitInto &&
+        Number(prepared.typedData.message.deadline) > Math.floor(Date.now() / 1000) + 30;
+      if (!fresh) {
+        const next = await prepareChargeApproval(charge.code, splitInto);
+        if (next.error || !next.typedData) {
+          setError(next.error ?? 'We could not get this plan ready. Nothing was charged.');
+          return;
+        }
+        setPrepared({ typedData: next.typedData, disclosure: disclosureFor(next.typedData, charge.merchantName) });
+        return;
+      }
+
+      const termIssuer = clearContracts(ACTIVE_CHAIN_ID)?.termIssuer;
+      if (!termIssuer) {
+        setError('Paying over time is not available on this network yet.');
+        return;
+      }
+      const signed = await signPlanTerms({
+        typedData: prepared.typedData,
+        shown: { member: address, purchaseCents: charge.amountCents, installments: splitInto, disclosure: prepared.disclosure },
+        expected: { chainId: ACTIVE_CHAIN_ID, termIssuer },
+      });
+      const result = await approveCharge(charge.code, splitInto, signed);
+      // Signed terms are good for one attempt: a nonce is used either way, so the next press starts over.
+      setPrepared(null);
+      if (result.error || !result.charge) {
+        setError(result.error ?? 'We could not approve this charge.');
+        return;
+      }
+      setCharge(result.charge);
+      track('charge_approved', { installments: splitInto }); // split only, no amount and no merchant
+    } catch (e) {
+      setPrepared(null);
+      setError(e instanceof Error && e.message.startsWith('These terms') ? e.message : 'Nothing was signed, and nothing was charged.');
+    } finally {
+      setBusy(false);
     }
-    setCharge(result.charge);
-    track('charge_approved', { installments: splitInto }); // split only, no amount and no merchant
-  }, [charge, splitInto]);
+  }, [charge, splitInto, address, prepared]);
 
   const onDecline = useCallback(async () => {
     if (!charge) return;
@@ -398,6 +447,7 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
       doneBy={(n) => `${n} cycle${n === 1 ? '' : 's'} from now`}
       busy={busy}
       error={error}
+      planTerms={prepared?.disclosure ?? null}
       onApprove={onApprove}
       onDecline={onDecline}
       // Closing leaves it waiting: Shop charges and the banner on Send and Activity bring it back.

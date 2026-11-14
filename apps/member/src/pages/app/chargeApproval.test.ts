@@ -42,11 +42,11 @@ describe('a code is not a credential', () => {
   });
 
   test('and re-checks the charge belongs to the caller', () => {
-    // Six routes (open, approve, decline, and pay now's start, confirm and back), six checks.
+    // Seven routes (open, prepare, approve, decline, and pay now's start, confirm and back), seven checks.
     // requireVerifiedWallet falls through to true when there is no req.auth at all, which is why the
     // requireAuth test above is not redundant with this one.
     const checks = ROUTES.split('requireVerifiedWallet(req, res, charge.memberWallet').length - 1;
-    expect(checks).toBe(6);
+    expect(checks).toBe(7);
   });
 
   test('the merchant route is the only one without a session', () => {

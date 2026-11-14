@@ -21,6 +21,7 @@ import type {
   RefundSavingsIntentResponse,
 } from '@/types/savings';
 import { getAccessToken } from '@privy-io/react-auth';
+import type { PlanTerms, PlanTermsTypedData } from '@clear/domain';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
 import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
@@ -1315,13 +1316,19 @@ export async function claimPayoutBank(
   return response.data;
 }
 
+/**
+ * Claim to a wallet. `claimSignature` is the claim key's EIP-712 signature over
+ * Claim(transferId, recipientWallet), made in this browser from the claim link (lib/claimKey):
+ * ClaimEscrow releases the money only to the wallet the key signed for (audit H-4).
+ */
 export async function claimPayoutWallet(
   claimSessionToken: string,
-  recipientWallet: string
+  recipientWallet: string,
+  claimSignature: string,
 ): Promise<ClaimPayoutResponse | null> {
   const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/wallet', {
     method: 'POST',
-    body: JSON.stringify({ claimSessionToken, recipientWallet }),
+    body: JSON.stringify({ claimSessionToken, recipientWallet, claimSignature }),
   });
 
   if (response.error || !response.data) {
@@ -1544,7 +1551,7 @@ export async function recordGaslessSavings(p: {
   await apiRequest('/api/savings/gasless/record', { method: 'POST', body: JSON.stringify(p) });
 }
 
-export async function prepareSendLockAuthorization(id: number): Promise<{
+export async function prepareSendLockAuthorization(id: number, claimToken: string): Promise<{
   transferId: string;
   chainId: number;
   escrowAddress: string;
@@ -1552,7 +1559,7 @@ export async function prepareSendLockAuthorization(id: number): Promise<{
 }> {
   const response = await apiRequest<{ transferId: string; chainId: number; escrowAddress: string; typedData: Eip712TypedData }>(
     `/api/send/transfers/${id}/lock-authorization`,
-    { method: 'POST', body: JSON.stringify({}) },
+    { method: 'POST', body: JSON.stringify({ claimToken }) },
   );
   if (response.error || !response.data) {
     throw new Error(response.error || 'Failed to prepare send.');
@@ -1563,10 +1570,11 @@ export async function prepareSendLockAuthorization(id: number): Promise<{
 export async function submitSendLockAuthorization(
   id: number,
   signature: string,
+  claimToken: string,
 ): Promise<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }> {
   const response = await apiRequest<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }>(
     `/api/send/transfers/${id}/submit-authorization`,
-    { method: 'POST', body: JSON.stringify({ signature }), timeout: 120000 },
+    { method: 'POST', body: JSON.stringify({ signature, claimToken }), timeout: 120000 },
   );
   if (response.error || !response.data) {
     throw new Error(response.error || 'Failed to complete send.');
@@ -3705,19 +3713,42 @@ export interface ChargeActionResult {
 }
 
 /**
- * Approve, with the split chosen here and only here.
+ * Approve over time, step one: the plan terms to sign (audit H-4).
+ *
+ * The server builds the terms as EIP-712 typed data from the charge; the member's own wallet signs
+ * them (lib/planSigning) after the phone has checked them against the screen. No Face ID here:
+ * nothing is spent until the signed terms are submitted.
+ */
+export async function prepareChargeApproval(
+  code: string,
+  installments: number,
+): Promise<{ typedData?: PlanTermsTypedData; error?: string }> {
+  const r = await apiRequest<{ typedData: PlanTermsTypedData; disclosure: string[] }>(
+    `/api/charges/${encodeURIComponent(code)}/approve/prepare`,
+    { method: 'POST', body: JSON.stringify({ installments }) },
+  );
+  if (r.error || !r.data?.typedData) return { error: r.error || 'We could not get this plan ready. Nothing was charged.' };
+  return { typedData: r.data.typedData };
+}
+
+/**
+ * Approve, with the split chosen here and only here, on the terms the member signed.
  *
  * The error is surfaced rather than swallowed: approving opens a real term plan, and the failures
  * a member can do something about — a lapsed charge, a split the contracts do not offer, a limit
  * that will not stretch — are all things they need told rather than a spinner that stops.
  */
-export async function approveCharge(code: string, installments: number): Promise<ChargeActionResult> {
+export async function approveCharge(
+  code: string,
+  installments: number,
+  signed: { terms: PlanTerms; signature: string },
+): Promise<ChargeActionResult> {
   // Approving a charge is spending: Face ID first (lib/stepUp).
   const denied = await stepUpDenied();
   if (denied) return { error: denied };
   const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}/approve`, {
     method: 'POST',
-    body: JSON.stringify({ installments }),
+    body: JSON.stringify({ installments, terms: signed.terms, signature: signed.signature }),
   });
   if (r.error || !r.data) return { error: r.error || 'We could not approve this charge.' };
   return { charge: r.data };

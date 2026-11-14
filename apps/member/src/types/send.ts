@@ -25,6 +25,8 @@ export interface SendTransferSummary {
   status: SendTransferStatus;
   region: string;
   payoutMethods: ClaimPayoutMethod[];
+  /** The ClaimEscrow the claim key signs for (audit H-4). */
+  escrowAddress?: string | null;
 }
 
 export interface PrepareSendTransferRequest {
@@ -38,6 +40,11 @@ export interface PrepareSendTransferRequest {
 
 export interface PrepareSendTransferResponse {
   transfer: SendTransferSummary;
+  /**
+   * The claim link's token and the address of the claim key it derives (audit H-4). The lock
+   * commits `signer` on chain; the token goes back to the server to confirm, which sends the link.
+   */
+  claim: { token: string; signer: string };
   recipient: {
     type: 'email' | 'phone';
     masked: string;
@@ -51,6 +58,8 @@ export interface PrepareSendTransferResponse {
 export interface ConfirmSendTransferLockRequest {
   transferId: string;
   escrowTxHash: string;
+  /** From prepare: the lock committed its claim key, and the link is built from it. */
+  claimToken: string;
   /** True when the lock was an AA UserOp — server verifies via the on-chain event, not the outer tx. */
   aa?: boolean;
 }

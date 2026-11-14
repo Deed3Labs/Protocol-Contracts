@@ -193,10 +193,9 @@ describe('joining (§3)', () => {
     const quote = MemberQuote.parse(await json(await fetch(`${base}/api/checkout/${session}/member`, { headers: { 'X-Pay-Session': state.token! } })));
     expect(quote.firstName).toBe('Marco');
     expect(quote.splits.find((s) => s.installments === 4)?.perCycleCents).toBe(4865);
-    const res = await post(`/api/checkout/${session}/approve`, { installments: 4, idempotencyKey: key() }, { 'X-Pay-Session': state.token! });
-    expect(res.status).toBe(200);
-    expect(PaidView.parse(await json(res))).toMatchObject({ method: 'clear', installments: 4 });
-    expect(approved.at(-1)).toMatchObject({ wallet: MARCO, installments: 4 });
+    // A live plan opens on Marco's own signature over its terms (audit H-4), so he approves it in
+    // the Clear app's window rather than in the frame.
+    expect(quote.approveIn).toBe('window');
     // The rest of the file meets Marco before he's joined.
     members.delete('+19095550188');
   });

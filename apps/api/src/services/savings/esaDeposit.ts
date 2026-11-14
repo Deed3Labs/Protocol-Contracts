@@ -32,6 +32,12 @@ export interface DepositAuthorization {
     validBefore: string;
     authNonce: string;
   };
+  /**
+   * Only for a receiver other than the depositor (audit M-5): the depositor's EIP-712 signature over
+   * DepositIntent(depositor, token, amount, receiver, authNonce) in the vault's domain. Any length,
+   * so a smart account can sign it.
+   */
+  intentSignature?: string;
   chainId?: number;
 }
 
@@ -72,23 +78,41 @@ export async function relayEsaDeposit(auth: DepositAuthorization): Promise<Depos
   if (amount <= 0n) throw new Error('amount must be greater than zero');
 
   const sig = ethers.Signature.from(signature);
+  const depositor = ethers.getAddress(submit.depositor);
+  const receiverRaw = String(submit.receiver ?? submit.depositor);
+  if (!ethers.isAddress(receiverRaw)) throw new Error('submit.receiver must be a valid address');
+  const receiver = ethers.getAddress(receiverRaw);
+  const args = {
+    depositor,
+    token: config.usdcAddress,
+    amount,
+    receiver,
+    validAfter: BigInt(String(submit.validAfter ?? '0')),
+    validBefore: BigInt(String(submit.validBefore)),
+    authNonce: String(submit.authNonce),
+    v: sig.v,
+    r: sig.r,
+    s: sig.s,
+  };
 
-  const txHash = await savingsRelayerService.depositWithAuthorization(
-    config.chainId,
-    config.vaultAddress,
-    {
-      depositor: ethers.getAddress(submit.depositor),
-      token: config.usdcAddress,
-      amount,
-      receiver: ethers.getAddress(String(submit.receiver ?? submit.depositor)),
-      validAfter: BigInt(String(submit.validAfter ?? '0')),
-      validBefore: BigInt(String(submit.validBefore)),
-      authNonce: String(submit.authNonce),
-      v: sig.v,
-      r: sig.r,
-      s: sig.s,
-    },
-  );
+  /*
+   * The vault mints only to the depositor (audit M-5). Anyone else is named by the depositor's own
+   * signed DepositIntent, which the vault checks; without one the deposit is refused here, before
+   * the relayer spends gas on a call the vault would revert.
+   */
+  let txHash: string;
+  if (receiver === depositor) {
+    txHash = await savingsRelayerService.depositWithAuthorization(config.chainId, config.vaultAddress, args);
+  } else {
+    const intentSignature = String(auth.intentSignature ?? '').trim();
+    if (!/^0x(?:[0-9a-fA-F]{2}){65,}$/.test(intentSignature)) {
+      throw new Error('a deposit to another wallet needs the depositor’s signed deposit intent');
+    }
+    txHash = await savingsRelayerService.depositWithAuthorizationFor(config.chainId, config.vaultAddress, {
+      ...args,
+      intentSignature,
+    });
+  }
 
   return { txHash, amount, chainId: config.chainId };
 }

@@ -264,6 +264,38 @@ Send claim settlement and savings deposits are signed by a relayer. `SEND_RELAYE
 Savings has its own set (`SAVINGS_RELAYER_MODE`, `SAVINGS_CDP_*`) so the two can be funded and
 rotated independently.
 
+### Keys and the roles they need (audit Phase 1)
+
+Each key the API signs with, what it calls, and the on-chain role that call needs since the Phase 1
+contract changes. Settings (tiers, treasuries, card settlers, caps, borrower destinations) are the
+Safe's, not any key's here. Nothing in this repo grants a role; `scripts/command/ops-roles.map.json`
+is the map the role handover reads.
+
+| Key (env) | Calls | Needs |
+|---|---|---|
+| `CREDIT_OPERATOR_PRIVATE_KEY` | `RevolvingIssuer.openLine`, `updateCreditPeriod` (renewals; may only extend), `TermIssuer.openPlan` (on the member's signed terms), `closePlanForRefund`, `OffersIssuer.grant` | AccessManager `CREDIT_LINES_ROLE` |
+| `CREDIT_OPERATOR_PRIVATE_KEY` | `TermIssuer.setTermLimit` (`apps/api/scripts/set_term_limit.ts`, termLimitService), tier capacity | AccessManager `CREDIT_LIMITS_ROLE` |
+| `CREDIT_OPERATOR_PRIVATE_KEY` | `CollateralRegistry.pledge`/`release` (unless the savings relayer signs them), `MembershipRegistry` writes | CollateralRegistry `OPERATOR_ROLE`, MembershipRegistry `REGISTRAR_ROLE` (unchanged) |
+| `CARD_SETTLER_PRIVATE_KEY` | `RevolvingIssuer.authorizeCardSpend` (after the Auth Stream approves), `settleCardSpend`, `reverseCardSpend`, `repayCardSpend`, `repayForMember`; `TermIssuer.collectForMember`, `declareDefault`, `reinstate`; `ClearUSD.syncEncumbrance` | a card settler (`setCardSettler`, the Safe's); `LendingPool` `BORROWER_ROLE` plus `setBorrower(settler, destination, dailyCap)` |
+| `SAVINGS_RELAYER_*` | `ESADepositVault.depositWithAuthorization(For)`, `redeemWithSignature`, `executeMandateDeposit`; `SavingsIntentFactory.settle/refundDeterministic` | ESADepositVault `RELAYER_ROLE` (no function accepts `OPERATOR_ROLE` now); SavingsIntentFactory `SETTLER_ROLE` |
+| `SEND_RELAYER_*` | `ClaimEscrow.createTransferWithAuthorizationAndClaimKey`, `claimToPayoutTreasury`, `claimToWalletWithSignature` | ClaimEscrow `SETTLER_ROLE` (the wallet claim needs none: the claim key's signature decides) |
+| `PRIVY_AUTHORIZATION_PRIVATE_KEY` | a shop's own wallet: `PayoutPool.redeem` | the shop registered and active in MerchantRegistry |
+
+The plain AccessManager `OPERATOR` role passes no credit check any more, so a credit operator that
+held only `OPERATOR` is refused (`CreditIssuerMissingRole`).
+
+**Plan terms.** A term plan opens only on the member's EIP-712 signature over `PlanTerms`
+(`@clear/domain` `planTerms`, the one definition). `disclosureHash` is keccak-256 of the disclosure
+lines joined by newlines, built from the signed fields with fixed formatting; the member app rebuilds
+those lines from the terms, shows them, and refuses to sign if their hash differs. A plan reopened
+after a lost dispute needs a fresh member signature, so it is not reopened automatically; ops gets
+an alert instead.
+
+**Claim keys.** A Send's claim link is its claim key: `keccak256("clear-claim-key/v1:" + token)`
+(`@clear/domain` `claimKey`). The lock commits the key's address; a wallet claim is signed in the
+recipient's browser. A link rotated by `send:recover-claim` derives a different key, so a recovered
+link can still be paid out to a bank or card (`claimToPayoutTreasury`) but not to a wallet.
+
 ---
 
 ## Further reading

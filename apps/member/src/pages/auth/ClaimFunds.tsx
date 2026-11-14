@@ -12,6 +12,9 @@ import {
 import type { ClaimPayoutMethod, ClaimPayoutResponse, ClaimSession, VerifyClaimOtpResponse } from '@/types/send';
 import { AlertCircle, Building2, CheckCircle2, CreditCard, Loader2, RefreshCcw, Wallet } from 'lucide-react';
 import Wordmark from '@/components/app-ui/Wordmark';
+import { signClaimToWallet } from '@/lib/claimKey';
+import { clearContracts } from '@/lib/clearNetwork';
+import { getSendClaimEscrowAddress } from '@/config/send';
 
 /** Display USDC stored as 6-decimal micros (the ledger format) as a dollar amount. */
 function fmtUsd(value: string | number | undefined): string {
@@ -239,7 +242,31 @@ export default function ClaimFunds() {
         setStep('method');
         return;
       }
-      response = await claimPayoutWallet(verifiedClaim.claimSessionToken, walletAddress);
+      /*
+       * The claim key in this link chooses the wallet, not the server (audit H-4): it signs
+       * Claim(transferId, wallet) here, and the escrow pays only the wallet it signed for.
+       */
+      const transfer = verifiedClaim.transfer;
+      const escrow =
+        transfer.escrowAddress || getSendClaimEscrowAddress(transfer.chainId) || clearContracts(transfer.chainId)?.claimEscrow;
+      if (!escrow) {
+        setError('Claiming to a wallet is not available on this network yet.');
+        setStep('method');
+        return;
+      }
+      if (new Date(transfer.expiresAt).getTime() < Date.now()) {
+        setError('This transfer has expired and can no longer be claimed. It goes back to the sender.');
+        setStep('method');
+        return;
+      }
+      const claimSignature = await signClaimToWallet({
+        claimToken: token,
+        chainId: transfer.chainId,
+        escrow,
+        transferId: transfer.transferId,
+        recipientWallet: walletAddress,
+      });
+      response = await claimPayoutWallet(verifiedClaim.claimSessionToken, walletAddress, claimSignature);
     }
 
     if (!response) {

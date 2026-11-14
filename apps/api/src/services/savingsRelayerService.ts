@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { assertCdpNetworkMatches } from './cdpNetworkGuard.js';
 import { ethers } from 'ethers';
-import { savingsIntentService, type SavingsIntentPayload } from './savingsIntentService.js';
+import { intentConfigOf, savingsIntentService, type SavingsIntentPayload } from './savingsIntentService.js';
 
 const FACTORY_ABI = [
   'function settleDeterministic(bytes32 salt, (address depositor,address receiver,address transferToken,address vaultToken,address vault,uint256 amount,uint64 expiry,uint8 action) config) external returns (address escrow, uint256 resultAmount)',
@@ -12,7 +12,17 @@ const ESCROW_ABI = [
   'function status() external view returns (uint8)',
 ] as const;
 
+/*
+ * The vault's relayer calls (audit H-3, M-5). They need RELAYER_ROLE on ESADepositVault: since the
+ * H-3 fix no function accepts OPERATOR_ROLE, so a relayer key granted only OPERATOR_ROLE is refused.
+ * `depositWithAuthorization` mints only to the depositor; a deposit to anyone else travels with the
+ * depositor's signed DepositIntent through `depositWithAuthorizationFor`. Gasless redeem goes
+ * through `redeemWithSignature(bytes)`, which takes an EIP-1271 smart-account signature of any
+ * length as well as an EOA's.
+ */
 const VAULT_ABI = [
+  'function depositWithAuthorizationFor(address depositor, address token, uint256 amount, address receiver, (uint256 validAfter, uint256 validBefore, bytes32 nonce, uint8 v, bytes32 r, bytes32 s) auth, bytes intentSignature) external returns (uint256 minted)',
+  'function redeemWithSignature(address redeemer, address token, uint256 clrusdAmount, address receiver, uint256 deadline, bytes signature) external returns (uint256 returnedAmount)',
   'function depositWithAuthorization(address depositor, address token, uint256 amount, address receiver, uint256 validAfter, uint256 validBefore, bytes32 authNonce, uint8 v, bytes32 r, bytes32 s) external returns (uint256 minted)',
   'function redeemWithAuthorization(address redeemer, address token, uint256 clrusdAmount, address receiver, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external returns (uint256 returnedAmount)',
   'function executeMandateDeposit(address depositor, address token, uint256 amountPerRun, uint64 interval, uint32 maxRuns, uint256 startAt, uint256 expiry, uint256 nonce, bytes signature) external returns (uint256 minted)',
@@ -66,6 +76,16 @@ export interface RedeemAuthorizationArgs {
   v: number;
   r: string;
   s: string;
+}
+
+/** Gasless redeem with the redeemer's signature as bytes: 65 for an EOA, any length for EIP-1271. */
+export interface RedeemSignatureArgs {
+  redeemer: string;
+  token: string;
+  clrusdAmount: bigint;
+  receiver: string;
+  deadline: bigint;
+  signature: string;
 }
 
 type RelayerMode = 'local_key' | 'cdp_server_wallet';
@@ -269,17 +289,9 @@ class SavingsRelayerService {
     throw new Error('Timed out waiting for relayer transaction confirmation.');
   }
 
+  /** The same IntentConfig the escrow address was predicted from, so settle and refund find that escrow. */
   private buildConfigTuple(payload: SavingsIntentPayload) {
-    return {
-      depositor: payload.ownerWallet,
-      receiver: payload.receiverWallet,
-      transferToken: payload.transferToken,
-      vaultToken: payload.vaultToken,
-      vault: payload.vaultAddress,
-      amount: BigInt(payload.amount),
-      expiry: BigInt(payload.expiry),
-      action: payload.action === 'deposit' ? 0 : 1,
-    };
+    return intentConfigOf(payload);
   }
 
   private async sendViaLocalKey(chainId: number, to: string, data: string): Promise<string> {
@@ -403,6 +415,41 @@ class SavingsRelayerService {
     return this.submit(chainId, ethers.getAddress(vaultAddress), data);
   }
 
+  /**
+   * Gasless deposit to a receiver other than the depositor (audit M-5): the USDC authorization plus
+   * the depositor's EIP-712 DepositIntent naming the receiver, bound to the authorization's nonce.
+   */
+  async depositWithAuthorizationFor(
+    chainId: number,
+    vaultAddress: string,
+    args: DepositAuthorizationArgs & { intentSignature: string },
+  ): Promise<string> {
+    const iface = new ethers.Interface(VAULT_ABI);
+    const data = iface.encodeFunctionData('depositWithAuthorizationFor', [
+      args.depositor,
+      args.token,
+      args.amount,
+      args.receiver,
+      { validAfter: args.validAfter, validBefore: args.validBefore, nonce: args.authNonce, v: args.v, r: args.r, s: args.s },
+      args.intentSignature,
+    ]);
+    return this.submit(chainId, ethers.getAddress(vaultAddress), data);
+  }
+
+  /** Gasless redeem (CLRUSD → USDC) with the redeemer's signature as bytes, EOA or EIP-1271. */
+  async redeemWithSignature(chainId: number, vaultAddress: string, args: RedeemSignatureArgs): Promise<string> {
+    const iface = new ethers.Interface(VAULT_ABI);
+    const data = iface.encodeFunctionData('redeemWithSignature', [
+      args.redeemer,
+      args.token,
+      args.clrusdAmount,
+      args.receiver,
+      args.deadline,
+      args.signature,
+    ]);
+    return this.submit(chainId, ethers.getAddress(vaultAddress), data);
+  }
+
   /** Gasless redeem (CLRUSD → USDC): relayer submits the user's EIP-712 Redeem intent to the vault. */
   async redeemWithAuthorization(
     chainId: number,
@@ -423,7 +470,7 @@ class SavingsRelayerService {
     return this.submit(chainId, ethers.getAddress(vaultAddress), data);
   }
 
-  /** Autopay: execute one recurring-deposit run from the user's signed mandate (relayer = OPERATOR). */
+  /** Autopay: execute one recurring-deposit run from the user's signed mandate (relayer = RELAYER_ROLE). */
   async executeMandateDeposit(chainId: number, vaultAddress: string, a: DepositMandateArgs): Promise<string> {
     const iface = new ethers.Interface(VAULT_ABI);
     const data = iface.encodeFunctionData('executeMandateDeposit', [

@@ -99,6 +99,11 @@ export interface ChargeApprovalProps {
   doneBy: (splitInto: number) => string;
   busy?: boolean;
   error?: string | null;
+  /**
+   * The plan's terms, once fetched to sign (audit H-4): the disclosure lines whose hash the member
+   * signs. Shown above the button, which then signs and approves. Null until Approve is first pressed.
+   */
+  planTerms?: string[] | null;
   onApprove: () => void;
   /** Decline it: the button under the pay button. Nothing is charged, and the shop sees it at once. */
   onDecline: () => void;
@@ -295,6 +300,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
     doneBy,
     busy = false,
     error = null,
+    planTerms = null,
     onApprove,
     onDecline,
     onLeave,
@@ -564,9 +570,16 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
         <CFoot>
           <SplitConsequences amount={amount} ratePerCycle={ratePerCycle} splitInto={splitInto} doneBy={doneBy} />
           <p className="c-det mt-s1">{rate[0]!.toUpperCase() + rate.slice(1)}. Clearing early always costs less. You can change this any time.</p>
+          {planTerms && (
+            <div className="c-det mt-s2 border-t border-ink-13 pt-s2" aria-label="Plan terms">
+              {planTerms.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+          )}
           {errorLine}
           <Btn primary lg className="mt-s2" onClick={onApprove} disabled={busy}>
-            {busy ? 'One moment…' : online ? approveLabel(usd(amount), splitInto) : 'Approve'}
+            {busy ? 'One moment…' : planTerms ? 'Sign and approve' : online ? approveLabel(usd(amount), splitInto) : 'Approve'}
           </Btn>
           {backOnText}
           {declineButton(busy)}

@@ -560,6 +560,8 @@ const ADMIN_ROLE = `0x${'0'.repeat(64)}`;
 const roleId = (name: string) => keccak256(toHex(name));
 // AccessManager's operator role is the bytes32 of "OPERATOR", not a hash (AccessManager.sol)
 const AM_OPERATOR = toHex('OPERATOR', { size: 32 });
+// Audit H-4 split the credit powers out of OPERATOR: lines and plans, limits, and settings.
+const AM_CREDIT_ROLES = new Set(['CREDIT_LINES_ROLE', 'CREDIT_LIMITS_ROLE', 'CREDIT_SETTINGS_ROLE'].map((r) => roleId(r)));
 
 /**
  * Who can do what, replayed from the events the indexer keeps: every contract's role grants and
@@ -599,7 +601,7 @@ export async function keyRolesLive(db: Queryable, opsSafe: string | null): Promi
     ['Upgrade and admin', who((c, r) => r === ADMIN_ROLE || r === 'owner')],
     ['Pause', who((c, r) => r === roleId('PAUSER_ROLE') || (r === 'owner' && (c === 'RevolvingIssuer' || c === 'TermIssuer')))],
     ['Mint credit', who((c) => c === 'issuers')],
-    ['Run credit operations', who((c, r) => c === 'AccessManager' && r === AM_OPERATOR.toLowerCase())],
+    ['Run credit operations', who((c, r) => c === 'AccessManager' && (r === AM_OPERATOR.toLowerCase() || AM_CREDIT_ROLES.has(r as `0x${string}`)))],
     ['Set shop terms', who((c, r) => c === 'MerchantRegistry' && r === roleId('OPERATOR_ROLE'))],
     ['Claim from AssurancePool', who((c) => c === 'assurance-callers')],
   ];

@@ -40,6 +40,42 @@ export { parsePendingTotal, shopDisplayName, shopSlug } from './counterCode';
 
 export { fromCents, toCents } from './units';
 
+export {
+  buildPlanTerms,
+  disclosureMoney,
+  PLAN_DISCLOSURE_VERSION,
+  PLAN_SIGNATURE_TTL_SECONDS,
+  PLAN_TERMS_DOMAIN_NAME,
+  PLAN_TERMS_DOMAIN_VERSION,
+  PLAN_TERMS_TYPE_STRING,
+  PLAN_TERMS_TYPES,
+  planDisclosure,
+  planDisclosureForTerms,
+  planDisclosureText,
+  planTermsArg,
+  planTermsDomain,
+  planTermsMessage,
+  planTermsMismatch,
+  planTermsTypedData,
+  samePlanTerms,
+  type PlanDisclosureInput,
+  type PlanTerms,
+  type PlanTermsTypedData,
+} from './planTerms';
+
+export {
+  CLAIM_ESCROW_DOMAIN_NAME,
+  CLAIM_ESCROW_DOMAIN_VERSION,
+  CLAIM_KEY_DERIVATION_PREFIX,
+  CLAIM_TYPES,
+  claimEscrowDomain,
+  claimKeySeed,
+  claimTypedData,
+  claimWindowOpen,
+  TRANSFER_TERMS_TYPES,
+  type ClaimTransferTerms,
+} from './claimKey';
+
 export { formatCalendarDate, parseCalendarDate } from './dates';
 
 export type {
