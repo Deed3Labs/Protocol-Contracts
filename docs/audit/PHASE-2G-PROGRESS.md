@@ -34,5 +34,7 @@ If a signature changes, this file is updated and pushed again.
 | 10d de-listing (CLRUSD listed status) | done |
 | 10f Legacy Contact Module | done, not deployed; tested on a mock Kernel and on the real Kernel v3.3 bytecode |
 | Decision 12: autopay session key | none exists (autopay is the vault's signed DepositMandate); pinned by an app test |
+| Credit half (`audit/phase-2g-pauses-workouts`): pause time in grace and cure periods, `incomePause` per hardshipRef, 12.17 statement data, 12.18 workouts | done; tests 50, 51 and 55-57 |
+| Both halves merged (the de-listing half at 9a6cb424) | done |
 
-The write-up is `PHASE-2G-DELISTING-LEGACY.md`.
+The write-up for both halves is `PHASE-2G-REPORT.md` (the de-listing half is its Part B).
