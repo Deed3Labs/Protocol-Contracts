@@ -11,7 +11,7 @@ Nothing was deployed, no key was used, and no live network was touched. ESADepos
 - **Storage:** append-only everywhere, each slot taken from a `__gap`, except DeedNFT, whose layout has no trailing gap and gains two slots at its end. None of the changed contracts is live on Base mainnet.
 - **Admin powers:** M-E narrows one. Two new governed settings, both bounded: RevolvingIssuer's CLRUSD token (owner, set once) and DeedNFT's reassignment delay (Deed timelock, 1 to 30 days).
 - **Conflicts and open questions:** none with the "Do NOT change" list or DECISIONS. Section 3 lists ten things these decisions do not settle, each left as it is.
-- **Tests:** see section 5.
+- **Tests:** 1,011 passing, 0 failing (986 before, plus the 25 new tests).
 
 ## 1. What changed, per item
 
@@ -43,7 +43,7 @@ Nothing was deployed, no key was used, and no live network was touched. ESADepos
   - It emits `DeedRestored`. `restoreConsentDigest` returns the digest.
 - **Burning a frozen deed stays allowed**, and its record is kept (brief item 1). Counsel to confirm.
 - **Storage.** `DeedNFTBase` appends `_pendingValidator` and `_validatorReassignDelay` after `_membershipRegistry`.
-- **Room.** The reassignment logic sits in DeedNFT itself (3,182 bytes of headroom left) and the un-void in DeedTrustExtension (939 left). DeedNFTMintExtension and Subdivide are byte-for-byte unchanged.
+- **Room.** The reassignment logic sits in DeedNFT itself (3,182 bytes of headroom left) and the un-void in DeedTrustExtension (939 left). DeedNFTMintExtension keeps its size (23,804 bytes), and Subdivide's code fingerprint is unchanged.
 
 ### M-G. The standby's own determination needs the protector's consent
 
@@ -211,13 +211,15 @@ None of these is live on Base mainnet: only ClaimEscrow, ESADepositVault and the
 ## 5. Tests and checks
 
 - **New:** `test/audit/rereview/Decisions.spec.ts`, 25 tests. M-C 2, M-E 1, M-F 5, M-G 3, L-B 4, L-C 1, L-F 3, L-G 2, L-I 3, O-1 1.
-- **Full suite** (`KEEP_REVERT_STRINGS=true npx hardhat test --no-compile`, every fuzz at its default 300 steps): FULL_SUITE_RESULT.
+- **Full suite** (`KEEP_REVERT_STRINGS=true npx hardhat test --no-compile`, every fuzz at its default 300 steps): **1,011 passing, 0 failing**: 986 before (Phase 4's report) plus the 25 new tests.
+  - The one full run gave 1,010 passing and one failure: the path-independence test in section 2, which was then changed.
+  - Its spec (`CreditInvariants.spec.ts`, every seed at 300 steps) was then re-run on its own: 9 passing..
 - **Generated files:**
   - fingerprints (`packages/command-types/src/chain/code.json`): regenerated from the production build; six contracts changed. `code-fingerprints.mjs --check` passes.
   - contract reference: three pages regenerated (CollateralRegistry, NetworkRegistry, RevolvingIssuer). `contract-reference.mjs --check` passes.
   - doc links: `check-doc-links.mjs` reports no broken links.
   - Like every forwarded function before it, `openLine` now shows as "Anyone" in RevolvingIssuer's reference page, because its access check runs in the extension. This is the generator's existing limitation.
-- **`npx turbo run typecheck test --affected`:** TURBO_RESULT.
+- **`npx turbo run typecheck test --affected`:** 3 of 3 tasks passed (`@clear/command-types` typecheck, and `@clear/command` typecheck and tests), with `TURBO_SCM_BASE=origin/dev`.
 
 ## 6. Documentation changed
 
