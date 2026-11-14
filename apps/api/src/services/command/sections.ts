@@ -1,3 +1,4 @@
+import { getContractAddress } from '../../config/contracts.js';
 import { payoutDueWithin } from '../chain/payoutFunding.js';
 import { chainId as payoutChainId } from '../chargeService.js';
 import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PersonNote, type PosterRow, type WaitingRow } from '@clear/command-types';
@@ -1281,8 +1282,12 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const reserve = provider === 'live' ? await reserveLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
   const feeds = provider === 'live' ? await feedRows(db) : null;
   const bank = feeds ? await bankLive(db, feeds.get('plaid'), feeds.get('stripe'), o.now.getTime()) : null;
-  // live, the AssurancePool's reserves are the contract's own
-  const assurance = provider === 'live' ? await assurancePoolLive(chainOf(o, 'money')) : null;
+  // live, the AssurancePool's compartments, floor and coverage are the contract's own (Phase 2c). Null until the
+  // new pool is deployed and named in the address book: the retired pool has none of these views.
+  const assurance =
+    provider === 'live'
+      ? await assurancePoolLive(chainOf(o, 'money'), getContractAddress(payoutChainId(), 'AssurancePool') ?? undefined).catch(() => null)
+      : null;
   // live, what the PayoutPool owes shops and when, and the credit book: the chain's, not the tables' sample
   const payouts = provider === 'live' ? await payoutsLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
   const credit = provider === 'live' ? await creditLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
@@ -1329,14 +1334,12 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   if (reserve) { M.clrusd = reserve.clrusd; M.reserveDiff = reserve.difference; }
   M.rtd = M.unsecured ? M.assurance / M.unsecured : 0;
   M.room = M.floor ? M.assurance / M.floor - M.unsecured : 0;
-  // live, the gate is the contract's: its target, its exposure, and RTD on the primary reserve alone
+  // live, Phase 2c: there is no RTD gate any more. The Credit Backstop holds a floor and leaves coverage
+  // above it for Lending Co.'s draws; Member Assurance pays grants. The contract's own figures, read only.
   if (assurance) {
-    M.floor = assurance.target;
-    M.unsecured = assurance.exposure;
-    // the near-term bond gap it backs as the last resort, counted in its RTD
-    M.bondGap = assurance.bonds;
-    M.rtd = assurance.rtd ?? 0;
-    M.room = assurance.room;
+    M.backstop = assurance.backstop;
+    M.backstopFloor = assurance.floor;
+    M.coverage = assurance.coverage;
   }
   if (payouts) {
     M.payout = payouts.held;
@@ -1426,7 +1429,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       // live, the reserve as the vault stands now: its USDC to each CLRUSD, read with this page
       ...(reserve ? { 'money.reserve': { ratio: reserveRatio(reserve.usdc, reserve.clrusd), checked: 'just now' } } : {}),
       // live, what BondVault keeps back for bondholders and what the Safe may take for the co-op's use
-      ...(assurance ? { 'money.rtd': { target: assurance.target, rtd: assurance.rtd, exposure: assurance.exposure, bonds: assurance.bonds, primary: assurance.primary, buffer: assurance.buffer, excess: assurance.excess, valid: assurance.valid, gap: assurance.gap, room: assurance.room } } : {}),
+      ...(assurance ? { 'money.assurance': assurance } : {}),
       ...(vault ? { 'money.bondvault': { required: vault.required, deployable: vault.deployable, floorPct: vault.floorPct, windowDays: vault.windowDays } } : {}),
     },
     asOf: asOfFor(provider, o.now),

@@ -223,9 +223,9 @@ export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
   const issuerAddress = await issuer.getAddress();
   const stableCredit = String(await issuer.stableCredit());
   // The token repayments are made in, as the chain defines it -- never an address typed in here.
-  const ledger = new ethers.Contract(stableCredit, ['function assurancePool() view returns (address)'], signer.provider);
-  const assurance = new ethers.Contract(String(await ledger.assurancePool()), ['function reserveToken() view returns (address)'], signer.provider);
-  const usdc = new ethers.Contract(String(await assurance.reserveToken()), ERC20_ABI, writesAs(signer));
+  // Phase 2c: it is the ledger's own (`StableCredit.reserveToken`); the ledger names no pool.
+  const ledger = new ethers.Contract(stableCredit, ['function reserveToken() view returns (address)'], signer.provider);
+  const usdc = new ethers.Contract(String(await ledger.reserveToken()), ERC20_ABI, writesAs(signer));
   const settler = signer.address;
   const results: AutoRepayResult[] = [];
 

@@ -54,7 +54,8 @@ describe('repaid on chain under the member’s mandate, bounded by the chain', (
   });
 
   test('the repayment token comes from the chain, not a hardcoded address', () => {
-    expect(service).toContain('await assurance.reserveToken()');
+    expect(service).toContain('await ledger.reserveToken()');
+    expect(service).not.toContain('assurancePool()');
     expect(service).not.toMatch(/0x036CbD53842c5426634e7929541eC2318f3dCF7e/);
   });
 
