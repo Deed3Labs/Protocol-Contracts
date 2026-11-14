@@ -31,27 +31,35 @@ export interface SplitQuote {
  * and clearing early always costs less. Stating the total carry per option is what makes the choice
  * honest: the number does the work a warning would otherwise have to.
  *
- * Charged on the balance still outstanding each cycle, which for an even split is the average of
- * what's owed at the start and at the end — hence the (n + 1) / 2 term rather than n. Over four
- * cycles $940 at 2% accrues $18.80 + $14.10 + $9.40 + $4.70 = $47.00.
+ * Levelled (section 12.9, as TermIssuer schedules it): one payment every cycle,
+ * A·r / (1 − (1 + r)^−n), each cycle's carry being r on the principal still unpaid. Over four
+ * cycles $940 at 2% is $246.87 a cycle, $18.80 + $14.24 + $9.59 + $4.84 = $47.47 of carry.
+ * `planSchedule` (planTerms) is the same schedule in ledger units, to the unit; this is its quick,
+ * floating-point form for a chooser that previews every split at once.
  *
  * `In full` is one cycle, not none: the member still holds the balance for a cycle before clearing
- * it, so it costs a single cycle's carry — $18.80 on $940. It's the cheapest option, which is what
- * "clearing early always costs less" means; it isn't a free one, and an earlier draft that showed
- * $0.00 there made the plan look like it could be taken and unwound at no cost.
+ * it, so it costs a single cycle's carry — $18.80 on $940 — unless the chain says it is free (then
+ * the rate passed is 0).
  */
 export function splitQuote(amount: number, splitInto: number, ratePerCycle: number): SplitQuote {
   const cycles = Math.max(1, splitInto);
-  const carry = amount * ratePerCycle * ((cycles + 1) / 2);
-  const total = amount + carry;
+  const perCycle = levelPayment(amount, cycles, ratePerCycle);
+  const total = perCycle * cycles;
   return {
     splitInto: cycles,
-    // Levelled, the way an installment plan actually bills: carry declines as the balance does, but
-    // the member pays the same figure every cycle rather than a different one each time.
-    perCycle: total / cycles,
+    // What actually leaves the account each cycle: principal and carry together, the same figure
+    // every cycle, the way the plan bills.
+    perCycle,
     principalPerCycle: amount / cycles,
     carryThisCycle: amount * ratePerCycle,
-    carry,
+    carry: total - amount,
     total,
   };
+}
+
+/** The level payment that clears `amount` in `cycles` at `ratePerCycle` (a fraction) a cycle. */
+export function levelPayment(amount: number, cycles: number, ratePerCycle: number): number {
+  const n = Math.max(1, cycles);
+  if (ratePerCycle <= 0) return amount / n;
+  return (amount * ratePerCycle) / (1 - Math.pow(1 + ratePerCycle, -n));
 }

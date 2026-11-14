@@ -199,7 +199,7 @@ describe('the first payment matches what was quoted', () => {
   test('and the two disagree, which is why it matters', async () => {
     const { splitQuote } = await import('@/lib/clearModel');
     const quoted = splitQuote(940, 4, 0.02).perCycle;
-    expect(quoted).toBeCloseTo(246.75, 2);
+    expect(quoted).toBeCloseTo(246.87, 2); // levelled (section 12.9)
     expect(quoted).not.toBeCloseTo(940 / 4, 2);
   });
 });

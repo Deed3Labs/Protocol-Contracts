@@ -13,6 +13,8 @@ import {
   planProductOf,
   planSchedule,
   planTermsMismatch,
+  termPeriodRate,
+  unitsToCents,
   planTermsTypedData,
   RESPLIT_TYPE_STRING,
   resplitMismatch,
@@ -93,24 +95,36 @@ describe('the typed data is the contract’s', () => {
 });
 
 describe('the schedule is TermIssuerBase._fixSchedule', () => {
-  test('$940 in 4 at 2% a month: carry $18.54, $13.91, $9.27, $4.64 (PHASE-2-REPORT section 2)', () => {
+  test('$940 in 4 at 2% per 30-day cycle is levelled: $246.87 x 4, $47.47 of carry (section 12.9)', () => {
     const s = planSchedule({ principal: 940_000_000n, ratePerCycleBps: 200, installments: 4, installmentLengthSeconds: 30 * DAY });
-    expect(s.installments.map((r) => Math.round(Number(r.carry) / 10_000))).toEqual([1854, 1391, 927, 464]);
-    expect(s.installments.map((r) => r.principal)).toEqual([235_000_000n, 235_000_000n, 235_000_000n, 235_000_000n]);
-    // `scheduleTotal` exactly: the parts add up, and match (base * periodRate * (n + 1)) / (2 * RAY).
-    expect(s.installments.reduce((a, r) => a + r.amount, 0n)).toBe(s.total);
-    expect(s.total - 940_000_000n).toBe(s.totalCarry);
+    // Term.spec acceptance 5: payment closeTo 246_866_000 within 1_000; carry closeTo 47_466_000 within 4_000.
+    expect(s.payment).toBe(246_866_328n);
+    expect(s.installments.map((r) => r.amount)).toEqual(Array(4).fill(246_866_328n));
+    expect(s.totalCarry).toBe(47_465_312n);
+    // The first payment clears $18.80 of carry and $228.07 of principal (Term.spec line "cleared").
+    expect(s.installments.map((r) => unitsToCents(r.carry))).toEqual([1880, 1424, 959, 484]);
+    expect(unitsToCents(s.installments[0].principal)).toBe(22807);
+    // `scheduleTotal` is payment x n, and the principal paid down is the principal exactly.
+    expect(s.total).toBe(s.payment * 4n);
+    expect(s.installments.reduce((a, r) => a + r.principal, 0n)).toBe(940_000_000n);
+    expect(s.installments.reduce((a, r) => a + r.carry, 0n)).toBe(s.totalCarry);
   });
 
-  test('a free plan is principal only', () => {
-    const s = planSchedule({ principal: 100_000_000n, ratePerCycleBps: 0, installments: 2, installmentLengthSeconds: 30 * DAY });
+  test('the period rate is the monthly rate per 30-day cycle, not x 12 / 365', () => {
+    expect(termPeriodRate(200, 30 * DAY)).toBe(2n * 10n ** 25n);
+  });
+
+  test('a free plan splits the principal exactly; the last installment takes the remainder', () => {
+    const s = planSchedule({ principal: 100_000_001n, ratePerCycleBps: 0, installments: 3, installmentLengthSeconds: 30 * DAY });
     expect(s.totalCarry).toBe(0n);
-    expect(s.installments.map((r) => r.amount)).toEqual([50_000_000n, 50_000_000n]);
+    expect(s.payment).toBe(33_333_334n);
+    expect(s.installments.map((r) => r.amount)).toEqual([33_333_334n, 33_333_334n, 33_333_333n]);
+    expect(s.total).toBe(100_000_001n);
   });
 });
 
 describe('the disclosure', () => {
-  test('is fixed text, not the locale, and states the product, rate and declining schedule', () => {
+  test('is fixed text, not the locale, and states the product, rate and level schedule', () => {
     expect(disclosureMoney(123_456_789)).toBe('$1,234,567.89');
     expect(disclosureMoney(5)).toBe('$0.05');
     expect(planDisclosure({
@@ -121,17 +135,17 @@ describe('the disclosure', () => {
       installments: 4,
       installmentLengthSeconds: 30 * DAY,
     })).toEqual([
-      'Clear plan terms, v2',
+      'Clear plan terms, v3',
       'Shop: Corner Garage',
       'Credit: Partner credit',
       'Purchase: $940.00',
       'Repaid in 4 installments, one every 30 days',
-      'Carry: 2% a month (24% a year), simple interest by the second on principal still owed, never on carry',
-      'Installment 1: $253.54 ($235.00 principal + $18.54 carry)',
-      'Installment 2: $248.91 ($235.00 principal + $13.91 carry)',
-      'Installment 3: $244.27 ($235.00 principal + $9.27 carry)',
-      'Installment 4: $239.64 ($235.00 principal + $4.64 carry)',
-      'Total carry $46.36, $986.36 in all, if paid on schedule',
+      'Carry: 2% per 30-day cycle on principal still owed, never on carry. Equal payments of $246.87',
+      'Installment 1: $246.87 ($228.07 principal + $18.80 carry)',
+      'Installment 2: $246.87 ($232.63 principal + $14.24 carry)',
+      'Installment 3: $246.87 ($237.28 principal + $9.59 carry)',
+      'Installment 4: $246.87 ($242.03 principal + $4.84 carry)',
+      'Total carry $47.47, $987.47 in all, if paid on schedule',
     ]);
   });
 

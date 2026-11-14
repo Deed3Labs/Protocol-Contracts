@@ -17,9 +17,10 @@
  * - The chain prices the plan. `openPlan` reverts with `TermIssuerTermsMismatch` unless the signed
  *   `ratePerCycle` and `payout` are exactly what `TermIssuerBase._quote` computes, so the server
  *   reads them from chain (`planQuote.ts` holds the arithmetic) and never from a table of its own.
- * - The schedule is equal shares of principal plus carry on the declining principal, at the monthly
- *   rate x 12 / 365 days per second (DECISIONS #1). `planSchedule` reproduces `_fixSchedule` and
- *   `_dueAt` in integers, so the disclosure shows the same figures the chain will measure against.
+ * - Phase 2b (section 12.9): the schedule is LEVELLED, an equal payment every installment, with the
+ *   plan charged its monthly rate per 30-day cycle (not x 12 / 365, which stays for revolving).
+ *   `planSchedule` reproduces `_fixSchedule` and `_dueAt` in integers, so the disclosure shows the
+ *   figures the chain will measure against: $940 in 4 at 2% is $246.87 x 4, $47.47 of carry.
  * - A re-split that costs more needs the member's signature over `Resplit` (below), in the same
  *   domain and at the same nonce counter.
  *
@@ -207,33 +208,47 @@ export function samePlanTerms(a: PlanTerms, b: PlanTerms): boolean {
 
 const RAY = 10n ** 27n;
 const BPS = 10_000n;
-const YEAR_SECONDS = 365n * 86_400n;
+/** `TermIssuerBase.TERM_CYCLE`: a term plan's rate is per 30-day cycle (section 12.9). */
+export const TERM_CYCLE_SECONDS = 30n * 86_400n;
 
 /** One installment of a plan's schedule, in ledger units. */
 export interface ScheduledInstallment {
   /** 1-based. */
   index: number;
+  /** What the installment pays down of the principal. */
   principal: bigint;
+  /** What it pays in carry: the period's rate on the principal still unpaid. */
   carry: bigint;
+  /** The whole payment: the level payment, or for a free plan its share of the principal. */
   amount: bigint;
 }
 
 export interface PlanSchedule {
   installments: ScheduledInstallment[];
+  /** `TermIssuer.scheduleOf(planId).installmentAmount`: the level payment. */
+  payment: bigint;
   /** Carry over the whole schedule if it is paid on time. */
   totalCarry: bigint;
   /** `principal + totalCarry`: `TermIssuer.scheduleOf(planId).scheduleTotal`. */
   total: bigint;
 }
 
+/** `TermIssuerBase._periodRate`: the monthly rate per 30-day cycle over one installment, RAY-scaled. */
+export function termPeriodRate(ratePerCycleBps: bigint | number, installmentLengthSeconds: bigint | number): bigint {
+  return (BigInt(ratePerCycleBps) * RAY * BigInt(installmentLengthSeconds)) / (BPS * TERM_CYCLE_SECONDS);
+}
+
 /**
  * The schedule `TermIssuerBase._fixSchedule` fixes for a plan, installment by installment.
  *
- * Equal shares of principal; each period also pays carry on the principal still unpaid, at the
- * plan's rate over one installment period (`_periodRate`: monthly bps x 12 / 365 days, RAY-scaled).
- * Installment k is `_dueAt(k) - _dueAt(k - 1)`, so the figures add up to `scheduleTotal` exactly,
- * the last absorbing the rounding the way the contract's last period does. A free plan (rate 0)
- * is principal only. `PlanOpened.totalCarry` is `total - principal`.
+ * Levelled (section 12.9): the payment is B·r / (1 − (1 + r)^−n), rounded up to the unit, with r
+ * the plan's rate over one installment (`_periodRate`). (1 + r)^n is compounded in RAY the way the
+ * contract compounds it, rounding down at each step, so the payment is the contract's to the unit.
+ * `scheduleTotal` is payment × n. Each installment's carry is r on the principal still unpaid and
+ * the rest pays principal down; the last installment pays off what is left, so the carry adds up to
+ * `scheduleTotal − principal` exactly. A free plan (r = 0) splits the principal exactly: the payment
+ * is rounded up and the last installment takes the remainder. `PlanOpened.totalCarry` is
+ * `total − principal`.
  */
 export function planSchedule(input: {
   principal: bigint;
@@ -243,27 +258,41 @@ export function planSchedule(input: {
 }): PlanSchedule {
   const n = BigInt(Math.max(1, Math.floor(input.installments)));
   const base = input.principal;
-  const periodRate = (BigInt(input.ratePerCycleBps) * RAY * 12n * BigInt(input.installmentLengthSeconds)) / (BPS * YEAR_SECONDS);
-  const totalCarry = (base * periodRate * (n + 1n)) / (2n * RAY);
-  const total = base + totalCarry;
-  const dueAt = (k: bigint): bigint => {
-    if (k >= n) return total;
-    if (k === 0n) return 0n;
-    return (base * k) / n + (base * periodRate * (k * n - (k * (k - 1n)) / 2n)) / (n * RAY);
-  };
-  const principalAt = (k: bigint): bigint => (k >= n ? base : (base * k) / n);
-  const rows: ScheduledInstallment[] = [];
-  for (let k = 1n; k <= n; k++) {
-    const amount = dueAt(k) - dueAt(k - 1n);
-    const principal = principalAt(k) - principalAt(k - 1n);
-    rows.push({ index: Number(k), principal, carry: amount - principal, amount });
+  const r = termPeriodRate(input.ratePerCycleBps, input.installmentLengthSeconds);
+  let payment: bigint;
+  if (base === 0n) payment = 0n;
+  else if (r === 0n) payment = (base - 1n) / n + 1n;
+  else {
+    let grown = RAY;
+    for (let i = 0n; i < n; i++) grown = (grown * (RAY + r)) / RAY;
+    payment = (base * r * grown - 1n) / (RAY * (grown - RAY)) + 1n;
   }
-  return { installments: rows, totalCarry, total };
+  const total = r === 0n ? base : payment * n;
+  const rows: ScheduledInstallment[] = [];
+  let unpaid = base;
+  for (let k = 1n; k <= n; k++) {
+    const last = k === n;
+    if (r === 0n) {
+      const principal = last ? unpaid : payment < unpaid ? payment : unpaid;
+      unpaid -= principal;
+      rows.push({ index: Number(k), principal, carry: 0n, amount: principal });
+      continue;
+    }
+    let carry = (unpaid * r) / RAY;
+    let principal = payment - carry;
+    if (last || principal > unpaid) {
+      principal = unpaid;
+      carry = payment - principal;
+    }
+    unpaid -= principal;
+    rows.push({ index: Number(k), principal, carry, amount: payment });
+  }
+  return { installments: rows, payment, totalCarry: total - base, total };
 }
 
 // ---- The disclosure ------------------------------------------------------------------------------
 
-export const PLAN_DISCLOSURE_VERSION = 'Clear plan terms, v2';
+export const PLAN_DISCLOSURE_VERSION = 'Clear plan terms, v3';
 
 /** What the disclosure says, all of it from the terms being signed. */
 export interface PlanDisclosureInput {
@@ -305,7 +334,7 @@ function percent(bps: number): string {
  * The lines the approval screen shows and the member's signature covers, by hash.
  *
  * The figures are the chain's own: the schedule is `planSchedule`, the one `_fixSchedule` fixes,
- * so the disclosure shows the declining carry installment by installment and the total the plan
+ * so the disclosure shows the level payment, the carry in each installment, and the total the plan
  * will collect if paid on time.
  */
 export function planDisclosure(input: PlanDisclosureInput): string[] {
@@ -324,7 +353,7 @@ export function planDisclosure(input: PlanDisclosureInput): string[] {
     `Purchase: ${unitsMoney(input.purchase)}`,
     `Repaid in ${n} installment${n === 1 ? '' : 's'}, one every ${days(input.installmentLengthSeconds)}`,
     input.ratePerCycleBps > 0
-      ? `Carry: ${percent(input.ratePerCycleBps)} a month (${percent(input.ratePerCycleBps * 12)} a year), simple interest by the second on principal still owed, never on carry`
+      ? `Carry: ${percent(input.ratePerCycleBps)} per 30-day cycle on principal still owed, never on carry. Equal payments of ${unitsMoney(schedule.payment)}`
       : 'Carry: none. This plan is free, even if a payment is late',
   ];
   for (const row of schedule.installments) {
@@ -528,9 +557,9 @@ export function resplitDisclosure(input: {
   return [
     `What is left: ${unitsMoney(input.remaining)}, spread over ${n} installment${n === 1 ? '' : 's'}, one every ${days(input.installmentLengthSeconds)}`,
     input.rateBps > 0
-      ? `Carry from now on: ${percent(input.rateBps)} a month (${percent(input.rateBps * 12)} a year) on principal still owed`
+      ? `Carry from now on: ${percent(input.rateBps)} per 30-day cycle on principal still owed`
       : 'Carry from now on: none',
-    `About ${unitsMoney(schedule.installments[0]?.amount ?? 0n)} for the first installment, ${unitsMoney(schedule.totalCarry)} in carry, ${unitsMoney(schedule.total)} in all`,
+    `${unitsMoney(schedule.installments[0]?.amount ?? 0n)} an installment, ${unitsMoney(schedule.totalCarry)} in carry, ${unitsMoney(schedule.total)} in all`,
     'Carry already owed stays owed. Anything behind is due now.',
   ];
 }

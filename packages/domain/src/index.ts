@@ -28,7 +28,7 @@ export {
   toWire,
 } from './charge';
 
-export { type SplitQuote, splitQuote } from './split';
+export { levelPayment, type SplitQuote, splitQuote } from './split';
 
 export { type RefundQuote, carryAccrued, refundQuote } from './refund';
 
@@ -68,6 +68,8 @@ export {
   resplitMismatch,
   resplitTypedData,
   samePlanTerms,
+  TERM_CYCLE_SECONDS,
+  termPeriodRate,
   unitsToCents,
   type PlanDisclosureInput,
   type PlanProduct,

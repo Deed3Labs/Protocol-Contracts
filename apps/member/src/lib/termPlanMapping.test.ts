@@ -24,7 +24,7 @@ describe('the term-plan shelf, from chain', () => {
     expect(row.name).toBe("Mike's Tire");
     expect(row.balance).toBe(940);
     expect(row.splitInto).toBe(4);
-    expect(row.perCycle).toBeCloseTo(246.75, 2);
+    expect(row.perCycle).toBeCloseTo(246.87, 2); // levelled (section 12.9)
     expect(row.rate).toBe('2% / cycle');
     expect(row.ratePerCycle).toBeCloseTo(0.02, 4);
   });
