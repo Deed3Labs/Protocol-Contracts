@@ -10,11 +10,11 @@ Nothing was deployed, no key was used, and no live network was touched. Nothing 
 - **Item 4.** A freezing Void takes two distinct signers of the deed's validator. One proposes by consenting to `FreezeConsent` (EIP-712 signature, or a prior `approveTrustAction`), and a different one confirms by calling `markVoid`. This matches the two-party un-void: the same consent forms and the same nonce.
 - **Item 5.** A transfer or burn of a trust deed cancels a pending `reassignValidator` request, so the new holder decides. Legacy deeds are unchanged.
 - **Item 9.** After the 16th rate band, the ledger offers what is left to each issuer that still holds a position, dearest first, so a repayment is never left unattributed.
-- **Sizes:** every contract is within EIP-170 and EIP-3860 in the production build. Subdivide is unchanged (2 bytes of headroom, same code). DeedTrustExtension is the tightest change, at __TE_HEAD__ bytes of headroom.
+- **Sizes:** every contract is within EIP-170 and EIP-3860 in the production build. Subdivide is unchanged (2 bytes of headroom, same code). DeedTrustExtension is the tightest change, at 196 bytes of headroom.
 - **Storage:** no contract gains or moves a slot. The layouts of DeedNFT, both Deed extensions, StableCredit and ClearCredit are identical to `dev`'s.
 - **Admin powers:** none added or widened. There is no new figure: the two-signer rule has no parameter, and the fallback has no bound of its own beyond the issuer count.
 - **Conflicts:** none with the "Do NOT change" list, DECISIONS or earlier sections (section 3).
-- **Tests:** __PASSING__ passing, 0 failing.
+- **Tests:** 1,022 passing, 0 failing.
 
 ## 1. What changed, per item
 
@@ -39,7 +39,7 @@ Nothing was deployed, no key was used, and no live network was touched. Nothing 
 - This covers every transfer: to anyone, back to the address the deed last came from, and into a Functional Contract (Subdivide or Fractionalize take custody, and are the holder until they release it). A burn clears the request too, so `pendingValidatorOf` never shows one for a retired deed.
 - The new holder decides: it may make its own request, which waits out a fresh delay. The old holder can no longer complete anything (`Not deed owner`), and the new holder cannot complete the old request (`NoReassignmentPending`).
 - **Legacy deeds are unchanged.** They change validator at once, so they never have a pending request, and nothing is emitted. The only difference is one storage read per transfer.
-- **Why DeedNFT and not DeedTrustExtension.** The reassignment logic of Phase 4b already lives in DeedNFT, which has the room (__DN_HEAD__ bytes left). In DeedTrustExtension it cost about 435 bytes that the freeze needed.
+- **Why DeedNFT and not DeedTrustExtension.** The reassignment logic of Phase 4b already lives in DeedNFT, which has the room (3,067 bytes left). In DeedTrustExtension it cost about 435 bytes that the freeze needed.
 
 ### Item 9. More than 16 distinct rates
 
@@ -79,21 +79,43 @@ None of these conflicts with the "Do NOT change" list, DECISIONS or earlier sect
 
 **Sizes.** Production build (`npx hardhat compile`, revert strings stripped). EIP-170 caps runtime at 24,576 bytes and EIP-3860 caps creation code at 49,152.
 
-__SIZES__
+| Contract | Runtime before (`dev`) | Runtime now | Headroom | Creation code |
+|---|---|---|---|---|
+| Subdivide (unchanged) | 24,574 | 24,574 | 2 | 24,711 |
+| DeedTrustExtension | 23,637 | 24,380 | 196 | 24,517 |
+| DeedNFTMintExtension | 23,804 | 24,030 | 546 | 24,167 |
+| ClearCredit | 21,755 | 22,407 | 2,169 | 22,544 |
+| StableCredit | 20,859 | 21,511 | 3,065 | 21,565 |
+| DeedNFT | 21,394 | 21,509 | 3,067 | 22,217 |
+
+These five are the only contracts whose size changed. The largest creation code is still BurnerBondFactory's, at 46,956 bytes (unchanged). Subdivide's code fingerprint is unchanged: it imports none of the changed files' code.
+
+The first build put DeedTrustExtension 758 bytes over the limit. Moving the transfer cancellation into DeedNFT (about 435 bytes) and the `freezeConsentDigest` view into DeedNFTMintExtension brought it back under.
 
 **Storage.** solc storage layouts of DeedNFT, DeedTrustExtension, DeedNFTMintExtension, StableCredit and ClearCredit were compared slot by slot with `dev` (`git archive origin/dev`): identical. No state variable was added. DeedNFT still ends at slot 517 with no trailing gap, as Phase 4b left it, and StableCredit's layout is untouched. None of these contracts is live on Base mainnet.
 
 **Slither** (per contract, the FIX-PLAN section 6 way: via-IR, Medium and High only), on `dev` and on this branch:
 
-__SLITHER__
+| Contract | `dev` | this branch | New against `dev` |
+|---|---|---|---|
+| DeedNFT | 26 | 26 | none |
+| DeedTrustExtension | 9 | 9 | none |
+| DeedNFTMintExtension | 9 | 9 | none |
+| StableCredit | 9 | 9 | none |
+| ClearCredit | 9 | 9 | none |
+
+Findings were compared by detector and text with line numbers removed. Nothing new to triage.
 
 ## 5. Tests and checks
 
 - **New:** `test/audit/rereview/OpenDecisions.spec.ts`, 11 tests: item 4 six, item 5 three, item 9 two.
   - The item 9 tests hold 18 distinct effective rates across two issuers: 16 plans dearer than the Income tier (151 to 166 bps per 30 days), the Income tier (150) and one cheaper plan (100). On `dev` the 16 bands clear the 16 plans and the rest of the payment is left unattributed. Here the Income tier, the dearest remaining position, takes it, and the issuers' `TierRepaid` and `PlanPaid` events add up to exactly the amount repaid.
-- **Full suite** (`KEEP_REVERT_STRINGS=true npx hardhat test --no-compile`, every fuzz at its default 300 steps): __SUITE__
-- **Generated files:** __GENERATED__
-- **`npx turbo run typecheck test --affected`:** __TURBO__
+- **Full suite** (`KEEP_REVERT_STRINGS=true npx hardhat test --no-compile`, every fuzz at its default 300 steps): **1,022 passing, 0 failing**: Phase 4b's 1,011 plus the 11 new tests, in one run (21 minutes).
+- **Generated files:** 
+  - fingerprints (`packages/command-types/src/chain/code.json`): regenerated from the production build. Two deployed contracts changed, ClearCredit and DeedNFT. `code-fingerprints.mjs --check` passes.
+  - contract reference: `contract-reference.mjs --check` passes with no change (36 pages). The pages are generated from the deployed ABIs, which this branch does not touch.
+  - doc links: `check-doc-links.mjs` reports no broken links (199 files).
+- **`npx turbo run typecheck test --affected`:** 3 of 3 tasks passed (`@clear/command-types` typecheck, and `@clear/command` typecheck and tests), with `TURBO_SCM_BASE=origin/dev`.
 
 ## 6. Documentation changed
 
