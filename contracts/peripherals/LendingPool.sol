@@ -44,9 +44,23 @@ contract LendingPool is LendingPoolBase {
         valuation = valuation_;
     }
 
-    /// @notice see YieldPoolValuation.initialize.
-    function initialize(address, address, string memory, string memory) external {
-        _forward();
+    /// @notice sets up a new pool. A pool upgraded from before Phase 2f calls
+    /// `initializeYieldPool` instead.
+    function initialize(address admin, address reserveToken, string memory name_, string memory symbol_)
+        external
+        initializer
+    {
+        if (admin == address(0) || reserveToken == address(0)) revert LendingPoolInvalidAddress();
+        __ERC20_init(name_, symbol_);
+        __ERC4626_init(IERC20Upgradeable(reserveToken));
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(OPERATOR_ROLE, admin);
+        _rateModel = RateModel(0.02e18, 0.03e18, 0.8e18, 0.05e18);
+        _holderCapBps = 1_000;
+        _holdbackMaxAge = 540 days;
+        _lastAccrualAt = uint64(block.timestamp);
     }
 
     /* ========== STATE ========== */
@@ -460,7 +474,9 @@ contract LendingPool is LendingPoolBase {
         returns (uint256 paid)
     {
         if (receiver == address(0) || shares == 0) revert LendingPoolInvalidAmount();
-        if (_exitsBlocked()) revert LendingPoolQueueOpen();
+        if (lossCharge.pending) revert LendingPoolChargePending();
+        if (isSuspended()) revert LendingPoolSuspended();
+        if (_queuedShares > 0) revert LendingPoolQueueOpen();
         if (msg.sender != owner) _spendAllowance(owner, msg.sender, shares);
         _accrue();
         uint256 gross = _convertToAssets(shares, MathUpgradeable.Rounding.Down);

@@ -254,7 +254,9 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     uint256 internal _deploymentCount;
     uint256 internal _totalDeployed;
 
-    uint256[50] private __gap;
+    /// @dev Room for later fields. Named apart from the Base Sepolia `__gap` (slots 361-400), which
+    /// the fields above have used up and run past, as the last contract in the layout may.
+    uint256[50] private __yieldPoolGap;
 
     /* ========== ERRORS ========== */
 

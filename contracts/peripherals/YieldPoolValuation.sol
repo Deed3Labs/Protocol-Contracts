@@ -98,25 +98,6 @@ contract YieldPoolValuation is LendingPoolBase {
 
     /* ========== MOVED FROM THE POOL FOR SIZE ========== */
 
-    /// @notice sets up a new pool. A pool upgraded from before Phase 2f calls
-    /// `initializeYieldPool` instead.
-    function initialize(address admin, address reserveToken, string memory name_, string memory symbol_)
-        external
-        initializer
-    {
-        if (admin == address(0) || reserveToken == address(0)) revert LendingPoolInvalidAddress();
-        __ERC20_init(name_, symbol_);
-        __ERC4626_init(IERC20Upgradeable(reserveToken));
-        __AccessControl_init();
-        __UUPSUpgradeable_init();
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(OPERATOR_ROLE, admin);
-        _rateModel = RateModel(0.02e18, 0.03e18, 0.8e18, 0.05e18);
-        _holderCapBps = 1_000;
-        _holdbackMaxAge = 540 days;
-        _lastAccrualAt = uint64(block.timestamp);
-    }
-
     /// @notice cancels all or part of an unfilled request, at any time, a Suspension included.
     /// The shares go back to the owner. An enforcement request is cancelled only by the enforcer.
     function cancelRequest(uint256 requestId, uint256 shares) external {
