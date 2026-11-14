@@ -18,6 +18,8 @@ import OnboardingFlow, {
   type OnboardingValues,
 } from './OnboardingFlow';
 import { submitClearOnboarding } from '@clear/member-kit/onboarding/submit';
+import { useOptionalAddress } from '@/hooks/useOptionalWallet';
+import { signAutoClearOn } from '@/lib/autoClearSigning';
 
 /**
  * The real onboarding: the rebuilt flow, with the submit chain behind it.
@@ -36,6 +38,7 @@ export default function OnboardingRoute() {
   const { isAuthenticated } = useAppKitAuth();
   const profile = useMemberProfile();
   const navigate = useNavigate();
+  const address = useOptionalAddress();
 
   const [step, setStep] = useState<OnboardingStep>('join');
   const [values, setValues] = useState<OnboardingValues>({
@@ -81,6 +84,19 @@ export default function OnboardingRoute() {
         { referralSource: 'direct' },
       );
 
+      /*
+       * Auto-clear ON (Phase 2b, 12.2): the member signs `AutoClear` and the server submits it, so
+       * what they owe is cleared from deposits first, income-backed and Boost only. Never blocks
+       * joining: a member who declines or whose wallet is not ready can turn it on in Settings.
+       */
+      if (address) {
+        await signAutoClearOn(address)
+          .then((r) => {
+            if (!r.ok) console.warn('[onboarding] auto-clear not turned on:', r.error);
+          })
+          .catch((e) => console.warn('[onboarding] auto-clear not signed:', e instanceof Error ? e.message : e));
+      }
+
       track('onboarding_completed', { access: 'hybrid' }); // plan category only, no PII
       window.dispatchEvent(new Event('wallet-connected'));
       setTimeout(() => navigate('/', { replace: true }), 100);
@@ -89,7 +105,7 @@ export default function OnboardingRoute() {
     } finally {
       setSubmitting(false);
     }
-  }, [isAuthenticated, navigate, values]);
+  }, [isAuthenticated, navigate, values, address]);
 
   /**
    * What a step change means.

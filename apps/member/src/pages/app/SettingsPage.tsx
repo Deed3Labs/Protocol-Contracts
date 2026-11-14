@@ -129,7 +129,7 @@ export default function SettingsPage({
     reopen?: (token: string) => Promise<{ lines?: string[]; error?: string; done?: boolean }>;
   };
   /** Automatic repayment from USDC deposits. Absent in the preview harness. */
-  autoRepay?: { enabled: boolean; busy: boolean; error: string | null; onChange: (enabled: boolean) => void };
+  autoRepay?: import('@/hooks/useAutoRepay').AutoRepay;
   /**
    * What guards payments at the wallet (Privy MFA): Face ID, an authenticator app, or nothing yet.
    * Absent in the preview harness, which shows the rows without acting on them.

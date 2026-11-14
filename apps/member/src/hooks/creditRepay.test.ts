@@ -51,15 +51,36 @@ describe('automatic repayment from USDC deposits', () => {
   const autoHook = read('hooks/useAutoRepay.ts');
   const panel = read('components/settings/PermissionsPanel.tsx');
 
-  test('one sponsored batch: approve the ledger and set the mandate — or clear both', () => {
-    expect(calls).toContain('args: [c.stableCredit, args.enabled ? MAX_UINT256 : 0n]');
-    expect(calls).toContain("functionName: 'setAutoRepay', args: [args.enabled]");
+  test('Phase 2b: one sponsored call sets on/off and scope; no approval, so nothing is swept', () => {
+    expect(calls).toContain("functionName: 'setAutoClear', args: [args.enabled, args.scope]");
+    const fn = calls.slice(calls.indexOf('export async function scSetAutoClear'), calls.indexOf('export async function scSetSavingsDrawAllowance'));
+    // Never an allowance to take the member's USDC; turning it off withdraws any old one.
+    expect(fn).not.toContain('MAX_UINT256');
+    expect(fn).toContain("functionName: 'approve', args: [c.stableCredit, 0n]");
   });
 
   test('the switch is real and lives on Permissions; it is recorded only after the wallet set it', () => {
-    expect(panel).toContain('Repay from USDC deposits');
+    expect(panel).toContain('Auto-clear from deposits');
     expect(panel).toContain('autoRepay ? autoRepay.onChange(v) : setLocalAuto(v)');
-    expect(autoHook.indexOf('await scSetAutoRepay(')).toBeLessThan(autoHook.indexOf('await recordAutoRepay('));
+    expect(autoHook.indexOf('await scSetAutoClear(')).toBeLessThan(autoHook.indexOf('await recordAutoRepay('));
+  });
+
+  test('scope, "Clear $X now?" when off, and the Savings draw allowance are on the same page', () => {
+    expect(panel).toContain("autoRepay.scope === 1 ? 'Everything you owe, dearest first' : 'Income-backed credit and Boost only'");
+    expect(panel).toContain('`Clear $${autoRepay.clearNow.amount.toFixed(2)} now?`');
+    expect(autoHook).toContain('clearNow: !enabled && owedCents && owedCents > 0');
+    // The one-tap clear is a Repay the member signs: their own wallet, not the settler.
+    expect(autoHook).toContain('void repay(owedCents / 100)');
+    expect(panel).toContain('Card spending from Savings');
+    expect(calls).toContain("functionName: 'setSavingsDrawAllowance', args: [args.units]");
+  });
+
+  test('onboarding signs AutoClear on, and the server submits it', () => {
+    const onboarding = read('pages/auth/OnboardingRoute.tsx');
+    const signing = read('lib/autoClearSigning.ts');
+    expect(onboarding).toContain('await signAutoClearOn(address)');
+    expect(signing.indexOf('switchMismatch(')).toBeLessThan(signing.indexOf('await signTypedData('));
+    expect(signing).toContain('submitAutoClear(member, { on: true, scope');
   });
 });
 

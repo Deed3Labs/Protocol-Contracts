@@ -21,7 +21,7 @@ import type {
   RefundSavingsIntentResponse,
 } from '@/types/savings';
 import { getAccessToken } from '@privy-io/react-auth';
-import type { PlanTerms, PlanTermsTypedData, ResplitTypedData } from '@clear/domain';
+import type { AutoClearTypedData, PlanTerms, PlanTermsTypedData, ResplitTypedData } from '@clear/domain';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
 import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
@@ -2653,6 +2653,8 @@ export interface CreditState {
    * Null or absent: unread, or a network from before Phase 2.
    */
   stateConfirmed?: boolean | null;
+  /** Phase 2b (12.3-12.5): cycles judged, cure notice, Boost cap, excess. Null before Phase 2b. */
+  standing?: import('@/lib/cycleStanding').CycleStanding | null;
   source: string;
   complete: boolean;
 }
@@ -2893,18 +2895,55 @@ export async function recordCreditRepayment(
 }
 
 /** Whether USDC deposits repay card debt automatically, and what is waiting to be repaid. */
-export async function getAutoRepay(wallet: string): Promise<{ enabled: boolean; dueCents: number } | null> {
-  const r = await apiRequest<{ enabled: boolean; dueCents: number }>(`/api/credit/${wallet.toLowerCase()}/auto-repay`);
+/** Auto-clear as the chain has it (Phase 2b, 12.2), plus the Savings draw allowance (12.7). */
+export interface AutoRepayState {
+  enabled: boolean;
+  dueCents: number;
+  /** 0 = income-backed and Boost only (the default), 1 = everything. Null when unread. */
+  scope?: number | null;
+  /** Switched off network-wide by the governed switch. */
+  pausedForEveryone?: boolean;
+  /** Owed within the scope now, for "Clear $X now?". Null when unread. */
+  owedInScopeCents?: number | null;
+  /** What card spending may still draw against Savings; -1 = no limit. Null when unread. */
+  savingsDrawAllowanceCents?: number | null;
+}
+
+export async function getAutoRepay(wallet: string): Promise<AutoRepayState | null> {
+  const r = await apiRequest<AutoRepayState>(`/api/credit/${wallet.toLowerCase()}/auto-repay`);
   return r.error || !r.data ? null : r.data;
 }
 
 /** Tell the server the member's wallet set it on chain. The server checks the chain before recording. */
-export async function recordAutoRepay(wallet: string, enabled: boolean): Promise<{ ok: boolean; error?: string }> {
+export async function recordAutoRepay(wallet: string, enabled: boolean, scope?: number): Promise<{ ok: boolean; error?: string }> {
   const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/auto-repay`, {
     method: 'POST',
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(scope === undefined ? { enabled } : { enabled, scope }),
   });
   return r.error || !r.data ? { ok: false, error: r.error || 'Could not save that just now.' } : { ok: true };
+}
+
+/**
+ * Auto-clear by signature (Phase 2b): the `AutoClear` typed data to sign, then the signature for the
+ * server to submit (`setAutoClearWithSignature`). How onboarding turns it on.
+ */
+export async function prepareAutoClear(wallet: string, on: boolean, scope: number): Promise<{ typedData?: AutoClearTypedData; error?: string }> {
+  const r = await apiRequest<{ typedData: AutoClearTypedData }>(`/api/credit/${wallet.toLowerCase()}/auto-clear/prepare`, {
+    method: 'POST',
+    body: JSON.stringify({ on, scope }),
+  });
+  return r.error || !r.data?.typedData ? { error: r.error || 'Could not get that ready.' } : { typedData: r.data.typedData };
+}
+
+export async function submitAutoClear(
+  wallet: string,
+  input: { on: boolean; scope: number; deadline: string; signature: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/auto-clear`, {
+    method: 'POST',
+    body: JSON.stringify({ ...input, deadline: Number(input.deadline) }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'Could not set that just now.' } : { ok: true };
 }
 
 // --- The server-side lock (api middleware/sessionLock) ---

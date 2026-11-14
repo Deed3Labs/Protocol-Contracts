@@ -2,49 +2,88 @@ import { useRemembered, walletKey } from '@/lib/rememberedState';
 import { useCallback, useEffect, useState } from 'react';
 import { useOptionalAddress, useOptionalSmartWalletClient } from './useOptionalWallet';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
-import { scSetAutoRepay } from '@/lib/sendCalls';
+import { scSetAutoClear, scSetSavingsDrawAllowance } from '@/lib/sendCalls';
 import { getAutoRepay, recordAutoRepay } from '@/utils/apiClient';
+import { useCreditRepay } from './useCreditRepay';
+import { markChainStale } from '@/lib/chainStale';
 
 export interface AutoRepay {
   enabled: boolean;
   busy: boolean;
   error: string | null;
   onChange: (enabled: boolean) => void;
+  /** 0 = income-backed and Boost only (the default), 1 = everything. */
+  scope?: number;
+  onScopeChange?: (scope: number) => void;
+  /** Auto-clear is switched off across Clear by the governed switch. */
+  pausedForEveryone?: boolean;
+  /**
+   * With auto-clear off: what is owed within the chosen scope, in dollars, for a one-tap
+   * "Clear $X now?". Null when nothing is owed or it could not be read.
+   */
+  clearNow?: { amount: number; onClear: () => void; done: string | null } | null;
+  /** Card spending against Savings (12.7): what may still be drawn, in dollars; null when unread. */
+  savingsAllowance?: { amount: number | null; unlimited: boolean; busy: boolean; onSet: (dollars: number) => void };
 }
 
 /**
- * Automatic repayment from USDC deposits — the member's switch.
+ * Auto-clear — the member's switch (Phase 2b, section 12.2).
  *
- * The switch reads what the server recorded, and the server records only what the chain shows the
- * member's own wallet set. Flipping it sends the one sponsored batch (approve + mandate), then asks
- * the server to record it; a server that has not seen the chain catch up says so rather than
- * pretending.
+ * When a deposit lands, what the member owes is cleared from it first, dearest tier first, within
+ * the scope they choose. The switch moves the on-chain setting (`setAutoClear(on, scope)`, one
+ * sponsored call, no approval: the settler delivers the cash, so the member's USDC and CLRUSD are
+ * never swept), then asks the server to record it; a server that has not seen the chain catch up
+ * says so rather than pretending.
+ *
+ * Off, it offers a one-tap "Clear $X now?": a Repay the member signs themselves.
+ *
+ * Also the Savings draw allowance (12.7): how much card spending may draw against Savings, set or
+ * revoked to 0 by the member's own call.
  */
 export function useAutoRepay(): AutoRepay {
   const address = useOptionalAddress();
   const getClientForChain = useOptionalSmartWalletClient();
+  const repay = useCreditRepay();
   // Remembered, so the switch does not show off and then flip on each time Settings opens.
   const [enabled, setEnabled] = useRemembered(`autorepay:${walletKey(address)}`, false);
+  const [scope, setScope] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [owedCents, setOwedCents] = useState<number | null>(null);
+  const [allowanceCents, setAllowanceCents] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [allowanceBusy, setAllowanceBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cleared, setCleared] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (!address) return;
-    void getAutoRepay(address).then((status) => status && setEnabled(status.enabled));
+    void getAutoRepay(address).then((status) => {
+      if (!status) return;
+      setEnabled(status.enabled);
+      if (typeof status.scope === 'number') setScope(status.scope);
+      setPaused(Boolean(status.pausedForEveryone));
+      setOwedCents(status.owedInScopeCents ?? null);
+      setAllowanceCents(status.savingsDrawAllowanceCents ?? null);
+    });
   }, [address]);
 
-  const onChange = useCallback(
-    (next: boolean) => {
+  useEffect(() => refresh(), [refresh]);
+
+  const write = useCallback(
+    (next: boolean, nextScope: number) => {
       if (!address) return;
       setBusy(true);
       setError(null);
       void (async () => {
         try {
           const client = getClientForChain ? await getClientForChain({ id: ACTIVE_CHAIN_ID }).catch(() => undefined) : undefined;
-          await scSetAutoRepay({ smartWalletClient: client, ownerWallet: address, enabled: next, chainId: ACTIVE_CHAIN_ID });
-          const saved = await recordAutoRepay(address, next);
+          await scSetAutoClear({ smartWalletClient: client, ownerWallet: address, enabled: next, scope: nextScope, chainId: ACTIVE_CHAIN_ID });
+          const saved = await recordAutoRepay(address, next, nextScope);
           if (!saved.ok) setError(saved.error ?? 'Set in your wallet, but not saved yet. Try again in a moment.');
-          else setEnabled(next);
+          else {
+            setEnabled(next);
+            setScope(nextScope);
+          }
         } catch (e) {
           setError(e instanceof Error ? e.message : 'That did not go through. Nothing changed.');
         } finally {
@@ -55,5 +94,57 @@ export function useAutoRepay(): AutoRepay {
     [address, getClientForChain],
   );
 
-  return { enabled, busy, error, onChange };
+  const onChange = useCallback((next: boolean) => write(next, scope), [write, scope]);
+  const onScopeChange = useCallback((next: number) => write(enabled, next), [write, enabled]);
+
+  const onClear = useCallback(() => {
+    if (!owedCents) return;
+    setBusy(true);
+    setError(null);
+    void repay(owedCents / 100).then((outcome) => {
+      setBusy(false);
+      if (outcome.repaid) setCleared(`$${outcome.repaid.toFixed(2)} cleared`);
+      if (outcome.error && !outcome.repaid) setError(outcome.error);
+      markChainStale();
+      refresh();
+    });
+  }, [owedCents, repay, refresh]);
+
+  const onSetAllowance = useCallback(
+    (dollars: number) => {
+      if (!address || !Number.isFinite(dollars) || dollars < 0) return;
+      setAllowanceBusy(true);
+      setError(null);
+      void (async () => {
+        try {
+          const client = getClientForChain ? await getClientForChain({ id: ACTIVE_CHAIN_ID }).catch(() => undefined) : undefined;
+          const units = BigInt(Math.round(dollars * 100)) * 10_000n;
+          await scSetSavingsDrawAllowance({ smartWalletClient: client, ownerWallet: address, units, chainId: ACTIVE_CHAIN_ID });
+          setAllowanceCents(Math.round(dollars * 100));
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'That did not go through. Nothing changed.');
+        } finally {
+          setAllowanceBusy(false);
+        }
+      })();
+    },
+    [address, getClientForChain],
+  );
+
+  return {
+    enabled,
+    busy,
+    error,
+    onChange,
+    scope,
+    onScopeChange,
+    pausedForEveryone: paused,
+    clearNow: !enabled && owedCents && owedCents > 0 ? { amount: owedCents / 100, onClear, done: cleared } : cleared ? { amount: 0, onClear, done: cleared } : null,
+    savingsAllowance: {
+      amount: allowanceCents === null || allowanceCents < 0 ? null : allowanceCents / 100,
+      unlimited: allowanceCents === -1,
+      busy: allowanceBusy,
+      onSet: onSetAllowance,
+    },
+  };
 }

@@ -5,6 +5,7 @@ import { chainProvider, writesAs } from './provider.js';
 import { recordPoolMovements } from './poolFunding.js';
 import { CHAIN_ERROR_FRAGMENTS, chainErrorReason, decodeChainError, describeCardRefusal } from './chainErrors.js';
 import { syncClrusdEncumbrance } from './encumbranceSync.js';
+import { notificationStore } from '../notificationStore.js';
 
 /*
  * A settled card purchase becomes debt on chain — build plan §4, step 4.
@@ -892,8 +893,22 @@ export async function authorizeCardOnChain(transactionToken: string): Promise<Au
     return tx ? 'authorized' : 'already';
   } catch (error) {
     const refused = isCardRefusal(error);
-    const reason = ((await savingsAllowanceShort(issuer, row.wallet, error)) ?? reasonOf(error)).slice(0, 400);
+    const allowanceShort = await savingsAllowanceShort(issuer, row.wallet, error);
+    const reason = (allowanceShort ?? reasonOf(error)).slice(0, 400);
     await setAuth(refused ? 'refused' : 'failed', { error: reason });
+    // Phase 2b (12.7): the member can fix this one themselves, so they are told how.
+    if (allowanceShort) {
+      await notificationStore
+        .emit({
+          wallet: row.wallet,
+          kind: 'card',
+          title: 'Your card needs your OK to use Savings',
+          body: 'This purchase needed your Savings, and card spending can draw on them only as far as you allow. Set how much in Settings, Permissions.',
+          data: { transactionToken: token },
+          dedupeKey: `savings-allowance:${token}`,
+        })
+        .catch(() => null);
+    }
     console.error(`[card-authorization] ${token} ${refused ? 'refused' : 'failed'}: ${reason}`);
     return refused ? 'refused' : 'failed';
   }

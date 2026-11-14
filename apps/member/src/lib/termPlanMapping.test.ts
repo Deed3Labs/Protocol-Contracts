@@ -9,8 +9,8 @@ const plan = (over: Partial<CreditTermPlanRow> = {}): CreditTermPlanRow => ({
   outstandingCents: 94_000,
   repaidCents: 0,
   installments: 4,
-  installmentCents: 24_675,
-  scheduleTotalCents: 98_700,
+  installmentCents: 24_687, // TermIssuer.scheduleOf, levelled (section 12.9)
+  scheduleTotalCents: 98_747,
   openedAt: Math.floor(Date.UTC(2026, 5, 14) / 1000),
   rateBps: 200,
   merchantName: "Mike's Tire",
