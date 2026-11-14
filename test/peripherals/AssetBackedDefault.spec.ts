@@ -47,6 +47,9 @@ describe("asset-backed default", function () {
     await ctx.access.grantOperator(await issuer.getAddress());
     await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);
     await issuer.connect(ctx.operator).addTier(POOL_SHARE, 75n, CYCLE);
+    // An unsecured tier: since Addendum 2 only an unpaid Rebalance Amount is a miss, so a default
+    // needs some unsecured debt beside the pledged position.
+    await issuer.connect(ctx.operator).addTier(ethers.encodeBytes32String("INCOME"), 150n, CYCLE);
 
     const CollateralRegistry = await ethers.getContractFactory("CollateralRegistry");
     registry = await upgrades.deployProxy(
@@ -88,7 +91,10 @@ describe("asset-backed default", function () {
   });
 
   async function spendAndDefault(amount: bigint) {
-    await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
+    // `amount` on the pool-share tier and $10 unsecured, which is what goes unpaid.
+    await issuer.connect(ctx.operator).setTierCapacity(ctx.member.address, 0, amount);
+    await issuer.connect(ctx.operator).setTierCapacity(ctx.member.address, 1, 50n * ONE_USDC);
+    await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount + 10n * ONE_USDC);
     // Section 12.5: two missed rebalances, each judged, then the cure window.
     await driveToDefault(issuer, ctx.member.address, ctx.operator);
   }

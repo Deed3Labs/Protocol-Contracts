@@ -110,7 +110,10 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
             // A second consecutive miss stands unpaid: the line stays frozen at its due point until
             // it is paid. Default only once computed, which needs the two-person notice.
             period.expiration = s.cureDueAt;
-            return _computedDefault(member) ? 2 : 1;
+            if (!_computedDefault(member)) return 1;
+            // Carry to now goes on the ledger first, so the write-off reaches all of it.
+            _touch(member);
+            return 2;
         }
         period.issuedAt = s.closedAt != 0 ? s.closedAt : block.timestamp;
         period.expiration = s.cycleEnd;

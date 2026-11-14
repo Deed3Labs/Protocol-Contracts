@@ -63,7 +63,8 @@ describe("DEEP AUDIT PoC", function () {
     await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
     await term.connect(m).payPlan(0, 1_000n * ONE_USDC);
     await pool.connect(merchant).redeem(975n * ONE_USDC);
-    const coopBefore = await ctx.stableCredit.balanceOf(coop.address);
+    const fee = await term.feeRecipient(); // Clear Lending's, since Addendum 2 (12.16)
+    const coopBefore = await ctx.stableCredit.balanceOf(fee);
 
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
     expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
@@ -72,8 +73,9 @@ describe("DEEP AUDIT PoC", function () {
     expect(await pool.refundOwedOf(m.address)).to.equal(975n * ONE_USDC);
     expect(await pool.distributableCarry()).to.equal(0n);
     await pool.connect(ctx.outsider).distributeCarry();
-    // The co-op gave back its 25 fee and gained nothing.
-    expect(coopBefore - (await ctx.stableCredit.balanceOf(coop.address))).to.equal(25n * ONE_USDC);
+    // The fee recipient gave back its 25 fee, and the co-op gained nothing.
+    expect(coopBefore - (await ctx.stableCredit.balanceOf(fee))).to.equal(25n * ONE_USDC);
+    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
   });
 
   it("X-4 (fixed): a merchant's refund debt is collected out of its next sale, and that sale's repayment funds the member's refund", async function () {

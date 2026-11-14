@@ -624,23 +624,29 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// pending counsel). Across positions the order is unchanged: dearest first. Every repayment
     /// passes through here, so this is where it counts toward what is due (12.1, 12.5).
     function _repayTier(address member, uint256 tierId, uint256 pay) internal {
+        _repayTier(member, tierId, pay, true);
+    }
+
+    /// @dev `cures` is false only for a settlement out of pledged collateral (`settleFromCollateral`):
+    /// enforcement reduces the debt, but never cures the default it enforces.
+    function _repayTier(address member, uint256 tierId, uint256 pay, bool cures) internal {
         uint256 carry = tierCarry[member][tierId];
         tierCarry[member][tierId] = carry - (pay < carry ? pay : carry);
         tierPrincipal[member][tierId] -= pay;
         emit TierRepaid(member, tierId, pay);
-        _notePayment(member, pay);
+        _notePayment(member, pay, cures);
     }
 
     /// @dev A payment counts toward the open cycle's dues, toward a Secured Minimum past due (the
     /// pause lifts in this same transaction once it is met), and toward an unpaid second Rebalance
     /// Amount, whose cure notice it cancels once that amount is paid (12.5).
-    function _notePayment(address member, uint256 pay) internal {
+    function _notePayment(address member, uint256 pay, bool cures) internal {
         CycleState storage s = cycleState[member];
         s.paidSinceClose += uint128(pay);
         uint256 pastDue = s.securedPastDue;
         if (pastDue != 0) s.securedPastDue = uint128(pay < pastDue ? pastDue - pay : 0);
         uint256 cure = s.cureAmount;
-        if (cure != 0) {
+        if (cure != 0 && cures) {
             if (pay < cure) {
                 s.cureAmount = uint128(cure - pay);
             } else {

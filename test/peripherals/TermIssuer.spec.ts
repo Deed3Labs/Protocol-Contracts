@@ -81,14 +81,15 @@ describe("TermIssuer", function () {
   }
 
   describe("origination is a three-party mint", function () {
-    it("debits the member, credits the merchant, credits the co-op the difference", async function () {
+    it("debits the member, credits the merchant, credits Clear Lending's fee recipient the difference (12.16)", async function () {
       await setLimit(2_000n * ONE_USDC);
       await openPlan(1_000n * ONE_USDC, 970n * ONE_USDC); // 3% discount
 
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address))
         .to.equal(1_000n * ONE_USDC);
       expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(970n * ONE_USDC);
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(30n * ONE_USDC);
+      expect(await ctx.stableCredit.balanceOf(await issuer.feeRecipient())).to.equal(30n * ONE_USDC);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n); // the co-op gets nothing
     });
 
     it("nets to zero", async function () {
@@ -98,7 +99,7 @@ describe("TermIssuer", function () {
       const debit = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
       const credits =
         (await ctx.stableCredit.balanceOf(merchant.address)) +
-        (await ctx.stableCredit.balanceOf(coop.address));
+        (await ctx.stableCredit.balanceOf(await issuer.feeRecipient()));
       expect(debit).to.equal(credits);
       expect(await ctx.stableCredit.totalSupply()).to.equal(debit);
     });
@@ -175,7 +176,10 @@ describe("TermIssuer", function () {
       await openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC);
       await advance(6 * CYCLE);
 
-      expect(await issuer.carryOn(0)).to.be.greaterThan(await issuer.carryOn(1));
+      // Opening the second plan brought the first to now (Addendum 2: a member's plans move
+      // together), so what each has run up is what is on the ledger plus what is pending.
+      const total = async (id: number) => (await issuer.carryOutstandingOf(id)) + (await issuer.carryOn(id));
+      expect(await total(0)).to.be.greaterThan(await total(1));
     });
 
     it("brings carry onto the ledger, owed to the treasury", async function () {

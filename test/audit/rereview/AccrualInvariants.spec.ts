@@ -16,11 +16,12 @@ import { CA, NY, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule }
  * interval is checked against an independent off-chain computation of the legal bound:
  *
  *  (a) revolving: the unsecured tiers together never above the graduated (or, from the threshold,
- *      annual) cap on their principal, nor above their pro-rata share of the cap on the member's
- *      aggregate principal, at monthly x 12 / 365 per second; each tier never above its list rate;
+ *      annual) cap on their principal, at monthly x 12 / 365 per second; each tier never above its
+ *      list rate (Phase 2e: the pro-rata share of the aggregate's cap is gone with DECISIONS #7's
+ *      design; the Combined Ceiling is tested in Addendum2Term.spec.ts);
  *  (b) term: each plan never above its list rate per 30-day cycle, the graduated cap per 30-day
- *      cycle on its principal and its share of the aggregate's, and never above annualCapBps a year
- *      once the plan or the aggregate is a large loan (M-D);
+ *      cycle on its principal, and never above annualCapBps a year once the plan or the aggregate
+ *      is a large loan (M-D);
  *  (c) a free plan never accrues;
  *  (d) no call ever fails with a panic (arithmetic, array bounds): the M-B class of bug;
  *  (e) an unsigned operator re-split never shortens a plan or adds arrears (H-B);
@@ -154,7 +155,8 @@ async function runAccrualFuzz(seed: number) {
         }
         const unsecuredCarry = (byTier[INCOME_T] ?? 0n) + (byTier[BOOST_T] ?? 0n);
         let bound = revCap(s.unsecured, dt);
-        if (s.agg > s.unsecured && s.unsecured > 0n) bound = min(bound, (revCap(s.agg, dt) * s.unsecured) / s.agg);
+        // (Phase 2e: no pro-rata share of the aggregate any more. Under the Combined Ceiling the
+        // revolving tiers come first and are held to the schedule on their own principal.)
         if (unsecuredCarry > bound + EPS) breaks.push(`(a) ${m.address}: unsecured carry ${unsecuredCarry} > ${bound} on ${s.unsecured} (agg ${s.agg}) over ${dt}s`);
         const listBps = [150n, 300n];
         for (const [k, tier] of [INCOME_T, BOOST_T].entries()) {
@@ -185,7 +187,7 @@ async function runAccrualFuzz(seed: number) {
         if (!ps.free && ps.principal > 0n) {
           const agg = state[ps.member].agg;
           let bound = min((ps.principal * ps.listBps * dt) / (10_000n * MONTH30), termCap(ps.principal, dt));
-          if (agg > ps.principal) bound = min(bound, (termCap(agg, dt) * ps.principal) / agg);
+          // (Phase 2e: the pro-rata share is replaced by the Combined Ceiling, tested in Addendum2Term.)
           if (ps.principal >= THRESHOLD || agg >= THRESHOLD) bound = min(bound, (ps.principal * ANNUAL * dt) / (10_000n * YEAR));
           if (carry > bound + EPS) breaks.push(`(b) plan ${id}: carry ${carry} > ${bound} on ${ps.principal} (agg ${agg}) over ${dt}s`);
         }

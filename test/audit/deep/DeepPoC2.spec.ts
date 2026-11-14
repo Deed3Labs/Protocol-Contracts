@@ -16,9 +16,11 @@ describe("DEEP AUDIT PoC 2", function () {
     await pool.drawForDueClaim();
     expect(await pool.advancedOf(coop.address)).to.equal(975n * ONE_USDC);
     await term.connect(m).payPlan(0, 2_000n * ONE_USDC);
-    // Withdrawing "income" takes the 25 fee only; the 975 position stays with what it backs.
+    // Withdrawing "income" takes none of the 975 position, which stays with what it backs. (Since
+    // Addendum 2 the 25 fee is Clear Lending's, so the co-op holds no income here at all.)
     const held = await ctx.stableCredit.balanceOf(coop.address);
-    await pool.connect(ctx.admin).withdrawCoopIncome(held);
+    expect(held).to.equal(975n * ONE_USDC);
+    await expect(pool.connect(ctx.admin).withdrawCoopIncome(held)).to.be.revertedWithCustomError(pool, "PayoutPoolNothingToRedeem");
     expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(975n * ONE_USDC);
     expect(await pool.advancedOf(coop.address)).to.equal(975n * ONE_USDC);
 

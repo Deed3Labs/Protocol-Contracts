@@ -172,12 +172,16 @@ describe("AUDIT PoC", function () {
     await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     // Cycle and grace run out while compliant (balance zero).
     await advance(CYCLE + CYCLE + 1);
-    // Permissionless, as before -- but now it renews instead of deleting.
+    // Permissionless, as before -- but it renews instead of deleting. Since Addendum 2 the period
+    // follows the calendar: it now ends on the member's next Cycle End Day, a month on.
     await revolving.connect(attackerWallet).syncCreditPeriod(m.address);
     const [issuedAt, expiration] = await revolving.creditPeriods(m.address);
+    const state = await revolving.cycleStateOf(m.address);
     const now = BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
-    expect(issuedAt).to.equal(now);
-    expect(expiration).to.equal(now + BigInt(CYCLE));
+    expect(issuedAt).to.equal(state.closedAt);
+    expect(expiration).to.equal(state.cycleEnd);
+    expect(expiration).to.be.gt(now);
+    expect(expiration - issuedAt).to.be.gte(BigInt(27 * DAY));
 
     // Draw the whole line and sit on it: the period runs out, grace runs out, and it defaults.
     await ctx.stableCredit.connect(m).transfer(merchant.address, 2_000n * ONE_USDC);
@@ -190,25 +194,19 @@ describe("AUDIT PoC", function () {
     expect(await ctx.stableCredit.lostDebt()).to.be.greaterThan(0n);
   });
 
-  it("H-2 (fixed): operators may extend or pause a period, never bring a deadline closer", async function () {
+  it("H-2 (fixed), Addendum 2: no operator can set, extend, shorten or pause a revolving cycle; it ends on the member's Cycle End Day", async function () {
     const m = ctx.member;
     await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     const [, expiration, grace] = await revolving.creditPeriods(m.address);
-    await expect(revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration - 1n))
-      .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");
-    await expect(revolving.connect(ctx.operator).setGraceLengthOf(m.address, grace - 1n))
-      .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");
-    await expect(revolving.connect(ctx.operator).updateCreditPeriod(m.address, expiration - 1n, grace))
-      .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");
-    await revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration + 10n);
-    await revolving.connect(ctx.operator).setGraceLengthOf(m.address, grace + 10n);
-
-    // A pause that outlasts the period does not turn into a default the moment it is lifted.
-    await ctx.stableCredit.connect(m).transfer(ctx.counterparty.address, 100n * ONE_USDC);
-    await revolving.connect(ctx.operator).pausePeriodOf(m.address);
-    await advance(4 * CYCLE);
-    await revolving.connect(ctx.operator).unpausePeriodOf(m.address);
-    expect(await revolving.inDefault(m.address)).to.equal(false);
-    expect(await revolving.isFrozen(m.address)).to.equal(true);
+    for (const call of [
+      () => revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration - 1n),
+      () => revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration + 10n),
+      () => revolving.connect(ctx.operator).setGraceLengthOf(m.address, grace + 10n),
+      () => revolving.connect(ctx.operator).updateCreditPeriod(m.address, expiration - 1n, grace),
+      () => revolving.connect(ctx.operator).pausePeriodOf(m.address),
+      () => revolving.connect(ctx.operator).unpausePeriodOf(m.address),
+    ]) await expect(call()).to.be.revertedWithCustomError(revolving, "RevolvingIssuerCyclesComputed");
+    expect((await revolving.creditPeriods(m.address))[1]).to.equal(expiration);
+    expect(expiration).to.equal((await revolving.cycleStateOf(m.address)).cycleEnd);
   });
 });

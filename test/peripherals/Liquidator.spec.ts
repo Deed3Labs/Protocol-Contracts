@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { driveToDefault } from "../helpers/default";
 import { pledgeSigned } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
@@ -107,27 +108,25 @@ describe("Liquidator", function () {
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
   }
 
-  /** Section 12.5: two missed rebalances in a row, each judged by the chain, then the cure window. */
-  async function intoDefault(periodLength: number) {
-    await issuer.connect(ctx.operator).setCreditTerms(
-      { unsecuredLineCap: 0, cureWindow: ONE_DAY, boostCleanCycles: 0, boostDepositCycles: 0, autoClearOffGlobal: false }, 0, 0);
-    for (let miss = 0; miss < 2; miss++) {
-      await ethers.provider.send("evm_increaseTime", [periodLength + CYCLE + ONE_DAY]);
-      await ethers.provider.send("evm_mine", []);
-      await issuer.syncCreditPeriod(ctx.member.address);
-    }
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY + 1]);
-    await ethers.provider.send("evm_mine", []);
+  /**
+   * Section 12.5 as Addendum 2 has it: two missed Rebalance Amounts in a row, a two-person cure
+   * notice, then the grace period. Only unsecured debt can be missed, so every default below carries
+   * $10 on the income-backed tier beside the Savings position.
+   */
+  async function intoDefault(_periodLength: number) {
+    await driveToDefault(issuer, ctx.member.address);
   }
+  const UNSECURED_DRAW = 10n * ONE_USDC;
 
   it("covers a defaulted position out of the member's own savings", async function () {
     await save(1_000n * ONE_USDC);
-    await openLine(1_000n * ONE_USDC, 0n, CYCLE);
-    await spend(1_000n * ONE_USDC);
+    await openLine(1_000n * ONE_USDC, 50n * ONE_USDC, CYCLE);
+    await spend(1_000n * ONE_USDC + UNSECURED_DRAW);
     await registry.refresh(ctx.member.address);
 
     await intoDefault(CYCLE);
     expect(await issuer.inDefault(ctx.member.address)).to.equal(true);
+    await issuer.triggerDefault(ctx.member.address); // the unsecured $10 and its carry are written off
 
     await liquidator.liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
 
@@ -154,22 +153,26 @@ describe("Liquidator", function () {
     expect(await ctx.stableCredit.lostDebt()).to.equal(0n);
   });
 
-  it("creates no lost debt when the position was collateralized", async function () {
+  it("creates no lost debt on the collateralized position: only the unsecured part a default turns on is orphaned", async function () {
     // The adversarial test the plan asks for. A default normally orphans supply: the credits are
     // in someone else's hands and the obligation is written off. Liquidation covers it instead.
+    // (Since Addendum 2 a default needs an unpaid unsecured Rebalance Amount, so a little unsecured
+    // debt is always part of it, and that part is the lost debt.)
     await save(1_000n * ONE_USDC);
-    await openLine(1_000n * ONE_USDC, 0n, CYCLE);
-    await spend(1_000n * ONE_USDC);
+    await openLine(1_000n * ONE_USDC, 50n * ONE_USDC, CYCLE);
+    await spend(1_000n * ONE_USDC + UNSECURED_DRAW);
     await registry.refresh(ctx.member.address);
 
     await intoDefault(CYCLE);
     await liquidator.liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
     await issuer.syncCreditPeriod(ctx.member.address);
 
-    expect(await ctx.stableCredit.lostDebt()).to.equal(0n);
-    // The counterparty still holds what they were paid; nothing was orphaned.
+    const lost = await ctx.stableCredit.lostDebt();
+    expect(lost).to.be.gte(UNSECURED_DRAW);
+    expect(lost).to.be.lt(UNSECURED_DRAW + ONE_USDC); // $10 and its carry, nothing of the $1,000
+    // The counterparty still holds what they were paid.
     expect(await ctx.stableCredit.balanceOf(ctx.counterparty.address))
-      .to.equal(1_000n * ONE_USDC);
+      .to.equal(1_000n * ONE_USDC + UNSECURED_DRAW);
   });
 
   it("orphans only the part collateral never reached", async function () {
@@ -196,13 +199,13 @@ describe("Liquidator", function () {
     // The safe order is not a rule anybody follows. A write-off never claims the collateralized
     // share, so running it first cannot leave the pledge backing nothing.
     await save(1_000n * ONE_USDC);
-    await openLine(1_000n * ONE_USDC, 0n, CYCLE);
-    await spend(1_000n * ONE_USDC);
+    await openLine(1_000n * ONE_USDC, 50n * ONE_USDC, CYCLE);
+    await spend(1_000n * ONE_USDC + UNSECURED_DRAW);
     await registry.refresh(ctx.member.address);
     await intoDefault(CYCLE);
 
     await issuer.syncCreditPeriod(ctx.member.address);
-    expect(await ctx.stableCredit.lostDebt()).to.equal(0n);
+    expect(await ctx.stableCredit.lostDebt()).to.be.lt(UNSECURED_DRAW + ONE_USDC); // the unsecured part only
     expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address))
       .to.equal(1_000n * ONE_USDC);
 
@@ -214,11 +217,12 @@ describe("Liquidator", function () {
   it("takes no more than is owed", async function () {
     // A default is not a forfeiture of everything a member saved.
     await save(1_000n * ONE_USDC);
-    await openLine(1_000n * ONE_USDC, 0n, CYCLE);
-    await spend(400n * ONE_USDC);
+    await openLine(400n * ONE_USDC, 50n * ONE_USDC, CYCLE);
+    await spend(400n * ONE_USDC + UNSECURED_DRAW);
     await registry.refresh(ctx.member.address);
 
     await intoDefault(CYCLE);
+    await issuer.triggerDefault(ctx.member.address);
     await liquidator.liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
 
     expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
@@ -240,7 +244,6 @@ describe("Liquidator", function () {
     await save(1_000n * ONE_USDC);
     await openLine(1_000n * ONE_USDC, 0n, CYCLE);
     await spend(300n * ONE_USDC);
-    await intoDefault(CYCLE);
 
     await clrusd.grantRole(await clrusd.LIQUIDATOR_ROLE(), ctx.admin.address);
     await expect(

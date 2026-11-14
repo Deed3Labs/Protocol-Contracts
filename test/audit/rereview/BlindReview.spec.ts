@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployCore, advance } from "../deep/deep-setup";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../../helpers/issuers";
+import { passCycleEnd } from "../../helpers/default";
 import { signedOpenPlan } from "../../helpers/plans";
 import { CA, NY, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule } from "../compliance/rates";
 
@@ -70,16 +71,18 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
 
     it("the split comes from the recorded payout: a caller passing payout = 0 cannot push the merchant's share onto the co-op", async function () {
       const core = await termWithPricing();
-      const { term, ctx, merchant, coop } = core;
+      const { term, ctx, merchant } = core;
       await openPriced(core, ctx.member, 1_000n * ONE_USDC, 1, 0n);
+      // The fee leg is Clear Lending's since Addendum 2 (12.16), not the co-op's.
+      const fee = await term.feeRecipient();
       const merchantBefore = await ctx.stableCredit.balanceOf(merchant.address);
-      const coopBefore = await ctx.stableCredit.balanceOf(coop.address);
+      const coopBefore = await ctx.stableCredit.balanceOf(fee);
       await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 0n);
       // The merchant gives back its $975 payout and the co-op its $25 discount -- and nobody is
       // left owing anything.
       expect(merchantBefore - (await ctx.stableCredit.balanceOf(merchant.address))).to.equal(975n * ONE_USDC);
-      expect(coopBefore - (await ctx.stableCredit.balanceOf(coop.address))).to.equal(25n * ONE_USDC);
-      expect(await ctx.stableCredit.creditBalanceOf(coop.address)).to.equal(0n);
+      expect(coopBefore - (await ctx.stableCredit.balanceOf(fee))).to.equal(25n * ONE_USDC);
+      expect(await ctx.stableCredit.creditBalanceOf(fee)).to.equal(0n);
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
       expect((await term.pricingOf(0)).payout).to.equal(975n * ONE_USDC);
     });
@@ -135,11 +138,13 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
       await term.connect(ctx.operator).setTermLimit(ctx.member.address, 2_000n * ONE_USDC);
       await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, 1_200n * ONE_USDC, 1_170n * ONE_USDC, 150n, CYCLE, 12, CYCLE);
+      // Addendum 2: calendar cycles; the first end only closes a cycle, the next ones are judged.
+      await passCycleEnd(revolving.connect(coop), ctx.member.address);
       for (let cycle = 1; cycle <= 3; cycle++) {
         await advance(CYCLE + GRACE + 1);
         await payDue(term, ctx.member, 0);
         expect(await term.arrearsOf(0)).to.equal(0n);
-        await revolving.connect(coop).syncCreditPeriod(ctx.member.address);
+        await passCycleEnd(revolving.connect(coop), ctx.member.address);
         const c = await revolving.cycleOf(ctx.member.address);
         expect(c.missedInRow, `cycle ${cycle}`).to.equal(0n);
         expect(c.cleanStreak, `cycle ${cycle}`).to.equal(BigInt(cycle));
@@ -155,8 +160,8 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       const { ctx, revolving, merchant, coop } = core;
       await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 100n * ONE_USDC);
-      await advance(CYCLE + GRACE + 1);
-      await revolving.connect(coop).syncCreditPeriod(ctx.member.address);
+      await passCycleEnd(revolving.connect(coop), ctx.member.address); // the close: $100 is due
+      await passCycleEnd(revolving.connect(coop), ctx.member.address); // unpaid at its due point
       expect((await revolving.cycleOf(ctx.member.address)).missedInRow).to.equal(1n);
     });
   });

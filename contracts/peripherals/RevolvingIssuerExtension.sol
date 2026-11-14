@@ -243,7 +243,8 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         reserve.forceApprove(address(stableCredit), pay);
         stableCredit.repayCreditBalanceFor(address(this), member, uint128(pay));
 
-        _repayTier(member, tierId, pay);
+        // Collateral applied to the debt is not a cure of the default it enforces (12.5).
+        _repayTier(member, tierId, pay, false);
     }
 
     /// @notice adds a tier at the end of the draw order.
