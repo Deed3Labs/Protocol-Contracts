@@ -98,14 +98,27 @@ contract CollateralRegistry is
     /// @dev Appended from the gap.
     mapping(address => uint256) public pledgeNonces;
 
-    uint256[40] private __gap;
+    /* ========== ADDED IN PHASE 2E (section 9): three slots from the gap ========== */
+
+    /// @notice member => kind => item => hash of the Maturity Instruction the member signed when
+    /// pledging it (MB-05 §5.6). A bond pledge without one reverts.
+    mapping(address => mapping(bytes32 => mapping(uint256 => bytes32))) public maturityInstructionOf;
+    /// @dev member => kind => item => advance rate (bps of Present Value) stored at pledging.
+    mapping(address => mapping(bytes32 => mapping(uint256 => uint256))) private _itemAdvanceBps;
+    /// @dev member => kind => advance rate (bps of Pool Share Value) stored at pledging, blended by
+    /// units across the member's pledges of that kind.
+    mapping(address => mapping(bytes32 => uint256)) private _advanceBps;
+
+    uint256[37] private __gap;
 
     /// @notice What a member signs to pledge an amount of a kind (Phase 4b, L-I).
     bytes32 public constant PLEDGE_TYPEHASH =
         keccak256("Pledge(address member,bytes32 kind,uint256 amount,uint256 nonce,uint256 deadline)");
-    /// @notice What a member signs to pledge one item of a kind (Phase 4b, L-I).
-    bytes32 public constant PLEDGE_ITEM_TYPEHASH =
-        keccak256("PledgeItem(address member,bytes32 kind,uint256 itemId,uint256 nonce,uint256 deadline)");
+    /// @notice What a member signs to pledge one item of a kind (Phase 4b, L-I), with the hash of
+    /// the Maturity Instruction that goes with it (Phase 2e, section 9; MB-05 §5.6).
+    bytes32 public constant PLEDGE_ITEM_TYPEHASH = keccak256(
+        "PledgeItem(address member,bytes32 kind,uint256 itemId,bytes32 maturityInstruction,uint256 nonce,uint256 deadline)"
+    );
 
     error CollateralRegistryInvalidAddress();
     error CollateralRegistryUnknownType(bytes32 kind);
@@ -120,6 +133,8 @@ contract CollateralRegistry is
     error CollateralRegistrySignatureExpired(uint256 deadline);
     /// @notice thrown when a pledge is not signed by the member it pledges for (Phase 4b, L-I).
     error CollateralRegistryBadSignature(address member);
+    /// @notice thrown when an item pledge carries no Maturity Instruction (Phase 2e, section 9).
+    error CollateralRegistryNoMaturityInstruction(address member, uint256 itemId);
 
     event CollateralTypeRegistered(
         bytes32 indexed kind, ExposureMath.Backing backing, uint256 haircutBps
@@ -133,6 +148,12 @@ contract CollateralRegistry is
     event ItemReleased(address indexed member, bytes32 indexed kind, uint256 itemId);
     event ItemSeized(address indexed member, bytes32 indexed kind, uint256 itemId);
     event ItemRolled(address indexed member, bytes32 indexed kind, uint256 oldItemId, uint256 newItemId);
+    /// @notice An item was pledged with this advance rate and Maturity Instruction (Phase 2e).
+    event ItemPledgeTerms(
+        address indexed member, bytes32 indexed kind, uint256 itemId, uint256 advanceBps, bytes32 maturityInstruction
+    );
+    /// @notice An amount pledge's stored advance rate after a pledge (Phase 2e).
+    event PledgeAdvanceRate(address indexed member, bytes32 indexed kind, uint256 advanceBps);
     event ExposureRefreshed(address indexed member, uint256 previous, uint256 current);
     event ClrusdKindUpdated(bytes32 indexed kind);
     event ClrusdTokenUpdated(address indexed token);
@@ -228,6 +249,60 @@ contract CollateralRegistry is
         return pledgedItems[member][kind];
     }
 
+    /// @notice whether a member has pledged this item and it has not been released.
+    /// @dev Pledged, whether or not anything is drawn against it: what `payPledged` and the pledged
+    /// maturity split ask (IV-01 §4.9(d)). `isItemEncumbered` asks the narrower question.
+    function isItemPledged(address holder, bytes32 kind, uint256 itemId) external view returns (bool) {
+        return itemPledged[holder][kind][itemId];
+    }
+
+    /// @notice the advance rate a member's amount pledge of a kind carries (section 9): the rate
+    /// stored when they pledged, blended by units across their pledges of that kind. A pledge made
+    /// before Phase 2e stored none and carries the kind's governed rate.
+    function advanceBpsOf(address member, bytes32 kind) public view returns (uint256) {
+        uint256 stored = _advanceBps[member][kind];
+        return stored != 0 ? stored : collateralTypes[kind].haircutBps;
+    }
+
+    /// @notice the advance rate stored with one pledged item when it was pledged (section 9);
+    /// the kind's governed rate for an item pledged before Phase 2e.
+    function itemAdvanceBpsOf(address member, bytes32 kind, uint256 itemId) public view returns (uint256) {
+        uint256 stored = _itemAdvanceBps[member][kind][itemId];
+        return stored != 0 ? stored : collateralTypes[kind].haircutBps;
+    }
+
+    /// @notice what a member's pledge of one kind lends against: each pledged item's value at the
+    /// advance rate stored with it, or the pledged amount's value at its stored rate (section 9).
+    /// @dev The figure LimitCalculator writes as the tier's capacity and the Liquidator measures a
+    /// shortfall against. A governed rate change reaches new pledges, not ones already made.
+    /// @param excludeItem an item to leave out (zero for none): the pledged maturity split asks for
+    /// the limit the member has without the bond that is maturing (MB-05 §5.6).
+    function advancedValueOf(address member, bytes32 kind, uint256 excludeItem)
+        public
+        view
+        returns (uint256 value)
+    {
+        CollateralType storage collateral = collateralTypes[kind];
+        if (!collateral.registered) return 0;
+        if (collateral.valuer == address(0)) {
+            // Savings keep the kind's own terms, fixed once the CLRUSD lock is live (spec 10a).
+            uint256 rate = kind == clrusdKind ? collateral.haircutBps : advanceBpsOf(member, kind);
+            return (collateralValueOf(member, kind) * rate) / ExposureMath.BPS;
+        }
+        uint256[] storage items = pledgedItems[member][kind];
+        uint256[] memory one = new uint256[](1);
+        for (uint256 i = 0; i < items.length; i++) {
+            uint256 itemId = items[i];
+            if (itemId == excludeItem) continue;
+            one[0] = itemId;
+            try ICollateralValuer(collateral.valuer).valueOfItems(member, one) returns (uint256 v) {
+                value += (v * itemAdvanceBpsOf(member, kind, itemId)) / ExposureMath.BPS;
+            } catch {
+                // Valued at nothing, as `collateralValueOf` does: under-valuing shrinks a limit.
+            }
+        }
+    }
+
     /// @inheritdoc IEncumbranceSource
     /// @dev Whether one specific thing is spoken for. Amount-based collateral answers "how much
     /// must stay"; a bond has to answer "may this one leave", because half a bond is not a thing.
@@ -312,14 +387,18 @@ contract CollateralRegistry is
     {
         uint256 drawn = _drawnUnder(member, kind);
         if (drawn == 0) return 0;
+        // The rate stored with the member's pledge (section 9), so a later governed change cannot
+        // lock more of what they already pledged. The CLRUSD lock keeps the kind's own terms, which
+        // are fixed once it is live (spec 10a).
+        uint256 rate = kind == clrusdKind ? collateral.haircutBps : advanceBpsOf(member, kind);
         // Collateral that realizes nothing can never free itself while anything is drawn on it.
-        if (collateral.haircutBps == 0 || collateral.unitPrice == 0) return type(uint256).max;
+        if (rate == 0 || collateral.unitPrice == 0) return type(uint256).max;
 
         // The value the haircut has to reach, converted back into units. Rounded up at each step
         // and multiplied before dividing: rounding down left the lock a few units short of what is
         // drawn (audit L-6).
         uint256 neededValue =
-            Math.mulDiv(drawn, ExposureMath.BPS, collateral.haircutBps, Math.Rounding.Up);
+            Math.mulDiv(drawn, ExposureMath.BPS, rate, Math.Rounding.Up);
         return Math.mulDiv(neededValue, PRICE_SCALE, collateral.unitPrice, Math.Rounding.Up);
     }
 
@@ -437,25 +516,47 @@ contract CollateralRegistry is
         onlyRole(OPERATOR_ROLE)
     {
         if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
-        _consumePledgeSignature(member, PLEDGE_TYPEHASH, kind, amount, deadline, signature);
-        pledgedOf[member][kind] += amount;
+        _consumePledgeSignature(member, PLEDGE_TYPEHASH, kind, amount, bytes32(0), deadline, signature);
+        // Section 9: the advance rate is stored at pledging. Units already pledged keep theirs, so
+        // the stored figure is the units-weighted blend of the two.
+        uint256 before = pledgedOf[member][kind];
+        uint256 rate = collateralTypes[kind].haircutBps;
+        if (before != 0) rate = (advanceBpsOf(member, kind) * before + rate * amount) / (before + amount);
+        _advanceBps[member][kind] = rate;
+        pledgedOf[member][kind] = before + amount;
         emit Pledged(member, kind, amount);
+        emit PledgeAdvanceRate(member, kind, rate);
         refresh(member);
     }
 
     /// @notice records a pledge of one specific thing.
     /// @dev For collateral with an identity. The registry records which one, because refusing to
     /// let it move and valuing it both need to know that. Signed by the member, like `pledge`.
-    function pledgeItem(address member, bytes32 kind, uint256 itemId, uint256 deadline, bytes calldata signature)
-        external
-        onlyRole(OPERATOR_ROLE)
-    {
+    ///
+    /// Section 9 (Phase 2e): the member's signature also covers the hash of the Maturity
+    /// Instruction for this bond (MB-05 §5.6), and the pledge reverts without one. The hash and the
+    /// kind's advance rate at this moment are stored with the item; the rate is the one this item
+    /// lends at for as long as it stays pledged.
+    /// @param maturityInstruction hash of the Maturity Instruction the member approved.
+    function pledgeItem(
+        address member,
+        bytes32 kind,
+        uint256 itemId,
+        bytes32 maturityInstruction,
+        uint256 deadline,
+        bytes calldata signature
+    ) external onlyRole(OPERATOR_ROLE) {
         if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
-        _consumePledgeSignature(member, PLEDGE_ITEM_TYPEHASH, kind, itemId, deadline, signature);
+        if (maturityInstruction == bytes32(0)) revert CollateralRegistryNoMaturityInstruction(member, itemId);
+        _consumePledgeSignature(member, PLEDGE_ITEM_TYPEHASH, kind, itemId, maturityInstruction, deadline, signature);
         if (itemPledged[member][kind][itemId]) return;
         itemPledged[member][kind][itemId] = true;
         pledgedItems[member][kind].push(itemId);
+        uint256 rate = collateralTypes[kind].haircutBps;
+        _itemAdvanceBps[member][kind][itemId] = rate;
+        maturityInstructionOf[member][kind][itemId] = maturityInstruction;
         emit ItemPledged(member, kind, itemId);
+        emit ItemPledgeTerms(member, kind, itemId, rate, maturityInstruction);
         refresh(member);
     }
 
@@ -482,12 +583,33 @@ contract CollateralRegistry is
         onlyRole(ITEM_ROLLER_ROLE)
     {
         if (!itemPledged[member][kind][oldItemId]) return;
+        // The replacement is re-pledged on the same terms: the advance rate and Maturity
+        // Instruction the member gave for the bond it replaces (section 9).
+        uint256 rate = _itemAdvanceBps[member][kind][oldItemId];
+        bytes32 instruction = maturityInstructionOf[member][kind][oldItemId];
         _dropItem(member, kind, oldItemId);
         if (!itemPledged[member][kind][newItemId]) {
             itemPledged[member][kind][newItemId] = true;
             pledgedItems[member][kind].push(newItemId);
+            _itemAdvanceBps[member][kind][newItemId] = rate;
+            maturityInstructionOf[member][kind][newItemId] = instruction;
         }
         emit ItemRolled(member, kind, oldItemId, newItemId);
+        refresh(member);
+    }
+
+    /// @notice releases the pledge on an item its collection has just paid and burned.
+    /// @dev For a bond settled at maturity under its Maturity Instruction, or paid under its
+    /// pledge payment term: the bond is gone, its proceeds went where its terms say, and the pledge
+    /// releases in the same transaction (MB-05 §5.6, IV-01 §4.9). Only a collection holding
+    /// `ITEM_ROLLER_ROLE`, the role that already moves its own bonds' pledges on a roll.
+    function releaseRetiredItem(address member, bytes32 kind, uint256 itemId)
+        external
+        onlyRole(ITEM_ROLLER_ROLE)
+    {
+        if (!itemPledged[member][kind][itemId]) return;
+        _dropItem(member, kind, itemId);
+        emit ItemReleased(member, kind, itemId);
         refresh(member);
     }
 
@@ -516,26 +638,43 @@ contract CollateralRegistry is
         );
     }
 
-    /// @notice the digest a member signs to pledge `amountOrItem` of `kind`, at their current nonce.
-    /// @param item true for `pledgeItem` (an item id), false for `pledge` (an amount).
-    function pledgeDigest(address member, bytes32 kind, uint256 amountOrItem, uint256 deadline, bool item)
-        public
+    /// @notice the digest a member signs to pledge an amount of `kind`, at their current nonce.
+    function pledgeDigest(address member, bytes32 kind, uint256 amount, uint256 deadline)
+        external
         view
         returns (bytes32)
     {
-        bytes32 typehash = item ? PLEDGE_ITEM_TYPEHASH : PLEDGE_TYPEHASH;
-        return _pledgeDigest(typehash, member, kind, amountOrItem, pledgeNonces[member], deadline);
+        return _pledgeDigest(PLEDGE_TYPEHASH, member, kind, amount, bytes32(0), pledgeNonces[member], deadline);
     }
 
+    /// @notice the digest a member signs to pledge item `itemId` of `kind` with the Maturity
+    /// Instruction whose hash is `maturityInstruction`, at their current nonce (section 9).
+    function pledgeItemDigest(
+        address member,
+        bytes32 kind,
+        uint256 itemId,
+        bytes32 maturityInstruction,
+        uint256 deadline
+    ) external view returns (bytes32) {
+        return _pledgeDigest(
+            PLEDGE_ITEM_TYPEHASH, member, kind, itemId, maturityInstruction, pledgeNonces[member], deadline
+        );
+    }
+
+    /// @dev An item pledge's struct carries the Maturity Instruction hash between the item and the
+    /// nonce; an amount pledge's struct has no such field.
     function _pledgeDigest(
         bytes32 typehash,
         address member,
         bytes32 kind,
         uint256 amountOrItem,
+        bytes32 maturityInstruction,
         uint256 nonce,
         uint256 deadline
     ) private view returns (bytes32) {
-        bytes32 structHash = keccak256(abi.encode(typehash, member, kind, amountOrItem, nonce, deadline));
+        bytes32 structHash = typehash == PLEDGE_ITEM_TYPEHASH
+            ? keccak256(abi.encode(typehash, member, kind, amountOrItem, maturityInstruction, nonce, deadline))
+            : keccak256(abi.encode(typehash, member, kind, amountOrItem, nonce, deadline));
         return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
     }
 
@@ -545,11 +684,14 @@ contract CollateralRegistry is
         bytes32 typehash,
         bytes32 kind,
         uint256 amountOrItem,
+        bytes32 maturityInstruction,
         uint256 deadline,
         bytes calldata signature
     ) private {
         if (block.timestamp > deadline) revert CollateralRegistrySignatureExpired(deadline);
-        bytes32 digest = _pledgeDigest(typehash, member, kind, amountOrItem, pledgeNonces[member]++, deadline);
+        bytes32 digest = _pledgeDigest(
+            typehash, member, kind, amountOrItem, maturityInstruction, pledgeNonces[member]++, deadline
+        );
         if (!SignatureChecker.isValidSignatureNow(member, digest, signature)) {
             revert CollateralRegistryBadSignature(member);
         }
@@ -558,6 +700,8 @@ contract CollateralRegistry is
     function _dropItem(address member, bytes32 kind, uint256 itemId) private {
         if (!itemPledged[member][kind][itemId]) return;
         itemPledged[member][kind][itemId] = false;
+        delete _itemAdvanceBps[member][kind][itemId];
+        delete maturityInstructionOf[member][kind][itemId];
         uint256[] storage items = pledgedItems[member][kind];
         for (uint256 i = 0; i < items.length; i++) {
             if (items[i] == itemId) {

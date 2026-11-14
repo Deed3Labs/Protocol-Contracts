@@ -1,4 +1,5 @@
 import { saveDeployment, getDeployment } from "./helpers";
+import { deployBondFactory } from "./bondModules";
 
 /**
  * Phase E: the contracts that put something real behind the asset-backed tier, and pay merchants.
@@ -105,12 +106,8 @@ async function main() {
 
   let factoryAddress = getDeployment(network, "BurnerBondFactory")?.address;
   if (!factoryAddress) {
-    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
-    const factory = await BurnerBondFactory.deploy(
-      tokenRegistry,
-      process.env.BOND_BASE_URI ?? "ipfs://clear-bonds/"
-    );
-    await factory.waitForDeployment();
+    // Phase 2e: with the BurnerBondPledges module its bond implementation pins.
+    const factory = await deployBondFactory(tokenRegistry, process.env.BOND_BASE_URI ?? "ipfs://clear-bonds/");
     factoryAddress = await factory.getAddress();
     saveDeployment(network, "BurnerBondFactory", factoryAddress, JSON.parse(factory.interface.formatJson()));
     log(`+ BurnerBondFactory deployed to ${factoryAddress}`);

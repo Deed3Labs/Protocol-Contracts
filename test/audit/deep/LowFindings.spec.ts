@@ -29,7 +29,7 @@ describe("AUDIT credit Lows: L-1, L-2, L-7, L-8", function () {
 
   it("L-2 (fixed): a holder cannot burn a claim", async function () {
     const { ctx, revolving, merchant } = await deployCore();
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 100n * ONE_USDC);
     await expect(ctx.stableCredit.connect(merchant).burn(1n))
       .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditBurnDisabled");
@@ -93,7 +93,7 @@ describe("AUDIT credit Lows: L-1, L-2, L-7, L-8", function () {
   it("X-11 (fixed): a position at the rate ceiling for years can still be touched", async function () {
     const { ctx, revolving, merchant } = await deployCore();
     await revolving.connect(ctx.admin).setTierRate(3, 5_000n);
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 0n, 100n * ONE_USDC], 3650 * 24 * 3600, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 0n, 100n * ONE_USDC], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 1n);
     await advance(140 * CYCLE);
     await revolving.materialiseCarry(ctx.member.address);

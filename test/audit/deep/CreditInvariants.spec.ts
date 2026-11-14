@@ -60,7 +60,7 @@ describe("DEEP AUDIT: credit-core invariants (seeded stateful fuzz)", function (
     const { ctx, revolving, term, merchant, coop } = env;
     const { DAY, CYCLE } = await import("./deep-setup");
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 3650 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 0);
     await term.connect(ctx.operator).setTermLimit(m.address, 2_000n * ONE_USDC);
     const t0 = (await ethers.provider.getBlock("latest"))!.timestamp + 10;
     const snapId = await ethers.provider.send("evm_snapshot", []);
@@ -108,7 +108,7 @@ describe("DEEP AUDIT: credit-core invariants (seeded stateful fuzz)", function (
     const { ctx, revolving, term } = env;
     const { DAY, CYCLE } = await import("./deep-setup");
     for (const m of [ctx.member, env.member2, env.member3]) {
-      await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 3650 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 0);
       await term.connect(ctx.operator).setTermLimit(m.address, 2_000n * ONE_USDC);
     }
     const snapId = await ethers.provider.send("evm_snapshot", []);

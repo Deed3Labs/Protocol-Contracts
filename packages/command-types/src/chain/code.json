@@ -40,26 +40,35 @@
   },
   "BondVault": {
    "source": "contracts/peripherals/BondVault.sol",
-   "sha256": "0105e2b68bcc3efbe5362b51ed361252a6ffb559fbaaa97026a6ccce4d4f2eed",
+   "sha256": "54dba0fd0d6182a73f3e853e8d79cf1526e7f2f525a24763beddaf17f1db6245",
    "immutables": [
     [
-     3903,
+     5225,
      32
     ],
     [
-     4088,
+     5410,
      32
     ],
     [
-     4568,
+     6005,
      32
     ]
    ]
   },
   "BurnerBond": {
    "source": "contracts/peripherals/BurnerBond.sol",
-   "sha256": "2fcd4827504be7ed7c824a9532e3a303c280265e1f07859ea26577e767a37b02",
-   "immutables": []
+   "sha256": "ff4783537b2e1e098abca130c02b58afc1946bca64ea61ad55321509fa92aa27",
+   "immutables": [
+    [
+     5658,
+     32
+    ],
+    [
+     6629,
+     32
+    ]
+   ]
   },
   "BurnerBondDeposit": {
    "source": "contracts/peripherals/BurnerBondDeposit.sol",
@@ -170,18 +179,18 @@
   },
   "CollateralRegistry": {
    "source": "contracts/peripherals/CollateralRegistry.sol",
-   "sha256": "8295ca99ed98468225c1b442b2ce6fe7370cd4cc2f4d0a0d3c098c4b9bd66d99",
+   "sha256": "720dbb16fcd5da0538e205258abc3262c60f3da1b7463e39a4c9fc2c4b1b2bab",
    "immutables": [
     [
-     3376,
+     3624,
      32
     ],
     [
-     3516,
+     3764,
      32
     ],
     [
-     5114,
+     5623,
      32
     ]
    ]
@@ -333,7 +342,7 @@
   },
   "LimitCalculator": {
    "source": "contracts/peripherals/LimitCalculator.sol",
-   "sha256": "b240e11245d8744d66b0e90e3989e0462d9925c9d8e73a415380f7824a7f5431",
+   "sha256": "466f44d550664adf9d6b4a4e73f16fcd1c44d1c5ce844e088afb723e22d3792d",
    "immutables": [
     [
      2615,
@@ -351,18 +360,18 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "d743cc4aa07d51190ef0f5032841aa5f0a08bb6a90af564c6e3f09be628ecf3c",
+   "sha256": "fd6f49264297ef8f84ede6f78393aaab2467d292ac539e3aedb0ce5d3ea699e3",
    "immutables": [
     [
-     8229,
+     8685,
      32
     ],
     [
-     8414,
+     8870,
      32
     ],
     [
-     10326,
+     10793,
      32
     ]
    ]
@@ -464,66 +473,110 @@
   },
   "RevolvingIssuer": {
    "source": "contracts/peripherals/RevolvingIssuer.sol",
-   "sha256": "bb337db0d4a1a20ca5e329c324994cd1a669e5754f8a60638c56c57ab1149ffc",
+   "sha256": "c7b2d27f571331d791b54dc50af7fd4f8f7e8e0977ef5da4a3695c77f991ea72",
    "immutables": [
     [
-     1967,
+     2367,
      32
     ],
     [
-     2236,
+     2487,
      32
     ],
     [
-     2361,
+     2636,
      32
     ],
     [
-     2884,
+     2833,
      32
     ],
     [
-     3676,
+     2976,
      32
     ],
     [
-     3793,
+     3134,
      32
     ],
     [
-     4069,
+     3347,
      32
     ],
     [
-     5063,
+     3574,
      32
     ],
     [
-     5462,
+     3986,
      32
     ],
     [
-     6311,
+     4210,
      32
     ],
     [
-     6629,
+     4265,
      32
     ],
     [
-     7296,
+     4869,
      32
     ],
     [
-     9411,
+     4986,
      32
     ],
     [
-     12937,
+     5538,
      32
     ],
     [
-     22160,
+     5619,
+     32
+    ],
+    [
+     6357,
+     32
+    ],
+    [
+     6992,
+     32
+    ],
+    [
+     7191,
+     32
+    ],
+    [
+     7478,
+     32
+    ],
+    [
+     7609,
+     32
+    ],
+    [
+     9384,
+     32
+    ],
+    [
+     9673,
+     32
+    ],
+    [
+     9872,
+     32
+    ],
+    [
+     10231,
+     32
+    ],
+    [
+     12569,
+     32
+    ],
+    [
+     17471,
      32
     ]
    ]
@@ -566,38 +619,50 @@
   },
   "TermIssuer": {
    "source": "contracts/peripherals/TermIssuer.sol",
-   "sha256": "682fd9c6fa4b4d1511a785a98ea31cc6b42f6537630d92e73ac369ba533d513b",
+   "sha256": "d42ef14a931d0bdd575f96939b6cf8d20c694f7f82d594a3cd967e2eb46320c5",
    "immutables": [
     [
-     1767,
+     1976,
      32
     ],
     [
-     2530,
+     2945,
      32
     ],
     [
-     3500,
+     3599,
      32
     ],
     [
-     3702,
+     3665,
      32
     ],
     [
-     3838,
+     3934,
      32
     ],
     [
-     5095,
+     4178,
      32
     ],
     [
-     11343,
+     4314,
      32
     ],
     [
-     13541,
+     5672,
+     32
+    ],
+    [
+     10595,
+     32
+    ],
+    [
+     11960,
+     32
+    ],
+    [
+     14372,
      32
     ]
    ]

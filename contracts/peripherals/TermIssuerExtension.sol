@@ -107,7 +107,7 @@ contract TermIssuerExtension is TermIssuerBase {
 
         if (refunded > 0) {
             stableCredit.reversePurchase(
-                plan.member, refunded, merchant, payoutReversed, _feeRecipient(), refunded - payoutReversed
+                plan.member, refunded, merchant, payoutReversed, _feeFrom(planId), refunded - payoutReversed
             );
         }
 
@@ -123,7 +123,7 @@ contract TermIssuerExtension is TermIssuerBase {
             refundedOf[planId] += cash;
             uint256 merchantCash = (payout * cash) / refundable;
             stableCredit.repayRefund(
-                plan.member, cash, merchant, merchantCash, _feeRecipient(), cash - merchantCash, withheld
+                plan.member, cash, merchant, merchantCash, _feeFrom(planId), cash - merchantCash, withheld
             );
             // The member's cash net of the carry withheld, which is what actually reached them
             // (audit X-14).

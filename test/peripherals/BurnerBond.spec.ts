@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { deployBondFactory } from "../helpers/bonds";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -19,8 +20,7 @@ describe("BurnerBond", function () {
     const signers = await ethers.getSigners();
     [buyer, other] = [signers[8], signers[9]];
 
-    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
-    factory = await BurnerBondFactory.deploy(
+    factory = await deployBondFactory(
       await ctx.tokenRegistry.getAddress(),
       "ipfs://bonds"
     );
@@ -100,8 +100,7 @@ describe("BurnerBond", function () {
       const maturity = (await now()) + BigInt(12 * MONTH);
       await buyBond(1_000n * ONE_USDC, maturity); // bond 1 in this collection
 
-      const Next = await ethers.getContractFactory("BurnerBondFactory");
-      const nextFactory = await Next.deploy(
+      const nextFactory = await deployBondFactory(
         await ctx.tokenRegistry.getAddress(), "ipfs://bonds"
       );
       await nextFactory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
@@ -516,8 +515,10 @@ describe("BurnerBond", function () {
 
 describe("BurnerBond as collateral", function () {
   // A bond pledged against a credit line has to be reachable when the member defaults. It is one
-  // token with an id rather than a balance, and it pays at maturity rather than on demand -- so
-  // the co-op takes the bond and is paid what it is worth today, not what it will be worth.
+  // token with an id rather than a balance, and it pays at maturity rather than on demand. Since
+  // Phase 2e (founder answer G) nobody takes it: it is paid under its own pledge payment term,
+  // `payPledged`, at what it is worth today. The full path is in
+  // test/audit/compliance/PledgedBonds.spec.ts; this suite covers the bond on its own.
   let ctx: any, factory: any, deposit: any, bond: any, vault: any, signals: any;
   let buyer: any, coop: any, liquidator: any, other: any;
 
@@ -530,8 +531,7 @@ describe("BurnerBond as collateral", function () {
     const signers = await ethers.getSigners();
     [buyer, coop, liquidator, other] = [signers[8], signers[9], signers[10], signers[11]];
 
-    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
-    factory = await BurnerBondFactory.deploy(
+    factory = await deployBondFactory(
       await ctx.tokenRegistry.getAddress(), "ipfs://b"
     );
     deposit = await ethers.getContractAt(
@@ -560,13 +560,8 @@ describe("BurnerBond as collateral", function () {
       .connect(buyer)
       .makeDeposit(await ctx.usdc.getAddress(), 1_000n * ONE, maturity, discount);
 
-    // Audit M-6: a seizure needs the bond pledged against drawn credit and its holder in default.
-    // This suite is about what happens once a seizure is legitimate, so the buyer is both.
     signals = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
     await bond.setEncumbranceSource(await signals.getAddress(), ethers.id("BOND"));
-    await bond.setDefaultSource(await signals.getAddress());
-    await signals.setItemEncumbered(buyer.address, 1, true);
-    await signals.setInDefault(buyer.address, true);
   });
 
   it("is worth its purchase price at the start and its face at maturity", async function () {
@@ -590,56 +585,68 @@ describe("BurnerBond as collateral", function () {
     expect(later).to.be.lessThan(1_000n * ONE);
   });
 
-  it("lets the co-op take a bond, and nobody else", async function () {
-    await expect(bond.connect(other).seizeBond(1, buyer.address, coop.address))
-      .to.be.revertedWith("Only liquidator can seize");
+  it("answers its Accreted Value, which is its present value", async function () {
+    await ethers.provider.send("evm_increaseTime", [6 * M]);
+    await ethers.provider.send("evm_mine", []);
+    expect(await bond.accretedValue(1)).to.equal(await bond.presentValueOf(1));
+  });
 
-    await bond.connect(liquidator).seizeBond(1, buyer.address, coop.address);
-    expect(await bond.balanceOf(coop.address, 1)).to.equal(1n);
+  it("the seize-and-redeem path is gone: no seizeBond, redeemEarly, default source or settlement gate", async function () {
+    for (const fn of ["seizeBond", "redeemEarly", "setDefaultSource", "setSettlementGate", "defaultSource", "settlementGate"]) {
+      expect(bond.interface.getFunction(fn), fn).to.equal(null);
+    }
+    // Not reachable by selector either: the collection has no fallback.
+    const legacy = new ethers.Interface([
+      "function seizeBond(uint256,address,address)",
+      "function redeemEarly(uint256)",
+    ]);
+    await expect(liquidator.sendTransaction({
+      to: await bond.getAddress(), data: legacy.encodeFunctionData("seizeBond", [1, buyer.address, liquidator.address]),
+    })).to.be.reverted;
+    await expect(liquidator.sendTransaction({
+      to: await bond.getAddress(), data: legacy.encodeFunctionData("redeemEarly", [1]),
+    })).to.be.reverted;
+    expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
+  });
+
+  it("nobody, the named liquidator included, can move a pledged bond", async function () {
+    await signals.setItemPledged(buyer.address, 1, true);
+    await expect(bond.connect(buyer).safeTransferFrom(buyer.address, coop.address, 1, 1, "0x"))
+      .to.be.revertedWithCustomError(bond, "BurnerBondPledged").withArgs(1);
+    await bond.connect(buyer).setApprovalForAll(liquidator.address, true);
+    await expect(bond.connect(liquidator).safeTransferFrom(buyer.address, liquidator.address, 1, 1, "0x"))
+      .to.be.revertedWithCustomError(bond, "BurnerBondPledged").withArgs(1);
+  });
+
+  it("payPledged pays nothing on an unpledged bond, or without a pledge module that asks for it", async function () {
+    // Unpledged: reverts whoever calls.
+    for (const caller of [buyer, coop, liquidator, other]) {
+      await expect(bond.connect(caller).payPledged(1))
+        .to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable").withArgs(1);
+    }
+    // Pledged, but the named liquidator is an account, not a pledge module: it cannot answer.
+    await signals.setItemPledged(buyer.address, 1, true);
+    await expect(bond.connect(liquidator).payPledged(1)).to.be.reverted;
+    // A bond that does not exist.
+    await expect(bond.payPledged(99))
+      .to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable").withArgs(99);
+    expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
+  });
+
+  it("settle pays an unpledged bond that opted out of rolling to its holder, whoever calls", async function () {
+    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
+    await expect(bond.connect(other).settle(1))
+      .to.be.revertedWithCustomError(bond, "BurnerBondNotSettleable").withArgs(1); // not mature
+    await ethers.provider.send("evm_increaseTime", [13 * M]);
+    await ethers.provider.send("evm_mine", []);
+    await expect(bond.connect(other).settle(1))
+      .to.be.revertedWithCustomError(bond, "BurnerBondNotSettleable").withArgs(1); // rolls
+    await bond.connect(buyer).setAutoRollOptOut(1, true);
+    const before = await ctx.usdc.balanceOf(buyer.address);
+    await expect(bond.connect(other).settle(1)).to.emit(bond, "BondRedeemed").withArgs(1, buyer.address, 1_000n * ONE);
+    expect(await ctx.usdc.balanceOf(buyer.address)).to.equal(before + 1_000n * ONE);
+    expect(await ctx.usdc.balanceOf(other.address)).to.equal(0n);
     expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
-  });
-
-  it("pays the co-op what the bond is worth today, not what it will be", async function () {
-    // Paying face for a bond that has not matured hands over interest nobody waited for.
-    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
-    await ethers.provider.send("evm_increaseTime", [6 * M]);
-    await ethers.provider.send("evm_mine", []);
-
-    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-    const pv = await bond.presentValueOf(1);
-    await bond.connect(liquidator).redeemEarly(1);
-
-    expect(await ctx.usdc.balanceOf(liquidator.address)).to.be.closeTo(pv, 2n); // one second of accretion either way
-    expect(pv).to.be.lessThan(1_000n * ONE);
-  });
-
-  it("keeps the unearned interest in the vault", async function () {
-    const funded = await vault.held();
-    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
-    await ethers.provider.send("evm_increaseTime", [6 * M]);
-    await ethers.provider.send("evm_mine", []);
-
-    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-    const pv = await bond.presentValueOf(1);
-    await bond.connect(liquidator).redeemEarly(1);
-
-    // The obligation is gone in full; only the present value left the vault.
-    expect(await vault.totalFaceOutstanding()).to.equal(0n);
-    expect(await vault.held()).to.be.closeTo(funded + 1_000n * ONE - pv, 2n);
-  });
-
-  it("refuses early redemption to a holder who is not the co-op", async function () {
-    await expect(bond.connect(buyer).redeemEarly(1))
-      .to.be.revertedWith("Only liquidator can redeem early");
-  });
-
-  it("refuses to pay the same bond twice", async function () {
-    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
-    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-    await bond.connect(liquidator).redeemEarly(1);
-    // The bond was burned when it paid out, so there is nothing left to present.
-    await expect(bond.connect(liquidator).redeemEarly(1))
-      .to.be.revertedWith("Not bond holder");
   });
 });
 
@@ -658,8 +665,7 @@ describe("auto-roll", function () {
     const signers = await ethers.getSigners();
     [buyer, liquidator] = [signers[8], signers[10]];
 
-    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
-    factory = await BurnerBondFactory.deploy(
+    factory = await deployBondFactory(
       await ctx.tokenRegistry.getAddress(), "ipfs://b"
     );
     deposit = await ethers.getContractAt(
@@ -738,19 +744,15 @@ describe("auto-roll", function () {
     await expect(bond.connect(buyer).rollBond(1)).to.be.revertedWith("Bond not yet mature");
   });
 
-  it("will not roll a bond the co-op has seized", async function () {
-    // A seized bond is collateral somebody is waiting on. Rolling it would put the recovery
-    // another term away, so the co-op redeems it early instead.
+  it("rolls a pledged bond for its holder, and for nobody else", async function () {
+    // Phase 2e: the co-op no longer holds seized bonds, so there is no co-op exemption to keep.
     const signals = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
     await bond.setEncumbranceSource(await signals.getAddress(), ethers.id("BOND"));
-    await bond.setDefaultSource(await signals.getAddress());
-    await signals.setItemEncumbered(buyer.address, 1, true);
-    await signals.setInDefault(buyer.address, true);
+    await signals.setItemPledged(buyer.address, 1, true);
     await mature();
 
-    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-
-    await expect(bond.connect(liquidator).rollBond(1))
-      .to.be.revertedWith("Seized bonds are redeemed, not rolled");
+    await expect(bond.connect(liquidator).rollBond(1)).to.be.revertedWith("Not bond holder");
+    await bond.connect(buyer).rollBond(1);
+    expect(await bond.balanceOf(buyer.address, 2)).to.equal(1n);
   });
 });
