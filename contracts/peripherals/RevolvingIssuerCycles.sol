@@ -12,7 +12,7 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
 
     /// @notice what RevolvingIssuer's constructor checks before pinning this as its cycles module.
     function extensionKind() external pure returns (bytes32) {
-        return keccak256("RevolvingIssuerCycles.v2");
+        return keccak256("RevolvingIssuerCycles.v3");
     }
 
     /// @notice Automatic Clearing (12.2): records a deposit that landed in the member's Spendable at
@@ -97,11 +97,24 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
         while (s.cycleEnd <= block.timestamp) {
             uint64 end = s.cycleEnd;
             if (s.cureAmount == 0) {
-                if (s.closedAt != 0) _judgeDues(member, s, end);
-                if (s.incomePause != 0) s.incomePause--;
+                if (s.closedAt != 0) {
+                    // 10c (decision 5): paused time since this close pushes its due point back by as
+                    // much, and no due point is judged while a pause is in force, so a payment a pause
+                    // prevented is never a miss. The line waits on the calendar until then.
+                    uint256 due = end + _pauseClockOf(member) - s.closeClock;
+                    if (due > block.timestamp || _pauseInForce(member)) {
+                        period.expiration = due > block.timestamp ? due : block.timestamp + 1;
+                        return 0;
+                    }
+                    _judgeDues(member, s, end);
+                }
+                _countDownIncomePause(s, end);
                 if (s.cureAmount == 0) _close(member, s, end);
-            } else if (s.incomePause != 0) {
-                s.incomePause--;
+            } else {
+                _countDownIncomePause(s, end);
+                // The line is frozen, but the cycle still gets its statement (12.17).
+                IRevolvingCloseCarry(address(this)).closeCarry(member, end);
+                _recordStatement(member, s, end, s.cureAmount, 0, workoutOf[member]);
             }
             s.cycleEnd = uint64(PacificCalendar.endOnOrAfter(end + 1, s.cycleEndDay));
         }
@@ -122,6 +135,12 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
         return 0;
     }
 
+    /// @dev Income Assurance falls by one at each cycle end; the end it runs out at is kept, so a
+    /// further attestation for the same hardship can tell whether it would be consecutive (12.13).
+    function _countDownIncomePause(CycleState storage s, uint64 end) private {
+        if (s.incomePause != 0 && --s.incomePause == 0) s.hardshipLastEnd = end;
+    }
+
     /// @dev Judges the dues of the cycle that closed at `s.closedAt`, at its due point `end`.
     function _judgeDues(address member, CycleState storage s, uint64 end) private {
         CycleRecord storage c = cycleOf[member];
@@ -138,12 +157,16 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
         c.depositBits = uint8(((uint256(c.depositBits) << 1) | (deposited ? 1 : 0)) & 0x3f);
 
         bool clean = paid >= ra;
+        uint8 workout = s.closedWorkout;
         if (s.incomePause != 0) {
             // Income Assurance (12.13): nothing was due, no miss is recorded and nothing counts
             // toward default. A miss before it is not consecutive with one after it.
             clean = true;
             c.missedInRow = 0;
             c.cureNoticeAt = 0;
+        } else if (clean && workout != 0) {
+            // A workout cycle paid as it asks (12.18): not a miss, but the run of misses stands until
+            // a re-age (below).
         } else if (clean) {
             if (c.cleanStreak < type(uint8).max) c.cleanStreak++;
             c.missedInRow = 0;
@@ -185,6 +208,8 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
             s.noticeProposer = address(0);
             s.cureAmount = uint128(ra - paid);
             s.cureDueAt = end;
+            // 10c: the grace period from here runs longer by any paused time from now.
+            s.cureClock = _pauseClockOf(member);
         }
         // A missed Secured Minimum is never a miss (12.1): it only pauses secured draws until the
         // payments since this close reach the Rebalance Amount plus the Secured Minimum.
@@ -195,10 +220,47 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
             s.pastDueSM = uint128(smLack);
             emit SecuredMinimumMissed(member, lack);
         }
+        if (workout != 0) _judgeWorkout(member, s, c, workout, end, clean);
         s.closedAt = 0;
         s.rebalanceAmount = 0;
         s.securedMinimum = 0;
+        s.closedWorkout = 0;
         emit CycleJudged(member, clean, c.missedInRow, c.cleanStreak, deposited);
+    }
+
+    /// @dev 12.18 at a due point: the workout plan's installment comes due (none while Income
+    /// Assurance runs: the lower amount due applies) and its past-due date is kept; a PLAN paid off
+    /// ends. Then the re-age: three consecutive REDUCED or PLAN cycles paid as required reset the
+    /// run of misses, at most once per rolling 365 days and twice per rolling 5 years. DEFERRAL
+    /// cycles neither count nor break the run.
+    function _judgeWorkout(address member, CycleState storage s, CycleRecord storage c, uint8 workout, uint64 end, bool paid)
+        private
+    {
+        Workout storage w = workoutOf[member];
+        if (workout == WORKOUT_PLAN && w.state == WORKOUT_PLAN) {
+            if (s.closedAt >= w.startedAt && s.incomePause == 0 && w.planDueCount < w.planCycles) w.planDueCount++;
+            uint256 planPaid = _planPaid(member, w);
+            paid = planPaid >= _planDue(w);
+            if (paid) w.planPastDueSince = 0;
+            else if (w.planPastDueSince == 0) w.planPastDueSince = end;
+            if (planPaid >= w.planTotal) {
+                w.state = 0;
+                emit WorkoutEnded(member, WORKOUT_PLAN);
+            }
+        }
+        if (workout == WORKOUT_DEFERRAL || s.incomePause != 0) return;
+        if (!paid) {
+            w.qualifying = 0;
+            return;
+        }
+        if (++w.qualifying < 3) return;
+        w.qualifying = 0;
+        if ((w.reagedAt == 0 || end >= w.reagedAt + 365 days) && (w.reagedBefore == 0 || end >= w.reagedBefore + 5 * 365 days)) {
+            c.missedInRow = 0;
+            w.reagedBefore = w.reagedAt;
+            w.reagedAt = end;
+            emit WorkoutReaged(member, end);
+        }
     }
 
     /// @dev Uses a grace (12.13) when the member is eligible and has one left in the rolling window:
@@ -222,7 +284,11 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
 
     /// @dev Closes a cycle at `end`: what is due at the next end (12.1).
     function _close(address member, CycleState storage s, uint64 end) private {
-        _touch(member);
+        // 12.17 (decision 18): carry is brought up to the cycle end itself, so the close's figures
+        // are as at that end even when it is recorded later.
+        IRevolvingCloseCarry(address(this)).closeCarry(member, end);
+        Workout storage w = workoutOf[member];
+        uint8 workout = w.state;
         uint256 ra;
         uint256 sm;
         if (s.incomePause == 0) {
@@ -232,7 +298,7 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
                 if (_isUnsecured(i)) {
                     ra += tierPrincipal[member][i];
                     unsecuredPrincipal += _principalOnly(member, i);
-                } else {
+                } else if (tiers[i].kind != WORKOUT_KIND) {
                     securedPrincipal += _principalOnly(member, i);
                 }
             }
@@ -245,12 +311,66 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
                 sm += part < securedPrincipal ? part : securedPrincipal;
             }
         }
+        // 12.18: a DEFERRAL owes no Rebalance Amount and a REDUCED one at most the attested amount;
+        // a PLAN has no unsecured balance left. Each counts down the closes it covers.
+        if (workout != 0) {
+            if (workout == WORKOUT_DEFERRAL) ra = 0;
+            else if (workout == WORKOUT_REDUCED && ra > w.reducedAmount) ra = w.reducedAmount;
+            if (workout != WORKOUT_PLAN && --w.cyclesLeft == 0) {
+                w.state = 0;
+                emit WorkoutEnded(member, workout);
+            }
+        }
+        s.closedWorkout = workout;
         s.assetCarry = 0;
         s.rebalanceAmount = uint128(ra);
         s.securedMinimum = uint128(sm);
         s.paidSinceClose = 0;
         s.closedAt = end;
+        s.closeClock = _pauseClockOf(member);
+        _recordStatement(member, s, end, ra, sm, w);
         emit CycleClosed(member, end, ra, sm);
+    }
+
+    /// @dev 12.17 (decisions 17-22): the cycle's statement figures as at its end, in one event, and
+    /// the most recent close kept for views. Start figures are the last close's end figures. A
+    /// statement is required when any position, secured ones included, ends with a balance.
+    function _recordStatement(address member, CycleState storage s, uint64 end, uint256 ra, uint256 sm, Workout storage w)
+        private
+    {
+        uint256 n = tiers.length;
+        uint256[] memory startPrincipal = new uint256[](n);
+        uint256[] memory startCarry = new uint256[](n);
+        uint256[] memory endPrincipal = new uint256[](n);
+        uint256[] memory endCarry = new uint256[](n);
+        uint256[] memory cycleCarry = new uint256[](n);
+        uint256[] memory principalSeconds = new uint256[](n);
+        bool required;
+        for (uint256 i = 0; i < n; i++) {
+            PositionStat storage p = positionStat[member][i];
+            startPrincipal[i] = p.endPrincipal;
+            startCarry[i] = p.endCarry;
+            uint256 carry = tierCarry[member][i];
+            uint256 principal = tierPrincipal[member][i] - carry;
+            if (principal + carry != 0) required = true;
+            endPrincipal[i] = principal;
+            endCarry[i] = carry;
+            cycleCarry[i] = p.cycleCarry;
+            principalSeconds[i] = p.principalSeconds;
+            p.endPrincipal = uint128(principal);
+            p.endCarry = uint128(carry);
+            p.lastCycleCarry = p.cycleCarry;
+            p.lastPrincipalSeconds = p.principalSeconds;
+            p.cycleCarry = 0;
+            p.principalSeconds = 0;
+        }
+        s.lastCycleEnd = end;
+        s.lastRecordedAt = uint64(block.timestamp);
+        s.lastStatementRequired = required;
+        emit CycleStatement(
+            member, end, uint64(block.timestamp), startPrincipal, startCarry, endPrincipal, endCarry, cycleCarry,
+            principalSeconds, ra, sm, required, s.closedWorkout, w.ref
+        );
     }
 
     /// @dev What the member owes on the unsecured tiers and on the rest.
@@ -265,84 +385,4 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
         return a < b ? a : b;
     }
 
-    /// @notice sets the governed terms of the Clear Credit Agreement (section 12).
-    /// @dev `autoClearOffGlobal` is no longer read: only the member's hybridMode switches Automatic
-    /// Clearing off (12.2, Addendum 2). The field stays for the layout and the ABI.
-    function setCreditTerms(CreditTerms calldata terms, uint128 boostBase, uint128 boostEarned)
-        external
-        onlyCreditRole(CREDIT_SETTINGS_ROLE)
-    {
-        creditTerms = terms;
-        boostBaseCap = boostBase;
-        boostEarnedCap = boostEarned;
-        emit CreditTermsUpdated(terms, boostBase, boostEarned);
-    }
-
-    /// @notice names where a member's last ESA deposit is read, for the Boost deposit test.
-    function setDepositSource(address source) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        depositSource = source;
-        emit DepositSourceUpdated(source);
-    }
-
-    /// @notice the member turns Automatic Clearing on or off, and chooses its level (12.2).
-    /// @param authHash the hash of the authorization text the member approved (a copy goes to them);
-    /// required to turn it on.
-    function setAutoClear(bool on, uint8 level, bytes32 authHash) external {
-        _setAutoClear(_msgSender(), on, level, authHash);
-    }
-
-    /// @notice the same, from the member's EIP-712 signature: how "Approve automatic clearing" on
-    /// the separate screen at line opening turns it on. "Turn off" signs nothing and leaves it off.
-    function setAutoClearWithSignature(
-        address member,
-        bool on,
-        uint8 level,
-        bytes32 authHash,
-        uint256 deadline,
-        bytes calldata signature
-    ) external {
-        _useSignature(
-            member,
-            keccak256(abi.encode(AUTO_CLEAR_TYPEHASH, member, on, level, authHash, memberNonces[member], deadline)),
-            deadline,
-            signature
-        );
-        _setAutoClear(member, on, level, authHash);
-    }
-
-    /// @notice the member sets how much card spending may draw against their Savings (12.7).
-    function setSavingsDrawAllowance(uint256 amount) external {
-        savingsDrawAllowance[_msgSender()] = amount;
-        emit SavingsDrawAllowanceSet(_msgSender(), amount);
-    }
-
-    /// @notice the same, from the member's EIP-712 signature.
-    function setSavingsDrawAllowanceWithSignature(address member, uint256 amount, uint256 deadline, bytes calldata signature)
-        external
-    {
-        _useSignature(
-            member,
-            keccak256(abi.encode(SAVINGS_DRAW_TYPEHASH, member, amount, memberNonces[member], deadline)),
-            deadline,
-            signature
-        );
-        savingsDrawAllowance[member] = amount;
-        emit SavingsDrawAllowanceSet(member, amount);
-    }
-
-    bytes32 public constant AUTO_CLEAR_TYPEHASH =
-        keccak256("AutoClear(address member,bool on,uint8 level,bytes32 authHash,uint256 nonce,uint256 deadline)");
-    bytes32 public constant SAVINGS_DRAW_TYPEHASH =
-        keccak256("SavingsDrawAllowance(address member,uint256 amount,uint256 nonce,uint256 deadline)");
-
-    function _setAutoClear(address member, bool on, uint8 level, bytes32 authHash) private {
-        if (level > LEVEL_DUE_ONLY || (on && authHash == bytes32(0))) revert RevolvingIssuerBadScope(level);
-        autoRepayEnabled[member] = on;
-        autoClearScopeOf[member] = level;
-        if (on) {
-            cycleState[member].autoClearAuthHash = authHash;
-            emit AutoClearAuthorized(member, level, authHash);
-        }
-        emit AutoClearSet(member, on, level);
-    }
 }
