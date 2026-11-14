@@ -68,3 +68,6 @@ The spec text is in `addendum-12-18-workout-states.md`. The owner accepted every
 30. **Combined Ceiling:** the 0% workout plan's principal is excluded from it.
 31. **Statements (12.17):** the cycle-close event records the active workout state and its `workoutRef`. Moving balances into a PLAN emits its own event.
 32. **Ending early:** the member may end DEFERRAL or REDUCED early with their own signature. A PLAN ends when it is paid off.
+
+## Pause continuation (owner, Nov 14, 2026), binding
+33. A new pause set within 30 days of the end of the last pause of the same kind continues it: its 30-day cap counts from the first pause's start. Same kind means the same account, the security pause, or the vault-wide pause. Going past the cap still needs the two-person renewal with a recorded legal basis. This closes the gap where a pause lapses at day 30 and a fresh one starts a new 30 days. It is built on `audit/phase-2g-delisting-legacy`.
