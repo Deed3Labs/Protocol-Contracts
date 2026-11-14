@@ -1,3 +1,5 @@
+import { payoutDueWithin } from '../chain/payoutFunding.js';
+import { chainId as payoutChainId } from '../chargeService.js';
 import { DAY, SEED_TODAY, mask, type BatchRow, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PersonNote, type PosterRow, type WaitingRow } from '@clear/command-types';
 import type { Db, Queryable } from '../../db/db.js';
 import { getPostgresPool } from '../../config/postgres.js';
@@ -769,6 +771,8 @@ export interface MerchantsPayload {
   RUNS: PayoutRun[];
   /** Live, the PayoutPool's unpaid claims (each shop's payouts as the chain schedules them); null until the chain is read. */
   CLAIMS: Array<{ id: number; shop: string; name: string; amount: number; due: number; net: number }> | null;
+  /** Phase 2b: PayoutPool.dueWithin over two business days; null until the API reads the chain. */
+  DUE_SOON?: { claims: number; amount: number; short: number; businessDays: number; until: number; truncated: boolean } | null;
   /** The refurb line's units, in the order they were added. */
   REFURB: RefurbUnit[];
   /** The shops' hardware pre-orders (the shop's reservations), oldest first. */
@@ -1187,6 +1191,12 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
   // each shop's payouts as the PayoutPool schedules them: its unpaid claims, due their payout window after the shop redeemed
   const pay = o.chain ? await payoutsLive(db, o.chain, now).catch(() => null) : null;
   const CLAIMS = pay ? pay.claims.map((c) => ({ id: c.id, shop: c.merchant, name: c.name, amount: c.amount, due: c.dueBy, net: Math.round((c.dueBy - c.claimedAt) / DAY) })) : null;
+  // Phase 2b (12.10): what falls due within two business days, and what the pool is short of paying
+  // it -- the cash Lending Co. must put in before the first of those deadlines (PayoutPool.dueWithin)
+  const due = o.chain ? await payoutDueWithin({ chainId: payoutChainId(), nowSeconds: Math.floor(now / 1000) }).catch(() => null) : null;
+  const DUE_SOON = due
+    ? { claims: due.claimIds.length, amount: due.amountCents / 100, short: due.shortCents / 100, businessDays: due.businessDays, until: now + due.horizonSeconds * 1000, truncated: due.truncated }
+    : null;
 
   return {
     TX,
@@ -1198,6 +1208,7 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
     ...(o.chain ? { COLLECTED } : {}),
     ...(await merchantRecords(db, o)),
     CLAIMS,
+    DUE_SOON,
     // where a shop is, like its address, isn't for Totals
     ...(o.level > TOTALS ? { PINS: await shopPins(db) } : {}),
     figures: { ...(await figures(db, 'merchants')), 'merchants.newest_partner': newest ? { name: newest.name, joined: Number(newest.joined_ms) } : null },
