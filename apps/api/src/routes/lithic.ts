@@ -1,4 +1,4 @@
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import { requiredDocuments, startUpload, documentStatus } from '../services/lithic/documentService.js';
 import { redactError } from '../utils/redact.js';
 import { isConfigured } from '../services/lithic/lithicClient.js';
@@ -10,6 +10,8 @@ import {
 import { grantStarterLimit } from '../services/credit/termLimitService.js';
 import { grantOffer } from '../services/credit/offersService.js';
 import { lithicStore } from '../services/lithic/lithicStore.js';
+import { readFullAccountNumber, readMaskedAccountDetails } from '../services/lithic/accountDetailsService.js';
+import { requireReauth } from '../middleware/stepUp.js';
 
 const router = express.Router();
 
@@ -27,13 +29,22 @@ function sessionWallet(req: Request): string {
     .toLowerCase();
 }
 
+/** Bank details must never sit in a browser, proxy or service-worker cache: set before anything answers. */
+function noStore(_req: Request, res: Response, next: NextFunction) {
+  res.set('Cache-Control', 'no-store');
+  next();
+}
+
 /**
  * GET /api/lithic/account — provisioning state, and the deposit numbers when they exist.
  *
  * Best-effort by design: an unconfigured integration or an unprovisioned member both answer with a
  * shape the UI can render, rather than an error it has to special-case.
+ *
+ * The account number goes out as its last four only. This read has no step-up and the app keeps its
+ * answer for the session, so the full number is served by /account-details/account-number alone.
  */
-router.get('/account', async (req: Request, res: Response) => {
+router.get('/account', noStore, async (req: Request, res: Response) => {
   const wallet = sessionWallet(req);
   if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
 
@@ -47,7 +58,14 @@ router.get('/account', async (req: Request, res: Response) => {
       return res.json({ configured: true, provisioned: false, deposit: null });
     }
 
-    const deposit = record.cashFinancialAccountToken ? await getDepositInstructions(wallet) : null;
+    const instructions = record.cashFinancialAccountToken ? await getDepositInstructions(wallet) : null;
+    const deposit = instructions
+      ? {
+          routingNumber: instructions.routingNumber,
+          accountNumberLast4: instructions.accountNumber.slice(-4),
+          accountType: instructions.accountType,
+        }
+      : null;
 
     res.json({
       configured: true,
@@ -61,6 +79,57 @@ router.get('/account', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[lithic] account read failed:', redactError(error));
     res.status(500).json({ error: 'Failed to read Lithic account' });
+  }
+});
+
+/**
+ * GET /api/lithic/account-details — Spendable's account details, with the account number masked.
+ *
+ * Read from Lithic now, for this member only (the wallet is the session's): holder, bank, routing
+ * number, the account number's last four and the account type. Never the full number: that is the
+ * route below, behind Face ID.
+ */
+router.get('/account-details', noStore, async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+
+  if (!isConfigured() || !lithicStore.isConfigured()) {
+    return res.json({ configured: false, details: null });
+  }
+
+  try {
+    res.json({ configured: true, details: await readMaskedAccountDetails(wallet) });
+  } catch (error) {
+    console.error('[lithic] account details read failed:', redactError(error));
+    res.status(502).json({ error: 'Could not read your account details' });
+  }
+});
+
+/**
+ * GET /api/lithic/account-details/account-number — the full account number, after re-authentication.
+ *
+ * Face ID for payments, or for a member without it a sign-in made in the last ten minutes (a code to
+ * their own email or phone): `requireReauth`, which never lets a session through on its own. A member
+ * with neither is told how to set Face ID up. Show, copy and the direct deposit form all come here.
+ *
+ * Fetched from Lithic for this request and sent once: not stored, not cached, not logged. The app
+ * holds it in component memory while the details are open and drops it when they close.
+ */
+router.get('/account-details/account-number', noStore, requireReauth, async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+
+  if (!isConfigured() || !lithicStore.isConfigured()) {
+    return res.status(503).json({ error: 'Lithic is not configured' });
+  }
+
+  try {
+    const accountNumber = await readFullAccountNumber(wallet);
+    if (!accountNumber) return res.status(404).json({ error: 'No account number yet' });
+    res.json({ accountNumber });
+  } catch (error) {
+    console.error('[lithic] account number read failed:', redactError(error));
+    res.status(502).json({ error: 'Could not read your account number' });
   }
 });
 

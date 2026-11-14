@@ -32,8 +32,29 @@ const VAULT_ABI = [
   { name: 'deposit', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'redeem', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'clrusdAmount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
+// createTransferWithClaimKey (audit H-4): the lock commits the claim key the link carries, so the
+// recipient, not the settler, chooses the wallet a claim goes to.
 const ESCROW_ABI = [
-  { name: 'createTransfer', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'transferId', type: 'bytes32' }, { name: 'principalUsdc', type: 'uint256' }, { name: 'sponsorFeeUsdc', type: 'uint256' }, { name: 'expiry', type: 'uint64' }, { name: 'recipientHintHash', type: 'bytes32' }], outputs: [] },
+  {
+    name: 'createTransferWithClaimKey',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      {
+        name: 'terms',
+        type: 'tuple',
+        components: [
+          { name: 'transferId', type: 'bytes32' },
+          { name: 'principalUsdc', type: 'uint256' },
+          { name: 'sponsorFeeUsdc', type: 'uint256' },
+          { name: 'expiry', type: 'uint64' },
+          { name: 'recipientHintHash', type: 'bytes32' },
+          { name: 'claimSigner', type: 'address' },
+        ],
+      },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 type Call = { to: `0x${string}`; data: `0x${string}` };
@@ -320,7 +341,7 @@ export async function scBondAction(args: {
   return hash;
 }
 
-/** Send: [approve(escrow), createTransfer] in ONE sponsored batch. Returns the lock tx hash. */
+/** Send: [approve(escrow), createTransferWithClaimKey] in ONE sponsored batch. Returns the lock tx hash. */
 export async function scSendLock(args: {
   smartWalletClient?: unknown;
   ownerWallet: string;
@@ -331,6 +352,8 @@ export async function scSendLock(args: {
   totalLockedUsdcMicros: string;
   recipientHintHash: `0x${string}`;
   expiresAt: string;
+  /** The claim key's address, from prepare: what the claim link can sign for. */
+  claimSigner: `0x${string}`;
 }): Promise<string> {
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
@@ -340,7 +363,14 @@ export async function scSendLock(args: {
   const expiry = BigInt(Math.floor(new Date(args.expiresAt).getTime() / 1000));
   return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.claimEscrow, total] }) },
-    { to: c.claimEscrow, data: encodeFunctionData({ abi: ESCROW_ABI, functionName: 'createTransfer', args: [args.transferId, principal, fee, expiry, args.recipientHintHash] }) },
+    {
+      to: c.claimEscrow,
+      data: encodeFunctionData({
+        abi: ESCROW_ABI,
+        functionName: 'createTransferWithClaimKey',
+        args: [{ transferId: args.transferId, principalUsdc: principal, sponsorFeeUsdc: fee, expiry, recipientHintHash: args.recipientHintHash, claimSigner: args.claimSigner }],
+      }),
+    },
   ]);
 }
 
@@ -545,23 +575,50 @@ export async function scRepayFromSavings(args: { smartWalletClient?: unknown; ow
 
 const AUTO_REPAY_ABI = [
   { type: 'function', name: 'setAutoRepay', stateMutability: 'nonpayable', inputs: [{ name: 'enabled', type: 'bool' }], outputs: [] },
+  // Phase 2b (12.2): on/off and scope (0 = income-backed and Boost only, 1 = everything).
+  { type: 'function', name: 'setAutoClear', stateMutability: 'nonpayable',
+    inputs: [{ name: 'on', type: 'bool' }, { name: 'scope', type: 'uint8' }], outputs: [] },
+  // Phase 2b (12.7): how much card spending may draw against Savings; 0 revokes it.
+  { type: 'function', name: 'setSavingsDrawAllowance', stateMutability: 'nonpayable',
+    inputs: [{ name: 'amount', type: 'uint256' }], outputs: [] },
   { type: 'function', name: 'autoRepayEnabled', stateMutability: 'view', inputs: [{ name: 'member', type: 'address' }], outputs: [{ type: 'bool' }] },
 ] as const;
 export { AUTO_REPAY_ABI };
 
-const MAX_UINT256 = 2n ** 256n - 1n;
+/**
+ * Switch auto-clear on or off, and choose what it covers, in one sponsored call (Phase 2b, 12.2).
+ *
+ * No approval: the settler delivers the cash for a clearing (`repayForMember` pulls from the
+ * settler), so the member's USDC and CLRUSD are never swept. Turning it off also withdraws any
+ * allowance an earlier version of this switch gave the ledger, so nothing is left standing. Face ID
+ * first.
+ */
+export async function scSetAutoClear(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  enabled: boolean;
+  /** 0 = income-backed and Boost only (the default), 1 = everything. */
+  scope: number;
+  chainId: number;
+}): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.stableCredit || !c.revolvingIssuer) throw new Error('Automatic clearing is not available on this network yet.');
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: c.revolvingIssuer, data: encodeFunctionData({ abi: AUTO_REPAY_ABI, functionName: 'setAutoClear', args: [args.enabled, args.scope] }) },
+    ...(args.enabled
+      ? []
+      : [{ to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.stableCredit, 0n] }) }]),
+  ]);
+}
 
 /**
- * Switch automatic repayment from USDC deposits on or off, in one sponsored batch.
- *
- * On: the ledger may take USDC to repay (approve) and the member's mandate is set. Off: the mandate
- * is cleared and the approval withdrawn -- both, so neither half is left standing. Face ID first.
+ * Let card spending draw against Savings up to `units` (Phase 2b, 12.7), or 0 to revoke. The member's
+ * own call: no admin path can raise it. Face ID first.
  */
-export async function scSetAutoRepay(args: { smartWalletClient?: unknown; ownerWallet: string; enabled: boolean; chainId: number }): Promise<string> {
+export async function scSetSavingsDrawAllowance(args: { smartWalletClient?: unknown; ownerWallet: string; units: bigint; chainId: number }): Promise<string> {
   const c = clearContracts(args.chainId);
-  if (!c?.stableCredit || !c.revolvingIssuer) throw new Error('Automatic repayment is not available on this network yet.');
+  if (!c?.revolvingIssuer) throw new Error('Not available on this network yet.');
   return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
-    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.stableCredit, args.enabled ? MAX_UINT256 : 0n] }) },
-    { to: c.revolvingIssuer, data: encodeFunctionData({ abi: AUTO_REPAY_ABI, functionName: 'setAutoRepay', args: [args.enabled] }) },
+    { to: c.revolvingIssuer, data: encodeFunctionData({ abi: AUTO_REPAY_ABI, functionName: 'setSavingsDrawAllowance', args: [args.units] }) },
   ]);
 }

@@ -9,7 +9,7 @@ const route = readFileSync(new URL('../../routes/credit.ts', import.meta.url), '
 describe('every repayment shows, whichever way it was made', () => {
   test('on-chain repayments carry their method: savings detected, auto set by the sweep, else a Repay tap', () => {
     expect(deposits).toContain("(input.savingsCents ?? 0) > 0 ? 'savings' : (input.method ?? 'manual')");
-    expect(auto).toContain("await recordUsdcRepayment(wallet, tx.hash, 'auto');");
+    expect(auto).toContain("await recordUsdcRepayment(run.wallet, hash, 'auto');");
   });
 
   test('bank deposits that paid down credit are listed as bank repayments', () => {

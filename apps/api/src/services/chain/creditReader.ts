@@ -3,6 +3,7 @@ import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
 import { chainProvider } from './provider.js';
 import { coalesce } from './readCache.js';
+import { memberStateCode, RATE_SCHEDULE_ABI } from './planPricing.js';
 
 // 0.25%. Below this the difference is accrual between two reads, not a capacity that failed to push.
 const DRIFT_BPS = 25n;
@@ -28,9 +29,15 @@ const DRIFT_BPS = 25n;
 const ISSUER_ABI = [
   'function tierCount() external view returns (uint256)',
   'function tierAt(uint256 tierId) external view returns (bytes32 kind, uint256 ratePerCycle, bool active)',
+  'function rateSchedule() external view returns (address)',
+  'function tierProduct(uint256 tierId) external view returns (bytes32)',
   'function capacityOf(address member, uint256 tierId) external view returns (uint256)',
   'function drawnOf(address member, uint256 tierId) external view returns (uint256)',
+  // Phase 2: `principalOf` is what is on the ledger (principal plus materialised, unpaid carry),
+  // `carryOf` is materialised plus pending carry, and `principalOnlyOf` is the principal alone.
+  // So the principal shown is `principalOnlyOf`, and principal + carry is `drawnOf` again.
   'function principalOf(address member, uint256 tierId) external view returns (uint256)',
+  'function principalOnlyOf(address member, uint256 tierId) external view returns (uint256)',
   'function carryOf(address member, uint256 tierId) external view returns (uint256)',
   'function creditPeriods(address member) external view returns (uint256 issuedAt, uint256 expiration, uint256 graceLength, bool paused)',
   'function cycleLength() external view returns (uint64)',
@@ -83,9 +90,12 @@ export interface ChainTier {
   usedCents: number;
   /** Carry rate in basis points per cycle, as the tier charges it. */
   rateBps: number;
-  /** Principal drawn, before carry, in cents. */
+  /** Principal drawn, before carry, in cents (`principalOnlyOf`). */
   principalCents: number;
-  /** Carry accrued on it so far this cycle, in cents. `used` already includes this. */
+  /**
+   * Carry owed on it, materialised and pending, in cents (Phase 2 `carryOf`). `used` already
+   * includes this: used = principal + carry.
+   */
   carryCents: number;
   /** What the member has pledged under this kind, before haircut, in cents. */
   collateralValueCents: number;
@@ -170,7 +180,41 @@ export interface ChainCredit {
    * beside a decision about a plan promises capacity that will not be there.
    */
   term: ChainTermCeiling | null;
+  /**
+   * Whether the member's state of residence is attested on chain (`NetworkRegistry.stateCodeOf`).
+   * Phase 2 refuses lines and plans without one, so a member with `false` is told their state is
+   * not confirmed yet rather than that they were declined. Null when it could not be read, or on a
+   * network from before Phase 2.
+   */
+  stateConfirmed: boolean | null;
+  /**
+   * Phase 2b (12.3-12.5): how the member's cycles have been judged, the Boost cap they have, and
+   * anything a missed cycle left over the halved limit. Null when unread, or on an issuer from
+   * before Phase 2b.
+   */
+  standing: ChainCycleStanding | null;
   complete: boolean;
+}
+
+export interface ChainCycleStanding {
+  /** Clean Cycles in a row. Six (with deposits in five of the last six) earns the higher Boost cap. */
+  cleanStreak: number;
+  /** Missed rebalances in a row: 1 halves the unsecured limit, 2 dates a cure notice. */
+  missedInRow: number;
+  /** Unix seconds the chain dated the cure notice, or null. */
+  cureNoticeAt: number | null;
+  /** Unix seconds default can begin if the line is still not rebalanced, or null. */
+  defaultFrom: number | null;
+  /** Unsecured drawn above the halved limit, in cents: settled from pledged bonds or pool shares. */
+  unsecuredExcessCents: number;
+  /** The Boost cap this member has now, in cents ($500, or $750 once earned). Null when not enforced. */
+  boostCapCents: number | null;
+  /** Whether the higher Boost cap has been earned. */
+  boostCapEarned: boolean;
+  /** The higher cap, in cents, for "rises to $750". Null when not enforced. */
+  boostEarnedCapCents: number | null;
+  /** Clean Cycles needed to earn it (12.4: 6). */
+  boostCleanCycles: number;
 }
 
 export interface ChainTermCeiling {
@@ -245,6 +289,27 @@ async function readTiers(
       ? new ethers.Contract(calculatorAddress, LIMITS_ABI, provider)
       : null;
     const count = Number(await issuer.tierCount());
+    /*
+     * Unsecured tiers (Income, Boost) are priced by RateSchedule for the member's state and the
+     * tier's product, not by the tier's own figure (compliance spec item 4). Read once for every
+     * tier. An issuer from before Phase 2, or one with no schedule, keeps `tierAt`'s rate.
+     */
+    const schedule: string = await (issuer.rateSchedule() as Promise<string>).catch(() => ethers.ZeroAddress);
+    const rates = schedule !== ethers.ZeroAddress ? new ethers.Contract(schedule, RATE_SCHEDULE_ABI, provider) : null;
+    const state = rates ? await memberStateCode(provider, address, wallet) : null;
+    const scheduledRate = async (id: number, principal: bigint, limit: bigint): Promise<number | null> => {
+      if (!rates || !state || state === ethers.ZeroHash) return null;
+      try {
+        const product: string = await issuer.tierProduct(id);
+        if (product === ethers.ZeroHash || !(await rates.isEnabled(state, product))) return null;
+        // min(list, cap) on what is drawn; on an empty tier, on its limit; with neither, the list.
+        const basis = principal > 0n ? principal : limit;
+        if (basis > 0n) return Number(await rates.effectiveMonthlyBps(state, product, basis));
+        return Number((await rates.paramsOf(state, product)).listMonthlyBps);
+      } catch {
+        return null;
+      }
+    };
     // Every tier at once rather than one after another: reads issued together travel together,
     // and the provider packs them into a single multicall. Order is kept by index.
     const readTier = async (id: number): Promise<ChainTier> => {
@@ -255,7 +320,9 @@ async function readTiers(
       const [written, used, principal, carry] = await Promise.all([
         issuer.capacityOf(wallet, id),
         issuer.drawnOf(wallet, id),
-        issuer.principalOf(wallet, id),
+        // An issuer from before Phase 2 has no `principalOnlyOf`; its `principalOf` was the
+        // principal alone and its `carryOf` the pending carry, so the pair still adds up.
+        (issuer.principalOnlyOf(wallet, id) as Promise<bigint>).catch(() => issuer.principalOf(wallet, id)),
         issuer.carryOf(wallet, id),
       ]);
 
@@ -314,6 +381,7 @@ async function readTiers(
       // see the two figures that produce their limit rather than only the product of them.
       const collateralValue: bigint = backing ? backing[1] : 0n;
       const haircutBps = backing ? Number(backing[0][1]) : 0;
+      const priced = await scheduledRate(id, principal, limit);
 
       return {
         kind: ethers.decodeBytes32String(kind),
@@ -325,7 +393,9 @@ async function readTiers(
         carryCents: toCentsOwed(carry),
         collateralValueCents: toCents(collateralValue),
         haircutBps,
-        rateBps: Number(ratePerCycle),
+        // What the chain charges this member on this tier. A member-level ceiling may trim the
+        // unsecured tiers together further; this is the rate before that trim.
+        rateBps: priced ?? Number(ratePerCycle),
         active,
       };
     };
@@ -600,6 +670,53 @@ async function readCycle(
   }
 }
 
+const STANDING_ABI = [
+  'function cycleOf(address) view returns (uint8 missedInRow, uint8 cleanStreak, uint8 depositBits, uint64 cureNoticeAt, uint128 unsecuredCeiling)',
+  'function creditTerms() view returns (uint128 unsecuredLineCap, uint64 cureWindow, uint8 boostCleanCycles, uint8 boostDepositCycles, bool autoClearOffGlobal)',
+  'function boostCapOf(address) view returns (uint256)',
+  'function boostEarnedCap() view returns (uint128)',
+  'function unsecuredExcessOf(address) view returns (uint256)',
+];
+
+/**
+ * Phase 2b (12.3-12.5): the member's cycle record, read as the contract judges it. Cycles are judged
+ * lazily (the member transacting, or the cycle keeper calling `syncCreditPeriod`), so this is what
+ * has been recorded so far.
+ */
+async function readStanding(provider: ethers.JsonRpcProvider, address: string, wallet: string): Promise<ChainCycleStanding | null> {
+  try {
+    const issuer = new ethers.Contract(address, STANDING_ABI, provider);
+    const [cycle, terms, boostCap, earnedCap, excess] = (await Promise.all([
+      issuer.cycleOf(wallet),
+      issuer.creditTerms(),
+      issuer.boostCapOf(wallet),
+      issuer.boostEarnedCap(),
+      issuer.unsecuredExcessOf(wallet),
+    ])) as [
+      { missedInRow: bigint; cleanStreak: bigint; cureNoticeAt: bigint },
+      { cureWindow: bigint; boostCleanCycles: bigint },
+      bigint,
+      bigint,
+      bigint,
+    ];
+    const cureNoticeAt = Number(cycle.cureNoticeAt);
+    return {
+      cleanStreak: Number(cycle.cleanStreak),
+      missedInRow: Number(cycle.missedInRow),
+      cureNoticeAt: cureNoticeAt > 0 ? cureNoticeAt : null,
+      defaultFrom: cureNoticeAt > 0 ? cureNoticeAt + Number(terms.cureWindow) : null,
+      unsecuredExcessCents: toCentsOwed(excess),
+      boostCapCents: boostCap > 0n ? toCents(boostCap) : null,
+      boostCapEarned: earnedCap > 0n && boostCap === earnedCap,
+      boostEarnedCapCents: earnedCap > 0n ? toCents(earnedCap) : null,
+      boostCleanCycles: Number(terms.boostCleanCycles),
+    };
+  } catch {
+    // An issuer from before Phase 2b has none of these.
+    return null;
+  }
+}
+
 /** A member's credit line, as the contracts hold it. */
 /**
  * Savings that cannot move because credit is drawn against them.
@@ -669,18 +786,20 @@ async function readChainCreditUncached(
     console.error('[credit] no RPC for chain', chainId, error);
     return {
       tiers: null, plans: null, cycle: null, term: null, savingsEncumberedCents: null,
-      complete: false,
+      stateConfirmed: null, standing: null, complete: false,
     };
   }
 
   // An unset issuer is no credit line, not a failed read: a member cannot have drawn against a
   // contract that does not exist.
-  const [tiers, plans, cycle, savingsEncumberedCents] = await Promise.all([
+  const [tiers, plans, cycle, savingsEncumberedCents, stateCode] = await Promise.all([
     issuer ? readTiers(provider, issuer, wallet, registry, limitCalculator) : Promise.resolve([]),
     term ? readPlans(provider, term, wallet) : Promise.resolve([]),
     issuer ? readCycle(provider, issuer, wallet) : Promise.resolve(null),
     registry ? readEncumbered(provider, registry, wallet) : Promise.resolve(0),
+    term ? memberStateCode(provider, term, wallet) : Promise.resolve(null),
   ]);
+  const standing = issuer ? await readStanding(provider, issuer, wallet) : null;
 
   /*
    * After the tiers, not beside them: the ceiling read subtracts what the tiers already account
@@ -702,6 +821,8 @@ async function readChainCreditUncached(
     cycle,
     term: ceiling,
     savingsEncumberedCents,
+    stateConfirmed: stateCode === null ? null : stateCode !== ethers.ZeroHash,
+    standing,
     complete: tiers !== null && plans !== null,
   };
 }

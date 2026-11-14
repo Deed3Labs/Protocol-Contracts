@@ -87,8 +87,12 @@ describe('pages start from what they showed last, not from zeros', () => {
     expect(balances).toContain('loading: !everLoaded && !lastKnown,');
   });
 
-  test('the direct-deposit account and routing numbers never go to the device', () => {
-    expect(read('pages/app/HomeRoute.tsx')).toMatch(/`home:lithic:\$\{walletKey\(address\)\}`,\s*null,[\s\S]{0,120}\{ device: false \}/);
+  test('the direct-deposit account and routing numbers are not remembered at all', () => {
+    // Home no longer reads them; the details surface reads them on open and keeps them in its own state.
+    const home = read('pages/app/HomeRoute.tsx');
+    expect(home).not.toContain('home:lithic:');
+    expect(home).not.toContain('getLithicAccount');
+    expect(home).not.toMatch(/accountNumber/);
   });
 
   test('a member signing out leaves nothing behind for the next', () => {

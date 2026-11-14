@@ -15,7 +15,7 @@ describe('a page switch draws the last answer at once', () => {
   });
 
   test('the cache version moved, so installed apps pick up the new strategy', () => {
-    expect(sw).toContain("const CACHE_VERSION = 'v5';");
+    expect(sw).toContain("const CACHE_VERSION = 'v6';");
   });
 });
 

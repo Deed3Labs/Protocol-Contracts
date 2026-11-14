@@ -7,10 +7,16 @@ import { confirmPayNow, paidNowBpsFor, releasePayNowFor, startPayNow, type PayNo
 import { onlineForCharge, onlineOverTime } from '../services/merchant/pay/overTime.js';
 import {
   approveCharge,
+  prepareChargeApproval,
   declineCharge,
   raiseCharge,
+  splitQuotesForCharge,
   CHARGE_TTL_SECONDS,
 } from '../services/chargeService.js';
+import { splitsOffered } from '@clear/domain';
+
+/** The splits the member app offers on a charge (apps/member ChargeApprovalRoute). */
+const OFFERED_SPLITS = [1, 2, 4, 12];
 
 /*
  * Charges: one route a merchant posts to, and three a member answers on.
@@ -34,11 +40,14 @@ const chargesRouter = Router();
  * while they are paying now, when their own wallet is sending to it (`pay`, from the pay-now routes).
  */
 async function memberView(charge: ChargeRow) {
-  const [contents, bps, overTime, online] = await Promise.all([
+  const [contents, bps, overTime, online, splitQuotes] = await Promise.all([
     chargeContents(charge),
     paidNowBpsFor(charge).catch(() => null),
     onlineOverTime(charge.code).catch(() => null),
     onlineForCharge(charge.code).catch(() => null),
+    charge.status === 'pending'
+      ? splitQuotesForCharge(charge, splitsOffered(charge.amountCents, OFFERED_SPLITS)).catch(() => null)
+      : Promise.resolve(null),
   ]);
   return {
     code: charge.code,
@@ -57,6 +66,11 @@ async function memberView(charge: ChargeRow) {
     ...contents,
     /** What the shop pays Clear on this charge if it's paid now ("the shop pays 1.25%"). */
     paidNowBps: bps,
+    /**
+     * The chain's price for each split offered (`_quote`): what the chooser shows before a split is
+     * picked, and what the member will be asked to sign. Null when it could not be read.
+     */
+    splitQuotes,
     /**
      * Paid online, through a link or a website: false when only paying now is offered (the link's
      * choice, or over time online still off). Null at the counter, whose rules are the app's own.
@@ -202,6 +216,35 @@ chargesRouter.get('/:code', requireAuth, async (req: Request, res: Response) => 
   res.json(await memberView(charge));
 });
 
+/*
+ * Approving over time is two calls (audit H-4): `approve/prepare` returns the plan terms as EIP-712
+ * typed data, the member's own wallet signs them on the phone, and `approve` submits that signature
+ * with the terms. TermIssuer opens a plan only on a member's signature over its terms.
+ */
+chargesRouter.post('/:code/approve/prepare', requireAuth, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+
+  const installments = Number(req.body?.installments);
+  if (!Number.isInteger(installments) || installments < 1) {
+    res.status(400).json({ error: 'Invalid split', message: 'installments must be a whole number.' });
+    return;
+  }
+
+  const prepared = await prepareChargeApproval(charge.code, charge.memberWallet, installments);
+  if (!prepared.ok) {
+    // `code` names the refusals the app treats differently: `state_not_confirmed` (nobody has
+    // attested the member's state, so no credit yet; paying now still works).
+    res.status(409).json({ error: 'Could not prepare', message: prepared.reason, code: prepared.code ?? null });
+    return;
+  }
+  res.json({ typedData: prepared.typedData, disclosure: prepared.disclosure, free: prepared.free });
+});
+
 // Approving opens a credit plan the member owes: a fresh Face ID, checked here as well as in the app.
 chargesRouter.post('/:code/approve', requireAuth, requireStepUp, async (req: Request, res: Response) => {
   const charge = await chargeStore.get(req.params.code);
@@ -217,7 +260,13 @@ chargesRouter.post('/:code/approve', requireAuth, requireStepUp, async (req: Req
     return;
   }
 
-  const result = await approveCharge(charge.code, charge.memberWallet, installments);
+  // The member's signature over the prepared terms, and those terms. Checked against the charge in
+  // approveCharge, and by the contract.
+  const signed =
+    req.body?.terms && typeof req.body?.signature === 'string'
+      ? { terms: req.body.terms, signature: String(req.body.signature) }
+      : null;
+  const result = await approveCharge(charge.code, charge.memberWallet, installments, signed);
   if (!result.ok || !result.charge) {
     res.status(409).json({ error: 'Could not approve', message: result.reason ?? 'Approval failed.' });
     return;

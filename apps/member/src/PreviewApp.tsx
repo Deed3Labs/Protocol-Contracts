@@ -15,6 +15,7 @@ import HeaderActions from '@/components/shell/HeaderActions';
 import { unreadThreads, withOnTrack } from '@/lib/clearModel';
 import HomePage from '@/pages/app/HomePage';
 import type { YourShop } from '@/utils/apiClient';
+import type { AccountDetailsSource } from '@/lib/accountDetails';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
@@ -310,6 +311,21 @@ function TermPlanPayPreview() {
     </div>
   );
 }
+
+/** Spendable's account details from the fixture, so the preview's Details opens on something. */
+const PREVIEW_ACCOUNT_DETAILS: AccountDetailsSource = {
+  readMasked: async () => ({
+    configured: true,
+    details: {
+      holderName: 'Sample Member',
+      bankName: HOME_IN_USE.cashAccount.bankName,
+      routingNumber: HOME_IN_USE.cashAccount.routingNumber,
+      accountNumberLast4: HOME_IN_USE.cashAccount.accountNumber.slice(-4),
+      accountType: 'Checking',
+    },
+  }),
+  readFullNumber: async () => ({ accountNumber: HOME_IN_USE.cashAccount.accountNumber }),
+};
 
 /**
  * A page that has nothing yet: figures as placeholders, then the real ones, on a toggle -- so the
@@ -1096,7 +1112,7 @@ export default function PreviewApp() {
                       }
                     >
                       <Routes>
-                        <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
+                        <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} accountDetails={PREVIEW_ACCOUNT_DETAILS} />} />
                         {/* Day one has two arrivals; the toggle only reaches the direct one. */}
                         <Route path="/day-one-counter" element={<HomePage data={HOME_DAY_ONE_COUNTER} />} />
                         {/* Your shops (rewards spec, section 6): the three shops the spec draws, on a furnished Home. */}

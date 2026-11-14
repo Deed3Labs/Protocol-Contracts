@@ -10,7 +10,11 @@ import { useContacts } from '@/context/ContactsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { toSendContact } from './SendRoute';
 import { SETTINGS } from '@/data/clearPlaceholder';
-import { uploadMemberAvatar, deleteMemberAvatar, updateMemberProfile, getDisputeCandidates, fileDispute, getMyDisputes, withdrawMyDispute } from '@/utils/apiClient';
+import { uploadMemberAvatar, deleteMemberAvatar, updateMemberProfile, getDisputeCandidates, fileDispute, getMyDisputes, withdrawMyDispute, prepareDisputeReopen, submitDisputeReopen } from '@/utils/apiClient';
+import type { PlanTermsTypedData } from '@clear/domain';
+import { disclosureFor, signPlanTerms } from '@/lib/planSigning';
+import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
+import { useOptionalAddress } from '@/hooks/useOptionalWallet';
 import type { DisputeCandidate, MemberDispute } from '@/lib/clearModel';
 
 /**
@@ -239,5 +243,49 @@ function useDisputes() {
     [loadMine],
   );
 
-  return { candidates, load, file, mine, withdraw };
+  /*
+   * A partner dispute that went against the member waits off any plan until they sign it back on
+   * (TermIssuer.openPlan needs their signature). First press: the terms, priced on chain today and
+   * rebuilt here from the fields being signed. Second press: check, sign, submit.
+   */
+  const address = useOptionalAddress();
+  const [reopening, setReopening] = useState<{ token: string; typedData: PlanTermsTypedData; disclosure: string[] } | null>(null);
+  const reopen = useCallback(
+    async (token: string): Promise<{ lines?: string[]; error?: string; done?: boolean }> => {
+      if (!address) return { error: 'Connect a wallet first.' };
+      const fresh =
+        reopening?.token === token && Number(reopening.typedData.message.deadline) > Math.floor(Date.now() / 1000) + 30;
+      if (!fresh) {
+        const next = await prepareDisputeReopen(token);
+        if (next.error || !next.typedData) return { error: next.error ?? 'We could not get this plan ready.' };
+        const disclosure = disclosureFor(next.typedData, mine.find((d) => d.token === token)?.subjectLabel ?? 'A Clear partner');
+        setReopening({ token, typedData: next.typedData, disclosure });
+        return { lines: disclosure };
+      }
+      const termIssuer = clearContracts(ACTIVE_CHAIN_ID)?.termIssuer;
+      if (!termIssuer) return { error: 'Plans are not available on this network yet.' };
+      setReopening(null);
+      try {
+        const m = reopening.typedData.message;
+        const signed = await signPlanTerms({
+          typedData: reopening.typedData,
+          shown: {
+            member: address,
+            purchaseCents: Number(BigInt(m.purchase) / 10_000n),
+            installments: Number(m.installments),
+            disclosure: reopening.disclosure,
+          },
+          expected: { chainId: ACTIVE_CHAIN_ID, termIssuer },
+        });
+        const result = await submitDisputeReopen(token, signed);
+        loadMine();
+        return result.ok ? { done: true } : { error: result.error };
+      } catch (e) {
+        return { error: e instanceof Error && e.message.startsWith('These terms') ? e.message : 'Nothing was signed, and nothing was charged.' };
+      }
+    },
+    [address, reopening, mine, loadMine],
+  );
+
+  return { candidates, load, file, mine, withdraw, reopen };
 }

@@ -10,8 +10,11 @@ import { cn } from '@/lib/utils';
  * against your limit." Borrow = overdraft (flat fee, no interest); repay = return toward $0 to
  * keep full borrowing power within the credit cycle.
  *
- * SEAM: wire to the StableCredit ledger (borrow = overdraft transfer to the user's USDC balance;
- * repay = transfer USDC/CLRUSD to burn the negative balance). Purpose lines are UI-only buckets.
+ * SEAM, not wired. Since audit C-1 a draw on the ledger may pay only an active registered merchant
+ * or a named system address, and the ledger refuses member-to-member credit transfers: a borrow can
+ * no longer be an overdraft transfer to the member's own wallet. Wiring this means a purchase at a
+ * shop (or a cash product the co-op runs), not a transfer. Repay = USDC through
+ * StableCredit.repayCreditBalance, as useCreditRepay does. Purpose lines are UI-only buckets.
  */
 
 const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

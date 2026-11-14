@@ -19,12 +19,13 @@ const CHARGE = {
 };
 
 describe('the reference refund: $412.00, split in 4, one cycle cleared', () => {
-  it('bills $108.15 a cycle, which is what the plan detail shows', () => {
-    expect(splitQuote(412, 4, 0.02).perCycle).toBeCloseTo(108.15, 10);
+  // Levelled payments (section 12.9): the same figure every cycle.
+  it('bills $108.20 a cycle, which is what the plan detail shows', () => {
+    expect(Number(splitQuote(412, 4, 0.02).perCycle.toFixed(2))).toBe(108.2);
   });
 
-  it('the writer sees the customer gets back $99.91', () => {
-    expect(refundQuote(CHARGE).memberReceives).toBeCloseTo(99.91, 10);
+  it('the writer sees the customer gets back $99.96', () => {
+    expect(Number(refundQuote(CHARGE).memberReceives.toFixed(2))).toBe(99.96);
   });
 
   it('carry the member already paid is $8.24, and the co-op keeps it', () => {
@@ -73,14 +74,11 @@ describe('carry is not refunded — a refund unwinds the purchase, not the time'
     expect(carryAccrued(412, 4, 0.02, 4)).toBeCloseTo(splitQuote(412, 4, 0.02).carry, 10);
   });
 
-  it('accrues on the declining balance: $8.24, $6.18, $4.12, $2.06', () => {
+  it('accrues on the principal still unpaid under level payments: $8.24, $6.24, $4.20, $2.12', () => {
     const per = [1, 2, 3, 4].map(
       (n) => carryAccrued(412, 4, 0.02, n) - carryAccrued(412, 4, 0.02, n - 1),
     );
-    expect(per[0]).toBeCloseTo(8.24, 10);
-    expect(per[1]).toBeCloseTo(6.18, 10);
-    expect(per[2]).toBeCloseTo(4.12, 10);
-    expect(per[3]).toBeCloseTo(2.06, 10);
+    expect(per.map((c) => Number(c.toFixed(2)))).toEqual([8.24, 6.24, 4.2, 2.12]);
   });
 
   it('cannot clear more cycles than the plan has', () => {

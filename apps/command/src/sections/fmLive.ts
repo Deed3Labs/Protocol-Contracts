@@ -321,6 +321,8 @@ export function fmLive() {
     runs: vars.merchantRuns ?? [],
     /** The PayoutPool's unpaid claims (each NET-14 shop's payouts, as the chain schedules them); null until the API reads the chain. */
     claims: vars.payoutClaims ?? null,
+    /** Phase 2b: what falls due within two business days, and the cash the pool is short of it (PayoutPool.dueWithin); null until read. */
+    dueSoon: vars.payoutDueSoon ?? null,
     /** The refurb line's units, oldest first. */
     refurb: vars.refurb ?? [],
     /** The shops' hardware pre-orders, from the shop's reservations. */

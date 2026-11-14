@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
 import { chainProvider } from './provider.js';
+import { decodeChainError } from './chainErrors.js';
 
 /*
  * Opening a member's credit line.
@@ -102,6 +103,14 @@ export async function openCreditLine(wallet: string): Promise<OpenLineResult> {
     const receipt = await tx.wait();
     return { opened: true, txHash: receipt?.hash ?? tx.hash };
   } catch (error) {
+    // Phase 2's state gate: no line until the member's state is attested (STATE_ATTESTER_ROLE) and
+    // the revolving product is enabled there. Not a failure to retry blindly; the backfill picks
+    // the member up once the attestation lands.
+    const decoded = decodeChainError(error);
+    if (decoded?.name === 'RevolvingIssuerStateNotEnabled') {
+      const unattested = /^0x0*$/.test(String(decoded.args.stateCode));
+      return { opened: false, reason: unattested ? 'state_not_confirmed' : 'state_not_enabled' };
+    }
     const message = error instanceof Error ? error.message : 'unknown error';
     console.error('[credit] openLine failed for', wallet, message);
     return { opened: false, reason: message };

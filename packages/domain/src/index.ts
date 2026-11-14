@@ -28,7 +28,7 @@ export {
   toWire,
 } from './charge';
 
-export { type SplitQuote, splitQuote } from './split';
+export { levelPayment, type SplitQuote, splitQuote } from './split';
 
 export { type RefundQuote, carryAccrued, refundQuote } from './refund';
 
@@ -40,7 +40,91 @@ export { parsePendingTotal, shopDisplayName, shopSlug } from './counterCode';
 
 export { fromCents, toCents } from './units';
 
+export {
+  buildPlanTerms,
+  bytes32String,
+  disclosureMoney,
+  PLAN_DISCLOSURE_VERSION,
+  PLAN_PRODUCTS,
+  PLAN_SIGNATURE_TTL_SECONDS,
+  PLAN_TERMS_DOMAIN_NAME,
+  PLAN_TERMS_DOMAIN_VERSION,
+  PLAN_TERMS_TYPE_STRING,
+  PLAN_TERMS_TYPES,
+  planDisclosure,
+  planDisclosureForTerms,
+  planDisclosureText,
+  planProductOf,
+  planSchedule,
+  planTermsArg,
+  planTermsDomain,
+  planTermsMessage,
+  planTermsMismatch,
+  planTermsTypedData,
+  RESPLIT_TYPE_STRING,
+  RESPLIT_TYPES,
+  resplitDisclosure,
+  resplitMessage,
+  resplitMismatch,
+  resplitTypedData,
+  samePlanTerms,
+  TERM_CYCLE_SECONDS,
+  termPeriodRate,
+  unitsToCents,
+  type PlanDisclosureInput,
+  type PlanProduct,
+  type PlanSchedule,
+  type PlanTerms,
+  type PlanTermsTypedData,
+  type ResplitTypedData,
+  type ScheduledInstallment,
+} from './planTerms';
+
+export {
+  CLEAR_CASH_SPLIT,
+  isOfferedPlanSplit,
+  quotePlan,
+  resplitCostRises,
+  type MerchantSplitTerms,
+  type PlanQuote,
+  type PlanQuoteRefusal,
+  type RateProductParams,
+} from './planQuote';
+
+export {
+  CLAIM_ESCROW_DOMAIN_NAME,
+  CLAIM_ESCROW_DOMAIN_VERSION,
+  CLAIM_KEY_DERIVATION_PREFIX,
+  CLAIM_TYPES,
+  claimEscrowDomain,
+  claimKeySeed,
+  claimTypedData,
+  claimWindowOpen,
+  TRANSFER_TERMS_TYPES,
+  type ClaimTransferTerms,
+} from './claimKey';
+
 export { formatCalendarDate, parseCalendarDate } from './dates';
+
+export {
+  AUTO_CLEAR_SCOPE,
+  AUTO_CLEAR_TYPE_STRING,
+  AUTO_CLEAR_TYPES,
+  autoClearMessage,
+  autoClearTypedData,
+  REVOLVING_DOMAIN_NAME,
+  REVOLVING_DOMAIN_VERSION,
+  revolvingDomain,
+  SAVINGS_DRAW_TYPE_STRING,
+  SAVINGS_DRAW_TYPES,
+  savingsDrawMessage,
+  savingsDrawTypedData,
+  SWITCH_SIGNATURE_TTL_SECONDS,
+  switchMismatch,
+  type AutoClearScope,
+  type AutoClearTypedData,
+  type SavingsDrawTypedData,
+} from './revolvingSwitches';
 
 export type {
   Charge,

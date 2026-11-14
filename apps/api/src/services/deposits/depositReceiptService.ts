@@ -1,9 +1,9 @@
 import type { PoolClient } from 'pg';
 import { getPayPool } from '../../config/postgres.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
-import { syncCardRepayment } from '../chain/cardSettlementService.js';
 import { allocateTermDue, bookTermPayments, readTermDue } from '../chain/termCollection.js';
 import { autoSaveCentsFor, autoSaveStore } from './autoSaveStore.js';
+import { ensureAutoClearRuns, refFor } from './autoClearRuns.js';
 import {
   allocate,
   planSettlement,
@@ -37,6 +37,47 @@ const ENTRIES = 'lithic_ledger_entries';
 const RECEIPTS = 'deposit_receipts';
 
 export type DepositRail = 'lithic_ach' | 'bridge_va';
+
+/**
+ * Where auto-clear may clear from (Phase 2b 12.2, the owner's "option 1"): ONLY a fiat deposit that
+ * lands in the member's Spendable account at the partner bank (the Lithic rail).
+ *
+ * Auto-clear's `repayForMember` is paid by the card settler from Clear's own USDC. That is right for
+ * a Spendable deposit, because the dollars arrived at Clear's partner bank. A Bridge (USDC-rail)
+ * deposit lands in the member's OWN wallet as Ready to allocate, which is never swept: clearing on it
+ * would have Clear pay the member's debt while the member keeps the deposit. So a Bridge deposit
+ * never triggers auto-clear, whatever the switch says; the app offers "Clear $X now?" instead, a
+ * Repay the member signs with their own USDC.
+ */
+export const AUTO_CLEAR_RAILS: ReadonlySet<DepositRail> = new Set<DepositRail>(['lithic_ach']);
+
+
+/**
+ * How a deposit is applied to what is owed, by rail and by the member's switch. Pure, so the rule is
+ * tested on its own. A deposit never settles credit in the books on arrival any more: what it does
+ * to the line is auto-clear's, or nothing.
+ *
+ * - Spendable (ACH), auto-clear ON: what is due on term plans is paid (the co-op pays it on chain,
+ *   `payPlan`), and what is owed on the line is earmarked for the auto-clear sweep, which clears it on
+ *   chain within the member's scope (`repayForMember`, the settler's cash) and writes the books from
+ *   that transaction.
+ * - Spendable (ACH), auto-clear OFF: NOTHING is applied (section 12.2 as replaced; acceptance 19:
+ *   "With autoClear OFF, a Spendable deposit changes no credit position"). The deposit stays in
+ *   Spendable; the app offers "Clear $X now?", and the member's tap is a member-initiated repayment.
+ * - Bridge (USDC rail): no credit position changes and no earmark, whatever the switch says. The
+ *   USDC is the member's.
+ */
+export function depositApplication(input: {
+  rail: DepositRail;
+  autoClearOn: boolean;
+  /** What is left of the deposit after term plans. */
+  availableCents: number;
+  /** What the member owes on the revolving line, carry included. */
+  owedCents: number;
+}): { paysTermDue: boolean; earmarkCents: number } {
+  if (!AUTO_CLEAR_RAILS.has(input.rail) || !input.autoClearOn) return { paysTermDue: false, earmarkCents: 0 };
+  return { paysTermDue: true, earmarkCents: Math.max(0, Math.min(input.availableCents, input.owedCents)) };
+}
 
 export interface DepositReceipt {
   rail: DepositRail;
@@ -138,7 +179,7 @@ async function readCarryOwed(client: PoolClient, wallet: string): Promise<number
  * Mirrors the on-chain mandate (`RevolvingIssuer.autoRepayEnabled`), which is the authority: this
  * row only decides whether to earmark, and the chain refuses a repayment the member did not allow.
  */
-async function autoRepayEnabledFor(client: PoolClient, wallet: string): Promise<boolean> {
+async function autoRepayEnabledFor(client: { query: PoolClient['query'] }, wallet: string): Promise<boolean> {
   await ensureAutoRepayTables(client);
   const { rows } = await client.query<{ enabled: boolean }>(`SELECT enabled FROM member_auto_repay WHERE wallet = $1`, [wallet]);
   return rows[0]?.enabled === true;
@@ -156,7 +197,11 @@ export async function ensureAutoRepayTables(client: { query: PoolClient['query']
       due_cents BIGINT NOT NULL DEFAULT 0,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    -- Phase 2b: which deposits an earmark came from. Superseded by auto_clear_runs (one clearing per
+    -- Spendable deposit); the sweep releases whatever is left here.
+    ALTER TABLE auto_repay_due ADD COLUMN IF NOT EXISTS source TEXT;
   `);
+  await ensureAutoClearRuns(client);
 }
 
 /** The cash account this rail credits. Both are the member's money; they sit in different places. */
@@ -184,9 +229,11 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
     return { recorded: false, duplicate: false, plan: null, toSavingsCents: 0, toCashCents: 0, snapshotsUpdated: 0 };
   }
 
-  // What is due on term plans, read from chain before the DB transaction opens. Only a fiat deposit
-  // pays it here; USDC in the member's own wallet cannot be taken without their mandate.
-  const termDue = receipt.rail === 'lithic_ach' ? await readTermDue(wallet) : [];
+  // Whether this deposit may clear anything: a Spendable deposit, with auto-clear ON. Read before the
+  // DB transaction opens, with what is due on term plans, because the term read goes to the chain.
+  const spendable = AUTO_CLEAR_RAILS.has(receipt.rail);
+  const autoClearOn = spendable && (await autoRepayEnabledFor(pool, wallet));
+  const termDue = autoClearOn ? await readTermDue(wallet) : [];
 
   const client = await pool.connect();
   try {
@@ -225,52 +272,57 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
       ],
     );
 
-    // 2. Settle what's owed, most expensive first. No pay button; this is the mechanism.
+    // 2. What the deposit does to what is owed: auto-clear's, or nothing (`depositApplication`).
     /*
-     * Only FIAT pays card debt on arrival. An ACH deposit lands in the co-op's account, refills the
-     * float that paid the merchant, and the chain is brought into line by netting. A Bridge deposit
-     * lands as USDC in the member's OWN wallet: counting it as paying card debt made our books say
-     * paid while the chain still said owed and the USDC had not moved. It stays the member's cash,
-     * and card debt is repaid with it on chain (Repay), which the books then record from the chain.
-     */
-    /*
-     * Term plans first: what is due on them (arrears, then carry a refunded plan left behind). A
-     * plan falls into default by falling behind, so overdue installments outrank card debt even
-     * where a card tier costs more. The co-op pays them on chain from its float (the sweep).
+     * A deposit no longer settles credit in the books on arrival. With auto-clear OFF a Spendable
+     * deposit changes no credit position (12.2, acceptance 19): the card debt stays on the line
+     * until the member taps "Clear $X now?" or turns auto-clear on. A Bridge deposit is the member's
+     * USDC, never swept. With auto-clear ON, term plans' dues come first (falling behind is what a
+     * plan defaults on), as part of auto-clear: each is a term clearing keyed by this receipt and the
+     * plan, paid on chain from the settler's float and moved out of Spendable like the line's. Then
+     * the line is earmarked for the auto-clear sweep below.
      */
     const term = allocateTermDue(amount, termDue);
-    const termCents = await bookTermPayments(client, {
+    const booked = await bookTermPayments(client, {
       wallet,
       group,
       externalId: `${receipt.rail}:${receipt.externalId}`,
       paid: term.paid,
+      rail: receipt.rail,
+      receiptId: receipt.externalId,
     });
+    const termCents = booked.cents;
 
     const outstanding = await readOutstanding(client, wallet);
-    const plan =
-      receipt.rail === 'lithic_ach'
-        ? planSettlement(term.remainingCents, outstanding, await readCarryOwed(client, wallet))
-        : planSettlement(amount, { boost: 0, income: 0, asset: 0, savings: 0 });
+    const carryOwed = autoClearOn ? await readCarryOwed(client, wallet) : 0;
+    const application = depositApplication({
+      rail: receipt.rail,
+      autoClearOn,
+      availableCents: term.remainingCents,
+      owedCents: autoClearOn ? totalOutstanding(outstanding) + carryOwed : 0,
+    });
+    // Nothing is settled in the books from a deposit: an empty plan, so the remainder is the deposit
+    // less what term plans took (only with auto-clear ON) and less the earmark below.
+    const plan = planSettlement(term.remainingCents, { boost: 0, income: 0, asset: 0, savings: 0 });
 
     /*
-     * A USDC deposit for a member who switched on automatic repayment: what they owe is set aside
-     * for it before auto-save sees the rest -- debt first, the same rule as a fiat deposit. It is
-     * not settled in the books here: it is repaid ON CHAIN from their wallet (the sweep), and the
-     * books are written from that transaction. The earmark is what auto-save must not touch.
+     * Auto-clear ON and a Spendable deposit: what they owe is set aside as one clearing, keyed by a
+     * ref derived from this receipt, before auto-save sees the rest. It is not settled in the books
+     * here. Right after this transaction a Lithic hold reserves it in the member's account; the sweep
+     * clears it on chain with the settler's cash, within the member's scope, and then moves exactly
+     * what the chain applied from the member's account to Clear's settlement account
+     * (`autoClearRuns.ts`). The earmark is what auto-save must not touch.
      */
-    let earmarkCents = 0;
-    if (receipt.rail !== 'lithic_ach' && (await autoRepayEnabledFor(client, wallet))) {
-      const owed = totalOutstanding(outstanding) + (await readCarryOwed(client, wallet));
-      earmarkCents = Math.min(amount, owed);
-      if (earmarkCents > 0) {
-        await client.query(
-          `INSERT INTO auto_repay_due (wallet, due_cents) VALUES ($1, $2)
-           ON CONFLICT (wallet) DO UPDATE SET due_cents = auto_repay_due.due_cents + EXCLUDED.due_cents, updated_at = now()`,
-          [wallet, earmarkCents],
-        );
-      }
+    const earmarkCents = application.earmarkCents;
+    const clearingRef = earmarkCents > 0 ? refFor(receipt.rail, receipt.externalId) : null;
+    if (clearingRef) {
+      await client.query(
+        `INSERT INTO auto_clear_runs (ref, wallet, rail, external_id, earmark_cents, state)
+         VALUES ($1, $2, $3, $4, $5, 'earmarked') ON CONFLICT (ref) DO NOTHING`,
+        [clearingRef, wallet, receipt.rail, receipt.externalId, earmarkCents],
+      );
+      plan.remainingCents = Math.max(0, plan.remainingCents - earmarkCents);
     }
-    if (earmarkCents > 0) plan.remainingCents = Math.max(0, plan.remainingCents - earmarkCents);
 
     for (const settlement of plan.settlements) {
       await client.query(
@@ -336,18 +388,26 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
 
     await client.query('COMMIT');
 
+    // Reserve what was set aside (term plans' dues, then the line) before the card can spend it:
+    // exactly what the chain will apply, read first. Best effort: the sweep places a hold if this
+    // does not (the same token, so never twice). Imported here, not above: the sweep's module
+    // imports this one.
+    const refs = [...booked.refs, ...(clearingRef ? [clearingRef] : [])];
+    if (refs.length) {
+      await import('../chain/autoRepayService.js')
+        .then(({ holdClearingsNow }) => holdClearingsNow(refs))
+        .catch((error) =>
+          console.error('[auto-clear] hold after deposit failed; the sweep retries:', error instanceof Error ? error.message : error),
+        );
+    }
+
     // The deposit changed both the cash balance and what's outstanding, so every card this member
     // holds is now authorizing against a stale snapshot. Rewriting it is the point of step 3's
     // "precomputed lookup" — a snapshot nothing maintains is just a slower wrong answer.
     const snapshotsUpdated = await refreshSnapshotsFor(wallet);
 
-    // Fiat that paid down card debt here has to come off the chain too, or the member would still
-    // owe it there. Not awaited: an on-chain write takes seconds; the sweep catches what this misses.
-    if (plan && receipt.rail === 'lithic_ach') {
-      void syncCardRepayment(wallet).catch((error) =>
-        console.error(`[card-repayment] ${wallet} could not start:`, error),
-      );
-    }
+    // Nothing was settled in the books, so there is nothing to net on chain (syncCardRepayment): the
+    // line changes only through auto-clear's sweep or the member's own Clear.
 
     return {
       recorded: true,
@@ -499,7 +559,8 @@ export async function recordOnchainRepayment(input: {
           JSON.stringify({ tier: settlement.tier, txHash: input.txHash }),
           // Where the money came from. Out of savings it was the member's CLRUSD, not their USDC
           // cash -- charging cash for it would show them $X less cash than they hold.
-          fundedFromSavings > 0 && settlement.tier === 'savings' ? 'member_savings' : 'member_cash_usdc',
+          // Auto-clear clears only from a Spendable (fiat) deposit (option 1), so it comes out of that cash.
+          fundedFromSavings > 0 && settlement.tier === 'savings' ? 'member_savings' : input.method === 'auto' ? 'member_cash_fiat' : 'member_cash_usdc',
         ],
       );
     }

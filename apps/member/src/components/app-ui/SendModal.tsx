@@ -179,10 +179,13 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
         });
         if (!prepared?.transfer?.id) throw new Error('Could not prepare the transfer.');
         const t = prepared.transfer;
+        // The claim key the lock commits and the link carries (audit H-4).
+        const claimKey = prepared.claim;
+        if (!claimKey?.token || !claimKey.signer) throw new Error('Could not prepare the transfer.');
 
         // EIP-3009 relayer lock (works for any wallet) — the fallback + the non-AA path.
         const relayerLock = async () => {
-          const result = await gaslessSendLock({ transferRowId: t.id, ownerWallet: address });
+          const result = await gaslessSendLock({ transferRowId: t.id, ownerWallet: address, claimToken: claimKey.token });
           return result.claimUrl ?? null;
         };
 
@@ -200,8 +203,14 @@ export default function SendModal({ open, onOpenChange }: { open: boolean; onOpe
             totalLockedUsdcMicros: t.totalLockedUsdc,
             recipientHintHash: t.recipientHintHash as `0x${string}`,
             expiresAt: t.expiresAt,
+            claimSigner: claimKey.signer as `0x${string}`,
           });
-          const confirmed = await confirmSendTransferLock(t.id, { transferId: t.transferId, escrowTxHash: txHash, aa: true });
+          const confirmed = await confirmSendTransferLock(t.id, {
+            transferId: t.transferId,
+            escrowTxHash: txHash,
+            aa: true,
+            claimToken: claimKey.token,
+          });
           return confirmed?.claimUrl ?? null;
         };
         // Bind the smart-wallet client to THIS chain (default client is on Privy's defaultChain, not

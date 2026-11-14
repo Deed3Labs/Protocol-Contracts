@@ -1,3 +1,4 @@
+import type { SplitOutcome } from '@/hooks/useCreditRepay';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import BalanceBlock from '@/components/clear/BalanceBlock';
@@ -25,6 +26,7 @@ import { HOME_DAY_ONE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import YourShopsCell from '@/components/clear/YourShopsCell';
 import type { YourShop } from '@/utils/apiClient';
+import type { AccountDetailsSource } from '@/lib/accountDetails';
 import { activePlans, addableTier, creditLimit, savingsTotal, type ActivityRow, type HomeData } from '@/lib/clearModel';
 
 /**
@@ -51,9 +53,15 @@ export default function HomePage({
   onPayBack,
   savingsFree,
   yourShops = [],
+  accountDetails,
+  onSignInAgain,
 }: {
+  /** Sign out and send a code (Spendable's full number, for a member without Face ID). Absent in the preview harness. */
+  onSignInAgain?: () => void;
   /** Shops whose rewards they've joined (rewards spec, section 6): a list and links, once there's one. */
   yourShops?: YourShop[];
+  /** Where Spendable's account details are read from. The API unless the preview harness hands in fixtures. */
+  accountDetails?: AccountDetailsSource;
   data?: HomeData;
   /** Nothing known yet: the populated layout with placeholder figures, never the day-one layout. */
   pending?: boolean;
@@ -73,7 +81,7 @@ export default function HomePage({
   /** Savings not pledged against drawn credit: what a plan may be paid from. */
   savingsFree?: number;
   /** Re-splits a plan on chain. Absent in the preview harness, where a split is only held here. */
-  onSetSplit?: (planId: number, installments: number) => Promise<{ ok?: boolean; error?: string }>;
+  onSetSplit?: (planId: number, installments: number) => Promise<SplitOutcome>;
 }) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
@@ -217,7 +225,8 @@ export default function HomePage({
             // On chain for a live plan; the chain read that follows is the new schedule.
             if (onSetSplit && livePlan) {
               const result = await onSetSplit(Number(plan.id), splitInto);
-              if (result.error) return result;
+              // Phase 2: a split that costs more waits for the member to read and sign new terms.
+              if (result.error || result.needsSignature) return result;
             } else {
               setSplits((s) => ({ ...s, [plan.id]: splitInto }));
             }
@@ -241,7 +250,14 @@ export default function HomePage({
         firstDeposit={!data.tasks.find((t) => t.id === 'deposit')?.done}
         onPickAccount={() => setPayAccountOpen(true)}
       />
-      <AccountDetailsDialog account={data.cashAccount} open={accountOpen} onOpenChange={setAccountOpen} />
+      {/* Reads its own numbers from Lithic when it opens: nothing on Home holds them. */}
+      <AccountDetailsDialog
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        source={accountDetails}
+        onSignInAgain={onSignInAgain}
+        onSetUpFaceId={() => navigate('/settings/security')}
+      />
       {/* Savings deposit is the same surface Savings uses; the credit limit it quotes comes from this
           page's own tiers so the two can't disagree. */}
       <ConnectedMoveMoney

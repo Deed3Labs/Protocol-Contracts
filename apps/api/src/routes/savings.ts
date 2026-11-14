@@ -4,6 +4,16 @@ import { ethers } from 'ethers';
 import { requireWalletMatch, requireVerifiedWallet } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
 import { savingsRelayerService } from '../services/savingsRelayerService.js';
+import { decodeChainError, describeCreditRefusal } from '../services/chain/chainErrors.js';
+
+/**
+ * A relayed vault or CLRUSD call that the chain refused for a reason the member can act on
+ * (Phase 2: the CA pilot cap on mints, a lapsing CLRUSD pause, savings encumbered by credit).
+ * Null for anything else, which keeps its existing 500.
+ */
+function memberRefusal(error: unknown): string | null {
+  return describeCreditRefusal(decodeChainError(error));
+}
 import { savingsGaslessService } from '../services/savingsGaslessService.js';
 import { relayEsaDeposit } from '../services/savings/esaDeposit.js';
 import { payLedgerStore, networkFromChainId } from '../services/payLedgerStore.js';
@@ -208,6 +218,11 @@ savingsRouter.post('/intents/finalize', async (req: Request, res: Response) => {
       status: 'FINALIZED',
     });
   } catch (error) {
+    const refusal = memberRefusal(error);
+    if (refusal) {
+      res.status(409).json({ error: 'Failed to finalize savings intent', message: refusal });
+      return;
+    }
     res.status(500).json({
       error: 'Failed to finalize savings intent',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -250,7 +265,9 @@ savingsRouter.post('/intents/refund', async (req: Request, res: Response) => {
 /**
  * Fully-gasless deposit/redeem. `prepare` returns the typed data the user signs (USDC EIP-3009 for
  * deposit, vault EIP-712 Redeem for redeem); `submit` hands the signature to the relayer, which
- * pays gas and calls depositWithAuthorization / redeemWithAuthorization on the vault.
+ * pays gas and calls depositWithAuthorization / redeemWithSignature on the vault (RELAYER_ROLE).
+ * A deposit mints to the depositor only, unless the body carries the depositor's signed
+ * DepositIntent (`intentSignature`) naming another receiver (audit M-5).
  */
 savingsRouter.post('/gasless/prepare', async (req: Request, res: Response) => {
   try {
@@ -288,15 +305,28 @@ savingsRouter.post('/gasless/prepare', async (req: Request, res: Response) => {
 
 savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
   try {
-    const body = req.body as { action?: unknown; chainId?: unknown; signature?: unknown; submit?: Record<string, unknown> };
+    const body = req.body as {
+      action?: unknown;
+      chainId?: unknown;
+      signature?: unknown;
+      intentSignature?: unknown;
+      submit?: Record<string, unknown>;
+    };
 
     const action = parseAction(body.action);
     if (!action) {
       res.status(400).json({ error: 'Invalid action', message: 'action must be deposit or redeem' });
       return;
     }
-    if (typeof body.signature !== 'string' || !/^0x[a-fA-F0-9]{130}$/.test(body.signature.trim())) {
-      res.status(400).json({ error: 'Invalid signature', message: 'signature must be a 65-byte hex signature' });
+    // A deposit is a USDC EIP-3009 authorization, which is 65 bytes (v, r, s). A redeem is the
+    // vault's own EIP-712 intent, checked with SignatureChecker: an EIP-1271 smart account may sign
+    // it with more (audit M-5, `redeemWithSignature`).
+    const signaturePattern = action === 'deposit' ? /^0x[a-fA-F0-9]{130}$/ : /^0x(?:[a-fA-F0-9]{2}){65,}$/;
+    if (typeof body.signature !== 'string' || !signaturePattern.test(body.signature.trim())) {
+      res.status(400).json({
+        error: 'Invalid signature',
+        message: action === 'deposit' ? 'signature must be a 65-byte hex signature' : 'signature must be hex bytes, at least 65 long',
+      });
       return;
     }
     const submit = body.submit;
@@ -318,14 +348,13 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Invalid token', message: 'token must be the configured USDC for this chain' });
       return;
     }
-    const sig = ethers.Signature.from(body.signature.trim());
-
     let txHash: string;
     if (action === 'deposit') {
       // Shared with the sweep's allocate endpoint, which performs the same mint. One implementation,
       // so the vault and token pinning cannot drift between two copies of a money-moving call.
       const relayed = await relayEsaDeposit({
         signature: body.signature.trim(),
+        intentSignature: typeof body.intentSignature === 'string' ? body.intentSignature.trim() : undefined,
         chainId: parseChainId(body.chainId),
         submit: {
           depositor: owner,
@@ -353,15 +382,13 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
         return;
       }
 
-      txHash = await savingsRelayerService.redeemWithAuthorization(config.chainId, config.vaultAddress, {
+      txHash = await savingsRelayerService.redeemWithSignature(config.chainId, config.vaultAddress, {
         redeemer: ethers.getAddress(owner),
         token: config.usdcAddress,
         clrusdAmount,
         receiver: ethers.getAddress(String(submit.receiver ?? owner)),
         deadline: BigInt(String(submit.deadline)),
-        v: sig.v,
-        r: sig.r,
-        s: sig.s,
+        signature: body.signature.trim(),
       });
     }
 
@@ -411,6 +438,11 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
 
     res.json({ success: true, action, chainId: config.chainId, vaultAddress: config.vaultAddress, txHash, status: 'SUBMITTED' });
   } catch (error) {
+    const refusal = memberRefusal(error);
+    if (refusal) {
+      res.status(409).json({ error: 'Failed to submit gasless savings transfer', message: refusal });
+      return;
+    }
     res.status(500).json({
       error: 'Failed to submit gasless savings transfer',
       message: error instanceof Error ? error.message : 'Unknown error',
