@@ -170,7 +170,7 @@ export default function AccountDetailsDialog({
             <Btn lg disabled={forming} onClick={() => void getForm()}>
               {forming ? 'Preparing form…' : DIRECT_DEPOSIT_FORM_ACTION}
             </Btn>
-            {details.bankName && <p className="c-det mt-s2 text-[11px]!">{bankDisclosure(details.bankName)}</p>}
+            <p className="c-det mt-s2 text-[11px]!">{bankDisclosure()}</p>
           </>
         ) : undefined
       }

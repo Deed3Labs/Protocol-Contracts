@@ -16,9 +16,9 @@ import { lithicStore } from './lithicStore.js';
  *    asking for the rest.
  *
  * What Lithic does not give us:
- *  - The partner bank's name. Neither the financial account nor the account holder carries it, so it
- *    is configuration: LITHIC_PARTNER_BANK_NAME. Unset, it is null and the app says so rather than
- *    showing a guess.
+ *  - The partner bank's name. Neither the financial account nor the account holder carries it, and
+ *    Lithic places accounts across several partner banks, so the row reads "Lithic partner bank"
+ *    (owner's decision). LITHIC_PARTNER_BANK_NAME overrides it if one bank is ever named.
  *  - "Checking". Lithic's `type` is a ledger type (OPERATING, ISSUING), not the ACH account type an
  *    employer's form asks for. The owner's spec says a Clear deposit account is a checking account,
  *    so that is what is shown; it is a product fact, not something read from Lithic.
@@ -27,17 +27,20 @@ import { lithicStore } from './lithicStore.js';
 /** What an employer's direct deposit form calls this account. Product spec, not a Lithic field. */
 export const DEPOSIT_ACCOUNT_TYPE = 'Checking';
 
-/** The partner bank, from configuration: Lithic's API does not name it. Null when unset. */
-export function partnerBankName(): string | null {
+/** Shown for the bank: Lithic's API does not name it, and Lithic uses several partner banks. */
+export const DEFAULT_PARTNER_BANK = 'Lithic partner bank';
+
+/** The bank row: LITHIC_PARTNER_BANK_NAME if set, otherwise "Lithic partner bank". */
+export function partnerBankName(): string {
   const name = (process.env.LITHIC_PARTNER_BANK_NAME || '').trim();
-  return name || null;
+  return name || DEFAULT_PARTNER_BANK;
 }
 
 export interface MaskedAccountDetails {
   /** The name Lithic verified the account holder under. Null when Lithic has no individual on file. */
   holderName: string | null;
-  /** LITHIC_PARTNER_BANK_NAME. Null when not configured. */
-  bankName: string | null;
+  /** LITHIC_PARTNER_BANK_NAME, or "Lithic partner bank". */
+  bankName: string;
   routingNumber: string;
   accountNumberLast4: string;
   accountType: string;

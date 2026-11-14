@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import {
   ACCOUNT_DETAILS_NOTE,
   ACCOUNT_DETAILS_TITLE,
-  BANK_DISCLOSURE_PENDING_APPROVAL,
+  BANK_DISCLOSURE,
   CLOSED,
   accountDetailsReducer,
   accountNumberShown,
@@ -71,14 +71,12 @@ describe('the copy is the spec\'s', () => {
   });
 
   test('the footer has the bank name substituted, and is marked pending the bank\'s wording', () => {
-    expect(bankDisclosure('Example Partner Bank')).toBe(
-      'Deposits are held at Example Partner Bank, Member FDIC. Clear is not a bank. Banking services provided by Example Partner Bank.',
+    expect(bankDisclosure()).toBe(
+      "Deposits are held at Lithic's partner banks, each Member FDIC. Clear is not a bank. Banking services are provided by Lithic's partner banks.",
     );
-    expect(BANK_DISCLOSURE_PENDING_APPROVAL).toBe(true);
-    expect(LIB).toContain("PENDING THE BANK'S APPROVED WORDING");
-    // One place: the surface and the PDF both use the constant rather than their own copy.
-    expect(DIALOG).toContain('bankDisclosure(details.bankName)');
-    expect(FORM).toContain('bankDisclosure(data.bankName)');
+    expect(BANK_DISCLOSURE).toBe(bankDisclosure());
+    expect(DIALOG).toContain('bankDisclosure()');
+    expect(FORM).toContain('bankDisclosure()');
     expect(DIALOG).not.toContain('Member FDIC');
     expect(FORM).not.toContain('Member FDIC');
   });
@@ -347,7 +345,7 @@ describe('Get direct deposit form', () => {
     const { downloadDirectDepositForm, DIRECT_DEPOSIT_FILENAME } = await import('@/lib/directDepositForm');
     await downloadDirectDepositForm({ ...DETAILS, accountNumber: FULL });
     for (const v of ['Ada Lovelace', 'Example Partner Bank', '084106768', FULL, 'Checking']) expect(texts).toContain(v);
-    expect(texts).toContain(bankDisclosure('Example Partner Bank'));
+    expect(texts).toContain(bankDisclosure());
     expect(texts).not.toContain('····4192');
     expect(saved).toEqual([DIRECT_DEPOSIT_FILENAME]);
   });

@@ -169,9 +169,9 @@ describe('GET /api/lithic/account-details: masked', () => {
     expect((await call('/api/lithic/account-details', 'did:ada')).cache).toBe('no-store');
   });
 
-  test('the bank name is configuration: unset is null, never a guess', async () => {
+  test('unset, the bank reads "Lithic partner bank": Lithic uses several partner banks (owner decision)', async () => {
     const r = await call('/api/lithic/account-details', 'did:ada');
-    expect(r.body.details.bankName).toBeNull();
+    expect(r.body.details.bankName).toBe('Lithic partner bank');
   });
 
   test('needs no Face ID, even for an enrolled member', async () => {

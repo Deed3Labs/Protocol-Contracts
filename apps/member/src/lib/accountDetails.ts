@@ -19,15 +19,16 @@ export const ACCOUNT_DETAILS_NOTE =
   "Use these for direct deposit or bank transfers. Money that lands here clears what you've used on Clear Credit first, then the rest is spendable. You can change this in Settings › Automatic clearing.";
 
 /**
- * PENDING THE BANK'S APPROVED WORDING.
- *
- * This is the owner's draft. The partner bank (through Lithic) approves the exact disclosure, and
- * when it does, the approved text replaces this template here and nowhere else. The bank's name is
- * substituted from the API, which reads it from configuration (LITHIC_PARTNER_BANK_NAME).
+ * The deposit disclosure (owner's decision, 2026-11-14). Lithic places accounts across several
+ * partner banks, so it names Lithic's partner banks rather than one bank. Clear is not a bank and
+ * says so. If a single bank is ever named, or the bank asks for different words, change it here.
  */
-export const BANK_DISCLOSURE_PENDING_APPROVAL = true;
-export function bankDisclosure(bankName: string): string {
-  return `Deposits are held at ${bankName}, Member FDIC. Clear is not a bank. Banking services provided by ${bankName}.`;
+export const BANK_DISCLOSURE =
+  "Deposits are held at Lithic's partner banks, each Member FDIC. Clear is not a bank. Banking services are provided by Lithic's partner banks.";
+
+/** The disclosure shown under the details and on the direct deposit form. */
+export function bankDisclosure(): string {
+  return BANK_DISCLOSURE;
 }
 
 export const DIRECT_DEPOSIT_FORM_ACTION = 'Get direct deposit form';

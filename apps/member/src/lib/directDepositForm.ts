@@ -73,12 +73,9 @@ export async function downloadDirectDepositForm(data: DirectDepositFormData): Pr
   doc.text('Signature', L, y);
   doc.text('Date', R - 140, y);
 
-  if (data.bankName) {
-    y += 44;
-    doc.setFontSize(9).setTextColor(155);
-    const disclosure = doc.splitTextToSize(bankDisclosure(data.bankName), R - L);
-    doc.text(disclosure, L, y);
-  }
+  y += 44;
+  doc.setFontSize(9).setTextColor(155);
+  doc.text(doc.splitTextToSize(bankDisclosure(), R - L), L, y);
 
   doc.save(DIRECT_DEPOSIT_FILENAME);
 }
