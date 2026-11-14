@@ -1,9 +1,9 @@
 import type { PoolClient } from 'pg';
+import { createHash } from 'node:crypto';
 import { ethers } from 'ethers';
 import { getPayPool } from '../../config/postgres.js';
 import { getLithic } from '../lithic/lithicClient.js';
 import { lithicStore } from '../lithic/lithicStore.js';
-import { alertOps } from '../opsAlert.js';
 
 /*
  * Auto-clear moves the money as well as the line (Phase 2b 12.2, the owner's 10f clarification:
@@ -21,9 +21,24 @@ import { alertOps } from '../opsAlert.js';
  * transfer, never a second one.
  *
  * Why the chain goes before the transfer. The amount that moves is what the contract APPLIED
- * (`AutoCleared.applied`, or `autoRepaymentOf(ref)`), which is only known once the transaction is
- * mined. So the money is reserved first with a Lithic hold, the chain applies, and the transfer of
- * the applied amount settles the hold. The compensating steps cover each failure in between.
+ * (`AutoCleared.applied`, `autoRepaymentOf(ref)`, or `PlanPaid`), which is only known once the
+ * transaction is mined. So:
+ *
+ *   1. Read on chain what this clearing will apply: A = min(what the deposit set aside, what is owed
+ *      now -- within the member's scope for the line, on the plan for a term clearing).
+ *   2. Hold exactly A (a Lithic hold moves it from available to pending). The rest of the deposit is
+ *      never held: it is spendable at once.
+ *   3. Send `repayForMember` / `payPlan` for A.
+ *   4. Book-transfer exactly what was applied with `hold_token`, which settles that hold (Lithic:
+ *      "Token of an existing hold to settle when this transfer is initiated").
+ *
+ * The money is never released between the chain and the transfer. The one exception: the chain
+ * applied LESS than A (the member repaid in between). Lithic does not document settling part of a
+ * hold, so that is not assumed: the hold is voided, the applied amount transferred without
+ * `hold_token`, and ops are alerted. It is the only void-then-transfer, and it is rare.
+ *
+ * Lithic's tokens are UUIDs (its idempotency keys must be valid UUIDs): each is a UUIDv5 of the ref
+ * and the step (`tokenFor`), sent as the object's `token` and as the `Idempotency-Key` header.
  *
  * THE STATE MACHINE (table `auto_clear_runs`, one row per ref):
  *
@@ -36,12 +51,14 @@ import { alertOps } from '../opsAlert.js';
  *    released ◀───────────── released
  *
  *   earmarked   A Spendable deposit with auto-clear ON set aside `earmark_cents` (what was owed, up
- *               to what the deposit left). Nothing is held yet. Placing the hold is tried right after
- *               the deposit is recorded, and again by every sweep.
- *   held        A Lithic hold reserves the earmark in the member's account: it is out of their
- *               available balance, so the card cannot spend it. If what the chain will take is
- *               smaller (less is owed in scope), the hold is replaced with one for that amount
- *               before anything is sent, and the rest is spendable again.
+ *               to what the deposit left). Nothing is held yet. The hold is placed right after the
+ *               deposit is recorded, and again by every sweep until it is: for A, read on chain
+ *               first. With nothing owed on chain yet (a card purchase still pending), nothing is
+ *               held; a plan already paid off releases at once.
+ *   held        A Lithic hold reserves exactly A in the member's account, expiring a little after
+ *               the 72-hour wait (`AUTO_CLEAR_MAX_HOLD_HOURS`) in case nothing voids it. Before
+ *               sending, what is owed is read again: if it fell below A (nothing has been sent yet),
+ *               the hold is voided and the clearing goes back to `earmarked` to hold the new A.
  *   submitting  Recorded BEFORE `repayForMember(ref, member, amount)` is sent, with the amount.
  *               After a crash the chain is asked (`autoRepaymentOf(ref)`); a transaction that
  *               reverted or was dropped goes back to `held` and is resent with the same ref, which
@@ -49,8 +66,9 @@ import { alertOps } from '../opsAlert.js';
  *               transaction instead; see below.) A call refused in simulation, before any hash,
  *               sent nothing and goes back to `held`.
  *   applied     The chain applied X. The books are written from the transaction. X is transferred
- *               from the member's account to Clear's settlement account: settling the hold when X is
- *               what it holds, otherwise after voiding it (the rest stays spendable).
+ *               from the member's account to Clear's settlement account with `hold_token`, settling
+ *               the hold. Only if X < A: the hold is voided first, X transferred without it, and ops
+ *               alerted (Lithic does not document partial settlement).
  *   transferred The money and the line agree. Done.
  *   transfer_declined  Lithic refused the transfer (the chain has applied, so Clear is owed X). Ops
  *               are alerted at once. Each later pass checks the last transfer token first, then tries
@@ -141,13 +159,25 @@ export function termRefFor(rail: string, externalId: string, planId: number | nu
   return refFor(rail, `${externalId}#term:${planId === null ? 'carry' : `plan:${planId}`}`);
 }
 
-/** A Lithic token (a UUID) derived from the ref, so the same step always carries the same token. */
+/** RFC 4122 UUIDv5: SHA-1 of the namespace and the name, version 5, RFC variant. */
+export function uuidV5(name: string, namespace: string): string {
+  const ns = Buffer.from(namespace.replace(/-/g, ''), 'hex');
+  const hash = createHash('sha1').update(ns).update(Buffer.from(name, 'utf8')).digest();
+  hash[6] = (hash[6] & 0x0f) | 0x50;
+  hash[8] = (hash[8] & 0x3f) | 0x80;
+  const h = hash.subarray(0, 16).toString('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
+/** Clear's namespace for auto-clear's Lithic tokens: the UUIDv5 of its name in the URL namespace. */
+export const AUTO_CLEAR_NAMESPACE = uuidV5('https://useclear.org/auto-clear', '6ba7b811-9dad-11d1-80b4-00c04fd430c8');
+
+/**
+ * A Lithic token derived from the ref, so the same step always carries the same token: a valid UUID
+ * (Lithic's idempotency keys must be), sent as the object's `token` and its `Idempotency-Key`.
+ */
 export function tokenFor(ref: string, purpose: string): string {
-  const h = ethers.id(`${ref}:${purpose}`).slice(2, 34).split('');
-  h[12] = '5'; // version nibble
-  h[16] = ((parseInt(h[16], 16) & 0x3) | 0x8).toString(16); // RFC 4122 variant
-  const s = h.join('');
-  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20, 32)}`;
+  return uuidV5(`${ref}:${purpose}`, AUTO_CLEAR_NAMESPACE);
 }
 
 /** After this many tries, a declined transfer waits for a person (each try is alerted). */
@@ -175,7 +205,10 @@ export interface SpendableMoves {
   settlementAccount(): string | null;
   cashAccountOf(wallet: string): Promise<string | null>;
   findHold(token: string): Promise<{ status: LithicTxStatus; result?: string } | null>;
-  createHold(account: string, input: { token: string; amountCents: number; ref: string }): Promise<{ status: LithicTxStatus; result?: string }>;
+  createHold(
+    account: string,
+    input: { token: string; amountCents: number; ref: string; expiresAt: string },
+  ): Promise<{ status: LithicTxStatus; result?: string }>;
   voidHold(token: string): Promise<void>;
   findTransfer(token: string): Promise<{ status: LithicTxStatus } | null>;
   createTransfer(input: {
@@ -251,16 +284,21 @@ const money = (cents: number) =>
 
 const MOVED: ReadonlySet<string> = new Set(['PENDING', 'SETTLED']);
 
+/** A hold outlives the release by an hour, so ours voids it; Lithic expires it if we never do. */
+export function holdExpiry(run: Pick<AutoClearRun, 'createdAt'>): string {
+  return new Date(run.createdAt + maxHoldMs() + 60 * 60 * 1000).toISOString();
+}
+
 async function ensureHold(
   run: AutoClearRun,
-  deps: AutoClearDeps,
+  deps: Pick<AutoClearDeps, 'moves'>,
   account: string,
   cents: number,
 ): Promise<{ token: string; held: boolean }> {
   const token = tokenFor(run.ref, `hold:${run.holdSeq}`);
   const hold =
     (await deps.moves.findHold(token)) ??
-    (await deps.moves.createHold(account, { token, amountCents: cents, ref: run.ref }));
+    (await deps.moves.createHold(account, { token, amountCents: cents, ref: run.ref, expiresAt: holdExpiry(run) }));
   return { token, held: hold.status === 'PENDING' && hold.result !== 'DECLINED' };
 }
 
@@ -287,29 +325,38 @@ async function release(
 }
 
 /**
- * earmarked → held. Also run on its own right after the deposit is recorded, so the money is out of
- * the card's reach before the next sweep.
+ * earmarked → held: read on chain what this clearing will apply, and hold exactly that. Also run on
+ * its own right after the deposit is recorded, so the money is out of the card's reach at once.
  */
-export async function placeHold(
-  run: AutoClearRun,
-  deps: Pick<AutoClearDeps, 'store' | 'moves' | 'alert' | 'now' | 'unbook'>,
-): Promise<AutoClearStep> {
-  const full = deps as AutoClearDeps;
+export async function placeHold(run: AutoClearRun, deps: AutoClearDeps): Promise<AutoClearStep> {
   if (run.state !== 'earmarked') return { wallet: run.wallet, ref: run.ref, action: 'waiting', reason: run.state };
   if (deps.now() - run.createdAt > maxHoldMs()) return release(run, deps, 'nothing was held within the wait');
+  const chain = deps.chainFor(run);
+  if (!(await chain.enabled(run.wallet))) return release(run, deps, 'auto-clear is off');
   const settlement = deps.moves.settlementAccount();
   const account = await deps.moves.cashAccountOf(run.wallet);
   if (!settlement || !account) {
     await deps
       .alert({
         key: 'auto-clear:not-configured',
-        subject: 'Auto-clear is waiting: no Lithic settlement account',
-        body: `Auto-clear cannot move a member's Spendable dollars without Clear's settlement account (LITHIC_AUTO_CLEAR_SETTLEMENT_ACCOUNT_TOKEN) and the member's Lithic cash account. Nothing is held or cleared until both exist (${settlement ? 'member account missing' : 'settlement account missing'}).`,
+        subject: 'Auto-clear is waiting: Lithic settlement is not configured',
+        body: `Auto-clear cannot move a member's Spendable dollars without Clear's settlement account (LITHIC_AUTO_CLEAR_SETTLEMENT_ACCOUNT_TOKEN), the book transfer subtype Lithic set up for the program (LITHIC_AUTO_CLEAR_TRANSFER_SUBTYPE), and the member's Lithic cash account. Nothing is held, cleared or moved until all three exist (${settlement ? 'member account missing' : 'settlement account or subtype missing'}).`,
       })
       .catch(() => {});
     return { wallet: run.wallet, ref: run.ref, action: 'waiting', reason: 'no settlement account' };
   }
-  const { token, held } = await ensureHold(run, full, account, run.earmarkCents);
+  if (await chain.pausedForEveryone()) return { wallet: run.wallet, ref: run.ref, action: 'paused', reason: 'switched off network-wide' };
+
+  // A: what the chain will apply now. Only that is held; the rest of the deposit stays spendable.
+  const owed = await chain.owedCents(run);
+  const amount = Math.min(run.earmarkCents, Math.max(0, Math.floor(owed)));
+  if (amount <= 0) {
+    // The line: a card purchase still pending is a hold at Lithic, not debt on chain, so wait for
+    // it, holding nothing. A plan's arrears paid off in between: nothing to wait for.
+    if (chain.waitsForDebt(run)) return { wallet: run.wallet, ref: run.ref, action: 'waiting', reason: 'nothing in scope owed on chain yet' };
+    return release(run, deps, 'nothing left to pay');
+  }
+  const { token, held } = await ensureHold(run, deps, account, amount);
   if (!held) {
     // Most often the member already spent it. Nothing is held; the next pass tries a fresh hold.
     run.holdSeq += 1;
@@ -318,10 +365,10 @@ export async function placeHold(
   }
   run.state = 'held';
   run.holdToken = token;
-  run.holdCents = run.earmarkCents;
+  run.holdCents = amount;
   run.holdVoided = false;
   await deps.store.save(run);
-  return { wallet: run.wallet, ref: run.ref, action: 'held', cents: run.earmarkCents };
+  return { wallet: run.wallet, ref: run.ref, action: 'held', cents: amount };
 }
 
 /** Advance one clearing as far as it can go now. See the state machine above. */
@@ -362,7 +409,6 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
 
   switch (run.state) {
     case 'earmarked': {
-      if (!(await chain.enabled(run.wallet))) return release(run, deps, 'auto-clear is off');
       const step = await placeHold(run, deps);
       return step.action === 'held' ? null : step;
     }
@@ -385,31 +431,20 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
       }
       if (await chain.pausedForEveryone()) return wait('switched off network-wide', 'paused');
 
-      const owed = await chain.owedCents(run);
-      const amount = Math.min(run.holdCents, Math.max(0, Math.floor(owed)));
-      if (amount <= 0) {
-        // The line: a card purchase still pending is a hold at Lithic, not debt on chain, so wait
-        // for it. A plan's arrears paid off in between: nothing to wait for, the money is theirs.
-        if (chain.waitsForDebt(run)) return wait('nothing in scope owed on chain yet');
-        return release(run, deps, 'nothing left to pay');
-      }
-
-      if (amount < run.holdCents) {
-        // Less is owed in scope than was set aside: hold exactly what the chain will take, so what
-        // is left is spendable now and the transfer can settle the hold in full.
-        const account = await moves.cashAccountOf(run.wallet);
-        if (!account) return wait('no Lithic cash account');
-        await moves.voidHold(run.holdToken);
-        run.holdVoided = true;
+      // Owed again, just before sending: if it fell below what is held (nothing has been sent yet),
+      // the hold is voided and the clearing holds the new amount from `earmarked`.
+      const owed = Math.max(0, Math.floor(await chain.owedCents(run)));
+      if (owed < run.holdCents) {
+        await voidIfHeld(run, deps);
+        run.state = 'earmarked';
         run.holdSeq += 1;
-        await store.save(run);
-        const { token, held } = await ensureHold(run, deps, account, amount);
-        if (!held) return release(run, deps, 'the smaller hold was declined');
-        run.holdToken = token;
-        run.holdCents = amount;
+        run.holdToken = null;
         run.holdVoided = false;
+        run.holdCents = 0;
         await store.save(run);
+        return null;
       }
+      const amount = run.holdCents;
 
       const cannot = await chain.settlerCannotPay(run, amount);
       if (cannot) {
@@ -522,9 +557,18 @@ async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<Auto
           .catch(() => {});
       }
 
-      // Settle the hold with the transfer when it holds exactly what was applied; otherwise void
-      // it first, and the rest of the deposit is the member's again.
+      // Settle the hold with the transfer: it holds exactly what was sent, which is what the chain
+      // applies. The exception -- applied less than held -- voids it first (below) and tells ops.
       let useHold = !run.holdVoided && run.holdToken !== null && run.appliedCents === run.holdCents;
+      if (!useHold && !run.holdVoided && run.appliedCents < run.holdCents) {
+        await deps
+          .alert({
+            key: `auto-clear:under-hold:${run.ref}`,
+            subject: 'Auto-clear: the chain applied less than was held',
+            body: `Ref ${run.ref} (${run.kind}) for ${run.wallet}: held ${run.holdCents}c, applied ${run.appliedCents}c (repaid in between?). Lithic does not document settling part of a hold, so the hold is voided and ${run.appliedCents}c transferred without it. Check the transfer landed.`,
+          })
+          .catch(() => {});
+      }
       if (useHold) {
         const hold = await moves.findHold(run.holdToken!);
         if (hold?.status !== 'PENDING') {
@@ -753,20 +797,25 @@ function notFound(error: unknown): boolean {
 }
 
 /**
- * The book transfer's classification. Category, type and subtype are program-specific at Lithic, so
- * they are configuration; the defaults are an internal account-to-account transfer.
+ * The book transfer's classification. Types and subtypes are set up for the program with Lithic's
+ * implementation specialist and typically need the sponsor bank's approval, so they are
+ * configuration.
  */
 function transferClass() {
   return {
-    category: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_CATEGORY || 'TRANSFER').trim(),
-    type: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_TYPE || 'TRANSFER').trim(),
-    subtype: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_SUBTYPE || 'AUTO_CLEAR').trim(),
+    // Lithic's "Balance or Funding / Collection": moving funds from a cash-funded account to collect
+    // on credit. The subtype is the program's own, issued by Lithic; there is no default to guess.
+    category: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_CATEGORY || 'BALANCE_OR_FUNDING').trim(),
+    type: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_TYPE || 'COLLECTION').trim(),
+    subtype: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_SUBTYPE || '').trim(),
   };
 }
 
 /** The Lithic side, with the shared client. Inert (null accounts) until Lithic is configured. */
 export const lithicMoves: SpendableMoves = {
   settlementAccount() {
+    // Without the program's subtype no transfer can be made, so nothing is held either.
+    if (!transferClass().subtype) return null;
     return (process.env.LITHIC_AUTO_CLEAR_SETTLEMENT_ACCOUNT_TOKEN || '').trim() || null;
   },
   async cashAccountOf(wallet) {
@@ -787,13 +836,17 @@ export const lithicMoves: SpendableMoves = {
   async createHold(account, input) {
     const lithic = getLithic();
     if (!lithic) throw new Error('Lithic is not configured');
-    const hold = await lithic.holds.create(account, {
-      token: input.token,
-      amount: Math.round(input.amountCents),
-      memo: 'Automatic clearing',
-      user_defined_id: input.ref,
-      expiration_datetime: new Date(Date.now() + maxHoldMs() + 24 * 60 * 60 * 1000).toISOString(),
-    });
+    const hold = await lithic.holds.create(
+      account,
+      {
+        token: input.token,
+        amount: Math.round(input.amountCents),
+        memo: 'Automatic clearing',
+        user_defined_id: input.ref,
+        expiration_datetime: input.expiresAt,
+      },
+      { idempotencyKey: input.token },
+    );
     return { status: hold.status, result: hold.result };
   },
   async voidHold(token) {
@@ -825,7 +878,7 @@ export const lithicMoves: SpendableMoves = {
       memo: 'Automatic clearing',
       external_id: input.ref,
       on_closed_account: 'FAIL',
-    } as Parameters<typeof lithic.bookTransfers.create>[0]);
+    } as Parameters<typeof lithic.bookTransfers.create>[0], { idempotencyKey: input.token });
     return { status: transfer.status };
   },
 };
@@ -850,11 +903,4 @@ export async function pgUnbook(run: AutoClearRun): Promise<void> {
             ($1, $2, 'member_cash_fiat', 'credit', $4, 'fiat', 'term_settlement_return', $1, $5::jsonb)`,
     [key, run.wallet, account, cents, JSON.stringify({ planId: run.planId, ref: run.ref })],
   );
-}
-
-/** Right after a Spendable deposit is recorded: reserve each earmark before the card can spend it. */
-export async function holdAutoClear(ref: string): Promise<AutoClearStep | null> {
-  const run = await pgRunStore.get(ref);
-  if (!run) return null;
-  return placeHold(run, { store: pgRunStore, moves: lithicMoves, alert: alertOps, now: () => Date.now(), unbook: pgUnbook });
 }

@@ -5,6 +5,9 @@ import {
   refFor,
   termRefFor,
   tokenFor,
+  uuidV5,
+  holdExpiry,
+  maxHoldMs,
   MAX_TRANSFER_ATTEMPTS,
   type AutoClearDeps,
   type AutoClearRun,
@@ -26,7 +29,7 @@ const SETTLEMENT_FA = 'fa-clear-settlement';
 
 class FakeLithic implements SpendableMoves {
   available: number;
-  holds = new Map<string, { amount: number; status: string; account: string }>();
+  holds = new Map<string, { amount: number; status: string; account: string; expiresAt?: string }>();
   transfers = new Map<string, { amount: number; status: string; from: string; to: string; holdToken?: string }>();
   creates = { holds: 0, transfers: 0, voids: 0 };
   /** Fail the next transfer call AFTER Lithic has accepted it (a timeout on the way back). */
@@ -49,13 +52,13 @@ class FakeLithic implements SpendableMoves {
     const h = this.holds.get(token);
     return h ? { status: h.status } : null;
   }
-  async createHold(account: string, input: { token: string; amountCents: number }) {
+  async createHold(account: string, input: { token: string; amountCents: number; expiresAt: string }) {
     const existing = this.holds.get(input.token);
     if (existing) return { status: existing.status };
     this.creates.holds += 1;
     const ok = this.available >= input.amountCents;
     if (ok) this.available -= input.amountCents;
-    const hold = { amount: input.amountCents, status: ok ? 'PENDING' : 'DECLINED', account };
+    const hold = { amount: input.amountCents, status: ok ? 'PENDING' : 'DECLINED', account, expiresAt: input.expiresAt };
     this.holds.set(input.token, hold);
     return { status: hold.status, result: ok ? 'APPROVED' : 'DECLINED' };
   }
@@ -255,6 +258,25 @@ describe('the ref and the Lithic tokens', () => {
     expect(t).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 
+  test('the tokens are real UUIDv5s (Lithic idempotency keys must be valid UUIDs)', () => {
+    // RFC 4122's own example: www.example.com in the DNS namespace.
+    expect(uuidV5('www.example.com', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')).toBe('2ed6657d-e927-568b-95e1-2665a8aea6a2');
+    for (const purpose of ['hold:0', 'hold:1', 'transfer:0']) {
+      expect(tokenFor(refFor('lithic_ach', 'ach-1'), purpose)).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    }
+  });
+
+  test('sent as the token and as the Idempotency-Key header, with the classification Lithic set up', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs');
+    const src = readFileSync(new URL('./autoClearRuns.ts', import.meta.url), 'utf8');
+    expect(src.match(/\{ idempotencyKey: input\.token \}/g)).toHaveLength(2);
+    expect(src).toContain('...(input.holdToken ? { hold_token: input.holdToken } : {}),');
+    expect(src).toContain('expiration_datetime: input.expiresAt,');
+    // No guessed subtype: without the program's own, nothing is held or moved.
+    expect(src).toContain("subtype: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_SUBTYPE || '').trim(),");
+    expect(src).toContain('if (!transferClass().subtype) return null;');
+  });
+
   test('a term clearing is keyed by the receipt and the plan, apart from the line and other plans', () => {
     const line = refFor('lithic_ach', 'ach-1');
     expect(termRefFor('lithic_ach', 'ach-1', 4)).toBe(termRefFor('lithic_ach', 'ach-1', 4));
@@ -281,27 +303,67 @@ describe('a clearing, end to end', () => {
     expect(notices).toEqual(['$50.00 cleared']);
   });
 
-  test('the remainder stays spendable: less owed in scope than set aside', async () => {
+  test('the remainder stays spendable: what the chain will apply is read first, and only that is held', async () => {
     // $80 set aside from a $100 deposit, but only $30 is owed in the member's scope on chain.
     const { lithic, chain, run, deps, notices } = setup({ depositCents: 10_000, earmarkCents: 8_000, owedCents: 3_000 });
+    const held = await placeHold(run, deps);
+    expect(held).toMatchObject({ action: 'held', cents: 3_000 });
+    // Held is exactly A = min(set aside, owed); the other $70 was never held.
+    expect([...lithic.holds.values()].map((h) => h.amount)).toEqual([3_000]);
+    expect(lithic.available).toBe(7_000);
     const step = await advanceRun(run, deps);
     expect(step).toMatchObject({ action: 'repaid', cents: 3_000, releasedCents: 5_000 });
     expect(chain.applied.get(run.ref)).toBe(3_000);
     expect(lithic.moved()).toBe(3_000);
-    // The $80 hold was replaced by one for $30 before anything was sent; $70 is the member's.
-    expect(lithic.creates.voids).toBe(1);
+    // No void anywhere: the transfer settled the hold.
+    expect(lithic.creates.voids).toBe(0);
+    expect(lithic.settled()[0].holdToken).toBe(run.holdToken!);
     expect(lithic.available).toBe(7_000);
     expect(notices).toEqual(['$30.00 cleared · $50.00 now spendable']);
   });
 
-  test('the transfer uses the applied amount, not the amount sent, when the chain applies less', async () => {
+  test('the hold expires an hour after the release, so Lithic frees it if nothing voids it', async () => {
+    const { lithic, run, deps } = setup({ depositCents: 10_000, earmarkCents: 5_000, owedCents: 5_000 });
+    await placeHold(run, deps);
+    const hold = [...lithic.holds.values()][0];
+    expect(hold.expiresAt).toBe(holdExpiry(run));
+    expect(new Date(hold.expiresAt!).getTime()).toBe(run.createdAt + maxHoldMs() + 60 * 60 * 1000);
+  });
+
+  test('owed falls after the hold and before the send: re-held at the new amount, nothing sent twice', async () => {
     const { lithic, chain, run, deps } = setup({ depositCents: 10_000, earmarkCents: 5_000, owedCents: 5_000 });
+    await placeHold(run, deps);
+    chain.owed = 2_000; // the member repaid $30 themselves before the sweep
+    const step = await advanceRun(run, deps);
+    expect(step).toMatchObject({ action: 'repaid', cents: 2_000 });
+    expect(chain.sends).toBe(1);
+    expect(lithic.creates.voids).toBe(1); // before anything was sent
+    expect(lithic.moved()).toBe(2_000);
+    expect(lithic.settled()[0].holdToken).toBe(run.holdToken!);
+    expect(lithic.available).toBe(8_000);
+  });
+
+  test('the exception: the chain applies less than was held -- void, transfer the applied amount, tell ops', async () => {
+    const { lithic, chain, run, deps, alerts } = setup({ depositCents: 10_000, earmarkCents: 5_000, owedCents: 5_000 });
     chain.repaidUnderUs = 2_000; // the member repaid $20 themselves between the read and the transaction
     const step = await advanceRun(run, deps);
     expect(step).toMatchObject({ action: 'repaid', cents: 3_000 });
     expect(lithic.moved()).toBe(3_000);
-    expect(lithic.settled()[0].holdToken).toBeUndefined(); // the $50 hold was voided first
+    // Partial settlement of a hold is not documented, so it is not assumed.
+    expect(lithic.settled()[0].holdToken).toBeUndefined();
+    expect(lithic.creates.voids).toBe(1);
     expect(lithic.available).toBe(7_000);
+    expect(alerts.some((a) => a.includes('applied less than was held'))).toBe(true);
+  });
+
+  test('the normal path never voids: the transfer settles the hold with hold_token', async () => {
+    const { lithic, run, deps, alerts } = setup({ depositCents: 10_000, earmarkCents: 5_000, owedCents: 9_000 });
+    await advanceRun(run, deps);
+    expect(lithic.creates.voids).toBe(0);
+    expect(lithic.settled()).toHaveLength(1);
+    expect(lithic.settled()[0].holdToken).toBe(run.holdToken!);
+    expect([...lithic.holds.values()][0].status).toBe('SETTLED');
+    expect(alerts).toEqual([]);
   });
 
   test('the hold comes first: a member who already spent the deposit is never cleared on chain', async () => {
@@ -419,10 +481,11 @@ describe('auto-clear off moves nothing', () => {
     expect(lithic.creates).toEqual({ holds: 0, transfers: 0, voids: 0 });
   });
 
-  test('nothing owed for the whole wait: the hold is voided and the money is the member’s', async () => {
+  test('nothing owed on chain yet: nothing is held while it waits, and it releases after the wait', async () => {
     const { lithic, chain, run, deps } = setup({ depositCents: 10_000, earmarkCents: 5_000, owedCents: 0 });
     expect((await advanceRun(run, deps)).action).toBe('waiting');
-    expect(lithic.available).toBe(5_000);
+    expect(lithic.holds.size).toBe(0);
+    expect(lithic.available).toBe(10_000);
     run.createdAt -= 73 * 60 * 60 * 1000;
     expect((await advanceRun(run, deps)).action).toBe('released');
     expect(chain.sends).toBe(0);
@@ -446,20 +509,24 @@ describe('term plan dues paid from a Spendable deposit', () => {
     expect(notices).toEqual(['$30.00 paid']);
   });
 
-  test('less owed on the plan than booked: the chain amount moves, the rest is booked back and stays', async () => {
+  test('less owed on the plan than booked: only that is held and moved, the rest is booked back and stays', async () => {
     const { lithic, chain, run, deps, unbooked } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 1_200 });
+    await placeHold(run, deps);
+    expect([...lithic.holds.values()].map((h) => h.amount)).toEqual([1_200]);
     const step = await advanceRun(run, deps);
     expect(step).toMatchObject({ action: 'repaid', cents: 1_200, releasedCents: 1_800 });
     expect(chain.paidOnChain()).toBe(1_200);
     expect(lithic.moved()).toBe(1_200);
+    expect(lithic.creates.voids).toBe(0);
     expect(lithic.available).toBe(8_800);
     expect(unbooked.get(run.ref)).toBe(1_800);
   });
 
-  test('the plan was paid off in between: released at once, nothing paid or moved, the booking undone', async () => {
+  test('the plan was paid off in between: released at once, nothing held, paid or moved, the booking undone', async () => {
     const { lithic, chain, run, deps, unbooked } = setup({ kind: 'term', depositCents: 10_000, earmarkCents: 3_000, owedCents: 0 });
     const step = await advanceRun(run, deps);
     expect(step.action).toBe('released');
+    expect(lithic.holds.size).toBe(0);
     expect(chain.sends).toBe(0);
     expect(lithic.transfers.size).toBe(0);
     expect(lithic.available).toBe(10_000);

@@ -9,6 +9,7 @@ import { notificationStore } from '../notificationStore.js';
 import { alertOps } from '../opsAlert.js';
 import {
   advanceRun,
+  placeHold,
   lithicMoves,
   pgRunStore,
   pgUnbook,
@@ -287,10 +288,41 @@ export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
 
   const runs = await pgRunStore.listOpen(limit);
   if (!runs.length) return [];
+  const deps = await clearingDeps();
+  if (!deps) return [];
 
+  const results: AutoRepayResult[] = [];
+  for (const run of runs) {
+    const step = await advanceRun(run, deps);
+    if (step.action === 'off') {
+      await pool.query(`UPDATE member_auto_repay SET enabled = false, verified_at = now() WHERE wallet = $1`, [run.wallet]);
+    }
+    if (step.action === 'repaid') console.log(`[auto-clear] ${run.wallet} cleared ${step.cents}c and moved it from Spendable (${step.txHash})`);
+    if (step.action === 'failed') console.error(`[auto-clear] ${run.wallet} ${run.ref}: ${step.reason}`);
+    results.push(step);
+  }
+  return results;
+}
+
+/**
+ * Right after a Spendable deposit is recorded: read on chain what each clearing will apply, and hold
+ * exactly that before the card can spend it. Best effort: the sweep does the same until it is held.
+ */
+export async function holdClearingsNow(refs: string[]): Promise<void> {
+  if (!refs.length || !getPayPool() || !settlerKey()) return;
+  const deps = await clearingDeps();
+  if (!deps) return;
+  for (const ref of refs) {
+    const run = await pgRunStore.get(ref);
+    if (run) await placeHold(run, deps);
+  }
+}
+
+/** The clearing machine's dependencies, as the card settler. Null without an issuer on this chain. */
+async function clearingDeps(): Promise<AutoClearDeps | null> {
   const signer = new ethers.Wallet(settlerKey(), chainProvider(chainId()));
   const issuer = issuerAt(writesAs(signer));
-  if (!issuer || !signer.provider) return [];
+  if (!issuer || !signer.provider) return null;
   // The token repayments are made in, as the chain defines it -- never an address typed in here.
   // Phase 2c: it is the ledger's own (`StableCredit.reserveToken`); the ledger names no pool.
   const ledger = new ethers.Contract(String(await issuer.stableCredit()), ['function reserveToken() view returns (address)'], signer.provider);
@@ -299,7 +331,7 @@ export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
   const line = settlerChain(issuer, usdc, signer.address, signer.provider);
   // Term plans: the same switch and pause, `payPlan` (or carry) for the rest. Null without a TermIssuer.
   const term = await termChainSide(signer, line);
-  const deps: AutoClearDeps = {
+  return {
     store: pgRunStore,
     moves: lithicMoves,
     chainFor: (run) => {
@@ -314,16 +346,4 @@ export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
     },
     now: () => Date.now(),
   };
-
-  const results: AutoRepayResult[] = [];
-  for (const run of runs) {
-    const step = await advanceRun(run, deps);
-    if (step.action === 'off') {
-      await pool.query(`UPDATE member_auto_repay SET enabled = false, verified_at = now() WHERE wallet = $1`, [run.wallet]);
-    }
-    if (step.action === 'repaid') console.log(`[auto-clear] ${run.wallet} cleared ${step.cents}c and moved it from Spendable (${step.txHash})`);
-    if (step.action === 'failed') console.error(`[auto-clear] ${run.wallet} ${run.ref}: ${step.reason}`);
-    results.push(step);
-  }
-  return results;
 }

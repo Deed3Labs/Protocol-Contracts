@@ -3,7 +3,7 @@ import { getPayPool } from '../../config/postgres.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
 import { allocateTermDue, bookTermPayments, readTermDue } from '../chain/termCollection.js';
 import { autoSaveCentsFor, autoSaveStore } from './autoSaveStore.js';
-import { ensureAutoClearRuns, holdAutoClear, refFor } from './autoClearRuns.js';
+import { ensureAutoClearRuns, refFor } from './autoClearRuns.js';
 import {
   allocate,
   planSettlement,
@@ -388,12 +388,17 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
 
     await client.query('COMMIT');
 
-    // Reserve what was set aside (term plans' dues, then the line) before the card can spend it.
-    // Best effort: the sweep places a hold if this does not (the same token, so never twice).
-    for (const ref of [...booked.refs, ...(clearingRef ? [clearingRef] : [])]) {
-      await holdAutoClear(ref).catch((error) =>
-        console.error('[auto-clear] hold after deposit failed; the sweep retries:', error instanceof Error ? error.message : error),
-      );
+    // Reserve what was set aside (term plans' dues, then the line) before the card can spend it:
+    // exactly what the chain will apply, read first. Best effort: the sweep places a hold if this
+    // does not (the same token, so never twice). Imported here, not above: the sweep's module
+    // imports this one.
+    const refs = [...booked.refs, ...(clearingRef ? [clearingRef] : [])];
+    if (refs.length) {
+      await import('../chain/autoRepayService.js')
+        .then(({ holdClearingsNow }) => holdClearingsNow(refs))
+        .catch((error) =>
+          console.error('[auto-clear] hold after deposit failed; the sweep retries:', error instanceof Error ? error.message : error),
+        );
     }
 
     // The deposit changed both the cash balance and what's outstanding, so every card this member

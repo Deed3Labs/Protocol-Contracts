@@ -53,11 +53,10 @@ mock.module('../chain/termCollection.js', () => ({
 }));
 
 const realRuns = await import('./autoClearRuns');
-mock.module('./autoClearRuns.js', () => ({
-  ...realRuns,
-  holdAutoClear: async (ref: string) => {
-    holdsAsked.push(ref);
-    return null;
+// The hold placed right after the deposit (it reads the chain first, so it lives with the sweep).
+mock.module('../chain/autoRepayService.js', () => ({
+  holdClearingsNow: async (refs: string[]) => {
+    holdsAsked.push(...refs);
   },
 }));
 
