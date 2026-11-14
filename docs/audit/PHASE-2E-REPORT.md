@@ -98,7 +98,21 @@ RevolvingIssuer gains a third delegatecall module, **`RevolvingIssuerTerms`** (A
 
 ## 2. Tests
 
-RESULTS_PLACEHOLDER
+- **New:**
+  - `test/audit/compliance/Addendum2.spec.ts` (13): acceptance 39, 40, 41, 42, 44 (four cases), 45, 46, and the amended 18, 25 (Automatic Clearing) and 28. It resets the chain per test (`hardhat_reset`), because the spec's dates are absolute; Pacific time is checked against the platform's own time-zone data (`Intl`), not the contract's rule.
+  - `test/audit/compliance/Addendum2Term.spec.ts` (5): acceptance 43 (three cases), 47 and 48.
+  - `test/audit/rereview/Decisions.spec.ts`: Phase 4c items 1, 2, 3 and 7 (5 tests).
+  - `test/peripherals/AssurancePool.spec.ts`: the §13 Hardship Grant test.
+  - `contracts/mocks/PacificCalendarHarness.sol` for the default-day rules.
+- **Amended:** acceptance 1 (`RateSchedule.spec`, Boost at 2.5%), 3 (`Revolving.spec`, 2.5% over a real calendar cycle; the 3% case is kept as the Phase 2 test), 18 and 25 (`Section12Revolving.spec`, and the Addendum 2 versions above), 28 (new above).
+- **Existing tests changed, and why** (nothing loosened; each now asserts the Addendum 2 behaviour):
+  - `openLine(member, caps, periodLength, graceLength)` → `openLine(member, caps, cycleEndDay)` everywhere (57 call sites, mechanical).
+  - Defaults: `test/helpers/default.ts` now drives two missed Rebalance Amounts, records the two-person cure notice and waits out the grace (`driveToDefault`, `driveToSecondMiss`, `recordCureNotice`, `passCycleEnd`). Fixtures whose only debt was savings- or asset-backed (`Dfal`, `ReserveUntouched`, `Section2d`, `Liquidator`, `AssetBackedDefault`, `Decisions` M-C) add $10–$100 of unsecured debt, since a secured-only line can no longer default; the savings and share figures they assert are unchanged. Where that unsecured part is now the lost debt, the tests assert exactly that (`Liquidator.spec`).
+  - Cycle tests (`Section12Revolving`, `Section12Liquidator`, `BlindReview` H-C, `AuditPoC` H-2, `RevolvingIssuer.spec`): judged at calendar cycle ends; the first end only closes a cycle. The H-2 operator-setter test now asserts every setter reverts.
+  - The fee leg (`TermIssuer.spec`, `PayoutLifecycle.spec`, `DeepPoC` X-3, `DeepPoC2` X-8, `BlindReview` H-A): the third leg is asserted at Clear Lending's fee recipient, and the co-op receives nothing. `test/helpers/plans.ts` names a recipient by two signers before a plan opens (`feeRecipientOf`); `deep-setup` does the same.
+  - DECISIONS #7 (`Term.spec`, `Decisions` L-F, `Compliance.deploy`): the switch tests become "the switch is gone" and the Combined Ceiling's figures. `AccrualInvariants` drops the pro-rata share from bounds (a) and (b).
+  - `Decisions` L-G across issuers: under the Combined Ceiling the trimmed plan is the cheapest position, so the repayment past Income reaches Boost, not the plan.
+- **Full suite (credit half, before the merge)**: `KEEP_REVERT_STRINGS=true npx hardhat test`, one process, every fuzz at its default 300 steps: **1,056 passing, 0 failing** (35 min).
 
 ## 3. ABI changes callers must follow
 
@@ -139,7 +153,33 @@ New: `triggerDefault`, `setCycleEndDayWithSignature`, `proposeCureNotice`/`appro
 
 ## 5. Checks
 
-CHECKS_PLACEHOLDER
+**Sizes** (production build, `npx hardhat compile --force`; EIP-170 24,576 runtime, EIP-3860 49,152 creation). Every contract is within both. The changed ones:
+
+| Contract | Runtime before (`dev`) | Runtime now | Headroom | Creation |
+|---|---|---|---|---|
+| RevolvingIssuerExtension | 22,348 | 24,413 | 163 | 24,550 |
+| TermIssuer | 22,325 | 23,263 | 1,313 | 23,960 |
+| RevolvingIssuer | 24,138 | 23,001 | 1,575 | 24,006 |
+| TermIssuerExtension | 23,252 | 22,357 | 2,219 | 22,494 |
+| RevolvingIssuerTerms (new) | — | 22,308 | 2,268 | 22,445 |
+| RevolvingIssuerCycles | 19,683 | 22,222 | 2,354 | 22,276 |
+| TermIssuerOrigination | 17,258 | 20,938 | 3,638 | 21,075 |
+| Liquidator (untouched) | 20,380 | 20,380 | 4,196 | 20,517 |
+| RateSchedule | 10,548 | 10,989 | 13,587 | 11,126 |
+
+**Storage.** OpenZeppelin's storage report (`@openzeppelin/upgrades-core` `getStorageUpgradeReport`) between the `dev` build and this branch: RevolvingIssuer and its three modules, TermIssuer and its two, RateSchedule, AssurancePool, ESADepositVault and ClaimEscrow all pass (append-only; RevolvingIssuer's layout still ends at slot 303, TermIssuer's at its old end). Against `.openzeppelin/base-sepolia.json`: RevolvingIssuer passes against five of its six recorded implementations and TermIssuer against all six; the sixth RevolvingIssuer implementation (0x0D0A…8784) and the two retired Phase 1 AssurancePool implementations fail as they already did on `dev` (layouts replaced before Phase 2b and in Phase 2c), since this branch is append-only against `dev`. ESADepositVault and ClaimEscrow are not changed, so their reports against `.openzeppelin/base.json` stand.
+
+**Slither** (per contract, via-IR, Medium and High only, against `dev`). Nothing new is a defect. New entries, by class:
+
+- `uninitialized-state` (High): the module-split false positive Phases 1–4b triaged. `cycleState`, `dueTerms`, `defaultExcludedPayer`, `payerChoice`, `feeTerms`, `feeRecipientProposal`, `combinedRevolving` and `combinedProduct` are written in a module the analysed contract delegates to.
+- `controlled-delegatecall` (High) on `RevolvingIssuer.delegateView`: only the issuer itself may call it (`msg.sender == address(this)`), only with the pinned terms module as the target, and only through the static self-call in `_forwardView`, so it can run nothing else and write nothing.
+- `reentrancy-no-eth` (Medium): the Combined Ceiling's call from the revolving line into the term issuer (`materialiseMember`, which calls back only into views), the modules' self-call to `materialiseCarry`, and `openPlan`'s self-call. Each target is fixed at wiring and set once; none reaches a state-changing function of the caller.
+- `divide-before-multiply` (Medium) in `PacificCalendar`: the integer date algorithms, by design (exhaustively checked in acceptance 39 against the platform's time-zone data).
+- `uninitialized-local`, `incorrect-equality` (day comparisons) and `unused-return` (tuple fields not needed): intended, as before.
+
+**Generated files.** Fingerprints (`packages/command-types/src/chain/code.json`) regenerated from the production build; `code-fingerprints.mjs --check` passes. Contract reference regenerated (RevolvingIssuer, TermIssuer); `contract-reference.mjs --check` passes. `check-doc-links.mjs`: no broken links.
+
+**`npx turbo run typecheck test --affected`** (Node 22, bun installed, `TURBO_SCM_BASE=origin/dev`): 3 of 3 tasks passed.
 
 ## 6. App and API follow-ups
 
