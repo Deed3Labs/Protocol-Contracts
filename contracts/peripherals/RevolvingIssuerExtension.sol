@@ -342,6 +342,9 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
                 revert RevolvingIssuerStateNotEnabled(member, state);
             }
         }
+        // A new line starts its own record: misses, a halved ceiling or a streak of an earlier line
+        // do not carry over.
+        delete cycleOf[member];
         uint256 total;
         uint256 increase;
         for (uint256 i = 0; i < capacities.length && i < tiers.length; i++) {
@@ -370,7 +373,6 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         s.pastDueSM = 0;
         s.cureAmount = 0;
         s.noticeProposer = address(0);
-        cycleOf[member].cureNoticeAt = 0;
         _updateCreditPeriod(member, firstEnd, 0);
         emit CycleEndDaySet(member, day, firstEnd);
         // A new line starts a new default episode (Phase 4b, M-C): a default recorded before now

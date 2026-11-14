@@ -499,12 +499,22 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     }
 
     /// @notice closes the member's line on default, without erasing what they still owe.
-    /// @dev The ceiling goes; the positions do not. A defaulted member with collateral still owes
-    /// the part it covers, and that debt is what liquidation settles against the pledge. Clearing
-    /// it here would hand them their collateral back.
+    /// @dev The ceiling goes; the collateralized positions do not. A defaulted member with collateral
+    /// still owes the part it covers, and that debt is what liquidation settles against the pledge.
+    /// Clearing it here would hand them their collateral back.
+    ///
+    /// The positions the write-off just took off the ledger go (Phase 2e): the unsecured tiers, which
+    /// no collateral covers, or every tier when no exposure source says what is covered. Left in place
+    /// they would be debt the ledger no longer shows, and a re-onboarded member's first Rebalance
+    /// Amount would count it again (12.1).
     function _onDefault(address member) internal override {
+        bool all = address(exposureSource) == address(0);
         for (uint256 i = 0; i < tiers.length; i++) {
             tierCapacity[member][i] = 0;
+            if (all || _isUnsecured(i)) {
+                tierPrincipal[member][i] = 0;
+                tierCarry[member][i] = 0;
+            }
         }
         super._onDefault(member);
     }

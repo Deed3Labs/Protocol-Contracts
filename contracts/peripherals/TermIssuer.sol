@@ -166,8 +166,9 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         }
     }
 
-    /// @notice what each open plan of a member costs a month now, after its own cap and the
-    /// Combined Ceiling, as principal x monthly bps x 1e18 (the plan's ids oldest first).
+    /// @notice each open plan's monthly figure under the Combined Ceiling (12.3), in ledger units,
+    /// oldest plan first: a plan the ceiling leaves alone carries its list rate per 30-day cycle
+    /// (decision C); a trimmed plan carries what the ceiling allows it a month.
     function combinedPlanCarryOf(address member)
         external
         view
@@ -177,7 +178,9 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         (ids,, rates) = _memberCarries(member);
         monthly = new uint256[](ids.length);
         for (uint256 i = 0; i < ids.length; i++) {
-            monthly[i] = (plans[ids[i]].principalOutstanding - carryOutstandingOf[ids[i]]) * rates[i];
+            uint256 figure = (plans[ids[i]].principalOutstanding - carryOutstandingOf[ids[i]]) * rates[i];
+            if (rates[i] == _ownRate(ids[i])) figure = (figure * 360) / 365;
+            monthly[i] = figure / (BPS_ * RATE_SCALE);
         }
     }
 

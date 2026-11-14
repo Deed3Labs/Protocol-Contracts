@@ -4,6 +4,7 @@ import { deployCore, advance } from "../deep/deep-setup";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { signedOpenPlan } from "../../helpers/plans";
+import { driveToDefault } from "../../helpers/default";
 import { pledgeSigned, signPledge, signPledgeItem } from "../../helpers/pledge";
 import { CA, NY, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule } from "../compliance/rates";
 import { deployDeedTrack, mintValidatedLand, mintValidatedVehicle, signTrust, k, Ctx } from "../deed/fixture";
@@ -73,14 +74,14 @@ async function savingsStack() {
   return { ctx, clrusd, vault, issuer, registry, liquidator, coop, settler, float, stranger, save, openLine, spend };
 }
 
-/** Drives the member's line into a recorded default (section 12.5 cure path, then expiry). */
+/**
+ * Drives the member's line into a recorded default (12.5 as Addendum 2 has it: two missed Rebalance
+ * Amounts, a two-person cure notice, the grace period), then records it. The line must owe something
+ * unsecured: a missed Secured Minimum is never a miss.
+ */
 async function defaultLine(issuer: any, operator: any, member: string) {
-  await issuer.connect(operator).setCreditTerms(
-    { unsecuredLineCap: 0, cureWindow: DAY, boostCleanCycles: 0, boostDepositCycles: 0, autoClearOffGlobal: false }, 0, 0);
-  for (let i = 0; i < 6 && !(await issuer.hasDefaultedOnCurrentLine(member)); i++) {
-    await advance(2 * CYCLE + DAY + 1);
-    await issuer.syncCreditPeriod(member);
-  }
+  await driveToDefault(issuer, member, operator);
+  await issuer.triggerDefault(member);
   expect(await issuer.hasDefaultedOnCurrentLine(member)).to.equal(true);
 }
 
@@ -101,6 +102,9 @@ async function pricedCredit(opts: { ceilingThreshold?: bigint } = {}) {
   await revolving.connect(ctx.operator).setTierProduct(2, INCOME);
   await revolving.connect(ctx.operator).setTierProduct(3, P("BOOST"));
   await rates.setCflSources([await revolving.getAddress(), await term.getAddress()]);
+  // The Combined Ceiling (12.3, Addendum 2), wired both ways as deploy/25 does.
+  await term.connect(ctx.operator).setCombinedCeiling(await revolving.getAddress(), P("REVOLVING"));
+  await revolving.connect(ctx.operator).setTermIssuer(await term.getAddress());
   await ctx.networkRegistry.grantRole(await ctx.networkRegistry.STATE_ATTESTER_ROLE(), ctx.admin.address);
   for (const m of [ctx.member, member2]) {
     await ctx.networkRegistry.attestStateCode(m.address, CA);
@@ -111,7 +115,10 @@ async function pricedCredit(opts: { ceilingThreshold?: bigint } = {}) {
 
 async function openPriced(core: any, member: any, purchase: bigint, installments: number, product: string) {
   const { term, merchant, ctx, rates } = core;
-  const payout = purchase - (purchase * 250n) / 10_000n; // the merchant's registered discount
+  // The merchant's registered discount, capped at $50 up to $2,500 and $75 above (12.16).
+  const discount = (purchase * 250n) / 10_000n;
+  const cap = purchase <= 2_500n * ONE_USDC ? 50n * ONE_USDC : 75n * ONE_USDC;
+  const payout = purchase - (discount < cap ? discount : cap);
   let rate = await rates.effectiveMonthlyBps(CA, product, purchase);
   const p = await rates.paramsOf(CA, product);
   if (p.largeLoanThreshold !== 0n && purchase >= p.largeLoanThreshold) {
@@ -130,8 +137,8 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       const { ctx, issuer, liquidator, stranger, save, openLine, spend } = st;
       const m = ctx.member.address;
       await save(1_000n * ONE_USDC);
-      await openLine(1_000n * ONE_USDC, 0n);
-      await spend(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 100n * ONE_USDC);
+      await spend(1_100n * ONE_USDC); // Savings $1,000 and $100 unsecured, which is what is missed
       await defaultLine(issuer, ctx.operator, m);
       // The first default: liquidation is open to anyone, as compliance 10b has it.
       await liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS);
@@ -154,13 +161,13 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       const { ctx, issuer, liquidator, stranger, save, openLine, spend, clrusd } = st;
       const m = ctx.member.address;
       await save(1_000n * ONE_USDC);
-      await openLine(1_000n * ONE_USDC, 0n);
-      await spend(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 100n * ONE_USDC);
+      await spend(1_100n * ONE_USDC);
       await defaultLine(issuer, ctx.operator, m);
       await liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS);
-      await openLine(500n * ONE_USDC, 0n);
+      await openLine(400n * ONE_USDC, 100n * ONE_USDC);
       await save(500n * ONE_USDC);
-      await spend(400n * ONE_USDC);
+      await spend(450n * ONE_USDC); // Savings $400 and $50 unsecured
       await defaultLine(issuer, ctx.operator, m);
       await liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS);
       expect(await issuer.principalOf(m, 0)).to.equal(0n);
@@ -440,12 +447,13 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       await expect(term.connect(ctx.member).setSplit(1, 6)).to.be.revertedWithCustomError(term, "TermIssuerTermTooShort");
     });
 
-    it("with CFL aggregation off (DECISIONS #7), the rule is judged per plan, like the cap", async function () {
+    it("DECISIONS #7's switch is gone (Addendum 2, decision D): the rule is always judged on the aggregate", async function () {
       const core = await pricedCredit();
       const { term, ctx, rates } = core;
-      await rates.setCflAggregation(false);
+      expect(rates.interface.getFunction("setCflAggregation")).to.equal(null);
       await openPriced(core, ctx.member, 2_400n * ONE_USDC, 6, P("CASH"));
-      await expect(openPriced(core, ctx.member, 2_400n * ONE_USDC, 6, P("CASH"))).to.emit(term, "PlanOpened");
+      await expect(openPriced(core, ctx.member, 2_400n * ONE_USDC, 6, P("CASH")))
+        .to.be.revertedWithCustomError(term, "TermIssuerTermTooShort");
     });
   });
 
@@ -467,24 +475,27 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       expect(await revolving.principalOnlyOf(m, 2)).to.be.lt(1_000n * ONE_USDC);
     });
 
-    it("across issuers: a term plan whose cap has come down is repaid after the dearer revolving tier", async function () {
+    it("across issuers: a term plan the Combined Ceiling trims is repaid after the revolving tiers", async function () {
       const core = await pricedCredit();
       const { ctx, revolving, term, merchant } = core;
       const m = ctx.member.address;
       await revolving.connect(ctx.operator).openLine(m, [0n, 0n, 1_000n * ONE_USDC, 2_000n * ONE_USDC], 0);
       await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 3_000n * ONE_USDC);
-      // A $500 partner plan, signed at 200 bps (its own cap on $500 is 222.5). On the member's
-      // $3,500 aggregate it costs 139.64 bps per 30 days now: less than Income's 150, though its
-      // configured rate (200) is higher. Boost, trimmed, is the cheapest.
+      // A $500 partner plan, signed at 200 bps (its own cap on $500 is 222.5). Under the Combined
+      // Ceiling (12.3) the revolving tiers keep their $43.875 a month and the plan gets what is left
+      // of the $48.875 graduated on $3,500: $5.00, 100 bps, though its configured rate (200) is
+      // higher. So it is now the cheapest position: Income (150), then Boost (144.375), then it.
       await openPriced(core, ctx.member, 500n * ONE_USDC, 12, P("PARTNER"));
       expect((await term.planAt(0)).ratePerCycle).to.equal(200n);
+      const [planRate] = await term.nextRepaymentRate(m);
+      expect(planRate).to.be.closeTo(100n * RATE_SCALE, RATE_SCALE / 1000n);
       const planBefore = (await term.planAt(0)).principalOutstanding;
       const boostBefore = await revolving.principalOnlyOf(m, 3);
-      // Enough to clear Income and reach the next band.
+      // Enough to clear Income and reach the next band: Boost, not the plan.
       await ctx.stableCredit.connect(ctx.member).repayCreditBalance(m, 1_050n * ONE_USDC);
       expect(await revolving.principalOf(m, 2)).to.equal(0n);
-      expect((await term.planAt(0)).principalOutstanding).to.be.lt(planBefore);
-      expect(await revolving.principalOnlyOf(m, 3)).to.equal(boostBefore);
+      expect(await revolving.principalOnlyOf(m, 3)).to.be.lt(boostBefore);
+      expect((await term.planAt(0)).principalOutstanding).to.be.gte(planBefore);
     });
   });
 
@@ -597,6 +608,116 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       const inNy = await carryOver(revolving, m, CYCLE);
       expect(inNy).to.be.gt(movedBeforeLaunch);
       expect(inNy).to.be.closeTo((inCa * 120n) / 100n, 30_000n);
+    });
+  });
+
+  /* ---- Phase 4c items 1, 2, 3 and 7, built in Phase 2e (PHASE-4B-OPEN-DECISIONS.md) ---- */
+
+  describe("4c item 1: a governed per-member daily card cap", function () {
+    it("bounds what the settler key can put on any one member in a day; other members and the next day are unaffected", async function () {
+      const st = await savingsStack();
+      const { ctx, issuer, settler, float, openLine } = st;
+      await issuer.connect(ctx.operator).setCardSettler(settler.address, true);
+      await issuer.connect(ctx.operator).setCardSettlementAccount(float.address);
+      await openLine(0n, 1_000n * ONE_USDC);
+      await issuer.connect(ctx.operator).openLine(ctx.counterparty.address, [0n, 1_000n * ONE_USDC], 0);
+      // Only the settings role sets it.
+      await expect(issuer.connect(ctx.outsider).setDueTerms(100, ONE_USDC, 100n * ONE_USDC, 3))
+        .to.be.revertedWithCustomError(issuer, "CreditIssuerMissingRole");
+      await issuer.connect(ctx.operator).setDueTerms(100, ONE_USDC, 100n * ONE_USDC, 3);
+      const card = async (who: string, ref: string, amount: bigint) => {
+        await issuer.connect(settler).authorizeCardSpend(ethers.id(ref), who, amount);
+        return issuer.connect(settler).settleCardSpend(ethers.id(ref), who, amount);
+      };
+      await card(ctx.member.address, "a", 60n * ONE_USDC);
+      await expect(card(ctx.member.address, "b", 50n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardMemberDailyCap");
+      await card(ctx.counterparty.address, "c", 90n * ONE_USDC); // another member: their own budget
+      await card(ctx.member.address, "d", 40n * ONE_USDC); // up to the cap exactly
+      await advance(DAY);
+      await card(ctx.member.address, "e", 100n * ONE_USDC); // a new day
+    });
+  });
+
+  describe("4c item 2: the card follows the current line", function () {
+    it("a member who defaulted and was re-onboarded can use the card on the new line; during the default it is refused", async function () {
+      const st = await savingsStack();
+      const { ctx, issuer, settler, float, openLine, spend } = st;
+      const m = ctx.member.address;
+      await issuer.connect(ctx.operator).setCardSettler(settler.address, true);
+      await issuer.connect(ctx.operator).setCardSettlementAccount(float.address);
+      await openLine(0n, 500n * ONE_USDC);
+      await spend(300n * ONE_USDC);
+      await defaultLine(issuer, ctx.operator, m);
+      await expect(issuer.connect(settler).authorizeCardSpend(ethers.id("x"), m, ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerMemberNotInGoodStanding");
+      // Re-onboarded: nothing pledged was left unapplied, so the line opens; the card works on it.
+      await openLine(0n, 500n * ONE_USDC);
+      expect(await issuer.hasDefaulted(m)).to.equal(true);
+      await issuer.connect(settler).authorizeCardSpend(ethers.id("y"), m, 100n * ONE_USDC);
+      await issuer.connect(settler).settleCardSpend(ethers.id("y"), m, 100n * ONE_USDC);
+      // The written-off positions went with the default: the new line owes only the new purchase.
+      expect(await issuer.totalPrincipalOf(m)).to.equal(100n * ONE_USDC);
+    });
+  });
+
+  describe("4c item 3: openLine waits for an earlier default's collateral", function () {
+    it("reverts while pledged collateral against the defaulted debt is unapplied, and opens once it is liquidated", async function () {
+      const st = await savingsStack();
+      const { ctx, issuer, liquidator, stranger, save, openLine, spend } = st;
+      const m = ctx.member.address;
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 100n * ONE_USDC);
+      await spend(1_100n * ONE_USDC);
+      await defaultLine(issuer, ctx.operator, m);
+      await expect(openLine(500n * ONE_USDC, 0n))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerDefaultCollateralUnapplied");
+      await liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS);
+      expect(await issuer.principalOf(m, 0)).to.equal(0n);
+      await openLine(500n * ONE_USDC, 0n);
+      expect(await issuer.lineOpenedAtOf(m)).to.be.gt(await issuer.defaultedAt(m));
+    });
+  });
+
+  describe("4c item 7: issuer-internal repayments follow the effective-rate order", function () {
+    async function cappedBoost() {
+      const core = await pricedCredit();
+      const { ctx, revolving, rates } = core;
+      // Income-backed at 2.5% and Boost at 3% on $1,000 and $500: $40.00 of list carry against the
+      // $28.125 ceiling, all trimmed from Boost, which then costs 0.625% a month: cheaper than income.
+      await rates.setProduct(CA, INCOME, params({ listMonthlyBps: 250 }), CA_BANDS);
+      const s = await ethers.getSigners();
+      const [settler, float] = [s[15], s[16]];
+      await revolving.connect(ctx.operator).setCardSettler(settler.address, true);
+      await revolving.connect(ctx.operator).setCardSettlementAccount(float.address);
+      const m = ctx.member.address;
+      await revolving.connect(ctx.operator).openLine(m, [0n, 0n, 1_000n * ONE_USDC, 500n * ONE_USDC], 0);
+      await revolving.connect(settler).authorizeCardSpend(ethers.id("s"), m, 1_500n * ONE_USDC);
+      await revolving.connect(settler).settleCardSpend(ethers.id("s"), m, 1_500n * ONE_USDC);
+      const [rateIncome, rateBoost] = await Promise.all([2, 3].map(async (tier) => {
+        const [, rate] = await revolving.combinedInputsOf(m).then(() => [0, 0]); // touch the view path
+        return rate;
+      }));
+      void rateIncome; void rateBoost;
+      return { ...core, settler, m };
+    }
+
+    it("repayCardSpend clears the dearer income-backed tier first when the ceiling makes Boost cheaper", async function () {
+      const { revolving, settler, m } = await cappedBoost();
+      const [rate] = await revolving.nextRepaymentRate(m);
+      expect(rate).to.equal(250n * RATE_SCALE); // income-backed is the dearest after the cap
+      const boost = await revolving.principalOf(m, 3);
+      await revolving.connect(settler).repayCardSpend(ethers.id("r"), m, 300n * ONE_USDC);
+      expect(await revolving.principalOf(m, 2)).to.be.closeTo(700n * ONE_USDC, 10_000n);
+      expect(await revolving.principalOf(m, 3)).to.be.closeTo(boost, 10_000n);
+    });
+
+    it("reverseCardSpend does the same", async function () {
+      const { revolving, settler, m } = await cappedBoost();
+      const boost = await revolving.principalOf(m, 3);
+      await revolving.connect(settler).reverseCardSpend(ethers.id("s"), 200n * ONE_USDC);
+      expect(await revolving.principalOf(m, 2)).to.be.closeTo(800n * ONE_USDC, 10_000n);
+      expect(await revolving.principalOf(m, 3)).to.be.closeTo(boost, 10_000n);
     });
   });
 });
