@@ -9,7 +9,8 @@ import { ONE_USDC, DAY } from "./rates";
  * as the owner decided it (`addendum-4-decisions.md`, items 1 to 15).
  *
  *  - 10c: the 30-day renewal cap on CLRUSD's account and security pauses and the vault pause
- *    (decision 2), and the pause clocks the credit side reads (decisions 3 and 4). Test 49.
+ *    (decision 2), and the pause clocks the credit side reads (decisions 3 and 4). Test 49. A new
+ *    pause within 30 days of the last one's end continues its cap (owner decision 33).
  *  - 10d: CLRUSD's own listing, cleared only by a two-person `delist` with a reason code
  *    (decisions 7 and 8). Test 52.
  *  - 10f: the Legacy Contact module (decisions 10 to 13), on a mock of Kernel v3.3's executor path.
@@ -235,6 +236,7 @@ describe("COMPLIANCE Phase 2g: pause cap and clocks, CLRUSD de-listing, Legacy C
       pause: [string, () => any[]];
       pauseWithBasis: [string, () => any[]];
       renew: [string, () => any[]];
+      renewWithBasis: [string, () => any[]];
       inForce: () => Promise<boolean>;
     };
     const ORDER = ethers.id("court-order");
@@ -243,16 +245,19 @@ describe("COMPLIANCE Phase 2g: pause cap and clocks, CLRUSD de-listing, Legacy C
         pause: ["pauseAccount", () => [s.ctx.member.address, 1]],
         pauseWithBasis: ["pauseAccountWithLegalBasis", () => [s.ctx.member.address, 1, COURT_ORDER, ORDER]],
         renew: ["renewAccountPause", () => [s.ctx.member.address, 1]],
+        renewWithBasis: ["renewAccountPauseWithLegalBasis", () => [s.ctx.member.address, 1, COURT_ORDER, ORDER]],
         inForce: () => s.clrusd.isPauseInForce(s.ctx.member.address) },
       { label: "CLRUSD security pause", c: () => s.clrusd, err: "ClearUSDPauseCapReached",
         pause: ["pauseForSecurity", () => [1]],
         pauseWithBasis: ["pauseForSecurityWithLegalBasis", () => [1, COURT_ORDER, ORDER]],
         renew: ["renewSecurityPause", () => [1]],
+        renewWithBasis: ["renewSecurityPauseWithLegalBasis", () => [1, COURT_ORDER, ORDER]],
         inForce: () => s.clrusd.isPauseInForce(ethers.ZeroAddress) },
       { label: "vault pause", c: () => s.vault, err: "ESADepositVaultPauseCapReached",
         pause: ["pause", () => []],
         pauseWithBasis: ["pauseWithLegalBasis", () => [COURT_ORDER, ORDER]],
         renew: ["renewPause", () => []],
+        renewWithBasis: ["renewPauseWithLegalBasis", () => [COURT_ORDER, ORDER]],
         inForce: () => s.vault.isPauseInForce() },
     ];
 
@@ -334,6 +339,15 @@ describe("COMPLIANCE Phase 2g: pause cap and clocks, CLRUSD de-listing, Legacy C
         st.last = keyE;
         await advance(WINDOW - 60);
         await expect(renewOnce(k, st)).to.be.revertedWithCustomError(k.c(), k.err).withArgs(t0 + 30 * DAY);
+        // The two-person legal-basis renewal still carries it on, one window at a time.
+        await call(k, k.renewWithBasis, s.keyA);
+        const t2 = await stamp(call(k, k.renewWithBasis, s.keyB));
+        expect(await k.inForce()).to.equal(true);
+        await setNext(t2 + WINDOW - 1);
+        await ethers.provider.send("evm_mine", []);
+        expect(await k.inForce()).to.equal(true);
+        await ethers.provider.send("evm_mine", []);
+        expect(await k.inForce()).to.equal(false);
       });
 
       it(`${k.label}: one set 30 or more days after the last one ended starts a new 30 days`, async function () {
