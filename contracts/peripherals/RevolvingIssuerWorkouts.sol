@@ -32,9 +32,15 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
     /// whether a pause is in force, from CLRUSD and the vault. Set once. It can only lengthen a grace
     /// period or hold off a default: no role uses it to bring one on.
     function setPauseClock(address clock) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        if (clock == address(0) || pauseClock != address(0)) revert RevolvingIssuerPauseClockSet();
-        pauseClock = clock;
+        Phase2gStorage storage $ = _p2g();
+        if (clock == address(0) || $.pauseClock != address(0)) revert RevolvingIssuerPauseClockSet();
+        $.pauseClock = clock;
         emit PauseClockSet(clock);
+    }
+
+    /// @notice where the member's pause clock is read; zero while unset.
+    function pauseClock() external view returns (address) {
+        return _p2g().pauseClock;
     }
 
     /* ---- 12.18: workout states (two people) ---- */
@@ -51,7 +57,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
             cycles == 0 || cycles > max || workoutRef == bytes32(0)
                 || (state == WORKOUT_REDUCED) != (reducedAmount != 0)
         ) revert RevolvingIssuerWorkoutTerms(state, cycles);
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         w.proposer = _msgSender();
         w.proposal = keccak256(abi.encode(state, cycles, reducedAmount, workoutRef));
         emit WorkoutProposed(member, _msgSender(), state, cycles, reducedAmount, workoutRef);
@@ -63,7 +69,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
         external
         onlyCreditRole(ATTESTER_ROLE)
     {
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         address proposer = w.proposer;
         if (proposer == address(0) || w.proposal != keccak256(abi.encode(state, cycles, reducedAmount, workoutRef))) {
             revert RevolvingIssuerNoProposal(member);
@@ -110,7 +116,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
 
     /// @notice proposes a second workout within 365 days of the last, with its own reference hash.
     function proposeSecondWorkout(address member, bytes32 secondRef) external onlyCreditRole(ATTESTER_ROLE) {
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         if (secondRef == bytes32(0) || secondRef == w.ref) revert RevolvingIssuerWorkoutTerms(0, 0);
         w.secondProposer = _msgSender();
         w.secondRef = secondRef;
@@ -119,7 +125,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
 
     /// @notice a second signer approves it: one more workout may start within the 365 days.
     function approveSecondWorkout(address member, bytes32 secondRef) external onlyCreditRole(ATTESTER_ROLE) {
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         address proposer = w.secondProposer;
         if (proposer == address(0) || w.secondRef != secondRef) revert RevolvingIssuerNoProposal(member);
         if (proposer == _msgSender()) revert RevolvingIssuerSameSigner(proposer);
@@ -142,7 +148,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
     }
 
     function _endWorkout(address member) private {
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         uint8 state = w.state;
         if (state != WORKOUT_DEFERRAL && state != WORKOUT_REDUCED) revert RevolvingIssuerNothingDue(member);
         // A DEFERRAL accrued nothing on the unsecured positions up to now; from now they accrue.
@@ -197,7 +203,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
         _touch(member);
         uint256 planTier = _workoutTier();
         uint256 owed = tierPrincipal[member][planTier];
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         if (w.state != WORKOUT_PLAN || owed == 0 || amount == 0) revert RevolvingIssuerNothingDue(member);
         uint256 pay = amount < owed ? amount : owed;
         stableCredit.repayCreditBalanceFor(_msgSender(), member, uint128(pay));
@@ -238,7 +244,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
     /// paused time since: 10c), what was due by the notice still unpaid, and no pause in force.
     /// Computed; fails closed.
     function workoutPlanDefaultable(address member) public view returns (bool) {
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         if (
             w.state != WORKOUT_PLAN || w.planNoticeAt == 0 || w.planPastDueSince == 0
                 || _planPaid(member, w) >= w.planNoticeDue
@@ -253,7 +259,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
     /// Savings or other collateral through it. The ledger ends the line's ceiling with it.
     function declareWorkoutDefault(address member) external {
         if (!workoutPlanDefaultable(member)) revert RevolvingIssuerPlanNotDefaultable(member);
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         _touch(member);
         uint256 owed = tierPrincipal[member][_workoutTier()];
         w.planWriteOff = true;
@@ -265,7 +271,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
     }
 
     function _requirePlanPastDue(address member) private view returns (Workout storage w) {
-        w = workoutOf[member];
+        w = _p2g().workoutOf[member];
         if (w.state != WORKOUT_PLAN || w.planPastDueSince == 0 || _planPaid(member, w) >= _planDue(w)) {
             revert RevolvingIssuerNothingDue(member);
         }
@@ -295,12 +301,12 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
 
     /// @notice the member's workout record (12.18).
     function workoutStateOf(address member) external view returns (Workout memory) {
-        return workoutOf[member];
+        return _p2g().workoutOf[member];
     }
 
     /// @notice the workout plan's figures: what is due so far, what is paid, and what is owed.
     function workoutPlanOf(address member) external view returns (uint256 due, uint256 paid, uint256 owed) {
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         due = _planDue(w);
         paid = _planPaid(member, w);
         owed = w.planTotal - paid;
@@ -311,7 +317,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
     /// and whether it needs a statement) and the CycleStatement events, every 12.17 value of a closed
     /// cycle is readable without recomputation.
     function positionStatOf(address member, uint256 tierId) external view returns (PositionStat memory) {
-        return positionStat[member][tierId];
+        return _p2g().positionStat[member][tierId];
     }
 
     /* ---- moved here from the cycles module (Phase 2g, for room) ---- */

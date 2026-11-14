@@ -324,7 +324,6 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         uint256 planNoticeClock; // the pause clock at the notice
         uint64 planDefaultedAt;
     }
-    mapping(address => Workout) internal workoutOf;
 
     /// @notice One position's 12.17 figures (decisions 17-19): principal-seconds and carry in the
     /// running cycle, and the most recently closed cycle's end figures.
@@ -336,16 +335,31 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         uint128 lastCycleCarry; // carry accrued in that cycle
         uint256 lastPrincipalSeconds; // and the principal-seconds it accrued on
     }
-    mapping(address => mapping(uint256 => PositionStat)) internal positionStat;
 
-    /// @notice Where the member's pause clock is read (10c): paused seconds and whether a pause is in
-    /// force. Set once. Unset, no pause is counted.
-    address public pauseClock;
+    /// @notice Phase 2g's storage, in its own ERC-7201 namespace, so the last three slots of the gap
+    /// stay free: each member's workout (12.18), each position's 12.17 figures, and where the pause
+    /// clock is read (10c: paused seconds and whether a pause is in force; set once, and unset no
+    /// pause is counted). Later additions go at the end of this struct.
+    /// @custom:storage-location erc7201:clear.storage.RevolvingIssuer.Phase2g
+    struct Phase2gStorage {
+        mapping(address => Workout) workoutOf;
+        mapping(address => mapping(uint256 => PositionStat)) positionStat;
+        address pauseClock;
+    }
 
-    /// @dev The gap is used up: Phase 2e took five slots (cycleState, dueTerms (2),
-    /// defaultExcludedPayer, payerChoice) and Phase 2g the last three (workoutOf, positionStat,
-    /// pauseClock). The layout still ends at slot 303. Anything later goes in a struct held in a
-    /// mapping above (as CycleState and Workout grow), never in a new slot.
+    /// @dev keccak256(abi.encode(uint256(keccak256("clear.storage.RevolvingIssuer.Phase2g")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant PHASE2G_STORAGE = 0x7a57989cedc4800be354084bd8f0675ea6398cffb383790fd867302e96891c00;
+
+    function _p2g() internal pure returns (Phase2gStorage storage $) {
+        bytes32 slot = PHASE2G_STORAGE;
+        assembly {
+            $.slot := slot
+        }
+    }
+
+    /// @dev Three slots, from 300. Phase 2e took five (cycleState, dueTerms (2),
+    /// defaultExcludedPayer, payerChoice). The layout ends at slot 303.
+    uint256[3] private __gap;
 
     bytes32 internal constant BOOST_KIND = "BOOST";
     bytes32 internal constant INCOME_KIND = "INCOME";
@@ -557,7 +571,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         uint256 assetCarry;
         for (uint256 i = 0; i < tiers.length; i++) {
             uint256 carry = carries[i];
-            PositionStat storage ps = positionStat[member][i];
+            PositionStat storage ps = _p2g().positionStat[member][i];
             if (from != 0) ps.principalSeconds += _principalOnly(member, i) * (at - from);
             if (carry > 0) {
                 ps.cycleCarry += uint128(carry);
@@ -589,7 +603,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         uint256 basis = snapBasis[member];
         uint256 unsecuredPrincipal;
         uint256 unsecuredCarry;
-        bool deferred = workoutOf[member].state == WORKOUT_DEFERRAL;
+        bool deferred = _p2g().workoutOf[member].state == WORKOUT_DEFERRAL;
         for (uint256 i = 0; i < n; i++) {
             uint256 principal = _principalOnly(member, i);
             if (principal == 0 || (deferred && _isUnsecured(i))) continue;
@@ -705,7 +719,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         // An unpaid Secured Minimum pauses new savings- and asset-backed draws (12.1): those tiers
         // take nothing, and unsecured draws go on.
         bool paused = _securedDrawPaused(member);
-        bool workout = workoutOf[member].state != 0;
+        bool workout = _p2g().workoutOf[member].state != 0;
         for (uint256 i = 0; i < tiers.length && remaining > 0; i++) {
             bool unsecured = _isUnsecured(i);
             // 12.18: no unsecured draw while any workout state is set, and nothing ever lands in the
@@ -861,7 +875,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     function _computedDefault(address member) internal view returns (bool) {
         CycleRecord memory c = cycleOf[member];
         CycleState storage s = cycleState[member];
-        uint8 workout = workoutOf[member].state;
+        uint8 workout = _p2g().workoutOf[member].state;
         if (
             c.missedInRow < 2 || c.cureNoticeAt == 0 || s.cureAmount == 0 || s.incomePause != 0
                 || workout == WORKOUT_DEFERRAL || workout == WORKOUT_REDUCED
@@ -895,13 +909,13 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
 
     /// @dev The member's pause clock (10c): cumulative paused seconds. Zero with no clock named.
     function _pauseClockOf(address member) internal view returns (uint256) {
-        address clock = pauseClock;
+        address clock = _p2g().pauseClock;
         return clock == address(0) ? 0 : IPauseClock(clock).pausedSeconds(member);
     }
 
     /// @dev Whether any pause affecting the member is in force now (10c).
     function _pauseInForce(address member) internal view returns (bool) {
-        address clock = pauseClock;
+        address clock = _p2g().pauseClock;
         return clock != address(0) && IPauseClock(clock).inForce(member);
     }
 

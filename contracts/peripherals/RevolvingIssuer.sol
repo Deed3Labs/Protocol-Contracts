@@ -451,7 +451,7 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         // `nextRepaymentRate` reports the band in.
         uint256[] memory rates = _effectiveRates(member);
         // A defaulted workout plan's write-off (12.18) reaches only the plan's own position.
-        bool planOnly = workoutOf[member].planWriteOff;
+        bool planOnly = _p2g().workoutOf[member].planWriteOff;
         for (uint256 i = tiers.length; i > 0 && remaining > 0; i--) {
             uint256 tierId = i - 1;
             if (rates[tierId] < minRate || (planOnly && tiers[tierId].kind != WORKOUT_KIND)) continue;

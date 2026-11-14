@@ -57,7 +57,7 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
                 _countDownIncomePause(s, end);
                 // The line is frozen, but the cycle still gets its statement (12.17).
                 IRevolvingCloseCarry(address(this)).closeCarry(member, end);
-                _recordStatement(member, s, end, s.cureAmount, 0, workoutOf[member]);
+                _recordStatement(member, s, end, s.cureAmount, 0, _p2g().workoutOf[member]);
             }
             s.cycleEnd = uint64(PacificCalendar.endOnOrAfter(end + 1, s.cycleEndDay));
         }
@@ -226,7 +226,7 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
     function _judgeWorkout(address member, CycleState storage s, CycleRecord storage c, uint8 workout, uint64 end, bool paid)
         private
     {
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         if (workout == WORKOUT_PLAN && w.state == WORKOUT_PLAN) {
             if (s.closedAt >= w.startedAt && s.incomePause == 0 && w.planDueCount < w.planCycles) w.planDueCount++;
             uint256 planPaid = _planPaid(member, w);
@@ -277,7 +277,7 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
         // 12.17 (decision 18): carry is brought up to the cycle end itself, so the close's figures
         // are as at that end even when it is recorded later.
         IRevolvingCloseCarry(address(this)).closeCarry(member, end);
-        Workout storage w = workoutOf[member];
+        Workout storage w = _p2g().workoutOf[member];
         uint8 workout = w.state;
         uint256 ra;
         uint256 sm;
@@ -341,7 +341,7 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
         uint256[] memory principalSeconds = new uint256[](n);
         bool required;
         for (uint256 i = 0; i < n; i++) {
-            PositionStat storage p = positionStat[member][i];
+            PositionStat storage p = _p2g().positionStat[member][i];
             startPrincipal[i] = p.endPrincipal;
             startCarry[i] = p.endCarry;
             uint256 carry = tierCarry[member][i];
