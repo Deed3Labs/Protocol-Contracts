@@ -278,9 +278,9 @@ creditRouter.post('/:wallet/savings-draw-allowance/prepare', async (req: Request
   if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
   let amount: bigint;
   try {
-    amount = BigInt(String(req.body?.amount ?? '0'));
+    amount = BigInt(String(req.body?.allowance ?? '0'));
   } catch {
-    return res.status(400).json({ error: 'Invalid amount', message: 'amount must be whole ledger units.' });
+    return res.status(400).json({ error: 'Invalid amount', message: 'allowance must be whole ledger units.' });
   }
   const result = await prepareSavingsDrawAllowance(wallet, amount);
   if (!result.ok) return res.status(409).json({ error: 'Could not prepare', message: result.reason });
@@ -292,7 +292,7 @@ creditRouter.post('/:wallet/savings-draw-allowance', requireStepUp, async (req: 
   const wallet = req.params.wallet;
   if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
   const result = await submitSavingsDrawAllowance(wallet, {
-    amount: String(req.body?.amount ?? ''),
+    amount: String(req.body?.allowance ?? ''),
     deadline: Number(req.body?.deadline),
     signature: String(req.body?.signature ?? ''),
   });
