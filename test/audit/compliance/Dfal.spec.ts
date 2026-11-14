@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { CA, ONE_USDC, CYCLE, DAY } from "./rates";
 import { issuerProxyOptions } from "../../helpers/issuers";
+import { driveToSecondMiss, recordCureNotice, NOTICE_GRACE } from "../../helpers/default";
 import { pledgeSigned } from "../../helpers/pledge";
 
 /*
@@ -38,6 +39,8 @@ async function deployStack() {
   await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress());
   await ctx.access.grantOperator(await issuer.getAddress());
   await issuer.connect(ctx.operator).addTier(SAVINGS, 0n, CYCLE);
+  // An unsecured tier: only an unpaid Rebalance Amount is a miss (12.1, Addendum 2).
+  await issuer.connect(ctx.operator).addTier(ethers.encodeBytes32String("INCOME"), 150n, CYCLE);
 
   const Registry = await ethers.getContractFactory("CollateralRegistry");
   const registry: any = await upgrades.deployProxy(Registry, [ctx.admin.address, await ctx.networkRegistry.getAddress()], { kind: "uups" });
@@ -78,7 +81,7 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
 
   async function drawSavings(amount: bigint, period = 30 * DAY) {
     const { ctx, issuer } = s;
-    await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 0);
+    await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC, 0n], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
   }
 
@@ -113,17 +116,21 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     await issuer.connect(ctx.operator).setCreditTerms(
       { unsecuredLineCap: 0, cureWindow: CURE, boostCleanCycles: 0, boostDepositCycles: 0, autoClearOffGlobal: false }, 0, 0);
     await save(1_000n * ONE_USDC);
-    await drawSavings(400n * ONE_USDC, CYCLE);
+    // $400 on Savings and $10 unsecured: the unsecured Rebalance Amount is what can be missed.
+    await issuer.connect(ctx.operator).openLine(ctx.member.address, [400n * ONE_USDC, 50n * ONE_USDC], 0);
+    await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 410n * ONE_USDC);
     // Not in default yet: anyone calling is refused.
     await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
       .to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");
-    // Two missed rebalances in a row, each judged by the chain (anyone may ask it to).
-    for (let miss = 0; miss < 2; miss++) {
-      const [, expiration, grace] = await issuer.creditPeriods(ctx.member.address);
-      await ethers.provider.send("evm_setNextBlockTimestamp", [Number(expiration + grace) + 1]);
-      await issuer.connect(stranger).syncCreditPeriod(ctx.member.address);
-    }
-    const end = Number((await issuer.cycleOf(ctx.member.address)).cureNoticeAt) + CURE;
+    // Two missed Rebalance Amounts in a row, each judged by the chain (anyone may ask it to); then
+    // the two-person cure notice (Addendum 2: without it, never a default).
+    await driveToSecondMiss(issuer, ctx.member.address);
+    await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
+      .to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");
+    await recordCureNotice(issuer, ctx.member.address);
+    const due = Number((await issuer.cycleStateOf(ctx.member.address)).cureDueAt) + CURE;
+    const notice = Number((await issuer.cycleOf(ctx.member.address)).cureNoticeAt) + NOTICE_GRACE;
+    const end = due > notice ? due : notice;
     await ethers.provider.send("evm_setNextBlockTimestamp", [end - 1]);
     await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
       .to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");
@@ -148,11 +155,14 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     await pledgeSigned(registry, m, SAVINGS, 1n);
     await registry.refresh(m);
     await issuer.connect(ctx.operator).setTierCapacity(m, 0, 2_000n * ONE_USDC);
-    await issuer.connect(ctx.operator).pausePeriodOf(m);
-    await issuer.connect(ctx.operator).unpausePeriodOf(m);
+    // The period setters no longer exist for this line: cycles are computed (12.1, Addendum 2).
     const [, exp, grace] = await issuer.creditPeriods(m);
-    await issuer.connect(ctx.operator).setPeriodExpirationOf(m, exp + 1n);
-    await issuer.connect(ctx.operator).setGraceLengthOf(m, grace + 1n);
+    for (const call of [
+      () => issuer.connect(ctx.operator).pausePeriodOf(m),
+      () => issuer.connect(ctx.operator).unpausePeriodOf(m),
+      () => issuer.connect(ctx.operator).setPeriodExpirationOf(m, exp + 1n),
+      () => issuer.connect(ctx.operator).setGraceLengthOf(m, grace + 1n),
+    ]) await expect(call()).to.be.revertedWithCustomError(issuer, "RevolvingIssuerCyclesComputed");
     await clrusd.syncEncumbrance(m);
     expect(await ctx.stableCredit.creditBalanceOf(m)).to.equal(drawn);
     expect(1_000n * ONE_USDC - (await clrusd.freeBalanceOf(m))).to.equal(lock);

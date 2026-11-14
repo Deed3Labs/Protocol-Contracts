@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { ONE_USDC, DAY, CA, P, CA_BANDS, params, deployRateSchedule } from "./rates";
+import { passCycleEnd } from "../../helpers/default";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { pledgeSigned, pledgeItemSigned } from "../../helpers/pledge";
 
@@ -540,8 +541,8 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     await issuer.connect(ctx.operator).openLine(m, [0n, 0n, 0n, U(1_000), U(500)], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, U(1_500));
 
-    await advance(CYCLE + GRACE + 1);
-    await issuer.connect(stranger).syncCreditPeriod(m); // first missed rebalance
+    await passCycleEnd(issuer.connect(stranger), m); // the close: $1,500 is the Rebalance Amount
+    await passCycleEnd(issuer.connect(stranger), m); // first missed rebalance
     const excess = await issuer.unsecuredExcessOf(m);
     expect(excess).to.be.gte(U(750));
     const savings = await clrusd.balanceOf(m);

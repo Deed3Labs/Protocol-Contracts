@@ -52,6 +52,7 @@ async function deployStack() {
   await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress());
   await ctx.access.grantOperator(await issuer.getAddress());
   await issuer.connect(ctx.operator).addTier(SAVINGS, 0n, CYCLE);
+  await issuer.connect(ctx.operator).addTier(ethers.encodeBytes32String("INCOME"), 150n, CYCLE);
 
   const Registry = await ethers.getContractFactory("CollateralRegistry");
   const registry: any = await upgrades.deployProxy(Registry, [ctx.admin.address, await ctx.networkRegistry.getAddress()], { kind: "uups" });
@@ -304,16 +305,19 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
 
       // 10b liquidation: the seized CLRUSD is burned one-for-one and the USDC settles the debt.
       await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
-      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 0);
-      await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 400n * ONE_USDC);
+      // $400 on Savings and $10 unsecured: only an unpaid Rebalance Amount is a miss (Addendum 2).
+      await issuer.connect(ctx.operator).openLine(ctx.member.address, [400n * ONE_USDC, 50n * ONE_USDC], 0);
+      await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 410n * ONE_USDC);
       await driveToDefault(issuer, ctx.member.address, ctx.operator);
+      // Bring the unsecured tier's carry onto the ledger first, so the debt read is the one settled.
+      await issuer.materialiseCarry(ctx.member.address);
       const r1 = await reserve(), s1 = await supply(), debt = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
       await liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
       const paid = r1 - (await reserve());
       expect(paid).to.equal(400n * ONE_USDC);
       expect(s1 - (await supply())).to.equal(paid);
       expect(await usdc.balanceOf(await liquidator.getAddress())).to.equal(0n);
-      expect(debt - (await ctx.stableCredit.creditBalanceOf(ctx.member.address))).to.equal(paid);
+      expect(debt - (await ctx.stableCredit.creditBalanceOf(ctx.member.address))).to.be.closeTo(paid, 100n); // a second's carry
       // The reserve still covers every CLRUSD outstanding, plus the donation nobody can take.
       expect(await reserve()).to.equal((await supply()) + 7n * ONE_USDC);
     });
@@ -513,8 +517,8 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
 
       // A de-listed member in default is still liquidated: the seizure is exempt, and the lock holds.
       await pledgeSigned(registry, ctx.member.address, SAVINGS, 999n * ONE_USDC);
-      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 0);
-      await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 300n * ONE_USDC);
+      await issuer.connect(ctx.operator).openLine(ctx.member.address, [300n * ONE_USDC, 50n * ONE_USDC], 0);
+      await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 310n * ONE_USDC);
       await ctx.access.connect(ctx.operator).revokeMember(ctx.member.address);
       await expect(clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 900n * ONE_USDC)).to.be.revertedWithCustomError(clrusd, "ClearUSDEncumbered");
       await driveToDefault(issuer, ctx.member.address, ctx.operator);
