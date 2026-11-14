@@ -21,11 +21,10 @@ describe('a bank deposit pays what is due on term plans', () => {
     expect(allocateTermDue(10_000, [])).toEqual({ paid: [], remainingCents: 10_000 });
   });
 
-  test('only a fiat deposit, and before card debt: card settlement gets what is left', () => {
-    expect(DEPOSITS).toContain("const termDue = receipt.rail === 'lithic_ach' ? await readTermDue(wallet) : [];");
-    expect(DEPOSITS).toMatch(/const term = allocateTermDue\(amount, termDue\);[\s\S]{0,1600}planSettlement\(term\.remainingCents,/);
-    // Auto-clear (option 1) also starts from what term plans left, never the gross deposit.
-    expect(DEPOSITS).toContain('availableCents: spendable ? term.remainingCents : amount,');
+  test('only a Spendable deposit with auto-clear ON, and before the line: auto-clear gets what is left', () => {
+    // Acceptance 19: with auto-clear OFF a deposit changes no credit position, term plans included.
+    expect(DEPOSITS).toContain('const termDue = autoClearOn ? await readTermDue(wallet) : [];');
+    expect(DEPOSITS).toContain('availableCents: term.remainingCents,');
   });
 
   test('the sweep puts it on chain', () => {

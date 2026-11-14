@@ -8,14 +8,14 @@ const sweeper = readFileSync(new URL('../../jobs/cardSettlementSweeper.ts', impo
 
 describe('a Spendable deposit clears what is owed first, then the rest is theirs (option 1)', () => {
   test('owed amount (carry and tiers) is earmarked, and auto-save only sees the rest', () => {
-    expect(deposits).toContain('owedCents: spendable ? totalOutstanding(outstanding) + carryOwed : 0,');
+    expect(deposits).toContain('owedCents: autoClearOn ? totalOutstanding(outstanding) + carryOwed : 0,');
     expect(deposits).toContain('earmarkCents: Math.max(0, Math.min(input.availableCents, input.owedCents))');
     expect(deposits).toContain('plan.remainingCents = Math.max(0, plan.remainingCents - earmarkCents);');
   });
 
   test('only Spendable deposits, only for a member who switched it on; Bridge never', () => {
     expect(deposits).toContain("new Set<DepositRail>(['lithic_ach'])");
-    expect(deposits).toContain('const autoClearOn = spendable && (await autoRepayEnabledFor(client, wallet));');
+    expect(deposits).toContain('const autoClearOn = spendable && (await autoRepayEnabledFor(pool, wallet));');
   });
 });
 

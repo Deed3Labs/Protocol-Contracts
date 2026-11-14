@@ -35,12 +35,10 @@ describe('a USDC repayment is recorded from the chain, never from the request', 
   });
 });
 
-describe('only fiat pays card debt on arrival', () => {
-  test('an ACH deposit settles card debt; a Bridge USDC deposit stays the member’s cash', () => {
-    // Only a Spendable (fiat) deposit settles card debt; a Bridge deposit settles nothing (option 1).
+describe('no deposit pays card debt on arrival (Phase 2b, 12.2)', () => {
+  test('only auto-clear, on a Spendable deposit, touches the line; OFF and Bridge change nothing', () => {
     expect(deposits).toContain("new Set<DepositRail>(['lithic_ach'])");
-    expect(deposits).toContain('if (!AUTO_CLEAR_RAILS.has(input.rail)) return { settleInBooks: false, earmarkCents: 0 };');
-    expect(deposits).toContain('? planSettlement(term.remainingCents, outstanding, carryOwed)');
+    expect(deposits).toContain('if (!AUTO_CLEAR_RAILS.has(input.rail) || !input.autoClearOn) return { paysTermDue: false, earmarkCents: 0 };');
   });
 });
 
@@ -53,6 +51,6 @@ describe('a repayment out of savings settles the savings tier in the books, as i
 
 describe('a savings-funded repayment is paid from savings in the books, not from cash', () => {
   test('the counter account is member_savings when the savings tier was settled from savings', () => {
-    expect(deposits).toContain("fundedFromSavings > 0 && settlement.tier === 'savings' ? 'member_savings' : 'member_cash_usdc'");
+    expect(deposits).toContain("fundedFromSavings > 0 && settlement.tier === 'savings' ? 'member_savings' : input.method === 'auto' ? 'member_cash_fiat' : 'member_cash_usdc'");
   });
 });
