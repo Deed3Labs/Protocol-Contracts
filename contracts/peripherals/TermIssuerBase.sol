@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
+import "./PauseClock.sol";
 import "./IExtensionKind.sol";
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
@@ -30,6 +31,12 @@ interface ICombinedCeilingRevolving {
         external
         view
         returns (bytes32 state, bytes32 product, uint256 principal, uint256 monthlyCarry);
+}
+
+/// @dev Where the term issuer reads the pause clock (Phase 2g, 10c): the Liquidator it reads the
+/// Liquidation Hold from.
+interface IPauseClockSource {
+    function pauseClock() external view returns (address);
 }
 
 /// @title TermIssuerBase
@@ -229,6 +236,7 @@ abstract contract TermIssuerBase is CreditIssuer {
         uint64 noticeAt; // the cure-notice timestamp: the approval's block time
         uint64 defaultedAt; // when the 12.14 default was recorded; zero if not
         uint128 noticeDue; // what the schedule asked by the notice: the past-due amount it concerns
+        uint256 noticeClock; // Phase 2g (10c): the member's pause clock at the notice
     }
     /// @notice a secured plan's 12.14 record: secured, the pending proposer, the cure-notice
     /// timestamp, when its default was recorded, and the past-due amount the notice concerns.
@@ -236,8 +244,14 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// @notice Where the Liquidation Hold (12.6) is read: the Liquidator. Set once.
     address public holdSource;
 
-    /// @dev Two more slots from the gap: securedPlans, holdSource.
-    uint256[13] private __gap;
+    /// @dev plan => the member's pause clock (10c) when the plan was last known to be current: at
+    /// opening, and after every payment that leaves it on time (Phase 2g, owner decision 34). Its
+    /// installment default runs later by the paused time since. The plan fell behind after this
+    /// reading, so the paused time since it is never less than since the plan fell behind.
+    mapping(uint256 => uint256) internal currentClock;
+
+    /// @dev Two more slots from the gap: securedPlans, holdSource; and one for currentClock.
+    uint256[12] private __gap;
 
     uint256 internal constant RAY_ = 1e27;
     uint256 internal constant BPS_ = 10_000;
@@ -433,7 +447,30 @@ abstract contract TermIssuerBase is CreditIssuer {
         Plan storage plan = plans[planId];
         if (!sp.secured || plan.closed || sp.noticeAt == 0 || plan.repaid >= sp.noticeDue) return false;
         uint256 since = _delinquentSince(planId);
-        return since != 0 && block.timestamp >= since + SECURED_PAST_DUE && block.timestamp >= sp.noticeAt + SECURED_CURE;
+        // 10c (Phase 2g): the 30-day cure runs longer by the paused time since the notice, and no
+        // default arises while a pause affecting the member is in force.
+        uint256 cure = sp.noticeAt + SECURED_CURE;
+        address clock = _pauseClock();
+        if (clock != address(0)) {
+            if (IPauseClock(clock).inForce(plan.member)) return false;
+            cure += IPauseClock(clock).pausedSeconds(plan.member) - sp.noticeClock;
+        }
+        return since != 0 && block.timestamp >= since + SECURED_PAST_DUE && block.timestamp >= cure;
+    }
+
+    /// @dev Records the pause clock for a plan that is on time now (owner decision 34).
+    function _noteCurrent(uint256 planId) internal {
+        address clock = _pauseClock();
+        if (clock != address(0) && _delinquentSince(planId) == 0) {
+            currentClock[planId] = IPauseClock(clock).pausedSeconds(plans[planId].member);
+        }
+    }
+
+    /// @dev The member's pause clock (10c), as the Liquidator (`holdSource`) names it. None while
+    /// either is unset.
+    function _pauseClock() internal view returns (address) {
+        address source = holdSource;
+        return source == address(0) ? address(0) : IPauseClockSource(source).pauseClock();
     }
 
     /// @notice how far behind the schedule a plan is, in principal.
@@ -513,6 +550,7 @@ abstract contract TermIssuerBase is CreditIssuer {
             _untrackOpen(planId);
             emit PlanClosed(planId);
         }
+        _noteCurrent(planId);
     }
 
     /// @notice fixes the payment schedule for whatever the plan is spreading.

@@ -9,6 +9,7 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 import "../core/interfaces/stable-credit/IStableCredit.sol";
 import "../core/interfaces/stable-credit/ICreditIssuer.sol";
 import "../core/interfaces/IESADepositVault.sol";
+import "./PauseClock.sol";
 
 interface IClearUSDSeizable {
     function seize(address holder, address to, uint256 amount) external;
@@ -209,9 +210,19 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// the member, so one member's queued proceeds cannot pay another's debt. One slot from the gap.
     mapping(address => uint256) public realizedPendingOf;
 
-    uint256[34] private __gap;
+    /// @notice Where the member's pause clock is read (Phase 2g, 10c). Set once. While a pause
+    /// affecting the member is in force no enforcement path runs (`payPledged` included), and a
+    /// shortfall's wait runs longer by the paused time since its notice. Unset, nothing is paused.
+    address public pauseClock;
+    /// @dev member => issuer => the pause clock when the shortfall was noticed.
+    mapping(address => mapping(address => uint256)) internal shortfallClockAt;
+
+    uint256[32] private __gap;
 
     error LiquidatorReentered();
+    error LiquidatorPauseClockSet();
+    error LiquidatorPauseInForce(address member);
+    event PauseClockSet(address clock);
 
     modifier noReenter() {
         if (_locked) revert LiquidatorReentered();
@@ -556,6 +567,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         gap = poolGap + bondGap;
         if (gap == 0) revert LiquidatorNoShortfall(member);
         shortfallNoticedAt[member][issuer] = uint64(block.timestamp);
+        shortfallClockAt[member][issuer] = _pauseClockOf(member);
         emit ShortfallNoticed(member, gap);
     }
 
@@ -571,7 +583,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         _requireTrusted(issuer);
         _requireNoHold(member);
         uint256 noticedAt = shortfallNoticedAt[member][issuer];
-        uint256 dueAt = noticedAt + shortfallWait();
+        uint256 dueAt = _shortfallDueAt(member, issuer, noticedAt);
         if (noticedAt == 0 || block.timestamp < dueAt) revert LiquidatorShortfallNotDue(member, dueAt);
 
         (bytes32 poolKind, ) = _earnKinds();
@@ -595,6 +607,29 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
             delete shortfallNoticedAt[member][issuer];
             emit ShortfallCleared(member, issuer);
         }
+    }
+
+    /// @notice names where the member's pause clock is read (Phase 2g, 10c). Set once.
+    function setPauseClock(address clock) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (clock == address(0) || pauseClock != address(0)) revert LiquidatorPauseClockSet();
+        pauseClock = clock;
+        emit PauseClockSet(clock);
+    }
+
+    /// @dev When a shortfall notice's wait ends: `shortfallWait` after it, longer by the paused time
+    /// since (10c, decision 6).
+    function _shortfallDueAt(address member, address issuer, uint256 noticedAt) private view returns (uint256) {
+        return noticedAt + shortfallWait() + _pauseClockOf(member) - shortfallClockAt[member][issuer];
+    }
+
+    function _pauseClockOf(address member) private view returns (uint256) {
+        address clock = pauseClock;
+        return clock == address(0) ? 0 : IPauseClock(clock).pausedSeconds(member);
+    }
+
+    function _pauseInForce(address member) private view returns (bool) {
+        address clock = pauseClock;
+        return clock != address(0) && IPauseClock(clock).inForce(member);
     }
 
     /// @notice the governed wait between a shortfall notice and its settlement.
@@ -718,6 +753,8 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev Every enforcement path calls this first. A hold only delays: it reverts the call and
     /// touches nothing else. A lapsed hold is dropped and logged on the way through.
     function _requireNoHold(address member) private {
+        // 10c: a pause never causes enforcement; every path waits while one is in force.
+        if (_pauseInForce(member)) revert LiquidatorPauseInForce(member);
         Hold storage hold = _holds[member];
         if (!hold.confirmed) return;
         if (block.timestamp < hold.until) revert LiquidatorOnHold(member, hold.reason, hold.until);
@@ -765,7 +802,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
             return (false, address(0), false);
         }
         Hold storage hold = _holds[member];
-        if (hold.confirmed && block.timestamp < hold.until) return (false, address(0), false);
+        if ((hold.confirmed && block.timestamp < hold.until) || _pauseInForce(member)) return (false, address(0), false);
 
         address[] memory issuers = _issuersOf(member);
         for (uint256 i = 0; i < issuers.length; i++) {
@@ -784,7 +821,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
                 need = _owedIn(member, issuer, _defaultOrder(kind));
             } else {
                 uint256 noticedAt = shortfallNoticedAt[member][issuer];
-                if (noticedAt != 0 && block.timestamp >= noticedAt + shortfallWait()) {
+                if (noticedAt != 0 && block.timestamp >= _shortfallDueAt(member, issuer, noticedAt)) {
                     need = _closing(member, issuer, kind);
                 }
             }

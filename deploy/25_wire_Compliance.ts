@@ -30,9 +30,13 @@ import { saveDeployment, getDeployment } from "./helpers";
  *   whose redeem escrows may receive.
  * Both of the last two need the vault's or CLRUSD's admin. After `vault_timelock_handover.ts` they
  * are Clear Financial Safe proposals through the vault timelock, and the script says so.
+ * - Phase 2g: adds the workout plan's 0% position to the revolving issuer (12.18), and, once CLRUSD
+ *   and the vault answer the pause-clock views, deploys PauseClock (no owner, no setter) and names
+ *   it, once each, on RevolvingIssuer and the Liquidator (10c).
  *
  * Idempotent: every step checks before it writes. It never deploys a contract other than
- * RateSchedule and never moves an admin power; the handover is a separate, explicit step.
+ * RateSchedule and PauseClock, and never moves an admin power; the handover is a separate,
+ * explicit step.
  *
  *   npx hardhat run deploy/25_wire_Compliance.ts --network base-sepolia
  */
@@ -316,6 +320,61 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
       log("  ESADepositVault state source -> NetworkRegistry");
     } else {
       log(`! The vault is governed by the vault timelock: propose setStateSource(${registryAddress}) there.`);
+    }
+  }
+
+  // ---- Phase 2g, 12.18: the workout plan's 0% position (one tier, outside the draw order) ----
+  const WORKOUT = ethers.encodeBytes32String("WORKOUT");
+  let hasWorkoutTier = false;
+  const tiersNow = Number(await revolving.tierCount());
+  for (let id = 0; id < tiersNow; id++) {
+    if ((await revolving.tierAt(id))[0] === WORKOUT) hasWorkoutTier = true;
+  }
+  if (!hasWorkoutTier && tiersNow > 0) {
+    await (await revolving.addTier(WORKOUT, 0, await revolving.cycleLength())).wait();
+    log("  RevolvingIssuer workout-plan position (12.18) added at 0%");
+  }
+
+  // ---- Phase 2g, 10c: the member's pause clock, read by RevolvingIssuer and the Liquidator ----
+  // PauseClock has no owner, role or setter: it reads CLRUSD's and the vault's own clocks. It is
+  // named only once both answer the views (both upgraded past Phase 2g): an issuer that reads a
+  // clock that cannot answer would stop judging cycles.
+  const pauseClrusd = getDeployment(network, "ClearUSDUpgradeable");
+  const pauseVault = getDeployment(network, "ESADepositVault");
+  if (pauseClrusd && pauseVault) {
+    const views = await ethers.getContractAt(
+      ["function pauseClock(address) view returns (uint256)", "function pauseClock() view returns (uint256)"],
+      pauseClrusd.address);
+    const vaultViews = await ethers.getContractAt(["function pauseClock() view returns (uint256)"], pauseVault.address);
+    const ready = await views["pauseClock(address)"](ethers.ZeroAddress).then(() => true, () => false)
+      && await vaultViews.pauseClock().then(() => true, () => false);
+    if (!ready) {
+      log("! CLRUSD or the vault predates Phase 2g (no pause clock): upgrade both, then run this again to name the pause clock.");
+    } else {
+      let clockAddress = getDeployment(network, "PauseClock")?.address;
+      if (!clockAddress) {
+        const clock = await (await ethers.getContractFactory("PauseClock")).deploy(pauseClrusd.address, pauseVault.address);
+        await clock.waitForDeployment();
+        clockAddress = await clock.getAddress();
+        saveDeployment(network, "PauseClock", clockAddress, JSON.parse(clock.interface.formatJson()));
+        log(`+ PauseClock deployed to ${clockAddress}`);
+      }
+      const workouts = await ethers.getContractAt("RevolvingIssuerWorkouts", await revolving.getAddress());
+      if ((await workouts.pauseClock()) === ethers.ZeroAddress) {
+        await (await workouts.setPauseClock(clockAddress)).wait();
+        log("  RevolvingIssuer pause clock -> PauseClock (set once)");
+      }
+      if (liquidatorRecord) {
+        const liquidator = await ethers.getContractAt("Liquidator", liquidatorRecord.address);
+        if ((await liquidator.pauseClock()) === ethers.ZeroAddress) {
+          if (await liquidator.hasRole(await liquidator.DEFAULT_ADMIN_ROLE(), deployer.address)) {
+            await (await liquidator.setPauseClock(clockAddress)).wait();
+            log("  Liquidator pause clock -> PauseClock (set once; TermIssuer reads it through its hold source)");
+          } else {
+            log(`! The Liquidator's admin names the pause clock: propose setPauseClock(${clockAddress}) there.`);
+          }
+        }
+      }
     }
   }
 

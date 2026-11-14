@@ -182,10 +182,19 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice every accumulator for a product, as of now.
-    function snapshot(bytes32 stateCode, bytes32 productId) public view returns (Snapshot memory snap) {
+    function snapshot(bytes32 stateCode, bytes32 productId) public view returns (Snapshot memory) {
+        return snapshotAt(stateCode, productId, block.timestamp);
+    }
+
+    /// @notice every accumulator for a product as of `at` (12.17, Phase 2g): what a statement figure
+    /// as at a past cycle end is computed from. Exact for any time since the product's last
+    /// checkpoint (a governed rate change); an earlier `at` reads as of that checkpoint, and a later
+    /// one as of now.
+    function snapshotAt(bytes32 stateCode, bytes32 productId, uint256 at) public view returns (Snapshot memory snap) {
         bytes32 key = keyOf(stateCode, productId);
         Product storage product = _product(stateCode, productId);
-        uint256 elapsed = block.timestamp - product.accruedAt;
+        if (at > block.timestamp) at = block.timestamp;
+        uint256 elapsed = at > product.accruedAt ? at - product.accruedAt : 0;
         ProductParams storage p = product.params;
         snap.list = product.listAcc + _monthlyPerSecond(p.listMonthlyBps) * elapsed;
         snap.flatAlt = product.flatAcc + _monthlyPerSecond(p.flatMonthlyBps) * elapsed;
@@ -260,15 +269,26 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     function graduatedSince(bytes32 stateCode, bytes32 productId, uint256 principal, Snapshot memory from)
         external
         view
+        returns (uint256)
+    {
+        return graduatedBetween(stateCode, productId, principal, from, block.timestamp);
+    }
+
+    /// @notice the same, from `from` to `at` (12.17: carry as at a past cycle end).
+    function graduatedBetween(bytes32 stateCode, bytes32 productId, uint256 principal, Snapshot memory from, uint256 at)
+        public
+        view
         returns (uint256 total)
     {
         if (principal == 0) return 0;
-        Snapshot memory now_ = snapshot(stateCode, productId);
+        Snapshot memory now_ = snapshotAt(stateCode, productId, at);
         Band[] storage bands = bandsOf[keyOf(stateCode, productId)];
         uint256 lower;
         for (uint256 i = 0; i < bands.length && lower < principal; i++) {
             uint256 upper = bands[i].upperBound;
-            total += ((principal < upper ? principal : upper) - lower) * (now_.bands[i] - from.bands[i]);
+            if (now_.bands[i] > from.bands[i]) {
+                total += ((principal < upper ? principal : upper) - lower) * (now_.bands[i] - from.bands[i]);
+            }
             lower = upper;
         }
         total /= RAY;
