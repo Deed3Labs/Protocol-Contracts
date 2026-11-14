@@ -75,8 +75,13 @@ is set. See [`settlement.md`](./settlement.md) and [`reserve.md`](./reserve.md).
 `_settleRepayment` asks each issuer for `nextRepaymentRate(member)`, takes the highest, and offers
 the remaining amount to every issuer through `absorbRepayment(member, remaining, band)`. Each takes
 positions at or above that rate and returns what it took. The ledger repeats for up to
-`MAX_WATERFALL_BANDS` (16) bands. Anything unattributed stays visible as a gap between the ledger
-and the issuers rather than being corrected.
+`MAX_WATERFALL_BANDS` (16) bands. Since Phase 4c, whatever is left after the 16th band goes to a
+fallback pass (`_settleBeyondBands`): each issuer still holding a position is offered the rest once
+with no band, the one holding the dearest remaining position first, and takes it against all its
+positions in its own repayment order. So a member with more than 16 distinct rates never leaves part
+of a repayment unattributed. Anything still unattributed after that means the issuers hold less than
+the ledger says is owed; it stays visible as a gap between the ledger and the issuers rather than
+being corrected.
 
 Since Phase 4b (re-review L-G) the rate is the **effective** monthly rate at the moment of
 repayment, after the caps, not the configured tier or plan rate: monthly basis points times
