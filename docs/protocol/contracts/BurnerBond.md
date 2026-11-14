@@ -14,7 +14,7 @@ Source: [`contracts/peripherals/BurnerBond.sol`](../../../contracts/peripherals/
 |---|---|---|
 | `batchRedeemBonds(uint256[] bondIds)` | Anyone; acts on the caller's own account | `nonReentrant` |
 | `emergencyRecover(address token, uint256 amount)` | `onlyOwner` |  |
-| `initialize(address _burnerBondDeposit, address _factory, address _assurancePool, address _underlyingToken, string _uri, string _collectionName, string _collectionSymbol, string _collectionDescription, address _traitStore, address _discountCurve)` | Once, when the proxy is initialised |  |
+| `initialize(address _burnerBondDeposit, address _factory, address _assurancePool, address _underlyingToken, string _uri, string _collectionName, string _collectionSymbol, string _collectionDescription, address _traitStore, address _discountCurve)` | Not in the current source |  |
 | `mintBond(uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, address creator)` | Checked inside the function | `nonReentrant` |
 | `redeemBond(uint256 bondId)` | Anyone; acts on the caller's own account | `nonReentrant` |
 | `redeemEarly(uint256 bondId)` | Checked inside the function | `nonReentrant` |
@@ -25,7 +25,7 @@ Source: [`contracts/peripherals/BurnerBond.sol`](../../../contracts/peripherals/
 | `safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)` | The holder, or an approved operator |  |
 | `seizeBond(uint256 bondId, address from, address to)` | Checked inside the function |  |
 | `setApprovalForAll(address operator, bool approved)` | The holder |  |
-| `setAssurancePool(address _assurancePool)` | `onlyOwner` |  |
+| `setAssurancePool(address _assurancePool)` | Not in the current source |  |
 | `setAutoRollOptOut(uint256 bondId, bool optOut)` | Checked inside the function |  |
 | `setBondTrait(uint256 bondId, bytes32 traitKey, bytes traitValue)` | `onlyOwner` |  |
 | `setBondTraitFlexible(uint256 bondId, bytes traitKey, bytes traitValue, uint8 valueType)` | `onlyOwner` |  |

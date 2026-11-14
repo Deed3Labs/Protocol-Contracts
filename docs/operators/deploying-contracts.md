@@ -65,11 +65,12 @@ what it leaves for an admin to set, is in
 | Script | Deploys |
 |---|---|
 | `07_deploy_TokenRegistry` | `TokenRegistry`, with the network's tokens |
-| `08_deploy_AssurancePool` | `AssurancePool` (UUPS) |
-| `09_deploy_AssuranceOracle` | `AssuranceOracle`, and points the pool at it |
-| `10_deploy_BurnerBondFactory` | `BurnerBondFactory` and `BurnerBondDeposit` |
+| `08_deploy_AssurancePool` | The co-op's `AssurancePool` (UUPS) and its 7-day Assurance timelock, through `assurance_timelock_handover.ts` (section 13) |
+| `10_deploy_BurnerBondFactory` | `BurnerBondFactory` and `BurnerBondDeposit`, gated on the `TokenRegistry` whitelist |
 
-`deploy/deploy_burner_bonds.ts` runs `07`–`10` in one go (`npm run deploy:burner-bonds:sepolia`).
+`deploy/deploy_burner_bonds.ts` runs `07` and `10` in one go (`npm run deploy:burner-bonds:sepolia`).
+The AssuranceOracle (the old `09`) is retired, and the AssurancePool is deployed on its own: nothing on
+the bond side takes its address.
 
 ### Send and savings — `11`–`19`
 
@@ -116,7 +117,7 @@ The scripts deploy and register. These grant the roles and set the values that m
 | `scripts/grant_collateral_operator.ts` | The credit operator's roles to pledge collateral | `OPERATOR` |
 | `scripts/grant_pool_borrower.ts` | Lets the card-funding wallet borrow from the `LendingPool` | `CARD_SETTLER_ADDRESS` |
 | `scripts/configure-carry-recipients.mjs` | Points carry at the `PayoutPool`. Run with `node`; reports unless given `--apply` | `RPC_URL_84532`, the issuer and pool addresses |
-| `scripts/set_target_rtd.ts` | The oracle's target reserve-to-debt ratio | `TARGET_RTD` |
+
 | `scripts/register_merchant.ts` | Registers a merchant — nothing can be charged until one is | `MERCHANT`, optionally `DISCOUNT_BPS`, `APPROVAL_CAP`, `PAYOUT_WINDOW` |
 | `scripts/set_merchant_active.ts` | Turns a merchant off or back on | `MERCHANT`, `ACTIVE` |
 | `scripts/fund_payout_pool.ts` | Working capital into the `PayoutPool` | `FUND_USDC` |
@@ -198,7 +199,7 @@ something the deployer key can do.
   ```
 
 - **The credit stack:** one script per change in `scripts/upgrade_*.ts`, each named for what it
-  ships (`upgrade_bond_backstops.ts`, `upgrade_card_settlement.ts`, `upgrade_offers_owner.ts`, …).
+  ships (`upgrade_card_settlement.ts`, `upgrade_offers_owner.ts`, …).
   Each says at the top which proxies it upgrades and what it wires afterwards.
 
 ## Checking it

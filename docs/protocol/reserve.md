@@ -1,220 +1,138 @@
 # The reserve
 
-The reserve is the money that makes a member default survivable. It lives in one contract,
-`AssurancePool`, priced by `AssuranceOracle`, with token policy held in `TokenRegistry`. Bond
-proceeds are not here — they sit in `BondVault` ([Bonds](./bonds.md)) — and merchant payables are
-not here either — they sit in `PayoutPool` ([Settlement](./settlement.md)).
+The co-op's reserve is the **AssurancePool**, rebuilt in Phase 2c around compartments (compliance
+section 13, [`specs/assurance-contracts.md`](../audit/specs/assurance-contracts.md)). It belongs to
+Clear Collective LLC, the co-op, not to Clear Lending Co. It holds:
 
-Deployed addresses are in the root [`README.md`](../../README.md) (**Deployed addresses**).
+| Compartment | What it is for | How money leaves |
+|---|---|---|
+| `CREDIT_BACKSTOP` | Clear Lending Co.'s charged-off principal, under the I-11 agreement | `releaseDraw`, to Lending Co.'s registered loss-reserve address |
+| `MEMBER_ASSURANCE` | Member Assurance grants | `releaseAssurance`, to the co-op's registered Assurance disbursement address |
 
-| Contract | Role |
-|---|---|
-| `AssurancePool.sol` | Holds the reserve in three tiers, measures it against pool exposure (RTD), reimburses lost debt, and lends to the PayoutPool and BondVault as a last resort |
-| `AssuranceOracle.sol` | Prices any accepted token in the reserve token (Uniswap V3 TWAP, registry fallback) and serves the target RTD |
-| `TokenRegistry.sol` | Whitelist, stablecoin flags and fallback prices the oracle reads |
-| `ITargetRTDSource` | Optional risk model the oracle defers to for the target RTD |
-| `IExposureSource` | What the pool would pay if every member defaulted — the RTD denominator. `CollateralRegistry` implements it |
+Governance may add compartments (at 0% allocation). The two above can never be removed.
 
-## Three tiers
+Bond proceeds are not here — they sit in `BondVault` ([Bonds](./bonds.md)) — and merchant payables
+are not here either — they sit in `PayoutPool` ([Settlement](./settlement.md)). **No credit,
+savings, payout or bond contract holds the pool's address**, so no redemption, withdrawal, payout,
+refund, liquidation or force settlement can reach it.
 
-**Only the primary reserve counts toward the RTD.** The buffer and the excess are real money in the
-same contract, but the ratio never sees them.
+Deployed addresses are in the root [`README.md`](../../README.md) (**Deployed addresses**). Who
+governs it is in [`UPGRADEABILITY.md`](../audit/UPGRADEABILITY.md).
 
-| Tier | Storage | What it is for | What spends it |
-|---|---|---|---|
-| Primary | `primaryReserve` | The cover the RTD is measured on | `reimburse` only, once the buffer is empty |
-| Buffer | `bufferReserve` | First-loss cushion | `reimburse` first; lent by `lendToPayoutPool` / `lendToBondVault` while `hasValidRTD()` |
-| Excess | `excessReserve` | Overflow above target | `withdraw` / `withdrawToken` by an approved instrument; lent first by both lend functions |
+## One ledger per compartment
 
-Each tier is one number in reserve-token units, keyed by the current `reserveToken`
-(`primaryBalance()`, `bufferBalance()`, `excessBalance()`). The tokens themselves are commingled:
-any accepted token can fund any tier, and its oracle value is what gets booked.
+One contract, one asset (USDC), and a balance per compartment with no shared spendable balance.
+Every unit the pool takes in is credited to exactly one compartment, so the sum of the compartment
+balances is what the pool holds (`totalAccounted`). Value moves between compartments only by
+`executeTransfer`. There is no sweep, rescue, withdraw, approve or admin transfer, and the pool
+lends, stakes and pledges nothing.
 
-Every token the pool has taken in is recorded by `_registerHeldToken`, capped at
-`MAX_HELD_TOKENS = 16` (`AssurancePoolTooManyTokens`). `heldReserveValue()` prices that whole set
-and is a monitoring view, not a revert condition: comparing it with the three tiers is the solvency
-check. A token the oracle cannot price is skipped and counted by `unpricedTokenCount()` /
-`unpricedTokens()`, so accounting understates rather than reverts. The payout path does not tolerate
-this — it uses the reverting conversion, so an unpriceable token is never paid out.
-
-## RTD
-
-**RTD is the primary reserve divided by what it stands behind.** `AssurancePool.RTD()`:
-
-```
-RTD = primaryBalance × 1e18 / ( convertStableCreditToReserveToken(poolExposure()) + bondExposure() )
-```
-
-| Input | Source |
-|---|---|
-| `poolExposure()` | `exposureSource.poolExposure()`, clamped to `stableCredit.totalSupply()`. With no source set, total supply — every credit treated as unsecured |
-| `bondExposure()` | `BondVault.uncoveredNearTerm()`: face value due inside the vault's window that neither the vault nor the treasury's allowance can pay. Zero while `bondVault` is unset |
-| `targetRTD()` | `assuranceOracle.targetRTD()` |
-
-`deploy/20` points `exposureSource` at `CollateralRegistry`, which excludes savings-backed debt,
-counts asset-backed debt at its shortfall after haircut, and counts unsecured debt in full (see
-[Credit](./credit.md)).
-
-`RTD()` returns 0 when the primary reserve is empty or there is no exposure. Read `hasValidRTD()`
-instead: it is true when exposure is zero, at any balance. `neededReserves()` is
-`(target − RTD) × exposure / 1e18` while below target, and 0 otherwise.
-
-### Target RTD
-
-`AssuranceOracle.targetRTD()` returns `targetRTDSource.targetRTD()` when a source is registered
-(`setTargetRTDSource`), and `staticTargetRTD` otherwise. `deploy/09` initialises the static target
-at `0.8e18`; `scripts/set_target_rtd.ts` changes it.
-
-`setTargetRTD` (oracle owner) writes `staticTargetRTD` and, when the new value is above the current
-effective target and the pool holds excess, calls `AssurancePool.reallocateExcessBalance()` — the
-oracle passes the pool's `onlyOperator` check.
+USDC sent to the pool's address by a plain transfer is not credited anywhere, and no function can
+move it.
 
 ## Money in
 
-| Function | Caller | Where it lands |
+`deposit(sourceTag, amount)` is the only way in:
+
+| Source tag | Paid by | Where it goes |
 |---|---|---|
-| `depositRepayment(amount)` | Anyone. `StableCredit._routeRepayment` sends it what is left after the PayoutPool's need | Primary up to `neededReserves()`, the rest to the buffer |
-| `deposit(amount)` / `depositToken(token, amount)` | Anyone | Primary up to `neededReserves()`, the rest to excess |
-| `depositIntoPrimaryReserve` / `depositIntoBufferReserve` / `depositIntoExcessReserve` | Anyone | The named tier, reserve token |
-| `depositTokenIntoPrimary` / `…IntoBuffer` / `…IntoExcess` | Anyone | The named tier, any accepted token at its oracle value |
+| `CREDIT_ENHANCEMENT_FEE` | Lending Co.'s operating address | Credit Backstop up to its floor, the rest by allocation |
+| `RECOVERY` | Lending Co.'s operating address | Credit Backstop, all of it |
+| `INTERCHANGE` | the co-op treasury | Credit Backstop up to its floor, the rest by allocation |
+| `BOARD_ALLOCATION` | the co-op treasury | Credit Backstop up to its floor, the rest by allocation |
 
-A token is accepted (`_isTokenAccepted`) if it is the reserve token, an oracle stablecoin, or
-whitelisted by the oracle.
+Payers are allowlisted per tag by governance. `deposit` refuses any address the `NetworkRegistry`
+lists as a money path (`isMoneyPath`: every registered credit issuer, plus CLRUSD, the ESA vault,
+the pledge registry, the Liquidator, the LendingPool, BondVault, PayoutPool and the ledger).
 
-**Repayments fill the primary reserve to target first.** Only the part of a repayment above
-`neededReserves()` reaches the buffer. A repayment therefore stops filling primary once the target is
-met, and an empty book (`neededReserves() == 0`) sends all of it to the buffer.
+The allocation (`setAllocation`, basis points per compartment, summing to 10,000; 50/50 at launch)
+is set per program year. Within the year it was last set in, the Credit Backstop's share may rise
+but never fall.
 
-## Moving between tiers
+Where a repayment goes is the ledger's business, not the pool's: `ClearCredit` pays the payout pool
+what it is owed and sends the rest to **Lending Co.'s operating address** (`lenderOperating`).
+Lending Co. pays its credit-enhancement fees into the pool itself.
 
-| Function | Caller | Effect |
-|---|---|---|
-| `moveBufferToPrimary(amount)` | Operator | Moves up to `bufferBalance()` into primary. The only way to build primary cover while no exposure is out |
-| `reallocateExcessBalance()` | Operator or the oracle | Moves excess into primary, up to `neededReserves()` |
-| `rebalanceRTD()` | Operator | Reprices, then below target tops primary up (buffer first, then excess); above target moves the surplus out |
-| `rebalanceRTDPublic()` | Anyone | Reprices, then only the top-up half. It never moves primary out |
+## The floor
 
-Repricing (`_updateReserveValues`) moves nothing between tiers. A gain in held value lands in excess.
-A loss comes out of excess, then buffer, then primary. While any held token is unpriceable it writes
-nothing. Moving surplus out of primary (`_rebalanceFromPrimary`) sends half to the buffer when the
-buffer is empty and the rest to excess; it never takes primary below `targetRTD × exposure`.
-
-## Money out
-
-### Lost debt
-
-**Lost debt is the only thing primary pays for.** `StableCredit.writeOffCreditLine` (a credit
-issuer) is the only place `lostDebtOutstanding` grows. A credit holder, or an operator for them,
-retires it with `StableCredit.burnLostDebt(member, amount)`:
-
-1. `amount` must not exceed the member's balance or `lostDebt()`.
-2. The member's credits move to the lost-debt account and `lostDebtOutstanding` falls by `amount`.
-3. `AssurancePool.reimburse(member, amount in reserve token)` (`onlyStableCredit`) pays from the
-   buffer first, then primary, and never from excess.
-
-Redemption is capped twice: by lost debt outstanding, and by `primaryBalance + bufferBalance`. When
-the two reserves cannot cover the request, `reimburse` empties both and pays what they held; step 2
-has already moved the full `amount`.
-
-### Excess withdrawals
-
-`withdraw` and `withdrawToken` take from excess only, and only for an address on the
-`withdrawalCallers` allowlist (`onlyWithdrawalCaller`, managed by `setWithdrawalCaller`, admin).
-Operator or admin access is not enough. The list is empty on a fresh deployment and no deploy script
-adds anyone.
-
-`withdrawToken` pays in the requested token when the pool has enough of it, and otherwise makes up
-the value through `_withdrawEquivalentValue`: the requested token, then `withdrawalPriority()` —
-reserve token, the configured USDC / USDT / DAI (`setTokenAddresses`), then every other held token.
-Both functions end in `_assertLossAbsorptionUntouched`, which reverts if primary or buffer moved.
-
-### Lending as a last resort
-
-**The pool lends spare money to the PayoutPool and the BondVault, never primary cover.** Both
-`lendToPayoutPool` and `lendToBondVault` take from excess first, then from the buffer only while
-`hasValidRTD()` holds, and never from primary. Each is callable only by the address set with
-`setPayoutPool` / `setBondVault` (operator), and returns what it could lend, which may be zero.
-
-```mermaid
-flowchart LR
-  subgraph PP["PayoutPool.drawForDueClaim"]
-    Y["LendingPool<br/><i>availableCash</i>"] --> BV["BondVault<br/><i>deployableExcess</i>"] --> T1["Treasury<br/><i>allowance</i>"]
-  end
-  subgraph CV["BondVault._cover"]
-    H["Vault holdings"] --> T2["Treasury<br/><i>allowance</i>"]
-  end
-  T1 --> AP["AssurancePool"]
-  T2 --> AP
-  AP --> E["excess"] --> B["buffer<br/><i>only if hasValidRTD()</i>"]
-  AP -. never .-> P["primary"]
+```
+backstopFloor()        = max(timingBufferShortfall, floorBps × coveredBookPrincipal / 10,000)
+coveredBookPrincipal() = max(Σ exposure sources' poolExposure(), attestedCoveredBook)
+backstopBalance()      = CREDIT_BACKSTOP assets − approved draws not yet paid
+availableCoverage()    = min(backstopBalance(), coverageCap)
 ```
 
-The pool is last in both waterfalls. A payout claim reaches it only after the lending pool, the bond
-vault's deployable excess and the treasury's allowance to the PayoutPool; a maturing bond only after
-the vault's own holdings and the treasury's allowance to the vault. The treasury is the Safe:
-each contract reads `min(allowance(treasury → contract), balanceOf(treasury))`, and the Safe's
-owners set those allowances themselves.
+`floorBps` starts at 500. The exposure source is the `CollateralRegistry`, which reads every
+issuer's debt by kind: income-backed, Clear Boost and term-plan debt count in full, savings-backed
+debt not at all, asset-backed debt by the shortfall after its haircut. With no unsecured credit live
+the floor is zero.
 
-What is out is tracked in `lentToPayoutPool` / `lentToBondVault`, and the part that came from the
-buffer in `bufferOwed` / `bondBufferOwed`. `repayFromPayoutPool` and `repayFromBondVault` pull the
-repayment from the caller and restore the buffer first, the rest to excess. Carry the PayoutPool
-pays on a reserve loan arrives through `repayFromPayoutPool`, so it lands in excess once the buffer
-is whole. `BondVault` repays from new proceeds before the Safe can withdraw (see
-[Bonds](./bonds.md#redemption)).
+`timingBufferShortfall`, `coverageCap` and `attestedCoveredBook` are set each month by two signers
+(`setFloorInputs`, with an evidence hash; event `FloorInputsSet`).
 
-Lending the buffer does not change the RTD, because the buffer is not in it. The bond gap the pool
-backs is in it, through `bondExposure()`.
+## Draws and grants
 
-## Pricing — AssuranceOracle
+1. Lending Co.'s **Registered Draw Address** calls `requestDraw(periodId, amount, evidenceHash)`:
+   one request per period. That is the only thing it can do.
+2. A co-op signer calls `approveDraw(drawId, approvedAmount)`. Approving less leaves the disputed
+   remainder in the Credit Backstop; approving zero closes the request.
+3. A **different** signer calls `releaseDraw(drawId)`. Draws are released in request order, only
+   to the loss-reserve address, only from the Credit Backstop, and never above
+   `availableCoverage()`.
 
-**The oracle prices from a time-weighted average, never from spot.** `getTokenPriceInUSD(token)`,
-18 decimals, in order:
+`releaseAssurance(grantId, amount, evidenceHash)` pays a member Assurance grant from Member
+Assurance only, to the disbursement address only, once per `grantId`. Two signers send the same
+call. It reverts if Member Assurance is short and never falls back to another compartment.
+`grantId` is the co-op's own reference: no member data goes on chain.
 
-1. A stablecoin — the configured USDC / USDT / DAI, or one the registry flags — is `1e18`.
-2. If `forceRegistryFallback[token]` is set and the registry has a price, that price.
-3. `getUniswapPrice`: the token's USDC pool at the 0.3% fee tier, or else its WETH pool times
-   WETH/USDC.
-4. The registry's fallback price.
-5. Otherwise revert `"No price data"`.
+## Transfers between compartments
 
-Pool prices come from `_twapSqrtPriceX96`, which calls `observe` over `twapPeriod` (default 1,800
-seconds, settable from `MIN_TWAP_PERIOD = 300` to `MAX_TWAP_PERIOD = 86400`) and rounds the average
-tick down. A pool that cannot serve the window returns 0 — there is no `slot0` fallback — and pricing
-moves on to the registry, then fails closed.
+`proposeTransfer(from, to, amount, resolutionHash)` by one signer, then `executeTransfer` by a
+different one, after `transferDelay` (at least 14 days). A transfer into the Credit Backstop needs
+no delay. A transfer out of it executes only if the backstop keeps its floor plus every pending draw
+request.
 
-`quote(depositToken, reserveToken, amount)` multiplies by `getPriceRatio` and rescales between the
-two tokens' decimals. `isTokenWhitelisted` is true for the configured stablecoins and for anything the
-registry whitelists.
+## Two people, and a timelock
 
-| Owner function | Effect |
-|---|---|
-| `setTargetRTD`, `setTargetRTDSource` | The target, as above |
-| `setForceRegistryFallback(token, force)` | Prefer the registry price; refused unless the registry has one |
-| `setPricingAddresses` | Uniswap factory, WETH, USDC, USDT, DAI |
-| `setTwapPeriod` | Averaging window, within bounds (`TwapPeriodOutOfBounds`) |
+Every action takes two distinct signers; the same address can never propose and approve.
 
-## TokenRegistry
+- Floor inputs, grants, the pause and its renewal: the same call from two different signers.
+- Draws and transfers: one signer proposes (or approves a draw), another releases or executes.
+- Parameters and upgrades: two signers approve the exact calldata (`approveAction`), and then the
+  **Assurance timelock** (a `TimelockController`, 7 days at least, the co-op board Safe proposing)
+  makes the call. The pool checks the timelock's delay on every upgrade.
 
-`TokenRegistry` is `Ownable`. `registerToken` whitelists a token and sets its fallback price
-(`1e18` when given 0); `setFallbackPrice` also whitelists; `setStablecoin` sets the flag the oracle
-treats as $1; `removeToken` clears all of it. The oracle reads `getIsWhitelisted`,
-`getIsStablecoin`, `getFallbackPrice` and `getWhitelistedTokens`. The pool never reads the registry
-directly. Detail is in [`token-registry.md`](./token-registry.md).
+A security pause blocks only releases and transfers. Deposits and draw requests carry on. It lasts
+72 hours unless two signers renew it.
 
-## Authority
+Clear Lending Co., Clear Capital Management LLC and Clear Capital Holdings hold no role. Neither of
+Lending Co.'s registered addresses, nor its operating address, can be a signer.
 
-| Gate | Who | Functions |
-|---|---|---|
-| `onlyAdmin` | `AccessManager` admin | `setReserveToken`, `setWithdrawalCaller`, `setExposureSource`, `setAssuranceOracle`, `setTokenAddresses` |
-| `onlyOperator` | `AccessManager` operator, or the oracle | `moveBufferToPrimary`, `reallocateExcessBalance`, `rebalanceRTD`, `setPayoutPool`, `setBondVault` |
-| `onlyStableCredit` | The ledger | `reimburse` |
-| `onlyWithdrawalCaller` | Allowlisted instruments | `withdraw`, `withdrawToken` |
-| Named caller | `payoutPool` / `bondVault` | `lendToPayoutPool` / `lendToBondVault` |
-| Owner | Pool owner; oracle owner | UUPS upgrades of each |
-| Anyone | | Deposits, `rebalanceRTDPublic`, `repayFromPayoutPool`, `repayFromBondVault` |
+## Retired: the Phase 1 reserve
 
-A token stays in the held set once it has arrived, so `setReserveToken` does not hide the outgoing
-reserve token's balance from accounting or from the payout path. Both contracts are UUPS proxies; the
-pool's fields added after its first deployment sit below every earlier one. The upgrade scripts for
-the reserve are `scripts/upgrade_assurance_reserves.ts` (the three tiers and repayment routing),
-`upgrade_reserve_draw.ts` and `upgrade_bond_backstops.ts` (lending to the PayoutPool and BondVault).
+Phase 2c retired the design described here before. It remains only on Base Sepolia, as the
+`AssurancePool` and `AssuranceOracle` records in `deployments/base-sepolia/`; the new pool is a new
+contract with a new layout.
+
+### Three tiers
+
+The old pool held primary, buffer and excess tiers. A member's repayment landed in them, lost debt
+was redeemed out of them (`reimburse`), and the excess and buffer were lent to the PayoutPool and
+BondVault. All of that is gone: repayments go to Lending Co., lost debt is Lending Co.'s charge-off
+(recovered through its own draw), and nothing lends.
+
+### RTD
+
+The old pool measured its primary tier against pool exposure (the reserve-to-debt ratio). The new
+pool measures the Credit Backstop against a floor on the covered book instead (above).
+
+### Target RTD
+
+The target RTD came from the AssuranceOracle, or a risk model registered as `ITargetRTDSource`.
+Both are retired; `floorBps` and the monthly floor inputs replace them.
+
+### Pricing — AssuranceOracle
+
+The oracle priced other tokens in the reserve token for a multi-token reserve. The new pool holds
+USDC only, at face, so nothing is priced. The bond factory reads the `TokenRegistry`'s whitelist
+directly ([`token-registry.md`](./token-registry.md)).

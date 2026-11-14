@@ -134,8 +134,8 @@ flowchart LR
   C -->|"no"| R["revert BondVaultInsufficientFunds<br/><i>nothing moves</i>"]
 ```
 
-The treasury is the Safe, named with `setBackstops(treasury, assurancePool, payoutPool)`
-(`OPERATOR_ROLE`); `scripts/upgrade_bond_backstops.ts` uses the PayoutPool's `coopTreasury`. Its
+The treasury is the Safe, named with `setBackstops(treasury, payoutPool)` (`OPERATOR_ROLE`). The
+vault names no AssurancePool: since section 13 nothing on the bond side can reach it. Its
 contribution is whatever allowance the Safe's owners have given the vault, and it is not repaid as a
 loan: it comes back as deployable excess.
 
