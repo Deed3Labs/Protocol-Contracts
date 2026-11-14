@@ -102,18 +102,18 @@
   },
   "ClaimEscrow": {
    "source": "contracts/peripherals/ClaimEscrow.sol",
-   "sha256": "fb67ff7b2b2fe00638d8acba95634249d5535116e1b4b306b43b035d2fce80d1",
+   "sha256": "0950d472b9af6f10beb2b5068a2cba41b26b963fb0a3c557041136f609bf9168",
    "immutables": [
     [
-     2945,
+     3048,
      32
     ],
     [
-     3136,
+     3239,
      32
     ],
     [
-     4419,
+     4441,
      32
     ]
    ]
@@ -156,14 +156,14 @@
   },
   "ClearUSDUpgradeable": {
    "source": "contracts/peripherals/ClearUSDUpgradeable.sol",
-   "sha256": "0605bf46b9dc94f82aa5a815377f2b11067d2280e4892effd9d836e42f1bca46",
+   "sha256": "8b03dc93a68b7261e72149bc3f48727db9c62cc3cd1915ad60920e9c15c45d7f",
    "immutables": [
     [
-     6444,
+     5685,
      32
     ],
     [
-     6609,
+     5850,
      32
     ]
    ]
@@ -243,18 +243,18 @@
   },
   "ESADepositVault": {
    "source": "contracts/peripherals/ESADepositVault.sol",
-   "sha256": "53354a2781378833c82b10ad5d3676c7fc1dca660d51e4701956c6ff4b3f60ae",
+   "sha256": "1446b8264c9f3f6510067a2fe237f204f36a7b6cd9e619537973e4304d4168f8",
    "immutables": [
     [
-     4536,
+     4145,
      32
     ],
     [
-     4676,
+     4285,
      32
     ],
     [
-     6983,
+     6503,
      32
     ]
    ]

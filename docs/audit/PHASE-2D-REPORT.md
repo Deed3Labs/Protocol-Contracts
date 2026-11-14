@@ -64,9 +64,18 @@ Decision 7 moves it off chain: a mint for a member with no stateCode raises the 
   | `peripherals/ESADepositVault.spec.ts` | The pause takes two pausers. |
   | `peripherals/ClaimEscrow.spec.ts`, `audit/deep/PeripheralRegressions.spec.ts` | The treasury claim is signed (L-D). |
 
-  Full suite: FILL_TESTS
-- **Sizes** (production build, `npx hardhat compile --force`): FILL_SIZES No contract is over 24,576 bytes runtime or 49,152 bytes of creation code.
-- **Storage.** OpenZeppelin's `getStorageUpgradeReport` finds no errors for ESADepositVault against both of its implementations in `.openzeppelin/base.json` (0xe626…3644, 0x83CB…26e9), or for ClaimEscrow against 0x96F0…2c4e. FILL_STORAGE The vault appends two slots after `s_lastDepositAt`, and its `__gap` goes from 33 to 31. CLRUSD appends two members to the end of its ERC-7201 struct. ClaimEscrow adds no storage.
+  Full suite (`npx hardhat test`, which keeps revert strings; fuzz at the default 300 steps): **1003 passing, 0 failing**, in 26 minutes. That is the 17 new tests on top of `dev`'s count; the changed tests keep their counts. The ClaimEscrow signer check was restructured after that run (section 6, Slither), so its specs were run again on the final source: `Section2d`, `ClaimEscrow`, `PeripheralRegressions` and `Vault.deploy`, 44 passing.
+- **Sizes** (production build, `npx hardhat compile --force`): 
+
+  | Contract | Runtime | Creation code |
+  |---|---|---|
+  | ClearUSDUpgradeable | 15,571 | 15,811 |
+  | ESADepositVault | 14,944 | 15,081 |
+  | ClaimEscrow | 8,767 | 8,904 |
+  | MockSafe (test only) | 1,415 | 1,951 |
+
+  No contract is over 24,576 bytes runtime or 49,152 bytes of creation code.
+- **Storage.** OpenZeppelin's `getStorageUpgradeReport` finds no errors for ESADepositVault against both of its implementations in `.openzeppelin/base.json` (0xe626…3644, 0x83CB…26e9), or for ClaimEscrow against 0x96F0…2c4e. Against `.openzeppelin/base-sepolia.json`, the vault's four implementations and ClaimEscrow's one also pass. That manifest has no ClearUSDUpgradeable entry. Its namespaced layout, from the same OpenZeppelin tooling, keeps slots 0 to 4 as on `dev` (`encumbranceSource`, `lastKnownLock`, `accountPause`, `globalPause`, `pauseWindow`) and appends `proposerOf` (5) and `membershipSource` (6). The vault appends two slots after `s_lastDepositAt`, and its `__gap` goes from 33 to 31. CLRUSD appends two members to the end of its ERC-7201 struct. ClaimEscrow adds no storage.
 - **Slither** (Medium and High, per contract, the FIX-PLAN section 6 way, against the same run on `dev`):
 
   | Contract | `dev` | this branch | New |
@@ -74,7 +83,11 @@ Decision 7 moves it off chain: a mint for a member with no stateCode raises the 
   | ESADepositVault | 1 | 1 | none (the audited `arbitrary-send-erc20` on the signed mandate pull) |
   | ClearUSDUpgradeable | 0 | 0 | none |
   | ClaimEscrow | 0 | 0 | none (a first draft drew `uninitialized-local`, a false positive; restructured) |
-- **Generated files and checks.** FILL_CHECKS
+- **Generated files and checks.**
+  - `npx hardhat compile --force && node scripts/command/code-fingerprints.mjs`: `packages/command-types/src/chain/code.json` regenerated (34 contracts), and `--check` passes.
+  - `node scripts/docs/contract-reference.mjs --check`: current (36 pages, built from the deployment ABIs, so they are unchanged).
+  - `node scripts/check-doc-links.mjs`: 198 files, no broken links.
+  - `npx turbo run typecheck test --affected`: 32 of 32 tasks passed (28 from turbo's cache).
 
 ## 7. App and API follow-up (not in this PR)
 
