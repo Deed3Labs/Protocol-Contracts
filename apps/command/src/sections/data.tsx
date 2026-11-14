@@ -2257,7 +2257,7 @@ export const CTR = [
   ['tr', 'TokenRegistry', 'v1.0', 0, 'live', '0x4B13…6a86', 'Which tokens count, with fallback prices.', 10, 53, 'c'],
   ['lc', 'LimitCalculator', 'v1.0', 1, 'live', '0xbA98…c0a7', 'Turns pledges and attestations into a member’s ceiling.', 30, 21, 'c'],
   ['ri', 'RevolvingIssuer', 'v1.3', 1, 'live', '0x7f15…6070', 'The tiered revolving line: savings-backed, asset-backed, income and Boost.', 30, 29, 'c'],
-  ['ti', 'TermIssuer', 'v1.0', 1, 'live', '0xe467…3721', 'Term plans: partner credit, Clear Cash and the ELPA.', 30, 53, 'c'],
+  ['ti', 'TermIssuer', 'v1.0', 1, 'live', '0xe467…3721', 'Term plans: partner credit and Clear Cash.', 30, 53, 'c'],
   ['oi', 'OffersIssuer', 'v1.0', 1, 'live', '0x150E…841c', 'The co-op’s $10 to each new member, on a capped line of its own. The Safe pays it down.', 30, 37, 'c'],
   ['lq', 'Liquidator', 'v1.0', 1, 'live', '0x8E2E…9593', 'Turns a defaulted member’s pledged savings into repayment of their own debt.', 30, 69, 'c'],
   ['cc', 'ClearCredit', 'v1.1', 2, 'live', '0x1d9f…928C', 'The co-op’s credit ledger, the deployable StableCredit. Only issuers mint.', 50, 39, 'c'],

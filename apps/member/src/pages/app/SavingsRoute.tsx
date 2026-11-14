@@ -1,6 +1,7 @@
 import SavingsPage from './SavingsPage';
 import PendingFigures from '@/components/clear/PendingFigures';
 import { useSavingsData } from '@/hooks/useSavingsData';
+import { useElpa } from '@/hooks/useElpa';
 
 /**
  * Live Savings — the balance and the equity credits behind it.
@@ -13,9 +14,11 @@ import { useSavingsData } from '@/hooks/useSavingsData';
  */
 export default function SavingsRoute() {
   const { pending, ...data } = useSavingsData();
+  // The ELPA, from Clear's books (a typed stub until the books API exists), never from a contract.
+  const elpa = useElpa();
   return (
     <PendingFigures pending={pending}>
-      <SavingsPage data={data} />
+      <SavingsPage data={data} elpa={elpa} />
     </PendingFigures>
   );
 }

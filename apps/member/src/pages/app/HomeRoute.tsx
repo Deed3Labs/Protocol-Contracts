@@ -54,7 +54,7 @@ import { autoSaveFromRules, withOnTrack } from '@/lib/clearModel';
  *
  * Term plans are real too now, which is what makes day one's two arrivals reachable: the page
  * reverses its order for a member who has an active plan, and a counter member who approved a
- * charge now has one. The locked rows beneath are kept — partner credit and an ELPA are products
+ * charge now has one. The locked rows beneath are kept — partner credit and Clear Cash are products
  * nobody has unlocked yet, not fields that failed to load.
  *
  * The account numbers are not read here at all. Spendable's details surface (AccountDetailsDialog)
@@ -103,7 +103,7 @@ export default function HomeRoute() {
    *
    * One effect and one listener on purpose. As two, the credit read refreshed after a deposit and
    * the equity ledger did not — so the limit moved while the credits feeding the savings card and
-   * the ELPA row sat at their old figures until the member changed page. They are downstream of
+   * the milestone path sat at their old figures until the member changed page. They are downstream of
    * the same deposit; splitting them was splitting one fact into two that could disagree.
    */
   useEffect(() => {
@@ -194,14 +194,8 @@ export default function HomeRoute() {
           // The last placeholder on this page, and the one that made day one's two arrivals
           // unreachable: HomePage already reverses its order for a member who has a plan, and
           // until now no member could have one it could see.
-          // Credits come from the equity ledger, so the ELPA row shows the member's real progress
-          // toward it rather than a hardcoded zero.
-          termPlans: toTermPlans(
-            credit.plans,
-            HOME_DAY_ONE.termPlans,
-            pay ? { credits: pay.totalEquity, goal: HOME_DAY_ONE.savings.creditsGoal } : undefined,
-            credit.term,
-          ),
+          // No ELPA here: it is not a term plan (Addendum 3), and Savings shows it from the books.
+          termPlans: toTermPlans(credit.plans, HOME_DAY_ONE.termPlans, credit.term),
         }
       : {}),
   };

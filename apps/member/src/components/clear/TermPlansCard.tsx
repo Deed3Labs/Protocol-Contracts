@@ -5,7 +5,6 @@ import { money } from '@clear/domain';
 import {
   activePlans,
   clearsFromLabel,
-  hasAmortisingPlan,
   isPlanActive,
   planPerCycle,
   planClearedShare,
@@ -17,9 +16,8 @@ import {
 /**
  * What a live plan costs and how far through it is, as one line.
  *
- * Assembled from whichever fields the plan has rather than from a fixed template, because the shelf
- * carries two different shapes: an even split counts cycles left, and an amortising plan like an
- * ELPA counts payments made against a schedule that outlives any cycle.
+ * Assembled from whichever fields the plan has rather than from a fixed template, so a row missing
+ * a part drops it instead of showing a blank.
  */
 function planDetail(plan: TermPlan): ReactNode {
   const perCycle = planPerCycle(plan);
@@ -35,7 +33,6 @@ function planDetail(plan: TermPlan): ReactNode {
         {Math.round(cleared * 100)}% cleared
       </span>
     ) : null,
-    plan.progressNote,
     plan.rate,
   ].filter(Boolean);
 
@@ -50,7 +47,8 @@ function planDetail(plan: TermPlan): ReactNode {
 /**
  * Term plans — a cell on Home's slab (`panel` for the standalone form on day one).
  *
- * Everything with a set amount and a schedule lives here, from a tire repair to a mortgage. Rows are
+ * Credit taken over a set number of cycles lives here, from a tire repair to a Clear Cash plan. The
+ * ELPA does not: it is not credit, a plan or a mortgage, and Savings shows it (YourHome). Rows are
  * a ruled list, so the list visibly ends and the space beneath reads as slack. Locked rows are
  * visible from the first minute, at 60%, each stating its own unlock condition. The footer is the
  * split: the limit on one side of a centred hairline, where it clears from on the other.
@@ -76,16 +74,13 @@ export default function TermPlansCard({
   const scheduled = activePlans(data).length > 0;
   const Frame = panel ? Panel : Cell;
 
-  // A mortgage isn't inside the shelf's cap, so once one is here the header names what it carries
-  // instead of comparing against a ceiling that doesn't bound it.
-  const amortising = scheduled && hasAmortisingPlan(data);
-  const of = !amortising && data.balanceLimit !== undefined ? money(data.balanceLimit, { cents: true }) : undefined;
+  const of = data.balanceLimit !== undefined ? money(data.balanceLimit, { cents: true }) : undefined;
 
   return (
     <Frame>
       <CHead>
         <SecHead label="Term plans">
-          <HeadFig value={`${money(total, { cents: true })}${amortising ? ' incl. ELPA' : ''}`} of={of} />
+          <HeadFig value={money(total, { cents: true })} of={of} />
         </SecHead>
       </CHead>
       <CMain>
