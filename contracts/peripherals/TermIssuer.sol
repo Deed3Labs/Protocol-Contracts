@@ -29,11 +29,18 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     /* ========== INITIALIZER ========== */
 
     /// @dev The bare implementation can never be initialized; only the proxy can (audit L-1).
+    /// @dev Both modules are deployed on their own and passed in: creating them here put their creation
+    /// code inside this one, at 62,992 bytes, over EIP-3860's 48 KiB limit. Each is checked for its
+    /// kind and fixed for the life of this implementation.
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(address extension_, address origination_) {
         _disableInitializers();
-        extension = address(new TermIssuerExtension());
-        origination = address(new TermIssuerOrigination());
+        if (
+            IExtensionKind(extension_).extensionKind() != keccak256("TermIssuerExtension.v2")
+                || IExtensionKind(origination_).extensionKind() != keccak256("TermIssuerOrigination.v1")
+        ) revert TermIssuerExtensionMismatch();
+        extension = extension_;
+        origination = origination_;
     }
 
     function initialize(address _stableCredit, address _carryTreasury) external initializer {

@@ -14,12 +14,12 @@ Source: [`contracts/peripherals/Liquidator.sol`](../../../contracts/peripherals/
 |---|---|---|
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address admin, address _stableCredit, address _clrusd, address _vault, address _reserveToken, address _collateralRegistry)` | Once, when the proxy is initialised |  |
-| `liquidate(address member, address issuer, uint256 tierId, bytes32 kind)` | Anyone |  |
-| `liquidateShares(address member, address issuer, uint256 tierId, bytes32 kind, address pool)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `liquidate(address member, address issuer, uint256 tierId, bytes32 kind)` | Anyone | `noReenter` |
+| `liquidateShares(address member, address issuer, uint256 tierId, bytes32 kind, address pool)` | `onlyRole(OPERATOR_ROLE)` | `noReenter` |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
-| `settleFromSavings(address issuer, uint256 tierId, uint256 amount)` | Anyone; acts on the caller's own account |  |
-| `settleRealized(address member, address issuer, uint256 tierId, uint256 amount)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `settleFromSavings(address issuer, uint256 tierId, uint256 amount)` | Anyone; acts on the caller's own account | `noReenter` |
+| `settleRealized(address member, address issuer, uint256 tierId, uint256 amount)` | `onlyRole(OPERATOR_ROLE)` | `noReenter` |
 | `setTrustedSavingsIssuer(address issuer, bool trusted)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |

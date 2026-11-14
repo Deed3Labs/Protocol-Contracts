@@ -1,14 +1,64 @@
 {
   "_note": "Initial RateSchedule products (compliance spec item 1). Every figure is PENDING COUNSEL. Amounts are USD; rates are monthly basis points. After the credit timelock handover, changing a product takes a 7-day proposal.",
   "products": [
-    { "state": "CA", "product": "REVOLVING", "role": "revolving-ceiling", "listMonthlyBps": 0 },
-    { "state": "CA", "product": "INCOME", "role": "revolving-tier", "tier": "INCOME", "listMonthlyBps": 150 },
-    { "state": "CA", "product": "BOOST", "role": "revolving-tier", "tier": "BOOST", "listMonthlyBps": 300 },
-    { "state": "CA", "product": "PARTNER", "role": "term", "listMonthlyBps": 200, "freeInFull": true, "freeBelowAmountUsd": 0, "freeSplitMax": 0 },
-    { "state": "CA", "product": "CASH", "role": "term", "listMonthlyBps": 250, "freeInFull": true, "freeBelowAmountUsd": 0, "freeSplitMax": 0 }
+    {
+      "state": "CA",
+      "product": "REVOLVING",
+      "role": "revolving-ceiling",
+      "listMonthlyBps": 0
+    },
+    {
+      "state": "CA",
+      "product": "INCOME",
+      "role": "revolving-tier",
+      "tier": "INCOME",
+      "listMonthlyBps": 150
+    },
+    {
+      "state": "CA",
+      "product": "BOOST",
+      "role": "revolving-tier",
+      "tier": "BOOST",
+      "listMonthlyBps": 300
+    },
+    {
+      "state": "CA",
+      "product": "PARTNER",
+      "role": "term",
+      "listMonthlyBps": 200,
+      "freeInFull": true,
+      "freeBelowAmountUsd": 100,
+      "freeSplitMax": 0
+    },
+    {
+      "state": "CA",
+      "product": "CASH",
+      "role": "term",
+      "listMonthlyBps": 250,
+      "freeInFull": true,
+      "freeBelowAmountUsd": 0,
+      "freeSplitMax": 0
+    }
   ],
   "defaults": {
-    "bands": [[225, 250], [900, 200], [1650, 150], [null, 100]],
+    "bands": [
+      [
+        225,
+        250
+      ],
+      [
+        900,
+        200
+      ],
+      [
+        1650,
+        150
+      ],
+      [
+        null,
+        100
+      ]
+    ],
     "flatMonthlyBps": 160,
     "largeLoanThresholdUsd": 2500,
     "annualCapBps": 3650,

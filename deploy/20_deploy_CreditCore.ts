@@ -1,4 +1,5 @@
 import { saveDeployment, getDeployment } from "./helpers";
+import { issuerProxyOptions } from "./issuerModules";
 
 /**
  * The credit core: the ledger, the registries, and the two issuers that sit on it.
@@ -71,7 +72,12 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
       return ethers.getContractAt(contractName, existing.address);
     }
     const factory = await ethers.getContractFactory(contractName);
+    // TermIssuer and RevolvingIssuer take their modules as constructor arguments (EIP-3860).
+    const modules = contractName === "TermIssuer" || contractName === "RevolvingIssuer"
+      ? await issuerProxyOptions(contractName)
+      : {};
     const instance = await upgrades.deployProxy(factory, args, {
+      ...modules,
       initializer: "initialize",
       kind: "uups",
     });

@@ -11,6 +11,11 @@ import "./TermIssuerBase.sol";
 /// proxy's storage with the original caller. Called directly it acts on its own empty storage,
 /// which it never initializes.
 contract TermIssuerExtension is TermIssuerBase {
+    /// @notice what TermIssuer's constructor checks before pinning this module.
+    function extensionKind() external pure returns (bytes32) {
+        return keccak256("TermIssuerExtension.v2");
+    }
+
     using CarryIndex for CarryIndex.Index;
 
     /// @custom:oz-upgrades-unsafe-allow constructor

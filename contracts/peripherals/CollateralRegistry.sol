@@ -12,6 +12,11 @@ import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "../core/interfaces/stable-credit/INetworkRegistry.sol";
 import "../libraries/ExposureMath.sol";
 
+/// @dev The one view the registry reads from a revolving issuer after a missed cycle (spec 12.5).
+interface IUnsecuredExcessSource {
+    function unsecuredExcessOf(address member) external view returns (uint256);
+}
+
 /// @title CollateralRegistry
 /// @notice What each member has pledged, and what the AssurancePool would pay if it all defaulted.
 /// @dev Two jobs that are really one. Pool exposure is not a property of a debt or of a pledge
@@ -217,8 +222,34 @@ contract CollateralRegistry is
         returns (bool)
     {
         if (!itemPledged[holder][kind][itemId]) return false;
-        // Pledged, and still needed: a pledge that nothing is drawn against is free to go.
-        return _drawnUnder(holder, kind) > 0;
+        // Pledged, and still needed: a pledge that nothing is drawn against is free to go -- unless
+        // a missed cycle left an unsecured excess this Earn pledge has to settle (spec 12.5).
+        return _drawnUnder(holder, kind) > 0
+            || (_excessLockApplies(kind, collateralTypes[kind]) && unsecuredExcessOf(holder) > 0);
+    }
+
+    /// @notice what a member owes above their halved unsecured limit after a missed cycle, summed
+    /// over their issuers (spec 12.5). Zero otherwise.
+    /// @dev Asked with a plain static call, so an issuer without the view (a term issuer, or one
+    /// from before section 12) answers zero rather than reverting every lock read.
+    function unsecuredExcessOf(address member) public view returns (uint256 excess) {
+        address[] memory issuers = networkRegistry.issuersOf(member);
+        for (uint256 i = 0; i < issuers.length; i++) {
+            (bool ok, bytes memory data) = issuers[i].staticcall(
+                abi.encodeWithSelector(IUnsecuredExcessSource.unsecuredExcessOf.selector, member)
+            );
+            if (ok && data.length >= 32) excess += abi.decode(data, (uint256));
+        }
+    }
+
+    /// @dev Only an Earn pledge (an internal claim: a bond or a pool share) settles an unsecured
+    /// excess. Savings never do (spec 12.5), and an external asset is not Earn.
+    function _excessLockApplies(bytes32 kind, CollateralType storage collateral)
+        private
+        view
+        returns (bool)
+    {
+        return kind != clrusdKind && collateral.backing == ExposureMath.Backing.AssetInternal;
     }
 
     /// @notice what the pool would pay if this member defaulted on everything.
@@ -315,7 +346,22 @@ contract CollateralRegistry is
     {
         CollateralType storage collateral = collateralTypes[kind];
         if (!collateral.registered) return 0;
-        return _requiredUnits(holder, kind, collateral);
+        uint256 required = _requiredUnits(holder, kind, collateral);
+        // After a missed cycle the Earn pledge also stands behind the unsecured excess until the
+        // Liquidator settles it (spec 12.5): enough of it, on top of what its own tier needs, to
+        // cover that excess on its own, and never more than was pledged. Computed from the
+        // issuers' own state; no role sets it.
+        if (_excessLockApplies(kind, collateral)) {
+            uint256 excess = unsecuredExcessOf(holder);
+            uint256 pledged = pledgedOf[holder][kind];
+            if (excess > 0 && required < pledged) {
+                uint256 units = collateral.unitPrice == 0
+                    ? pledged
+                    : Math.mulDiv(excess, PRICE_SCALE, collateral.unitPrice, Math.Rounding.Up);
+                required = units >= pledged - required ? pledged : required + units;
+            }
+        }
+        return required;
     }
 
     /// @notice names the CLRUSD token a savings pledge is valued against.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
+import "./IExtensionKind.sol";
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -127,7 +128,53 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     mapping(uint256 => uint64) internal localAccAt;
 
     /// @dev Nine slots from the gap for the block above.
-    uint256[18] private __gap;
+
+    /* ---- Phase 2b: credit agreements (section 12) ---- */
+
+    /// @notice A member's record of judged cycles (12.4, 12.5).
+    /// @param missedInRow consecutive cycles that ended without the required rebalance.
+    /// @param cleanStreak consecutive Clean Cycles (rebalanced by the due date, or none due).
+    /// @param depositBits the last six cycles, one bit each, newest lowest: an ESA deposit in it.
+    /// @param cureNoticeAt when the chain dated the cure notice (second miss in a row); zero if none.
+    /// @param unsecuredCeiling the halved unsecured limit after a miss; zero when not halved.
+    struct CycleRecord {
+        uint8 missedInRow;
+        uint8 cleanStreak;
+        uint8 depositBits;
+        uint64 cureNoticeAt;
+        uint128 unsecuredCeiling;
+    }
+    mapping(address => CycleRecord) public cycleOf;
+
+    /// @notice Governed terms of the Clear Credit Agreement (section 12). Zero means not enforced.
+    struct CreditTerms {
+        uint128 unsecuredLineCap; // income-backed + Boost capacity, together (12.3: $2,499)
+        uint64 cureWindow; // after the cure notice, before default (12.5: 15 days)
+        uint8 boostCleanCycles; // consecutive Clean Cycles to earn the higher Boost cap (12.4: 6)
+        uint8 boostDepositCycles; // of the last six cycles, how many need an ESA deposit (12.4: 5)
+        bool autoClearOffGlobal; // 12.2: auto-clear switched off network-wide (default on)
+    }
+    CreditTerms public creditTerms;
+    /// @notice Boost cap before and after it is earned (12.4: $500 and $750).
+    uint128 public boostBaseCap;
+    uint128 public boostEarnedCap;
+    /// @notice Where a member's last ESA deposit is read (ESADepositVault.lastDepositAt).
+    address public depositSource;
+    /// @notice member => what automatic clearing covers: 0 = income-backed and Boost only
+    /// (UNSECURED_ONLY, the default), 1 = every tier (ALL). `autoRepayEnabled` is the on switch.
+    mapping(address => uint8) public autoClearScopeOf;
+    /// @notice member => how much more card spending may draw against their Savings (12.7). Set
+    /// only by the member or their signature; revocable to zero.
+    mapping(address => uint256) public savingsDrawAllowance;
+    /// @notice member => nonce for the member's signed settings (auto-clear, Savings draws).
+    mapping(address => uint256) public memberNonces;
+
+    /// @dev Seven slots from the gap for the block above.
+    uint256[11] private __gap;
+
+    bytes32 internal constant BOOST_KIND = "BOOST";
+    bytes32 internal constant SAVINGS_KIND = "SAVINGS";
+    uint8 internal constant SCOPE_ALL = 1;
 
     uint256 internal constant RAY = 1e27;
     uint256 internal constant BPS_ = 10_000;
@@ -186,6 +233,26 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     event TierProductSet(uint256 indexed tierId, bytes32 productId);
     /// @notice carry above the member-level ceiling that was not charged (spec item 4).
     event CarryTrimmed(address indexed member, uint256 indexed tierId, uint256 amount);
+
+    /* ---- section 12 ---- */
+    event CycleJudged(address indexed member, bool clean, uint8 missedInRow, uint8 cleanStreak, bool deposited);
+    event UnsecuredLimitHalved(address indexed member, uint256 newLimit, uint256 excess);
+    event CureNotice(address indexed member, uint64 noticeAt, uint64 defaultFrom);
+    event CreditTermsUpdated(CreditTerms terms, uint128 boostBaseCap, uint128 boostEarnedCap);
+    event DepositSourceUpdated(address source);
+    event AutoClearSet(address indexed member, bool on, uint8 scope);
+    event AutoCleared(bytes32 indexed ref, address indexed member, uint256 applied, uint256 remainder);
+    event SavingsDrawAllowanceSet(address indexed member, uint256 amount);
+    event SavingsDrawn(address indexed member, uint256 amount, uint256 allowanceLeft);
+
+    error RevolvingIssuerUnsecuredCap(uint256 capacity, uint256 cap);
+    error RevolvingIssuerExtensionMismatch();
+    error RevolvingIssuerBoostCap(uint256 capacity, uint256 cap);
+    error RevolvingIssuerAutoClearOff();
+    error RevolvingIssuerNothingToClear(address member);
+    error RevolvingIssuerBadScope(uint8 scope);
+    error RevolvingIssuerSignatureExpired(uint256 deadline);
+    error RevolvingIssuerBadSignature(address member);
 
     /// @notice moves carry accrued in each tier onto the ledger.
     /// @dev Carry deepens the member's negative balance and mints the matching claim to whoever
@@ -403,5 +470,68 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// @notice the principal alone: what carry accrues on (spec item 2).
     function principalOnlyOf(address member, uint256 tierId) public view returns (uint256) {
         return tierPrincipal[member][tierId] - tierCarry[member][tierId];
+    }
+
+    /* ---- section 12 helpers ---- */
+
+    /// @dev Income-backed and Boost: the tiers priced from RateSchedule, nothing pledged behind them.
+    function _isUnsecured(uint256 tierId) internal view returns (bool) {
+        return tierProduct[tierId] != bytes32(0);
+    }
+
+    /// @dev The member's unsecured capacity and drawn amount together. Drawn includes carry accrued
+    /// since the last touch, so an amount sized from it still covers the debt once that carry is
+    /// brought onto the ledger.
+    function _unsecuredTotals(address member) internal view returns (uint256 capacity, uint256 drawn) {
+        uint256[] memory pending = _pendingCarry(member);
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (!_isUnsecured(i)) continue;
+            capacity += tierCapacity[member][i];
+            drawn += tierPrincipal[member][i] + pending[i];
+        }
+    }
+
+    /// @notice the Boost cap this member has: the base cap, or the earned one after enough Clean
+    /// Cycles and ESA deposits (12.4). Zero means not enforced. No paid membership status is read.
+    function boostCapOf(address member) public view returns (uint256) {
+        CycleRecord memory c = cycleOf[member];
+        CreditTerms memory t = creditTerms;
+        bool earned = t.boostCleanCycles != 0 && c.cleanStreak >= t.boostCleanCycles
+            && _popcount(c.depositBits) >= t.boostDepositCycles;
+        return earned ? boostEarnedCap : boostBaseCap;
+    }
+
+    /// @dev Reverts if capacity written for this member breaks the unsecured cap (12.3), the
+    /// halved ceiling after a missed cycle (12.5), or the Boost cap (12.4).
+    function _checkCreditCaps(address member) internal view {
+        (uint256 capacity,) = _unsecuredTotals(member);
+        uint256 cap = creditTerms.unsecuredLineCap;
+        uint256 ceiling = cycleOf[member].unsecuredCeiling;
+        if (ceiling != 0 && (cap == 0 || ceiling < cap)) cap = ceiling;
+        if (cap != 0 && capacity > cap) revert RevolvingIssuerUnsecuredCap(capacity, cap);
+        uint256 boostCap = boostCapOf(member);
+        if (boostCap == 0) return;
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tiers[i].kind == BOOST_KIND && tierCapacity[member][i] > boostCap) {
+                revert RevolvingIssuerBoostCap(tierCapacity[member][i], boostCap);
+            }
+        }
+    }
+
+    /// @notice what a member owes on income-backed and Boost above their halved limit, after a
+    /// missed cycle (12.5). Settled from pledged bonds or pool shares, never Savings. Zero otherwise.
+    function unsecuredExcessOf(address member) public view returns (uint256) {
+        if (cycleOf[member].missedInRow == 0) return 0;
+        (uint256 capacity, uint256 drawn) = _unsecuredTotals(member);
+        return drawn > capacity ? drawn - capacity : 0;
+    }
+
+    /// @notice consecutive missed rebalances, for the Liquidator.
+    function missedInRowOf(address member) external view returns (uint8) {
+        return cycleOf[member].missedInRow;
+    }
+
+    function _popcount(uint8 bits) internal pure returns (uint8 count) {
+        for (; bits != 0; bits &= bits - 1) count++;
     }
 }

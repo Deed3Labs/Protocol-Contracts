@@ -11,6 +11,11 @@ import "./TermIssuerBase.sol";
 /// immutable and forwards `openPlan` to it, so this code runs against the TermIssuer proxy's
 /// storage with the original caller.
 contract TermIssuerOrigination is TermIssuerBase {
+    /// @notice what TermIssuer's constructor checks before pinning this module.
+    function extensionKind() external pure returns (bytes32) {
+        return keccak256("TermIssuerOrigination.v1");
+    }
+
     using CarryIndex for CarryIndex.Index;
 
     /// @custom:oz-upgrades-unsafe-allow constructor

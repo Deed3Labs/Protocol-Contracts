@@ -58,7 +58,7 @@
   },
   "BondVault": {
    "source": "contracts/peripherals/BondVault.sol",
-   "sha256": "5c68b3ec9757310f22c98631a76f8fb35d458cc59ecf4a044cd6039bc621b0ac",
+   "sha256": "3052dd40b9f70b5757606bbd6e508c01d1e2185c0bfbbd78b9501d3b3950a4c4",
    "immutables": [
     [
      3936,
@@ -76,12 +76,12 @@
   },
   "BurnerBond": {
    "source": "contracts/peripherals/BurnerBond.sol",
-   "sha256": "43ffe17be83c33b879c683e8cb1ae812280167f1020ecbce5c015ca3241b620e",
+   "sha256": "7462df5b6f5b8f34a0912a336ef3b505dbe32af0d4f5b395665f81dc7b9bbec5",
    "immutables": []
   },
   "BurnerBondDeposit": {
    "source": "contracts/peripherals/BurnerBondDeposit.sol",
-   "sha256": "b6424efe995d19448bb8e7d87ee54e6388e8443dfd64670cf3381ab034d2c0ca",
+   "sha256": "bf81d8826cdcff5c5dfc2b1a65753c55937f8793a761cc9897e813b99eaab9f8",
    "immutables": []
   },
   "BurnerBondFactory": {
@@ -188,18 +188,18 @@
   },
   "CollateralRegistry": {
    "source": "contracts/peripherals/CollateralRegistry.sol",
-   "sha256": "3387dd322a29524205c7b42d2c50d6372ba121f33919a6af929d229c78eb144c",
+   "sha256": "77f5c87991fba71f3762d637224a8ce988a2e8a80a71da024734af5e74753764",
    "immutables": [
     [
-     3111,
+     3122,
      32
     ],
     [
-     3296,
+     3307,
      32
     ],
     [
-     4360,
+     4331,
      32
     ]
    ]
@@ -261,18 +261,18 @@
   },
   "ESADepositVault": {
    "source": "contracts/peripherals/ESADepositVault.sol",
-   "sha256": "94c5c0e960c03e081f729ff815367db318936a2d2fca5f14694d748c8dfa38e1",
+   "sha256": "392b4915ece14e3c645e9231eac088d9f38c58cbb77d7473f0ebdb5d13b97725",
    "immutables": [
     [
-     4103,
+     4181,
      32
     ],
     [
-     4243,
+     4321,
      32
     ],
     [
-     6511,
+     6589,
      32
     ]
    ]
@@ -369,18 +369,18 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "e2cdd93dff26e3b6171a0a5f1c144949992d0b038abbf24e33b878304ae9df2c",
+   "sha256": "53b67ba9b2fb2612d3e38c7551c6ce432f07dccebdfa6213f56fd62595907368",
    "immutables": [
     [
-     4224,
+     8335,
      32
     ],
     [
-     4409,
+     8520,
      32
     ],
     [
-     6526,
+     10684,
      32
     ]
    ]
@@ -464,44 +464,80 @@
   },
   "PayoutPool": {
    "source": "contracts/peripherals/PayoutPool.sol",
-   "sha256": "824465fe5b8f9d2f47b75c39fa975c1dab9166939d1805361153b4e72eebf52d",
+   "sha256": "db3dbdbde707b06af62215df8c3602dfbfb12454b1582b41f5638fe38aaec24d",
    "immutables": [
     [
-     5810,
+     3680,
      32
     ],
     [
-     5995,
+     4889,
      32
     ],
     [
-     7149,
+     11282,
      32
     ]
    ]
   },
   "RevolvingIssuer": {
    "source": "contracts/peripherals/RevolvingIssuer.sol",
-   "sha256": "dcac6d95fb90b561dbb70b82754a7276b8397b9dda8fd333fd110a76a0d29911",
+   "sha256": "1e55bc1c794b10a0ad5ca2f72df9a6226db0fa05a469be8d040de83b03178fae",
    "immutables": [
     [
-     2754,
+     1887,
      32
     ],
     [
-     2871,
+     2156,
      32
     ],
     [
-     4149,
+     2281,
      32
     ],
     [
-     10103,
+     2804,
      32
     ],
     [
-     12152,
+     3569,
+     32
+    ],
+    [
+     3686,
+     32
+    ],
+    [
+     3962,
+     32
+    ],
+    [
+     4886,
+     32
+    ],
+    [
+     5285,
+     32
+    ],
+    [
+     6174,
+     32
+    ],
+    [
+     6966,
+     32
+    ],
+    [
+     8764,
+     32
+    ],
+    [
+     12333,
+     32
+    ],
+    [
+     21785,
      32
     ]
    ]
@@ -544,38 +580,38 @@
   },
   "TermIssuer": {
    "source": "contracts/peripherals/TermIssuer.sol",
-   "sha256": "255d215cc4ee370c21aeb7bc2f86bb78bf16f177cd23c84aadb6032c6471ec2d",
+   "sha256": "f541ee1ed27829ac0b9bdf6f7b62b72551785b9677c98f367f2c4595c54f5c59",
    "immutables": [
     [
      1735,
      32
     ],
     [
-     2338,
+     2321,
      32
     ],
     [
-     3299,
+     3282,
      32
     ],
     [
-     3501,
+     3484,
      32
     ],
     [
-     3637,
+     3620,
      32
     ],
     [
-     4893,
+     4876,
      32
     ],
     [
-     11020,
+     11015,
      32
     ],
     [
-     12912,
+     12861,
      32
     ]
    ]

@@ -1,5 +1,6 @@
 import hre from "hardhat";
 import { getDeployment, saveDeployment } from "../deploy/helpers";
+import { issuerProxyOptions } from "../deploy/issuerModules";
 
 /*
  * UUPS upgrade of ClearCredit and TermIssuer, same proxy addresses, for the refund reversal.
@@ -71,7 +72,7 @@ async function main() {
 
   // Validated before either send, so a layout problem is a message rather than a failed upgrade.
   await upgrades.validateUpgrade(stableCredit.address, ClearCredit, { kind: "uups" });
-  await upgrades.validateUpgrade(termIssuer.address, TermIssuer, { kind: "uups" });
+  await upgrades.validateUpgrade(termIssuer.address, TermIssuer, { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
   console.log("both validate as upgrade-safe against what is deployed");
 
   if (!isAdmin || !isOwner) {
@@ -98,7 +99,7 @@ async function main() {
   saveDeployment(network, "ClearCredit", stableCredit.address, JSON.parse(sc.interface.formatJson()));
 
   console.log("upgrading TermIssuer…");
-  const ti = await upgrades.upgradeProxy(termIssuer.address, TermIssuer, { kind: "uups" });
+  const ti = await upgrades.upgradeProxy(termIssuer.address, TermIssuer, { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
   await ti.waitForDeployment();
   saveDeployment(network, "TermIssuer", termIssuer.address, JSON.parse(ti.interface.formatJson()));
 

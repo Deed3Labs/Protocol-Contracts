@@ -136,7 +136,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable,
     /// @dev returns true if period has expired, grace period has expired, and member is not compliant.
     /// @param member address of member.
     /// @return whether member is in default.
-    function inDefault(address member) public view override returns (bool) {
+    function inDefault(address member) public view virtual override returns (bool) {
         return inInitializedPeriod(member) && inExpiredPeriod(member) && !inCompliance(member);
     }
 

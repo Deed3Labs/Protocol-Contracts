@@ -1,5 +1,6 @@
 import hre from "hardhat";
 import { getDeployment, saveDeployment } from "../deploy/helpers";
+import { issuerProxyOptions } from "../deploy/issuerModules";
 
 /*
  * UUPS upgrade of TermIssuer, same proxy address, to give the co-op's fee a recipient of its own.
@@ -51,7 +52,7 @@ async function main() {
   console.log(`carryTreasury         ${carryTreasury}`);
 
   const TermIssuer = await ethers.getContractFactory("TermIssuer");
-  await upgrades.validateUpgrade(termIssuer.address, TermIssuer, { kind: "uups" });
+  await upgrades.validateUpgrade(termIssuer.address, TermIssuer, { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
   console.log("validates as upgrade-safe against what is deployed");
 
   if (!isOwner) throw new Error(`${signer.address} does not own TermIssuer.`);
@@ -62,7 +63,7 @@ async function main() {
 
   const was = await implementationOf(termIssuer.address);
   console.log("\nupgrading TermIssuer…");
-  const upgraded = await upgrades.upgradeProxy(termIssuer.address, TermIssuer, { kind: "uups" });
+  const upgraded = await upgrades.upgradeProxy(termIssuer.address, TermIssuer, { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
   await upgraded.waitForDeployment();
   saveDeployment(network, "TermIssuer", termIssuer.address, JSON.parse(upgraded.interface.formatJson()));
 

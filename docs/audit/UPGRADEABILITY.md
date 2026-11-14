@@ -38,7 +38,7 @@ Neither handover has been run on any network. Until it runs, each power below is
 
 **Operational roles do not move.** These stay with their own keys: CREDIT_LINES_ROLE and CREDIT_LIMITS_ROLE, AccessManager `OPERATOR`, CLRUSD `MINTER_ROLE`/`BURNER_ROLE`, `FRAUD_ROLE`, `SECURITY_ROLE`, `STATE_ATTESTER_ROLE` and the vault's `RELAYER_ROLE`. Grant them before the handover. Afterwards, granting a new one is itself a 7-day proposal. None of them can upgrade a contract or change a rate. The two pause roles can stop transfers for at most 72 hours, and only a different signer can renew that (spec 10c).
 
-**Delegatecall extensions.** RevolvingIssuer (one extension) and TermIssuer (TermIssuerExtension and TermIssuerOrigination) call into extension contracts. The main contract's constructor creates each extension, and its address is an immutable. So an extension changes only when the main contract is upgraded, under the same authority and the same timelock. Nothing can point an extension at a new address on its own.
+**Delegatecall modules.** RevolvingIssuer (RevolvingIssuerExtension, and RevolvingIssuerCycles for section 12) and TermIssuer (TermIssuerExtension, TermIssuerOrigination) call into module contracts. Each module is deployed on its own and passed to the main contract's constructor, which checks its `extensionKind()` and pins its address as an immutable. Creating them inside the constructor put TermIssuer's creation code over EIP-3860's 48 KiB limit (fixed in Phase 2b). So a module changes only when the main contract is upgraded, under the same authority and the same timelock: an upgrade deploys new modules and a new implementation that names them (`deploy/issuerModules.ts`). Nothing can point a live contract at other code on its own.
 
 ## Deed track (Deed timelock)
 
@@ -59,3 +59,5 @@ ESADepositVault and ClaimEscrow are live on Base mainnet, so their storage chang
 OpenZeppelin's storage upgrade report (`@openzeppelin/upgrades-core` `getStorageUpgradeReport`) finds no errors against each implementation recorded in `.openzeppelin/base.json`: the vault at 0xe626…3644 and 0x83CB…26e9, and ClaimEscrow at 0x96F0…2c4e. A slot-by-slot comparison agrees: no existing variable moved.
 
 The credit contracts exist only on Base Sepolia, where FIX-PLAN allows layout breaks; mainnet gets a fresh deployment of them. PHASE-2-REPORT.md lists the breaks.
+
+**PayoutPool (Phase 2B, addendum 12.10).** Base Sepolia only, but still append-only: the old `nextUnpaid` slot is renamed `legacyNext` in place (`@custom:oz-renamed-from`), four variables for the deadline-ordered queues follow `borrowedFromVault`, and `__gap` shrinks from 25 to 21. Claims queued before an upgrade are paid from a legacy queue in their original order, so no migration call is needed. The authority is unchanged (`DEFAULT_ADMIN_ROLE`, moved to the credit timelock). See `PHASE-2B-PAYOUT-RESERVE.md`.
