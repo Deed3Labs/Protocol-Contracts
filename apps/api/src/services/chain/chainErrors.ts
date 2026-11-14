@@ -72,6 +72,16 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error TermIssuerNotPlanHolder(address caller)',
   // RevolvingIssuer, Phase 2: no line without an attested state where the product is enabled
   'error RevolvingIssuerStateNotEnabled(address member, bytes32 stateCode)',
+  // RevolvingIssuer, Phase 2b (section 12): the unsecured and Boost caps, auto-clear, the member's
+  // signed switches, and a module wired to the wrong slot
+  'error RevolvingIssuerUnsecuredCap(uint256 capacity, uint256 cap)',
+  'error RevolvingIssuerBoostCap(uint256 capacity, uint256 cap)',
+  'error RevolvingIssuerAutoClearOff()',
+  'error RevolvingIssuerNothingToClear(address member)',
+  'error RevolvingIssuerBadScope(uint8 scope)',
+  'error RevolvingIssuerSignatureExpired(uint256 deadline)',
+  'error RevolvingIssuerBadSignature(address member)',
+  'error RevolvingIssuerExtensionMismatch()',
   // RateSchedule
   'error RateScheduleUnknownProduct(bytes32 stateCode, bytes32 productId)',
   // ClearUSD (CLRUSD), Phase 2: FRAUD_ROLE pauses one account, SECURITY_ROLE everyone; each lapses
@@ -274,6 +284,23 @@ export function describeCreditRefusal(decoded: DecodedChainError | null): string
       return 'Part of your savings backs credit you have drawn, so it can’t move until that is repaid. Nothing moved.';
     case 'ESADepositVaultPilotCapReached':
       return 'Clear has reached this year’s limit for new savings in your state during the pilot. Nothing was taken. Withdrawals are not affected.';
+    // Phase 2b (section 12)
+    case 'RevolvingIssuerUnsecuredCap':
+      return `Income-backed credit and Boost together can’t go above ${usd(units(decoded.args.cap))}. Nothing changed.`;
+    case 'RevolvingIssuerBoostCap':
+      return `Boost is capped at ${usd(units(decoded.args.cap))} for now. It rises after six clean cycles with savings deposits in five of them. Nothing changed.`;
+    case 'RevolvingIssuerAutoClearOff':
+      return 'Automatic clearing is paused across Clear right now. Nothing was taken. You can still clear what you owe yourself.';
+    case 'RevolvingIssuerNothingToClear':
+      return 'There is nothing to clear on your credit line right now. Nothing was taken.';
+    case 'RevolvingIssuerBadScope':
+      return 'That isn’t a choice automatic clearing offers. Nothing changed.';
+    case 'RevolvingIssuerSignatureExpired':
+      return 'The approval you signed timed out. Nothing changed. Try again to sign it afresh.';
+    case 'RevolvingIssuerBadSignature':
+      return 'Your signature did not match this change. Nothing changed. Try again to sign it afresh.';
+    case 'RevolvingIssuerExtensionMismatch':
+      return 'Clear’s credit line is being upgraded. Nothing changed. Try again later.';
     default:
       return null;
   }

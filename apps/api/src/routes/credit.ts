@@ -8,6 +8,12 @@ import { recordUsdcRepayment } from '../services/chain/usdcRepaymentService.js';
 import { autoRepayStatus, setAutoRepayChoice } from '../services/chain/autoRepayService.js';
 import { repaymentHistory } from '../services/credit/repaymentHistory.js';
 import { prepareResplit, submitResplit } from '../services/planResplit.js';
+import {
+  prepareAutoClear,
+  prepareSavingsDrawAllowance,
+  submitAutoClear,
+  submitSavingsDrawAllowance,
+} from '../services/chain/memberSwitches.js';
 import { requireStepUp } from '../middleware/stepUp.js';
 
 /*
@@ -186,7 +192,9 @@ creditRouter.post('/:wallet/auto-repay', async (req: Request, res: Response) => 
   if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
   try {
     // Recorded only once the member's own wallet has set it on chain -- never on the request's word.
-    const result = await setAutoRepayChoice(wallet, req.body?.enabled === true);
+    // Phase 2b: the scope travels with the switch (0 = income-backed and Boost only, 1 = everything).
+    const scope = req.body?.scope === 0 || req.body?.scope === 1 ? Number(req.body.scope) : undefined;
+    const result = await setAutoRepayChoice(wallet, req.body?.enabled === true, scope);
     if (!result.ok) return res.status(409).json({ error: 'Not set', message: result.reason });
     return res.json({ ok: true });
   } catch (error) {
@@ -233,6 +241,59 @@ creditRouter.post('/:wallet/plans/:planId/split', requireStepUp, async (req: Req
     signature: String(req.body?.signature ?? ''),
   });
   if (!result.ok) return res.status(409).json({ error: 'Could not change the split', message: result.reason });
+  return res.json(result);
+});
+
+/*
+ * The member's own switches, signed (Phase 2b): auto-clear on/off and scope (12.2), and how much card
+ * spending may draw against Savings (12.7). `prepare` returns the EIP-712 typed data at the member's
+ * `memberNonces`; the phone signs it; the POST submits it. Onboarding turns auto-clear on this way.
+ */
+creditRouter.post('/:wallet/auto-clear/prepare', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const result = await prepareAutoClear(wallet, req.body?.on === true, Number(req.body?.scope ?? 0));
+  if (!result.ok) return res.status(409).json({ error: 'Could not prepare', message: result.reason });
+  return res.json(result);
+});
+
+creditRouter.post('/:wallet/auto-clear', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const result = await submitAutoClear(wallet, {
+    on: req.body?.on === true,
+    scope: Number(req.body?.scope ?? 0),
+    deadline: Number(req.body?.deadline),
+    signature: String(req.body?.signature ?? ''),
+  });
+  if (!result.ok) return res.status(409).json({ error: 'Not set', message: result.reason });
+  return res.json(result);
+});
+
+creditRouter.post('/:wallet/savings-draw-allowance/prepare', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  let amount: bigint;
+  try {
+    amount = BigInt(String(req.body?.amount ?? '0'));
+  } catch {
+    return res.status(400).json({ error: 'Invalid amount', message: 'amount must be whole ledger units.' });
+  }
+  const result = await prepareSavingsDrawAllowance(wallet, amount);
+  if (!result.ok) return res.status(409).json({ error: 'Could not prepare', message: result.reason });
+  return res.json(result);
+});
+
+// Raising what card spending may take from Savings is a money permission: a fresh Face ID.
+creditRouter.post('/:wallet/savings-draw-allowance', requireStepUp, async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  const result = await submitSavingsDrawAllowance(wallet, {
+    amount: String(req.body?.amount ?? ''),
+    deadline: Number(req.body?.deadline),
+    signature: String(req.body?.signature ?? ''),
+  });
+  if (!result.ok) return res.status(409).json({ error: 'Not set', message: result.reason });
   return res.json(result);
 });
 

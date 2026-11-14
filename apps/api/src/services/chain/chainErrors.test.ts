@@ -53,6 +53,15 @@ describe('Phase 2’s errors decode, and match the Solidity', () => {
     RevolvingIssuerStateNotEnabled: 'RevolvingIssuerBase.sol',
     ClearUSDPaused: 'ClearUSDUpgradeable.sol',
     ESADepositVaultPilotCapReached: 'ESADepositVault.sol',
+    // Phase 2b (section 12)
+    RevolvingIssuerUnsecuredCap: 'RevolvingIssuerBase.sol',
+    RevolvingIssuerBoostCap: 'RevolvingIssuerBase.sol',
+    RevolvingIssuerAutoClearOff: 'RevolvingIssuerBase.sol',
+    RevolvingIssuerNothingToClear: 'RevolvingIssuerBase.sol',
+    RevolvingIssuerBadScope: 'RevolvingIssuerBase.sol',
+    RevolvingIssuerSignatureExpired: 'RevolvingIssuerBase.sol',
+    RevolvingIssuerBadSignature: 'RevolvingIssuerBase.sol',
+    RevolvingIssuerExtensionMismatch: 'RevolvingIssuerBase.sol',
   };
 
   test('each fragment is the contract’s declaration, argument for argument', () => {
@@ -79,6 +88,14 @@ describe('Phase 2’s errors decode, and match the Solidity', () => {
       RevolvingIssuerStateNotEnabled: [SHOP, ethers.ZeroHash],
       ClearUSDPaused: [SHOP, 1, 1_900_000_000n],
       ESADepositVaultPilotCapReached: [1n, 2n, 3n],
+      RevolvingIssuerUnsecuredCap: [3_000_000_000n, 2_499_000_000n],
+      RevolvingIssuerBoostCap: [600_000_000n, 500_000_000n],
+      RevolvingIssuerAutoClearOff: [],
+      RevolvingIssuerNothingToClear: [SHOP],
+      RevolvingIssuerBadScope: [2],
+      RevolvingIssuerSignatureExpired: [1n],
+      RevolvingIssuerBadSignature: [SHOP],
+      RevolvingIssuerExtensionMismatch: [],
     };
     for (const [name, args] of Object.entries(ARGS)) {
       const sentence = describeCreditRefusal(decodeChainError({ data: data(name, args) }));
@@ -96,5 +113,12 @@ describe('Phase 2’s errors decode, and match the Solidity', () => {
     const ny = decodeChainError({ data: data('TermIssuerProductNotEnabled', [SHOP, ethers.encodeBytes32String('NY'), ethers.ZeroHash]) });
     expect(describeCreditRefusal(ny)).toContain('in NY');
     expect(describeCreditRefusal(decodeChainError({ data: data('TermIssuerTermTooShort', [1n, 365n * 86_400n]) }))).toContain('365 days');
+  });
+});
+
+describe('Phase 2b: the caps say their figures', () => {
+  test('Boost $500 and the unsecured $2,499', () => {
+    expect(describeCreditRefusal(decodeChainError({ data: data('RevolvingIssuerBoostCap', [600_000_000n, 500_000_000n]) }))).toContain('$500.00');
+    expect(describeCreditRefusal(decodeChainError({ data: data('RevolvingIssuerUnsecuredCap', [1n, 2_499_000_000n]) }))).toContain('$2,499.00');
   });
 });

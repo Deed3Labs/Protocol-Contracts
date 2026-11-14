@@ -19,9 +19,29 @@ describe('a USDC deposit repays what is owed first, then the rest is theirs', ()
 });
 
 describe('repaid on chain under the member’s mandate, bounded by the chain', () => {
-  test('capped at what is owed, what they hold, and what they approved; whole cents', () => {
-    expect(service).toContain('for (const cap of [owed, held, allowed]) if (cap < amount) amount = cap;');
+  test('Phase 2b: capped at what is owed in the member’s scope, never at their USDC or approval', () => {
+    expect(service).toContain('const owed = await owedInScope(issuer, wallet, scope);');
+    expect(service).toContain('let amount = owed < due ? owed : due;');
     expect(service).toContain("await issuer.repayForMember(ref, wallet, amount)");
+    // Nothing reads the member's balance or allowance any more: the settler delivers the cash.
+    expect(service).not.toContain('usdc.balanceOf(wallet)');
+    expect(service).not.toContain('usdc.allowance(wallet');
+  });
+
+  test('the settler approves the issuer for exactly what it pays, and pays it', () => {
+    const sweep = service.slice(service.indexOf('export async function sweepAutoRepay'));
+    expect(sweep).toContain('usdc.allowance(settler, issuerAddress)');
+    expect(sweep.indexOf('usdc.approve(issuerAddress, amount)')).toBeLessThan(sweep.indexOf('issuer.repayForMember('));
+  });
+
+  test('AutoCleared says what was applied and what is spendable; the member is told so', () => {
+    expect(service).toContain("parsed?.name === 'AutoCleared'");
+    expect(service).toContain('cleared · ${money(releasedCents)} now spendable');
+  });
+
+  test('nothing to clear waits; the network-wide switch pauses everyone', () => {
+    expect(service).toContain("decoded?.name === 'RevolvingIssuerNothingToClear'");
+    expect(service).toContain('if (terms.autoClearOffGlobal)');
   });
 
   test('turned off on chain: the earmark is released', () => {
@@ -38,8 +58,8 @@ describe('repaid on chain under the member’s mandate, bounded by the chain', (
   });
 
   test('the choice is recorded only once the member’s wallet has set it on chain', () => {
-    expect(service).toContain("if (onChain !== enabled) return { ok: false");
-    expect(route).toContain("await setAutoRepayChoice(wallet, req.body?.enabled === true)");
+    expect(service).toContain('if (onChain !== enabled || (scope !== undefined && Number(onChainScope) !== scope)) {');
+    expect(route).toContain('await setAutoRepayChoice(wallet, req.body?.enabled === true, scope)');
     expect(sweeper).toContain('await sweepAutoRepay()');
   });
 });

@@ -106,6 +106,26 @@ export {
 
 export { formatCalendarDate, parseCalendarDate } from './dates';
 
+export {
+  AUTO_CLEAR_SCOPE,
+  AUTO_CLEAR_TYPE_STRING,
+  AUTO_CLEAR_TYPES,
+  autoClearMessage,
+  autoClearTypedData,
+  REVOLVING_DOMAIN_NAME,
+  REVOLVING_DOMAIN_VERSION,
+  revolvingDomain,
+  SAVINGS_DRAW_TYPE_STRING,
+  SAVINGS_DRAW_TYPES,
+  savingsDrawMessage,
+  savingsDrawTypedData,
+  SWITCH_SIGNATURE_TTL_SECONDS,
+  switchMismatch,
+  type AutoClearScope,
+  type AutoClearTypedData,
+  type SavingsDrawTypedData,
+} from './revolvingSwitches';
+
 export type {
   Charge,
   MemberRef,
