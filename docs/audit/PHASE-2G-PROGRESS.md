@@ -28,8 +28,10 @@ If a signature changes, this file is updated and pushed again.
 
 | Item | Status |
 |---|---|
-| 10c renewal cap (CLRUSD account and security pauses, vault pause) | in progress |
-| Pause clocks (the views above) | in progress |
-| 10d de-listing (CLRUSD listed status) | in progress |
-| 10f Legacy Contact Module | in progress |
-| Decision 12: autopay session key | checked: no ZeroDev session key exists in the code (see the final report) |
+| 10c renewal cap (CLRUSD account and security pauses, vault pause) | done |
+| Pause clocks (the views above) | done, signatures unchanged |
+| 10d de-listing (CLRUSD listed status) | done |
+| 10f Legacy Contact Module | done, not deployed; tested on a mock Kernel and on the real Kernel v3.3 bytecode |
+| Decision 12: autopay session key | none exists (autopay is the vault's signed DepositMandate); pinned by an app test |
+
+The write-up is `PHASE-2G-DELISTING-LEGACY.md`.
