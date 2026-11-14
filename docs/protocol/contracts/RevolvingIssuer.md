@@ -16,24 +16,24 @@ Source: [`contracts/peripherals/RevolvingIssuer.sol`](../../../contracts/periphe
 | `absorbRepayment(address member, uint256 available, uint256 minRate)` | `onlyStableCredit` |  |
 | `addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength_)` | Anyone |  |
 | `initialize(address _stableCredit, address _carryTreasury)` | Once, when the proxy is initialised |  |
-| `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)`, `notInActivePeriod(member)` |
+| `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | Anyone |  |
 | `materialiseCarry(address member)` | Anyone |  |
-| `openLine(address member, uint256[] capacities, uint256 periodLength, uint256 graceLength)` | Anyone |  |
-| `pausePeriodOf(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
+| `openLine(address member, uint256[] capacities, uint256 periodLength, uint256 graceLength)` | Not in the current source |  |
+| `pausePeriodOf(address member)` | Anyone |  |
 | `renounceOwnership()` | The owner |  |
 | `repayCardSpend(bytes32 ref, address member, uint256 amount)` | Anyone |  |
-| `repayForMember(bytes32 ref, address member, uint256 amount)` | Anyone |  |
+| `repayForMember(bytes32 ref, address member, uint256 amount)` | Not in the current source |  |
 | `reverseCardSpend(bytes32 ref, uint256 amount)` | Anyone |  |
-| `setAutoRepay(bool enabled)` | Anyone; acts on the caller's own account |  |
-| `setCardSettlementAccount(address account)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` | `notNull(account)` |
-| `setCardSettler(address settler, bool allowed)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` | `notNull(settler)` |
-| `setCarryTreasury(address treasury)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
-| `setExposureSource(address _exposureSource)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
-| `setGraceLengthOf(address member, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
-| `setPeriodExpirationOf(address member, uint256 periodExpiration)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
-| `setTierActive(uint256 tierId, bool active)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
-| `setTierCapacity(address member, uint256 tierId, uint256 capacity)` | `onlyCreditRole(CREDIT_LIMITS_ROLE)` |  |
-| `setTierCarryRecipient(uint256 tierId, address recipient)` | `onlyCreditRole(CREDIT_SETTINGS_ROLE)` |  |
+| `setAutoRepay(bool enabled)` | Anyone |  |
+| `setCardSettlementAccount(address account)` | Anyone |  |
+| `setCardSettler(address settler, bool allowed)` | Anyone |  |
+| `setCarryTreasury(address treasury)` | Anyone |  |
+| `setExposureSource(address _exposureSource)` | Anyone |  |
+| `setGraceLengthOf(address member, uint256 graceLength)` | Anyone |  |
+| `setPeriodExpirationOf(address member, uint256 periodExpiration)` | Anyone |  |
+| `setTierActive(uint256 tierId, bool active)` | Anyone |  |
+| `setTierCapacity(address member, uint256 tierId, uint256 capacity)` | Anyone |  |
+| `setTierCarryRecipient(uint256 tierId, address recipient)` | Anyone |  |
 | `setTierRate(uint256 tierId, uint256 ratePerCycle)` | Anyone |  |
 | `settleCardSpend(bytes32 ref, address member, uint256 amount)` | Anyone |  |
 | `settleFromCollateral(address member, uint256 tierId, uint256 amount)` | Anyone |  |
@@ -41,8 +41,8 @@ Source: [`contracts/peripherals/RevolvingIssuer.sol`](../../../contracts/periphe
 | `syncCreditPositions(address sender, address recipient, uint256 amount)` | `onlyStableCredit` |  |
 | `transferOwnership(address newOwner)` | The owner |  |
 | `underwriteMember(address member)` | Anyone | `notNull(member)`, `canIssueCreditTo(member)` |
-| `unpausePeriodOf(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
-| `updateCreditPeriod(address member, uint256 periodExpiration, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
+| `unpausePeriodOf(address member)` | Anyone |  |
+| `updateCreditPeriod(address member, uint256 periodExpiration, uint256 graceLength)` | Anyone |  |
 | `upgradeTo(address newImplementation)` | `onlyOwner` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyOwner` (via `_authorizeUpgrade`) | payable |
 | `validateCreditTransaction(address sender, address recipient, uint256 amount)` | `onlyStableCredit` |  |

@@ -18,16 +18,16 @@ A revolving default is recorded (and the Liquidator's `_requireCurrentDefault` p
 
 ## Items
 
-- [ ] §3 accrual (calendar months for revolving; per-second caps; term list carry per decision C)
-- [ ] 12.1 cycles (cycleEndDay, Pacific calendar, member change by signature, Rebalance Amount, Secured Minimum, securedDrawPause, hybridMode)
-- [ ] 12.2 Automatic Clearing (UNSECURED / DUE_ONLY / EVERYTHING, autoClearAuthHash, excluded payers)
-- [ ] 12.3 Combined Ceiling (permanent; newest plan first, then earlier plans, then revolving, Boost first)
-- [ ] 12.5 / 10b revolving default (two-person cure-notice timestamp, fail closed)
-- [ ] 12.12 permissions wording
-- [ ] 12.13 incomePause: Secured Minimum zero, no securedDrawPause
-- [ ] 12.16 origination fee leg (feeRecipient, $50/$75 cap, pro-rata reversal, two-person change)
-- [ ] §13 `releaseAssurance` pays Hardship Grants; Credit Backstop never funds a grant (test)
-- [ ] Phase 4c items 1, 2, 3, 7
-- [ ] TermIssuer NatSpec (ELPA)
-- [ ] Tests: amend 1, 3, 18, 25, 28; add 39-48; 4c regressions
+- [x] §3 accrual (calendar months for revolving; per-second caps; term list carry per decision C)
+- [x] 12.1 cycles (cycleEndDay, Pacific calendar, member change by signature, Rebalance Amount, Secured Minimum, securedDrawPause, hybridMode)
+- [x] 12.2 Automatic Clearing (UNSECURED / DUE_ONLY / EVERYTHING, autoClearAuthHash, excluded payers)
+- [x] 12.3 Combined Ceiling (permanent; newest plan first, then earlier plans, then revolving, Boost first)
+- [x] 12.5 / 10b revolving default (two-person cure-notice timestamp, fail closed)
+- [x] 12.12 permissions wording
+- [x] 12.13 incomePause: Secured Minimum zero, no securedDrawPause
+- [x] 12.16 origination fee leg (feeRecipient, $50/$75 cap, pro-rata reversal, two-person change)
+- [x] §13 `releaseAssurance` pays Hardship Grants; Credit Backstop never funds a grant (test)
+- [x] Phase 4c items 1, 2, 3, 7
+- [x] TermIssuer NatSpec (ELPA)
+- [x] Tests: amend 1, 3, 18, 25, 28; add 39-48; 4c regressions
 - [ ] Merge the bond half; checks; report; draft PR
