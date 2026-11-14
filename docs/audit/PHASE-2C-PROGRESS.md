@@ -11,7 +11,7 @@ A resumed session reads this file and `git log`, then carries on.
 - [x] 3. Rewiring: the ledger's own reserve token and conversion, the remainder to Lending Co., `burnLostDebt` without `reimburse`; issuers, CreditPool, PayoutPool, BondVault, the bond factory; AssuranceOracle retired.
 - [x] 4. Tests: existing tests updated; `test/audit/compliance/Assurance.spec.ts` (31–33) and the pool's unit spec.
 - [x] 5. Deploy: the new pool, the Assurance timelock handover, credit wiring; UPGRADEABILITY.
-- [ ] 6. Sizes, Slither, fingerprints, contract docs, full suite, report, PR.
+- [x] 6. Sizes, Slither, fingerprints, contract docs, full suite, report, PR.
 
 ## Calls into AssurancePool before this phase (`contracts/`)
 

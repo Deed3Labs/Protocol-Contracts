@@ -31,7 +31,7 @@ Nothing was deployed, no key was used, and no live network was touched.
 | `TermIssuerExtension.repayWrittenOff` | Pays Lending Co.'s operating address (its charge-off), instead of depositing into the pool. Lending Co. deposits `RECOVERY` itself if the backstop covered the loss. |
 | `PayoutPool` | The reserve lender is gone: `setLenders(yield, reserve)` → `setYieldPool(yield)`; no repayment leg to a reserve; `borrowed()` counts the yield pool and the bond vault. Slots kept, renamed. |
 | `BondVault` | `repayReserve` removed; `setBackstops(treasury, payoutPool)`; `deployableExcess` no longer reserves for a pool loan. Slots kept, renamed. |
-| `BurnerBond`, `BurnerBondDeposit`, `BurnerBondFactory` | Hold no AssurancePool address at all. The factory gates collections on the TokenRegistry's whitelist (the AssuranceOracle used to answer). |
+| `BurnerBond`, `BurnerBondDeposit`, `BurnerBondFactory` | Hold no AssurancePool address at all. The factory gates collections on the TokenRegistry's whitelist (the AssuranceOracle used to answer). BurnerBond also drops the unused `getCollectionMetadata()` view to stay under EIP-170 (section 6). |
 | `NetworkRegistry` | `registerIssuer(issuer, stableCredit)` (the pool and oracle fields of `Network` stay, at zero). New `listMoneyPath(account, kind)` (admin, set once, never cleared) and `isMoneyPath`. |
 | Retired | `AssuranceOracle`, `IAssuranceOracle`, `ITargetRTDSource`, `TickMath`, `MockUniswapV3`, `MockAssurancePool`, `IBondBackstop`; the old-pool scripts (`set_target_rtd`, `upgrade_assurance_*`, `update-assurance-oracle-config`, `upgrade_bond_backstops`, `upgrade_reserve_draw`, `test-burner-bond-factory`) and `deploy/09`. |
 
@@ -89,12 +89,59 @@ Existing tests changed (each now asserts the section 13 behaviour; nothing was l
 | `audit/deep/PeripheralRegressions` | X-9, X-15, X-16 and M-8/X-17 were findings on the retired pool and oracle; they become two tests that the new pool cannot recur them (one asset at face; no lending). X-10 reads the vault's own `requiredReserve` gas instead of the pool's RTD. 23 → 21. |
 | `audit/deep/LowFindings` | L-1 initializes the new pool's implementation; L-8 uses `setLenderOperating` and `setYieldPool`. |
 | `audit/deep/DeepPoC` (X-2) | The repayment's destination past the payout pool is Lending Co. |
+| `peripherals/BurnerBond` | Registers USDT in the TokenRegistry for the tests that open a USDT collection (the oracle whitelisted it by default); the bare implementation's `initialize` takes one argument fewer. |
 | `peripherals/PayoutPool`, `Liquidator`, `TermIssuer`, `OffersIssuer`, `BurnerBond`, `CollateralRegistry`, `core/AssetBackedTier` | Pool-balance assertions now read Lending Co.'s balance or the new pool's compartments; the registry drives the Credit Backstop floor. |
 | `deploy/CreditCore.deploy` | Issuers are registered against the ledger alone (they used to wait for a pool and oracle). |
 
 ## 6. Numbers
 
-RESULTS_PLACEHOLDER
+- **Tests.** The full Hardhat suite (`KEEP_REVERT_STRINGS=true npx hardhat test --no-compile`, fuzz at the default 300 steps): **962 passing, 0 failing** (Phase 2b ended at 957). The net +5:
+  - acceptance spec +14 and deploy spec +1;
+  - the pool's unit spec 38 → 42;
+  - NetworkRegistry +3, RepaymentRouting +1;
+  - BondBackstop −2, PeripheralRegressions −2;
+  - the oracle spec −14.
+
+  `npx turbo run typecheck test --affected`: 32 of 32 tasks passed.
+- **Sizes.** Production build (`npx hardhat compile --force`). No contract is over 24,576 bytes runtime or 49,152 bytes of creation code.
+
+  | Contract | Runtime | Creation code |
+  |---|---|---|
+  | BurnerBond | 24,168 | 24,278 |
+  | RevolvingIssuer | 23,599 | 24,324 |
+  | TermIssuerExtension | 23,595 | 23,732 |
+  | ClearCredit | 21,755 | 21,892 |
+  | TermIssuer | 21,488 | 22,171 |
+  | PayoutPool | 20,786 | 20,923 |
+  | RevolvingIssuerExtension | 20,467 | 20,604 |
+  | RevolvingIssuerCycles | 19,553 | 19,607 |
+  | AssurancePool (new) | 17,070 | 17,207 |
+  | OffersIssuer | 12,123 | 12,260 |
+  | BondVault | 10,290 | 10,427 |
+  | BurnerBondDeposit | 7,908 | 8,018 |
+  | BurnerBondFactory | 7,270 | 46,956 |
+  | NetworkRegistry | 6,924 | 7,061 |
+
+  BurnerBond needed a fix. Its own source got smaller (a standalone compile measured 24,806 bytes on `dev` and 24,065 here). But in the full project build it came out at 24,643, because viaIR code generation shifts with whatever else is in the compilation job. Removing the unused `getCollectionMetadata()` view brought it to 24,168. It duplicated five public getters, and nothing in the repo, the apps or the tests read it. Nothing else is within 100 bytes, except Subdivide, which is unchanged at 24,574.
+- **Storage** (slot by slot, from solc's storage layouts on `dev` and on this branch):
+  - **Unchanged:** RevolvingIssuer, TermIssuer, OffersIssuer and CreditPool.
+  - **Renamed in place, never read** (the old pool's address and loans; `@custom:oz-renamed-from`):
+    - ClearCredit, slot 253;
+    - PayoutPool, slots 271 and 273;
+    - BondVault, slots 261 and 264.
+  - **Appended:**
+    - ClearCredit gains `reserveToken` (262) and `lenderOperating` (263);
+    - NetworkRegistry gains `moneyPathKindOf` (257), and its `__gap` shrinks from 44 to 43, so it still ends at slot 300.
+  - **Untouched:** ESADepositVault and ClaimEscrow (no diff), so their storage reports against `.openzeppelin/base.json` stand as Phase 2b left them.
+  - **AssurancePool:** a fresh layout. 33 slots of its own, then `__gap[67]`; the balances are in `compartmentOf`.
+  - **BurnerBond and BurnerBondDeposit:** these are clones of a factory's implementation and are never upgraded. Their `assurancePool` slot is dropped, which is safe because a new factory deploys new implementations.
+- **Slither** (Medium and High, per contract, the FIX-PLAN section 6 way, compared with the same run on `dev`). The contracts run were AssurancePool, ClearCredit, NetworkRegistry, PayoutPool, BondVault, BurnerBond, BurnerBondDeposit, BurnerBondFactory, RevolvingIssuerExtension, RevolvingIssuerCycles, OffersIssuer and TermIssuerExtension.
+  - **New, all in AssurancePool, all intended:**
+    - `incorrect-equality` on `amount == 0` in `_credit` and on `year == allocationYear` in `setAllocation`. These are a zero check and a program-year comparison, not balance equalities.
+    - `uninitialized-local` for `toOthers` and `sum`, which are accumulators that start at zero.
+  - **Gone:** every finding on the old pool, including the High `reentrancy-balance` in `_withdrawEquivalentValue`. Also gone are `reentrancy-no-eth` in `burnLostDebt` and the `unused-return` approvals in `_routeRepayment`, `_repayLenders`, `_repayPrincipal` and `_repayReserve`.
+  - **Unchanged:** nothing else new in the other eleven contracts.
+- **Generated files:** fingerprints (`packages/command-types/src/chain/code.json`) and the contract reference were regenerated; both `--check`s pass; `check-doc-links` reports 193 files and no broken links. The contract-reference pages describe what is *deployed* (Base Sepolia's old pool and oracle), so they now mark those functions "Not in the current source".
 
 ## 7. Open questions for the owner
 
