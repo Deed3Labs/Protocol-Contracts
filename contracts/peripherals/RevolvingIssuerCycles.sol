@@ -302,13 +302,17 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
             }
         }
         // 12.18: a DEFERRAL owes no Rebalance Amount and a REDUCED one at most the attested amount;
-        // a PLAN has no unsecured balance left. Each counts down the closes it covers.
-        if (workout != 0) {
-            if (workout == WORKOUT_DEFERRAL) ra = 0;
-            else if (workout == WORKOUT_REDUCED && ra > w.reducedAmount) ra = w.reducedAmount;
-            if (workout != WORKOUT_PLAN && --w.cyclesLeft == 0) {
+        // a PLAN has no unsecured balance left. DEFERRAL and REDUCED count down the closes they
+        // cover, and end at the close after the last: that one, and what it fixes, is ordinary.
+        if (workout != 0 && workout != WORKOUT_PLAN) {
+            if (w.cyclesLeft == 0) {
                 w.state = 0;
                 emit WorkoutEnded(member, workout);
+                workout = 0;
+            } else {
+                w.cyclesLeft--;
+                if (workout == WORKOUT_DEFERRAL) ra = 0;
+                else if (ra > w.reducedAmount) ra = w.reducedAmount;
             }
         }
         s.closedWorkout = workout;

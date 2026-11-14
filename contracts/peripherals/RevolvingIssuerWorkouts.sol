@@ -85,14 +85,27 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
         w.startedAt = uint64(block.timestamp);
         w.qualifying = 0;
         CycleState storage s = cycleState[member];
-        // The dues already fixed by the last close are reduced or delayed the same way.
+        // The running cycle is the first one covered: the dues its close already fixed are reduced
+        // or delayed the same way (with a close a pause holds open: 10c), and one close fewer is
+        // left to cover. Every cycle counts once, so a DEFERRAL of 2 never relieves a third.
         if (s.closedAt != 0) {
-            if (state != WORKOUT_REDUCED) s.rebalanceAmount = 0;
-            else if (s.rebalanceAmount > reducedAmount) s.rebalanceAmount = reducedAmount;
+            s.rebalanceAmount = uint128(_workoutRA(state, s.rebalanceAmount, reducedAmount));
             s.closedWorkout = state;
+            if (state != WORKOUT_PLAN) w.cyclesLeft = cycles - 1;
+        }
+        if (s.heldClosedAt != 0) {
+            s.heldRA = uint128(_workoutRA(state, s.heldRA, reducedAmount));
+            s.heldWorkout = state;
         }
         if (state == WORKOUT_PLAN) _startPlan(member, s, w, cycles);
         emit WorkoutStarted(member, state, cycles, reducedAmount, workoutRef);
+    }
+
+    /// @dev A Rebalance Amount under a workout: none under a DEFERRAL or a PLAN (which leaves no
+    /// unsecured balance), at most the attested amount under a REDUCED.
+    function _workoutRA(uint8 state, uint256 ra, uint256 reducedAmount) private pure returns (uint256) {
+        if (state != WORKOUT_REDUCED) return 0;
+        return ra > reducedAmount ? reducedAmount : ra;
     }
 
     /// @notice proposes a second workout within 365 days of the last, with its own reference hash.
