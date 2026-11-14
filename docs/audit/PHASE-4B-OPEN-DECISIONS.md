@@ -14,3 +14,5 @@ The owner accepted every recommendation for `PHASE-4B-REPORT.md` section 3. They
 | 8 | Comparing a term plan with a revolving tier | Keep as built: a plan's per-30-day rate is stated per month (× 365/360), so it is dearer at the same quoted bps and is repaid first. |
 | 9 | More than 16 distinct rates | Never leave a repayment unattributed: anything beyond the 16th band goes to the dearest remaining positions by a fallback, with a test. |
 | 10 | O-1 applies to the whole line | Keep as built: the line moves to the new state only when every product it uses has launched there. |
+
+**Scope of Phase 4c (owner, Nov 14, 2026):** items 4, 5 and 9 only. Items 1, 2, 3 and 7 are built in Phase 2e (they change the same RevolvingIssuer code); 6, 8 and 10 stay as built.

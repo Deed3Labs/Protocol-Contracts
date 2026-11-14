@@ -184,13 +184,15 @@ contract DeedNFT is DeedNFTBase {
         _forward(mintExtension);
     }
 
-    /// @notice The IDeedTrust surface: mintTrustDeed, reserveId and computeDeedId run in the mint extension,
-    ///         everything else in the trust extension. The transfer hook's entry point is refused.
+    /// @notice The IDeedTrust surface: mintTrustDeed, reserveId, computeDeedId and (Phase 4c, for room)
+    ///         freezeConsentDigest run in the mint extension, everything else in the trust extension. The
+    ///         transfer hook's entry point is refused.
     fallback() external {
         bytes4 s = msg.sig;
         if (s == DeedTrustExtension.transferHook.selector) revert HookOnly();
         _forward(
             s == IDeedTrust.mintTrustDeed.selector || s == IDeedTrust.reserveId.selector || s == IDeedTrust.computeDeedId.selector
+                || s == IDeedTrust.freezeConsentDigest.selector
                 ? mintExtension
                 : trustExtension
         );
@@ -211,6 +213,8 @@ contract DeedNFT is DeedNFTBase {
     }
 
     /// @dev Runs the extension's transfer rules against this storage, with the original caller as operator.
+    ///      Phase 4c: a transfer or burn then cancels a pending validator reassignment, so the new holder
+    ///      decides. Only a trust deed can have one; a legacy deed changes validator at once.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
     function _transferHook(address from, address to, uint256 tokenId) internal override {
         (bool ok, bytes memory ret) =
@@ -219,6 +223,11 @@ contract DeedNFT is DeedNFTBase {
             assembly {
                 revert(add(ret, 32), mload(ret))
             }
+        }
+        address pending = _pendingValidator[tokenId].validator;
+        if (pending != address(0)) {
+            delete _pendingValidator[tokenId];
+            emit ValidatorReassignmentCancelled(tokenId, pending);
         }
     }
 
@@ -261,8 +270,8 @@ contract DeedNFT is DeedNFTBase {
      *      completeValidatorReassignment after `validatorReassignDelay()`, and until then the old validator is
      *      still the deed's validator and may still void it, so a holder who sees a freezing markVoid coming
      *      cannot move the deed out of its reach first. Neither step runs while the deed is Void. A new request
-     *      replaces a pending one and restarts the clock. A legacy deed (not in trust, never voidable) changes
-     *      validator at once, as before.
+     *      replaces a pending one and restarts the clock, and a transfer cancels it (Phase 4c: the new holder
+     *      decides). A legacy deed (not in trust, never voidable) changes validator at once, as before.
      */
     function reassignValidator(uint256 tokenId, address newValidator) external whenNotPaused {
         require(ownerOf(tokenId) == msg.sender, "Not deed owner");
