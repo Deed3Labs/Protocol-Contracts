@@ -4,6 +4,7 @@ import { deployPhase0Network, drawCredit } from "../../helpers/phase0-fixture";
 import { driveToDefault } from "../../helpers/default";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { deployAssurancePool, fund, balances, TAG, AssuranceSetup } from "../../helpers/assurance";
+import { pledgeSigned } from "../../helpers/pledge";
 
 /*
  * Compliance addendum 12.11 (restated by section 13): no redemption, payout or force-settlement
@@ -188,7 +189,7 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       await ctx.usdc.mint(ctx.member.address, 1_000n * ONE_USDC);
       await ctx.usdc.connect(ctx.member).approve(await vault.getAddress(), ethers.MaxUint256);
       await vault.connect(ctx.member).deposit(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, ctx.member.address);
-      await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
       await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 30 * DAY, 30 * DAY);
       await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 400n * ONE_USDC);
       // Section 12.5: two missed rebalances in a row, each judged, then the cure window.

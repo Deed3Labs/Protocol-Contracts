@@ -278,9 +278,10 @@ contract TermIssuerExtension is TermIssuerBase {
                 pricing.product,
                 plan.principalOutstanding - carryOutstandingOf[planId],
                 installments,
-                plan.installmentLength
+                plan.installmentLength,
+                IOpenPrincipal(address(this)).openPrincipalOf(plan.member, pricing.product, planId)
             );
-            largeLoan = q.largeLoan;
+            largeLoan = q.largeTerm;
             uint256 oldRate = plan.index.ratePerCycle;
             uint256 due = installmentsDue(planId);
             uint256 remaining = plan.installments > due ? plan.installments - due : 0;

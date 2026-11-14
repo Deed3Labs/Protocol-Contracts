@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { ONE_USDC, DAY, CA, P, CA_BANDS, params, deployRateSchedule } from "./rates";
 import { issuerProxyOptions } from "../../helpers/issuers";
+import { pledgeSigned, pledgeItemSigned } from "../../helpers/pledge";
 
 /*
  * Section 12 addendum, the Liquidator side: 12.5 (a missed cycle's excess is settled from Earn,
@@ -123,14 +124,14 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     await s.usdc.mint(m, amount);
     await s.usdc.connect(s.ctx.member).approve(await s.vault.getAddress(), amount);
     await s.vault.connect(s.ctx.member).deposit(await s.usdc.getAddress(), amount, m);
-    await s.registry.pledge(m, SAVINGS, amount);
+    await pledgeSigned(s.registry, m, SAVINGS, amount);
   }
 
   async function poolShares(amount: bigint) {
     await s.usdc.mint(m, amount);
     await s.usdc.connect(s.ctx.member).approve(await s.pool.getAddress(), amount);
     await s.pool.connect(s.ctx.member).deposit(amount, m);
-    await s.registry.pledge(m, POOL_SHARE, amount);
+    await pledgeSigned(s.registry, m, POOL_SHARE, amount);
   }
 
   async function buyBond(face: bigint, term = YEAR) {
@@ -141,7 +142,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     await s.deposit.connect(s.ctx.member).makeDeposit(await s.usdc.getAddress(), face, maturity, discount);
     const ids = await s.bond.getBondIdsByCreator(m);
     const id = ids[ids.length - 1];
-    await s.registry.pledgeItem(m, BOND, id);
+    await pledgeItemSigned(s.registry, m, BOND, id);
     return id;
   }
 

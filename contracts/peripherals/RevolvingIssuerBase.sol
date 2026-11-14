@@ -10,6 +10,11 @@ import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
 import "./RateSchedule.sol";
 
+/// @dev The one CLRUSD call a Savings draw makes (Phase 4b, L-B).
+interface IClrusdLockSync {
+    function syncEncumbrance(address holder) external returns (uint256 locked);
+}
+
 /// @title RevolvingIssuerBase
 /// @notice Everything RevolvingIssuer and RevolvingIssuerExtension share: storage, events, errors and internals.
 /// @dev RevolvingIssuer outgrew the 24 KiB contract size limit, so some of its functions run in
@@ -181,7 +186,18 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// snapshot and bricked the member. One slot from the gap.
     mapping(address => uint256) internal snapBasis;
 
-    uint256[10] private __gap;
+    /* ---- Phase 4b: the owner's decisions on the re-review ---- */
+
+    /// @dev member => when their current line was opened (M-C). A default recorded before it ended
+    /// an earlier line, which the member has since settled and been re-onboarded from, so the
+    /// Liquidator may act only on a default of this line. Zero for a line opened before this
+    /// upgrade, which keeps the old rule for it. One slot from the gap.
+    mapping(address => uint64) internal lineOpenedAt;
+    /// @dev The CLRUSD token whose recorded lock a Savings draw refreshes (L-B). Set once, by the
+    /// owner. One slot from the gap.
+    address internal clrusdToken;
+
+    uint256[8] private __gap;
 
     bytes32 internal constant BOOST_KIND = "BOOST";
     bytes32 internal constant SAVINGS_KIND = "SAVINGS";
@@ -244,6 +260,8 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     event TierProductSet(uint256 indexed tierId, bytes32 productId);
     /// @notice carry above the member-level ceiling that was not charged (spec item 4).
     event CarryTrimmed(address indexed member, uint256 indexed tierId, uint256 amount);
+    /// @notice the CLRUSD token a Savings draw refreshes the lock of (Phase 4b, L-B).
+    event ClrusdTokenSet(address token);
 
     /* ---- section 12 ---- */
     event CycleJudged(address indexed member, bool clean, uint8 missedInRow, uint8 cleanStreak, bool deposited);
@@ -266,6 +284,8 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     error RevolvingIssuerBadSignature(address member);
     /// @notice thrown when the RateSchedule or ceiling product is changed once set (Phase 4, M-B).
     error RevolvingIssuerPricingSet();
+    /// @notice thrown when the CLRUSD token is set twice, or to zero (Phase 4b, L-B).
+    error RevolvingIssuerClrusdSet();
 
     /// @notice moves carry accrued in each tier onto the ledger.
     /// @dev Carry deepens the member's negative balance and mints the matching claim to whoever
@@ -342,9 +362,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
 
     /// @dev Resets every snapshot to now, under the member's current state.
     function _resnapshot(address member) internal {
-        bytes32 state = address(stableCredit.networkRegistry()) == address(0)
-            ? bytes32(0)
-            : _stateOf(member);
+        bytes32 state = _pricingState(member);
         snapState[member] = state;
         uint256 basis;
         for (uint256 i = 0; i < tiers.length; i++) {
@@ -366,6 +384,24 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// @dev Whether `product` is priced from the RateSchedule for `state` right now.
     function _onSchedule(bytes32 state, bytes32 product) internal view returns (bool) {
         return address(rateSchedule) != address(0) && product != bytes32(0) && rateSchedule.hasProduct(state, product);
+    }
+
+    /// @dev The state a member's priced tiers are priced under from the next touch: the attested
+    /// state, unless that state lacks a product the member's last state priced their line on. Then
+    /// the member keeps the last state's products until the new state's launch (Phase 4b, O-1), so
+    /// a re-attestation never moves them onto a tier's own local rate with no ceiling over it. The
+    /// whole line moves together, because the member-level ceiling is one product in one state.
+    function _pricingState(address member) internal view returns (bytes32 state) {
+        if (address(stableCredit.networkRegistry()) == address(0)) return bytes32(0);
+        state = _stateOf(member);
+        bytes32 last = snapState[member];
+        if (last == state || last == bytes32(0)) return state;
+        if (_onSchedule(last, ceilingProduct) && !_onSchedule(state, ceilingProduct)) return last;
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tierCapacity[member][i] == 0 && tierPrincipal[member][i] == 0) continue;
+            bytes32 product = tierProduct[i];
+            if (_onSchedule(last, product) && !_onSchedule(state, product)) return last;
+        }
     }
 
     /// @notice whether a member has rebalanced their revolving line: nothing owed in any tier.
@@ -399,6 +435,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// @return remaining what the tiers had no room for.
     function _draw(address member, uint256 amount) internal returns (uint256 remaining) {
         remaining = amount;
+        bool savingsDrawn;
         for (uint256 i = 0; i < tiers.length && remaining > 0; i++) {
             if (!tiers[i].active) continue;
             uint256 headroom = _headroom(member, i, tierPrincipal[member][i]);
@@ -407,11 +444,19 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
             uint256 take = headroom < remaining ? headroom : remaining;
             tierPrincipal[member][i] += take;
             remaining -= take;
+            if (tiers[i].kind == SAVINGS_KIND) savingsDrawn = true;
             emit TierDrawn(member, i, take);
         }
         // Anything left over means the ledger allowed a draw this issuer has no room for. The
         // ledger's ceiling is the sum of every issuer's allocation, not just these capacities, so
         // it can happen; the caller decides what to do about it.
+
+        // A draw on Savings raises the member's CLRUSD lock. CLRUSD falls back to the last lock it
+        // read when the registry cannot answer, so it must read the new one now (Phase 4b, L-B).
+        // Every draw comes through here: a plain transfer and a card settlement alike. Not caught:
+        // if the registry is down, the draw reverts rather than leave the record stale.
+        address token = clrusdToken;
+        if (savingsDrawn && token != address(0)) IClrusdLockSync(token).syncEncumbrance(member);
     }
 
     /// @dev Headroom given what is drawn. Draws pass the ledger figure directly: they run right
