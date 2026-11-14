@@ -218,9 +218,6 @@ interface IBurnerBond is IERC1155Upgradeable {
     
     /* ========== ADMIN FUNCTIONS ========== */
     
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external;
     
     /// @notice Set the underlying token address
     /// @param _underlyingToken Address of the underlying token

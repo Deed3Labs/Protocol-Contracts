@@ -12,7 +12,6 @@ import "../core/interfaces/burner-bond/IBurnerBond.sol";
 import "../core/interfaces/burner-bond/IBurnerBondDeposit.sol";
 import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "../core/interfaces/stable-credit/IAssurancePool.sol";
 
 /// @title BurnerBond
 /// @notice ERC-1155 based bond system that allows users to mint bonds at a discount
@@ -87,9 +86,6 @@ contract BurnerBond is
     /// @notice BurnerBondFactory contract (single source of truth for parameters)
     IBurnerBondFactory public factory;
     
-    /// @notice AssurancePool contract for USDC deposits and withdrawals
-    IAssurancePool public assurancePool;
-
     /// @notice Where the money to redeem a bond comes from.
     /// @dev The vault, never the AssurancePool. A bondholder is a creditor and must not be
     /// exposed to how the credit book is performing.
@@ -225,7 +221,6 @@ contract BurnerBond is
     /// @notice sets a collection up.
     /// @param _burnerBondDeposit Address of the BurnerBondDeposit contract
     /// @param _factory Address of the parameter source
-    /// @param _assurancePool Address of the AssurancePool contract
     /// @param _underlyingToken Address of the underlying token
     /// @param _uri Base URI for ERC-1155 metadata
     /// @param _collectionName Name of the collection
@@ -238,7 +233,6 @@ contract BurnerBond is
     function initialize(
         address _burnerBondDeposit,
         address _factory,
-        address _assurancePool,
         address _underlyingToken,
         string memory _uri,
         string memory _collectionName,
@@ -253,12 +247,10 @@ contract BurnerBond is
 
         require(_burnerBondDeposit != address(0), "Invalid BurnerBondDeposit address");
         require(_factory != address(0), "Invalid factory address");
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
         require(_underlyingToken != address(0), "Invalid underlying token address");
         
         burnerBondDeposit = IBurnerBondDeposit(_burnerBondDeposit);
         factory = IBurnerBondFactory(_factory);
-        assurancePool = IAssurancePool(_assurancePool);
         underlyingToken = IERC20(_underlyingToken);
         collectionName = _collectionName;
         collectionSymbol = _collectionSymbol;
@@ -871,13 +863,6 @@ contract BurnerBond is
         bondVault = IBondVaultSettlement(_bondVault);
     }
 
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external override onlyOwner {
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
-        assurancePool = IAssurancePool(_assurancePool);
-    }
-    
     /// @notice Set the underlying token address
     /// @param _underlyingToken Address of the underlying token
     function setUnderlyingToken(address _underlyingToken) external onlyOwner {

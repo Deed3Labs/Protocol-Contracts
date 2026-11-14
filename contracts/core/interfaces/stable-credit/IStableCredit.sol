@@ -5,13 +5,17 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "./IAccessManager.sol";
 import "./ICreditIssuer.sol";
 import "./INetworkRegistry.sol";
-import "./IAssurancePool.sol";
 import "./IMutualCredit.sol";
 import "./IMerchantStatus.sol";
 
 interface IStableCredit is IMutualCredit, IERC20Upgradeable {
-    /// @dev the reserve pool contract which holds and manages reserve tokens
-    function assurancePool() external view returns (IAssurancePool);
+    /// @notice the token repayments are made in (USDC). The ledger's own setting: nothing in
+    /// credit reads it from the co-op's Assurance contracts (section 13).
+    function reserveToken() external view returns (IERC20Upgradeable);
+    /// @notice converts a credit amount into reserve-token units.
+    function convertStableCreditToReserveToken(uint256 amount) external view returns (uint256);
+    /// @notice Lending Co.'s operating address: a repayment's remainder and written-off debt go here.
+    function lenderOperating() external view returns (address);
     /// @dev the access manager contract which manages network role access control
     function access() external view returns (IAccessManager);
     /// @dev the credit issuer contract which manages credit line issuance
@@ -39,9 +43,8 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @notice update existing credit lines
     /// @param creditLimit must be greater than given member's outstanding debt
     function updateCreditLimit(address member, uint256 creditLimit) external;
-    /// @notice Reduces lost debt in exchange for assurance reimbursement.
-    /// @dev Must have sufficient lost debt to service.
-    /// @return reimbursement amount from assurance pool
+    /// @notice always reverts: lost debt is Lending Co.'s charge-off and is not redeemable from
+    /// any reserve (section 13). Kept so the selector answers with a reason.
     function burnLostDebt(address member, uint256 amount) external returns (uint256);
 
     /// @notice settles a member's obligation, pulling reserve tokens from the caller.
@@ -150,6 +153,7 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
         address sender, address recipient, bool senderCompliance, bool recipientCompliance
     );
     event AccessManagerUpdated(address accessManager);
-    event AssurancePoolUpdated(address assurancePool);
+    event ReserveTokenSet(address reserveToken);
+    event LenderOperatingUpdated(address lenderOperating);
     event NetworkRegistryUpdated(address networkRegistry);
 }

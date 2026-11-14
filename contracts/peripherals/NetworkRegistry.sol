@@ -41,13 +41,24 @@ contract NetworkRegistry is
     /// signer, never by the member or an operator key. Appended from the gap.
     mapping(address => bytes32) public stateCodeOf;
 
-    uint256[44] private __gap;
+    /// @notice System contracts that sit on a money path, by kind (CLRUSD, the ESA vault, the
+    /// pledge module, the ledger, the payout and yield pools, the bond vault, the liquidator).
+    /// @dev Compliance section 13c. The AssurancePool reads this, with `isIssuer`, to refuse a
+    /// deposit from any of them. Set once per address by the admin (the credit timelock), and never
+    /// cleared: an entry only ever narrows who may pay the pool. Appended from the gap.
+    mapping(address => bytes32) public moneyPathKindOf;
+
+    uint256[43] private __gap;
 
     /// @notice May attest a member's state of residence. The trusted signer, and nothing else.
     bytes32 public constant STATE_ATTESTER_ROLE = keccak256("STATE_ATTESTER_ROLE");
 
     error NetworkRegistryInvalidAddress();
     error NetworkRegistryInvalidStateCode();
+    error NetworkRegistryMoneyPathSet(address account);
+
+    /// @notice a system contract was listed as sitting on a money path.
+    event MoneyPathListed(address indexed account, bytes32 indexed kind);
 
     /// @notice a member's state of residence was attested.
     event StateCodeAttested(address indexed member, bytes32 stateCode, address indexed attester);
@@ -105,6 +116,11 @@ contract NetworkRegistry is
         return enrolled[member][issuer];
     }
 
+    /// @notice whether `account` is a credit issuer or a listed money-path contract (section 13c).
+    function isMoneyPath(address account) external view returns (bool) {
+        return registered[account] || moneyPathKindOf[account] != bytes32(0);
+    }
+
     /// @notice how many issuers a member holds a position with.
     function issuerCountOf(address member) external view returns (uint256) {
         return memberIssuers[member].length;
@@ -127,25 +143,29 @@ contract NetworkRegistry is
     /* ========== RESTRICTED FUNCTIONS ========== */
 
     /// @notice registers an issuer against a network.
+    /// @dev Phase 2c: an issuer is wired to its ledger and nothing else. It draws on no reserve, and
+    /// the network's two retired fields (the old AssurancePool and AssuranceOracle) stay zero.
     /// @param issuer address of the issuer contract.
     /// @param stableCredit the ledger it writes to.
-    /// @param assurancePool the reserve it draws on.
-    /// @param assuranceOracle the oracle serving its target RTD.
-    function registerIssuer(
-        address issuer,
-        address stableCredit,
-        address assurancePool,
-        address assuranceOracle
-    ) external onlyRole(OPERATOR_ROLE) {
-        if (
-            issuer == address(0) || stableCredit == address(0) || assurancePool == address(0)
-                || assuranceOracle == address(0)
-        ) revert NetworkRegistryInvalidAddress();
+    function registerIssuer(address issuer, address stableCredit) external onlyRole(OPERATOR_ROLE) {
+        if (issuer == address(0) || stableCredit == address(0)) revert NetworkRegistryInvalidAddress();
         if (registered[issuer]) revert NetworkRegistryIssuerAlreadyRegistered(issuer);
 
-        networks[issuer] = Network(stableCredit, assurancePool, assuranceOracle);
+        networks[issuer] = Network(stableCredit, address(0), address(0));
         registered[issuer] = true;
-        emit IssuerRegistered(issuer, stableCredit, assurancePool, assuranceOracle);
+        emit IssuerRegistered(issuer, stableCredit);
+    }
+
+    /// @notice lists a system contract as sitting on a money path, so it can never pay the
+    /// AssurancePool (section 13c).
+    /// @dev Admin only, once per address, and never undone: the list only narrows.
+    /// @param account the contract.
+    /// @param kind what it is, e.g. "CLRUSD", "ESA_VAULT", "PLEDGE", "PAYOUT_POOL".
+    function listMoneyPath(address account, bytes32 kind) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (account == address(0) || kind == bytes32(0)) revert NetworkRegistryInvalidAddress();
+        if (moneyPathKindOf[account] != bytes32(0)) revert NetworkRegistryMoneyPathSet(account);
+        moneyPathKindOf[account] = kind;
+        emit MoneyPathListed(account, kind);
     }
 
     /// @notice removes an issuer.
