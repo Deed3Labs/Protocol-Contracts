@@ -20,3 +20,18 @@ The owner accepted the recommendation, with one distinction:
      - Show it as a housing bill, separate from credit, with a normal due date.
      - It never appears in the credit view or affects credit limits.
 - **Where it gets built:** mainly the apps, plus correcting TermIssuer's description. No contract records ELPA payments today.
+
+### ELPA contract decision (Nov 14, 2026): no new contract, no Phase 2g
+The ELPA is an off-chain contract right by design (MB-13, MB-14, PR-01; research memo R-09). The owner's answers:
+1. **What is on chain:** nothing new. The Equity Balance, Structure Price and progress toward Redemption live in Clear's books (shown in the app, with statements). They are not tokenized and not transferable. The only on-chain event is **Redemption**: Clear transfers the Clear Deed (the Deed Token of the Home Trust, the entire beneficial interest) through the Deed Contract to the member's Smart Account (MB-13 §8.3(b); PR-01 §16.8.1). From then on the member may act as Owner-Trustee (PR-01 §§2.41, 13.2.4). The Redemption transfer is exempt from Clear's right of first refusal.
+2. **Contributions:** fiat only (app, Autopay, ACH, check or money order; MB-13 §6.6), recorded off chain. No USDC path and no attestation contract.
+3. **Community Fee:** off chain, a normal housing bill under MB-14 Article 5. It never touches the Equity Balance or credit.
+4. **Exits:** off chain under MB-13 and MB-14 (exit refund within 90 days; sale with Clear's ROFR at the Formula Price; Successor on death; Community Fee termination only after notice, a hardship plan and a court order). Equity is never a debt. On chain, only after Redemption: Clear Deed transfers follow the existing Deed protocol rules, including Clear's ROFR (PR-01 §16.5.3; MB-14 §9.5).
+5. **Securities:** per R-09, not a security federally and probably not in California, provided it stays a non-transferable contract right with no investment return. So there is no register, allowlist or exemption tag, and nothing on chain that could be traded.
+
+**Instead, a check (report only, do not build yet).** Does the Deed v5 contract support:
+- (a) a Redemption transfer to a member Smart Account that is exempt from the ROFR;
+- (b) the beneficiary acting as Owner-Trustee; and
+- (c) enforcing Clear's ROFR on later transfers?
+
+List any gaps against PR-01. The first ELPA is a later gate (G4), so this check runs after 2e and 2f.
