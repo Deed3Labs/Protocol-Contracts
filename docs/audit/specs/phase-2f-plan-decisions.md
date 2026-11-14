@@ -4,7 +4,7 @@ The owner accepted every recommendation on the decision list drawn from `docs/au
 
 ## New contracts
 1. **Build the large pieces as the plan proposes:**
-   - a new `YieldPool`, with a holdback and valuation module, replacing `LendingPool` (retired on testnet);
+   - the Yield Pool: **`LendingPool` is the Yield Pool** and is reworked to the spec (decision 16), with a holdback and valuation module;
    - a `CollateralAgent` for the Enforcement Notice;
    - the reserve schedule and the 90-day 100% reserve, in BondVault on its maturity tree;
    - compounding `accretedValue` in a new bond collection;
@@ -32,13 +32,25 @@ The owner accepted every recommendation on the decision list drawn from `docs/au
 14. **A pledged bond under `redeemAll`** settles through Phase 2e's pledged split: debt first, then the rest to the Holder.
 15. **After Final Maturity, shares run off in queue order.**
 
+## The Yield Pool is LendingPool (owner, Nov 14, 2026)
+16. **`LendingPool` becomes the Yield Pool by an in-place UUPS upgrade.** It keeps its name, address and balances, and its storage is append-only against the Base Sepolia implementation. It gains:
+    - Share Value from Pool Assets: Vault Cash, the Deployed Balance and accrued Pool Interest;
+    - Deployments and Returns;
+    - the Loss Holdback and valuation, in a separate module for size;
+    - the redemption queue filling at Share Value (C4);
+    - Suspension and Final Maturity.
+
+    `seizeShares` and the Liquidator's share-seizure exemption are removed in stage 2, together with the `PoolShareEnforcer` (C5).
+17. **Only Clear Lending draws from the pool, and each draw is a recorded Deployment.** Borrowing is limited to Clear Lending's deployment address. PayoutPool's and the card settler's direct borrowing is switched off by configuration (consistent with C1), and Clear Lending funds card settlement from what it draws.
+    - App follow-up: the card and auto-clear funding paths in the held app PRs (#887, #890) must stop drawing from the pool directly.
+
 ## Documents needed
 - **IV-10 Exhibit A:** the Collateral Agent waits for it. The spec says to follow it exactly.
 - **MB-05 in full:** for Article 7's order and the "Secured Obligations" definition.
 
 ## Build order
 1. **Stage 1, new files only, alongside Phase 2g:**
-   - Agent A builds the Yield Pool and holdback module, tests 11–15 and 20–25.
+   - Agent A reworks `LendingPool` into the Yield Pool with its holdback module (decisions 16–17), tests 11–15 and 20–25.
    - Agent B builds `EarnControls`, the compounding library and the Earn timelock script, and `CollateralAgent` once Exhibit A arrives.
 2. **Stage 2, after Phase 2g merges:** the bond contracts, BondVault, CollateralRegistry, the Liquidator slim-down with `PoolShareEnforcer`, and the deploy configuration.
 3. **Stage 3:** integration, storage reports, Slither and the 2f report.
