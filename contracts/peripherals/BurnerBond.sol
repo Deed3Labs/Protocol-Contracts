@@ -23,6 +23,11 @@ interface IBondEncumbrance {
     function rollItem(address member, bytes32 kind, uint256 oldItemId, uint256 newItemId) external;
 }
 
+/// @dev Liquidator's narrow gate for section 12 settlements (see `seizeBond`).
+interface ISettlementGate {
+    function mayTakeBond(address member) external view returns (bool);
+}
+
 /// @dev Whether a member is in default -- the shape of `ICreditIssuer.inDefault`.
 interface IMemberDefaultSource {
     function inDefault(address member) external view returns (bool);
@@ -196,6 +201,9 @@ contract BurnerBond is
     /// @notice Answers whether a member is in default; `seizeBond` requires it (audit M-6).
     /// @dev Anything with `inDefault(address) returns (bool)`, e.g. the member's credit issuer.
     address public defaultSource;
+    /// @dev Section 12.5/12.8: the Liquidator, whose `mayTakeBond` is true only inside its own
+    /// settlement of a missed cycle's excess or a matured Earn shortfall for that member.
+    address public settlementGate;
     
     /**
      * @dev Mapping from trait key to trait name
@@ -705,9 +713,12 @@ contract BurnerBond is
         require(msg.sender == liquidator, "Only liquidator can seize");
         require(balanceOf(from, bondId) > 0, "Not bond holder");
         if (
-            address(encumbranceSource) == address(0) || defaultSource == address(0)
+            address(encumbranceSource) == address(0)
                 || !encumbranceSource.isItemEncumbered(from, collateralKind, bondId)
-                || !IMemberDefaultSource(defaultSource).inDefault(from)
+                || !(
+                    (defaultSource != address(0) && IMemberDefaultSource(defaultSource).inDefault(from))
+                        || (settlementGate != address(0) && ISettlementGate(settlementGate).mayTakeBond(from))
+                )
         ) revert BurnerBondNotSeizable(bondId, from);
         _safeTransferFrom(from, to, bondId, 1, "");
         emit BondSeized(bondId, from, to);
@@ -841,6 +852,12 @@ contract BurnerBond is
     function setDefaultSource(address source) external onlyOwner {
         defaultSource = source;
         emit DefaultSourceUpdated(source);
+    }
+
+    /// @notice names the settlement gate for section 12's missed-cycle and shortfall paths.
+    function setSettlementGate(address gate) external onlyOwner {
+        settlementGate = gate;
+        emit DefaultSourceUpdated(gate);
     }
 
 

@@ -33,6 +33,8 @@ async function now() {
   return BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
 }
 
+let evidenceCount = 0;
+
 async function deployStack(enrolMock = true) {
   const ctx = await deployPhase0Network();
   const signers = await ethers.getSigners();
@@ -99,7 +101,9 @@ async function deployStack(enrolMock = true) {
   // Named before any bond exists, so it takes effect at once; the Liquidator answers the
   // collection's seize gate only for its own computed enforcement.
   await bond.setLiquidator(await liquidator.getAddress());
-  await bond.setDefaultSource(await liquidator.getAddress());
+  // BurnerBond's default gate stays the issuer's computed default; the Liquidator is only the
+  // narrow settlement gate for section 12's missed-cycle and shortfall paths.
+  await bond.setSettlementGate(await liquidator.getAddress());
   await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
   await liquidator.setEarnSources(await pool.getAddress(), await bond.getAddress());
   for (const s of [holdA, holdB, holdC]) await liquidator.grantRole(await liquidator.HOLD_ROLE(), s.address);
@@ -154,7 +158,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
   }
 
   async function holdOn(reason = Reason.DEATH, duration = 30 * DAY) {
-    await s.liquidator.connect(s.holdA).proposeHold(m, reason, duration);
+    await s.liquidator.connect(s.holdA).proposeHold(m, reason, duration, ethers.id(`evidence:helper:${evidenceCount++}`));
     await s.liquidator.connect(s.holdB).confirmHold(m);
   }
 
@@ -280,7 +284,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       await liquidator.noticeShortfall(m, await issuer.getAddress()); // a notice is not enforcement
       await advance(72 * HOUR);
 
-      await expect(liquidator.connect(holdA).proposeHold(m, Reason.DEATH, 30 * DAY)).to.emit(liquidator, "HoldProposed");
+      await expect(liquidator.connect(holdA).proposeHold(m, Reason.DEATH, 30 * DAY, ethers.id("evidence:2"))).to.emit(liquidator, "HoldProposed");
       // Proposed is not active, and the proposer cannot confirm their own hold.
       expect((await liquidator.holdOf(m)).active).to.equal(false);
       await expect(liquidator.connect(holdA).confirmHold(m)).to.be.revertedWithCustomError(liquidator, "LiquidatorSameSigner");
@@ -295,7 +299,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       await expect(liquidator.settleExcess(m, I)).to.be.revertedWithCustomError(liquidator, "LiquidatorOnHold");
       await expect(liquidator.settleShortfall(m, I)).to.be.revertedWithCustomError(liquidator, "LiquidatorOnHold");
       // A second hold cannot be stacked on an active one.
-      await expect(liquidator.connect(holdA).proposeHold(m, Reason.BANKRUPTCY, DAY))
+      await expect(liquidator.connect(holdA).proposeHold(m, Reason.BANKRUPTCY, DAY, ethers.id("evidence:3")))
         .to.be.revertedWithCustomError(liquidator, "LiquidatorHoldExists");
     });
 
@@ -349,9 +353,9 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       expect(await liquidator.maxHoldOf(Reason.BANKRUPTCY)).to.equal(180 * DAY);
       expect(await liquidator.maxHoldOf(Reason.BILLING_DISPUTE)).to.equal(90 * DAY);
       expect(await liquidator.maxHoldOf(Reason.LATE_NOTICE)).to.equal(30 * DAY);
-      await expect(liquidator.connect(holdA).proposeHold(m, Reason.DEATH, 90 * DAY + 1))
+      await expect(liquidator.connect(holdA).proposeHold(m, Reason.DEATH, 90 * DAY + 1, ethers.id("evidence:4")))
         .to.be.revertedWithCustomError(liquidator, "LiquidatorBadParameter");
-      await expect(liquidator.connect(holdA).proposeHold(m, Reason.NONE, DAY))
+      await expect(liquidator.connect(holdA).proposeHold(m, Reason.NONE, DAY, ethers.id("evidence:5")))
         .to.be.revertedWithCustomError(liquidator, "LiquidatorBadParameter");
 
       await holdOn(Reason.DEATH, 30 * DAY);
@@ -386,7 +390,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       await expect(liquidator.connect(holdB).clearHold(m)).to.emit(liquidator, "HoldCleared").withArgs(m, holdB.address);
       expect((await liquidator.holdOf(m)).active).to.equal(false);
 
-      await liquidator.connect(holdA).proposeHold(m, Reason.LATE_NOTICE, 10 * DAY);
+      await liquidator.connect(holdA).proposeHold(m, Reason.LATE_NOTICE, 10 * DAY, ethers.id("evidence:6"));
       await expect(liquidator.connect(holdC).clearHold(m)).to.emit(liquidator, "HoldCleared");
       await expect(liquidator.connect(holdB).confirmHold(m)).to.be.revertedWithCustomError(liquidator, "LiquidatorNoHold");
       await expect(liquidator.connect(s.stranger).clearHold(m)).to.be.reverted;
@@ -399,7 +403,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
       expect(await liquidator.maxHoldOf(Reason.DEATH)).to.equal(60 * DAY);
       await expect(liquidator.setMaxHold(Reason.DEATH, 366 * DAY)).to.be.revertedWithCustomError(liquidator, "LiquidatorBadParameter");
       await expect(liquidator.setMaxHold(Reason.NONE, DAY)).to.be.revertedWithCustomError(liquidator, "LiquidatorBadParameter");
-      await expect(liquidator.connect(holdA).proposeHold(m, Reason.DEATH, 61 * DAY))
+      await expect(liquidator.connect(holdA).proposeHold(m, Reason.DEATH, 61 * DAY, ethers.id("evidence:7")))
         .to.be.revertedWithCustomError(liquidator, "LiquidatorBadParameter");
     });
   });
@@ -502,7 +506,7 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     await expect(liquidator.connect(holdA).setEarnSources(stranger.address, stranger.address)).to.be.reverted;
     await expect(liquidator.connect(stranger).setEarnSources(stranger.address, stranger.address)).to.be.reverted;
     // The bond gate answers only inside the Liquidator's own call.
-    expect(await liquidator.inDefault(m)).to.equal(false);
+    expect(await liquidator.mayTakeBond(m)).to.equal(false);
   });
 
   it("end to end (12.5) with the real RevolvingIssuer: a missed cycle halves the line, and settleExcess clears the excess from pool shares, Savings untouched", async function () {
@@ -547,5 +551,19 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     expect(await issuer.unsecuredExcessOf(m)).to.be.lte(U(1)); // closed, to carry accrued in the call
     expect(await clrusd.balanceOf(m)).to.equal(savings);
     expect(await issuer.inDefault(m)).to.equal(false);
+  });
+
+  it("owner decisions: a lapsed hold is proposed again only with new evidence; the bond gate opens only inside a settlement", async function () {
+    const { ctx, liquidator, holdA, holdB } = s;
+    const m = ctx.member.address;
+    await liquidator.connect(holdA).proposeHold(m, 2, DAY, ethers.id("death-report:1"));
+    await liquidator.connect(holdB).confirmHold(m);
+    await advance(DAY + 1); // lapsed
+    await expect(liquidator.connect(holdA).proposeHold(m, 2, DAY, ethers.id("death-report:1")))
+      .to.be.revertedWithCustomError(liquidator, "LiquidatorBadParameter");
+    await liquidator.connect(holdA).proposeHold(m, 2, DAY, ethers.id("death-report:2"));
+    expect(await liquidator.holdEvidence(m)).to.equal(ethers.id("death-report:2"));
+    // Outside its own settlement call the Liquidator lets no bond go.
+    expect(await liquidator.mayTakeBond(m)).to.equal(false);
   });
 });

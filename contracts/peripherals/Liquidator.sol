@@ -169,7 +169,11 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// is unchanged.
     bool private _locked;
 
-    uint256[36] private __gap;
+    /// @dev member => evidence behind their current or last hold. A hold that lapsed is proposed
+    /// again only with new evidence (owner decision, 2026-11-13).
+    mapping(address => bytes32) public holdEvidence;
+
+    uint256[35] private __gap;
 
     error LiquidatorReentered();
 
@@ -211,7 +215,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
 
     event TrustedSavingsIssuerUpdated(address indexed issuer, bool trusted);
     event SettledFromSavings(address indexed member, address indexed issuer, uint256 seized, uint256 repaid);
-    event HoldProposed(address indexed member, HoldReason reason, address indexed proposer, uint64 until);
+    event HoldProposed(address indexed member, HoldReason reason, address indexed proposer, uint64 until, bytes32 evidenceHash);
     event HoldConfirmed(address indexed member, address indexed signer, uint64 until);
     event HoldRenewed(address indexed member, address indexed signer, uint64 until);
     event HoldLapsed(address indexed member);
@@ -609,18 +613,28 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice proposes a hold on enforcement against a member. Inactive until a second signer
     /// confirms it.
     /// @param duration seconds from now; never more than the reason's maximum.
-    function proposeHold(address member, HoldReason reason, uint64 duration) external onlyRole(HOLD_ROLE) {
-        if (member == address(0) || reason == HoldReason.NONE || duration == 0 || duration > maxHoldOf(reason)) {
+    /// @param evidenceHash hash of the evidence (a filing, a death report, a dispute record). A hold
+    /// that lapsed is proposed again only with different evidence, and runs its own maximum.
+    function proposeHold(address member, HoldReason reason, uint64 duration, bytes32 evidenceHash)
+        external
+        onlyRole(HOLD_ROLE)
+    {
+        if (
+            member == address(0) || reason == HoldReason.NONE || duration == 0 || duration > maxHoldOf(reason)
+                || evidenceHash == bytes32(0)
+        ) {
             revert LiquidatorBadParameter();
         }
         Hold storage hold = _holds[member];
         if (hold.confirmed) {
             if (block.timestamp < hold.until) revert LiquidatorHoldExists(member);
+            if (evidenceHash == holdEvidence[member]) revert LiquidatorBadParameter();
             emit HoldLapsed(member);
         }
         uint64 until = uint64(block.timestamp) + duration;
         _holds[member] = Hold(_msgSender(), reason, false, uint64(block.timestamp), _msgSender(), until, address(0));
-        emit HoldProposed(member, reason, _msgSender(), until);
+        holdEvidence[member] = evidenceHash;
+        emit HoldProposed(member, reason, _msgSender(), until, evidenceHash);
     }
 
     /// @notice confirms a proposed hold. Must be a different signer from the proposer.
@@ -675,10 +689,13 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
 
     /* ========== SECTION 12: BOND SEIZE GATE ========== */
 
-    /// @notice answers BurnerBond's seize gate (audit M-6) when this contract is its default source.
-    /// @dev True only for the member this contract is taking a bond from, inside that one call:
-    /// a computed default, a missed cycle's excess, or a matured shortfall. Nothing is declared.
-    function inDefault(address member) external view returns (bool) {
+    /// @notice answers BurnerBond's settlement gate (owner decision on 12.5/12.8 vs audit M-6).
+    /// @dev BurnerBond's default gate stays the issuer's computed default. This second gate is true
+    /// only for the member this contract is taking a bond from, inside that one `settleExcess` or
+    /// `settleShortfall` call, after it has checked on chain that an excess stands or a shortfall
+    /// notice has matured. It declares no default and takes only the smallest covering bond, and
+    /// `redeemEarly` must realize at least present value.
+    function mayTakeBond(address member) external view returns (bool) {
         return member != address(0) && member == _enforcing;
     }
 

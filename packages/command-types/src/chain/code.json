@@ -76,7 +76,7 @@
   },
   "BurnerBond": {
    "source": "contracts/peripherals/BurnerBond.sol",
-   "sha256": "43ffe17be83c33b879c683e8cb1ae812280167f1020ecbce5c015ca3241b620e",
+   "sha256": "7462df5b6f5b8f34a0912a336ef3b505dbe32af0d4f5b395665f81dc7b9bbec5",
    "immutables": []
   },
   "BurnerBondDeposit": {
@@ -369,18 +369,18 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "d4bf120e03ab292413884dbdb0dbedc260708f1aa0df0ce9ecdfadd8482fdd47",
+   "sha256": "53b67ba9b2fb2612d3e38c7551c6ce432f07dccebdfa6213f56fd62595907368",
    "immutables": [
     [
-     8210,
+     8335,
      32
     ],
     [
-     8395,
+     8520,
      32
     ],
     [
-     10559,
+     10684,
      32
     ]
    ]
@@ -482,30 +482,62 @@
   },
   "RevolvingIssuer": {
    "source": "contracts/peripherals/RevolvingIssuer.sol",
-   "sha256": "c80be60c838c7013841c4cc202b3a363e10315a581ce62e201ae45e1094b019a",
+   "sha256": "1e55bc1c794b10a0ad5ca2f72df9a6226db0fa05a469be8d040de83b03178fae",
    "immutables": [
     [
-     3395,
+     1887,
      32
     ],
     [
-     3512,
+     2156,
      32
     ],
     [
-     5023,
+     2281,
      32
     ],
     [
-     11951,
+     2804,
      32
     ],
     [
-     14289,
+     3569,
      32
     ],
     [
-     21435,
+     3686,
+     32
+    ],
+    [
+     3962,
+     32
+    ],
+    [
+     4886,
+     32
+    ],
+    [
+     5285,
+     32
+    ],
+    [
+     6174,
+     32
+    ],
+    [
+     6966,
+     32
+    ],
+    [
+     8764,
+     32
+    ],
+    [
+     12333,
+     32
+    ],
+    [
+     21785,
      32
     ]
    ]
