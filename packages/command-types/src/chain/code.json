@@ -40,18 +40,18 @@
   },
   "BondVault": {
    "source": "contracts/peripherals/BondVault.sol",
-   "sha256": "8ee9ea8e9cd11784378922f9a9777484d7383b019f5d3699dd13c01cc2671cd8",
+   "sha256": "54dba0fd0d6182a73f3e853e8d79cf1526e7f2f525a24763beddaf17f1db6245",
    "immutables": [
     [
-     4886,
+     5225,
      32
     ],
     [
-     5071,
+     5410,
      32
     ],
     [
-     5604,
+     6005,
      32
     ]
    ]
@@ -360,7 +360,7 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "dc0c81ac7c32f8a3c9c3924c3678d16db9ac6706241aa230298391bf24875ad5",
+   "sha256": "cda34a05fd0e1f492793b0f5e615d20d7f437266426750c78c301ab0c12d2ae5",
    "immutables": [
     [
      8385,

@@ -75,10 +75,11 @@ contract BurnerBondPledges is BurnerBondBase {
         toHolder = maturityAmount - toDebt;
 
         _retire(bondId, holder, maturityAmount);
-        // toDebt first; only toHolder is subject to the vault's settlement-shortfall rule. toHolder
-        // goes to the Holder and nowhere else, never locked or held.
-        bondVault.settlePledged(bondId, address(enforcer), toDebt, holder);
-        if (toDebt > 0) enforcer.applyMaturityInstruction(holder, toDebt);
+        // toDebt first, then toHolder, from what the vault and the treasury hold; whatever of either
+        // they cannot pay is recorded for `completeSettlement`, debt part first (owner decision).
+        // toHolder goes to the Holder and nowhere else, never locked or held.
+        uint256 debtPaid = bondVault.settlePledged(bondId, address(enforcer), toDebt, holder);
+        if (debtPaid > 0) enforcer.applyMaturityInstruction(holder, debtPaid);
         encumbranceSource.releaseRetiredItem(holder, collateralKind, bondId);
         emit PledgedMaturitySplit(bondId, toDebt, toHolder);
     }

@@ -60,7 +60,8 @@ interface IBondDiscountCurve {
 interface IBondVaultSettlement {
     function settle(uint256 bondId, address to) external returns (uint256);
     function settleEarly(uint256 bondId, address to, uint256 presentValue) external;
-    function settlePledged(uint256 bondId, address debtTo, uint256 toDebt, address holder) external;
+    function settlePledged(uint256 bondId, address debtTo, uint256 toDebt, address holder)
+        external returns (uint256 debtPaid);
     function roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)
         external;
 }

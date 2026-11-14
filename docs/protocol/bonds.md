@@ -223,10 +223,11 @@ holder's `BOND`-tier principal with the Liquidator's trusted issuers and `limitW
 `CollateralRegistry.advancedValueOf(holder, BOND, id)` (their other pledged bonds at their stored
 rates). `BondVault.settlePledged` pays `toDebt` to the Liquidator first, which applies it to the
 `BOND` tier as the holder's own instruction (no Liquidation Hold stops it), then the rest to the
-holder. If the vault and the treasury cannot cover `toDebt` nothing moves; if they cannot cover
-`toHolder`, the holder gets what there is and the rest is recorded (`settlementOwed`,
+holder. It never waits for funds: what the vault and the treasury hold goes to `toDebt` first, then
+`toHolder`, and whatever of either they cannot pay is recorded (`pendingSettlement`,
 `SettlementShortfall`), reserved ahead of any deployable excess, and paid by the permissionless
-`completeSettlement(id)`. The pledge releases and the bond burns; `PledgedMaturitySplit(id, toDebt,
+`completeSettlement(id)` -- the rest of `toDebt` first (the vault calls the Liquidator's
+`applyMaturityInstruction`), then the rest of `toHolder`, to the recipients fixed at settlement. The pledge releases and the bond burns; `PledgedMaturitySplit(id, toDebt,
 toHolder)`.
 
 ## Collections
@@ -276,7 +277,7 @@ stored and settable but no redemption or purchase path reads them.
 | `BondVault` | `DEFAULT_ADMIN_ROLE` | `initialize` admin | Roles, UUPS upgrades |
 | `BondVault` | `OPERATOR_ROLE` | `initialize` admin | `setBackstops`, `setReserveTerms`, `setEncumbranceSource` |
 | `BondVault` | `BOND_ROLE` | Collection, deposit contract | `recordPurchase`, `settle`, `settleEarly`, `settlePledged`, `roll` |
-| `BondVault` | Anyone | — | `completeSettlement` (pays the recorded holder only) |
+| `BondVault` | Anyone | — | `completeSettlement` (pays only the recorded debt part and holder) |
 | `BondVault` | `TREASURY_ROLE` | Granted by the admin | `withdrawDeployable` |
 | `CollateralRegistry` | `ITEM_ROLLER_ROLE` | Each bond collection (`deploy/23`) | `rollItem`, `releaseRetiredItem` |
 

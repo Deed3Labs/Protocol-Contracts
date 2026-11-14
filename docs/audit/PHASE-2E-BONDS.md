@@ -10,12 +10,12 @@ Branch `audit/phase-2e-pledged-bonds`, cut from `audit/phase-2e-calendar-cycles`
 |---|---|---|
 | §1 allowlist (a): a bond burns only on settlement, buyback, `payPledged` or `redeemAll` | Done for what exists. A bond burns only in `redeemBond`/`batchRedeemBonds`, `settle`, `payPledged` and `rollBond` (a roll is a settlement into a new bond). `redeemEarly` is gone, and no function takes a bond to burn elsewhere. A test pins the full list of state-changing functions. `buyback` and `redeemAll` are Phase 2f's. | `BurnerBondBase._retire`, `BurnerBond`, `BurnerBondPledges` |
 | §4 `payPledged(id)` (IV-01 §4.9) | Done | `BurnerBondPledges.payPledged`, `Liquidator.pledgePaymentDue` / `applyPledgePayment`, `BondVault.settleEarly` |
-| §4 `settle(id)`, pledged bond that does not roll | Done, with one open sub-case (section 4, conflict 1) | `BurnerBondPledges.settle`, `Liquidator.maturityToDebt` / `applyMaturityInstruction`, `BondVault.settlePledged` / `completeSettlement` |
+| §4 `settle(id)`, pledged bond that does not roll | Done (with the owner's decision on a short vault, section 3) | `BurnerBondPledges.settle`, `Liquidator.maturityToDebt` / `applyMaturityInstruction`, `BondVault.settlePledged` / `completeSettlement` |
 | §9 advance rates stored per pledge (95% of Present Value, 70% of Pool Share Value) | Done | `CollateralRegistry` (`itemAdvanceBpsOf`, `advanceBpsOf`, `advancedValueOf`), `LimitCalculator.capacityOf`, `Liquidator` gaps |
 | §9 a bond pledge needs the Holder's signature over the Maturity Instruction, hash stored | Done | `CollateralRegistry.pledgeItem`, `PLEDGE_ITEM_TYPEHASH`, `maturityInstructionOf` |
 | §9 pledged positions exit only through MB-05 | Done for bonds (no transfer, no `redeemBond`, no seize: only `settle` and `payPledged`). The pool-share path is unchanged. | `BurnerBondBase._beforeTokenTransfer`, `BurnerBond._redeem` |
 | Liquidator: remove the bond seize-and-redeem path | Done. `IEarnBonds.seizeBond`/`redeemEarly`, `_realizeBonds`, `_redeemBond`, `mayTakeBond`, `onERC1155Received` are gone. So are the bond legs of `settleExcess` and `settleShortfall`. The pool-share paths are unchanged except that gaps use stored rates. | `Liquidator` |
-| Earn tests 18 and 19, regressions | Done: `test/audit/compliance/PledgedBonds.spec.ts` (18 tests) | |
+| Earn tests 18 and 19, regressions | Done: `test/audit/compliance/PledgedBonds.spec.ts` (21 tests) | |
 
 ### BurnerBond: a module split
 
@@ -44,21 +44,21 @@ Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSet
 1. **Who may call it, and when.** Anyone may call it. It reverts unless all of these hold:
    - the bond exists, is unredeemed, and its holder has it pledged in the registry;
    - the collection's `liquidator` (the Liquidator) answers `pledgePaymentDue(holder, id)` with `due`.
-2. **What `pledgePaymentDue` checks.** It reads only chain state:
+1. **What `pledgePaymentDue` checks.** It reads only chain state:
    - the bond is pledged and held;
    - no Liquidation Hold is active;
    - with one of the member's issuers that the Liquidator trusts, either:
      - **(a)** the issuer's computed default holds: `inDefault || hasDefaultedOnCurrentLine`, exactly the views the credit half keeps (its `PHASE-2E-PROGRESS.md` interface note). The need is then the member's debt with that issuer in `BOND`, `POOL_SHARE`, `BOOST` and `INCOME`; or
      - **(b)** a shortfall notice exists and is at least `shortfallWait` old (72 hours or more), and the bond gap is still open. The need is then the bond value whose payment closes the gap.
    - The bond is the one the module requests for that need: the smallest pledged, held bond that covers it, else the largest (MB-05 §7.3(c)).
-3. **What it pays.** It pays `accretedValue(id)` in that block, in full: `BondVault.settleEarly` pays the Liquidator exactly that, or reverts. Nothing partial.
-4. **Where the money goes.** The Liquidator's `applyPledgePayment` (only `earnBonds` may call it) settles the tiers with `settleFromCollateral`:
+2. **What it pays.** It pays `accretedValue(id)` in that block, in full: `BondVault.settleEarly` pays the Liquidator exactly that, or reverts. Nothing partial.
+3. **Where the money goes.** The Liquidator's `applyPledgePayment` (only `earnBonds` may call it) settles the tiers with `settleFromCollateral`:
    - on a shortfall, the `BOND` tier only;
    - on a default, `BOND`, then `POOL_SHARE`, then `BOOST`, then `INCOME`;
    - never `SAVINGS`.
 
    It sends the surplus in USDC to the holder, and clears the shortfall notice once both gaps are closed.
-5. **The end.** The collection releases the pledge (`CollateralRegistry.releaseRetiredItem`, `ITEM_ROLLER_ROLE`, which the collection already holds for rolls) and the bond burns, all in one transaction.
+4. **The end.** The collection releases the pledge (`CollateralRegistry.releaseRetiredItem`, `ITEM_ROLLER_ROLE`, which the collection already holds for rolls) and the bond burns, all in one transaction.
 
 ### `settle(id)` and the Maturity Instruction
 
@@ -69,14 +69,15 @@ Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSet
    - `limitWithout` is `CollateralRegistry.advancedValueOf(holder, BOND, id)`, which values the holder's other pledged bonds at their stored rates.
 
    `toHolder` is the rest. No argument or role supplies any part of either.
-4. **How it is paid.** `BondVault.settlePledged` pays `toDebt` first, in full, to the Liquidator. `applyMaturityInstruction` (only `earnBonds`) applies it to the `BOND` tier as the holder's own instruction (MB-05 §7.9), so a Liquidation Hold does not stop it. Anything the tier no longer owes goes to the holder.
-5. **If the vault is short.** The holder gets what the vault and the treasury can pay of `toHolder` now. The remainder is recorded against the bond:
-   - `settlementOwed` and `settlementPayee` hold it, and `SettlementShortfall` is emitted;
-   - it is reserved in `requiredReserve` ahead of any deployable excess;
-   - anyone can trigger the payment with `completeSettlement(id)`, which pays the recorded holder only.
+4. **How it is paid.** `BondVault.settlePledged` pays from what the vault and the treasury hold: `toDebt` first, to the Liquidator, then `toHolder` to the holder. It returns the debt part it paid. `applyMaturityInstruction` applies that to the `BOND` tier as the holder's own instruction (MB-05 §7.9), so a Liquidation Hold does not stop it. Anything the tier no longer owes goes to the holder.
+5. **If the vault is short, `settle` still runs** (owner decision, section 3). Whatever of either part the vault and the treasury can't pay is recorded against the bond:
+   - `pendingSettlement(id)` holds the holder, the pledge module, `debtOwed` and `holderOwed`, and `SettlementShortfall(id, holder, debtOwed, holderOwed)` is emitted;
+   - the total is reserved in `requiredReserve` ahead of any deployable excess;
+   - anyone can call `completeSettlement(id)`, as often as funds arrive. It pays the rest of `toDebt` first (the vault sends it to the recorded pledge module and calls `applyMaturityInstruction`), then the rest of `toHolder` to the recorded holder.
+   - It takes only the id: the amounts and recipients are the ones fixed at settlement. If the holder has repaid the tier in the meantime, the debt part they no longer need goes to them.
 
    Nothing is locked or held for the holder, and there is no "Pledged Proceeds" state.
-6. **The end.** The pledge releases, the bond burns, and `PledgedMaturitySplit(id, toDebt, toHolder)` is emitted.
+5. **The end.** The pledge releases, the bond burns, and `PledgedMaturitySplit(id, toDebt, toHolder)` is emitted.
 
 `redeemBond` refuses a pledged bond (`BurnerBondPledged`): a pledged bond pays out only through `settle`.
 
@@ -102,7 +103,7 @@ Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSet
 
 ### BondVault (UUPS, Base Sepolia)
 
-- Adds `settlePledged`, `completeSettlement`, and three appended slots: `settlementOwed`, `settlementPayee` and `totalSettlementOwed`. The `__gap` goes from 33 to 30.
+- Adds `settlePledged`, `completeSettlement`, and two appended slots: `pendingSettlement` (a mapping to a struct of holder, pledge module, `debtOwed`, `holderOwed`) and `totalSettlementOwed`. The `__gap` goes from 33 to 31.
 - `_cover` now runs on `_coverUpTo`.
 - `requiredReserve` adds `totalSettlementOwed`.
 - `settleEarly` stays. Its only caller is now a collection's `payPledged`, and the legacy collection's `redeemEarly` still needs it.
@@ -119,7 +120,7 @@ Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSet
 
 ## 2. Tests
 
-**New:** `test/audit/compliance/PledgedBonds.spec.ts`, 18 tests.
+**New:** `test/audit/compliance/PledgedBonds.spec.ts`, 21 tests.
 
 - **Earn test 18**, with the spec's figures.
   - A qualifying default with debt $500 against an Accreted Value of $950 puts exactly $500 to the debt and $450 to the Holder. The vault pays $950, the Liquidator keeps nothing, the caller gets nothing, the bond burns and its pledge is released.
@@ -132,7 +133,10 @@ Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSet
   - Drawn $1,200: a random caller's `settle` emits `PledgedMaturitySplit(id, 725, 275)`, applies $725 and pays $275 with no lock. The pledge is released and the bond burned.
   - Drawn $400: (0, 1,000).
   - Drawn $1,600: (1,000, 0). The $125 left above the limit gets a `ShortfallNoticed` of $125, and after 72 hours the second bond's `payPledged`.
-  - Vault short at $800: $725 is still applied, $75 is paid, `SettlementShortfall` records $200, and `completeSettlement` pays it later, to the Holder only.
+  - Vault short at $800 (between `toDebt` and the full amount): $725 is still applied, $75 is paid, $200 is recorded for the Holder, and `completeSettlement` pays it later, to the Holder only.
+  - Vault at $500, below `toDebt` (owner decision): `settle` still runs, applies $500, burns the bond and releases the pledge, and records $225 of debt and $275 for the Holder. Completions pay $225 to the debt and $75 to the Holder, then $50, then the last $150. The tier, the remainders, the total owed, the burn and the pledge are checked at each step.
+  - Vault empty: `settle` records the whole split. A debt the Holder repaid in the meantime sends its part to them on completion.
+  - Nobody can redirect a remainder: `completeSettlement` takes only the id, and only the collection or its vault may apply a debt part.
   - No caller changes the split, and lowering the bond rate after pledging changes nothing.
 - **§9:** without a Maturity Instruction the pledge reverts; a signature over a different instruction, or by someone else, reverts; 95% and the hash are stored; 70% for pool shares; rates are kept through a governed change; pool rates blend; a roll keeps the terms.
 - **§1 (a) and the module:**
@@ -154,66 +158,59 @@ Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSet
 
 ## 3. Judgement calls
 
-1. **A missed cycle no longer reaches bonds.** `settleExcess` (12.5) used to take pool shares, then bonds. A missed cycle is neither a default after notice and cure nor a Shortfall, so MB-05 §6.1 does not permit enforcement against a bond, and `payPledged` would not run.
-   - Answer G supersedes the Phase 2b settlement gate that opened bonds to that path. I read it as settling this: the excess is now settled from pool shares only, and what they don't cover stays owed.
-   - The 12.12 excess lock in the registry is unchanged. It no longer matters for bonds, which are locked while pledged anyway.
-2. **The module's order (MB-05 Article 7 is not in the references).**
+### Owner decisions (Nov 14, 2026)
+
+1. **A missed cycle takes pool shares only, never bonds** (confirmed). `settleExcess` (12.5) used to take pool shares, then bonds. A missed cycle is neither a default after notice and cure nor a Shortfall, so MB-05 §6.1 does not permit enforcement against a bond. The excess is settled from pool shares only, and what they don't cover stays owed. The 12.12 excess lock in the registry is unchanged; it no longer matters for bonds, which are locked while pledged anyway.
+2. **A vault that can't cover `toDebt`: option (b).** `settle` never reverts for lack of funds. What the vault and the treasury hold goes to the debt part first, then to the Holder; both remainders are recorded, and `completeSettlement` (permissionless) pays the rest of `toDebt` first, then `toHolder`. Everything else stays fixed: no role changes or redirects either part, and `toHolder` goes only to the Holder. Why it was needed: in this code `toDebt` is a repayment on the co-op's ledger and has to deliver USDC (`settleFromCollateral` → `repayCreditBalanceFor`), where the Earn spec has it stay in the vault. Until the rest of `toDebt` arrives, the tier stays drawn by that much, and the ordinary Shortfall rules see it.
+
+### Judgement calls
+
+1. **The module's order (MB-05 Article 7 is not in the references).**
    - On a default: the bond's own tier, then pool shares' tier, then `BOOST`, then `INCOME`; never `SAVINGS`, which its own collateral covers.
    - On a shortfall: the bond tier only.
 
    The bond's tier goes first so that tier is not left drawn against a pledge that is gone. That follows the old `_settle` rule. For counsel.
-3. **"Asset-Backed" means the bond kind's tier.**
+2. **"Asset-Backed" means the bond kind's tier.**
    - This code gives bonds and pool shares separate tiers, each with its own limit (deploy/20). So `drawn` and `limitWithout` in the split are the `BOND` tier and the other pledged bonds. In test 19, which has only bonds, the spec's aggregate gives the same figures.
    - `drawn` is `principalOf`: principal plus materialised carry, not carry accrued since the last touch. So `toDebt` can come out a few units low, which favours the Holder, and what remains falls under the Shortfall rules.
-4. **The request rule.**
+3. **The request rule.**
    - Any caller names an id, so the module requests one specific bond: the smallest that covers the need, else the largest (the old selection rule). Calls repeat until the need is met.
    - On a shortfall, the closing amount uses the member's rate for the kind (the old formula), and a bond's own stored rate may differ slightly. The next call re-measures the gap.
-5. **`accretedValue` is `presentValueOf`** (straight-line accretion). Phase 2f replaces the formula with the Earn spec's compounding at the Issue Yield. Both names answer the same figure, so `payPledged` pays exactly the Present Value.
-6. **Holds.** A Liquidation Hold stops `payPledged` (enforcement). It does not stop the maturity split, which is the Holder's own instruction.
-7. **Releasing an undrawn pledge.** A pledged bond no longer moves at all, even with nothing drawn (§9: pledged positions exit only through MB-05). To move one, the pledge is released first with the operator's `releaseItem`, which still refuses while anything is drawn.
-8. **Trust is the same as before.** `pledgePaymentDue` reads only issuers the Liquidator already trusts for `liquidate`. Those are registered by the credit timelock (M-E) and enrolled for the member. The collection's `liquidator` keeps its 7-day delay, and the Liquidator's `earnBonds` is still `DEFAULT_ADMIN_ROLE`'s.
-   - No role can trigger, price or redirect `payPledged` or `settle`: the amount is computed inside the bond, the destinations are the holder and that holder's own tiers, and both apply functions accept only the collection.
+4. **`accretedValue` is `presentValueOf`** (straight-line accretion). Phase 2f replaces the formula with the Earn spec's compounding at the Issue Yield. Both names answer the same figure, so `payPledged` pays exactly the Present Value.
+5. **Holds.** A Liquidation Hold stops `payPledged` (enforcement). It does not stop the maturity split, which is the Holder's own instruction.
+6. **Releasing an undrawn pledge.** A pledged bond no longer moves at all, even with nothing drawn (§9: pledged positions exit only through MB-05). To move one, the pledge is released first with the operator's `releaseItem`, which still refuses while anything is drawn.
+7. **Trust is the same as before.** `pledgePaymentDue` reads only issuers the Liquidator already trusts for `liquidate`. Those are registered by the credit timelock (M-E) and enrolled for the member. The collection's `liquidator` keeps its 7-day delay, and the Liquidator's `earnBonds` is still `DEFAULT_ADMIN_ROLE`'s.
+   - No role can trigger, price or redirect `payPledged` or `settle`: the amount is computed inside the bond, the destinations are the holder and that holder's own tiers, and the apply functions accept only the collection (and, for the rest of a recorded `toDebt`, its vault).
    - Two powers are gone: `setDefaultSource` and `setSettlementGate`.
-9. **The settlement-shortfall rule** is built only for a pledged bond's `toHolder`. An unpledged bond's `settle` still reverts when the vault is short, as `redeemBond` always has. Phase 2f brings the general rule.
+8. **The settlement-shortfall rule** is built only for a pledged bond's split. An unpledged bond's `settle` still reverts when the vault is short, as `redeemBond` always has. Phase 2f brings the general rule.
 
 ## 4. Conflicts
 
-1. **`toDebt` moves USDC here, so a vault that cannot cover `toDebt` blocks the split.**
-   - **Not built, open for a decision.** The fail-safe is kept: if the vault and the treasury can't cover `toDebt`, `settle` reverts and nothing moves.
-   - **The spec.** The Earn spec (Phase 2f's full text) says `toDebt` "moves no USDC" and stays in the BondVault, so a short vault only affects `toHolder`.
-   - **The code.** Asset-Backed Drawn is a balance on the co-op's ledger. A repayment has to deliver the reserve token to it (`settleFromCollateral` → `repayCreditBalanceFor`). So `toDebt` is paid from the vault to the Liquidator to the issuer, before `toHolder`.
-   - **What works.** Whenever the vault and the treasury hold at least `toDebt`, test 19 holds as written: $725 applied, only the $275 subject to `SettlementShortfall`.
-   - **The case that breaks.** If they hold less than `toDebt`, `settle` reverts and nothing moves. The bond stays pledged at its Maturity Amount until funds arrive. In that case the Holder's `toHolder` waits too, which is at odds with "toHolder never locked".
-   - **Options:**
-     - (a) Accept: a vault that cannot cover the debt part is a Reserve Shortfall, which Phase 2f blocks earlier.
-     - (b) Apply what the vault has to the debt, pay the Holder nothing yet, and record both remainders for `completeSettlement`.
-     - (c) Have the ledger accept a USDC-less "applied from Earn" repayment. This touches RevolvingIssuer and StableCredit, which the bond half may not.
-   - **Recommendation: (b).** It keeps `settle` from ever reverting for lack of money, and it is a small change to `BondVault` and `Liquidator` alone.
-2. **No other new conflict.** Answer G settles the Phase 2b gate and the 4b/REREVIEW bond decision (M-6's `seizeBond` gate, superseded and removed). Nothing touches ESADepositVault or ClaimEscrow.
+None open. The one raised in the first pass (a vault that can't cover `toDebt`) is decided and built (section 3). Answer G settles the Phase 2b gate and the 4b/REREVIEW bond decision (M-6's `seizeBond` gate, superseded and removed). Nothing touches ESADepositVault or ClaimEscrow.
 
 ## 5. Checks
 
-- **Hardhat suite** (`npx hardhat test`, with revert strings, the fuzz at its default 300 steps): **1049 passing, 0 failing**, in 29 minutes.
+- **Hardhat suite** (`npx hardhat test`, with revert strings, the fuzz at its default 300 steps): **1052 passing, 0 failing**, in 32 minutes (after the owner's decisions; 1049 before them).
 - **Turbo.** `npx turbo run typecheck test --affected` (Node 22, bun): 32 of 32 tasks passed. The member tests that read `apps/api` were also run uncached: 850 pass.
 - **Sizes** (production, `npx hardhat compile --force`). No contract is over 24,576 bytes runtime or 49,152 bytes of creation code.
 
   | Contract | Runtime | Creation | Before |
   |---|---|---|---|
   | BurnerBond | 23,294 | 23,721 | 24,168 / 24,278 |
-  | Liquidator | 22,833 | 22,970 | 20,380 / 20,517 |
+  | Liquidator | 22,952 | 23,089 | 20,380 / 20,517 |
   | CollateralRegistry | 15,596 | 15,733 | 13,503 / 13,640 |
-  | BondVault | 11,373 | 11,510 | 10,290 / 10,427 |
-  | BurnerBondPledges (new) | 9,603 | 9,630 | — |
+  | BondVault | 11,888 | 12,025 | 10,290 / 10,427 |
+  | BurnerBondPledges (new) | 9,617 | 9,644 | — |
   | LimitCalculator | 6,951 | 7,088 | — |
   | BurnerBondFactory | 7,270 | 46,475 | creation 46,956 |
 
-  **The Liquidator has 1,743 bytes left** for the credit half's default-trigger changes.
+  **The Liquidator has 1,624 bytes left** for the credit half's default-trigger changes.
 - **Storage.** OpenZeppelin's `getStorageUpgradeReport` finds no errors against every implementation in the manifests:
   - `.openzeppelin/base-sepolia.json`: BondVault ×3, CollateralRegistry ×2, Liquidator ×2, LimitCalculator ×2, and also ESADepositVault ×4 and ClaimEscrow ×1, which are untouched;
   - `.openzeppelin/base.json`: ESADepositVault ×2 and ClaimEscrow ×1, untouched.
 
   The layout changes:
-  - BondVault appends three slots and its gap goes 33 → 30.
+  - BondVault appends two slots (`pendingSettlement`, `totalSettlementOwed`) and its gap goes 33 → 31.
   - CollateralRegistry appends three mappings and its gap goes 40 → 37.
   - Liquidator renames `_enforcing` to `retiredEnforcing` (`@custom:oz-renamed-from`), with the same slot and no new storage.
   - LimitCalculator adds no storage.
@@ -246,7 +243,7 @@ Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSet
    - `payPledged`: for members in a computed default, or with a shortfall notice past `shortfallWait`, find the bond `pledgePaymentDue` requests and call it, repeating until none is due;
    - `noticeShortfall`;
    - `settle(id)` at maturity for opted-out bonds;
-   - `completeSettlement(id)` when a recorded shortfall can be paid.
+   - `completeSettlement(id)` whenever a recorded remainder can be paid (debt part first).
 4. **Member app.**
    - A pledged bond's Redeem becomes the maturity split, previewed with `Liquidator.maturityToDebt`.
    - A pledged bond can't be sent anywhere.

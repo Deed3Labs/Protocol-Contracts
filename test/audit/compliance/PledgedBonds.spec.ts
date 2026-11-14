@@ -335,7 +335,8 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect(await registry.pledgedItemsOf(m, BOND)).to.deep.equal([b]);
       expect(await bond.balanceOf(m, a)).to.equal(0n);
       expect(await usdc.balanceOf(await liquidator.getAddress())).to.equal(0n);
-      expect(await bondVault.settlementOwed(a)).to.equal(0n);
+      expect((await bondVault.pendingSettlement(a)).holderOwed).to.equal(0n);
+      expect(await bondVault.totalSettlementOwed()).to.equal(0n);
     });
 
     it("Drawn $400: toDebt $0 and the Holder gets $1,000", async function () {
@@ -363,29 +364,132 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect(await issuer.principalOf(m, T_BOND)).to.equal(U(100));
     });
 
+    /** Leaves the bond vault holding exactly `amount` (it has no treasury in this stack). */
+    async function vaultHolds(amount: bigint) {
+      const vaultAddress = await s.bondVault.getAddress();
+      await s.usdc.burn(vaultAddress, await s.usdc.balanceOf(vaultAddress));
+      if (amount > 0n) await s.usdc.mint(vaultAddress, amount);
+    }
+
+    /** What the vault still owes on a settled pledged bond, and in total. */
+    async function owed(id: bigint) {
+      const p = await s.bondVault.pendingSettlement(id);
+      return { debt: p.debtOwed as bigint, holder: p.holderOwed as bigint, total: (await s.bondVault.totalSettlementOwed()) as bigint };
+    }
+
     it("with the vault short, the $725 is still applied and only the $275 is subject to SettlementShortfall", async function () {
-      const { usdc, issuer, bond, bondVault, stranger, keeper } = s;
+      const { usdc, issuer, registry, bond, bondVault, liquidator, stranger, keeper } = s;
       const { a } = await twoBonds(U(1_200), 0n);
-      // The vault holds $800: enough for toDebt, $75 of toHolder.
-      const vaultAddress = await bondVault.getAddress();
-      await usdc.burn(vaultAddress, (await usdc.balanceOf(vaultAddress)) - U(800));
+      await vaultHolds(U(800)); // enough for toDebt and $75 of toHolder
       const before = await usdc.balanceOf(m);
       await expect(bond.connect(stranger).settle(a))
         .to.emit(bond, "PledgedMaturitySplit").withArgs(a, U(725), U(275))
-        .and.to.emit(bondVault, "SettlementShortfall").withArgs(a, m, U(275), U(75), U(200));
+        .and.to.emit(bondVault, "SettledPledged").withArgs(a, m, U(725), U(75))
+        .and.to.emit(bondVault, "SettlementShortfall").withArgs(a, m, 0n, U(200));
       expect(await issuer.principalOf(m, T_BOND)).to.equal(U(475));
       expect((await usdc.balanceOf(m)) - before).to.equal(U(75));
-      expect(await bondVault.settlementOwed(a)).to.equal(U(200));
-      expect(await bondVault.settlementPayee(a)).to.equal(m);
+      expect(await owed(a)).to.deep.equal({ debt: 0n, holder: U(200), total: U(200) });
+      const pending = await bondVault.pendingSettlement(a);
+      expect([pending.holder, pending.debtTo]).to.deep.equal([m, await liquidator.getAddress()]);
+      expect(await bond.balanceOf(m, a)).to.equal(0n);
+      expect(await registry.isItemPledged(m, BOND, a)).to.equal(false);
       // Owed now, so it is reserved ahead of any deployable excess.
       expect(await bondVault.requiredReserve()).to.be.gte(U(200));
       // When money arrives, anyone completes it -- to the Holder only.
-      await usdc.mint(vaultAddress, U(200));
+      await usdc.mint(await bondVault.getAddress(), U(200));
       await expect(bondVault.connect(keeper).completeSettlement(a))
-        .to.emit(bondVault, "SettlementCompleted").withArgs(a, m, U(200), 0n);
+        .to.emit(bondVault, "SettlementCompleted").withArgs(a, m, 0n, U(200), 0n, 0n);
       expect((await usdc.balanceOf(m)) - before).to.equal(U(275));
-      expect(await bondVault.totalSettlementOwed()).to.equal(0n);
+      expect(await owed(a)).to.deep.equal({ debt: 0n, holder: 0n, total: 0n });
       await expect(bondVault.completeSettlement(a)).to.be.revertedWithCustomError(bondVault, "BondVaultNothingOwed");
+    });
+
+    it("with the vault below toDebt, settle still runs: what it holds goes to the debt, both remainders are recorded, and completion pays debt first, then the Holder", async function () {
+      const { usdc, issuer, registry, bond, bondVault, liquidator, stranger, keeper } = s;
+      const { a, b } = await twoBonds(U(1_200), 0n);
+      const vaultAddress = await bondVault.getAddress();
+      await vaultHolds(U(500)); // $500 against toDebt $725
+      const before = await usdc.balanceOf(m);
+      await expect(bond.connect(stranger).settle(a))
+        .to.emit(bond, "PledgedMaturitySplit").withArgs(a, U(725), U(275))
+        .and.to.emit(bondVault, "SettledPledged").withArgs(a, m, U(500), 0n)
+        .and.to.emit(bondVault, "SettlementShortfall").withArgs(a, m, U(225), U(275))
+        .and.to.emit(liquidator, "MaturityInstructionApplied").withArgs(m, U(500), U(500));
+      // Step 0: $500 applied, the bond burned and its pledge released, both remainders recorded.
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(700));
+      expect(await usdc.balanceOf(m)).to.equal(before);
+      expect(await owed(a)).to.deep.equal({ debt: U(225), holder: U(275), total: U(500) });
+      expect(await bond.balanceOf(m, a)).to.equal(0n);
+      expect(await registry.isItemPledged(m, BOND, a)).to.equal(false);
+      expect(await registry.pledgedItemsOf(m, BOND)).to.deep.equal([b]);
+      expect(await usdc.balanceOf(await liquidator.getAddress())).to.equal(0n);
+      // Nothing to pay with: completion reverts and changes nothing.
+      await expect(bondVault.connect(keeper).completeSettlement(a)).to.be.revertedWithCustomError(bondVault, "BondVaultInsufficientFunds");
+
+      // Step 1: $300 arrives. The rest of toDebt ($225) first, applied to the debt; then $75 to the Holder.
+      await usdc.mint(vaultAddress, U(300));
+      await expect(bondVault.connect(keeper).completeSettlement(a))
+        .to.emit(bondVault, "SettlementCompleted").withArgs(a, m, U(225), U(75), 0n, U(200))
+        .and.to.emit(liquidator, "MaturityInstructionApplied").withArgs(m, U(225), U(225));
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(475)); // the full $725 applied
+      expect((await usdc.balanceOf(m)) - before).to.equal(U(75));
+      expect(await owed(a)).to.deep.equal({ debt: 0n, holder: U(200), total: U(200) });
+
+      // Step 2: $50 arrives, all of it to the Holder.
+      await usdc.mint(vaultAddress, U(50));
+      await expect(bondVault.connect(stranger).completeSettlement(a))
+        .to.emit(bondVault, "SettlementCompleted").withArgs(a, m, 0n, U(50), 0n, U(150));
+      expect((await usdc.balanceOf(m)) - before).to.equal(U(125));
+      expect(await owed(a)).to.deep.equal({ debt: 0n, holder: U(150), total: U(150) });
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(475));
+
+      // Step 3: enough arrives; only what is owed is paid.
+      await usdc.mint(vaultAddress, U(1_000));
+      await expect(bondVault.connect(keeper).completeSettlement(a))
+        .to.emit(bondVault, "SettlementCompleted").withArgs(a, m, 0n, U(150), 0n, 0n);
+      expect((await usdc.balanceOf(m)) - before).to.equal(U(275));
+      expect(await owed(a)).to.deep.equal({ debt: 0n, holder: 0n, total: 0n });
+      expect(await usdc.balanceOf(vaultAddress)).to.equal(U(850));
+      expect(await usdc.balanceOf(await liquidator.getAddress())).to.equal(0n);
+      await expect(bondVault.completeSettlement(a)).to.be.revertedWithCustomError(bondVault, "BondVaultNothingOwed");
+    });
+
+    it("with the vault empty, settle still runs and records the whole split; a debt repaid meanwhile sends its part to the Holder", async function () {
+      const { usdc, issuer, registry, bond, bondVault, liquidator, stranger, keeper } = s;
+      const { a } = await twoBonds(U(1_200), 0n);
+      await vaultHolds(0n);
+      const before = await usdc.balanceOf(m);
+      await expect(bond.connect(stranger).settle(a))
+        .to.emit(bond, "PledgedMaturitySplit").withArgs(a, U(725), U(275))
+        .and.to.emit(bondVault, "SettlementShortfall").withArgs(a, m, U(725), U(275))
+        .and.not.to.emit(liquidator, "MaturityInstructionApplied");
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(1_200));
+      expect(await owed(a)).to.deep.equal({ debt: U(725), holder: U(275), total: U(1_000) });
+      expect(await bond.balanceOf(m, a)).to.equal(0n);
+      expect(await registry.isItemPledged(m, BOND, a)).to.equal(false);
+
+      // The member pays the tier down to $500 in the meantime: only $25 is still needed above the
+      // $475 limit, so of the $725 debt part, $25 is applied and $700 goes to the Holder.
+      await issuer.setPrincipal(m, T_BOND, U(500));
+      await usdc.mint(await bondVault.getAddress(), U(1_000));
+      await expect(bondVault.connect(keeper).completeSettlement(a))
+        .to.emit(bondVault, "SettlementCompleted").withArgs(a, m, U(725), U(275), 0n, 0n)
+        .and.to.emit(liquidator, "MaturityInstructionApplied").withArgs(m, U(725), U(500));
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
+      expect((await usdc.balanceOf(m)) - before).to.equal(U(500));
+    });
+
+    it("nobody can redirect a recorded remainder: completion takes only the id, and only the vault or the collection may apply it", async function () {
+      const { bond, bondVault, liquidator, ctx, stranger } = s;
+      const { a } = await twoBonds(U(1_200), 0n);
+      await vaultHolds(0n);
+      await bond.connect(stranger).settle(a);
+      expect(bondVault.interface.getFunction("completeSettlement")!.inputs.map((x: any) => x.type)).to.deep.equal(["uint256"]);
+      for (const who of [ctx.admin, stranger]) {
+        await expect(liquidator.connect(who).applyMaturityInstruction(m, U(1)))
+          .to.be.revertedWithCustomError(liquidator, "LiquidatorNotEarnBonds");
+      }
+      expect(await owed(a)).to.deep.equal({ debt: U(725), holder: U(275), total: U(1_000) });
     });
 
     it("no caller can change toDebt or send it elsewhere, and no role reprices it after pledging", async function () {

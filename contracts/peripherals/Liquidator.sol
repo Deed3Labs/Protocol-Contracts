@@ -54,6 +54,7 @@ interface IMissedCycleSource {
 /// and applies what the bond pays to the Holder's own debt.
 interface IEarnBonds {
     function presentValueOf(uint256 bondId) external view returns (uint256);
+    function bondVault() external view returns (address);
     function balanceOf(address account, uint256 id) external view returns (uint256);
     function collateralKind() external view returns (bytes32);
 }
@@ -824,12 +825,16 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice applies a matured pledged bond's `toDebt` to its Holder's Asset-Backed Drawn.
-    /// @dev Only the bond collection, from inside its `settle`, with `toDebt` it computed with
-    /// `maturityToDebt` in the same transaction and the vault paid here. An application on the
+    /// @dev Only the bond collection, from inside its `settle`, with the part of `toDebt` (computed
+    /// with `maturityToDebt` in the same transaction) that the vault paid here; or the collection's
+    /// vault, from `completeSettlement`, with the rest once it can pay it. An application on the
     /// Holder's own instruction (MB-05 §7.9), not enforcement, so a Liquidation Hold does not stop
     /// it. Anything the tiers no longer owe goes to the Holder.
     function applyMaturityInstruction(address member, uint256 toDebt) external noReenter {
-        if (_msgSender() != address(earnBonds)) revert LiquidatorNotEarnBonds(_msgSender());
+        // The collection at settlement; its vault when it completes a settlement it could not pay.
+        if (_msgSender() != address(earnBonds) && _msgSender() != earnBonds.bondVault()) {
+            revert LiquidatorNotEarnBonds(_msgSender());
+        }
         uint256 applied = 0;
         bytes32 kind = earnBonds.collateralKind();
         address[] memory issuers = _issuersOf(member);
