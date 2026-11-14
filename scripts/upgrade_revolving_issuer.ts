@@ -1,5 +1,6 @@
 import hre from "hardhat";
 import { getDeployment, saveDeployment } from "../deploy/helpers";
+import { issuerProxyOptions } from "../deploy/issuerModules";
 
 /* UUPS upgrade of the RevolvingIssuer, same proxy address. */
 const { ethers, upgrades } = hre as typeof hre & {
@@ -16,7 +17,7 @@ async function main() {
   // The previous implementation stored `cycleLength`; this one derives it from the tiers, so the
   // slot it occupied is now unused. That is a deletion OpenZeppelin flags and it is intentional --
   // the field packed alongside `exposureSource` and nothing new claims those bytes.
-  const upgraded = await upgrades.upgradeProxy(existing.address, RevolvingIssuer, {
+  const upgraded = await upgrades.upgradeProxy(existing.address, RevolvingIssuer, { ...(await issuerProxyOptions("RevolvingIssuer")), 
     kind: "uups",
     unsafeAllow: ["missing-initializer"],
     unsafeSkipStorageCheck: true,

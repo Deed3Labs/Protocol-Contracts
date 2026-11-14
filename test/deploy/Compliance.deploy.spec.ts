@@ -48,6 +48,12 @@ describe("compliance deployment and credit timelock handover", function () {
     expect(await core.term.rateSchedule()).to.equal(await rates.getAddress());
     expect(await rates.cflSourcesOf()).to.deep.equal([await core.revolving.getAddress(), await core.term.getAddress()]);
     expect(await rates.cflAggregationOff()).to.equal(false);
+    // Section 12 terms from deploy/config/credit-terms.json.
+    const terms = await core.revolving.creditTerms();
+    expect(terms.unsecuredLineCap).to.equal(2_499n * 10n ** 6n);
+    expect(terms.cureWindow).to.equal(15n * 86_400n);
+    expect(await core.revolving.boostBaseCap()).to.equal(500n * 10n ** 6n);
+    expect(await core.revolving.boostEarnedCap()).to.equal(750n * 10n ** 6n);
   });
 
   it("prices exactly the unsecured tiers from the schedule", async function () {

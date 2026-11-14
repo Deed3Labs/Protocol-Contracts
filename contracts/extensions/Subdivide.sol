@@ -1131,7 +1131,7 @@ contract Subdivide is
      * @param newAdmin Address of the new admin
      */
     function transferCollectionAdmin(uint256 deedId, address newAdmin) external whenNotPaused {
-        require(_subdivisionOwner(deedId) == msg.sender, "Not collection admin");
+        _requireCollectionAdmin(deedId);
         require(newAdmin != address(0), "Invalid admin address");
         
         address previousAdmin = subdivisions[deedId].collectionAdmin;
@@ -1144,8 +1144,23 @@ contract Subdivide is
      *         owner, not whoever created the subdivision (audit D-10).
      */
     modifier onlyCollectionAdmin(uint256 deedId) {
-        require(_subdivisionOwner(deedId) == msg.sender, "Not collection admin");
+        // Out of line, so the check is not copied into every function (bytecode room for v5).
+        _requireCollectionAdmin(deedId);
         _;
+    }
+
+    function _requireCollectionAdmin(uint256 deedId) internal view {
+        require(_subdivisionOwner(deedId) == msg.sender, "Not collection admin");
+    }
+
+    /**
+     * @notice Trust agreement v5, item 5 (IDeedCustody): while this contract holds a parent deed for an
+     *         active subdivision, the deed belongs to the collection admin, who gets it back on
+     *         deactivation. address(0) when no subdivision of `deedId` is active. (Every subdivision created
+     *         since audit D-9 holds its parent while active; DeedNFT asks only when this contract is the holder.)
+     */
+    function beneficialOwnerOf(uint256 deedId) external view returns (address) {
+        return subdivisions[deedId].isActive ? subdivisions[deedId].collectionAdmin : address(0);
     }
 
     /**

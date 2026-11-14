@@ -4,14 +4,20 @@
  * Moves every admin, upgrade and settings power over the Deed contracts from the deployer EOA to
  * `admin`, then has the deployer renounce everything, so no single EOA is left holding them.
  *
- * `admin` should be the Deed TimelockController whose proposer is the Foundation multisig (Safe), with
- * the 7-day minimum delay (DECISIONS #10). Passing the Safe directly is allowed but leaves upgrades
- * without a delay. Operational keys are separate and optional: `minter` gets DeedNFT MINTER_ROLE and
- * `validatorSigner` gets the default Validator's VALIDATOR_ROLE (deed edits and validations for deeds
- * that name that validator). Both default to `admin`.
+ * `admin` should be the Deed TimelockController (OpenZeppelin's, unmodified) whose proposer is the
+ * Foundation multisig (Safe), with the 7-day minimum delay (trust agreement v5 item 6; DECISIONS #8, #10).
+ * Set `requireTimelockDelay` (deploy_all does on every live network) and the handover refuses an admin
+ * that is not a timelock with at least that delay. Operational keys are separate and optional: `minter`
+ * gets DeedNFT MINTER_ROLE and `validatorSigner` gets the default Validator's VALIDATOR_ROLE (deed edits
+ * and validations for deeds that name that validator). Both default to `admin`.
+ *
+ * The Functional Contract registry (v5, DECISIONS #8): additions (REGISTRAR_ROLE) and role admin go to the
+ * timelock; `remover` (the Foundation Safe) gets REMOVER_ROLE for immediate removals.
  *
  * This module only builds transactions from the signer it is given. It never reads a key.
  */
+import { Contract } from "ethers";
+
 export interface DeedContracts {
   validatorRegistry: any;
   metadataRenderer: any;
@@ -21,12 +27,17 @@ export interface DeedContracts {
   subdivide: any;
   fractionalize?: any;
   fractionTokenFactory?: any;
+  functionalContractRegistry?: any;
 }
 
 export interface HandoverOptions {
   admin: string;
   minter?: string;
   validatorSigner?: string;
+  /** The Foundation Safe: may remove Functional Contracts at once (DECISIONS #8). */
+  remover?: string;
+  /** When set, `admin` must be a TimelockController whose minimum delay is at least this many seconds. */
+  requireTimelockDelay?: number;
   log?: (msg: string) => void;
 }
 
@@ -55,6 +66,17 @@ export async function handOverDeedAdmin(c: DeedContracts, deployerSigner: any, o
   const signer = opts.validatorSigner ?? admin;
   const me = await deployerSigner.getAddress();
   const ADMIN = ethersZeroHash;
+
+  if (opts.requireTimelockDelay !== undefined) {
+    let delay = -1n;
+    try {
+      const tl = new Contract(admin, ["function getMinDelay() view returns (uint256)"], deployerSigner);
+      delay = await tl.getMinDelay();
+    } catch {}
+    if (delay < BigInt(opts.requireTimelockDelay)) {
+      throw new Error(`Deed admin ${admin} is not a TimelockController with a minimum delay of at least ${opts.requireTimelockDelay}s`);
+    }
+  }
 
   // DeedNFT: admin (upgrade, pause, settings) and the minter
   const MINTER = await c.deedNFT.MINTER_ROLE();
@@ -103,6 +125,13 @@ export async function handOverDeedAdmin(c: DeedContracts, deployerSigner: any, o
     await moveRoles(c.fractionalize, [await c.fractionalize.ADMIN_ROLE(), ADMIN], admin, me);
     log("Fractionalize handed over");
   }
+  if (c.functionalContractRegistry) {
+    const fc = c.functionalContractRegistry;
+    const REMOVER = await fc.REMOVER_ROLE();
+    if (opts.remover && !(await fc.hasRole(REMOVER, opts.remover))) await send(fc.grantRole(REMOVER, opts.remover));
+    await moveRoles(fc, [await fc.REGISTRAR_ROLE(), REMOVER, ADMIN], admin, me);
+    log("FunctionalContractRegistry handed over");
+  }
   if (c.fractionTokenFactory && (await c.fractionTokenFactory.owner()) === me) {
     await send(c.fractionTokenFactory.transferOwnership(admin));
     log("FractionTokenFactory handed over");
@@ -134,5 +163,8 @@ export async function assertNoDeployerPowers(c: DeedContracts, account: string) 
   await checkRoles("Subdivide", c.subdivide, ["DEFAULT_ADMIN_ROLE", "ADMIN_ROLE"]);
   if (c.fractionalize) await checkRoles("Fractionalize", c.fractionalize, ["DEFAULT_ADMIN_ROLE", "ADMIN_ROLE"]);
   if (c.fractionTokenFactory) await checkOwner("FractionTokenFactory", c.fractionTokenFactory);
+  if (c.functionalContractRegistry) {
+    await checkRoles("FunctionalContractRegistry", c.functionalContractRegistry, ["DEFAULT_ADMIN_ROLE", "REGISTRAR_ROLE", "REMOVER_ROLE"]);
+  }
   if (left.length > 0) throw new Error(`Deployer still holds Deed-track powers: ${left.join(", ")}`);
 }

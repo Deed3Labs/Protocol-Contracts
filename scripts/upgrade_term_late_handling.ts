@@ -1,5 +1,6 @@
 import hre from "hardhat";
 import { getDeployment, saveDeployment } from "../deploy/helpers";
+import { issuerProxyOptions } from "../deploy/issuerModules";
 
 /*
  * UUPS upgrade of TermIssuer, same proxy address, for late handling and mandated collection.
@@ -53,7 +54,7 @@ async function main() {
   console.log(`RevolvingIssuer ${revolving.address}`);
 
   const TermIssuer = await ethers.getContractFactory("TermIssuer");
-  await upgrades.validateUpgrade(term.address, TermIssuer, { kind: "uups" });
+  await upgrades.validateUpgrade(term.address, TermIssuer, { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
   console.log("validates as upgrade-safe against what is deployed");
 
   const current = await carries(term.address, PROBE);
@@ -65,7 +66,7 @@ async function main() {
   if (!current) {
     const was = await implementationOf(term.address);
     console.log("\nupgrading TermIssuer…  from", was);
-    const upgraded = await upgrades.upgradeProxy(term.address, TermIssuer, { kind: "uups" });
+    const upgraded = await upgrades.upgradeProxy(term.address, TermIssuer, { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
     await upgraded.waitForDeployment();
     saveDeployment(network, "TermIssuer", term.address, JSON.parse(upgraded.interface.formatJson()));
     // Read the slot, not the manifest: a read straight after mining can still be the old state.

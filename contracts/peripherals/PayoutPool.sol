@@ -14,13 +14,10 @@ import "./interfaces/IPayoutLenders.sol";
 /// @dev A merchant's positive StableCredit is the payables ledger: what the co-op owes them,
 /// on-chain, with no parallel record to reconcile against. This is where it becomes cash.
 ///
-/// **The AssurancePool lends, last; it never funds.** Redemption there is capped by lost debt
-/// outstanding, so paying merchants from it would mean a merchant can only be paid when a member
-/// has defaulted, at a rate set by how badly the book is performing. A merchant's balance is a
-/// payable -- certain, owed, due on a schedule -- and the AssurancePool covers a contingency that
-/// may never happen. So it is never what pays a claim: `drawForDueClaim` may borrow from it only
-/// when every other source is short, from its excess and then its buffer, never its primary
-/// reserve, and repays it out of the next repayments.
+/// **The AssurancePool never funds and never lends here** (compliance addendum 12.11). A
+/// merchant's balance is a payable -- certain, owed, due on a schedule -- and the reserve covers a
+/// contingency that may never happen, so no redemption, payout or force-settlement path touches
+/// it. `drawForDueClaim` used to borrow from it as a last resort; it no longer asks.
 ///
 /// **A merchant is paid by drawdown first.** One holding credit of their own has it reduced
 /// before any surplus becomes redeemable, and only the surplus can be withdrawn. That falls out
@@ -32,8 +29,17 @@ import "./interfaces/IPayoutLenders.sol";
 /// simply beats it, and directing spare capital here turns cash into merchant satisfaction, which
 /// is the scarcest thing at ten merchants.
 ///
-/// **Order is claim age, always.** There is no priority field here or in the registry, because a
-/// better place in a shared queue is a promise kept at another merchant's expense.
+/// **Order is deadline, then claim age** (compliance addendum 12.10). Each claim is due at the time
+/// it was queued plus the merchant's payout window, and the unpaid claim due soonest is paid first;
+/// claims due at the same moment are paid oldest first. Strict claim age let a net-14 merchant miss
+/// their deadline behind older net-30 claims that still had weeks to run. There is still no
+/// priority field here or in the registry: the order follows from terms already agreed, and nobody
+/// can move a claim.
+///
+/// One FIFO queue per payout window. Inside a queue every claim has the same window, so deadlines
+/// rise with claim age and the queue's head is its earliest. Picking the next claim compares only
+/// the heads, so the cost grows with the number of distinct windows queued at once (in practice
+/// net-14 and net-30), never with the number of claims.
 contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
@@ -69,8 +75,11 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     Claim[] private claims;
     /// @dev merchant => claim ids
     mapping(address => uint256[]) private claimsOf;
-    /// @dev The next claim in age order that has not been paid.
-    uint256 public nextUnpaid;
+    /// @dev The next unpaid claim among those queued before deadline ordering (the legacy queue).
+    /// Its slot was `nextUnpaid`, the strict claim-age cursor. Claims queued since then are paid
+    /// from the per-window queues, and `nextUnpaid()` is now a view over both.
+    /// @custom:oz-renamed-from nextUnpaid
+    uint256 private legacyNext;
     /// @notice Total still owed on queued claims.
     uint256 public queuedTotal;
 
@@ -177,7 +186,28 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     uint256 public borrowedFromVault;
 
     /// @dev Two more slots from the gap: bondVault, borrowedFromVault.
-    uint256[25] private __gap;
+
+    /* ---------- deadline ordering (compliance addendum 12.10): four slots from the gap ---------- */
+
+    /// @dev payout window => claim ids queued under it, oldest first. Deadlines rise along it.
+    mapping(uint32 => uint256[]) private windowQueue;
+    /// @dev payout window => index in `windowQueue` of its first unpaid claim.
+    mapping(uint32 => uint256) private windowHead;
+    /// @dev Payout windows with at least one unpaid claim.
+    uint32[] private queuedWindows;
+    /// @dev How many claims existed when deadline ordering began, plus one; zero until then.
+    /// Claims below it are the legacy queue, paid from `legacyNext` in the order they were
+    /// promised. On a fresh deployment the first redemption sets it to one, so there is none.
+    uint256 private legacyEnd;
+
+    uint256[21] private __gap;
+
+    /// @notice how many distinct payout windows may have claims queued at once.
+    /// @dev A bound on the gas of picking the next claim, which reads one head per window. It is
+    /// not a business figure: windows come from MerchantRegistry, and in practice there are two.
+    uint256 public constant MAX_QUEUED_WINDOWS = 16;
+    /// @dev Marks the legacy queue in `_head`.
+    uint256 private constant LEGACY = type(uint256).max;
 
 
     error PayoutPoolInvalidAddress();
@@ -190,6 +220,8 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     error PayoutPoolClaimAlreadyPaid(uint256 claimId);
     error PayoutPoolOutOfOrder(uint256 claimId, uint256 expected);
     error PayoutPoolInsufficientFunds(uint256 held, uint256 required);
+    /// @dev Too many distinct payout windows queued at once (`MAX_QUEUED_WINDOWS`).
+    error PayoutPoolTooManyWindows(uint32 window);
 
     event Redeemed(address indexed merchant, uint256 amount, bool paidNow, uint256 claimId);
     event ClaimPaid(uint256 indexed claimId, address indexed merchant, uint256 amount);
@@ -203,6 +235,8 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     event RefundQueued(address indexed member, uint256 amount);
     event LendersUpdated(address indexed yieldPool, address indexed reserve);
     event DrewFromYieldPool(uint256 amount);
+    /// @dev No longer emitted: the AssurancePool is not drawn on (addendum 12.11). Kept so indexers
+    /// can still decode past logs.
     event DrewFromReserve(uint256 amount);
     event RepaidYieldPool(uint256 amount);
     event RepaidReserve(uint256 amount);
@@ -306,10 +340,125 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         return claimsOf[merchant];
     }
 
-    /// @notice whether the oldest unpaid claim can be settled now.
+    /// @notice the claim paid next: the unpaid claim due soonest, the oldest on a tie.
+    /// @return the claim id, or `claimCount()` when nothing is queued.
+    function nextUnpaid() public view returns (uint256) {
+        (uint256 claimId,) = _head();
+        return claimId;
+    }
+
+    /// @notice whether the next claim (`nextUnpaid`) can be settled now.
     function canPayNext() external view returns (bool) {
-        if (nextUnpaid >= claims.length) return false;
-        return _payable() >= claims[nextUnpaid].amount;
+        (uint256 claimId,) = _head();
+        if (claimId >= claims.length) return false;
+        return _payable() >= claims[claimId].amount;
+    }
+
+    /// @notice payout windows that have claims queued.
+    function queuedWindowsList() external view returns (uint32[] memory) {
+        return queuedWindows;
+    }
+
+    /// @notice the unpaid claims due within `horizon` seconds from now, and what paying them needs.
+    /// @dev For the operator who funds the pool ahead of merchants' deadlines (addendum 12.10:
+    /// Clear Lending Co. funds each financed charge no later than two business days before the
+    /// merchant's payout deadline). Business days are the operator's to count; this takes a plain
+    /// horizon in seconds. Claims due inside the horizon come before every other claim in payment
+    /// order, so `short` is the cash that must arrive for all of them to be paid on time. Overdue
+    /// claims are included. At most `maxClaims` are listed and `amount` covers those only; the list
+    /// is grouped by window, not sorted.
+    /// @return ids the claims.
+    /// @return amount what they add up to.
+    /// @return short what the pool lacks to pay them, after refunds owed to members.
+    function dueWithin(uint256 horizon, uint256 maxClaims)
+        external
+        view
+        returns (uint256[] memory ids, uint256 amount, uint256 short)
+    {
+        uint256 cutoff = horizon > type(uint64).max ? type(uint64).max : block.timestamp + horizon;
+        ids = new uint256[](maxClaims);
+        uint256 n;
+        // The legacy queue is in claim-age order, not deadline order, so all of it is read.
+        uint256 end = _legacyEnd();
+        for (uint256 id = legacyNext; id < end && n < maxClaims; id++) {
+            if (claims[id].dueBy <= cutoff) {
+                ids[n++] = id;
+                amount += claims[id].amount;
+            }
+        }
+        for (uint256 w = 0; w < queuedWindows.length && n < maxClaims; w++) {
+            uint32 window = queuedWindows[w];
+            uint256[] storage queue = windowQueue[window];
+            for (uint256 i = windowHead[window]; i < queue.length && n < maxClaims; i++) {
+                Claim storage claim = claims[queue[i]];
+                // Deadlines rise along a window's queue, so the first one past the cutoff ends it.
+                if (claim.dueBy > cutoff) break;
+                ids[n++] = queue[i];
+                amount += claim.amount;
+            }
+        }
+        assembly {
+            mstore(ids, n)
+        }
+        uint256 usable = _payable();
+        short = amount > usable ? amount - usable : 0;
+    }
+
+    /* ========== ORDER ========== */
+
+    /// @dev Where the legacy queue ends: every claim, until deadline ordering has queued one.
+    function _legacyEnd() private view returns (uint256) {
+        return legacyEnd == 0 ? claims.length : legacyEnd - 1;
+    }
+
+    /// @dev The next claim to pay, and the queue it heads (`LEGACY`, or an index into
+    /// `queuedWindows`). Each queue's head is its earliest deadline, so the earliest head is the
+    /// earliest unpaid claim; a tie goes to the lower id, which is the older claim. The legacy
+    /// queue keeps the claim-age order it was promised in and competes through its head.
+    function _head() private view returns (uint256 claimId, uint256 queue) {
+        claimId = claims.length;
+        queue = LEGACY;
+        uint64 best = type(uint64).max;
+        if (legacyNext < _legacyEnd()) {
+            claimId = legacyNext;
+            best = claims[claimId].dueBy;
+        }
+        uint256 count = queuedWindows.length;
+        for (uint256 i = 0; i < count; i++) {
+            uint32 window = queuedWindows[i];
+            uint256 id = windowQueue[window][windowHead[window]];
+            uint64 due = claims[id].dueBy;
+            if (due < best || (due == best && id < claimId)) {
+                best = due;
+                claimId = id;
+                queue = i;
+            }
+        }
+    }
+
+    /// @dev Queues a new claim behind every earlier claim on the same window.
+    function _enqueue(uint32 window, uint256 claimId) private {
+        uint256[] storage queue = windowQueue[window];
+        if (windowHead[window] == queue.length) {
+            if (queuedWindows.length >= MAX_QUEUED_WINDOWS) revert PayoutPoolTooManyWindows(window);
+            queuedWindows.push(window);
+        }
+        queue.push(claimId);
+    }
+
+    /// @dev Moves past a claim just paid at the head of `queue`.
+    function _advance(uint256 claimId, uint256 queue) private {
+        if (queue == LEGACY) {
+            legacyNext = claimId + 1;
+            return;
+        }
+        uint32 window = queuedWindows[queue];
+        uint256 next = windowHead[window] + 1;
+        windowHead[window] = next;
+        if (next == windowQueue[window].length) {
+            queuedWindows[queue] = queuedWindows[queuedWindows.length - 1];
+            queuedWindows.pop();
+        }
     }
 
     /* ========== REDEMPTION ========== */
@@ -326,9 +475,8 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         /*
          * Only a registered, active merchant, or a co-op address the admin has named, turns credit
          * into cash. Paying any positive holder is what let a credit line become USDC at par
-         * through a wallet that was never a merchant (audit C-1, H-1, M-1). FIFO order, funding
-         * and the AssurancePool rule are untouched; this is the eligibility check only
-         * (DECISIONS #3).
+         * through a wallet that was never a merchant (audit C-1, H-1, M-1). This is the eligibility
+         * check (DECISIONS #3); the payment order below is addendum 12.10's.
          *
          * A funder named with FUNDER_ROLE counts as a named co-op address: it holds positions it
          * paid for (`_placePosition`) and redeeming them is how it gets its capital back.
@@ -360,6 +508,8 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         }
 
         uint32 window = merchantRegistry.payoutWindowOf(merchant);
+        // The first claim under deadline ordering marks where the legacy queue ends.
+        if (legacyEnd == 0) legacyEnd = claims.length + 1;
         claimId = claims.length;
         claims.push(
             Claim({
@@ -372,10 +522,13 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         );
         claimsOf[merchant].push(claimId);
         queuedTotal += redeeming;
+        _enqueue(window, claimId);
 
-        // Funded beats queued: if the money is here, the wait is zero rather than the window.
-        if (claimId == nextUnpaid && _payable() >= redeeming) {
-            _pay(claimId);
+        // Funded beats queued: if the money is here, the wait is zero rather than the window. But
+        // only when no unpaid claim is due sooner (or as soon, and older): the money is theirs first.
+        (uint256 head, uint256 queue) = _head();
+        if (head == claimId && _payable() >= redeeming) {
+            _pay(claimId, queue);
             paidNow = true;
         } else {
             emit ShortfallReported(shortfall());
@@ -387,6 +540,9 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev Admin, not operator, like every setting below that decides where money goes: an
     /// operator hot key that could repoint the treasury, the income recipient or a lender could
     /// send positions and income to itself (audit H-4). Zero switches a lender off.
+    ///
+    /// `reserve` is no longer drawn on (addendum 12.11). It is kept only so that a loan the
+    /// AssurancePool made before that change can still be repaid to it.
     function setLenders(address yieldPool_, address reserve_) external onlyRole(DEFAULT_ADMIN_ROLE) {
         yieldPool = yieldPool_;
         reserve = reserve_;
@@ -413,21 +569,23 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice finds the money for a claim whose turn has come and whose terms have run out.
-    /// @dev Nothing decides to pay anybody early: this is only ever for a claim already past its
-    /// window with nothing here to pay it. The yield pool first, because lending is what its
-    /// depositors are here for and they are paid for it; then the bond vault's deployable excess,
-    /// which earns carry toward what bondholders are owed and never touches their redemption
-    /// reserve; then the treasury, up to the allowance the Safe has given this pool, as capital that
-    /// holds the position it pays for; and the reserve last, because covering this is one of the
-    /// things a reserve is for but not the first thing.
+    /// @dev Nothing decides to pay anybody early: this is only ever for the next claim
+    /// (`nextUnpaid`), once it is past its deadline with nothing here to pay it. The yield pool
+    /// first, because lending is what its depositors are here for and they are paid for it; then
+    /// the bond vault's deployable excess, which earns carry toward what bondholders are owed and
+    /// never touches their redemption reserve; then the treasury, up to the allowance the Safe has
+    /// given this pool, as capital that holds the position it pays for.
+    ///
+    /// Never the AssurancePool (addendum 12.11): no payout path touches it. A claim those three cannot cover waits for funding; `dueWithin` says how much.
     ///
     /// Permissionless. A merchant owed money and past their terms should not also be waiting on
     /// somebody remembering to run this.
     function drawForDueClaim() external returns (uint256 drawn) {
-        if (nextUnpaid >= claims.length) revert PayoutPoolNothingToRedeem(address(0));
-        Claim storage claim = claims[nextUnpaid];
-        if (claim.paid) revert PayoutPoolClaimAlreadyPaid(nextUnpaid);
-        if (block.timestamp < claim.dueBy) revert PayoutPoolClaimNotDue(nextUnpaid, claim.dueBy);
+        (uint256 claimId,) = _head();
+        if (claimId >= claims.length) revert PayoutPoolNothingToRedeem(address(0));
+        Claim storage claim = claims[claimId];
+        if (claim.paid) revert PayoutPoolClaimAlreadyPaid(claimId);
+        if (block.timestamp < claim.dueBy) revert PayoutPoolClaimNotDue(claimId, claim.dueBy);
 
         uint256 usable = _payable();
         if (usable >= claim.amount) return 0;
@@ -472,14 +630,6 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
                 emit Funded(coopTreasury, take);
             }
         }
-        if (short > 0 && reserve != address(0)) {
-            uint256 lent = IAssuranceLender(reserve).lendToPayoutPool(short);
-            if (lent > 0) {
-                borrowedFromReserve += lent;
-                drawn += lent;
-                emit DrewFromReserve(lent);
-            }
-        }
         /*
          * All or nothing (audit X-20). Borrowing part of a claim left the cash idle, counted as
          * though it were funding, while the next repayment went to the lender before the claim;
@@ -490,7 +640,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
             revert PayoutPoolInsufficientFunds(_payable(), claim.amount);
         }
         // Funded beats queued, and it is their turn: pay it rather than making them come back.
-        _pay(nextUnpaid);
+        // The head is read again after the external calls above rather than trusted.
+        (uint256 head, uint256 queue) = _head();
+        if (head != claimId) revert PayoutPoolOutOfOrder(head, claimId);
+        _pay(claimId, queue);
     }
 
     /// @dev Members' money goes back to whoever fronted it before it does anything else. They put
@@ -584,35 +737,38 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         }
     }
 
-    /// @notice pays the oldest unpaid claim.
+    /// @notice pays the next claim: the unpaid claim due soonest, the oldest on a tie.
     /// @dev Permissionless, and strictly in order. Anybody may push the queue along; nobody may
     /// choose whose claim moves, which is the same thing as saying there is no priority to set.
+    /// A claim the pool cannot cover stops the queue: a smaller claim due later does not jump it.
     function payNext() public returns (uint256 claimId) {
-        claimId = nextUnpaid;
+        uint256 queue;
+        (claimId, queue) = _head();
         if (claimId >= claims.length) revert PayoutPoolNothingToRedeem(address(0));
         Claim storage claim = claims[claimId];
         if (claim.paid) revert PayoutPoolClaimAlreadyPaid(claimId);
 
         uint256 balance = _payable();
         if (balance < claim.amount) revert PayoutPoolInsufficientFunds(balance, claim.amount);
-        _pay(claimId);
+        _pay(claimId, queue);
     }
 
-    /// @notice pays as many queued claims as the pool can cover, oldest first.
+    /// @notice pays as many queued claims as the pool can cover, in `payNext` order.
     function payQueue(uint256 maxClaims) external returns (uint256 paidCount) {
         for (uint256 i = 0; i < maxClaims; i++) {
-            if (nextUnpaid >= claims.length) break;
-            if (_payable() < claims[nextUnpaid].amount) break;
-            payNext();
+            (uint256 claimId, uint256 queue) = _head();
+            if (claimId >= claims.length) break;
+            if (_payable() < claims[claimId].amount) break;
+            _pay(claimId, queue);
             paidCount++;
         }
     }
 
-    function _pay(uint256 claimId) private {
+    function _pay(uint256 claimId, uint256 queue) private {
         Claim storage claim = claims[claimId];
         claim.paid = true;
         queuedTotal -= claim.amount;
-        nextUnpaid = claimId + 1;
+        _advance(claimId, queue);
         reserveToken.safeTransfer(claim.merchant, claim.amount);
         _placePosition(claim.amount);
         emit ClaimPaid(claimId, claim.merchant, claim.amount);

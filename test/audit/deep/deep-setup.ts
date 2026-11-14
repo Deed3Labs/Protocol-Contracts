@@ -1,5 +1,6 @@
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
+import { issuerProxyOptions } from "../../helpers/issuers";
 
 /*
  * Shared wiring for the deep-pass audit tests: the credit core as AuditPoC.spec.ts wires it
@@ -24,10 +25,10 @@ export async function deployCore(opts: { fundPool?: bigint } = {}) {
 
   const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
   const revolving: any = await upgrades.deployProxy(
-    RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+    RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
   const TermIssuer = await ethers.getContractFactory("TermIssuer");
   const term: any = await upgrades.deployProxy(
-    TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+    TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
 
   for (const issuer of [revolving, term]) {
     await ctx.networkRegistry.registerIssuer(

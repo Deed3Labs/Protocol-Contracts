@@ -1,5 +1,6 @@
 import hre from "hardhat";
 import { getDeployment, saveDeployment } from "../deploy/helpers";
+import { issuerProxyOptions } from "../deploy/issuerModules";
 
 /*
  * Card spend settles on chain, and fiat repayment clears it: upgrade RevolvingIssuer and wire the
@@ -39,7 +40,7 @@ async function main() {
     console.log("Upgrading RevolvingIssuer at", existing.address);
     console.log("  from implementation", await upgrades.erc1967.getImplementationAddress(existing.address));
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
-    const upgraded = await upgrades.upgradeProxy(existing.address, RevolvingIssuer, {
+    const upgraded = await upgrades.upgradeProxy(existing.address, RevolvingIssuer, { ...(await issuerProxyOptions("RevolvingIssuer")), 
       kind: "uups",
       unsafeAllow: ["missing-initializer"],
     });

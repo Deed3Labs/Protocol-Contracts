@@ -1,6 +1,8 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { driveToDefault } from "../helpers/default";
+import { issuerProxyOptions } from "../helpers/issuers";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -35,7 +37,7 @@ describe("asset-backed default", function () {
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     issuer = await upgrades.deployProxy(
-      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" }
     );
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
@@ -88,8 +90,8 @@ describe("asset-backed default", function () {
 
   async function spendAndDefault(amount: bigint) {
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
-    await ethers.provider.send("evm_increaseTime", [2 * CYCLE + DAY]);
-    await ethers.provider.send("evm_mine", []);
+    // Section 12.5: two missed rebalances, each judged, then the cure window.
+    await driveToDefault(issuer, ctx.member.address, ctx.operator);
   }
 
   describe("pledged shares cannot simply walk away", function () {
@@ -172,7 +174,8 @@ describe("asset-backed default", function () {
       expect(realized).to.be.greaterThan(690n * ONE_USDC);
       // What is left is the carry that accrued while the position was in default and being
       // liquidated. The shares covered what was owed when they were valued, not a moment later.
-      expect(await issuer.principalOf(ctx.member.address, 0)).to.be.lessThan(20n * ONE_USDC);
+      // Section 12.5's default takes two cycles and the cure window, so about twice the carry.
+      expect(await issuer.principalOf(ctx.member.address, 0)).to.be.lessThan(45n * ONE_USDC);
     });
 
     it("stops counting a pledge it has taken", async function () {

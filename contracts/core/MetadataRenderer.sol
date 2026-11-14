@@ -44,6 +44,7 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
     bytes32 constant TRAIT_ANIMATION_URL = keccak256("animation_url");
     bytes32 constant TRAIT_VALIDATOR = keccak256("validator");
     bytes32 constant TRAIT_BENEFICIARY = keccak256("beneficiary");
+    bytes32 constant TRAIT_RIDER_HASHES = keccak256("riderHashes");
     bytes32 constant TRAIT_CONFIGURATION = keccak256("configuration");
     
     // ============ Structs ============
@@ -355,6 +356,13 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                 if (traitKeys[i] == TRAIT_DEFINITION || traitKeys[i] == TRAIT_CONFIGURATION || traitKeys[i] == TRAIT_GALLERY) {
                     continue;
                 }
+                // Trust agreement v5 traits are not strings (addresses, hashes, flags, a bytes32[] and a tuple).
+                // A single word is shown as hex; anything else that is not an abi-encoded string is skipped, so
+                // no reserved trait can make tokenURI revert.
+                bytes memory raw = traitValues[i];
+                if (raw.length != 32 && (raw.length < 64 || bytes32(raw) != bytes32(uint256(0x20)) || traitKeys[i] == TRAIT_RIDER_HASHES)) {
+                    continue;
+                }
                 if (!firstAttribute) json = abi.encodePacked(json, ',');
                 firstAttribute = false;
                 
@@ -373,6 +381,8 @@ contract MetadataRenderer is Initializable, OwnableUpgradeable, AccessControlUpg
                     address addr = abi.decode(traitValues[i], (address));
                     if (addr == address(0)) continue;
                     traitValue = addr.toHexString();
+                } else if (raw.length == 32) {
+                    traitValue = uint256(bytes32(raw)).toHexString();
                 } else {
                     // Handle string traits
                     traitValue = abi.decode(traitValues[i], (string));

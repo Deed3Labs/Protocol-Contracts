@@ -14,6 +14,8 @@ import { saveDeployment, getDeployment } from "./helpers";
  *   (set once: positions snapshot that product's accumulator).
  * - Points the term issuer at it. Until this runs, plans keep the rate the member signed and
  *   follow no state rules -- the legacy mode Phase 1 left.
+ * - Sets the Clear Credit Agreement's terms from `deploy/config/credit-terms.json` (section 12) and
+ *   names ESADepositVault as where ESA deposits are read for the Boost cap.
  * - Grants STATE_ATTESTER_ROLE on NetworkRegistry to `STATE_ATTESTER_KEY` when set.
  * - Trusts the revolving issuer on the Liquidator (permissionless liquidation only seizes for
  *   trusted issuers), and names NetworkRegistry as the vault's state source.
@@ -138,6 +140,31 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     }
   }
 
+  // ---- the Clear Credit Agreement's terms (section 12) ----
+  const terms = JSON.parse(fs.readFileSync(path.join(__dirname, "config", "credit-terms.json"), "utf8"));
+  const wanted = {
+    unsecuredLineCap: BigInt(terms.unsecuredLineCapUsd) * ONE_USD,
+    cureWindow: BigInt(terms.cureWindowDays * DAY),
+    boostCleanCycles: BigInt(terms.boostCleanCycles),
+    boostDepositCycles: BigInt(terms.boostDepositCycles),
+    autoClearOffGlobal: !terms.autoClearEnabledGlobal,
+  };
+  const held = await revolving.creditTerms();
+  const same = held.unsecuredLineCap === wanted.unsecuredLineCap && held.cureWindow === wanted.cureWindow
+    && held.boostCleanCycles === wanted.boostCleanCycles && held.boostDepositCycles === wanted.boostDepositCycles
+    && held.autoClearOffGlobal === wanted.autoClearOffGlobal
+    && (await revolving.boostBaseCap()) === BigInt(terms.boostBaseCapUsd) * ONE_USD
+    && (await revolving.boostEarnedCap()) === BigInt(terms.boostEarnedCapUsd) * ONE_USD;
+  if (!same) {
+    await (await revolving.setCreditTerms(wanted, BigInt(terms.boostBaseCapUsd) * ONE_USD, BigInt(terms.boostEarnedCapUsd) * ONE_USD)).wait();
+    log(`  credit terms: unsecured cap ${terms.unsecuredLineCapUsd} USD, Boost ${terms.boostBaseCapUsd}/${terms.boostEarnedCapUsd} USD, cure ${terms.cureWindowDays} days`);
+  }
+  const vaultForDeposits = getDeployment(network, "ESADepositVault");
+  if (vaultForDeposits && (await revolving.depositSource()) !== vaultForDeposits.address) {
+    await (await revolving.setDepositSource(vaultForDeposits.address)).wait();
+    log("  RevolvingIssuer deposit source -> ESADepositVault");
+  }
+
   // ---- term ----
   if ((await term.rateSchedule()) !== ratesAddress) {
     await (await term.setRateSchedule(ratesAddress)).wait();
@@ -163,6 +190,32 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     if (!(await liquidator.trustedSavingsIssuer(await revolving.getAddress()))) {
       await (await liquidator.setTrustedSavingsIssuer(await revolving.getAddress(), true)).wait();
       log("  Liquidator trusts RevolvingIssuer");
+    }
+  }
+
+  // ---- section 12.5 / 12.8: the Liquidator's Earn sources and the bond collection's gates ----
+  const poolRecord = getDeployment(network, "LendingPool");
+  const bondRecord = getDeployment(network, "BurnerBond");
+  if (liquidatorRecord && poolRecord && bondRecord) {
+    const liquidator = await ethers.getContractAt("Liquidator", liquidatorRecord.address);
+    if ((await liquidator.earnPool()) !== poolRecord.address || (await liquidator.earnBonds()) !== bondRecord.address) {
+      await (await liquidator.setEarnSources(poolRecord.address, bondRecord.address)).wait();
+      log("  Liquidator Earn sources -> LendingPool, BurnerBond");
+    }
+    const bond = await ethers.getContractAt("BurnerBond", bondRecord.address);
+    // The default gate is the issuer's computed default; the Liquidator is only the narrow
+    // settlement gate for missed-cycle excess and matured shortfalls (owner decision).
+    if ((await bond.owner()) === deployer.address) {
+      if ((await bond.defaultSource()) !== (await revolving.getAddress())) {
+        await (await bond.setDefaultSource(await revolving.getAddress())).wait();
+        log("  BurnerBond default source -> RevolvingIssuer");
+      }
+      if ((await bond.settlementGate()) !== liquidatorRecord.address) {
+        await (await bond.setSettlementGate(liquidatorRecord.address)).wait();
+        log("  BurnerBond settlement gate -> Liquidator");
+      }
+    } else {
+      log("! BurnerBond is owned elsewhere: its owner sets setDefaultSource(RevolvingIssuer) and setSettlementGate(Liquidator).");
     }
   }
 

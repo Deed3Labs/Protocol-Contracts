@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { deployCore, advance, ONE_USDC, CYCLE, DAY } from "./deep-setup";
 import { planTerms, signPlanTerms, signedOpenPlan } from "../../helpers/plans";
+import { driveToDefault } from "../../helpers/default";
 
 /*
  * Regression tests for audit H-4 (credit side) and M-2: what a leaked server key can still do.
@@ -126,7 +127,8 @@ describe("AUDIT H-4 / M-2: credit hot keys", function () {
       .to.be.revertedWithCustomError(revolving, "CreditIssuerDailyCapExceeded");
 
     // In default: nothing new authorized, nothing outstanding settled.
-    await advance(3 * CYCLE);
+    // Section 12.5: two missed rebalances in a row, each judged, then the cure window.
+    await driveToDefault(revolving, m.address, ctx.admin);
     expect(await revolving.inDefault(m.address)).to.equal(true);
     await expect(revolving.connect(settler).settleCardSpend(ethers.id("r3"), m.address, 250n * ONE_USDC))
       .to.be.revertedWithCustomError(revolving, "RevolvingIssuerMemberNotInGoodStanding");

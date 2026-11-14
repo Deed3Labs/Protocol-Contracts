@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { CA, ONE_USDC, CYCLE, DAY } from "./rates";
+import { issuerProxyOptions } from "../../helpers/issuers";
 
 /*
  * Compliance spec items 10-11 (DFAL "control", pilot cap). Acceptance tests 9, 12, 13, 14, 15, 16
@@ -29,7 +30,7 @@ async function deployStack() {
   await vault.setAcceptedToken(await ctx.usdc.getAddress(), true);
 
   const R = await ethers.getContractFactory("RevolvingIssuer");
-  const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+  const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
   await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress(),
     await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
   await ctx.access.grantOperator(await issuer.getAddress());
@@ -102,15 +103,23 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     expect(await issuer.principalOf(ctx.member.address, 0)).to.equal(0n);
   });
 
-  it("acceptance 13: no declared default -- liquidation reverts one second before grace ends and succeeds for any caller after", async function () {
+  it("acceptance 13: no declared default -- liquidation reverts one second before the cure window ends (section 12.5) and succeeds for any caller after", async function () {
     const { ctx, issuer, liquidator, clrusd, stranger } = s;
+    const CURE = 15 * DAY;
+    await issuer.connect(ctx.operator).setCreditTerms(
+      { unsecuredLineCap: 0, cureWindow: CURE, boostCleanCycles: 0, boostDepositCycles: 0, autoClearOffGlobal: false }, 0, 0);
     await save(1_000n * ONE_USDC);
     await drawSavings(400n * ONE_USDC, CYCLE);
     // Not in default yet: anyone calling is refused.
     await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
       .to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");
-    const [, expiration, grace] = await issuer.creditPeriods(ctx.member.address);
-    const end = Number(expiration + grace);
+    // Two missed rebalances in a row, each judged by the chain (anyone may ask it to).
+    for (let miss = 0; miss < 2; miss++) {
+      const [, expiration, grace] = await issuer.creditPeriods(ctx.member.address);
+      await ethers.provider.send("evm_setNextBlockTimestamp", [Number(expiration + grace) + 1]);
+      await issuer.connect(stranger).syncCreditPeriod(ctx.member.address);
+    }
+    const end = Number((await issuer.cycleOf(ctx.member.address)).cureNoticeAt) + CURE;
     await ethers.provider.send("evm_setNextBlockTimestamp", [end - 1]);
     await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
       .to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");

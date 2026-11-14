@@ -543,7 +543,14 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @dev Mints after counting the pilot volume, which refuses a CA mint past the cap.
     function _mintCounted(address receiver, uint256 minted) internal {
         _countPilot(receiver, minted, true);
+        s_lastDepositAt[receiver] = uint64(block.timestamp);
         IClearUSDMintBurn(clrusd).mint(receiver, minted);
+    }
+
+    /// @notice when a member last received CLRUSD for a deposit (section 12.4: the Boost cap counts
+    /// cycles with an ESA deposit). Zero if never. Holds no amount and no member data beyond that.
+    function lastDepositAt(address member) external view returns (uint256) {
+        return s_lastDepositAt[member];
     }
 
     /// @dev Counts CA volume over the rolling window. Only CA members count; a member with no
@@ -600,9 +607,11 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     uint64 private s_pausedUntil;
     address private s_pauseSigner;
     uint64 private s_pauseWindow;
+    /// @dev Section 12.4: when each member last received a deposit mint, for the Boost deposit test.
+    mapping(address => uint64) private s_lastDepositAt;
 
     /// @dev Reserved storage for future upgrades. Reduced by 1 (depositMandates mapping added),
     ///      then by 1 more (s_acceptedToken added), then by 8 more for the block above (the last
-    ///      four share one slot).
-    uint256[34] private __gap;
+    ///      four share one slot), then by 1 for s_lastDepositAt.
+    uint256[33] private __gap;
 }

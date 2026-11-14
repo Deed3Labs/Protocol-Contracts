@@ -10,6 +10,11 @@ import "./RevolvingIssuerBase.sol";
 /// storage with the original caller. Called directly it acts on its own empty storage, which it
 /// never initializes.
 contract RevolvingIssuerExtension is RevolvingIssuerBase {
+    /// @notice what RevolvingIssuer's constructor checks before pinning this as its extension.
+    function extensionKind() external pure returns (bytes32) {
+        return keccak256("RevolvingIssuerExtension.v2");
+    }
+
     using CarryIndex for CarryIndex.Index;
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
@@ -69,9 +74,34 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         // Carry accrued since the last touch is part of what is owed; bring it on before measuring.
         _materialiseCarry(member);
 
+        // Card spending draws against Savings only as far as the member has authorized (12.7): the
+        // Savings tier is narrowed to that for this draw, and the rest falls to the next tiers.
+        uint256 savingsTier = type(uint256).max;
+        uint256 savingsCap;
+        uint256 savingsBefore;
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tiers[i].kind == SAVINGS_KIND) {
+                savingsTier = i;
+                savingsCap = tierCapacity[member][i];
+                savingsBefore = tierPrincipal[member][i];
+                uint256 allowed = savingsBefore + savingsDrawAllowance[member];
+                if (allowed < savingsCap) tierCapacity[member][i] = allowed;
+                break;
+            }
+        }
+
         // All or nothing: whatever the tiers cannot place reverts the whole settlement.
         uint256 unplaced = _draw(member, amount);
         if (unplaced > 0) revert RevolvingIssuerCardHeadroom(member, amount, amount - unplaced);
+        if (savingsTier != type(uint256).max) {
+            tierCapacity[member][savingsTier] = savingsCap;
+            uint256 used = tierPrincipal[member][savingsTier] - savingsBefore;
+            if (used > 0) {
+                uint256 left = savingsDrawAllowance[member];
+                if (left != type(uint256).max) savingsDrawAllowance[member] = left - used;
+                emit SavingsDrawn(member, used, savingsDrawAllowance[member]);
+            }
+        }
         cardSettlements[ref] = CardSettlement({member: member, amount: amount});
         stableCredit.originatePurchase(
             member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
@@ -99,6 +129,14 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         }
         if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
         uint256 headroom = _activeHeadroom(member);
+        // Savings count only as far as the member has authorized card draws against them (12.7).
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tiers[i].kind != SAVINGS_KIND || !tiers[i].active) continue;
+            uint256 room = headroomOf(member, i);
+            uint256 allowed = savingsDrawAllowance[member];
+            if (room > allowed) headroom -= room - allowed;
+            break;
+        }
         if (headroom < amount) revert RevolvingIssuerCardHeadroom(member, amount, headroom);
         cardAuthorizations[ref] = CardAuthorization({member: member, amount: amount});
         emit CardAuthorized(ref, member, amount);
@@ -165,34 +203,6 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
             member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
         );
         emit CardSpendRepaid(ref, member, amount);
-    }
-
-    /// @notice repays a member's card debt from their own USDC, under the mandate they set.
-    /// @dev "There is no pay button": a deposit that lands as USDC in the member's wallet repays
-    /// what they owe before anything else touches it, the way a fiat deposit does. The USDC is pulled
-    /// from the member into the ledger (`repayCreditBalanceFor`, the member as payer), and the tiers
-    /// are cleared dearest first, as any repayment clears them.
-    ///
-    /// Bounded three ways: only for a member who switched it on, only up to what they owe on these
-    /// tiers, and only once per ref. It cannot move a member's money anywhere but against their own
-    /// debt.
-    /// @param ref idempotency key.
-    /// @param member address being repaid for.
-    /// @param amount amount to repay, in ledger units.
-    function repayForMember(bytes32 ref, address member, uint256 amount) external notNull(member) {
-        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
-        if (!autoRepayEnabled[member]) revert RevolvingIssuerAutoRepayNotEnabled(member);
-        if (amount == 0) revert RevolvingIssuerCardAmountZero();
-        if (autoRepayments[ref] != 0) revert RevolvingIssuerAutoRepayAlreadyUsed(ref);
-
-        _materialiseCarry(member);
-        uint256 principal = totalPrincipalOf(member);
-        if (amount > principal) revert RevolvingIssuerCardRepaymentExceedsDrawn(member, amount, principal);
-
-        autoRepayments[ref] = amount;
-        stableCredit.repayCreditBalanceFor(member, member, uint128(amount));
-        _repay(member, amount);
-        emit AutoRepaid(ref, member, amount);
     }
 
     /// @notice settles a tier out of the collateral that was pledged against it.

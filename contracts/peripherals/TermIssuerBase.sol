@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
+import "./IExtensionKind.sol";
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -170,6 +171,8 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// @notice Clear Cash at $2,500 and up may run 13 thirty-day cycles (DECISIONS #4): 390 days,
     /// the shortest offered term that clears the large-loan regime's 365-day minimum.
     uint32 public constant CLEAR_CASH_SPLIT = 13;
+    /// @dev A term plan's cycle: its monthly rate is charged per 30 days (section 12.9).
+    uint256 internal constant TERM_CYCLE = 30 days;
 
     /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
     uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
@@ -211,6 +214,7 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// @notice thrown when the rate or payout signed for is not what the chain computes.
     error TermIssuerTermsMismatch(uint256 signedRate, uint256 rate, uint256 signedPayout, uint256 payout);
     /// @notice thrown when a large loan is scheduled over less than its minimum term.
+    error TermIssuerExtensionMismatch();
     error TermIssuerTermTooShort(uint256 term, uint256 minimum);
     /// @notice thrown when a re-split would cost the member more and they have not signed for it.
     error TermIssuerResplitNeedsSignature(uint256 planId);
@@ -270,37 +274,28 @@ abstract contract TermIssuerBase is CreditIssuer {
     }
 
     /// @notice what the schedule says should have been repaid by now, carry included.
-    /// @dev Fixed at origination rather than derived from carry so far. The earlier version added
-    /// `_pendingCarry` on every read, which was right about what was owed and wrong about what
-    /// the member had been told: the quoted payment climbed across the term as carry accrued.
-    /// Projecting the whole schedule up front prices the same carry into a figure that holds
-    /// still, and prices it from the start rather than lagging the last touch -- so this never
-    /// under-reports how far behind a plan is, which is what an automatic pull is sized from.
+    /// @dev Fixed at origination rather than derived from carry so far, so the quoted payment holds
+    /// still and this never under-reports how far behind a plan is, which is what an automatic
+    /// pull is sized from.
     ///
-    /// The schedule is equal principal installments plus carry on the principal still unpaid
-    /// (spec item 5), so what is due by installment k is k shares of principal plus the carry those
-    /// k periods run on a declining balance.
+    /// The schedule is LEVELLED (section 12.9): every installment is the same payment, principal
+    /// plus carry, so what is due by installment k is k payments.
     function scheduledPrincipalDue(uint256 planId) public view returns (uint256) {
         return _dueAt(plans[planId], installmentsDue(planId));
     }
 
     /// @dev What the schedule asks to have been repaid once `k` installments have come due.
     function _dueAt(Plan storage plan, uint256 k) internal view returns (uint256) {
-        uint256 n = plan.installments;
         // The last period settles the schedule exactly, so rounding never accumulates.
-        if (k >= n) return plan.scheduleFloor + plan.scheduleTotal;
-        if (k == 0) return plan.scheduleFloor;
-        uint256 base = plan.scheduleBase;
-        uint256 periodRate = _periodRate(plan);
-        // carry over k periods = base x rate x (n + (n-1) + ... + (n-k+1)) / n
-        uint256 carry = (base * periodRate * (k * n - (k * (k - 1)) / 2)) / (n * RAY_);
-        return plan.scheduleFloor + (base * k) / n + carry;
+        if (k >= plan.installments) return plan.scheduleFloor + plan.scheduleTotal;
+        return plan.scheduleFloor + k * plan.installmentAmount;
     }
 
-    /// @dev The plan's scheduled rate over one installment period, RAY-scaled: monthly bps
-    /// x 12 / 365 days per second (DECISIONS #1).
+    /// @dev The plan's rate over one installment period, RAY-scaled. A term plan is charged its
+    /// monthly rate per 30-day cycle (section 12.9 and the owner's decision of 2026-11-13): the
+    /// closed-end schedule is quoted per cycle, and a 30-day cycle is never longer than a month.
     function _periodRate(Plan storage plan) internal view returns (uint256) {
-        return (plan.index.ratePerCycle * RAY_ * 12 * plan.installmentLength) / (BPS_ * 365 days);
+        return (plan.index.ratePerCycle * RAY_ * plan.installmentLength) / (BPS_ * TERM_CYCLE);
     }
 
     /// @notice how far behind the schedule a plan is, in principal.
@@ -377,19 +372,29 @@ abstract contract TermIssuerBase is CreditIssuer {
 
     /// @notice fixes the payment schedule for whatever the plan is spreading.
     /// @dev Called when a schedule opens and again when one is re-split, because a re-split is a
-    /// new schedule over a new remainder -- and quoting the old payment against it would be the
-    /// drift this exists to remove, arriving by another route.
+    /// new schedule over a new remainder.
     ///
-    /// Equal shares of principal, each period also paying the carry on what is still unpaid at the
-    /// plan's rate (spec item 5): $940 in four at 2% a month is 235 of principal a period plus
-    /// carry on 940, 705, 470 and 235. `installmentAmount` is the first, largest payment.
+    /// Levelled (section 12.9): payment = B x r / (1 - (1 + r)^-n), rounded up, so each period pays
+    /// the carry on what is still unpaid and the rest goes to principal. $940 in four at 2% is four
+    /// payments of $246.87, $47.47 of carry in all.
     function _fixSchedule(Plan storage plan) internal {
         uint256 n = plan.installments;
         uint256 base = plan.scheduleBase;
-        uint256 periodRate = _periodRate(plan);
-        uint256 carry = (base * periodRate * (n + 1)) / (2 * RAY_);
-        plan.scheduleTotal = base + carry;
-        plan.installmentAmount = base == 0 ? 0 : (base - 1) / n + 1 + (base * periodRate) / RAY_;
+        uint256 r = _periodRate(plan);
+        uint256 payment;
+        if (base == 0 || n == 0) {
+            payment = 0;
+        } else if (r == 0) {
+            payment = (base - 1) / n + 1;
+        } else {
+            uint256 grown = RAY_; // (1 + r)^n, RAY-scaled
+            for (uint256 i = 0; i < n; i++) grown = (grown * (RAY_ + r)) / RAY_;
+            payment = (base * r * grown - 1) / (RAY_ * (grown - RAY_)) + 1;
+        }
+        plan.installmentAmount = payment;
+        // With no carry the schedule is the principal exactly; the last installment takes the
+        // remainder, so rounding up the payment never asks for more than is owed.
+        plan.scheduleTotal = r == 0 ? base : payment * n;
     }
 
     /// @dev Carry deepens the member's negative balance and mints the matching claim to the
@@ -430,11 +435,13 @@ abstract contract TermIssuerBase is CreditIssuer {
         if (pricing.priced) {
             (uint256 list, uint256 cap) =
                 rateSchedule.chargesFor(plan.member, pricing.state, pricing.product, principal, planSnap[planId]);
-            charge = list < cap ? list : cap;
+            // RateSchedule accrues monthly x 12 / 365 per second; a term plan is charged the monthly
+            // rate per 30-day cycle (section 12.9), so x 365 / 360. Both list and cap scale alike.
+            charge = ((list < cap ? list : cap) * 365) / 360;
         } else {
-            charge = (principal * plan.index.ratePerCycle * 12 * elapsed) / (BPS_ * 365 days);
+            charge = (principal * plan.index.ratePerCycle * elapsed) / (BPS_ * TERM_CYCLE);
         }
-        uint256 subsidy = (principal * pricing.subsidyBps * 12 * elapsed) / (BPS_ * 365 days);
+        uint256 subsidy = (principal * pricing.subsidyBps * elapsed) / (BPS_ * TERM_CYCLE);
         return charge > subsidy ? charge - subsidy : 0;
     }
 

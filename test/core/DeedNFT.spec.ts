@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import { deployDeedNFT } from "../helpers/deed";
 import { ethers, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { DeedNFT } from "../../typechain-types/contracts/core/DeedNFT";
@@ -67,7 +68,7 @@ describe("DeedNFT", function() {
 
     // Deploy DeedNFT
     const DeedNFT = await ethers.getContractFactory("DeedNFT");
-    deedNFT = await upgrades.deployProxy(DeedNFT, [
+    deedNFT = await deployDeedNFT([
       await validator.getAddress(),
       await validatorRegistry.getAddress()
     ]);
@@ -89,7 +90,7 @@ describe("DeedNFT", function() {
     
     await deedNFT.mintAsset(
       user1.address,
-      0, // AssetType.Land
+      1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
       "ipfs://metadata1",
       definition,
       "configuration1",
@@ -116,7 +117,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -125,7 +126,7 @@ describe("DeedNFT", function() {
           0n // salt
         )
       ).to.emit(deedNFT, "DeedNFTMinted")
-        .withArgs(2, 0, deployer.address, await validator.getAddress());
+        .withArgs(2, 1, deployer.address, await validator.getAddress());
 
       // Check ownership
       expect(await deedNFT.ownerOf(2)).to.equal(user1.address);
@@ -133,7 +134,7 @@ describe("DeedNFT", function() {
       // Check trait values
       const assetTypeBytes = await deedNFT.getTraitValue(2, ASSET_TYPE_KEY);
       const assetType = abiCoder.decode(["uint8"], assetTypeBytes)[0];
-      expect(assetType).to.equal(0); // Land
+      expect(assetType).to.equal(1); // Vehicle
 
       const validatorBytes = await deedNFT.getTraitValue(2, VALIDATOR_KEY);
       const validatorAddress = abiCoder.decode(["address"], validatorBytes)[0];
@@ -159,7 +160,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -232,7 +233,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.connect(user1).mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata2",
           definition,
           "configuration2",
@@ -254,7 +255,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -263,7 +264,7 @@ describe("DeedNFT", function() {
           0n // salt
         )
       ).to.emit(deedNFT, "DeedNFTMinted")
-        .withArgs(2, 0, deployer.address, await validator.getAddress());
+        .withArgs(2, 1, deployer.address, await validator.getAddress());
 
       // Check ownership
       expect(await deedNFT.ownerOf(2)).to.equal(user1.address);
@@ -280,7 +281,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -327,7 +328,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.connect(user1).mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -336,7 +337,7 @@ describe("DeedNFT", function() {
           0n // salt
         )
       ).to.emit(deedNFT, "DeedNFTMinted")
-        .withArgs(2, 0, user1.address, await validator.getAddress());
+        .withArgs(2, 1, user1.address, await validator.getAddress());
 
       // Check ownership
       expect(await deedNFT.ownerOf(2)).to.equal(user1.address);
@@ -373,7 +374,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0, // AssetType.Land
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -397,7 +398,7 @@ describe("DeedNFT", function() {
       // Mint a deed
       await deedNFT.mintAsset(
         user1.address,
-        0, // AssetType.Land
+        1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
         "ipfs://metadata1",
         definition,
         "configuration1",
@@ -600,7 +601,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0,
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",
@@ -671,7 +672,7 @@ describe("DeedNFT", function() {
       
       await deedNFT.mintAsset(
         user1.address,
-        0,
+        1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
         "ipfs://metadata1",
         definition,
         "configuration1",
@@ -705,7 +706,7 @@ describe("DeedNFT", function() {
       await expect(
         deedNFT.mintAsset(
           user1.address,
-          0,
+          1, // AssetType.Vehicle (Land and Estate are trust deeds since v5)
           "ipfs://metadata1",
           definition,
           "configuration1",

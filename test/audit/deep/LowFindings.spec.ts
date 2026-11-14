@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { deployCore, advance, ONE_USDC, CYCLE } from "./deep-setup";
 import { signedOpenPlan } from "../../helpers/plans";
+import { issuerProxyOptions } from "../../helpers/issuers";
 
 /*
  * Regression tests for the credit core's Low findings fixed in Phase 1 step 8.
@@ -17,7 +18,11 @@ describe("AUDIT credit Lows: L-1, L-2, L-7, L-8", function () {
       ["AssurancePool", [await ctx.stableCredit.getAddress(), await ctx.usdc.getAddress()]],
     ] as [string, any[]][]) {
       const F = await ethers.getContractFactory(name);
-      const impl: any = await F.deploy();
+      // The issuers take their delegatecall modules as constructor arguments (EIP-3860).
+      const ctorArgs = name === "TermIssuer" || name === "RevolvingIssuer"
+        ? (await issuerProxyOptions(name)).constructorArgs
+        : [];
+      const impl: any = await F.deploy(...ctorArgs);
       await expect(impl.initialize(...args)).to.be.revertedWith("Initializable: contract is already initialized");
     }
   });

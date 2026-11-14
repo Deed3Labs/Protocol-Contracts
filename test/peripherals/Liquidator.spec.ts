@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { issuerProxyOptions } from "../helpers/issuers";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -40,7 +41,7 @@ describe("Liquidator", function () {
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     issuer = await upgrades.deployProxy(
-      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" }
     );
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
@@ -107,8 +108,16 @@ describe("Liquidator", function () {
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
   }
 
+  /** Section 12.5: two missed rebalances in a row, each judged by the chain, then the cure window. */
   async function intoDefault(periodLength: number) {
-    await ethers.provider.send("evm_increaseTime", [periodLength + CYCLE + ONE_DAY]);
+    await issuer.connect(ctx.operator).setCreditTerms(
+      { unsecuredLineCap: 0, cureWindow: ONE_DAY, boostCleanCycles: 0, boostDepositCycles: 0, autoClearOffGlobal: false }, 0, 0);
+    for (let miss = 0; miss < 2; miss++) {
+      await ethers.provider.send("evm_increaseTime", [periodLength + CYCLE + ONE_DAY]);
+      await ethers.provider.send("evm_mine", []);
+      await issuer.syncCreditPeriod(ctx.member.address);
+    }
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY + 1]);
     await ethers.provider.send("evm_mine", []);
   }
 

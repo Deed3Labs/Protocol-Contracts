@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { issuerProxyOptions } from "../helpers/issuers";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -19,7 +20,7 @@ describe("AUDIT PoC 2 — savings-backed credit without savings", function () {
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     const revolving: any = await upgrades.deployProxy(RevolvingIssuer,
-      [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+      [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
     await ctx.networkRegistry.registerIssuer(await revolving.getAddress(), await ctx.stableCredit.getAddress(),
       await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
     await ctx.access.grantOperator(await revolving.getAddress());

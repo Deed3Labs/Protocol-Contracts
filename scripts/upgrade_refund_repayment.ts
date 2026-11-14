@@ -1,5 +1,6 @@
 import hre from "hardhat";
 import { getDeployment, saveDeployment } from "../deploy/helpers";
+import { issuerProxyOptions } from "../deploy/issuerModules";
 
 /*
  * UUPS upgrade of PayoutPool, ClearCredit and TermIssuer, same proxy addresses, for the half of a
@@ -87,7 +88,7 @@ async function main() {
   // All three validated before any send: a layout problem should be a message, not a half-done set.
   await upgrades.validateUpgrade(pool.address, PayoutPool, { kind: "uups" });
   await upgrades.validateUpgrade(credit.address, ClearCredit, { kind: "uups" });
-  await upgrades.validateUpgrade(term.address, TermIssuer, { kind: "uups" });
+  await upgrades.validateUpgrade(term.address, TermIssuer, { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
   console.log("all three validate as upgrade-safe against what is deployed");
 
   if (!isAdmin || !poolAdmin || !isOwner) {

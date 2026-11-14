@@ -157,9 +157,12 @@ describe("PayoutPool", function () {
     });
   });
 
-  describe("order is claim age, always", function () {
+  // Compliance addendum 12.10 replaced strict claim age with deadline first, claim age second.
+  // The tests below used to assert that the older net-30 claim was paid ahead of a newer net-14
+  // one; they now assert the net-14 claim, due sooner, goes first (see PHASE-2B-PAYOUT-RESERVE.md).
+  describe("order is deadline, then claim age", function () {
     beforeEach(async function () {
-      // Two merchants, the second registered on better commercial terms than the first.
+      // Two merchants, the second registered on net-14 against the first's net-30.
       await registry.registerMerchant(second.address, NET_14, 50_000n * ONE_USDC, 100n);
       await ctx.creditIssuer
         .connect(ctx.operator)
@@ -168,33 +171,55 @@ describe("PayoutPool", function () {
       await ctx.stableCredit.connect(second).approve(await pool.getAddress(), ethers.MaxUint256);
     });
 
-    it("pays the older claim first, whatever the terms", async function () {
-      // Better terms are a promise the co-op keeps at its own expense. A better place in the
-      // queue is a promise kept at another merchant's expense, so it is not on offer.
+    it("pays the claim due sooner first, even when it is newer", async function () {
+      // Was "pays the older claim first, whatever the terms". The net-14 claim is due about two
+      // weeks before the older net-30 one, so it is paid first.
       await pool.connect(merchant).redeem(1_000n * ONE_USDC); // older, net-30
       await pool.connect(second).redeem(500n * ONE_USDC); // newer, net-14
+      expect(await pool.nextUnpaid()).to.equal(1n);
 
       await fund(500n * ONE_USDC);
-      // Not enough for the older claim, so nothing moves -- the newer one cannot jump it.
-      expect(await pool.canPayNext()).to.equal(false);
-      await expect(pool.payNext())
-        .to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+      expect(await pool.canPayNext()).to.equal(true);
+      await pool.payNext();
+      expect(await ctx.usdc.balanceOf(second.address)).to.equal(500n * ONE_USDC);
+      expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(0n);
 
-      await fund(500n * ONE_USDC);
+      // Then the net-30 claim, once there is money for it.
+      expect(await pool.nextUnpaid()).to.equal(0n);
+      await expect(pool.payNext()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+      await fund(1_000n * ONE_USDC);
       await pool.payNext();
       expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.usdc.balanceOf(second.address)).to.equal(0n);
     });
 
     it("has no way to choose whose claim moves", async function () {
+      // Was the same test with the net-30 claim moving first. Still nobody picks: payNext takes no
+      // argument, and the net-30 merchant calling it moves the net-14 claim.
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
       await pool.connect(second).redeem(500n * ONE_USDC);
       await fund(2_000n * ONE_USDC);
 
-      // payNext takes no argument. Anyone may push the queue along; nobody may pick.
-      await pool.connect(second).payNext();
-      expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.usdc.balanceOf(second.address)).to.equal(0n);
+      await pool.connect(merchant).payNext();
+      expect(await ctx.usdc.balanceOf(second.address)).to.equal(500n * ONE_USDC);
+      expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(0n);
+    });
+
+    it("pays claims due at the same moment oldest first", async function () {
+      // Same window, so the same deadline only when queued in the same second; the older id wins.
+      await registry.updateTerms(second.address, NET_30, 50_000n * ONE_USDC, 100n);
+      await ethers.provider.send("evm_setAutomine", [false]);
+      await pool.connect(merchant).redeem(1_000n * ONE_USDC);
+      await pool.connect(second).redeem(500n * ONE_USDC);
+      await ethers.provider.send("evm_mine", []);
+      await ethers.provider.send("evm_setAutomine", [true]);
+      const [, , , dueA] = await pool.claimAt(0);
+      const [, , , dueB] = await pool.claimAt(1);
+      expect(dueA).to.equal(dueB);
+
+      await fund(500n * ONE_USDC);
+      // The older claim is next and the pool cannot cover it; the smaller one does not jump it.
+      expect(await pool.nextUnpaid()).to.equal(0n);
+      await expect(pool.payNext()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
     });
 
     it("works down the queue in order when it can", async function () {
@@ -209,14 +234,16 @@ describe("PayoutPool", function () {
     });
 
     it("stops at the first claim it cannot cover", async function () {
+      // Was: the net-30 claim paid and the net-14 one left queued. In deadline order the net-14
+      // claim is paid, and the 700 left cannot cover the net-30 claim, so the queue stops there.
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
       await pool.connect(second).redeem(500n * ONE_USDC);
       await fund(1_200n * ONE_USDC);
 
       await pool.payQueue(10);
-      expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.usdc.balanceOf(second.address)).to.equal(0n);
-      expect(await pool.queuedTotal()).to.equal(500n * ONE_USDC);
+      expect(await ctx.usdc.balanceOf(second.address)).to.equal(500n * ONE_USDC);
+      expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(0n);
+      expect(await pool.queuedTotal()).to.equal(1_000n * ONE_USDC);
     });
   });
 
@@ -252,7 +279,7 @@ describe("PayoutPool", function () {
     });
   });
 
-  describe("it pays merchants without the AssurancePool, which is only ever a last-resort lender", function () {
+  describe("it pays merchants without the AssurancePool, which never funds or lends here (addendum 12.11)", function () {
     it("pays merchants without the reserve moving", async function () {
       // Redemption there is capped by lost debt outstanding, so paying merchants from it would
       // mean a merchant can only be paid when a member has defaulted.

@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { CA, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule, thirtyDays } from "./rates";
+import { issuerProxyOptions } from "../../helpers/issuers";
 
 async function advance(seconds: number) {
   await ethers.provider.send("evm_increaseTime", [seconds]);
@@ -22,7 +23,7 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
     ctx = await deployPhase0Network();
     coop = (await ethers.getSigners())[8];
     const R = await ethers.getContractFactory("RevolvingIssuer");
-    revolving = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+    revolving = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
     await ctx.networkRegistry.registerIssuer(
       await revolving.getAddress(), await ctx.stableCredit.getAddress(),
       await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
