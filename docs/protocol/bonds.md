@@ -187,7 +187,8 @@ the holder still holds; a bond they no longer hold is worth 0. One valuer is dep
 | `BOND` | `deploy/23` | `AssetInternal` | 95% (`9_500`) | `BondValuer`; unit price 0 |
 | `POOL_SHARE` | `deploy/22` | `AssetInternal` | 70% (`7_000`) | Unit price `1e18` |
 
-`CollateralRegistry.pledgeItem` (`OPERATOR_ROLE`) records a bond id against a member.
+`CollateralRegistry.pledgeItem` (`OPERATOR_ROLE`, with the member's EIP-712 signature since Phase
+4b) records a bond id against a member.
 `deploy/23` sets the collection's `encumbranceSource` to the registry with kind `BOND`, so
 `_beforeTokenTransfer` refuses to move a bond while `isItemEncumbered` is true — pledged and with
 credit drawn under the kind. Burns are exempt, and so is a transfer the liquidator operates.

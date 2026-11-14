@@ -146,10 +146,14 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
   it("acceptance 7: Clear Cash $3,000 over 12 x 30 days reverts; over 13 x 30 days (>= 365) at 2.5%/30d succeeds under the annual cap", async function () {
     const { term, ctx } = core;
     await expect(open(ctx.member, 3_000n * ONE_USDC, 12, CASH)).to.be.revertedWithCustomError(term, "TermIssuerTermTooShort");
+    // Under $2,500 (and with no other Clear Cash open) the large-loan regime does not apply and 13
+    // is not an offered split.
+    await expect(open(ctx.member, 2_000n * ONE_USDC, 13, CASH)).to.be.revertedWithCustomError(term, "TermIssuerSplitNotOffered");
     await expect(open(ctx.member, 3_000n * ONE_USDC, 13, CASH)).to.emit(term, "PlanOpened");
     expect((await term.planAt(0)).ratePerCycle).to.equal(250n);
-    // Under $2,500 the large-loan regime does not apply and 13 is not an offered split.
-    await expect(open(ctx.member, 2_000n * ONE_USDC, 13, CASH)).to.be.revertedWithCustomError(term, "TermIssuerSplitNotOffered");
+    // Phase 4b (re-review L-F): the term rule is judged on the member's open Clear Cash principal,
+    // so with $3,000 open a $2,000 plan is a large loan for its term: 12 x 30 days is too short.
+    await expect(open(ctx.member, 2_000n * ONE_USDC, 12, CASH)).to.be.revertedWithCustomError(term, "TermIssuerTermTooShort");
   });
 
   it("acceptance 8: a member with no stateCode, or in a state without the product, cannot open any credit product", async function () {

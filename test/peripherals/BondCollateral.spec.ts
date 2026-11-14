@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { pledgeItemSigned } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -109,7 +110,7 @@ describe("bonds as collateral", function () {
 
     beforeEach(async function () {
       bondId = await buyBond(1_000n * ONE_USDC, YEAR);
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
       await issuer
         .connect(ctx.operator)
         .openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, CYCLE);
@@ -203,7 +204,7 @@ describe("bonds as collateral", function () {
     beforeEach(async function () {
       await vault.setEncumbranceSource(await registry.getAddress(), BOND);
       bondId = await buyBond(1_000n * ONE_USDC, 2 * CYCLE);
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
       await issuer
         .connect(ctx.operator)
         .openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, CYCLE);
@@ -252,7 +253,7 @@ describe("bonds as collateral", function () {
     beforeEach(async function () {
       await registry.grantRole(await registry.ITEM_ROLLER_ROLE(), await bond.getAddress());
       bondId = await buyBond(1_000n * ONE_USDC, 2 * CYCLE);
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
       await issuer
         .connect(ctx.operator)
         .openLine(ctx.member.address, [500n * ONE_USDC], CYCLE, CYCLE);
@@ -298,7 +299,7 @@ describe("bonds as collateral", function () {
     it("values a fresh pledge near what was paid, not at face", async function () {
       const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
       const paid = (await bond.getBondInfo(bondId)).purchasePrice;
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
 
       const value = await registry.collateralValueOf(ctx.member.address, BOND);
       expect(value).to.equal(paid);
@@ -307,7 +308,7 @@ describe("bonds as collateral", function () {
 
     it("grows on its own as maturity approaches", async function () {
       const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
 
       const atIssue = await registry.collateralValueOf(ctx.member.address, BOND);
       await advance(YEAR / 2);
@@ -323,7 +324,7 @@ describe("bonds as collateral", function () {
 
     it("reaches face at maturity and stops there", async function () {
       const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
 
       await advance(YEAR + DAY);
       expect(await registry.collateralValueOf(ctx.member.address, BOND)).to.equal(
@@ -346,7 +347,7 @@ describe("bonds as collateral", function () {
 
     it("counts a bond the member no longer holds as worth nothing", async function () {
       const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
       // Nothing drawn, so the bond is free to leave -- but the registry still lists the pledge.
       await bond
         .connect(ctx.member)
@@ -358,8 +359,8 @@ describe("bonds as collateral", function () {
     it("sums a member's pledged bonds", async function () {
       const a = await buyBond(1_000n * ONE_USDC, YEAR);
       const b = await buyBond(500n * ONE_USDC, YEAR);
-      await registry.pledgeItem(ctx.member.address, BOND, a);
-      await registry.pledgeItem(ctx.member.address, BOND, b);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, a);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, b);
 
       const expected =
         (await bond.presentValueOf(a)) + (await bond.presentValueOf(b));
@@ -400,7 +401,7 @@ describe("bonds as collateral", function () {
 
     it("opens a line the moment a bond is pledged, with nobody attesting", async function () {
       const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
 
       // 90% of what the bond is worth today, not of its face.
       const value = await bond.presentValueOf(bondId);
@@ -411,7 +412,7 @@ describe("bonds as collateral", function () {
 
     it("widens that line on its own as the bond accretes", async function () {
       const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
 
       const atIssue = await limits.capacityOf(ctx.member.address, BOND);
       await advance(YEAR / 2);
@@ -422,7 +423,7 @@ describe("bonds as collateral", function () {
 
     it("pushes the figure onto the issuer for anyone who asks", async function () {
       const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
-      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await pledgeItemSigned(registry, ctx.member.address, BOND, bondId);
       await limits.connect(other).pushCapacities(ctx.member.address);
 
       const value = await bond.presentValueOf(bondId);

@@ -83,6 +83,12 @@ abstract contract DeedTrustCommon is DeedNFTBase {
         keccak256("AgreementConsent(uint256 tokenId,bytes32 agreementHash,bytes32 ridersHash,uint256 nonce)");
     bytes32 internal constant CORRECTION_CONSENT_TYPEHASH =
         keccak256("CorrectionConsent(uint256 tokenId,bytes32 definitionHash,bytes32 reasonHash,uint256 nonce)");
+    /// @dev Re-review M-F: the protector's consent to lifting a Void.
+    bytes32 internal constant RESTORE_CONSENT_TYPEHASH =
+        keccak256("RestoreConsent(uint256 tokenId,bytes32 reasonHash,uint256 nonce)");
+    /// @dev Re-review M-G: the protector's consent to the standby's promotion on its own determination.
+    bytes32 internal constant LICENSING_CONSENT_TYPEHASH =
+        keccak256("LicensingConsent(uint256 tokenId,address standby,bytes32 docHash,uint256 nonce)");
 
     /// @dev The trust agreement applies only to Land and Estate (Addendum 1).
     function _inScope(uint8 assetType) internal pure returns (bool) {

@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { CA, ONE_USDC, CYCLE, DAY } from "./rates";
 import { issuerProxyOptions } from "../../helpers/issuers";
+import { pledgeSigned } from "../../helpers/pledge";
 
 /*
  * Compliance spec items 10-11 (DFAL "control", pilot cap). Acceptance tests 9, 12, 13, 14, 15, 16
@@ -72,7 +73,7 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     await ctx.usdc.mint(ctx.member.address, amount);
     await ctx.usdc.connect(ctx.member).approve(await vault.getAddress(), amount);
     await vault.connect(ctx.member).deposit(await ctx.usdc.getAddress(), amount, ctx.member.address);
-    await registry.pledge(ctx.member.address, SAVINGS, amount);
+    await pledgeSigned(registry, ctx.member.address, SAVINGS, amount);
   }
 
   async function drawSavings(amount: bigint, period = 30 * DAY) {
@@ -97,7 +98,7 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     await expect(registry.setCollateralTerms(SAVINGS, 5_000n, 10n ** 18n)).to.be.revertedWithCustomError(registry, "CollateralRegistryClrusdTermsFixed");
     await expect(registry.setClrusdKind(ethers.encodeBytes32String("OTHER"))).to.be.reverted;
     await expect(registry.setCollateralValuer(SAVINGS, ctx.admin.address)).to.be.revertedWithCustomError(registry, "CollateralRegistryClrusdTermsFixed");
-    await registry.pledge(ctx.member.address, SAVINGS, 5_000n * ONE_USDC); // pledging more locks nothing
+    await pledgeSigned(registry, ctx.member.address, SAVINGS, 5_000n * ONE_USDC); // pledging more locks nothing
     expect(await clrusd.freeBalanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC);
 
     // FRAUD_ROLE has no way to move a member's CLRUSD.
@@ -144,7 +145,7 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     const m = ctx.member.address;
     await ctx.networkRegistry.grantRole(await ctx.networkRegistry.STATE_ATTESTER_ROLE(), ctx.admin.address);
     await ctx.networkRegistry.attestStateCode(m, CA);
-    await registry.pledge(m, SAVINGS, 1n);
+    await pledgeSigned(registry, m, SAVINGS, 1n);
     await registry.refresh(m);
     await issuer.connect(ctx.operator).setTierCapacity(m, 0, 2_000n * ONE_USDC);
     await issuer.connect(ctx.operator).pausePeriodOf(m);

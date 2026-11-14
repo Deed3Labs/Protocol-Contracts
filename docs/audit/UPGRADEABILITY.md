@@ -40,6 +40,8 @@ No handover has been run on any network. Until it runs, each power below is held
 
 **Pricing sources are set once (Phase 4, M-B).** `RevolvingIssuer.setPricing` and `TermIssuer.setRateSchedule` refuse to point at a different RateSchedule (or a different ceiling product) once one is named, because open positions hold that schedule's accumulator snapshots. A schedule change is an upgrade of RateSchedule in place, behind the same 7-day delay.
 
+**Phase 4b settings.** `NetworkRegistry.registerIssuer` and `deregisterIssuer` are `DEFAULT_ADMIN_ROLE`, so adding an issuer after the handover is a 7-day proposal (re-review M-E). `RevolvingIssuer.setClrusdToken` is the owner's and set once (L-B): every Savings draw calls that token's `syncEncumbrance`, so changing it is an upgrade. `DeedNFT.setValidatorReassignDelay` is the Deed timelock's, bounded to 1 to 30 days (M-F).
+
 **Delegatecall modules.** RevolvingIssuer (RevolvingIssuerExtension, and RevolvingIssuerCycles for section 12) and TermIssuer (TermIssuerExtension, TermIssuerOrigination) call into module contracts. Each module is deployed on its own and passed to the main contract's constructor, which checks its `extensionKind()` and pins its address as an immutable. Creating them inside the constructor put TermIssuer's creation code over EIP-3860's 48 KiB limit (fixed in Phase 2b). So a module changes only when the main contract is upgraded, under the same authority and the same timelock: an upgrade deploys new modules and a new implementation that names them (`deploy/issuerModules.ts`). Nothing can point a live contract at other code on its own.
 
 ## ESADepositVault and CLRUSD (vault timelock, Clear Financial Co.)

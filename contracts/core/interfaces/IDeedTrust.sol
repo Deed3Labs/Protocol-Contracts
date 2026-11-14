@@ -13,7 +13,8 @@ pragma solidity ^0.8.29;
  *        (Addendum 1: the role then passes automatically with the token).
  *      - trustee: always set on a trust deed; an eligible trustee (signer of an active validator, or a
  *        licensed trustee in ValidatorRegistry) that accepted and is not the holder.
- *      - standby trustee: optional, pre-accepted, promoted by `applyLicensingDetermination`.
+ *      - standby trustee: optional, pre-accepted, promoted by `applyLicensingDetermination` (on its own
+ *        call, only with the protector's consent: re-review M-G).
  *      None of trustee, standby or protector can transfer, burn or freeze the token.
  */
 interface IDeedTrust {
@@ -116,6 +117,8 @@ interface IDeedTrust {
     ///         is the effective protector (the holder while the record is zero).
     event NoticePosted(uint256 indexed tokenId, address indexed sender, bytes32 docHash, string uri, address trustee, address protector);
     event DeedVoided(uint256 indexed tokenId, uint8 reasonCode, bytes32 recordingRefHash, string uri, bool transferable);
+    /// @notice A Void was lifted by the deed's validator with the protector's consent (re-review M-F).
+    event DeedRestored(uint256 indexed tokenId, address indexed validator, string reasonURI);
     event TrustActionApproved(address indexed signer, bytes32 indexed digest);
     event TrustRegistriesSet(address functionalContractRegistry, address membershipRegistry);
 
@@ -144,6 +147,7 @@ interface IDeedTrust {
     error UseTrustPaths();
     error UnknownDeed();
     error RegistryAlreadySet();
+    error NotVoid();
 
     // ============ Mint and IDs ============
 
@@ -175,7 +179,9 @@ interface IDeedTrust {
     function setTrustee(uint256 tokenId, address newTrustee, bytes calldata acceptance) external;
     function setProtector(uint256 tokenId, address newProtector) external;
     function setStandbyTrustee(uint256 tokenId, address standby, bytes calldata acceptance) external;
-    function applyLicensingDetermination(uint256 tokenId, bytes32 docHash, string calldata uri) external;
+    /// @dev Re-review M-G: on the standby's own call, promotion needs `protectorConsent` (LicensingConsent);
+    ///      without it only the notice is posted. Ignored on the protector's and the trustee's calls.
+    function applyLicensingDetermination(uint256 tokenId, bytes32 docHash, string calldata uri, bytes calldata protectorConsent) external;
 
     // ============ Agreement and metadata ============
 
@@ -186,6 +192,8 @@ interface IDeedTrust {
 
     function postNotice(uint256 tokenId, bytes32 docHash, string calldata uri) external;
     function markVoid(uint256 tokenId, uint8 reasonCode, bytes32 recordingRefHash, string calldata uri) external;
+    /// @notice Re-review M-F: the deed's validator lifts a Void with the protector's consent (RestoreConsent).
+    function restoreFromVoid(uint256 tokenId, string calldata reasonURI, bytes calldata protectorConsent) external;
 
     // ============ Consent ============
 
@@ -194,6 +202,8 @@ interface IDeedTrust {
     function standbyAcceptanceDigest(uint256 tokenId, address standby) external view returns (bytes32);
     function agreementConsentDigest(uint256 tokenId, bytes32 agreementHash, bytes32[] calldata riderHashes) external view returns (bytes32);
     function correctionConsentDigest(uint256 tokenId, string calldata newDefinition, string calldata reasonURI) external view returns (bytes32);
+    function restoreConsentDigest(uint256 tokenId, string calldata reasonURI) external view returns (bytes32);
+    function licensingConsentDigest(uint256 tokenId, address standby, bytes32 docHash) external view returns (bytes32);
 
     // ============ Views ============
 

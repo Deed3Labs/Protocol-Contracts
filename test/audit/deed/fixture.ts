@@ -164,6 +164,14 @@ export async function signTrust(ctx: Ctx, signer: any, primaryType: string, valu
       { name: "tokenId", type: "uint256" }, { name: "definitionHash", type: "bytes32" },
       { name: "reasonHash", type: "bytes32" }, { name: "nonce", type: "uint256" },
     ],
+    // Phase 4b (re-review M-F, M-G).
+    RestoreConsent: [
+      { name: "tokenId", type: "uint256" }, { name: "reasonHash", type: "bytes32" }, { name: "nonce", type: "uint256" },
+    ],
+    LicensingConsent: [
+      { name: "tokenId", type: "uint256" }, { name: "standby", type: "address" },
+      { name: "docHash", type: "bytes32" }, { name: "nonce", type: "uint256" },
+    ],
   };
   const domain = {
     name: "DeedNFT Trust",

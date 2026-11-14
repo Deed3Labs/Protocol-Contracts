@@ -306,22 +306,82 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
         returns (uint256)
     {
         if (principal == 0) return 0;
-        Product storage product = _product(stateCode, productId);
-        ProductParams storage p = product.params;
-        if (p.largeLoanThreshold != 0 && principal >= p.largeLoanThreshold) {
-            return p.annualCapBps / 12;
+        _product(stateCode, productId);
+        return _capRate(stateCode, productId, principal) / RATE_SCALE;
+    }
+
+    /* ---- Phase 4b (L-G): effective rates for the repayment order ---- */
+
+    /// @notice the unit the effective rates below are in: monthly basis points times 1e18.
+    uint256 public constant RATE_SCALE = 1e18;
+
+    /// @notice what each of a member's revolving positions costs from now, as a monthly rate
+    /// scaled by RATE_SCALE, after the member-level ceiling (Phase 4b, L-G).
+    /// @dev The issuer passes its tiers in tier order. A tier with no product, or whose product
+    /// does not exist in `stateCode`, costs its own rate (`ownRates`, monthly bps). A priced tier
+    /// costs its list rate, unless the list carry on all priced tiers together is over the ceiling
+    /// product's cap on their total (and on the member's CFL aggregate, as `capFor` takes it); then
+    /// the excess is taken off the last priced tier first, exactly as `_pendingCarry` trims accrual.
+    /// So the order the ledger repays in follows what the member is actually charged.
+    function revolvingRatesOf(
+        address member,
+        bytes32 stateCode,
+        bytes32 ceilingProduct,
+        bytes32[] calldata productIds,
+        uint256[] calldata principals,
+        uint256[] calldata ownRates
+    ) external view returns (uint256[] memory rates) {
+        uint256 n = principals.length;
+        rates = new uint256[](n);
+        bool[] memory priced = new bool[](n);
+        uint256 unsecured;
+        uint256 carry;
+        for (uint256 i = 0; i < n; i++) {
+            if (productIds[i] == bytes32(0) || !hasProduct(stateCode, productIds[i])) {
+                rates[i] = ownRates[i] * RATE_SCALE;
+                continue;
+            }
+            priced[i] = true;
+            rates[i] = uint256(products[keyOf(stateCode, productIds[i])].params.listMonthlyBps) * RATE_SCALE;
+            unsecured += principals[i];
+            carry += principals[i] * rates[i];
         }
-        Band[] storage bands = bandsOf[keyOf(stateCode, productId)];
-        uint256 charge;
-        uint256 lower;
-        for (uint256 i = 0; i < bands.length && lower < principal; i++) {
-            uint256 upper = bands[i].upperBound;
-            uint256 part = (principal < upper ? principal : upper) - lower;
-            charge += part * bands[i].monthlyBps;
-            lower = upper;
+        if (carry == 0 || !hasProduct(stateCode, ceilingProduct)) return rates;
+        uint256 allowed = unsecured * _capRateFor(member, stateCode, ceilingProduct, unsecured);
+        if (carry <= allowed) return rates;
+        uint256 excess = carry - allowed;
+        for (uint256 i = n; i > 0 && excess > 0; i--) {
+            uint256 k = i - 1;
+            if (!priced[k] || principals[k] == 0) continue;
+            uint256 tierCarry = principals[k] * rates[k];
+            uint256 cut = tierCarry < excess ? tierCarry : excess;
+            rates[k] = (tierCarry - cut) / principals[k];
+            excess -= cut;
         }
-        uint256 graduated = charge / principal;
-        return p.flatMonthlyBps > graduated ? p.flatMonthlyBps : graduated;
+    }
+
+    /// @notice what a term plan of `principal` costs from now, as a monthly rate scaled by
+    /// RATE_SCALE (Phase 4b, L-G): what `termChargeFor` charges per 30 days, less the merchant's
+    /// subsidy, then stated per twelfth of a year (x 365 / 360) so it compares with a revolving rate.
+    function termRateOf(
+        address member,
+        bytes32 stateCode,
+        bytes32 productId,
+        uint256 principal,
+        uint256 subsidyBps
+    ) external view returns (uint256 rate) {
+        if (principal == 0) return 0;
+        ProductParams storage p = _product(stateCode, productId).params;
+        rate = uint256(p.listMonthlyBps) * RATE_SCALE;
+        uint256 cap = _capRateFor(member, stateCode, productId, principal);
+        if (cap < rate) rate = cap;
+        uint256 threshold = p.largeLoanThreshold;
+        if (threshold != 0 && (principal >= threshold || aggregatePrincipalOf(member) >= threshold)) {
+            uint256 annual = (uint256(p.annualCapBps) * RATE_SCALE * 30) / 365;
+            if (annual < rate) rate = annual;
+        }
+        uint256 subsidy = subsidyBps * RATE_SCALE;
+        rate = rate > subsidy ? ((rate - subsidy) * 365) / 360 : 0;
     }
 
     /// @notice min(list rate, legal cap for this principal), per month, in bps.
@@ -340,6 +400,42 @@ contract RateSchedule is OwnableUpgradeable, UUPSUpgradeable {
     function _product(bytes32 stateCode, bytes32 productId) internal view returns (Product storage product) {
         product = products[keyOf(stateCode, productId)];
         if (!product.exists) revert RateScheduleUnknownProduct(stateCode, productId);
+    }
+
+    /// @dev The cap on `principal` as a monthly rate scaled by RATE_SCALE: the large-loan annual cap
+    /// per twelfth of a year, or the graduated schedule (or the flat alternative, if higher).
+    function _capRate(bytes32 stateCode, bytes32 productId, uint256 principal) internal view returns (uint256) {
+        ProductParams storage p = products[keyOf(stateCode, productId)].params;
+        if (p.largeLoanThreshold != 0 && principal >= p.largeLoanThreshold) {
+            return (uint256(p.annualCapBps) * RATE_SCALE) / 12;
+        }
+        Band[] storage bands = bandsOf[keyOf(stateCode, productId)];
+        uint256 charge;
+        uint256 lower;
+        for (uint256 i = 0; i < bands.length && lower < principal; i++) {
+            uint256 upper = bands[i].upperBound;
+            uint256 part = (principal < upper ? principal : upper) - lower;
+            charge += part * bands[i].monthlyBps;
+            lower = upper;
+        }
+        uint256 graduated = (charge * RATE_SCALE) / principal;
+        uint256 flat = uint256(p.flatMonthlyBps) * RATE_SCALE;
+        return flat > graduated ? flat : graduated;
+    }
+
+    /// @dev `_capRate` as `capFor` applies it to one of `member`'s positions: the lower of the rate
+    /// on the position alone and the rate on the member's CFL aggregate.
+    function _capRateFor(address member, bytes32 stateCode, bytes32 productId, uint256 principal)
+        internal
+        view
+        returns (uint256 rate)
+    {
+        rate = _capRate(stateCode, productId, principal);
+        uint256 aggregate = aggregatePrincipalOf(member);
+        if (aggregate > principal) {
+            uint256 onAggregate = _capRate(stateCode, productId, aggregate);
+            if (onAggregate < rate) rate = onAggregate;
+        }
     }
 
     function _cap(

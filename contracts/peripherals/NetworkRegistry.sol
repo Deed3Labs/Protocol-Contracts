@@ -145,9 +145,12 @@ contract NetworkRegistry is
     /// @notice registers an issuer against a network.
     /// @dev Phase 2c: an issuer is wired to its ledger and nothing else. It draws on no reserve, and
     /// the network's two retired fields (the old AssurancePool and AssuranceOracle) stay zero.
+    /// Re-review M-E: admin only (the credit timelock after the handover). A registered issuer passes
+    /// the ledger's `onlyCreditIssuer`, with every ledger power that brings, so adding one is a
+    /// governance act, not an operator's.
     /// @param issuer address of the issuer contract.
     /// @param stableCredit the ledger it writes to.
-    function registerIssuer(address issuer, address stableCredit) external onlyRole(OPERATOR_ROLE) {
+    function registerIssuer(address issuer, address stableCredit) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (issuer == address(0) || stableCredit == address(0)) revert NetworkRegistryInvalidAddress();
         if (registered[issuer]) revert NetworkRegistryIssuerAlreadyRegistered(issuer);
 
@@ -172,8 +175,9 @@ contract NetworkRegistry is
     /// @dev Refuses while the issuer still has members enrolled. Deregistering underneath a live
     /// position would strand it: the ledger would stop recognising the issuer that owns it, and
     /// nothing could adjust or close it.
+    /// Re-review M-E: admin only, like registration.
     /// @param issuer address of the issuer to remove.
-    function deregisterIssuer(address issuer) external onlyRole(OPERATOR_ROLE) {
+    function deregisterIssuer(address issuer) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (!registered[issuer]) revert NetworkRegistryUnknownIssuer(issuer);
         if (enrolledCountOf(issuer) > 0) revert NetworkRegistryMemberStillEnrolled(issuer);
 

@@ -109,8 +109,15 @@ and `unitPrice`). It returns zero if `clrusdKind` is unset or unregistered, and 
 who has drawn nothing. It does not read `pledgedOf`.
 
 Pledges are recorded by `CollateralRegistry.pledge` and freed by `release`, both `OPERATOR_ROLE`.
+Since Phase 4b (re-review L-I) a pledge also needs the member's EIP-712 signature over it.
 `release` refuses to free units that `freeCollateralOf` says are backing drawn credit. The registry
 holds no CLRUSD; the member's account does, and the token enforces the lock.
+
+When the registry cannot be read, CLRUSD falls back to the last lock it read for the holder. Since
+Phase 4b (re-review L-B) the revolving issuer calls `syncEncumbrance(member)` after every draw on
+the Savings tier, a plain transfer or a card settlement (`RevolvingIssuer.setClrusdToken`, set once
+by the owner), so that record is never older than the member's last Savings draw. If the registry
+is down at that moment the draw reverts.
 
 `Liquidator` uses `seize` in two places. `liquidate` (`OPERATOR_ROLE`) checks that the issuer reports
 the member in default, seizes up to the tier's outstanding principal, records the seizure in the

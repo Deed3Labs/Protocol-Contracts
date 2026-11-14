@@ -71,6 +71,8 @@ Keys are `keccak256(name)`. Values are abi-encoded as shown. Nobody can write a 
   - `StandbyAcceptance(uint256 tokenId,address standby,uint256 nonce)`
   - `AgreementConsent(uint256 tokenId,bytes32 agreementHash,bytes32 ridersHash,uint256 nonce)`
   - `CorrectionConsent(uint256 tokenId,bytes32 definitionHash,bytes32 reasonHash,uint256 nonce)`
+  - `RestoreConsent(uint256 tokenId,bytes32 reasonHash,uint256 nonce)` (Phase 4b, re-review M-F)
+  - `LicensingConsent(uint256 tokenId,address standby,bytes32 docHash,uint256 nonce)` (Phase 4b, re-review M-G)
 - **A prior call, with an empty `bytes` argument.** The "second call" form: the party first calls `approveTrustAction(bytes32 digest)`. Each approval is used once.
 
 `nonce` is the deed's `trustRecordOf(tokenId).nonce`. It is 0 for the mint acceptance, and every role change or consumed consent moves it. The digest views below return what to sign or approve:
@@ -79,6 +81,8 @@ Keys are `keccak256(name)`. Values are abi-encoded as shown. Nobody can write a 
 - `standbyAcceptanceDigest(tokenId, standby)`
 - `agreementConsentDigest(tokenId, agreementHash, riderHashes)`
 - `correctionConsentDigest(tokenId, newDefinition, reasonURI)`
+- `restoreConsentDigest(tokenId, reasonURI)`
+- `licensingConsentDigest(tokenId, standby, docHash)`
 
 In these structs, `ridersHash = keccak256(abi.encodePacked(riderHashes))`, `definitionHash = keccak256(bytes(newDefinition))` and `reasonHash = keccak256(bytes(reasonURI))`.
 
@@ -211,12 +215,13 @@ These replace brief item 8, which Addendum 1 superseded.
   - The standby must be eligible, must not be the holder, trustee or protector, and must accept.
   - Zero clears it.
   - `event StandbyTrusteeChanged(uint256 indexed tokenId, address indexed previousStandby, address indexed newStandby)`.
-- **`applyLicensingDetermination(uint256 tokenId, bytes32 docHash, string uri)`**
+- **`applyLicensingDetermination(uint256 tokenId, bytes32 docHash, string uri, bytes protectorConsent)`**
   - Callable by the effective protector, the trustee or the standby.
   - Emits `NoticePosted`.
   - Then promotes the standby, if it is set, still eligible and not the holder or protector: `event StandbyPromoted(...)` and `TrusteeChanged`.
   - Otherwise it suspends the trustee: `TrusteeSuspended`.
   - A suspended trustee cannot `markVoid` or `correctDefinition`.
+  - **Phase 4b (re-review M-G), a change to Addendum 2.** On the standby's own call, the determination is acted on only with the effective protector's consent (`LicensingConsent`, by signature or a prior approval; the holder's while the protector record is zero). Without it, the notice is posted and nothing else changes: no promotion and no suspension. `protectorConsent` is ignored on the protector's and the trustee's calls, which are unchanged. The Addendum 2 drafting needs this change.
 - **No trustee fee:**
   - `Program` has no trustee-fee field.
   - The only payment paths, the mint fee through FundManager and `royaltyInfo`, pay the validator contract, which can never be a trustee.
@@ -267,6 +272,8 @@ The rules are enforced in the transfer hook (`DeedTrustExtension`).
   - Callable by the deed's validator, or a signer of it, or the unsuspended trustee. Trust deeds only.
   - `event DeedVoided(uint256 indexed tokenId, uint8 reasonCode, bytes32 recordingRefHash, string uri, bool transferable)`.
   - Reason codes below `128` leave the token transferable. Codes from `128` up freeze it, which blocks every transfer but burning. Only the validator may use them, and never while acting as the trustee.
+  - **Phase 4b (re-review M-F).** A Void is no longer permanent. `restoreFromVoid(uint256 tokenId, string reasonURI, bytes protectorConsent)` lifts it, freezing or not: the deed's validator (or a signer of it, not acting as the trustee) calls, and the effective protector consents (`RestoreConsent`). It emits `DeedRestored(uint256 indexed tokenId, address indexed validator, string reasonURI)` and reverts `NotVoid` on a deed that is not Void. Burning a frozen deed stays allowed; its record is kept (brief item 1).
+  - **Phase 4b (re-review M-F).** On a trust deed, `DeedNFT.reassignValidator(tokenId, newValidator)` only records the request (`ValidatorReassignmentRequested(tokenId, newValidator, effectiveAt)`). The holder completes it with `completeValidatorReassignment(tokenId)` once `validatorReassignDelay()` has passed (default 7 days; the Deed timelock may set 1 to 30 days with `setValidatorReassignDelay`), which emits `ValidatorReassigned`. Until then the old validator is still the deed's validator and may still void it. Neither step runs while the deed is Void (`NotActive`). `pendingValidatorOf(tokenId)` reads a pending request. Legacy (non-trust) deeds change validator at once, as before.
   - The suggested reason codes:
     - `1`: tax sale
     - `2`: foreclosure
@@ -286,9 +293,9 @@ The rules are enforced in the transfer hook (`DeedTrustExtension`).
 `TrusteeNotEligible(address)`, `RoleConflict`, `ConsentMissing(address)`, `NotProtector`, `NotHolder`, `NotTrustParty`,
 `InvalidTransferPolicy`, `ProgramRequired`, `ProtectorNotSponsor`, `TransferToTrustee`,
 `TransferPolicyBlocked(uint8)`, `DeedFrozen`, `NotActive`, `FreezeNeedsValidator`, `DefinitionLocked`, `UseTrustPaths`,
-`UnknownDeed`, `RegistryAlreadySet`.
+`UnknownDeed`, `RegistryAlreadySet`, `NotVoid` (Phase 4b).
 
-DeedNFT itself adds `HookOnly` and `ExtensionMismatch`.
+DeedNFT itself adds `HookOnly` and `ExtensionMismatch`, and since Phase 4b `ReassignmentNotDue(uint64)`, `NoReassignmentPending` and `ReassignDelayOutOfRange(uint64)`.
 
 ## 4. Deviations from the brief and addenda, with reasons
 
