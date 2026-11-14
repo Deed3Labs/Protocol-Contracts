@@ -120,7 +120,7 @@
   },
   "ClearCredit": {
    "source": "contracts/core/ClearCredit.sol",
-   "sha256": "02ce5825d0a3c80a4aae2efc52aaf7f6f4e27bcd2842b1fd4576b5a56559a733",
+   "sha256": "f338c55760bd7148c40b5f8c5e126ffe40b7844fae58cddb344d79fcee39d702",
    "immutables": [
     [
      8472,
@@ -193,7 +193,7 @@
   },
   "DeedNFT": {
    "source": "contracts/core/DeedNFT.sol",
-   "sha256": "308eb8b3ac839758ee5a7813c2c8a671e796f81772734020a3a182ffadee5448",
+   "sha256": "2af6dedbbff6fcf990ca1369c0ecb51bc9ed2c1dc0ba0f5baebdee44704a9396",
    "immutables": [
     [
      3607,
@@ -228,15 +228,15 @@
      32
     ],
     [
-     14775,
+     14782,
      32
     ],
     [
-     14813,
+     14820,
      32
     ],
     [
-     20029,
+     20051,
      32
     ]
    ]
