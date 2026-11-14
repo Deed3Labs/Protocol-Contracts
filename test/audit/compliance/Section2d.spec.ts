@@ -546,13 +546,36 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
       // Deposit intents hold USDC and are never announced.
       await expect(factory.announceIntent(salt, config(1n, keyA.address, 0))).to.be.revertedWithCustomError(factory, "SavingsIntentFactoryNotRedeem");
 
+      // The owner's follow-up: a redeem escrow is recorded only while its depositor may receive
+      // CLRUSD. Otherwise one key (CREATOR_ROLE) could set up an escrow whose refund carries a
+      // member's CLRUSD to a non-member. Announced or provisioned, a non-member depositor is refused.
+      const stray = { ...redeemTo, depositor: stranger.address };
+      const straySalt = ethers.id("stray");
+      await expect(factory.announceIntent(straySalt, stray))
+        .to.be.revertedWithCustomError(factory, "SavingsIntentFactoryDepositorNotMember").withArgs(stranger.address);
+      await expect(factory.createIntentDeterministic(straySalt, stray))
+        .to.be.revertedWithCustomError(factory, "SavingsIntentFactoryDepositorNotMember");
+      await expect(factory.settleDeterministic(straySalt, stray))
+        .to.be.revertedWithCustomError(factory, "SavingsIntentFactoryDepositorNotMember");
+      expect(await factory.isIntentEscrow(await factory.predictIntentAddress(straySalt, stray))).to.equal(false);
+
+      // A deposit intent is unaffected: it holds USDC, and a non-member may fund one for a member.
+      const gift = { ...config(10n * ONE_USDC, ctx.member.address, 0), depositor: stranger.address };
+      const giftSalt = ethers.id("gift");
+      await ctx.usdc.mint(stranger.address, 10n * ONE_USDC);
+      await ctx.usdc.connect(stranger).transfer(await factory.predictIntentAddress(giftSalt, gift), 10n * ONE_USDC);
+      const memberBefore = await clrusd.balanceOf(ctx.member.address);
+      await factory.settleDeterministic(giftSalt, gift);
+      expect(await clrusd.balanceOf(ctx.member.address)).to.equal(memberBefore + 10n * ONE_USDC);
+
       // End to end: fund the predicted address, settle, the receiver the depositor fixed gets USDC.
       await clrusd.connect(ctx.member).transfer(escrow, 100n * ONE_USDC);
       await factory.settleDeterministic(salt, redeemTo);
       expect(await ctx.usdc.balanceOf(keyA.address)).to.equal(100n * ONE_USDC);
       expect(await clrusd.balanceOf(escrow)).to.equal(0n);
 
-      // An escrow returns its funds even when its depositor has been de-listed meanwhile.
+      // An escrow recorded while its depositor was a member returns its funds even after the
+      // depositor is de-listed: the check is not repeated at provisioning or refund.
       const refundable = config(50n * ONE_USDC, keyA.address);
       const salt2 = ethers.id("redeem-2");
       const escrow2 = await factory.predictIntentAddress(salt2, refundable);

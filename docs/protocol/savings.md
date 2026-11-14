@@ -254,8 +254,12 @@ pays a plain `redeem` only to its caller.
 exists, and CLRUSD is received only by members. So the factory records each redeem escrow's address
 when it is announced (`announceIntent`, `CREATOR_ROLE`, deploys nothing) or provisioned
 (`isIntentEscrow`). CLRUSD exempts those addresses while this factory is its registered
-`intentFactory`, which only CLRUSD's default admin (the vault timelock) sets. An escrow's own
-transfers out are exempt on receipt, so a refund reaches a depositor who has since been de-listed.
+`intentFactory`, which only CLRUSD's default admin (the vault timelock) sets. Two-person control is
+on registering the factory, not on each escrow. The factory records a redeem escrow only while its
+depositor may receive CLRUSD (`mayReceive` on the transfer token, failing closed:
+`SavingsIntentFactoryDepositorNotMember`), so a refund cannot carry CLRUSD to a non-member. An
+escrow's own transfers out are exempt on receipt, so a refund reaches a depositor who was a member
+when the escrow was recorded and has since been de-listed.
 If the factory is unregistered, an escrow still sends, since the rule is about receipt. The factory
 is not upgradeable, so this needs a new deployment of it.
 

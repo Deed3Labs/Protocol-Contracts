@@ -80,18 +80,30 @@ describe("SavingsIntentFactory", function () {
     expect(await usdc.balanceOf(await vault.getAddress())).to.equal(amount);
   });
 
+  // Phase 2d: the factory records a redeem escrow only after asking the transfer token whether the
+  // depositor may receive it (CLRUSD's `mayReceive`), so the redeem token is ClearUSDUpgradeable.
+  // The legacy ClearUSD cannot answer, so the factory refuses its redeem intents (fail closed).
   it("settles a redeem after a single CLRUSD transfer to the predicted escrow", async function () {
+    const ClearUSD = await ethers.getContractFactory("ClearUSDUpgradeable");
+    const clrusd: any = await upgrades.deployProxy(ClearUSD,
+      ["Clear USD", "CLRUSD", 6, 0, 0, admin.address, admin.address],
+      { kind: "uups", unsafeAllow: ["missing-initializer", "missing-initializer-call"] });
+    const vault2: any = await upgrades.deployProxy(await ethers.getContractFactory("ESADepositVault"),
+      [await clrusd.getAddress(), admin.address], { kind: "uups" });
+    await clrusd.grantMintAndBurnRoles(await vault2.getAddress());
+    await vault2.setAcceptedToken(await usdc.getAddress(), true);
+
     const mintAmount = 200n * ONE_USDC;
-    await usdc.connect(user).approve(await vault.getAddress(), mintAmount);
-    await vault.connect(user).deposit(await usdc.getAddress(), mintAmount, user.address);
+    await usdc.connect(user).approve(await vault2.getAddress(), mintAmount);
+    await vault2.connect(user).deposit(await usdc.getAddress(), mintAmount, user.address);
 
     const redeemAmount = 80n * ONE_USDC;
     const config = {
       depositor: user.address,
       receiver: receiver.address,
-      transferToken: await clearUsd.getAddress(),
+      transferToken: await clrusd.getAddress(),
       vaultToken: await usdc.getAddress(),
-      vault: await vault.getAddress(),
+      vault: await vault2.getAddress(),
       amount: redeemAmount,
       expiry: await currentExpiry(),
       action: 1,
@@ -99,12 +111,30 @@ describe("SavingsIntentFactory", function () {
     const salt = makeSalt("redeem-1");
     const predicted = await factory.predictIntentAddress(salt, config);
 
-    await clearUsd.connect(user).transfer(predicted, redeemAmount);
+    await clrusd.connect(user).transfer(predicted, redeemAmount);
 
-    await expect(factory.settleDeterministic(salt, config)).to.emit(vault, "Redeemed");
+    await expect(factory.settleDeterministic(salt, config)).to.emit(vault2, "Redeemed");
+    expect(await factory.isIntentEscrow(predicted)).to.equal(true);
 
     expect(await usdc.balanceOf(receiver.address)).to.equal(redeemAmount);
-    expect(await clearUsd.balanceOf(user.address)).to.equal(mintAmount - redeemAmount);
+    expect(await clrusd.balanceOf(user.address)).to.equal(mintAmount - redeemAmount);
+  });
+
+  it("refuses a redeem intent on a token that cannot say whether the depositor may receive it", async function () {
+    const config = {
+      depositor: user.address,
+      receiver: receiver.address,
+      transferToken: await clearUsd.getAddress(),
+      vaultToken: await usdc.getAddress(),
+      vault: await vault.getAddress(),
+      amount: ONE_USDC,
+      expiry: await currentExpiry(),
+      action: 1,
+    };
+    await expect(factory.announceIntent(makeSalt("legacy"), config))
+      .to.be.revertedWithCustomError(factory, "SavingsIntentFactoryDepositorNotMember").withArgs(user.address);
+    await expect(factory.createIntentDeterministic(makeSalt("legacy"), config))
+      .to.be.revertedWithCustomError(factory, "SavingsIntentFactoryDepositorNotMember");
   });
 
   it("refunds a funded intent after expiry", async function () {

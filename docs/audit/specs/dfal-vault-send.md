@@ -48,3 +48,13 @@ The Ready to allocate USDC rule does not limit recovery. Automatic Clearing (12.
 
 ## Timing
 Phase 2d is built after Phase 4 (independent re-review and fixes) merges, because Phase 4 changes the same pause code in CLRUSD and the vault. App-side items go to the apps PR: OFAC screening before every Send, and checking that member smart accounts have no module the member can't uninstall alone.
+
+## Owner's decisions during the Phase 2d build (2026-11-14)
+
+Recorded here because they settle conflicts found while building this addendum (`PHASE-2D-REPORT.md` section 4):
+1. `TermIssuer.collectForMember` (a settler's pull from the member's wallet USDC) is retired. Term dues are swept from Spendable at the bank; the member pays a plan with `payPlan`.
+2. Registered savings-intent redeem escrows are exempt from members-only CLRUSD.
+   - Two-person control is on registering the intent factory on CLRUSD (the vault timelock), not on each escrow.
+   - The factory records a redeem escrow only if its depositor may receive CLRUSD at that moment, checked through the token and failing closed. That is what keeps an escrow's refund on members-only rails.
+   - A depositor de-listed later still gets the refund.
+3. A redemption pays the holder, or a receiver named only by the holder's signature (as with MB-05 §7.9). No role can redirect a redemption.
