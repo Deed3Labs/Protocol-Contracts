@@ -67,8 +67,8 @@ interface IIntentEscrows {
 /// window (72 hours) unless renewed, and nothing carries a pause past `pauseMaxTotal` (at most 30
 /// days, hard-coded) from when its chain began, unless it is a two-person action that records a
 /// legal basis (a code and a non-zero hash). A new pause set less than 30 days after the last one
-/// of the same kind ended continues that chain. The pause clock (`pauseClock`) counts the seconds a pause affecting an account was
-/// in force, for the credit side's grace and cure periods.
+/// of the same kind ended continues that chain. The pause clock (`pauseClock`) counts the seconds a
+/// pause affecting an account was in force, for the credit side's grace and cure periods.
 contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @custom:storage-location erc7201:clear.storage.ClearUSD
     struct ClearUSDStorage {
@@ -90,8 +90,8 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         IMembershipSource membershipSource;
         /// @dev Phase 2d, appended: the savings-intent factory whose redeem escrows may receive.
         IIntentEscrows intentFactory;
-        /// @dev Phase 2g (10c), appended: how long a pause may run from when it was first set before
-        /// only a renewal with a legal basis extends it. Zero means PAUSE_MAX_TOTAL.
+        /// @dev Phase 2g (10c), appended: how long a pause may run from when its chain began before
+        /// only a legal-basis action extends it. Zero means PAUSE_MAX_TOTAL.
         uint64 pauseMaxTotal;
         /// @dev Phase 2g (decisions 3 and 4), appended: each account pause's current span, for the
         /// renewal cap and the pause clock.
@@ -147,7 +147,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// pausing the same account (or everyone) again on their own (Phase 4, M-A). Any other signer
     /// may act at once; this only stops one key chaining pauses into an indefinite freeze.
     uint64 public constant REPAUSE_COOLDOWN = 30 days;
-    /// @notice The longest any pause may run from when it was first set without a legal basis (10c).
+    /// @notice The longest any pause may run from when its chain began without a legal basis (10c).
     /// Hard-coded: governance may shorten `pauseMaxTotal`, and no role can raise it past this.
     uint64 public constant PAUSE_MAX_TOTAL = 30 days;
     /// @notice A new pause set less than this long after the last pause of the same kind ended
@@ -744,8 +744,8 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         if (!legalBasis && until > capEnd) revert ClearUSDPauseCapReached(capEnd);
     }
 
-    /// @notice how long a pause may run from when it was first set before only a renewal with a legal
-    /// basis extends it (10c). At most PAUSE_MAX_TOTAL.
+    /// @notice how long a pause may run from when its chain began before only a legal-basis pause or
+    /// renewal extends it (10c, owner decision 33). At most PAUSE_MAX_TOTAL.
     function pauseMaxTotal() public view returns (uint64) {
         uint64 m = _clearUsdStorage().pauseMaxTotal;
         return m == 0 ? PAUSE_MAX_TOTAL : m;

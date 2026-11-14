@@ -165,14 +165,14 @@
   },
   "ClearUSDUpgradeable": {
    "source": "contracts/peripherals/ClearUSDUpgradeable.sol",
-   "sha256": "0b1d9820dc022b5d6d337e520d3e11a84e66022d4e06c6243ab5c29da72aa6e3",
+   "sha256": "bacf88c2bc17400cbbee6b7ad1798c364a1007e03f5d32b97d9bb78a723857ec",
    "immutables": [
     [
-     6968,
+     7044,
      32
     ],
     [
-     7133,
+     7209,
      32
     ]
    ]
@@ -252,18 +252,18 @@
   },
   "ESADepositVault": {
    "source": "contracts/peripherals/ESADepositVault.sol",
-   "sha256": "7bb21ddd2161c89e10ac07dbc8758b794a855ed09a141a61ec71b24f2a3ffc2b",
+   "sha256": "68af59c7d37fe79cd6cd211f66ea1d41707c2de31b738b6d64f383fe12fe90ea",
    "immutables": [
     [
-     4740,
+     4622,
      32
     ],
     [
-     4880,
+     4762,
      32
     ],
     [
-     7108,
+     6990,
      32
     ]
    ]

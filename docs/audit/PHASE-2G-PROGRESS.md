@@ -30,6 +30,7 @@ If a signature changes, this file is updated and pushed again.
 |---|---|
 | 10c renewal cap (CLRUSD account and security pauses, vault pause) | done |
 | Pause clocks (the views above) | done, signatures unchanged |
+| Owner decision 33: a new pause within 30 days of the last one's end continues its cap | done, signatures unchanged |
 | 10d de-listing (CLRUSD listed status) | done |
 | 10f Legacy Contact Module | done, not deployed; tested on a mock Kernel and on the real Kernel v3.3 bytecode |
 | Decision 12: autopay session key | none exists (autopay is the vault's signed DepositMandate); pinned by an app test |

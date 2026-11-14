@@ -79,7 +79,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     /// @notice May set and clear the CA mint pause (spec 11's manual backstop), two holders at a time.
     bytes32 public constant PILOT_ROLE = keccak256("PILOT_ROLE");
-    /// @notice The longest the pause may run from when it was first set without a legal basis (10c,
+    /// @notice The longest the pause may run from when its chain began without a legal basis (10c,
     /// Phase 2g). Hard-coded: governance may shorten `pauseMaxTotal`, and no role can raise it.
     uint64 public constant PAUSE_MAX_TOTAL = 30 days;
     /// @notice A pause set less than this long after the last one ended continues it: its cap counts
@@ -629,8 +629,8 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         return paused();
     }
 
-    /// @notice how long the pause may run from when it was first set before only a renewal with a
-    /// legal basis extends it (10c). At most PAUSE_MAX_TOTAL.
+    /// @notice how long the pause may run from when its chain began before only a legal-basis pause
+    /// or renewal extends it (10c, owner decision 33). At most PAUSE_MAX_TOTAL.
     function pauseMaxTotal() public view returns (uint64) {
         return s_pauseMaxTotal == 0 ? PAUSE_MAX_TOTAL : uint64(s_pauseMaxTotal);
     }

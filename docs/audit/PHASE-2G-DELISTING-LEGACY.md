@@ -9,12 +9,13 @@ Nothing was deployed, no key was used, and no live network was touched. The Lega
 | Item | Status |
 |---|---|
 | 10c renewal cap (decision 2): CLRUSD account pause, CLRUSD security pause, vault pause | Done. Test 49. |
-| Pause clocks (decisions 3 and 4) | Done. The signatures are fixed in `PHASE-2G-PROGRESS.md`. |
+| Owner decision 33: a new pause within 30 days of the last one's end continues it | Done. Seven tests in `Addendum4Delisting` (section 2). |
+| Pause clocks (decisions 3 and 4) | Done. The signatures are fixed in `PHASE-2G-PROGRESS.md`, and decision 33 did not change them. |
 | 10d de-listing (decisions 7 to 9) | Done. Test 52, plus regressions. |
 | 10f Legacy Contact module (decisions 10 to 13) | Done, not deployed. Tests 53 and 54 run on a mock Kernel, and the module is also tested on the real Kernel v3.3 bytecode. |
 | Decision 12: the autopay session key | No ZeroDev session key exists. Autopay runs on the vault's signed `DepositMandate`. An app test now pins this (section 1.5). |
 
-No new conflict needs the owner's decision. Section 4 lists the judgement calls, and one gap that the decisions leave open (4.1, item 5).
+No new conflict needs the owner's decision. Section 4 lists the judgement calls. The one gap the first decisions left open (a fresh pause after the cap, 4.1 item 5) is closed by owner decision 33 (section 1.2).
 
 ## 1. What changed
 
@@ -26,13 +27,33 @@ No new conflict needs the owner's decision. Section 4 lists the judgement calls,
 | Plain renewal | `renewAccountPause` and `renewSecurityPause` revert `ClearUSDPauseCapReached(capEnd)` if the new end (now + window) would fall after first set + `pauseMaxTotal`. | `renewPause` reverts `ESADepositVaultPauseCapReached(capEnd)` in the same case. |
 | Renewal with a legal basis | `renewAccountPauseWithLegalBasis(account, reason, legalBasis, legalBasisHash)` and `renewSecurityPauseWithLegalBasis(reason, legalBasis, legalBasisHash)`. Two-person like every pause action. `legalBasis` is 1 (court order), 2 (other legal process) or 3 (written law-enforcement or regulatory request), and the hash must be non-zero; otherwise `ClearUSDInvalidLegalBasis`. Emits `PauseLegalBasisRecorded(account or 0, legalBasis, hash, until, proposer, approver)`. | `renewPauseWithLegalBasis(legalBasis, legalBasisHash)`, with the same rules; emits `PauseLegalBasisRecorded`. |
 | With no valid renewal | The pause lapses at its last end, which is never after day 30. | The same. |
+| A new pause within 30 days of the last one's end (owner decision 33) | `pauseAccount` and `pauseForSecurity` continue the chain, and revert `ClearUSDPauseCapReached` if the new window would end past the chain's cap. Past it, `pauseAccountWithLegalBasis(account, reason, legalBasis, legalBasisHash)` or `pauseForSecurityWithLegalBasis(reason, legalBasis, legalBasisHash)` sets it, on the same rules as the legal-basis renewal. | `pause` continues the chain the same way (`ESADepositVaultPauseCapReached`); past it, `pauseWithLegalBasis(legalBasis, legalBasisHash)`. |
 
-- **First set** means the time the pause was set.
-  - On CLRUSD this is recorded per account (`accountSpan[account].start`) and for each security pause (`securitySpans`).
-  - On the vault it is `s_pauseStartedAt`.
+- **The cap counts from when the chain began** (owner decision 33, section 1.2). A chain is one pause and every pause of the same kind set less than 30 days after the previous one ended. For a pause that starts a chain, this is when it was set.
+  - On CLRUSD this is recorded per account (`accountSpan[account].capStart`) and for each security pause (`securitySpans[i].capStart`).
+  - On the vault it is `s_pauseCapStart`.
 - **Unchanged:** the 72-hour window, the two-person rule, the M-A rule (the last signer cannot renew), and the M-A rule that the last signer cannot re-pause within 30 days.
 
-### 1.2 Pause clocks (decisions 3 and 4)
+### 1.2 Owner decision 33: the pause continuation
+
+**The rule.** A new pause set less than 30 days (`CONTINUATION_PERIOD`) after the last pause of the same kind ended continues that pause. Its cap (`pauseMaxTotal`, at most `PAUSE_MAX_TOTAL`, 30 days) counts from when the first pause of the chain was set, not from now. Going past the cap still needs a two-person action that records a legal basis. This closes the gap in 4.1 item 5: a pause lapses at day 30, and two signers who did not sign it set a fresh one with a new 30 days.
+
+- **The same kind** is the same account for CLRUSD's account pause, the security pause for CLRUSD's security pause, and the vault-wide pause for `ESADepositVault`. Another account's pause is a different kind, so pausing account B never shortens account A's chain, or the reverse.
+- **When the last one ended** is its recorded end: the last window's end if it lapsed, or the time of the two-person unpause if it was ended early. An early end does not restart the chain.
+- **At or after 30 days** from that end, a new pause starts a new chain and gets a full 30 days.
+- **A plain pause past the cap reverts** (`ClearUSDPauseCapReached(capEnd)`, `ESADepositVaultPauseCapReached(capEnd)`), the same as a plain renewal: it reverts if its whole 72-hour window would end after the chain's cap. It does not clamp the window (4.1, item 1).
+- **The legal-basis path.** A renewal needs a pause in force, so once a chain's last pause has lapsed there is nothing left to renew. Each kind therefore gains one legal-basis pause, on the same terms as its legal-basis renewal: two distinct holders of the role make the identical call, the code is 1, 2 or 3, the document hash is non-zero, and it emits `PauseLegalBasisRecorded` (with `account` zero for CLRUSD's security pause).
+  - CLRUSD: `pauseAccountWithLegalBasis(account, reason, legalBasis, legalBasisHash)` (FRAUD_ROLE) and `pauseForSecurityWithLegalBasis(reason, legalBasis, legalBasisHash)` (SECURITY_ROLE).
+  - Vault: `pauseWithLegalBasis(legalBasis, legalBasisHash)` (PAUSER_ROLE).
+  - It continues the chain too, so its renewals past the cap still need the two-person `renew…WithLegalBasis`, one 72-hour window each.
+  - It is no new power. Before decision 33 the plain pause could do all of this without a legal basis. The M-A rules still apply to it: no new pause while one is in force, and the last signer waits 30 days.
+- **Pauses from before Phase 2g** have no recorded chain (`capStart` zero), so a new pause after one starts its own chain. A renewal of one still needs a legal basis (fails closed), as before.
+- **Storage.**
+  - CLRUSD: `PauseSpan` and `SecuritySpan` each gain a `uint64 capStart`. Both still fit one slot. Both are Phase 2g structs inside the ERC-7201 namespace, which no deployed implementation has yet.
+  - Vault (live on mainnet): the Phase 2g fields share the slot of `s_pilotOff`/`s_caMintsPaused`/`s_caPauseReason`, so `__gap` stays at 31. To fit the new `s_pauseCapStart` there, the two timestamps are `uint40` (`s_pauseStartedAt`, `s_pauseCapStart`) and `s_pauseMaxTotal` is `uint32` (it is never above 30 days): 6 + 5 + 5 + 8 + 4 = 28 bytes. None of these fields is in any deployed implementation, so narrowing them changes no live layout.
+- **The pause-clock views are unchanged:** `pauseClock(address)`, `isPauseInForce(address)`, and the vault's `pauseClock()` and `isPauseInForce()`.
+
+### 1.2a Pause clocks (decisions 3 and 4)
 
 The credit side calls these views. They are fixed at the top of `PHASE-2G-PROGRESS.md`.
 
@@ -124,11 +145,15 @@ The vault keeps one span (`s_pauseStartedAt`, `s_pausedUntil`) and the earlier t
 
 New:
 
-- **`test/audit/compliance/Addendum4Delisting.spec.ts`** (17 tests):
+- **`test/audit/compliance/Addendum4Delisting.spec.ts`** (24 tests):
   - **Test 49**, run on each of CLRUSD's account pause, CLRUSD's security pause and the vault pause.
     - A pause is renewed every 72 hours less a minute by a rotating second signer. Nine renewals go through. The tenth reverts on the cap.
     - With a legal basis, the renewal is two-person and emits its event. Bad codes, a zero hash and the same signer revert. Past day 30, a plain renewal still reverts.
     - Without a legal basis, the pause lifts at its last end.
+  - **Owner decision 33**, run on each of CLRUSD's account pause, CLRUSD's security pause and the vault pause (6 tests), plus one CLRUSD test:
+    - A pause is renewed to the cap and lapses at day 30. Two holders who signed nothing in the chain set a fresh pause at once: it reverts `…PauseCapReached` with the first pause's start + 30 days. The legal-basis pause then goes through (two-person; the same signer twice reverts; it emits `PauseLegalBasisRecorded`). A plain renewal of it reverts on the same cap, and the legal-basis renewal carries it one more window, after which it lapses.
+    - A fresh pause one second before 30 days after the last end reverts on the old cap. At exactly 30 days it starts a new chain: nine renewals go through and the tenth reverts on the new start + 30 days.
+    - An early end (`unpauseAccount`) does not restart the chain: a new pause 10 days later reverts on the first start's cap. Another account's pause is a different kind and runs past it.
   - **`pauseMaxTotal`.** Above 30 days reverts on both contracts. Only the admin may set it. A shorter cap binds.
   - **Pause clocks.**
     - CLRUSD:
@@ -179,8 +204,8 @@ Changed:
 
 | File | Change and reason |
 |---|---|
-| `audit/compliance/Section2d.spec.ts` | Acceptance 35's list of the vault's state-changing functions gains `renewPauseWithLegalBasis` and `setPauseMaxTotal`. The de-listing test now de-lists with the two-person `delist`, after showing that `revokeMember` no longer stops a listed wallet's receipt (decision 7). |
-| `audit/compliance/Dfal.spec.ts` | Acceptance 16's list of pause functions gains the legal-basis renewals, `pauseMaxTotal`/`setPauseMaxTotal`, `pauseClock` and `isPauseInForce`. The listing functions are pinned too. The de-listing step uses `delist`. |
+| `audit/compliance/Section2d.spec.ts` | Acceptance 35's list of the vault's state-changing functions gains `pauseWithLegalBasis`, `renewPauseWithLegalBasis` and `setPauseMaxTotal`. The de-listing test now de-lists with the two-person `delist`, after showing that `revokeMember` no longer stops a listed wallet's receipt (decision 7). |
+| `audit/compliance/Dfal.spec.ts` | Acceptance 16's list of pause functions gains the legal-basis pauses and renewals, `pauseMaxTotal`/`setPauseMaxTotal`, `pauseClock` and `isPauseInForce`. The listing functions are pinned too. The de-listing step uses `delist`. |
 
 **Specs run.** The owner's process change: no full local run; CI runs the full suite on the 2g PR. Every spec that uses CLRUSD, the vault, MembershipRegistry, the savings-intent factory, the vault handover or AccessManager directly (found by grep), plus the deed specs whose fixture deploys MembershipRegistry: **306 passing, 0 failing** (7 minutes), on these 30 files:
   - `test/audit/`: `AuditPoC2`, `AuditPoC3`;
@@ -191,22 +216,28 @@ Changed:
   - `test/deploy/`: `Vault.deploy`, `Compliance.deploy`, `CreditCore.deploy`;
   - `test/peripherals/`: `ClearUSDUpgradeable`, `ESADepositVault`, `Liquidator`, `MembershipRegistry`, `SavingsIntentFactory`.
 
-  That run started before the three small Slither fixes (section 3). After them, the seven specs those fixes touch were rerun: `Addendum4Delisting`, `LegacyContactKernel`, `Section2d`, `Dfal`, `ClearUSDUpgradeable`, `ESADepositVault` and `Vault.deploy`. Result: **65 passing, 0 failing**..
+  That run started before the three small Slither fixes (section 3). After them, the seven specs those fixes touch were rerun: `Addendum4Delisting`, `LegacyContactKernel`, `Section2d`, `Dfal`, `ClearUSDUpgradeable`, `ESADepositVault` and `Vault.deploy`. Result: **65 passing, 0 failing**.
+
+  **After owner decision 33**, every spec that uses CLRUSD's or the vault's pauses or pins their function lists (found by grep), plus the specs that deploy and hand over both contracts: **135 passing, 0 failing** (2 minutes), on these 10 files:
+  - `test/audit/compliance/`: `Addendum4Delisting`, `Assurance`, `Dfal`, `LegacyContactKernel`, `Section2d`;
+  - `test/audit/rereview/`: `BlindReview`, `Decisions`;
+  - `test/peripherals/`: `ClearUSDUpgradeable`, `ESADepositVault`;
+  - `test/deploy/`: `Vault.deploy`.
 
 ## 3. Checks
 
-- **Sizes** (production build, `npx hardhat compile --force`): no artifact is over 24,576 bytes runtime or 49,152 bytes initcode.
+- **Sizes** (production build, `npx hardhat compile --force`): no artifact is over 24,576 bytes runtime or 49,152 bytes initcode. The figures are after owner decision 33.
 
   | Contract | Runtime (bytes) | Initcode (bytes) |
   |---|---|---|
-  | ClearUSDUpgradeable | 20,754 | 20,994 |
-  | ESADepositVault | 16,422 | 16,559 |
+  | ClearUSDUpgradeable | 21,949 | 22,189 |
+  | ESADepositVault | 17,147 | 17,284 |
   | LegacyContactModule | 5,358 | 5,748 |
   | SavingsIntentFactory (unchanged) | 5,273 | 9,442 |
 - **Storage** (OpenZeppelin `getStorageUpgradeReport`, against the layout of the current build):
-  - ESADepositVault: no errors against both `.openzeppelin/base.json` implementations (0xe626…3644, 0x83CB…26e9) and the four Base Sepolia ones. The three new `uint64` fields pack into the slot of `s_pilotOff`/`s_caMintsPaused`/`s_caPauseReason`, which used 6 of its 32 bytes, so `__gap` stays at 31.
+  - ESADepositVault: no errors against both `.openzeppelin/base.json` implementations (0xe626…3644, 0x83CB…26e9) and the four Base Sepolia ones (0x4163…B77e, 0x4d77…A22f, 0x6Bb2…B48F, 0x99Ea…c455), rerun after owner decision 33. The four new fields (`uint40`, `uint40`, `uint64`, `uint32`) pack into the slot of `s_pilotOff`/`s_caMintsPaused`/`s_caPauseReason`, which used 6 of its 32 bytes (28 now), so `__gap` stays at 31.
   - ClaimEscrow: unchanged; no errors against base (0x96F0…2c4e) and Base Sepolia.
-  - ClearUSDUpgradeable: no errors against the Base Sepolia implementation 0xB1beB71b… (namespace `clear.storage.ClearUSD`). It only appends `pauseMaxTotal`, `accountSpan`, `securitySpans` and `listing` to the ERC-7201 struct.
+  - ClearUSDUpgradeable: no errors against the Base Sepolia implementation 0xB1beB71b… (namespace `clear.storage.ClearUSD`). It only appends `pauseMaxTotal`, `accountSpan`, `securitySpans` and `listing` to the ERC-7201 struct. Rerun after owner decision 33.
   - MembershipRegistry: unchanged; no errors against Base Sepolia 0x3520A113….
 - **Slither** (Medium and High, per contract, the FIX-PLAN section 6 way, against the same run on `origin/dev`):
 
@@ -216,15 +247,17 @@ Changed:
   | ESADepositVault | 1 | 1 (the audited `arbitrary-send-erc20` on the signed mandate pull) |
   | LegacyContactModule | new | 0 |
 
+  Rerun after owner decision 33, on this branch and on `origin/dev`: the same counts (0 and 1), and the same finding.
+
   A first run flagged three findings, all fixed: `uninitialized-local` in the clock search, `incorrect-equality` in the vault's `pauseClock`, and `unused-return` on `executeFromExecutor` (the module now checks it got exactly one result).
-- **Generated files:** `packages/command-types/src/chain/code.json` was stale for ClearUSDUpgradeable and ESADepositVault, so it was regenerated; `code-fingerprints.mjs --check` now passes (34 contracts). `contract-reference.mjs --check` reports `docs/protocol/contracts` current (36 contracts). `check-doc-links.mjs`: 205 files, no broken links.
+- **Generated files:** `packages/command-types/src/chain/code.json` was stale for ClearUSDUpgradeable and ESADepositVault, so it was regenerated; `code-fingerprints.mjs --check` now passes (34 contracts). `contract-reference.mjs --check` reports `docs/protocol/contracts` current (36 contracts). `check-doc-links.mjs`: 205 files, no broken links. After owner decision 33, `code.json` was regenerated again: `--check` passes (34 contracts), `contract-reference.mjs --check` is current (36 contracts), and `check-doc-links.mjs` reports 206 files, no broken links.
 - **`npx turbo run typecheck test --affected`** (Node 22, bun, `TURBO_SCM_BASE=origin/dev`): 5 of 5 tasks passed: `@clear/command-types` typecheck, `@clear/command` typecheck and test, and `@clear/member` typecheck and test (853 tests, the 3 new ones included).
 
 ## 4. Judgement calls
 
 ### 4.1 Pauses
 
-1. **"Would carry it past" reverts rather than clamps.** A plain renewal reverts if its full 72-hour window would end after day 30. So the last plain renewal is at day 27 at the latest, and it ends the pause at day 30 at the latest. Clamping the last window would let a renewal at day 29 run to day 30 exactly. Test 49 reads as a revert, so a revert is built.
+1. **"Would carry it past" reverts rather than clamps.** A plain renewal (and, since owner decision 33, a plain pause that continues a chain) reverts if its full 72-hour window would end after day 30. So the last plain renewal is at day 27 at the latest, and it ends the pause at day 30 at the latest. Clamping the last window would let a renewal at day 29 run to day 30 exactly. Test 49 reads as a revert, so a revert is built.
 2. **Legal basis.** The renewal's "own reason code" is the legal-basis code: 1 court order, 2 other legal process, 3 written law-enforcement or regulatory request. The case reason (`reason`) is kept as before.
    - Each renewal past the cap needs its own legal basis, and still lasts one 72-hour window.
    - A legal-basis renewal is allowed before day 30 too: it is only stricter.
@@ -233,9 +266,7 @@ Changed:
    - A renewal of one needs a legal basis (fails closed).
    - The clocks do not count them.
    - Upgrade while no pause is in force; none is expected.
-5. **Open gap: a fresh pause after the cap.** When a pause lapses at day 30, a new pause on the same account (or a new security or vault pause) can be set at once by two holders who did not sign the last one, and it gets a new 30 days. Phase 4 M-A's 30-day cooldown binds only the last signer. With three or more FRAUD_ROLE keys, a new pair can therefore chain pauses.
-   - Decision 2 caps renewals only, so this is not built.
-   - **Recommendation:** treat a new pause on the same target within 30 days of the last one's end as a continuation. It would keep the first start, so it would need a legal basis once past 30 days. If the owner agrees, this is about 15 lines in each contract.
+5. **A fresh pause after the cap: closed by owner decision 33.** When a pause lapsed at day 30, a new pause on the same account (or a new security or vault pause) could be set at once by two holders who did not sign the last one, and it got a new 30 days. Phase 4 M-A's 30-day cooldown binds only the last signer, so with three or more keys a new pair could chain pauses. The owner adopted the recommendation: a new pause within 30 days of the last one's end continues its chain (section 1.2).
 
 ### 4.2 De-listing
 
@@ -279,6 +310,7 @@ Changed:
 3. **Send UX.** Check `mayReceive(recipient)` before a CLRUSD Send. Explain that a de-listed wallet can still send to members and redeem. Show the reason code to the holder.
 4. **Pause tooling.**
    - Renewals must be timed so the last plain one lands by day 27.
+   - A new pause of the same kind less than 30 days after the last one ended continues its chain (owner decision 33). The tooling should show the chain's cap before the first key signs, and collect a legal basis for the `pause…WithLegalBasis` call when the new window would end past it.
    - Past day 30, the tooling must collect the legal-basis code and document hash for each renewal, with two keys.
    - The credit side reads `pauseClock`.
 5. **Legacy Contact screens, kept hidden until the module is audited and published in MB-03 Schedule 2 (decision 13).**

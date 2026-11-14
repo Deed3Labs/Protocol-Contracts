@@ -109,10 +109,14 @@ transfer: OFAC screening happens in the app before it submits a Send.
 ### Pauses (10c)
 
 `FRAUD_ROLE` pauses one account's sending and `SECURITY_ROLE` pauses everyone's; each action is
-two-person, and each pause lapses after 72 hours unless a different signer renews it. No renewal
+two-person, and each pause lapses after 72 hours unless a different signer renews it. Nothing
 carries a pause past `pauseMaxTotal` (hard-coded at most 30 days; the admin may only shorten it) from
-when it was first set, except `renewAccountPauseWithLegalBasis` or `renewSecurityPauseWithLegalBasis`,
-which record a legal-basis code and hash (`PauseLegalBasisRecorded`). `pauseClock(account)` counts the
+when its chain began, except the legal-basis calls (`pauseAccountWithLegalBasis`,
+`renewAccountPauseWithLegalBasis`, `pauseForSecurityWithLegalBasis`,
+`renewSecurityPauseWithLegalBasis`), which record a legal-basis code and hash
+(`PauseLegalBasisRecorded`). A new pause set less than 30 days after the last one of the same kind
+ended (the same account, or the security pause) continues that chain, so its cap still counts from
+the first pause's start (owner decision 33). `pauseClock(account)` counts the
 seconds the security pause or that account's pause was in force, the overlap once, and
 `isPauseInForce(account)` says whether either is in force now.
 
@@ -214,15 +218,16 @@ Every power is Clear Financial Co.'s, under two-person control (addendum 10g; se
 |---|---|---|
 | `DEFAULT_ADMIN_ROLE` | upgrades, `setAcceptedToken`, `setClrusd`, `setStateSource`, `setPauseWindow`, `setPauseMaxTotal` (shorter only), `setPilotOff`, role grants | the vault timelock: a Clear Financial Safe proposes, 7 days pass |
 | `RELAYER_ROLE` | the gasless deposit and redeem functions, `executeMandateDeposit`, `cancelMandate` | not two-person: it only submits what a member signed |
-| `PAUSER_ROLE` | `pause`, `renewPause`, `renewPauseWithLegalBasis`, `unpause` | two distinct holders make the identical call |
+| `PAUSER_ROLE` | `pause`, `pauseWithLegalBasis`, `renewPause`, `renewPauseWithLegalBasis`, `unpause` | two distinct holders make the identical call |
 | `PILOT_ROLE` | `pauseCaMints`, `unpauseCaMints` | the same |
 | Anyone | `deposit`, `redeem` (for their own CLRUSD), `cancelOwnMandate`, previews | |
 
 `OPERATOR_ROLE` is legacy: nothing accepts it. `initialize` gives `DEFAULT_ADMIN_ROLE`,
 `RELAYER_ROLE` and `PAUSER_ROLE` to `admin`. Pausing stops deposits, redemptions and mandate runs,
-lapses after 72 hours, and does not stop admin calls or `cancelMandate`. No renewal carries the pause
-past 30 days from when it was first set (`pauseMaxTotal`, hard-coded at most 30 days) unless it is
-`renewPauseWithLegalBasis`: two-person, with a legal-basis code (1 a court order, 2 other legal
+lapses after 72 hours, and does not stop admin calls or `cancelMandate`. Nothing carries the pause
+past 30 days from when its chain began (`pauseMaxTotal`, hard-coded at most 30 days); a pause set
+less than 30 days after the last one ended continues that chain (owner decision 33). Past the cap only
+`pauseWithLegalBasis` or `renewPauseWithLegalBasis` acts: two-person, with a legal-basis code (1 a court order, 2 other legal
 process, 3 a written law-enforcement or regulatory request) and the document's hash, logged by
 `PauseLegalBasisRecorded`. `pauseClock()` counts the seconds the pause has been in force, and
 `isPauseInForce()` says whether it is now; the credit side extends grace and cure periods by the
