@@ -213,6 +213,7 @@ The acceptance tests:
     - In `releaseHoldbacks`, each H is reduced before its payment, so a reentrant call finds nothing more to release. The reserve token is USDC.
   - `uninitialized-local`, `unused-return` (the day field of a date) and `write-after-write` on `escrowMode` in the module: intended.
 - **Generated files:** `node scripts/command/code-fingerprints.mjs` regenerated `code.json` (34 contracts), and `--check` passes. `node scripts/docs/contract-reference.mjs` regenerated `LendingPool.md`, and `--check` passes. `node scripts/check-doc-links.mjs` finds no broken links.
+- **`npx turbo run typecheck test --affected`** (Node 22, bun installed, `TURBO_SCM_BASE=origin/dev`): 3 of 3 tasks passed.
 
 ## 7. Judgement calls
 
