@@ -45,9 +45,7 @@ describe("Liquidator", function () {
     );
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await issuer.getAddress());
     await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);
@@ -67,7 +65,7 @@ describe("Liquidator", function () {
     await registry.setClrusdToken(await clrusd.getAddress());
     await clrusd.setEncumbranceSource(await registry.getAddress());
     await issuer.connect(ctx.operator).setExposureSource(await registry.getAddress());
-    await ctx.assurancePool.connect(ctx.admin).setExposureSource(await registry.getAddress());
+
 
     const Liquidator = await ethers.getContractFactory("Liquidator");
     liquidator = await upgrades.deployProxy(
@@ -140,9 +138,8 @@ describe("Liquidator", function () {
 
   it("reports no lost debt for an ordinary repayment", async function () {
     // Lost debt is claims with no promise behind them. A member who repays leaves the supply
-    // backed by the USDC that just arrived, so nothing was orphaned -- and redemption capacity
-    // equals lost debt, so counting it here would open a draw on the AssurancePool for supply
-    // that is fully covered.
+    // backed by the USDC that just arrived, so nothing was orphaned. With no payout pool on this
+    // ledger the repayment goes to Lending Co.'s operating address (section 13).
     await save(1_000n * ONE_USDC);
     await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
     await spend(1_000n * ONE_USDC);
@@ -152,7 +149,7 @@ describe("Liquidator", function () {
     await ctx.stableCredit.repayCreditBalance(ctx.member.address, 1_000n * ONE_USDC);
 
     expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
-    expect(await ctx.assurancePool.bufferBalance()).to.equal(1_000n * ONE_USDC);
+    expect(await ctx.usdc.balanceOf(ctx.lenderOperating.address)).to.equal(1_000n * ONE_USDC);
     expect(await ctx.stableCredit.lostDebt()).to.equal(0n);
   });
 

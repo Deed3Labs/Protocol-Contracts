@@ -31,8 +31,7 @@ async function deployStack() {
 
   const R = await ethers.getContractFactory("RevolvingIssuer");
   const issuer: any = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
-  await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress(),
-    await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+  await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress());
   await ctx.access.grantOperator(await issuer.getAddress());
   await issuer.connect(ctx.operator).addTier(SAVINGS, 0n, CYCLE);
 

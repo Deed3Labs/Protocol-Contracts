@@ -3,6 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { CA, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule, thirtyDays } from "./rates";
 import { issuerProxyOptions } from "../../helpers/issuers";
+import { deployAssurancePool } from "../../helpers/assurance";
 
 async function advance(seconds: number) {
   await ethers.provider.send("evm_increaseTime", [seconds]);
@@ -25,8 +26,8 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
     const R = await ethers.getContractFactory("RevolvingIssuer");
     revolving = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
     await ctx.networkRegistry.registerIssuer(
-      await revolving.getAddress(), await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+      await revolving.getAddress(), await ctx.stableCredit.getAddress()
+);
     await ctx.access.grantOperator(await revolving.getAddress());
     for (const [name, rate] of [["SAVINGS", 0n], ["INCOME", 150n], ["BOOST", 300n]] as const) {
       await revolving.connect(ctx.operator).addTier(ethers.encodeBytes32String(name), rate, CYCLE);
@@ -100,7 +101,9 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
     expect(await revolving.principalOnlyOf(ctx.member.address, INCOME)).to.equal(1_000n * ONE_USDC);
   });
 
-  it("acceptance 11: with only savings-backed credit live, the reserve needed is exactly zero", async function () {
+  // Section 13 restates acceptance 11 for the compartment pool: the reserve needed is the Credit
+  // Backstop's floor, and with no unsecured credit live it is exactly zero.
+  it("acceptance 11: with only savings-backed credit live, backstopFloor() is exactly zero", async function () {
     const ClearUSD = await ethers.getContractFactory("ClearUSDUpgradeable");
     const clrusd: any = await upgrades.deployProxy(ClearUSD,
       ["Clear USD", "CLRUSD", 6, 0, 0, ctx.admin.address, ctx.admin.address],
@@ -114,7 +117,9 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
     await registry.setClrusdToken(await clrusd.getAddress());
     await clrusd.setEncumbranceSource(await registry.getAddress());
     await revolving.connect(ctx.operator).setExposureSource(await registry.getAddress());
-    await ctx.assurancePool.setExposureSource(await registry.getAddress());
+    const assurance = await deployAssurancePool(ctx.usdc, ctx.networkRegistry, {
+      exposureSources: [await registry.getAddress()],
+    });
 
     await clrusd.mint(ctx.member.address, 2_000n * ONE_USDC);
     await revolving.connect(ctx.operator).openLine(ctx.member.address, [2_000n * ONE_USDC, 0n, 0n], 365 * DAY, CYCLE);
@@ -124,7 +129,8 @@ describe("COMPLIANCE revolving pricing (spec items 2-4)", function () {
     await revolving.materialiseCarry(ctx.member.address);
     await registry.refresh(ctx.member.address);
     expect(await registry.exposureOf(ctx.member.address)).to.equal(0n);
-    expect(await ctx.assurancePool.neededReserves()).to.equal(0n);
+    expect(await assurance.pool.coveredBookPrincipal()).to.equal(0n);
+    expect(await assurance.pool.backstopFloor()).to.equal(0n);
     // Savings-backed is a 0% tier: no carry at all.
     expect(await revolving.carryOf(ctx.member.address, SAVINGS)).to.equal(0n);
   });

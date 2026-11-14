@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { issuerProxyOptions } from "../helpers/issuers";
+import { deployAssurancePool } from "../helpers/assurance";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -31,9 +32,7 @@ describe("CollateralRegistry", function () {
     );
     await ctx.networkRegistry.registerIssuer(
       await revolving.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await revolving.getAddress());
     await ctx.access.connect(ctx.operator).grantMember(coop.address);
@@ -180,22 +179,27 @@ describe("CollateralRegistry", function () {
       expect(await registry.poolExposure()).to.equal(600n * ONE_USDC);
     });
 
-    it("drives the AssurancePool's reserve requirement", async function () {
-      // The seam Phase 0 left open, now filled.
-      await ctx.assurancePool
-        .connect(ctx.admin)
-        .setExposureSource(await registry.getAddress());
+    // Section 13: the registry is the exposure source behind the Credit Backstop's floor.
+    it("drives the Credit Backstop's floor", async function () {
+      const a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry, {
+        exposureSources: [await registry.getAddress()],
+      });
 
-      await openLine([1_000n * ONE_USDC, 0n, 0n]);
+      await openLine([1_000n * ONE_USDC, 0n, 1_000n * ONE_USDC]);
       await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
       await spend(1_000n * ONE_USDC);
       await registry.refresh(ctx.member.address);
 
-      // Credit outstanding, an empty reserve, and nothing needed: it is all savings-backed.
+      // Credit outstanding, an empty backstop, and no floor: it is all savings-backed.
       expect(await ctx.stableCredit.totalSupply()).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.assurancePool.poolExposure()).to.equal(0n);
-      expect(await ctx.assurancePool.neededReserves()).to.equal(0n);
-      expect(await ctx.assurancePool.hasValidRTD()).to.equal(true);
+      expect(await a.pool.coveredBookPrincipal()).to.equal(0n);
+      expect(await a.pool.backstopFloor()).to.equal(0n);
+
+      // Unsecured credit on top raises the covered book, and the floor is 5% of it.
+      await spend(600n * ONE_USDC);
+      await registry.refresh(ctx.member.address);
+      expect(await a.pool.coveredBookPrincipal()).to.equal(600n * ONE_USDC);
+      expect(await a.pool.backstopFloor()).to.equal(30n * ONE_USDC);
     });
   });
 

@@ -67,7 +67,7 @@ async function main() {
 
   const networkRegistry = await ethers.getContractAt("NetworkRegistry", registry.address);
   if (!(await networkRegistry.isIssuer(address))) {
-    await (await networkRegistry.registerIssuer(address, ledger.address, pool.address, oracle.address)).wait();
+    await (await networkRegistry.registerIssuer(address, ledger.address)).wait();
     console.log("  registered against the ledger");
   }
   if ((await offers.cap()) !== cap) {

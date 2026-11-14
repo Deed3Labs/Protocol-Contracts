@@ -1,7 +1,12 @@
 import { ethers, upgrades } from "hardhat";
 
 /// Wires the StableCredit network the Phase 0 contracts assume:
-///   AccessManager -> ClearCredit -> CreditIssuer -> AssurancePool -> AssuranceOracle
+///   AccessManager -> ClearCredit -> CreditIssuer, with the ledger's own reserve token (USDC)
+///
+/// Section 13 took the AssurancePool out of the credit network: the ledger keeps its own reserve
+/// token and conversion, and a repayment's remainder goes to Lending Co.'s operating address
+/// (`lenderOperating`, signer 18 here). The co-op's AssurancePool is deployed on its own, by
+/// `deployAssurancePool` in `./assurance.ts`, and nothing in this network holds its address.
 ///
 /// None of these declare a constructor, so none of them disable initializers, and the
 /// implementations can be initialized directly.
@@ -39,34 +44,17 @@ export async function deployPhase0Network() {
     kind: "uups",
   });
 
-  const AssurancePool = await ethers.getContractFactory("AssurancePool");
-  // Behind a proxy, as deploy/08 deploys it: the implementation itself cannot be initialized
-  // (audit L-1).
-  const assurancePool = await upgrades.deployProxy(
-    AssurancePool, [await stableCredit.getAddress(), await usdc.getAddress()], { kind: "uups" }
-  );
-
-  const MockUniswapV3Factory = await ethers.getContractFactory("MockUniswapV3Factory");
-  const uniswapFactory = await MockUniswapV3Factory.deploy();
-
   const weth = await MockERC20.deploy("Wrapped Ether", "WETH", 18);
 
-  // A real token registry, so tests can exercise the acceptance path as configured in
-  // production: the pool accepts more than the reserve token and the three named stablecoins.
+  // A real token registry. The bond factory opens a collection only for a token it whitelists;
+  // USDC is registered, WETH is not.
   const TokenRegistry = await ethers.getContractFactory("TokenRegistry");
   const tokenRegistry = await TokenRegistry.deploy();
+  await tokenRegistry.registerToken(await usdc.getAddress(), 31337, await usdc.getAddress(), 0);
 
-  const AssuranceOracle = await ethers.getContractFactory("AssuranceOracle");
-  const assuranceOracle = await upgrades.deployProxy(AssuranceOracle, [
-    await assurancePool.getAddress(),
-    ethers.parseEther("0.2"), // 20% target RTD
-    await uniswapFactory.getAddress(),
-    await weth.getAddress(),
-    await usdc.getAddress(),
-    await usdt.getAddress(),
-    await dai.getAddress(),
-    await tokenRegistry.getAddress(),
-  ], { kind: "uups" });
+  // Lending Co.'s operating address: where a repayment goes once the payout pool has what it is
+  // owed (section 13, decision 2).
+  const lenderOperating = (await ethers.getSigners())[18];
 
   // StableCredit grants membership when a credit line is created, and CreditIssuer revokes it on
   // default. Both act on AccessManager in their own name, so both need operator access.
@@ -77,11 +65,10 @@ export async function deployPhase0Network() {
   await stableCredit.setNetworkRegistry(await networkRegistry.getAddress());
   await networkRegistry.registerIssuer(
     await creditIssuer.getAddress(),
-    await stableCredit.getAddress(),
-    await assurancePool.getAddress(),
-    await assuranceOracle.getAddress()
+    await stableCredit.getAddress()
   );
-  await stableCredit.setAssurancePool(await assurancePool.getAddress());
+  await stableCredit.setReserveToken(await usdc.getAddress());
+  await stableCredit.setLenderOperating(lenderOperating.address);
   // Phase 1 has no member-to-member payments: a draw must pay an active merchant or a system
   // address the admin has named (audit C-1). The counterparty stands for whoever the member pays,
   // so it is named here; tests about who may be paid set up a merchant registry of their own.
@@ -91,24 +78,14 @@ export async function deployPhase0Network() {
   for (const role of ["CREDIT_LINES_ROLE", "CREDIT_LIMITS_ROLE", "CREDIT_SETTINGS_ROLE"]) {
     await access.grantRole(ethers.id(role), operator.address);
   }
-  await assurancePool.setAssuranceOracle(await assuranceOracle.getAddress());
-  await assurancePool.setTokenAddresses(
-    await usdc.getAddress(),
-    await usdt.getAddress(),
-    await dai.getAddress()
-  );
 
   return {
     admin, operator, member, counterparty, instrument, outsider,
     usdc, usdt, dai, weth,
-    access, stableCredit, creditIssuer, assurancePool, assuranceOracle, uniswapFactory,
-    tokenRegistry, networkRegistry,
+    access, stableCredit, creditIssuer, tokenRegistry, networkRegistry, lenderOperating,
   };
 }
 
-/// Opens a credit line and draws against it, so `stableCredit.totalSupply()` is non-zero.
-/// Spending mints credit at the moment of the transaction; that minted supply is the exposure
-/// the AssurancePool reserves against.
 /** Grants a contract or key every credit role, for tests that stand in for several jobs. */
 export async function grantCreditRoles(access: any, who: string) {
   for (const role of ["CREDIT_LINES_ROLE", "CREDIT_LIMITS_ROLE", "CREDIT_SETTINGS_ROLE"]) {
@@ -116,6 +93,8 @@ export async function grantCreditRoles(access: any, who: string) {
   }
 }
 
+/// Opens a credit line and draws against it, so `stableCredit.totalSupply()` is non-zero.
+/// Spending mints credit at the moment of the transaction.
 export async function drawCredit(
   ctx: Awaited<ReturnType<typeof deployPhase0Network>>,
   amount: bigint

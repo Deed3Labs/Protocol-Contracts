@@ -38,8 +38,8 @@ describe("AUDIT PoC", function () {
 
     for (const issuer of [revolving, term]) {
       await ctx.networkRegistry.registerIssuer(
-        await issuer.getAddress(), await ctx.stableCredit.getAddress(),
-        await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+        await issuer.getAddress(), await ctx.stableCredit.getAddress()
+);
       await ctx.access.grantOperator(await issuer.getAddress());
     }
     for (const [name, rate] of [["SAVINGS", 0n], ["ASSET_INTERNAL", 65n], ["INCOME", 150n], ["BOOST", 300n]] as const) {
@@ -155,8 +155,8 @@ describe("AUDIT PoC", function () {
     const offers = await upgrades.deployProxy(
       OffersIssuer, [await ctx.stableCredit.getAddress(), coop.address, 10n * ONE_USDC, 90 * DAY], { kind: "uups" });
     await ctx.networkRegistry.registerIssuer(
-      await offers.getAddress(), await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+      await offers.getAddress(), await ctx.stableCredit.getAddress()
+);
     await offers.connect(ctx.operator).setCap(1_000n * ONE_USDC);
     await offers.connect(ctx.operator).grant(member2.address);
 

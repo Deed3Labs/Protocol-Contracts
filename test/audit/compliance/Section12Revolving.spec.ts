@@ -39,8 +39,8 @@ describe("COMPLIANCE section 12: the revolving line", function () {
     const R = await ethers.getContractFactory("RevolvingIssuer");
     revolving = await upgrades.deployProxy(R, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
     await ctx.networkRegistry.registerIssuer(
-      await revolving.getAddress(), await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+      await revolving.getAddress(), await ctx.stableCredit.getAddress()
+);
     await ctx.access.grantOperator(await revolving.getAddress());
     for (const [name, rate] of [["SAVINGS", 0n], ["INCOME", 150n], ["BOOST", 300n]] as const) {
       await revolving.connect(ctx.operator).addTier(ethers.encodeBytes32String(name), rate, CYCLE);
