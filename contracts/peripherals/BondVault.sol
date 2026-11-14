@@ -6,6 +6,11 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
+/// @dev The pledge module that applies a pledged bond's `toDebt` to its Holder's debt (the Liquidator).
+interface IMaturityInstructionApplier {
+    function applyMaturityInstruction(address member, uint256 toDebt) external;
+}
+
 /// @dev The CollateralRegistry's answer to "is this bond spoken for".
 interface IBondEncumbranceSource {
     function isItemEncumbered(address holder, bytes32 kind, uint256 itemId) external view returns (bool);
@@ -116,7 +121,28 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// bucketed" (a bond recorded before the X-10 fix, until `bucketOutstanding` picks it up).
     mapping(uint256 => uint256) private bucketOf;
 
-    uint256[33] private __gap;
+    /* ========== ADDED IN PHASE 2E: two slots from the gap ========== */
+
+    /// @notice What a settled pledged bond still owes because the vault and the treasury together
+    /// could not pay all of it at settlement. Fixed at settlement; nobody re-points or resizes it.
+    struct PendingSettlement {
+        /// @dev The Holder, who is owed `holderOwed` and whose debt `debtOwed` is applied to.
+        address holder;
+        /// @dev The pledge module that applies `debtOwed` to the Holder's Asset-Backed Drawn.
+        address debtTo;
+        /// @dev The rest of `toDebt`, paid before anything more of `toHolder`.
+        uint256 debtOwed;
+        /// @dev The rest of `toHolder`.
+        uint256 holderOwed;
+    }
+
+    /// @notice bond id => what its pledged settlement still owes (owner decision, Phase 2e: the
+    /// split never waits for funds; what the vault cannot pay is recorded, debt part first).
+    mapping(uint256 => PendingSettlement) public pendingSettlement;
+    /// @notice Everything recorded in `pendingSettlement`. Due now, so it sits on top of the reserve.
+    uint256 public totalSettlementOwed;
+
+    uint256[31] private __gap;
 
     error BondVaultInvalidAddress();
     error BondVaultUnknownBond(uint256 bondId);
@@ -133,6 +159,10 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     error BondVaultNotTrackedBorrower(address caller);
     /// @dev The payout pool cannot be re-pointed while it owes the vault.
     error BondVaultLoanOutstanding(uint256 outstanding);
+    /// @dev A pledged split asked for more to the debt than the bond pays.
+    error BondVaultBadSplit(uint256 toDebt, uint256 faceValue);
+    /// @dev No settlement shortfall is recorded for this bond.
+    error BondVaultNothingOwed(uint256 bondId);
 
     event PurchaseRecorded(uint256 indexed bondId, uint256 principal, uint256 faceValue, uint64 maturity);
     event Settled(uint256 indexed bondId, address indexed to, uint256 faceValue);
@@ -155,6 +185,21 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     event RepaidFromPayoutPool(uint256 amount, uint256 outstanding);
     /// @notice A payout-pool repayment carried carry on top of principal (audit X-17).
     event InterestReceived(uint256 principal, uint256 interest);
+    /// @notice A pledged bond settled under its Maturity Instruction: `toDebt` to the pledge
+    /// module for the Holder's own debt, `paidToHolder` to the Holder now.
+    event SettledPledged(uint256 indexed bondId, address indexed holder, uint256 paidToDebt, uint256 paidToHolder);
+    /// @notice The vault and the treasury could not pay the whole split: the remainders are recorded
+    /// against the bond and paid by `completeSettlement` when funds arrive, debt part first.
+    event SettlementShortfall(uint256 indexed bondId, address indexed holder, uint256 debtOwed, uint256 holderOwed);
+    /// @notice Some or all of a recorded settlement shortfall was paid.
+    event SettlementCompleted(
+        uint256 indexed bondId,
+        address indexed holder,
+        uint256 paidToDebt,
+        uint256 paidToHolder,
+        uint256 debtOwed,
+        uint256 holderOwed
+    );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -251,10 +296,11 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// @dev The larger of what is coming due inside the window and a floor across everything
     /// outstanding. It rises on its own as maturities approach, which is the point: a reserve
     /// that has to be raised by hand is one that gets raised late.
+    /// A recorded settlement shortfall is owed now, so it sits on top of either.
     function requiredReserve() public view returns (uint256) {
         uint256 nearTerm = faceDueWithin(reserveWindow);
         uint256 floor = (totalFaceOutstanding * minReserveBps) / BPS;
-        return nearTerm > floor ? nearTerm : floor;
+        return (nearTerm > floor ? nearTerm : floor) + totalSettlementOwed;
     }
 
     /// @notice what the Safe may take.
@@ -339,13 +385,87 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         return faceValue;
     }
 
+    /// @notice pays a matured pledged bond under its Maturity Instruction (MB-05 §5.6).
+    /// @dev `toDebt` first, to the pledge module that applies it to the Holder's own Asset-Backed
+    /// Drawn; it is a repayment of their debt and has to reach the ledger as one. Then `toHolder`,
+    /// the rest, to the Holder. It never waits for funds (owner decision, Phase 2e): what the vault
+    /// and the treasury hold goes to the debt part first, then to the Holder, and whatever of either
+    /// they cannot pay is recorded against the bond for `completeSettlement`. Nothing is locked or
+    /// held for the Holder; what is owed to them is owed to them.
+    /// @param bondId the bond
+    /// @param debtTo the pledge module
+    /// @param toDebt the part applied to the Holder's debt
+    /// @param holder the Holder, who is paid the rest
+    /// @return debtPaid what of `toDebt` was paid to `debtTo` now, for it to apply
+    function settlePledged(uint256 bondId, address debtTo, uint256 toDebt, address holder)
+        external
+        onlyRole(BOND_ROLE)
+        returns (uint256 debtPaid)
+    {
+        Obligation storage obligation = obligations[bondId];
+        uint256 faceValue = obligation.faceValue;
+        if (faceValue == 0) revert BondVaultUnknownBond(bondId);
+        if (obligation.settled) revert BondVaultAlreadySettled(bondId);
+        if (toDebt > faceValue) revert BondVaultBadSplit(toDebt, faceValue);
+
+        uint256 have = _coverUpTo(faceValue);
+        debtPaid = have < toDebt ? have : toDebt;
+        uint256 toHolder = faceValue - toDebt;
+        uint256 paid = have - debtPaid < toHolder ? have - debtPaid : toHolder;
+
+        obligation.settled = true;
+        totalFaceOutstanding -= faceValue;
+        totalFaceSettled += faceValue;
+        _removeOutstanding(bondId);
+        _removeDue(bondId, faceValue);
+
+        uint256 debtOwed = toDebt - debtPaid;
+        uint256 holderOwed = toHolder - paid;
+        if (debtOwed + holderOwed > 0) {
+            pendingSettlement[bondId] = PendingSettlement(holder, debtTo, debtOwed, holderOwed);
+            totalSettlementOwed += debtOwed + holderOwed;
+            emit SettlementShortfall(bondId, holder, debtOwed, holderOwed);
+        }
+        if (debtPaid > 0) reserveToken.safeTransfer(debtTo, debtPaid);
+        if (paid > 0) reserveToken.safeTransfer(holder, paid);
+        emit SettledPledged(bondId, holder, debtPaid, paid);
+    }
+
+    /// @notice pays what a pledged settlement still owes, as far as the vault and the treasury can:
+    /// the rest of `toDebt` first, applied to the Holder's debt by the pledge module recorded at
+    /// settlement, then the rest of `toHolder` to the Holder. Anyone may call it; it takes only the
+    /// id, and the amounts and recipients are the ones recorded at settlement.
+    function completeSettlement(uint256 bondId) external {
+        PendingSettlement storage pending = pendingSettlement[bondId];
+        uint256 debtOwed = pending.debtOwed;
+        uint256 holderOwed = pending.holderOwed;
+        if (debtOwed + holderOwed < 1) revert BondVaultNothingOwed(bondId);
+        uint256 have = _coverUpTo(debtOwed + holderOwed);
+        if (have < 1) revert BondVaultInsufficientFunds(0, debtOwed + holderOwed);
+        uint256 toDebt = have < debtOwed ? have : debtOwed;
+        uint256 toHolder = have - toDebt;
+
+        pending.debtOwed = debtOwed - toDebt;
+        pending.holderOwed = holderOwed - toHolder;
+        totalSettlementOwed -= have;
+        address holder = pending.holder;
+        emit SettlementCompleted(bondId, holder, toDebt, toHolder, debtOwed - toDebt, holderOwed - toHolder);
+        if (toDebt > 0) {
+            address debtTo = pending.debtTo;
+            reserveToken.safeTransfer(debtTo, toDebt);
+            IMaturityInstructionApplier(debtTo).applyMaturityInstruction(holder, toDebt);
+        }
+        if (toHolder > 0) reserveToken.safeTransfer(holder, toHolder);
+    }
+
     /// @notice pays a bond before its maturity, at what it is worth today.
     /// @dev The obligation goes at face value -- the vault stops owing the whole of it -- while
     /// only the present value is paid out. What is left is the interest the term did not run for,
     /// and it stays here rather than being handed to somebody who did not wait for it.
     ///
-    /// This is what makes taking a bond as collateral realisable on a default without waiting out
-    /// the term, and what the haircut on that collateral is paying for.
+    /// Since Phase 2e the only caller is a collection's `payPledged`, paying a pledged bond under
+    /// its pledge payment term (IV-01 §4.9) to the pledge module, which applies it to the Holder's
+    /// secured debt. The vault pays the whole Accreted Value or reverts: never less.
     /// @param bondId the bond
     /// @param to who is paid
     /// @param presentValue what the bond is worth today
@@ -428,8 +548,15 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
     /// the treasury up to its allowance. Reverts when both together cannot, and then nothing has
     /// moved. The AssurancePool is not asked (addendum 12.11): no redemption path draws on it.
     function _cover(uint256 amount) private {
+        uint256 balance = _coverUpTo(amount);
+        if (balance < amount) revert BondVaultInsufficientFunds(balance, amount);
+    }
+
+    /// @dev Draws on the treasury, up to its allowance, for whatever of `amount` the vault does not
+    /// hold, and returns what the vault holds afterwards, capped at `amount`.
+    function _coverUpTo(uint256 amount) private returns (uint256) {
         uint256 balance = held();
-        if (balance >= amount) return;
+        if (balance >= amount) return amount;
         uint256 short = amount - balance;
 
         uint256 fromTreasury = treasuryAvailable();
@@ -439,7 +566,7 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
             emit DrewFromTreasury(fromTreasury);
         }
         balance = held();
-        if (balance < amount) revert BondVaultInsufficientFunds(balance, amount);
+        return balance < amount ? balance : amount;
     }
 
     /// @notice lends the deployable excess for a payout claim that has come due.
