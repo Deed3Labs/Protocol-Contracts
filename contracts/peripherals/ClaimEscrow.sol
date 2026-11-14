@@ -319,14 +319,13 @@ contract ClaimEscrow is Initializable, AccessControlUpgradeable, UUPSUpgradeable
     {
         TransferRecord storage record = _claimable(transferId);
         bytes32 digest = payoutClaimDigest(transferId, payoutRefHash);
-        address key = claimSignerOf[transferId];
-        address signer;
-        if (key != address(0) && SignatureCheckerUpgradeable.isValidSignatureNow(key, digest, signature)) {
-            signer = key;
-        } else if (SignatureCheckerUpgradeable.isValidSignatureNow(record.sender, digest, signature)) {
+        // The claim key first; failing that, the sender.
+        address signer = claimSignerOf[transferId];
+        if (signer == address(0) || !SignatureCheckerUpgradeable.isValidSignatureNow(signer, digest, signature)) {
             signer = record.sender;
-        } else {
-            revert ClaimEscrowBadClaimSignature();
+            if (!SignatureCheckerUpgradeable.isValidSignatureNow(signer, digest, signature)) {
+                revert ClaimEscrowBadClaimSignature();
+            }
         }
         emit PayoutClaimAuthorized(transferId, signer, payoutRefHash);
 

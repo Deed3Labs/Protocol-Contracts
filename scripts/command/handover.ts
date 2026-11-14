@@ -21,6 +21,18 @@ import { readFileSync, readdirSync } from "fs";
 import path from "path";
 import { Contract, Interface, encodeBytes32String, getAddress, id as keccakId, type ContractRunner, type Signer } from "ethers";
 
+/**
+ * Clear Financial Co.'s contracts (Phase 2d, addendum 10g and decision 1): their powers go to the vault
+ * timelock with a Clear Financial Safe (`deploy/vault_timelock_handover.ts`), never to the Ops Safe.
+ * The Ops Safe handover leaves them out.
+ */
+export const VAULT_GOVERNED = new Set(["ESADepositVault", "ESADepositVaultLegacy", "ClearUSDUpgradeable", "CLRUSDTokenPool"]);
+
+/** The deployments the Ops Safe handover covers: everything but Clear Financial's. */
+export function opsSafeDeployments(dir?: string): Deployed[] {
+  return deployments(dir).filter((d) => !VAULT_GOVERNED.has(d.name));
+}
+
 export const ADMIN_ROLES = ["DEFAULT_ADMIN_ROLE", "ADMIN_ROLE", "UPGRADER_ROLE", "REGISTRY_ADMIN_ROLE", "PAUSER_ROLE"];
 const ZERO_ROLE = "0x" + "00".repeat(32);
 

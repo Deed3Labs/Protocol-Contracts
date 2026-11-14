@@ -75,6 +75,17 @@ transfer into the CCIP pool. Minting has no `from` and is exempt, so an encumber
 A fresh `ClearUSDUpgradeable` has no source and locks nothing. A source that reverts also locks
 nothing: `_encumberedOf` catches the revert and returns zero.
 
+### Members only (spec 12.15)
+
+**A CLRUSD transfer must be received by a registered member wallet.** `_update` asks
+`mayReceive(to)`, which reads `membershipSource` (the AccessManager's `isMember`, which also counts
+active MembershipRegistry wallets). Only receipt is checked: a wallet that stops being a member can
+still send to members and redeem, and the registry's own events log the de-listing. Exempt: mints,
+burns (so every redemption), `seize`, and any receiver holding `MINTER_ROLE`, `BURNER_ROLE` or
+`LIQUIDATOR_ROLE` (the vault, the CCIP pool, the Liquidator). With no `membershipSource` set, nothing
+is checked. `setMembershipSource` is admin only, and the admin is the vault timelock. No function
+screens a transfer: OFAC screening happens in the app before it submits a Send.
+
 ### Seizure
 
 **`seize(holder, to, amount)` is the one move allowed past the lock, and only up to the lock.** It
@@ -151,20 +162,39 @@ burns through `burnFrom`, so the redeemer needs a standing CLRUSD allowance to t
 `amountPerRun`, each pulled with `safeTransferFrom` against an allowance the depositor has already
 granted, and minted to the depositor. The signature is checked with `SignatureChecker`, so EOAs and
 EIP-1271 contract wallets both work. Run `i` is allowed from `startAt + interval * i` until `expiry`,
-so runs that fell behind can execute back to back. `cancelMandate(digest)` is `OPERATOR_ROLE`; a
-depositor can also stop it by removing the allowance.
+so runs that fell behind can execute back to back. `cancelMandate(digest)` is `RELAYER_ROLE`; a
+depositor can also stop it with `cancelOwnMandate`, or by removing the allowance.
 
 ### Roles
 
-| Role | May call |
-|---|---|
-| `DEFAULT_ADMIN_ROLE` | `setClrusd`, upgrades, role grants |
-| `OPERATOR_ROLE` | `setAcceptedToken`, the three gasless functions, `cancelMandate` |
-| `PAUSER_ROLE` | `pause`, `unpause` |
-| Anyone | `deposit`, `redeem` (for their own CLRUSD), previews |
+Every power is Clear Financial Co.'s, under two-person control (addendum 10g; see
+[UPGRADEABILITY.md](../audit/UPGRADEABILITY.md)).
 
-`initialize` gives all three roles to `admin`. Pausing stops deposits, redemptions and mandate runs;
-it does not stop `setAcceptedToken`, `setClrusd` or `cancelMandate`.
+| Role | May call | Two-person by |
+|---|---|---|
+| `DEFAULT_ADMIN_ROLE` | upgrades, `setAcceptedToken`, `setClrusd`, `setStateSource`, `setPauseWindow`, `setPilotOff`, role grants | the vault timelock: a Clear Financial Safe proposes, 7 days pass |
+| `RELAYER_ROLE` | the gasless deposit and redeem functions, `executeMandateDeposit`, `cancelMandate` | not two-person: it only submits what a member signed |
+| `PAUSER_ROLE` | `pause`, `renewPause`, `unpause` | two distinct holders make the identical call |
+| `PILOT_ROLE` | `pauseCaMints`, `unpauseCaMints` | the same |
+| Anyone | `deposit`, `redeem` (for their own CLRUSD), `cancelOwnMandate`, previews | |
+
+`OPERATOR_ROLE` is legacy: nothing accepts it. `initialize` gives `DEFAULT_ADMIN_ROLE`,
+`RELAYER_ROLE` and `PAUSER_ROLE` to `admin`. Pausing stops deposits, redemptions and mandate runs,
+lapses after 72 hours, and does not stop admin calls or `cancelMandate`.
+
+### The reserve and the pilot
+
+The reserve is the accepted token the vault holds; it leaves only through a redemption, which burns
+the redeemer's CLRUSD one-for-one first. The Liquidator reaches it the same way, as the holder of
+CLRUSD it seized. There is no sweep, rescue or admin withdrawal, and the vault earns nothing.
+
+The DFAL pilot measure (spec item 11) is tracked off chain from `Deposited`, `Redeemed`, CLRUSD
+`Transfer` and NetworkRegistry's state attestations. On chain, while the pilot is on:
+- a mint needs the receiver's attested state once `setStateSource` names NetworkRegistry;
+- `pauseCaMints(reason)`, set and cleared by two `PILOT_ROLE` holders, stops new mints whose receiver
+  or depositor is in CA (a receiver with no state counts as CA). It never stops a redemption.
+
+`setPilotOff(true)` switches all of that off.
 
 ---
 
@@ -225,8 +255,8 @@ It holds only the USDC set at `initialize`. `PAYOUT_TREASURY` is also set there 
 ```mermaid
 flowchart LR
   C["createTransfer / createTransferWithAuthorization"] --> L["Locked: principal + sponsor fee"]
-  L -->|"claimToWallet (SETTLER_ROLE)"| W["principal to recipient, fee to PAYOUT_TREASURY"]
-  L -->|"claimToPayoutTreasury (SETTLER_ROLE)"| T["total to PAYOUT_TREASURY"]
+  L -->|"claimToWalletWithSignature (claim key or sender signs)"| W["principal to recipient, fee to PAYOUT_TREASURY"]
+  L -->|"claimToPayoutTreasuryWithSignature (SETTLER_ROLE; claim key or sender signs)"| T["total to PAYOUT_TREASURY"]
   L -->|"refundExpired (anyone, after expiry)"| B["total back to sender"]
 ```
 
@@ -238,12 +268,13 @@ and emitted; no function reads it.
 |---|---|---|
 | `createTransfer` | Anyone | Records the transfer and pulls the total from `msg.sender` |
 | `createTransferWithAuthorization` | `SETTLER_ROLE` | Records it for `sender` and pulls the total with EIP-3009 `receiveWithAuthorization` |
-| `claimToWallet` | `SETTLER_ROLE` | Principal to `recipientWallet`, sponsor fee to `PAYOUT_TREASURY` |
-| `claimToPayoutTreasury` | `SETTLER_ROLE` | The whole total to `PAYOUT_TREASURY` |
+| `claimToWalletWithSignature` | Anyone, with the claim authority's `Claim(transferId, recipientWallet)` signature | Principal to `recipientWallet`, sponsor fee to `PAYOUT_TREASURY` |
+| `claimToPayoutTreasuryWithSignature` | `SETTLER_ROLE`, with a `PayoutClaim(transferId, payoutTreasury, payoutRefHash)` signature from the claim key or the sender | The whole total to `PAYOUT_TREASURY`, for a card or bank payout; logs `payoutRefHash` |
+| `claimToWallet`, `claimToPayoutTreasury` | `SETTLER_ROLE` | Retired: they revert `ClaimEscrowSignatureRequired` |
 | `refundExpired` | Anyone | After `expiry`, the whole total back to the recorded sender |
 
-Each record ends once: claims and refund all require `!claimed && !refunded`. The claim functions do
-not check `expiry`, so a settler can still claim an expired transfer that nobody has refunded.
+Each record ends once: claims and refund all require `!claimed && !refunded`. Claims are allowed up
+to and including `expiry`, refunds only after it.
 `refundExpired` pays only the recorded sender, whoever calls it.
 
 `initialize` grants `DEFAULT_ADMIN_ROLE` and `SETTLER_ROLE` to `admin`. `DEFAULT_ADMIN_ROLE` authorizes

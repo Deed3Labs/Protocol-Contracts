@@ -18,7 +18,7 @@
  */
 import { ethers } from "hardhat";
 import { getAddress, isAddress } from "ethers";
-import { deployments, execute, plan, survey } from "./handover";
+import { opsSafeDeployments, execute, plan, survey } from "./handover";
 
 async function main() {
   const safe = process.env.SAFE_ADDRESS?.trim() ?? "";
@@ -30,7 +30,7 @@ async function main() {
   const code = await ethers.provider.getCode(safe);
   if (code === "0x") throw new Error(`${safe} has no code on this network: is that the Safe, and the right network?`);
 
-  const list = deployments();
+  const list = opsSafeDeployments(); // not the vault, CLRUSD or its pool: vault_timelock_handover.ts
   console.log(`Safe      ${getAddress(safe)}\nDeployer  ${deployer}\nContracts ${list.length}\n`);
   const s = await survey(ethers.provider, list, deployer, safe, include);
   for (const c of s) {

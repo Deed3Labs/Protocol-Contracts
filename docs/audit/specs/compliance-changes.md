@@ -124,6 +124,8 @@ Goal: no Clear key can execute a member's CLRUSD transaction or block one indefi
 **Not fixable in code:** CLRUSD redemption to USDC by Clear is "digital financial asset administration" whatever the custody design. It stays a licensing question for counsel, apart from the pilot cap in item 11.
 
 ### 11. Pilot volume cap (DFAL small-volume exemption, temporary)
+*Replaced by `dfal-vault-send.md` item 11 and the owner's decision 7 (Phase 2d): the measure is tracked off chain; on chain there is no counter and no revert at a cap, only the two-person `pauseCaMints` and a governed off switch. Acceptance 12 is amended to match.*
+
 - ESADepositVault keeps a rolling 365-day counter of USD value minted and redeemed for members whose `stateCode` is CA.
 - New CA mints revert once a governed cap is reached (initially $50,000, with a margin below it as an alert threshold). Emit events at the alert threshold.
 - Designed to be switched off later by governance.
@@ -146,6 +148,7 @@ Goal: no Clear key can execute a member's CLRUSD transaction or block one indefi
 14. No indirect lock: every admin and attestation-signer function is called with a member's address; none raises that member's drawn amount or lock.
 15. Pause expiry: a fraud pause lifts automatically at 72 hours. A renewal by the same signer that set the pause reverts; a renewal by a second signer succeeds and is logged.
 16. Token powers: no address can pause, freeze or blacklist member-to-member CLRUSD transfers outside 10c (test every role).
+    - *Amended by `dfal-vault-send.md` (12.15, decision 6), Phase 2d:* CLRUSD is received only by member wallets. De-listing a wallet stops its receipt only, never its sending or redemption, and the registry logs it. That is the one exception, and it is not a pause, freeze or blacklist of a member-to-member transfer.
 17. Upgrade delay: an upgrade to the module or CLRUSD can't take effect before the timelock ends, and a member's unencumbered withdrawal succeeds during the delay.
 
 ## Return
