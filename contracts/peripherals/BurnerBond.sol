@@ -85,7 +85,7 @@ contract BurnerBond is
     
     /// @notice BurnerBondFactory contract (single source of truth for parameters)
     IBurnerBondFactory public factory;
-    
+
     /// @notice Where the money to redeem a bond comes from.
     /// @dev The vault, never the AssurancePool. A bondholder is a creditor and must not be
     /// exposed to how the credit book is performing.
@@ -497,27 +497,9 @@ contract BurnerBond is
         return address(underlyingToken);
     }
     
-    /// @notice Get collection metadata
-    /// @return collectionName_ Collection name
-    /// @return collectionSymbol_ Collection symbol
-    /// @return collectionDescription_ Collection description
-    /// @return underlyingTokenAddress_ Address of underlying token
-    /// @return totalSupply_ Total bonds minted
-    function getCollectionMetadata() external view returns (
-        string memory collectionName_,
-        string memory collectionSymbol_,
-        string memory collectionDescription_,
-        address underlyingTokenAddress_,
-        uint256 totalSupply_
-    ) {
-        return (
-            collectionName,
-            collectionSymbol,
-            collectionDescription,
-            address(underlyingToken),
-            totalBondsMinted
-        );
-    }
+    // `getCollectionMetadata()` is gone (Phase 2c): it repeated `name()`, `symbol()`,
+    // `description()`, `getUnderlyingToken()` and `totalBondsMinted()`, nothing read it, and its
+    // bytes put the collection over EIP-170 once the build changed around it.
     
     /// @notice Get contract-level metadata URI (ERC-7572)
     /// @dev Returns JSON metadata for the entire collection

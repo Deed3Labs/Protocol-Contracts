@@ -26,6 +26,9 @@ describe("BurnerBond", function () {
     );
 
     deposit = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
+    // The factory reads the TokenRegistry's whitelist (section 13 retired the AssuranceOracle,
+    // which whitelisted USDT by default). USDC is registered by the fixture; USDT is here.
+    await ctx.tokenRegistry.registerToken(await ctx.usdt.getAddress(), 31337, await ctx.usdt.getAddress(), 0);
 
     await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
     const info = await factory.getCollectionInfo(await ctx.usdc.getAddress());
@@ -466,7 +469,7 @@ describe("BurnerBond", function () {
       );
       await expect(
         implementation.initialize(
-          buyer.address, buyer.address, buyer.address, buyer.address, "", "", "", "",
+          buyer.address, buyer.address, buyer.address, "", "", "", "",
           buyer.address, buyer.address
         )
       ).to.be.revertedWith("Initializable: contract is already initialized");
