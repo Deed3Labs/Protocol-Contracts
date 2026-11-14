@@ -1,17 +1,18 @@
-# Phase 2e report: calendar cycles, Secured Minimum, Automatic Clearing, revolving default notice, Combined Ceiling, fee leg (and pledged bonds)
+# Phase 2e report: calendar cycles, Secured Minimum, Automatic Clearing, revolving default notice, Combined Ceiling, fee leg, pledged bonds
 
-Branch `audit/phase-2e-calendar-cycles`, cut from `dev` with Phase 2d (#893) merged. The brief is Addendum 2 (`specs/addendum-2.md`, the founder's answers A–G binding), its references (`specs/addendum-2-references.md`) and items 1, 2, 3 and 7 of `PHASE-4B-OPEN-DECISIONS.md`. The bond half (the Earn addendum) was built on `audit/phase-2e-pledged-bonds`; its write-up is `PHASE-2E-BONDS.md` once merged. This report covers the credit half.
+Branch `audit/phase-2e-calendar-cycles`, cut from `dev` with Phase 2d (#893) merged. The brief is Addendum 2 (`specs/addendum-2.md`, the founder's answers A–G binding), its references (`specs/addendum-2-references.md`) and items 1, 2, 3 and 7 of `PHASE-4B-OPEN-DECISIONS.md`. The bond half (the Earn addendum, founder answer G, with IV-01 §4.9 and MB-05) was built on `audit/phase-2e-pledged-bonds` and merged in at e058208a (a merge commit, no conflicts). Its write-up is folded in here as section 2 and the bond parts of sections 3 to 7.
 
 Nothing was deployed, no key was used, and no live network was touched. ESADepositVault and ClaimEscrow are not changed.
 
 ## Summary
 
 - Every credit item is built, with acceptance tests 39–48, the amended tests 1, 3, 18, 25 and 28, and regressions for the four Phase 4c items.
-- **No new conflict** with an earlier decision, a "Do NOT change" item, an audit finding or live storage that the founder's answers A–G leave open. The overrides used are the ones the answers grant: A (calendar months), B (the cure-notice timestamp replaces Phase 2b decision #4), C (term list carry), D (the Combined Ceiling replaces DECISIONS #7's switch and pro-rata design) and E (the third leg of the mint). The two gaps the first draft listed are built too, at the owner's request: 12.13's `graceCycle` (Cycle Assurance) and 12.14's default of a secured term plan. Section 4 lists the judgement calls.
-- **Admin powers only narrow.** No role can set a cycle end, a due amount, a pause, a default or `autoClear`. Six credit-period setters now revert on the revolving line, the Combined Ceiling cannot be switched off, and the fee recipient takes two people.
-- **Sizes, storage, Slither, generated files:** section 5.
+- **No new conflict** with an earlier decision, a "Do NOT change" item, an audit finding or live storage that the founder's answers A–G leave open. The overrides used are the ones the answers grant: A (calendar months), B (the cure-notice timestamp replaces Phase 2b decision #4), C (term list carry), D (the Combined Ceiling replaces DECISIONS #7's switch and pro-rata design) and E (the third leg of the mint). The two gaps the first draft listed are built too, at the owner's request: 12.13's `graceCycle` (Cycle Assurance) and 12.14's default of a secured term plan. Section 5 lists the judgement calls.
+- **The bond half** (section 2): a pledged bond is no longer taken and redeemed by the Liquidator. It is paid under its own pledge payment term (`payPledged`), and at maturity `settle` splits it under the Holder's Maturity Instruction. Advance rates (95% / 70%) and the instruction hash are stored per pledge. A missed cycle takes pool shares only, and a short vault records the split's remainders for `completeSettlement` (owner decisions).
+- **Admin powers only narrow**, with one small widening on the bond side: `Liquidator.applyMaturityInstruction` also accepts the collection's own vault (section 5). No role can set a cycle end, a due amount, a pause, a default or `autoClear`. Six credit-period setters now revert on the revolving line, the Combined Ceiling cannot be switched off, and the fee recipient takes two people.
+- **Sizes, storage, Slither, generated files:** section 6.
 
-## 1. What changed, per item
+## 1. What changed: the credit half
 
 ### §3 Accrual
 
@@ -61,9 +62,9 @@ Nothing was deployed, no key was used, and no live network was touched. ESADepos
 
 ### 12.12 Permissions
 
-Documentation and app notes: the Automatic Clearing authorization is its own screen at line opening, revocable any time and listed on the Permissions page; the onboarding line is notice only, sets nothing and is never a required permission (`docs/protocol/credit.md`; app follow-ups in section 6).
+Documentation and app notes: the Automatic Clearing authorization is its own screen at line opening, revocable any time and listed on the Permissions page; the onboarding line is notice only, sets nothing and is never a required permission (`docs/protocol/credit.md`; app follow-ups in section 7).
 
-### 12.13 Income Assurance
+### 12.13 Income Assurance and Cycle Assurance
 
 Neither flag raises a drawn amount, moves funds, charges a fee, or causes a miss, a settlement or a default. Both are set only by an MB-10 attestation of two `CREDIT_ATTESTER_ROLE` holders (propose, then approve by a different one), and both can only give relief.
 
@@ -113,7 +114,123 @@ A new line also starts a fresh cycle record (misses, a halved ceiling and streak
 
 RevolvingIssuer gains a third delegatecall module, **`RevolvingIssuerTerms`** (Addendum 2's functions and views, and the settings setters moved out of the main contract for room), pinned at construction like the others (`deploy/issuerModules.ts`). Its views run through a static self-call (`_forwardView` → `delegateView`, callable only by the issuer itself with that module as target). Base's public views moved to the main contract, and the modules bring carry to now through the issuer's own `materialiseCarry`, so the accrual code lives in one place. TermIssuer's settings setters moved to TermIssuerOrigination. Module kinds: `RevolvingIssuerExtension.v3`, `RevolvingIssuerCycles.v2`, `RevolvingIssuerTerms.v1`.
 
-## 2. Tests
+## 2. What changed: the bond half (pledged bonds)
+
+**Answer G, in one line:** a pledged bond is no longer taken and redeemed by the Liquidator. It is paid under its own pledge payment term (`payPledged`). At maturity, `settle` splits it under the Holder's Maturity Instruction.
+
+| Item | Status | Where |
+|---|---|---|
+| §1 allowlist (a): a bond burns only on settlement, buyback, `payPledged` or `redeemAll` | Done for what exists. A bond burns only in `redeemBond`/`batchRedeemBonds`, `settle`, `payPledged` and `rollBond` (a roll is a settlement into a new bond). `redeemEarly` is gone, and no function takes a bond to burn elsewhere. A test pins the full list of state-changing functions. `buyback` and `redeemAll` are Phase 2f's. | `BurnerBondBase._retire`, `BurnerBond`, `BurnerBondPledges` |
+| §4 `payPledged(id)` (IV-01 §4.9) | Done | `BurnerBondPledges.payPledged`, `Liquidator.pledgePaymentDue` / `applyPledgePayment`, `BondVault.settleEarly` |
+| §4 `settle(id)`, pledged bond that does not roll | Done (with the owner's decision on a short vault, section 5) | `BurnerBondPledges.settle`, `Liquidator.maturityToDebt` / `applyMaturityInstruction`, `BondVault.settlePledged` / `completeSettlement` |
+| §9 advance rates stored per pledge (95% of Present Value, 70% of Pool Share Value) | Done | `CollateralRegistry` (`itemAdvanceBpsOf`, `advanceBpsOf`, `advancedValueOf`), `LimitCalculator.capacityOf`, `Liquidator` gaps |
+| §9 a bond pledge needs the Holder's signature over the Maturity Instruction, hash stored | Done | `CollateralRegistry.pledgeItem`, `PLEDGE_ITEM_TYPEHASH`, `maturityInstructionOf` |
+| §9 pledged positions exit only through MB-05 | Done for bonds (no transfer, no `redeemBond`, no seize: only `settle` and `payPledged`). The pool-share path is unchanged. | `BurnerBondBase._beforeTokenTransfer`, `BurnerBond._redeem` |
+| Liquidator: remove the bond seize-and-redeem path | Done. `IEarnBonds.seizeBond`/`redeemEarly`, `_realizeBonds`, `_redeemBond`, `mayTakeBond`, `onERC1155Received` are gone. So are the bond legs of `settleExcess` and `settleShortfall`. The pool-share paths are unchanged except that gaps use stored rates. | `Liquidator` |
+| Earn tests 18 and 19, regressions | Done: `test/audit/compliance/PledgedBonds.spec.ts` (21 tests) | |
+
+#### BurnerBond: a module split
+
+BurnerBond had 408 bytes of headroom, and the factory carries its creation code (46,956 of 49,152). So the bond is now in three parts:
+
+- **`BurnerBondBase`**: the storage, the shared internals (`_presentValue`, `_isPledged`, `_retire`), and the transfer hook.
+- **`BurnerBond`**: unchanged in what it does, apart from the items below.
+- **`BurnerBondPledges`**: a delegatecall module where `payPledged` and `settle` run.
+
+The module follows the issuer pattern. The implementation's constructor takes its address, checks `extensionKind() == keccak256("BurnerBondPledges.v1")`, and pins it as an immutable. A clone runs its implementation's code, so every collection gets the same module, and no role can swap it. `BurnerBondFactory` takes the module as a third constructor argument. `deploy/bondModules.ts` (`deployBondFactory`, `deployBondPledges`) deploys it for scripts and tests.
+
+BurnerBond is a clone, not upgradeable, so its storage could be reshaped. It drops `defaultSource` and `settlementGate`, and adds `holderOf` (who holds each bond, kept by the transfer hook), because `payPledged` and `settle` take only an id. Existing collections keep the code they were made with: the Base Sepolia collection, and the legacy one, still have `seizeBond`/`redeemEarly`. A new factory and collection go through `scripts/redeploy_bonds.ts`.
+
+Removed from BurnerBond: `seizeBond`, `redeemEarly`, `setDefaultSource`, `setSettlementGate`, the liquidator's transfer exemption, and `rollBond`'s refusal to roll for the liquidator. Added:
+
+- `accretedValue(id)`, which equals `presentValueOf` (section 5, bond call 4);
+- `payPledged(uint256)` and `settle(uint256)`;
+- `pledges()`;
+- the events `PledgePaid(id, holder, amount, toDebt, toHolder)` and `PledgedMaturitySplit(id, toDebt, toHolder)`;
+- the errors `BurnerBondPledged`, `BurnerBondNotPledgePayable` and `BurnerBondNotSettleable`.
+
+`setLiquidator` keeps its 7-day delay (audit M-6). The address it names is now the pledge module's enforcement side.
+
+#### `payPledged(id)`
+
+1. **Who may call it, and when.** Anyone may call it. It reverts unless all of these hold:
+   - the bond exists, is unredeemed, and its holder has it pledged in the registry;
+   - the collection's `liquidator` (the Liquidator) answers `pledgePaymentDue(holder, id)` with `due`.
+1. **What `pledgePaymentDue` checks.** It reads only chain state:
+   - the bond is pledged and held;
+   - no Liquidation Hold is active;
+   - with one of the member's issuers that the Liquidator trusts, either:
+     - **(a)** the issuer's computed default holds: `inDefault || hasDefaultedOnCurrentLine`, exactly the views the credit half keeps (its `PHASE-2E-PROGRESS.md` interface note). The need is then the member's debt with that issuer in `BOND`, `POOL_SHARE`, `BOOST` and `INCOME`; or
+     - **(b)** a shortfall notice exists and is at least `shortfallWait` old (72 hours or more), and the bond gap is still open. The need is then the bond value whose payment closes the gap.
+   - The bond is the one the module requests for that need: the smallest pledged, held bond that covers it, else the largest (MB-05 §7.3(c)).
+2. **What it pays.** It pays `accretedValue(id)` in that block, in full: `BondVault.settleEarly` pays the Liquidator exactly that, or reverts. Nothing partial.
+3. **Where the money goes.** The Liquidator's `applyPledgePayment` (only `earnBonds` may call it) settles the tiers with `settleFromCollateral`:
+   - on a shortfall, the `BOND` tier only;
+   - on a default, `BOND`, then `POOL_SHARE`, then `BOOST`, then `INCOME`;
+   - never `SAVINGS`.
+
+   It sends the surplus in USDC to the holder, and clears the shortfall notice once both gaps are closed.
+4. **The end.** The collection releases the pledge (`CollateralRegistry.releaseRetiredItem`, `ITEM_ROLLER_ROLE`, which the collection already holds for rolls) and the bond burns, all in one transaction.
+
+#### `settle(id)` and the Maturity Instruction
+
+1. **Who may call it, and when.** Anyone, for a matured, unredeemed bond whose holder opted out of rolling. A bond that rolls is rolled by `rollBond`.
+2. **An unpledged bond** pays its face value to its holder (`BondVault.settle`), as `redeemBond` does.
+3. **A pledged bond is split.** The split is `toDebt = min(face, max(0, drawn − limitWithout))`, from `Liquidator.maturityToDebt`:
+   - `drawn` is the holder's `BOND`-tier principal with their trusted issuers;
+   - `limitWithout` is `CollateralRegistry.advancedValueOf(holder, BOND, id)`, which values the holder's other pledged bonds at their stored rates.
+
+   `toHolder` is the rest. No argument or role supplies any part of either.
+4. **How it is paid.** `BondVault.settlePledged` pays from what the vault and the treasury hold: `toDebt` first, to the Liquidator, then `toHolder` to the holder. It returns the debt part it paid. `applyMaturityInstruction` applies that to the `BOND` tier as the holder's own instruction (MB-05 §7.9), so a Liquidation Hold does not stop it. Anything the tier no longer owes goes to the holder.
+5. **If the vault is short, `settle` still runs** (owner decision, section 5). Whatever of either part the vault and the treasury can't pay is recorded against the bond:
+   - `pendingSettlement(id)` holds the holder, the pledge module, `debtOwed` and `holderOwed`, and `SettlementShortfall(id, holder, debtOwed, holderOwed)` is emitted;
+   - the total is reserved in `requiredReserve` ahead of any deployable excess;
+   - anyone can call `completeSettlement(id)`, as often as funds arrive. It pays the rest of `toDebt` first (the vault sends it to the recorded pledge module and calls `applyMaturityInstruction`), then the rest of `toHolder` to the recorded holder.
+   - It takes only the id: the amounts and recipients are the ones fixed at settlement. If the holder has repaid the tier in the meantime, the debt part they no longer need goes to them.
+
+   Nothing is locked or held for the holder, and there is no "Pledged Proceeds" state.
+5. **The end.** The pledge releases, the bond burns, and `PledgedMaturitySplit(id, toDebt, toHolder)` is emitted.
+
+`redeemBond` refuses a pledged bond (`BurnerBondPledged`): a pledged bond pays out only through `settle`.
+
+#### §9: stored advance rates and the Maturity Instruction
+
+**Item pledges.**
+- `pledgeItem(member, kind, itemId, maturityInstruction, deadline, signature)` takes the member's EIP-712 signature over `PledgeItem(address member, bytes32 kind, uint256 itemId, bytes32 maturityInstruction, uint256 nonce, uint256 deadline)`.
+- A zero instruction reverts `CollateralRegistryNoMaturityInstruction`.
+- The registry stores the hash (`maturityInstructionOf`) and the kind's `haircutBps` at that moment (`itemAdvanceBpsOf`), and emits `ItemPledgeTerms`.
+- A roll carries both to the replacement. A release or seizure clears them.
+
+**Amount pledges** (pool shares) store a units-weighted rate (`advanceBpsOf`, `PledgeAdvanceRate`). A pledge made before this upgrade has no stored rate and reads the kind's rate.
+
+**Where the stored rates are used.**
+- `CollateralRegistry.advancedValueOf(member, kind, exclude)`, which now gives `LimitCalculator.capacityOf`;
+- the Liquidator's gap and closing amount;
+- the pool-share lock (`_requiredUnits` for every kind but CLRUSD's);
+- the pledged maturity split.
+
+**Not changed.** The CLRUSD lock and savings capacity keep the kind's fixed terms (spec 10a). `exposureOf`, the AssurancePool's measure, keeps the governed kind rate.
+
+`pledgeDigest(member, kind, amount, deadline)` and `pledgeItemDigest(member, kind, itemId, maturityInstruction, deadline)` replace the old `pledgeDigest(…, bool item)`, which nothing called.
+
+#### BondVault (UUPS, Base Sepolia)
+
+- Adds `settlePledged`, `completeSettlement`, and two appended slots: `pendingSettlement` (a mapping to a struct of holder, pledge module, `debtOwed`, `holderOwed`) and `totalSettlementOwed`. The `__gap` goes from 33 to 31.
+- `_cover` now runs on `_coverUpTo`.
+- `requiredReserve` adds `totalSettlementOwed`.
+- `settleEarly` stays. Its only caller is now a collection's `payPledged`, and the legacy collection's `redeemEarly` still needs it.
+
+#### Other callers updated
+
+| File | Change |
+|---|---|
+| `deploy/10`, `deploy/22`, `deploy/deploy_burner_bonds.ts`, `scripts/redeploy_bonds.ts` | The factory is deployed with its module. `redeploy_bonds.ts` signs the new `PledgeItem`. |
+| `deploy/25_wire_Compliance.ts` | No longer calls `setDefaultSource`/`setSettlementGate`. It proposes `setLiquidator(Liquidator)` on the collection, which applies after the delay once bonds exist. |
+| `scripts/unwind_legacy_bonds.ts` | Uses an inline ABI for the legacy collection, which still has `seizeBond`/`redeemEarly`. |
+| `apps/api/src/services/command/onchain.ts` | Command's bond list closes a bond on `PledgePaid` and `PledgedMaturitySplit` too. |
+| `contracts/mocks/MockCollateralSignals.sol` | Adds `isItemPledged`, `setItemPledged` and `releaseRetiredItem`. |
+
+## 3. Tests
 
 - **New:**
   - `test/audit/compliance/Addendum2.spec.ts` (13): acceptance 39, 40, 41, 42, 44 (four cases), 45, 46, and the amended 18, 25 (Automatic Clearing) and 28. It resets the chain per test (`hardhat_reset`), because the spec's dates are absolute; Pacific time is checked against the platform's own time-zone data (`Intl`), not the contract's rule.
@@ -132,7 +249,43 @@ RevolvingIssuer gains a third delegatecall module, **`RevolvingIssuerTerms`** (A
   - `Decisions` L-G across issuers: under the Combined Ceiling the trimmed plan is the cheapest position, so the repayment past Income reaches Boost, not the plan.
 - **Full suite (credit half, before the merge)**: `KEEP_REVERT_STRINGS=true npx hardhat test`, one process, every fuzz at its default 300 steps: **1,056 passing, 0 failing** (35 min).
 
-## 3. ABI changes callers must follow
+**New (bond half):** `test/audit/compliance/PledgedBonds.spec.ts`, 21 tests.
+
+- **Earn test 18**, with the spec's figures.
+  - A qualifying default with debt $500 against an Accreted Value of $950 puts exactly $500 to the debt and $450 to the Holder. The vault pays $950, the Liquidator keeps nothing, the caller gets nothing, the bond burns and its pledge is released.
+  - It reverts on an unpledged bond, with no recorded enforcement condition, on a Shortfall at 72 hours less one second, and before the cure date (no computed default).
+  - A 72-hour Shortfall pays only the bond tier.
+  - Only the requested bond is payable, and none after the need is met.
+  - The default order is followed, and Savings is never touched.
+  - No call pays less: `payPledged` takes only the id. A vault that cannot pay the whole Accreted Value reverts rather than paying less. Neither the admin nor a stranger can call `settleEarly`, `settlePledged`, `applyPledgePayment` or `applyMaturityInstruction`. A Liquidation Hold stops it.
+- **Earn test 19**, with the spec's figures (Maturity Amount $1,000; a second pledged bond with Present Value $500 and Collateral Value $475; auto-roll off).
+  - Drawn $1,200: a random caller's `settle` emits `PledgedMaturitySplit(id, 725, 275)`, applies $725 and pays $275 with no lock. The pledge is released and the bond burned.
+  - Drawn $400: (0, 1,000).
+  - Drawn $1,600: (1,000, 0). The $125 left above the limit gets a `ShortfallNoticed` of $125, and after 72 hours the second bond's `payPledged`.
+  - Vault short at $800 (between `toDebt` and the full amount): $725 is still applied, $75 is paid, $200 is recorded for the Holder, and `completeSettlement` pays it later, to the Holder only.
+  - Vault at $500, below `toDebt` (owner decision): `settle` still runs, applies $500, burns the bond and releases the pledge, and records $225 of debt and $275 for the Holder. Completions pay $225 to the debt and $75 to the Holder, then $50, then the last $150. The tier, the remainders, the total owed, the burn and the pledge are checked at each step.
+  - Vault empty: `settle` records the whole split. A debt the Holder repaid in the meantime sends its part to them on completion.
+  - Nobody can redirect a remainder: `completeSettlement` takes only the id, and only the collection or its vault may apply a debt part.
+  - No caller changes the split, and lowering the bond rate after pledging changes nothing.
+- **§9:** without a Maturity Instruction the pledge reverts; a signature over a different instruction, or by someone else, reverts; 95% and the hash are stored; 70% for pool shares; rates are kept through a governed change; pool rates blend; a roll keeps the terms.
+- **§1 (a) and the module:**
+  - the exact list of BurnerBond's state-changing functions;
+  - the module rejects direct calls;
+  - an implementation with a module of the wrong kind cannot be deployed.
+
+**Changed (bond half):**
+
+| File | Change and reason |
+|---|---|
+| `peripherals/BurnerBond.spec.ts` | The seize/redeem-early tests become tests that the path is gone (no `seizeBond`, `redeemEarly`, `setDefaultSource` or `setSettlementGate` in the ABI, and the selectors revert). Also new: nobody, the liquidator included, can move a pledged bond; `payPledged` refuses an unpledged bond; `settle` pays an opted-out bond to its holder whoever calls; a pledged bond rolls for its holder only. |
+| `peripherals/BondCollateral.spec.ts` | A pledged bond does not move even with nothing drawn; it moves once released. Redeeming refuses with `BurnerBondPledged` (was the vault's `BondVaultBondPledged`), and pays once released. "Still lets the co-op take it" becomes "nobody takes it". The valuer's not-held rule is checked directly, because a pledged bond can no longer be moved away to test it. |
+| `audit/compliance/Section12Liquidator.spec.ts` | The stack grants the collection `ITEM_ROLLER_ROLE` instead of naming a settlement gate. "Takes pool shares first, then the smallest bond…" becomes "takes pool shares only: a missed cycle never reaches a pledged bond". The shortfall test closes the pool gap with `settleShortfall` and the bond gap with the bond's `payPledged`. The `mayTakeBond` checks are replaced by its absence. |
+| `audit/deep/PeripheralRegressions.spec.ts` | The M-6 `seizeBond` test becomes "superseded by answer G: no `seizeBond`, and the liquidator cannot move a pledged bond in default". The liquidator-delay test is kept. |
+| `audit/rereview/Decisions.spec.ts` | The L-I item-pledge test passes the instruction hash. |
+| `helpers/pledge.ts`, `helpers/bonds.ts` | `PledgeItem` signs `maturityInstruction` (default `MATURITY_INSTRUCTION`). `deployBondFactory` is new. |
+| `Assurance`, `ReserveUntouched` and the other factory users | Deploy the factory through `deployBondFactory`. |
+
+## 4. ABI changes callers must follow
 
 | Old | New |
 |---|---|
@@ -147,9 +300,11 @@ RevolvingIssuer gains a third delegatecall module, **`RevolvingIssuerTerms`** (A
 
 New: `triggerDefault`, `setCycleEndDayWithSignature`, `proposeCureNotice`/`approveCureNotice`, `proposeIncomePause`/`approveIncomePause`/`endIncomePause`, `setHybridMode`, `setPayerExclusionWithSignature`, `addDefaultExcludedPayer`, `setDueTerms`, `setTermIssuer`, `cycleStateOf`, `dueTermsOf`, `duesOf`, `isPayerExcluded`, `combinedInputsOf`; `proposeGraceEligibility`/`approveGraceEligibility`, `setGraceTerms`; on TermIssuer `materialiseMember`, `combinedPlanCarryOf`, `setFeeTerms`, `feeTermsOf`, `feeRecipientProposalOf`, `setCombinedCeiling`, `securePlanWithSignature`, `proposePlanNotice`/`approvePlanNotice`, `declarePlanDefault`, `setHoldSource`, `holdSource`, `securedPlans`, `hasDefaultedOnCurrentLine`. The default views (`inDefault`, `hasDefaulted`, `hasDefaultedOnCurrentLine`, `defaultedAt`, `missedInRowOf`, `unsecuredExcessOf`) keep their names and signatures.
 
-## 4. Judgement calls, gaps and conflicts
+## 5. Judgement calls and conflicts
 
-**No new conflict** needing the owner. The calls made, each small and recorded:
+**No open conflict.** The bond half's one conflict (a vault that cannot cover `toDebt`) was decided by the owner and built (below). Answer G settles the Phase 2b gate and the 4b/REREVIEW bond decision (M-6's `seizeBond` gate, superseded and removed). Nothing touches ESADepositVault or ClaimEscrow.
+
+**Credit half.** The calls made, each small and recorded:
 
 1. **Test 43's units.** The spec's figures are monthly. Under decision C a plan the ceiling leaves alone carries its list rate per 30-day cycle and a trimmed plan accrues its allowance per second, so over a 30-day cycle the newer plan is $13.875 × 360/365 ($13.69), not $13.875. Total carry over any 30 days stays under the monthly cap, and no day exceeds a thirtieth of it. The tests assert the monthly figures exactly and the 30-day accruals with that factor.
 2. **The Combined Ceiling is the graduated bands only** (no flat alternative, no annual rate above $2,500), as the spec's parenthetical says. The revolving tiers' own ceiling moved to the same graduated-only figure, which can only lower a charge, so the revolving tiers never have to give way to a plan.
@@ -170,11 +325,39 @@ New: `triggerDefault`, `setCycleEndDayWithSignature`, `proposeCureNotice`/`appro
 16. **A secured default writes nothing off.** 12.14 makes the plan defaultable so the pledged Earn collateral can be applied; the debt stays owed until it is. The term limit is cut to 0 and term credit is suspended, as `declareDefault` does.
 17. **The notice records the amount past due when it is approved.** A payment that brings `repaid` to it cancels the notice for good. A later arrears needs a new notice, which waits 30 days again.
 
-**Interface follow-ups (bond side, not built here):**
+**Bond half: owner decisions (Nov 14, 2026)**
+
+1. **A missed cycle takes pool shares only, never bonds** (confirmed). `settleExcess` (12.5) used to take pool shares, then bonds. A missed cycle is neither a default after notice and cure nor a Shortfall, so MB-05 §6.1 does not permit enforcement against a bond. The excess is settled from pool shares only, and what they don't cover stays owed. The 12.12 excess lock in the registry is unchanged; it no longer matters for bonds, which are locked while pledged anyway.
+2. **A vault that can't cover `toDebt`: option (b).** `settle` never reverts for lack of funds. What the vault and the treasury hold goes to the debt part first, then to the Holder; both remainders are recorded, and `completeSettlement` (permissionless) pays the rest of `toDebt` first, then `toHolder`. Everything else stays fixed: no role changes or redirects either part, and `toHolder` goes only to the Holder. Why it was needed: in this code `toDebt` is a repayment on the co-op's ledger and has to deliver USDC (`settleFromCollateral` → `repayCreditBalanceFor`), where the Earn spec has it stay in the vault. Until the rest of `toDebt` arrives, the tier stays drawn by that much, and the ordinary Shortfall rules see it.
+
+**Bond half: judgement calls**
+
+1. **The module's order (MB-05 Article 7 is not in the references).**
+   - On a default: the bond's own tier, then pool shares' tier, then `BOOST`, then `INCOME`; never `SAVINGS`, which its own collateral covers.
+   - On a shortfall: the bond tier only.
+
+   The bond's tier goes first so that tier is not left drawn against a pledge that is gone. That follows the old `_settle` rule. For counsel.
+2. **"Asset-Backed" means the bond kind's tier.**
+   - This code gives bonds and pool shares separate tiers, each with its own limit (deploy/20). So `drawn` and `limitWithout` in the split are the `BOND` tier and the other pledged bonds. In test 19, which has only bonds, the spec's aggregate gives the same figures.
+   - `drawn` is `principalOf`: principal plus materialised carry, not carry accrued since the last touch. So `toDebt` can come out a few units low, which favours the Holder, and what remains falls under the Shortfall rules.
+3. **The request rule.**
+   - Any caller names an id, so the module requests one specific bond: the smallest that covers the need, else the largest (the old selection rule). Calls repeat until the need is met.
+   - On a shortfall, the closing amount uses the member's rate for the kind (the old formula), and a bond's own stored rate may differ slightly. The next call re-measures the gap.
+4. **`accretedValue` is `presentValueOf`** (straight-line accretion). Phase 2f replaces the formula with the Earn spec's compounding at the Issue Yield. Both names answer the same figure, so `payPledged` pays exactly the Present Value.
+5. **Holds.** A Liquidation Hold stops `payPledged` (enforcement). It does not stop the maturity split, which is the Holder's own instruction.
+6. **Releasing an undrawn pledge.** A pledged bond no longer moves at all, even with nothing drawn (§9: pledged positions exit only through MB-05). To move one, the pledge is released first with the operator's `releaseItem`, which still refuses while anything is drawn.
+7. **Trust is the same as before.** `pledgePaymentDue` reads only issuers the Liquidator already trusts for `liquidate`. Those are registered by the credit timelock (M-E) and enrolled for the member. The collection's `liquidator` keeps its 7-day delay, and the Liquidator's `earnBonds` is still `DEFAULT_ADMIN_ROLE`'s.
+   - No role can trigger, price or redirect `payPledged` or `settle`: the amount is computed inside the bond, the destinations are the holder and that holder's own tiers, and the apply functions accept only the collection (and, for the rest of a recorded `toDebt`, its vault).
+   - Two powers are gone: `setDefaultSource` and `setSettlementGate`.
+8. **The settlement-shortfall rule** is built only for a pledged bond's split. An unpledged bond's `settle` still reverts when the vault is short, as `redeemBond` always has. Phase 2f brings the general rule.
+
+**The one widening.** `Liquidator.applyMaturityInstruction(member, toDebt)` used to accept only the collection. It now also accepts the collection's own vault (`earnBonds.bondVault()`), which calls it from `completeSettlement` to apply the rest of a debt part recorded at settlement. The vault passes only the holder and the amount fixed in `pendingSettlement`; the function still applies only to that member's `BOND` tier at issuers the Liquidator trusts, and sends anything the tier no longer owes to the member. No role gains a call.
+
+**Interface follow-ups (between the halves, not built here):**
 
 - The pledge module would read TermIssuer's `hasDefaultedOnCurrentLine` to apply the Earn collateral securing a defaulted plan. Its payment path (`pledgePaymentDue`/`applyPledgePayment` on the bond branch) would need to count term debt and pay the plan (`payPlan`), and the Liquidator would need to trust TermIssuer for that path only. None of that touches CLRUSD.
 
-## 5. Checks
+## 6. Checks
 
 **Sizes** (production build, `npx hardhat compile --force`; EIP-170 24,576 runtime, EIP-3860 49,152 creation). Every contract is within both. The changed ones:
 
@@ -204,9 +387,11 @@ New: `triggerDefault`, `setCycleEndDayWithSignature`, `proposeCureNotice`/`appro
 
 **`npx turbo run typecheck test --affected`** (Node 22, bun installed, `TURBO_SCM_BASE=origin/dev`): 3 of 3 tasks passed.
 
-## 6. App and API follow-ups
+## 7. App and API follow-ups
 
-Nothing under `apps/` was changed. Needed before this is deployed:
+Nothing under `apps/` was changed by the credit half; the bond half updated `apps/api/src/services/command/onchain.ts` only. Needed before this is deployed.
+
+**Credit half:**
 
 - **Line opening** (`apps/api/src/services/chain/creditLineService.ts`): `openLine(member, capacities, cycleEndDay)`; the member chooses the Cycle End Day (1–28) at opening, else the default applies.
 - **"Automatic clearing" screen**, separate from onboarding, shown ON: "Approve automatic clearing" collects the member's `AutoClear` signature with the level and the hash of the approved text (a copy goes to the member), submitted with `setAutoClearWithSignature`; "Turn off" signs nothing. The onboarding line is notice only and is not listed among required permissions. The Permissions page lists the authorization and lets the member revoke it (`setAutoClear(false, level, 0x0)`).
@@ -220,3 +405,31 @@ Nothing under `apps/` was changed. Needed before this is deployed:
 - **Keeper**: sync each revolving line at each cycle end (`syncCreditPeriod`), and call `triggerDefault` only when `inDefault` is true.
 - **Fee recipient**: name Clear Lending's recipient by two signers (`FEE_RECIPIENT` in `deploy/25`), then plans with a fee can open; update any dashboard that showed the discount as co-op income.
 - **Generated ABIs** follow the contracts; the command app's fingerprints are regenerated.
+
+**Bond half:**
+
+1. **Maturity Instruction at pledging.** The pledge screen shows the instruction (MB-05 §5.6) and the member signs `PledgeItem` including `maturityInstruction`, the hash of the text they approved. Keep a copy in Documents.
+   - `apps/api/src/services/chain/savingsCollateralService.ts` still calls the pre-4b, three-argument `pledgeItem`. It needs the member's signature and the new argument.
+2. **95% / 70% display.**
+   - Show each pledge's stored rate (`itemAdvanceBpsOf`, `advanceBpsOf`) and the limit from `advancedValueOf`, not the kind's current `haircutBps`.
+   - Retire any 80% / 60% copy.
+3. **Keepers** (all permissionless):
+   - `payPledged`: for members in a computed default, or with a shortfall notice past `shortfallWait`, find the bond `pledgePaymentDue` requests and call it, repeating until none is due;
+   - `noticeShortfall`;
+   - `settle(id)` at maturity for opted-out bonds;
+   - `completeSettlement(id)` whenever a recorded remainder can be paid (debt part first).
+4. **Member app.**
+   - A pledged bond's Redeem becomes the maturity split, previewed with `Liquidator.maturityToDebt`.
+   - A pledged bond can't be sent anywhere.
+   - Releasing an undrawn pledge is an operator `releaseItem`.
+5. **Indexer and Command.** Index:
+   - from the collection: `PledgePaid`, `PledgedMaturitySplit`;
+   - from the vault: `SettledPledged`, `SettlementShortfall`, `SettlementCompleted`;
+   - from the registry: `ItemPledgeTerms`, `PledgeAdvanceRate`;
+   - from the Liquidator: `PledgePaymentApplied`, `MaturityInstructionApplied`.
+
+   `onchain.ts` already closes bonds on the first two.
+6. **Deployment** (not done here; no network was touched).
+   - Deploy `BurnerBondPledges`, then a new factory and collection (`scripts/redeploy_bonds.ts`, with `setFirstBondId` above the current ids).
+   - Upgrade BondVault, CollateralRegistry, Liquidator and LimitCalculator.
+   - `deploy/23` grants the collection `ITEM_ROLLER_ROLE` (needed for `releaseRetiredItem`). `deploy/25` proposes the collection's `liquidator`.
