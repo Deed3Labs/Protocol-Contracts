@@ -6,6 +6,8 @@ import { attesters, passCycleEnd } from "../../helpers/default";
 import { deployCore } from "../deep/deep-setup";
 import { signedOpenPlan } from "../../helpers/plans";
 import { CA, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule } from "./rates";
+import { pledgeItemSigned } from "../../helpers/pledge";
+import { deployBondFactory } from "../../helpers/bonds";
 
 /*
  * Phase 2e, the two gaps closed at the owner's request (addendum-2-references.md):
@@ -305,6 +307,98 @@ describe("ADDENDUM 2 references, 12.14: default of a term plan secured under MB-
     // Naming the Liquidator (once) is what lets it through.
     await term.connect(ctx.operator).setHoldSource(await liquidator.getAddress());
     await expect(term.connect(ctx.outsider).declarePlanDefault(0)).to.emit(term, "SecuredPlanDefaulted");
+  });
+
+  it("a recorded 12.14 default makes payPledged pay a bond pledged by the member into the defaulted secured plan, and nothing before it", async function () {
+    await build(false);
+    const { term, ctx } = core;
+    const m = ctx.member.address;
+    const s = await ethers.getSigners();
+    const keeper = s[15];
+    const BOND = ethers.encodeBytes32String("BOND");
+    const u = await ctx.usdc.getAddress();
+    // The Earn side, as the pledged-bond tests build it: a registry, a bond collection and its vault.
+    const registry: any = await upgrades.deployProxy(await ethers.getContractFactory("CollateralRegistry"),
+      [ctx.admin.address, await ctx.networkRegistry.getAddress()], { kind: "uups" });
+    await registry.registerCollateralType(BOND, 3, 9_500n, 0n);
+    const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
+    await factory.updateGlobalParameters(1_000n, 0n, 365 * DAY);
+    const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
+    await factory.createCollection(u, "USDC", "USD Coin", "ipfs://bonds");
+    const bond: any = await ethers.getContractAt("BurnerBond", (await factory.getCollectionInfo(u)).collectionAddress);
+    const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
+      [ctx.admin.address, u, 90 * DAY], { kind: "uups" });
+    await bondVault.grantRole(await bondVault.BOND_ROLE(), await deposit.getAddress());
+    await bondVault.grantRole(await bondVault.BOND_ROLE(), await bond.getAddress());
+    await deposit.setBondVault(await bondVault.getAddress());
+    await bond.setBondVault(await bondVault.getAddress());
+    await bond.setEncumbranceSource(await registry.getAddress(), BOND);
+    await registry.grantRole(await registry.ITEM_ROLLER_ROLE(), await bond.getAddress());
+    await registry.setCollateralValuer(BOND, await (await (await ethers.getContractFactory("BondValuer")).deploy(await bond.getAddress())).getAddress());
+    const enforcer: any = await upgrades.deployProxy(await ethers.getContractFactory("Liquidator"),
+      [ctx.admin.address, await ctx.stableCredit.getAddress(), u, u, u, await registry.getAddress()], { kind: "uups" });
+    await registry.grantRole(await registry.OPERATOR_ROLE(), await enforcer.getAddress());
+    await bond.setLiquidator(await enforcer.getAddress());
+    await enforcer.setEarnSources(ethers.ZeroAddress, await bond.getAddress());
+    await term.connect(ctx.operator).setHoldSource(await enforcer.getAddress());
+    // The term issuer is trusted (the operator's existing switch). The member is enrolled with it
+    // already: `setTermLimit` opened their line.
+    await enforcer.setTrustedSavingsIssuer(await term.getAddress(), true);
+    expect(await ctx.networkRegistry.isEnrolled(m, await term.getAddress())).to.equal(true);
+
+    // The member buys a $1,000 one-year bond for $900 and pledges it; the vault holds the accretion.
+    const maturity = BigInt(await now()) + BigInt(365 * DAY);
+    await ctx.usdc.mint(m, usd(1_000));
+    await ctx.usdc.connect(ctx.member).approve(await deposit.getAddress(), usd(1_000));
+    await deposit.connect(ctx.member).makeDeposit(u, usd(1_000), maturity, await bond.calculateDiscount(maturity));
+    const ids = await bond.getBondIdsByCreator(m);
+    const id = ids[ids.length - 1];
+    await pledgeItemSigned(registry, m, BOND, id);
+    await ctx.usdc.mint(await bondVault.getAddress(), usd(1_000));
+
+    // A trusted term issuer opens no tier path: no CLRUSD, Savings or pool-share enforcement.
+    await expect(enforcer.liquidate(m, await term.getAddress(), 0, BOND))
+      .to.be.revertedWithCustomError(enforcer, "LiquidatorUntrustedIssuer");
+    await expect(enforcer.connect(ctx.member).settleFromSavings(await term.getAddress(), 0, 1n))
+      .to.be.revertedWithCustomError(enforcer, "LiquidatorUntrustedIssuer");
+    await expect(enforcer.settleExcess(m, await term.getAddress()))
+      .to.be.revertedWithCustomError(enforcer, "LiquidatorUntrustedIssuer");
+    await expect(enforcer.noticeShortfall(m, await term.getAddress()))
+      .to.be.revertedWithCustomError(enforcer, "LiquidatorUntrustedIssuer");
+
+    // Secured, 61 days past due, notice recorded: still no default, so the bond cannot be paid.
+    await secure();
+    await advance(CYCLE + 61 * DAY);
+    await notice();
+    expect((await enforcer.pledgePaymentDue(m, id)).due).to.equal(false);
+    await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
+    await advance(31 * DAY);
+    // Defaultable but not recorded: still nothing.
+    await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
+
+    await term.connect(ctx.outsider).declarePlanDefault(0);
+    const due = await enforcer.pledgePaymentDue(m, id);
+    expect(due.due).to.equal(true);
+    expect(due.issuer).to.equal(await term.getAddress());
+    expect(due.onDefault).to.equal(true);
+    const repaidBefore = (await term.planAt(0)).repaid;
+    const cashBefore = await ctx.usdc.balanceOf(m);
+    const tx = await bond.connect(keeper).payPledged(id);
+    const ev = (await tx.wait()).logs.map((l: any) => { try { return bond.interface.parseLog(l); } catch { return null; } })
+      .find((e: any) => e && e.name === "PledgePaid");
+    const [, , amount, toDebt, toHolder] = ev.args;
+    expect(amount).to.be.gt(usd(900));
+    // The plan owes more than the bond is worth: all of it goes to the defaulted secured plan.
+    expect(toDebt).to.equal(amount);
+    expect(toHolder).to.equal(0n);
+    expect((await term.planAt(0)).repaid - repaidBefore).to.equal(toDebt);
+    expect(await ctx.usdc.balanceOf(m)).to.equal(cashBefore);
+    expect(await bond.balanceOf(m, id)).to.equal(0n);
+    expect(await registry.isItemPledged(m, BOND, id)).to.equal(false);
+    // With the default recorded, the operator's share path still cannot act on the term issuer: it
+    // has no tiers to read or settle.
+    expect(await ctx.usdc.balanceOf(m)).to.be.gt(0n); // a "pool" balance the path would read
+    await expect(enforcer.liquidateShares(m, await term.getAddress(), 0, BOND, u)).to.be.reverted;
   });
 
   it("unsecured plans keep the installment rule; no role can declare a secured plan's default", async function () {

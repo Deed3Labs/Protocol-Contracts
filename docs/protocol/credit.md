@@ -465,8 +465,11 @@ defaults only when all of these hold:
 `declarePlanDefault(planId)` (anyone) records it and reverts otherwise, and it fails closed. It
 reverts while a Liquidation Hold is active, read from `holdSource` (the Liquidator, set once), and
 when no hold source is named. It writes nothing off: it records `defaultedAt`, cuts the term limit
-to 0 and suspends term credit. `hasDefaultedOnCurrentLine(member)` reports it for the pledge module,
-which may reach only the Earn collateral pledged to secure plans, never CLRUSD. There is no on-chain
+to 0 and suspends term credit. `hasDefaultedOnCurrentLine(member)` reports it. A pledged bond of the
+member's is then payable (`payPledged`): the Liquidator, which trusts TermIssuer for this path only,
+pays the bond's proceeds into the defaulted secured plans (`payPlan`, oldest first) and the surplus to
+the Holder. A Liquidation Hold stops it. Every tier path refuses a trusted issuer without tiers, so
+CLRUSD, Savings and pool shares are never reached from a term default. There is no on-chain
 hardship plan, so a re-split does not cancel a notice. `inDefault` on TermIssuer keeps its
 inherited meaning.
 

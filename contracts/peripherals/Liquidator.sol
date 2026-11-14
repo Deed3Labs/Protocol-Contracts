@@ -70,6 +70,14 @@ interface ISeizableShares {
     function collateralKind() external view returns (bytes32);
 }
 
+/// @dev A term issuer's plans secured under MB-05 (12.14): what a pledged bond's payment pays.
+interface ISecuredTermPlans {
+    function openPlansOf(address member) external view returns (uint256[] memory);
+    function securedPlans(uint256 planId) external view returns (bool, address, uint64, uint64 defaultedAt, uint128);
+    function owedOn(uint256 planId) external view returns (uint256);
+    function payPlan(uint256 planId, uint256 amount) external;
+}
+
 interface IMemberIssuers {
     function issuersOf(address member) external view returns (address[] memory);
 }
@@ -319,7 +327,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     /// @param amount the most to settle, in ledger units.
     /// @return repaid amount settled against the member's debt.
     function settleFromSavings(address issuer, uint256 tierId, uint256 amount) external noReenter returns (uint256 repaid) {
-        if (!trustedSavingsIssuer[issuer]) revert LiquidatorUntrustedIssuer(issuer);
+        _requireTrusted(issuer);
         (bytes32 kind, , ) = ITierSettler(issuer).tierAt(tierId);
         if (kind != SAVINGS_KIND) revert LiquidatorNotSavingsTier(tierId, kind);
 
@@ -362,7 +370,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         noReenter
         returns (uint256 repaid)
     {
-        if (!trustedSavingsIssuer[issuer]) revert LiquidatorUntrustedIssuer(issuer);
+        _requireTrusted(issuer);
         _requireNoHold(member);
         // Savings settle only the savings tier (spec 12.5): seized CLRUSD sent to another tier
         // would leave the savings tier drawn, its lock unchanged, and the next call free to take
@@ -762,11 +770,17 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         address[] memory issuers = _issuersOf(member);
         for (uint256 i = 0; i < issuers.length; i++) {
             issuer = issuers[i];
-            if (!trustedSavingsIssuer[issuer] || _tierCountOf(issuer) == 0) continue;
+            if (!trustedSavingsIssuer[issuer]) continue;
             uint256 need = 0;
-            onDefault = ICreditIssuer(issuer).inDefault(member)
+            // A trusted term issuer (no tiers) counts only under 12.14: plans secured under MB-05
+            // whose default it recorded. The need is what they owe; it has no shortfall.
+            bool term = _tierCountOf(issuer) == 0;
+            onDefault = term || ICreditIssuer(issuer).inDefault(member)
                 || ICurrentLineDefault(issuer).hasDefaultedOnCurrentLine(member);
-            if (onDefault) {
+            if (term) {
+                uint256[] memory ids = ISecuredTermPlans(issuer).openPlansOf(member);
+                for (uint256 j = 0; j < ids.length; j++) need += _securedOwedOn(issuer, ids[j]);
+            } else if (onDefault) {
                 need = _owedIn(member, issuer, _defaultOrder(kind));
             } else {
                 uint256 noticedAt = shortfallNoticedAt[member][issuer];
@@ -795,7 +809,9 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         _requireNoHold(member);
         bytes32 kind = earnBonds.collateralKind();
         bytes32[4] memory order = onDefault ? _defaultOrder(kind) : [kind, bytes32(0), bytes32(0), bytes32(0)];
-        applied = _applyInOrder(member, issuer, order, amount);
+        applied = _tierCountOf(issuer) == 0
+            ? _paySecuredPlans(member, issuer, amount)
+            : _applyInOrder(member, issuer, order, amount);
         if (amount > applied) reserveToken.safeTransfer(member, amount - applied);
         if (!onDefault) _clearShortfallIfClosed(member, issuer);
         emit PledgePaymentApplied(member, issuer, onDefault, amount, applied, amount - applied);
@@ -848,8 +864,10 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
 
     /* ========== SECTION 12: HELPERS ========== */
 
+    /// @dev A trusted issuer with tiers. A trusted term issuer (no tiers) is reached only by a
+    /// pledged bond's payment under 12.14, never by a tier path: no CLRUSD, Savings or pool shares.
     function _requireTrusted(address issuer) private view {
-        if (!trustedSavingsIssuer[issuer]) revert LiquidatorUntrustedIssuer(issuer);
+        if (!trustedSavingsIssuer[issuer] || _tierCountOf(issuer) == 0) revert LiquidatorUntrustedIssuer(issuer);
     }
 
     function _min(uint256 a, uint256 b) private pure returns (uint256) {
@@ -948,6 +966,26 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
                 ITierSettler(issuer).settleFromCollateral(member, tierId, pay);
                 applied += pay;
             }
+        }
+    }
+
+    /// @dev 12.14: what a term plan owes if it is secured under MB-05 and its default is recorded;
+    /// zero otherwise.
+    function _securedOwedOn(address issuer, uint256 planId) private view returns (uint256) {
+        (, , , uint64 defaultedAt, ) = ISecuredTermPlans(issuer).securedPlans(planId);
+        return defaultedAt == 0 ? 0 : ISecuredTermPlans(issuer).owedOn(planId);
+    }
+
+    /// @dev 12.14: pays up to `amount` held here into the member's defaulted secured plans, oldest
+    /// first. Nothing else of the member's is paid.
+    function _paySecuredPlans(address member, address issuer, uint256 amount) private returns (uint256 applied) {
+        uint256[] memory ids = ISecuredTermPlans(issuer).openPlansOf(member);
+        for (uint256 i = 0; i < ids.length && applied < amount; i++) {
+            uint256 pay = _min(_securedOwedOn(issuer, ids[i]), amount - applied);
+            if (pay == 0) continue;
+            reserveToken.forceApprove(address(stableCredit), pay);
+            ISecuredTermPlans(issuer).payPlan(ids[i], pay);
+            applied += pay;
         }
     }
 
