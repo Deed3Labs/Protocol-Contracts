@@ -4,7 +4,7 @@ import {
   BPS, DAY, EVIDENCE, HOUR, LEGAL_ORDER, LOSS_EVENT, U, USDC_OR_NETWORK, VALUATION_PENDING, WAD,
   deployYieldPool, increase, latest, setNext,
 } from "../helpers/yieldPool";
-import { attestation, withRealControls } from "../helpers/earnControls";
+import { EQUITY_CUSHION, attestation, withRealControls } from "../helpers/earnControls";
 
 /*
  * Phase 2f: LendingPool is the Yield Pool. Acceptance tests 11–15 and 20–25 of
@@ -706,11 +706,11 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
 
     it("while the Equity Cushion pause is set, subscriptions revert and withdrawals succeed; one signer cannot set or clear it", async function () {
       await pool.connect(f.alice).deposit(U(1_000), f.alice.address);
-      await c.controls.connect(c.ec1).setEquityCushionPause(true, EVIDENCE);
-      await expect(c.controls.connect(c.ec1).setEquityCushionPause(true, EVIDENCE))
+      await c.controls.connect(c.p1).setPauseFlag(EQUITY_CUSHION, true, EVIDENCE);
+      await expect(c.controls.connect(c.p1).setPauseFlag(EQUITY_CUSHION, true, EVIDENCE))
         .to.be.revertedWithCustomError(c.controls, "EarnControlsSameSigner");
       expect(await pool.maxDeposit(f.bob.address)).to.equal(ethers.MaxUint256);
-      await c.controls.connect(c.ec2).setEquityCushionPause(true, EVIDENCE);
+      await c.controls.connect(c.p2).setPauseFlag(EQUITY_CUSHION, true, EVIDENCE);
       expect(await pool.maxDeposit(f.bob.address)).to.equal(0n);
       await expect(pool.connect(f.bob).deposit(U(1_000), f.bob.address))
         .to.be.revertedWithCustomError(pool, "LendingPoolSubscriptionsPaused");
@@ -718,11 +718,11 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
         .to.be.revertedWithCustomError(pool, "LendingPoolSubscriptionsPaused");
       await pool.connect(f.alice).redeem(U(500), f.alice.address, f.alice.address);
       await pool.connect(f.alice).withdraw(U(100), f.alice.address, f.alice.address);
-      await c.controls.connect(c.ec2).setEquityCushionPause(false, EVIDENCE);
-      await expect(c.controls.connect(c.ec2).setEquityCushionPause(false, EVIDENCE))
+      await c.controls.connect(c.p2).setPauseFlag(EQUITY_CUSHION, false, EVIDENCE);
+      await expect(c.controls.connect(c.p2).setPauseFlag(EQUITY_CUSHION, false, EVIDENCE))
         .to.be.revertedWithCustomError(c.controls, "EarnControlsSameSigner");
-      expect(await c.controls.equityCushionPaused()).to.equal(true);
-      await c.controls.connect(c.ec1).setEquityCushionPause(false, EVIDENCE);
+      expect(await c.controls.pauseFlags()).to.equal(BigInt(EQUITY_CUSHION));
+      await c.controls.connect(c.p1).setPauseFlag(EQUITY_CUSHION, false, EVIDENCE);
       await pool.connect(f.bob).deposit(U(1_000), f.bob.address);
     });
   });

@@ -65,12 +65,24 @@ The full texts are `MB-05-security-and-pledge-agreement.md` and `IV-10-burnerbon
     - A default does not by itself make the whole balance due.
     - This replaces Phase 2e's need computations (`_owedIn` over whole tiers, `_securedOwedOn` over whole plans).
 
+## Holder-cap bootstrap (owner, Nov 14, 2026)
+23. **The 10% holder cap applies only above a governed floor.** As written, a cap measured against outstanding shares refuses the first subscriber, who holds 100%. `EarnControls` applies the cap only while outstanding pool assets exceed `holderCapFloor`, a 7-day Earn-timelock setting that emits an event. The 10% cap is unchanged. The floor's value is set in deploy config; the plan suggests about $1m.
+
+## IV-02 (owner, Nov 14, 2026), binding
+IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this folder. It controls the Yield Pool where it differs from the Earn spec or the plan.
+
+24. **Pool Interest (§4.6).** Interest accrues per second on the Deployed Balance at the Funding Rate, on a 365-day year. Clear Lending pays each month's interest into the Vault in USDC within 5 Business Days after month end. Only interest unpaid when due is added to the Deployed Balance (capitalized). So accrual is simple, payment is monthly, and only unpaid interest is capitalized.
+25. **Recoveries (§5.4).** A recovery does not come back as Vault Cash. It is a two-person-attested accounting entry, with the same posting rules as a loss charge, that adds Pool Loss Charges not yet restored back to the Deployed Balance. It is capped at the total of those charges and raises the Share Value. Cash moves later through ordinary Returns.
+26. **Valuation Event (Exhibit A, A4).** A Valuation Event has no direct on-chain effect. It obliges Clear Lending to post an updated Pool Loss Allowance within 2 Business Days. §7.1(d) makes "a Valuation Event has occurred and the update is not yet posted" a Suspension ground. On chain, this is a two-person-attested `valuationEventPending` flag, cleared by the next allowance posting; a VALUATION_PENDING Suspension is allowed only while the flag is set.
+27. **Legend (§8.4).** The legend text, or its hash plus a URI, is stored in the vault's metadata and exposed in the Register views. It is written once at deployment and changed only through the standard two-person, timelocked change process.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
 - **MB-05 §5.3:** a raise in an advance rate may benefit existing pledges, while Phase 2e stores the rate at pledging. Use the higher of the stored and current rate, so a raise helps existing pledges and a cut does not hurt them.
 
 ## Documents
+- IV-02 in full was received on Nov 14, 2026, and is in this folder.
 - IV-10 (with Exhibit A) and MB-05 in full were received on Nov 14, 2026, and are in this folder.
 
 ## Build order

@@ -9,6 +9,7 @@ contract MockEarnSources {
     uint256 public totalFaceOutstanding;
     bool public inReserveShortfall;
     bool public enforcementInForce;
+    uint64 public lowUtilizationSince;
 
     address public lastHolder;
     bool public lastIneligible;
@@ -22,6 +23,10 @@ contract MockEarnSources {
 
     function setShortfall(bool s) external {
         inReserveShortfall = s;
+    }
+
+    function setLowUtilizationSince(uint64 t) external {
+        lowUtilizationSince = t;
     }
 
     function setEnforcement(bool e) external {

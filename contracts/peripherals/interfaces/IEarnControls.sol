@@ -26,7 +26,8 @@ interface IEarnControls is IPoolEarnControls {
     ) external returns (bytes32 exemptionCode);
 
     /// @notice Whether new BurnerBond purchases are paused: the Equity Cushion pause, a Reserve
-    /// Shortfall, or an Enforcement Notice in effect (§1).
+    /// Shortfall (the two-person flag or the BondVault's own), or an Enforcement Notice in
+    /// effect (§1).
     function purchasesPaused() external view returns (bool);
 
     /// @notice Whether a roll may execute now: false only while an Enforcement Notice is in effect
@@ -56,6 +57,18 @@ interface IEarnControls is IPoolEarnControls {
 
     /// @notice Whether two accounts are Smart Accounts registered to the same Holder.
     function sameHolder(address a, address b) external view returns (bool);
+
+    /// @notice Takes a bond's Purchase Price off its Holder's Earn Products at purchase price
+    /// (IV-02 §2.5(b)) when the bond leaves: settlement, `payPledged`, buyback, `redeemAll` or a
+    /// distribution that pays it in full. A roll does not call it. Only `BOND_ROLE`.
+    function recordBondExit(address holder, uint256 purchasePrice) external;
+}
+
+/// @dev The Yield Pool's low-Utilization clock (IV-02 §2.6). The pool adds it in its next pass:
+/// the time Utilization last fell below 50% and has stayed below since, or 0 while it is at or
+/// above 50%.
+interface IPoolUtilizationClock {
+    function lowUtilizationSince() external view returns (uint64);
 }
 
 /// @dev A source of outstanding BurnerBond Maturity Amounts for the Funding Limit: the BondVault
