@@ -1,5 +1,6 @@
 import { saveDeployment, getDeployment } from "./helpers";
 import { deployBondFactory } from "./bondModules";
+import { poolProxyOptions } from "./poolModules";
 
 /**
  * Phase E: the contracts that put something real behind the asset-backed tier, and pay merchants.
@@ -53,7 +54,7 @@ async function main() {
     log("  Redeemed merchant positions land here. Set it to the multisig anywhere real.\n");
   }
 
-  async function ensure(name: string, args: unknown[], contractName = name) {
+  async function ensure(name: string, args: unknown[], contractName = name, options: Record<string, unknown> = {}) {
     const existing = getDeployment(network, name);
     if (existing) {
       log(`= ${name} already at ${existing.address}`);
@@ -63,6 +64,7 @@ async function main() {
     const instance = await upgrades.deployProxy(factory, args, {
       initializer: "initialize",
       kind: "uups",
+      ...options,
     });
     await instance.waitForDeployment();
     const address = await instance.getAddress();
@@ -88,12 +90,13 @@ async function main() {
   const payoutPoolAddress = await payoutPool.getAddress();
 
   // ---- capital ----
+  // Phase 2f: the Yield Pool, with its YieldPoolValuation module pinned at construction.
   const lendingPool = await ensure("LendingPool", [
     deployer.address,
     reserveToken,
     "Clear Lending Pool",
     "clrLP",
-  ]);
+  ], "LendingPool", await poolProxyOptions());
   const lendingPoolAddress = await lendingPool.getAddress();
 
   // ---- bonds ----
@@ -172,24 +175,14 @@ async function main() {
     log("  PayoutPool REDEEMER_ROLE -> co-op treasury");
   }
 
-  // A borrower draws only to its stored destination, within a daily cap (audit H-4). The payout
-  // pool borrows to itself; the card settler, if named, to the card float.
-  const borrowerRole = await lendingPool.BORROWER_ROLE();
-  const poolBorrowCap = BigInt(process.env.PAYOUT_POOL_DAILY_BORROW_USD ?? "100000") * 10n ** 6n;
-  if (!(await lendingPool.hasRole(borrowerRole, payoutPoolAddress))) {
-    await (await lendingPool.grantRole(borrowerRole, payoutPoolAddress)).wait();
-  }
-  await (await lendingPool.setBorrower(payoutPoolAddress, payoutPoolAddress, poolBorrowCap)).wait();
-  log(`  LendingPool borrower: PayoutPool -> itself, ${poolBorrowCap}/day`);
-  const cardSettler = process.env.CARD_SETTLER_ADDRESS;
-  const cardFloat = process.env.CARD_FLOAT_ADDRESS;
-  if (cardSettler && cardFloat && ethers.isAddress(cardSettler) && ethers.isAddress(cardFloat)) {
-    const cardCap = BigInt(process.env.CARD_SETTLER_DAILY_BORROW_USD ?? "25000") * 10n ** 6n;
-    if (!(await lendingPool.hasRole(borrowerRole, cardSettler))) {
-      await (await lendingPool.grantRole(borrowerRole, cardSettler)).wait();
-    }
-    await (await lendingPool.setBorrower(cardSettler, cardFloat, cardCap)).wait();
-    log(`  LendingPool borrower: card settler -> card float, ${cardCap}/day`);
+  // Phase 2f, decision 17: only Clear Lending draws from the Yield Pool, as a recorded Deployment
+  // to its registered lending account (two DEPLOYER_ROLE signers). The PayoutPool and the card
+  // settler no longer borrow from it; the pool's `borrowableToday` is zero and `borrow` reverts.
+  const lendingAccount = process.env.CLEAR_LENDING_ACCOUNT;
+  if (lendingAccount && ethers.isAddress(lendingAccount)
+      && (await lendingPool.deploymentAccount()) !== lendingAccount) {
+    await (await lendingPool.setDeploymentAccount(lendingAccount)).wait();
+    log(`  LendingPool deployment account -> ${lendingAccount}`);
   }
 
   log("\nBonds and pool deployed.");
