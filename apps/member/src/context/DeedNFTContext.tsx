@@ -1,3 +1,4 @@
+import { deedTrustOf, type DeedTrust } from '@/lib/deedTrust';
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 import { useAppKitAccount, useAppKitNetwork, useAppKitProvider } from '@/lib/walletCompat';
@@ -20,6 +21,8 @@ export interface DeedNFT {
   token: string;
   salt: string;
   isMinted: boolean;
+  /** DeedNFT v5: the trust record of a Land or Estate deed; null for a legacy deed. */
+  trust?: DeedTrust | null;
 }
 
 export interface DeedNFTStats {
@@ -330,6 +333,10 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.log(`❌ Could not get configuration for token ${tokenId}:`, err);
       }
       
+      // DeedNFT v5: a Land or Estate deed's trust record (trustee, protector, policy, status, beneficial
+      // owner), from IDeedTrust on the DeedNFT address. Null for a legacy deed or a v4 DeedNFT.
+      const trust = await deedTrustOf(new ethers.Contract(contractAddress, abi, getProvider()) as never, tokenId);
+
       const deedNFTData: DeedNFT = {
         tokenId,
         owner,
@@ -340,7 +347,8 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
         validatorAddress,
         token: ethers.ZeroAddress, // Placeholder
         salt: "0", // Placeholder
-        isMinted: true
+        isMinted: true,
+        trust,
       };
       
       console.log(`✅ Final DeedNFT data for token ${tokenId}:`, deedNFTData);
