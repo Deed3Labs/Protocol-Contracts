@@ -82,6 +82,9 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @notice The longest the pause may run from when it was first set without a legal basis (10c,
     /// Phase 2g). Hard-coded: governance may shorten `pauseMaxTotal`, and no role can raise it.
     uint64 public constant PAUSE_MAX_TOTAL = 30 days;
+    /// @notice A pause set less than this long after the last one ended continues it: its cap counts
+    /// from when the first pause of the chain was set (owner decision 33).
+    uint64 public constant CONTINUATION_PERIOD = 30 days;
     bytes32 private constant REDEEM_TYPEHASH =
         keccak256("Redeem(address redeemer,address token,uint256 clrusdAmount,address receiver,uint256 nonce,uint256 deadline)");
     /// @dev Audit M-5: the depositor names who receives the CLRUSD. Bound to the EIP-3009 nonce of
@@ -134,8 +137,8 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     error ESADepositVaultSameSigner();
     /// @notice thrown when a pause window above 72 hours is set (spec 10c; Phase 4, M-A).
     error ESADepositVaultPauseWindowTooLong(uint64 window);
-    /// @notice thrown when a renewal without a legal basis would carry the pause past `capEnd`, the
-    /// time it was first set plus `pauseMaxTotal` (10c, Phase 2g).
+    /// @notice thrown when a pause or renewal without a legal basis would carry the pause past
+    /// `capEnd`, when its chain began plus `pauseMaxTotal` (10c, Phase 2g, owner decision 33).
     error ESADepositVaultPauseCapReached(uint256 capEnd);
     /// @notice thrown when `pauseMaxTotal` is set above PAUSE_MAX_TOTAL.
     error ESADepositVaultPauseMaxTotalTooLong(uint64 maxTotal);
@@ -527,13 +530,31 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @notice pauses deposits and redemptions during a security incident.
     /// @dev Compliance spec 10c: a pause that blocks redemption is a power to block a member's
     /// CLRUSD transaction, so it is limited the same way the token's pauses are -- it lapses on its
-    /// own after the window (72 hours by default) unless a different signer renews it, and no
-    /// renewal carries it past 30 days from when it was set without a legal basis (Phase 2g).
+    /// own after the window (72 hours by default) unless a different signer renews it, and nothing
+    /// carries it past 30 days from when its chain began without a legal basis (Phase 2g). A pause
+    /// set less than 30 days after the last one ended continues that chain (owner decision 33), so
+    /// it reverts `ESADepositVaultPauseCapReached` if its window would end past the cap;
+    /// `pauseWithLegalBasis` then sets it.
     ///
     /// Two-person (Phase 2d, decision 2): one pauser's call proposes, a second pauser's identical
     /// call carries it out. The same applies to `renewPause` and `unpause`.
     function pause() external onlyRole(PAUSER_ROLE) {
         if (_secondSigner(PAUSER_ROLE) == address(0)) return;
+        _setPause(false);
+    }
+
+    /// @notice pauses past the chain's cap on a legal basis (10c, owner decision 33): a court order,
+    /// other legal process, or a written law-enforcement or regulatory request. Two-person, and it
+    /// records the basis's code and the hash of the document.
+    function pauseWithLegalBasis(uint8 legalBasis, bytes32 legalBasisHash) external onlyRole(PAUSER_ROLE) {
+        _requireLegalBasis(legalBasis, legalBasisHash);
+        address proposer = _secondSigner(PAUSER_ROLE);
+        if (proposer == address(0)) return;
+        _setPause(true);
+        emit PauseLegalBasisRecorded(legalBasis, legalBasisHash, s_pausedUntil, proposer, msg.sender);
+    }
+
+    function _setPause(bool legalBasis) private {
         // An active pause is extended only by a second signer's renewal; and the signer of the
         // last pause may not start another on their own until 30 days after it ended, so one key
         // cannot chain pauses -- by re-pausing at the lapse, or unpausing and pausing again --
@@ -542,17 +563,25 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         if (msg.sender == s_pauseSigner && block.timestamp < uint256(s_pausedUntil) + 30 days) {
             revert ESADepositVaultSameSigner();
         }
+        // Owner decision 33: less than CONTINUATION_PERIOD after the last pause ended, this one
+        // continues its chain. A pause from before Phase 2g has no recorded chain.
+        uint40 capStart = s_pauseCapStart != 0 && block.timestamp < uint256(s_pausedUntil) + CONTINUATION_PERIOD
+            ? s_pauseCapStart
+            : uint40(block.timestamp);
+        uint64 until = uint64(block.timestamp) + _pauseWindow();
+        _requireWithinCap(until, capStart, legalBasis);
         _pause();
         // Close the last pause into the clock (it has ended), and start a new span (Phase 2g).
         if (s_pauseStartedAt != 0) s_pauseClockBefore += s_pausedUntil - s_pauseStartedAt;
-        s_pauseStartedAt = uint64(block.timestamp);
-        s_pausedUntil = uint64(block.timestamp) + _pauseWindow();
+        s_pauseStartedAt = uint40(block.timestamp);
+        s_pauseCapStart = capStart;
+        s_pausedUntil = until;
         s_pauseSigner = msg.sender;
-        emit PauseExpiresAt(s_pausedUntil, msg.sender);
+        emit PauseExpiresAt(until, msg.sender);
     }
 
     /// @notice renews a pause for another window; needs a different signer from the last one. It
-    /// reverts if the pause would then run past `pauseMaxTotal` from when it was first set (10c).
+    /// reverts if the pause would then run past `pauseMaxTotal` from when its chain began (10c).
     function renewPause() external onlyRole(PAUSER_ROLE) {
         if (_secondSigner(PAUSER_ROLE) == address(0)) return;
         _renewPause(false);
@@ -564,24 +593,21 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @param legalBasis 1 court order, 2 other legal process, 3 written law-enforcement or
     /// regulatory request.
     function renewPauseWithLegalBasis(uint8 legalBasis, bytes32 legalBasisHash) external onlyRole(PAUSER_ROLE) {
-        if (legalBasis == 0 || legalBasis > 3 || legalBasisHash == bytes32(0)) {
-            revert ESADepositVaultInvalidLegalBasis(legalBasis);
-        }
+        _requireLegalBasis(legalBasis, legalBasisHash);
         address proposer = _secondSigner(PAUSER_ROLE);
         if (proposer == address(0)) return;
         _renewPause(true);
         emit PauseLegalBasisRecorded(legalBasis, legalBasisHash, s_pausedUntil, proposer, msg.sender);
     }
 
-    /// @dev Without a legal basis, a renewal may not carry the pause past when it was first set plus
+    /// @dev Without a legal basis, a renewal may not carry the pause past when its chain began plus
     /// `pauseMaxTotal`; with none, the pause lapses at its end. A pause set before Phase 2g has no
-    /// recorded start, so every renewal of it needs a legal basis (fails closed).
+    /// recorded chain, so every renewal of it needs a legal basis (fails closed).
     function _renewPause(bool legalBasis) private {
         if (!paused()) revert ESADepositVaultNotPaused();
         if (msg.sender == s_pauseSigner) revert ESADepositVaultSameSigner();
         uint64 until = uint64(block.timestamp) + _pauseWindow();
-        uint256 capEnd = uint256(s_pauseStartedAt) + pauseMaxTotal();
-        if (!legalBasis && until > capEnd) revert ESADepositVaultPauseCapReached(capEnd);
+        _requireWithinCap(until, s_pauseCapStart, legalBasis);
         s_pausedUntil = until;
         s_pauseSigner = msg.sender;
         emit PauseExpiresAt(until, msg.sender);
@@ -606,14 +632,25 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @notice how long the pause may run from when it was first set before only a renewal with a
     /// legal basis extends it (10c). At most PAUSE_MAX_TOTAL.
     function pauseMaxTotal() public view returns (uint64) {
-        return s_pauseMaxTotal == 0 ? PAUSE_MAX_TOTAL : s_pauseMaxTotal;
+        return s_pauseMaxTotal == 0 ? PAUSE_MAX_TOTAL : uint64(s_pauseMaxTotal);
+    }
+
+    function _requireWithinCap(uint256 until, uint256 capStart, bool legalBasis) private view {
+        uint256 capEnd = capStart + pauseMaxTotal();
+        if (!legalBasis && until > capEnd) revert ESADepositVaultPauseCapReached(capEnd);
+    }
+
+    function _requireLegalBasis(uint8 legalBasis, bytes32 legalBasisHash) private pure {
+        if (legalBasis == 0 || legalBasis > 3 || legalBasisHash == bytes32(0)) {
+            revert ESADepositVaultInvalidLegalBasis(legalBasis);
+        }
     }
 
     /// @notice shortens `pauseMaxTotal`. Governed (the admin is the timelock). Above
     /// PAUSE_MAX_TOTAL reverts, so no role can raise the cap; zero means PAUSE_MAX_TOTAL.
     function setPauseMaxTotal(uint64 maxTotal) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (maxTotal > PAUSE_MAX_TOTAL) revert ESADepositVaultPauseMaxTotalTooLong(maxTotal);
-        s_pauseMaxTotal = maxTotal;
+        s_pauseMaxTotal = uint32(maxTotal);
         emit PauseMaxTotalUpdated(maxTotal);
     }
 
@@ -805,15 +842,17 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     bool private s_caMintsPaused;
     uint32 private s_caPauseReason;
 
-    /* ── Phase 2g (10c, decisions 2 to 4), appended after s_caPauseReason. All three share its
-     *    slot (6 + 24 bytes), so `__gap` is unchanged. ── */
-    /// @dev When the current (or last) pause was first set; zero if none since Phase 2g.
-    uint64 private s_pauseStartedAt;
+    /* ── Phase 2g (10c, decisions 2 to 4, owner decision 33), appended after s_caPauseReason. All
+     *    four share its slot (6 + 5 + 5 + 8 + 4 = 28 bytes), so `__gap` is unchanged. ── */
+    /// @dev When the current (or last) pause was set; zero if none since Phase 2g.
+    uint40 private s_pauseStartedAt;
+    /// @dev When the chain the current (or last) pause continues began (owner decision 33).
+    uint40 private s_pauseCapStart;
     /// @dev The seconds earlier pauses were in force, for the pause clock.
     uint64 private s_pauseClockBefore;
-    /// @dev How long a pause may run from when it was first set without a legal basis. Zero means
-    /// PAUSE_MAX_TOTAL.
-    uint64 private s_pauseMaxTotal;
+    /// @dev How long a pause may run from when its chain began without a legal basis. Zero means
+    /// PAUSE_MAX_TOTAL; never above it, so it fits 32 bits.
+    uint32 private s_pauseMaxTotal;
 
     /// @dev Reserved storage for future upgrades. Reduced by 1 (depositMandates mapping added),
     ///      then by 1 more (s_acceptedToken added), then by 8 more for the Phase 2 block (the last

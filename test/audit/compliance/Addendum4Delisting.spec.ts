@@ -225,6 +225,163 @@ describe("COMPLIANCE Phase 2g: pause cap and clocks, CLRUSD de-listing, Legacy C
     });
   });
 
+  /* ──────────── 10c: a new pause within 30 days continues the chain (owner decision 33) ──────────── */
+
+  describe("owner decision 33: a new pause within 30 days of the last one's end continues its cap", function () {
+    type Kind = {
+      label: string;
+      c: () => any;
+      err: string;
+      pause: [string, () => any[]];
+      pauseWithBasis: [string, () => any[]];
+      renew: [string, () => any[]];
+      inForce: () => Promise<boolean>;
+    };
+    const ORDER = ethers.id("court-order");
+    const kinds: Kind[] = [
+      { label: "CLRUSD account pause", c: () => s.clrusd, err: "ClearUSDPauseCapReached",
+        pause: ["pauseAccount", () => [s.ctx.member.address, 1]],
+        pauseWithBasis: ["pauseAccountWithLegalBasis", () => [s.ctx.member.address, 1, COURT_ORDER, ORDER]],
+        renew: ["renewAccountPause", () => [s.ctx.member.address, 1]],
+        inForce: () => s.clrusd.isPauseInForce(s.ctx.member.address) },
+      { label: "CLRUSD security pause", c: () => s.clrusd, err: "ClearUSDPauseCapReached",
+        pause: ["pauseForSecurity", () => [1]],
+        pauseWithBasis: ["pauseForSecurityWithLegalBasis", () => [1, COURT_ORDER, ORDER]],
+        renew: ["renewSecurityPause", () => [1]],
+        inForce: () => s.clrusd.isPauseInForce(ethers.ZeroAddress) },
+      { label: "vault pause", c: () => s.vault, err: "ESADepositVaultPauseCapReached",
+        pause: ["pause", () => []],
+        pauseWithBasis: ["pauseWithLegalBasis", () => [COURT_ORDER, ORDER]],
+        renew: ["renewPause", () => []],
+        inForce: () => s.vault.isPauseInForce() },
+    ];
+
+    let keyD: any, keyE: any;
+    beforeEach(async function () {
+      [keyD, keyE] = (await ethers.getSigners()).slice(17, 19);
+      for (const k of [keyD, keyE]) {
+        await s.clrusd.grantRole(await s.clrusd.FRAUD_ROLE(), k.address);
+        await s.clrusd.grantRole(await s.clrusd.SECURITY_ROLE(), k.address);
+        await s.vault.grantRole(await s.vault.PAUSER_ROLE(), k.address);
+      }
+    });
+
+    const call = (k: Kind, which: [string, () => any[]], signer: any) => k.c().connect(signer)[which[0]](...which[1]());
+
+    /** Who proposed the pending plain renewal (a refused approval leaves its proposal standing,
+     *  since the revert undoes its consumption), and who signed the pause last. */
+    type Signers = { pending: any; last: any };
+
+    /** One plain renewal by keyA, keyB or keyC: an approval of the pending proposal if there is one,
+     *  otherwise a proposal and its approval. Returns the approval's timestamp; throws its error. */
+    async function renewOnce(k: Kind, st: Signers): Promise<number> {
+      const keys = [s.keyA, s.keyB, s.keyC];
+      if (!st.pending) {
+        const proposer = keys.find((x) => x !== st.last)!;
+        await call(k, k.renew, proposer);
+        st.pending = proposer;
+      }
+      const approver = keys.find((x) => x !== st.pending && x !== st.last)!;
+      const t = await stamp(call(k, k.renew, approver));
+      st.pending = null;
+      st.last = approver;
+      return t;
+    }
+
+    /** Renews every 72 hours less a minute until the cap refuses; returns the renewals made and the
+     *  end of the last window. */
+    async function renewToCap(k: Kind, st: Signers, end: number) {
+      let done = 0;
+      for (;;) {
+        await advance(WINDOW - 60);
+        try {
+          end = (await renewOnce(k, st)) + WINDOW;
+          done++;
+        } catch (e: any) {
+          return { done, end, error: e };
+        }
+      }
+    }
+
+    /** Sets a pause (keyA, keyB) and renews it until the cap refuses. keyD and keyE never sign. */
+    async function chainToCap(k: Kind) {
+      await call(k, k.pause, s.keyA);
+      const t0 = await stamp(call(k, k.pause, s.keyB));
+      const st: Signers = { pending: null, last: s.keyB };
+      const { done, end, error } = await renewToCap(k, st, t0 + WINDOW);
+      expect(done).to.equal(9);
+      expect(error.message).to.contain(k.err);
+      expect(end).to.be.at.most(t0 + 30 * DAY);
+      return { t0, lastEnd: end, st };
+    }
+
+    for (const k of kinds) {
+      it(`${k.label}: lapses at day 30; a fresh pause at once by two new signers is refused past the cap, and the legal-basis pause still works`, async function () {
+        const { t0, lastEnd, st } = await chainToCap(k);
+        await setNext(lastEnd);
+        await ethers.provider.send("evm_mine", []);
+        expect(await k.inForce()).to.equal(false);
+        // Two signers who signed nothing in the chain.
+        await call(k, k.pause, keyD);
+        await expect(call(k, k.pause, keyE)).to.be.revertedWithCustomError(k.c(), k.err).withArgs(t0 + 30 * DAY);
+        expect(await k.inForce()).to.equal(false);
+        // With a legal basis it goes through, two-person, and is logged.
+        await call(k, k.pauseWithBasis, keyD);
+        await expect(call(k, k.pauseWithBasis, keyD)).to.be.revertedWithCustomError(k.c(), k.c() === s.vault ? "ESADepositVaultSameSigner" : "ClearUSDSameSigner");
+        await expect(call(k, k.pauseWithBasis, keyE)).to.emit(k.c(), "PauseLegalBasisRecorded");
+        expect(await k.inForce()).to.equal(true);
+        // Still past the cap: a plain renewal of it reverts.
+        st.last = keyE;
+        await advance(WINDOW - 60);
+        await expect(renewOnce(k, st)).to.be.revertedWithCustomError(k.c(), k.err).withArgs(t0 + 30 * DAY);
+      });
+
+      it(`${k.label}: one set 30 or more days after the last one ended starts a new 30 days`, async function () {
+        const { t0, lastEnd, st } = await chainToCap(k);
+        await call(k, k.pause, keyD);
+        await setNext(lastEnd + 30 * DAY - 1);
+        await expect(call(k, k.pause, keyE)).to.be.revertedWithCustomError(k.c(), k.err).withArgs(t0 + 30 * DAY);
+        await setNext(lastEnd + 30 * DAY);
+        const t1 = await stamp(call(k, k.pause, keyE));
+        expect(await k.inForce()).to.equal(true);
+        // A new chain: renewals run to t1 + 30 days and no further.
+        st.last = keyE;
+        const { done, error } = await renewToCap(k, st, t1 + WINDOW);
+        expect(done).to.equal(9);
+        expect(error.message).to.contain(k.err);
+        expect(error.message).to.contain(String(t1 + 30 * DAY));
+      });
+    }
+
+    it("an early end does not restart the chain, and another account is a different kind", async function () {
+      const { ctx, clrusd, keyA, keyB, keyC } = s;
+      const m = ctx.member.address, c = ctx.counterparty.address;
+      await clrusd.connect(keyA).pauseAccount(m, 1);
+      const t0 = await stamp(clrusd.connect(keyB).pauseAccount(m, 1));
+      await advance(DAY);
+      await twoPerson(clrusd, keyA, keyC, "unpauseAccount", [m]);
+      // Ten days later, two other signers pause again: allowed, but it continues the chain.
+      await advance(9 * DAY);
+      await twoPerson(clrusd, keyC, keyA, "pauseAccount", [m, 2]);
+      const pairs = [[keyB, keyC], [keyA, keyB], [keyC, keyA]];
+      let refused = false;
+      for (let i = 0; i < 10 && !refused; i++) {
+        await advance(WINDOW - 60);
+        const [first, second] = pairs[i % 3];
+        await clrusd.connect(first).renewAccountPause(m, 2);
+        try { await clrusd.connect(second).renewAccountPause(m, 2); } catch (e: any) {
+          expect(e.message).to.contain("ClearUSDPauseCapReached");
+          expect(e.message).to.contain(String(t0 + 30 * DAY));
+          refused = true;
+        }
+      }
+      expect(refused).to.equal(true);
+      // The counterparty has no chain: its pause runs past the member's cap.
+      await twoPerson(clrusd, keyA, keyB, "pauseAccount", [c, 3]);
+      expect(Number(await clrusd.pausedUntil(c))).to.be.greaterThan(t0 + 30 * DAY);
+    });
+  });
+
   /* ─────────────────────────── 10c: the pause clocks (decisions 3, 4) ─────────────────────────── */
 
   describe("pause clocks", function () {

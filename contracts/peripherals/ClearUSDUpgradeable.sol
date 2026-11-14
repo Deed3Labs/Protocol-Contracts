@@ -63,10 +63,11 @@ interface IIntentEscrows {
 /// Swapping the registry (`setMembershipSource`) stays a timelock action. Nothing here screens a
 /// transfer: sanctions screening is the app's, before it submits a Send (12.15).
 ///
-/// **Pauses (10c, Phase 2g decisions 2 to 4).** Each pause lapses after its window (72 hours) unless
-/// renewed, and no renewal carries a pause past `pauseMaxTotal` (at most 30 days, hard-coded) from
-/// when it was first set, unless it is a two-person renewal that records a legal basis (a code and a
-/// non-zero hash). The pause clock (`pauseClock`) counts the seconds a pause affecting an account was
+/// **Pauses (10c, Phase 2g decisions 2 to 4, owner decision 33).** Each pause lapses after its
+/// window (72 hours) unless renewed, and nothing carries a pause past `pauseMaxTotal` (at most 30
+/// days, hard-coded) from when its chain began, unless it is a two-person action that records a
+/// legal basis (a code and a non-zero hash). A new pause set less than 30 days after the last one
+/// of the same kind ended continues that chain. The pause clock (`pauseClock`) counts the seconds a pause affecting an account was
 /// in force, for the credit side's grace and cure periods.
 contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @custom:storage-location erc7201:clear.storage.ClearUSD
@@ -107,13 +108,17 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         uint64 start;
         uint64 securityAtStart;
         uint64 alone;
+        /// @dev When the chain this pause continues began (owner decision 33): the cap counts from it.
+        uint64 capStart;
     }
 
-    /// @notice A security pause: when it was first set, and the security pause clock at that moment.
-    /// It ends where the next one's clock says, or for the last one at `globalPause.until`.
+    /// @notice A security pause: when it was first set, the security pause clock at that moment, and
+    /// when the chain it continues began (owner decision 33). It ends where the next one's clock
+    /// says, or for the last one at `globalPause.until`.
     struct SecuritySpan {
         uint64 start;
         uint64 before;
+        uint64 capStart;
     }
 
     /// @notice A wallet's CLRUSD listing (10d): NONE (never recorded), LISTED or DELISTED, the reason
@@ -145,6 +150,10 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @notice The longest any pause may run from when it was first set without a legal basis (10c).
     /// Hard-coded: governance may shorten `pauseMaxTotal`, and no role can raise it past this.
     uint64 public constant PAUSE_MAX_TOTAL = 30 days;
+    /// @notice A new pause set less than this long after the last pause of the same kind ended
+    /// continues it: its cap counts from when the first pause of the chain was set (owner decision
+    /// 33). The same kind is the same account for an account pause, and the security pause.
+    uint64 public constant CONTINUATION_PERIOD = 30 days;
     /// @notice May de-list and re-list a wallet (10d), two holders at a time, and record a FRAUD
     /// notice. Cannot move funds, and reaches receipt only.
     bytes32 public constant LISTING_ROLE = keccak256("LISTING_ROLE");
@@ -181,8 +190,8 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     error ClearUSDPauseWindowTooLong(uint64 window);
     /// @notice thrown when a transfer's receiver is not a listed wallet (12.15, 10d).
     error ClearUSDReceiverNotMember(address receiver);
-    /// @notice thrown when a renewal without a legal basis would carry a pause past `capEnd`, the
-    /// time it was first set plus `pauseMaxTotal` (10c).
+    /// @notice thrown when a pause or renewal without a legal basis would carry a pause past
+    /// `capEnd`, when its chain began plus `pauseMaxTotal` (10c, owner decision 33).
     error ClearUSDPauseCapReached(uint256 capEnd);
     /// @notice thrown when `pauseMaxTotal` is set above PAUSE_MAX_TOTAL.
     error ClearUSDPauseMaxTotalTooLong(uint64 maxTotal);
@@ -518,30 +527,55 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// time it was in force (`pauseClock`).
     /// @param account the account to pause.
     /// @param reason an off-chain case reference.
+    /// @dev A new pause less than CONTINUATION_PERIOD after the account's last one ended continues
+    /// its chain, and reverts `ClearUSDPauseCapReached` if its window would end past the chain's cap
+    /// (owner decision 33); `pauseAccountWithLegalBasis` then sets it.
     function pauseAccount(address account, uint32 reason) external onlyRole(FRAUD_ROLE) {
         if (account == address(0)) revert ClearUSDZeroAccount();
         if (_secondSigner(FRAUD_ROLE) == address(0)) return;
+        _pauseAccount(account, reason, false);
+    }
+
+    /// @notice pauses an account past its chain's cap on a legal basis (10c, owner decision 33): a
+    /// court order, other legal process, or a written law-enforcement or regulatory request.
+    /// Two-person, and it records the basis's code and the hash of the document.
+    function pauseAccountWithLegalBasis(address account, uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)
+        external
+        onlyRole(FRAUD_ROLE)
+    {
+        if (account == address(0)) revert ClearUSDZeroAccount();
+        _requireLegalBasis(legalBasis, legalBasisHash);
+        address proposer = _secondSigner(FRAUD_ROLE);
+        if (proposer == address(0)) return;
+        uint64 until = _pauseAccount(account, reason, true);
+        emit PauseLegalBasisRecorded(account, legalBasis, legalBasisHash, until, proposer, _msgSender());
+    }
+
+    function _pauseAccount(address account, uint32 reason, bool legalBasis) private returns (uint64 until) {
         ClearUSDStorage storage $ = _clearUsdStorage();
         Pause storage p = $.accountPause[account];
         _requireMayPause(p);
-        // Close the account's last span into its clock, and open a new one.
         PauseSpan storage sp = $.accountSpan[account];
+        uint64 capStart = _chainStart(p.until, sp.capStart);
+        until = uint64(block.timestamp) + _window();
+        _requireWithinCap(until, capStart, legalBasis);
+        // Close the account's last span into its clock, and open a new one.
         sp.alone += _aloneIn(sp, p.until);
         sp.start = uint64(block.timestamp);
         sp.securityAtStart = uint64(_securityClockAt(block.timestamp));
-        uint64 until = uint64(block.timestamp) + _window();
+        sp.capStart = capStart;
         $.accountPause[account] = Pause({until: until, reason: reason, lastSigner: _msgSender()});
         emit AccountPaused(account, reason, until, _msgSender());
     }
 
     /// @notice renews an account's pause for another window. Needs a different signer from the
     /// one that set or last renewed it, and a reason; each renewal is logged. It reverts if the
-    /// pause would then run past `pauseMaxTotal` from when it was first set (10c).
+    /// pause would then run past `pauseMaxTotal` from when its chain began (10c, owner decision 33).
     function renewAccountPause(address account, uint32 reason) external onlyRole(FRAUD_ROLE) {
         if (_secondSigner(FRAUD_ROLE) == address(0)) return;
         ClearUSDStorage storage $ = _clearUsdStorage();
         Pause storage p = $.accountPause[account];
-        _renew(p, reason, $.accountSpan[account].start, false);
+        _renew(p, reason, $.accountSpan[account].capStart, false);
         emit AccountPauseRenewed(account, reason, p.until, _msgSender());
     }
 
@@ -559,7 +593,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         if (proposer == address(0)) return;
         ClearUSDStorage storage $ = _clearUsdStorage();
         Pause storage p = $.accountPause[account];
-        _renew(p, reason, $.accountSpan[account].start, true);
+        _renew(p, reason, $.accountSpan[account].capStart, true);
         emit AccountPauseRenewed(account, reason, p.until, _msgSender());
         emit PauseLegalBasisRecorded(account, legalBasis, legalBasisHash, p.until, proposer, _msgSender());
     }
@@ -576,14 +610,39 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @notice pauses every member transfer during a security incident (an exploit: unauthorized
     /// activity). Same limits as an account pause: it moves nothing and lapses after the window
     /// unless a second signer renews it.
+    /// @dev Continues the last security pause's chain the same way an account pause does (owner
+    /// decision 33); `pauseForSecurityWithLegalBasis` sets it past the cap.
     function pauseForSecurity(uint32 reason) external onlyRole(SECURITY_ROLE) {
         if (_secondSigner(SECURITY_ROLE) == address(0)) return;
+        _pauseForSecurity(reason, false);
+    }
+
+    /// @notice pauses every member transfer past the security chain's cap on a legal basis, as
+    /// `pauseAccountWithLegalBasis` does for an account.
+    function pauseForSecurityWithLegalBasis(uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)
+        external
+        onlyRole(SECURITY_ROLE)
+    {
+        _requireLegalBasis(legalBasis, legalBasisHash);
+        address proposer = _secondSigner(SECURITY_ROLE);
+        if (proposer == address(0)) return;
+        uint64 until = _pauseForSecurity(reason, true);
+        emit PauseLegalBasisRecorded(address(0), legalBasis, legalBasisHash, until, proposer, _msgSender());
+    }
+
+    function _pauseForSecurity(uint32 reason, bool legalBasis) private returns (uint64 until) {
         ClearUSDStorage storage $ = _clearUsdStorage();
         _requireMayPause($.globalPause);
+        uint64 capStart = _chainStart($.globalPause.until, _securityCapStart());
+        until = uint64(block.timestamp) + _window();
+        _requireWithinCap(until, capStart, legalBasis);
         $.securitySpans.push(
-            SecuritySpan({start: uint64(block.timestamp), before: uint64(_securityClockAt(block.timestamp))})
+            SecuritySpan({
+                start: uint64(block.timestamp),
+                before: uint64(_securityClockAt(block.timestamp)),
+                capStart: capStart
+            })
         );
-        uint64 until = uint64(block.timestamp) + _window();
         $.globalPause = Pause({until: until, reason: reason, lastSigner: _msgSender()});
         emit SecurityPaused(reason, until, _msgSender());
     }
@@ -591,7 +650,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     function renewSecurityPause(uint32 reason) external onlyRole(SECURITY_ROLE) {
         if (_secondSigner(SECURITY_ROLE) == address(0)) return;
         Pause storage p = _clearUsdStorage().globalPause;
-        _renew(p, reason, _securityStart(), false);
+        _renew(p, reason, _securityCapStart(), false);
         emit SecurityPauseRenewed(reason, p.until, _msgSender());
     }
 
@@ -605,7 +664,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         address proposer = _secondSigner(SECURITY_ROLE);
         if (proposer == address(0)) return;
         Pause storage p = _clearUsdStorage().globalPause;
-        _renew(p, reason, _securityStart(), true);
+        _renew(p, reason, _securityCapStart(), true);
         emit SecurityPauseRenewed(reason, p.until, _msgSender());
         emit PauseLegalBasisRecorded(address(0), legalBasis, legalBasisHash, p.until, proposer, _msgSender());
     }
@@ -664,11 +723,25 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         return span.before + (end > span.start ? end - span.start : 0);
     }
 
-    /// @dev When the security pause in force (or the last one) was first set; zero if none was set
-    /// after Phase 2g, which fails closed (every renewal then needs a legal basis).
-    function _securityStart() private view returns (uint256) {
+    /// @dev When the chain of the security pause in force (or the last one) began; zero if none was
+    /// set after Phase 2g, which fails closed for a renewal (it then needs a legal basis).
+    function _securityCapStart() private view returns (uint256) {
         SecuritySpan[] storage spans = _clearUsdStorage().securitySpans;
-        return spans.length == 0 ? 0 : spans[spans.length - 1].start;
+        return spans.length == 0 ? 0 : spans[spans.length - 1].capStart;
+    }
+
+    /// @dev When a new pause's chain began (owner decision 33): the last chain's start if the last
+    /// pause of the same kind ended less than CONTINUATION_PERIOD ago, otherwise now. A pause from
+    /// before Phase 2g has no recorded chain, so a new one after it starts its own.
+    function _chainStart(uint256 lastEnd, uint256 lastCapStart) private view returns (uint64) {
+        if (lastCapStart != 0 && block.timestamp < lastEnd + CONTINUATION_PERIOD) return uint64(lastCapStart);
+        return uint64(block.timestamp);
+    }
+
+    /// @dev Without a legal basis, nothing may carry a pause past its chain's start + `pauseMaxTotal`.
+    function _requireWithinCap(uint256 until, uint256 capStart, bool legalBasis) private view {
+        uint256 capEnd = capStart + pauseMaxTotal();
+        if (!legalBasis && until > capEnd) revert ClearUSDPauseCapReached(capEnd);
     }
 
     /// @notice how long a pause may run from when it was first set before only a renewal with a legal
@@ -720,14 +793,14 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     }
 
     /// @dev A renewal: only while the pause is in force, by a signer other than the last, for one
-    /// window. Without a legal basis it may not carry the pause past `start` + `pauseMaxTotal`, where
-    /// `start` is when the pause was first set (10c); with none, the pause lapses at its end.
-    function _renew(Pause storage p, uint32 reason, uint256 start, bool legalBasis) private {
+    /// window. Without a legal basis it may not carry the pause past `capStart` + `pauseMaxTotal`,
+    /// where `capStart` is when its chain began (10c, owner decision 33); with none, the pause lapses
+    /// at its end.
+    function _renew(Pause storage p, uint32 reason, uint256 capStart, bool legalBasis) private {
         if (p.until <= block.timestamp) revert ClearUSDNoPause();
         if (p.lastSigner == _msgSender()) revert ClearUSDSameSigner(_msgSender());
         uint64 until = uint64(block.timestamp) + _window();
-        uint256 capEnd = start + pauseMaxTotal();
-        if (!legalBasis && until > capEnd) revert ClearUSDPauseCapReached(capEnd);
+        _requireWithinCap(until, capStart, legalBasis);
         p.until = until;
         p.reason = reason;
         p.lastSigner = _msgSender();

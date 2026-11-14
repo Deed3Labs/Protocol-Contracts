@@ -200,7 +200,8 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
       .filter((n: string) => n !== n.toUpperCase()); // constants are not powers
     const blocking = names.filter((n: string) => /pause|freeze|blacklist|block|forceTransfer/i.test(n));
     expect(blocking.sort()).to.deep.equal(
-      ["isPauseInForce", "pauseAccount", "pauseClock", "pauseForSecurity", "pauseMaxTotal", "pausedUntil", "renewAccountPause",
+      ["isPauseInForce", "pauseAccount", "pauseAccountWithLegalBasis", "pauseClock", "pauseForSecurity",
+        "pauseForSecurityWithLegalBasis", "pauseMaxTotal", "pausedUntil", "renewAccountPause",
         "renewAccountPauseWithLegalBasis", "renewSecurityPause", "renewSecurityPauseWithLegalBasis", "setPauseMaxTotal",
         "setPauseWindow", "unpauseAccount", "unpauseSecurity"].sort());
     // Phase 2g (10d): the listing functions stop receipt only, and are pinned too.

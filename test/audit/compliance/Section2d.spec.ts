@@ -237,7 +237,7 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
         .sort();
       expect(writes).to.deep.equal([
         "cancelMandate", "cancelOwnMandate", "deposit", "depositWithAuthorization", "depositWithAuthorizationFor",
-        "executeMandateDeposit", "grantRole", "initialize", "pause", "pauseCaMints", "redeem", "redeemWithAuthorization",
+        "executeMandateDeposit", "grantRole", "initialize", "pause", "pauseCaMints", "pauseWithLegalBasis", "redeem", "redeemWithAuthorization",
         "redeemWithSignature", "renewPause", "renewPauseWithLegalBasis", "renounceRole", "revokeRole", "setAcceptedToken",
         "setClrusd", "setPauseMaxTotal", "setPauseWindow", "setPilotOff", "setStateSource", "unpause", "unpauseCaMints",
         "upgradeTo", "upgradeToAndCall",
