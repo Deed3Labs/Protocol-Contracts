@@ -1,0 +1,162 @@
+import { stepUpDenied } from './stepUp';
+
+/*
+ * Spendable account details — the numbers a member gives an employer or another bank.
+ *
+ * Read from the API (which reads Lithic) each time the surface opens. The masked read carries the
+ * account number's last four only. The full number comes from a second read behind Face ID, lives in
+ * the surface's own React state while it is open, and is dropped when it closes. It never goes to
+ * localStorage, sessionStorage, IndexedDB, the service worker's cache or a remembered page state:
+ * nothing in this file or the surface writes anywhere but component memory and, on the member's own
+ * tap, the clipboard or a download.
+ */
+
+// --- Copy -----------------------------------------------------------------------------------------
+
+export const ACCOUNT_DETAILS_TITLE = 'Spendable account details';
+
+export const ACCOUNT_DETAILS_NOTE =
+  "Use these for direct deposit or bank transfers. Money that lands here clears what you've used on Clear Credit first, then the rest is spendable. You can change this in Settings › Automatic clearing.";
+
+/**
+ * PENDING THE BANK'S APPROVED WORDING.
+ *
+ * This is the owner's draft. The partner bank (through Lithic) approves the exact disclosure, and
+ * when it does, the approved text replaces this template here and nowhere else. The bank's name is
+ * substituted from the API, which reads it from configuration (LITHIC_PARTNER_BANK_NAME).
+ */
+export const BANK_DISCLOSURE_PENDING_APPROVAL = true;
+export function bankDisclosure(bankName: string): string {
+  return `Deposits are held at ${bankName}, Member FDIC. Clear is not a bank. Banking services provided by ${bankName}.`;
+}
+
+export const DIRECT_DEPOSIT_FORM_ACTION = 'Get direct deposit form';
+
+/** Shown where a value is missing: an em dash, never a blank half-row. */
+export const MISSING = '—';
+
+/** Four middle dots and the last four: ····1234. */
+export function maskedAccountNumber(last4: string): string {
+  return `····${last4}`;
+}
+
+// --- Data -----------------------------------------------------------------------------------------
+
+export interface MaskedAccountDetails {
+  holderName: string | null;
+  bankName: string | null;
+  routingNumber: string;
+  accountNumberLast4: string;
+  accountType: string;
+}
+
+export type MaskedRead = { configured: boolean; details: MaskedAccountDetails | null } | { error: string };
+export type FullNumberRead = { accountNumber: string } | { error: string };
+
+/** Where the surface reads from. The app's is the API; the preview harness hands in fixtures. */
+export interface AccountDetailsSource {
+  readMasked(): Promise<MaskedRead>;
+  /** The full account number. The server refuses it without a fresh Face ID. */
+  readFullNumber(): Promise<FullNumberRead>;
+}
+
+/** Face ID first, then the full number — or the full number already held, without asking again. */
+export async function obtainFullNumber(
+  held: string | null,
+  source: AccountDetailsSource,
+  gate: () => Promise<string | null> = stepUpDenied,
+): Promise<FullNumberRead> {
+  if (held) return { accountNumber: held };
+  const denied = await gate();
+  if (denied) return { error: denied };
+  return source.readFullNumber();
+}
+
+// --- State ----------------------------------------------------------------------------------------
+
+export interface AccountDetailsState {
+  /** Bumped on every open, so an answer that lands after a close (or a reopen) is ignored. */
+  session: number;
+  status: 'closed' | 'loading' | 'ready' | 'unavailable' | 'error';
+  details: MaskedAccountDetails | null;
+  /** The full account number, once the member has passed Face ID. Component memory only. */
+  fullNumber: string | null;
+  /** Whether the full number is on screen. */
+  shown: boolean;
+  /** Why a reveal did not happen, for the line under the rows. */
+  problem: string | null;
+}
+
+export type AccountDetailsAction =
+  | { type: 'open' }
+  | { type: 'close' }
+  | { type: 'loaded'; session: number; read: MaskedRead }
+  | { type: 'revealed'; session: number; accountNumber: string; show: boolean }
+  | { type: 'failed'; session: number; error: string }
+  | { type: 'hide' };
+
+export const CLOSED: AccountDetailsState = {
+  session: 0,
+  status: 'closed',
+  details: null,
+  fullNumber: null,
+  shown: false,
+  problem: null,
+};
+
+export function accountDetailsReducer(state: AccountDetailsState, action: AccountDetailsAction): AccountDetailsState {
+  switch (action.type) {
+    case 'open':
+      return { ...CLOSED, session: state.session + 1, status: 'loading' };
+    case 'close':
+      // Everything goes, the full number first among it.
+      return { ...CLOSED, session: state.session };
+    case 'loaded': {
+      if (action.session !== state.session || state.status === 'closed') return state;
+      const read = action.read;
+      if ('error' in read) return { ...state, status: 'error', details: null };
+      if (!read.details) return { ...state, status: 'unavailable', details: null };
+      return { ...state, status: 'ready', details: read.details };
+    }
+    case 'revealed':
+      if (action.session !== state.session || state.status !== 'ready') return state;
+      return { ...state, fullNumber: action.accountNumber, shown: action.show || state.shown, problem: null };
+    case 'failed':
+      if (action.session !== state.session || state.status === 'closed') return state;
+      return { ...state, problem: action.error };
+    case 'hide':
+      return { ...state, shown: false };
+  }
+}
+
+/** What the account number row shows: the full number only while revealed, otherwise ····1234. */
+export function accountNumberShown(state: AccountDetailsState): string {
+  if (state.shown && state.fullNumber) return state.fullNumber;
+  return state.details ? maskedAccountNumber(state.details.accountNumberLast4) : MISSING;
+}
+
+// --- Clipboard ------------------------------------------------------------------------------------
+
+/**
+ * Copy text that may still be on its way.
+ *
+ * Copying the account number before it has been revealed asks for Face ID first, and by the time
+ * that resolves Safari no longer counts the tap as the gesture that allows a write. A ClipboardItem
+ * built from a promise is written inside the tap and filled when the promise settles, which Safari
+ * and Chrome both accept. Without one, it falls back to writing the text once it is known.
+ */
+export async function copyText(text: string | Promise<string>): Promise<boolean> {
+  const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
+  if (!clipboard) return false;
+  try {
+    if (typeof text !== 'string' && typeof ClipboardItem !== 'undefined' && clipboard.write) {
+      const blob = text.then((t) => new Blob([t], { type: 'text/plain' }));
+      await clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+      return true;
+    }
+    await clipboard.writeText(await text);
+    return true;
+  } catch {
+    return false;
+  }
+}

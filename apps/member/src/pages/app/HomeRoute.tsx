@@ -18,13 +18,11 @@ import { useRemembered, walletKey } from '@/lib/rememberedState';
 import {
   getCardTransactions,
   getCredit,
-  getLithicAccount,
   getPaySummary,
   readAutopay,
   type AutopaySummary,
   type CardTransaction,
   type CreditState,
-  type LithicAccountResponse,
   type PaySummary,
 } from '@/utils/apiClient';
 import { autoSaveFromRules, withOnTrack } from '@/lib/clearModel';
@@ -46,8 +44,7 @@ import { autoSaveFromRules, withOnTrack } from '@/lib/clearModel';
 /**
  * Live Home.
  *
- * Balances, savings, equity credits, recent activity, the deposit numbers behind "Account details"
- * and now the credit tiers are all real. The tiers come from /api/credit, which reads the
+ * Balances, savings, equity credits, recent activity and now the credit tiers are all real. The tiers come from /api/credit, which reads the
  * contracts rather than recomputing what they already decide.
  *
  * Carry cost, the cycle and the limit backing are read too. All three were assumed to need
@@ -59,20 +56,14 @@ import { autoSaveFromRules, withOnTrack } from '@/lib/clearModel';
  * charge now has one. The locked rows beneath are kept — partner credit and an ELPA are products
  * nobody has unlocked yet, not fields that failed to load.
  *
- * The account numbers are fetched and never cached to disk: they are bank details, and the server
- * reads them from Lithic on demand for the same reason.
+ * The account numbers are not read here at all. Spendable's details surface (AccountDetailsDialog)
+ * reads them from Lithic when it opens and drops them when it closes; holding them for the session
+ * on Home would keep bank details in memory that nobody asked to see.
  */
 export default function HomeRoute() {
   const { address } = useAppKitAccount();
   const { cash, savings, loading: balancesLoading } = useClearBalances();
   const { items, loading: txLoading } = useClearTransactions();
-  // Remembered for the session: returning to Home draws what it showed, then refreshes.
-  const [lithic, setLithic] = useRemembered<LithicAccountResponse | null>(
-    `home:lithic:${walletKey(address)}`,
-    null,
-    // Carries the direct-deposit account and routing numbers: this session only, never the device.
-    { device: false },
-  );
   const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${walletKey(address)}`, null);
   // The auto-save rule, for the savings card's "On track for" date. Same key as Savings.
   const [autopay, setAutopay] = useRemembered<AutopaySummary | null>(`autosave:${walletKey(address)}`, null);
@@ -94,9 +85,6 @@ export default function HomeRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    void getLithicAccount().then((result) => {
-      if (!cancelled) setLithic(result);
-    });
     // Recent activity is both halves of what a member spent, so this page needs the card's side of
     // it too. Without this the preview showed sends and withdrawals and no purchases at all.
     void getCardTransactions().then(({ value }) => {
@@ -148,7 +136,6 @@ export default function HomeRoute() {
     };
   }, [address]);
 
-  const deposit = lithic?.deposit ?? null;
   // Only override a figure once it has been read. A zero balance mid-fetch tells a member their
   // money is gone, which is a worse thing to show than the placeholder it would replace.
   const haveBalances = Boolean(address) && !balancesLoading;
@@ -180,9 +167,6 @@ export default function HomeRoute() {
       // Savings or Earn but never to the card. This is where that balance belongs -- leaving it at
       // zero told a member holding 35 USDC that they had nothing to place.
       ...(haveBalances ? { readyToAllocate: cash } : {}),
-      ...(deposit
-        ? { accountNumber: deposit.accountNumber, routingNumber: deposit.routingNumber }
-        : {}),
     },
     /*
      * Home shows a preview; Activity shows the list. Empty is the honest answer for a new member,

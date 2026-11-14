@@ -26,6 +26,7 @@ import { HOME_DAY_ONE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import YourShopsCell from '@/components/clear/YourShopsCell';
 import type { YourShop } from '@/utils/apiClient';
+import type { AccountDetailsSource } from '@/lib/accountDetails';
 import { activePlans, addableTier, creditLimit, savingsTotal, type ActivityRow, type HomeData } from '@/lib/clearModel';
 
 /**
@@ -52,9 +53,12 @@ export default function HomePage({
   onPayBack,
   savingsFree,
   yourShops = [],
+  accountDetails,
 }: {
   /** Shops whose rewards they've joined (rewards spec, section 6): a list and links, once there's one. */
   yourShops?: YourShop[];
+  /** Where Spendable's account details are read from. The API unless the preview harness hands in fixtures. */
+  accountDetails?: AccountDetailsSource;
   data?: HomeData;
   /** Nothing known yet: the populated layout with placeholder figures, never the day-one layout. */
   pending?: boolean;
@@ -243,7 +247,8 @@ export default function HomePage({
         firstDeposit={!data.tasks.find((t) => t.id === 'deposit')?.done}
         onPickAccount={() => setPayAccountOpen(true)}
       />
-      <AccountDetailsDialog account={data.cashAccount} open={accountOpen} onOpenChange={setAccountOpen} />
+      {/* Reads its own numbers from Lithic when it opens: nothing on Home holds them. */}
+      <AccountDetailsDialog open={accountOpen} onOpenChange={setAccountOpen} source={accountDetails} />
       {/* Savings deposit is the same surface Savings uses; the credit limit it quotes comes from this
           page's own tiers so the two can't disagree. */}
       <ConnectedMoveMoney

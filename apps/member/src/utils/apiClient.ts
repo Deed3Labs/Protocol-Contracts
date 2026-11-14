@@ -24,6 +24,7 @@ import { getAccessToken } from '@privy-io/react-auth';
 import type { AutoClearTypedData, PlanTerms, PlanTermsTypedData, ResplitTypedData } from '@clear/domain';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
 import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
+import type { AccountDetailsSource, FullNumberRead, MaskedAccountDetails, MaskedRead } from '@/lib/accountDetails';
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
 import { notifyServerLocked } from '@/lib/appLock';
 import { readApproval, type ApprovalRead } from '@/lib/approvalPage';
@@ -1963,7 +1964,8 @@ export interface LithicAccountResponse {
   status?: string;
   statusReasons?: string[];
   hasCashAccount?: boolean;
-  deposit: { routingNumber: string; accountNumber: string; accountType: string } | null;
+  /** The last four only. The full number is getSpendableAccountNumber, behind Face ID. */
+  deposit: { routingNumber: string; accountNumberLast4: string; accountType: string } | null;
 }
 
 
@@ -2062,6 +2064,38 @@ export async function getLithicAccount(): Promise<LithicAccountResponse | null> 
   const r = await apiRequest<LithicAccountResponse>('/api/lithic/account');
   return r.error ? null : (r.data ?? null);
 }
+
+/**
+ * Spendable account details, read from Lithic as the surface opens: holder, bank, routing number,
+ * the account number's last four, account type. `no-store` so neither the browser nor the service
+ * worker keeps them (public/sw.js also never caches /api/lithic/account*).
+ */
+export async function getSpendableAccountDetails(): Promise<MaskedRead> {
+  const r = await apiRequest<{ configured: boolean; details: MaskedAccountDetails | null }>('/api/lithic/account-details', {
+    cache: 'no-store',
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not load your account details.' };
+  return r.data;
+}
+
+/**
+ * The full account number. The server refuses it without a fresh Face ID (middleware/stepUp), and
+ * apiRequest asks for one and retries once when it does. Callers ask first (lib/accountDetails'
+ * obtainFullNumber), as for card numbers. Held by the caller in component memory, never stored.
+ */
+export async function getSpendableAccountNumber(): Promise<FullNumberRead> {
+  const r = await apiRequest<{ accountNumber: string }>('/api/lithic/account-details/account-number', {
+    cache: 'no-store',
+  });
+  if (r.error || !r.data?.accountNumber) return { error: r.error || 'We could not load your account number.' };
+  return { accountNumber: r.data.accountNumber };
+}
+
+/** The app's source for the Spendable account details surface. */
+export const liveAccountDetails: AccountDetailsSource = {
+  readMasked: getSpendableAccountDetails,
+  readFullNumber: getSpendableAccountNumber,
+};
 
 /**
  * Lithic cards — spec step 8.
