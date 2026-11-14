@@ -5,6 +5,11 @@ import {BurnMintERC20UUPS} from
     "@chainlink/contracts/src/v0.8/shared/token/ERC20/upgradeable/BurnMintERC20UUPS.sol";
 import "../core/interfaces/stable-credit/IEncumbranceSource.sol";
 
+/// @dev The member registry CLRUSD reads (the AccessManager, which also reads MembershipRegistry).
+interface IMembershipSource {
+    function isMember(address account) external view returns (bool);
+}
+
 /// @title ClearUSDUpgradeable
 /// @notice CLRUSD, upgradeable, and unwilling to let collateral walk out of the door.
 /// @dev Replaces the deployed ClearUSD, which is not upgradeable and cannot be taught to enforce
@@ -24,6 +29,24 @@ import "../core/interfaces/stable-credit/IEncumbranceSource.sol";
 /// which is the argument. The cost is that a fully-reserved token whose code can change is only as
 /// trustworthy as whoever can change it, so the admin should be a timelocked multisig -- and the
 /// base enforces a delay on transferring that admin, which is the part code can help with.
+///
+/// **Who controls it (Phase 2d, 10g, decisions 1 to 3).** Clear Financial Co., two-person, always:
+///  - `DEFAULT_ADMIN_ROLE` and `UPGRADER_ROLE` are the vault timelock's (7 days, a Clear Financial
+///    Safe proposing; `deploy/vault_timelock_handover.ts`). The default admin is the admin of every
+///    other role, so only that Safe, through the delay, grants or revokes MINTER_ROLE and
+///    BURNER_ROLE (the vault and the CCIP token pool), LIQUIDATOR_ROLE (the Liquidator), FRAUD_ROLE
+///    and SECURITY_ROLE, and sets the encumbrance and membership sources and the pause window;
+///  - every pause action (set, renew, end) takes two distinct holders of its role, in contract
+///    (`_secondSigner`).
+///
+/// **Members only (spec 12.15, decision 6).** A transfer must be received by a registered member
+/// wallet, read from the member registry (`membershipSource`, the AccessManager). Only receipt is
+/// checked: a wallet that stops being a member can still send to members and redeem, and the
+/// registry logs the de-listing (AccessManager `MemberRemoved`, MembershipRegistry
+/// `MemberStatusUpdated`/`WalletUnlinked`). Exempt: mints, burns (so every redemption), the
+/// Liquidator's seizure, and transfers to an address holding MINTER_ROLE, BURNER_ROLE or
+/// LIQUIDATOR_ROLE (the vault, the token pool, the Liquidator). Nothing here screens a transfer:
+/// sanctions screening is the app's, before it submits a Send (12.15).
 contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @custom:storage-location erc7201:clear.storage.ClearUSD
     struct ClearUSDStorage {
@@ -37,6 +60,12 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         Pause globalPause;
         /// @dev How long a pause lasts before it lapses. Zero means the default, 72 hours.
         uint64 pauseWindow;
+        /// @dev Phase 2d, appended: the first signer of each pending two-person pause action, by
+        /// the hash of its calldata.
+        mapping(bytes32 => address) proposerOf;
+        /// @dev Phase 2d, appended: the member registry receipt is checked against. Unset means
+        /// unrestricted, as for a token not yet wired.
+        IMembershipSource membershipSource;
     }
 
     // keccak256(abi.encode(uint256(keccak256("clear.storage.ClearUSD")) - 1)) & ~bytes32(uint256(0xff))
@@ -76,6 +105,8 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     error ClearUSDNoPause();
     /// @notice thrown when a pause window above MAX_PAUSE_WINDOW is set.
     error ClearUSDPauseWindowTooLong(uint64 window);
+    /// @notice thrown when a transfer's receiver is not a registered member wallet (12.15).
+    error ClearUSDReceiverNotMember(address receiver);
 
     event EncumbranceSourceUpdated(address indexed source);
     /// @notice The encumbrance source reverted while a holder's CLRUSD moved (audit M-3). Monitoring
@@ -88,6 +119,11 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     event SecurityPauseRenewed(uint32 reason, uint64 until, address indexed signer);
     event SecurityUnpaused(address indexed signer);
     event PauseWindowUpdated(uint64 window);
+    event MembershipSourceUpdated(address indexed source);
+    /// @notice the first half of a two-person pause action: `action` is the hash of its calldata.
+    event ActionProposed(bytes32 indexed action, address indexed proposer, bytes4 selector);
+    /// @notice the second half, by a different holder of the role; the action ran.
+    event ActionApproved(bytes32 indexed action, address indexed proposer, address indexed approver);
 
     function _clearUsdStorage() private pure returns (ClearUSDStorage storage $) {
         bytes32 slot = CLEAR_USD_STORAGE;
@@ -193,6 +229,28 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         super._update(holder, to, amount);
     }
 
+    /// @notice sets the member registry that transfers must be received by (12.15). Governed.
+    /// @dev Unset means unrestricted, as `setEncumbranceSource` does for the lock: a token not yet
+    /// wired to the registry must still work, and clearing it is visible and takes the timelock.
+    function setMembershipSource(address source) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _clearUsdStorage().membershipSource = IMembershipSource(source);
+        emit MembershipSourceUpdated(source);
+    }
+
+    function membershipSource() external view returns (address) {
+        return address(_clearUsdStorage().membershipSource);
+    }
+
+    /// @notice whether `account` may receive a CLRUSD transfer now.
+    function mayReceive(address account) public view returns (bool) {
+        IMembershipSource source = _clearUsdStorage().membershipSource;
+        if (address(source) == address(0) || account == address(0)) return true;
+        if (hasRole(MINTER_ROLE, account) || hasRole(BURNER_ROLE, account) || hasRole(LIQUIDATOR_ROLE, account)) {
+            return true;
+        }
+        return source.isMember(account);
+    }
+
     /// @dev One hook covers every way out. Transfers, redemptions and bridging all pass through
     /// `_update`, and a lock that only caught transfers would be a lock in name. Minting is
     /// exempt because it has no `from` to encumber.
@@ -212,6 +270,8 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
             uint256 balance = balanceOf(from);
             uint256 free = balance > locked ? balance - locked : 0;
             if (value > free) revert ClearUSDEncumbered(from, free, value);
+            // Members only (12.15): receipt, never sending. A burn has no receiver.
+            if (!mayReceive(to)) revert ClearUSDReceiverNotMember(to);
         }
 
         super._update(from, to, value);
@@ -229,6 +289,8 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     }
 
     /// @notice pauses one account's outgoing transfers, for suspected fraud only.
+    /// @dev Two-person (Phase 2d, decision 2), like every pause action below: one FRAUD_ROLE
+    /// holder's call proposes, a second holder's identical call carries it out.
     /// @dev The DFAL carve-out: stopping a transaction solely in response to unauthorized or
     /// fraudulent activity. It moves nothing, blocks only what the account sends, and lapses on
     /// its own after the window unless a different signer renews it. Not a credit or collections
@@ -236,6 +298,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @param account the account to pause.
     /// @param reason an off-chain case reference.
     function pauseAccount(address account, uint32 reason) external onlyRole(FRAUD_ROLE) {
+        if (!_secondSigner(FRAUD_ROLE)) return;
         ClearUSDStorage storage $ = _clearUsdStorage();
         Pause storage p = $.accountPause[account];
         _requireMayPause(p);
@@ -247,6 +310,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @notice renews an account's pause for another window. Needs a different signer from the
     /// one that set or last renewed it, and a reason; each renewal is logged.
     function renewAccountPause(address account, uint32 reason) external onlyRole(FRAUD_ROLE) {
+        if (!_secondSigner(FRAUD_ROLE)) return;
         Pause storage p = _clearUsdStorage().accountPause[account];
         _renew(p, reason);
         emit AccountPauseRenewed(account, reason, p.until, _msgSender());
@@ -256,6 +320,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @dev Ends it now rather than deleting it, so who set it is remembered: unpausing and pausing
     /// again is not a way for one signer to restart the clock (Phase 4, M-A).
     function unpauseAccount(address account) external onlyRole(FRAUD_ROLE) {
+        if (!_secondSigner(FRAUD_ROLE)) return;
         _end(_clearUsdStorage().accountPause[account]);
         emit AccountUnpaused(account, _msgSender());
     }
@@ -264,6 +329,7 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// activity). Same limits as an account pause: it moves nothing and lapses after the window
     /// unless a second signer renews it.
     function pauseForSecurity(uint32 reason) external onlyRole(SECURITY_ROLE) {
+        if (!_secondSigner(SECURITY_ROLE)) return;
         ClearUSDStorage storage $ = _clearUsdStorage();
         _requireMayPause($.globalPause);
         uint64 until = uint64(block.timestamp) + _window();
@@ -272,12 +338,14 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     }
 
     function renewSecurityPause(uint32 reason) external onlyRole(SECURITY_ROLE) {
+        if (!_secondSigner(SECURITY_ROLE)) return;
         Pause storage p = _clearUsdStorage().globalPause;
         _renew(p, reason);
         emit SecurityPauseRenewed(reason, p.until, _msgSender());
     }
 
     function unpauseSecurity() external onlyRole(SECURITY_ROLE) {
+        if (!_secondSigner(SECURITY_ROLE)) return;
         _end(_clearUsdStorage().globalPause);
         emit SecurityUnpaused(_msgSender());
     }
@@ -288,6 +356,31 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         if (window > MAX_PAUSE_WINDOW) revert ClearUSDPauseWindowTooLong(window);
         _clearUsdStorage().pauseWindow = window;
         emit PauseWindowUpdated(window);
+    }
+
+    /// @dev Two-person control in contract (Phase 2d, decision 2). The first holder of `role` to
+    /// make a call records its exact calldata and gets false, and the call does nothing more. A
+    /// different holder making the identical call gets true, and the call proceeds. The same holder
+    /// twice reverts; a proposer who has since lost the role no longer counts. The 10c rules (the
+    /// last signer cannot renew or restart a pause) then apply to the second signer.
+    function _secondSigner(bytes32 role) private returns (bool) {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        bytes32 action = keccak256(msg.data);
+        address first = $.proposerOf[action];
+        if (first == _msgSender()) revert ClearUSDSameSigner(_msgSender());
+        if (first == address(0) || !hasRole(role, first)) {
+            $.proposerOf[action] = _msgSender();
+            emit ActionProposed(action, _msgSender(), msg.sig);
+            return false;
+        }
+        delete $.proposerOf[action];
+        emit ActionApproved(action, first, _msgSender());
+        return true;
+    }
+
+    /// @notice who proposed a pending two-person pause action, by the hash of its calldata.
+    function proposerOf(bytes32 action) external view returns (address) {
+        return _clearUsdStorage().proposerOf[action];
     }
 
     function _renew(Pause storage p, uint32 reason) private {

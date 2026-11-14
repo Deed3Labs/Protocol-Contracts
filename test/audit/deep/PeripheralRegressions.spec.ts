@@ -289,7 +289,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       const sig = await signClaim(escrow, claimKey, transferId, recipient.address);
       await expect(escrow.connect(settler).claimToWalletWithSignature(transferId, recipient.address, sig))
         .to.be.revertedWithCustomError(escrow, "ClaimEscrowExpired");
-      await expect(escrow.connect(settler).claimToPayoutTreasury(transferId))
+      await expect(escrow.connect(settler).claimToPayoutTreasuryWithSignature(transferId, ethers.ZeroHash, sig))
         .to.be.revertedWithCustomError(escrow, "ClaimEscrowExpired");
       await escrow.refundExpired(transferId);
     });

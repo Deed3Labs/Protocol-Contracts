@@ -18,8 +18,13 @@ import { saveDeployment, getDeployment } from "./helpers";
  *   names ESADepositVault as where ESA deposits are read for the Boost cap.
  * - Grants STATE_ATTESTER_ROLE on NetworkRegistry to `STATE_ATTESTER_KEY` when set.
  * - Trusts the revolving issuer on the Liquidator (permissionless liquidation only seizes for
- *   trusted issuers), and names NetworkRegistry as the vault's state source.
- * - Sets the vault's CA pilot cap only when `PILOT_CAP_USD` is given; it is off otherwise.
+ *   trusted issuers), and names NetworkRegistry as the vault's state source. From then on every
+ *   vault mint needs the receiver's state attestation while the pilot item is on (Phase 2d, L-E).
+ *   The pilot measure itself is off chain (Phase 2d, decision 7): there is no cap to set.
+ * - Names the AccessManager as CLRUSD's membership source, so CLRUSD is received only by member
+ *   wallets (spec 12.15, Phase 2d decision 6).
+ * Both of the last two need the vault's or CLRUSD's admin. After `vault_timelock_handover.ts` they
+ * are Clear Financial Safe proposals through the vault timelock, and the script says so.
  *
  * Idempotent: every step checks before it writes. It never deploys a contract other than
  * RateSchedule and never moves an admin power; the handover is a separate, explicit step.
@@ -35,8 +40,6 @@ export interface ComplianceOptions {
   quiet?: boolean;
   configPath?: string;
   stateAttester?: string;
-  pilotCapUsd?: bigint;
-  pilotAlertUsd?: bigint;
 }
 
 export function loadRateTable(configPath = path.join(__dirname, "config", "rate-schedule.json")) {
@@ -229,22 +232,33 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     }
   }
 
-  // ---- vault: state source, and the CA pilot cap only when asked for ----
+  // ---- vault: state source (the pilot measure is off chain; Phase 2d, decision 7) ----
   const vaultRecord = getDeployment(network, "ESADepositVault");
   if (vaultRecord) {
     const vault = await ethers.getContractAt("ESADepositVault", vaultRecord.address);
     const registryAddress = await networkRegistry.getAddress();
-    // The source is private storage on a live contract; setting it again is harmless.
-    await (await vault.setStateSource(registryAddress)).wait();
-    log("  ESADepositVault state source -> NetworkRegistry");
-    const capUsd = options.pilotCapUsd ?? (process.env.PILOT_CAP_USD ? BigInt(process.env.PILOT_CAP_USD) : undefined);
-    if (capUsd !== undefined) {
-      const alertUsd = options.pilotAlertUsd ??
-        (process.env.PILOT_ALERT_USD ? BigInt(process.env.PILOT_ALERT_USD) : (capUsd * 8n) / 10n);
-      await (await vault.setPilotCap(capUsd * ONE_USD, alertUsd * ONE_USD, true)).wait();
-      log(`  CA pilot cap ${capUsd} USD, alert at ${alertUsd} USD`);
+    if ((await vault.stateSource()) === registryAddress) {
+      log("  ESADepositVault state source is NetworkRegistry");
+    } else if (await vault.hasRole(ethers.ZeroHash, deployer.address)) {
+      await (await vault.setStateSource(registryAddress)).wait();
+      log("  ESADepositVault state source -> NetworkRegistry");
     } else {
-      log("! PILOT_CAP_USD unset: the CA pilot cap is off.");
+      log(`! The vault is governed by the vault timelock: propose setStateSource(${registryAddress}) there.`);
+    }
+  }
+
+  // ---- CLRUSD: members only (spec 12.15) ----
+  const clrusdRecord = getDeployment(network, "ClearUSDUpgradeable");
+  const accessRecord = getDeployment(network, "AccessManager");
+  if (clrusdRecord && accessRecord) {
+    const clrusd = await ethers.getContractAt("ClearUSDUpgradeable", clrusdRecord.address);
+    if ((await clrusd.membershipSource()) === ethers.getAddress(accessRecord.address)) {
+      log("  CLRUSD membership source is the AccessManager");
+    } else if ((await clrusd.defaultAdmin()) === deployer.address) {
+      await (await clrusd.setMembershipSource(accessRecord.address)).wait();
+      log("  CLRUSD membership source -> AccessManager (transfers to members only)");
+    } else {
+      log(`! CLRUSD is governed by the vault timelock: propose setMembershipSource(${accessRecord.address}) there.`);
     }
   }
 

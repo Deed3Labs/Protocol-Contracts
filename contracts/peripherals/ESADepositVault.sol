@@ -48,6 +48,25 @@ interface IERC3009 {
 ///      **One accepted token (audit M-5).** CLRUSD is fungible and every accepted token used to
 ///      redeem 1:1 for every other, so accepting a second stablecoin let anyone swap a depegged one
 ///      for the vault's USDC. The vault now accepts exactly one token at a time.
+///
+///      **Who controls it (Phase 2d, 10g, decisions 1 and 2).** Every power here is Clear Financial
+///      Co.'s, under two-person control, in one of two shapes:
+///       - `DEFAULT_ADMIN_ROLE` (upgrades, settings, the pilot off switch, granting every role) is
+///         held only by the vault timelock (`deploy/vault_timelock_handover.ts`): 7 days, with a
+///         Clear Financial Safe as proposer, so each call is a Safe transaction plus the delay;
+///       - the pauses (`PAUSER_ROLE`) and the CA mint pause (`PILOT_ROLE`) take two distinct
+///         holders of the role, in contract: the first call records the exact calldata, the second
+///         from a different holder carries it out (`_secondSigner`).
+///      `RELAYER_ROLE` stays a single hot key (decision 2): it only submits what a member signed.
+///
+///      **Reserve custody (10g).** The reserve is the accepted token held by this contract; there is
+///      no separate reserve address. It leaves in exactly one place, `_executeRedeem`, which burns
+///      the redeemer's CLRUSD one-for-one and pays the receiver the redeemer chose by their own call
+///      or signature. The Liquidator reaches the reserve the same way, as the holder of the CLRUSD it
+///      seized under 10b, and settles the debt with what it receives. There is no sweep, rescue or
+///      admin withdrawal, and none of the admin setters moves a token. The vault earns nothing on the
+///      reserve: it lends, stakes and approves nothing. Rewards on USDC, if Clear Financial ever
+///      receives any, are paid off chain to a Clear address, never into this contract.
 contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpgradeable, UUPSUpgradeable, EIP712Upgradeable, IESADepositVault {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
@@ -58,6 +77,8 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     ///         nothing else. A role constant is not storage, so adding it is layout-safe.
     bytes32 public constant RELAYER_ROLE = keccak256("RELAYER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    /// @notice May set and clear the CA mint pause (spec 11's manual backstop), two holders at a time.
+    bytes32 public constant PILOT_ROLE = keccak256("PILOT_ROLE");
     bytes32 private constant REDEEM_TYPEHASH =
         keccak256("Redeem(address redeemer,address token,uint256 clrusdAmount,address receiver,uint256 nonce,uint256 deadline)");
     /// @dev Audit M-5: the depositor names who receives the CLRUSD. Bound to the EIP-3009 nonce of
@@ -104,19 +125,29 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     event ClrusdUpdated(address indexed clrusd);
 
     error ESADepositVaultInvalidAddress();
-    /// @notice thrown when a CA mint would take the rolling year's CA volume past the pilot cap.
-    error ESADepositVaultPilotCapReached(uint256 volume, uint256 amount, uint256 cap);
     error ESADepositVaultNotPaused();
-    /// @notice the two-person rule: the last signer cannot renew their own pause.
+    /// @notice the two-person rule: the same signer cannot be both halves of an action, nor renew
+    /// or restart their own pause.
     error ESADepositVaultSameSigner();
     /// @notice thrown when a pause window above 72 hours is set (spec 10c; Phase 4, M-A).
     error ESADepositVaultPauseWindowTooLong(uint64 window);
+    /// @notice thrown for a CA mint while the CA mint pause is on (spec 11's manual backstop).
+    error ESADepositVaultCaMintsPaused(uint32 reason);
+    /// @notice thrown for a mint to a receiver with no attested state (DECISIONS #6; Phase 4, L-E).
+    error ESADepositVaultStateNotAttested(address receiver);
+    /// @notice thrown when setting the CA mint pause after governance switched the pilot off.
+    error ESADepositVaultPilotOff();
 
-    event PilotCapUpdated(uint256 cap, uint256 alertAt, bool enabled);
     event StateSourceUpdated(address indexed source);
-    /// @notice CA volume crossed the alert threshold, below the cap.
-    event PilotAlert(uint256 volume, uint256 cap);
     event PauseExpiresAt(uint64 until, address indexed signer);
+    /// @notice the first half of a two-person action: `action` is the hash of its calldata.
+    event ActionProposed(bytes32 indexed action, address indexed proposer, bytes4 selector);
+    /// @notice the second half, by a different holder of the role; the action ran.
+    event ActionApproved(bytes32 indexed action, address indexed proposer, address indexed approver);
+    /// @notice the CA mint pause was set (`paused`) or cleared, by two signers, with a reason code.
+    event CaMintsPauseSet(bool paused, uint32 reason, address indexed proposer, address indexed approver);
+    /// @notice governance switched the whole pilot item off (or back on).
+    event PilotSwitched(bool off);
     event PauseWindowUpdated(uint64 window);
     /// @notice thrown when re-pointing the vault while the old token is still held by somebody.
     error ESADepositVaultTokenStillOutstanding(uint256 outstanding);
@@ -163,7 +194,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     function deposit(address token, uint256 amount, address receiver) external override whenNotPaused returns (uint256 minted) {
         minted = _validateDeposit(token, amount, receiver);
         IERC20Upgradeable(token).safeTransferFrom(msg.sender, address(this), amount);
-        _mintCounted(receiver, minted);
+        _mintChecked(msg.sender, receiver, minted);
         emit Deposited(msg.sender, receiver, token, amount, minted);
     }
 
@@ -235,7 +266,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         IERC3009(token).receiveWithAuthorization(
             depositor, address(this), amount, auth.validAfter, auth.validBefore, auth.nonce, auth.v, auth.r, auth.s
         );
-        _mintCounted(receiver, minted);
+        _mintChecked(depositor, receiver, minted);
         emit Deposited(depositor, receiver, token, amount, minted);
     }
 
@@ -312,7 +343,8 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         if (_convertToClrUsd(token, returnedAmount) != clrusdAmount) revert ESADepositVaultNonExactAmount();
         if (IERC20Upgradeable(token).balanceOf(address(this)) < returnedAmount) revert ESADepositVaultInsufficientLiquidity();
 
-        _countPilot(redeemer, clrusdAmount, false);
+        // The only way reserve leaves the vault (10g): the redeemer's CLRUSD is burned one-for-one
+        // first, and nothing in the pilot -- the CA mint pause, the attestation -- can refuse it.
         IClearUSDMintBurn(clrusd).burnFrom(redeemer, clrusdAmount);
         IERC20Upgradeable(token).safeTransfer(receiver, returnedAmount);
         emit Redeemed(redeemer, receiver, token, clrusdAmount, returnedAmount);
@@ -347,7 +379,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
 
         minted = _validateDeposit(token, amountPerRun, depositor);
         IERC20Upgradeable(token).safeTransferFrom(depositor, address(this), amountPerRun);
-        _mintCounted(depositor, minted);
+        _mintChecked(depositor, depositor, minted);
         emit Deposited(depositor, depositor, token, amountPerRun, minted);
         emit MandateDeposit(digest, depositor, st.runsDone, amountPerRun, minted);
     }
@@ -473,7 +505,11 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @dev Compliance spec 10c: a pause that blocks redemption is a power to block a member's
     /// CLRUSD transaction, so it is limited the same way the token's pauses are -- it lapses on its
     /// own after the window (72 hours by default) unless a different signer renews it.
+    ///
+    /// Two-person (Phase 2d, decision 2): one pauser's call proposes, a second pauser's identical
+    /// call carries it out. The same applies to `renewPause` and `unpause`.
     function pause() external onlyRole(PAUSER_ROLE) {
+        if (_secondSigner(PAUSER_ROLE) == address(0)) return;
         // An active pause is extended only by a second signer's renewal; and the signer of the
         // last pause may not start another on their own until 30 days after it ended, so one key
         // cannot chain pauses -- by re-pausing at the lapse, or unpausing and pausing again --
@@ -490,6 +526,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
 
     /// @notice renews a pause for another window; needs a different signer from the last one.
     function renewPause() external onlyRole(PAUSER_ROLE) {
+        if (_secondSigner(PAUSER_ROLE) == address(0)) return;
         if (!paused()) revert ESADepositVaultNotPaused();
         if (msg.sender == s_pauseSigner) revert ESADepositVaultSameSigner();
         s_pausedUntil = uint64(block.timestamp) + _pauseWindow();
@@ -500,6 +537,7 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @dev Ends the pause now and keeps when it ended and who set it, so unpausing is not a way
     /// to restart the clock (Phase 4, M-A).
     function unpause() external onlyRole(PAUSER_ROLE) {
+        if (_secondSigner(PAUSER_ROLE) == address(0)) return;
         if (super.paused()) _unpause();
         if (s_pausedUntil > block.timestamp) s_pausedUntil = uint64(block.timestamp);
     }
@@ -522,30 +560,60 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         return s_pauseWindow == 0 ? 72 hours : s_pauseWindow;
     }
 
-    /* ── Pilot volume cap (compliance spec item 11, DFAL small-volume exemption) ── */
+    /* ── Pilot (compliance spec item 11, as decided 2026-11-14: decision 7) ──
+     *
+     * The pilot measure is tracked OFF chain, from this contract's `Deposited` and `Redeemed`
+     * events, CLRUSD's `Transfer` events and NetworkRegistry's state attestations. On chain there
+     * is no counter and nothing reverts at a cap; there are only:
+     *  - the CA mint pause, a manual backstop that two PILOT_ROLE holders set and clear with a
+     *    reason code. It is never set automatically, blocks only new CA mints, and never touches
+     *    a redemption or a non-CA mint;
+     *  - a state attestation before any mint (DECISIONS #6's mitigation; Phase 4, L-E);
+     *  - governance's off switch for the whole item, for when a DFAL licence or other cover is in
+     *    place.
+     *
+     * Which mints are CA (Phase 4, L-E, counting by depositor and receiver): the receiver's
+     * attested state is CA, or the depositor's is. A member with no stateCode counts as CA
+     * (spec 11, superseding DECISIONS #6's "unknown counts as WY"). With an attestation required
+     * before every mint, that default applies on chain only while no state source is named, and
+     * then every mint counts as CA. A depositor with no stateCode -- a contract such as a
+     * SavingsIntentEscrow, or a wallet paying in for a member -- is counted by its receiver. */
 
-    /// @notice the 365-day rolling window: this many days, counting today.
-    uint256 public constant PILOT_WINDOW_DAYS = 365;
-
-    /// @notice CLRUSD minted plus redeemed for CA members over the rolling 365 days.
-    function caVolume() public view returns (uint256 total) {
-        uint256 today = block.timestamp / 1 days;
-        uint256 from = today + 1 > PILOT_WINDOW_DAYS ? today + 1 - PILOT_WINDOW_DAYS : 0;
-        if (s_caWindowFrom >= from) return s_caWindowTotal;
-        // Days that have left the window since it was last brought forward.
-        total = s_caWindowTotal;
-        uint256 stop = from < s_caWindowFrom + PILOT_WINDOW_DAYS ? from : s_caWindowFrom + PILOT_WINDOW_DAYS;
-        for (uint256 d = s_caWindowFrom; d < stop; d++) total -= s_caVolumeByDay[d];
-        if (from >= s_caWindowFrom + PILOT_WINDOW_DAYS) total = 0;
+    /// @notice the CA mint pause, two-person: the first PILOT_ROLE holder's call proposes and a
+    /// second holder's identical call sets it. Never set automatically (spec 11).
+    /// @param reason an off-chain reason code, logged.
+    function pauseCaMints(uint32 reason) external onlyRole(PILOT_ROLE) {
+        if (s_pilotOff) revert ESADepositVaultPilotOff();
+        address proposer = _secondSigner(PILOT_ROLE);
+        if (proposer == address(0)) return;
+        s_caMintsPaused = true;
+        s_caPauseReason = reason;
+        emit CaMintsPauseSet(true, reason, proposer, msg.sender);
     }
 
-    /// @notice configures the pilot cap: the most CA volume a rolling year may hold, the level
-    /// at which to raise an alert, and whether it applies at all. Governed (admin is the timelock).
-    function setPilotCap(uint256 cap, uint256 alertAt, bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        s_pilotCap = cap;
-        s_pilotAlert = alertAt;
-        s_pilotCapOn = enabled;
-        emit PilotCapUpdated(cap, alertAt, enabled);
+    /// @notice clears the CA mint pause; also two-person, with a reason code.
+    function unpauseCaMints(uint32 reason) external onlyRole(PILOT_ROLE) {
+        address proposer = _secondSigner(PILOT_ROLE);
+        if (proposer == address(0)) return;
+        s_caMintsPaused = false;
+        s_caPauseReason = reason;
+        emit CaMintsPauseSet(false, reason, proposer, msg.sender);
+    }
+
+    /// @notice whether new CA mints are paused now, and the reason code last given.
+    function caMintsPaused() external view returns (bool paused_, uint32 reason) {
+        return (s_caMintsPaused && !s_pilotOff, s_caPauseReason);
+    }
+
+    /// @notice governance's switch for the whole pilot item (spec 11). Off, the CA mint pause has no
+    /// effect and cannot be set, and no attestation is required before a mint.
+    function setPilotOff(bool off) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        s_pilotOff = off;
+        emit PilotSwitched(off);
+    }
+
+    function pilotOff() external view returns (bool) {
+        return s_pilotOff;
     }
 
     /// @notice names where members' attested states are read (the NetworkRegistry).
@@ -554,9 +622,21 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         emit StateSourceUpdated(source);
     }
 
-    /// @dev Mints after counting the pilot volume, which refuses a CA mint past the cap.
-    function _mintCounted(address receiver, uint256 minted) internal {
-        _countPilot(receiver, minted, true);
+    function stateSource() external view returns (address) {
+        return s_stateSource;
+    }
+
+    /// @dev Every mint passes here: the pilot's checks, then the Boost deposit record, then the mint.
+    function _mintChecked(address depositor, address receiver, uint256 minted) internal {
+        if (!s_pilotOff) {
+            bytes32 receiverState = _stateOf(receiver);
+            if (receiverState == bytes32(0) && s_stateSource != address(0)) {
+                revert ESADepositVaultStateNotAttested(receiver);
+            }
+            if (s_caMintsPaused && (receiverState == bytes32(0) || receiverState == "CA" || _stateOf(depositor) == "CA")) {
+                revert ESADepositVaultCaMintsPaused(s_caPauseReason);
+            }
+        }
         s_lastDepositAt[receiver] = uint64(block.timestamp);
         IClearUSDMintBurn(clrusd).mint(receiver, minted);
     }
@@ -567,28 +647,35 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         return s_lastDepositAt[member];
     }
 
-    /// @dev Counts CA volume over the rolling window. Only CA members count; a member with no
-    /// attested state counts as WY (DECISIONS #6). New CA mints revert once the cap is reached;
-    /// redemptions are counted but never blocked -- refusing a member their money back is not what
-    /// a volume cap is for.
-    function _countPilot(address member, uint256 amount, bool isMint) internal {
-        if (!s_pilotCapOn || s_stateSource == address(0)) return;
-        (bool ok, bytes memory data) = s_stateSource.staticcall(
-            abi.encodeWithSignature("stateCodeOf(address)", member)
-        );
-        if (!ok || data.length < 32 || abi.decode(data, (bytes32)) != bytes32("CA")) return;
+    /// @dev A member's attested state, or zero when none is attested, no source is named or the
+    /// source cannot answer.
+    function _stateOf(address member) internal view returns (bytes32) {
+        if (s_stateSource == address(0)) return bytes32(0);
+        (bool ok, bytes memory data) = s_stateSource.staticcall(abi.encodeWithSignature("stateCodeOf(address)", member));
+        if (!ok || data.length < 32) return bytes32(0);
+        return abi.decode(data, (bytes32));
+    }
 
-        uint256 total = caVolume();
-        uint256 today = block.timestamp / 1 days;
-        uint256 from = today + 1 > PILOT_WINDOW_DAYS ? today + 1 - PILOT_WINDOW_DAYS : 0;
-        if (from > s_caWindowFrom) s_caWindowFrom = from;
-        if (isMint && total + amount > s_pilotCap) revert ESADepositVaultPilotCapReached(total, amount, s_pilotCap);
-        uint256 after_ = total + amount;
-        s_caWindowTotal = after_;
-        s_caVolumeByDay[today] += amount;
-        if (s_pilotAlert != 0 && total < s_pilotAlert && after_ >= s_pilotAlert) {
-            emit PilotAlert(after_, s_pilotCap);
+    /// @dev Two-person control in contract (Phase 2d, decision 2). The first holder of `role` to
+    /// make a call records its exact calldata and gets zero back, and the call does nothing more.
+    /// A different holder making the identical call gets back the proposer, and the call proceeds.
+    /// The same holder twice reverts; a proposer who has since lost the role no longer counts.
+    function _secondSigner(bytes32 role) internal returns (address proposer) {
+        bytes32 action = keccak256(msg.data);
+        proposer = s_proposerOf[action];
+        if (proposer == msg.sender) revert ESADepositVaultSameSigner();
+        if (proposer == address(0) || !hasRole(role, proposer)) {
+            s_proposerOf[action] = msg.sender;
+            emit ActionProposed(action, msg.sender, msg.sig);
+            return address(0);
         }
+        delete s_proposerOf[action];
+        emit ActionApproved(action, proposer, msg.sender);
+    }
+
+    /// @notice who proposed a pending two-person action, by the hash of its calldata.
+    function proposerOf(bytes32 action) external view returns (address) {
+        return s_proposerOf[action];
     }
 
     function _convertToClrUsd(address token, uint256 tokenAmount) internal view returns (uint256) {
@@ -612,6 +699,8 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
 
     /* ── Compliance spec 10c and 11, appended after s_acceptedToken ── */
     address private s_stateSource;
+    /// @dev Retired by Phase 2d (decision 7: the pilot measure is off chain). Never read or
+    /// written; kept so nothing after them moves. The same holds for the next five.
     uint256 private s_pilotCap;
     uint256 private s_pilotAlert;
     mapping(uint256 => uint256) private s_caVolumeByDay;
@@ -624,8 +713,17 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @dev Section 12.4: when each member last received a deposit mint, for the Boost deposit test.
     mapping(address => uint64) private s_lastDepositAt;
 
+    /* ── Phase 2d, appended after s_lastDepositAt ── */
+    /// @dev The first signer of each pending two-person action, by the hash of its calldata.
+    mapping(bytes32 => address) private s_proposerOf;
+    /// @dev Spec 11: governance's off switch for the pilot item, the CA mint pause and the reason
+    /// code last given for it. One slot.
+    bool private s_pilotOff;
+    bool private s_caMintsPaused;
+    uint32 private s_caPauseReason;
+
     /// @dev Reserved storage for future upgrades. Reduced by 1 (depositMandates mapping added),
-    ///      then by 1 more (s_acceptedToken added), then by 8 more for the block above (the last
-    ///      four share one slot), then by 1 for s_lastDepositAt.
-    uint256[33] private __gap;
+    ///      then by 1 more (s_acceptedToken added), then by 8 more for the Phase 2 block (the last
+    ///      four share one slot), then by 1 for s_lastDepositAt, then by 2 for Phase 2d.
+    uint256[31] private __gap;
 }

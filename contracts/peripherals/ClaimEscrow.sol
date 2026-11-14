@@ -35,8 +35,14 @@ interface IERC3009 {
  *      needs an EIP-712 `Claim(transferId, recipientWallet)` signature from the transfer's claim
  *      authority: the claim key the sender committed to at creation (normally an ephemeral key
  *      carried in the claim link, so the server never needs it), or, for a transfer created
- *      without one, the sender. The settler can still route a claim to `PAYOUT_TREASURY`, a fixed
- *      co-op address, for off-ramp payouts.
+ *      without one, the sender.
+ *
+ *      **Card and bank payouts (Phase 2d, L-D; kept by the owner's decision 5).** A claim paid out
+ *      to a card or bank goes to `PAYOUT_TREASURY`, a fixed co-op address, which pays the claimant
+ *      off chain. The settler used to choose that route on its own, so it could sweep any open
+ *      escrow to the treasury. It now needs a `PayoutClaim(transferId, payoutTreasury,
+ *      payoutRefHash)` signature from the claim key or the sender; `payoutRefHash` commits to the
+ *      off-chain payout the signer chose, and is logged.
  *
  *      **No race with the refund.** Claims are allowed up to and including `expiry`, refunds only
  *      after it, so the two windows never overlap.
@@ -56,6 +62,10 @@ contract ClaimEscrow is Initializable, AccessControlUpgradeable, UUPSUpgradeable
     bytes32 private constant VERSION_HASH = keccak256("1");
     /// @dev The claim authority's consent to one recipient wallet for one transfer.
     bytes32 private constant CLAIM_TYPEHASH = keccak256("Claim(bytes32 transferId,address recipientWallet)");
+    /// @dev The claim key's or the sender's consent to a card or bank payout through the treasury
+    ///      (Phase 2d, L-D). `payoutRefHash` names the off-chain payout (a hash; no account data).
+    bytes32 private constant PAYOUT_CLAIM_TYPEHASH =
+        keccak256("PayoutClaim(bytes32 transferId,address payoutTreasury,bytes32 payoutRefHash)");
     /// @dev What a gasless sender commits to through the EIP-3009 nonce: the full transfer terms,
     ///      including the claim key, so the relayer cannot swap in a key of its own.
     bytes32 private constant TRANSFER_TERMS_TYPEHASH = keccak256(
@@ -117,6 +127,8 @@ contract ClaimEscrow is Initializable, AccessControlUpgradeable, UUPSUpgradeable
     event TransferClaimedTreasury(bytes32 indexed transferId, address indexed payoutTreasury, uint256 totalLockedUsdc);
     event TransferRefunded(bytes32 indexed transferId, address indexed sender, uint256 totalLockedUsdc);
     event ClaimSignerSet(bytes32 indexed transferId, address indexed claimSigner);
+    /// @notice who consented to a treasury payout, and the off-chain payout they named.
+    event PayoutClaimAuthorized(bytes32 indexed transferId, address indexed signer, bytes32 payoutRefHash);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -286,8 +298,37 @@ contract ClaimEscrow is Initializable, AccessControlUpgradeable, UUPSUpgradeable
         emit TransferClaimedWallet(transferId, recipientWallet, record.principalUsdc, record.sponsorFeeUsdc);
     }
 
-    function claimToPayoutTreasury(bytes32 transferId) external onlyRole(SETTLER_ROLE) {
+    /// @notice Retired (Phase 2d, L-D): the settler alone can no longer route a claim to the treasury.
+    /// @dev Kept so existing callers fail loudly instead of hitting an unknown selector. Use
+    ///      `claimToPayoutTreasuryWithSignature`.
+    function claimToPayoutTreasury(bytes32) external view onlyRole(SETTLER_ROLE) {
+        revert ClaimEscrowSignatureRequired();
+    }
+
+    /// @notice Pays a transfer to `PAYOUT_TREASURY` for a card or bank payout the claimant chose.
+    /// @dev Needs the claim key's signature or the sender's (L-D), over
+    ///      `payoutClaimDigest(transferId, payoutRefHash)`. Either may sign: the claim key is the
+    ///      recipient's, the sender may route their own unclaimed money. Checked with
+    ///      `SignatureChecker`, so either may be a smart-contract wallet. Settler-submitted, since
+    ///      the settler is who pays the claimant out of the treasury.
+    /// @param payoutRefHash hash of the off-chain payout reference the signer chose.
+    /// @param signature the claim key's or the sender's EIP-712 signature.
+    function claimToPayoutTreasuryWithSignature(bytes32 transferId, bytes32 payoutRefHash, bytes calldata signature)
+        external
+        onlyRole(SETTLER_ROLE)
+    {
         TransferRecord storage record = _claimable(transferId);
+        bytes32 digest = payoutClaimDigest(transferId, payoutRefHash);
+        address key = claimSignerOf[transferId];
+        address signer;
+        if (key != address(0) && SignatureCheckerUpgradeable.isValidSignatureNow(key, digest, signature)) {
+            signer = key;
+        } else if (SignatureCheckerUpgradeable.isValidSignatureNow(record.sender, digest, signature)) {
+            signer = record.sender;
+        } else {
+            revert ClaimEscrowBadClaimSignature();
+        }
+        emit PayoutClaimAuthorized(transferId, signer, payoutRefHash);
 
         record.claimed = true;
         USDC.safeTransfer(PAYOUT_TREASURY, record.totalLockedUsdc);
@@ -316,6 +357,12 @@ contract ClaimEscrow is Initializable, AccessControlUpgradeable, UUPSUpgradeable
     /// @notice EIP-712 digest the claim authority signs to send a transfer to `recipientWallet`.
     function claimDigest(bytes32 transferId, address recipientWallet) public view returns (bytes32) {
         return _hashTypedData(keccak256(abi.encode(CLAIM_TYPEHASH, transferId, recipientWallet)));
+    }
+
+    /// @notice EIP-712 digest the claim key or the sender signs to pay a transfer out through the
+    ///         treasury to the off-chain payout `payoutRefHash` names.
+    function payoutClaimDigest(bytes32 transferId, bytes32 payoutRefHash) public view returns (bytes32) {
+        return _hashTypedData(keccak256(abi.encode(PAYOUT_CLAIM_TYPEHASH, transferId, PAYOUT_TREASURY, payoutRefHash)));
     }
 
     /// @notice The EIP-712 domain separator, built from constants (see the contract notes).
