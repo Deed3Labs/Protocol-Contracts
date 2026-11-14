@@ -200,7 +200,11 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
       .filter((n: string) => n !== n.toUpperCase()); // constants are not powers
     const blocking = names.filter((n: string) => /pause|freeze|blacklist|block|forceTransfer/i.test(n));
     expect(blocking.sort()).to.deep.equal(
-      ["pauseAccount", "pauseForSecurity", "pausedUntil", "renewAccountPause", "renewSecurityPause", "setPauseWindow", "unpauseAccount", "unpauseSecurity"].sort());
+      ["isPauseInForce", "pauseAccount", "pauseClock", "pauseForSecurity", "pauseMaxTotal", "pausedUntil", "renewAccountPause",
+        "renewAccountPauseWithLegalBasis", "renewSecurityPause", "renewSecurityPauseWithLegalBasis", "setPauseMaxTotal",
+        "setPauseWindow", "unpauseAccount", "unpauseSecurity"].sort());
+    // Phase 2g (10d): the listing functions stop receipt only, and are pinned too.
+    expect(names.filter((n: string) => /list/i.test(n)).sort()).to.deep.equal(["delist", "listingOf", "relist", "syncListing"]);
     await save(100n * ONE_USDC);
     // The vault holds BURNER_ROLE, and still cannot burn a member's CLRUSD without their allowance.
     const burner = (await ethers.getSigners())[15];
@@ -215,13 +219,16 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     expect(await vault.paused()).to.equal(false);
 
     // Members-only CLRUSD (12.15, Phase 2d decision 6): de-listing a wallet stops what it can
-    // receive, and nothing else. The de-listing is logged by the registry.
+    // receive, and nothing else. Since Phase 2g (10d) the de-listing is CLRUSD's own two-person
+    // `delist`, logged with its reason code.
     for (const w of [ctx.member, ctx.counterparty]) {
       if (!(await ctx.access.isMember(w.address))) await ctx.access.connect(ctx.operator).grantMember(w.address);
     }
     await clrusd.setMembershipSource(await ctx.access.getAddress());
-    await expect(ctx.access.connect(ctx.operator).revokeMember(ctx.member.address)).to.emit(ctx.access, "MemberRemoved");
-    expect(await ctx.access.isMember(ctx.member.address)).to.equal(false);
+    const [listerA, listerB] = (await ethers.getSigners()).slice(17, 19);
+    for (const k of [listerA, listerB]) await clrusd.grantRole(await clrusd.LISTING_ROLE(), k.address);
+    await clrusd.connect(listerA).delist(ctx.member.address, 2 /* HOLDER_REQUEST */, ethers.id("request"));
+    await expect(clrusd.connect(listerB).delist(ctx.member.address, 2, ethers.id("request"))).to.emit(clrusd, "WalletDelisted");
     await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 1n);
     await expect(clrusd.connect(ctx.counterparty).transfer(ctx.member.address, 1n))
       .to.be.revertedWithCustomError(clrusd, "ClearUSDReceiverNotMember");

@@ -79,6 +79,9 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     /// @notice May set and clear the CA mint pause (spec 11's manual backstop), two holders at a time.
     bytes32 public constant PILOT_ROLE = keccak256("PILOT_ROLE");
+    /// @notice The longest the pause may run from when it was first set without a legal basis (10c,
+    /// Phase 2g). Hard-coded: governance may shorten `pauseMaxTotal`, and no role can raise it.
+    uint64 public constant PAUSE_MAX_TOTAL = 30 days;
     bytes32 private constant REDEEM_TYPEHASH =
         keccak256("Redeem(address redeemer,address token,uint256 clrusdAmount,address receiver,uint256 nonce,uint256 deadline)");
     /// @dev Audit M-5: the depositor names who receives the CLRUSD. Bound to the EIP-3009 nonce of
@@ -131,6 +134,13 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     error ESADepositVaultSameSigner();
     /// @notice thrown when a pause window above 72 hours is set (spec 10c; Phase 4, M-A).
     error ESADepositVaultPauseWindowTooLong(uint64 window);
+    /// @notice thrown when a renewal without a legal basis would carry the pause past `capEnd`, the
+    /// time it was first set plus `pauseMaxTotal` (10c, Phase 2g).
+    error ESADepositVaultPauseCapReached(uint256 capEnd);
+    /// @notice thrown when `pauseMaxTotal` is set above PAUSE_MAX_TOTAL.
+    error ESADepositVaultPauseMaxTotalTooLong(uint64 maxTotal);
+    /// @notice thrown for a legal basis with an unknown code or a zero hash.
+    error ESADepositVaultInvalidLegalBasis(uint8 legalBasis);
     /// @notice thrown for a CA mint while the CA mint pause is on (spec 11's manual backstop).
     error ESADepositVaultCaMintsPaused(uint32 reason);
     /// @notice thrown for a mint to a receiver with no attested state (DECISIONS #6; Phase 4, L-E).
@@ -149,6 +159,9 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @notice governance switched the whole pilot item off (or back on).
     event PilotSwitched(bool off);
     event PauseWindowUpdated(uint64 window);
+    event PauseMaxTotalUpdated(uint64 maxTotal);
+    /// @notice a renewal carried the pause on its legal basis (10c).
+    event PauseLegalBasisRecorded(uint8 legalBasis, bytes32 legalBasisHash, uint64 until, address proposer, address approver);
     /// @notice thrown when re-pointing the vault while the old token is still held by somebody.
     error ESADepositVaultTokenStillOutstanding(uint256 outstanding);
     error ESADepositVaultInvalidAmount();
@@ -514,7 +527,8 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     /// @notice pauses deposits and redemptions during a security incident.
     /// @dev Compliance spec 10c: a pause that blocks redemption is a power to block a member's
     /// CLRUSD transaction, so it is limited the same way the token's pauses are -- it lapses on its
-    /// own after the window (72 hours by default) unless a different signer renews it.
+    /// own after the window (72 hours by default) unless a different signer renews it, and no
+    /// renewal carries it past 30 days from when it was set without a legal basis (Phase 2g).
     ///
     /// Two-person (Phase 2d, decision 2): one pauser's call proposes, a second pauser's identical
     /// call carries it out. The same applies to `renewPause` and `unpause`.
@@ -529,19 +543,77 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
             revert ESADepositVaultSameSigner();
         }
         _pause();
+        // Close the last pause into the clock (it has ended), and start a new span (Phase 2g).
+        if (s_pauseStartedAt != 0) s_pauseClockBefore += s_pausedUntil - s_pauseStartedAt;
+        s_pauseStartedAt = uint64(block.timestamp);
         s_pausedUntil = uint64(block.timestamp) + _pauseWindow();
         s_pauseSigner = msg.sender;
         emit PauseExpiresAt(s_pausedUntil, msg.sender);
     }
 
-    /// @notice renews a pause for another window; needs a different signer from the last one.
+    /// @notice renews a pause for another window; needs a different signer from the last one. It
+    /// reverts if the pause would then run past `pauseMaxTotal` from when it was first set (10c).
     function renewPause() external onlyRole(PAUSER_ROLE) {
         if (_secondSigner(PAUSER_ROLE) == address(0)) return;
+        _renewPause(false);
+    }
+
+    /// @notice renews the pause past the cap on a legal basis (10c): a court order, other legal
+    /// process, or a written law-enforcement or regulatory request. Two-person, like every renewal,
+    /// and it records the basis's code and the hash of the document.
+    /// @param legalBasis 1 court order, 2 other legal process, 3 written law-enforcement or
+    /// regulatory request.
+    function renewPauseWithLegalBasis(uint8 legalBasis, bytes32 legalBasisHash) external onlyRole(PAUSER_ROLE) {
+        if (legalBasis == 0 || legalBasis > 3 || legalBasisHash == bytes32(0)) {
+            revert ESADepositVaultInvalidLegalBasis(legalBasis);
+        }
+        address proposer = _secondSigner(PAUSER_ROLE);
+        if (proposer == address(0)) return;
+        _renewPause(true);
+        emit PauseLegalBasisRecorded(legalBasis, legalBasisHash, s_pausedUntil, proposer, msg.sender);
+    }
+
+    /// @dev Without a legal basis, a renewal may not carry the pause past when it was first set plus
+    /// `pauseMaxTotal`; with none, the pause lapses at its end. A pause set before Phase 2g has no
+    /// recorded start, so every renewal of it needs a legal basis (fails closed).
+    function _renewPause(bool legalBasis) private {
         if (!paused()) revert ESADepositVaultNotPaused();
         if (msg.sender == s_pauseSigner) revert ESADepositVaultSameSigner();
-        s_pausedUntil = uint64(block.timestamp) + _pauseWindow();
+        uint64 until = uint64(block.timestamp) + _pauseWindow();
+        uint256 capEnd = uint256(s_pauseStartedAt) + pauseMaxTotal();
+        if (!legalBasis && until > capEnd) revert ESADepositVaultPauseCapReached(capEnd);
+        s_pausedUntil = until;
         s_pauseSigner = msg.sender;
-        emit PauseExpiresAt(s_pausedUntil, msg.sender);
+        emit PauseExpiresAt(until, msg.sender);
+    }
+
+    /// @notice the seconds, up to now, in which the vault pause was in force (Phase 2g, decisions 3
+    /// and 4). It never decreases, so the paused time inside any period is the difference of two
+    /// readings. Only pauses set after Phase 2g are counted.
+    function pauseClock() external view returns (uint256) {
+        uint256 start = s_pauseStartedAt;
+        if (start == 0) return s_pauseClockBefore;
+        uint256 end = s_pausedUntil < block.timestamp ? s_pausedUntil : block.timestamp;
+        return s_pauseClockBefore + (end > start ? end - start : 0);
+    }
+
+    /// @notice whether the vault pause is in force now (the same as `paused()`).
+    function isPauseInForce() external view returns (bool) {
+        return paused();
+    }
+
+    /// @notice how long the pause may run from when it was first set before only a renewal with a
+    /// legal basis extends it (10c). At most PAUSE_MAX_TOTAL.
+    function pauseMaxTotal() public view returns (uint64) {
+        return s_pauseMaxTotal == 0 ? PAUSE_MAX_TOTAL : s_pauseMaxTotal;
+    }
+
+    /// @notice shortens `pauseMaxTotal`. Governed (the admin is the timelock). Above
+    /// PAUSE_MAX_TOTAL reverts, so no role can raise the cap; zero means PAUSE_MAX_TOTAL.
+    function setPauseMaxTotal(uint64 maxTotal) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (maxTotal > PAUSE_MAX_TOTAL) revert ESADepositVaultPauseMaxTotalTooLong(maxTotal);
+        s_pauseMaxTotal = maxTotal;
+        emit PauseMaxTotalUpdated(maxTotal);
     }
 
     /// @dev Ends the pause now and keeps when it ended and who set it, so unpausing is not a way
@@ -731,6 +803,16 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     bool private s_pilotOff;
     bool private s_caMintsPaused;
     uint32 private s_caPauseReason;
+
+    /* ── Phase 2g (10c, decisions 2 to 4), appended after s_caPauseReason. All three share its
+     *    slot (6 + 24 bytes), so `__gap` is unchanged. ── */
+    /// @dev When the current (or last) pause was first set; zero if none since Phase 2g.
+    uint64 private s_pauseStartedAt;
+    /// @dev The seconds earlier pauses were in force, for the pause clock.
+    uint64 private s_pauseClockBefore;
+    /// @dev How long a pause may run from when it was first set without a legal basis. Zero means
+    /// PAUSE_MAX_TOTAL.
+    uint64 private s_pauseMaxTotal;
 
     /// @dev Reserved storage for future upgrades. Reduced by 1 (depositMandates mapping added),
     ///      then by 1 more (s_acceptedToken added), then by 8 more for the Phase 2 block (the last
