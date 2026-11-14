@@ -65,6 +65,9 @@ The full texts are `MB-05-security-and-pledge-agreement.md` and `IV-10-burnerbon
     - A default does not by itself make the whole balance due.
     - This replaces Phase 2e's need computations (`_owedIn` over whole tiers, `_securedOwedOn` over whole plans).
 
+## Holder-cap bootstrap (owner, Nov 14, 2026)
+23. **The 10% holder cap applies only above a governed floor.** As written, a cap measured against outstanding shares refuses the first subscriber, who holds 100%. `EarnControls` applies the cap only while outstanding pool assets exceed `holderCapFloor`, a 7-day Earn-timelock setting that emits an event. The 10% cap is unchanged. The floor's value is set in deploy config; the plan suggests about $1m.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
