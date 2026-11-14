@@ -18,6 +18,8 @@ let queries: { sql: string; params: unknown[] }[] = [];
 let autoClear = true;
 let termReads = 0;
 let cardRepaymentSyncs = 0;
+/** Lithic holds asked for after a deposit: the first step of moving the money. */
+let holdsAsked: string[] = [];
 
 const client = {
   query: async (sql: string, params: unknown[] = []) => {
@@ -56,10 +58,19 @@ mock.module('../chain/termCollection.js', () => ({
   },
 }));
 
+const realRuns = await import('./autoClearRuns');
+mock.module('./autoClearRuns.js', () => ({
+  ...realRuns,
+  holdAutoClear: async (ref: string) => {
+    holdsAsked.push(ref);
+    return null;
+  },
+}));
+
 const { depositApplication, recordDeposit, AUTO_CLEAR_RAILS } = await import('./depositReceiptService');
 
 const WALLET = '0x00000000000000000000000000000000000000a1';
-const earmarks = () => queries.filter((q) => /INSERT INTO auto_repay_due/.test(q.sql));
+const earmarks = () => queries.filter((q) => /INSERT INTO auto_clear_runs/.test(q.sql));
 const settlements = () => queries.filter((q) => /'credit_settlement'/.test(q.sql));
 const termPayments = () => queries.filter((q) => /'term_settlement'/.test(q.sql));
 /** Anything a deposit could write that changes a credit position. */
@@ -70,6 +81,7 @@ beforeEach(() => {
   autoClear = true;
   termReads = 0;
   cardRepaymentSyncs = 0;
+  holdsAsked = [];
 });
 
 describe('which deposits auto-clear may clear from', () => {
@@ -93,6 +105,8 @@ describe('a deposit, end to end against the Pay DB', () => {
     expect(creditWrites()).toEqual([]);
     expect(termReads).toBe(0);
     expect(cardRepaymentSyncs).toBe(0);
+    // And no money moves: nothing is held at Lithic, so nothing can be transferred.
+    expect(holdsAsked).toEqual([]);
     expect(outcome.plan?.settledCents ?? 0).toBe(0);
     // The whole deposit stays the member's, in Spendable.
     expect(outcome.toCashCents + outcome.toSavingsCents).toBe(10_000);
@@ -103,28 +117,34 @@ describe('a deposit, end to end against the Pay DB', () => {
     expect(outcome.recorded).toBe(true);
     expect(creditWrites()).toEqual([]);
     expect(cardRepaymentSyncs).toBe(0);
+    expect(holdsAsked).toEqual([]);
     // The switch is not even read for a USDC deposit.
     expect(queries.some((q) => /SELECT enabled FROM member_auto_repay/.test(q.sql))).toBe(false);
   });
 
-  test('Spendable with auto-clear ON: term dues first, then the line earmarked for the sweep, never settled in the books', async () => {
+  test('Spendable with auto-clear ON: term dues first, then one clearing for the line, held at Lithic, never settled in the books', async () => {
     await recordDeposit({ rail: 'lithic_ach', externalId: 'ach-on', wallet: WALLET, amountCents: 10_000 });
     expect(termPayments()).toHaveLength(1);
     expect(earmarks()).toHaveLength(1);
-    expect(earmarks()[0].sql).toContain("'spendable'");
-    // $100 deposit, $30 to the plan, $50 owed on the line: the earmark is the $50.
-    expect(earmarks()[0].params).toEqual([WALLET, 5_000]);
+    // $100 deposit, $30 to the plan, $50 owed on the line: the clearing is the $50, keyed by a ref
+    // derived from this receipt (the same ref goes on chain and roots the Lithic tokens).
+    const ref = realRuns.refFor('lithic_ach', 'ach-on');
+    expect(earmarks()[0].params).toEqual([ref, WALLET, 'lithic_ach', 'ach-on', 5_000]);
+    expect(holdsAsked).toEqual([ref]);
     expect(settlements()).toEqual([]);
     expect(cardRepaymentSyncs).toBe(0);
   });
 });
 
-describe('the sweep pays only Spendable earmarks', () => {
+describe('the sweep', () => {
   const sweep = readFileSync(new URL('../chain/autoRepayService.ts', import.meta.url), 'utf8');
 
-  test('it selects source = spendable, and releases anything else rather than paying it', () => {
-    expect(sweep).toContain("WHERE due_cents > 0 AND source = '${AUTO_CLEAR_SOURCE}'");
-    expect(sweep).toContain("WHERE due_cents > 0 AND source IS DISTINCT FROM '${AUTO_CLEAR_SOURCE}'");
-    expect(sweep.indexOf('IS DISTINCT FROM')).toBeLessThan(sweep.indexOf('issuer.repayForMember('));
+  test('clears only per-deposit clearings (Spendable deposits), and releases anything earmarked before them', () => {
+    expect(sweep).toContain('UPDATE auto_repay_due SET due_cents = 0, updated_at = now() WHERE due_cents > 0');
+    expect(sweep).toContain('pgRunStore.listOpen(limit)');
+    expect(sweep).toContain('advanceRun(run, deps)');
+    // The chain is reached only through the clearing's state machine, which holds the money first.
+    expect(sweep.match(/issuer\.repayForMember\(/g)).toHaveLength(1);
+    expect(sweep.indexOf('submit: async')).toBeLessThan(sweep.indexOf('issuer.repayForMember('));
   });
 });

@@ -1,0 +1,744 @@
+import type { PoolClient } from 'pg';
+import { ethers } from 'ethers';
+import { getPayPool } from '../../config/postgres.js';
+import { getLithic } from '../lithic/lithicClient.js';
+import { lithicStore } from '../lithic/lithicStore.js';
+import { alertOps } from '../opsAlert.js';
+
+/*
+ * Auto-clear moves the money as well as the line (Phase 2b 12.2, the owner's 10f clarification:
+ * Automatic Clearing "sweeps Spendable deposits at the bank").
+ *
+ * `repayForMember` pays the line on chain with the card settler's USDC. The dollars that pay for it
+ * arrived in the member's Spendable account at the partner bank, so exactly what the chain applied
+ * leaves that account for Clear's settlement account in a Lithic book transfer. Without that step
+ * Clear pays the member's debt and the member keeps the deposit.
+ *
+ * One clearing per Spendable deposit, keyed by its ref: `refFor(rail, externalId)`, derived from the
+ * deposit receipt's identity. The same ref is the on-chain idempotency key (`repayForMember` refuses
+ * a ref twice: `autoRepayments[ref]`), and the Lithic hold and book transfer tokens are derived from
+ * it, so a retry anywhere resolves to the same hold, the same chain application and the same
+ * transfer, never a second one.
+ *
+ * Why the chain goes before the transfer. The amount that moves is what the contract APPLIED
+ * (`AutoCleared.applied`, or `autoRepaymentOf(ref)`), which is only known once the transaction is
+ * mined. So the money is reserved first with a Lithic hold, the chain applies, and the transfer of
+ * the applied amount settles the hold. The compensating steps cover each failure in between.
+ *
+ * THE STATE MACHINE (table `auto_clear_runs`, one row per ref):
+ *
+ *   earmarked ──hold placed──▶ held ──tx sent──▶ submitting ──applied read──▶ applied
+ *       │                       │  ▲                  │                          │
+ *       │                       │  └──reverted, or────┘                          │ book transfer
+ *       │                       │     dropped (resend: same ref)                 ▼
+ *       │                       │                               transferred ◀── or transfer_declined
+ *       ▼                       ▼                                 (done)        (retry, alert ops)
+ *    released ◀───────────── released
+ *
+ *   earmarked   A Spendable deposit with auto-clear ON set aside `earmark_cents` (what was owed, up
+ *               to what the deposit left). Nothing is held yet. Placing the hold is tried right after
+ *               the deposit is recorded, and again by every sweep.
+ *   held        A Lithic hold reserves the earmark in the member's account: it is out of their
+ *               available balance, so the card cannot spend it. If what the chain will take is
+ *               smaller (less is owed in scope), the hold is replaced with one for that amount
+ *               before anything is sent, and the rest is spendable again.
+ *   submitting  Recorded BEFORE `repayForMember(ref, member, amount)` is sent, with the amount.
+ *               After a crash the chain is asked (`autoRepaymentOf(ref)`); a transaction that
+ *               reverted or was dropped goes back to `held` and is resent with the same ref, which
+ *               the contract can apply at most once.
+ *   applied     The chain applied X. The books are written from the transaction. X is transferred
+ *               from the member's account to Clear's settlement account: settling the hold when X is
+ *               what it holds, otherwise after voiding it (the rest stays spendable).
+ *   transferred The money and the line agree. Done.
+ *   transfer_declined  Lithic refused the transfer (the chain has applied, so Clear is owed X). Ops
+ *               are alerted at once. Each later pass checks the last transfer token first, then tries
+ *               once with the next token, up to MAX_TRANSFER_ATTEMPTS; after that it waits for a
+ *               person. A new token is only used once the previous one is known to be declined, so
+ *               nothing can move twice.
+ *   released    Nothing will be cleared from this deposit: auto-clear was turned off, the hold was
+ *               declined after the wait, or nothing in scope became owed within the wait. Any hold is
+ *               voided, and the money is simply the member's.
+ *
+ * A failure inside a step (a timeout, an RPC error) leaves the row in its state and the next pass
+ * resumes there: every step first looks for what it would create (`findHold`, `findTransfer`,
+ * `appliedOf`) before creating it.
+ *
+ * Only Spendable bank deposits reach this: the deposit service creates a run only for the Lithic
+ * rail with auto-clear ON. Ready to allocate USDC and CLRUSD are never touched: the chain takes the
+ * settler's USDC, and the transfer moves only fiat out of the Spendable account.
+ */
+
+export type AutoClearState =
+  | 'earmarked'
+  | 'held'
+  | 'submitting'
+  | 'applied'
+  | 'transferred'
+  | 'transfer_declined'
+  | 'released';
+
+export const OPEN_STATES: readonly AutoClearState[] = ['earmarked', 'held', 'submitting', 'applied', 'transfer_declined'];
+/** Before the chain has applied anything: what auto-save and the member see as set aside. */
+export const PENDING_STATES: readonly AutoClearState[] = ['earmarked', 'held', 'submitting'];
+
+export interface AutoClearRun {
+  ref: string;
+  wallet: string;
+  rail: string;
+  externalId: string;
+  earmarkCents: number;
+  state: AutoClearState;
+  holdToken: string | null;
+  holdSeq: number;
+  holdCents: number;
+  holdVoided: boolean;
+  submittedCents: number;
+  txHash: string | null;
+  submittedAt: number | null;
+  appliedCents: number;
+  booked: boolean;
+  transferToken: string | null;
+  transferAttempt: number;
+  transferStatus: string | null;
+  attempts: number;
+  lastError: string | null;
+  createdAt: number;
+}
+
+/** The clearing's ref: on chain as `repayForMember`'s ref, and the root of every Lithic token. */
+export function refFor(rail: string, externalId: string): string {
+  return ethers.id(`clear.auto-clear:${rail}:${externalId}`);
+}
+
+/** A Lithic token (a UUID) derived from the ref, so the same step always carries the same token. */
+export function tokenFor(ref: string, purpose: string): string {
+  const h = ethers.id(`${ref}:${purpose}`).slice(2, 34).split('');
+  h[12] = '5'; // version nibble
+  h[16] = ((parseInt(h[16], 16) & 0x3) | 0x8).toString(16); // RFC 4122 variant
+  const s = h.join('');
+  return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20, 32)}`;
+}
+
+/** After this many tries, a declined transfer waits for a person (each try is alerted). */
+export const MAX_TRANSFER_ATTEMPTS = 5;
+/** A sent transaction with no receipt after this long is treated as dropped and resent (same ref). */
+export const SUBMIT_STALE_MS = 30 * 60 * 1000;
+
+/** How long a member's money may stay held while the chain has nothing to clear yet. */
+export function maxHoldMs(): number {
+  const hours = Number(process.env.AUTO_CLEAR_MAX_HOLD_HOURS);
+  return (Number.isFinite(hours) && hours > 0 ? hours : 72) * 60 * 60 * 1000;
+}
+
+/* ---- what the state machine depends on, so each side can be stood in for in tests ---- */
+
+export interface RunStore {
+  save(run: AutoClearRun): Promise<void>;
+}
+
+export type LithicTxStatus = 'PENDING' | 'SETTLED' | 'DECLINED' | 'REVERSED' | 'CANCELED' | 'RETURNED' | 'EXPIRED' | 'VOIDED' | string;
+
+/** The Lithic side: a hold on the member's Spendable account and a book transfer out of it. */
+export interface SpendableMoves {
+  /** Clear's settlement financial account, or null when it is not configured. */
+  settlementAccount(): string | null;
+  cashAccountOf(wallet: string): Promise<string | null>;
+  findHold(token: string): Promise<{ status: LithicTxStatus; result?: string } | null>;
+  createHold(account: string, input: { token: string; amountCents: number; ref: string }): Promise<{ status: LithicTxStatus; result?: string }>;
+  voidHold(token: string): Promise<void>;
+  findTransfer(token: string): Promise<{ status: LithicTxStatus } | null>;
+  createTransfer(input: {
+    token: string;
+    amountCents: number;
+    from: string;
+    to: string;
+    holdToken?: string;
+    ref: string;
+  }): Promise<{ status: LithicTxStatus }>;
+}
+
+/** The chain side: `RevolvingIssuer.repayForMember`, paid by the card settler. */
+export interface ChainSide {
+  enabled(wallet: string): Promise<boolean>;
+  pausedForEveryone(): Promise<boolean>;
+  /** What is owed within the member's scope, in whole cents, rounded down. */
+  owedInScopeCents(wallet: string): Promise<number>;
+  /** `autoRepaymentOf(ref)` in whole cents: what the chain applied for this ref, 0 if nothing. */
+  appliedOf(ref: string): Promise<number>;
+  txState(hash: string): Promise<'pending' | 'mined' | 'failed' | 'unknown'>;
+  /** Null when the settler can pay `cents`; otherwise why not (ops are told by the caller). */
+  settlerCannotPay(cents: number): Promise<string | null>;
+  /** Sends the transaction; `applied` resolves once it is mined, from `AutoCleared`. */
+  submit(ref: string, wallet: string, cents: number): Promise<{ hash: string; applied: Promise<number> }>;
+  /** The transaction that applied this ref, from its `AutoCleared` event, when the hash was lost. */
+  findClearingTx(ref: string): Promise<string | null>;
+  /** The books, from the transaction's own events (`recordUsdcRepayment`). Idempotent by hash. */
+  book(wallet: string, hash: string): Promise<void>;
+  /** The custom error's name, or null. */
+  errorName(error: unknown): string | null;
+}
+
+export interface AutoClearDeps {
+  store: RunStore;
+  moves: SpendableMoves;
+  chain: ChainSide;
+  alert(input: { key: string; subject: string; body: string }): Promise<void>;
+  notify(input: { wallet: string; title: string; body: string; data: Record<string, unknown>; dedupeKey: string }): Promise<void>;
+  now(): number;
+}
+
+export interface AutoClearStep {
+  wallet: string;
+  ref: string;
+  action: 'repaid' | 'held' | 'waiting' | 'off' | 'paused' | 'released' | 'failed';
+  cents?: number;
+  /** What was left of the earmark once the chain had what it needed: the member's to spend. */
+  releasedCents?: number;
+  txHash?: string;
+  reason?: string;
+}
+
+const money = (cents: number) =>
+  (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+
+const MOVED: ReadonlySet<string> = new Set(['PENDING', 'SETTLED']);
+
+async function ensureHold(
+  run: AutoClearRun,
+  deps: AutoClearDeps,
+  account: string,
+  cents: number,
+): Promise<{ token: string; held: boolean }> {
+  const token = tokenFor(run.ref, `hold:${run.holdSeq}`);
+  const hold =
+    (await deps.moves.findHold(token)) ??
+    (await deps.moves.createHold(account, { token, amountCents: cents, ref: run.ref }));
+  return { token, held: hold.status === 'PENDING' && hold.result !== 'DECLINED' };
+}
+
+async function voidIfHeld(run: AutoClearRun, deps: AutoClearDeps): Promise<void> {
+  if (!run.holdToken || run.holdVoided) return;
+  const hold = await deps.moves.findHold(run.holdToken);
+  if (hold?.status === 'PENDING') await deps.moves.voidHold(run.holdToken);
+  run.holdVoided = true;
+  await deps.store.save(run);
+}
+
+async function release(run: AutoClearRun, deps: AutoClearDeps, reason: string): Promise<AutoClearStep> {
+  await voidIfHeld(run, deps);
+  run.state = 'released';
+  run.lastError = reason;
+  await deps.store.save(run);
+  return { wallet: run.wallet, ref: run.ref, action: 'released', reason };
+}
+
+/**
+ * earmarked → held. Also run on its own right after the deposit is recorded, so the money is out of
+ * the card's reach before the next sweep.
+ */
+export async function placeHold(run: AutoClearRun, deps: Pick<AutoClearDeps, 'store' | 'moves' | 'alert' | 'now'>): Promise<AutoClearStep> {
+  const full = deps as AutoClearDeps;
+  if (run.state !== 'earmarked') return { wallet: run.wallet, ref: run.ref, action: 'waiting', reason: run.state };
+  if (deps.now() - run.createdAt > maxHoldMs()) return release(run, full, 'nothing was held within the wait');
+  const settlement = deps.moves.settlementAccount();
+  const account = await deps.moves.cashAccountOf(run.wallet);
+  if (!settlement || !account) {
+    await deps
+      .alert({
+        key: 'auto-clear:not-configured',
+        subject: 'Auto-clear is waiting: no Lithic settlement account',
+        body: `Auto-clear cannot move a member's Spendable dollars without Clear's settlement account (LITHIC_AUTO_CLEAR_SETTLEMENT_ACCOUNT_TOKEN) and the member's Lithic cash account. Nothing is held or cleared until both exist (${settlement ? 'member account missing' : 'settlement account missing'}).`,
+      })
+      .catch(() => {});
+    return { wallet: run.wallet, ref: run.ref, action: 'waiting', reason: 'no settlement account' };
+  }
+  const { token, held } = await ensureHold(run, full, account, run.earmarkCents);
+  if (!held) {
+    // Most often the member already spent it. Nothing is held; the next pass tries a fresh hold.
+    run.holdSeq += 1;
+    await deps.store.save(run);
+    return { wallet: run.wallet, ref: run.ref, action: 'waiting', reason: 'hold declined' };
+  }
+  run.state = 'held';
+  run.holdToken = token;
+  run.holdCents = run.earmarkCents;
+  run.holdVoided = false;
+  await deps.store.save(run);
+  return { wallet: run.wallet, ref: run.ref, action: 'held', cents: run.earmarkCents };
+}
+
+/** Advance one clearing as far as it can go now. See the state machine above. */
+export async function advanceRun(run: AutoClearRun, deps: AutoClearDeps): Promise<AutoClearStep> {
+  try {
+    for (let i = 0; i < 8; i++) {
+      const step = await advanceOnce(run, deps);
+      if (step) return step;
+    }
+    return { wallet: run.wallet, ref: run.ref, action: 'waiting', reason: run.state };
+  } catch (error) {
+    run.attempts += 1;
+    run.lastError = (error instanceof Error ? error.message : String(error)).slice(0, 300);
+    await deps.store.save(run).catch(() => {});
+    if (run.state === 'applied' || run.state === 'submitting') {
+      await deps
+        .alert({
+          key: `auto-clear:stuck:${run.ref}:${run.state}`,
+          subject: `Auto-clear: a clearing is retrying in "${run.state}"`,
+          body: `Clearing ${run.ref} for ${run.wallet} failed in "${run.state}" (${run.lastError}). It retries with the same ref and tokens, so nothing moves twice. ${run.state === 'applied' ? `The chain has applied ${run.appliedCents}c; the transfer out of Spendable has not been confirmed.` : ''}`,
+        })
+        .catch(() => {});
+    }
+    return { wallet: run.wallet, ref: run.ref, action: 'failed', reason: run.lastError ?? undefined };
+  }
+}
+
+/** One transition. Returns a result to stop, or null to go on to the next state. */
+async function advanceOnce(run: AutoClearRun, deps: AutoClearDeps): Promise<AutoClearStep | null> {
+  const { chain, moves, store } = deps;
+  const wait = (reason: string, action: AutoClearStep['action'] = 'waiting'): AutoClearStep => ({
+    wallet: run.wallet,
+    ref: run.ref,
+    action,
+    reason,
+  });
+
+  switch (run.state) {
+    case 'earmarked': {
+      if (!(await chain.enabled(run.wallet))) return release(run, deps, 'auto-clear is off');
+      const step = await placeHold(run, deps);
+      return step.action === 'held' ? null : step;
+    }
+
+    case 'held': {
+      if (deps.now() - run.createdAt > maxHoldMs()) return release(run, deps, 'nothing in scope became owed within the wait');
+      if (!(await chain.enabled(run.wallet))) {
+        const step = await release(run, deps, 'auto-clear is off');
+        return { ...step, action: 'off' };
+      }
+      // The hold may have expired or been voided under us (or by a crash mid-resize): hold again.
+      const hold = run.holdToken ? await moves.findHold(run.holdToken) : null;
+      if (!run.holdToken || run.holdVoided || hold?.status !== 'PENDING') {
+        run.state = 'earmarked';
+        run.holdSeq += 1;
+        run.holdToken = null;
+        run.holdVoided = false;
+        await store.save(run);
+        return null;
+      }
+      if (await chain.pausedForEveryone()) return wait('switched off network-wide', 'paused');
+
+      const owed = await chain.owedInScopeCents(run.wallet);
+      const amount = Math.min(run.holdCents, Math.max(0, Math.floor(owed)));
+      // A card purchase still pending is a hold at Lithic, not debt on chain: wait for it.
+      if (amount <= 0) return wait('nothing in scope owed on chain yet');
+
+      if (amount < run.holdCents) {
+        // Less is owed in scope than was set aside: hold exactly what the chain will take, so what
+        // is left is spendable now and the transfer can settle the hold in full.
+        const account = await moves.cashAccountOf(run.wallet);
+        if (!account) return wait('no Lithic cash account');
+        await moves.voidHold(run.holdToken);
+        run.holdVoided = true;
+        run.holdSeq += 1;
+        await store.save(run);
+        const { token, held } = await ensureHold(run, deps, account, amount);
+        if (!held) return release(run, deps, 'the smaller hold was declined');
+        run.holdToken = token;
+        run.holdCents = amount;
+        run.holdVoided = false;
+        await store.save(run);
+      }
+
+      const cannot = await chain.settlerCannotPay(amount);
+      if (cannot) {
+        await deps
+          .alert({
+            key: 'auto-clear:settler-balance',
+            subject: 'Auto-clear: the card settler cannot pay',
+            body: `${cannot}. Auto-clear pays the line with the settler's USDC (repayForMember pulls from msg.sender) and then moves the member's dollars to the settlement account. Members' deposits stay held meanwhile.`,
+          })
+          .catch(() => {});
+        return wait(cannot, 'failed');
+      }
+
+      // Recorded before sending, so a crash after the send is resolved by asking the chain.
+      run.state = 'submitting';
+      run.submittedCents = amount;
+      run.submittedAt = deps.now();
+      run.txHash = null;
+      await store.save(run);
+      try {
+        const sent = await chain.submit(run.ref, run.wallet, amount);
+        run.txHash = sent.hash;
+        await store.save(run);
+        const applied = await sent.applied;
+        run.appliedCents = applied > 0 ? applied : await chain.appliedOf(run.ref);
+        run.state = 'applied';
+        await store.save(run);
+        return null;
+      } catch (error) {
+        const name = chain.errorName(error);
+        if (name === 'RevolvingIssuerAutoRepayAlreadyUsed') return null; // `submitting` reads it
+        if (name === 'RevolvingIssuerNothingToClear' || name === 'RevolvingIssuerAutoClearOff' || name === 'RevolvingIssuerAutoRepayNotEnabled') {
+          // Reverted: nothing applied. Back to held; the next look decides (off releases it).
+          run.state = 'held';
+          await store.save(run);
+          if (name === 'RevolvingIssuerAutoRepayNotEnabled') return null;
+          return wait(name === 'RevolvingIssuerAutoClearOff' ? 'switched off network-wide' : 'nothing in scope owed on chain', name === 'RevolvingIssuerAutoClearOff' ? 'paused' : 'waiting');
+        }
+        throw error; // outcome unknown: stays `submitting`, resolved next pass
+      }
+    }
+
+    case 'submitting': {
+      const applied = await chain.appliedOf(run.ref);
+      if (applied > 0) {
+        if (!run.txHash) run.txHash = await chain.findClearingTx(run.ref);
+        run.appliedCents = applied;
+        run.state = 'applied';
+        await store.save(run);
+        return null;
+      }
+      if (run.txHash && run.submittedAt !== null && deps.now() - run.submittedAt < SUBMIT_STALE_MS) {
+        if ((await chain.txState(run.txHash)) === 'pending') return wait('transaction pending');
+      }
+      // Reverted, dropped or never sent: nothing was applied for this ref. Resend with the same ref.
+      run.state = 'held';
+      await store.save(run);
+      return null;
+    }
+
+    case 'applied': {
+      if (!run.booked) {
+        if (run.txHash) {
+          await chain.book(run.wallet, run.txHash);
+          run.booked = true;
+          await store.save(run);
+        } else {
+          await deps
+            .alert({
+              key: `auto-clear:unbooked:${run.ref}`,
+              subject: 'Auto-clear: a clearing applied on chain without a transaction to book from',
+              body: `Ref ${run.ref} for ${run.wallet} applied ${run.appliedCents}c on chain but its transaction was not found. The money still moves; book the repayment by hand.`,
+            })
+            .catch(() => {});
+        }
+      }
+      const settlement = moves.settlementAccount();
+      const account = await moves.cashAccountOf(run.wallet);
+      if (!settlement || !account) throw new Error('settlement or member account not configured');
+      if (run.appliedCents > run.holdCents) {
+        await deps
+          .alert({
+            key: `auto-clear:over-hold:${run.ref}`,
+            subject: 'Auto-clear: the chain applied more than was held',
+            body: `Ref ${run.ref} for ${run.wallet}: applied ${run.appliedCents}c, held ${run.holdCents}c. The applied amount is transferred.`,
+          })
+          .catch(() => {});
+      }
+
+      // Settle the hold with the transfer when it holds exactly what was applied; otherwise void
+      // it first, and the rest of the deposit is the member's again.
+      let useHold = !run.holdVoided && run.holdToken !== null && run.appliedCents === run.holdCents;
+      if (useHold) {
+        const hold = await moves.findHold(run.holdToken!);
+        if (hold?.status !== 'PENDING') {
+          run.holdVoided = true;
+          useHold = false;
+        }
+      }
+      if (!useHold) await voidIfHeld(run, deps);
+
+      const token = tokenFor(run.ref, `transfer:${run.transferAttempt}`);
+      run.transferToken = token;
+      await store.save(run);
+      const transfer =
+        (await moves.findTransfer(token)) ??
+        (await moves.createTransfer({
+          token,
+          amountCents: run.appliedCents,
+          from: account,
+          to: settlement,
+          ...(useHold ? { holdToken: run.holdToken! } : {}),
+          ref: run.ref,
+        }));
+      run.transferStatus = transfer.status;
+      if (MOVED.has(transfer.status)) {
+        if (useHold) run.holdVoided = true; // settled by the transfer
+        run.state = 'transferred';
+        await store.save(run);
+        const releasedCents = Math.max(0, run.earmarkCents - run.appliedCents);
+        await deps
+          .notify({
+            wallet: run.wallet,
+            title: 'Cleared from your deposit',
+            body:
+              releasedCents > 0
+                ? `${money(run.appliedCents)} cleared · ${money(releasedCents)} now spendable`
+                : `${money(run.appliedCents)} cleared`,
+            data: { txHash: run.txHash, appliedCents: run.appliedCents, spendableCents: releasedCents, ref: run.ref },
+            dedupeKey: `auto-clear:${run.ref}`,
+          })
+          .catch(() => {});
+        return {
+          wallet: run.wallet,
+          ref: run.ref,
+          action: 'repaid',
+          cents: run.appliedCents,
+          releasedCents,
+          txHash: run.txHash ?? undefined,
+        };
+      }
+      run.state = 'transfer_declined';
+      await store.save(run);
+      await deps
+        .alert({
+          key: `auto-clear:declined:${run.ref}:${run.transferAttempt}`,
+          subject: 'Auto-clear: the transfer out of Spendable was declined',
+          body: `Ref ${run.ref} for ${run.wallet}: the chain applied ${run.appliedCents}c (tx ${run.txHash ?? 'unknown'}), and Lithic answered ${transfer.status} to book transfer ${token}. Clear is owed ${run.appliedCents}c. It is retried with a new token only once this one is confirmed declined (attempt ${run.transferAttempt + 1} of ${MAX_TRANSFER_ATTEMPTS}).`,
+        })
+        .catch(() => {});
+      return wait(`transfer ${transfer.status}`, 'failed');
+    }
+
+    case 'transfer_declined': {
+      // The last token first: if it went through after all, it is done and nothing is sent again.
+      const last = run.transferToken ? await moves.findTransfer(run.transferToken) : null;
+      if (last && MOVED.has(last.status)) {
+        run.state = 'applied';
+        await store.save(run);
+        return null; // `applied` finds the same token and completes
+      }
+      if (run.transferAttempt + 1 >= MAX_TRANSFER_ATTEMPTS) return wait('transfer declined; needs a person', 'failed');
+      run.transferAttempt += 1;
+      run.state = 'applied';
+      await store.save(run);
+      return null;
+    }
+
+    case 'transferred':
+    case 'released':
+      return wait(run.state);
+  }
+}
+
+/* ---- Postgres and Lithic ---- */
+
+export async function ensureAutoClearRuns(client: { query: PoolClient['query'] }): Promise<void> {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS auto_clear_runs (
+      ref TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL,
+      rail TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      earmark_cents BIGINT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'earmarked',
+      hold_token TEXT,
+      hold_seq INT NOT NULL DEFAULT 0,
+      hold_cents BIGINT NOT NULL DEFAULT 0,
+      hold_voided BOOLEAN NOT NULL DEFAULT false,
+      submitted_cents BIGINT NOT NULL DEFAULT 0,
+      tx_hash TEXT,
+      submitted_at TIMESTAMPTZ,
+      applied_cents BIGINT NOT NULL DEFAULT 0,
+      booked BOOLEAN NOT NULL DEFAULT false,
+      transfer_token TEXT,
+      transfer_attempt INT NOT NULL DEFAULT 0,
+      transfer_status TEXT,
+      attempts INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS auto_clear_runs_open_idx ON auto_clear_runs (state, updated_at);
+    CREATE INDEX IF NOT EXISTS auto_clear_runs_wallet_idx ON auto_clear_runs (wallet);
+  `);
+}
+
+interface RunRow {
+  ref: string;
+  wallet: string;
+  rail: string;
+  external_id: string;
+  earmark_cents: string;
+  state: AutoClearState;
+  hold_token: string | null;
+  hold_seq: number;
+  hold_cents: string;
+  hold_voided: boolean;
+  submitted_cents: string;
+  tx_hash: string | null;
+  submitted_at: Date | null;
+  applied_cents: string;
+  booked: boolean;
+  transfer_token: string | null;
+  transfer_attempt: number;
+  transfer_status: string | null;
+  attempts: number;
+  last_error: string | null;
+  created_at: Date;
+}
+
+function fromRow(r: RunRow): AutoClearRun {
+  return {
+    ref: r.ref,
+    wallet: r.wallet,
+    rail: r.rail,
+    externalId: r.external_id,
+    earmarkCents: Number(r.earmark_cents),
+    state: r.state,
+    holdToken: r.hold_token,
+    holdSeq: r.hold_seq,
+    holdCents: Number(r.hold_cents),
+    holdVoided: r.hold_voided,
+    submittedCents: Number(r.submitted_cents),
+    txHash: r.tx_hash,
+    submittedAt: r.submitted_at ? new Date(r.submitted_at).getTime() : null,
+    appliedCents: Number(r.applied_cents),
+    booked: r.booked,
+    transferToken: r.transfer_token,
+    transferAttempt: r.transfer_attempt,
+    transferStatus: r.transfer_status,
+    attempts: r.attempts,
+    lastError: r.last_error,
+    createdAt: new Date(r.created_at).getTime(),
+  };
+}
+
+export const pgRunStore = {
+  async get(ref: string): Promise<AutoClearRun | null> {
+    const pool = getPayPool();
+    if (!pool) return null;
+    await ensureAutoClearRuns(pool);
+    const { rows } = await pool.query<RunRow>(`SELECT * FROM auto_clear_runs WHERE ref = $1`, [ref]);
+    return rows[0] ? fromRow(rows[0]) : null;
+  },
+  async listOpen(limit: number): Promise<AutoClearRun[]> {
+    const pool = getPayPool();
+    if (!pool) return [];
+    await ensureAutoClearRuns(pool);
+    const { rows } = await pool.query<RunRow>(
+      `SELECT * FROM auto_clear_runs WHERE state = ANY($1::text[]) ORDER BY updated_at LIMIT $2`,
+      [OPEN_STATES, limit],
+    );
+    return rows.map(fromRow);
+  },
+  async save(run: AutoClearRun): Promise<void> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('no Pay database');
+    await pool.query(
+      `UPDATE auto_clear_runs SET state = $2, hold_token = $3, hold_seq = $4, hold_cents = $5, hold_voided = $6,
+         submitted_cents = $7, tx_hash = $8, submitted_at = $9, applied_cents = $10, booked = $11,
+         transfer_token = $12, transfer_attempt = $13, transfer_status = $14, attempts = $15, last_error = $16,
+         updated_at = now()
+       WHERE ref = $1`,
+      [
+        run.ref,
+        run.state,
+        run.holdToken,
+        run.holdSeq,
+        run.holdCents,
+        run.holdVoided,
+        run.submittedCents,
+        run.txHash,
+        run.submittedAt === null ? null : new Date(run.submittedAt),
+        run.appliedCents,
+        run.booked,
+        run.transferToken,
+        run.transferAttempt,
+        run.transferStatus,
+        run.attempts,
+        run.lastError,
+      ],
+    );
+  },
+};
+
+function notFound(error: unknown): boolean {
+  return (error as { status?: number } | null)?.status === 404;
+}
+
+/**
+ * The book transfer's classification. Category, type and subtype are program-specific at Lithic, so
+ * they are configuration; the defaults are an internal account-to-account transfer.
+ */
+function transferClass() {
+  return {
+    category: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_CATEGORY || 'TRANSFER').trim(),
+    type: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_TYPE || 'TRANSFER').trim(),
+    subtype: (process.env.LITHIC_AUTO_CLEAR_TRANSFER_SUBTYPE || 'AUTO_CLEAR').trim(),
+  };
+}
+
+/** The Lithic side, with the shared client. Inert (null accounts) until Lithic is configured. */
+export const lithicMoves: SpendableMoves = {
+  settlementAccount() {
+    return (process.env.LITHIC_AUTO_CLEAR_SETTLEMENT_ACCOUNT_TOKEN || '').trim() || null;
+  },
+  async cashAccountOf(wallet) {
+    if (!getLithic()) return null;
+    return (await lithicStore.get(wallet))?.cashFinancialAccountToken ?? null;
+  },
+  async findHold(token) {
+    const lithic = getLithic();
+    if (!lithic) return null;
+    try {
+      const hold = await lithic.holds.retrieve(token);
+      return { status: hold.status, result: hold.result };
+    } catch (error) {
+      if (notFound(error)) return null;
+      throw error;
+    }
+  },
+  async createHold(account, input) {
+    const lithic = getLithic();
+    if (!lithic) throw new Error('Lithic is not configured');
+    const hold = await lithic.holds.create(account, {
+      token: input.token,
+      amount: Math.round(input.amountCents),
+      memo: 'Automatic clearing',
+      user_defined_id: input.ref,
+      expiration_datetime: new Date(Date.now() + maxHoldMs() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+    return { status: hold.status, result: hold.result };
+  },
+  async voidHold(token) {
+    const lithic = getLithic();
+    if (!lithic) throw new Error('Lithic is not configured');
+    await lithic.holds.void(token, { memo: 'Automatic clearing: released' });
+  },
+  async findTransfer(token) {
+    const lithic = getLithic();
+    if (!lithic) return null;
+    try {
+      const transfer = await lithic.bookTransfers.retrieve(token);
+      return { status: transfer.status };
+    } catch (error) {
+      if (notFound(error)) return null;
+      throw error;
+    }
+  },
+  async createTransfer(input) {
+    const lithic = getLithic();
+    if (!lithic) throw new Error('Lithic is not configured');
+    const transfer = await lithic.bookTransfers.create({
+      ...transferClass(),
+      token: input.token,
+      amount: Math.round(input.amountCents),
+      from_financial_account_token: input.from,
+      to_financial_account_token: input.to,
+      ...(input.holdToken ? { hold_token: input.holdToken } : {}),
+      memo: 'Automatic clearing',
+      external_id: input.ref,
+      on_closed_account: 'FAIL',
+    } as Parameters<typeof lithic.bookTransfers.create>[0]);
+    return { status: transfer.status };
+  },
+};
+
+/** Right after a Spendable deposit is recorded: reserve the earmark before the card can spend it. */
+export async function holdAutoClear(ref: string): Promise<AutoClearStep | null> {
+  const run = await pgRunStore.get(ref);
+  if (!run) return null;
+  return placeHold(run, { store: pgRunStore, moves: lithicMoves, alert: alertOps, now: () => Date.now() });
+}

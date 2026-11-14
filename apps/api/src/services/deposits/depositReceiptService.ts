@@ -3,6 +3,7 @@ import { getPayPool } from '../../config/postgres.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
 import { allocateTermDue, bookTermPayments, readTermDue } from '../chain/termCollection.js';
 import { autoSaveCentsFor, autoSaveStore } from './autoSaveStore.js';
+import { ensureAutoClearRuns, holdAutoClear, refFor } from './autoClearRuns.js';
 import {
   allocate,
   planSettlement,
@@ -50,8 +51,6 @@ export type DepositRail = 'lithic_ach' | 'bridge_va';
  */
 export const AUTO_CLEAR_RAILS: ReadonlySet<DepositRail> = new Set<DepositRail>(['lithic_ach']);
 
-/** The `auto_repay_due.source` the auto-clear sweep pays. Nothing else is ever paid by the settler. */
-export const AUTO_CLEAR_SOURCE = 'spendable';
 
 /**
  * How a deposit is applied to what is owed, by rail and by the member's switch. Pure, so the rule is
@@ -198,10 +197,11 @@ export async function ensureAutoRepayTables(client: { query: PoolClient['query']
       due_cents BIGINT NOT NULL DEFAULT 0,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
-    -- Phase 2b: which deposits an earmark came from. Only 'spendable' (a fiat deposit at the partner
-    -- bank) is ever cleared with the settler's cash; a row without it predates the rule.
+    -- Phase 2b: which deposits an earmark came from. Superseded by auto_clear_runs (one clearing per
+    -- Spendable deposit); the sweep releases whatever is left here.
     ALTER TABLE auto_repay_due ADD COLUMN IF NOT EXISTS source TEXT;
   `);
+  await ensureAutoClearRuns(client);
 }
 
 /** The cash account this rail credits. Both are the member's money; they sit in different places. */
@@ -302,19 +302,20 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
     const plan = planSettlement(term.remainingCents, { boost: 0, income: 0, asset: 0, savings: 0 });
 
     /*
-     * Auto-clear ON and a Spendable deposit: what they owe is set aside for the auto-clear sweep
-     * before auto-save sees the rest. It is not settled in the books here: the sweep clears it on
-     * chain with the settler's cash (the dollars are at Clear's partner bank), within the member's
-     * scope, and the books are written from that transaction. The earmark is what auto-save must
-     * not touch. Marked `spendable`: the sweep pays nothing else.
+     * Auto-clear ON and a Spendable deposit: what they owe is set aside as one clearing, keyed by a
+     * ref derived from this receipt, before auto-save sees the rest. It is not settled in the books
+     * here. Right after this transaction a Lithic hold reserves it in the member's account; the sweep
+     * clears it on chain with the settler's cash, within the member's scope, and then moves exactly
+     * what the chain applied from the member's account to Clear's settlement account
+     * (`autoClearRuns.ts`). The earmark is what auto-save must not touch.
      */
     const earmarkCents = application.earmarkCents;
-    if (earmarkCents > 0) {
+    const clearingRef = earmarkCents > 0 ? refFor(receipt.rail, receipt.externalId) : null;
+    if (clearingRef) {
       await client.query(
-        `INSERT INTO auto_repay_due (wallet, due_cents, source) VALUES ($1, $2, '${AUTO_CLEAR_SOURCE}')
-         ON CONFLICT (wallet) DO UPDATE SET due_cents = auto_repay_due.due_cents + EXCLUDED.due_cents,
-           source = '${AUTO_CLEAR_SOURCE}', updated_at = now()`,
-        [wallet, earmarkCents],
+        `INSERT INTO auto_clear_runs (ref, wallet, rail, external_id, earmark_cents, state)
+         VALUES ($1, $2, $3, $4, $5, 'earmarked') ON CONFLICT (ref) DO NOTHING`,
+        [clearingRef, wallet, receipt.rail, receipt.externalId, earmarkCents],
       );
       plan.remainingCents = Math.max(0, plan.remainingCents - earmarkCents);
     }
@@ -382,6 +383,14 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
     );
 
     await client.query('COMMIT');
+
+    // Reserve what was set aside before the card can spend it. Best effort: the sweep places the
+    // hold if this does not (the same token, so never twice).
+    if (clearingRef) {
+      await holdAutoClear(clearingRef).catch((error) =>
+        console.error('[auto-clear] hold after deposit failed; the sweep retries:', error instanceof Error ? error.message : error),
+      );
+    }
 
     // The deposit changed both the cash balance and what's outstanding, so every card this member
     // holds is now authorizing against a stale snapshot. Rewriting it is the point of step 3's
