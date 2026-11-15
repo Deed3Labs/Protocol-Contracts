@@ -107,6 +107,75 @@ export async function wireLiquidatorGrants(c: LiquidatorGrantContracts, sender: 
 }
 
 /**
+ * A role's hash from its name: `DEFAULT_ADMIN_ROLE` is zero, a `*_ROLE` name is its keccak256 (the
+ * OpenZeppelin convention every contract here follows), and anything else (the AccessManager's
+ * "OPERATOR", "MEMBER") is the name itself as a bytes32 string.
+ */
+export function roleHash(name: string): string {
+  const { ethers } = require("hardhat");
+  if (name === "DEFAULT_ADMIN_ROLE") return ZERO_ROLE;
+  return name.endsWith("_ROLE") ? ethers.id(name) : ethers.encodeBytes32String(name);
+}
+
+/**
+ * Decision 48 (b): revokes every role in `roles` that a retired contract (`*PreAudit`, `*Pre2f`,
+ * `*Legacy`; `retiredContracts` in `deploy/retire_credit_stack.ts`) still holds on a contract we keep.
+ * A revocation only narrows, and nothing is granted. While the sender holds the role's admin it
+ * revokes; otherwise it returns the call for `via` to propose. `DEFAULT_ADMIN_ROLE` on a token with
+ * default-admin rules (ClearUSDUpgradeable) cannot be revoked this way: it is reported, not proposed.
+ * `scripts/check_retired_credit.ts` checks the same roles.
+ */
+export async function revokeRetiredRoles(
+  contract: any,
+  label: string,
+  roles: readonly string[],
+  retired: { name: string; address: string }[],
+  sender: any,
+  via: string,
+  log: (m: string) => void = console.log
+) {
+  const { ethers } = require("hardhat");
+  const me = await sender.getAddress();
+  const ct = contract.connect(sender);
+  const proposals: Proposal[] = [];
+  const defaultAdminRules = ct.interface.getFunction("defaultAdmin") !== null;
+  for (const role of roles) {
+    const hash = roleHash(role);
+    for (const r of retired) {
+      const who = ethers.getAddress(r.address);
+      if (!(await ct.hasRole(hash, who))) continue;
+      if (hash === ZERO_ROLE && defaultAdminRules) {
+        log(`  ! ${label} DEFAULT_ADMIN_ROLE is held by the retired ${r.name} ${who}: it moves only by beginDefaultAdminTransfer. Owner to act.`);
+        continue;
+      }
+      const canSend: boolean = await ct.hasRole(await ct.getRoleAdmin(hash), me);
+      await callOrPropose(ct, "revokeRole", [hash, who], canSend, via, `${label} ${role} revoked from the retired ${r.name} ${who}`, proposals, log);
+    }
+  }
+  return proposals;
+}
+
+/** The roles decision 48 (b) revokes from retired contracts, and `scripts/check_retired_credit.ts` checks, per kept contract. */
+export const RETIRED_ROLE_CHECKS = {
+  LendingPool: [
+    "DEFAULT_ADMIN_ROLE", "OPERATOR_ROLE", "BORROWER_ROLE", "LOSS_REPORTER_ROLE", "LIQUIDATOR_ROLE", "VALUATION_ROLE",
+    "DEPLOYER_ROLE", "SUSPENSION_ROLE", "CCO_ROLE", "TREASURER_ROLE", "ENFORCER_ROLE",
+  ],
+  ClearUSDUpgradeable: [
+    "DEFAULT_ADMIN_ROLE", "LIQUIDATOR_ROLE", "MINTER_ROLE", "BURNER_ROLE", "UPGRADER_ROLE", "FRAUD_ROLE", "SECURITY_ROLE", "LISTING_ROLE",
+  ],
+  ESADepositVault: ["DEFAULT_ADMIN_ROLE", "OPERATOR_ROLE", "RELAYER_ROLE", "PAUSER_ROLE", "PILOT_ROLE"],
+  BondVault: ["DEFAULT_ADMIN_ROLE", "OPERATOR_ROLE", "BOND_ROLE", "TREASURY_ROLE"],
+  ClaimEscrow: ["DEFAULT_ADMIN_ROLE", "SETTLER_ROLE"],
+  EarnControls: [
+    "DEFAULT_ADMIN_ROLE", "ATTESTER_ROLE", "PAUSE_ROLE", "SUCCESSOR_ROLE", "ELIGIBILITY_ROLE", "BOND_ROLE", "LADDER_ROLE",
+    "FUNDING_ROLE", "WIND_DOWN_ROLE", "ROLL_NOTICE_ROLE", "EXCLUDED_HOLDER_ROLE",
+  ],
+  // The fresh AccessManager (the ledger's): its operators and credit roles.
+  AccessManager: ["DEFAULT_ADMIN_ROLE", "OPERATOR", "CREDIT_LINES_ROLE", "CREDIT_LIMITS_ROLE", "CREDIT_SETTINGS_ROLE", "CREDIT_ATTESTER_ROLE"],
+} as const;
+
+/**
  * Decisions 3 (C1) and 17: the PayoutPool no longer borrows from the BondVault or the Yield Pool.
  * Each leg is switched off by configuration (`setBondVault(0)`, `setYieldPool(0)`) once that pool
  * owes the lender nothing; the PayoutPool's code is unchanged. `pools` is every PayoutPool on

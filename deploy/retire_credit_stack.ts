@@ -49,6 +49,108 @@ export const CREDIT_STACK_RECORDS = [
 
 export const RETIRED_SUFFIX = "PreAudit";
 
+/**
+ * The bond records retired outside this script: the pre-2f factory, collection, deposit contract and
+ * valuer that deploy 22 keeps as `*Pre2f` (REPLACE_BOND_FACTORY=1), and the older `*Legacy` set.
+ */
+export const RETIRED_BOND_RECORDS = [
+  "BurnerBondFactoryPre2f",
+  "BurnerBondPre2f",
+  "BurnerBondDepositPre2f",
+  "BondValuerPre2f",
+  "BurnerBondFactoryLegacy",
+  "BurnerBondLegacy",
+  "BurnerBondDepositLegacy",
+  "BondValuerLegacy",
+] as const;
+
+/** The retired bond factories: each collection and deposit contract they made is retired too. */
+export const RETIRED_FACTORY_RECORDS = ["BurnerBondFactoryPre2f", "BurnerBondFactoryLegacy"] as const;
+
+/**
+ * Decision 48 (b): before the retirement (Base Sepolia, before step D1 and deploy 22), the records
+ * that are about to be retired, under their current names. `scripts/check_retired_credit.ts` checks
+ * them with CHECK_BASELINE=1, to list what the later steps must disconnect.
+ */
+export const BASELINE_BOND_RECORDS = ["BurnerBondFactory", "BurnerBond", "BurnerBondDeposit", "BondValuer"] as const;
+
+/** Live records a retired address must never equal: a retired record that does is skipped, never revoked from. */
+export const LIVE_RECORDS = [
+  ...CREDIT_STACK_RECORDS,
+  "BurnerBondFactory", "BurnerBond", "BondValuer",
+  "LendingPool", "BondVault", "EarnControls", "CollateralAgent", "HolderDirections", "EarnTimelock",
+  "ESADepositVault", "ClearUSDUpgradeable", "ClaimEscrow", "MembershipRegistry",
+] as const;
+
+/** Every retired record name: the `*PreAudit` credit stack and the `*Pre2f` and `*Legacy` bond records. */
+export function retiredRecordNames(): string[] {
+  return [...CREDIT_STACK_RECORDS.map((n) => `${n}${RETIRED_SUFFIX}`), ...RETIRED_BOND_RECORDS];
+}
+
+export interface RetiredContract {
+  /** The record name, or "<factory record> collection <symbol>" for a factory's clone. */
+  name: string;
+  address: string;
+  /** The record's ABI, when it is a record. */
+  abi?: any[];
+}
+
+type Lookup = (name: string) => { address: string; abi?: any } | null | undefined;
+
+/**
+ * The retired contracts on record (decision 48): each retired record, and every collection and
+ * deposit contract of each retired bond factory. A retired address that equals a live record's (see
+ * `LIVE_RECORDS`) is left out and returned in `skipped`, so no script ever revokes from a live
+ * contract. With `baseline`, the records about to be retired are taken under their current names
+ * instead (Base Sepolia before the retirement), and nothing is skipped.
+ */
+export async function retiredContracts(lookup: Lookup, opts: { baseline?: boolean } = {}) {
+  const { ethers } = require("hardhat");
+  const names: string[] = opts.baseline
+    ? [...CREDIT_STACK_RECORDS, ...BASELINE_BOND_RECORDS, "BurnerBondLegacy", "BurnerBondDepositLegacy", "BurnerBondFactoryLegacy", "BondValuerLegacy"]
+    : retiredRecordNames();
+  const factories: string[] = opts.baseline ? ["BurnerBondFactory", "BurnerBondFactoryLegacy"] : [...RETIRED_FACTORY_RECORDS];
+  const live = new Map<string, string>();
+  if (!opts.baseline) {
+    for (const n of LIVE_RECORDS) {
+      const r = lookup(n);
+      if (r?.address) live.set(r.address.toLowerCase(), n);
+    }
+  }
+  const out: RetiredContract[] = [];
+  const skipped: { name: string; address: string; liveAs: string }[] = [];
+  const seen = new Set<string>();
+  const add = (name: string, address: string | undefined, abi?: any[]) => {
+    if (!address || !ethers.isAddress(address) || address === ethers.ZeroAddress) return;
+    const key = address.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    const liveAs = live.get(key);
+    if (liveAs) skipped.push({ name, address, liveAs });
+    else out.push({ name, address: ethers.getAddress(address), abi });
+  };
+  for (const n of names) {
+    const r = lookup(n);
+    if (r) add(n, r.address, Array.isArray(r.abi) && r.abi.length ? r.abi : undefined);
+  }
+  for (const f of factories) {
+    const r = lookup(f);
+    if (!r) continue;
+    // The record's ABI where it has the listing, else the compiled factory's (the same struct).
+    const recorded = Array.isArray(r.abi) && r.abi.some((f: any) => f?.name === "getCollectionAtIndex");
+    const abi = recorded ? r.abi : (await require("hardhat").artifacts.readArtifact("BurnerBondFactory")).abi;
+    const factory = new ethers.Contract(r.address, abi, ethers.provider);
+    const n = Number(await factory.getCollectionCount().catch(() => 0n));
+    for (let i = 0; i < n; i++) {
+      const info = await factory.getCollectionAtIndex(i).catch(() => null);
+      if (!info) continue;
+      add(`${f} collection ${info.tokenSymbol || i}`, info.collectionAddress);
+      add(`${f} deposit contract ${info.tokenSymbol || i}`, info.depositContract);
+    }
+  }
+  return { contracts: out, skipped };
+}
+
 export interface RetireStep {
   name: string;
   address: string;

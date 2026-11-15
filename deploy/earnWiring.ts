@@ -1,5 +1,6 @@
 // Uses the Hardhat runtime of whatever is calling (a test or a deploy script). Never run against a
 // network as part of this change.
+import type { Proposal } from "./creditWiring";
 
 /*
  * Phase 2f stage 3: two pieces of Earn wiring that `deploy/26_deploy_EarnControls.ts` runs.
@@ -358,4 +359,149 @@ export async function poolTierStep(pool: any, value?: bigint, evidenceHash?: str
     : "! Pool Tier principal not posted: no Deployment is possible until two different VALUATION_ROLE signers each call " +
       "postPoolTierPrincipal(value, evidenceHash). Set POOL_TIER_PRINCIPAL (in the reserve token's units) and POOL_TIER_EVIDENCE to print the call.";
   return { posted: false, line, data };
+}
+
+/*
+ * 5. Decision 48: the BondVault's links to retired contracts.
+ *
+ *    (a) Its `payoutPool` backstop still names the PayoutPool retired with the old credit stack.
+ *        Once `lentToPayoutPool` is zero, `setBackstops(treasury, address(0))` keeps the treasury and
+ *        clears the payout pool; while a loan is open the vault itself refuses the change
+ *        (`BondVaultLoanOutstanding`), and so does this script, saying the old PayoutPool must repay
+ *        through `repayFromPayoutPool` first.
+ *    (b) No retired contract (`*PreAudit`, `*Pre2f`, `*Legacy`) keeps a BondVault role: the pre-2f
+ *        collections and deposit contracts were granted BOND_ROLE by the old deploy 23.
+ *
+ *    Both are BondVault changes: its admin's (the Earn timelock's) and, once deploy 23 names the
+ *    Collateral Agent, co-signed (IV-10 Exhibit A, Part 2 item 6): two treasury signers propose and
+ *    confirm, the Agent Key approves, 7 days pass, then the Earn timelock calls. No key here can do
+ *    that, so the co-signed changes are printed, never sent.
+ */
+
+/** Who proposes a BondVault change: its admin, the Earn timelock (the same text as `VIA.earn` in `./creditWiring`). */
+const VIA_EARN = "the Earn timelock (Clear Lending Co. Safe)";
+
+/** A change a governed contract consumes from the Collateral Agent: the call, its hash and the steps, in order. */
+export interface CoSignedChange {
+  target: string;
+  data: string;
+  callHash: string;
+  descriptionHash: string;
+  what: string;
+  steps: string[];
+}
+
+/** The co-signed change for `data` on `target` (a contract whose `_change()` consumes `keccak256(msg.data)`). */
+export function coSignedChange(target: string, data: string, what: string): CoSignedChange {
+  const { ethers } = require("hardhat");
+  const callHash: string = ethers.keccak256(data);
+  const descriptionHash: string = ethers.id(what);
+  return {
+    target,
+    data,
+    callHash,
+    descriptionHash,
+    what,
+    steps: [
+      `treasury signer 1: CollateralAgent.proposeChange(${target}, ${callHash}, ${descriptionHash})`,
+      "treasury signer 2 (a different one): CollateralAgent.confirmChange(<changeId from ChangeProposed or openChangeFor>)",
+      "Agent Key: CollateralAgent.approveChange(<changeId>)",
+      `after 7 days from the confirmation, the Earn timelock (the BondVault's admin) calls ${target} with ${data}`,
+    ],
+  };
+}
+
+function printCoSigned(changes: CoSignedChange[], log: (m: string) => void) {
+  for (const c of changes) {
+    log(`  ! co-signed change: ${c.what}`);
+    for (const s of c.steps) log(`      ${s}`);
+  }
+}
+
+export interface BackstopResult {
+  /** "none": the vault names no payout pool. "refused": a loan is open. "change": the call is printed. */
+  status: "none" | "refused" | "change";
+  message: string;
+  /** The vault admin's call, for whoever holds the admin (the Earn timelock after deploy 23). */
+  proposals: Proposal[];
+  /** Set once the Agent is named: the co-signature the call needs. */
+  coSigned?: CoSignedChange;
+}
+
+/**
+ * Decision 48 (a): clears the BondVault's `payoutPool` backstop, keeping its treasury. Never sends:
+ * it reads the vault and prints the change (co-signed once the Agent is named). While
+ * `lentToPayoutPool` is not zero it refuses, and says the old PayoutPool must repay first.
+ */
+export async function payoutBackstopChange(vault: any, log: (m: string) => void = console.log): Promise<BackstopResult> {
+  const { ethers } = require("hardhat");
+  const target = ethers.getAddress(await vault.getAddress());
+  const payoutPool: string = await vault.payoutPool();
+  if (payoutPool === ethers.ZeroAddress) {
+    const message = "= BondVault names no payout pool";
+    log(message);
+    return { status: "none", message, proposals: [] };
+  }
+  const lent: bigint = await vault.lentToPayoutPool();
+  if (lent !== 0n) {
+    const message =
+      `! Refused: BondVault ${target} has ${lent} still lent to the PayoutPool ${payoutPool}. The old PayoutPool must ` +
+      "repay it through BondVault.repayFromPayoutPool first (setBackstops reverts with BondVaultLoanOutstanding while " +
+      "a loan is open). Nothing is proposed; run this again once lentToPayoutPool is 0.";
+    log(message);
+    return { status: "refused", message, proposals: [] };
+  }
+  const treasury: string = await vault.treasury();
+  const data: string = vault.interface.encodeFunctionData("setBackstops", [treasury, ethers.ZeroAddress]);
+  const what = `BondVault.setBackstops(${treasury}, 0): keep the treasury, clear the retired payout pool ${payoutPool} (decision 48)`;
+  const agentNamed = (await vault.agent()) !== ethers.ZeroAddress;
+  const via = agentNamed ? VIA_EARN : "the BondVault's admin (the deployer before the Earn handover, then the Earn timelock)";
+  const proposals: Proposal[] = [{ via, target, data, what }];
+  const coSigned = agentNamed ? coSignedChange(target, data, what) : undefined;
+  const message = agentNamed
+    ? `! ${what}: a co-signed change, then the Earn timelock`
+    : `! ${what}: the BondVault's admin makes it (the Agent is not named yet, so no co-signature)`;
+  log(message);
+  if (coSigned) printCoSigned([coSigned], log);
+  return { status: "change", message, proposals, coSigned };
+}
+
+
+/**
+ * Decision 48 (b): every BondVault role a retired contract still holds. Before the Agent is named,
+ * while `sender` holds the vault's admin, it revokes (deploy 23 runs this before `setEarnSources`);
+ * afterwards each revocation is a co-signed change, printed and never sent.
+ */
+export async function revokeRetiredVaultRoles(
+  vault: any,
+  retired: { name: string; address: string }[],
+  sender: any,
+  log: (m: string) => void = console.log
+) {
+  const { ethers } = require("hardhat");
+  const { RETIRED_ROLE_CHECKS, roleHash } = require("./creditWiring");
+  const me = await sender.getAddress();
+  const v = vault.connect(sender);
+  const target = ethers.getAddress(await v.getAddress());
+  const agentNamed = (await v.agent()) !== ethers.ZeroAddress;
+  const proposals: Proposal[] = [];
+  const coSigned: CoSignedChange[] = [];
+  for (const role of RETIRED_ROLE_CHECKS.BondVault as readonly string[]) {
+    const hash = roleHash(role);
+    for (const r of retired) {
+      const who = ethers.getAddress(r.address);
+      if (!(await v.hasRole(hash, who))) continue;
+      const what = `BondVault ${role} revoked from the retired ${r.name} ${who}`;
+      if (!agentNamed && (await v.hasRole(await v.getRoleAdmin(hash), me))) {
+        await (await v.revokeRole(hash, who)).wait();
+        log(`  ${what}`);
+        continue;
+      }
+      const data: string = v.interface.encodeFunctionData("revokeRole", [hash, who]);
+      proposals.push({ via: VIA_EARN, target, data, what });
+      if (agentNamed) coSigned.push(coSignedChange(target, data, what));
+    }
+  }
+  if (coSigned.length > 0) printCoSigned(coSigned, log);
+  return { proposals, coSigned };
 }

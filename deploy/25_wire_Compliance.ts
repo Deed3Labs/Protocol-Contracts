@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
-import { saveDeployment, getDeployment } from "./helpers";
+import { saveDeployment, getDeployment, requireMainnetConfirmation } from "./helpers";
+import { Proposal, RETIRED_ROLE_CHECKS, VIA, printProposals, revokeRetiredRoles } from "./creditWiring";
+import { retiredContracts } from "./retire_credit_stack";
 
 /**
  * Compliance spec wiring (Phase 2). Run after 20_deploy_CreditCore (and 13/21 for the vault and
@@ -40,6 +42,10 @@ import { saveDeployment, getDeployment } from "./helpers";
  *   shares are valued by its `previewRedeem` (MB-05 §1.3); and revokes the Liquidator's old
  *   LIQUIDATOR_ROLE on the pool (the seizure grant, now inert). The Liquidator's Earn module is
  *   created by its own constructor, so its upgrade takes no constructor argument.
+ *
+ * - Decision 48 (b): revokes every ESADepositVault and ClaimEscrow role a retired contract
+ *   (`*PreAudit`, `*Pre2f`, `*Legacy`) still holds; after the handovers, prints each revocation as a
+ *   vault or credit timelock proposal.
  *
  * Idempotent: every step checks before it writes. It never deploys a contract other than
  * RateSchedule, PauseClock and PoolShareEnforcer, and never moves an admin power; the handover is a
@@ -91,6 +97,7 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
   const { ethers, upgrades } = hre;
   const [deployer] = await ethers.getSigners();
   const network = (await ethers.provider.getNetwork()).name;
+  requireMainnetConfirmation(network, "deploy/25_wire_Compliance.ts");
   const log = options.quiet ? () => {} : console.log;
 
   const need = (name: string) => {
@@ -406,6 +413,25 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
       log("  ESADepositVault state source -> NetworkRegistry");
     } else {
       log(`! The vault is governed by the vault timelock: propose setStateSource(${registryAddress}) there.`);
+    }
+  }
+
+  // ---- decision 48 (b): no retired credit or bond contract keeps a role on the vault or ClaimEscrow ----
+  {
+    const { contracts: retired } = await retiredContracts((n) => getDeployment(network, n));
+    const retiredProposals: Proposal[] = [];
+    if (vaultRecord && retired.length > 0) {
+      const vault = await ethers.getContractAt("ESADepositVault", vaultRecord.address);
+      retiredProposals.push(...(await revokeRetiredRoles(vault, "ESADepositVault", RETIRED_ROLE_CHECKS.ESADepositVault, retired, deployer, VIA.vault, log)));
+    }
+    const escrowRecord = getDeployment(network, "ClaimEscrow");
+    if (escrowRecord && retired.length > 0) {
+      const escrow = await ethers.getContractAt("ClaimEscrow", escrowRecord.address);
+      retiredProposals.push(...(await revokeRetiredRoles(escrow, "ClaimEscrow", RETIRED_ROLE_CHECKS.ClaimEscrow, retired, deployer, VIA.credit, log)));
+    }
+    if (retiredProposals.length > 0) {
+      log("! The deployer no longer holds these powers. Propose:");
+      printProposals(retiredProposals, log);
     }
   }
 

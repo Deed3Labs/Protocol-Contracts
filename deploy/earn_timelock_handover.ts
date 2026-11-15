@@ -23,6 +23,13 @@
  * - The bond collections (BurnerBond clones, Ownable): ownership, which sets their sources, the
  *   liquidator, the first id and display traits. Their governed changes also need the Agent's
  *   co-signature once it is named on them.
+ * - The retired bond contracts (decision 48 (b)): the `*Pre2f` and `*Legacy` collections and deposit
+ *   contracts, and every collection and deposit contract of a retired factory. They are not inert:
+ *   their owner can still `seizeBond` a holder's bond, `redeemEarly` it, `refundDeposit`, re-point
+ *   `setBondVault` and `setLiquidator`, and `emergencyRecover` any token they hold. Renouncing would
+ *   strand whatever a holder never unwound, so ownership moves to the Earn timelock like the new
+ *   collection's: every later use is a Clear Lending Safe proposal with 7 days. This narrows the
+ *   deployer and adds no power. The retired factories keep their owner (owner to decide).
  * - HolderDirections: nothing. It has no admin, no roles and no upgrade (decision 30).
  * - CollateralAgent: DEFAULT_ADMIN_ROLE. It is initialized with the timelock as admin, because
  *   every role grant there needs the Agent's co-signature (IV-10 Exhibit A, Part 2 item 6) and the
@@ -203,10 +210,17 @@ export async function assertNoEarnAdmin(c: EarnContracts, account: string, timel
   if (left.length > 0) throw new Error(`Earn handover incomplete: ${left.join(", ")}`);
 }
 
+/** The retired bond contracts whose ownership moves too (decision 48 (b)): collections and deposit contracts, not factories or valuers. */
+export function isRetiredBondOwnable(name: string): boolean {
+  return /^BurnerBond(Deposit)?(Pre2f|Legacy)$/.test(name) || / (collection|deposit contract) /.test(name);
+}
+
 async function main() {
   const { ethers } = require("hardhat");
-  const { getDeployment, saveDeployment } = require("./helpers");
+  const { getDeployment, saveDeployment, requireMainnetConfirmation } = require("./helpers");
   const { earnControlsAt } = require("./earnModules");
+  const { retiredContracts } = require("./retire_credit_stack");
+  requireMainnetConfirmation((await ethers.provider.getNetwork()).name, "deploy/earn_timelock_handover.ts");
   if (process.env.EARN_HANDOVER !== "1") {
     throw new Error("Set EARN_HANDOVER=1 to confirm: this moves every Earn admin power to a 7-day timelock.");
   }
@@ -234,6 +248,13 @@ async function main() {
     bondVault: record("BondVault") ? await ethers.getContractAt("BondVault", record("BondVault")) : undefined,
     bondCollections: record("BurnerBond") ? [await ethers.getContractAt("BurnerBond", record("BurnerBond"))] : [],
   };
+  // Decision 48 (b): the retired collections and deposit contracts move with the new collection.
+  const OWNABLE = ["function owner() view returns (address)", "function transferOwnership(address newOwner)"];
+  const { contracts: retired } = await retiredContracts((n: string) => getDeployment(network, n));
+  for (const r of retired.filter((x: { name: string }) => isRetiredBondOwnable(x.name))) {
+    console.log(`  retired ${r.name} ${r.address}: ownership to the Earn timelock`);
+    c.bondCollections!.push(new ethers.Contract(r.address, OWNABLE, deployer));
+  }
   await handOverEarn(c, deployer, timelockAddress!, resolution, console.log);
   console.log("\nEarn handover done. The deployer holds no Earn role.");
 }

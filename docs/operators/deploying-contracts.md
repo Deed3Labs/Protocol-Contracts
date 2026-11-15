@@ -119,13 +119,19 @@ re-pointed by these scripts.
 The order on Base Sepolia (the full sequence, with what to wait for, is
 [DEPLOY-RUNBOOK.md](../audit/DEPLOY-RUNBOOK.md) section 2.2):
 
+0. `CHECK_BASELINE=1 npx hardhat run scripts/check_retired_credit.ts --network base-sepolia`: the
+   baseline of what the steps below must disconnect (read-only; expected to fail here).
 1. `scripts/unwind_legacy_bonds.ts` (report first), before the BondVault upgrade.
 2. The savings rails: the vault, CLRUSD and ClaimEscrow upgrades, then `19`.
 3. `deploy/retire_credit_stack.ts`, `16`, `18`, `20`.
 4. `26`, then `scripts/upgrade_yield_pool.ts`, then `scripts/upgrade_bond_vault_pledge_guard.ts`.
 5. `22` with `REPLACE_BOND_FACTORY=1`, `24`, `23` with `FIRST_BOND_ID`, `27`.
 6. The co-signed CollateralAgent changes, `25`, the Pool Tier ceiling, `26` again, `08`, the Deed track.
+   Once the old PayoutPool has repaid the BondVault, the co-signed `setBackstops(treasury, 0)` that
+   `27` prints (decision 48).
 7. The operational roles and the handovers.
+8. `npx hardhat run scripts/check_retired_credit.ts --network base-sepolia` until it passes: no
+   retired contract still connected. It is the gate before the held app PRs merge.
 
 On mainnet there is nothing to retire or unwind: `16`–`18`, `20`, `26`, `22`, `23`, `27`, `24`, `25`
 (DEPLOY-RUNBOOK.md section 3.5). Every script that sends on Base asks for `CONFIRM_MAINNET=1`.
@@ -133,14 +139,15 @@ On mainnet there is nothing to retire or unwind: `16`–`18`, `20`, `26`, `22`, 
 | Script | Deploys | Reads |
 |---|---|---|
 | `retire_credit_stack` | Nothing: keeps the old credit records as `*PreAudit` so the next scripts deploy fresh | `RETIRE_CREDIT_STACK=1` to move them |
+| `scripts/check_retired_credit.ts` | Nothing, and sends nothing: lists every role, source, refusal, balance, loan and leg that still connects a retired `*PreAudit`, `*Pre2f` or `*Legacy` contract to what we keep, as PASS / FAIL; exits non-zero on any FAIL (decision 48) | `CHECK_BASELINE=1` before the retirement; `RESERVE_TOKEN` |
 | `20_deploy_CreditCore` | `ClearCredit` (the ledger), `NetworkRegistry`, `CollateralRegistry`, `LimitCalculator`, `RevolvingIssuer` and `TermIssuer` (each with its modules) — all UUPS — on the recorded `AccessManager`. Registers both issuers against the ledger; sets the ledger's reserve token and Lending Co.'s operating address, and the CLRUSD token on the registry and the revolving issuer | `CARRY_TREASURY` (the multisig on mainnet), `LENDER_OPERATING`, `RESERVE_TOKEN`, `CREDIT_LINES_KEY`, `CREDIT_LIMITS_KEY`, the daily caps |
 | `21_deploy_ClearUSDUpgradeable` | `ClearUSDUpgradeable`, the CLRUSD that carries the redemption lock | `CLRUSD_ADMIN`, `CLRUSD_ADMIN_DELAY`, `CLRUSD_MAX_SUPPLY` |
-| `22_deploy_BondsAndPool` | `MerchantRegistry`, `PayoutPool`, `LendingPool` (the Yield Pool, with its modules), `BondVault`, `Liquidator`, and a Phase 2f `BurnerBondFactory`. Registers pool shares as collateral, writes the pool's legend, and, on a fresh chain, makes the Liquidator an AccessManager operator, grants it CLRUSD's `LIQUIDATOR_ROLE` and names the `CollateralRegistry` as CLRUSD's encumbrance source. Switches each PayoutPool's vault and yield legs off once repaid. A recorded pool must already be the Yield Pool | `COOP_TREASURY`, `CLEAR_LENDING_ACCOUNT`, `RESERVE_TOKEN`, `BOND_BASE_URI`, `REPLACE_BOND_FACTORY=1` (keeps a pre-2f factory, collection, deposit contract and valuer as `*Pre2f` and deploys the new factory) |
-| `23_deploy_BondCollection` | The `BurnerBond` collection for one token, its `BondValuer`, `HolderDirections`; registers `BOND` at 95%; wires the collection, the BondVault and EarnControls, then names the Collateral Agent; grants the collection `BOND_ROLE` on EarnControls by resolution; the Ladder | `FIRST_BOND_ID` (required while an older collection is on record), `EARN_RESOLUTION`, `BOND_TOKEN`, `BOND_TOKEN_NAME`, `BOND_TOKEN_SYMBOL`, `BOND_YIELD_BPS`, `BOND_BASE_URI` |
+| `22_deploy_BondsAndPool` | `MerchantRegistry`, `PayoutPool`, `LendingPool` (the Yield Pool, with its modules), `BondVault`, `Liquidator`, and a Phase 2f `BurnerBondFactory`. Registers pool shares as collateral, writes the pool's legend, and, on a fresh chain, makes the Liquidator an AccessManager operator, grants it CLRUSD's `LIQUIDATOR_ROLE` and names the `CollateralRegistry` as CLRUSD's encumbrance source. Revokes every CLRUSD and AccessManager role a retired contract holds. Switches each PayoutPool's vault and yield legs off once repaid. A recorded pool must already be the Yield Pool | `COOP_TREASURY`, `CLEAR_LENDING_ACCOUNT`, `RESERVE_TOKEN`, `BOND_BASE_URI`, `REPLACE_BOND_FACTORY=1` (keeps a pre-2f factory, collection, deposit contract and valuer as `*Pre2f` and deploys the new factory) |
+| `23_deploy_BondCollection` | The `BurnerBond` collection for one token, its `BondValuer`, `HolderDirections`; registers `BOND` at 95%; wires the collection, the BondVault and EarnControls, revokes every BondVault role a retired contract holds (the pre-2f collection's `BOND_ROLE`), then names the Collateral Agent; grants the collection `BOND_ROLE` on EarnControls by resolution; the Ladder | `FIRST_BOND_ID` (required while an older collection is on record), `EARN_RESOLUTION`, `BOND_TOKEN`, `BOND_TOKEN_NAME`, `BOND_TOKEN_SYMBOL`, `BOND_YIELD_BPS`, `BOND_BASE_URI` |
 | `24_deploy_OffersIssuer` | `OffersIssuer`, registered against the ledger, its line opened at the cap | `OFFERS_CAP`, `OFFER_AMOUNT`, `OFFER_EXPIRY_DAYS`, `OFFERS_TREASURY` |
-| `25_wire_Compliance` | `RateSchedule`, `PauseClock`, `PoolShareEnforcer`; the compliance wiring; the card settler and TermIssuer's mandate source | `STATE_ATTESTER_KEY`, `FEE_RECIPIENT`, `CARD_SETTLER_ADDRESS`, `CARD_SETTLEMENT_ACCOUNT` |
+| `25_wire_Compliance` | `RateSchedule`, `PauseClock`, `PoolShareEnforcer`; the compliance wiring; the card settler and TermIssuer's mandate source; revokes every ESADepositVault and ClaimEscrow role a retired contract holds | `STATE_ATTESTER_KEY`, `FEE_RECIPIENT`, `CARD_SETTLER_ADDRESS`, `CARD_SETTLEMENT_ACCOUNT` |
 | `26_deploy_EarnControls` | The Earn timelock, `EarnControls`, the `CollateralAgent`; refuses the Clear contracts as Earn payers (run it again at the end) | `CLEAR_LENDING_SAFE`, `AGENT_KEY`, `TREASURY_SIGNERS`, `COLLATERAL_ACCOUNT`, `AGENT_COST_ADDRESS`, `EXCESS_DESTINATION` |
-| `27_wire_Earn` | Nothing new: names EarnControls and the pool on each other; grants the Earn roles from [`deploy/config/earn-roles.json`](../../deploy/config/earn-roles.json); revokes the pool's retired `BORROWER_ROLE` and `LIQUIDATOR_ROLE` holders; `setYieldPool(0)` and `setBondVault(0)` on every PayoutPool that owes nothing; reports the Pool Tier ceiling | `EARN_RESOLUTION`, `POOL_TIER_PRINCIPAL`, `POOL_TIER_EVIDENCE` |
+| `27_wire_Earn` | Nothing new: names EarnControls and the pool on each other; grants the Earn roles from [`deploy/config/earn-roles.json`](../../deploy/config/earn-roles.json); revokes the pool's retired `BORROWER_ROLE` and `LIQUIDATOR_ROLE` holders; `setYieldPool(0)` and `setBondVault(0)` on every PayoutPool that owes nothing; revokes every pool and EarnControls role a retired contract holds; prints the co-signed `BondVault.setBackstops(treasury, 0)` that clears the retired PayoutPool once `lentToPayoutPool` is 0, and refuses it before (it never sends it); reports the Pool Tier ceiling | `EARN_RESOLUTION`, `POOL_TIER_PRINCIPAL`, `POOL_TIER_EVIDENCE` |
 
 **The Earn role holders are the owner's to fill.** Every list in `deploy/config/earn-roles.json` is
 `null`, and deploy 27 grants nothing, saying "owner to fill", until each is set: on the pool two
@@ -166,7 +173,7 @@ The scripts deploy and register. These grant the roles and set the values that m
 | `scripts/grant_relayer_roles.ts` | The relayer's roles for gasless submission | `RELAYER_ADDRESS` |
 | `scripts/grant_claim_escrow_settler.ts` | `ClaimEscrow`'s settler (`npm run send:grant-settler:base-sepolia`) | `CLAIM_ESCROW_NEW_SETTLER`, or the relayer from the API's env |
 | `scripts/grant_collateral_operator.ts` | The credit operator's roles to pledge collateral | `OPERATOR` |
-| `scripts/configure-carry-recipients.mjs` | Points carry at the `PayoutPool`. Run with `node`; reports unless given `--apply`. Its defaults name the retired Base Sepolia contracts: set the addresses | `RPC_URL_84532`, the issuer and pool addresses |
+| `scripts/configure-carry-recipients.mjs` | Points carry at the `PayoutPool`. Run with `node`; reports unless given `--apply`. Reads the `PayoutPool`, `TermIssuer` and `RevolvingIssuer` records and refuses a retired `*PreAudit` one; Base mainnet needs `CONFIRM_MAINNET=1` | `SAVINGS_DEFAULT_CHAIN_ID`, `RPC_URL_84532`; optional `PAYOUT_POOL_<chain>`, `TERM_ISSUER_<chain>`, `REVOLVING_ISSUER_<chain>` |
 | `scripts/register_merchant.ts` | Registers a merchant — nothing can be charged until one is | `MERCHANT`, optionally `DISCOUNT_BPS`, `APPROVAL_CAP`, `PAYOUT_WINDOW` |
 | `scripts/set_merchant_active.ts` | Turns a merchant off or back on | `MERCHANT`, `ACTIVE` |
 | `scripts/fund_payout_pool.ts` | Working capital into the `PayoutPool` record | `FUND_USDC` |
@@ -184,6 +191,12 @@ there, and an environment variable named for the contract and the chain wins ove
 `PAYOUT_POOL_84532`, `OFFERS_ISSUER_84532`, and so on. `OffersIssuer` has no default: set
 `OFFERS_ISSUER_84532` or the API runs without offers. The member app takes CLRUSD and vault
 addresses as `VITE_` variables per chain (`VITE_CLRUSD_84532`, `VITE_ESA_VAULT_84532`).
+
+After the fresh Base Sepolia credit stack, those defaults (and `apps/member/src/lib/clearNetwork.ts`)
+still name the retired contracts. [DEPLOY-RUNBOOK.md](../audit/DEPLOY-RUNBOOK.md) section 4.2 lists
+every file, line and address, and the record that replaces each. Change them in the app PRs, after
+the deploy and once `scripts/check_retired_credit.ts` passes, and check any `*_84532` environment
+value set on the hosts: it wins over the file.
 
 `scripts/update-app-contracts.ts` predates the monorepo — it writes to `app/`, which no longer
 exists. Do not use it.
@@ -219,9 +232,12 @@ the live network first:
    Liquidator its CLRUSD role.
 4. **The credit stack to the credit timelock** — `deploy/credit_timelock_handover.ts`
    (`OPS_SAFE`, `CREDIT_HANDOVER=1`). It covers the records by name, so the fresh stack; the
-   `*PreAudit` contracts keep the deployer as admin.
+   `*PreAudit` contracts keep the deployer as admin. They are disconnected instead (decision 48):
+   no pause, no timelock.
 5. **Earn to the Earn timelock** — `deploy/earn_timelock_handover.ts` (`CLEAR_LENDING_SAFE`,
-   `EARN_RESOLUTION`, `EARN_HANDOVER=1`), last, after deploy 27 and the second run of deploy 26.
+   `EARN_RESOLUTION`, `EARN_HANDOVER=1`), last, after deploy 27 and the second run of deploy 26. It
+   also moves the `*Pre2f` and `*Legacy` collections and deposit contracts, whose owner can still
+   seize bonds and recover tokens (decision 48). On Base it asks for `CONFIRM_MAINNET=1`.
 
 ```bash
 SAFE_ADDRESS=0x… DEPLOYER=0x… npx hardhat run scripts/command/safe-handover.ts --network base-sepolia                    # survey

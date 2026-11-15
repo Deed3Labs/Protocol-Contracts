@@ -1,8 +1,10 @@
 import { saveDeployment, getDeployment, requireMainnetConfirmation } from "./helpers";
 import { deployBondFactory } from "./bondModules";
 import { POOL_SHARE_LEGEND, poolAt, poolProxyOptions } from "./poolModules";
-import { printProposals, switchOffPayoutLegs, wireLiquidatorGrants } from "./creditWiring";
-import { RETIRED_SUFFIX } from "./retire_credit_stack";
+import {
+  RETIRED_ROLE_CHECKS, VIA, printProposals, revokeRetiredRoles, switchOffPayoutLegs, wireLiquidatorGrants,
+} from "./creditWiring";
+import { RETIRED_SUFFIX, retiredContracts } from "./retire_credit_stack";
 
 /**
  * Phase E: the contracts that put something real behind the asset-backed tier, and pay merchants.
@@ -30,7 +32,8 @@ import { RETIRED_SUFFIX } from "./retire_credit_stack";
  * upgrade (`scripts/upgrade_yield_pool.ts`): it writes the pool's legend. On a fresh chain it also
  * makes the Liquidator an AccessManager operator and grants it CLRUSD's LIQUIDATOR_ROLE, and names
  * the CollateralRegistry as CLRUSD's encumbrance source (`deploy/creditWiring.ts`); after the
- * handovers it prints those as timelock proposals instead.
+ * handovers it prints those as timelock proposals instead. Decision 48 (b): it also revokes every
+ * CLRUSD and AccessManager role a retired contract (`*PreAudit`, `*Pre2f`, `*Legacy`) still holds.
  *
  *   npx hardhat run deploy/22_deploy_BondsAndPool.ts --network base-sepolia
  */
@@ -171,13 +174,21 @@ async function main() {
   // encumbrance source, which a fresh CollateralRegistry has to be named as again.
   const accessRecord = getDeployment(network, "AccessManager");
   if (!accessRecord) throw new Error(`AccessManager is not deployed on ${network}. Run deploy/16 first.`);
+  const access = await ethers.getContractAt("AccessManager", accessRecord.address);
+  const clrusdToken = await ethers.getContractAt("ClearUSDUpgradeable", clrusd);
   const proposals = await wireLiquidatorGrants({
-    access: await ethers.getContractAt("AccessManager", accessRecord.address),
-    clrusd: await ethers.getContractAt("ClearUSDUpgradeable", clrusd),
+    access,
+    clrusd: clrusdToken,
     liquidator: liquidatorAddress,
     collateralRegistry,
     retiredLiquidators: [getDeployment(network, `Liquidator${RETIRED_SUFFIX}`)?.address].filter(Boolean) as string[],
   }, deployer, log);
+
+  // Decision 48 (b): no retired contract (`*PreAudit`, `*Pre2f`, `*Legacy`) keeps a role on CLRUSD
+  // or on the fresh AccessManager. Revocations only; scripts/check_retired_credit.ts checks them.
+  const { contracts: retired } = await retiredContracts((n) => getDeployment(network, n));
+  proposals.push(...(await revokeRetiredRoles(clrusdToken, "CLRUSD", RETIRED_ROLE_CHECKS.ClearUSDUpgradeable, retired, deployer, VIA.vault, log)));
+  proposals.push(...(await revokeRetiredRoles(access, "AccessManager", RETIRED_ROLE_CHECKS.AccessManager, retired, deployer, VIA.credit, log)));
 
   const registry = await ethers.getContractAt("CollateralRegistry", collateralRegistry);
   const operatorRole = await registry.OPERATOR_ROLE();

@@ -1,6 +1,9 @@
 import { saveDeployment, getDeployment, requireMainnetConfirmation } from "./helpers";
 import { bondAbi } from "./bondModules";
 import { earnControlsAt } from "./earnModules";
+import { revokeRetiredVaultRoles } from "./earnWiring";
+import { printProposals } from "./creditWiring";
+import { retiredContracts } from "./retire_credit_stack";
 
 /**
  * A bond collection for one token, and the valuer that prices it.
@@ -16,6 +19,10 @@ import { earnControlsAt } from "./earnModules";
  *
  * Registers BOND as its own collateral kind at 95%: an internal claim on the co-op with known
  * redemption terms, so the cut is for the terms rather than for a market price.
+ *
+ * Decision 48 (b): before the Agent is named, it revokes every BondVault role a retired contract
+ * (`*Pre2f`, `*Legacy`, `*PreAudit`, and each clone of a retired factory) still holds; the pre-2f
+ * collection and deposit contract had BOND_ROLE. Afterwards each is a co-signed change, printed.
  *
  * EarnControls: BOND_ROLE for the collection, with the Lending Board resolution (EARN_RESOLUTION).
  * The people's Earn roles (ROLL_NOTICE_ROLE, WIND_DOWN_ROLE, FUNDING_ROLE, EXCLUDED_HOLDER_ROLE and
@@ -143,6 +150,21 @@ async function main() {
     if (!agentNamed && (await vault.encumbranceSource()) !== registryRecord.address) {
       await (await vault.setEncumbranceSource(registryRecord.address, BOND)).wait();
       log("  BondVault encumbrance -> CollateralRegistry");
+    }
+    // Decision 48 (b): the retired collections and deposit contracts (`*Pre2f`, `*Legacy`, and every
+    // clone of a retired factory) and the retired credit stack keep no BondVault role. The old deploy
+    // 23 granted the pre-2f collection and deposit contract BOND_ROLE. Revoked here, before the Agent
+    // is named; afterwards each is a co-signed change, printed and never sent. Never the collection
+    // just made.
+    {
+      const { contracts } = await retiredContracts((n) => getDeployment(network, n));
+      const retired = contracts.filter((r) => r.address.toLowerCase() !== collectionAddress.toLowerCase());
+      const signer = (await ethers.getSigners())[0];
+      const r = await revokeRetiredVaultRoles(vault, retired, signer, log);
+      if (r.proposals.length > 0 && !agentNamed) {
+        log("  ! The deployer is not the BondVault's admin. Its admin revokes:");
+        printProposals(r.proposals, log);
+      }
     }
     // Decision 2: the Earn timelock takes the vault before the Agent is named (earn_timelock_handover.ts).
     if (earnTimelock && !agentNamed && !(await vault.hasRole(ethers.ZeroHash, earnTimelock))) {

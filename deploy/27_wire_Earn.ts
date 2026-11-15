@@ -2,10 +2,11 @@ import { getDeployment, requireMainnetConfirmation } from "./helpers";
 import { poolAt } from "./poolModules";
 import { earnControlsAt } from "./earnModules";
 import {
-  EARN_ROLES_FILE, grantEarnRoles, loadEarnRoles, poolTierStep, revokeRetiredPoolRoles, wireEarnControlsToPool,
+  BackstopResult, EARN_ROLES_FILE, grantEarnRoles, loadEarnRoles, payoutBackstopChange, poolTierStep, revokeRetiredPoolRoles,
+  wireEarnControlsToPool,
 } from "./earnWiring";
-import { Proposal, printProposals, switchOffPayoutLegs } from "./creditWiring";
-import { RETIRED_SUFFIX } from "./retire_credit_stack";
+import { Proposal, RETIRED_ROLE_CHECKS, VIA, printProposals, revokeRetiredRoles, switchOffPayoutLegs } from "./creditWiring";
+import { RETIRED_SUFFIX, retiredContracts } from "./retire_credit_stack";
 
 /**
  * Phase 2f: the Earn wiring no earlier script makes (DEPLOY-RUNBOOK §5.2 item 4; decisions 3, 17).
@@ -27,6 +28,12 @@ import { RETIRED_SUFFIX } from "./retire_credit_stack";
  *    `setBondVault(0)` on every PayoutPool on record, each once that pool owes the lender nothing.
  * 5. The Pool Tier principal: reported, with the call two VALUATION_ROLE signers make
  *    (POOL_TIER_PRINCIPAL, POOL_TIER_EVIDENCE), since no Deployment is possible before it.
+ * 6. Decision 48 (b): every LendingPool and EarnControls role a retired contract (`*PreAudit`,
+ *    `*Pre2f`, `*Legacy`) still holds, revoked (Earn timelock proposals after the handover).
+ * 7. Decision 48 (a): the BondVault's `payoutPool` backstop, which names the retired PayoutPool.
+ *    Once `lentToPayoutPool` is 0, it prints `setBackstops(treasury, 0)` (the treasury kept) as a
+ *    change the Collateral Agent co-signs and the Earn timelock makes; it never sends it. While a
+ *    loan is open it refuses and says the old PayoutPool must repay through `repayFromPayoutPool`.
  *
  * Run after deploys 22, 23 and 26 (and, on Base Sepolia, `scripts/upgrade_yield_pool.ts`), before
  * `earn_timelock_handover.ts`. Every step checks before it writes. After the handovers the deployer
@@ -79,6 +86,11 @@ export async function wireEarn(options: WireEarnOptions = {}) {
     liquidators: [getDeployment(network, `Liquidator${RETIRED_SUFFIX}`)?.address].filter(Boolean) as string[],
   }, deployer, log)));
 
+  log("Retired contracts' Earn roles (decision 48):");
+  const { contracts: retired } = await retiredContracts((name) => getDeployment(network, name));
+  proposals.push(...(await revokeRetiredRoles(pool, "LendingPool", RETIRED_ROLE_CHECKS.LendingPool, retired, deployer, VIA.earn, log)));
+  proposals.push(...(await revokeRetiredRoles(controls, "EarnControls", RETIRED_ROLE_CHECKS.EarnControls, retired, deployer, VIA.earn, log)));
+
   log("PayoutPool legs:");
   const payoutPools = [];
   // Each with the ABI it was deployed with: the pre-audit PayoutPool has setLenders, not setYieldPool.
@@ -87,6 +99,14 @@ export async function wireEarn(options: WireEarnOptions = {}) {
     payoutPools.push({ name: r.name, contract: new ethers.Contract(r.record!.address, abi, deployer) });
   }
   proposals.push(...(await switchOffPayoutLegs(payoutPools, deployer, log)).proposals);
+
+  // Decision 48 (a): printed, never sent; refused while the old PayoutPool still owes the vault.
+  let backstop: BackstopResult | undefined;
+  const vaultRecord = getDeployment(network, "BondVault");
+  if (vaultRecord) {
+    log("BondVault payout-pool backstop (decision 48):");
+    backstop = await payoutBackstopChange(await ethers.getContractAt("BondVault", vaultRecord.address), log);
+  }
 
   const tier = await poolTierStep(pool,
     options.poolTierPrincipal ?? (process.env.POOL_TIER_PRINCIPAL ? BigInt(process.env.POOL_TIER_PRINCIPAL) : undefined),
@@ -97,8 +117,14 @@ export async function wireEarn(options: WireEarnOptions = {}) {
     log("\nThe deployer no longer holds these powers. Propose:");
     printProposals(proposals, log);
   }
+  if (backstop?.status === "change") {
+    log("\nThe BondVault backstop change (never sent by this script):");
+    printProposals(backstop.proposals, log);
+  } else if (backstop?.status === "refused") {
+    log(`\n${backstop.message}`);
+  }
   log("\nEarn wiring done.");
-  return { proposals, tier };
+  return { proposals, tier, backstop };
 }
 
 async function main() {
