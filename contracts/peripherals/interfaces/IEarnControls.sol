@@ -60,6 +60,10 @@ interface IEarnControls is IPoolEarnControls {
     /// IV-01 §6.3 (two-person, evidence hash, 7-day delay), otherwise `holder` itself.
     function payeeOf(address holder) external view returns (address);
 
+    /// @notice The exemption code of `account`'s eligibility attestation while one is in force, else
+    /// zero. A confirmed roll executes only while it is set (decision 44).
+    function eligibleCode(address account) external view returns (bytes32);
+
     /// @notice Whether two accounts are Smart Accounts registered to the same Holder.
     function sameHolder(address a, address b) external view returns (bool);
 

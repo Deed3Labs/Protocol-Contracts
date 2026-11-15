@@ -49,7 +49,6 @@ contract EarnControls is EarnControlsBase, IPoolEarnControls {
         bytes32 fundingResolution;
         uint16 fiscalYear;
         uint256 offeringCap;
-        uint256 poolOfferingCap;
         uint256 poolCapacity;
         uint256 holderCapFloor;
     }
@@ -76,13 +75,11 @@ contract EarnControls is EarnControlsBase, IPoolEarnControls {
         fundingLimitResolution = s.fundingResolution;
         fundingLimitFiscalYear = s.fiscalYear;
         offeringCap = s.offeringCap;
-        poolOfferingCap = s.poolOfferingCap;
         poolCapacity = s.poolCapacity;
         holderCapBps = 1_000;
         _holderCapFloor = s.holderCapFloor;
         emit SettingsSet("fundingLimit", s.fundingLimit, s.fundingResolution);
         emit SettingsSet("offeringCap", s.offeringCap, bytes32(0));
-        emit SettingsSet("poolOfferingCap", s.poolOfferingCap, bytes32(0));
         emit SettingsSet("poolCapacity", s.poolCapacity, bytes32(0));
         emit SettingsSet("holderCapBps", 1_000, bytes32(0));
         emit HolderCapFloorScheduled(0, s.holderCapFloor, uint64(block.timestamp));
@@ -109,20 +106,20 @@ contract EarnControls is EarnControlsBase, IPoolEarnControls {
         uint256 before = p.totalAssets();
         _within("capacity", before, assets, poolCapacity);
         _within("funding", fundingUsed(), assets, fundingLimit);
-        uint256 taken = poolOfferingTaken;
-        _within("offering", taken, assets, poolOfferingCap);
-        poolOfferingTaken = taken + assets;
-        emit OfferingTaken(receiver, true, assets, taken + assets);
+        _takeOffering(receiver, true, assets);
         _bookCost(payer, assets, shares, true);
-        if (before + assets > holderCapFloor()) {
-            uint256 held = shares;
-            address[] memory wallets = walletsOf(receiver);
-            for (uint256 i; i < wallets.length; ++i) {
-                held += p.balanceOf(wallets[i]) + p.queuedSharesOf(wallets[i]);
-            }
-            uint256 limit = ((p.totalSupply() + shares) * holderCapBps) / BPS;
-            if (held > limit) revert EarnControlsHolderCap(receiver, held, limit);
+        // Decision 40: the household holds at most 10% x the greater of Pool Assets after the
+        // subscription and the floor, always. In shares: held / supply after <= 10% x that / Pool
+        // Assets after.
+        uint256 held = shares;
+        address[] memory wallets = walletsOf(receiver);
+        for (uint256 i; i < wallets.length; ++i) {
+            held += p.balanceOf(wallets[i]) + p.queuedSharesOf(wallets[i]);
         }
+        uint256 after_ = before + assets;
+        uint256 base = after_ > holderCapFloor() ? after_ : holderCapFloor();
+        uint256 limit = (p.totalSupply() + shares).mulDiv(base * holderCapBps, after_ * BPS);
+        if (held > limit) revert EarnControlsHolderCap(receiver, held, limit);
     }
 
     /// @inheritdoc IPoolEarnControls
@@ -187,11 +184,17 @@ contract EarnControls is EarnControlsBase, IPoolEarnControls {
         if (!_rungs[termDays].offered) revert EarnControlsTermNotOffered(termDays);
         exemptionCode = _eligible(payer, attestation);
         _within("funding", fundingUsed(), maturityAmount, fundingLimit);
-        uint256 taken = offeringTaken;
-        _within("offering", taken, purchasePrice, offeringCap);
-        offeringTaken = taken + purchasePrice;
-        emit OfferingTaken(holder, false, purchasePrice, taken + purchasePrice);
+        _takeOffering(holder, false, purchasePrice);
         _bookCost(payer, purchasePrice, 0, false);
+    }
+
+    /// @notice the exemption code of `account`'s eligibility attestation if one is in force now (its
+    /// attester still holding the role and `validUntil` not passed), else zero. A confirmed roll
+    /// executes only while this is set, and the replacement bond takes this code (decision 44).
+    function eligibleCode(address account) external view returns (bytes32) {
+        Eligibility storage e = _eligibility[account];
+        if (block.timestamp > e.validUntil || !hasRole(ATTESTER_ROLE, e.attester)) return bytes32(0);
+        return e.exemptionCode;
     }
 
     /// @notice see IEarnControls.recordBondExit.
@@ -214,9 +217,11 @@ contract EarnControls is EarnControlsBase, IPoolEarnControls {
 
     /* ========== LIMITS AND ELIGIBILITY ========== */
 
-    /// @notice what counts against the Funding Limit (decision 12): outstanding BurnerBonds at their
-    /// Maturity Amount, plus outstanding Pool Shares at Share Value (rounded up).
+    /// @notice what counts against the Funding Limit (decisions 12 and 39): outstanding BurnerBonds
+    /// at their Maturity Amount, plus outstanding Pool Shares at Share Value (rounded up), plus Lending
+    /// Co.'s other indebtedness for borrowed money as last posted.
     function fundingUsed() public view returns (uint256 used) {
+        used = otherIndebtedness;
         address[] memory books = _bondBooks;
         for (uint256 i; i < books.length; ++i) used += IEarnBondBook(books[i]).totalFaceOutstanding();
         address pool = yieldPool;
@@ -283,6 +288,20 @@ contract EarnControls is EarnControlsBase, IPoolEarnControls {
         emit PauseFlagSet(flag, on, reasonHash, first, msg.sender);
     }
 
+    /// @notice posts Lending Co.'s other indebtedness for borrowed money (anything that is not an
+    /// Earn Product) with its evidence (decision 39): two different `FUNDING_ROLE` holders make the
+    /// same call. Posting may be done at any time; it replaces the last figure, only adds to the
+    /// Funding Limit check, and moves no money.
+    function postOtherIndebtedness(uint256 amount, bytes32 evidenceHash) external {
+        if (evidenceHash == bytes32(0)) revert EarnControlsInvalidValue();
+        (bool done, address first) =
+            _pair(keccak256(abi.encode(this.postOtherIndebtedness.selector, amount, evidenceHash)), FUNDING_ROLE);
+        if (!done) return;
+        otherIndebtedness = amount;
+        otherIndebtednessEvidence = evidenceHash;
+        emit OtherIndebtednessPosted(amount, evidenceHash, first, msg.sender);
+    }
+
     /* ========== THE MODULE ========== */
 
     /// @dev Everything else runs in `EarnControlsAdmin` against this storage.
@@ -299,6 +318,14 @@ contract EarnControls is EarnControlsBase, IPoolEarnControls {
     }
 
     /* ========== INTERNALS ========== */
+
+    /// @dev Books `amount` against the one offering maximum across both products (decision 38).
+    function _takeOffering(address holder, bool pool, uint256 amount) internal {
+        uint256 taken = offeringTaken;
+        _within("offering", taken, amount, offeringCap);
+        offeringTaken = taken + amount;
+        emit OfferingTaken(holder, pool, amount, taken + amount);
+    }
 
     function _within(bytes32 what, uint256 used, uint256 adding, uint256 limit) internal pure {
         if (used + adding > limit) revert EarnControlsLimit(what, used, adding, limit);
@@ -345,6 +372,7 @@ contract EarnControls is EarnControlsBase, IPoolEarnControls {
             if (
                 code == bytes32(0) || netWorth == 0 || !hasRole(ATTESTER_ROLE, attester) || issuedAt > block.timestamp
                     || validUntil < block.timestamp || issuedAt < e.issuedAt
+                    || validUntil > issuedAt + MAX_ATTESTATION_LIFE
                     || !SignatureCheckerUpgradeable.isValidSignatureNow(
                         attester, attestationDigest(account, code, netWorth, issuedAt, validUntil), sig
                     )

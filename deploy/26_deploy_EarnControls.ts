@@ -54,7 +54,6 @@ async function main() {
         fundingResolution: cfg.fundingResolution,
         fiscalYear: cfg.fiscalYear,
         offeringCap: units(cfg.offeringCapDollars),
-        poolOfferingCap: units(cfg.poolOfferingCapDollars),
         poolCapacity: units(cfg.poolCapacityDollars),
         holderCapFloor: units(cfg.holderCapFloorDollars),
       }],

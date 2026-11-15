@@ -49,7 +49,7 @@ describe("a bond the vault cannot pay alone", function () {
   /// as deployable excess, or what a later reserve change left short.
   async function sell(bondId: number, held: bigint, face: bigint, monthsOut: number) {
     await usdc.mint(await vault.getAddress(), held);
-    await vault.connect(bondContract).recordPurchase(bondId, held, face, (await now()) + BigInt(monthsOut * MONTH));
+    await vault.connect(bondContract).recordPurchase(bondId, held, face, (await now()) + BigInt(monthsOut * MONTH), 0, 365);
   }
 
   async function treasuryAllows(amount: bigint, holds = 10_000n * ONE_USDC) {
@@ -82,11 +82,7 @@ describe("a bond the vault cannot pay alone", function () {
     await treasuryAllows(250n * ONE_USDC);
     await advance(MONTH + 1);
 
-    await expect(vault.connect(bondContract).settle(1, holder.address))
-      .to.be.revertedWithCustomError(vault, "BondVaultInsufficientFunds");
-    await poolUnchanged(before);
-
-    // With the treasury's allowance big enough, it pays, and the pool is still untouched.
+    // With the treasury's allowance big enough, it pays, and the pool is untouched.
     await usdc.connect(safe).approve(await vault.getAddress(), 300n * ONE_USDC);
     await expect(vault.connect(bondContract).settle(1, holder.address))
       .to.emit(vault, "DrewFromTreasury").withArgs(300n * ONE_USDC);
@@ -96,18 +92,19 @@ describe("a bond the vault cannot pay alone", function () {
     await poolUnchanged(before);
   });
 
-  it("refuses with nothing moved when the vault and the treasury together fall short", async function () {
-    // Was two tests: "never draws on the reserve's excess, buffer or primary cover" and this one.
+  // Phase 2f (Earn §4, plan row 25): a short vault no longer refuses an unpledged settlement. It pays
+  // what the vault and the treasury hold, records the rest and emits SettlementShortfall, and
+  // `completeSettlement` pays it later. The AssurancePool is still never asked.
+  it("pays what the vault and the treasury hold and records the rest, never asking the AssurancePool", async function () {
     const before = await balances(a.pool);
     await sell(1, 700n * ONE_USDC, 1_000n * ONE_USDC, 1);
     await treasuryAllows(100n * ONE_USDC);
     await advance(MONTH + 1);
 
-    await expect(vault.connect(bondContract).settle(1, holder.address)).to.be.revertedWithCustomError(
-      vault,
-      "BondVaultInsufficientFunds"
-    );
-    expect(await usdc.balanceOf(safe.address)).to.equal(10_000n * ONE_USDC);
+    await expect(vault.connect(bondContract).settle(1, holder.address))
+      .to.emit(vault, "SettlementShortfall").withArgs(1, holder.address, 0n, 200n * ONE_USDC);
+    expect(await usdc.balanceOf(holder.address)).to.equal(800n * ONE_USDC);
+    expect(await vault.totalSettlementOwed()).to.equal(200n * ONE_USDC);
     await poolUnchanged(before);
   });
 

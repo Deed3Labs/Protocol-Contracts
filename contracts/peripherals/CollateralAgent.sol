@@ -13,10 +13,12 @@ import "./interfaces/ICollateralAgent.sol";
 /// treasury role, and is the only thing the BondVault lets move USDC outside settlement.
 /// @dev **The Agent Key** (an address, not a role) has exactly Part 2's seven powers:
 /// `enforce`, `releaseEnforcement`, `postDistribution`, `toCollateralAccount`, `withdrawCosts`
-/// (with `postCostStatement` and `recordCostApproval`, the two on-chain records Part 2 item 5 and
-/// IV-10 §8.2 put before it), `approveChange` and `rotateAgentKey`. It also records a Required
-/// Holders' Direction blocking a key or account replacement (Part 4), which takes no asset and
-/// changes nothing but the replacement. It holds no role here or anywhere else, so it cannot
+/// (with `postCostStatement`, the on-chain record Part 2 item 5 and IV-10 §8.2(b) put before it),
+/// `approveChange` and `rotateAgentKey`. Required-Holder cost approvals (Part 3; IV-10 §8.2(a)) and
+/// blocks on a key or account replacement (Part 4) are signed by the Holders themselves and counted
+/// against the bond register by Accreted Value in `HolderDirections` (decision 30); only that
+/// contract records them here, never the Agent Key or the treasury. The Agent Key holds no role here
+/// or anywhere else, so it cannot
 /// (Part 3) pay anyone but a Holder through a round, the Collateral Deposit Account or the cost
 /// address within the cap; set a bond's share; touch a bond, a Smart Account, CLRUSD, the ESA, the
 /// Yield Pool, the PayoutPool, the pledge module or any AssurancePool compartment; withdraw
@@ -181,7 +183,11 @@ contract CollateralAgent is ICollateralAgent, AccessControlUpgradeable, UUPSUpgr
     mapping(uint256 => ExcessWithdrawal) internal _excess;
     uint256 public excessCount;
 
-    uint256[40] private __gap;
+    /// @notice Where Required-Holder Directions are signed and counted (decision 30); the only caller
+    /// of `recordCostApproval` and `recordHolderBlock`.
+    address public holderDirections;
+
+    uint256[39] private __gap;
 
     /// @notice Addresses set at initialization and afterwards only by a co-signed change.
     struct Config {
@@ -457,9 +463,11 @@ contract CollateralAgent is ICollateralAgent, AccessControlUpgradeable, UUPSUpgr
         emit CostStatementPosted(periodCount, statementHash, amount, uint64(block.timestamp) + STATEMENT_WAIT);
     }
 
-    /// @notice 5b. Records a Required-Holder Direction approving costs above the cap; it raises the
-    /// cap 7 days later. One at a time.
-    function recordCostApproval(bytes32 directionHash, uint256 amount) external onlyAgent inEnforcement {
+    /// @notice 5b. Records a Required-Holder Direction approving costs above the cap, as signed by the
+    /// Holders and counted in `HolderDirections` (decision 30); it raises the cap 7 days later. One
+    /// at a time.
+    function recordCostApproval(bytes32 directionHash, uint256 amount) external inEnforcement {
+        _onlyDirections();
         if (directionHash == bytes32(0) || amount == 0) revert CollateralAgentInvalidValue();
         _foldCostApproval();
         CostApproval storage a = _pendingCostApproval[periodCount];
@@ -680,16 +688,12 @@ contract CollateralAgent is ICollateralAgent, AccessControlUpgradeable, UUPSUpgr
         emit ReplacementApproved(id, msg.sender, uint64(block.timestamp) + REPLACEMENT_DELAY);
     }
 
-    /// @notice records the Required Holders' Direction blocking a replacement (Part 4). The Agent
-    /// receives and counts Directions (IV-10 §6.3), so the Agent Key records it; for a new Agent
-    /// Key, so may the proposed key, which is also in the Agent's custody.
+    /// @notice records the Required Holders' Direction blocking a replacement (Part 4), as signed by
+    /// the Holders and counted against the bond register in `HolderDirections` (decision 30).
     function recordHolderBlock(uint256 id, bytes32 directionHash) external {
         Replacement storage r = _replacements[id];
         if (r.status != OPEN && r.status != APPROVED) revert CollateralAgentReplacement(id);
-        _syncKey();
-        if (msg.sender != _agentKey && !(r.kind == REPLACE_AGENT_KEY && msg.sender == r.newAddress)) {
-            revert CollateralAgentNotAgent(msg.sender);
-        }
+        _onlyDirections();
         if (directionHash == bytes32(0)) revert CollateralAgentInvalidValue();
         r.status = BLOCKED;
         r.blockedBy = directionHash;
@@ -753,6 +757,13 @@ contract CollateralAgent is ICollateralAgent, AccessControlUpgradeable, UUPSUpgr
         emit ConfigSet("payeeSource", s);
     }
 
+    /// @notice names the Required-Holder tally (decision 30): a co-signed change like any other.
+    function setHolderDirections(address d) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _consume(address(this), keccak256(msg.data));
+        holderDirections = d;
+        emit ConfigSet("holderDirections", d);
+    }
+
     function setCostAddress(address a) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _consume(address(this), keccak256(msg.data));
         costAddress = a;
@@ -808,6 +819,10 @@ contract CollateralAgent is ICollateralAgent, AccessControlUpgradeable, UUPSUpgr
     function _checkFree(uint256 amount) internal view {
         uint256 held = vault.collateralAssets();
         if (held < _unclaimed + amount) revert CollateralAgentInsufficient(held, _unclaimed + amount);
+    }
+
+    function _onlyDirections() internal view {
+        if (msg.sender != holderDirections || msg.sender == address(0)) revert CollateralAgentNotAgent(msg.sender);
     }
 
     function _foldCostApproval() internal {

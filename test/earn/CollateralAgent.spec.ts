@@ -61,6 +61,13 @@ describe("CollateralAgent (IV-10 Exhibit A; decisions 18, 19)", function () {
     return id;
   }
 
+  /** Names `who` as the Required-Holder tally (decision 30), through a co-signed change. */
+  async function nameDirections(who: string) {
+    const data = agent.interface.encodeFunctionData("setHolderDirections", [who]);
+    await cosigned(await agent.getAddress(), data);
+    await agent.connect(admin).setHolderDirections(who);
+  }
+
   async function enforceAndSnapshot() {
     await agent.connect(key).enforce(PAYMENT_DEFAULT, NOTICE);
     await agent.snapshotBonds(10);
@@ -210,8 +217,12 @@ describe("CollateralAgent (IV-10 Exhibit A; decisions 18, 19)", function () {
       await expect(agent.connect(key).withdrawCosts(U(10_000), s))
         .to.emit(agent, "CostsWithdrawn").withArgs(1, s, costs.address, U(10_000), U(50_000));
       expect(await usdc.balanceOf(costs.address)).to.equal(U(10_000));
-      // A Required-Holder approval raises the cap 7 days after it is recorded.
-      await agent.connect(key).recordCostApproval(DIRECTION, U(5_000));
+      // A Required-Holder approval raises the cap 7 days after it is recorded. Decision 30 (changed
+      // from stage 1): the Holders sign it and HolderDirections counts it; the Agent Key cannot record
+      // it. Here an account stands in for the tally (HolderDirections.spec counts real signatures).
+      await expect(agent.connect(key).recordCostApproval(DIRECTION, U(5_000))).to.be.revertedWithCustomError(agent, "CollateralAgentNotAgent");
+      await nameDirections(outsider.address);
+      await agent.connect(outsider).recordCostApproval(DIRECTION, U(5_000));
       expect(await agent.costCap()).to.equal(U(50_000));
       await increase(7 * DAY);
       expect(await agent.costCap()).to.equal(U(55_000));
@@ -282,10 +293,12 @@ describe("CollateralAgent (IV-10 Exhibit A; decisions 18, 19)", function () {
     });
 
     it("its whole surface is Part 2's seven powers and the records that go with them", async function () {
+      // Decision 30: the two Required-Holder records left the Agent Key for HolderDirections.
       const agentOnly = new Set([
         "enforce", "releaseEnforcement", "postDistribution", "toCollateralAccount", "postCostStatement",
-        "recordCostApproval", "withdrawCosts", "approveChange", "rotateAgentKey", "recordHolderBlock",
+        "withdrawCosts", "approveChange", "rotateAgentKey",
       ]);
+      const directionsOnly = new Set(["recordCostApproval", "recordHolderBlock"]);
       const permissionless = new Set(["snapshotBonds", "claimDistribution", "syncAgentKey", "executeReplacement", "consumeChange"]);
       const treasury = new Set([
         "proposeExcessWithdrawal", "executeExcessWithdrawal", "proposeChange", "confirmChange", "cancelChange",
@@ -293,13 +306,14 @@ describe("CollateralAgent (IV-10 Exhibit A; decisions 18, 19)", function () {
       ]);
       const governed = new Set([
         "setVault", "setBondBook", "setPledgeModule", "setPayeeSource", "setCostAddress", "setExcessDestination",
+        "setHolderDirections",
         "grantRole", "revokeRole", "renounceRole", "upgradeTo", "upgradeToAndCall", "initialize",
       ]);
       const writes = agent.interface.fragments
         .filter((x: any) => x.type === "function" && !["view", "pure"].includes(x.stateMutability))
         .map((x: any) => x.name);
       for (const name of writes) {
-        expect(agentOnly.has(name) || permissionless.has(name) || treasury.has(name) || governed.has(name), name).to.equal(true);
+        expect(agentOnly.has(name) || directionsOnly.has(name) || permissionless.has(name) || treasury.has(name) || governed.has(name), name).to.equal(true);
       }
     });
   });
@@ -388,10 +402,12 @@ describe("CollateralAgent (IV-10 Exhibit A; decisions 18, 19)", function () {
       await agent.connect(t2).approveReplacement(1);
       await increase(7 * DAY - 10);
       await expect(agent.executeReplacement(1)).to.be.revertedWithCustomError(agent, "CollateralAgentReplacement");
-      // A Required-Holder Direction, recorded by the Agent (here through the proposed key in its custody), blocks it.
-      await expect(agent.connect(outsider).recordHolderBlock(1, DIRECTION)).to.be.revertedWithCustomError(agent, "CollateralAgentNotAgent");
-      await expect(agent.connect(newKey).recordHolderBlock(1, DIRECTION)).to.emit(agent, "ReplacementBlocked");
-      await increase(10);
+      // A Required-Holder Direction blocks it. Decision 30 (changed from stage 1): the Holders sign
+      // it and HolderDirections counts it; neither the Agent Key nor the proposed key records it.
+      await expect(agent.connect(key).recordHolderBlock(1, DIRECTION)).to.be.revertedWithCustomError(agent, "CollateralAgentNotAgent");
+      await expect(agent.connect(newKey).recordHolderBlock(1, DIRECTION)).to.be.revertedWithCustomError(agent, "CollateralAgentNotAgent");
+      await nameDirections(outsider.address);
+      await expect(agent.connect(outsider).recordHolderBlock(1, DIRECTION)).to.emit(agent, "ReplacementBlocked");
       await expect(agent.executeReplacement(1)).to.be.revertedWithCustomError(agent, "CollateralAgentReplacement");
 
       await agent.connect(t2).proposeReplacement(AGENT_KEY, newKey.address, ethers.id("instruction 2"));

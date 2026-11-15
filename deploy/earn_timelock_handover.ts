@@ -16,6 +16,14 @@
  * - EarnControls: DEFAULT_ADMIN_ROLE (upgrades and every governed setting). Its roles are granted
  *   only with a Lending Board resolution hash (`grantRoleByResolution`), so the handover needs one
  *   (`resolutionHash`). Its module EarnControlsAdmin, like the pool's, has nothing of its own.
+ * - BondVault (Phase 2f stage 2, decision 2, moved from the credit handover): DEFAULT_ADMIN_ROLE. Once
+ *   the Collateral Agent is named on it, every role grant needs the Agent's co-signature, so the
+ *   timelock's grant is made before `setEarnSources` names the Agent (deploy/23 does it in that
+ *   order); afterwards it can only be a co-signed change, and this script stops and says so.
+ * - The bond collections (BurnerBond clones, Ownable): ownership, which sets their sources, the
+ *   liquidator, the first id and display traits. Their governed changes also need the Agent's
+ *   co-signature once it is named on them.
+ * - HolderDirections: nothing. It has no admin, no roles and no upgrade (decision 30).
  * - CollateralAgent: DEFAULT_ADMIN_ROLE. It is initialized with the timelock as admin, because
  *   every role grant there needs the Agent's co-signature (IV-10 Exhibit A, Part 2 item 6) and the
  *   deployer could never hand it over alone. The handover only checks it.
@@ -46,6 +54,10 @@ export interface EarnContracts {
   /** EarnControls, with the joined ABI (`earnControlsAt`). */
   earnControls?: any;
   collateralAgent?: any;
+  /** The BondVault (Phase 2f stage 2). */
+  bondVault?: any;
+  /** The bond collections (BurnerBond clones). */
+  bondCollections?: any[];
 }
 
 const POOL_ROLES = [
@@ -54,6 +66,7 @@ const POOL_ROLES = [
 ];
 const CONTROLS_ROLES = ["ATTESTER_ROLE", "PAUSE_ROLE", "SUCCESSOR_ROLE", "ELIGIBILITY_ROLE", "BOND_ROLE", "LADDER_ROLE"];
 const AGENT_ROLES = ["TREASURY_ROLE"];
+const VAULT_ROLES = ["OPERATOR_ROLE", "BOND_ROLE", "TREASURY_ROLE"];
 
 async function send(txp: Promise<any>) {
   await (await txp).wait();
@@ -122,6 +135,28 @@ export async function handOverEarn(
     log("collateralAgent: admin is the Earn timelock; the deployer holds no role");
   }
 
+  if (c.bondVault) {
+    const v = c.bondVault;
+    if (!(await v.hasRole(ZERO, timelock))) {
+      if ((await v.agent()) !== "0x0000000000000000000000000000000000000000") {
+        throw new Error(
+          "BondVault's admin is not the Earn timelock and the Collateral Agent is already named on it: the grant is " +
+            "now a change that needs two treasury signers, the Agent's co-signature and 7 days."
+        );
+      }
+      await send(v.grantRole(ZERO, timelock));
+    }
+    // Renouncing narrows; it needs no co-signature.
+    for (const [, h] of await hashes(v, VAULT_ROLES)) if (await v.hasRole(h, me)) await send(v.renounceRole(h, me));
+    if (await v.hasRole(ZERO, me)) await send(v.renounceRole(ZERO, me));
+    log("bondVault: admin -> Earn timelock; the deployer holds no vault role");
+  }
+
+  for (const b of c.bondCollections ?? []) {
+    if ((await b.owner()) === me) await send(b.transferOwnership(timelock));
+    log(`bond collection ${await b.getAddress()}: owner -> Earn timelock`);
+  }
+
   await assertNoEarnAdmin(c, me, timelock);
 }
 
@@ -154,6 +189,11 @@ export async function assertNoEarnAdmin(c: EarnContracts, account: string, timel
   await check("lendingPool", c.lendingPool, POOL_ROLES);
   await check("earnControls", c.earnControls, CONTROLS_ROLES);
   await check("collateralAgent", c.collateralAgent, AGENT_ROLES);
+  await check("bondVault", c.bondVault, VAULT_ROLES);
+  for (const b of c.bondCollections ?? []) {
+    const owner = await b.owner();
+    if (owner === account || (timelock && owner !== timelock)) left.push(`bond collection ${await b.getAddress()}: owner is not the Earn timelock`);
+  }
   if (timelock) {
     const { ethers } = require("hardhat");
     const tl = await ethers.getContractAt("TimelockController", timelock);
@@ -191,6 +231,8 @@ async function main() {
     lendingPool: record("LendingPool") ? await ethers.getContractAt("LendingPool", record("LendingPool")) : undefined,
     earnControls: record("EarnControls") ? await earnControlsAt(record("EarnControls"), deployer) : undefined,
     collateralAgent: record("CollateralAgent") ? await ethers.getContractAt("CollateralAgent", record("CollateralAgent")) : undefined,
+    bondVault: record("BondVault") ? await ethers.getContractAt("BondVault", record("BondVault")) : undefined,
+    bondCollections: record("BurnerBond") ? [await ethers.getContractAt("BurnerBond", record("BurnerBond"))] : [],
   };
   await handOverEarn(c, deployer, timelockAddress!, resolution, console.log);
   console.log("\nEarn handover done. The deployer holds no Earn role.");
