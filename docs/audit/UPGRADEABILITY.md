@@ -8,6 +8,7 @@ This lists which contracts can be upgraded, who holds that power, and which time
 | Credit timelock | same | 7 days | Ops Safe | none | `deploy/credit_timelock_handover.ts` |
 | Assurance timelock | same | 7 days | co-op board Safe | none | `deploy/assurance_timelock_handover.ts` |
 | Vault timelock | same | 7 days | Clear Financial Co. Safe (at least 2 signers; the script checks the threshold) | none | `deploy/vault_timelock_handover.ts` |
+| Earn timelock (Phase 2f, decision 2) | same | 7 days | Clear Lending Co. Safe (at least 2 signers; the script checks the threshold) | none | `deploy/earn_timelock_handover.ts` |
 
 With no admin, a timelock's own delay can change only through a delayed proposal. `deployCreditTimelock` refuses a delay under 7 days.
 
@@ -31,7 +32,9 @@ No handover has been run on any network. Until it runs, each power below is held
 | Liquidator | UUPS | `DEFAULT_ADMIN_ROLE` | DEFAULT_ADMIN_ROLE | Base Sepolia |
 | MerchantRegistry | UUPS | `DEFAULT_ADMIN_ROLE` | DEFAULT_ADMIN_ROLE | Base Sepolia |
 
-| PayoutPool, LendingPool, BondVault | UUPS | `DEFAULT_ADMIN_ROLE` | DEFAULT_ADMIN_ROLE | Base Sepolia |
+| PayoutPool, BondVault | UUPS | `DEFAULT_ADMIN_ROLE` | DEFAULT_ADMIN_ROLE | Base Sepolia |
+
+LendingPool left the credit timelock in Phase 2f (decision 2). It is under the Earn timelock below.
 
 `assertNoCreditAdmin` fails the handover if the deployer still holds any of these powers afterwards. `test/deploy/Compliance.deploy.spec.ts` runs the handover on a fresh chain. It then shows that a rate change needs a proposal and cannot execute before 7 days. `test/audit/compliance/Dfal.spec.ts` (acceptance 17) shows the same for a CLRUSD upgrade, and that a member can transfer and redeem while it is pending.
 
@@ -126,3 +129,15 @@ The credit contracts exist only on Base Sepolia, where FIX-PLAN allows layout br
 - RateSchedule: `cflAggregationOff` is renamed in place (`@custom:oz-renamed-from`) and no longer read.
 
 **PayoutPool (Phase 2B, addendum 12.10).** Base Sepolia only, but still append-only: the old `nextUnpaid` slot is renamed `legacyNext` in place (`@custom:oz-renamed-from`), four variables for the deadline-ordered queues follow `borrowedFromVault`, and `__gap` shrinks from 25 to 21. Claims queued before an upgrade are paid from a legacy queue in their original order, so no migration call is needed. The authority is unchanged (`DEFAULT_ADMIN_ROLE`, moved to the credit timelock). See `PHASE-2B-PAYOUT-RESERVE.md`.
+
+## Earn (Earn timelock, Phase 2f)
+
+Decision 2 puts the Earn contracts under a fifth 7-day timelock, apart from the credit timelock. `deploy/earn_timelock_handover.ts` deploys it (refusing a delay under 7 days or a Safe needing fewer than two signers) and moves the admin; `assertNoEarnAdmin` fails the handover if the deployer keeps any role. Where the credit timelock already holds LendingPool's admin, `creditToEarnCalls` builds the batch the Ops Safe schedules on it to pass the admin over. `test/deploy/Earn.deploy.spec.ts` runs the handover on a fresh chain.
+
+| Contract | Proxy | Upgrade authority | Moved to the timelock by the handover | Live on |
+|---|---|---|---|---|
+| LendingPool (the Yield Pool) | UUPS | `DEFAULT_ADMIN_ROLE` | DEFAULT_ADMIN_ROLE; every other deployer role renounced | Base Sepolia |
+| YieldPoolValuation | none (delegatecall module pinned in LendingPool's constructor) | a LendingPool upgrade | nothing to move | not deployed |
+| EarnControls | UUPS | `DEFAULT_ADMIN_ROLE` | DEFAULT_ADMIN_ROLE, granted with the Lending Board resolution hash | not deployed |
+| EarnControlsAdmin | none (delegatecall module pinned in EarnControls' constructor) | an EarnControls upgrade | nothing to move | not deployed |
+| CollateralAgent | UUPS | `DEFAULT_ADMIN_ROLE` and the Agent's co-signature (IV-10 Exhibit A, Part 2 item 6) | initialized with the Earn timelock as admin; the handover checks it | not deployed |
