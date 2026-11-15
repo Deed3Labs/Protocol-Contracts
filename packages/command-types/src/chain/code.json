@@ -412,26 +412,26 @@
   },
   "Liquidator": {
    "source": "contracts/peripherals/Liquidator.sol",
-   "sha256": "503f970015fe6a7360f1689e5ba9decd3f4dae8a56a832cfd27c987e3bb5323c",
+   "sha256": "9bddcca7636c7b57aa44da61a8c2fefc5e79e249930a49df540e93611487dda8",
    "immutables": [
     [
-     2266,
+     2288,
      32
     ],
     [
-     3423,
+     3445,
      32
     ],
     [
-     3489,
+     3511,
      32
     ],
     [
-     8279,
+     8301,
      32
     ],
     [
-     10079,
+     10101,
      32
     ]
    ]
