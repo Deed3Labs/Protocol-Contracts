@@ -415,7 +415,7 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
       expect(await pool.holdbackBps()).to.equal(151n);
     });
 
-    it("applies a loss charge to open holdbacks first, and sends out only what exceeds the Deployed Balance and interest", async function () {
+    it("applies a loss charge to open holdbacks first, takes the full charge off the Deployed Balance, and sends out only what exceeds it and interest", async function () {
       await f.allowance(U(100)); // 100 bps
       await pool.connect(f.alice).redeem(U(1_000), f.alice.address, f.alice.address); // G 1,000, H 10
       expect(await pool.totalHoldback()).to.equal(U(10));
@@ -432,16 +432,48 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
       const ev = rc.logs.map((l: any) => { try { return pool.interface.parseLog(l); } catch { return null; } })
         .find((e: any) => e?.name === "LossChargeCompleted");
       expect(ev.args.absorbed).to.equal(U(10)); // ratable share > H, so all of H
+      // The full $1,200 runs against the Deployed Balance and interest (decision 33), not $1,190.
       expect(ev.args.toDeployed).to.equal(U(1_000));
       const interest = ev.args.toInterest;
       expect(interest).to.be.greaterThan(0n);
-      const out = U(1_200) - U(10) - U(1_000) - interest;
+      const out = U(1_200) - U(1_000) - interest;
       expect(ev.args.paidOut).to.equal(out);
       expect(await usdc.balanceOf(f.lending.address) - lendingBefore).to.equal(out);
       expect(await pool.vaultCash()).to.equal(vaultBefore + U(10) - out);
       expect(await pool.deployedBalance()).to.equal(0n);
       expect(await pool.totalHoldback()).to.equal(0n);
       await expect(tx).to.emit(pool, "LossChargePosted");
+    });
+
+    it("a charge within the Deployed Balance, with a holdback open, takes the full charge off it and adds what the holdback bore to Vault Cash", async function () {
+      await f.allowance(U(100)); // 100 bps
+      await pool.connect(f.alice).redeem(U(1_000), f.alice.address, f.alice.address); // G 1,000, H 10
+      await f.deploy(U(5_000));
+      const cash: bigint = await pool.vaultCash();
+      const deployed: bigint = await pool.deployedBalance();
+      await f.lossCharge(U(500));
+      await pool.applyHoldbacks(10);
+      expect(await pool.deployedBalance()).to.equal(deployed - U(500));
+      expect(await pool.vaultCash()).to.equal(cash + U(10));
+      expect(await pool.totalHoldback()).to.equal(0n);
+      // Pool Assets fall by L − Σ absorbed.
+      expect(await pool.totalAssets()).to.equal(cash + U(10) + deployed - U(500) + (await pool.accruedInterest()));
+    });
+
+    it("the largest charge allowed (Pool Assets + Σ H) never pays out more than the vault's free cash", async function () {
+      await f.allowance(U(100));
+      await pool.connect(f.alice).redeem(U(1_000), f.alice.address, f.alice.address); // G 1,000, H 10
+      // Nothing deployed, so no interest moves the bound between the two signers' calls.
+      const lendingBefore: bigint = await usdc.balanceOf(f.lending.address);
+      const max: bigint = (await pool.totalAssets()) + (await pool.totalHoldback());
+      expect(max).to.equal(U(9_010));
+      await f.lossCharge(max);
+      await pool.applyHoldbacks(10);
+      // The holdback bore all its $10; the whole charge leaves, and it is exactly the vault's cash.
+      expect(await pool.totalHoldback()).to.equal(0n);
+      expect(await pool.vaultCash()).to.equal(0n);
+      expect(await usdc.balanceOf(f.poolAddress)).to.equal(0n);
+      expect(await usdc.balanceOf(f.lending.address) - lendingBefore).to.equal(U(9_010));
     });
 
     it("a charge within the Deployed Balance moves no cash", async function () {
@@ -485,7 +517,8 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
       expect((await pool.holdbackAt(0)).held).to.equal(U(52));
 
       // postLossCharge($900), Pool Assets $89,600, this the only open holdback: applies $52
-      // (ratable $93.60, capped), adds $52 to Vault Cash and takes $848 off the Deployed Balance.
+      // (ratable $93.60, capped), adds $52 to Vault Cash and takes the full $900 off the Deployed
+      // Balance, so Pool Assets fall by $848, to $88,752 (decision 33; IV-02 §5.6(d), A2, A10).
       await f.deploy(U(50_000));
       const cash: bigint = await pool.vaultCash();
       const tx = await f.lossCharge(U(900));
@@ -496,7 +529,8 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
       expect(ratable).to.be.closeTo(U(93.6), U(0.01));
       await expect(pool.applyHoldbacks(10)).to.emit(pool, "HoldbackApplied").withArgs(0n, U(52), 1n);
       expect(await pool.vaultCash()).to.equal(cash + U(52));
-      expect(await pool.deployedBalance()).to.equal(U(50_000) - U(848));
+      expect(await pool.deployedBalance()).to.equal(U(50_000) - U(900));
+      expect(await pool.totalAssets()).to.equal(U(88_752) + (await pool.accruedInterest()));
       expect(await pool.holdbackOf(alice.address)).to.equal(0n);
     });
 

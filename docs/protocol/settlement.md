@@ -266,10 +266,14 @@ delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poo
   (`holdbackAt`, `holdbackOf`, `totalHoldback`). A lower posting starts a release pass, and
   `releaseHoldbacks(maxCount)` (anyone) pays releases and age releases (`holdbackMaxAge`, 540 days;
   `releasableAt(id)`) only to the Holder. `postLossCharge(value, evidence)` (two signers) is applied
-  first to the open holdbacks ratably (`applyHoldbacks`), then to the Deployed Balance, then to
-  accrued interest; only what exceeds both leaves the vault, to Clear Lending (Exhibit A, A2).
+  first to the open holdbacks ratably (`applyHoldbacks`), and what they absorb moves into Vault
+  Cash. Then the whole charge reduces the Deployed Balance, then accrued interest; only the part
+  above both leaves the vault, to Clear Lending (IV-02 §5.6(d) and Exhibit A, A2 as corrected;
+  decision 33). Pool Assets so fall by the charge less what the holdbacks absorbed.
   `postRecovery(value, evidence)` (two signers, the same rules) adds unrestored charges back to the
-  Deployed Balance, up to `unrestoredCharges()` (IV-02 §5.4, decision 25).
+  Deployed Balance, up to `unrestoredCharges()` (IV-02 §5.4, decision 25). The cap counts each
+  charge in full, including any part a holdback bore (decision 36), which is now exactly what the
+  charge took off the Deployed Balance and interest or paid out.
 - **Suspension (§8).** `suspend(reason, evidence, resolution)` for LOSS_EVENT, LEGAL_ORDER,
   USDC_OR_NETWORK or VALUATION_PENDING only, by two different authorized individuals
   (`SUSPENSION_ROLE`, `CCO_ROLE`, `TREASURER_ROLE`), one of them the CCO or treasurer. 72 hours

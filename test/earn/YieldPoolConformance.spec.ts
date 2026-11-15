@@ -511,11 +511,10 @@ describe("Yield Pool IV-02 conformance (decisions 24-29, §§1.2, 2.6, 4.3, 5.6,
 
   /* ------------------------------------------------------------ Exhibit A, A10 */
   describe("Exhibit A, A10 worked example, as written: Utilization 80%, Funding Rate 5.00%", function () {
-    // §5.6(d): the $52 applied from the holdback is added to Pool Assets and only the rest of the
-    // charge, $848, reduces the Deployed Balance: the remaining shares bear $848 of the charge (and
-    // take in the leaver's $52, so Pool Assets fall by $796). See the report's judgement calls for
-    // §1.2's "less all Pool Loss Charges", which would take the full $900 off.
-    it("holds $156, releases $104, applies the capped $52 of a $900 charge, and the remaining shares bear $848", async function () {
+    // §5.6(d) and A2 as corrected (decision 33): the $52 applied from the holdback is added to Vault
+    // Cash and the whole $900 charge reduces the Deployed Balance, so Pool Assets fall by $848 and
+    // the remaining shares bear $848, as A10 says.
+    it("holds $156, releases $104, applies the capped $52 of a $900 charge, takes $900 off the Deployed Balance, and the remaining shares bear $848", async function () {
       const cent = U(0.005);
       const { alice, lending } = f;
       // Pool Assets $100,000 at $1.04: Vault Cash $20,000 and Deployed Balance $80,000.
@@ -558,9 +557,11 @@ describe("Yield Pool IV-02 conformance (decisions 24-29, §§1.2, 2.6, 4.3, 5.6,
       const [applied] = events(pool, done, "HoldbackApplied");
       const [completed] = events(pool, done, "LossChargeCompleted");
       expect(applied.args.amount).to.be.closeTo(U(52), cent);
-      expect(completed.args.toDeployed).to.be.closeTo(U(848), cent); // borne by the remaining shares
+      expect(completed.args.toDeployed).to.equal(U(900)); // the whole charge (decision 33)
+      expect(completed.args.toInterest).to.equal(0n);
       expect(completed.args.paidOut).to.equal(0n);
-      expect(assets - (await pool.totalAssets())).to.be.closeTo(U(848) - U(52), U(0.05));
+      // Pool Assets fall by $848 (= $900 − $52): the remaining shares bear $848.
+      expect(assets - (await pool.totalAssets())).to.be.closeTo(U(848), U(0.05));
       expect(await pool.holdbackOf(alice.address)).to.equal(0n);
     });
   });

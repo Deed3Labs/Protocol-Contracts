@@ -301,11 +301,13 @@ contract YieldPoolValuation is LendingPoolBase {
         }
     }
 
-    /// @notice posts a Pool Loss Charge. It is applied first to the open holdbacks, ratably by
-    /// gross amount (`applyHoldbacks`); only the remainder reduces the Deployed Balance, then the
-    /// accrued interest, and only what exceeds both leaves the vault, to Clear Lending's lending
-    /// account (Exhibit A, A2), under the two signers who posted it. The charge counts toward the
-    /// Pool Loss Charges a recovery may restore (§5.4).
+    /// @notice posts a Pool Loss Charge L. It is applied first to the open holdbacks, ratably by
+    /// gross amount (`applyHoldbacks`), and what they absorb moves into Vault Cash. Then the whole
+    /// of L reduces the Deployed Balance, then the accrued interest, and only the part of L above
+    /// both leaves the vault, to Clear Lending's lending account (IV-02 §5.6(d), Exhibit A, A2 as
+    /// corrected; decision 33), under the two signers who posted it. Pool Assets so fall by L less
+    /// what the holdbacks absorbed. The charge counts toward the Pool Loss Charges a recovery may
+    /// restore (§5.4).
     /// @dev Two `VALUATION_ROLE` signers. Reverts while releases from a lower posting are
     /// unprocessed or another charge is being applied. Until the last batch is applied, the
     /// charge is pending and subscriptions, redemptions and fills revert.
@@ -356,11 +358,14 @@ contract YieldPoolValuation is LendingPoolBase {
         else _syncClock();
     }
 
-    /// @dev The remainder after the holdbacks: the Deployed Balance first, then accrued interest,
-    /// then, only for what exceeds both, a transfer from the vault to Clear Lending.
+    /// @dev The whole charge, after the holdbacks have absorbed their part into Vault Cash: the
+    /// Deployed Balance first, then accrued interest, then, only for what exceeds both, a transfer
+    /// from the vault to Clear Lending (decision 33). The transfer never exceeds Vault Cash: a
+    /// charge is at most Pool Assets plus Σ H, and on that bound the holdbacks absorb at least
+    /// the part of it above Pool Assets.
     function _completeCharge() internal {
         LossCharge storage c = lossCharge;
-        uint256 rest = c.amount - c.absorbed;
+        uint256 rest = c.amount;
         uint256 deployed = totalBorrowed;
         uint256 toDeployed = rest < deployed ? rest : deployed;
         totalBorrowed = deployed - toDeployed;
