@@ -19,8 +19,9 @@ import "./IExtensionKind.sol";
 ///
 /// The pool's transfer hook (the pledge lock and the transfer allowlist) is `LendingPool`'s alone.
 /// Share movements made in the module run without it, so the module moves shares only where the
-/// hook would let them through anyway: out of the pool's escrow (a cancellation), an enforcement
-/// escrow and the Liquidator's seizure (both exempt), and a run-off of shares already checked free.
+/// hook would let them through anyway: out of the pool's escrow (a cancellation), into an
+/// enforcement escrow (exempt), and a run-off of shares already checked free. Nothing seizes a
+/// share: the Liquidator's `seizeShares` and its exemption are gone (Phase 2f stage 2, C5).
 ///
 /// Storage is append-only against the Base Sepolia implementation recorded in
 /// `.openzeppelin/base-sepolia.json` (slots 351-360, then a 40-slot gap). Slots 361-369 hold the
@@ -33,8 +34,8 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     bytes32 public constant BORROWER_ROLE = keccak256("BORROWER_ROLE");
     /// @notice Retired: single-signer loss reports are replaced by two-person postings (§6).
     bytes32 public constant LOSS_REPORTER_ROLE = keccak256("LOSS_REPORTER_ROLE");
-    /// @notice May take shares that are backing drawn credit, and only those. Removed in stage 2
-    /// with `seizeShares` (C5).
+    /// @notice Retired with `seizeShares` and its transfer exemption (Phase 2f stage 2, C5): it
+    /// grants nothing. Kept so role scripts can still find and revoke it.
     bytes32 public constant LIQUIDATOR_ROLE = keccak256("LIQUIDATOR_ROLE");
     /// @notice An authorized individual for the valuation postings: one proposes, another approves.
     bytes32 public constant VALUATION_ROLE = keccak256("VALUATION_ROLE");
@@ -259,9 +260,18 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     uint256 internal _deploymentCount;
     uint256 internal _totalDeployed;
 
+    /// @dev What the queue has filled of each holder's enforcement redemptions, cumulatively:
+    /// the pledged shares it burned and what it paid to `enforcementDestination` for them (net of
+    /// the holdback). `PoolShareEnforcer` applies the difference since it last looked (stage 2).
+    struct EnforcementFill {
+        uint128 shares;
+        uint128 paid;
+    }
+    mapping(address => EnforcementFill) internal _enforcementFilled;
+
     /// @dev Room for later fields. Named apart from the Base Sepolia `__gap` (slots 361-400), which
     /// the fields above have used up and run past, as the last contract in the layout may.
-    uint256[50] private __yieldPoolGap;
+    uint256[49] private __yieldPoolGap;
 
     /* ========== ERRORS ========== */
 
@@ -304,7 +314,6 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     event Repaid(address indexed from, uint256 amount);
     event WithdrawalClaimed(uint256 indexed requestId, address indexed receiver, uint256 assets);
     event EncumbranceSourceUpdated(address indexed source);
-    event SharesSeized(address indexed holder, address indexed to, uint256 shares);
     /// @notice The encumbrance source reverted while a holder's shares moved (audit M-3). Alert on it.
     event EncumbranceSourceReverted(address indexed holder, uint256 lastKnownLock);
 

@@ -140,8 +140,12 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       await openLine(1_000n * ONE_USDC, 100n * ONE_USDC);
       await spend(1_100n * ONE_USDC); // Savings $1,000 and $100 unsecured, which is what is missed
       await defaultLine(issuer, ctx.operator, m);
-      // The first default: liquidation is open to anyone, as compliance 10b has it.
-      await liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS);
+      // The first default: liquidation is open to anyone, as compliance 10b has it (Phase 2f, decision
+      // 22: up to the Defaulted Amount of Savings-Backed Drawn, none here). The member applies their
+      // savings to the rest themselves (MB-05 §7.9).
+      await expect(liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 1_000n * ONE_USDC);
       expect(await issuer.hasDefaulted(m)).to.equal(true);
 
       // Re-onboarded: a new line (which restores membership), new savings drawn.
@@ -164,12 +168,19 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       await openLine(1_000n * ONE_USDC, 100n * ONE_USDC);
       await spend(1_100n * ONE_USDC);
       await defaultLine(issuer, ctx.operator, m);
-      await liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS);
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 1_000n * ONE_USDC);
       await openLine(400n * ONE_USDC, 100n * ONE_USDC);
       await save(500n * ONE_USDC);
       await spend(450n * ONE_USDC); // Savings $400 and $50 unsecured
+      // Current, the new line is out of reach.
+      await expect(liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");
       await defaultLine(issuer, ctx.operator, m);
-      await liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS);
+      // Its default is reachable again: the call now passes the default check (Phase 2f, decision 22:
+      // and takes only the Defaulted Amount of Savings-Backed Drawn, none here).
+      await expect(liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC);
       expect(await issuer.principalOf(m, 0)).to.equal(0n);
       expect(await clrusd.balanceOf(m)).to.equal(100n * ONE_USDC);
     });
@@ -672,7 +683,11 @@ describe("PHASE 4b: the owner's decisions on the re-review", function () {
       await defaultLine(issuer, ctx.operator, m);
       await expect(openLine(500n * ONE_USDC, 0n))
         .to.be.revertedWithCustomError(issuer, "RevolvingIssuerDefaultCollateralUnapplied");
-      await liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS);
+      // Phase 2f, decision 22: enforcement takes only the Defaulted Amount (none of the savings
+      // position here), so the member applies the collateral by their own instruction (MB-05 §7.9).
+      await expect(liquidator.connect(stranger).liquidate(m, await issuer.getAddress(), 0, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 1_000n * ONE_USDC);
       expect(await issuer.principalOf(m, 0)).to.equal(0n);
       await openLine(500n * ONE_USDC, 0n);
       expect(await issuer.lineOpenedAtOf(m)).to.be.gt(await issuer.defaultedAt(m));

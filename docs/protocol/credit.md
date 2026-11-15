@@ -441,8 +441,8 @@ needed; `releaseItem` will not free anything while the kind is drawn.
 flowchart TD
   R["Revolving: period expires,<br/>grace over, balance owed"] -->|"expireCreditPeriod"| WR["writeOffCreditLine<br/>min(exposureOf, totalDrawnOf)"]
   WR --> OD["_onDefault: tier capacities 0,<br/>MEMBER role revoked"]
-  OD --> LQ["Liquidator.liquidate<br/>or liquidateShares"]
-  LQ -->|"seize, redeem"| SF["settleFromCollateral<br/>on the pledged tier"]
+  OD --> LQ["Liquidator.liquidate (Savings),<br/>payPledged (bonds),<br/>PoolShareEnforcer (pool shares)"]
+  LQ -->|"up to the Defaulted Amount"| SF["settleFromCollateral<br/>or payPlan"]
   T["Term: past defaultableAt"] -->|"declareDefault (anyone)"| WT["writeOffCreditLine<br/>unsecured plans' principal"]
   WT --> TS["plans closed, termLimitOf 0,<br/>termSuspended"]
   WR --> LD["lostDebt()"]
@@ -486,24 +486,53 @@ clears the dearest tiers — the unsecured ones in the deployed configuration �
 tier drawn for liquidation. A term write-off on a member who also holds a dearer revolving tier is
 absorbed by that tier first; `TermIssuer._onDefault` then closes the plans regardless.
 
-**Liquidation.** `Liquidator.liquidate(member, issuer, tierId, kind)` (`OPERATOR_ROLE`) requires
-`inDefault` or `hasDefaulted` on that issuer. Since Phase 4b (re-review M-C) the recorded default
-must be the current line's: `hasDefaultedOnCurrentLine`, true when `defaultedAt >= lineOpenedAtOf`
-(`openLine` records it). `hasDefaulted` stays true for ever, for the record and underwriting; a
-member who defaulted, settled and was given a new line is current on it and cannot be liquidated. It seizes `min(principalOf(member, tierId), CLRUSD
-balance)` with `ClearUSD.seize`, records the seizure in the registry, redeems the CLRUSD at
-`ESADepositVault`, and calls `settleFromCollateral(member, tierId, redeemed)`. That settles the named
-tier through `repayCreditBalanceFor`, so the waterfall is not told. `liquidateShares` does the same
-with pool shares, redeems what the pool can pay now and queues the rest; `settleRealized` applies
-cash the Liquidator holds to the tier later. Pledged bonds are not taken: since Phase 2e (founder
-answer G) a bond is paid under its own `payPledged`, which asks `Liquidator.pledgePaymentDue` and has
-the Liquidator apply the payment ([Bonds](./bonds.md)). `settleExcess` (a missed cycle) takes pool
-shares only, and `settleShortfall` closes the pool gap; the bond gap closes by `payPledged`. The Liquidator has no call that claims its queued
-request, and it needs the pool's `LIQUIDATOR_ROLE`, which no deploy script grants
-([Settlement → LendingPool](./settlement.md#lendingpool)). `settleFromSavings` lets a member do the same to their own `SAVINGS` tier at an
-issuer the Liquidator trusts, without being in default. The Liquidator needs AccessManager operator
-(`settleFromCollateral` is `onlyOperator`), the registry's `OPERATOR_ROLE` and CLRUSD's
-`LIQUIDATOR_ROLE`.
+**Liquidation (MB-05, Phase 2f stage 2).** Enforcement against collateral runs only on a default
+after notice and cure, or on a Shortfall after its wait, and never on a missed cycle alone (C2): a
+miss halves the limit and counts toward default, and the registry's excess lock keeps the Earn
+pledge in place, but nothing is taken. A default reaches only its **Defaulted Amount** (decision 22):
+what was past due when the grace or cure period ended, as the issuer recorded it, less what has been
+paid or enforced since.
+
+- On the revolving line that is the past-due Secured Minimum (`pastDueSM`, within `securedPastDue`),
+  which the line's secured positions may pay, and the unpaid second Rebalance Amount (`cureAmount`),
+  which is unsecured. The whole balance never counts: a default does not make it due, and the line
+  has no other on-chain closing.
+- On a plan secured under MB-05 it is what the cure notice concerned (`noticeDue`) less what has
+  been repaid, and the plan's whole balance once its schedule has ended.
+
+A pledge secures all of the member's MB-05 secured debt with every trusted issuer (decision 9). The
+order is MB-05 §7.1's: Savings only for Savings; on a default, bonds first, then pool shares, paying
+the line's past-due Secured Minimum, then the secured plans oldest first, then the unpaid Rebalance
+Amount; on a Shortfall, pool shares first, then bonds. Among bonds, the member's own order if they
+signed one (`CollateralRegistry.setEnforcementOrder`) before any Default Notice or Shortfall
+notice, otherwise the bond nearest maturity (decision 20). The surplus always goes to the Holder.
+
+- `Liquidator.liquidate(member, issuer, tierId, kind)` (anyone) requires `inDefault` or
+  `hasDefaultedOnCurrentLine` on a trusted issuer (Phase 4b, re-review M-C: a member who defaulted,
+  settled and was given a new line is current on it). It takes the least of the line's open
+  Defaulted Amount of secured positions, the savings tier, the CLRUSD held and the registry's lock,
+  with `ClearUSD.seize`, redeems it at `ESADepositVault`, and calls `settleFromCollateral`. Because a
+  revolving default turns on the unsecured Rebalance Amount, and the Secured Minimum on savings is
+  charged only when no unsecured principal is drawn, a default usually leaves little or none of the
+  savings tier past due: the rest stays owed and locked.
+- `settleFromSavings` lets a member apply their own savings to their own `SAVINGS` tier at a trusted
+  issuer at any time, default or not (MB-05 §7.9): an instruction, not enforcement.
+- Pledged bonds are paid under their own `payPledged`, which asks `Liquidator.pledgePaymentDue` and
+  has the Liquidator apply the payment ([Bonds](./bonds.md)).
+- Pledged pool shares are never seized (C5). `PoolShareEnforcer.enforce(member)` (anyone) asks the
+  Yield Pool to redeem only the shares still needed, as an enforcement redemption in the queue; when
+  it fills, `PoolShareEnforcer.settle(member)` (anyone) hands the proceeds to
+  `Liquidator.applyPoolProceeds`, which applies them and pays the rest to the Holder.
+  `cancelExcess` (anyone) gives back queued shares no longer needed.
+- The Shortfall is one figure (decision 21): Asset-Backed Drawn (the bond and pool-share tiers of
+  every trusted line) above the total Asset-Backed Limit. `noticeShortfall(member)` (anyone) starts
+  its 72 hours (longer by paused time) or clears a closed one; after the wait it is settled in the
+  smallest amount that ends it.
+- A Liquidation Hold or a pause in force stops every path, and the proceeds of a fill wait.
+
+The Liquidator needs AccessManager operator (`settleFromCollateral` is `onlyOperator`), the registry's
+`OPERATOR_ROLE` and CLRUSD's `LIQUIDATOR_ROLE`. Its Earn rules run in `LiquidatorEnforcement`, a
+delegatecall module its constructor creates.
 
 **Term.** `declareDefault` materialises carry on every plan, writes off the principal of the
 unsecured open plans, adds it to `writtenOffOf`, closes those plans, sets `termLimitOf` to 0 and

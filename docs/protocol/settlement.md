@@ -272,10 +272,12 @@ delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poo
   `setEncumbranceSource`) cannot be transferred, redeemed or queued by the holder
   (`LendingPoolEncumbered`); if the source can't be read, a holder last seen pledged is treated as
   fully locked (audit M-3). An MB-05 enforcement redemption, `enforcementRedeem(holder, shares)`
-  (`ENFORCER_ROLE`, stage 2's `PoolShareEnforcer`), queues pledged shares in order and pays only
-  `enforcementDestination()`; any holdback goes to the holder. `previewRedeem(shares)` is the Pool
-  Share Value of MB-05 §1.3. `seizeShares` (`LIQUIDATOR_ROLE`) remains until stage 2 removes it
-  with the Liquidator's exemption (C5).
+  (`ENFORCER_ROLE`, held by `PoolShareEnforcer`), queues pledged shares in order and pays only
+  `enforcementDestination()` (the enforcer); any holdback goes to the holder, and
+  `enforcementFilledOf(holder)` records what each holder's fills burned and paid. `previewRedeem(shares)`
+  is the Pool Share Value of MB-05 §1.3, and CollateralRegistry values pledged shares by it. Nothing
+  seizes a share: `seizeShares` and the Liquidator's exemption are gone (Phase 2f stage 2, C5), and
+  `LIQUIDATOR_ROLE` is kept only so scripts can revoke it.
 - **Requests queued before 2f** were fixed in assets with their shares burned. `claimWithdrawal(id)`
   still pays them to the owner; until then their cash is outside Pool Assets.
 
@@ -362,7 +364,6 @@ refund shortfall. The arithmetic and worked examples are in
 | `LendingPool.enforcementRedeem` | `ENFORCER_ROLE`; pays only `enforcementDestination` |
 | `LendingPool.borrow` | Nobody (reverts) |
 | `LendingPool.setEncumbranceSource` | `OPERATOR_ROLE` |
-| `LendingPool.seizeShares` | `LIQUIDATOR_ROLE` (removed in stage 2) |
 | `LendingPool.initializeYieldPool`, `setEarnControls`, `setDeploymentAccount`, `setEnforcementDestination`, `setHolderCapBps`, `setHoldbackMaxAge`, `proposeRateModel`, role grants and upgrades (UUPS) | `DEFAULT_ADMIN_ROLE` (the Earn timelock) |
 
 Tests: `test/peripherals/PayoutPool.spec.ts`, `test/peripherals/LendingPool.spec.ts`,

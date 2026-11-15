@@ -538,7 +538,9 @@ describe("COMPLIANCE section 13: Assurance Contracts (acceptance 31-33)", functi
       await vault.connect(ctx.member).redeem(await usdc.getAddress(), usd(500), ctx.member.address);
       // Force settlement and liquidation, where they apply.
       await ctx.stableCredit.connect(ctx.member).transfer(core.merchant.address, usd(800));
-      await liquidator.connect(ctx.outsider).settleExcess(ctx.member.address).catch(() => undefined);
+      // (Phase 2f, C2: a missed cycle settles nothing, so there is no excess path; the Shortfall
+      // notice is the one permissionless Earn call left on the Liquidator.)
+      await liquidator.connect(ctx.outsider).noticeShortfall(ctx.member.address).catch(() => undefined);
       await liquidator.connect(ctx.outsider).liquidate(ctx.member.address, await revolving.getAddress(), 0, SAVINGS).catch(() => undefined);
       const after = await snapshotPool(a, usdc);
       expect(after.byId).to.deep.equal(before.byId);

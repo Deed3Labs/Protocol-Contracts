@@ -199,7 +199,12 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       await driveToDefault(issuer, ctx.member.address, ctx.operator);
 
       const before = await holdings(ctx);
-      await liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
+      // Phase 2f, decision 22: a stranger's liquidation applies CLRUSD only to the Defaulted Amount of
+      // Savings-Backed Drawn, of which this default leaves none; the member's own instruction (MB-05
+      // §7.9) applies the savings on the same redemption path.
+      await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC);
       expect(await clrusd.balanceOf(ctx.member.address)).to.equal(600n * ONE_USDC);
       expect(await holdings(ctx)).to.deep.equal(before);
 

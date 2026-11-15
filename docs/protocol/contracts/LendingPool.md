@@ -27,7 +27,7 @@ Source: [`contracts/peripherals/LendingPool.sol`](../../../contracts/peripherals
 | `repay(uint256 amount)` | Anyone |  |
 | `requestWithdrawal(uint256 shares, address receiver)` | Anyone; acts on the caller's own account |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
-| `seizeShares(address holder, address to, uint256 shares)` | Anyone |  |
+| `seizeShares(address holder, address to, uint256 shares)` | Not in the current source |  |
 | `setEncumbranceSource(address source, bytes32 kind)` | Anyone |  |
 | `setRateCurve(uint256 base, uint256 slope1, uint256 slope2, uint256 kink)` | Not in the current source |  |
 | `transfer(address to, uint256 amount)` | The token holder |  |

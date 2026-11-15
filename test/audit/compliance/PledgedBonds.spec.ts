@@ -97,7 +97,7 @@ async function deployStack() {
     [ctx.admin.address, await ctx.stableCredit.getAddress(), await clrusd.getAddress(), await vault.getAddress(),
       await usdc.getAddress(), await registry.getAddress()], { kind: "uups" });
   await registry.grantRole(await registry.OPERATOR_ROLE(), await liquidator.getAddress());
-  await pool.grantRole(await pool.LIQUIDATOR_ROLE(), await liquidator.getAddress());
+  // Phase 2f, C5 (decision 7): no LIQUIDATOR_ROLE on the pool; pledged shares are never seized.
   // Before any bond exists, so it takes effect at once: the pledge module's enforcement side.
   await bond.setLiquidator(await liquidator.getAddress());
   await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
@@ -140,6 +140,9 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await usdc.mint(await bondVault.getAddress(), U(1_000)); // the vault's interest to pay accretion
       await issuer.setPrincipal(m, T_BOND, U(500));
       await issuer.setInDefault(m, true); // computed by the issuer: default after notice and cure
+      // Phase 2f, decision 22: enforcement is capped at the Defaulted Amount the issuer recorded,
+      // here a $500 past-due Secured Minimum on the asset-backed position.
+      await issuer.setDefaulted(m, U(500), 0n, 1n);
 
       const memberBefore = await usdc.balanceOf(m);
       const vaultBefore = await usdc.balanceOf(await bondVault.getAddress());
@@ -182,8 +185,9 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       // A Shortfall: drawn above what the bond backs at 95%. Under 72 hours from the notice, no.
       const backing = await s.registry.advancedValueOf(m, BOND, 0);
       await issuer.setPrincipal(m, T_BOND, backing + U(10));
-      await liquidator.connect(stranger).noticeShortfall(m, I);
-      const noticedAt = await liquidator.shortfallNoticedAt(m, I);
+      // Decision 21: one combined Shortfall per member, noticed without naming an issuer.
+      await liquidator.connect(stranger).noticeShortfall(m);
+      const noticedAt = await liquidator.shortfallNoticedAt(m, ethers.ZeroAddress);
       await at(noticedAt + BigInt(72 * HOUR) - 1n);
       await expect(bond.connect(stranger).payPledged(id))
         .to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable").withArgs(id);
@@ -195,8 +199,11 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect((await liquidator.pledgePaymentDue(m, id))[0]).to.equal(false);
       await expect(bond.connect(stranger).payPledged(id))
         .to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable").withArgs(id);
-      // Once the cure date passes and the issuer computes the default, it is.
+      // Once the cure date passes and the issuer computes the default, it is: for the Defaulted
+      // Amount the issuer recorded (decision 22).
       await issuer.setInDefault(m, true);
+      expect([...(await liquidator.pledgePaymentDue(m, id))]).to.deep.equal([false, ethers.ZeroAddress, false]);
+      await issuer.setDefaulted(m, U(100), 0n, 1n);
       expect([...(await liquidator.pledgePaymentDue(m, id))]).to.deep.equal([true, I, true]);
       await expect(bond.connect(stranger).payPledged(id)).to.emit(bond, "PledgePaid");
     });
@@ -209,7 +216,7 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       const backing = await s.registry.advancedValueOf(m, BOND, 0);
       await issuer.setPrincipal(m, T_BOND, backing + U(10));
       await issuer.setPrincipal(m, T_BOOST, U(300)); // unsecured: not a Shortfall's to pay
-      await liquidator.noticeShortfall(m, I);
+      await liquidator.noticeShortfall(m); // decision 21: one combined Shortfall
       await advance(72 * HOUR);
 
       const before = await usdc.balanceOf(m);
@@ -220,26 +227,29 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
       expect(await issuer.principalOf(m, T_BOOST)).to.equal(U(300));
       expect((await usdc.balanceOf(m)) - before).to.equal(paid - drawn);
-      expect(await liquidator.shortfallNoticedAt(m, I)).to.equal(0n); // the gap closed
+      expect(await liquidator.shortfallNoticedAt(m, ethers.ZeroAddress)).to.equal(0n); // the gap closed
     });
 
-    it("acts only on as many bonds as the module requests: the smallest that covers the need, then no more", async function () {
+    // Phase 2f, decision 20 replaces Phase 2e's "the smallest bond that covers the need, else the
+    // largest" with MB-05 §7.1's order: the bond nearest maturity first. Still only as many as needed.
+    it("acts only on as many bonds as the module requests: the one nearest maturity, then no more", async function () {
       const { usdc, issuer, bond, liquidator, keeper } = s;
-      const { id: big } = await buyBond(U(2_000));
-      const { id: small } = await buyBond(U(1_000));
-      const { id: spare } = await buyBond(U(600));
+      const { id: spare } = await buyBond(U(600), YEAR);
+      const { id: big } = await buyBond(U(2_000), YEAR - DAY);
+      const { id: small } = await buyBond(U(1_000), YEAR - 2 * DAY);
       await usdc.mint(await s.bondVault.getAddress(), U(5_000));
       await advance(30 * DAY);
       await issuer.setPrincipal(m, T_BOND, U(700));
       await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(700), 0n, 1n); // decision 22: $700 past due
 
-      // $700 owed: the $1,000 bond covers it on its own; the $2,000 and $600 bonds are not asked for.
+      // $700 past due: the $1,000 bond matures first and is asked for; the others are not.
       expect((await liquidator.pledgePaymentDue(m, big))[0]).to.equal(false);
       expect((await liquidator.pledgePaymentDue(m, spare))[0]).to.equal(false);
       await expect(bond.connect(keeper).payPledged(big)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
       await expect(bond.connect(keeper).payPledged(spare)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
       await bond.connect(keeper).payPledged(small);
-      // The debt is paid: nothing more is requested.
+      // The Defaulted Amount is paid: nothing more is requested.
       expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
       for (const id of [big, spare]) {
         await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
@@ -247,7 +257,11 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       }
     });
 
-    it("on a default, applies in the module's order: the bond's tier, pool shares' tier, BOOST, INCOME; never Savings", async function () {
+    // Phase 2f, decision 22 replaces Phase 2e's need over whole tiers (`_owedIn`): a bond pays the
+    // Defaulted Amounts the issuer recorded, the past-due Secured Minimum on the asset-backed tiers
+    // (MB-05 §7.1(b)) and then the unpaid Rebalance Amount on the unsecured ones (§7.1(d)), and
+    // the surplus goes to the Holder.
+    it("on a default, applies in the module's order up to the Defaulted Amounts: the bond's tier, pool shares' tier, BOOST, INCOME; never Savings", async function () {
       const { usdc, issuer, bond, keeper } = s;
       const { id } = await buyBond(U(2_000));
       await usdc.mint(await s.bondVault.getAddress(), U(5_000));
@@ -258,14 +272,18 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await issuer.setPrincipal(m, T_BOOST, U(500));
       await issuer.setPrincipal(m, T_INCOME, U(2_000));
       await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(500), U(1_000), 1n); // $500 Secured Minimum, $1,000 Rebalance Amount
       const value = await bond.accretedValue(id);
+      const before = await usdc.balanceOf(m);
       await bond.connect(keeper).payPledged(id);
-      // value is about $1,830: BOND 300, POOL 200, BOOST 500, then INCOME takes the rest.
+      // value is about $1,830: BOND 300 and POOL 200 (the Secured Minimum), BOOST 500 and INCOME
+      // 500 (the Rebalance Amount), and the rest to the Holder.
       expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
       expect(await issuer.principalOf(m, T_POOL)).to.equal(0n);
       expect(await issuer.principalOf(m, T_BOOST)).to.equal(0n);
-      expect(await issuer.principalOf(m, T_INCOME)).to.be.closeTo(U(2_000) - (value - U(1_000)), U(1));
+      expect(await issuer.principalOf(m, T_INCOME)).to.equal(U(1_500));
       expect(await issuer.principalOf(m, T_SAVINGS)).to.equal(U(400));
+      expect((await usdc.balanceOf(m)) - before).to.be.closeTo(value - U(1_500), 1_000n); // a second's accretion
     });
 
     it("no call can pay less than accretedValue(id) or send any amount elsewhere", async function () {
@@ -274,6 +292,7 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await advance(YEAR / 2);
       await issuer.setPrincipal(m, T_BOND, U(500));
       await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(500), 0n, 1n); // decision 22
 
       // The only argument is the id: no amount, price, destination or debt to choose.
       const fn = bond.interface.getFunction("payPledged")!;
@@ -325,6 +344,7 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await usdc.mint(await bondVault.getAddress(), U(1_000));
       await issuer.setPrincipal(m, T_BOND, U(500));
       await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(500), 0n, 1n); // decision 22
       await clrusdPause.pauseAccount(m); // the Holder's own CLRUSD account
       expect((await liquidator.pledgePaymentDue(m, id))[0]).to.equal(false);
       await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
@@ -344,8 +364,8 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await advance(30 * DAY);
       const backing = await s.registry.advancedValueOf(m, BOND, 0);
       await issuer.setPrincipal(m, T_BOND, backing + U(10));
-      await liquidator.noticeShortfall(m, I);
-      const noticedAt = await liquidator.shortfallNoticedAt(m, I);
+      await liquidator.noticeShortfall(m); // decision 21: one combined Shortfall
+      const noticedAt = await liquidator.shortfallNoticedAt(m, ethers.ZeroAddress);
       await at(noticedAt + BigInt(10 * HOUR));
       await clrusdPause.pauseAccount(m);
       await at(noticedAt + BigInt(16 * HOUR));
@@ -410,8 +430,9 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await expect(bond.connect(stranger).settle(a)).to.emit(bond, "PledgedMaturitySplit").withArgs(a, U(1_000), 0n);
       expect(await usdc.balanceOf(m)).to.equal(before);
       expect(await issuer.principalOf(m, T_BOND)).to.equal(U(600));
-      expect((await liquidator.earnGapOf(m, I))[1]).to.equal(U(125));
-      await expect(liquidator.connect(stranger).noticeShortfall(m, I)).to.emit(liquidator, "ShortfallNoticed").withArgs(m, U(125));
+      // Decision 21: one combined Shortfall (here only bonds are pledged).
+      expect((await liquidator.shortfallOf(m))[0]).to.equal(U(125));
+      await expect(liquidator.connect(stranger).noticeShortfall(m)).to.emit(liquidator, "ShortfallNoticed").withArgs(m, U(125));
       // The Shortfall rules: bond B becomes payable only once the notice is 72 hours old.
       await expect(bond.connect(stranger).payPledged(b)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
       await advance(72 * HOUR);

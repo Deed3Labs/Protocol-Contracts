@@ -135,9 +135,13 @@ describe("COMPLIANCE DFAL control and pilot cap (spec items 10-11)", function ()
     await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
       .to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");
     await ethers.provider.send("evm_setNextBlockTimestamp", [end + 1]);
-    await liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
-    // Never more than the encumbered collateral and the debt: the rest of the savings is theirs.
-    expect(await clrusd.balanceOf(ctx.member.address)).to.equal(600n * ONE_USDC);
+    // From the window's end the default holds for any caller. Phase 2f, decision 22: CLRUSD is then
+    // applied only to the Defaulted Amount of Savings-Backed Drawn (MB-05 §7.2). This default turned
+    // on the unsecured Rebalance Amount and none of the savings position is past due, so the call
+    // gets past the default check and takes nothing: the savings stay pledged behind what is owed.
+    await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
+      .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+    expect(await clrusd.balanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC);
     // An untrusted issuer cannot trigger a seizure.
     await expect(liquidator.connect(stranger).liquidate(ctx.member.address, stranger.address, 0, SAVINGS))
       .to.be.revertedWithCustomError(liquidator, "LiquidatorUntrustedIssuer");

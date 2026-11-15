@@ -18,6 +18,21 @@ interface IUnsecuredExcessSource {
     function unsecuredExcessOf(address member) external view returns (uint256);
 }
 
+/// @dev An ERC-4626 vault whose shares are pledged in units (the Yield Pool): MB-05 §1.3's Pool
+/// Share Value is its own redemption preview, net of any holdback (Phase 2f, plan row 58).
+interface IShareValuer {
+    function previewRedeem(uint256 shares) external view returns (uint256);
+    function previewWithdraw(uint256 assets) external view returns (uint256);
+}
+
+/// @dev The pledge module's views the registry reads (`PoolShareEnforcer`): whether a Default
+/// Notice or Shortfall notice is recorded for a member (decision 20), and the Pool Share Value a
+/// recorded default holds pledged (decision 10).
+interface IEnforcementSource {
+    function noticeRecorded(address member) external view returns (bool);
+    function defaultLockValue(address member) external view returns (uint256);
+}
+
 /// @title CollateralRegistry
 /// @notice What each member has pledged, and what the AssurancePool would pay if it all defaulted.
 /// @dev Two jobs that are really one. Pool exposure is not a property of a debt or of a pledge
@@ -109,7 +124,17 @@ contract CollateralRegistry is
     /// units across the member's pledges of that kind.
     mapping(address => mapping(bytes32 => uint256)) private _advanceBps;
 
-    uint256[37] private __gap;
+    /* ========== ADDED IN PHASE 2F (two slots from the gap) ========== */
+
+    /// @notice The pledge module's views (`PoolShareEnforcer`). Set once. While a Default Notice or
+    /// Shortfall notice is recorded for a member, their own enforcement order cannot be changed
+    /// (decision 20; MB-05 §7.1); and while a recorded default leaves a Defaulted Amount that pool
+    /// shares are to pay, that much of the member's pledged shares stays locked (decision 10).
+    address public enforcementSource;
+    /// @dev member => kind => the order the member signed for their pledged items of that kind.
+    mapping(address => mapping(bytes32 => uint256[])) private _enforcementOrder;
+
+    uint256[35] private __gap;
 
     /// @notice What a member signs to pledge an amount of a kind (Phase 4b, L-I).
     bytes32 public constant PLEDGE_TYPEHASH =
@@ -118,6 +143,11 @@ contract CollateralRegistry is
     /// the Maturity Instruction that goes with it (Phase 2e, section 9; MB-05 §5.6).
     bytes32 public constant PLEDGE_ITEM_TYPEHASH = keccak256(
         "PledgeItem(address member,bytes32 kind,uint256 itemId,bytes32 maturityInstruction,uint256 nonce,uint256 deadline)"
+    );
+    /// @notice What a member signs to set the order their pledged items of a kind are applied in on
+    /// enforcement (decision 20; MB-05 §7.1): the items, first applied first.
+    bytes32 public constant ENFORCEMENT_ORDER_TYPEHASH = keccak256(
+        "EnforcementOrder(address member,bytes32 kind,uint256[] itemIds,uint256 nonce,uint256 deadline)"
     );
 
     error CollateralRegistryInvalidAddress();
@@ -135,6 +165,9 @@ contract CollateralRegistry is
     error CollateralRegistryBadSignature(address member);
     /// @notice thrown when an item pledge carries no Maturity Instruction (Phase 2e, section 9).
     error CollateralRegistryNoMaturityInstruction(address member, uint256 itemId);
+    /// @notice thrown when a member sets an enforcement order while a notice is recorded (decision 20).
+    error CollateralRegistryNoticeRecorded(address member);
+    error CollateralRegistryEnforcementSourceSet();
 
     event CollateralTypeRegistered(
         bytes32 indexed kind, ExposureMath.Backing backing, uint256 haircutBps
@@ -158,6 +191,12 @@ contract CollateralRegistry is
     /// @notice An amount pledge's stored advance rate after a pledge (Phase 2e).
     event PledgeAdvanceRate(address indexed member, bytes32 indexed kind, uint256 advanceBps);
     event ExposureRefreshed(address indexed member, uint256 previous, uint256 current);
+    /// @notice A member set the order their pledged items of a kind are applied in (decision 20).
+    event EnforcementOrderSet(address indexed member, bytes32 indexed kind, uint256[] itemIds);
+    /// @notice Pledged units left the pledge through an MB-05 enforcement redemption (Phase 2f, C5):
+    /// redeemed through the vault's queue, never seized.
+    event EnforcementRedeemed(address indexed member, bytes32 indexed kind, uint256 units);
+    event EnforcementSourceSet(address indexed source);
     event ClrusdKindUpdated(bytes32 indexed kind);
     event ClrusdTokenUpdated(address indexed token);
 
@@ -199,7 +238,8 @@ contract CollateralRegistry is
 
         if (collateral.valuer != address(0)) {
             uint256[] storage items = pledgedItems[member][kind];
-            if (items.length == 0) return 0;
+            // Pledged in units, not items (pool shares): their Pool Share Value (MB-05 §1.3).
+            if (items.length == 0) return _shareValue(collateral.valuer, pledgedOf[member][kind]);
             try ICollateralValuer(collateral.valuer).valueOfItems(member, items) returns (
                 uint256 valued
             ) {
@@ -215,6 +255,17 @@ contract CollateralRegistry is
         uint256 units = _unitsHeld(member, kind);
         if (units == 0) return 0;
         return (units * collateral.unitPrice) / PRICE_SCALE;
+    }
+
+    /// @dev What `units` shares of the vault `valuer` would redeem for now, net of any holdback (MB-05
+    /// §1.3's Pool Share Value), or nothing when it cannot answer.
+    function _shareValue(address valuer, uint256 units) private view returns (uint256) {
+        if (units == 0) return 0;
+        try IShareValuer(valuer).previewRedeem(units) returns (uint256 v) {
+            return v;
+        } catch {
+            return 0;
+        }
     }
 
     /// @notice the pledged units that are actually still there.
@@ -259,19 +310,21 @@ contract CollateralRegistry is
         return itemPledged[holder][kind][itemId];
     }
 
-    /// @notice the advance rate a member's amount pledge of a kind carries (section 9): the rate
-    /// stored when they pledged, blended by units across their pledges of that kind. A pledge made
-    /// before Phase 2e stored none and carries the kind's governed rate.
+    /// @notice the advance rate a member's amount pledge of a kind carries: the higher of the rate
+    /// stored when they pledged (section 9; blended by units across their pledges of that kind) and
+    /// the kind's governed rate now. MB-05 §5.3: a raise reaches existing pledges, a cut does not.
     function advanceBpsOf(address member, bytes32 kind) public view returns (uint256) {
-        uint256 stored = _advanceBps[member][kind];
-        return stored != 0 ? stored : collateralTypes[kind].haircutBps;
+        return _higher(_advanceBps[member][kind], collateralTypes[kind].haircutBps);
     }
 
-    /// @notice the advance rate stored with one pledged item when it was pledged (section 9);
-    /// the kind's governed rate for an item pledged before Phase 2e.
+    /// @notice the advance rate one pledged item carries: the higher of the rate stored with it when
+    /// it was pledged and the kind's governed rate now (MB-05 §5.3).
     function itemAdvanceBpsOf(address member, bytes32 kind, uint256 itemId) public view returns (uint256) {
-        uint256 stored = _itemAdvanceBps[member][kind][itemId];
-        return stored != 0 ? stored : collateralTypes[kind].haircutBps;
+        return _higher(_itemAdvanceBps[member][kind][itemId], collateralTypes[kind].haircutBps);
+    }
+
+    function _higher(uint256 a, uint256 b) private pure returns (uint256) {
+        return a > b ? a : b;
     }
 
     /// @notice what a member's pledge of one kind lends against: each pledged item's value at the
@@ -287,8 +340,9 @@ contract CollateralRegistry is
     {
         CollateralType storage collateral = collateralTypes[kind];
         if (!collateral.registered) return 0;
-        if (collateral.valuer == address(0)) {
-            // Savings keep the kind's own terms, fixed once the CLRUSD lock is live (spec 10a).
+        if (collateral.valuer == address(0) || pledgedItems[member][kind].length == 0) {
+            // An amount pledge (pool shares at their Pool Share Value). Savings keep the kind's own
+            // terms, fixed once the CLRUSD lock is live (spec 10a).
             uint256 rate = kind == clrusdKind ? collateral.haircutBps : advanceBpsOf(member, kind);
             return (collateralValueOf(member, kind) * rate) / ExposureMath.BPS;
         }
@@ -408,14 +462,25 @@ contract CollateralRegistry is
         // are fixed once it is live (spec 10a).
         uint256 rate = kind == clrusdKind ? collateral.haircutBps : advanceBpsOf(member, kind);
         // Collateral that realizes nothing can never free itself while anything is drawn on it.
-        if (rate == 0 || collateral.unitPrice == 0) return type(uint256).max;
+        if (rate == 0 || (collateral.unitPrice == 0 && collateral.valuer == address(0))) return type(uint256).max;
 
         // The value the haircut has to reach, converted back into units. Rounded up at each step
         // and multiplied before dividing: rounding down left the lock a few units short of what is
         // drawn (audit L-6).
-        uint256 neededValue =
-            Math.mulDiv(drawn, ExposureMath.BPS, rate, Math.Rounding.Up);
-        return Math.mulDiv(neededValue, PRICE_SCALE, collateral.unitPrice, Math.Rounding.Up);
+        return _unitsFor(collateral, Math.mulDiv(drawn, ExposureMath.BPS, rate, Math.Rounding.Up));
+    }
+
+    /// @dev The units of a kind worth `value`, rounded up. Shares of a vault valuer: the vault's own
+    /// `previewWithdraw` (net of holdback, rounded up); everything locks if it cannot answer.
+    function _unitsFor(CollateralType storage collateral, uint256 value) private view returns (uint256) {
+        if (collateral.valuer != address(0)) {
+            try IShareValuer(collateral.valuer).previewWithdraw(value) returns (uint256 units) {
+                return units;
+            } catch {
+                return type(uint256).max;
+            }
+        }
+        return Math.mulDiv(value, PRICE_SCALE, collateral.unitPrice, Math.Rounding.Up);
     }
 
     /// @notice a member's outstanding principal drawn under one kind.
@@ -458,17 +523,25 @@ contract CollateralRegistry is
         CollateralType storage collateral = collateralTypes[kind];
         if (!collateral.registered) return 0;
         uint256 required = _requiredUnits(holder, kind, collateral);
-        // After a missed cycle the Earn pledge also stands behind the unsecured excess until the
-        // Liquidator settles it (spec 12.5): enough of it, on top of what its own tier needs, to
-        // cover that excess on its own, and never more than was pledged. Computed from the
-        // issuers' own state; no role sets it.
+        // After a missed cycle the Earn pledge also stands behind the unsecured excess (spec 12.5;
+        // since Phase 2f, C2, it is never taken for it, but it stays pledged); and after a recorded
+        // default, behind the Defaulted Amounts its kind is to pay (decision 10: a secured plan's
+        // default reaches pool shares, through the queue, only as far as the pledge is locked).
+        // Enough of it, on top of what its own tier needs, and never more than was pledged.
+        // Computed from the issuers' own state; no role sets it.
         if (_excessLockApplies(kind, collateral)) {
             uint256 excess = unsecuredExcessOf(holder);
+            address source = enforcementSource;
+            if (source != address(0) && collateral.valuer != address(0)) {
+                try IEnforcementSource(source).defaultLockValue(holder) returns (uint256 v) {
+                    excess += v;
+                } catch {}
+            }
             uint256 pledged = pledgedOf[holder][kind];
             if (excess > 0 && required < pledged) {
-                uint256 units = collateral.unitPrice == 0
+                uint256 units = collateral.unitPrice == 0 && collateral.valuer == address(0)
                     ? pledged
-                    : Math.mulDiv(excess, PRICE_SCALE, collateral.unitPrice, Math.Rounding.Up);
+                    : _unitsFor(collateral, excess);
                 required = units >= pledged - required ? pledged : required + units;
             }
         }
@@ -750,6 +823,76 @@ contract CollateralRegistry is
         pledgedOf[member][kind] -= amount;
         emit Released(member, kind, amount);
         refresh(member);
+    }
+
+    /// @notice records pledged units that left the pledge through an MB-05 enforcement redemption
+    /// (Phase 2f, C5): the vault's queue burned them and paid their Pool Share Value to the pledge
+    /// module. Not a seizure: nothing was taken from the member's account.
+    function recordEnforcementRedemption(address member, bytes32 kind, uint256 units)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
+        uint256 pledged = pledgedOf[member][kind];
+        pledgedOf[member][kind] = units > pledged ? 0 : pledged - units;
+        emit EnforcementRedeemed(member, kind, units);
+        refresh(member);
+    }
+
+    /* ========== THE MEMBER'S ENFORCEMENT ORDER (decision 20) ========== */
+
+    /// @notice the order the member set for their pledged items of a kind (first applied first).
+    /// Items not in it, or no longer pledged, are applied after it, nearest maturity first.
+    function enforcementOrderOf(address member, bytes32 kind) external view returns (uint256[] memory) {
+        return _enforcementOrder[member][kind];
+    }
+
+    /// @notice sets the order the member's pledged items of a kind are applied in on enforcement
+    /// (MB-05 §7.1, decision 20), by the member's own EIP-712 signature (EIP-1271 for a smart
+    /// account). Anyone may submit it. Only while no Default Notice or Shortfall notice is recorded
+    /// for the member; an empty list returns them to nearest maturity first.
+    function setEnforcementOrder(
+        address member,
+        bytes32 kind,
+        uint256[] calldata itemIds,
+        uint256 deadline,
+        bytes calldata signature
+    ) external {
+        if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
+        address source = enforcementSource;
+        if (source != address(0) && IEnforcementSource(source).noticeRecorded(member)) {
+            revert CollateralRegistryNoticeRecorded(member);
+        }
+        if (block.timestamp > deadline) revert CollateralRegistrySignatureExpired(deadline);
+        bytes32 digest = enforcementOrderDigest(member, kind, itemIds, deadline);
+        pledgeNonces[member]++;
+        if (!SignatureChecker.isValidSignatureNow(member, digest, signature)) {
+            revert CollateralRegistryBadSignature(member);
+        }
+        _enforcementOrder[member][kind] = itemIds;
+        emit EnforcementOrderSet(member, kind, itemIds);
+    }
+
+    /// @notice the digest a member signs to set their enforcement order, at their current nonce.
+    function enforcementOrderDigest(address member, bytes32 kind, uint256[] calldata itemIds, uint256 deadline)
+        public
+        view
+        returns (bytes32)
+    {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                ENFORCEMENT_ORDER_TYPEHASH, member, kind, keccak256(abi.encodePacked(itemIds)), pledgeNonces[member], deadline
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator(), structHash));
+    }
+
+    /// @notice names the pledge module's views (`PoolShareEnforcer`). Set once: no admin can later
+    /// point it somewhere that refuses every member's order or locks what it likes.
+    function setEnforcementSource(address source) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (source == address(0) || enforcementSource != address(0)) revert CollateralRegistryEnforcementSourceSet();
+        enforcementSource = source;
+        emit EnforcementSourceSet(source);
     }
 
     /// @notice records collateral taken from a member on default.

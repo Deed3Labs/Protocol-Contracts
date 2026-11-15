@@ -45,7 +45,7 @@ async function main() {
 
   // 1. the operational roles, and the contract roles the checks found missing
   await fixChecks(dep, list, () => undefined);
-  check((await checkContracts(ethers.provider, list)).every((k) => k.ok), `every contract holds the roles it needs (${CHECKS.length} checked, LendingPool's LIQUIDATOR_ROLE granted to the Liquidator)`);
+  check((await checkContracts(ethers.provider, list)).every((k) => k.ok), `every contract holds the roles it needs (${CHECKS.length} checked, LendingPool's ENFORCER_ROLE granted to PoolShareEnforcer where it is deployed)`);
   const moves = await surveyMoves(ethers.provider, list, deployer, env);
   await executeMoves(dep, list, moves, () => undefined);
   const after = await surveyMoves(ethers.provider, list, deployer, env);

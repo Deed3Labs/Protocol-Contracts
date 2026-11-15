@@ -34,11 +34,11 @@
     { "contract": "ESADepositVaultLegacy", "role": "OPERATOR_ROLE", "to": "renounce", "why": "the legacy vault: nothing deposits there" }
   ],
   "checks": [
-    { "contract": "LendingPool", "role": "LIQUIDATOR_ROLE", "holder": "Liquidator", "why": "Liquidator.liquidateShares calls seizeShares, which needs it; no script grants it" },
+    { "contract": "LendingPool", "role": "ENFORCER_ROLE", "holder": "PoolShareEnforcer", "why": "PoolShareEnforcer.enforce calls enforcementRedeem (Phase 2f, C5); deploy/25_wire_Compliance.ts grants it. LIQUIDATOR_ROLE is retired: nothing needs it" },
     { "contract": "LendingPool", "role": "BORROWER_ROLE", "holder": "PayoutPool", "why": "the PayoutPool draws from the yield pool for a due claim" },
     { "contract": "ClearUSDUpgradeable", "role": "MINTER_ROLE", "holder": "ESADepositVault", "why": "savings mint CLRUSD" },
     { "contract": "ClearUSDUpgradeable", "role": "BURNER_ROLE", "holder": "ESADepositVault", "why": "redemptions burn CLRUSD" },
-    { "contract": "CollateralRegistry", "role": "OPERATOR_ROLE", "holder": "Liquidator", "why": "recordSeizure" },
+    { "contract": "CollateralRegistry", "role": "OPERATOR_ROLE", "holder": "Liquidator", "why": "recordSeizure (Savings) and recordEnforcementRedemption (pool shares)" },
     { "contract": "CollateralRegistry", "role": "OPERATOR_ROLE", "holder": "LimitCalculator", "why": "set at deploy" },
     { "contract": "AccessManager", "role": "OPERATOR", "holder": "RevolvingIssuer", "why": "the issuers call the ledger as operators" },
     { "contract": "AccessManager", "role": "OPERATOR", "holder": "TermIssuer", "why": "the issuers call the ledger as operators" }

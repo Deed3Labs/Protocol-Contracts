@@ -457,9 +457,12 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       await expect(lp.connect(saver).transfer(pledger.address, 1n))
         .to.emit(lp, "EncumbranceSourceReverted")
         .withArgs(saver.address, 0n);
-      // And "fully locked" is not a licence to seize.
-      await expect(lp.connect(liquidator).seizeShares(pledger.address, liquidator.address, 1n))
-        .to.be.revertedWithCustomError(lp, "LendingPoolEncumbranceUnreadable");
+      // And "fully locked" is not a licence to take anything: since Phase 2f stage 2 (C5, decision 7)
+      // there is no seizure at all, and LIQUIDATOR_ROLE (granted above) exempts nothing.
+      expect(lp.interface.getFunction("seizeShares")).to.equal(null);
+      await lp.connect(pledger).approve(liquidator.address, 1n);
+      await expect(lp.connect(liquidator).transferFrom(pledger.address, liquidator.address, 1n))
+        .to.be.revertedWithCustomError(lp, "LendingPoolEncumbered");
     });
   });
 

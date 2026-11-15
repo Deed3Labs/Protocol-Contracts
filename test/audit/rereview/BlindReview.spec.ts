@@ -381,6 +381,9 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
     });
   });
 
+  // Phase 2f, C5 (decisions 7 and 10): nothing is seized and queued in the Liquidator's name any
+  // more, so `settleRealized` is gone. Proceeds are applied only by PoolShareEnforcer, from the
+  // pool's own per-holder fill record, so one member's proceeds can never reach another's debt.
   describe("L-H: queued share proceeds settle only the member they were seized from", function () {
     it("the operator cannot apply pooled cash to a member with nothing queued", async function () {
       const ctx = await deployPhase0Network();
@@ -398,8 +401,11 @@ describe("PHASE 4 re-review: blind-review findings (fixed)", function () {
       // Cash sitting in the Liquidator that belongs to somebody else's queued redemption.
       await ctx.usdc.mint(await liquidator.getAddress(), 500n * ONE_USDC);
       expect(await liquidator.realizedPendingOf(ctx.member.address)).to.equal(0n);
-      await expect(liquidator.settleRealized(ctx.member.address, await issuer.getAddress(), 0, 500n * ONE_USDC))
-        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      expect(liquidator.interface.getFunction("settleRealized")).to.equal(null);
+      // The only way in is the enforcer's, and the operator (the admin here) is not it.
+      await expect(liquidator.applyPoolProceeds(ctx.member.address, 500n * ONE_USDC, 0n))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNotPoolShareEnforcer");
+      void issuer;
     });
   });
 

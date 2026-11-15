@@ -175,6 +175,13 @@ contract LendingPool is LendingPoolBase {
         return _enforcementQueuedOf[key];
     }
 
+    /// @notice What the queue has filled of a holder's enforcement redemptions, cumulatively: the
+    /// shares burned and what was paid to `enforcementDestination` for them.
+    function enforcementFilledOf(address key) external view returns (uint256 shares, uint256 paid) {
+        EnforcementFill storage f = _enforcementFilled[key];
+        return (f.shares, f.paid);
+    }
+
     /// @notice A Holder's Holdback Amounts: the sum of H over their open holdbacks.
     function holdbackOf(address key) external view returns (uint256) {
         return _holdbackOf[key];
@@ -550,6 +557,11 @@ contract LendingPool is LendingPoolBase {
             _dequeue(r, take);
             _burn(address(this), take);
             uint256 paid = _finish(r.owner, r.receiver, gross, type(uint256).max);
+            if (r.enforcement) {
+                EnforcementFill storage f = _enforcementFilled[r.owner];
+                f.shares += uint128(take);
+                f.paid += uint128(paid);
+            }
             emit QueueFilled(i, take, gross, paid, left);
             ++filled;
             if (left > 0) break;
@@ -578,15 +590,14 @@ contract LendingPool is LendingPoolBase {
         return _freeSharesOf(holder);
     }
 
-    /// @dev The transfer allowlist (FIXED, §6) and the pledge lock. A mint, the pool's own escrow
-    /// and the Liquidator (until stage 2) pass. Shares go into escrow only through the queue, and
+    /// @dev The transfer allowlist (FIXED, §6) and the pledge lock. A mint and the pool's own escrow
+    /// pass; nobody is exempt (C5: the Liquidator's exemption is gone). Shares go into escrow only through the queue, and
     /// pledged ones only through an enforcement redemption. Every other move, a burn included,
     /// checks the pledge lock; a move that is not a burn or escrow must also be one the controls
     /// allow (same Holder, or the Successor path).
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal override {
         super._beforeTokenTransfer(from, to, amount);
         if (from == address(0) || from == address(this)) return;
-        if (hasRole(LIQUIDATOR_ROLE, _msgSender())) return;
         if (to == address(this)) {
             uint8 mode = escrowMode;
             if (mode == 0) revert LendingPoolTransferNotAllowed(from, to);
@@ -619,11 +630,6 @@ contract LendingPool is LendingPoolBase {
 
     /// @notice see YieldPoolValuation.enforcementRedeem.
     function enforcementRedeem(address, uint256) external returns (uint256) {
-        _forward();
-    }
-
-    /// @notice see YieldPoolValuation.seizeShares.
-    function seizeShares(address, address, uint256) external {
         _forward();
     }
 

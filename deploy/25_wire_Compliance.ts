@@ -33,10 +33,17 @@ import { saveDeployment, getDeployment } from "./helpers";
  * - Phase 2g: adds the workout plan's 0% position to the revolving issuer (12.18), and, once CLRUSD
  *   and the vault answer the pause-clock views, deploys PauseClock (no owner, no setter) and names
  *   it, once each, on RevolvingIssuer and the Liquidator (10c).
+ * - Phase 2f stage 2 (decisions 7, 10 and 20; C5): deploys PoolShareEnforcer (no owner, no role,
+ *   no setter, not upgradeable), grants it the Yield Pool's ENFORCER_ROLE and records it as the
+ *   pool's `enforcementDestination`, names it on the Liquidator (`setPoolShareEnforcer`) and, once,
+ *   on CollateralRegistry (`setEnforcementSource`); makes the pool POOL_SHARE's valuer, so pool
+ *   shares are valued by its `previewRedeem` (MB-05 §1.3); and revokes the Liquidator's old
+ *   LIQUIDATOR_ROLE on the pool (the seizure grant, now inert). The Liquidator's Earn module is
+ *   created by its own constructor, so its upgrade takes no constructor argument.
  *
  * Idempotent: every step checks before it writes. It never deploys a contract other than
- * RateSchedule and PauseClock, and never moves an admin power; the handover is a separate,
- * explicit step.
+ * RateSchedule, PauseClock and PoolShareEnforcer, and never moves an admin power; the handover is a
+ * separate, explicit step.
  *
  *   npx hardhat run deploy/25_wire_Compliance.ts --network base-sepolia
  */
@@ -305,6 +312,61 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
       }
     } else {
       log("! BurnerBond is owned elsewhere: its owner calls setLiquidator(Liquidator), then executeLiquidatorChange after the delay.");
+    }
+
+    // ---- Phase 2f stage 2 (C5, decisions 7, 10 and 20): pool shares are redeemed, never seized ----
+    const pool = await ethers.getContractAt("LendingPool", poolRecord.address);
+    const registry = await ethers.getContractAt("CollateralRegistry", await liquidator.collateralRegistry());
+    let enforcerAddress = getDeployment(network, "PoolShareEnforcer")?.address;
+    if (!enforcerAddress) {
+      const Enforcer = await ethers.getContractFactory("PoolShareEnforcer");
+      const enforcer = await Enforcer.deploy(poolRecord.address, liquidatorRecord.address, await registry.getAddress());
+      await enforcer.waitForDeployment();
+      enforcerAddress = await enforcer.getAddress();
+      saveDeployment(network, "PoolShareEnforcer", enforcerAddress, JSON.parse(enforcer.interface.formatJson()));
+      log(`+ PoolShareEnforcer deployed to ${enforcerAddress}`);
+    }
+    const ADMIN = ethers.ZeroHash;
+    const poolAdmin = await pool.hasRole(ADMIN, deployer.address);
+    const ENFORCER = await pool.ENFORCER_ROLE();
+    const LIQUIDATOR = await pool.LIQUIDATOR_ROLE();
+    const poolSteps: string[] = [];
+    if (!(await pool.hasRole(ENFORCER, enforcerAddress))) poolSteps.push(`grantRole(ENFORCER_ROLE, ${enforcerAddress})`);
+    if ((await pool.enforcementDestination()) !== enforcerAddress) poolSteps.push(`setEnforcementDestination(${enforcerAddress})`);
+    if (await pool.hasRole(LIQUIDATOR, liquidatorRecord.address)) poolSteps.push(`revokeRole(LIQUIDATOR_ROLE, ${liquidatorRecord.address})`);
+    if (poolSteps.length > 0 && poolAdmin) {
+      if (!(await pool.hasRole(ENFORCER, enforcerAddress))) await (await pool.grantRole(ENFORCER, enforcerAddress)).wait();
+      if ((await pool.enforcementDestination()) !== enforcerAddress) await (await pool.setEnforcementDestination(enforcerAddress)).wait();
+      if (await pool.hasRole(LIQUIDATOR, liquidatorRecord.address)) await (await pool.revokeRole(LIQUIDATOR, liquidatorRecord.address)).wait();
+      log("  LendingPool: ENFORCER_ROLE and enforcementDestination -> PoolShareEnforcer; the Liquidator's LIQUIDATOR_ROLE revoked");
+    } else if (poolSteps.length > 0) {
+      log(`! The pool's admin (the Earn timelock) proposes on LendingPool: ${poolSteps.join("; ")}.`);
+    }
+    if ((await liquidator.poolShareEnforcer()) !== enforcerAddress) {
+      if (await liquidator.hasRole(ADMIN, deployer.address)) {
+        await (await liquidator.setPoolShareEnforcer(enforcerAddress)).wait();
+        log("  Liquidator pool-share proceeds -> PoolShareEnforcer");
+      } else {
+        log(`! The Liquidator's admin proposes setPoolShareEnforcer(${enforcerAddress}).`);
+      }
+    }
+    const POOL_SHARE = ethers.encodeBytes32String("POOL_SHARE");
+    const registryAdmin = await registry.hasRole(ADMIN, deployer.address);
+    if ((await registry.enforcementSource()) === ethers.ZeroAddress) {
+      if (registryAdmin) {
+        await (await registry.setEnforcementSource(enforcerAddress)).wait();
+        log("  CollateralRegistry enforcement source -> PoolShareEnforcer (set once)");
+      } else {
+        log(`! The registry's admin proposes setEnforcementSource(${enforcerAddress}) (set once).`);
+      }
+    }
+    if ((await registry.collateralTypes(POOL_SHARE)).valuer !== poolRecord.address) {
+      if (await registry.hasRole(await registry.OPERATOR_ROLE(), deployer.address)) {
+        await (await registry.setCollateralValuer(POOL_SHARE, poolRecord.address)).wait();
+        log("  POOL_SHARE valued by LendingPool.previewRedeem (MB-05 §1.3)");
+      } else {
+        log(`! The registry's operator calls setCollateralValuer(POOL_SHARE, ${poolRecord.address}).`);
+      }
     }
   }
 
