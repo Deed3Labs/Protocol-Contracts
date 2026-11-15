@@ -12,23 +12,23 @@ Source: [`contracts/peripherals/BondVault.sol`](../../../contracts/peripherals/B
 
 | Function | Who can call | Also |
 |---|---|---|
-| `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
+| `grantRole(bytes32 role, address account)` | Anyone |  |
 | `initialize(address admin, address _reserveToken, uint64 _reserveWindow)` | Once, when the proxy is initialised |  |
 | `lendToPayoutPool(uint256 amount)` | Checked inside the function |  |
-| `recordPurchase(uint256 bondId, uint256 principal, uint256 faceValue, uint64 maturity)` | `onlyRole(BOND_ROLE)` |  |
+| `recordPurchase(uint256 bondId, uint256 principal, uint256 faceValue, uint64 maturity)` | Not in the current source |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `repayFromPayoutPool(uint256 amount)` | Checked inside the function |  |
 | `repayReserve()` | Not in the current source |  |
-| `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
-| `roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)` | `onlyRole(BOND_ROLE)` |  |
+| `revokeRole(bytes32 role, address account)` | Anyone |  |
+| `roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)` | Not in the current source |  |
 | `setBackstops(address _treasury, address _assurancePool, address _payoutPool)` | Not in the current source |  |
-| `setEncumbranceSource(address source, bytes32 kind)` | `onlyRole(OPERATOR_ROLE)` |  |
-| `setReserveTerms(uint64 window, uint256 floorBps)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `setEncumbranceSource(address source, bytes32 kind)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setReserveTerms(uint64 window, uint256 floorBps)` | Not in the current source |  |
 | `settle(uint256 bondId, address to)` | `onlyRole(BOND_ROLE)` |  |
-| `settleEarly(uint256 bondId, address to, uint256 presentValue)` | `onlyRole(BOND_ROLE)` |  |
+| `settleEarly(uint256 bondId, address to, uint256 presentValue)` | `onlyRole(BOND_ROLE)` | `notEnforced` |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |
-| `withdrawDeployable(uint256 amount, address to)` | `onlyRole(TREASURY_ROLE)` |  |
+| `withdrawDeployable(uint256 amount, address to)` | Not in the current source |  |
 
 ## Read functions
 
