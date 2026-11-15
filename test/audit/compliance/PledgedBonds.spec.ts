@@ -3,7 +3,7 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { ONE_USDC, DAY } from "./rates";
 import { pledgeSigned, pledgeItemSigned, signPledgeItem, MATURITY_INSTRUCTION } from "../../helpers/pledge";
-import { deployBondStack, grantNoticeRole } from "../../helpers/bonds";
+import { deployBondStack, grantNoticeRole, WIND_DOWN_ROLE } from "../../helpers/bonds";
 import { deployBarePool } from "../../helpers/yieldPool";
 
 /*
@@ -246,9 +246,14 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
     // largest" with MB-05 §7.1's order: the bond nearest maturity first. Still only as many as needed.
     it("acts only on as many bonds as the module requests: the one nearest maturity, then no more", async function () {
       const { usdc, issuer, bond, liquidator, keeper } = s;
+      // Phase 2f: a bond is bought by quote at an offered Ladder term (one year here), so the three
+      // maturities are staggered by buying a day apart, not by asking for shorter terms. The $1,000
+      // bond still matures first, the $2,000 bond a day later and the $600 bond last.
+      const { id: small } = await buyBond(U(1_000), YEAR);
+      await advance(DAY);
+      const { id: big } = await buyBond(U(2_000), YEAR);
+      await advance(DAY);
       const { id: spare } = await buyBond(U(600), YEAR);
-      const { id: big } = await buyBond(U(2_000), YEAR - DAY);
-      const { id: small } = await buyBond(U(1_000), YEAR - 2 * DAY);
       await usdc.mint(await s.bondVault.getAddress(), U(5_000));
       await advance(30 * DAY);
       await issuer.setPrincipal(m, T_BOND, U(700));
@@ -613,6 +618,54 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect(await registry.isItemPledged(m, BOND, replacement)).to.equal(true);
       expect(await registry.isItemPledged(m, BOND, b.id)).to.equal(false);
       expect(bond.interface.getFunction("redeemBond")).to.equal(null);
+    });
+  });
+
+  // Phase 2f stage 3 (integration): under `redeemAll` a pledged bond is paid before maturity, at its
+  // Accreted Value, through the pledged split (decision 14). The collection asks the Liquidator's
+  // `maturityToDebt` with the Accreted Value in place of the Maturity Amount; it is a pure on-chain
+  // computation from that amount, so the debt part never exceeds what the bond pays.
+  describe("decision 14: a pledged bond under redeemAll, before maturity, at its Accreted Value", function () {
+    async function windDown() {
+      const signers = await ethers.getSigners();
+      const [p1, p2] = [signers[15], signers[16]];
+      for (const p of [p1, p2]) await s.bs.controls.connect(s.ctx.admin).grantRoleByResolution(WIND_DOWN_ROLE, p.address, ethers.id("resolution"));
+      await s.bond.connect(p1).setWindDown(true, ethers.id("illegality"));
+      await s.bond.connect(p2).setWindDown(true, ethers.id("illegality"));
+      await advance(30 * DAY);
+      await s.bond.connect(s.keeper).redeemAll();
+    }
+
+    it("applies Asset-Backed Drawn above the limit without the bond, capped at the Accreted Value, and pays the rest to the Holder", async function () {
+      const { usdc, issuer, registry, bond, liquidator, keeper } = s;
+      const a = await buyBond(U(1_000));
+      const b = await buyBond(U(1_000));
+      await usdc.mint(await s.bondVault.getAddress(), U(10_000));
+      await windDown();
+      // Drawn $300, and bond b alone is worth more than that at 95%: nothing of a goes to the debt.
+      await issuer.setPrincipal(m, T_BOND, U(300));
+      let av = await bond.accretedValue(a.id);
+      expect(av).to.be.lt(U(1_000)); // before maturity
+      expect(await liquidator.maturityToDebt(m, a.id, av)).to.equal(0n);
+      let before = await usdc.balanceOf(m);
+      await expect(bond.connect(keeper).redeemUnderWindDown(a.id)).to.emit(bond, "RedeemedUnderWindDown").withArgs(a.id, m, av, 0n);
+      expect((await usdc.balanceOf(m)) - before).to.equal(av);
+      expect(await registry.isItemPledged(m, BOND, a.id)).to.equal(false);
+      expect(await bond.balanceOf(m, a.id)).to.equal(0n);
+
+      // Now drawn $2,000 against bond b only: the limit without it is nothing, so all of b's
+      // Accreted Value goes to the debt, never its $1,000 Maturity Amount.
+      await issuer.setPrincipal(m, T_BOND, U(2_000));
+      av = await bond.accretedValue(b.id);
+      expect(await liquidator.maturityToDebt(m, b.id, av)).to.equal(av);
+      expect(await liquidator.maturityToDebt(m, b.id, U(1_000))).to.equal(U(1_000));
+      before = await usdc.balanceOf(m);
+      await expect(bond.connect(keeper).redeemUnderWindDown(b.id))
+        .to.emit(bond, "RedeemedUnderWindDown").withArgs(b.id, m, av, av)
+        .and.to.emit(liquidator, "MaturityInstructionApplied").withArgs(m, av, av);
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(2_000) - av);
+      expect(await usdc.balanceOf(m)).to.equal(before);
+      expect(await registry.isItemPledged(m, BOND, b.id)).to.equal(false);
     });
   });
 

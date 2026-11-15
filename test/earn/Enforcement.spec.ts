@@ -2,7 +2,8 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { pledgeSigned, pledgeItemSigned } from "../helpers/pledge";
-import { deployBondFactory } from "../helpers/bonds";
+import { deployBondStack } from "../helpers/bonds";
+import { grant } from "../helpers/earnControls";
 import { deployBarePool } from "../helpers/yieldPool";
 import { deployEnforcer, fillAndSettle, signEnforcementOrder } from "../helpers/enforcement";
 
@@ -79,20 +80,14 @@ async function deployStack() {
   await pool.setEncumbranceSource(await registry.getAddress(), POOL_SHARE);
   for (const v of [val1, val2]) await pool.grantRole(await pool.VALUATION_ROLE(), v.address);
 
-  const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
-  await factory.updateGlobalParameters(1_000n, 0n, YEAR);
-  const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-  await factory.createCollection(await usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
-  const bond: any = await ethers.getContractAt("BurnerBond",
-    (await factory.getCollectionInfo(await usdc.getAddress())).collectionAddress);
-  const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
-    [ctx.admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
-  await bondVault.grantRole(await bondVault.BOND_ROLE(), await deposit.getAddress());
-  await bondVault.grantRole(await bondVault.BOND_ROLE(), await bond.getAddress());
-  await deposit.setBondVault(await bondVault.getAddress());
-  await bond.setBondVault(await bondVault.getAddress());
-  await bond.setEncumbranceSource(await registry.getAddress(), BOND);
-  await registry.grantRole(await registry.ITEM_ROLLER_ROLE(), await bond.getAddress());
+  // Phase 2f: the new collection, bought by quote at an offered Ladder term and compounding (R4,
+  // decision 8), with its BondVault and EarnControls. Several one-year-ish terms are offered so
+  // tests can order maturities by term (decision 41 allows any term of 12 to 36 months).
+  const bs = await deployBondStack(ctx.admin, usdc, ctx.tokenRegistry, {
+    registry, kind: BOND, rungs: [[365, 1_025], [366, 1_025], [375, 1_025], [395, 1_025]],
+  });
+  const bond: any = bs.bond;
+  const bondVault: any = bs.vault;
   await registry.setCollateralValuer(BOND, await (await (await ethers.getContractFactory("BondValuer")).deploy(await bond.getAddress())).getAddress());
   await usdc.mint(await bondVault.getAddress(), U(10_000)); // the vault's interest, to pay accretion
 
@@ -121,10 +116,20 @@ async function deployStack() {
   for (const h of [holdA, holdB]) await liquidator.grantRole(await liquidator.HOLD_ROLE(), h.address);
   const enforcer = await deployEnforcer(ctx.admin, pool, liquidator, registry, POOL_SHARE);
 
-  return { ctx, usdc, issuer, term, registry, pool, deploy, bond, bondVault, deposit, clrusd, vault, liquidator, enforcer, keeper, stranger, holdA, holdB, val1, val2 };
+  return { ctx, usdc, issuer, term, registry, pool, deploy, bond, bondVault, bs, clrusd, vault, liquidator, enforcer, keeper, stranger, holdA, holdB, val1, val2 };
 }
 
 describe("PHASE 2F stage 2: enforcement under MB-05 (PoolShareEnforcer and the Liquidator)", function () {
+  // These tests travel to a bond's maturity and a plan's end. Each runs in a snapshot reverted
+  // afterwards, so the shared chain clock stays inside the BondVault's maturity buckets (to 2109).
+  let clockSnapshot: string;
+  beforeEach(async function () {
+    clockSnapshot = await ethers.provider.send("evm_snapshot", []);
+  });
+  afterEach(async function () {
+    await ethers.provider.send("evm_revert", [clockSnapshot]);
+  });
+
   let s: Awaited<ReturnType<typeof deployStack>>;
   let m: string;
   let I: string;
@@ -135,16 +140,15 @@ describe("PHASE 2F stage 2: enforcement under MB-05 (PoolShareEnforcer and the L
     I = await s.issuer.getAddress();
   });
 
-  /** Buys a bond of `face` maturing `term` after now, and pledges it. */
-  async function buyBond(face: bigint, term = YEAR) {
-    const maturity = (await now()) + BigInt(term) - 60n; // within the one-year maximum
-    await s.usdc.mint(m, face);
-    await s.usdc.connect(s.ctx.member).approve(await s.deposit.getAddress(), face);
-    await s.deposit.connect(s.ctx.member).makeDeposit(await s.usdc.getAddress(), face, maturity, await s.bond.calculateDiscount(maturity));
-    const ids = await s.bond.getBondIdsByCreator(m);
-    const id = ids[ids.length - 1];
+  /**
+   * Buys a bond of Maturity Amount `face` for an offered term (days), and pledges it. Phase 2f: a
+   * purchase is by quote at a Ladder term, so maturities are ordered by term, not chosen freely.
+   */
+  async function buyBond(face: bigint, termDays = 365) {
+    const { id } = await s.bs.buy(s.ctx.member, face, termDays);
     await pledgeItemSigned(s.registry, m, BOND, id);
-    return { id, maturity };
+    const maturity = (await s.bond.getBondInfo(id)).maturityDate as bigint;
+    return { id: id as bigint, maturity };
   }
 
   /** Subscribes `amount` to the Yield Pool and pledges the shares. */
@@ -320,8 +324,8 @@ describe("PHASE 2F stage 2: enforcement under MB-05 (PoolShareEnforcer and the L
       const start = await now();
       // $1,200 owed over 12 monthly installments; the cure notice concerned $300 asked by then.
       await term.addPlan(7, m, U(1_200), start, 12, 30 * DAY);
-      const { id: a } = await buyBond(U(1_000));
-      const { id: b } = await buyBond(U(1_000), YEAR - DAY);
+      const { id: a } = await buyBond(U(1_000), 366);
+      const { id: b } = await buyBond(U(1_000), 365);
       await advance(90 * DAY);
       await term.recordDefault(7, U(300));
       expect((await liquidator.earnDefaultedOf(m))[0]).to.equal(U(300));
@@ -412,9 +416,9 @@ describe("PHASE 2F stage 2: enforcement under MB-05 (PoolShareEnforcer and the L
   describe("decision 20: MB-05 §7.1's order among bonds", function () {
     it("the bond nearest maturity first; the member's own order, signed before any notice, instead", async function () {
       const { issuer, registry, liquidator, bond, keeper, stranger, ctx } = s;
-      const { id: late } = await buyBond(U(500), YEAR);
-      const { id: soon } = await buyBond(U(500), YEAR - 30 * DAY);
-      const { id: mid } = await buyBond(U(500), YEAR - 10 * DAY);
+      const { id: late } = await buyBond(U(500), 395);
+      const { id: soon } = await buyBond(U(500), 365);
+      const { id: mid } = await buyBond(U(500), 375);
       expect([...(await liquidator.nextBondOf(m))]).to.deep.equal([true, soon]);
 
       // Someone else's signature does not set it.
@@ -441,8 +445,8 @@ describe("PHASE 2F stage 2: enforcement under MB-05 (PoolShareEnforcer and the L
 
     it("the member cannot change the order once a Default Notice or a Shortfall notice is recorded", async function () {
       const { issuer, registry, liquidator, ctx, term } = s;
-      const { id: a } = await buyBond(U(500), YEAR);
-      const { id: b } = await buyBond(U(500), YEAR - DAY);
+      const { id: a } = await buyBond(U(500), 366);
+      const { id: b } = await buyBond(U(500), 365);
       // A revolving cure notice (MB-04 §9.2(d)).
       await issuer.setCureNotice(m, Number(await now()));
       let sig = await signEnforcementOrder(registry, ctx.member, BOND, [a, b]);
@@ -617,33 +621,204 @@ describe("PHASE 2F stage 2: enforcement under MB-05 (PoolShareEnforcer and the L
     });
   });
 
-  describe("decision 19: a pledged bond's share of a distribution round", function () {
-    it("goes to the Holder's Defaulted Amounts while enforcement is permitted, else all to the Holder; only the collection or its vault may apply it", async function () {
-      const { issuer, liquidator, usdc, bondVault, stranger, holdA, holdB } = s;
+  describe("decision 19: a pledged bond's share of a distribution round (IAgentPledgeModule)", function () {
+    const NOTICE = ethers.id("enforcement notice");
+    const PAYMENT_DEFAULT = 1;
+
+    /**
+     * The real CollateralAgent over the real BondVault, named on the vault and the collection (the
+     * first naming is the admin's alone), and the Liquidator made its pledge module by a co-signed
+     * `setPledgeModule`: proposed (t1), confirmed (t2), co-signed by the Agent Key, then 7 days.
+     */
+    async function withAgent() {
+      const sg = await ethers.getSigners();
+      const [key, t1, t2, account, costs, multisig, successor] = [sg[6], sg[7], sg[8], sg[10], sg[11], sg[4], sg[5]];
+      const { ctx, bs, bond, bondVault, registry, liquidator } = s;
+      const agent: any = await upgrades.deployProxy(await ethers.getContractFactory("CollateralAgent"), [
+        ctx.admin.address, key.address, [t1.address, t2.address], 6, {
+          vault: await bondVault.getAddress(), bondBook: await bondVault.getAddress(), pledgeModule: ethers.ZeroAddress,
+          payeeSource: await bs.controls.getAddress(), collateralAccount: account.address, costAddress: costs.address,
+          excessDestination: multisig.address,
+        }], { kind: "uups" });
+      await bondVault.setEarnSources(await agent.getAddress(), await bs.controls.getAddress());
+      await bond.setSources(await bondVault.getAddress(), await registry.getAddress(), BOND, await bs.controls.getAddress(), await agent.getAddress());
+
+      const data = agent.interface.encodeFunctionData("setPledgeModule", [await liquidator.getAddress()]);
+      await expect(agent.setPledgeModule(await liquidator.getAddress())).to.be.revertedWithCustomError(agent, "CollateralAgentChangeNotReady");
+      const callHash = ethers.keccak256(data);
+      await agent.connect(t1).proposeChange(await agent.getAddress(), callHash, ethers.id("pledge module"));
+      const id = await agent.openChangeFor(await agent.getAddress(), callHash);
+      await agent.connect(t2).confirmChange(id);
+      await agent.connect(key).approveChange(id);
+      await advance(7 * DAY);
+      await agent.setPledgeModule(await liquidator.getAddress());
+      expect(await agent.pledgeModule()).to.equal(await liquidator.getAddress());
+      return { agent, key, t1, t2, successor };
+    }
+
+    /** Records an Enforcement Notice, snapshots every bond and posts one round of `amount`. */
+    async function round(agent: any, key: any, amount: bigint, roundId = 1) {
+      if (!(await agent.enforcementInForce())) await agent.connect(key).enforce(PAYMENT_DEFAULT, NOTICE);
+      if (roundId === 1) await agent.snapshotBonds(10);
+      await agent.connect(key).postDistribution(amount, roundId);
+    }
+
+    it("under a default pays the Defaulted Amount first and the rest to the Holder, through the same application as payPledged", async function () {
+      const { issuer, liquidator, usdc, keeper, registry } = s;
+      const { agent, key } = await withAgent();
+      const { id } = await buyBond(U(1_000));
+      await advance(30 * DAY);
+      await issuer.setPrincipal(m, T_BOND, U(500));
+      await issuer.setPrincipal(m, T_INCOME, U(400));
+      await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(300), U(100), 1n); // $300 Secured Minimum, $100 Rebalance Amount
+      expect(await liquidator.enforcementPermitted(m, id)).to.equal(true);
+      expect(await liquidator.defaultedAmountOf(m)).to.equal(U(400));
+
+      await round(agent, key, U(600));
+      const share = await agent.claimable(id); // $600 less the round's index rounding (a micro-dollar)
+      expect(share).to.be.closeTo(U(600), 1n);
+      expect([...(await agent.routeDistribution(id, m, share))]).to.deep.equal([U(400), share - U(400)]);
+      const before = await usdc.balanceOf(m);
+      await expect(agent.connect(keeper).claimDistribution(id))
+        .to.emit(liquidator, "DistributionApplied").withArgs(m, id, U(400), U(400), 0n)
+        .and.to.emit(agent, "DistributionPaid").withArgs(id, m, m, U(400), share - U(400));
+      // MB-05 §7.1(b) then (d): the bond tier's $300 past due, then the $100 Rebalance Amount.
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(200));
+      expect(await issuer.principalOf(m, T_INCOME)).to.equal(U(300));
+      expect((await usdc.balanceOf(m)) - before).to.equal(share - U(400));
+      expect(await usdc.balanceOf(await liquidator.getAddress())).to.equal(0n);
+      // Paid: nothing more is routed, and a later round goes to the Holder.
+      expect(await liquidator.defaultedAmountOf(m)).to.equal(0n);
+      expect(await liquidator.enforcementPermitted(m, id)).to.equal(false);
+      // The Agent holds no role on the Liquidator or the registry: it is recognised as the
+      // collection's co-signed Agent, nothing more.
+      for (const role of [ethers.ZeroHash, await liquidator.OPERATOR_ROLE(), await liquidator.HOLD_ROLE()]) {
+        expect(await liquidator.hasRole(role, await agent.getAddress())).to.equal(false);
+        expect(await liquidator.hasRole(role, key.address)).to.equal(false);
+      }
+      for (const role of [ethers.ZeroHash, await registry.OPERATOR_ROLE(), await registry.ITEM_ROLLER_ROLE()]) {
+        expect(await registry.hasRole(role, await agent.getAddress())).to.equal(false);
+      }
+    });
+
+    it("pays what the debt does not take to the registered payment Successor, as the Agent pays the rest of the round", async function () {
+      const { issuer, liquidator, usdc, keeper, bs, ctx } = s;
+      const { agent, key, t1, t2, successor } = await withAgent();
+      const { id } = await buyBond(U(1_000));
+      await grant(bs.controls, ctx.admin, "SUCCESSOR_ROLE", t1.address, t2.address);
+      for (const signer of [t1, t2]) await bs.controls.connect(signer).registerPaymentSuccessor(m, successor.address, ethers.id("letters"));
+      await advance(7 * DAY);
+      expect(await bs.controls.payeeOf(m)).to.equal(successor.address);
       await issuer.setPrincipal(m, T_BOND, U(500));
       await issuer.setInDefault(m, true);
       await issuer.setDefaulted(m, U(300), 0n, 1n);
-      await expect(liquidator.connect(stranger).applyDistribution(m, U(1))).to.be.revertedWithCustomError(liquidator, "LiquidatorNotEarnBonds");
-      // The vault sends the round's pledged share and asks the Liquidator to apply it.
-      const vaultAddress = await bondVault.getAddress();
-      await ethers.provider.send("hardhat_impersonateAccount", [vaultAddress]);
-      await ethers.provider.send("hardhat_setBalance", [vaultAddress, "0x56BC75E2D63100000"]);
-      const vault = await ethers.getSigner(vaultAddress);
-      await usdc.mint(await liquidator.getAddress(), U(400));
-      const before = await usdc.balanceOf(m);
-      await expect(liquidator.connect(vault).applyDistribution(m, U(400)))
-        .to.emit(liquidator, "DistributionApplied").withArgs(m, U(400), U(300), U(100));
-      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(200));
-      expect((await usdc.balanceOf(m)) - before).to.equal(U(100));
-      // Under a Liquidation Hold it all goes to the Holder, and the round is not stalled.
-      await issuer.setDefaulted(m, U(150), 0n, 2n);
+
+      // The member pays $50 of the $300 after the round is posted: at the claim the Agent routes the
+      // $250 still open, and the rest of the share goes to the Successor.
+      await round(agent, key, U(400));
+      await issuer.setPrincipal(m, T_BOND, U(250));
+      await issuer.setDefaulted(m, U(250), 0n, 1n);
+      const share = await agent.claimable(id);
+      expect([...(await agent.routeDistribution(id, m, share))]).to.deep.equal([U(250), share - U(250)]);
+      const [beforeHolder, beforeSuccessor] = [await usdc.balanceOf(m), await usdc.balanceOf(successor.address)];
+      await expect(agent.connect(keeper).claimDistribution(id))
+        .to.emit(liquidator, "DistributionApplied").withArgs(m, id, U(250), U(250), 0n);
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
+      expect((await usdc.balanceOf(successor.address)) - beforeSuccessor).to.equal(share - U(250));
+      expect(await usdc.balanceOf(m)).to.equal(beforeHolder);
+
+      // The module's own surplus goes to the payee too: the Agent sends $40 when $25 is open.
+      await issuer.setPrincipal(m, T_BOND, U(25));
+      await issuer.setDefaulted(m, U(25), 0n, 2n);
+      const agentAddress = await agent.getAddress();
+      await ethers.provider.send("hardhat_impersonateAccount", [agentAddress]);
+      await ethers.provider.send("hardhat_setBalance", [agentAddress, "0x56BC75E2D63100000"]);
+      await usdc.mint(await liquidator.getAddress(), U(40));
+      await expect(liquidator.connect(await ethers.getSigner(agentAddress)).applyDistribution(m, id, U(40)))
+        .to.emit(liquidator, "DistributionApplied").withArgs(m, id, U(40), U(25), U(15));
+      await ethers.provider.send("hardhat_stopImpersonatingAccount", [agentAddress]);
+      expect((await usdc.balanceOf(successor.address)) - beforeSuccessor).to.equal(share - U(250) + U(15));
+    });
+
+    it("with no default, or under a hold or a pause, all of it goes to the Holder and the round is not stalled", async function () {
+      const { issuer, liquidator, usdc, keeper, holdA, holdB } = s;
+      const { agent, key } = await withAgent();
+      const { id: a } = await buyBond(U(1_000));
+      const { id: b } = await buyBond(U(1_000), 366);
+      await issuer.setPrincipal(m, T_BOND, U(900));
+      // No default: nothing is routed and the module is not called.
+      expect(await liquidator.enforcementPermitted(m, a)).to.equal(false);
+      expect(await liquidator.defaultedAmountOf(m)).to.equal(0n);
+      await round(agent, key, U(200));
+      const [shareA, shareB] = [await agent.claimable(a), await agent.claimable(b)];
+      let before = await usdc.balanceOf(m);
+      await expect(agent.connect(keeper).claimDistribution(a)).to.not.emit(liquidator, "DistributionApplied");
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(900));
+      expect((await usdc.balanceOf(m)) - before).to.equal(shareA);
+
+      // A default under a Liquidation Hold: still nothing to the debt, all to the Holder.
+      await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(500), 0n, 1n);
       await liquidator.connect(holdA).proposeHold(m, 2, 30 * DAY, ethers.id("evidence:19"));
       await liquidator.connect(holdB).confirmHold(m);
-      await usdc.mint(await liquidator.getAddress(), U(50));
-      await expect(liquidator.connect(vault).applyDistribution(m, U(50)))
-        .to.emit(liquidator, "DistributionApplied").withArgs(m, U(50), 0n, U(50));
-      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(200));
-      await ethers.provider.send("hardhat_stopImpersonatingAccount", [vaultAddress]);
+      expect(await liquidator.enforcementPermitted(m, b)).to.equal(false);
+      before = await usdc.balanceOf(m);
+      await expect(agent.connect(keeper).claimDistribution(b)).to.not.emit(liquidator, "DistributionApplied");
+      expect((await usdc.balanceOf(m)) - before).to.equal(shareB);
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(900));
+    });
+
+    it("follows MB-05 §7.1's order among bonds (decision 20): only the bond next in order pays the debt", async function () {
+      const { issuer, liquidator, usdc, keeper } = s;
+      const { agent, key } = await withAgent();
+      const { id: soon } = await buyBond(U(1_000), 365);
+      const { id: late } = await buyBond(U(1_000), 395);
+      await issuer.setPrincipal(m, T_BOND, U(1_500));
+      await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(1_500), 0n, 1n);
+      expect([...(await liquidator.nextBondOf(m))]).to.deep.equal([true, soon]);
+      expect(await liquidator.enforcementPermitted(m, soon)).to.equal(true);
+      expect(await liquidator.enforcementPermitted(m, late)).to.equal(false);
+
+      await round(agent, key, U(1_000));
+      const shareLate = await agent.claimable(late);
+      const shareSoon = await agent.claimable(soon);
+      // The later bond's share, claimed first, goes to the Holder: the nearer bond comes first.
+      const before = await usdc.balanceOf(m);
+      await agent.connect(keeper).claimDistribution(late);
+      expect((await usdc.balanceOf(m)) - before).to.equal(shareLate);
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(1_500));
+      // The nearer bond's share pays the debt.
+      await expect(agent.connect(keeper).claimDistribution(soon))
+        .to.emit(liquidator, "DistributionApplied").withArgs(m, soon, shareSoon, shareSoon, 0n);
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(1_500) - shareSoon);
+    });
+
+    it("only the Collateral Agent the collection names may apply a distribution: not a stranger, the collection, its vault or the Agent Key", async function () {
+      const { issuer, liquidator, usdc, bond, bondVault, stranger } = s;
+      const { agent, key } = await withAgent();
+      const { id } = await buyBond(U(1_000));
+      await issuer.setPrincipal(m, T_BOND, U(500));
+      await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(300), 0n, 1n);
+      await usdc.mint(await liquidator.getAddress(), U(100));
+      await expect(liquidator.connect(stranger).applyDistribution(m, id, U(100)))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNotCollateralAgent").withArgs(stranger.address);
+      await expect(liquidator.connect(key).applyDistribution(m, id, U(100)))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNotCollateralAgent").withArgs(key.address);
+      for (const c of [bond, bondVault]) {
+        const addr = await c.getAddress();
+        await ethers.provider.send("hardhat_impersonateAccount", [addr]);
+        await ethers.provider.send("hardhat_setBalance", [addr, "0x56BC75E2D63100000"]);
+        await expect(liquidator.connect(await ethers.getSigner(addr)).applyDistribution(m, id, U(100)))
+          .to.be.revertedWithCustomError(liquidator, "LiquidatorNotCollateralAgent").withArgs(addr);
+        await ethers.provider.send("hardhat_stopImpersonatingAccount", [addr]);
+      }
+      // The pre-integration two-argument hook is gone.
+      expect(liquidator.interface.getFunction("applyDistribution(address,uint256)")).to.equal(null);
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(500));
+      void agent;
     });
   });
 

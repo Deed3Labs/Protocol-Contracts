@@ -219,6 +219,8 @@ abstract contract LiquidatorBase is AccessControlUpgradeable, UUPSUpgradeable {
     error LiquidatorNotEarnBonds(address caller);
     /// @dev Only `poolShareEnforcer` applies an enforcement redemption's proceeds.
     error LiquidatorNotPoolShareEnforcer(address caller);
+    /// @dev Only the Collateral Agent the bond collection names applies a distribution (decision 19).
+    error LiquidatorNotCollateralAgent(address caller);
 
     /* ========== EVENTS ========== */
 
@@ -246,9 +248,12 @@ abstract contract LiquidatorBase is AccessControlUpgradeable, UUPSUpgradeable {
     /// (MB-05 §§7.3(b), 7.5, 7.6): `shares` left the pledge, `applied` paid Defaulted Amounts or
     /// ended the Shortfall, and `surplus` went to the Holder.
     event PoolProceedsApplied(address indexed member, uint256 shares, uint256 amount, uint256 applied, uint256 surplus);
-    /// @notice A pledged bond's share of a distribution round went to its Holder's Defaulted Amounts
-    /// (`applied`) and to the Holder (`toHolder`) (decision 19).
-    event DistributionApplied(address indexed member, uint256 amount, uint256 applied, uint256 toHolder);
+    /// @notice A pledged bond's share of a Collateral Agent distribution round, routed here, went to
+    /// its Holder's Defaulted Amounts (`applied`) and the rest to the Holder's payee (`toHolder`)
+    /// (decision 19).
+    event DistributionApplied(
+        address indexed member, uint256 indexed bondId, uint256 amount, uint256 applied, uint256 toHolder
+    );
     /// @notice The member's combined Shortfall (decision 21) was noticed; its 72-hour wait starts.
     event ShortfallNoticed(address indexed member, uint256 gap);
     event ShortfallCleared(address indexed member);

@@ -283,9 +283,19 @@ contract Liquidator is LiquidatorBase {
         _forward();
     }
 
-    /// @notice see LiquidatorEnforcement.applyDistribution.
-    function applyDistribution(address, uint256) external returns (uint256 applied) {
+    /// @notice see LiquidatorEnforcement.applyDistribution (IAgentPledgeModule).
+    function applyDistribution(address, uint256, uint256) external {
         _forward();
+    }
+
+    /// @notice see LiquidatorEnforcement.enforcementPermitted (IAgentPledgeModule).
+    function enforcementPermitted(address, uint256) external view returns (bool permitted) {
+        _forwardView();
+    }
+
+    /// @notice see LiquidatorEnforcement.defaultedAmountOf (IAgentPledgeModule).
+    function defaultedAmountOf(address) external view returns (uint256 due) {
+        _forwardView();
     }
 
     /// @notice see LiquidatorEnforcement.applyPoolProceeds.

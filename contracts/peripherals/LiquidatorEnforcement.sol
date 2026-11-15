@@ -3,7 +3,38 @@ pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "./LiquidatorBase.sol";
-import "../core/interfaces/burner-bond/IBurnerBond.sol";
+import "./interfaces/ICollateralAgent.sol";
+
+/// @dev A bond's record in the Phase 2f collection (`BurnerBondBase.BondInfo`), field for field, so
+/// the returned tuple decodes. Only `maturityDate` is read here (decision 20's order). The pre-2f
+/// `IBurnerBond.BondInfo` has a different shape: decoding the new record with it reads a
+/// timestamp as a `bool` and reverts without a reason.
+struct EarnBondInfo {
+    uint256 faceValue;
+    uint256 purchasePrice;
+    uint256 costBasis;
+    uint256 paid;
+    uint64 issuedAt;
+    uint64 maturityDate;
+    uint32 termDays;
+    uint32 yieldBps;
+    bool isRedeemed;
+    bytes32 exemptionCode;
+}
+
+interface IEarnBondInfo {
+    function getBondInfo(uint256 bondId) external view returns (EarnBondInfo memory);
+}
+
+/// @dev The Collateral Agent a bond collection names (co-signed): the only caller of `applyDistribution`.
+interface IEarnBondsAgent {
+    function agent() external view returns (address);
+}
+
+/// @dev Where the Collateral Agent pays a Holder (EarnControls' payment Successor, else the Holder).
+interface IAgentPayeeSource {
+    function payeeSource() external view returns (address);
+}
 
 /// @title LiquidatorEnforcement
 /// @notice The Liquidator's pledged-Earn rules under MB-05 (Phase 2f, decisions 9, 10 and 20-22):
@@ -245,7 +276,7 @@ contract LiquidatorEnforcement is LiquidatorBase {
     /// @return issuer on a default, the first issuer with a Defaulted Amount; zero on a Shortfall.
     /// @return onDefault true for (a), false for (b).
     function pledgePaymentDue(address member, uint256 bondId)
-        external
+        public
         view
         returns (bool due, address issuer, bool onDefault)
     {
@@ -285,7 +316,7 @@ contract LiquidatorEnforcement is LiquidatorBase {
         uint256 soonest = type(uint256).max;
         for (uint256 i = 0; i < items.length; i++) {
             if (!_bondPayable(member, kind, items[i])) continue;
-            uint256 maturity = IBurnerBond(address(earnBonds)).getBondInfo(items[i]).maturityDate;
+            uint256 maturity = IEarnBondInfo(address(earnBonds)).getBondInfo(items[i]).maturityDate;
             if (maturity < soonest) (found, pick, soonest) = (true, items[i], maturity);
         }
     }
@@ -344,24 +375,62 @@ contract LiquidatorEnforcement is LiquidatorBase {
         emit PoolProceedsApplied(member, shares, amount, applied, amount - applied);
     }
 
-    /* ========== DISTRIBUTION ROUNDS (decision 19) ========== */
+    /* ========== DISTRIBUTION ROUNDS: IAgentPledgeModule (decision 19) ========== */
 
-    /// @notice applies a pledged bond's share of a Collateral Agent distribution round, sent here, to
-    /// its Holder's Defaulted Amounts, and pays the rest to the Holder (IV-10 §7.6; decision 19).
-    /// @dev Only the bond collection or its vault. The bond's ratable share is the round's; only where
-    /// the pledged part goes is decided here: to the Defaulted Amounts in MB-05 §7.1's order only while
-    /// enforcement is permitted (no Liquidation Hold or pause in force), otherwise all of it to the
-    /// Holder. It never reverts for a hold, so a round is never stalled by one Holder.
-    function applyDistribution(address member, uint256 amount) external noReenter returns (uint256 applied) {
-        if (_msgSender() != address(earnBonds) && _msgSender() != earnBonds.bondVault()) {
-            revert LiquidatorNotEarnBonds(_msgSender());
-        }
-        if (!_blocked(member)) {
+    /// @notice whether MB-05 §6.1 now permits enforcement against this pledged bond, for the
+    /// Collateral Agent's routing of its share of a distribution round (IV-10 §7.6; decision 19).
+    /// @dev Exactly when `payPledged` could pay it on a default (`pledgePaymentDue` with `onDefault`):
+    /// pledged by and held by `holder`, no Liquidation Hold or 10c pause in force, the bond next in
+    /// MB-05 §7.1's order (the member's own, else nearest maturity: decision 20), and a Defaulted
+    /// Amount open (decision 22; the whole asset-backed and unsecured balance once a closing is
+    /// recorded, decision 37) that the pool shares already queued will not pay. A Shortfall alone
+    /// (§6.1(b)) routes nothing: what is routed is a Defaulted Amount.
+    function enforcementPermitted(address holder, uint256 bondId) public view returns (bool) {
+        (bool due, , bool onDefault) = pledgePaymentDue(holder, bondId);
+        return due && onDefault;
+    }
+
+    /// @notice the Holder's MB-05 Defaulted Amounts that pledged Earn may pay now, as recorded on
+    /// chain (decision 22, with decision 37's closing): `earnDefaultedOf`. Never Savings.
+    function defaultedAmountOf(address holder) external view returns (uint256 due) {
+        (due, ) = earnDefaultedOf(holder);
+    }
+
+    /// @notice applies a pledged bond's share of a distribution round, which the Collateral Agent
+    /// has just sent here, to its Holder's Defaulted Amounts in MB-05 §7.1's order, and pays the rest
+    /// at once to the Holder's payee (the registered payment Successor, else the Holder).
+    /// @dev Only the Collateral Agent named on the bond collection (whose naming is itself a
+    /// co-signed change); no role is granted to it here. The same application as `payPledged`'s
+    /// (`_applyDefault`, each part capped at its own Defaulted Amount), so the line-closing rule
+    /// (decision 37), the revolving episode accounting and the plans' order are shared. Applied only
+    /// while `enforcementPermitted`; otherwise, under a hold or a pause, all of it goes to the payee.
+    /// It never reverts for a hold, so one Holder cannot stall a round.
+    function applyDistribution(address holder, uint256 bondId, uint256 amount) external noReenter {
+        address agent = _collateralAgent();
+        if (agent == address(0) || _msgSender() != agent) revert LiquidatorNotCollateralAgent(_msgSender());
+        uint256 applied;
+        if (enforcementPermitted(holder, bondId)) {
             (, bytes32 bondKind) = _earnKinds();
-            applied = _applyDefault(member, amount, bondKind);
+            applied = _applyDefault(holder, amount, bondKind);
+            _clearShortfallIfClosed(holder);
         }
-        if (amount > applied) reserveToken.safeTransfer(member, amount - applied);
-        emit DistributionApplied(member, amount, applied, amount - applied);
+        if (amount > applied) reserveToken.safeTransfer(_payeeOf(agent, holder), amount - applied);
+        emit DistributionApplied(holder, bondId, amount, applied, amount - applied);
+    }
+
+    /// @dev The Collateral Agent the bond collection names; zero with no collection or no Agent.
+    function _collateralAgent() private view returns (address) {
+        address bonds = address(earnBonds);
+        return bonds == address(0) ? address(0) : IEarnBondsAgent(bonds).agent();
+    }
+
+    /// @dev Where the Agent pays this Holder (its `payeeSource`), so the part of a round the debt
+    /// does not take goes where the rest of the round goes.
+    function _payeeOf(address agent, address holder) private view returns (address) {
+        address source = IAgentPayeeSource(agent).payeeSource();
+        if (source == address(0)) return holder;
+        address payee = IAgentPayee(source).payeeOf(holder);
+        return payee == address(0) ? holder : payee;
     }
 
     /* ========== THE MATURITY INSTRUCTION (MB-05 §5.6) ========== */
