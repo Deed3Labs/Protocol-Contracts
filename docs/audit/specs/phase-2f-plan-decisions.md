@@ -83,11 +83,18 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
 31. **Ladder changes take effect after 48 hours,** not 7 days. Ladder rates price only new purchases and new roll offers, and a roll needs the Holder's confirmation after its term and yield are posted (decision 11). A change never alters a roll notice already posted or a quote already given. It needs two signers and is published. Everything else under the Earn timelock stays at 7 days.
 32. **IV-03 caps:** one cumulative offering cap per product until IV-03 is received. Splitting it by exemption comes later.
 
+## Yield Pool conformance review (owner, Nov 15, 2026)
+33. **A loss charge borne partly by holdbacks (§5.6(d), A2) is built as written.** In Exhibit A10, the $52 applied from Holdback Amounts goes into Pool Assets and only $848 comes off the Deployed Balance. The specific, Holder-favourable rule controls over §1.2's "less all Pool Loss Charges". See the counsel note.
+34. **§7.5 legal holds take two signers and an evidence hash** of the order. A hold covers only the shares the order names. It ends when two signers release it or when the order's stated expiry passes.
+35. **§8.3 Successor redemption reuses the bonds' Successor registration.** A registered Successor applies after 7 days, and the Holder's own account can cancel it. The shares are redeemed through the ordinary queue and paid only to that Successor.
+36. **Kept as built:** the recovery cap (decision 25) includes any part of a charge that holdbacks bore, and a loss charge's excess is still paid to Clear Lending while the queue is open.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
 - **Amount due at enforcement:** Exhibit A says "at the acceleration time", and the Earn spec says "at the enforcement timestamp". The Agent has no power to accelerate, so the amount is fixed at enforcement, with unmatured bonds at Accreted Value.
 - **MB-05 §5.3:** a raise in an advance rate may benefit existing pledges, while Phase 2e stores the rate at pledging. Use the higher of the stored and current rate, so a raise helps existing pledges and a cut does not hurt them.
+- **IV-02 §1.2 versus §5.6(d) and A2 (decision 33):** with a holdback applied, Pool Assets fall by less than the full Pool Loss Charge. Counsel should reword §1.2 so it matches.
 
 ## Documents
 - IV-02 in full was received on Nov 14, 2026, and is in this folder.
@@ -98,4 +105,7 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
    - Agent A reworks `LendingPool` into the Yield Pool with its holdback module (decisions 16–17), tests 11–15 and 20–25.
    - Agent B builds `EarnControls`, the compounding library and the Earn timelock script, and `CollateralAgent` once Exhibit A arrives.
 2. **Stage 2, after Phase 2g merges:** the bond contracts, BondVault, CollateralRegistry, the Liquidator slim-down with `PoolShareEnforcer`, and the deploy configuration.
-3. **Stage 3:** integration, storage reports, Slither and the 2f report.
+3. **Stage 3:** integration, storage reports, Slither and the 2f report. Decisions 34 and 35 are built here, on top of the enforcement branch's LendingPool.
+
+## Base Sepolia redeploy steps
+- Before the first Deployment: call `setLegend` with IV-02's legend, then have two `VALUATION_ROLE` signers post the Pool Tier ceiling (`poolTierPrincipal`). Until the ceiling is posted, no Deployment is possible.
