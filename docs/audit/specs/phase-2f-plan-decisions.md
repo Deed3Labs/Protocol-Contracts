@@ -78,9 +78,15 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
 28. **Direct USDC transfers count as Vault Cash (§1.2).** USDC sent straight to the vault is Vault Cash and raises the Share Value at once, as built. There is no sweep or recovery function (§4.7), and a direct transfer is a valid way for a future return-generating contract to add value to the pool. The virtual-share protection already in the vault and the $250 minimum stay. Counsel note: Exhibit A, A6 says "no donation to the Vault can manipulate the Share Value". Counsel should align A6's wording with this decision, for example by saying that a donation can only raise the Share Value, ratably for all Holders.
 29. **An empty pool restarts at $1.00.** If every Pool Share has been redeemed and USDC is still in the vault (for example from a direct transfer), the next subscription is issued at $1.00 per share. The leftover is not captured by that first subscriber. At the restart it is set aside and recognized into Vault Cash linearly over 30 days, so it accrues ratably to whoever holds shares during that period, like interest. Holdback Amounts, Queue Requests and unclaimed payments are never part of the leftover.
 
+## Earn controls and Collateral Agent review (owner, Nov 15, 2026)
+30. **Required Holders act by their own signatures.** Required-Holder cost approvals (Exhibit A Part 3) and blocks on a key or account replacement (Part 4) are signed by the Holders themselves and counted on chain against the bond register. Neither the Agent Key nor the treasury records them. This replaces the stage 1 build, where the Agent Key recorded them. The stage 2 bond agent builds it with the register.
+31. **Ladder changes take effect after 48 hours,** not 7 days. Ladder rates price only new purchases and new roll offers, and a roll needs the Holder's confirmation after its term and yield are posted (decision 11). A change never alters a roll notice already posted or a quote already given. It needs two signers and is published. Everything else under the Earn timelock stays at 7 days.
+32. **IV-03 caps:** one cumulative offering cap per product until IV-03 is received. Splitting it by exemption comes later.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
+- **Amount due at enforcement:** Exhibit A says "at the acceleration time", and the Earn spec says "at the enforcement timestamp". The Agent has no power to accelerate, so the amount is fixed at enforcement, with unmatured bonds at Accreted Value.
 - **MB-05 §5.3:** a raise in an advance rate may benefit existing pledges, while Phase 2e stores the rate at pledging. Use the higher of the stored and current rate, so a raise helps existing pledges and a cut does not hurt them.
 
 ## Documents
