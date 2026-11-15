@@ -156,6 +156,19 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
       - **The `*Pre2f` and `*Legacy` collections and deposit contracts are handed to the Earn timelock** with the new collection (`deploy/earn_timelock_handover.ts`). They are not inert: their owner can still `seizeBond`, `redeemEarly`, `refundDeposit`, `setBondVault`, `setLiquidator` and `emergencyRecover`. Renouncing would strand any bond a holder never unwound, so the safer choice is the 7-day timelock. The retired factories and valuers keep their owner.
       - `scripts/configure-carry-recipients.mjs` reads the current `PayoutPool`, `TermIssuer` and `RevolvingIssuer` records and refuses a retired one. The apps are not changed now: the fresh addresses exist only after the deploy, and an app change starts billed Vercel builds. `DEPLOY-RUNBOOK.md` §4.2 lists every app file and default address that names a retired contract, and what replaces each, as a post-deploy step.
 
+49. **The standing balance, and the payout funding keeper (owner, Nov 15, 2026).** Clear Lending keeps PayoutPool's payable balance at or above the claims due within the next 30 days (`dueWithin(30 days).short == 0`).
+    - **Relation to addendum 12.10.** The standing balance sits on top of 12.10, which requires each financed charge to be funded no later than 2 business days before the merchant's payout deadline. With 30 days held, 12.10 is met with weeks to spare.
+    - **Funding stays manual (decision 17).** Top-ups come from recorded Yield Pool Deployments, from BondVault excess withdrawn through the Collateral Agent, or from the treasury. Nothing on chain enforces the standing balance.
+    - **The keeper.** A read-only keeper watches it: `apps/api/src/jobs/payoutFundingKeeper.ts`, hourly, behind `PAYOUT_KEEPER_ENABLED=1`; by hand, `scripts/check_payout_funding.ts`. It holds no key and sends no transactions.
+      - **RED** when an unpaid claim has reached its payout deadline, or when `dueWithin(2 business days).short > 0`.
+      - **AMBER** when `dueWithin(30 days).short > 0`, with the exact top-up and the date it becomes a 12.10 breach.
+      - **Funding options, for information:**
+        - the Yield Pool's Deployment headroom, under the 90% utilization cap and the posted Pool Tier principal; it is zero while the pool is suspended, has a withdrawal queue open or has a loss charge pending;
+        - BondVault `deployableExcess()`;
+        - PayoutPool `treasuryAvailable()`.
+      - **Business days** are weekdays in Pacific time, less a configured holiday list.
+      - **Alerts** go to `OPS_ALERT_EMAIL` once per condition per day, and again if the shortfall grows or another claim passes its deadline.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**

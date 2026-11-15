@@ -371,6 +371,20 @@ The kept contracts' defaults in those files (`ESADepositVault`, `ClearUSDUpgrade
 
 **Indexers:** the event lists in P2e §7 (bond half, item 5), P2g A6, 2f-YP §9, 2f-PC §5 (`InterestBilled` … `RungScheduled`), 2f-EC §5, 2f-ENF §8, 2f-B §6 and 2f-INT §6 (`LossChargeCompleted` now books the full charge: subtract `value − absorbed`; `LegalHold*`, `SuccessorRedemptionRequested`, `LineClosed`), and P4c §7 (`ValidatorReassignmentCancelled`, `DeedFreezeConfirmed`).
 
+### 4.3 Payout funding keeper (decision 49)
+
+Do this after PayoutPool, the Yield Pool and BondVault are deployed and their addresses are in the API's config: `PAYOUT_POOL_<chainId>`, `LENDING_POOL_<chainId>` and `BOND_VAULT_<chainId>`, or the defaults in `apps/api/src/config/contracts.ts` (see §4.2). Until then the keeper watches the old pool.
+
+1. Set `OPS_ALERT_EMAIL` on the API to the ops addresses, comma-separated. `DATABASE_URL` must be set too, because the `ops_alerts` table makes sure each alert goes out once. Without either, alerts are only logged.
+2. Set `PAYOUT_KEEPER_ENABLED=1` and restart. The log should show `[payout-keeper] started (hourly, read-only)`, followed by a GREEN, AMBER or RED line. If a bank holiday falls inside the window, list it in `PAYOUT_KEEPER_HOLIDAYS` (YYYY-MM-DD, Pacific).
+3. To check by hand at any time, run `npx hardhat run scripts/check_payout_funding.ts --network <network>`. It is read-only and exits 2 on RED.
+
+**The standing-balance rule.** Clear Lending keeps PayoutPool's payable balance (what it holds, less refunds owed to members) at or above the claims due within the next 30 days.
+- **AMBER** means the balance is below that. Top up the amount shown, no later than the date shown; that is when the first unfunded claim reaches its addendum 12.10 funding deadline.
+- **RED** means a claim is unfunded within 2 business days of its payout deadline, or is already past it. Fund the amount shown now. If the pool already holds the money, call `payNext()`.
+
+Funding comes from a recorded Yield Pool Deployment, from BondVault excess withdrawn through the Collateral Agent, or from the treasury. The keeper reports how much each option has available. It moves nothing, holds no key and sends no transactions.
+
 ## 5. Open items
 
 ### 5.1 What gates a step
