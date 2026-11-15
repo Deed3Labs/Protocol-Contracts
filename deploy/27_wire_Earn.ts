@@ -33,7 +33,10 @@ import { RETIRED_SUFFIX, retiredContracts } from "./retire_credit_stack";
  * 7. Decision 48 (a): the BondVault's `payoutPool` backstop, which names the retired PayoutPool.
  *    Once `lentToPayoutPool` is 0, it prints `setBackstops(treasury, 0)` (the treasury kept) as a
  *    change the Collateral Agent co-signs and the Earn timelock makes; it never sends it. While a
- *    loan is open it refuses and says the old PayoutPool must repay through `repayFromPayoutPool`.
+ *    loan is open the vault cannot clear it. On a testnet (any chain but Base mainnet) the step is
+ *    skipped and the backstop left in place: test money, decision 50 (the BondVault lends nothing
+ *    and the old pool can only repay into it). On Base mainnet it refuses and says the old
+ *    PayoutPool must repay through `repayFromPayoutPool`. Either way the run goes on.
  *
  * Run after deploys 22, 23 and 26 (and, on Base Sepolia, `scripts/upgrade_yield_pool.ts`), before
  * `earn_timelock_handover.ts`. Every step checks before it writes. After the handovers the deployer
@@ -49,6 +52,8 @@ export interface WireEarnOptions {
   resolution?: string;
   poolTierPrincipal?: bigint;
   poolTierEvidence?: string;
+  /** Overrides the chain the backstop step classifies for (decision 50; tests). */
+  chainId?: bigint | number;
 }
 
 export async function wireEarn(options: WireEarnOptions = {}) {
@@ -100,12 +105,13 @@ export async function wireEarn(options: WireEarnOptions = {}) {
   }
   proposals.push(...(await switchOffPayoutLegs(payoutPools, deployer, log)).proposals);
 
-  // Decision 48 (a): printed, never sent; refused while the old PayoutPool still owes the vault.
+  // Decision 48 (a): printed, never sent. While the old PayoutPool still owes the vault: skipped on a
+  // testnet (decision 50), refused on Base mainnet.
   let backstop: BackstopResult | undefined;
   const vaultRecord = getDeployment(network, "BondVault");
   if (vaultRecord) {
     log("BondVault payout-pool backstop (decision 48):");
-    backstop = await payoutBackstopChange(await ethers.getContractAt("BondVault", vaultRecord.address), log);
+    backstop = await payoutBackstopChange(await ethers.getContractAt("BondVault", vaultRecord.address), log, options.chainId);
   }
 
   const tier = await poolTierStep(pool,
@@ -120,7 +126,7 @@ export async function wireEarn(options: WireEarnOptions = {}) {
   if (backstop?.status === "change") {
     log("\nThe BondVault backstop change (never sent by this script):");
     printProposals(backstop.proposals, log);
-  } else if (backstop?.status === "refused") {
+  } else if (backstop?.status === "refused" || backstop?.status === "skipped") {
     log(`\n${backstop.message}`);
   }
   log("\nEarn wiring done.");

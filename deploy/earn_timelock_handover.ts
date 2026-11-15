@@ -29,7 +29,20 @@
  *   `setBondVault` and `setLiquidator`, and `emergencyRecover` any token they hold. Renouncing would
  *   strand whatever a holder never unwound, so ownership moves to the Earn timelock like the new
  *   collection's: every later use is a Clear Lending Safe proposal with 7 days. This narrows the
- *   deployer and adds no power. The retired factories keep their owner (owner to decide).
+ *   deployer and adds no power.
+ * - The bond factories (decision 50): the new `BurnerBondFactory` and every `*Pre2f` and `*Legacy`
+ *   factory on record (`BOND_FACTORY_HANDOVER_RECORDS`). Each is OpenZeppelin `Ownable` (v4: one
+ *   step, no acceptance, no roles), so `transferOwnership(timelock)` moves everything, the same way
+ *   as a collection's. The owner's powers are the factory's own settings and nothing beyond it:
+ *   `createCollection`, `deactivateCollection` and `reactivateCollection` (a collection's
+ *   wind-down switch), `setTokenRegistry` (the new factory) or `setAssurancePool` and
+ *   `setAssuranceOracle` (the pre-2f ones: the whitelist oracle, and the pool address a collection
+ *   made later is given; neither grants anything on a pool), `setBaseURI`, the discount, maturity
+ *   and face-value limits, and `emergencyRecover`, which pays the owner (then the timelock). A
+ *   collection created after the handover is owned by the timelock from its first block
+ *   (`createCollection` hands it to `owner()`). The deployer loses these; the timelock gains no
+ *   power over any other contract. Run deploy 23 first: afterwards `createCollection` is a proposal.
+ *   The retired valuers keep their owner: they hold nothing and price only their old collection.
  * - HolderDirections: nothing. It has no admin, no roles and no upgrade (decision 30).
  * - CollateralAgent: DEFAULT_ADMIN_ROLE. It is initialized with the timelock as admin, because
  *   every role grant there needs the Agent's co-signature (IV-10 Exhibit A, Part 2 item 6) and the
@@ -65,6 +78,8 @@ export interface EarnContracts {
   bondVault?: any;
   /** The bond collections (BurnerBond clones). */
   bondCollections?: any[];
+  /** The bond factories: `BurnerBondFactory` and the retired `*Pre2f` and `*Legacy` ones (Ownable). */
+  bondFactories?: any[];
 }
 
 const POOL_ROLES = [
@@ -164,6 +179,12 @@ export async function handOverEarn(
     log(`bond collection ${await b.getAddress()}: owner -> Earn timelock`);
   }
 
+  // Decision 50: the factories too, the same way (Ownable, one step).
+  for (const f of c.bondFactories ?? []) {
+    if ((await f.owner()) === me) await send(f.transferOwnership(timelock));
+    log(`bond factory ${await f.getAddress()}: owner -> Earn timelock`);
+  }
+
   await assertNoEarnAdmin(c, me, timelock);
 }
 
@@ -201,6 +222,10 @@ export async function assertNoEarnAdmin(c: EarnContracts, account: string, timel
     const owner = await b.owner();
     if (owner === account || (timelock && owner !== timelock)) left.push(`bond collection ${await b.getAddress()}: owner is not the Earn timelock`);
   }
+  for (const f of c.bondFactories ?? []) {
+    const owner = await f.owner();
+    if (owner === account || (timelock && owner !== timelock)) left.push(`bond factory ${await f.getAddress()}: owner is not the Earn timelock`);
+  }
   if (timelock) {
     const { ethers } = require("hardhat");
     const tl = await ethers.getContractAt("TimelockController", timelock);
@@ -213,6 +238,22 @@ export async function assertNoEarnAdmin(c: EarnContracts, account: string, timel
 /** The retired bond contracts whose ownership moves too (decision 48 (b)): collections and deposit contracts, not factories or valuers. */
 export function isRetiredBondOwnable(name: string): boolean {
   return /^BurnerBond(Deposit)?(Pre2f|Legacy)$/.test(name) || / (collection|deposit contract) /.test(name);
+}
+
+/** Decision 50: the bond factory records whose ownership moves to the Earn timelock, the new one first. */
+export const BOND_FACTORY_HANDOVER_RECORDS = ["BurnerBondFactory", "BurnerBondFactoryPre2f", "BurnerBondFactoryLegacy"] as const;
+
+/** The bond factories on record (decision 50), each address once. `lookup` returns a record's address. */
+export function bondFactoriesOnRecord(lookup: (name: string) => string | undefined): { name: string; address: string }[] {
+  const out: { name: string; address: string }[] = [];
+  const seen = new Set<string>();
+  for (const name of BOND_FACTORY_HANDOVER_RECORDS) {
+    const address = lookup(name);
+    if (!address || /^0x0{40}$/i.test(address) || seen.has(address.toLowerCase())) continue;
+    seen.add(address.toLowerCase());
+    out.push({ name, address });
+  }
+  return out;
 }
 
 async function main() {
@@ -254,6 +295,12 @@ async function main() {
   for (const r of retired.filter((x: { name: string }) => isRetiredBondOwnable(x.name))) {
     console.log(`  retired ${r.name} ${r.address}: ownership to the Earn timelock`);
     c.bondCollections!.push(new ethers.Contract(r.address, OWNABLE, deployer));
+  }
+  // Decision 50: the new factory and every retired one on record (Ownable, as the collections).
+  c.bondFactories = [];
+  for (const f of bondFactoriesOnRecord(record)) {
+    console.log(`  ${f.name} ${f.address}: ownership to the Earn timelock`);
+    c.bondFactories.push(new ethers.Contract(f.address, OWNABLE, deployer));
   }
   await handOverEarn(c, deployer, timelockAddress!, resolution, console.log);
   console.log("\nEarn handover done. The deployer holds no Earn role.");

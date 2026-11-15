@@ -1,7 +1,7 @@
 import { getDeployment } from "../deploy/helpers";
 import { RETIRED_ROLE_CHECKS, roleHash } from "../deploy/creditWiring";
 import { REFUSED_RECORDS } from "../deploy/earnWiring";
-import { RETIRED_SUFFIX, retiredContracts } from "../deploy/retire_credit_stack";
+import { RETIRED_SUFFIX, TEST_MONEY_NOTE, isTestMoneyChain, retiredContracts } from "../deploy/retire_credit_stack";
 
 /*
  * Decision 48 (b): is every retired credit and bond contract disconnected from what we keep?
@@ -23,11 +23,23 @@ import { RETIRED_SUFFIX, retiredContracts } from "../deploy/retire_credit_stack"
  * - EarnControls: each retired contract on its refused list (`REFUSED_RECORDS`, and every factory
  *   clone) must be refused (FAIL if not). The rest hold no funds and are left off by decision 46(c)
  *   (INFO), unless one holds a balance (FAIL).
- * - Each retired contract's USDC and CLRUSD balances (WARN when not zero: money for the owner to
- *   decide on, not a connection).
- * - The retired PayoutPool: `borrowedFromVault` and `borrowedFromYield` (FAIL while a loan is open),
- *   and its `yieldPool` and `bondVault` legs (FAIL while either is still on), with the BondVault's
- *   `lentToPayoutPool`.
+ * - Each retired contract's USDC and CLRUSD balances.
+ * - The retired PayoutPool: `borrowedFromVault` and `borrowedFromYield`, and its `yieldPool` and
+ *   `bondVault` legs, with the BondVault's `lentToPayoutPool`.
+ *
+ * Decision 50 (owner, Nov 15, 2026): on a testnet (any chain but Base mainnet, 8453) the retired
+ * contracts hold only test money, and their leftovers do not block the rollout. These are WARN there,
+ * marked "test money, decision 50", and FAIL on Base mainnet, where credit is fresh and none should
+ * ever appear (`leftoverStatus`):
+ * - the old PayoutPool's open loans (`borrowedFromVault`, `borrowedFromYield`, and the BondVault's
+ *   `lentToPayoutPool`);
+ * - each of its legs while the loan on that leg is open (a leg still on with nothing owed stays
+ *   FAIL: deploys 22 and 27 switch it off);
+ * - the BondVault's `payoutPool` backstop while `lentToPayoutPool` is not zero (it cannot be cleared
+ *   before);
+ * - the retired contracts' USDC and CLRUSD balances.
+ * Every role, every other source and EarnControls' refusals stay FAIL on every chain: they keep the
+ * new system's wiring right.
  *
  * Where it runs (DEPLOY-RUNBOOK §2.2): on Base Sepolia before the fresh deploy with CHECK_BASELINE=1,
  * which takes the records about to be retired under their current names (the list of what the later
@@ -66,12 +78,19 @@ export const KEPT_CONTRACTS: { record: keyof typeof RETIRED_ROLE_CHECKS; links: 
   { record: "AccessManager", links: ["membershipRegistry"] },
 ];
 
+/** Decision 50: how a retired contract's leftover (loan, leg, backstop, balance) counts on `chainId`. */
+export function leftoverStatus(chainId: bigint | number): Status {
+  return isTestMoneyChain(chainId) ? "WARN" : "FAIL";
+}
+
 export interface CheckOptions {
   /** The records' network (deployments/<network>/); defaults to the connected one. */
   network?: string;
   /** Check the records about to be retired, under their current names (Base Sepolia, before step D1). */
   baseline?: boolean;
   reserveToken?: string;
+  /** The chain the leftovers are classified for (decision 50); defaults to the connected one. */
+  chainId?: bigint | number;
   log?: (m: string) => void;
 }
 
@@ -103,8 +122,13 @@ async function abiFor(record: { abi?: any } | null | undefined, artifact: string
 /** Runs the check and returns every finding; `failures` is what gates. Sends nothing. */
 export async function checkRetiredCredit(options: CheckOptions = {}) {
   const { ethers } = require("hardhat");
-  const network = options.network ?? (await ethers.provider.getNetwork()).name;
+  const connected = await ethers.provider.getNetwork();
+  const network = options.network ?? connected.name;
+  const chainId = BigInt(options.chainId ?? connected.chainId);
   const log = options.log ?? console.log;
+  // Decision 50: a leftover is WARN on a testnet (test money) and FAIL on Base mainnet.
+  const testMoney = isTestMoneyChain(chainId);
+  const leftover = leftoverStatus(chainId);
   const lookup = (name: string) => getDeployment(network, name);
   const findings: Finding[] = [];
   const add = (status: Status, subject: string, what: string) => findings.push({ status, subject, what });
@@ -115,7 +139,7 @@ export async function checkRetiredCredit(options: CheckOptions = {}) {
 
   if (retired.length === 0) {
     add("INFO", network, options.baseline ? "no credit-stack or bond records to check" : "nothing retired on record: nothing to check");
-    return report(network, options, findings, retired.length, log);
+    return report(network, chainId, options, findings, retired.length, log);
   }
 
   // ---- roles and links on each kept contract ----
@@ -146,7 +170,15 @@ export async function checkRetiredCredit(options: CheckOptions = {}) {
         continue;
       }
       const hit = retiredBy.get(String(value).toLowerCase());
-      if (hit) add("FAIL", `${spec.record}.${link}()`, `names the retired ${hit.name} ${hit.address}`);
+      // Decision 50: the backstop cannot be cleared while the old PayoutPool owes the vault.
+      const lent: bigint | null = hit && spec.record === "BondVault" && link === "payoutPool"
+        ? await ct.lentToPayoutPool().catch(() => null)
+        : null;
+      if (hit && lent !== null && lent !== 0n) {
+        add(leftover, `${spec.record}.${link}()`, testMoney
+          ? `names the retired ${hit.name} ${hit.address}, left in place while ${lent} is lent to it (${TEST_MONEY_NOTE})`
+          : `names the retired ${hit.name} ${hit.address}, with ${lent} lent to it: it must repay through repayFromPayoutPool before the backstop can be cleared (decision 48 (a))`);
+      } else if (hit) add("FAIL", `${spec.record}.${link}()`, `names the retired ${hit.name} ${hit.address}`);
       else add("PASS", `${spec.record}.${link}()`, value === ethers.ZeroAddress ? "unset" : `${value}, not a retired contract`);
     }
   }
@@ -177,7 +209,9 @@ export async function checkRetiredCredit(options: CheckOptions = {}) {
         holding.add(r.address);
         const decimals = await token.decimals().catch(() => null);
         const shown = decimals === null ? `${balance}` : ethers.formatUnits(balance, decimals);
-        add("WARN", r.name, `holds ${shown} ${t.label} (owner to decide where it goes)`);
+        add(leftover, r.name, testMoney
+          ? `holds ${shown} ${t.label} (${TEST_MONEY_NOTE})`
+          : `holds ${shown} ${t.label}: a retired contract holding funds on Base mainnet (owner to decide where it goes)`);
       }
     }
     if (empty.length > 0) add("PASS", r.name, `holds no ${empty.join(" or ")}`);
@@ -208,20 +242,30 @@ export async function checkRetiredCredit(options: CheckOptions = {}) {
     const payout = new ethers.Contract(payoutRecord.address, await abiFor(payoutRecord, "PayoutPool"), ethers.provider);
     const read = async (fn: string): Promise<any> =>
       payout.interface.getFunction(fn) === null ? undefined : payout[fn]().catch(() => undefined);
+    const owedOn: Record<string, bigint | undefined> = {};
     for (const [fn, lender] of [["borrowedFromVault", "the BondVault"], ["borrowedFromYield", "the Yield Pool"]]) {
       const owed = await read(fn);
+      owedOn[fn] = owed;
       if (owed === undefined) add("INFO", `${payoutName}.${fn}()`, "not answered: no such loan");
-      else if (owed !== 0n) add("FAIL", `${payoutName}.${fn}()`, `${owed} still owed to ${lender}: an open loan keeps it connected`);
-      else add("PASS", `${payoutName}.${fn}()`, "0");
+      else if (owed !== 0n) {
+        add(leftover, `${payoutName}.${fn}()`, testMoney
+          ? `${owed} still owed to ${lender}: left open, nothing to repay (${TEST_MONEY_NOTE})`
+          : `${owed} still owed to ${lender}: an open loan keeps it connected`);
+      } else add("PASS", `${payoutName}.${fn}()`, "0");
     }
-    for (const [fn, fix] of [
-      ["yieldPool", "deploy 27 (and deploy 22) switch it off once borrowedFromYield is 0"],
-      ["bondVault", "deploy 22 and deploy 27 switch it off once borrowedFromVault is 0"],
+    for (const [fn, loan, fix] of [
+      ["yieldPool", "borrowedFromYield", "deploy 27 (and deploy 22) switch it off once borrowedFromYield is 0"],
+      ["bondVault", "borrowedFromVault", "deploy 22 and deploy 27 switch it off once borrowedFromVault is 0"],
     ]) {
       const leg = await read(fn);
+      const owed = owedOn[loan];
       if (leg === undefined) add("INFO", `${payoutName}.${fn}()`, "not answered: no such leg");
-      else if (leg !== ethers.ZeroAddress) add("FAIL", `${payoutName}.${fn}()`, `still ${leg}: ${fix}`);
-      else add("PASS", `${payoutName}.${fn}()`, "off");
+      else if (leg === ethers.ZeroAddress) add("PASS", `${payoutName}.${fn}()`, "off");
+      else if (owed !== undefined && owed !== 0n) {
+        add(leftover, `${payoutName}.${fn}()`, testMoney
+          ? `still ${leg}, while ${owed} is owed on it: left on (${TEST_MONEY_NOTE})`
+          : `still ${leg}: ${fix}`);
+      } else add("FAIL", `${payoutName}.${fn}()`, `still ${leg}: ${fix}`);
     }
     const reserveOwed = await read("borrowedFromReserve");
     if (reserveOwed !== undefined && reserveOwed !== 0n) {
@@ -232,17 +276,22 @@ export async function checkRetiredCredit(options: CheckOptions = {}) {
       const vault = new ethers.Contract(vaultRecord.address, await abiFor(vaultRecord, "BondVault"), ethers.provider);
       const lent: bigint | null = await vault.lentToPayoutPool().catch(() => null);
       if (lent !== null && lent !== 0n) {
-        add("FAIL", "BondVault.lentToPayoutPool()", `${lent}: the old PayoutPool must repay through repayFromPayoutPool before the backstop can be cleared (decision 48 (a))`);
+        add(leftover, "BondVault.lentToPayoutPool()", testMoney
+          ? `${lent}: left lent, with the backstop in place; the BondVault lends nothing and the old pool can only repay into it (${TEST_MONEY_NOTE})`
+          : `${lent}: the old PayoutPool must repay through repayFromPayoutPool before the backstop can be cleared (decision 48 (a))`);
       } else if (lent === 0n) add("PASS", "BondVault.lentToPayoutPool()", "0");
     }
   }
 
-  return report(network, options, findings, retired.length, log);
+  return report(network, chainId, options, findings, retired.length, log);
 }
 
-function report(network: string, options: CheckOptions, findings: Finding[], retiredCount: number, log: (m: string) => void) {
+function report(network: string, chainId: bigint, options: CheckOptions, findings: Finding[], retiredCount: number, log: (m: string) => void) {
   const order: Status[] = ["FAIL", "WARN", "PASS", "INFO"];
-  log(`Retired credit check on ${network}${options.baseline ? " (baseline: the records about to be retired)" : ""}: ${retiredCount} retired contract(s). Sends nothing.\n`);
+  const money = isTestMoneyChain(chainId)
+    ? "a testnet: loans, legs, the backstop and balances left in retired contracts are WARN (test money, decision 50)"
+    : "Base mainnet: any such leftover is a FAIL";
+  log(`Retired credit check on ${network}, chain ${chainId} (${money})${options.baseline ? ", baseline: the records about to be retired" : ""}: ${retiredCount} retired contract(s). Sends nothing.\n`);
   for (const status of order) {
     for (const f of findings.filter((x) => x.status === status)) log(`${f.status.padEnd(4)}  ${f.subject}: ${f.what}`);
   }

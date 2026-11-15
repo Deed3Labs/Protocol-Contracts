@@ -7,13 +7,15 @@ import { deployEarnControls } from "../helpers/earnControls";
 import { EARN_TIMELOCK_DELAY, deployEarnTimelock, isRetiredBondOwnable } from "../../deploy/earn_timelock_handover";
 import { payoutBackstopChange, revokeRetiredVaultRoles } from "../../deploy/earnWiring";
 import { RETIRED_ROLE_CHECKS, VIA, revokeRetiredRoles, roleHash } from "../../deploy/creditWiring";
-import { retiredContracts, retiredRecordNames } from "../../deploy/retire_credit_stack";
-import { checkRetiredCredit } from "../../scripts/check_retired_credit";
+import { BASE_MAINNET_CHAIN_ID, isTestMoneyChain, retiredContracts, retiredRecordNames } from "../../deploy/retire_credit_stack";
+import { checkRetiredCredit, leftoverStatus } from "../../scripts/check_retired_credit";
+import { setUintByGetter } from "../helpers/storage";
 
 /*
  * Decision 48: the BondVault's link to the retired PayoutPool, and the retired credit and bond
- * contracts disconnected from everything kept. On the in-process Hardhat network only: nothing here
- * touches a live network or uses a key.
+ * contracts disconnected from everything kept. Decision 50: on a testnet their leftovers (open loans,
+ * legs, the backstop, balances) are test money and do not block; on Base mainnet they would. On the
+ * in-process Hardhat network only: nothing here touches a live network or uses a key.
  */
 const quiet = () => undefined;
 const random = () => ethers.Wallet.createRandom().address;
@@ -21,7 +23,7 @@ const abiOf = (c: any) => JSON.parse(c.interface.formatJson());
 
 describe("decision 48: the retired credit stack, disconnected", function () {
   describe("(a) the BondVault's payout-pool backstop", function () {
-    it("is refused while a loan is open, then printed as the co-signed setBackstops(treasury, 0) that keeps the treasury", async function () {
+    it("is skipped on a testnet and refused on Base mainnet while a loan is open, then printed as the co-signed setBackstops(treasury, 0) that keeps the treasury", async function () {
       const [admin, t1, t2, key, safe, oldPayout, treasury] = await ethers.getSigners();
       const usdc: any = await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
       const vault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
@@ -50,9 +52,17 @@ describe("decision 48: the retired credit stack, disconnected", function () {
       await vault.grantRole(ethers.ZeroHash, t);
       await vault.setEarnSources(await agent.getAddress(), random());
 
-      // Refused, with a clear message, while the loan is open; nothing proposed.
+      // Decision 50: on a testnet (the in-process network is one) the step is skipped, the backstop left.
       const sent = await ethers.provider.getTransactionCount(admin.address);
-      const refused = await payoutBackstopChange(vault, quiet);
+      const skipped = await payoutBackstopChange(vault, quiet);
+      expect(skipped.status).to.equal("skipped");
+      expect(skipped.message).to.contain("left in place, test money, decision 50; BondVault lends nothing and the old pool can only repay into it");
+      expect(skipped.message).to.contain("5000000");
+      expect(skipped.proposals).to.deep.equal([]);
+      expect((await payoutBackstopChange(vault, quiet, 84532)).status).to.equal("skipped"); // Base Sepolia
+
+      // On Base mainnet: refused, with a clear message, while the loan is open; nothing proposed.
+      const refused = await payoutBackstopChange(vault, quiet, BASE_MAINNET_CHAIN_ID);
       expect(refused.status).to.equal("refused");
       expect(refused.message).to.contain("repayFromPayoutPool");
       expect(refused.message).to.contain("5000000");
@@ -234,7 +244,66 @@ describe("decision 48: the retired credit stack, disconnected", function () {
       expect(more).to.have.length(4);
       expect(more.some((m) => m.startsWith("PayoutPoolPreAudit.yieldPool(): still"))).to.equal(true);
       expect(more.some((m) => m.startsWith("BurnerBondPre2f: not refused by EarnControls"))).to.equal(true);
-      expect(again.warnings.map((w) => w.what)).to.include("holds 1.5 USDC (owner to decide where it goes)");
+      expect(again.warnings.map((w) => w.what)).to.include("holds 1.5 USDC (test money, decision 50)");
+    });
+
+    it("decision 50: on a testnet the old pool's loans, legs, the backstop and balances are WARN and pass; a role still FAILs; on Base mainnet they FAIL", async function () {
+      const f = await fixture();
+      const [, , treasury] = await ethers.getSigners();
+      const payout = await f.oldPayout.getAddress();
+      const reserveToken = await f.usdc.getAddress();
+      // The pre-2f loans: the vault's backstop names the old pool and both legs are owed.
+      await f.vault.setBackstops(treasury.address, payout);
+      await setUintByGetter(f.vault, "lentToPayoutPool", 5_000_000n);
+      await f.oldPayout.setBondVault(await f.vault.getAddress());
+      await f.oldPayout.setYieldPool(await f.pool.getAddress());
+      await setUintByGetter(f.oldPayout, "borrowedFromVault", 5_000_000n);
+      await setUintByGetter(f.oldPayout, "borrowedFromYield", 7_000_000n);
+      expect([await f.oldPayout.borrowedFromVault(), await f.oldPayout.borrowedFromYield(), await f.vault.lentToPayoutPool()])
+        .to.deep.equal([5_000_000n, 7_000_000n, 5_000_000n]);
+      // Leftover test money in retired contracts.
+      await f.usdc.mint(payout, 2_000_000n);
+      await f.usdc.mint(f.retired.LiquidatorPreAudit, 250_000n);
+
+      const leftovers = [
+        "PayoutPoolPreAudit.borrowedFromVault()", "PayoutPoolPreAudit.borrowedFromYield()",
+        "PayoutPoolPreAudit.yieldPool()", "PayoutPoolPreAudit.bondVault()",
+        "BondVault.payoutPool()", "BondVault.lentToPayoutPool()",
+        "PayoutPoolPreAudit", "LiquidatorPreAudit",
+      ];
+      const lines: string[] = [];
+      const testnet = await checkRetiredCredit({ network, reserveToken, log: (m) => lines.push(m) });
+      expect(testnet.failures, lines.join("\n")).to.deep.equal([]); // exits 0
+      const noted = testnet.warnings.filter((w) => w.what.includes("(test money, decision 50)"));
+      expect(noted.map((w) => w.subject)).to.have.members(leftovers);
+      expect(lines.join("\n")).to.contain("0 FAIL");
+      expect(lines.join("\n")).to.match(/WARN\s+PayoutPoolPreAudit\.borrowedFromYield\(\): 7000000 still owed to the Yield Pool/);
+      expect(lines.join("\n")).to.match(/WARN\s+PayoutPoolPreAudit: holds 2\.0 USDC \(test money, decision 50\)/);
+      // The same on Base Sepolia's chain id.
+      expect((await checkRetiredCredit({ network, reserveToken, chainId: 84532, log: quiet })).failures).to.deep.equal([]);
+
+      // A lingering role is still a FAIL on a testnet.
+      await f.pool.grantRole(roleHash("LIQUIDATOR_ROLE"), f.retired.LiquidatorPreAudit);
+      const role = await checkRetiredCredit({ network, reserveToken, log: quiet });
+      expect(role.failures.map((x) => `${x.subject}: ${x.what}`))
+        .to.deep.equal([`LiquidatorPreAudit: holds LendingPool LIQUIDATOR_ROLE (${f.retired.LiquidatorPreAudit})`]);
+      // So is a leg left on once its loan is repaid (deploys 22 and 27 switch it off).
+      await setUintByGetter(f.oldPayout, "borrowedFromYield", 0n);
+      const leg = await checkRetiredCredit({ network, reserveToken, log: quiet });
+      expect(leg.failures.map((x) => x.subject)).to.have.members(["LiquidatorPreAudit", "PayoutPoolPreAudit.yieldPool()"]);
+      await setUintByGetter(f.oldPayout, "borrowedFromYield", 7_000_000n);
+      await f.pool.revokeRole(roleHash("LIQUIDATOR_ROLE"), f.retired.LiquidatorPreAudit);
+
+      // Base mainnet: the same leftovers are failures.
+      const mainnet = await checkRetiredCredit({ network, reserveToken, chainId: BASE_MAINNET_CHAIN_ID, log: quiet });
+      expect(mainnet.failures.map((x) => x.subject)).to.have.members(leftovers);
+      expect(mainnet.failures.some((x) => x.what.includes("test money"))).to.equal(false);
+      expect(mainnet.failures.find((x) => x.subject === "BondVault.lentToPayoutPool()")!.what).to.contain("repayFromPayoutPool");
+
+      // The classification itself.
+      expect(leftoverStatus(8453)).to.equal("FAIL");
+      for (const id of [84532, 11155111, 31337]) expect(leftoverStatus(id), String(id)).to.equal("WARN");
+      expect(isTestMoneyChain(BASE_MAINNET_CHAIN_ID)).to.equal(false);
     });
 
     it("has nothing to check where nothing is retired", async function () {

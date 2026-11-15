@@ -1,6 +1,7 @@
 // Uses the Hardhat runtime of whatever is calling (a test or a deploy script). Never run against a
 // network as part of this change.
 import type { Proposal } from "./creditWiring";
+import { TEST_MONEY_NOTE, isTestMoneyChain } from "./retire_credit_stack";
 
 /*
  * Phase 2f stage 3: two pieces of Earn wiring that `deploy/26_deploy_EarnControls.ts` runs.
@@ -419,8 +420,12 @@ function printCoSigned(changes: CoSignedChange[], log: (m: string) => void) {
 }
 
 export interface BackstopResult {
-  /** "none": the vault names no payout pool. "refused": a loan is open. "change": the call is printed. */
-  status: "none" | "refused" | "change";
+  /**
+   * "none": the vault names no payout pool. "skipped": a loan is open on a testnet, and the backstop
+   * is left in place (decision 50). "refused": a loan is open on Base mainnet. "change": the call is
+   * printed.
+   */
+  status: "none" | "skipped" | "refused" | "change";
   message: string;
   /** The vault admin's call, for whoever holds the admin (the Earn timelock after deploy 23). */
   proposals: Proposal[];
@@ -430,10 +435,19 @@ export interface BackstopResult {
 
 /**
  * Decision 48 (a): clears the BondVault's `payoutPool` backstop, keeping its treasury. Never sends:
- * it reads the vault and prints the change (co-signed once the Agent is named). While
- * `lentToPayoutPool` is not zero it refuses, and says the old PayoutPool must repay first.
+ * it reads the vault and prints the change (co-signed once the Agent is named).
+ *
+ * While `lentToPayoutPool` is not zero the vault cannot clear it (`BondVaultLoanOutstanding`). On a
+ * testnet (any chain but Base mainnet; decision 50) the step is skipped and the backstop left in
+ * place: the money is test money, the BondVault lends nothing more and the old pool can only repay
+ * into it. On Base mainnet it refuses and says the old PayoutPool must repay first. `chainId`
+ * defaults to the connected chain.
  */
-export async function payoutBackstopChange(vault: any, log: (m: string) => void = console.log): Promise<BackstopResult> {
+export async function payoutBackstopChange(
+  vault: any,
+  log: (m: string) => void = console.log,
+  chainId?: bigint | number
+): Promise<BackstopResult> {
   const { ethers } = require("hardhat");
   const target = ethers.getAddress(await vault.getAddress());
   const payoutPool: string = await vault.payoutPool();
@@ -443,6 +457,14 @@ export async function payoutBackstopChange(vault: any, log: (m: string) => void 
     return { status: "none", message, proposals: [] };
   }
   const lent: bigint = await vault.lentToPayoutPool();
+  const chain = BigInt(chainId ?? (await ethers.provider.getNetwork()).chainId);
+  if (lent !== 0n && isTestMoneyChain(chain)) {
+    const message =
+      `= BondVault ${target} payout-pool backstop ${payoutPool}: left in place, ${TEST_MONEY_NOTE}; BondVault lends ` +
+      `nothing and the old pool can only repay into it (${lent} still lent to it). Nothing is proposed.`;
+    log(message);
+    return { status: "skipped", message, proposals: [] };
+  }
   if (lent !== 0n) {
     const message =
       `! Refused: BondVault ${target} has ${lent} still lent to the PayoutPool ${payoutPool}. The old PayoutPool must ` +

@@ -12,6 +12,7 @@ import {
 import { switchOffPayoutLegs, wireLiquidatorGrants } from "../../deploy/creditWiring";
 import { CREDIT_STACK_RECORDS, retireCreditRecords } from "../../deploy/retire_credit_stack";
 import { wireEarn } from "../../deploy/27_wire_Earn";
+import { setUintByGetter } from "../helpers/storage";
 import { adminBatches, upgradeCall, vaultAdmin, vaultProxyFor, vaultUpgradeCalls } from "../../scripts/vaultUpgrade";
 import { outstandingPre2fBonds, pre2fCollections } from "../../scripts/unwind_legacy_bonds";
 import { upgradeToYieldPool } from "../../scripts/upgrade_yield_pool";
@@ -308,6 +309,12 @@ describe("decision 47: the fresh credit stack and its deploy wiring", function (
         record("LendingPool", await pool.getAddress());
         record("EarnControls", await controls.getAddress());
         record("PayoutPoolPreAudit", await payout.getAddress());
+        // Decision 50: the BondVault's backstop still names the old pool, which still owes it.
+        const vault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
+          [admin.address, await usdc.getAddress(), 0], { kind: "uups" });
+        await vault.setBackstops(admin.address, await payout.getAddress());
+        await setUintByGetter(vault, "lentToPayoutPool", 5_000_000n);
+        record("BondVault", await vault.getAddress());
         const cfg = fullRoles();
         fs.writeFileSync(rolesFile, JSON.stringify({ networks: { [network]: cfg } }));
 
@@ -323,6 +330,14 @@ describe("decision 47: the fresh credit stack and its deploy wiring", function (
         // No Deployment before two valuation signers post the ceiling: the step is reported with its call.
         expect(r.tier.posted).to.equal(false);
         expect(pool.interface.parseTransaction({ data: r.tier.data! })!.args).to.deep.equal([1_000_000n, evidence]);
+        // The backstop step is skipped on a testnet with the loan open, and the run goes on.
+        expect(r.backstop!.status).to.equal("skipped");
+        expect(r.backstop!.message).to.contain("left in place, test money, decision 50");
+        expect(await vault.payoutPool()).to.equal(await payout.getAddress());
+        // On Base mainnet it is refused instead, and the run still finishes.
+        const mainnet = await wireEarn({ quiet: true, network, rolesFile, resolution: RESOLUTION, chainId: 8453n });
+        expect(mainnet.backstop!.status).to.equal("refused");
+        expect(mainnet.proposals).to.deep.equal([]);
 
         // With an unset list it stops before anything else is granted.
         const unset = fullRoles();

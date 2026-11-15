@@ -2,7 +2,8 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { poolProxyOptions } from "../../deploy/poolModules";
 import {
-  EARN_TIMELOCK_DELAY, assertNoEarnAdmin, creditToEarnCalls, deployEarnTimelock, handOverEarn,
+  BOND_FACTORY_HANDOVER_RECORDS, EARN_TIMELOCK_DELAY, assertNoEarnAdmin, bondFactoriesOnRecord, creditToEarnCalls,
+  deployEarnTimelock, handOverEarn,
 } from "../../deploy/earn_timelock_handover";
 import { RESOLUTION, deployEarnControls } from "../helpers/earnControls";
 import { REFUSED_RECORDS, clearContractsToRefuse, refuseClearContracts, pledgeModuleChange } from "../../deploy/earnWiring";
@@ -142,6 +143,55 @@ describe("Earn timelock handover (decision 2)", function () {
 
     const src = require("fs").readFileSync(require("path").join(__dirname, "../../deploy/credit_timelock_handover.ts"), "utf8");
     expect(src).to.not.match(/at\("BondVault"\)|"bondVault"/);
+  });
+
+  // Decision 50: the new bond factory and every retired one on record move to the Earn timelock,
+  // as the collections do. The factory is OpenZeppelin Ownable (one step, no roles).
+  it("moves the new bond factory and every retired one on record to the Earn timelock", async function () {
+    const { deployPhase0Network } = require("../helpers/phase0-fixture");
+    const { deployBondStack, deployBondFactory } = require("../helpers/bonds");
+    const ctx = await deployPhase0Network();
+    const admin = ctx.admin;
+    const s = await deployBondStack(admin, ctx.usdc, ctx.tokenRegistry);
+    const registry = await ctx.tokenRegistry.getAddress();
+    const pre2f: any = await deployBondFactory(registry, "ipfs://pre2f", admin); // stands in for a retired factory
+
+    // The records: the new factory, a retired one, and a retired record that repeats the new address.
+    const book: Record<string, string> = {
+      BurnerBondFactory: await s.factory.getAddress(),
+      BurnerBondFactoryPre2f: await pre2f.getAddress(),
+      BurnerBondFactoryLegacy: await s.factory.getAddress(),
+      BondValuerPre2f: ethers.Wallet.createRandom().address, // valuers are not factories
+    };
+    const listed = bondFactoriesOnRecord((n) => book[n]);
+    expect(listed.map((f) => f.name)).to.deep.equal(["BurnerBondFactory", "BurnerBondFactoryPre2f"]);
+    expect(BOND_FACTORY_HANDOVER_RECORDS).to.deep.equal(["BurnerBondFactory", "BurnerBondFactoryPre2f", "BurnerBondFactoryLegacy"]);
+
+    // Ownable, one step: no roles to move and no acceptance to wait for.
+    for (const fn of ["hasRole", "grantRole", "acceptOwnership", "pendingOwner"]) {
+      expect(s.factory.interface.getFunction(fn), fn).to.equal(null);
+    }
+    expect(await s.factory.owner()).to.equal(admin.address);
+
+    // The same minimal ABI the script uses for them, as for the retired collections.
+    const OWNABLE = ["function owner() view returns (address)", "function transferOwnership(address newOwner)"];
+    const factories = listed.map((f) => new ethers.Contract(f.address, OWNABLE, admin));
+    await handOverEarn({ bondFactories: factories }, admin, t, RESOLUTION);
+    expect(await s.factory.owner()).to.equal(t);
+    expect(await pre2f.owner()).to.equal(t);
+    await assertNoEarnAdmin({ bondFactories: factories }, admin.address, t);
+    await handOverEarn({ bondFactories: factories }, admin, t, RESOLUTION); // again: nothing to do
+
+    // The deployer holds no factory power now; the Clear Lending Safe has it through 7 days.
+    await expect(s.factory.setBaseURI("ipfs://new")).to.be.revertedWith("Ownable: caller is not the owner");
+    await expect(pre2f.emergencyRecover(await ctx.usdc.getAddress(), 0)).to.be.revertedWith("Ownable: caller is not the owner");
+    await viaTimelock(s.factory, s.factory.interface.encodeFunctionData("setBaseURI", ["ipfs://new"]), "factory uri");
+    expect(await s.factory.baseURI()).to.equal("ipfs://new");
+
+    // A factory the deployer does not own and the timelock does not either stops the handover.
+    const stray: any = await deployBondFactory(registry, "ipfs://stray", admin);
+    await stray.transferOwnership(ethers.Wallet.createRandom().address);
+    expect(await failure(handOverEarn({ bondFactories: [stray] }, admin, t, RESOLUTION))).to.contain("bond factory");
   });
 
   // Phase 2f stage 3: Earn §1 and IV-02 §2.4. No Clear contract holding ESA capital, collateral,

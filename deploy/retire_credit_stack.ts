@@ -82,6 +82,23 @@ export const LIVE_RECORDS = [
   "ESADepositVault", "ClearUSDUpgradeable", "ClaimEscrow", "MembershipRegistry",
 ] as const;
 
+/** Base mainnet's chain id: the one chain where the retired contracts' leftovers would be real money. */
+export const BASE_MAINNET_CHAIN_ID = 8453n;
+
+/** The note on every leftover a testnet lets stand (decision 50). */
+export const TEST_MONEY_NOTE = "test money, decision 50";
+
+/**
+ * Decision 50: on a testnet (Base Sepolia, Sepolia, the in-process Hardhat network, any chain but
+ * Base mainnet) the retired contracts hold only test money, so their leftovers do not block the
+ * rollout: the old PayoutPool's open loans, its legs while a loan is open, the BondVault's backstop
+ * while `lentToPayoutPool` is not zero, and the retired contracts' balances. Nothing is swept or
+ * repaid. On Base mainnet there is no retired credit stack, so a leftover there is a failure.
+ */
+export function isTestMoneyChain(chainId: bigint | number): boolean {
+  return BigInt(chainId) !== BASE_MAINNET_CHAIN_ID;
+}
+
 /** Every retired record name: the `*PreAudit` credit stack and the `*Pre2f` and `*Legacy` bond records. */
 export function retiredRecordNames(): string[] {
   return [...CREDIT_STACK_RECORDS.map((n) => `${n}${RETIRED_SUFFIX}`), ...RETIRED_BOND_RECORDS];

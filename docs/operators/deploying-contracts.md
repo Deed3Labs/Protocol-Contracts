@@ -128,10 +128,14 @@ The order on Base Sepolia (the full sequence, with what to wait for, is
 5. `22` with `REPLACE_BOND_FACTORY=1`, `24`, `23` with `FIRST_BOND_ID`, `27`.
 6. The co-signed CollateralAgent changes, `25`, the Pool Tier ceiling, `26` again, `08`, the Deed track.
    Once the old PayoutPool has repaid the BondVault, the co-signed `setBackstops(treasury, 0)` that
-   `27` prints (decision 48).
+   `27` prints (decision 48). On Base Sepolia it need not repay: its loans are test money, and `27`
+   skips the backstop while one is open (decision 50).
 7. The operational roles and the handovers.
 8. `npx hardhat run scripts/check_retired_credit.ts --network base-sepolia` until it passes: no
-   retired contract still connected. It is the gate before the held app PRs merge.
+   retired contract still connected. It is the gate before the held app PRs merge. The old
+   PayoutPool's open loans, its legs while owed, the BondVault's backstop while it is owed, and
+   balances left in retired contracts are WARN there ("test money, decision 50") and do not block;
+   on Base mainnet they would FAIL.
 
 On mainnet there is nothing to retire or unwind: `16`–`18`, `20`, `26`, `22`, `23`, `27`, `24`, `25`
 (DEPLOY-RUNBOOK.md section 3.5). Every script that sends on Base asks for `CONFIRM_MAINNET=1`.
@@ -139,7 +143,7 @@ On mainnet there is nothing to retire or unwind: `16`–`18`, `20`, `26`, `22`, 
 | Script | Deploys | Reads |
 |---|---|---|
 | `retire_credit_stack` | Nothing: keeps the old credit records as `*PreAudit` so the next scripts deploy fresh | `RETIRE_CREDIT_STACK=1` to move them |
-| `scripts/check_retired_credit.ts` | Nothing, and sends nothing: lists every role, source, refusal, balance, loan and leg that still connects a retired `*PreAudit`, `*Pre2f` or `*Legacy` contract to what we keep, as PASS / FAIL; exits non-zero on any FAIL (decision 48) | `CHECK_BASELINE=1` before the retirement; `RESERVE_TOKEN` |
+| `scripts/check_retired_credit.ts` | Nothing, and sends nothing: lists every role, source, refusal, balance, loan and leg that still connects a retired `*PreAudit`, `*Pre2f` or `*Legacy` contract to what we keep, as PASS / WARN / FAIL; exits non-zero on any FAIL (decision 48). On any chain but Base mainnet the old PayoutPool's loans, its legs while owed, the BondVault backstop while owed and balances are WARN, "test money, decision 50" | `CHECK_BASELINE=1` before the retirement; `RESERVE_TOKEN` |
 | `20_deploy_CreditCore` | `ClearCredit` (the ledger), `NetworkRegistry`, `CollateralRegistry`, `LimitCalculator`, `RevolvingIssuer` and `TermIssuer` (each with its modules) — all UUPS — on the recorded `AccessManager`. Registers both issuers against the ledger; sets the ledger's reserve token and Lending Co.'s operating address, and the CLRUSD token on the registry and the revolving issuer | `CARRY_TREASURY` (the multisig on mainnet), `LENDER_OPERATING`, `RESERVE_TOKEN`, `CREDIT_LINES_KEY`, `CREDIT_LIMITS_KEY`, the daily caps |
 | `21_deploy_ClearUSDUpgradeable` | `ClearUSDUpgradeable`, the CLRUSD that carries the redemption lock | `CLRUSD_ADMIN`, `CLRUSD_ADMIN_DELAY`, `CLRUSD_MAX_SUPPLY` |
 | `22_deploy_BondsAndPool` | `MerchantRegistry`, `PayoutPool`, `LendingPool` (the Yield Pool, with its modules), `BondVault`, `Liquidator`, and a Phase 2f `BurnerBondFactory`. Registers pool shares as collateral, writes the pool's legend, and, on a fresh chain, makes the Liquidator an AccessManager operator, grants it CLRUSD's `LIQUIDATOR_ROLE` and names the `CollateralRegistry` as CLRUSD's encumbrance source. Revokes every CLRUSD and AccessManager role a retired contract holds. Switches each PayoutPool's vault and yield legs off once repaid. A recorded pool must already be the Yield Pool | `COOP_TREASURY`, `CLEAR_LENDING_ACCOUNT`, `RESERVE_TOKEN`, `BOND_BASE_URI`, `REPLACE_BOND_FACTORY=1` (keeps a pre-2f factory, collection, deposit contract and valuer as `*Pre2f` and deploys the new factory) |
@@ -147,7 +151,7 @@ On mainnet there is nothing to retire or unwind: `16`–`18`, `20`, `26`, `22`, 
 | `24_deploy_OffersIssuer` | `OffersIssuer`, registered against the ledger, its line opened at the cap | `OFFERS_CAP`, `OFFER_AMOUNT`, `OFFER_EXPIRY_DAYS`, `OFFERS_TREASURY` |
 | `25_wire_Compliance` | `RateSchedule`, `PauseClock`, `PoolShareEnforcer`; the compliance wiring; the card settler and TermIssuer's mandate source; revokes every ESADepositVault and ClaimEscrow role a retired contract holds | `STATE_ATTESTER_KEY`, `FEE_RECIPIENT`, `CARD_SETTLER_ADDRESS`, `CARD_SETTLEMENT_ACCOUNT` |
 | `26_deploy_EarnControls` | The Earn timelock, `EarnControls`, the `CollateralAgent`; refuses the Clear contracts as Earn payers (run it again at the end) | `CLEAR_LENDING_SAFE`, `AGENT_KEY`, `TREASURY_SIGNERS`, `COLLATERAL_ACCOUNT`, `AGENT_COST_ADDRESS`, `EXCESS_DESTINATION` |
-| `27_wire_Earn` | Nothing new: names EarnControls and the pool on each other; grants the Earn roles from [`deploy/config/earn-roles.json`](../../deploy/config/earn-roles.json); revokes the pool's retired `BORROWER_ROLE` and `LIQUIDATOR_ROLE` holders; `setYieldPool(0)` and `setBondVault(0)` on every PayoutPool that owes nothing; revokes every pool and EarnControls role a retired contract holds; prints the co-signed `BondVault.setBackstops(treasury, 0)` that clears the retired PayoutPool once `lentToPayoutPool` is 0, and refuses it before (it never sends it); reports the Pool Tier ceiling | `EARN_RESOLUTION`, `POOL_TIER_PRINCIPAL`, `POOL_TIER_EVIDENCE` |
+| `27_wire_Earn` | Nothing new: names EarnControls and the pool on each other; grants the Earn roles from [`deploy/config/earn-roles.json`](../../deploy/config/earn-roles.json); revokes the pool's retired `BORROWER_ROLE` and `LIQUIDATOR_ROLE` holders; `setYieldPool(0)` and `setBondVault(0)` on every PayoutPool that owes nothing; revokes every pool and EarnControls role a retired contract holds; prints the co-signed `BondVault.setBackstops(treasury, 0)` that clears the retired PayoutPool once `lentToPayoutPool` is 0 (it never sends it); before that it skips it on a testnet (test money, decision 50) and refuses it on Base mainnet; reports the Pool Tier ceiling | `EARN_RESOLUTION`, `POOL_TIER_PRINCIPAL`, `POOL_TIER_EVIDENCE` |
 
 **The Earn role holders are the owner's to fill.** Every list in `deploy/config/earn-roles.json` is
 `null`, and deploy 27 grants nothing, saying "owner to fill", until each is set: on the pool two
@@ -237,7 +241,9 @@ the live network first:
 5. **Earn to the Earn timelock** — `deploy/earn_timelock_handover.ts` (`CLEAR_LENDING_SAFE`,
    `EARN_RESOLUTION`, `EARN_HANDOVER=1`), last, after deploy 27 and the second run of deploy 26. It
    also moves the `*Pre2f` and `*Legacy` collections and deposit contracts, whose owner can still
-   seize bonds and recover tokens (decision 48). On Base it asks for `CONFIRM_MAINNET=1`.
+   seize bonds and recover tokens (decision 48), and the new `BurnerBondFactory` with every
+   `*Pre2f` and `*Legacy` factory on record (decision 50; `Ownable`, one step). On Base it asks for
+   `CONFIRM_MAINNET=1`.
 
 ```bash
 SAFE_ADDRESS=0x… DEPLOYER=0x… npx hardhat run scripts/command/safe-handover.ts --network base-sepolia                    # survey
