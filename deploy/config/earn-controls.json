@@ -6,5 +6,20 @@
   "fiscalYear": 2026,
   "offeringCapDollars": 1000000,
   "poolCapacityDollars": 0,
-  "holderCapFloorDollars": 1000000
+  "holderCapFloorDollars": 1000000,
+  "ladder": [
+    {
+      "termDays": 365,
+      "yieldBps": 475
+    },
+    {
+      "termDays": 730,
+      "yieldBps": 500
+    },
+    {
+      "termDays": 1095,
+      "yieldBps": 525
+    }
+  ],
+  "_ladderComment": "The Ladder (decision 41: terms of 12 to 36 months; 12 months = 365 days, 24 = 730, 36 = 1,095). These are IV-01 Schedule 2's illustration only, not an offer: the Lending Board sets the Ladder, changed afterwards by two LADDER_ROLE signers with 48 hours' notice (decision 31)."
 }

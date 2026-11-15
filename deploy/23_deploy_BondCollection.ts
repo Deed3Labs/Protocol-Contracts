@@ -1,4 +1,6 @@
 import { saveDeployment, getDeployment } from "./helpers";
+import { bondAbi } from "./bondModules";
+import { earnControlsAt } from "./earnModules";
 
 /**
  * A bond collection for one token, and the valuer that prices it.
@@ -41,13 +43,11 @@ async function main() {
     log(`= BurnerBond (${symbol}) already at ${collectionAddress}`);
   }
 
-  const collection = await ethers.getContractAt("BurnerBond", collectionAddress);
-  saveDeployment(network, "BurnerBond", collectionAddress, JSON.parse(collection.interface.formatJson()));
-
-  const depositAddress = await factory.getUnifiedDepositContract();
-  const deposit = await ethers.getContractAt("BurnerBondDeposit", depositAddress);
-  saveDeployment(network, "BurnerBondDeposit", depositAddress, JSON.parse(deposit.interface.formatJson()));
-  log(`= BurnerBondDeposit at ${depositAddress}`);
+  // Phase 2f: the collection's functions run in two modules reached through its fallback; the
+  // saved ABI is the joined one. BurnerBondDeposit's discount-curve path does not serve it (decision 8).
+  const abi = await bondAbi();
+  const collection = new ethers.Contract(collectionAddress, abi, (await ethers.getSigners())[0]);
+  saveDeployment(network, "BurnerBond", collectionAddress, abi);
 
   // The valuer. Deployed per collection, and pointed at by the registry so a pledged bond is
   // valued at what it is worth today rather than at a number somebody has to keep updating.
@@ -83,11 +83,8 @@ async function main() {
   }
 
   // A pledged bond must not be able to walk away while credit is drawn on it, and the collection
-  // enforces that itself because members self-custody.
-  if ((await collection.encumbranceSource()) !== registryRecord.address) {
-    await (await collection.setEncumbranceSource(registryRecord.address, BOND)).wait();
-    log("  BurnerBond encumbrance -> CollateralRegistry");
-  }
+  // enforces that itself because members self-custody: its sources (the registry among them) are
+  // named below with the vault, in one co-signed call (`setSources`).
   // Rolling a pledged bond moves its pledge to the replacement, which the collection does in the
   // registry as it rolls. Without the role, every roll of a collection with an encumbrance source
   // reverts.
@@ -97,50 +94,101 @@ async function main() {
     log("  CollateralRegistry ITEM_ROLLER_ROLE -> collection");
   }
 
+  // ---- Phase 2f stage 2: the vault, the Earn controls and the Collateral Agent ----
+  //
+  // Order matters. Once the Collateral Agent is named on the BondVault, every role grant and
+  // setting there is a change needing two treasury signers, the Agent's co-signature and 7 days
+  // (IV-10 §4.5), so the vault's grants and the Earn timelock's admin come first.
   const bondVault = getDeployment(network, "BondVault");
+  const controlsRecord = getDeployment(network, "EarnControls");
+  const agentRecord = getDeployment(network, "CollateralAgent");
+  const earnTimelock = getDeployment(network, "EarnTimelock")?.address;
+  const resolution = process.env.EARN_RESOLUTION ?? "";
   if (bondVault) {
     const vault = await ethers.getContractAt("BondVault", bondVault.address);
+    const agentNamed = (await vault.agent()) !== ethers.ZeroAddress;
     const bondRole = await vault.BOND_ROLE();
-    for (const [label, who] of [["deposit", depositAddress], ["collection", collectionAddress]] as const) {
-      if (!(await vault.hasRole(bondRole, who))) {
-        await (await vault.grantRole(bondRole, who)).wait();
-        log(`  BondVault BOND_ROLE -> ${label}`);
+    if (!(await vault.hasRole(bondRole, collectionAddress))) {
+      if (agentNamed) log("  ! BondVault BOND_ROLE -> collection needs a co-signed change (the Agent is named)");
+      else {
+        await (await vault.grantRole(bondRole, collectionAddress)).wait();
+        log("  BondVault BOND_ROLE -> collection");
       }
     }
-    // The vault refuses to pay a bond still backing drawn credit; the collection's own pledge
-    // check lets burns through, so this is where a redemption is stopped.
-    if ((await vault.encumbranceSource()) !== registryRecord.address) {
+    // The vault refuses to pay an unpledged settlement on a bond still backing drawn credit.
+    if (!agentNamed && (await vault.encumbranceSource()) !== registryRecord.address) {
       await (await vault.setEncumbranceSource(registryRecord.address, BOND)).wait();
       log("  BondVault encumbrance -> CollateralRegistry");
     }
-    // Proceeds land in the vault behind its redemption reserve, never in the AssurancePool.
-    // Bondholders are creditors and must be senior to loss absorption.
-    if ((await deposit.bondVault()) !== bondVault.address) {
-      await (await deposit.setBondVault(bondVault.address)).wait();
-      log("  BurnerBondDeposit -> BondVault");
+    // Decision 2: the Earn timelock takes the vault before the Agent is named (earn_timelock_handover.ts).
+    if (earnTimelock && !agentNamed && !(await vault.hasRole(ethers.ZeroHash, earnTimelock))) {
+      await (await vault.grantRole(ethers.ZeroHash, earnTimelock)).wait();
+      log("  BondVault DEFAULT_ADMIN_ROLE -> Earn timelock");
     }
-    if ((await collection.bondVault()) !== bondVault.address) {
-      await (await collection.setBondVault(bondVault.address)).wait();
-      log("  BurnerBond -> BondVault");
+    if (controlsRecord && agentRecord && !agentNamed) {
+      await (await vault.setEarnSources(agentRecord.address, controlsRecord.address)).wait();
+      log("  BondVault -> CollateralAgent and EarnControls (later changes are co-signed)");
+    }
+    if (controlsRecord && (await collection.bondVault()) === ethers.ZeroAddress) {
+      await (await collection.setSources(bondVault.address, registryRecord.address, BOND, controlsRecord.address,
+        agentRecord?.address ?? ethers.ZeroAddress)).wait();
+      log("  BurnerBond -> BondVault, CollateralRegistry, EarnControls, CollateralAgent");
     }
   }
 
-  // Price the curve so a bond actually pays what the product says it does.
-  //
-  // The factory ships 50% over 30 years, which on a linear curve makes a one-year bond yield about
-  // 1.7% -- the shape is right and the bounds are for a different instrument. 32% over five years
-  // puts the curve between roughly 6.7% and 7.4% a year across the offered terms, which is the
-  // ~7.5% the build plan describes.
-  //
-  // The ceiling is not arbitrary. Borrowing against a bond costs 65 bps a cycle, about 7.9% a
-  // year, and yield-bearing collateral must cost more than it yields or a member draws free money
-  // against their own asset. The curve is tuned to stay under that, not merely near it.
-  const maxDiscount = BigInt(process.env.BOND_MAX_DISCOUNT ?? 3_200);
-  const maxMaturity = BigInt(process.env.BOND_MAX_MATURITY ?? 5 * 365 * 24 * 60 * 60);
-  if ((await factory.getMaxDiscount()) !== maxDiscount || (await factory.getMaxMaturity()) !== maxMaturity) {
-    await (await factory.updateGlobalParameters(maxDiscount, 0n, maxMaturity)).wait();
-    log(`  discount curve -> ${Number(maxDiscount) / 100}% over ${Number(maxMaturity) / (365 * 86400)} years`);
+  // The Earn controls: the collection checks purchases and records exits (BOND_ROLE); the vault is
+  // the reserve status, the reserve hook and the Funding Limit's bond book; the Ladder (decision 41:
+  // terms of 12 to 36 months; IV-01 Schedule 2's illustration until the Lending Board sets it); and
+  // the stage 2 roles, each granted with the Lending Board resolution.
+  if (controlsRecord && bondVault) {
+    const controls = await earnControlsAt(controlsRecord.address);
+    const grant = async (role: string, who: string, label: string) => {
+      if (!who || !ethers.isAddress(who) || (await controls.hasRole(role, who))) return;
+      if (!/^0x[0-9a-fA-F]{64}$/.test(resolution)) {
+        log(`  ! ${label} -> ${who}: set EARN_RESOLUTION (the Lending Board resolution hash)`);
+        return;
+      }
+      await (await controls.grantRoleByResolution(role, who, resolution)).wait();
+      log(`  EarnControls ${label} -> ${who}`);
+    };
+    await grant(await controls.BOND_ROLE(), collectionAddress, "BOND_ROLE");
+    const list = (name: string) => (process.env[name] ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    for (const who of list("ROLL_NOTICE_SIGNERS")) await grant(ethers.id("ROLL_NOTICE_ROLE"), who, "ROLL_NOTICE_ROLE");
+    for (const who of list("WIND_DOWN_SIGNERS")) await grant(ethers.id("WIND_DOWN_ROLE"), who, "WIND_DOWN_ROLE");
+    for (const who of list("FUNDING_SIGNERS")) await grant(await controls.FUNDING_ROLE(), who, "FUNDING_ROLE");
+    for (const who of list("EXCLUDED_HOLDERS")) await grant(ethers.id("EXCLUDED_HOLDER_ROLE"), who, "EXCLUDED_HOLDER_ROLE");
+    if ((await controls.reserveStatus()) !== bondVault.address) {
+      await (await controls.setSources(await controls.membership(), await controls.yieldPool(), bondVault.address,
+        agentRecord?.address ?? ethers.ZeroAddress, bondVault.address)).wait();
+      log("  EarnControls reserve status and hook -> BondVault");
+    }
+    const books: string[] = await controls.bondBooks();
+    if (!books.includes(bondVault.address)) {
+      await (await controls.setBondBooks([...books, bondVault.address])).wait();
+      log("  EarnControls bond books += BondVault");
+    }
+    const cfg = require("./config/earn-controls.json");
+    for (const r of cfg.ladder ?? []) {
+      if (!(await controls.isTermOffered(r.termDays))) {
+        await (await controls.setRung(r.termDays, r.yieldBps, true)).wait();
+        log(`  Ladder ${r.termDays} days at ${r.yieldBps / 100}%`);
+      }
+    }
   }
+
+  // Decision 30: Required-Holder Directions, signed by the Holders and counted against the bond
+  // register. No admin; the Agent takes it only through a co-signed `setHolderDirections`.
+  if (bondVault && controlsRecord && agentRecord && !getDeployment(network, "HolderDirections")) {
+    const D = await ethers.getContractFactory("HolderDirections");
+    const d = await D.deploy(bondVault.address, agentRecord.address, controlsRecord.address);
+    await d.waitForDeployment();
+    saveDeployment(network, "HolderDirections", await d.getAddress(), JSON.parse(D.interface.formatJson()));
+    log(`+ HolderDirections at ${await d.getAddress()}`);
+    log("  ! Propose and co-sign CollateralAgent.setVault/setBondBook(BondVault) and setHolderDirections(HolderDirections)");
+  }
+
+  // No discount curve any more (decision 8, C7): a bond is priced from the Ladder's Issue Yield by
+  // compounding (R4). The yield-below-carry invariant below still guards the Ladder.
 
   // Arm the invariant rather than trusting the tuning above to stay true. The calculator refuses
   // to grant capacity on a kind whose yield meets or exceeds the tier's carry, so a later retune

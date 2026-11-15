@@ -102,15 +102,17 @@ async function main() {
 
   // ---- bonds ----
   //
-  // A three-month redemption window: the vault holds face value for everything maturing inside it
-  // and only the excess above that is deployable. The window is what makes the reserve a rule the
-  // code enforces rather than a policy somebody remembers.
+  // Phase 2f stage 2 (R2): the Redemption Reserve is the greater of the glide schedule (30% FIXED
+  // floor, raise-only) and 100% of every bond due within 90 days (FIXED) that will not roll. The
+  // third argument (the old governed window) is ignored. An existing Base Sepolia vault is upgraded in
+  // place (append-only; scripts/storage_report_bond_vault.ts) through the Earn timelock.
   const bondVault = await ensure("BondVault", [deployer.address, reserveToken, 90 * 24 * 60 * 60]);
   const bondVaultAddress = await bondVault.getAddress();
 
   let factoryAddress = getDeployment(network, "BurnerBondFactory")?.address;
   if (!factoryAddress) {
-    // Phase 2e: with the BurnerBondPledges module its bond implementation pins.
+    // Phase 2f: a prebuilt BurnerBond implementation (with BurnerBondPledges and BurnerBondIssue) and
+    // the IV-01 §4.12 legend. A new factory, so the collection it clones is the new one.
     const factory = await deployBondFactory(tokenRegistry, process.env.BOND_BASE_URI ?? "ipfs://clear-bonds/");
     factoryAddress = await factory.getAddress();
     saveDeployment(network, "BurnerBondFactory", factoryAddress, JSON.parse(factory.interface.formatJson()));
@@ -184,6 +186,17 @@ async function main() {
       && (await lendingPool.deploymentAccount()) !== lendingAccount) {
     await (await lendingPool.setDeploymentAccount(lendingAccount)).wait();
     log(`  LendingPool deployment account -> ${lendingAccount}`);
+  }
+
+  // C1, decision 3 (Phase 2f): the BondVault lends nothing to the PayoutPool any more. Once the
+  // pool owes the vault nothing, its vault leg is switched off by configuration; its code is unchanged.
+  if ((await payoutPool.bondVault()) !== ethers.ZeroAddress) {
+    if ((await payoutPool.borrowedFromVault()) === 0n) {
+      await (await payoutPool.setBondVault(ethers.ZeroAddress)).wait();
+      log("  PayoutPool bond-vault leg -> off (C1)");
+    } else {
+      log("  ! PayoutPool still owes the BondVault: switch its vault leg off once repaid (C1)");
+    }
   }
 
   // IV-02 §8.4, decision 27: the legend the Register carries, written once here; any later change

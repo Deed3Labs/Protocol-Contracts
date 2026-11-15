@@ -3,6 +3,11 @@ import { getDeployment, saveDeployment } from "../deploy/helpers";
 import { deployBondFactory } from "../deploy/bondModules";
 
 /*
+ * SUPERSEDED for the Phase 2f collection (stage 2): it still calls the pre-2f collection API
+ * (`setBondVault`, `setEncumbranceSource`, BurnerBondDeposit's `makeDeposit`). The new collection is
+ * wired by deploy/22 and deploy/23 (`setSources`, purchase by quote). Kept for the record of the
+ * Phase 2e redeploy; do not run it against a Phase 2f factory. Stage 3 retires or rewrites it.
+ *
  * Replaces the bond factory and its USDC collection with ones built from the current source, and
  * moves everything that pointed at the old ones. BondVault, the money in it and the bonds already
  * sold stay where they are.

@@ -118,4 +118,28 @@ describe("Earn timelock handover (decision 2)", function () {
     const src = require("fs").readFileSync(require("path").join(__dirname, "../../deploy/credit_timelock_handover.ts"), "utf8");
     expect(src).to.not.match(/at\("LendingPool"\)|"lendingPool"/);
   });
+
+  // Phase 2f stage 2, decision 2: the BondVault and the bond collections move from the credit
+  // handover to the Earn timelock (deploy config only; never run against a network).
+  it("moves the BondVault and a bond collection to the Earn timelock; the credit handover no longer lists the vault", async function () {
+    const { deployPhase0Network } = require("../helpers/phase0-fixture");
+    const { deployBondStack } = require("../helpers/bonds");
+    const ctx = await deployPhase0Network();
+    const s = await deployBondStack(ctx.admin, ctx.usdc, ctx.tokenRegistry);
+    const admin = ctx.admin;
+    await handOverEarn({ bondVault: s.vault, bondCollections: [s.bond] }, admin, t, RESOLUTION);
+    expect(await s.vault.hasRole(ZERO, t)).to.equal(true);
+    expect(await s.vault.hasRole(ZERO, admin.address)).to.equal(false);
+    expect(await s.bond.owner()).to.equal(t);
+    await assertNoEarnAdmin({ bondVault: s.vault, bondCollections: [s.bond] }, admin.address, t);
+
+    // Once the Agent is named on a vault, the grant is a co-signed change: the script stops.
+    const other = await deployBondStack(ctx.admin, ctx.usdc, ctx.tokenRegistry);
+    const agent = await deployAgent(t);
+    await other.vault.setEarnSources(await agent.getAddress(), await other.controls.getAddress());
+    expect(await failure(handOverEarn({ bondVault: other.vault }, admin, t, RESOLUTION))).to.match(/co-signature/);
+
+    const src = require("fs").readFileSync(require("path").join(__dirname, "../../deploy/credit_timelock_handover.ts"), "utf8");
+    expect(src).to.not.match(/at\("BondVault"\)|"bondVault"/);
+  });
 });
