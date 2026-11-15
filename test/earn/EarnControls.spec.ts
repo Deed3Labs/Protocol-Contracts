@@ -128,20 +128,27 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
       expect((await controls.earnCostOf(f.carol.address)).bondCost).to.equal(0n);
     });
 
-    it("(c) holds a household to 10% of the shares, above the bootstrap floor, queued shares included", async function () {
-      await controls.scheduleHolderCapFloor(U(10_000));
+    // Decision 40 (replacing decision 23's "no cap below the floor"): a household holds at most the
+    // cap x the greater of Pool Assets after the subscription and the floor, from the first one. A 50%
+    // cap here lets three members pass a $2,000 floor in a test; production keeps 10%.
+    it("(c) holds a household to the cap x max(Pool Assets after, floor), always, queued shares included (decision 40)", async function () {
+      await controls.setHolderCapBps(5_000);
+      await controls.scheduleHolderCapFloor(U(2_000));
       await increase(7 * DAY);
-      expect(await controls.holderCapFloor()).to.equal(U(10_000));
+      expect(await controls.holderCapFloor()).to.equal(U(2_000));
       // The pool's own check is gone (conformance pass); the controls count the cap.
       expect(pool.interface.getFunction("holderCapBps")).to.equal(null);
-      await pool.connect(f.bob).deposit(U(9_500), f.bob.address); // 100% of the pool, below the floor
-      await pool.connect(f.alice).deposit(U(500), f.alice.address); // Pool Assets now exactly the floor
-      await pool.connect(f.carol).deposit(U(500), f.carol.address); // above it: 500 of 10,500
-      await pool.connect(f.alice).requestWithdrawal(U(500), f.alice.address); // queued, still hers
-      // 500 queued + 700 from her second wallet = 1,200 of 11,200: over 10% for the member.
-      await expect(pool.connect(f.alice2).deposit(U(700), f.alice2.address))
+      // The very first subscriber: at most 50% of the $2,000 floor.
+      await expect(pool.connect(f.bob).deposit(U(1_001), f.bob.address))
         .to.be.revertedWithCustomError(controls, "EarnControlsHolderCap");
-      await pool.connect(f.alice2).deposit(U(250), f.alice2.address); // 750 of 10,750
+      await pool.connect(f.bob).deposit(U(1_000), f.bob.address);
+      await pool.connect(f.alice).deposit(U(1_000), f.alice.address); // Pool Assets now exactly the floor
+      await pool.connect(f.carol).deposit(U(500), f.carol.address); // above it: cap 1,250 of 2,500
+      await pool.connect(f.alice).requestWithdrawal(U(1_000), f.alice.address); // queued, still hers
+      // 1,000 queued + 600 from her second wallet = 1,600 of 3,100: over 50% for the member.
+      await expect(pool.connect(f.alice2).deposit(U(600), f.alice2.address))
+        .to.be.revertedWithCustomError(controls, "EarnControlsHolderCap");
+      await pool.connect(f.alice2).deposit(U(400), f.alice2.address); // 1,400 of 2,900
 
       // Carol joins Alice's household (two attesting-role holders): their holdings count together.
       const home = ethers.id("household-1");
@@ -152,7 +159,7 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
         .to.be.revertedWithCustomError(controls, "EarnControlsSameSigner");
       await controls.connect(c.h2).setHousehold(f.carol.address, home);
       expect(await controls.walletsOf(f.carol.address)).to.deep.equal([f.alice.address, f.alice2.address, f.carol.address]);
-      // Household 750 + 500 = 1,250, over 10% of 10,750 already: Carol's next subscription is refused.
+      // Household 1,400 + 500 = 1,900, over 50% of 2,900 already: Carol's next subscription is refused.
       await expect(pool.connect(f.carol).deposit(U(250), f.carol.address))
         .to.be.revertedWithCustomError(controls, "EarnControlsHolderCap");
       // Out of the household, she counts alone again.
@@ -178,7 +185,8 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
     });
 
     it("(d) pool capacity, the Funding Limit (bonds at Maturity Amount plus shares at Share Value) and the offering maximum", async function () {
-      await controls.setOfferingLimits(U(1_000_000), U(25_000), U(15_000), RESOLUTION);
+      // Decision 38: one offering maximum across both products (here $25,000), and pool capacity.
+      await controls.setOfferingLimits(U(25_000), U(15_000), RESOLUTION);
       await pool.connect(f.alice).deposit(U(10_000), f.alice.address);
       await expect(pool.connect(f.bob).deposit(U(5_001), f.bob.address))
         .to.be.revertedWithCustomError(controls, "EarnControlsLimit").withArgs(what("capacity"), U(10_000), U(5_001), U(15_000));
@@ -189,7 +197,7 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
       await expect(pool.connect(f.carol).deposit(U(250), f.carol.address))
         .to.be.revertedWithCustomError(controls, "EarnControlsLimit").withArgs(what("offering"), U(25_000), U(250), U(25_000));
 
-      await controls.setOfferingLimits(U(1_000_000), U(100_000), U(100_000), RESOLUTION);
+      await controls.setOfferingLimits(U(100_000), U(100_000), RESOLUTION);
       await controls.setBondBooks([await sources.getAddress()]);
       await sources.setFace(U(8_000));
       await controls.setFundingLimit(U(20_000), RESOLUTION, 2026);
@@ -269,7 +277,7 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
       await grant(controls, f.admin, "BOND_ROLE", bond.address);
       await controls.setRung(365, 500, true);
       await controls.setBondBooks([await sources.getAddress()]);
-      await controls.setOfferingLimits(U(10_000), U(100_000_000), U(100_000_000), RESOLUTION);
+      await controls.setOfferingLimits(U(10_000), U(100_000_000), RESOLUTION);
     });
 
     it("refuses a non-collection caller, under $250, a term not offered, a payer not the holder's, and an ineligible payer", async function () {
@@ -307,20 +315,21 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
   describe("the Ladder and rolls (IV-01 §5.2)", function () {
     it("rolls into the same term if offered, else the nearest shorter, at the higher of the notice and Ladder yields", async function () {
       await controls.setSources(await c.membership.getAddress(), f.poolAddress, ethers.ZeroAddress, ethers.ZeroAddress, await sources.getAddress());
-      await controls.setRung(91, 400, true);
-      await controls.setRung(182, 450, true);
-      await controls.setRung(365, 500, true);
-      expect(await controls.rollTermFor(365)).to.equal(365n);
-      await expect(controls.setRung(365, 500, false)).to.emit(controls, "RungSet").withArgs(365, 500, false);
-      expect(await sources.lastTerm()).to.equal(365n);
+      // Decision 41: terms of 12 to 36 months (365 to 1,095 days).
+      await controls.setRung(365, 400, true);
+      await controls.setRung(547, 450, true);
+      await controls.setRung(730, 500, true);
+      expect(await controls.rollTermFor(730)).to.equal(730n);
+      await expect(controls.setRung(730, 500, false)).to.emit(controls, "RungSet").withArgs(730, 500, false);
+      expect(await sources.lastTerm()).to.equal(730n);
       expect(await sources.lastOffered()).to.equal(false);
-      expect(await controls.rollTermFor(365)).to.equal(182n);
-      expect(await controls.rollTermFor(90)).to.equal(0n);
-      expect(await controls.rollYieldFor(182, 420)).to.equal(450n);
-      expect(await controls.rollYieldFor(182, 480)).to.equal(480n);
-      expect(await controls.ladderTerms()).to.deep.equal([91n, 182n, 365n]);
+      expect(await controls.rollTermFor(730)).to.equal(547n);
+      expect(await controls.rollTermFor(364)).to.equal(0n);
+      expect(await controls.rollYieldFor(547, 420)).to.equal(450n);
+      expect(await controls.rollYieldFor(547, 480)).to.equal(480n);
+      expect(await controls.ladderTerms()).to.deep.equal([365n, 547n, 730n]);
       await expect(controls.setRung(0, 500, true)).to.be.revertedWithCustomError(controls, "EarnControlsInvalidValue");
-      await expect(controls.setRung(365, 5_001, true)).to.be.revertedWithCustomError(controls, "EarnControlsInvalidValue");
+      await expect(controls.setRung(730, 5_001, true)).to.be.revertedWithCustomError(controls, "EarnControlsInvalidValue");
       await expect(controls.connect(f.bob).setRung(365, 500, true)).to.be.reverted;
     });
 
@@ -454,5 +463,79 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
     const fresh = await deployEarnControls(f.admin);
     expect(await fresh.holderCapBps()).to.equal(1_000n);
     expect(await fresh.offeringCap()).to.equal(U(1_000_000));
+  });
+
+  describe("decisions 38, 39, 41 and 42 (IV-03 review)", function () {
+    it("38: one cumulative offering maximum across both products, by price paid", async function () {
+      await controls.setSources(await c.membership.getAddress(), f.poolAddress, ethers.ZeroAddress, ethers.ZeroAddress, ethers.ZeroAddress);
+      await grant(controls, f.admin, "BOND_ROLE", f.d1.address);
+      await controls.setRung(365, 500, true);
+      await controls.setOfferingLimits(U(1_000), U(100_000_000), RESOLUTION);
+      await pool.connect(f.alice).deposit(U(600), f.alice.address);
+      await controls.connect(f.d1).checkPurchase(f.bob.address, f.bob.address, U(400), U(420), 365, "0x");
+      expect(await controls.offeringTaken()).to.equal(U(1_000));
+      // Full: a subscription and a purchase are both refused against the same counter.
+      await expect(pool.connect(f.carol).deposit(U(250), f.carol.address))
+        .to.be.revertedWithCustomError(controls, "EarnControlsLimit").withArgs(what("offering"), U(1_000), U(250), U(1_000));
+      await expect(controls.connect(f.d1).checkPurchase(f.bob.address, f.bob.address, U(250), U(262.5), 365, "0x"))
+        .to.be.revertedWithCustomError(controls, "EarnControlsLimit");
+      expect(controls.interface.getFunction("poolOfferingTaken")).to.equal(null);
+    });
+
+    it("39: two FUNDING_ROLE holders post other indebtedness with evidence; it adds to the Funding Limit check", async function () {
+      const [a, b] = [f.cco, f.destination];
+      await grant(controls, f.admin, "FUNDING_ROLE", a.address, b.address);
+      await controls.setFundingLimit(U(5_000), RESOLUTION, 2026);
+      await expect(controls.connect(f.bob).postOtherIndebtedness(U(4_500), ethers.id("statement")))
+        .to.be.revertedWithCustomError(controls, "EarnControlsNotAuthorized");
+      await controls.connect(a).postOtherIndebtedness(U(4_500), ethers.id("statement"));
+      expect(await controls.otherIndebtedness()).to.equal(0n); // one signer: nothing yet
+      await expect(controls.connect(a).postOtherIndebtedness(U(4_500), ethers.id("statement")))
+        .to.be.revertedWithCustomError(controls, "EarnControlsSameSigner");
+      await expect(controls.connect(b).postOtherIndebtedness(U(4_500), ethers.id("statement")))
+        .to.emit(controls, "OtherIndebtednessPosted").withArgs(U(4_500), ethers.id("statement"), a.address, b.address);
+      expect(await controls.fundingUsed()).to.equal(U(4_500));
+      await expect(pool.connect(f.alice).deposit(U(600), f.alice.address))
+        .to.be.revertedWithCustomError(controls, "EarnControlsLimit").withArgs(what("funding"), U(4_500), U(600), U(5_000));
+      await pool.connect(f.alice).deposit(U(500), f.alice.address);
+    });
+
+    it("41: terms of 12 to 36 months (60 by the Earn timelock), never a longer term yielding less; Ladder-wide moves together", async function () {
+      expect(await controls.monthsToDays(12)).to.equal(365n);
+      expect(await controls.monthsToDays(36)).to.equal(1_095n);
+      expect(await controls.monthsToDays(60)).to.equal(1_825n);
+      await expect(controls.setRung(364, 400, true)).to.be.revertedWithCustomError(controls, "EarnControlsInvalidValue");
+      await expect(controls.setRung(1_096, 400, true)).to.be.revertedWithCustomError(controls, "EarnControlsInvalidValue");
+      await expect(controls.connect(f.bob).setMaxTermMonths(60)).to.be.reverted;
+      await expect(controls.setMaxTermMonths(61)).to.be.revertedWithCustomError(controls, "EarnControlsInvalidValue");
+      await controls.setMaxTermMonths(60);
+      await controls.setRung(1_825, 600, true);
+      await expect(controls.setRung(1_826, 600, true)).to.be.revertedWithCustomError(controls, "EarnControlsInvalidValue");
+
+      await controls.setRung(365, 500, true);
+      await controls.setRung(730, 550, true);
+      // A longer term below a shorter one is refused.
+      await expect(controls.setRung(730, 450, true)).to.be.revertedWithCustomError(controls, "EarnControlsLadderOrder").withArgs(365, 730);
+      const [l1, l2] = [f.s1, f.s2];
+      await grant(controls, f.admin, "LADDER_ROLE", l1.address, l2.address);
+      // Raising the 1-year rung above the 2-year one alone is refused when it takes effect...
+      await c.two(l1, l2, "scheduleRung", 365, 575, true);
+      await increase(2 * DAY);
+      await expect(controls.applyRung(365)).to.be.revertedWithCustomError(controls, "EarnControlsLadderOrder");
+      // ...but a Ladder-wide move scheduled and applied together passes.
+      await c.two(l1, l2, "scheduleRungs", [365, 730, 1_825], [575, 625, 700], [true, true, true]);
+      await increase(2 * DAY);
+      await expect(controls.applyRungs([365])).to.be.revertedWithCustomError(controls, "EarnControlsLadderOrder");
+      await controls.applyRungs([365, 730, 1_825]);
+      expect(await controls.ladderYieldBps(365)).to.equal(575n);
+      expect(await controls.ladderYieldBps(730)).to.equal(625n);
+    });
+
+    it("42: refuses an attestation valid for more than 12 months", async function () {
+      const now = await latest();
+      await expect(c.attest(f.outsider, "506C", { issuedAt: now, validUntil: now + 365 * DAY + 1 }))
+        .to.be.revertedWithCustomError(controls, "EarnControlsBadAttestation");
+      await c.attest(f.outsider, "506C", { issuedAt: now, validUntil: now + 365 * DAY });
+    });
   });
 });

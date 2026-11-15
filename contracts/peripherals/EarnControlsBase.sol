@@ -23,6 +23,8 @@ import "./interfaces/IEarnControls.sol";
 /// - `BOND_ROLE`: a bond collection: `checkPurchase` and `recordBondExit`.
 /// - `LADDER_ROLE`: schedules a Ladder change, two people; it takes effect 48 hours later and is
 ///   published by its event (decision 31). Every other setting stays on the 7-day Earn timelock.
+/// - `FUNDING_ROLE`: posts Lending Co.'s other indebtedness for borrowed money, two people with an
+///   evidence hash (decision 39). It only adds to the Funding Limit check and moves no money.
 abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable, EIP712Upgradeable {
     bytes32 public constant ATTESTER_ROLE = keccak256("ATTESTER_ROLE");
     bytes32 public constant PAUSE_ROLE = keccak256("PAUSE_ROLE");
@@ -30,6 +32,7 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
     bytes32 public constant ELIGIBILITY_ROLE = keccak256("ELIGIBILITY_ROLE");
     bytes32 public constant BOND_ROLE = keccak256("BOND_ROLE");
     bytes32 public constant LADDER_ROLE = keccak256("LADDER_ROLE");
+    bytes32 public constant FUNDING_ROLE = keccak256("FUNDING_ROLE");
 
     /// @notice The pause flags (IV-02 §2.6), each set and cleared by two `PAUSE_ROLE` holders.
     uint8 public constant RESERVE_SHORTFALL = 1;
@@ -43,6 +46,8 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
     uint64 public constant PAYEE_DELAY = 7 days;
     /// @notice How long a scheduled Ladder change waits before it may take effect (decision 31).
     uint64 public constant LADDER_DELAY = 48 hours;
+    /// @notice FIXED: an eligibility attestation lasts at most 12 months (decision 42; IV-03 §2.1(d)).
+    uint64 public constant MAX_ATTESTATION_LIFE = 365 days;
 
     struct Eligibility {
         bytes32 exemptionCode;
@@ -106,13 +111,15 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
     bytes32 public fundingLimitResolution;
     uint16 public fundingLimitFiscalYear;
 
-    /// @notice The BurnerBond offering maximum and the cumulative Purchase Price taken (decision 12).
+    /// @notice The one offering maximum across both products (IV-03 §1.3; decision 38) and the
+    /// cumulative price paid against it: bond Purchase Prices and pool subscriptions together. Rolls
+    /// are not counted.
     uint256 public offeringCap;
     uint256 public offeringTaken;
-    /// @notice The Pool Share offering maximum ("the maximum in IV-03", IV-02 §2.5(d)) and the
-    /// cumulative subscriptions taken.
-    uint256 public poolOfferingCap;
-    uint256 public poolOfferingTaken;
+    /// @notice Lending Co.'s other indebtedness for borrowed money (not an Earn Product), as last
+    /// posted by two `FUNDING_ROLE` holders with its evidence (decision 39). Added to `fundingUsed`.
+    uint256 public otherIndebtedness;
+    bytes32 public otherIndebtednessEvidence;
     /// @notice The pool capacity the Lending Board sets (IV-02 §2.5(d)).
     uint256 public poolCapacity;
 
@@ -142,10 +149,14 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
     mapping(bytes32 => address) internal _proposerOf;
     /// @notice Ladder changes waiting for their 48 hours (decision 31).
     mapping(uint32 => PendingRung) internal _pendingRungs;
+    /// @notice The longest Ladder term in months (decision 41): 36, raised to at most 60 by the Earn
+    /// timelock (`setMaxTermMonths`). 0 reads as 36.
+    uint8 internal _maxTermMonths;
 
-    uint256[39] private __gap;
+    uint256[38] private __gap;
 
     event SettingsSet(bytes32 indexed what, uint256 value, bytes32 resolutionHash);
+    event OtherIndebtednessPosted(uint256 amount, bytes32 evidenceHash, address proposer, address approver);
     event OfferingTaken(address indexed holder, bool indexed pool, uint256 amount, uint256 taken);
     event HolderCapFloorScheduled(uint256 current, uint256 next, uint64 effectiveAt);
     event RefusedSet(address indexed account, bool refused);
@@ -185,6 +196,8 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
     error EarnControlsNothingToCancel(address holder);
     error EarnControlsModuleMismatch();
     error EarnControlsNotYet(uint64 effectiveAt);
+    /// @dev An offered longer term would yield less than an offered shorter one (decision 41).
+    error EarnControlsLadderOrder(uint32 shorterTerm, uint32 longerTerm);
 
     /// @notice Refused: grant with `grantRoleByResolution`, which records the resolution hash.
     function grantRole(bytes32, address) public pure override {

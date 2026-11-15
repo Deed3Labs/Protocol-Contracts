@@ -45,6 +45,7 @@ interface IBondTraitStore {
 interface IBondVaultSettlement {
     function reserveToken() external view returns (address);
     function inReserveShortfall() external view returns (bool);
+    function totalSettlementOwed() external view returns (uint256);
     function recordPurchase(
         uint256 bondId,
         uint256 principal,

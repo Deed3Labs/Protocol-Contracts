@@ -10,7 +10,15 @@ import "./EarnControlsBase.sol";
 /// directly in production: it runs against the `EarnControls` proxy's storage, with the original
 /// caller, through its fallback. It declares no storage (see `EarnControlsBase`).
 contract EarnControlsAdmin is EarnControlsBase {
-    uint32 public constant MAX_TERM_DAYS = 10_950;
+    /// @notice Decision 41: Ladder terms run from 12 to 36 months, and the Earn timelock may raise the
+    /// top to 60 months, never higher. A term is a number of days, because Accretion counts days and a
+    /// Maturity Date is the Issue Date plus the term in days; a month is one twelfth of Accretion's
+    /// 365-day year, so 12 months = 365 days, 36 months = 1,095 days and 60 months = 1,825 days
+    /// (`termDays` from `months * 365 / 12`, rounded down).
+    uint32 public constant MIN_TERM_MONTHS = 12;
+    uint32 public constant DEFAULT_MAX_TERM_MONTHS = 36;
+    uint32 public constant LIMIT_TERM_MONTHS = 60;
+    uint32 public constant MAX_TERM_DAYS = 1_825;
     uint32 public constant MAX_YIELD_BPS = 5_000;
     uint256 public constant MAX_LADDER_TERMS = 32;
     uint256 public constant MAX_BOND_BOOKS = 8;
@@ -81,6 +89,24 @@ contract EarnControlsAdmin is EarnControlsBase {
         return (r.yieldBps, r.offered);
     }
 
+    /// @notice the days in `months` months (decision 41): `months * 365 / 12`, rounded down.
+    function monthsToDays(uint32 months) public pure returns (uint32) {
+        return (months * 365) / 12;
+    }
+
+    /// @notice the longest term a rung may have now, in months (36 unless the Earn timelock raised it).
+    function maxTermMonths() public view returns (uint32) {
+        uint8 m = _maxTermMonths;
+        return m == 0 ? DEFAULT_MAX_TERM_MONTHS : m;
+    }
+
+    /// @notice sets the longest Ladder term, from 36 to 60 months (decision 41): the Earn timelock.
+    function setMaxTermMonths(uint8 months) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (months < DEFAULT_MAX_TERM_MONTHS || months > LIMIT_TERM_MONTHS) revert EarnControlsInvalidValue();
+        _maxTermMonths = months;
+        emit SettingsSet("maxTermMonths", months, bytes32(0));
+    }
+
     /// @notice the Ladder change scheduled for `termDays`, if any (`effectiveAt` 0 when none).
     function pendingRung(uint32 termDays) external view returns (uint32 yieldBps, bool offered, uint64 effectiveAt) {
         PendingRung storage p = _pendingRungs[termDays];
@@ -96,18 +122,61 @@ contract EarnControlsAdmin is EarnControlsBase {
         (bool done, address first) =
             _pair(keccak256(abi.encode(this.scheduleRung.selector, termDays, yieldBps, offered)), LADDER_ROLE);
         if (!done) return;
+        _schedule(termDays, yieldBps, offered, first);
+    }
+
+    /// @notice schedules several terms' changes together (decision 41: a Ladder-wide move), on the
+    /// same two-signer, 48-hour rules as `scheduleRung`; `applyRungs` then puts them in force at once.
+    function scheduleRungs(uint32[] calldata termDays, uint32[] calldata yieldBps, bool[] calldata offered) external {
+        uint256 n = termDays.length;
+        if (n == 0 || n != yieldBps.length || n != offered.length) revert EarnControlsInvalidValue();
+        for (uint256 i; i < n; ++i) _checkRung(termDays[i], yieldBps[i]);
+        (bool done, address first) =
+            _pair(keccak256(abi.encode(this.scheduleRungs.selector, termDays, yieldBps, offered)), LADDER_ROLE);
+        if (!done) return;
+        for (uint256 i; i < n; ++i) _schedule(termDays[i], yieldBps[i], offered[i], first);
+    }
+
+    /// @notice puts a scheduled Ladder change in force once its 48 hours have run. Permissionless.
+    /// Reverts if it would leave an offered longer term yielding less than an offered shorter one.
+    function applyRung(uint32 termDays) external {
+        _applyPending(termDays);
+        _checkLadderOrder();
+    }
+
+    /// @notice puts several scheduled changes in force together, then checks the Ladder's order once.
+    function applyRungs(uint32[] calldata termDays) external {
+        for (uint256 i; i < termDays.length; ++i) _applyPending(termDays[i]);
+        _checkLadderOrder();
+    }
+
+    function _schedule(uint32 termDays, uint32 yieldBps, bool offered, address first) internal {
         uint64 effectiveAt = uint64(block.timestamp) + LADDER_DELAY;
         _pendingRungs[termDays] = PendingRung(yieldBps, offered, effectiveAt);
         emit RungScheduled(termDays, yieldBps, offered, effectiveAt, first, msg.sender);
     }
 
-    /// @notice puts a scheduled Ladder change in force once its 48 hours have run. Permissionless.
-    function applyRung(uint32 termDays) external {
+    function _applyPending(uint32 termDays) internal {
         PendingRung memory p = _pendingRungs[termDays];
         if (p.effectiveAt == 0) revert EarnControlsInvalidValue();
         if (block.timestamp < p.effectiveAt) revert EarnControlsNotYet(p.effectiveAt);
         delete _pendingRungs[termDays];
         _setRung(termDays, p.yieldBps, p.offered);
+    }
+
+    /// @dev Decision 41: no offered longer term may yield less than an offered shorter term.
+    function _checkLadderOrder() internal view {
+        uint32[] memory terms = _terms;
+        for (uint256 i; i < terms.length; ++i) {
+            Rung storage a = _rungs[terms[i]];
+            if (!a.offered) continue;
+            for (uint256 j; j < terms.length; ++j) {
+                Rung storage b = _rungs[terms[j]];
+                if (b.offered && terms[j] > terms[i] && b.yieldBps < a.yieldBps) {
+                    revert EarnControlsLadderOrder(terms[i], terms[j]);
+                }
+            }
+        }
     }
 
     /// @notice lists, prices or withdraws a Ladder term directly, through the 7-day Earn timelock
@@ -116,10 +185,15 @@ contract EarnControlsAdmin is EarnControlsBase {
     function setRung(uint32 termDays, uint32 yieldBps, bool offered) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _checkRung(termDays, yieldBps);
         _setRung(termDays, yieldBps, offered);
+        _checkLadderOrder();
     }
 
-    function _checkRung(uint32 termDays, uint32 yieldBps) internal pure {
-        if (termDays == 0 || termDays > MAX_TERM_DAYS || yieldBps > MAX_YIELD_BPS) revert EarnControlsInvalidValue();
+    /// @dev Decision 41: a term from 12 months to the maximum now in force (36, or up to 60).
+    function _checkRung(uint32 termDays, uint32 yieldBps) internal view {
+        if (
+            termDays < monthsToDays(MIN_TERM_MONTHS) || termDays > monthsToDays(maxTermMonths())
+                || yieldBps > MAX_YIELD_BPS
+        ) revert EarnControlsInvalidValue();
     }
 
     /// @dev Withdrawing a term is what makes a confirmed bond of that term unable to roll; the
@@ -258,16 +332,15 @@ contract EarnControlsAdmin is EarnControlsBase {
         emit SettingsSet("fundingLimit", limit, resolutionHash);
     }
 
-    /// @notice the bond and pool offering maxima and the pool capacity, with the resolution.
-    function setOfferingLimits(uint256 bondCap, uint256 poolCap, uint256 capacity, bytes32 resolutionHash)
+    /// @notice the one offering maximum across both products (decision 38) and the pool capacity,
+    /// with the resolution.
+    function setOfferingLimits(uint256 cap, uint256 capacity, bytes32 resolutionHash)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
-        offeringCap = bondCap;
-        poolOfferingCap = poolCap;
+        offeringCap = cap;
         poolCapacity = capacity;
-        emit SettingsSet("offeringCap", bondCap, resolutionHash);
-        emit SettingsSet("poolOfferingCap", poolCap, resolutionHash);
+        emit SettingsSet("offeringCap", cap, resolutionHash);
         emit SettingsSet("poolCapacity", capacity, resolutionHash);
     }
 

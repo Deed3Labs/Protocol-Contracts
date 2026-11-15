@@ -99,13 +99,16 @@ contract BurnerBondPledges is BurnerBondBase {
     /// @notice buys a bond back (Earn §4(a)): the caller pays `price` from outside the BondVault to
     /// the Holder (or its payment Successor), on the Holder's signature over that price, and the bond
     /// burns while the vault stops owing it. `price` may not exceed the Accreted Value now. Refused on
-    /// a pledged bond, during a Reserve Shortfall, and while an Enforcement Notice is in force.
+    /// a pledged bond, during a Reserve Shortfall, while any bond has an unpaid settlement shortfall
+    /// (decision 43), and while an Enforcement Notice is in force.
     function buyback(uint256 bondId, uint256 price, uint256 deadline, bytes calldata sig) external nonReentrant {
         (, address holder) = _exists(bondId);
         if (_isPledged(holder, bondId)) revert BurnerBondPledged(bondId);
-        if (block.timestamp > deadline || price > _presentValue(bondId) || bondVault.inReserveShortfall()) {
-            revert BurnerBondBuybackRefused(bondId);
-        }
+        // Decision 43: never while any bond's maturity payment is unpaid (IV-03 §6.4(c)).
+        if (
+            block.timestamp > deadline || price > _presentValue(bondId) || bondVault.inReserveShortfall()
+                || bondVault.totalSettlementOwed() != 0
+        ) revert BurnerBondBuybackRefused(bondId);
         bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(BUYBACK_TYPEHASH, bondId, price, deadline)));
         if (!SignatureCheckerUpgradeable.isValidSignatureNow(holder, digest, sig)) revert BurnerBondBadSignature();
         _retire(bondId, holder, price, true);
@@ -153,13 +156,16 @@ contract BurnerBondPledges is BurnerBondBase {
     /// @dev A confirmed roll (IV-01 §5.2): into the same term or, if it is not offered now, the
     /// nearest shorter Ladder term; at the Roll Notice yield (decision 11) or any higher Ladder yield
     /// for that term now. No roll (0) when no such term is offered or the larger Maturity Amount would
-    /// exceed the Funding Limit (IV-01 §5.4); the bond is then paid instead. The new bond starts with
-    /// no Roll Notice and unconfirmed, keeps the old one's cost basis and exemption tag, and is issued
-    /// at the old Maturity Date.
+    /// exceed the Funding Limit (IV-01 §5.4), or when the Holder has no eligibility attestation in
+    /// force (decision 44; IV-03 §6.4(b)); the bond is then paid instead. The new bond starts with no
+    /// Roll Notice and unconfirmed, keeps the old one's cost basis, takes the exemption code of the
+    /// attestation in force now (a roll is a new purchase in the offering the Holder then qualifies
+    /// for, IV-01 §5.2), and is issued at the old Maturity Date.
     function _roll(uint256 bondId, BondInfo storage b, address holder) internal returns (uint256 newId) {
         RollNotice storage n = _notices[bondId];
+        bytes32 exemption = controls.eligibleCode(holder);
         uint32 term = controls.rollTermFor(b.termDays);
-        if (term == 0) return 0;
+        if (term == 0 || exemption == bytes32(0)) return 0;
         uint32 yieldBps = controls.rollYieldFor(term, n.yieldBps);
         (uint256 newFace, uint256 price, uint256 remainder) =
             Accretion.rollTerms(b.faceValue, yieldBps, term, cent);
@@ -169,7 +175,7 @@ contract BurnerBondPledges is BurnerBondBase {
         uint64 maturity = start + uint64(term) * 1 days;
         newId = _issue(
             holder,
-            BondInfo(newFace, price, b.costBasis, 0, start, maturity, term, yieldBps, false, b.exemptionCode)
+            BondInfo(newFace, price, b.costBasis, 0, start, maturity, term, yieldBps, false, exemption)
         );
         bool pledged = _isPledged(holder, bondId);
         _retire(bondId, holder, 0, false);

@@ -12,7 +12,6 @@ export interface ControlsOptions {
   membership?: string;
   fundingLimit?: bigint;
   offeringCap?: bigint;
-  poolOfferingCap?: bigint;
   poolCapacity?: bigint;
   holderCapFloor?: bigint;
 }
@@ -32,7 +31,6 @@ export async function deployEarnControls(admin: any, opts: ControlsOptions = {})
       fundingResolution: RESOLUTION,
       fiscalYear: 2026,
       offeringCap: opts.offeringCap ?? U(1_000_000),
-      poolOfferingCap: opts.poolOfferingCap ?? U(100_000_000),
       poolCapacity: opts.poolCapacity ?? U(100_000_000),
       holderCapFloor: opts.holderCapFloor ?? 0n,
     }],

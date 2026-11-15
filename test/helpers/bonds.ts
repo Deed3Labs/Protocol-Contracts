@@ -122,11 +122,16 @@ export async function deployBondStack(admin: any, usdc: any, tokenRegistry: any,
     return holder.signTypedData(domain, CONFIRM, { bondId: id, noticeHash: n.noticeHash, rollDeadline: n.deadline, nonce: n.nonce });
   }
 
+  /** Records a fresh eligibility attestation for `who` (a roll needs one in force: decision 44). */
+  async function attest(who: any, exemption = "506C") {
+    return controls.attestEligibility(who.address, await attestation(controls, attester, who.address, exemption));
+  }
+
   async function buybackSig(holder: any, id: bigint, price: bigint, deadline: bigint) {
     return holder.signTypedData(domain, BUYBACK, { bondId: id, price, deadline });
   }
 
-  return { controls, attester, factory, bond, vault, usdc, domain, quote, buy, confirmSig, buybackSig };
+  return { controls, attester, factory, bond, vault, usdc, domain, quote, buy, attest, confirmSig, buybackSig };
 }
 
 /** Grants the roll-notice role to `who` on the controls. */

@@ -38,7 +38,7 @@ async function deploy() {
 
   const s = await deployBondStack(admin, ctx.usdc, ctx.tokenRegistry, {
     membership: await membership.getAddress(),
-    rungs: [[730, 500], [365, 475], [180, 450], [60, 400]],
+    rungs: [[365, 475], [730, 500]],
   });
   const { controls, vault, bond } = s;
 
@@ -91,11 +91,17 @@ async function deploy() {
     return deadline;
   }
 
+  /** Moves time to 60 days before bond `id` matures: inside the 90-day window. */
+  async function near(id: bigint) {
+    await at((await bond.getBondInfo(id)).maturityDate - BigInt(60 * DAY));
+    await ethers.provider.send("evm_mine", []);
+  }
+
   async function confirm(holder: any, id: bigint) {
     return bond.connect(keeper).confirmRoll(id, ROLL_NOTICE, await s.confirmSig(holder, id));
   }
 
-  return { ...s, ctx, admin, agent, membership, key, t1, t2, alice, alice2, bob, carol, keeper, multisig, costs, account, noticer, p1, p2, harness, cosigned, two, notice, confirm };
+  return { ...s, ctx, admin, agent, membership, key, t1, t2, alice, alice2, bob, carol, keeper, multisig, costs, account, noticer, p1, p2, harness, cosigned, two, notice, near, confirm };
 }
 
 describe("Phase 2f stage 2: bonds and the BondVault", function () {
@@ -160,8 +166,10 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
   describe("test 2: unconfirmed bonds and withdrawn confirmations (Earn §2, IV-01 §7.2)", function () {
     it("counts an unconfirmed bond at 100% within 90 days; a confirmation lowers it, a withdrawal restores it in the same block", async function () {
       const { vault, bond, agent, alice, bob, t1, t2, usdc, keeper } = f;
-      const { id } = await f.buy(alice, U(10_000), 60, { cover: false });
-      // No Roll Confirmation: 100% of the Maturity Amount, so the purchase itself leaves a shortfall.
+      const { id } = await f.buy(alice, U(10_000), 365, { cover: false });
+      expect(await vault.requiredReserve()).to.equal(U(3_000)); // the 30% floor, far from maturity
+      await f.near(id);
+      // No Roll Confirmation: 100% of the Maturity Amount once inside 90 days; time alone starts a shortfall.
       expect(await vault.requiredReserve()).to.equal(U(10_000));
       expect(await vault.inReserveShortfall()).to.equal(true);
       await vault.pokeReserve();
@@ -194,8 +202,8 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
 
     it("setting the holder-ineligible flag on a confirmed bond restores 100% in the same transaction, and a confirmed roll still runs during a shortfall", async function () {
       const { vault, bond, alice, bob, usdc, keeper } = f;
-      const a = await f.buy(alice, U(10_000), 60);
-      const b = await f.buy(bob, U(10_000), 60);
+      const a = await f.buy(alice, U(10_000), 365);
+      const b = await f.buy(bob, U(10_000), 365);
       await usdc.mint(await vault.getAddress(), U(1_000));
       await f.notice(a.id);
       await f.notice(b.id);
@@ -208,8 +216,8 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
       expect(await vault.inReserveShortfall()).to.equal(false);
       await f.two("setHolderIneligible", bob.address, true, ethers.id("evidence"));
       await f.two("setHolderIneligible", bob.address, false, ethers.id("evidence 2"));
-      await increase(61 * DAY);
-      await usdc.mint(keeper.address, 0n);
+      await increase(22 * DAY);
+      await f.attest(bob); // decision 44: a roll needs an attestation in force
       await expect(bond.connect(keeper).settle(b.id)).to.emit(bond, "BondRolled");
       // alice is flagged: her confirmed bond is paid, not rolled.
       await expect(bond.connect(keeper).settle(a.id)).to.emit(bond, "BondRedeemed").withArgs(a.id, alice.address, U(10_000));
@@ -342,7 +350,9 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
       await at(latest2);
       await expect(bond.connect(alice).withdrawRollConfirmation(id2)).to.be.revertedWithCustomError(bond, "BurnerBondNoticeClosed");
 
-      // At maturity a random caller rolls it: IV-01 §5.2's formula, only the remainder leaves.
+      // At maturity a random caller rolls it: IV-01 §5.2's formula, only the remainder leaves. The
+      // Holder re-attested as a Rule 506(b) purchaser: the replacement takes that code (decision 44).
+      await f.attest(alice, "506B");
       await at(m2);
       const [newFace, newPrice, remainder] = await harness.rollTerms(U(10_000), 475, 365, 10_000n);
       const vaultBefore = await vault.held();
@@ -356,6 +366,7 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
       expect((await usdc.balanceOf(alice.address)) - aliceBefore).to.equal(remainder);
       expect(await bond.balanceOf(alice.address, id2)).to.equal(0n);
       // The replacement starts unconfirmed with no Roll Notice, and is paid at its own maturity.
+      expect(nb.exemptionCode).to.equal(ethers.encodeBytes32String("506B"));
       const fresh = await bond.rollNotice(newId);
       expect([fresh.noticeHash, fresh.confirmed]).to.deep.equal([ethers.ZeroHash, false]);
       await at(nb.maturityDate);
@@ -392,14 +403,15 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
 
     it("a confirmed bond whose term (and every shorter one) is withdrawn is paid, not rolled; the reserve moves at once", async function () {
       const { bond, controls, vault, alice, keeper, usdc } = f;
-      const { id } = await f.buy(alice, U(10_000), 60);
+      const { id } = await f.buy(alice, U(10_000), 365);
       await usdc.mint(await vault.getAddress(), U(1_000));
       await f.notice(id);
       await f.confirm(alice, id);
       expect(await vault.requiredReserve()).to.equal(U(3_000));
-      await controls.setRung(60, 400, false);
+      await controls.setRung(365, 475, false); // no term of 365 days or shorter is offered now
       expect(await vault.requiredReserve()).to.equal(U(10_000));
-      await increase(61 * DAY);
+      await f.attest(alice);
+      await increase(22 * DAY);
       await expect(bond.connect(keeper).settle(id)).to.emit(bond, "BondRedeemed");
     });
   });
@@ -435,8 +447,10 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
     });
 
     it("refuses a buyback during a Reserve Shortfall", async function () {
-      const { bond, alice, carol, usdc } = f;
-      const { id } = await f.buy(alice, U(10_000), 60, { cover: false });
+      const { bond, alice, carol, usdc, vault } = f;
+      const { id } = await f.buy(alice, U(10_000), 365, { cover: false });
+      await f.near(id);
+      expect(await vault.inReserveShortfall()).to.equal(true);
       const av = await bond.accretedValue(id);
       const deadline = (await now()) + 3600n;
       await usdc.mint(carol.address, av);
@@ -448,7 +462,7 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
     it("redeemAll: two signers set the flag, purchases stop, 30 days later every bond is paid its Accreted Value and none rolls", async function () {
       const { bond, vault, alice, bob, keeper, p1, p2, usdc } = f;
       const a = await f.buy(alice, U(2_500), 730);
-      const b = await f.buy(bob, U(10_000), 60);
+      const b = await f.buy(bob, U(10_000), 365);
       await usdc.mint(await vault.getAddress(), U(20_000));
       await f.notice(b.id);
       await f.confirm(bob, b.id);
@@ -472,10 +486,43 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
     });
   });
 
+  describe("decisions 43 and 44", function () {
+    it("43: no buyback while any bond has an unpaid settlement shortfall", async function () {
+      const { bond, vault, alice, bob, carol, keeper, usdc } = f;
+      const a = await f.buy(alice, U(1_000), 365, { cover: false });
+      await increase(365 * DAY);
+      await bond.connect(keeper).settle(a.id); // the vault holds less than the Maturity Amount
+      expect(await vault.totalSettlementOwed()).to.be.greaterThan(0n);
+      const b = await f.buy(bob, U(1_000), 730); // Clear Lending tops the reserve up; the payment is still owed
+      expect(await vault.inReserveShortfall()).to.equal(false);
+      expect(await vault.totalSettlementOwed()).to.be.greaterThan(0n);
+      const av = await bond.accretedValue(b.id);
+      const deadline = (await now()) + 3600n;
+      await usdc.mint(carol.address, av);
+      await usdc.connect(carol).approve(await bond.getAddress(), av);
+      const sig = await f.buybackSig(bob, b.id, av, deadline);
+      await expect(bond.connect(carol).buyback(b.id, av, deadline, sig)).to.be.revertedWithCustomError(bond, "BurnerBondBuybackRefused");
+      await vault.connect(keeper).completeSettlement(a.id);
+      expect(await vault.totalSettlementOwed()).to.equal(0n);
+      await expect(bond.connect(carol).buyback(b.id, av, deadline, sig)).to.emit(bond, "BondBoughtBack");
+    });
+
+    it("44: a confirmed roll runs only while the Holder's attestation is in force; with none it is paid", async function () {
+      const { bond, alice, keeper } = f;
+      const { id } = await f.buy(alice, U(10_000), 365);
+      await f.notice(id);
+      await f.confirm(alice, id);
+      await increase(22 * DAY);
+      // alice's attestation (12 months from the purchase) has lapsed by maturity.
+      expect(await f.controls.eligibleCode(alice.address)).to.equal(ethers.ZeroHash);
+      await expect(bond.connect(keeper).settle(id)).to.emit(bond, "BondRedeemed").withArgs(id, alice.address, U(10_000));
+    });
+  });
+
   describe("test 24: the Equity Cushion pause", function () {
     it("stops new purchases, not confirmed rolls; a single signer cannot set it", async function () {
       const { bond, controls, alice, keeper, p1, usdc, vault } = f;
-      const { id } = await f.buy(alice, U(10_000), 60);
+      const { id } = await f.buy(alice, U(10_000), 365);
       await usdc.mint(await vault.getAddress(), U(1_000));
       await f.notice(id);
       await f.confirm(alice, id);
@@ -483,7 +530,8 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
       await f.buy(alice, U(1_000), 365); // one signer: nothing paused yet
       await f.two("setPauseFlag", EQUITY_CUSHION, true, ethers.id("cushion 2"));
       await expect(f.buy(alice, U(1_000), 365)).to.be.revertedWithCustomError(controls, "EarnControlsPaused");
-      await increase(61 * DAY);
+      await f.attest(alice);
+      await increase(22 * DAY);
       await expect(bond.connect(keeper).settle(id)).to.emit(bond, "BondRolled");
     });
   });
@@ -491,15 +539,16 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
   describe("tests 8-10 and decision 19: the Collateral Agent and the real BondVault", function () {
     it("an Enforcement Notice stops every outflow and every roll, a confirmed one included; distributions pay and burn", async function () {
       const { bond, vault, agent, alice, bob, keeper, key, t1, t2, usdc } = f;
-      const a = await f.buy(alice, U(30_000), 60);
-      const b = await f.buy(bob, U(10_000), 60);
+      const a = await f.buy(alice, U(30_000), 365);
+      const b = await f.buy(bob, U(10_000), 365);
       await usdc.mint(await vault.getAddress(), U(50_000));
       await f.notice(a.id);
       await f.confirm(alice, a.id);
       await agent.connect(t1).proposeExcessWithdrawal(U(1));
       const deadline = (await now()) + 365n * BigInt(DAY);
       // Both bonds have matured, so each is owed its Maturity Amount; the notice comes before anyone settles.
-      await increase(61 * DAY);
+      await increase(22 * DAY);
+      await f.attest(alice);
       await agent.connect(key).enforce(PAYMENT_DEFAULT, NOTICE);
 
       // New purchases.
