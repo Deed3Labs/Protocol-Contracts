@@ -25,6 +25,13 @@ interface IShareValuer {
     function previewWithdraw(uint256 assets) external view returns (uint256);
 }
 
+/// @dev The Yield Pool's legal holds (IV-02 §7.5; decision 34): shares under a hold in force may
+/// not be pledged.
+interface ILegalHoldView {
+    function heldSharesOf(address holder) external view returns (uint256);
+    function balanceOf(address holder) external view returns (uint256);
+}
+
 /// @dev The pledge module's views the registry reads (`PoolShareEnforcer`): whether a Default
 /// Notice or Shortfall notice is recorded for a member (decision 20), and the Pool Share Value a
 /// recorded default holds pledged (decision 10).
@@ -609,6 +616,7 @@ contract CollateralRegistry is
         // Section 9: the advance rate is stored at pledging. Units already pledged keep theirs, so
         // the stored figure is the units-weighted blend of the two.
         uint256 before = pledgedOf[member][kind];
+        _checkLegalHold(member, kind, before + amount);
         uint256 rate = collateralTypes[kind].haircutBps;
         if (before != 0) rate = (advanceBpsOf(member, kind) * before + rate * amount) / (before + amount);
         _advanceBps[member][kind] = rate;
@@ -616,6 +624,24 @@ contract CollateralRegistry is
         emit Pledged(member, kind, amount);
         emit PledgeAdvanceRate(member, kind, rate);
         refresh(member);
+    }
+
+    /// @dev Pool shares under a legal hold in force cannot be pledged (IV-02 §7.5; decision 34): with
+    /// a hold, everything pledged of the kind must fit in the shares the hold leaves. A valuer that
+    /// keeps no holds (it cannot answer) is not affected, and nor is a member with no hold.
+    function _checkLegalHold(address member, bytes32 kind, uint256 units) private view {
+        address vault = collateralTypes[kind].valuer;
+        if (vault == address(0)) return;
+        uint256 held;
+        try ILegalHoldView(vault).heldSharesOf(member) returns (uint256 h) {
+            held = h;
+        } catch {
+            return;
+        }
+        if (held == 0) return;
+        uint256 balance = ILegalHoldView(vault).balanceOf(member);
+        uint256 room = balance > held ? balance - held : 0;
+        if (units > room) revert CollateralRegistryEncumbered(member, kind, room, units);
     }
 
     /// @notice records a pledge of one specific thing.

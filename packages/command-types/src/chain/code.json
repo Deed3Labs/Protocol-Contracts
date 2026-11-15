@@ -179,18 +179,18 @@
   },
   "CollateralRegistry": {
    "source": "contracts/peripherals/CollateralRegistry.sol",
-   "sha256": "5d7026a5a045ef0e9251be239c4c71e852171565c6880f2640d416aec980ea65",
+   "sha256": "e0d24c240288ea9c313e707e18d4ab2ec33c71c602d464fe66cd86adfd007603",
    "immutables": [
     [
-     4990,
+     4976,
      32
     ],
     [
-     5130,
+     5116,
      32
     ],
     [
-     6706,
+     6712,
      32
     ]
    ]
@@ -324,7 +324,7 @@
   },
   "LendingPool": {
    "source": "contracts/peripherals/LendingPool.sol",
-   "sha256": "27e7ae1111cae269dc02ef8f9b2620ae76b6737e0b7c0fff357dab2d9a4b6e7b",
+   "sha256": "f1ee79476ef31fadffb860766e3da38209fde864ffad32b38c360c1ae853e087",
    "immutables": [
     [
      2349,
@@ -343,39 +343,39 @@
      32
     ],
     [
-     5388,
+     5378,
      32
     ],
     [
-     5539,
+     5529,
      32
     ],
     [
-     5906,
+     5896,
      32
     ],
     [
-     5973,
+     5963,
      32
     ],
     [
-     6720,
+     6710,
      32
     ],
     [
-     6842,
+     6832,
      32
     ],
     [
-     6897,
+     6887,
      32
     ],
     [
-     7024,
+     7014,
      32
     ],
     [
-     7090,
+     7080,
      32
     ],
     [

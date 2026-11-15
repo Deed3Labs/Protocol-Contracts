@@ -592,6 +592,31 @@ describe("PHASE 2F stage 2: enforcement under MB-05 (PoolShareEnforcer and the L
     });
   });
 
+  describe("decision 34: Pool Shares under a legal hold cannot be pledged (IV-02 §7.5)", function () {
+    it("a pledge must fit in the shares the hold leaves; with no hold nothing changes", async function () {
+      const { registry, pool, ctx, keeper, stranger } = s;
+      await pool.connect(ctx.admin).grantRole(await pool.SUSPENSION_ROLE(), keeper.address);
+      await pool.connect(ctx.admin).grantRole(await pool.CCO_ROLE(), stranger.address);
+      await s.usdc.mint(m, U(1_000));
+      await s.usdc.connect(ctx.member).approve(await pool.getAddress(), U(1_000));
+      await pool.connect(ctx.member).deposit(U(1_000), m);
+      await pledgeSigned(registry, m, POOL_SHARE, U(200));
+      const order = ethers.id("court order");
+      await pool.connect(keeper).placeLegalHold(m, U(600), order, 0);
+      await pool.connect(stranger).placeLegalHold(m, U(600), order, 0);
+      // 1,000 shares, 600 held: at most 400 in all may be pledged, 200 already are.
+      await expect(pledgeSigned(registry, m, POOL_SHARE, U(201)))
+        .to.be.revertedWithCustomError(registry, "CollateralRegistryEncumbered").withArgs(m, POOL_SHARE, U(400), U(401));
+      await pledgeSigned(registry, m, POOL_SHARE, U(200));
+      expect(await registry.pledgedOf(m, POOL_SHARE)).to.equal(U(400));
+      // Released by two signers, the shares may be pledged again.
+      await pool.connect(keeper).releaseLegalHold(0);
+      await pool.connect(stranger).releaseLegalHold(0);
+      await pledgeSigned(registry, m, POOL_SHARE, U(600));
+      expect(await registry.pledgedOf(m, POOL_SHARE)).to.equal(U(1_000));
+    });
+  });
+
   describe("decision 19: a pledged bond's share of a distribution round", function () {
     it("goes to the Holder's Defaulted Amounts while enforcement is permitted, else all to the Holder; only the collection or its vault may apply it", async function () {
       const { issuer, liquidator, usdc, bondVault, stranger, holdA, holdB } = s;

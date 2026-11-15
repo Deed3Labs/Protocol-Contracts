@@ -129,6 +129,9 @@ contract YieldPoolValuation is LendingPoolBase {
         uint256 queued = _enforcementQueuedOf[holder];
         uint256 pledged = locked > queued ? locked - queued : 0;
         if (shares > pledged) revert LendingPoolSeizureExceedsEncumbrance(holder, pledged, shares);
+        // A legal hold covers pledged shares too: enforcement waits for it (IV-02 §7.5).
+        uint256 free = _unheld(balanceOf(holder), 0, holder);
+        if (shares > free) revert LendingPoolEncumbered(holder, free, shares);
         _enforcementQueuedOf[holder] = queued + shares;
         requestId = _enqueue(holder, destination, shares, true);
     }

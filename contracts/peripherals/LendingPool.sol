@@ -654,8 +654,7 @@ contract LendingPool is LendingPoolBase {
             locked = lastKnownLock[from] > 0 ? type(uint256).max : 0;
             emit EncumbranceSourceReverted(from, lastKnownLock[from]);
         }
-        uint256 balance = balanceOf(from);
-        uint256 free = balance > locked ? balance - locked : 0;
+        uint256 free = _unheld(balanceOf(from), locked, from);
         if (amount > free) revert LendingPoolEncumbered(from, free, amount);
         if (to == address(0) || to == address(this)) return;
         IPoolEarnControls controls = _earnControls;

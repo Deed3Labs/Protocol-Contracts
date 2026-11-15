@@ -18,6 +18,8 @@ contract YieldPoolLedger is LendingPoolBase {
 
     /// @notice How long a legend change waits after it is scheduled (decision 27).
     uint256 public constant LEGEND_DELAY = 7 days;
+    /// @notice The most legal holds one holder may have open at once (decision 34).
+    uint256 public constant MAX_LEGAL_HOLDS = 8;
 
     /// @dev The interest state projected to now.
     struct Accrual {
@@ -353,6 +355,103 @@ contract YieldPoolLedger is LendingPoolBase {
         return hasRole(CCO_ROLE, a) || hasRole(TREASURER_ROLE, a);
     }
 
+    /// @dev The Suspension's two-person rule (§7.3): the first authorized individual's call
+    /// proposes `action`; the same call from a different one applies it, and at least one of the
+    /// two must be the CCO or treasurer. Returns the first signer when applied.
+    function _pairOfficers(bytes32 action) internal returns (bool done, address first) {
+        if (!_isSuspensionSigner(msg.sender)) revert LendingPoolNotAuthorized(msg.sender);
+        first = _proposerOf[action];
+        if (first == msg.sender) revert LendingPoolSameSigner(msg.sender);
+        if (first == address(0) || !_isSuspensionSigner(first)) {
+            _proposerOf[action] = msg.sender;
+            emit ActionProposed(action, msg.sender);
+            return (false, address(0));
+        }
+        if (!_isOfficer(first) && !_isOfficer(msg.sender)) revert LendingPoolNotAuthorized(msg.sender);
+        delete _proposerOf[action];
+        emit ActionApproved(action, first, msg.sender);
+        done = true;
+    }
+
+    /* ========== HOLDS REQUIRED BY LAW (IV-02 §7.5; decision 34) ========== */
+
+    /// @notice the shares of `holder` under legal holds in force.
+    function heldSharesOf(address holder) external view returns (uint256) {
+        return _legallyHeld(holder);
+    }
+
+    /// @notice the ids of `holder`'s holds not yet released (some may have expired).
+    function legalHoldsOf(address holder) external view returns (uint256[] memory) {
+        return _openHoldsOf[holder];
+    }
+
+    function legalHoldCount() external view returns (uint256) {
+        return _legalHolds.length;
+    }
+
+    /// @notice one hold; `inForce` is false once released or past the order's stated expiry.
+    function legalHold(uint256 holdId)
+        external
+        view
+        returns (address holder, uint256 shares, bytes32 orderHash, uint256 expiresAt, bool released, bool inForce)
+    {
+        LegalHold storage h = _legalHolds[holdId];
+        inForce = !h.released && (h.expiresAt == 0 || block.timestamp < h.expiresAt);
+        return (h.holder, h.shares, h.orderHash, h.expiresAt, h.released, inForce);
+    }
+
+    /// @notice places a hold the law requires (IV-02 §7.5) on `shares` of `holder`'s Pool Shares,
+    /// and only those: while it is in force they cannot be redeemed, queued, transferred or
+    /// pledged, and an MB-05 enforcement waits for it. The holder's other shares are untouched.
+    /// It ends when two signers release it or at `expiresAt`, the order's stated expiry (0 if the
+    /// order states none). It moves, burns and pays nothing (§8.5).
+    /// @dev Two authorized individuals under the Suspension's rule (`SUSPENSION_ROLE`, `CCO_ROLE`,
+    /// `TREASURER_ROLE`, one of them the CCO or treasurer), with the order's hash. A hold reaches
+    /// only shares in the holder's account, not shares already escrowed in the queue. At most
+    /// `MAX_LEGAL_HOLDS` per holder are open at once; expired ones are pruned here.
+    function placeLegalHold(address holder, uint256 shares, bytes32 orderHash, uint64 expiresAt) external {
+        if (holder == address(0) || shares == 0 || orderHash == bytes32(0)) revert LendingPoolInvalidAmount();
+        if (expiresAt != 0 && expiresAt <= block.timestamp) revert LendingPoolInvalidAmount();
+        (bool done, address first) =
+            _pairOfficers(keccak256(abi.encode("hold", holder, shares, orderHash, expiresAt)));
+        if (!done) return;
+        uint256[] storage ids = _openHoldsOf[holder];
+        for (uint256 i = ids.length; i > 0;) {
+            --i;
+            uint64 end = _legalHolds[ids[i]].expiresAt;
+            if (end != 0 && block.timestamp >= end) {
+                ids[i] = ids[ids.length - 1];
+                ids.pop();
+            }
+        }
+        if (ids.length >= MAX_LEGAL_HOLDS) revert LendingPoolInvalidAmount();
+        uint256 balance = balanceOf(holder);
+        uint256 held = _legallyHeld(holder);
+        if (held + shares > balance) revert LendingPoolEncumbered(holder, balance > held ? balance - held : 0, shares);
+        uint256 id = _legalHolds.length;
+        _legalHolds.push(LegalHold(holder, expiresAt, false, uint128(shares), orderHash));
+        ids.push(id);
+        emit LegalHoldPlaced(id, holder, shares, orderHash, expiresAt, first, msg.sender);
+    }
+
+    /// @notice releases a hold, by two authorized individuals under the same rule.
+    function releaseLegalHold(uint256 holdId) external {
+        LegalHold storage h = _legalHolds[holdId];
+        if (h.released) revert LendingPoolInvalidAmount();
+        (bool done, address first) = _pairOfficers(keccak256(abi.encode("release hold", holdId)));
+        if (!done) return;
+        h.released = true;
+        uint256[] storage ids = _openHoldsOf[h.holder];
+        for (uint256 i; i < ids.length; ++i) {
+            if (ids[i] == holdId) {
+                ids[i] = ids[ids.length - 1];
+                ids.pop();
+                break;
+            }
+        }
+        emit LegalHoldReleased(holdId, h.holder, first, msg.sender);
+    }
+
     /// @notice suspends subscriptions, redemptions and queue processing, only for a listed
     /// Suspension Event (FIXED reason codes, §7.1). Set by one authorized individual and approved
     /// by a different one, at least one of them the CCO or treasurer (§7.3). Expires 72 hours after
@@ -375,18 +474,8 @@ contract YieldPoolLedger is LendingPoolBase {
         if (lastEnd != 0 && block.timestamp < lastEnd + 30 days && resolutionHash == bytes32(0)) {
             revert LendingPoolResolutionRequired();
         }
-        if (!_isSuspensionSigner(msg.sender)) revert LendingPoolNotAuthorized(msg.sender);
-        bytes32 action = keccak256(abi.encode("suspend", reason, evidenceHash, resolutionHash));
-        address first = _proposerOf[action];
-        if (first == msg.sender) revert LendingPoolSameSigner(msg.sender);
-        if (first == address(0) || !_isSuspensionSigner(first)) {
-            _proposerOf[action] = msg.sender;
-            emit ActionProposed(action, msg.sender);
-            return;
-        }
-        if (!_isOfficer(first) && !_isOfficer(msg.sender)) revert LendingPoolNotAuthorized(msg.sender);
-        delete _proposerOf[action];
-        emit ActionApproved(action, first, msg.sender);
+        (bool done, address first) = _pairOfficers(keccak256(abi.encode("suspend", reason, evidenceHash, resolutionHash)));
+        if (!done) return;
         accrue();
         // Count the time already spent suspended on these facts.
         uint256 start = block.timestamp;

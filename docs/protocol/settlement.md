@@ -284,6 +284,16 @@ delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poo
   the next allowance posting clears the event and ends that Suspension (decision 26).
   It stops subscriptions, redemptions, fills and Deployments; cancellations go on and interest
   accrues.
+- **Holds required by law (§7.5, decision 34).** `placeLegalHold(holder, shares, orderHash, expiresAt)`
+  holds `shares` of one holder's Pool Shares, and only those, for a legal order: two authorized
+  individuals under the Suspension's rule (`SUSPENSION_ROLE`, `CCO_ROLE`, `TREASURER_ROLE`, one
+  of them the CCO or treasurer) with the order's hash. While in force those shares cannot be
+  redeemed, queued, transferred or pledged (`CollateralRegistry.pledge` refuses them), and an
+  MB-05 enforcement waits for it; the holder's other shares are untouched (`freeSharesOf` and
+  `maxRedeem` leave out `heldSharesOf`). It ends on `releaseLegalHold(id)` by two signers or when
+  the order's stated expiry passes (`expiresAt`, 0 for none). It moves, burns and pays nothing.
+  Views: `legalHold(id)`, `legalHoldsOf(holder)`, `legalHoldCount()`. A hold reaches only shares
+  in the holder's account, not shares already in the queue; at most 8 are open per holder.
 - **Final Maturity.** `finalMaturity()` is the 20th anniversary of `initialClosing`. From then,
   subscriptions and Deployments stop, and `requestRunOff(holder)` (anyone) queues a holder's free
   shares in queue order (decision 15).
@@ -293,7 +303,7 @@ delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poo
   account that held the shares (IV-02 §6.5).
 - **Legend.** `legend()` and `legendHash()` carry IV-02 §8.4's legend. It is written once at setup
   (`setLegend`, `DEFAULT_ADMIN_ROLE`); a later change waits 7 days (`applyLegend`, decision 27).
-- **Modules.** Pool Interest, Suspension, the rate model, recoveries, the legend and the restart
+- **Modules.** Pool Interest, Suspension, legal holds, the rate model, recoveries, the legend and the restart
   leftover run in `YieldPoolLedger`. The functions added in the IV-02 conformance pass are served
   by the pool's fallback, so clients need the joined ABI (`deploy/poolModules.ts`, `poolAt`).
 - **Shares as collateral.** Pledged shares (`encumberedOf`, from the source set by
@@ -387,7 +397,7 @@ refund shortfall. The arithmetic and worked examples are in
 | `LendingPool.claimWithdrawal` (pre-2f requests), `claimUnpaid` | The request's owner; the payee |
 | `LendingPool.deploy` | Two different `DEPLOYER_ROLE` signers; pays only `deploymentAccount` |
 | `LendingPool.postAllowance`, `postLossCharge`, `postRecovery`, `recordValuationEvent`, `postPoolTierPrincipal` | Two different `VALUATION_ROLE` signers |
-| `LendingPool.suspend` | Two different authorized individuals, one the CCO or treasurer |
+| `LendingPool.suspend`, `placeLegalHold`, `releaseLegalHold` | Two different authorized individuals, one the CCO or treasurer |
 | `LendingPool.renewSuspension`, `liftSuspension` | An authorized individual (renewal: not the last signer) |
 | `LendingPool.enforcementRedeem` | `ENFORCER_ROLE`; pays only `enforcementDestination` |
 | `LendingPool.borrow` | Nobody (reverts) |

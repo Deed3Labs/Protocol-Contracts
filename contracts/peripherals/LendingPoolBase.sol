@@ -314,9 +314,25 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     }
     mapping(address => EnforcementFill) internal _enforcementFilled;
 
+    /* ========== LEGAL HOLDS (Phase 2f stage 3; slots 418-419) ========== */
+
+    /// @dev A hold required by law (IV-02 §7.5; decision 34): `shares` of `holder`'s Pool Shares
+    /// may not be redeemed, queued, transferred or pledged until two signers release it or
+    /// `expiresAt` (the order's stated expiry; 0 for none) passes. It moves and burns nothing.
+    struct LegalHold {
+        address holder;
+        uint64 expiresAt;
+        bool released;
+        uint128 shares;
+        bytes32 orderHash;
+    }
+    LegalHold[] internal _legalHolds;
+    /// @dev The ids of each holder's holds not yet released (expired ones until pruned).
+    mapping(address => uint256[]) internal _openHoldsOf;
+
     /// @dev Room for later fields. Named apart from the Base Sepolia `__gap` (slots 361-400), which
     /// the fields above have used up and run past, as the last contract in the layout may.
-    uint256[38] private __yieldPoolGap;
+    uint256[36] private __yieldPoolGap;
 
     /* ========== ERRORS ========== */
 
@@ -405,6 +421,8 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     event PoolTierPrincipalPosted(uint256 value, bytes32 evidenceHash, address proposer, address approver);
     event LegendScheduled(bytes32 indexed legendHash, string legend, uint256 effectiveAt);
     event LegendSet(bytes32 indexed legendHash, string legend);
+    event LegalHoldPlaced(uint256 indexed holdId, address indexed holder, uint256 shares, bytes32 orderHash, uint256 expiresAt, address proposer, address approver);
+    event LegalHoldReleased(uint256 indexed holdId, address indexed holder, address proposer, address approver);
 
     /* ========== ACCOUNTING ========== */
 
@@ -579,11 +597,28 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
         return lastKnownLock[holder] > 0 ? type(uint256).max : 0;
     }
 
+    /// @dev Shares free of the pledge lock and of any legal hold in force.
     function _freeSharesOf(address holder) internal view returns (uint256) {
         uint256 locked = _encumberedOf(holder);
         if (locked != type(uint256).max) locked = _lockOnBalance(holder, locked);
-        uint256 balance = balanceOf(holder);
-        return balance > locked ? balance - locked : 0;
+        return _unheld(balanceOf(holder), locked, holder);
+    }
+
+    /// @dev `balance` less `locked`, less the shares under a legal hold in force, floored at zero.
+    function _unheld(uint256 balance, uint256 locked, address holder) internal view returns (uint256 free) {
+        free = balance > locked ? balance - locked : 0;
+        uint256 held = _legallyHeld(holder);
+        free = free > held ? free - held : 0;
+    }
+
+    /// @dev The shares of `holder` under legal holds still in force: not released, and before the
+    /// order's stated expiry (IV-02 §7.5; decision 34).
+    function _legallyHeld(address holder) internal view returns (uint256 held) {
+        uint256[] storage ids = _openHoldsOf[holder];
+        for (uint256 i; i < ids.length; ++i) {
+            LegalHold storage h = _legalHolds[ids[i]];
+            if (h.expiresAt == 0 || block.timestamp < h.expiresAt) held += h.shares;
+        }
     }
 
     /// @dev The two-person rule: the first authorized signer's call proposes `action`; the same
