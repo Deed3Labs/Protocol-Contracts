@@ -388,3 +388,10 @@ Refusing ESADepositVault and ClaimEscrow writes a flag in EarnControls about the
    - Not on it: individual `SavingsIntentEscrow` clones (no record; the factory is refused), the treasury Safe, and contracts that hold no funds (MerchantRegistry, NetworkRegistry, the oracles, AccessManager).
    - Refusals are only ever added, never removed, by the script.
 8. **Pre-2f records.** `REPLACE_BOND_FACTORY=1` keeps the current Base Sepolia factory, collection, deposit contract and valuer as `*Pre2f`, beside the 3 Nov `*Legacy` records. `FIRST_BOND_ID` must exceed every id either issued; deploy 23 refuses to continue without it.
+
+## Decision 46: surpluses to the payment Successor
+
+`LiquidatorEnforcement` gains `_holderPayee(holder)`: the bond collection's EarnControls `payeeOf`, else the Holder. `applyPledgePayment` (`payPledged`), `applyPoolProceeds` (pool-share enforcement) and `applyMaturityInstruction` (pledged settlement) now pay what the debt does not take there, as `applyDistribution` already did. No role, setter or storage was added.
+
+- **Test:** a new `PledgedBonds.spec.ts` test checks that, with a Successor registered, `payPledged` pays $500 to the debt and the rest of the Accreted Value to the Successor, with nothing to the Holder's account. The PledgedBonds, Enforcement, Section12Liquidator and Addendum2Relief specs pass (77 tests).
+- **Size:** LiquidatorEnforcement is 17,849 runtime bytes (6,727 free). The Liquidator is unchanged at 14,413. Code fingerprints are current.

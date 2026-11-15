@@ -5,6 +5,7 @@ import { ONE_USDC, DAY } from "./rates";
 import { pledgeSigned, pledgeItemSigned, signPledgeItem, MATURITY_INSTRUCTION } from "../../helpers/pledge";
 import { deployBondStack, grantNoticeRole, WIND_DOWN_ROLE } from "../../helpers/bonds";
 import { deployBarePool } from "../../helpers/yieldPool";
+import { grant } from "../../helpers/earnControls";
 
 /*
  * Phase 2e, the Earn addendum (pledged bonds) and founder answer G:
@@ -176,6 +177,36 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect(await registry.isItemPledged(m, BOND, id)).to.equal(false);
       expect((await bondVault.obligations(id)).settled).to.equal(true);
       await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
+    });
+
+    // Decision 46: what the debt does not take goes to the Holder's payee, the registered payment
+    // Successor once its 7-day wait has passed, as every other bond payment does.
+    it("pays the rest of the Accreted Value to the registered payment Successor, not the Holder's account", async function () {
+      const { usdc, issuer, bond, bondVault, liquidator, keeper } = s;
+      const signers = await ethers.getSigners();
+      const [p1, p2] = [signers[15], signers[16]];
+      const successor = ethers.Wallet.createRandom().address;
+      await grant(s.bs.controls, s.ctx.admin, "SUCCESSOR_ROLE", p1.address, p2.address);
+      for (const signer of [p1, p2]) {
+        await s.bs.controls.connect(signer).registerPaymentSuccessor(m, successor, ethers.id("letters"));
+      }
+      const { id, issuedAt } = await buyBond(U(1_000));
+      await usdc.mint(await bondVault.getAddress(), U(1_000));
+      await issuer.setPrincipal(m, T_BOND, U(500));
+      await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(500), 0n, 1n);
+      const half = issuedAt + BigInt(YEAR / 2);
+      await at(half);
+      const av = await s.harness.accretedValue(U(1_000), 1_111, (await bond.getBondInfo(id)).maturityDate, half);
+
+      const memberBefore = await usdc.balanceOf(m);
+      await expect(bond.connect(keeper).payPledged(id))
+        .to.emit(liquidator, "PledgePaymentApplied").withArgs(m, I, true, av, U(500), av - U(500));
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
+      expect(await s.bs.controls.payeeOf(m)).to.equal(successor); // its 7-day wait long over
+      expect(await usdc.balanceOf(successor)).to.equal(av - U(500));
+      expect(await usdc.balanceOf(m)).to.equal(memberBefore);
+      expect(await usdc.balanceOf(await liquidator.getAddress())).to.equal(0n);
     });
 
     it("reverts on an unpledged bond, with no recorded enforcement condition, on a Shortfall under 72 hours, and before the cure date", async function () {

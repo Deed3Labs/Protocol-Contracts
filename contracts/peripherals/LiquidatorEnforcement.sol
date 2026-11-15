@@ -31,6 +31,11 @@ interface IEarnBondsAgent {
     function agent() external view returns (address);
 }
 
+/// @dev The bond collection's EarnControls, whose `payeeOf` names a Holder's payment Successor.
+interface IEarnBondsControls {
+    function controls() external view returns (address);
+}
+
 /// @dev Where the Collateral Agent pays a Holder (EarnControls' payment Successor, else the Holder).
 interface IAgentPayeeSource {
     function payeeSource() external view returns (address);
@@ -327,7 +332,8 @@ contract LiquidatorEnforcement is LiquidatorBase {
     }
 
     /// @notice applies a pledged bond's payment to its Holder's MB-05 secured debt, and pays the
-    /// surplus to the Holder (IV-01 §4.9(c); MB-05 §§7.5, 7.6).
+    /// surplus to the Holder's payee: the registered payment Successor, else the Holder (IV-01
+    /// §4.9(c); MB-05 §§7.5, 7.6; decision 46).
     /// @dev Only the bond collection, from inside its `payPledged`, after `pledgePaymentDue` said
     /// yes and the vault paid the bond's whole Accreted Value here. On a default, to the Defaulted
     /// Amounts (`_applyDefault`); on a Shortfall, to Asset-Backed Drawn until it ends. `issuer` is
@@ -342,7 +348,7 @@ contract LiquidatorEnforcement is LiquidatorBase {
         _requireNoHold(member);
         (, bytes32 bondKind) = _earnKinds();
         applied = onDefault ? _applyDefault(member, amount, bondKind) : _applyShortfall(member, amount, bondKind);
-        if (amount > applied) reserveToken.safeTransfer(member, amount - applied);
+        if (amount > applied) reserveToken.safeTransfer(_holderPayee(member), amount - applied);
         _clearShortfallIfClosed(member);
         emit PledgePaymentApplied(member, issuer, onDefault, amount, applied, amount - applied);
     }
@@ -353,7 +359,8 @@ contract LiquidatorEnforcement is LiquidatorBase {
     /// shares, which `PoolShareEnforcer` has just handed here (MB-05 §§7.3(b), 7.5, 7.6).
     /// @dev Only `poolShareEnforcer`, with the USDC already sent here. The redeemed shares leave the
     /// pledge first. Then the proceeds pay the Defaulted Amounts open now, then end any noticed
-    /// Shortfall, and the rest goes to the Holder at once. A hold or a pause makes it wait.
+    /// Shortfall, and the rest goes at once to the Holder's payee (the registered payment Successor,
+    /// else the Holder; decision 46). A hold or a pause makes it wait.
     /// @param shares the pledged shares the queue burned for these proceeds.
     function applyPoolProceeds(address member, uint256 amount, uint256 shares)
         external
@@ -370,7 +377,7 @@ contract LiquidatorEnforcement is LiquidatorBase {
         if (amount > applied && shortfallNoticedAt[member][address(0)] != 0) {
             applied += _applyShortfall(member, amount - applied, poolKind);
         }
-        if (amount > applied) reserveToken.safeTransfer(member, amount - applied);
+        if (amount > applied) reserveToken.safeTransfer(_holderPayee(member), amount - applied);
         _clearShortfallIfClosed(member);
         emit PoolProceedsApplied(member, shares, amount, applied, amount - applied);
     }
@@ -433,6 +440,18 @@ contract LiquidatorEnforcement is LiquidatorBase {
         return payee == address(0) ? holder : payee;
     }
 
+    /// @dev Where every surplus of an enforcement or settlement goes (decision 46): EarnControls'
+    /// registered payment Successor, in effect after its 7-day wait, else the Holder. Read through the
+    /// bond collection's `controls`, the same EarnControls the Yield Pool reads; the Holder with none.
+    function _holderPayee(address holder) private view returns (address) {
+        address bonds = address(earnBonds);
+        if (bonds == address(0)) return holder;
+        address controls = IEarnBondsControls(bonds).controls();
+        if (controls == address(0)) return holder;
+        address payee = IAgentPayee(controls).payeeOf(holder);
+        return payee == address(0) ? holder : payee;
+    }
+
     /* ========== THE MATURITY INSTRUCTION (MB-05 §5.6) ========== */
 
     /// @notice what a matured pledged bond's Maturity Instruction applies to its Holder's debt:
@@ -451,7 +470,8 @@ contract LiquidatorEnforcement is LiquidatorBase {
     /// @notice applies a matured pledged bond's `toDebt` to its Holder's Asset-Backed Drawn.
     /// @dev Only the bond collection, from inside its `settle`, or its vault from
     /// `completeSettlement`. An application on the Holder's own instruction (MB-05 §7.9), not
-    /// enforcement, so a Liquidation Hold does not stop it. Anything left goes to the Holder.
+    /// enforcement, so a Liquidation Hold does not stop it. Anything left goes to the Holder's payee
+    /// (the registered payment Successor, else the Holder; decision 46).
     function applyMaturityInstruction(address member, uint256 toDebt) external noReenter {
         if (_msgSender() != address(earnBonds) && _msgSender() != earnBonds.bondVault()) {
             revert LiquidatorNotEarnBonds(_msgSender());
@@ -465,7 +485,7 @@ contract LiquidatorEnforcement is LiquidatorBase {
             applied += _settleTier(member, iss, bondKind, toDebt - applied);
             applied += _settleTier(member, iss, poolKind, toDebt - applied);
         }
-        if (toDebt > applied) reserveToken.safeTransfer(member, toDebt - applied);
+        if (toDebt > applied) reserveToken.safeTransfer(_holderPayee(member), toDebt - applied);
         emit MaturityInstructionApplied(member, toDebt, applied);
     }
 }

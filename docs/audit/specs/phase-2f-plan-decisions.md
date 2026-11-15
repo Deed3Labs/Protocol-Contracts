@@ -116,6 +116,14 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
     - (f) "While the Objective Default stands" (decision 37) is the Liquidator's own test: `inDefault` or `hasDefaultedOnCurrentLine`, with no pause in force.
     - (g) The line-closing record adds no notice period of its own (decision 37's counsel note stays open).
 
+## Merge-fix judgement calls (owner, Nov 15, 2026)
+
+46. **Kept as built, with one change** (`docs/audit/PHASE-2F-INTEGRATION.md`, part two):
+    - (a) In a Collateral Agent distribution round, only the pledged bond next in MB-05 §7.1's order (decision 20) has its share routed to the Defaulted Amount; later bonds' shares go to the Holder's payee.
+    - (b) A Shortfall alone routes nothing in a distribution round; only a Defaulted Amount is routed. Counsel's IV-10 §7.6 question stays open.
+    - (c) The refused list leaves out individual SavingsIntentEscrow clones, the treasury Safe and contracts that hold no funds.
+    - (d) **Changed:** every surplus the Liquidator pays after enforcement or settlement (`applyPledgePayment`, `applyPoolProceeds`, `applyMaturityInstruction`, and the distribution round) goes to the Holder's payee: EarnControls' registered payment Successor once its 7-day wait has passed, else the Holder. This matches every other bond payment. Before, those three paths paid the Holder's own account.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
