@@ -84,7 +84,13 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
 32. **IV-03 caps:** one cumulative offering cap per product until IV-03 is received. Splitting it by exemption comes later.
 
 ## Yield Pool conformance review (owner, Nov 15, 2026)
-33. **A loss charge borne partly by holdbacks (§5.6(d), A2) is built as written.** In Exhibit A10, the $52 applied from Holdback Amounts goes into Pool Assets and only $848 comes off the Deployed Balance. The specific, Holder-favourable rule controls over §1.2's "less all Pool Loss Charges". See the counsel note.
+33. **A loss charge borne partly by holdbacks reduces the Deployed Balance by the FULL charge** (owner, Nov 15, 2026; this reverses the first decision 33). §5.6(d) and A2's "only the rest reduces the Deployed Balance" was a drafting error, now corrected in IV-02. §1.2 and A10 control. On `postLossCharge(L)`:
+    - each open holdback absorbs its ratable share, capped at H, as built;
+    - the absorbed amounts move into Vault Cash;
+    - the full L reduces the Deployed Balance, not L − Σ absorbed;
+    - only the part of L above the Deployed Balance plus accrued Pool Interest leaves the vault to Clear Lending.
+
+    Net: Pool Assets fall by L − Σ absorbed, and the Pool Class bears all of L. **Acceptance test 20:** `postLossCharge($900)` with Pool Assets $89,600 and the $52 holdback open applies $52, adds $52 to Vault Cash and reduces the Deployed Balance by $900. Pool Assets fall by $848, to $88,752, and the remaining shares bear $848, as A10 says. **Test 15** likewise: the full charge reduces the Deployed Balance. The first build reduced it by only $848, so the Pool Class bore $848 of a $900 charge (the leaver $52, the rest $796) and Clear Lending carried the other $52.
 34. **§7.5 legal holds take two signers and an evidence hash** of the order. A hold covers only the shares the order names. It ends when two signers release it or when the order's stated expiry passes.
 35. **§8.3 Successor redemption reuses the bonds' Successor registration.** A registered Successor applies after 7 days, and the Holder's own account can cancel it. The shares are redeemed through the ordinary queue and paid only to that Successor.
 36. **Kept as built:** the recovery cap (decision 25) includes any part of a charge that holdbacks bore, and a loss charge's excess is still paid to Clear Lending while the queue is open.
@@ -94,7 +100,7 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
 - **Decision 19 versus IV-10 §7.6.**
 - **Amount due at enforcement:** Exhibit A says "at the acceleration time", and the Earn spec says "at the enforcement timestamp". The Agent has no power to accelerate, so the amount is fixed at enforcement, with unmatured bonds at Accreted Value.
 - **MB-05 §5.3:** a raise in an advance rate may benefit existing pledges, while Phase 2e stores the rate at pledging. Use the higher of the stored and current rate, so a raise helps existing pledges and a cut does not hurt them.
-- **IV-02 §1.2 versus §5.6(d) and A2 (decision 33):** with a holdback applied, Pool Assets fall by less than the full Pool Loss Charge. Counsel should reword §1.2 so it matches.
+- **IV-02 §5.6(d) and A2 (decision 33):** corrected by the owner so the full Pool Loss Charge reduces the Deployed Balance. The copies of IV-02 and `earn-contract-requirements.md` in this folder still carry the old wording until the corrected text is filed.
 
 ## Documents
 - IV-02 in full was received on Nov 14, 2026, and is in this folder.
@@ -105,7 +111,7 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
    - Agent A reworks `LendingPool` into the Yield Pool with its holdback module (decisions 16–17), tests 11–15 and 20–25.
    - Agent B builds `EarnControls`, the compounding library and the Earn timelock script, and `CollateralAgent` once Exhibit A arrives.
 2. **Stage 2, after Phase 2g merges:** the bond contracts, BondVault, CollateralRegistry, the Liquidator slim-down with `PoolShareEnforcer`, and the deploy configuration.
-3. **Stage 3:** integration, storage reports, Slither and the 2f report. Decisions 34 and 35 are built here, on top of the enforcement branch's LendingPool.
+3. **Stage 3:** integration, storage reports, Slither and the 2f report. Decision 33 (as revised), 34 and 35 are built here, on top of the enforcement branch's LendingPool.
 
 ## Base Sepolia redeploy steps
 - Before the first Deployment: call `setLegend` with IV-02's legend, then have two `VALUATION_ROLE` signers post the Pool Tier ceiling (`poolTierPrincipal`). Until the ceiling is posted, no Deployment is possible.
