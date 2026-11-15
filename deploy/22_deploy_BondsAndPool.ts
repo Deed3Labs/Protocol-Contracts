@@ -110,6 +110,23 @@ async function main() {
   const bondVaultAddress = await bondVault.getAddress();
 
   let factoryAddress = getDeployment(network, "BurnerBondFactory")?.address;
+  // Phase 2f stage 3 (replacing the retired scripts/redeploy_bonds.ts): a factory recorded before
+  // Phase 2f clones the old collection, which cannot record into or settle through the upgraded
+  // BondVault. With REPLACE_BOND_FACTORY=1 its records are kept as `*Pre2f` and a new factory is
+  // deployed; deploy 23 then makes and wires the new collection, starting its ids at FIRST_BOND_ID.
+  // Unwind the old collection's bonds first (PHASE-2F-BONDS.md, judgement call 22).
+  if (factoryAddress && (await isPre2fFactory(ethers, factoryAddress, reserveToken))) {
+    if (process.env.REPLACE_BOND_FACTORY !== "1") {
+      log(`! BurnerBondFactory ${factoryAddress} is pre-2f. Set REPLACE_BOND_FACTORY=1 to keep it as BurnerBondFactoryPre2f and deploy the new one.`);
+    } else {
+      for (const name of ["BurnerBondFactory", "BurnerBond", "BurnerBondDeposit", "BondValuer"]) {
+        const record = getDeployment(network, name);
+        if (record && !getDeployment(network, `${name}Pre2f`)) saveDeployment(network, `${name}Pre2f`, record.address, record.abi);
+      }
+      log(`  BurnerBondFactory ${factoryAddress} kept on record as BurnerBondFactoryPre2f`);
+      factoryAddress = undefined;
+    }
+  }
   if (!factoryAddress) {
     // Phase 2f: a prebuilt BurnerBond implementation (with BurnerBondPledges and BurnerBondIssue) and
     // the IV-01 §4.12 legend. A new factory, so the collection it clones is the new one.
@@ -211,6 +228,19 @@ async function main() {
   log("\nBonds and pool deployed.");
   log("\nBond collections are created per token with factory.createCollection(); none exist yet.");
   log("A BondValuer is deployed per collection, since it reads one collection's present values.");
+}
+
+/**
+ * Whether a recorded factory makes the pre-2f collection: the Phase 2f collection answers
+ * `controls()` (its EarnControls) and the old one has no such function. A factory with no
+ * collection for the token is judged by nothing and kept.
+ */
+async function isPre2fFactory(ethers: any, factoryAddress: string, token: string): Promise<boolean> {
+  const factory = await ethers.getContractAt("BurnerBondFactory", factoryAddress);
+  const collection: string = (await factory.getCollectionInfo(token)).collectionAddress;
+  if (collection === ethers.ZeroAddress) return false;
+  const probe = new ethers.Contract(collection, ["function controls() view returns (address)"], ethers.provider);
+  return probe.controls().then(() => false, () => true);
 }
 
 /** IV-02 §8.4's legend, as the Register and the vault's metadata carry it. */

@@ -49,9 +49,28 @@ async function main() {
   const collection = new ethers.Contract(collectionAddress, abi, (await ethers.getSigners())[0]);
   saveDeployment(network, "BurnerBond", collectionAddress, abi);
 
+  // A collection replacing a pre-2f one (deploy 22, REPLACE_BOND_FACTORY) shares the BondVault and
+  // the CollateralRegistry, which key a bond by its id alone: it must start above every id the
+  // older collections issued, before its first sale. This replaces the retired
+  // scripts/redeploy_bonds.ts.
+  if ((await collection.totalBondsMinted()) === 0n) {
+    const firstId = process.env.FIRST_BOND_ID;
+    if (firstId) {
+      await (await collection.setFirstBondId(BigInt(firstId))).wait();
+      log(`  bond ids start at ${firstId}`);
+    } else if (getDeployment(network, "BurnerBondPre2f") || getDeployment(network, "BurnerBondLegacy")) {
+      throw new Error("An older collection is on record: set FIRST_BOND_ID above every id it issued before the first sale.");
+    }
+  }
+
   // The valuer. Deployed per collection, and pointed at by the registry so a pledged bond is
   // valued at what it is worth today rather than at a number somebody has to keep updating.
   let valuerAddress = getDeployment(network, "BondValuer")?.address;
+  if (valuerAddress) {
+    // A valuer recorded for an older collection is not this one's.
+    const recorded = await ethers.getContractAt("BondValuer", valuerAddress);
+    if ((await recorded.collection()).toLowerCase() !== collectionAddress.toLowerCase()) valuerAddress = undefined;
+  }
   if (!valuerAddress) {
     const BondValuer = await ethers.getContractFactory("BondValuer");
     const valuer = await BondValuer.deploy(collectionAddress);

@@ -28,7 +28,7 @@ export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
     AssurancePool: process.env.ASSURANCE_POOL_84532 || '0xf5E40414410672636Ab1691ae19D2Aa1c1705840',
     // Phase E: bonds, capital and merchant payouts.
     BondVault: process.env.BOND_VAULT_84532 || '0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855',
-    // The bond collection replaced on 2026-11-03 (scripts/redeploy_bonds.ts), ids from 1001. Every
+    // The bond collection replaced on 2026-11-03 (by a script since retired), ids from 1001. Every
     // bond in the old one was redeemed, so nothing reads it.
     BurnerBond: process.env.BURNER_BOND_84532 || '0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556',
     BurnerBondDeposit: process.env.BURNER_BOND_DEPOSIT_84532 || '0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c',

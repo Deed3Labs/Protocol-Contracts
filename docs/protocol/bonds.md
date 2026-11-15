@@ -248,9 +248,12 @@ itself a clone, created and handed to the deployer in the factory's constructor.
 **A replacement collection shares the vault without sharing ids.** `BondVault` and
 `CollateralRegistry` key a bond by its id alone, so a collection built to replace another calls
 `setFirstBondId` (owner, before its first sale) to start above every id the old one issued.
-`scripts/redeploy_bonds.ts` replaced the Base Sepolia factory and USDC collection this way on
-3 Nov 2026, with ids from 1001; the old ones sell nothing, and every bond they
-issued has been redeemed.
+The Base Sepolia factory and USDC collection were replaced this way on 3 Nov 2026, with ids from
+1001; the old ones sell nothing, and every bond they issued has been redeemed. The script that did
+it was retired in Phase 2f (it used the pre-2f collection API). A Phase 2f collection replaces a
+pre-2f one through the deploy scripts: `REPLACE_BOND_FACTORY=1` on `deploy/22` keeps the old
+records as `*Pre2f` and deploys the new factory, and `FIRST_BOND_ID` on `deploy/23` sets the new
+collection's first id (it refuses to go on without one while an older collection is on record).
 
 A new collection redeems nothing until its owner calls `setBondVault` and the vault grants
 `BOND_ROLE` to both the collection and the deposit contract, which `deploy/23` does.
