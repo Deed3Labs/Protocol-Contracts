@@ -187,7 +187,7 @@ contract BondVault is
     /// @notice Everything recorded in `pendingSettlement`. Due now, so it sits on top of the reserve.
     uint256 public totalSettlementOwed;
 
-    /* ========== ADDED IN PHASE 2F: twelve slots from the gap ========== */
+    /* ========== ADDED IN PHASE 2F: eleven slots from the gap ========== */
 
     /// @notice The Collateral Agent (IV-10 Exhibit A).
     ICollateralAgent public agent;
@@ -211,7 +211,7 @@ contract BondVault is
     mapping(uint32 => uint256[]) internal _confirmedOfTerm;
     mapping(uint256 => uint256) internal _confirmedTermIndex;
 
-    uint256[19] private __gap;
+    uint256[20] private __gap;
 
     error BondVaultInvalidAddress();
     error BondVaultUnknownBond(uint256 bondId);
