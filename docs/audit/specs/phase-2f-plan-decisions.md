@@ -95,6 +95,16 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
 35. **§8.3 Successor redemption reuses the bonds' Successor registration.** A registered Successor applies after 7 days, and the Holder's own account can cancel it. The shares are redeemed through the ordinary queue and paid only to that Successor.
 36. **Kept as built:** the recovery cap (decision 25) includes any part of a charge that holdbacks bore, and a loss charge's excess is still paid to Clear Lending while the queue is open.
 
+## IV-03 and the enforcement review (owner, Nov 15, 2026)
+37. **A credit line's closing is recorded on chain.** After an Objective Default, two people (one proposes, a different one approves) may record that the line is closed and its full balance demanded (MB-04 §9.3(a)–(b)). From that record, the full Savings-Backed Drawn is a Defaulted Amount that Encumbered CLRUSD may pay, never more than the Savings-Backed Position (MB-04 §9.4; MB-05 §§1.3, 7.2), and the full balance is a Defaulted Amount for pledged Earn Positions. Without the record, the Defaulted Amount is only what is past due, as built. Counsel note: confirm whether the demand needs its own notice period under MB-05 §6.3.
+38. **One offering maximum across both products (IV-03 §1.3).** A single cumulative counter of $1,000,000, measured by price paid: bond Purchase Prices and pool subscriptions together. This replaces decision 32. Rolls are not counted. Counsel note: IV-03 §6.4(b) calls a roll "a new purchase"; confirm a roll does not count toward the maximum.
+39. **The Funding Limit counts all borrowed money (IV-03 §§1.3, 5.5; L-01 "Funding Limit").** Two people post Lending Co.'s other indebtedness for borrowed money (anything that is not an Earn Product) with an evidence hash, and it is added to the on-chain total of bonds at Maturity Amount and pool shares at Share Value (decision 12). The posted figure can only make the check stricter.
+40. **The household cap during bootstrap.** A household may hold at most 10% of the greater of Pool Assets and `holderCapFloor` (decision 23's 7-day setting, $1,000,000 in config). This replaces decision 23's "no cap below the floor". At the $1m floor, a household holds at most $100,000 while the pool is small, so filling it takes at least ten households (IV-03 counsel note 18). IV-02 §2.5(c) should be reworded to describe it.
+41. **Ladder terms (IV-01; IV-03 §§1.2, 6.3).** A rung may be offered only for terms of 12 to 36 months. A 7-day Earn-timelock setting may raise the maximum to 60 months for Phase 3 under L-02, never higher. A Ladder change is refused when it takes effect if it would leave an offered longer term with a lower Issue Yield than an offered shorter term.
+42. **Eligibility attestations last at most 12 months** (IV-03 §2.1(d)). The contract refuses an attestation whose `validUntil` is more than 12 months after its `issuedAt`.
+43. **No buyback while any bond's maturity payment is unpaid** (IV-03 §6.4(c), "never during a Reserve Shortfall or default"). This is in addition to the Reserve Shortfall and Enforcement Notice blocks.
+44. **A roll needs eligibility at maturity** (IV-03 §6.4(b)). A confirmed roll executes only while the Holder's eligibility attestation is in force, and the replacement bond records that attestation's exemption code. With none in force, the bond is paid, not rolled. The holder-ineligible flag still covers a Rule 506(b) bond whose Holder is not verified for the Rule 506(c) Offering.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
@@ -104,6 +114,7 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
 
 ## Documents
 - IV-02 in full was received on Nov 14, 2026. The corrected IV-02 (§5.6(d), A2, A6), the corrected `earn-contract-requirements.md` (section 4A roll confirmation, tests 2, 6, 15, 19, 20, 24 and 26) and IV-01 were filed on Nov 15, 2026, from `Deed3Labs/clear-agreements` at 6e8193f, verbatim.
+- IV-03 (the Private Placement Memorandum) was filed on Nov 15, 2026, from `Deed3Labs/clear-agreements` at 6e8193f, verbatim.
 - IV-10 (with Exhibit A) and MB-05 in full were received on Nov 14, 2026, and are in this folder.
 
 ## Build order
