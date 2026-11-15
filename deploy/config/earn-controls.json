@@ -1,0 +1,11 @@
+{
+  "_comment": "EarnControls' initial governed settings, in whole dollars (scaled by the reserve token's decimals at deploy). offeringCap is Earn §1's initial $1,000,000 BurnerBond offering cap. holderCapFloor is decision 23's bootstrap floor (the plan suggests about $1m): the 10% holder cap applies only while Pool Assets exceed it. fundingLimit, poolOfferingCap and poolCapacity are placeholders until the Holdings Board (Funding Limit) and the Lending Board (pool capacity, IV-03 maximum) set them; fundingResolution is then that resolution's hash.",
+  "decimals": 6,
+  "fundingLimitDollars": 0,
+  "fundingResolution": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "fiscalYear": 2026,
+  "offeringCapDollars": 1000000,
+  "poolOfferingCapDollars": 0,
+  "poolCapacityDollars": 0,
+  "holderCapFloorDollars": 1000000
+}
