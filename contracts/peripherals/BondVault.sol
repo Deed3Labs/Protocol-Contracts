@@ -717,6 +717,14 @@ contract BondVault is
         return balance < amount ? balance : amount;
     }
 
+    /// @notice lends nothing (C1, decision 3): excess leaves only to the registered multisig through
+    /// the Collateral Agent. Kept as a stub that returns 0 and moves no USDC so that PayoutPool's
+    /// unchanged draw path skips the vault rather than reverting until its vault leg is switched off
+    /// by configuration (`PayoutPool.setBondVault(0)`).
+    function lendToPayoutPool(uint256) external pure returns (uint256) {
+        return 0;
+    }
+
     /// @notice takes back what the payout pool borrowed before Phase 2f, and any carry on it. Only the
     /// payout pool (audit M-8). `lendToPayoutPool` is gone (C1, decision 3): this stays until any open
     /// loan is repaid.

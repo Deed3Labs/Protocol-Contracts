@@ -34,7 +34,7 @@ describe("BondVault", function () {
     const maturity = (await now()) + BigInt(monthsOut * MONTH);
     await vault
       .connect(bondContract)
-      .recordPurchase(bondId, principal, face, maturity);
+      .recordPurchase(bondId, principal, face, maturity, 0, 365); // Phase 2f: Issue Yield and term
   }
 
   async function advance(seconds: number) {
@@ -85,47 +85,35 @@ describe("BondVault", function () {
       expect(await vault.deployableExcess()).to.equal(0n);
     });
 
-    it("keeps the floor a parameter rather than a decision", async function () {
-      const min = await vault.MIN_RESERVE_FLOOR_BPS();
-      await expect(vault.setReserveTerms(MONTH, min - 1n))
-        .to.be.revertedWithCustomError(vault, "BondVaultReserveFloorOutOfBounds");
-      await expect(vault.setReserveTerms(MONTH, 10_001n))
-        .to.be.revertedWithCustomError(vault, "BondVaultReserveFloorOutOfBounds");
-
-      await vault.setReserveTerms(MONTH, 4_000n);
+    // Phase 2f (decision 8, C7; Earn §2): the window is FIXED at 90 days and the 30% floor can only
+    // be raised. `setReserveTerms`, which could lower the floor to 20%, is gone.
+    it("keeps the 30% floor FIXED and raise-only", async function () {
+      expect(await vault.minReserveBps()).to.equal(3_000n);
+      expect(vault.interface.getFunction("setReserveTerms")).to.equal(null);
+      await expect(vault.raiseReserveFloor(2_999n)).to.be.revertedWithCustomError(vault, "BondVaultReserveFloorOutOfBounds");
+      await expect(vault.raiseReserveFloor(10_001n)).to.be.revertedWithCustomError(vault, "BondVaultReserveFloorOutOfBounds");
+      await vault.raiseReserveFloor(4_000n);
       expect(await vault.minReserveBps()).to.equal(4_000n);
+      await expect(vault.raiseReserveFloor(3_500n)).to.be.revertedWithCustomError(vault, "BondVaultReserveFloorOutOfBounds");
     });
   });
 
+  // C1 and decision 3 (Phase 2f): the treasury role's single-key `withdrawDeployable` to any address
+  // is gone. Excess leaves only to the registered multisig through the Collateral Agent, proposed and
+  // executed by two different treasury signers; test/earn/Bonds.spec.ts tests 1 and 3 cover it.
   describe("the Safe takes only what is not owed soon", function () {
-    it("lets the treasury take the deployable excess", async function () {
-      // Money does have to reach human control; a contract cannot wire dollars anywhere.
-      await sell(1, 1_000n * ONE_USDC, 1_000n * ONE_USDC, 12);
-      await vault.connect(safe).withdrawDeployable(700n * ONE_USDC, safe.address);
-      expect(await usdc.balanceOf(safe.address)).to.equal(700n * ONE_USDC);
-    });
-
-    it("cannot withdraw the redemption reserve", async function () {
-      // The §6 test. The reserve is subtracted before the request is considered, so there is no
-      // ordering in which the Safe empties the vault and restores it afterwards.
+    it("computes the deployable excess net of the reserve", async function () {
       await sell(1, 1_000n * ONE_USDC, 1_000n * ONE_USDC, 12);
       expect(await vault.deployableExcess()).to.equal(700n * ONE_USDC);
-
-      await expect(vault.connect(safe).withdrawDeployable(701n * ONE_USDC, safe.address))
-        .to.be.revertedWithCustomError(vault, "BondVaultWouldBreachReserve");
     });
 
-    it("cannot drain the vault a slice at a time either", async function () {
+    it("has no single-key withdrawal, and only the Collateral Agent reaches the excess", async function () {
       await sell(1, 1_000n * ONE_USDC, 1_000n * ONE_USDC, 12);
-      await vault.connect(safe).withdrawDeployable(700n * ONE_USDC, safe.address);
-      await expect(vault.connect(safe).withdrawDeployable(1n, safe.address))
-        .to.be.revertedWithCustomError(vault, "BondVaultWouldBreachReserve");
-    });
-
-    it("is gated to the treasury role", async function () {
-      await sell(1, 1_000n * ONE_USDC, 1_000n * ONE_USDC, 12);
-      await expect(vault.connect(outsider).withdrawDeployable(1n, outsider.address))
-        .to.be.reverted;
+      expect(vault.interface.getFunction("withdrawDeployable")).to.equal(null);
+      await expect(vault.connect(safe).agentWithdrawExcess(safe.address, 1n))
+        .to.be.revertedWithCustomError(vault, "BondVaultNotAgent");
+      await expect(vault.connect(safe).agentTransfer(safe.address, 1n))
+        .to.be.revertedWithCustomError(vault, "BondVaultNotAgent");
     });
   });
 

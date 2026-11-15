@@ -9,7 +9,7 @@ import {
   AssuranceSetup, BACKSTOP, ASSURANCE, TAG, MASK, DAY, ASSURANCE_DELAY,
 } from "../../helpers/assurance";
 import { pledgeSigned } from "../../helpers/pledge";
-import { deployBondFactory } from "../../helpers/bonds";
+import { deployBondStack } from "../../helpers/bonds";
 import { deployBarePool } from "../../helpers/yieldPool";
 
 /*
@@ -384,16 +384,11 @@ describe("COMPLIANCE section 13: Assurance Contracts (acceptance 31-33)", functi
       const { pool: lending } = await deployBarePool(ctx.admin, usdc, ys[17], [ys[18], ys[19]]);
       await lending.setEncumbranceSource(await pledges.getAddress(), POOL_SHARE);
 
-      const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
-        [ctx.admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
-      const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://b");
-      const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-      await factory.createCollection(await usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
-      const bond: any = await ethers.getContractAt("BurnerBond", (await factory.getCollectionInfo(await usdc.getAddress())).collectionAddress);
-      await bondVault.grantRole(await bondVault.BOND_ROLE(), await deposit.getAddress());
-      await bondVault.grantRole(await bondVault.BOND_ROLE(), await bond.getAddress());
-      await deposit.setBondVault(await bondVault.getAddress());
-      await bond.setBondVault(await bondVault.getAddress());
+      // Phase 2f: the new bond collection (purchase by quote) with its BondVault and EarnControls.
+      const bs = await deployBondStack(ctx.admin, usdc, ctx.tokenRegistry, { rungs: [[365, 475]] });
+      const bondVault: any = bs.vault;
+      const bond: any = bs.bond;
+      const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await bs.factory.getUnifiedDepositContract());
       await bondVault.setBackstops(coop.address, await payoutPool.getAddress());
       await payoutPool.connect(ctx.admin).setBondVault(await bondVault.getAddress());
       await payoutPool.connect(ctx.admin).setYieldPool(await lending.getAddress());

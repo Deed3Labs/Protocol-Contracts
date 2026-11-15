@@ -5,7 +5,7 @@ import { ONE_USDC, DAY, CA, P, CA_BANDS, params, deployRateSchedule } from "./ra
 import { passCycleEnd } from "../../helpers/default";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { pledgeSigned, pledgeItemSigned } from "../../helpers/pledge";
-import { deployBondFactory } from "../../helpers/bonds";
+import { deployBondStack } from "../../helpers/bonds";
 import { deployBarePool } from "../../helpers/yieldPool";
 
 /*
@@ -78,18 +78,11 @@ async function deployStack(enrolMock = true) {
   const { pool, controls } = await deployBarePool(ctx.admin, usdc, signers[17], [signers[18], signers[19]]);
   await pool.setEncumbranceSource(await registry.getAddress(), POOL_SHARE);
 
-  const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
-  const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-  await factory.createCollection(await usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
-  const bond: any = await ethers.getContractAt("BurnerBond",
-    (await factory.getCollectionInfo(await usdc.getAddress())).collectionAddress);
-  const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
-    [ctx.admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
-  await bondVault.grantRole(await bondVault.BOND_ROLE(), await deposit.getAddress());
-  await bondVault.grantRole(await bondVault.BOND_ROLE(), await bond.getAddress());
-  await deposit.setBondVault(await bondVault.getAddress());
-  await bond.setBondVault(await bondVault.getAddress());
-  await bond.setEncumbranceSource(await registry.getAddress(), BOND);
+  // Phase 2f: the new collection, sold by quote, with its own EarnControls.
+  const bs = await deployBondStack(ctx.admin, usdc, ctx.tokenRegistry, { registry, kind: BOND, rungs: [[365, 475]] });
+  const bond: any = bs.bond;
+  const bondVault: any = bs.vault;
+  const deposit: any = null;
   const valuer = await (await ethers.getContractFactory("BondValuer")).deploy(await bond.getAddress());
   await registry.setCollateralValuer(BOND, await valuer.getAddress());
   // The vault's interest to pay early redemptions above the purchase price.
@@ -104,13 +97,11 @@ async function deployStack(enrolMock = true) {
   // Named before any bond exists, so it takes effect at once. Since Phase 2e the Liquidator is the
   // pledge module's enforcement side: it takes no bond; the bond's own `payPledged` asks it.
   await bond.setLiquidator(await liquidator.getAddress());
-  // The collection releases a paid bond's pledge itself, with the role it rolls pledges with.
-  await registry.grantRole(await registry.ITEM_ROLLER_ROLE(), await bond.getAddress());
   await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
   await liquidator.setEarnSources(await pool.getAddress(), await bond.getAddress());
   for (const s of [holdA, holdB, holdC]) await liquidator.grantRole(await liquidator.HOLD_ROLE(), s.address);
 
-  return { ctx, usdc, clrusd, vault, issuer, registry, pool, controls, bond, bondVault, deposit, liquidator, holdA, holdB, holdC, stranger };
+  return { ctx, usdc, clrusd, vault, issuer, registry, pool, controls, bond, bondVault, deposit, liquidator, holdA, holdB, holdC, stranger, bs };
 }
 
 describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
@@ -146,14 +137,8 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     await pledgeSigned(s.registry, m, POOL_SHARE, amount);
   }
 
-  async function buyBond(face: bigint, term = YEAR) {
-    const maturity = (await now()) + BigInt(term) + 60n;
-    const discount = await s.bond.calculateDiscount(maturity);
-    await s.usdc.mint(m, face);
-    await s.usdc.connect(s.ctx.member).approve(await s.deposit.getAddress(), face);
-    await s.deposit.connect(s.ctx.member).makeDeposit(await s.usdc.getAddress(), face, maturity, discount);
-    const ids = await s.bond.getBondIdsByCreator(m);
-    const id = ids[ids.length - 1];
+  async function buyBond(face: bigint) {
+    const { id } = await s.bs.buy(s.ctx.member, face, 365);
     await pledgeItemSigned(s.registry, m, BOND, id);
     return id;
   }

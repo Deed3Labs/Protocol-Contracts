@@ -139,7 +139,8 @@ describe("Phase 2f stage 2: bonds and the BondVault", function () {
       await expect(vault.connect(t1).agentWithdrawExcess(t1.address, U(1))).to.be.revertedWithCustomError(vault, "BondVaultNotAgent");
       await expect(vault.connect(keeper).agentTransfer(keeper.address, U(1))).to.be.revertedWithCustomError(vault, "BondVaultNotAgent");
       // The single-key withdrawal and the payout pool's loan are gone (C1).
-      for (const gone of ["withdrawDeployable", "lendToPayoutPool", "setReserveTerms"]) {
+      expect(await vault.lendToPayoutPool.staticCall(U(1))).to.equal(0n); // a stub that lends nothing
+      for (const gone of ["withdrawDeployable", "setReserveTerms"]) {
         expect(vault.interface.getFunction(gone)).to.equal(null);
       }
     });

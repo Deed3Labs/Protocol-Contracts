@@ -152,6 +152,9 @@ const REVIEWED_PULLS: Record<string, string> = {
   "ClaimEscrow.sol:receiveWithAuthorization:sender": "EIP-3009: the sender's own signature, committing to every term",
   "StableCredit.sol:safeTransferFrom:payer": "a repayment: payer is the caller, or what a registered issuer passes (below)",
   "BondVault.sol:safeTransferFrom:treasury": "Clear's own treasury, not a member",
+  // Phase 2f: a bond purchase pulls the Purchase Price into the BondVault from the payer named in a
+  // quote that payer signed (EIP-712, EIP-1271), used once and within 15 minutes.
+  "BurnerBondIssue.sol:safeTransferFrom:q.payer": "the payer's own Wallet Signature over the quote",
   "OffersIssuer.sol:safeTransferFrom:treasury": "Clear's own treasury, not a member",
   "PayoutPool.sol:safeTransferFrom:coopTreasury": "the co-op treasury, not a member",
   "PayoutPool.sol:transferFrom:merchant": "a merchant's StableCredit (a credit token, not USDC), on its own redemption",

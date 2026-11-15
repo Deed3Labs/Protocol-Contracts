@@ -7,7 +7,7 @@ import { deployCore } from "../deep/deep-setup";
 import { signedOpenPlan } from "../../helpers/plans";
 import { CA, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule } from "./rates";
 import { pledgeItemSigned } from "../../helpers/pledge";
-import { deployBondFactory } from "../../helpers/bonds";
+import { deployBondStack } from "../../helpers/bonds";
 
 /*
  * Phase 2e, the two gaps closed at the owner's request (addendum-2-references.md):
@@ -321,19 +321,10 @@ describe("ADDENDUM 2 references, 12.14: default of a term plan secured under MB-
     const registry: any = await upgrades.deployProxy(await ethers.getContractFactory("CollateralRegistry"),
       [ctx.admin.address, await ctx.networkRegistry.getAddress()], { kind: "uups" });
     await registry.registerCollateralType(BOND, 3, 9_500n, 0n);
-    const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
-    await factory.updateGlobalParameters(1_000n, 0n, 365 * DAY);
-    const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-    await factory.createCollection(u, "USDC", "USD Coin", "ipfs://bonds");
-    const bond: any = await ethers.getContractAt("BurnerBond", (await factory.getCollectionInfo(u)).collectionAddress);
-    const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
-      [ctx.admin.address, u, 90 * DAY], { kind: "uups" });
-    await bondVault.grantRole(await bondVault.BOND_ROLE(), await deposit.getAddress());
-    await bondVault.grantRole(await bondVault.BOND_ROLE(), await bond.getAddress());
-    await deposit.setBondVault(await bondVault.getAddress());
-    await bond.setBondVault(await bondVault.getAddress());
-    await bond.setEncumbranceSource(await registry.getAddress(), BOND);
-    await registry.grantRole(await registry.ITEM_ROLLER_ROLE(), await bond.getAddress());
+    // Phase 2f: the new collection, sold by quote; 11.11% for a year prices $1,000 at $900.
+    const bs = await deployBondStack(ctx.admin, ctx.usdc, ctx.tokenRegistry, { registry, kind: BOND, rungs: [[365, 1_111]] });
+    const bond: any = bs.bond;
+    const bondVault: any = bs.vault;
     await registry.setCollateralValuer(BOND, await (await (await ethers.getContractFactory("BondValuer")).deploy(await bond.getAddress())).getAddress());
     const enforcer: any = await upgrades.deployProxy(await ethers.getContractFactory("Liquidator"),
       [ctx.admin.address, await ctx.stableCredit.getAddress(), u, u, u, await registry.getAddress()], { kind: "uups" });
@@ -347,12 +338,7 @@ describe("ADDENDUM 2 references, 12.14: default of a term plan secured under MB-
     expect(await ctx.networkRegistry.isEnrolled(m, await term.getAddress())).to.equal(true);
 
     // The member buys a $1,000 one-year bond for $900 and pledges it; the vault holds the accretion.
-    const maturity = BigInt(await now()) + BigInt(365 * DAY);
-    await ctx.usdc.mint(m, usd(1_000));
-    await ctx.usdc.connect(ctx.member).approve(await deposit.getAddress(), usd(1_000));
-    await deposit.connect(ctx.member).makeDeposit(u, usd(1_000), maturity, await bond.calculateDiscount(maturity));
-    const ids = await bond.getBondIdsByCreator(m);
-    const id = ids[ids.length - 1];
+    const { id } = await bs.buy(ctx.member, usd(1_000), 365);
     await pledgeItemSigned(registry, m, BOND, id);
     await ctx.usdc.mint(await bondVault.getAddress(), usd(1_000));
 
