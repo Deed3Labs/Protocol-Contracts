@@ -212,3 +212,179 @@ The one failure was pre-existing on the enforcement branch: acceptance 21 scans 
    - Use the same storage-check options as `scripts/upgrade_revolving_issuer.ts`, because of the old slot-91 deletion.
 4. **Liquidator.** A new implementation and Earn module through its admin (no storage change).
 5. **EarnControls.** No upgrade. Grant `SUCCESSOR_ROLE` ×2 with a resolution hash (`grantRoleByResolution`) before the first Successor registration.
+
+## Part two: merge fixes
+
+Branch `audit/phase-2f-integration` after `audit/phase-2f-bonds` was merged into it (b7cc153e) and decision 45 was recorded (82caf3fa). Nothing was deployed, no key was used, no live network was touched, and no deploy script was run. ESADepositVault and ClaimEscrow are untouched. No role was added and no admin power was widened.
+
+### 1. The 13 failing tests
+
+Eleven of the thirteen had one cause, a contract incompatibility. One was a stale test, and one spec still used the old collection API.
+
+**The contract bug: the Liquidator decoded the old bond record.** `LiquidatorEnforcement._nextBond` (decision 20's order, behind `pledgePaymentDue` and `nextBondOf`) read `IBurnerBond(earnBonds).getBondInfo(id).maturityDate` through the pre-2f `IBurnerBond.BondInfo` (7 fields: `faceValue, maturityDate, discountPercentage, purchasePrice, bool isRedeemed, address creator, uint64 issuedAt`). The new collection returns `BurnerBondBase.BondInfo` (10 fields: `faceValue, purchasePrice, costBasis, paid, issuedAt, maturityDate, termDays, yieldBps, isRedeemed, exemptionCode`). The selector is the same, so the call succeeded, but the ABI decoder read word 5 (the new `issuedAt`, a timestamp) as the old `bool isRedeemed`. A value above 1 fails `bool` validation, which reverts with no reason. Had it decoded, word 2 (`purchasePrice`) would have been read as the maturity date, so the order would have been wrong.
+
+- **Fix.** `LiquidatorEnforcement` declares `EarnBondInfo`, field for field the new record, and reads `maturityDate` through it. The old `IBurnerBond` import is gone from the Liquidator. `IBurnerBond` itself is unchanged; only the legacy `BurnerBondDeposit` uses it.
+- **Tests it fixes** (each a real incompatibility, not a stale test; no assertion was changed):
+  - `PledgedBonds.spec`, Earn test 18: the $500 default; the 72-hour Shortfall; the order up to the Defaulted Amounts; "no call can pay less than accretedValue" (it expected `BondVaultInsufficientFunds`); "reverts on an unpledged bond…" (it expected `BurnerBondNotPledgePayable`). Each reached `pledgePaymentDue`, which reverted before the check the test asserts;
+  - `PledgedBonds.spec`, 10c: the pause test and the paused-time Shortfall wait;
+  - `PledgedBonds.spec`, Earn test 19: "Drawn $1,600 … the Shortfall rules";
+  - `Section12Liquidator.spec`: 12.5 (a missed cycle takes nothing) and 12.8 (pool shares first);
+  - `Addendum2Relief.spec`: "12.14: default of a term plan secured under MB-05".
+
+**Every other cross-call checked.** A script compared each interface the bond side and the enforcement side declare for each other against the joined ABIs of the contracts actually deployed, by selector and by return types. The targets: BurnerBond + BurnerBondPledges + BurnerBondIssue; the Liquidator; CollateralRegistry; BondVault; CollateralAgent; LendingPool + YieldPoolValuation + YieldPoolLedger; PoolShareEnforcer.
+
+- All match: `IBondPledgeEnforcer` (collection → Liquidator: `pledgePaymentDue`, `applyPledgePayment`, `maturityToDebt`, `applyMaturityInstruction`), `IMaturityInstructionApplier` (vault → Liquidator), `IBondEncumbrance` and `IBondEncumbranceSource` (→ registry), `IEarnBonds` (→ collection: `presentValueOf`, `bondVault`, `balanceOf`, `collateralKind`), `IPresentValueBond` (BondValuer), `IBondCollectionBook`, `IAgentBondBook`, `IAgentVault`, `IBondVaultSettlement`, `ICollateralAgent`, `ICollateralSeizureSink`, `ISeizableShares`, `IEnforcementPool`, `IPledgeEnforcement`, `IPledgeRegistry`, `IEnforcementSource`.
+- `getBondInfo` was the only mismatch. `IAgentPledgeModule` had no implementation (section 2).
+- **`maturityToDebt` under `redeemAll`** is called before maturity with the Accreted Value (decision 14). It is a pure computation from the amount it is given: min(amount, Asset-Backed Drawn − the limit without this bond). It assumes nothing about maturity. A new test runs it through the real Liquidator (section 4).
+
+**The stale test.** `PledgedBonds.spec` "acts only on as many bonds as the module requests" failed with `BurnerBondBadQuote`. It bought bonds for 364 and 363 days to stagger maturities, and only a one-year rung is offered (decision 41: 12 to 36 months). It now buys the three one-year bonds a day apart, in the same maturity order. The assertions are unchanged.
+
+**The spec on the old API.** `Enforcement.spec` built the old collection (`setBondVault`, BurnerBondDeposit's `makeDeposit`, the discount curve).
+
+- It now uses `deployBondStack` (purchase by quote, compounding), with rungs of 365, 366, 375 and 395 days so tests can order maturities by term.
+- Each test runs in a clock snapshot, since it travels to a maturity.
+- Its decision 19 test called the old two-argument `applyDistribution`. It is replaced by the Agent tests in section 2.
+- The other 17 tests keep their assertions and pass on the new collection.
+
+### 2. The pledge module (`IAgentPledgeModule`)
+
+**Where.** In `LiquidatorEnforcement`, where the MB-05 state is: the Defaulted Amounts, the per-episode enforcement record, the holds, the pause clock and the order. It is reached through three new forwarding stubs on the Liquidator, so the Agent's `pledgeModule` is the Liquidator's proxy. Nothing in PoolShareEnforcer changed.
+
+| Function | What it answers |
+|---|---|
+| `enforcementPermitted(holder, bondId)` | Exactly when `payPledged` could pay that bond on a default (`pledgePaymentDue` with `onDefault`): pledged and held by the holder; no Liquidation Hold or 10c pause in force; next in MB-05 §7.1's order (the member's signed order, else nearest maturity: decision 20); and a Defaulted Amount open that queued pool shares will not pay |
+| `defaultedAmountOf(holder)` | `earnDefaultedOf`: decision 22's recorded amounts, and with a line closing recorded the whole asset-backed and unsecured balance (decision 37). Never Savings, never the workout plan |
+| `applyDistribution(holder, bondId, amount)` | Applies USDC the Agent has just sent through `_applyDefault`, the application `payPledged` uses: the past-due Secured Minimum on the bond tier then the pool tier, the secured plans oldest first, then the Rebalance Amount on BOOST then INCOME, each capped at its own Defaulted Amount and recorded against the default episode. What is not applied goes at once to the Holder's payee (the Agent's `payeeSource`: the registered payment Successor, else the Holder), where the rest of the round goes |
+
+- **Caller.** Only the Collateral Agent the bond collection names (`BurnerBond.agent()`), which only a co-signed `setSources` can change once an Agent exists.
+  - Anyone else reverts with `LiquidatorNotCollateralAgent`: a stranger, the collection, its vault and the Agent Key.
+  - The Liquidator stores nothing about the Agent and grants it no role: no new storage, setter or role.
+- **Checks kept.**
+  - A hold or pause makes `enforcementPermitted` false, so the Agent routes nothing to the debt.
+  - If one starts between the routing and the application, `applyDistribution` applies nothing and pays all of it to the payee. It never reverts for a hold, so one Holder cannot stall a round.
+  - §7.5 legal holds are Pool Share holds (decision 45(a)–(c)) and do not reach bonds.
+  - `noReenter`, as on every enforcement path.
+- **Replaced.** The enforcement branch's `applyDistribution(holder, amount)`, callable by the collection or its vault, had no caller on the bond side: the Agent's rounds go through `claimDistribution`. It is removed. `DistributionApplied` now carries the bond id.
+- **Deploy wiring (not run).** `deploy/26_deploy_EarnControls.ts` uses `deploy/earnWiring.ts` `pledgeModuleChange`. When the Agent does not yet name the Liquidator, it prints the co-signed change:
+  1. two treasury signers `proposeChange` and `confirmChange` the hash of `setPledgeModule(Liquidator)`;
+  2. the Agent Key `approveChange`s it;
+  3. after 7 days the Earn timelock (the Agent's admin) makes the call.
+
+  The Liquidator needs nothing about the Agent beyond deploy 23's `setSources`, which names it on the collection.
+
+**Tests** (`test/earn/Enforcement.spec.ts`, decision 19). They run through the real CollateralAgent and BondVault, with `setPledgeModule` made by the full co-signed change:
+
+- under a default ($300 Secured Minimum, $100 Rebalance Amount), a $600 round pays $400 to the debt (bond tier $300, INCOME $100) and the rest to the Holder. Afterwards nothing more is routed. The Agent and its key hold no role on the Liquidator or the registry;
+- with a registered payment Successor, the part the debt does not take goes to the Successor, including the module's own surplus ($40 sent when $25 is open: $25 applied, $15 to the Successor);
+- with no default all of it goes to the Holder and the module is not called; under a Liquidation Hold likewise;
+- decision 20: with two pledged bonds, the later bond's share goes to the Holder and the nearer bond's share pays the debt;
+- a stranger, the Agent Key, the collection and its vault cannot call `applyDistribution`, and the old two-argument hook is gone.
+
+`test/deploy/Earn.deploy.spec.ts` checks the change `pledgeModuleChange` builds: the Earn timelock alone cannot make it, and it is made after two treasury signers, the Agent Key and 7 days.
+
+### 3. Refused payers
+
+`deploy/26_deploy_EarnControls.ts` now refuses, through `EarnControlsAdmin.setRefused`, two groups (IV-02 §2.4; Earn §1):
+
+- every recorded Clear contract that holds ESA capital, collateral, credit or Earn funds;
+- every collection of every recorded bond factory.
+
+While the deployer is EarnControls' admin it sets them; after `earn_timelock_handover.ts` it prints each as an Earn timelock proposal. It never un-refuses. `refused` is checked for the payer and the receiver of every subscription and purchase.
+
+| Group | Deployment records (`deploy/earnWiring.ts` `REFUSED_RECORDS`) |
+|---|---|
+| ESA capital | ESADepositVault (and its Legacy record), ClearUSD, ClearUSDUpgradeable, CLRUSDTokenPool, SavingsIntentFactory, ClaimEscrow |
+| Collateral | CollateralRegistry, Liquidator, PoolShareEnforcer, CollateralAgent, HolderDirections |
+| Credit | ClearCredit (the ledger), RevolvingIssuer, TermIssuer, OffersIssuer, PayoutPool |
+| Earn funds | LendingPool (the Yield Pool), BondVault, BurnerBond, BurnerBondLegacy, BurnerBondPre2f, BurnerBondDeposit, BurnerBondDepositLegacy, BurnerBondDepositPre2f, and each collection and deposit contract of BurnerBondFactory, BurnerBondFactoryPre2f and BurnerBondFactoryLegacy |
+| Assurance | AssurancePool, AssurancePoolV2 (the compartments) |
+
+Refusing ESADepositVault and ClaimEscrow writes a flag in EarnControls about their addresses. Nothing is sent to them.
+
+**Deploy spec** (`Earn.deploy.spec`):
+
+- every contract named by the bonds report (§5 item 5), the Earn controls report and this stage is on the list;
+- the factory's collection is found without a record;
+- each entry is refused, and a second run sends nothing;
+- a purchase for a refused holder reverts `EarnControlsRefused`;
+- without the admin role the script only returns the proposals.
+
+### 4. Other changes
+
+- **`scripts/redeploy_bonds.ts` is deleted.** It called the pre-2f API. Its one live use, replacing a pre-2f factory and collection on Base Sepolia, is now in the deploy scripts:
+  - `REPLACE_BOND_FACTORY=1` on `deploy/22` keeps the old factory, collection, deposit contract and valuer records as `*Pre2f` and deploys the new factory;
+  - `deploy/23` sets `FIRST_BOND_ID` before the first sale, and refuses to go on without one while an older collection is on record. It also deploys a new BondValuer when the recorded one values another collection.
+
+  No package.json script named it. The reference in `docs/protocol/bonds.md` is updated. Earlier phase reports still name it, as history, and so do two code comments in the apps (`apps/member/src/lib/clearNetwork.ts`, `apps/api/src/config/contracts.ts`) that date the 3 Nov 2026 replacement: editing them would make this branch build and type-check both apps (judgement call 6).
+- **Decision 14 test.** `PledgedBonds.spec` now redeems pledged bonds under `redeemAll` through the real Liquidator.
+  - With the limit covered, nothing goes to the debt.
+  - With $2,000 drawn against one bond, its whole Accreted Value goes to the debt, never its $1,000 Maturity Amount, and the pledge is released.
+- **`scripts/storage_report.ts`** (new, read-only): the OpenZeppelin storage report for any contract, by name, against a manifest. It runs the Liquidator, CollateralRegistry, ESADepositVault and ClaimEscrow checks the earlier reports describe.
+
+**Base Sepolia steps added (for the owner; nothing was run).**
+
+1. The Liquidator: a new implementation, `upgradeProxy(liquidator, Liquidator, { kind: "uups" })`, which creates the new module. No storage change and no initializer.
+2. After deploy 26 has deployed the CollateralAgent and deploy 23 has named it on the collection: the co-signed `setPledgeModule(Liquidator)` that deploy 26 prints.
+3. Deploy 26 run again once every contract is recorded: it refuses the rest, or prints them as Earn timelock proposals after the handover.
+4. The new collection: unwind the pre-2f bonds, then deploy 22 with `REPLACE_BOND_FACTORY=1`, then deploy 23 with `FIRST_BOND_ID`.
+
+### 5. Checks
+
+**The four CI shards**, each run in full as CI runs it (`npx hardhat test $(node scripts/ci/test-shard.mjs N 4)`), one at a time:
+
+| Shard | Files | Result |
+|---|---|---|
+| 1 | 26 | 269 passing, 0 failing |
+| 2 | 27 | 391 passing, 0 failing |
+| 3 | 26 | 291 passing, 0 failing |
+| 4 | 26 | 365 passing, 0 failing |
+
+1,316 tests, with no failure and no clock overrun. The time-heavy bond specs' snapshots hold. `Enforcement.spec` now travels to maturities, so it takes the same snapshot. All four shards ran on the final source, in sequence.
+
+**Production sizes** (`npx hardhat compile --force`, revert strings stripped, via-IR, runs 1). Nothing exceeds 24,576 runtime or 49,152 creation.
+
+| Contract | Runtime (free of 24,576) | Creation | Before this part |
+|---|---|---|---|
+| Liquidator | 14,413 (10,163) | 32,485 (creates its module) | 14,391 |
+| LiquidatorEnforcement | 17,688 (6,888) | 17,825 | 17,250 |
+| PoolShareEnforcer | 8,217 (16,359) | 8,775 | unchanged |
+| CollateralRegistry | 18,391 (6,185) | 18,528 | unchanged |
+| CollateralAgent | 20,482 (4,094) | 20,619 | unchanged |
+| BondVault | 22,095 (2,481) | 22,232 | unchanged |
+| BurnerBond / Pledges / Issue | 17,951 / 18,289 / 19,502 | 18,382 / 18,716 / 19,612 | unchanged |
+| LendingPool | 23,164 (1,412) | 23,812 | unchanged |
+| YieldPoolLedger | 23,037 (1,539) | 23,174 | unchanged |
+| RevolvingIssuer | 24,435 (141) | 25,646 | unchanged |
+
+**Storage.** No storage changed in this part: the pledge module adds functions, an error and an event, and reads the Agent from the collection. The OpenZeppelin reports, run anyway:
+
+- Liquidator ×2 and CollateralRegistry ×2 (`scripts/storage_report.ts`): compatible;
+- LendingPool ×2 (`storage_report_lending_pool.ts`): compatible;
+- BondVault ×3 and the pre-stage-2 source (`storage_report_bond_vault.ts`): compatible;
+- against `.openzeppelin/base.json`, ESADepositVault ×2 and ClaimEscrow: compatible (untouched).
+
+**Generated files and links.**
+
+- `code-fingerprints.mjs` regenerated `code.json` (the Liquidator's fingerprint changed), and `--check` passes (34 contracts).
+- `contract-reference.mjs --check`: current (36). The pages come from the deployed ABIs, which this part does not change.
+- `check-doc-links.mjs`: no broken links.
+
+**`TURBO_SCM_BASE=origin/dev npx turbo run typecheck test --affected`.** Run once while the branch touched two app comments, it failed in `@clear/member#typecheck`, on `src/hooks/useFaceId.ts` and `src/hooks/usePushRegistration.ts` (`Uint8Array` against `BufferSource`). Neither file is touched here. The comment edits were reverted, so the apps are not affected. Run again before the push: 3 of 3 tasks pass.
+
+### 6. Judgement calls for the owner
+
+1. **How the Liquidator knows the Agent.** It accepts `applyDistribution` only from the Agent the bond collection names (`BurnerBond.agent()`). It stores no Agent address and has no setter, and the Agent holds no role on it. A stored setting would add a `DEFAULT_ADMIN_ROLE` power. The collection's naming is already a co-signed change. If a vault and a collection ever named different Agents, the collection's governs.
+2. **Decision 20 in a distribution round.** Only the bond next in MB-05 §7.1's order has its share routed to the Defaulted Amount. A later pledged bond's share goes to the Holder while the nearer bond is still pledged, even with a Defaulted Amount open.
+   - This is `payPledged`'s rule ("bonds are paid one at a time") applied to rounds, and the narrower, member-favourable reading.
+   - The other reading routes every pledged bond's share until the Defaulted Amount is paid. It would pay the debt faster.
+3. **A Shortfall alone routes nothing.** Decision 19 and `IAgentPledgeModule` route a share to "the Defaulted Amount". A Shortfall (§6.1(b)) is not one, so a round never pays it. As a bond is paid out by rounds its Present Value still counts towards the limit until it burns. Counsel's IV-10 §7.6 question stands.
+4. **Queued pool shares.** As with `payPledged`, a bond's share is not routed while pool shares already queued for enforcement will pay the Defaulted Amount. `defaultedAmountOf` still returns the whole Earn Defaulted Amount; `enforcementPermitted` carries the condition.
+5. **Where the module's surplus goes.** What the debt does not take goes to the Agent's payee (the payment Successor, else the Holder), as the rest of the round does. `payPledged`'s surplus still goes to the Holder, as built in Phase 2e.
+6. **`scripts/redeploy_bonds.ts`.**
+   - Deleted rather than rewritten. The replacement procedure it performed is now in deploys 22 and 23 (`REPLACE_BOND_FACTORY`, `FIRST_BOND_ID`). Its other steps belonged to the 2e redeploy and are done: the registry's `rollItem` upgrade, and releasing the legacy collection's pledges.
+   - Earlier phase reports, and two dated comments in the apps, still name it. Editing app files would make this branch type-check and build both apps, and `@clear/member` has an unrelated type error (section 5).
+7. **The refused list.**
+   - It takes every contract the requirements and reports name, by deployment record, plus every collection a recorded factory made.
+   - Not on it: individual `SavingsIntentEscrow` clones (no record; the factory is refused), the treasury Safe, and contracts that hold no funds (MerchantRegistry, NetworkRegistry, the oracles, AccessManager).
+   - Refusals are only ever added, never removed, by the script.
+8. **Pre-2f records.** `REPLACE_BOND_FACTORY=1` keeps the current Base Sepolia factory, collection, deposit contract and valuer as `*Pre2f`, beside the 3 Nov `*Legacy` records. `FIRST_BOND_ID` must exceed every id either issued; deploy 23 refuses to continue without it.
