@@ -105,6 +105,17 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
 43. **No buyback while any bond's maturity payment is unpaid** (IV-03 §6.4(c), "never during a Reserve Shortfall or default"). This is in addition to the Reserve Shortfall and Enforcement Notice blocks.
 44. **A roll needs eligibility at maturity** (IV-03 §6.4(b)). A confirmed roll executes only while the Holder's eligibility attestation is in force, and the replacement bond records that attestation's exemption code. With none in force, the bond is paid, not rolled. The holder-ineligible flag still covers a Rule 506(b) bond whose Holder is not verified for the Rule 506(c) Offering.
 
+## Integration judgement calls (owner, Nov 15, 2026)
+
+45. **Kept as built** (`docs/audit/PHASE-2F-INTEGRATION.md`):
+    - (a) A §7.5 legal hold covers shares in the Holder's account only, not shares already in the redemption queue.
+    - (b) Holds and pledges add up: the Holder's own exits see balance − pledge lock − held shares; enforcement is capped at balance − held shares.
+    - (c) A hold blocks shares, not payments.
+    - (d) A Holder may have at most 8 open holds.
+    - (e) Only the registered Successor may start a §8.3 Successor redemption. Cancelling the Successor does not cancel a request already queued; the Holder cancels it separately.
+    - (f) "While the Objective Default stands" (decision 37) is the Liquidator's own test: `inDefault` or `hasDefaultedOnCurrentLine`, with no pause in force.
+    - (g) The line-closing record adds no notice period of its own (decision 37's counsel note stays open).
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
