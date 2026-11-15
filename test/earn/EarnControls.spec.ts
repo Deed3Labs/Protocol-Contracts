@@ -16,6 +16,17 @@ const what = (s: string) => ethers.encodeBytes32String(s);
  * in for a bond collection, since stage 2 wires the collections.
  */
 describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 12, 13, 23)", function () {
+  // The chain's clock is shared by every spec in a run, and these tests travel years (12- to
+  // 36-month terms, rolls). Each test runs in a snapshot that is reverted afterwards, so it leaves the
+  // clock where it found it and later specs stay inside the BondVault's maturity buckets (to 2109).
+  let clockSnapshot: string;
+  beforeEach(async function () {
+    clockSnapshot = await ethers.provider.send("evm_snapshot", []);
+  });
+  afterEach(async function () {
+    await ethers.provider.send("evm_revert", [clockSnapshot]);
+  });
+
   let f: Awaited<ReturnType<typeof deployYieldPool>>;
   let c: Awaited<ReturnType<typeof withRealControls>>;
   let controls: any, pool: any, sources: any;

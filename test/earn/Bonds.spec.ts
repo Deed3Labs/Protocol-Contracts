@@ -105,6 +105,17 @@ async function deploy() {
 }
 
 describe("Phase 2f stage 2: bonds and the BondVault", function () {
+  // The chain's clock is shared by every spec in a run, and these tests travel years (12- to
+  // 36-month terms, rolls). Each test runs in a snapshot that is reverted afterwards, so it leaves the
+  // clock where it found it and later specs stay inside the BondVault's maturity buckets (to 2109).
+  let clockSnapshot: string;
+  beforeEach(async function () {
+    clockSnapshot = await ethers.provider.send("evm_snapshot", []);
+  });
+  afterEach(async function () {
+    await ethers.provider.send("evm_revert", [clockSnapshot]);
+  });
+
   let f: Awaited<ReturnType<typeof deploy>>;
 
   beforeEach(async function () {
