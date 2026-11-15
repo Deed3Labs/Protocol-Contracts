@@ -70,12 +70,17 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
       await pool.proposeRateModel(0n, p("0.03"), p("0.8"), p("0.04"));
     });
 
+    // Conformance pass (decision 24): unpaid interest is now capitalized after each month, so a
+    // 365-day run no longer shows simple interest. This checks the per-second accrual within one
+    // month; test/earn/YieldPoolConformance.spec.ts covers billing and capitalization.
     it("accrues Pool Interest per second on the Deployed Balance at the Funding Rate", async function () {
+      const year = new Date((await latest()) * 1000).getUTCFullYear() + 1;
+      await setNext(Date.UTC(year, 2, 2, 20) / 1000); // 2 March, well inside a Pacific month
       await pool.connect(f.alice).deposit(U(10_000), f.alice.address);
       await f.deploy(U(5_000));
       const t0 = await latest();
       expect(await pool.utilization()).to.equal(WAD / 2n);
-      await increase(365 * DAY);
+      await increase(20 * DAY);
       const elapsed = BigInt((await latest()) - t0);
       const expected = (U(5_000) * ethers.parseUnits("0.03875", 18) * elapsed) / (365n * 86400n * WAD);
       expect(await pool.accruedInterest()).to.be.closeTo(expected, 2n);
@@ -107,7 +112,9 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
       await f.deploy(U(9_000));
       expect(await pool.utilization()).to.equal(ethers.parseUnits("0.9", 18));
       await increase(DAY);
-      // Interest has nudged utilization over 90%: nothing more goes out.
+      // Utilization is the Deployed Balance over it plus Vault Cash (IV-02 §1.2): accrued interest
+      // does not move it, and it is still exactly 90%, so nothing more goes out.
+      expect(await pool.utilization()).to.equal(ethers.parseUnits("0.9", 18));
       await expect(f.deploy(1n)).to.be.revertedWithCustomError(pool, "LendingPoolUtilizationCap");
     });
 
@@ -131,8 +138,11 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
     });
 
     it("Returns pay accrued interest first, then the Deployed Balance; anyone may return", async function () {
+      // Conformance pass (decision 24): kept inside one Pacific month, so nothing is capitalized.
+      const year = new Date((await latest()) * 1000).getUTCFullYear() + 1;
+      await setNext(Date.UTC(year, 4, 2, 20) / 1000); // 2 May
       await f.deploy(U(5_000));
-      await increase(30 * DAY);
+      await increase(25 * DAY);
       const interest: bigint = await pool.accruedInterest();
       expect(interest).to.be.greaterThan(0n);
       const tx = await pool.connect(f.outsider).returnFunds(U(1_000));
@@ -320,6 +330,8 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
     });
 
     it("VALUATION_PENDING ends at 48 hours and cannot be renewed", async function () {
+      // Conformance pass (decision 26): only while a Valuation Event is recorded.
+      await f.two(f.v1, f.v2, "recordValuationEvent", ethers.id("valuation event"));
       await f.two(f.s1, f.cco, "suspend", VALUATION_PENDING, EVIDENCE, ethers.ZeroHash);
       await expect(pool.connect(f.s2).renewSuspension(ethers.id("r"), ethers.ZeroHash))
         .to.be.revertedWithCustomError(pool, "LendingPoolNotRenewable");
@@ -788,17 +800,13 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
         .to.be.revertedWithCustomError(pool, "LendingPoolNoControls");
     });
 
-    it("count the 10% holder cap per member, across their wallets (decision 13)", async function () {
-      await pool.setHolderCapBps(1_000);
-      await pool.setHolderCapBps(10_000);
-      await pool.connect(f.bob).deposit(U(9_000), f.bob.address);
-      await pool.setHolderCapBps(1_000);
-      await f.controls.link(f.alice.address, f.alice2.address);
-      await pool.connect(f.alice).deposit(U(500), f.alice.address);
-      // 500 + 600 of 10,100 is over 10% for the member, though each wallet alone is under.
-      await expect(pool.connect(f.alice2).deposit(U(600), f.alice2.address))
-        .to.be.revertedWithCustomError(pool, "LendingPoolHolderCap");
-      await pool.connect(f.alice2).deposit(U(500), f.alice2.address);
+    // Conformance pass: the pool's own per-member cap (decision 13) is removed. EarnControls counts
+    // the 10% cap per household above its floor (decision 23; EarnControls.spec), so the pool no
+    // longer refuses the first subscriber, who holds 100% of the shares.
+    it("accept the first subscriber: the holder cap is EarnControls' alone (decision 23)", async function () {
+      await pool.connect(f.alice).deposit(U(1_000), f.alice.address);
+      expect(await pool.balanceOf(f.alice.address)).to.equal(await pool.totalSupply());
+      expect(pool.interface.getFunction("setHolderCapBps")).to.equal(null);
     });
 
     it("move only between one Holder's accounts or by the Successor path", async function () {
@@ -860,7 +868,6 @@ describe("Yield Pool (Earn §6, §6A, §7, §8)", function () {
     const p: any = await upgrades.deployProxy(await e.getContractFactory("LendingPool"),
       [f.admin.address, await token.getAddress(), "Clear Lending Pool", "clrLP"], await poolProxyOptions());
     await p.setEarnControls(await f.controls.getAddress());
-    await p.setHolderCapBps(10_000);
     for (const w of [f.alice, f.bob]) {
       await token.mint(w.address, U(10_000));
       await token.connect(w).approve(await p.getAddress(), e.MaxUint256);

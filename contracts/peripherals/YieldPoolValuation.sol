@@ -7,8 +7,8 @@ import "../libraries/PacificCalendar.sol";
 /// @title YieldPoolValuation
 /// @notice The Yield Pool's valuation and control functions: the two-person Pool Loss Allowance and
 /// Pool Loss Charge postings, the Loss Holdback ledger's batched release and application (§6A),
-/// Suspension (§8), the Funding Rate model with its notice rules (IV-02 Sch. 2), Deployments, and
-/// the governed settings.
+/// Deployments, Returns and the governed settings. Suspension, the rate model and Pool Interest
+/// are in `YieldPoolLedger`, which this module pins.
 /// @dev A delegatecall module of `LendingPool`, pinned at construction like the issuer modules.
 /// Never called directly in production: this code runs against the pool proxy's storage with the
 /// original caller. It declares no storage (see `LendingPoolBase`).
@@ -20,14 +20,26 @@ import "../libraries/PacificCalendar.sol";
 contract YieldPoolValuation is LendingPoolBase {
     using MathUpgradeable for uint256;
 
+    /// @notice The ledger module (Pool Interest, Suspension, the rate model), fixed for the life of
+    /// this module; `LendingPool` pins the same one.
+    address public immutable ledger;
+
     /// @notice what LendingPool's constructor checks before pinning this module.
     function extensionKind() external pure returns (bytes32) {
-        return keccak256("YieldPoolValuation.v1");
+        return keccak256("YieldPoolValuation.v2");
     }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(address ledger_) {
         _disableInitializers();
+        if (IExtensionKind(ledger_).extensionKind() != keccak256("YieldPoolLedger.v1")) {
+            revert LendingPoolModuleMismatch();
+        }
+        ledger = ledger_;
+    }
+
+    function _ledgerModule() internal view override returns (address) {
+        return ledger;
     }
 
     /* ========== SETUP AND GOVERNED SETTINGS (DEFAULT_ADMIN_ROLE: the Earn timelock) ========== */
@@ -46,7 +58,6 @@ contract YieldPoolValuation is LendingPoolBase {
             revert LendingPoolInvalidAmount();
         }
         _rateModel = RateModel(0.02e18, 0.03e18, 0.8e18, 0.05e18);
-        _holderCapBps = 1_000;
         _holdbackMaxAge = 540 days;
         _lastAccrualAt = uint64(block.timestamp);
         _earnControls = IPoolEarnControls(controls);
@@ -75,14 +86,10 @@ contract YieldPoolValuation is LendingPoolBase {
         emit EnforcementDestinationUpdated(destination);
     }
 
-    function setHolderCapBps(uint256 bps) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (bps > BPS) revert LendingPoolInvalidAmount();
-        _holderCapBps = uint16(bps);
-        emit HolderCapUpdated(bps);
-    }
-
-    /// @notice sets the holdback maximum age. A lowering applies to existing holdbacks; a raise
-    /// applies only to holdbacks created after it (§6A).
+    /// @notice sets the Maximum Holdback Age (IV-02 §5.6(c); initially 540 days). A shortening
+    /// applies to every Holdback Amount then open; a lengthening, which needs the Majority Holders'
+    /// consent before the timelock executes it, applies only to Holdback Amounts recorded after it:
+    /// each stores the age in force when it was recorded.
     function setHoldbackMaxAge(uint256 maxAge) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (maxAge == 0 || maxAge > type(uint32).max) revert LendingPoolInvalidAmount();
         uint256 boundary = holdbacks.length;
@@ -174,7 +181,8 @@ contract YieldPoolValuation is LendingPoolBase {
         emit UnpaidClaimed(msg.sender, amount);
     }
 
-    /// @notice a Return: pays accrued Pool Interest first, then the Deployed Balance. Anything
+    /// @notice a Return: pays accrued Pool Interest first (the billed month's first), then the
+    /// Deployed Balance. Anything
     /// above both stays in the vault as cash (the error-correction path, into the vault only).
     /// Anyone may call it.
     function returnFunds(uint256 amount) public {
@@ -183,12 +191,16 @@ contract YieldPoolValuation is LendingPoolBase {
         uint256 interest = interestAccrued;
         uint256 toInterest = amount < interest ? amount : interest;
         interestAccrued = interest - toInterest;
+        // The billed month's interest is paid first, so less of it is capitalized.
+        uint256 billed = _billedInterest;
+        _billedInterest = toInterest < billed ? billed - toInterest : 0;
         uint256 rest = amount - toInterest;
         uint256 principal = totalBorrowed;
         uint256 toPrincipal = rest < principal ? rest : principal;
         totalBorrowed = principal - toPrincipal;
         SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(asset()), msg.sender, address(this), amount);
         emit Returned(msg.sender, toInterest, toPrincipal, rest - toPrincipal);
+        _syncClock();
     }
 
     /// @notice the PayoutPool's repayment, kept so its unchanged code still works: a Return.
@@ -205,7 +217,10 @@ contract YieldPoolValuation is LendingPoolBase {
     }
 
     /// @notice sets the contract reporting what is pledged, and the kind to ask about.
-    function setEncumbranceSource(address source, bytes32 kind) external onlyRole(OPERATOR_ROLE) {
+    /// @dev `DEFAULT_ADMIN_ROLE` (the Earn timelock), not `OPERATOR_ROLE`: the source decides which
+    /// shares are locked, so whoever sets it could freeze a Holder's shares, which no Clear Lending
+    /// key may do (IV-02 §8.5).
+    function setEncumbranceSource(address source, bytes32 kind) external onlyRole(DEFAULT_ADMIN_ROLE) {
         encumbranceSource = IEncumbranceSource(source);
         collateralKind = kind;
         emit EncumbranceSourceUpdated(source);
@@ -216,7 +231,9 @@ contract YieldPoolValuation is LendingPoolBase {
     /// @notice a Deployment to Clear Lending's registered lending account. The first
     /// `DEPLOYER_ROLE` signer's call proposes; the same call from a different one sends it.
     /// @dev Only with no open queue request, no Suspension, no pending loss charge and before
-    /// Final Maturity, and only if utilization afterwards is at most 90% (FIXED).
+    /// Final Maturity, and only if afterwards Utilization is at most 90% (FIXED) and the Deployed
+    /// Balance does not exceed the posted Pool Tier principal (IV-02 §4.3; none before it is
+    /// first posted).
     /// @param amount USDC to deploy.
     /// @param ref a reference that makes each proposal distinct.
     function deploy(uint256 amount, bytes32 ref) external {
@@ -232,14 +249,18 @@ contract YieldPoolValuation is LendingPoolBase {
         _accrue();
         uint256 cash = _vaultCash();
         if (amount > cash) revert LendingPoolInsufficientCash(cash, amount);
-        uint256 out = totalBorrowed + interestAccrued + amount;
-        uint256 u = out.mulDiv(WAD, out + cash - amount);
+        uint256 deployed = totalBorrowed;
+        // After it: (D + amount) ÷ (D + amount + Vault Cash − amount).
+        uint256 u = (deployed + amount).mulDiv(WAD, deployed + cash);
         if (u > MAX_UTILIZATION) revert LendingPoolUtilizationCap(u);
-        totalBorrowed += amount;
+        deployed += amount;
+        if (_poolTierPostedAt == 0 || deployed > _poolTierPrincipal) revert LendingPoolTierCap(deployed, _poolTierPrincipal);
+        totalBorrowed = deployed;
         _totalDeployed += amount;
         uint256 id = _deploymentCount++;
         SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(asset()), to, amount);
         emit Deployed(id, to, amount, first, msg.sender);
+        _syncClock();
     }
 
     /// @dev Final Maturity, read the same way as the pool does.
@@ -255,8 +276,9 @@ contract YieldPoolValuation is LendingPoolBase {
     /* ========== VALUATION POSTINGS (two people; §6) ========== */
 
     /// @notice posts the Pool Loss Allowance. It changes ONLY the Holdback Percentage
-    /// (allowance ÷ Pool Assets, rounded up), never the Share Value. A lower percentage starts a
-    /// release pass over the open holdbacks (`releaseHoldbacks`).
+    /// (allowance ÷ Pool Assets, kept as a WAD fraction), never the Share Value. A lower percentage
+    /// starts a release pass over the open holdbacks (`releaseHoldbacks`). It clears a pending
+    /// Valuation Event, and ends a VALUATION_PENDING Suspension (§7.1(d)), whose event it answers.
     /// @dev Proposed by one `VALUATION_ROLE` signer, applied by the same call from another.
     function postAllowance(uint256 value, bytes32 evidenceHash) external {
         if (evidenceHash == bytes32(0)) revert LendingPoolInvalidAmount();
@@ -267,21 +289,33 @@ contract YieldPoolValuation is LendingPoolBase {
         _accrue();
         uint256 assets = _poolAssets();
         if (value > assets) revert LendingPoolInvalidAmount();
-        uint256 bps = value == 0 ? 0 : value.mulDiv(BPS, assets, MathUpgradeable.Rounding.Up);
-        if (bps < _holdbackBps && holdbacks.length > _holdbackHead) {
+        uint256 rate = value == 0 ? 0 : value.mulDiv(WAD, assets, MathUpgradeable.Rounding.Up);
+        if (rate < _holdbackRate && holdbacks.length > _holdbackHead) {
             _releasePending = true;
             releaseCursor = uint64(_holdbackHead);
             releaseEnd = uint64(holdbacks.length);
         }
-        _holdbackBps = uint16(bps);
+        _holdbackRate = rate;
         _poolLossAllowance = value;
         _allowancePostedAt = uint64(block.timestamp);
-        emit AllowancePosted(value, bps, assets, evidenceHash, first, msg.sender);
+        emit AllowancePosted(value, rate, assets, evidenceHash, first, msg.sender);
+        if (_valuationEventPending) {
+            _valuationEventPending = false;
+            emit ValuationEventCleared();
+            Suspension storage s = _suspension;
+            if (s.reason == VALUATION_PENDING && s.expiresAt > block.timestamp) {
+                s.expiresAt = uint64(block.timestamp);
+                evidenceEndedAt[s.evidenceHash] = block.timestamp;
+                emit SuspensionLifted(s.eventId, msg.sender);
+            }
+        }
     }
 
     /// @notice posts a Pool Loss Charge. It is applied first to the open holdbacks, ratably by
     /// gross amount (`applyHoldbacks`); only the remainder reduces the Deployed Balance, then the
-    /// accrued interest, and only what exceeds both leaves the vault, to Clear Lending.
+    /// accrued interest, and only what exceeds both leaves the vault, to Clear Lending's lending
+    /// account (Exhibit A, A2), under the two signers who posted it. The charge counts toward the
+    /// Pool Loss Charges a recovery may restore (§5.4).
     /// @dev Two `VALUATION_ROLE` signers. Reverts while releases from a lower posting are
     /// unprocessed or another charge is being applied. Until the last batch is applied, the
     /// charge is pending and subscriptions, redemptions and fills revert.
@@ -295,6 +329,7 @@ contract YieldPoolValuation is LendingPoolBase {
         uint256 assets = _poolAssets();
         if (value > assets + _totalHoldback || value > type(uint128).max) revert LendingPoolInvalidAmount();
         uint256 id = ++_lossChargeCount;
+        _unrestoredCharges += value;
         uint256 denominator = assets + openHoldbackGross;
         lossCharge = LossCharge(uint128(value), 0, denominator, uint64(_holdbackHead), uint64(holdbacks.length), uint64(id), true);
         emit LossChargePosted(id, value, denominator, evidenceHash, first, msg.sender);
@@ -328,6 +363,7 @@ contract YieldPoolValuation is LendingPoolBase {
         c.cursor = uint64(i);
         c.absorbed = uint128(absorbed);
         if (i == end) _completeCharge();
+        else _syncClock();
     }
 
     /// @dev The remainder after the holdbacks: the Deployed Balance first, then accrued interest,
@@ -341,7 +377,10 @@ contract YieldPoolValuation is LendingPoolBase {
         rest -= toDeployed;
         uint256 interest = interestAccrued;
         uint256 toInterest = rest < interest ? rest : interest;
-        interestAccrued = interest - toInterest;
+        interest -= toInterest;
+        interestAccrued = interest;
+        // The unbilled interest goes first; the billed month's never exceeds what is left.
+        if (_billedInterest > interest) _billedInterest = interest;
         rest -= toInterest;
         c.pending = false;
         if (rest > 0) {
@@ -350,21 +389,22 @@ contract YieldPoolValuation is LendingPoolBase {
             SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(asset()), to, rest);
         }
         emit LossChargeCompleted(c.id, c.absorbed, toDeployed, toInterest, rest);
+        _syncClock();
     }
 
     /// @notice processes up to `maxCount` holdbacks in creation order, paying each release only to
     /// its Holder: first the pass after a lower posting (each H falls to min(H, G × the new
-    /// percentage), rounded up), then any holdback past its maximum age, in full. Age releases wait
+    /// percentage rounded up), so each release is rounded down), then any holdback past its
+    /// maximum age, in full. Age releases wait
     /// while a loss charge is pending. Permissionless.
     function releaseHoldbacks(uint256 maxCount) external {
         uint256 seen;
         if (_releasePending) {
             uint256 i = releaseCursor;
             uint256 end = releaseEnd;
-            uint256 bps = _holdbackBps;
             for (; i < end && seen < maxCount; ++seen) {
                 Holdback storage h = holdbacks[i];
-                uint256 keep = uint256(h.gross).mulDiv(bps, BPS, MathUpgradeable.Rounding.Up);
+                uint256 keep = _heldOf(h.gross);
                 if (h.held > keep) _release(i, h.held - keep);
                 ++i;
             }
@@ -389,135 +429,5 @@ contract YieldPoolValuation is LendingPoolBase {
         Holdback storage h = _reduceHoldback(id, amount);
         _send(h.holder, amount);
         emit HoldbackReleased(id, amount);
-    }
-
-    /* ========== SUSPENSION (§8) ========== */
-
-    function _isSuspensionSigner(address a) internal view returns (bool) {
-        return hasRole(SUSPENSION_ROLE, a) || _isOfficer(a);
-    }
-
-    function _isOfficer(address a) internal view returns (bool) {
-        return hasRole(CCO_ROLE, a) || hasRole(TREASURER_ROLE, a);
-    }
-
-    /// @notice suspends subscriptions, redemptions and queue processing, only for a listed
-    /// Suspension Event (FIXED reason codes). Set by one authorized individual and approved by a
-    /// different one, at least one of them the CCO or treasurer. Expires 72 hours after approval
-    /// (VALUATION_PENDING: 48 hours, not renewable).
-    /// @param resolutionHash a Lending Board resolution, needed for a new suspension on the same
-    /// evidence within 30 days of the last one.
-    function suspend(uint8 reason, bytes32 evidenceHash, bytes32 resolutionHash) external {
-        if (reason < LOSS_EVENT || reason > VALUATION_PENDING) revert LendingPoolBadReason(reason);
-        if (evidenceHash == bytes32(0)) revert LendingPoolInvalidAmount();
-        if (isSuspended()) revert LendingPoolSuspended();
-        uint256 lastEnd = evidenceEndedAt[evidenceHash];
-        if (lastEnd != 0 && block.timestamp < lastEnd + 30 days && resolutionHash == bytes32(0)) {
-            revert LendingPoolResolutionRequired();
-        }
-        if (!_isSuspensionSigner(msg.sender)) revert LendingPoolNotAuthorized(msg.sender);
-        bytes32 action = keccak256(abi.encode("suspend", reason, evidenceHash, resolutionHash));
-        address first = _proposerOf[action];
-        if (first == msg.sender) revert LendingPoolSameSigner(msg.sender);
-        if (first == address(0) || !_isSuspensionSigner(first)) {
-            _proposerOf[action] = msg.sender;
-            emit ActionProposed(action, msg.sender);
-            return;
-        }
-        if (!_isOfficer(first) && !_isOfficer(msg.sender)) revert LendingPoolNotAuthorized(msg.sender);
-        delete _proposerOf[action];
-        emit ActionApproved(action, first, msg.sender);
-        _accrue();
-        uint256 expires = block.timestamp + (reason == VALUATION_PENDING ? 48 hours : 72 hours);
-        uint64 eventId = _suspension.eventId + 1;
-        _suspension = Suspension(eventId, reason, uint64(block.timestamp), uint64(expires), first, evidenceHash);
-        evidenceEndedAt[evidenceHash] = expires;
-        emit Suspended(eventId, reason, evidenceHash, expires, first, msg.sender);
-    }
-
-    /// @notice renews the Suspension for 72 hours from now, by an authorized individual other
-    /// than the one who set or last renewed it. Beyond 240 hours from the start it needs a Lending
-    /// Board resolution hash; it never runs past 30 days from the start, except a LEGAL_ORDER
-    /// renewed with an order hash. VALUATION_PENDING cannot be renewed.
-    function renewSuspension(bytes32 resolutionHash, bytes32 orderHash) external {
-        Suspension storage s = _suspension;
-        if (s.expiresAt <= block.timestamp) revert LendingPoolNotSuspended();
-        if (s.reason == VALUATION_PENDING) revert LendingPoolNotRenewable();
-        if (!_isSuspensionSigner(msg.sender)) revert LendingPoolNotAuthorized(msg.sender);
-        if (msg.sender == s.lastSigner) revert LendingPoolSameSigner(msg.sender);
-        uint256 expires = block.timestamp + 72 hours;
-        if (expires > s.startedAt + 240 hours && resolutionHash == bytes32(0)) revert LendingPoolResolutionRequired();
-        if (!(s.reason == LEGAL_ORDER && orderHash != bytes32(0))) {
-            uint256 ceiling = s.startedAt + 30 days;
-            if (expires > ceiling) expires = ceiling;
-            if (expires <= s.expiresAt) revert LendingPoolSuspensionCeiling();
-        }
-        s.expiresAt = uint64(expires);
-        s.lastSigner = msg.sender;
-        evidenceEndedAt[s.evidenceHash] = expires;
-        emit SuspensionRenewed(s.eventId, expires, msg.sender, resolutionHash, orderHash);
-    }
-
-    /// @notice ends the Suspension once its event has ended. Any authorized individual.
-    function liftSuspension() external {
-        Suspension storage s = _suspension;
-        if (s.expiresAt <= block.timestamp) revert LendingPoolNotSuspended();
-        if (!_isSuspensionSigner(msg.sender)) revert LendingPoolNotAuthorized(msg.sender);
-        _accrue();
-        s.expiresAt = uint64(block.timestamp);
-        evidenceEndedAt[s.evidenceHash] = block.timestamp;
-        emit SuspensionLifted(s.eventId, msg.sender);
-    }
-
-    /* ========== FUNDING RATE MODEL (IV-02 Sch. 2) ========== */
-
-    /// @notice proposes new rate parameters (annual, WAD). Bounds are FIXED: R₀ 0–5%, S₁ 0–6%,
-    /// K 60–90%, S₂ 0–10%, R₀+S₁+S₂ ≤ 10%. A change that does not lower R at any utilization takes
-    /// effect after 48 hours; one that lowers it at any utilization needs 30 days' notice, and at
-    /// most one may take effect per calendar quarter (UTC).
-    function proposeRateModel(uint256 r0, uint256 s1, uint256 k, uint256 s2) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (r0 > MAX_R0 || s1 > MAX_S1 || k < MIN_K || k > MAX_K || s2 > MAX_S2 || r0 + s1 + s2 > MAX_RATE_SUM) {
-            revert LendingPoolInvalidRateModel();
-        }
-        RateModel memory next = RateModel(uint64(r0), uint64(s1), uint64(k), uint64(s2));
-        RateModel memory cur = _rateModel;
-        bool lowers = _lowerAt(next, cur, 0) || _lowerAt(next, cur, cur.k) || _lowerAt(next, cur, next.k)
-            || _lowerAt(next, cur, WAD);
-        uint256 effectiveAt = block.timestamp + (lowers ? 30 days : 48 hours);
-        if (lowers) {
-            uint32 quarter = _quarterOf(effectiveAt);
-            if (quarter == _lastLoweringQuarter) revert LendingPoolRateQuarter(quarter);
-            _lastLoweringQuarter = quarter;
-        }
-        _pendingRate = PendingRate(next, uint64(effectiveAt), lowers);
-        emit RateModelProposed(r0, s1, k, s2, effectiveAt, lowers);
-    }
-
-    /// @notice puts the proposed model in force once its notice has run. Permissionless.
-    function applyRateModel() external {
-        PendingRate memory p = _pendingRate;
-        if (p.effectiveAt == 0) revert LendingPoolInvalidRateModel();
-        if (block.timestamp < p.effectiveAt) revert LendingPoolRateNotice(p.effectiveAt);
-        _accrue();
-        _rateModel = p.model;
-        delete _pendingRate;
-        emit RateModelApplied(p.model.r0, p.model.s1, p.model.k, p.model.s2);
-    }
-
-    /// @dev Whether `next` gives a lower rate than `cur` at utilization `u`. Both are piecewise
-    /// linear with corners only at 0, their kinks and 1, so checking those points is exhaustive.
-    function _lowerAt(RateModel memory next, RateModel memory cur, uint256 u) internal pure returns (bool) {
-        return _rate(next, u) < _rate(cur, u);
-    }
-
-    function _rate(RateModel memory m, uint256 u) internal pure returns (uint256) {
-        if (u <= m.k) return m.k == 0 ? m.r0 : m.r0 + (uint256(m.s1) * u) / m.k;
-        return m.r0 + m.s1 + (uint256(m.s2) * (u - m.k)) / (WAD - m.k);
-    }
-
-    /// @dev year × 4 + quarter index, plus one so zero means "none yet".
-    function _quarterOf(uint256 ts) internal pure returns (uint32) {
-        (uint256 y, uint256 m, ) = PacificCalendar.civilFromDays(ts / 1 days);
-        return uint32(y * 4 + (m - 1) / 3 + 1);
     }
 }

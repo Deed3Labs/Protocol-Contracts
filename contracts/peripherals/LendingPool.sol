@@ -4,6 +4,11 @@ pragma solidity ^0.8.29;
 import "./LendingPoolBase.sol";
 import "../libraries/PacificCalendar.sol";
 
+/// @dev What `LendingPool` reads from its valuation module at construction.
+interface YieldPoolModule {
+    function ledger() external view returns (address);
+}
+
 /// @title LendingPool (the Yield Pool)
 /// @notice The Clear Earn Yield Pool: Pool Shares are limited-recourse subordinated demand notes
 /// whose Share Value is principal plus accrued interest less realized loss write-downs (IV-02).
@@ -24,8 +29,11 @@ import "../libraries/PacificCalendar.sol";
 /// - **Suspension** only for the four listed Suspension Events, two signers, 72 hours at a time.
 /// - **Final Maturity**: from the 20th anniversary of the Initial Closing, subscriptions and
 ///   Deployments stop and shares run off in queue order (decision 15).
-/// - The valuation postings, the holdback ledger, Suspension, the rate model and Deployments run
-///   in `YieldPoolValuation` by delegatecall, pinned at construction.
+/// - The valuation postings, the holdback ledger and Deployments run in `YieldPoolValuation`, and
+///   Pool Interest, Suspension, the rate model, recoveries and the legend in `YieldPoolLedger`,
+///   both by delegatecall, pinned at construction. The ledger's functions added in the IV-02
+///   conformance pass are served by this contract's fallback: clients use the joined ABI
+///   (`deploy/poolModules.ts`, `poolAt`).
 ///
 /// Governance (`DEFAULT_ADMIN_ROLE`) moves to the separate 7-day Earn timelock (decision 2).
 contract LendingPool is LendingPoolBase {
@@ -34,14 +42,22 @@ contract LendingPool is LendingPoolBase {
     /// @notice The valuation module, fixed for the life of this implementation.
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable valuation;
+    /// @notice The ledger module, the one `valuation` pins.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable ledger;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address valuation_) {
         _disableInitializers();
-        if (IExtensionKind(valuation_).extensionKind() != keccak256("YieldPoolValuation.v1")) {
+        if (IExtensionKind(valuation_).extensionKind() != keccak256("YieldPoolValuation.v2")) {
             revert LendingPoolModuleMismatch();
         }
         valuation = valuation_;
+        ledger = YieldPoolModule(valuation_).ledger();
+    }
+
+    function _ledgerModule() internal view override returns (address) {
+        return ledger;
     }
 
     /// @notice sets up a new pool. A pool upgraded from before Phase 2f calls
@@ -58,7 +74,6 @@ contract LendingPool is LendingPoolBase {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(OPERATOR_ROLE, admin);
         _rateModel = RateModel(0.02e18, 0.03e18, 0.8e18, 0.05e18);
-        _holderCapBps = 1_000;
         _holdbackMaxAge = 540 days;
         _lastAccrualAt = uint64(block.timestamp);
     }
@@ -88,16 +103,6 @@ contract LendingPool is LendingPoolBase {
     /// @notice The first issue of Pool Shares (the Initial Closing).
     function initialClosing() external view returns (uint256) {
         return _initialClosing;
-    }
-
-    /// @notice The Holdback Percentage, in basis points.
-    function holdbackBps() external view returns (uint256) {
-        return _holdbackBps;
-    }
-
-    /// @notice The holder cap, per member, in basis points of outstanding shares.
-    function holderCapBps() external view returns (uint256) {
-        return _holderCapBps;
     }
 
     /// @notice The calendar quarter (year x 4 + quarter, plus one) of the last rate-lowering change.
@@ -219,9 +224,31 @@ contract LendingPool is LendingPoolBase {
     /* ========== VIEWS ========== */
 
     /// @notice the Share Value of one whole Pool Share, in asset units scaled by 1e18 per asset
-    /// unit per share unit (1e18 = $1.00 per share). Replaces `navPerShare`.
+    /// unit per share unit (1e18 = $1.00 per share). Replaces `navPerShare`. $1.00 while no Pool
+    /// Share is outstanding: the next subscription restarts the pool there (decision 29).
     function shareValue() external view returns (uint256) {
-        return (_poolAssets() + 1).mulDiv(WAD, totalSupply() + 1);
+        uint256 supply = totalSupply();
+        return supply == 0 ? WAD : (totalAssets() + 1).mulDiv(WAD, supply + 1);
+    }
+
+    /// @notice Pool Assets now. Between bookings, Pool Interest since the last one is projected
+    /// by the ledger, month ends and capitalization included.
+    function totalAssets() public view override returns (uint256) {
+        uint256 t = _lastAccrualAt;
+        if (t == 0 || t == block.timestamp) return _poolAssets();
+        (bool ok, bytes memory ret) = address(this).staticcall(abi.encodeWithSignature("projectedPoolAssets()"));
+        if (!ok) revert LendingPoolInvalidAmount();
+        return abi.decode(ret, (uint256));
+    }
+
+    /// @dev With no Pool Share outstanding, shares and assets convert one to one: the pool restarts
+    /// at $1.00, and a leftover is set aside rather than captured (decision 29).
+    function _convertToShares(uint256 assets, MathUpgradeable.Rounding r) internal view override returns (uint256) {
+        return totalSupply() == 0 ? assets : super._convertToShares(assets, r);
+    }
+
+    function _convertToAssets(uint256 shares, MathUpgradeable.Rounding r) internal view override returns (uint256) {
+        return totalSupply() == 0 ? shares : super._convertToAssets(shares, r);
     }
 
     /// @notice USDC in the vault other than Holdback Amounts (and other money owed out).
@@ -229,34 +256,39 @@ contract LendingPool is LendingPoolBase {
         return _vaultCash();
     }
 
-    /// @notice the Deployed Balance.
+    /// @notice the Deployed Balance now (see YieldPoolLedger.deployedBalance).
     function deployedBalance() external view returns (uint256) {
-        return totalBorrowed;
+        _ledgerView();
     }
 
-    /// @notice accrued and unpaid Pool Interest, to now.
-    function accruedInterest() public view returns (uint256) {
-        return interestAccrued + _pendingInterest();
+    /// @notice accrued and unpaid Pool Interest, to now (see YieldPoolLedger.accruedInterest).
+    function accruedInterest() external view returns (uint256) {
+        _ledgerView();
     }
 
-    /// @notice (Pool Assets − Vault Cash) ÷ Pool Assets, as WAD. Holdbacks are excluded.
-    function utilization() public view returns (uint256) {
-        return _utilization(_pendingInterest());
+    /// @notice the Deployed Balance ÷ (the Deployed Balance + Vault Cash), as WAD (IV-02 §1.2).
+    function utilization() external view returns (uint256) {
+        _ledgerView();
     }
 
     /// @notice utilization in basis points (kept for the apps).
     function utilizationBps() external view returns (uint256) {
-        return utilization() / 1e14;
+        _ledgerView();
     }
 
     /// @notice the Funding Rate now, annual, as WAD.
     function fundingRate() external view returns (uint256) {
-        return _rateAt(utilization());
+        _ledgerView();
     }
 
     /// @notice the Funding Rate at utilization `u` (WAD) under the current model.
-    function fundingRateAt(uint256 u) external view returns (uint256) {
-        return _rateAt(u);
+    function fundingRateAt(uint256) external view returns (uint256) {
+        _ledgerView();
+    }
+
+    /// @notice the Holdback Percentage in basis points, rounded up (`holdbackRate` is exact).
+    function holdbackBps() external view returns (uint256) {
+        _ledgerView();
     }
 
     /// @notice Vault Cash not already spoken for by the queue.
@@ -359,9 +391,9 @@ contract LendingPool is LendingPoolBase {
             || c.subscriptionsPaused();
     }
 
-    /// @dev The net payment for `gross`: G × (1 − holdbackBps), rounded down.
+    /// @dev The net payment for `gross`: G less G × the Holdback Percentage rounded up.
     function _net(uint256 gross) internal view returns (uint256) {
-        return gross - gross.mulDiv(_holdbackBps, BPS, MathUpgradeable.Rounding.Up);
+        return gross - _heldOf(gross);
     }
 
     function maxDeposit(address) public view override returns (uint256) {
@@ -395,9 +427,9 @@ contract LendingPool is LendingPoolBase {
 
     /// @notice shares needed for a net payment of `assets`, rounded up.
     function previewWithdraw(uint256 assets) public view override returns (uint256) {
-        uint256 bps = _holdbackBps;
-        if (bps >= BPS) return type(uint256).max;
-        uint256 gross = assets.mulDiv(BPS, BPS - bps, MathUpgradeable.Rounding.Up);
+        uint256 rate = _holdbackRate;
+        if (rate >= WAD) return type(uint256).max;
+        uint256 gross = assets.mulDiv(WAD, WAD - rate, MathUpgradeable.Rounding.Up);
         return _convertToShares(gross, MathUpgradeable.Rounding.Up);
     }
 
@@ -407,22 +439,30 @@ contract LendingPool is LendingPoolBase {
         external
         returns (uint256 shares)
     {
+        _accrue();
         shares = previewDeposit(assets);
         _subscribe(receiver, assets, shares, attestation);
     }
 
     /// @notice a subscription with no attestation attached (the controls may hold one already).
     function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
+        _accrue();
         shares = previewDeposit(assets);
         _subscribe(receiver, assets, shares, "");
     }
 
     function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
+        _accrue();
         assets = previewMint(shares);
         _subscribe(receiver, assets, shares, "");
     }
 
-    /// @dev Mints at Share Value with nothing deducted, whatever the Holdback Percentage.
+    /// @dev Mints at Share Value with nothing deducted, whatever the Holdback Percentage. The holder
+    /// cap is `EarnControls`' (per household, above its floor; decision 23), checked in
+    /// `checkSubscription`. With no Pool Share outstanding, it issues at exactly $1.00 and sets
+    /// aside any USDC left in the vault that is owed to no one, to be recognized into Vault Cash
+    /// over 30 days (decision 29). Holdback Amounts, queued shares and unclaimed payments are
+    /// never part of it.
     function _subscribe(address receiver, uint256 assets, uint256 shares, bytes memory attestation) internal {
         if (assets < MIN_SUBSCRIPTION_UNITS * 10 ** uint256(decimals())) revert LendingPoolBelowMinimum(assets);
         if (shares == 0 || receiver == address(0)) revert LendingPoolInvalidAmount();
@@ -433,31 +473,26 @@ contract LendingPool is LendingPoolBase {
         if (address(controls) == address(0)) revert LendingPoolNoControls();
         if (controls.subscriptionsPaused()) revert LendingPoolSubscriptionsPaused();
         bytes32 code = controls.checkSubscription(msg.sender, receiver, assets, attestation);
-        _accrue();
         if (_initialClosing == 0) {
             _initialClosing = uint64(block.timestamp);
             emit InitialClosingRecorded(block.timestamp, finalMaturity());
         }
-        _deposit(msg.sender, receiver, assets, shares);
-        _checkHolderCap(controls, receiver);
-        emit Subscribed(msg.sender, receiver, assets, shares, code);
-    }
-
-    /// @dev The holder cap counts every wallet of the member (decision 13), queued shares included.
-    function _checkHolderCap(IPoolEarnControls controls, address receiver) internal view {
-        uint256 cap = _holderCapBps;
-        if (cap >= BPS) return;
-        address[] memory wallets = controls.walletsOf(receiver);
-        uint256 held;
-        for (uint256 i; i < wallets.length; ++i) {
-            held += balanceOf(wallets[i]) + _queuedSharesOf[wallets[i]];
+        if (totalSupply() == 0) {
+            uint256 gross = _cash() + totalBorrowed + interestAccrued;
+            uint256 owed = _spokenFor();
+            uint256 left = gross > owed ? gross - owed : 0;
+            _leftover = left;
+            _leftoverStart = uint64(block.timestamp);
+            if (left > 0) emit LeftoverSetAside(left, block.timestamp + LEFTOVER_PERIOD);
         }
-        uint256 limit = (totalSupply() * cap) / BPS;
-        if (held > limit) revert LendingPoolHolderCap(receiver, held, limit);
+        _deposit(msg.sender, receiver, assets, shares);
+        emit Subscribed(msg.sender, receiver, assets, shares, code);
+        _syncClock();
     }
 
     /// @notice redeems on demand for a net payment of exactly `assets`.
     function withdraw(uint256 assets, address receiver, address owner) public override returns (uint256 shares) {
+        _accrue();
         shares = previewWithdraw(assets);
         _redeemNow(receiver, owner, shares, assets);
     }
@@ -468,12 +503,14 @@ contract LendingPool is LendingPoolBase {
     }
 
     /// @dev `net` is the exact payment for `withdraw`, or max for `redeem`. Liquidity is checked
-    /// against the full gross amount.
+    /// against the full gross amount. Proceeds go only to the Smart Account that held the shares
+    /// (IV-02 §6.5): `receiver` must be `owner`.
     function _redeemNow(address receiver, address owner, uint256 shares, uint256 net)
         internal
         returns (uint256 paid)
     {
-        if (receiver == address(0) || shares == 0) revert LendingPoolInvalidAmount();
+        if (receiver != owner) revert LendingPoolReceiverNotOwner(receiver);
+        if (shares == 0) revert LendingPoolInvalidAmount();
         if (lossCharge.pending) revert LendingPoolChargePending();
         if (isSuspended()) revert LendingPoolSuspended();
         if (_queuedShares > 0) revert LendingPoolQueueOpen();
@@ -485,13 +522,14 @@ contract LendingPool is LendingPoolBase {
         _burn(owner, shares);
         paid = _finish(owner, receiver, gross, net);
         emit Withdraw(msg.sender, receiver, owner, paid, shares);
+        _syncClock();
     }
 
-    /// @dev Burned shares worth `gross`: records H = G × holdbackBps (rounded up) as the holder's
+    /// @dev Burned shares worth `gross`: records H = G × the Holdback Percentage (rounded up) as the holder's
     /// holdback (§6A) and pays G − H, or `cap` if less (a `withdraw` for an exact amount). What
     /// the cap leaves, a unit or two of rounding, stays in Vault Cash for the remaining holders.
     function _finish(address holder, address receiver, uint256 gross, uint256 cap) internal returns (uint256 paid) {
-        uint256 held = gross.mulDiv(_holdbackBps, BPS, MathUpgradeable.Rounding.Up);
+        uint256 held = _heldOf(gross);
         paid = gross - held;
         if (paid > cap) paid = cap;
         if (held > 0) {
@@ -513,14 +551,18 @@ contract LendingPool is LendingPoolBase {
     /// @return paidNow paid now, net of any holdback.
     /// @return requestId the queued request, or `NO_REQUEST`.
     function redeemOrQueue(uint256 shares, address receiver) external returns (uint256 paidNow, uint256 requestId) {
+        if (receiver != msg.sender) revert LendingPoolReceiverNotOwner(receiver);
+        _accrue();
         uint256 now_ = maxRedeem(msg.sender);
         if (now_ > shares) now_ = shares;
         if (now_ > 0) paidNow = _redeemNow(receiver, msg.sender, now_, type(uint256).max);
         requestId = shares > now_ ? _enqueue(msg.sender, receiver, shares - now_, false) : NO_REQUEST;
     }
 
-    /// @notice queues all of `shares` (kept for the Liquidator and the apps).
+    /// @notice queues all of `shares` (kept for the Liquidator and the apps). The proceeds go to
+    /// the caller's own account (IV-02 §6.5).
     function requestWithdrawal(uint256 shares, address receiver) external returns (uint256) {
+        if (receiver != msg.sender) revert LendingPoolReceiverNotOwner(receiver);
         return _enqueue(msg.sender, receiver, shares, false);
     }
 
@@ -556,6 +598,7 @@ contract LendingPool is LendingPoolBase {
             ++i;
         }
         _queueHead = i;
+        _syncClock();
     }
 
     /* ========== DEPLOYMENTS AND RETURNS ========== */
@@ -682,11 +725,6 @@ contract LendingPool is LendingPoolBase {
         _forward();
     }
 
-    /// @notice see YieldPoolValuation.setHolderCapBps.
-    function setHolderCapBps(uint256) external {
-        _forward();
-    }
-
     /// @notice see YieldPoolValuation.setHoldbackMaxAge.
     function setHoldbackMaxAge(uint256) external {
         _forward();
@@ -717,36 +755,67 @@ contract LendingPool is LendingPoolBase {
         _forward();
     }
 
-    /// @notice see YieldPoolValuation.suspend.
+    /// @notice see YieldPoolLedger.suspend.
     function suspend(uint8, bytes32, bytes32) external {
-        _forward();
+        _forwardTo(ledger);
     }
 
-    /// @notice see YieldPoolValuation.renewSuspension.
+    /// @notice see YieldPoolLedger.renewSuspension.
     function renewSuspension(bytes32, bytes32) external {
-        _forward();
+        _forwardTo(ledger);
     }
 
-    /// @notice see YieldPoolValuation.liftSuspension.
+    /// @notice see YieldPoolLedger.liftSuspension.
     function liftSuspension() external {
-        _forward();
+        _forwardTo(ledger);
     }
 
-    /// @notice see YieldPoolValuation.proposeRateModel.
+    /// @notice see YieldPoolLedger.proposeRateModel.
     function proposeRateModel(uint256, uint256, uint256, uint256) external {
-        _forward();
+        _forwardTo(ledger);
     }
 
-    /// @notice see YieldPoolValuation.applyRateModel.
+    /// @notice see YieldPoolLedger.applyRateModel.
     function applyRateModel() external {
-        _forward();
+        _forwardTo(ledger);
+    }
+
+    /// @notice Every other call goes to the ledger module: the functions it gained in the IV-02
+    /// conformance pass (`accrue`, `postRecovery`, `recordValuationEvent`, `postPoolTierPrincipal`,
+    /// the legend, and their views). Use the joined ABI.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    fallback() external {
+        _forwardTo(ledger);
+    }
+
+    /// @notice Serves the ledger's views to this contract's own view functions, which call it by
+    /// staticcall; no one else may call it.
+    function ledgerView(bytes calldata data) external {
+        if (msg.sender != address(this)) revert LendingPoolNotAuthorized(msg.sender);
+        bytes memory ret = _delegate(ledger, data);
+        assembly {
+            return(add(ret, 32), mload(ret))
+        }
+    }
+
+    /// @dev Answers a view from the ledger: a staticcall to `ledgerView` with this call's data.
+    function _ledgerView() private view {
+        (bool ok, bytes memory ret) = address(this).staticcall(abi.encodeCall(this.ledgerView, (msg.data)));
+        assembly {
+            switch ok
+            case 0 { revert(add(ret, 32), mload(ret)) }
+            default { return(add(ret, 32), mload(ret)) }
+        }
+    }
+
+    function _forward() private {
+        _forwardTo(valuation);
     }
 
     /// @dev Runs the module's implementation of this call against this contract's storage, and
     /// returns or reverts exactly as it did.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
-    function _forward() private {
-        address target = valuation;
+    function _forwardTo(address target) private {
         assembly {
             calldatacopy(0, 0, calldatasize())
             let ok := delegatecall(gas(), target, 0, calldatasize(), 0, 0)

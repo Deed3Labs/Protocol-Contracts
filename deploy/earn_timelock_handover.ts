@@ -9,9 +9,10 @@
  * What moves to the timelock:
  * - LendingPool (the Yield Pool): DEFAULT_ADMIN_ROLE, which authorizes its upgrades
  *   (`_authorizeUpgrade`) and every governed setting, including those of its valuation module.
- * - YieldPoolValuation: nothing. It is a stateless delegatecall module pinned in LendingPool's
- *   constructor; it has no admin, no roles and no upgrade of its own (a new module needs a new
- *   LendingPool implementation, which is a LendingPool upgrade).
+ * - YieldPoolValuation and YieldPoolLedger: nothing. They are stateless delegatecall modules pinned
+ *   in LendingPool's constructor (the ledger through the valuation module); they have no admin, no
+ *   roles and no upgrade of their own (a new module needs a new LendingPool implementation, which
+ *   is a LendingPool upgrade).
  * - EarnControls: DEFAULT_ADMIN_ROLE (upgrades and every governed setting). Its roles are granted
  *   only with a Lending Board resolution hash (`grantRoleByResolution`), so the handover needs one
  *   (`resolutionHash`). Its module EarnControlsAdmin, like the pool's, has nothing of its own.

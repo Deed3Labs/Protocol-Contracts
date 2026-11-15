@@ -84,9 +84,11 @@ describe("Earn timelock handover (decision 2)", function () {
     expect(await controls.hasRole(await controls.ATTESTER_ROLE(), deployer.address)).to.equal(false);
 
     // A pool setting and a controls setting now take a proposal and 7 days.
-    await expect(pool.setHolderCapBps(5_000)).to.be.reverted;
-    await viaTimelock(pool, pool.interface.encodeFunctionData("setHolderCapBps", [5_000]), "pool cap");
-    expect(await pool.holderCapBps()).to.equal(5_000n);
+    // Conformance pass: the pool's own holder cap is gone (EarnControls has it); the Maximum
+    // Holdback Age stands in as the pool setting.
+    await expect(pool.setHoldbackMaxAge(100 * 86400)).to.be.reverted;
+    await viaTimelock(pool, pool.interface.encodeFunctionData("setHoldbackMaxAge", [100 * 86400]), "pool age");
+    expect(await pool.holdbackMaxAge()).to.equal(BigInt(100 * 86400));
     await expect(controls.setHolderCapBps(2_000)).to.be.reverted;
     await viaTimelock(controls, controls.interface.encodeFunctionData("setHolderCapBps", [2_000]), "controls cap");
     expect(await controls.holderCapBps()).to.equal(2_000n);

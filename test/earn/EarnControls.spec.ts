@@ -132,7 +132,8 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
       await controls.scheduleHolderCapFloor(U(10_000));
       await increase(7 * DAY);
       expect(await controls.holderCapFloor()).to.equal(U(10_000));
-      expect(await pool.holderCapBps()).to.equal(10_000n); // the pool's own check is off; the controls count
+      // The pool's own check is gone (conformance pass); the controls count the cap.
+      expect(pool.interface.getFunction("holderCapBps")).to.equal(null);
       await pool.connect(f.bob).deposit(U(9_500), f.bob.address); // 100% of the pool, below the floor
       await pool.connect(f.alice).deposit(U(500), f.alice.address); // Pool Assets now exactly the floor
       await pool.connect(f.carol).deposit(U(500), f.carol.address); // above it: 500 of 10,500
@@ -241,8 +242,10 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
 
     it("while L-01 §2.9(c) applies, subscriptions pause after 30 days below 50% Utilization, until it recovers", async function () {
       await c.two(c.p1, c.p2, "setPauseFlag", LOW_UTILIZATION_RULE, true, ethers.id("2.9(c)"));
-      // This pool does not yet report its low-Utilization clock (its next pass adds it): fail closed.
-      expect(await controls.subscriptionsPaused()).to.equal(true);
+      // The pool now reports its low-Utilization clock (conformance pass): an empty pool's
+      // Utilization is 0, but the clock starts only with the pool's first change, so not yet paused.
+      expect(await pool.lowUtilizationSince()).to.equal(0n);
+      expect(await controls.subscriptionsPaused()).to.equal(false);
       // Against a pool that reports it:
       await controls.setSources(await c.membership.getAddress(), await sources.getAddress(), ethers.ZeroAddress, ethers.ZeroAddress, ethers.ZeroAddress);
       expect(await controls.subscriptionsPaused()).to.equal(false); // at or above 50%

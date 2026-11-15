@@ -1,6 +1,6 @@
 import { saveDeployment, getDeployment } from "./helpers";
 import { deployBondFactory } from "./bondModules";
-import { poolProxyOptions } from "./poolModules";
+import { poolAt, poolProxyOptions } from "./poolModules";
 
 /**
  * Phase E: the contracts that put something real behind the asset-backed tier, and pay merchants.
@@ -90,7 +90,8 @@ async function main() {
   const payoutPoolAddress = await payoutPool.getAddress();
 
   // ---- capital ----
-  // Phase 2f: the Yield Pool, with its YieldPoolValuation module pinned at construction.
+  // Phase 2f: the Yield Pool, with its YieldPoolValuation and YieldPoolLedger modules pinned at
+  // construction.
   const lendingPool = await ensure("LendingPool", [
     deployer.address,
     reserveToken,
@@ -185,10 +186,24 @@ async function main() {
     log(`  LendingPool deployment account -> ${lendingAccount}`);
   }
 
+  // IV-02 §8.4, decision 27: the legend the Register carries, written once here; any later change
+  // waits 7 days on chain after the Earn timelock proposes it. The pool's Deployments stay closed
+  // until two VALUATION_ROLE signers post the Pool Tier principal ceiling (IV-02 §4.3).
+  const pool = await poolAt(lendingPoolAddress);
+  if ((await pool.legend()) === "") {
+    await (await pool.setLegend(POOL_SHARE_LEGEND)).wait();
+    log("  LendingPool legend set (IV-02 §8.4)");
+  }
+
   log("\nBonds and pool deployed.");
   log("\nBond collections are created per token with factory.createCollection(); none exist yet.");
   log("A BondValuer is deployed per collection, since it reads one collection's present values.");
 }
+
+/** IV-02 §8.4's legend, as the Register and the vault's metadata carry it. */
+const POOL_SHARE_LEGEND =
+  "These Pool Shares have not been registered under the Securities Act of 1933 or any state securities law. " +
+  "They may not be transferred except to Clear Lending Co. or by operation of law, as IV-02 permits.";
 
 main()
   .then(() => process.exit(0))

@@ -13,9 +13,10 @@ import "./IExtensionKind.sol";
 /// @notice Everything the Yield Pool (`LendingPool`) and its valuation module share: storage,
 /// errors, events and the internal accounting.
 /// @dev The pool outgrew the 24 KiB limit when it became the Yield Pool (Phase 2f, decision 16),
-/// so the valuation, holdback, suspension, rate-model and deployment functions run in
-/// `YieldPoolValuation` by delegatecall. Both inherit this contract and declare no storage of
-/// their own, so they read and write the same slots. Never add a state variable to either child.
+/// so the valuation, holdback and deployment functions run in `YieldPoolValuation`, and Pool
+/// Interest, Suspension, the rate model, recoveries, the legend and the restart leftover run in
+/// `YieldPoolLedger`, both by delegatecall. All three inherit this contract and declare no storage
+/// of their own, so they read and write the same slots. Never add a state variable to a child.
 ///
 /// The pool's transfer hook (the pledge lock and the transfer allowlist) is `LendingPool`'s alone.
 /// Share movements made in the module run without it, so the module moves shares only where the
@@ -55,6 +56,8 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     uint256 public constant MIN_SUBSCRIPTION_UNITS = 250;
     /// @notice Highest utilization a Deployment may leave behind (FIXED, §6).
     uint256 public constant MAX_UTILIZATION = 0.9e18;
+    /// @notice How long a restart leftover takes to be recognized into Vault Cash (decision 29).
+    uint256 public constant LEFTOVER_PERIOD = 30 days;
     /// @notice Rate model bounds (FIXED, IV-02 Sch. 2), as annual WAD rates.
     uint256 internal constant MAX_R0 = 0.05e18;
     uint256 internal constant MAX_S1 = 0.06e18;
@@ -196,9 +199,9 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     uint64 internal _lastAccrualAt;
     /// @notice The first issue of Pool Shares; the Final Maturity Date is its 20th anniversary.
     uint64 internal _initialClosing;
-    /// @notice The Holdback Percentage, in basis points (allowance ÷ Pool Assets, rounded up).
+    /// @dev Retired: the Holdback Percentage is now kept at full precision (`_holdbackRate`).
     uint16 internal _holdbackBps;
-    /// @notice The holder cap, per member, in basis points of outstanding shares.
+    /// @dev Retired: the holder cap is `EarnControls`' (per household, above its floor).
     uint16 internal _holderCapBps;
     /// @dev 0 none; 1 a holder is queuing their own shares; 2 an enforcement is queuing pledged ones.
     uint8 internal escrowMode;
@@ -259,9 +262,49 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     uint256 internal _deploymentCount;
     uint256 internal _totalDeployed;
 
+    /* ========== IV-02 CONFORMANCE (Phase 2f; the first 12 slots of the old 50-slot gap) ========== */
+
+    /// @notice The Holdback Percentage as a WAD fraction (Pool Loss Allowance ÷ Pool Assets, as
+    /// posted), so each Holdback Amount is rounded once, up, and never by a rounded percentage.
+    uint256 internal _holdbackRate;
+    /// @notice Pool Interest of the last month ended, still unpaid, due at `_billedDueAt`
+    /// (IV-02 §4.6). Part of `interestAccrued`.
+    uint256 internal _billedInterest;
+    /// @notice When the billed interest is due: 23:59:59 Pacific on the 5th weekday after month end.
+    uint64 internal _billedDueAt;
+    /// @notice The end of the current interest month: 23:59:59 Pacific on its last day.
+    uint64 internal _periodEnd;
+    /// @notice Since when Utilization has stayed below 50% (IV-02 §2.6), or 0.
+    uint64 internal _lowUtilSince;
+    /// @notice When the restart leftover was set aside (decision 29).
+    uint64 internal _leftoverStart;
+    /// @notice The leftover set aside at a restart, recognized into Vault Cash over 30 days.
+    uint256 internal _leftover;
+    /// @notice Pool Loss Charges not yet restored by a recovery (IV-02 §5.4, decision 25).
+    uint256 internal _unrestoredCharges;
+    /// @notice The posted outstanding principal of the Pool Tiers plus Margin Advances: the
+    /// Deployed Balance's ceiling (IV-02 §4.3).
+    uint256 internal _poolTierPrincipal;
+    uint64 internal _poolTierPostedAt;
+    /// @notice When the pending Valuation Event was recorded (Exhibit A, A4; decision 26).
+    uint64 internal _valuationEventAt;
+    /// @notice When a scheduled legend change may take effect (decision 27).
+    uint64 internal _legendEffectiveAt;
+    bool internal _valuationEventPending;
+    /// @notice Whether the pending Valuation Event has had its one VALUATION_PENDING Suspension.
+    bool internal _valuationSuspended;
+    /// @dev The start, counted back over earlier suspensions on the same facts, of the last
+    /// suspension on this evidence, so the 10-Business-Day and 30-day limits count the total.
+    mapping(bytes32 => uint256) internal evidenceStartedAt;
+    /// @notice The IV-02 §8.4 legend the Register carries, and a scheduled replacement.
+    string internal _legend;
+    string internal _pendingLegend;
+    /// @notice Pool Interest capitalized into the Deployed Balance so far.
+    uint256 internal _totalCapitalized;
+
     /// @dev Room for later fields. Named apart from the Base Sepolia `__gap` (slots 361-400), which
     /// the fields above have used up and run past, as the last contract in the layout may.
-    uint256[50] private __yieldPoolGap;
+    uint256[38] private __yieldPoolGap;
 
     /* ========== ERRORS ========== */
 
@@ -298,6 +341,10 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     error LendingPoolNotRenewable();
     error LendingPoolAlreadyInitialized();
     error LendingPoolModuleMismatch();
+    error LendingPoolTierCap(uint256 deployedBalance, uint256 poolTierPrincipal);
+    error LendingPoolNoValuationEvent();
+    error LendingPoolNotYet(uint256 effectiveAt);
+    error LendingPoolReceiverNotOwner(address receiver);
 
     /* ========== EVENTS ========== */
 
@@ -312,7 +359,6 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     event EarnControlsUpdated(address indexed controls);
     event DeploymentAccountUpdated(address indexed account);
     event EnforcementDestinationUpdated(address indexed destination);
-    event HolderCapUpdated(uint256 bps);
     event InitialClosingRecorded(uint256 at, uint256 finalMaturity);
     event Subscribed(address indexed payer, address indexed receiver, uint256 assets, uint256 shares, bytes32 exemptionCode);
     event InterestAccrued(uint256 amount, uint256 rate, uint256 interestAccrued);
@@ -325,7 +371,8 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     event HoldbackReleased(uint256 indexed id, uint256 amount);
     event HoldbackApplied(uint256 indexed id, uint256 amount, uint256 indexed lossChargeId);
     event HoldbackMaxAgeUpdated(uint256 maxAge);
-    event AllowancePosted(uint256 value, uint256 holdbackBps, uint256 poolAssets, bytes32 evidenceHash, address proposer, address approver);
+    /// @param holdbackRate the Holdback Percentage as a WAD fraction.
+    event AllowancePosted(uint256 value, uint256 holdbackRate, uint256 poolAssets, bytes32 evidenceHash, address proposer, address approver);
     event LossChargePosted(uint256 indexed lossChargeId, uint256 value, uint256 denominator, bytes32 evidenceHash, address proposer, address approver);
     event LossChargeCompleted(uint256 indexed lossChargeId, uint256 absorbed, uint256 toDeployed, uint256 toInterest, uint256 paidOut);
     event ActionProposed(bytes32 indexed action, address indexed proposer);
@@ -338,19 +385,31 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     event RunOffRequested(address indexed holder, uint256 requestId, uint256 shares);
     event PaymentDeferred(address indexed to, uint256 amount);
     event UnpaidClaimed(address indexed to, uint256 amount);
+    event InterestBilled(uint256 amount, uint256 dueAt);
+    event InterestCapitalized(uint256 amount, uint256 deployedBalance);
+    event LeftoverSetAside(uint256 amount, uint256 recognizedBy);
+    event RecoveryPosted(uint256 value, uint256 unrestored, bytes32 evidenceHash, address proposer, address approver);
+    event ValuationEventRecorded(bytes32 evidenceHash, address proposer, address approver);
+    event ValuationEventCleared();
+    event PoolTierPrincipalPosted(uint256 value, bytes32 evidenceHash, address proposer, address approver);
+    event LegendScheduled(bytes32 indexed legendHash, string legend, uint256 effectiveAt);
+    event LegendSet(bytes32 indexed legendHash, string legend);
 
     /* ========== ACCOUNTING ========== */
 
     /// @notice Pool Assets: Vault Cash, the Deployed Balance and accrued unpaid Pool Interest.
-    /// @dev Vault Cash excludes Holdback Amounts, cash owed to pre-2f queued requests and payments
-    /// waiting to be claimed. The Pool Loss Allowance is not subtracted (§6).
+    /// @dev From stored values: exact once `_accrue` has run in this block. `LendingPool` projects
+    /// the interest since then for its views (`YieldPoolLedger.projectedPoolAssets`).
     function totalAssets() public view virtual override returns (uint256) {
         return _poolAssets();
     }
 
+    /// @dev Vault Cash excludes Holdback Amounts, cash owed to pre-2f queued requests, payments
+    /// waiting to be claimed and the unrecognized restart leftover. The Pool Loss Allowance is not
+    /// subtracted (§5.5).
     function _poolAssets() internal view returns (uint256) {
-        uint256 gross = _cash() + totalBorrowed + interestAccrued + _pendingInterest();
-        uint256 owed = _spokenFor();
+        uint256 gross = _cash() + totalBorrowed + interestAccrued;
+        uint256 owed = _spokenFor() + _unrecognized();
         return gross > owed ? gross - owed : 0;
     }
 
@@ -363,45 +422,65 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
         return _totalHoldback + (queuedAssets - escrowedQueueCaps) + _totalUnpaid;
     }
 
+    /// @dev The part of the restart leftover not yet recognized: it falls linearly to zero over
+    /// `LEFTOVER_PERIOD` (decision 29), rounded up so recognition never runs ahead.
+    function _unrecognized() internal view returns (uint256) {
+        uint256 end = uint256(_leftoverStart) + LEFTOVER_PERIOD;
+        if (block.timestamp >= end) return 0;
+        return _leftover.mulDiv(end - block.timestamp, LEFTOVER_PERIOD, MathUpgradeable.Rounding.Up);
+    }
+
     function _vaultCash() internal view returns (uint256) {
         uint256 cash = _cash();
-        uint256 owed = _spokenFor();
+        uint256 owed = _spokenFor() + _unrecognized();
         return cash > owed ? cash - owed : 0;
     }
 
-    /// @dev Utilization from stored values: (Pool Assets − Vault Cash) ÷ Pool Assets, as WAD.
-    function _utilization(uint256 pending) internal view returns (uint256) {
-        uint256 out = totalBorrowed + interestAccrued + pending;
-        uint256 total = out + _vaultCash();
-        return total == 0 ? 0 : out.mulDiv(WAD, total);
+    /// @dev Utilization: the Deployed Balance ÷ (the Deployed Balance + Vault Cash), as WAD
+    /// (IV-02 §1.2). Accrued interest is not in it; zero when both are zero.
+    function _utilizationOf(uint256 deployed, uint256 cash) internal pure returns (uint256) {
+        return deployed == 0 ? 0 : deployed.mulDiv(WAD, deployed + cash);
     }
 
-    /// @dev R = R₀ + S₁·(U/K) up to the kink, then R₀ + S₁ + S₂·((U−K)/(1−K)) (IV-02 Sch. 2).
-    function _rateAt(uint256 u) internal view returns (uint256) {
-        RateModel memory m = _rateModel;
-        if (u > WAD) u = WAD;
-        if (u <= m.k) return m.k == 0 ? m.r0 : m.r0 + (uint256(m.s1) * u) / m.k;
-        return m.r0 + m.s1 + (uint256(m.s2) * (u - m.k)) / (WAD - m.k);
-    }
-
-    /// @dev Pool Interest since the last accrual, per second on the Deployed Balance at the
-    /// Funding Rate, on a 365-day year.
-    function _pendingInterest() internal view returns (uint256) {
-        uint256 since = _lastAccrualAt;
-        if (since == 0 || since >= block.timestamp || totalBorrowed == 0) return 0;
-        return (totalBorrowed * _rateAt(_utilization(0)) * (block.timestamp - since)) / (365 days * WAD);
-    }
-
-    /// @dev Books the interest accrued so far. Called before anything that moves the Deployed
-    /// Balance, Vault Cash or the rate.
-    function _accrue() internal {
-        uint256 pending = _pendingInterest();
-        if (pending > 0) {
-            uint256 rate = _rateAt(_utilization(0));
-            interestAccrued += pending;
-            emit InterestAccrued(pending, rate, interestAccrued);
+    /// @dev The low-Utilization clock (IV-02 §2.6), after every change to the Deployed Balance or
+    /// Vault Cash: set when Utilization is below 50% and was not, cleared when it is at least 50%.
+    function _syncClock() internal {
+        if (_lastAccrualAt == 0) return;
+        uint256 d = totalBorrowed;
+        bool low = d == 0 || d < _vaultCash();
+        if (!low) {
+            if (_lowUtilSince != 0) _lowUtilSince = 0;
+        } else if (_lowUtilSince == 0) {
+            _lowUtilSince = uint64(block.timestamp);
         }
-        if (_lastAccrualAt != 0) _lastAccrualAt = uint64(block.timestamp);
+    }
+
+    /// @dev The ledger module, where Pool Interest is booked.
+    function _ledgerModule() internal view virtual returns (address);
+
+    /// @dev Books Pool Interest to now, billing and capitalizing as months end and fall due
+    /// (`YieldPoolLedger.accrue`). Called before anything that moves the Deployed Balance, Vault
+    /// Cash or the rate. Once per block is enough.
+    function _accrue() internal virtual {
+        if (_lastAccrualAt == block.timestamp) return;
+        _delegate(_ledgerModule(), abi.encodeWithSignature("accrue()"));
+    }
+
+    /// @dev Runs `data` in `target` against this contract's storage, bubbling any revert.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function _delegate(address target, bytes memory data) internal returns (bytes memory ret) {
+        bool ok;
+        (ok, ret) = target.delegatecall(data);
+        if (!ok) {
+            assembly {
+                revert(add(ret, 32), mload(ret))
+            }
+        }
+    }
+
+    /// @dev H for a gross amount G: G × the Holdback Percentage, rounded up (Exhibit A, A6).
+    function _heldOf(uint256 gross) internal view returns (uint256) {
+        return gross.mulDiv(_holdbackRate, WAD, MathUpgradeable.Rounding.Up);
     }
 
     /// @notice whether a Suspension is in force.

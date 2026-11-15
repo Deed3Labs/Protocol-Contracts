@@ -1,5 +1,5 @@
 import { ethers, upgrades } from "hardhat";
-import { poolProxyOptions } from "../../deploy/poolModules";
+import { poolAt, poolProxyOptions } from "../../deploy/poolModules";
 
 /** USDC units (6 decimals). */
 export const U = (n: number | string) => ethers.parseUnits(String(n), 6);
@@ -26,22 +26,41 @@ export async function setNext(ts: number) {
   await ethers.provider.send("evm_setNextBlockTimestamp", [ts]);
 }
 
+/** A Pool Tier principal ceiling high enough not to bind, for suites that do not test it (IV-02 §4.3). */
+export const NO_TIER_CAP = 10n ** 30n;
+
+/**
+ * Posts the Pool Tier principal ceiling (IV-02 §4.3) by two VALUATION_ROLE signers. Deployments
+ * fail closed until it is posted.
+ */
+export async function postTierCap(pool: any, a: any, b: any, value: bigint = NO_TIER_CAP) {
+  const evidence = ethers.id(`pool tiers ${value}`);
+  await pool.connect(a).postPoolTierPrincipal(value, evidence);
+  return pool.connect(b).postPoolTierPrincipal(value, evidence);
+}
+
 /**
  * Just the pool, for suites that bring their own token and signers: mock Earn controls (everyone
- * eligible), the holder cap off, `lending` as Clear Lending's lending account and `deployers` as
- * the two DEPLOYER_ROLE signers. `deploy(amount)` makes a two-person Deployment.
+ * eligible), `lending` as Clear Lending's lending account and `deployers` as the two DEPLOYER_ROLE
+ * signers. The Pool Tier ceiling is posted out of the way (the deployers hold VALUATION_ROLE
+ * just long enough to post it). `deploy(amount)` makes a two-person Deployment. The pool
+ * has the joined ABI (`poolAt`).
  */
 export async function deployBarePool(admin: any, usdc: any, lending: any, deployers: [any, any]) {
   const controls: any = await (await ethers.getContractFactory("MockEarnControls")).deploy();
-  const pool: any = await upgrades.deployProxy(
+  const proxy: any = await upgrades.deployProxy(
     await ethers.getContractFactory("LendingPool", admin),
     [admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"],
     await poolProxyOptions(admin)
   );
+  const pool: any = await poolAt(await proxy.getAddress(), admin);
   await pool.connect(admin).setEarnControls(await controls.getAddress());
   await pool.connect(admin).setDeploymentAccount(lending.address);
-  await pool.connect(admin).setHolderCapBps(10_000);
   for (const d of deployers) await pool.connect(admin).grantRole(await pool.DEPLOYER_ROLE(), d.address);
+  const valuation = await pool.VALUATION_ROLE();
+  for (const d of deployers) await pool.connect(admin).grantRole(valuation, d.address);
+  await postTierCap(pool, deployers[0], deployers[1]);
+  for (const d of deployers) await pool.connect(admin).revokeRole(valuation, d.address);
   let ref = 0;
   async function deploy(amount: bigint) {
     const r = ethers.toBeHex(++ref, 32);
@@ -52,8 +71,9 @@ export async function deployBarePool(admin: any, usdc: any, lending: any, deploy
 }
 
 /**
- * A Yield Pool with mock Earn controls, Clear Lending's lending account registered, the holder cap
- * off (each test that checks it turns it on), and the two-person roles handed out.
+ * A Yield Pool with mock Earn controls, Clear Lending's lending account registered, the two-person
+ * roles handed out, and the Pool Tier ceiling posted out of the way (each test that checks it
+ * posts its own). The pool has the joined ABI (`poolAt`).
  */
 export async function deployYieldPool(opts: { usdc?: any } = {}) {
   const signers = await ethers.getSigners();
@@ -61,21 +81,22 @@ export async function deployYieldPool(opts: { usdc?: any } = {}) {
 
   const usdc: any = opts.usdc ?? await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
   const controls: any = await (await ethers.getContractFactory("MockEarnControls")).deploy();
-  const pool: any = await upgrades.deployProxy(
+  const proxy: any = await upgrades.deployProxy(
     await ethers.getContractFactory("LendingPool"),
     [admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"],
     await poolProxyOptions()
   );
-  const poolAddress = await pool.getAddress();
+  const poolAddress = await proxy.getAddress();
+  const pool: any = await poolAt(poolAddress, admin);
   await pool.setEarnControls(await controls.getAddress());
   await pool.setDeploymentAccount(lending.address);
-  await pool.setHolderCapBps(10_000);
   await pool.setEnforcementDestination(destination.address);
   for (const s of [v1, v2]) await pool.grantRole(await pool.VALUATION_ROLE(), s.address);
   for (const s of [d1, d2]) await pool.grantRole(await pool.DEPLOYER_ROLE(), s.address);
   for (const s of [s1, s2]) await pool.grantRole(await pool.SUSPENSION_ROLE(), s.address);
   await pool.grantRole(await pool.CCO_ROLE(), cco.address);
   await pool.grantRole(await pool.ENFORCER_ROLE(), enforcer.address);
+  await postTierCap(pool, v1, v2);
 
   for (const who of [alice, bob, carol, lending, outsider, alice2]) {
     await usdc.mint(who.address, U(1_000_000));
@@ -104,7 +125,11 @@ export async function deployYieldPool(opts: { usdc?: any } = {}) {
     return two(v1, v2, "postLossCharge", value, evidence);
   }
 
-  /** An allowance giving exactly `bps` at the current Pool Assets (allowance ÷ Pool Assets, rounded up). */
+  /**
+   * An allowance giving about `bps` at the current Pool Assets. The Holdback Percentage is kept at
+   * full precision, so with interest accruing between blocks it is within a hair of `bps`; tests
+   * read `holdbackRate()` for exact figures.
+   */
   async function allowanceForBps(bps: bigint) {
     await increase(1);
     const assets: bigint = await pool.totalAssets();
