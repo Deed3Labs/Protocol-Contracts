@@ -216,23 +216,35 @@ delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poo
 - **Share Value.** `shareValue()` = Pool Assets ÷ outstanding Pool Shares (WAD, `1e18` = $1.00),
   where Pool Assets (`totalAssets()`) = Vault Cash + the Deployed Balance + accrued unpaid Pool
   Interest. Vault Cash (`vaultCash()`) is the pool's USDC less Holdback Amounts, cash still owed to
-  requests queued before 2f, and payments waiting to be claimed. A Pool Loss Allowance never lowers
-  it.
+  requests queued before 2f, payments waiting to be claimed and any restart leftover not yet
+  recognized. A Pool Loss Allowance never lowers it. USDC sent straight to the pool is Vault Cash
+  and raises the Share Value at once (decision 28). With no Pool Share outstanding the next
+  subscription issues at exactly $1.00, and whatever is left in the pool is set aside and
+  recognized into Vault Cash over 30 days (`leftover()`, decision 29).
 - **Subscriptions.** `subscribe(assets, receiver, attestation)`, or ERC-4626 `deposit`/`mint` with no
   attestation. At least $250 (FIXED). The shared Earn controls (`earnControls()`, the
   `IPoolEarnControls` interface) check eligibility and refuse Clear-contract payers, return the
   `exemptionCode` that `Subscribed` records, and report the Equity Cushion and Reserve Shortfall
   pauses. Subscriptions also stop during a Suspension, while a loss charge is being applied, and
-  from the Final Maturity Date. The holder cap (`holderCapBps`, 10%) counts every wallet of the
-  member. The first subscription records `initialClosing`.
+  from the Final Maturity Date. The 10% holder cap is the controls' (per household, above
+  `holderCapFloor`). The first subscription records `initialClosing`.
 - **Deployments and Returns (decision 17).** `deploy(amount, ref)`: two `DEPLOYER_ROLE` signers
   (one proposes, a different one sends), only to `deploymentAccount()`, only with no open queue
-  request, no Suspension and no pending loss charge, before Final Maturity, and only if utilization
-  afterwards is at most 90% (FIXED). Each is recorded (`Deployed`, `deploymentCount`,
-  `totalDeployed`). Pool Interest accrues per second on the Deployed Balance at the Funding Rate.
+  request, no Suspension and no pending loss charge, before Final Maturity, and only if afterwards
+  Utilization is at most 90% (FIXED) and the Deployed Balance is within the Pool Tier principal two
+  `VALUATION_ROLE` signers last posted (`postPoolTierPrincipal`, IV-02 §4.3; none before it is
+  posted). Each is recorded (`Deployed`, `deploymentCount`, `totalDeployed`).
+- **Pool Interest (IV-02 §4.6, decision 24).** It accrues per second on the Deployed Balance at the
+  Funding Rate, on a 365-day year. At each Pacific month end the interest accrued and unpaid is
+  billed (`billedInterest()`), due by 23:59:59 Pacific on the 5th weekday after; whatever is still
+  unpaid then is capitalized into the Deployed Balance and earns interest itself. Booking is lazy:
+  it happens at every change, and anyone may call `accrue()`; the views project it to now.
   `returnFunds(amount)` (anyone; `repay` is the same call, kept for the PayoutPool) pays accrued
-  interest first, then the Deployed Balance; any excess stays as cash. `borrow` reverts and
-  `borrowableToday` is zero for everyone.
+  interest first, the billed month's first, then the Deployed Balance; any excess stays as cash.
+  `borrow` reverts and `borrowableToday` is zero for everyone.
+- **Utilization** (`utilization()`) is the Deployed Balance ÷ (the Deployed Balance + Vault Cash);
+  accrued interest is not in it. `lowUtilizationSince()` is the time since which it has stayed
+  below 50%, or 0; `EarnControls` reads it for the L-01 §2.9(c) pause (IV-02 §2.6).
 - **Funding Rate.** `fundingRate()` and `fundingRateAt(u)`: R₀ + S₁·U/K up to the kink, then
   R₀ + S₁ + S₂·(U−K)/(1−K), initially 2%, 3%, 80%, 5% (IV-02 Sch. 2), with FIXED bounds.
   `proposeRateModel` (`DEFAULT_ADMIN_ROLE`) takes effect through `applyRateModel` after 48 hours, or
@@ -247,19 +259,25 @@ delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poo
   queued). Owners cancel (`cancelRequest`) at any time. `oldestRequestAge()` feeds the off-chain 30-
   and 90-day rules. A payment the token refuses is kept in `unpaidOf` for `claimUnpaid`, so it cannot
   block the queue.
-- **Loss Holdback (§6A).** `postAllowance(value, evidence)` (two `VALUATION_ROLE` signers) sets
-  `holdbackBps` = allowance ÷ Pool Assets, rounded up, and nothing else. While it is above zero,
-  every redemption pays G × (1 − `holdbackBps`) and records the rest to the Holder
+- **Loss Holdback (§6A).** `postAllowance(value, evidence)` (two `VALUATION_ROLE` signers) sets the
+  Holdback Percentage `holdbackRate()` = allowance ÷ Pool Assets (WAD; `holdbackBps()` rounds it up
+  for display), and nothing else. While it is above zero, every redemption pays G less
+  G × the percentage rounded up, and records the rest to the Holder
   (`holdbackAt`, `holdbackOf`, `totalHoldback`). A lower posting starts a release pass, and
   `releaseHoldbacks(maxCount)` (anyone) pays releases and age releases (`holdbackMaxAge`, 540 days;
   `releasableAt(id)`) only to the Holder. `postLossCharge(value, evidence)` (two signers) is applied
   first to the open holdbacks ratably (`applyHoldbacks`), then to the Deployed Balance, then to
-  accrued interest; only what exceeds both leaves the vault, to Clear Lending.
+  accrued interest; only what exceeds both leaves the vault, to Clear Lending (Exhibit A, A2).
+  `postRecovery(value, evidence)` (two signers, the same rules) adds unrestored charges back to the
+  Deployed Balance, up to `unrestoredCharges()` (IV-02 §5.4, decision 25).
 - **Suspension (§8).** `suspend(reason, evidence, resolution)` for LOSS_EVENT, LEGAL_ORDER,
   USDC_OR_NETWORK or VALUATION_PENDING only, by two different authorized individuals
   (`SUSPENSION_ROLE`, `CCO_ROLE`, `TREASURER_ROLE`), one of them the CCO or treasurer. 72 hours
   (VALUATION_PENDING 48 and not renewable); `renewSuspension` by a different signer; a Lending Board
   resolution hash beyond 240 hours; never past 30 days except a LEGAL_ORDER with an order hash.
+  Both limits count the total on the same facts, across suspensions. VALUATION_PENDING is allowed
+  once per Valuation Event, recorded by two `VALUATION_ROLE` signers (`recordValuationEvent`), and
+  the next allowance posting clears the event and ends that Suspension (decision 26).
   It stops subscriptions, redemptions, fills and Deployments; cancellations go on and interest
   accrues.
 - **Final Maturity.** `finalMaturity()` is the 20th anniversary of `initialClosing`. From then,
@@ -267,7 +285,13 @@ delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poo
   shares in queue order (decision 15).
 - **Transfers.** Only between two accounts of one Holder, or by the Successor path, as the Earn
   controls report (`transferAllowed`); every other transfer reverts (FIXED). A plain transfer into
-  the pool reverts: shares enter escrow only through the queue.
+  the pool reverts: shares enter escrow only through the queue. Redemption proceeds go only to the
+  account that held the shares (IV-02 §6.5).
+- **Legend.** `legend()` and `legendHash()` carry IV-02 §8.4's legend. It is written once at setup
+  (`setLegend`, `DEFAULT_ADMIN_ROLE`); a later change waits 7 days (`applyLegend`, decision 27).
+- **Modules.** Pool Interest, Suspension, the rate model, recoveries, the legend and the restart
+  leftover run in `YieldPoolLedger`. The functions added in the IV-02 conformance pass are served
+  by the pool's fallback, so clients need the joined ABI (`deploy/poolModules.ts`, `poolAt`).
 - **Shares as collateral.** Pledged shares (`encumberedOf`, from the source set by
   `setEncumbranceSource`) cannot be transferred, redeemed or queued by the holder
   (`LendingPoolEncumbered`); if the source can't be read, a holder last seen pledged is treated as
@@ -353,20 +377,19 @@ refund shortfall. The arithmetic and worked examples are in
 | `LendingPool.subscribe`, `deposit`, `mint` | Eligible accounts, as the Earn controls report |
 | `LendingPool.withdraw`, `redeem`, `redeemOrQueue`, `requestWithdrawal` | The share owner (or an approved spender for `withdraw`/`redeem`). Only free shares |
 | `LendingPool.cancelRequest` | The request's owner; an enforcement request only `ENFORCER_ROLE` |
-| `LendingPool.fillQueue`, `returnFunds`, `repay`, `releaseHoldbacks`, `applyHoldbacks`, `requestRunOff`, `applyRateModel`, `syncEncumbrance` | Anyone |
+| `LendingPool.fillQueue`, `returnFunds`, `repay`, `releaseHoldbacks`, `applyHoldbacks`, `requestRunOff`, `applyRateModel`, `syncEncumbrance`, `accrue`, `applyLegend` | Anyone |
 | `LendingPool.claimWithdrawal` (pre-2f requests), `claimUnpaid` | The request's owner; the payee |
 | `LendingPool.deploy` | Two different `DEPLOYER_ROLE` signers; pays only `deploymentAccount` |
-| `LendingPool.postAllowance`, `postLossCharge` | Two different `VALUATION_ROLE` signers |
+| `LendingPool.postAllowance`, `postLossCharge`, `postRecovery`, `recordValuationEvent`, `postPoolTierPrincipal` | Two different `VALUATION_ROLE` signers |
 | `LendingPool.suspend` | Two different authorized individuals, one the CCO or treasurer |
 | `LendingPool.renewSuspension`, `liftSuspension` | An authorized individual (renewal: not the last signer) |
 | `LendingPool.enforcementRedeem` | `ENFORCER_ROLE`; pays only `enforcementDestination` |
 | `LendingPool.borrow` | Nobody (reverts) |
-| `LendingPool.setEncumbranceSource` | `OPERATOR_ROLE` |
 | `LendingPool.seizeShares` | `LIQUIDATOR_ROLE` (removed in stage 2) |
-| `LendingPool.initializeYieldPool`, `setEarnControls`, `setDeploymentAccount`, `setEnforcementDestination`, `setHolderCapBps`, `setHoldbackMaxAge`, `proposeRateModel`, role grants and upgrades (UUPS) | `DEFAULT_ADMIN_ROLE` (the Earn timelock) |
+| `LendingPool.initializeYieldPool`, `setEarnControls`, `setDeploymentAccount`, `setEnforcementDestination`, `setEncumbranceSource`, `setHoldbackMaxAge`, `proposeRateModel`, `setLegend`, role grants and upgrades (UUPS) | `DEFAULT_ADMIN_ROLE` (the Earn timelock) |
 
 Tests: `test/peripherals/PayoutPool.spec.ts`, `test/peripherals/LendingPool.spec.ts`,
-`test/earn/YieldPool.spec.ts`, `test/earn/YieldPoolUpgrade.spec.ts`,
+`test/earn/YieldPool.spec.ts`, `test/earn/YieldPoolConformance.spec.ts`, `test/earn/YieldPoolUpgrade.spec.ts`,
 `test/core/PayoutLifecycle.spec.ts`, `test/core/RepaymentRouting.spec.ts`,
 `test/core/SharedBalance.spec.ts`. To rehearse a redemption against a fork of a live deployment,
 use `scripts/drill_redemption.ts`.
