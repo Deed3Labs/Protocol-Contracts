@@ -17,7 +17,7 @@ Source: [`contracts/peripherals/LendingPool.sol`](../../../contracts/peripherals
 | `borrow(uint256 amount, address to)` | Anyone |  |
 | `claimWithdrawal(uint256 requestId)` | Anyone |  |
 | `decreaseAllowance(address spender, uint256 subtractedValue)` | The token holder |  |
-| `deposit(uint256 assets, address receiver)` | Anyone; acts on the caller's own account |  |
+| `deposit(uint256 assets, address receiver)` | Anyone |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `increaseAllowance(address spender, uint256 addedValue)` | The token holder |  |
 | `initialize(address admin, address reserveToken, string name_, string symbol_)` | Once, when the proxy is initialised |  |
@@ -25,7 +25,7 @@ Source: [`contracts/peripherals/LendingPool.sol`](../../../contracts/peripherals
 | `redeem(uint256 shares, address receiver, address owner)` | Checked inside the function |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `repay(uint256 amount)` | Anyone |  |
-| `requestWithdrawal(uint256 shares, address receiver)` | Anyone; acts on the caller's own account |  |
+| `requestWithdrawal(uint256 shares, address receiver)` | Checked inside the function |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `seizeShares(address holder, address to, uint256 shares)` | Anyone |  |
 | `setEncumbranceSource(address source, bytes32 kind)` | Anyone |  |
