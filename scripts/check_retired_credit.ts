@@ -230,7 +230,11 @@ export async function checkRetiredCredit(options: CheckOptions = {}) {
       if (refused === null) add("FAIL", r.name, "could not read EarnControls.refused");
       else if (refused) add("PASS", r.name, "refused by EarnControls");
       else if (required) add("FAIL", r.name, "not refused by EarnControls: run deploy 26 again (it refuses every REFUSED_RECORDS entry)");
-      else if (holding.has(r.address)) add("FAIL", r.name, "holds funds but is not refused by EarnControls (decision 46(c) leaves out only contracts that hold none)");
+      else if (holding.has(r.address)) {
+        // Decision 50: on a testnet the balance is test money and does not block the gate.
+        const note = leftover === "WARN" ? "; test money, decision 50" : "";
+        add(leftover, r.name, `holds funds but is not refused by EarnControls (decision 46(c) leaves out only contracts that hold none)${note}`);
+      }
       else add("INFO", r.name, "not on the refused list: it holds no funds (decision 46(c))");
     }
   }
