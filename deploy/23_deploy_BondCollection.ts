@@ -1,4 +1,4 @@
-import { saveDeployment, getDeployment } from "./helpers";
+import { saveDeployment, getDeployment, requireMainnetConfirmation } from "./helpers";
 import { bondAbi } from "./bondModules";
 import { earnControlsAt } from "./earnModules";
 
@@ -17,12 +17,17 @@ import { earnControlsAt } from "./earnModules";
  * Registers BOND as its own collateral kind at 95%: an internal claim on the co-op with known
  * redemption terms, so the cut is for the terms rather than for a market price.
  *
- *   npx hardhat run deploy/23_deploy_BondCollection.ts --network base-sepolia
+ * EarnControls: BOND_ROLE for the collection, with the Lending Board resolution (EARN_RESOLUTION).
+ * The people's Earn roles (ROLL_NOTICE_ROLE, WIND_DOWN_ROLE, FUNDING_ROLE, EXCLUDED_HOLDER_ROLE and
+ * the rest) are granted by deploy 27 from deploy/config/earn-roles.json.
+ *
+ *   FIRST_BOND_ID=… EARN_RESOLUTION=0x… npx hardhat run deploy/23_deploy_BondCollection.ts --network base-sepolia
  */
 async function main() {
   const hre = require("hardhat");
   const { ethers } = hre;
   const network = (await ethers.provider.getNetwork()).name;
+  requireMainnetConfirmation(network, "deploy/23_deploy_BondCollection.ts");
   const log = (m: string) => console.log(m);
 
   const factoryRecord = getDeployment(network, "BurnerBondFactory");
@@ -157,8 +162,8 @@ async function main() {
 
   // The Earn controls: the collection checks purchases and records exits (BOND_ROLE); the vault is
   // the reserve status, the reserve hook and the Funding Limit's bond book; the Ladder (decision 41:
-  // terms of 12 to 36 months; IV-01 Schedule 2's illustration until the Lending Board sets it); and
-  // the stage 2 roles, each granted with the Lending Board resolution.
+  // terms of 12 to 36 months; IV-01 Schedule 2's illustration until the Lending Board sets it). The
+  // people's Earn roles are deploy 27's (deploy/config/earn-roles.json).
   if (controlsRecord && bondVault) {
     const controls = await earnControlsAt(controlsRecord.address);
     const grant = async (role: string, who: string, label: string) => {
@@ -171,11 +176,6 @@ async function main() {
       log(`  EarnControls ${label} -> ${who}`);
     };
     await grant(await controls.BOND_ROLE(), collectionAddress, "BOND_ROLE");
-    const list = (name: string) => (process.env[name] ?? "").split(",").map((x) => x.trim()).filter(Boolean);
-    for (const who of list("ROLL_NOTICE_SIGNERS")) await grant(ethers.id("ROLL_NOTICE_ROLE"), who, "ROLL_NOTICE_ROLE");
-    for (const who of list("WIND_DOWN_SIGNERS")) await grant(ethers.id("WIND_DOWN_ROLE"), who, "WIND_DOWN_ROLE");
-    for (const who of list("FUNDING_SIGNERS")) await grant(await controls.FUNDING_ROLE(), who, "FUNDING_ROLE");
-    for (const who of list("EXCLUDED_HOLDERS")) await grant(ethers.id("EXCLUDED_HOLDER_ROLE"), who, "EXCLUDED_HOLDER_ROLE");
     if ((await controls.reserveStatus()) !== bondVault.address) {
       await (await controls.setSources(await controls.membership(), await controls.yieldPool(), bondVault.address,
         agentRecord?.address ?? ethers.ZeroAddress, bondVault.address)).wait();
@@ -225,9 +225,11 @@ async function main() {
   log("\nBond collection ready. The asset-backed tier now has something behind it.");
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+if (require.main === module) {
+  main()
+    .then(() => process.exit(0))
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+}

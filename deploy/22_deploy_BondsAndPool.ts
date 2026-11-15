@@ -1,6 +1,8 @@
-import { saveDeployment, getDeployment } from "./helpers";
+import { saveDeployment, getDeployment, requireMainnetConfirmation } from "./helpers";
 import { deployBondFactory } from "./bondModules";
-import { poolAt, poolProxyOptions } from "./poolModules";
+import { POOL_SHARE_LEGEND, poolAt, poolProxyOptions } from "./poolModules";
+import { printProposals, switchOffPayoutLegs, wireLiquidatorGrants } from "./creditWiring";
+import { RETIRED_SUFFIX } from "./retire_credit_stack";
 
 /**
  * Phase E: the contracts that put something real behind the asset-backed tier, and pay merchants.
@@ -22,6 +24,14 @@ import { poolAt, poolProxyOptions } from "./poolModules";
  *
  * Idempotent, like 20. Anything already recorded is reused.
  *
+ * Decision 47: on Base Sepolia MerchantRegistry, PayoutPool and the Liquidator are deployed fresh with
+ * the rest of the credit stack (`deploy/retire_credit_stack.ts` moves their old records aside as
+ * `*PreAudit`); LendingPool and BondVault are reused and re-pointed. Run it after the Yield Pool
+ * upgrade (`scripts/upgrade_yield_pool.ts`): it writes the pool's legend. On a fresh chain it also
+ * makes the Liquidator an AccessManager operator and grants it CLRUSD's LIQUIDATOR_ROLE, and names
+ * the CollateralRegistry as CLRUSD's encumbrance source (`deploy/creditWiring.ts`); after the
+ * handovers it prints those as timelock proposals instead.
+ *
  *   npx hardhat run deploy/22_deploy_BondsAndPool.ts --network base-sepolia
  */
 async function main() {
@@ -29,6 +39,7 @@ async function main() {
   const { ethers, upgrades } = hre;
   const [deployer] = await ethers.getSigners();
   const network = (await ethers.provider.getNetwork()).name;
+  requireMainnetConfirmation(network, "deploy/22_deploy_BondsAndPool.ts");
   const log = (m: string) => console.log(m);
 
   const need = (name: string) => {
@@ -99,6 +110,11 @@ async function main() {
     "clrLP",
   ], "LendingPool", await poolProxyOptions());
   const lendingPoolAddress = await lendingPool.getAddress();
+  // A recorded pool from before Phase 2f has no legend or ledger module: it must become the Yield
+  // Pool first (scripts/upgrade_yield_pool.ts), or the wiring below reverts half way.
+  if (!(await (await poolAt(lendingPoolAddress)).legend().then(() => true, () => false))) {
+    throw new Error(`LendingPool ${lendingPoolAddress} is not the Yield Pool yet: run scripts/upgrade_yield_pool.ts first.`);
+  }
 
   // ---- bonds ----
   //
@@ -150,6 +166,18 @@ async function main() {
   const liquidatorAddress = await liquidator.getAddress();
 
   log("\nWiring:");
+
+  // The Liquidator's own grants on a fresh chain (DEPLOY-RUNBOOK §5.2 item 12), and CLRUSD's
+  // encumbrance source, which a fresh CollateralRegistry has to be named as again.
+  const accessRecord = getDeployment(network, "AccessManager");
+  if (!accessRecord) throw new Error(`AccessManager is not deployed on ${network}. Run deploy/16 first.`);
+  const proposals = await wireLiquidatorGrants({
+    access: await ethers.getContractAt("AccessManager", accessRecord.address),
+    clrusd: await ethers.getContractAt("ClearUSDUpgradeable", clrusd),
+    liquidator: liquidatorAddress,
+    collateralRegistry,
+    retiredLiquidators: [getDeployment(network, `Liquidator${RETIRED_SUFFIX}`)?.address].filter(Boolean) as string[],
+  }, deployer, log);
 
   const registry = await ethers.getContractAt("CollateralRegistry", collateralRegistry);
   const operatorRole = await registry.OPERATOR_ROLE();
@@ -205,16 +233,15 @@ async function main() {
     log(`  LendingPool deployment account -> ${lendingAccount}`);
   }
 
-  // C1, decision 3 (Phase 2f): the BondVault lends nothing to the PayoutPool any more. Once the
-  // pool owes the vault nothing, its vault leg is switched off by configuration; its code is unchanged.
-  if ((await payoutPool.bondVault()) !== ethers.ZeroAddress) {
-    if ((await payoutPool.borrowedFromVault()) === 0n) {
-      await (await payoutPool.setBondVault(ethers.ZeroAddress)).wait();
-      log("  PayoutPool bond-vault leg -> off (C1)");
-    } else {
-      log("  ! PayoutPool still owes the BondVault: switch its vault leg off once repaid (C1)");
-    }
+  // C1, decision 3, and decision 17 (Phase 2f): the BondVault and the Yield Pool lend nothing to a
+  // PayoutPool any more. Once a pool owes a lender nothing, that leg is switched off by
+  // configuration; its code is unchanged. Covers the PayoutPool retired with the old credit stack too.
+  const payoutPools = [{ name: "PayoutPool", contract: payoutPool }];
+  const retiredPayout = getDeployment(network, `PayoutPool${RETIRED_SUFFIX}`);
+  if (retiredPayout) {
+    payoutPools.push({ name: `PayoutPool${RETIRED_SUFFIX}`, contract: new ethers.Contract(retiredPayout.address, retiredPayout.abi, deployer) }); // its own ABI: the pre-audit pool has setLenders, not setYieldPool
   }
+  proposals.push(...(await switchOffPayoutLegs(payoutPools, deployer, log)).proposals);
 
   // IV-02 §8.4, decision 27: the legend the Register carries, written once here; any later change
   // waits 7 days on chain after the Earn timelock proposes it. The pool's Deployments stay closed
@@ -223,6 +250,11 @@ async function main() {
   if ((await pool.legend()) === "") {
     await (await pool.setLegend(POOL_SHARE_LEGEND)).wait();
     log("  LendingPool legend set (IV-02 §8.4)");
+  }
+
+  if (proposals.length > 0) {
+    log("\nThe deployer no longer holds these powers. Propose:");
+    printProposals(proposals, log);
   }
 
   log("\nBonds and pool deployed.");
@@ -243,14 +275,12 @@ async function isPre2fFactory(ethers: any, factoryAddress: string, token: string
   return probe.controls().then(() => false, () => true);
 }
 
-/** IV-02 §8.4's legend, as the Register and the vault's metadata carry it. */
-const POOL_SHARE_LEGEND =
-  "These Pool Shares have not been registered under the Securities Act of 1933 or any state securities law. " +
-  "They may not be transferred except to Clear Lending Co. or by operation of law, as IV-02 permits.";
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+if (require.main === module) {
+  main()
+    .then(() => process.exit(0))
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+}

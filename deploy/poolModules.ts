@@ -49,3 +49,9 @@ export async function poolAt(address: string, signer?: any) {
   const { ethers } = require("hardhat");
   return new ethers.Contract(address, await poolAbi(), signer ?? (await ethers.getSigners())[0]) as any;
 }
+
+/** IV-02 §8.4's legend, as the Register and the vault's metadata carry it (decision 27). Written once
+ * by deploy 22 on a fresh pool, or by `scripts/upgrade_yield_pool.ts` after the in-place upgrade. */
+export const POOL_SHARE_LEGEND =
+  "These Pool Shares have not been registered under the Securities Act of 1933 or any state securities law. " +
+  "They may not be transferred except to Clear Lending Co. or by operation of law, as IV-02 permits.";

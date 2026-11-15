@@ -191,6 +191,30 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     log("  RevolvingIssuer deposit source -> ESADepositVault");
   }
 
+  // ---- The card settler and the mandate source (CREDIT_SETTINGS_ROLE settings) ----
+  // Decision 47: a fresh RevolvingIssuer has no card settler and a fresh TermIssuer no mandate
+  // source; the pre-audit upgrade scripts that set them on the old Base Sepolia issuers are retired.
+  const cardSettler = (process.env.CARD_SETTLER_ADDRESS ?? "").trim();
+  if (ethers.isAddress(cardSettler)) {
+    if (!(await revolving.isCardSettler(cardSettler))) {
+      await (await revolving.setCardSettler(cardSettler, true)).wait();
+      log(`  RevolvingIssuer card settler -> ${cardSettler}`);
+    }
+    // The claim a settled purchase mints belongs to the float that paid the merchant: the issuer's
+    // carry treasury unless CARD_SETTLEMENT_ACCOUNT names another.
+    const settlementAccount = (process.env.CARD_SETTLEMENT_ACCOUNT ?? "").trim() || (await revolving.carryTreasury());
+    if ((await revolving.cardSettlementAccount()).toLowerCase() !== settlementAccount.toLowerCase()) {
+      await (await revolving.setCardSettlementAccount(settlementAccount)).wait();
+      log(`  RevolvingIssuer card settlement account -> ${settlementAccount}`);
+    }
+  } else {
+    log("! CARD_SETTLER_ADDRESS unset: RevolvingIssuer has no card settler, so card spend cannot settle on chain.");
+  }
+  if ((await term.mandateSource()).toLowerCase() !== (await revolving.getAddress()).toLowerCase()) {
+    await (await term.setMandateSource(await revolving.getAddress())).wait();
+    log("  TermIssuer mandate source -> RevolvingIssuer");
+  }
+
   // ---- Addendum 2 (Phase 2e): dues, the per-member card cap, federal-benefit exclusions ----
   const due = await revolving.dueTermsOf();
   const wantDue = {

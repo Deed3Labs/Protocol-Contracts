@@ -1,9 +1,9 @@
 import { ethers } from "ethers";
-import { saveDeployment, getDeployment } from "../helpers";
+import { saveDeployment, getDeployment, requireMainnetConfirmation } from "../helpers";
 
 async function main() {
   const hre = require("hardhat");
-  
+
   // Get the contract name and address from command line arguments
   const contractName = process.env.CONTRACT_NAME;
   const proxyAddress = process.env.PROXY_ADDRESS;
@@ -13,6 +13,17 @@ async function main() {
       "Please provide CONTRACT_NAME and PROXY_ADDRESS environment variables"
     );
   }
+  // A bare upgrade of the vault stops every deposit and redemption until its accepted token is set
+  // (the slot is new and starts at zero). Its upgrade is one upgradeToAndCall, built only by
+  // scripts/migrate_vault_clrusd.ts. LendingPool needs its modules and its one-time initializer:
+  // scripts/upgrade_yield_pool.ts.
+  if (contractName === "ESADepositVault") {
+    throw new Error("Not for ESADepositVault: use scripts/upgrade_vault.ts, then scripts/migrate_vault_clrusd.ts.");
+  }
+  if (contractName === "LendingPool") {
+    throw new Error("Not for LendingPool: use scripts/upgrade_yield_pool.ts.");
+  }
+  requireMainnetConfirmation((await hre.ethers.provider.getNetwork()).name, `deploy/upgrade/upgradeContract.ts (${contractName})`);
 
   console.log(`Preparing to upgrade ${contractName}...`);
   console.log(`Proxy address: ${proxyAddress}`);

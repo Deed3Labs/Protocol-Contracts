@@ -124,6 +124,28 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
     - (c) The refused list leaves out individual SavingsIntentEscrow clones, the treasury Safe and contracts that hold no funds.
     - (d) **Changed:** every surplus the Liquidator pays after enforcement or settlement (`applyPledgePayment`, `applyPoolProceeds`, `applyMaturityInstruction`, and the distribution round) goes to the Holder's payee: EarnControls' registered payment Successor once its 7-day wait has passed, else the Holder. This matches every other bond payment. Before, those three paths paid the Holder's own account.
 
+## The Base Sepolia credit stack (owner, Nov 15, 2026)
+
+47. **The Base Sepolia credit stack is deployed fresh, not upgraded in place.** Old lines and plans have zero accrual snapshots, so the first touch after an upgrade would charge them decades of carry (`PHASE-1-REPORT.md` §5 item 8; `REREVIEW.md` §6 and BLIND-REVIEW I-1). A fresh deployment also makes Base Sepolia a true rehearsal of mainnet, where credit is fresh anyway. This settles `DEPLOY-RUNBOOK.md` §5.2 item 11.
+    - **Deployed fresh (the credit stack).** The old records are kept as `<Name>PreAudit` (`deploy/retire_credit_stack.ts`); the contracts stay on chain, unchanged, and EarnControls refuses them as Earn payers.
+      - The credit core: `AccessManager` (deploy 16, then linked to the MembershipRegistry by deploy 18), `ClearCredit` (the ledger), `NetworkRegistry`, `CollateralRegistry` and `LimitCalculator` (deploy 20).
+      - The issuers: `RevolvingIssuer` with its four modules (`RevolvingIssuerExtension`, `RevolvingIssuerCycles`, `RevolvingIssuerTerms`, `RevolvingIssuerWorkouts`) and `TermIssuer` with its two (`TermIssuerExtension`, `TermIssuerOrigination`) (deploy 20); `OffersIssuer` (deploy 24).
+      - Their periphery: `MerchantRegistry`, `PayoutPool`, and the `Liquidator` with `LiquidatorEnforcement`, which its constructor creates (deploy 22).
+    - **Fresh because they point at the stack.** Each is new in this deployment anyway; none may be built against the old stack.
+      - `RateSchedule` (named once on both issuers) and `PauseClock` (named once on RevolvingIssuer and the Liquidator): deploy 25.
+      - `PoolShareEnforcer`, which holds the pool, the Liquidator and the registry immutably: deploy 25.
+      - The new `AssurancePool` (deploy 08): its money paths are listed on NetworkRegistry.
+      - The Phase 2f bond factory, collection and `BondValuer` (deploys 22 and 23): the collection names the Liquidator and the registry.
+      - The `CollateralAgent`, whose pledge module is the Liquidator, `HolderDirections` and EarnControls (deploys 26 and 23).
+      - The credit timelock, which no network has yet.
+    - **Kept, upgraded in place, and re-pointed where their setters allow.** No contract change.
+      - `LendingPool` (the Yield Pool, decision 16): its encumbrance source moves to the new CollateralRegistry (deploy 22); `BORROWER_ROLE` is revoked from the old PayoutPool and the card settler, and the old Liquidator's `LIQUIDATOR_ROLE` (deploy 27).
+      - `BondVault`: its encumbrance source moves to the new CollateralRegistry (deploy 23, before the Agent is named). Its `payoutPool` backstop still names the old PayoutPool, which may still owe it; it can be cleared only once that loan is repaid, and only without the Agent's co-signature before deploy 23 names the Agent.
+      - `ClearUSDUpgradeable`: three wiring changes, all its `DEFAULT_ADMIN_ROLE`'s (the deployer now; after the vault handover, Clear Financial Co. Safe proposals with 7 days): `LIQUIDATOR_ROLE` to the new Liquidator and off the old one, the encumbrance source to the new CollateralRegistry (deploy 22), and the membership source to the new AccessManager (deploy 25).
+      - `ESADepositVault`: its state source is the new NetworkRegistry (deploy 25). The slot is new with the upgrade, so this is the first setting either way.
+      - `ClaimEscrow`: nothing changes. No credit contract points at it, and it points at none.
+    - **Not part of the decision:** `MembershipRegistry`, `TokenRegistry`, `CLRUSDTokenPool`, `Create2Deployer` and `ESADepositVaultLegacy` are unchanged; `SavingsIntentFactory`, the Deed track and the bonds are replaced for their own reasons.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
