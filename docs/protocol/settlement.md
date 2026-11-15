@@ -300,7 +300,15 @@ delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poo
 - **Transfers.** Only between two accounts of one Holder, or by the Successor path, as the Earn
   controls report (`transferAllowed`); every other transfer reverts (FIXED). A plain transfer into
   the pool reverts: shares enter escrow only through the queue. Redemption proceeds go only to the
-  account that held the shares (IV-02 §6.5).
+  account that held the shares (IV-02 §6.5), except enforcement and the Successor path.
+- **Successor redemption (§8.3, decision 35).** Where the Holder's account cannot be accessed,
+  two `SUCCESSOR_ROLE` signers register a Successor for the Holder's payments in EarnControls
+  (`registerPaymentSuccessor`, in effect after 7 days; `cancelPaymentSuccessor` from the Holder's
+  own account). Once `payeeOf(holder)` names it, that Successor, and nobody else, may call
+  `successorRedeem(holder, shares)`: the Holder's free shares (not pledged, held or queued) join
+  the ordinary queue as the Holder's request, fill in order at Share Value, and pay only the
+  Successor; any holdback is recorded to, and released to, the Successor. The Holder's account
+  can still cancel the request with `cancelRequest`.
 - **Legend.** `legend()` and `legendHash()` carry IV-02 §8.4's legend. It is written once at setup
   (`setLegend`, `DEFAULT_ADMIN_ROLE`); a later change waits 7 days (`applyLegend`, decision 27).
 - **Modules.** Pool Interest, Suspension, legal holds, the rate model, recoveries, the legend and the restart
@@ -400,6 +408,7 @@ refund shortfall. The arithmetic and worked examples are in
 | `LendingPool.suspend`, `placeLegalHold`, `releaseLegalHold` | Two different authorized individuals, one the CCO or treasurer |
 | `LendingPool.renewSuspension`, `liftSuspension` | An authorized individual (renewal: not the last signer) |
 | `LendingPool.enforcementRedeem` | `ENFORCER_ROLE`; pays only `enforcementDestination` |
+| `LendingPool.successorRedeem` | Only the Successor `EarnControls.payeeOf(holder)` names; pays only that Successor |
 | `LendingPool.borrow` | Nobody (reverts) |
 | `LendingPool.initializeYieldPool`, `setEarnControls`, `setDeploymentAccount`, `setEnforcementDestination`, `setEncumbranceSource`, `setHoldbackMaxAge`, `proposeRateModel`, `setLegend`, role grants and upgrades (UUPS) | `DEFAULT_ADMIN_ROLE` (the Earn timelock) |
 

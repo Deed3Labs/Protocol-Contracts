@@ -4,6 +4,12 @@ pragma solidity ^0.8.29;
 import "./LendingPoolBase.sol";
 import "../libraries/PacificCalendar.sol";
 
+/// @dev The one EarnControls view the Successor path reads: where a payment to a Holder goes, a
+/// Successor registered for payment once its 7 days have run, otherwise the Holder (IV-01 §6.3).
+interface IPoolPayee {
+    function payeeOf(address holder) external view returns (address);
+}
+
 /// @title YieldPoolLedger
 /// @notice The Yield Pool's second delegatecall module: Pool Interest with its monthly billing and
 /// capitalization (IV-02 §4.6, decision 24), the restart leftover (decision 29), the low-Utilization
@@ -343,6 +349,27 @@ contract YieldPoolLedger is LendingPoolBase {
         delete _pendingLegend;
         _legendEffectiveAt = 0;
         emit LegendSet(keccak256(bytes(text)), text);
+    }
+
+    /* ========== SUCCESSOR REDEMPTION (IV-02 §8.3; decision 35) ========== */
+
+    /// @notice queues `shares` of `holder`'s Pool Shares for redemption through the ordinary
+    /// queue, paid only to the Successor registered for the Holder's payments in EarnControls
+    /// (`payeeOf`): two `SUCCESSOR_ROLE` signers with an evidence hash, in effect after 7 days, and
+    /// cancellable from the Holder's own account until then and after. Only that Successor may
+    /// call it, and only for shares free of any pledge, legal hold or queue request.
+    /// @dev The request is the Holder's (`owner`), so the Holder's account can still cancel it with
+    /// `cancelRequest`; it fills in order at Share Value like any other, pays `receiver` (the
+    /// Successor), and any holdback is recorded to the Successor. No Clear key can start it.
+    function successorRedeem(address holder, uint256 shares) external returns (uint256 requestId) {
+        IPoolEarnControls controls = _earnControls;
+        if (address(controls) == address(0)) revert LendingPoolNoControls();
+        address successor = IPoolPayee(address(controls)).payeeOf(holder);
+        if (successor == holder || msg.sender != successor) revert LendingPoolNotAuthorized(msg.sender);
+        uint256 free = _freeSharesOf(holder);
+        if (shares > free) revert LendingPoolEncumbered(holder, free, shares);
+        requestId = _enqueue(holder, successor, shares, false);
+        emit SuccessorRedemptionRequested(holder, successor, requestId, shares);
     }
 
     /* ========== SUSPENSION (Article 7) ========== */

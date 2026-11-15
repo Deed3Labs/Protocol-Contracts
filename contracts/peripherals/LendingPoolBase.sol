@@ -423,6 +423,7 @@ abstract contract LendingPoolBase is ERC4626Upgradeable, AccessControlUpgradeabl
     event LegendSet(bytes32 indexed legendHash, string legend);
     event LegalHoldPlaced(uint256 indexed holdId, address indexed holder, uint256 shares, bytes32 orderHash, uint256 expiresAt, address proposer, address approver);
     event LegalHoldReleased(uint256 indexed holdId, address indexed holder, address proposer, address approver);
+    event SuccessorRedemptionRequested(address indexed holder, address indexed successor, uint256 requestId, uint256 shares);
 
     /* ========== ACCOUNTING ========== */
 

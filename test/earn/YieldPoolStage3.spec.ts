@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { DAY, U, deployYieldPool, increase, latest } from "../helpers/yieldPool";
+import { withRealControls } from "../helpers/earnControls";
 
 /*
  * Phase 2f stage 3, the Yield Pool's last IV-02 powers, built on the enforcement branch's pool:
@@ -150,6 +151,98 @@ describe("Yield Pool, Phase 2f stage 3 (decisions 34 and 35)", function () {
       await increase(1000);
       await hold(f.alice.address, U(10), 0n, ethers.id("order 9"));
       expect(await pool.legalHoldsOf(f.alice.address)).to.deep.equal([8n]);
+    });
+  });
+
+  /* ------------------------------------------------------------ decision 35 */
+  describe("§8.3 Successor redemption (decision 35)", function () {
+    let c: Awaited<ReturnType<typeof withRealControls>>;
+    const PROOF = ethers.id("W.S. 34.1-8-402 proof, identity verification, W-9 and indemnity");
+
+    beforeEach(async function () {
+      await pool.connect(f.alice).deposit(U(9_400), f.alice.address); // alice holds 10,400
+      c = await withRealControls(f);
+    });
+
+    async function register(holder = f.alice.address, successor = f.carol.address) {
+      return c.two(c.succ1, c.succ2, "registerPaymentSuccessor", holder, successor, PROOF);
+    }
+
+    it("only the registered Successor, only once the 7 days have run, and never a Clear key", async function () {
+      await expect(pool.connect(f.carol).successorRedeem(f.alice.address, U(1_000)))
+        .to.be.revertedWithCustomError(pool, "LendingPoolNotAuthorized"); // nobody registered
+      await register();
+      await expect(pool.connect(f.carol).successorRedeem(f.alice.address, U(1_000)))
+        .to.be.revertedWithCustomError(pool, "LendingPoolNotAuthorized"); // within the 7 days
+      await increase(7 * DAY);
+      for (const who of [f.admin, c.succ1, c.succ2, f.cco, f.s1, f.v1, f.d1, f.enforcer, f.bob]) {
+        await expect(pool.connect(who).successorRedeem(f.alice.address, U(1_000)))
+          .to.be.revertedWithCustomError(pool, "LendingPoolNotAuthorized");
+      }
+      await expect(pool.connect(f.carol).successorRedeem(f.alice.address, U(1_000)))
+        .to.emit(pool, "SuccessorRedemptionRequested").withArgs(f.alice.address, f.carol.address, 0n, U(1_000));
+    });
+
+    it("redeems through the ordinary queue, in order, paying only the Successor: $10,244 paid, $156 held for the Successor", async function () {
+      await register();
+      await increase(7 * DAY);
+      // Pool Assets $11,400; a $171 allowance is a 1.5% holdback.
+      await f.allowance(U(171));
+      expect(await pool.holdbackRate()).to.equal(ethers.parseUnits("0.015", 18));
+      await pool.connect(f.bob).requestWithdrawal(U(1_000), f.bob.address); // earlier in line
+      await pool.connect(f.carol).successorRedeem(f.alice.address, U(10_400));
+      const [owner, receiver, shares, , enforcement] = await pool.queueRequest(1);
+      expect([owner, receiver, shares, enforcement]).to.deep.equal([f.alice.address, f.carol.address, U(10_400), false]);
+      expect(await pool.balanceOf(f.alice.address)).to.equal(0n);
+
+      const alice0: bigint = await f.usdc.balanceOf(f.alice.address);
+      const bob0: bigint = await f.usdc.balanceOf(f.bob.address);
+      const carol0: bigint = await f.usdc.balanceOf(f.carol.address);
+      await expect(pool.connect(f.outsider).fillQueue(1)).to.emit(pool, "QueueFilled").withArgs(0n, U(1_000), U(1_000), U(985), 0n);
+      expect(await f.usdc.balanceOf(f.carol.address)).to.equal(carol0); // bob first
+      await expect(pool.connect(f.outsider).fillQueue(1))
+        .to.emit(pool, "HoldbackRecorded").withArgs(f.carol.address, 1n, U(10_400), U(156));
+      expect((await f.usdc.balanceOf(f.carol.address)) - carol0).to.equal(U(10_244));
+      expect(await f.usdc.balanceOf(f.alice.address)).to.equal(alice0);
+      expect((await f.usdc.balanceOf(f.bob.address)) - bob0).to.equal(U(985));
+      // A later release of the Successor's holdback goes to the Successor.
+      await f.allowance(0n);
+      const carol1: bigint = await f.usdc.balanceOf(f.carol.address);
+      await pool.connect(f.outsider).releaseHoldbacks(10);
+      expect((await f.usdc.balanceOf(f.carol.address)) - carol1).to.equal(U(156));
+      expect(await f.usdc.balanceOf(f.alice.address)).to.equal(alice0);
+    });
+
+    it("the Holder's own account cancels a queued Successor request, or the registration", async function () {
+      await register();
+      await increase(7 * DAY);
+      await pool.connect(f.carol).successorRedeem(f.alice.address, U(4_000));
+      // The Holder can still sign: she cancels the request, and her shares come back.
+      await pool.connect(f.alice).cancelRequest(0, U(4_000));
+      expect(await pool.balanceOf(f.alice.address)).to.equal(U(10_400));
+      // ... and the registration, after which the Successor path is closed.
+      await c.controls.connect(f.alice).cancelPaymentSuccessor();
+      await expect(pool.connect(f.carol).successorRedeem(f.alice.address, U(1)))
+        .to.be.revertedWithCustomError(pool, "LendingPoolNotAuthorized");
+      // A Successor cannot cancel the Holder's request.
+      await register();
+      await increase(7 * DAY);
+      await pool.connect(f.carol).successorRedeem(f.alice.address, U(1_000));
+      await expect(pool.connect(f.carol).cancelRequest(1, U(1_000)))
+        .to.be.revertedWithCustomError(pool, "LendingPoolNotRequestOwner");
+    });
+
+    it("reaches only free shares: never pledged or legally held ones", async function () {
+      await register();
+      await increase(7 * DAY);
+      const signals: any = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
+      await pool.setEncumbranceSource(await signals.getAddress(), ethers.encodeBytes32String("POOL_SHARE"));
+      await signals.setLock(f.alice.address, U(3_000));
+      await hold(f.alice.address, U(2_000));
+      await expect(pool.connect(f.carol).successorRedeem(f.alice.address, U(5_401)))
+        .to.be.revertedWithCustomError(pool, "LendingPoolEncumbered").withArgs(f.alice.address, U(5_400), U(5_401));
+      await pool.connect(f.carol).successorRedeem(f.alice.address, U(5_400));
+      expect(await pool.balanceOf(f.alice.address)).to.equal(U(5_000));
     });
   });
 });

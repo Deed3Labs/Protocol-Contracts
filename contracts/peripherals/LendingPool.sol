@@ -598,7 +598,8 @@ contract LendingPool is LendingPoolBase {
             r.shares = uint128(left);
             _dequeue(r, take);
             _burn(address(this), take);
-            uint256 paid = _finish(r.owner, r.receiver, gross, type(uint256).max);
+            // The holdback is the Holder's, or on the Successor path the Successor's (§6A).
+            uint256 paid = _finish(r.enforcement ? r.owner : r.receiver, r.receiver, gross, type(uint256).max);
             if (r.enforcement) {
                 EnforcementFill storage f = _enforcementFilled[r.owner];
                 f.shares += uint128(take);
