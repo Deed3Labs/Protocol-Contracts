@@ -205,13 +205,18 @@ the pledge moves to the new bond. Limits are in [Credit](./credit.md).
 **`payPledged(id)`: the pledge payment term (IV-01 §4.9, founder answer G).** Anyone may call it. It
 pays only a pledged bond, only when the collection's `liquidator` (the `Liquidator`, the pledge
 module's enforcement side) reports through `pledgePaymentDue(holder, id)` that MB-05 permits
-enforcement against it — the issuer's computed default (`inDefault` or
-`hasDefaultedOnCurrentLine`), or a shortfall notice at least `shortfallWait` (72 hours or more) old
-with the bond gap still open — that no Liquidation Hold is active, and that this is the bond it
-requests: the smallest pledged bond covering the need, else the largest. The bond is paid its
+enforcement against it — a Defaulted Amount recorded on chain with a trusted issuer that the pool
+shares already queued for enforcement will not pay (bonds come before pool shares on a default), or a
+Shortfall noticed at least `shortfallWait` (72 hours or more, longer by paused time) ago that all the
+member's pledged pool shares could not end (pool shares come first on a Shortfall) — that no
+Liquidation Hold or pause is in force, and that this is the bond next in MB-05 §7.1's order: the
+first still pledged in the member's own order (`CollateralRegistry.setEnforcementOrder`, signed
+before any notice), else the one nearest maturity (Phase 2f, decision 20). The bond is paid its
 `accretedValue(id)` in that block, in full, through `BondVault.settleEarly` to the Liquidator, which
-applies it with `settleFromCollateral` — on a shortfall to the `BOND` tier, on a default to `BOND`,
-`POOL_SHARE`, `BOOST`, then `INCOME`, never `SAVINGS` — and sends the surplus to the holder. The
+applies it: on a default only to Defaulted Amounts (decision 22) — the line's past-due Secured
+Minimum on `BOND` then `POOL_SHARE`, then the member's defaulted secured plans oldest first, then the
+unpaid Rebalance Amount on `BOOST` then `INCOME`, never `SAVINGS`; on a Shortfall to the asset-backed
+tiers until it ends (decision 21). The surplus goes to the holder. The
 pledge is released (`releaseRetiredItem`) and the bond burns. It emits `PledgePaid(id, holder,
 amount, toDebt, toHolder)`. There is no `seizeBond` or `redeemEarly`: the seize-and-redeem path is
 gone, and the Liquidator takes no bond.
@@ -219,10 +224,11 @@ gone, and the Liquidator takes no bond.
 **`settle(id)`: maturity, and the pledged split (MB-05 §5.6).** Anyone may call it on a matured
 bond whose holder opted out of rolling. An unpledged bond pays its face value to its holder. A
 pledged one is split: `toDebt = min(face, max(0, drawn − limitWithout))`, where `drawn` is the
-holder's `BOND`-tier principal with the Liquidator's trusted issuers and `limitWithout` is
-`CollateralRegistry.advancedValueOf(holder, BOND, id)` (their other pledged bonds at their stored
-rates). `BondVault.settlePledged` pays `toDebt` to the Liquidator first, which applies it to the
-`BOND` tier as the holder's own instruction (no Liquidation Hold stops it), then the rest to the
+holder's Asset-Backed Drawn (the `BOND` and `POOL_SHARE` tiers with the Liquidator's trusted issuers)
+and `limitWithout` their Asset-Backed Limit without this bond (their other pledged bonds and their
+pool shares, each at the higher of its stored and current advance rate; MB-05 §§1.3, 5.3, 5.6).
+`BondVault.settlePledged` pays `toDebt` to the Liquidator first, which applies it to the `BOND`, then
+the `POOL_SHARE`, tier as the holder's own instruction (no Liquidation Hold stops it), then the rest to the
 holder. It never waits for funds: what the vault and the treasury hold goes to `toDebt` first, then
 `toHolder`, and whatever of either they cannot pay is recorded (`pendingSettlement`,
 `SettlementShortfall`), reserved ahead of any deployable excess, and paid by the permissionless
@@ -242,9 +248,12 @@ itself a clone, created and handed to the deployer in the factory's constructor.
 **A replacement collection shares the vault without sharing ids.** `BondVault` and
 `CollateralRegistry` key a bond by its id alone, so a collection built to replace another calls
 `setFirstBondId` (owner, before its first sale) to start above every id the old one issued.
-`scripts/redeploy_bonds.ts` replaced the Base Sepolia factory and USDC collection this way on
-3 Nov 2026, with ids from 1001; the old ones sell nothing, and every bond they
-issued has been redeemed.
+The Base Sepolia factory and USDC collection were replaced this way on 3 Nov 2026, with ids from
+1001; the old ones sell nothing, and every bond they issued has been redeemed. The script that did
+it was retired in Phase 2f (it used the pre-2f collection API). A Phase 2f collection replaces a
+pre-2f one through the deploy scripts: `REPLACE_BOND_FACTORY=1` on `deploy/22` keeps the old
+records as `*Pre2f` and deploys the new factory, and `FIRST_BOND_ID` on `deploy/23` sets the new
+collection's first id (it refuses to go on without one while an older collection is on record).
 
 A new collection redeems nothing until its owner calls `setBondVault` and the vault grants
 `BOND_ROLE` to both the collection and the deposit contract, which `deploy/23` does.

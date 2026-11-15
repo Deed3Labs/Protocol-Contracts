@@ -4,6 +4,7 @@ import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
 import { issuerProxyOptions } from "../helpers/issuers";
 import { deployAssurancePool, fund as fundAssurance, balances, TAG } from "../helpers/assurance";
+import { deployBarePool } from "../helpers/yieldPool";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -247,8 +248,29 @@ describe("a purchase, from the shop to the money", function () {
   describe("a claim that has come due", function () {
     let yieldLender: any;
 
+    // Phase 2f: the LendingPool is the Yield Pool and lends to no one but Clear Lending, as recorded
+    // Deployments (decision 17). The PayoutPool's yield-pool leg is unchanged code, switched off by
+    // configuration once its loans are repaid, so these tests keep exercising it against the pool
+    // it was written for (`LendingPoolPre2f`, the pre-2f source). The last test shows that with the
+    // Yield Pool itself named, the leg takes nothing.
+    it("takes nothing from the Yield Pool itself, which lends only to Clear Lending (decision 17)", async function () {
+      const signers = await ethers.getSigners();
+      const { pool: yieldPool } = await deployBarePool(ctx.admin, ctx.usdc, signers[17], [signers[18], signers[19]]);
+      await pool.connect(ctx.admin).setYieldPool(await yieldPool.getAddress());
+      await ctx.usdc.mint(ctx.admin.address, 500n * ONE_USDC);
+      await ctx.usdc.approve(await yieldPool.getAddress(), 500n * ONE_USDC);
+      await yieldPool.deposit(500n * ONE_USDC, ctx.admin.address);
+      const { payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+      await elapse(NET_30 + DAY);
+
+      await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+      expect(await yieldPool.vaultCash()).to.equal(500n * ONE_USDC);
+      expect(await pool.borrowedFromYield()).to.equal(0n);
+    });
+
     beforeEach(async function () {
-      const LendingPool = await ethers.getContractFactory("LendingPool");
+      const LendingPool = await ethers.getContractFactory("LendingPoolPre2f");
       yieldLender = await upgrades.deployProxy(
         LendingPool,
         [ctx.admin.address, await ctx.usdc.getAddress(), "Clear Yield", "cYLD"],
@@ -431,7 +453,7 @@ describe("a purchase, from the shop to the money", function () {
       async function bondProceeds(held: bigint, face: bigint) {
         await ctx.usdc.mint(await vault.getAddress(), held);
         const at = BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
-        await vault.recordPurchase(1, held, face, at + BigInt(12 * MONTH));
+        await vault.recordPurchase(1, held, face, at + BigInt(12 * MONTH), 0, 365);
       }
 
       async function treasuryAllows(amount: bigint) {
@@ -439,35 +461,21 @@ describe("a purchase, from the shop to the money", function () {
         await ctx.usdc.connect(coop).approve(await pool.getAddress(), amount);
       }
 
-      it("borrows the vault's deployable excess once the yield pool runs out", async function () {
+      // C1 and decision 3 (Phase 2f): the vault lends nothing any more. Its `lendToPayoutPool` is a
+      // stub returning 0, so PayoutPool's unchanged draw skips it until its vault leg is switched off
+      // by configuration. Replaces "borrows the vault's deployable excess" and "never lends the
+      // reserve" (and the carry-share test below, which needed a vault loan).
+      it("draws nothing from the bond vault, whatever its deployable excess", async function () {
         const { payout } = await buy();
         await pool.connect(merchant).redeem(payout);
         await depositIntoYieldPool(50n * ONE_USDC);
         await bondProceeds(500n * ONE_USDC, 600n * ONE_USDC);
         await elapse(NET_30 + DAY);
 
-        await pool.drawForDueClaim();
-
-        expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
-        expect(await pool.borrowedFromYield()).to.equal(50n * ONE_USDC);
-        expect(await pool.borrowedFromVault()).to.equal(payout - 50n * ONE_USDC);
-        expect(await vault.lentToPayoutPool()).to.equal(payout - 50n * ONE_USDC);
-        // Bought with borrowed money, so the pool holds the position for its lenders.
-        expect(await pool.advancedOf(await pool.getAddress())).to.equal(payout);
-      });
-
-      it("never lends the vault's redemption reserve", async function () {
-        const { payout } = await buy();
-        await pool.connect(merchant).redeem(payout);
-        // 100 held against 300 of face: 90 kept back, 10 deployable.
-        await bondProceeds(100n * ONE_USDC, 300n * ONE_USDC);
-        await treasuryAllows(1_000n * ONE_USDC);
-        await elapse(NET_30 + DAY);
-
-        await pool.drawForDueClaim();
-
-        expect(await pool.borrowedFromVault()).to.equal(10n * ONE_USDC);
-        expect(await vault.held()).to.equal(90n * ONE_USDC);
+        await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+        expect(await pool.borrowedFromVault()).to.equal(0n);
+        expect(await vault.lentToPayoutPool()).to.equal(0n);
+        expect(await vault.held()).to.equal(500n * ONE_USDC);
       });
 
       it("takes the treasury's money as capital, up to its allowance, and it holds the position", async function () {
@@ -490,36 +498,6 @@ describe("a purchase, from the shop to the money", function () {
         expect(await pool.borrowed()).to.equal(payout - 60n * ONE_USDC);
       });
 
-      it("pays the vault its share of the carry beside the yield pool, as each bore it", async function () {
-        const { payout } = await buy();
-        await pool.connect(merchant).redeem(payout);
-        await depositIntoYieldPool(50n * ONE_USDC);
-        await bondProceeds(500n * ONE_USDC, 600n * ONE_USDC);
-        await elapse(NET_30 + DAY);
-        await pool.drawForDueClaim();
-        const vaultBefore = await vault.held();
-
-        await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
-        await term.materialiseCarry(0);
-        await pool.distributeCarry();
-        const earned = await pool.carryEarned();
-        expect(earned).to.be.greaterThan(0n);
-
-        const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
-        await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, owed);
-
-        expect(await pool.borrowed()).to.equal(0n);
-        expect(await pool.carryEarned()).to.equal(0n);
-        expect(await vault.lentToPayoutPool()).to.equal(0n);
-        await yieldLender.syncInterest();
-        await elapse(7 * DAY); // the yield pool's share streams in, audit X-18
-        const toVault = (await vault.held()) - vaultBefore - (payout - 50n * ONE_USDC);
-        const toYield = (await yieldLender.totalAssets()) - 50n * ONE_USDC;
-        // Each paid for what it bore (to the unit the division rounds), and between them all of it.
-        expect(toVault).to.be.closeTo((earned * (payout - 50n * ONE_USDC)) / payout, 1n);
-        expect(toVault).to.be.greaterThan(0n);
-        expect(toVault + toYield).to.equal(earned);
-      });
     });
   });
 

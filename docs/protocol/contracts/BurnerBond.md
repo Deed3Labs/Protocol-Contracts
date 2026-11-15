@@ -12,31 +12,31 @@ Source: [`contracts/peripherals/BurnerBond.sol`](../../../contracts/peripherals/
 
 | Function | Who can call | Also |
 |---|---|---|
-| `batchRedeemBonds(uint256[] bondIds)` | Anyone; acts on the caller's own account | `nonReentrant` |
+| `batchRedeemBonds(uint256[] bondIds)` | Not in the current source |  |
 | `emergencyRecover(address token, uint256 amount)` | `onlyOwner` |  |
 | `initialize(address _burnerBondDeposit, address _factory, address _assurancePool, address _underlyingToken, string _uri, string _collectionName, string _collectionSymbol, string _collectionDescription, address _traitStore, address _discountCurve)` | Not in the current source |  |
-| `mintBond(uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, address creator)` | Checked inside the function | `nonReentrant` |
-| `redeemBond(uint256 bondId)` | Anyone; acts on the caller's own account | `nonReentrant` |
+| `mintBond(uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, address creator)` | Not in the current source |  |
+| `redeemBond(uint256 bondId)` | Not in the current source |  |
 | `redeemEarly(uint256 bondId)` | Not in the current source |  |
-| `removeBondTrait(uint256 bondId, string traitName)` | `onlyOwner` |  |
+| `removeBondTrait(uint256 bondId, string traitName)` | Not in the current source |  |
 | `renounceOwnership()` | The owner |  |
-| `rollBond(uint256 bondId)` | Anyone; acts on the caller's own account | `nonReentrant` |
+| `rollBond(uint256 bondId)` | Not in the current source |  |
 | `safeBatchTransferFrom(address from, address to, uint256[] ids, uint256[] amounts, bytes data)` | The holder, or an approved operator |  |
 | `safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)` | The holder, or an approved operator |  |
 | `seizeBond(uint256 bondId, address from, address to)` | Not in the current source |  |
-| `setApprovalForAll(address operator, bool approved)` | The holder |  |
+| `setApprovalForAll(address operator, bool approved)` | Anyone |  |
 | `setAssurancePool(address _assurancePool)` | Not in the current source |  |
-| `setAutoRollOptOut(uint256 bondId, bool optOut)` | Anyone; acts on the caller's own account |  |
+| `setAutoRollOptOut(uint256 bondId, bool optOut)` | Not in the current source |  |
 | `setBondTrait(uint256 bondId, bytes32 traitKey, bytes traitValue)` | `onlyOwner` |  |
-| `setBondTraitFlexible(uint256 bondId, bytes traitKey, bytes traitValue, uint8 valueType)` | `onlyOwner` |  |
-| `setBondVault(address _bondVault)` | `onlyOwner` |  |
-| `setBurnerBondDeposit(address _burnerBondDeposit)` | `onlyOwner` |  |
-| `setDiscountCurve(uint8 _curveType, uint256 _curveParameter)` | `onlyOwner` |  |
-| `setEncumbranceSource(address source, bytes32 kind)` | `onlyOwner` |  |
+| `setBondTraitFlexible(uint256 bondId, bytes traitKey, bytes traitValue, uint8 valueType)` | Not in the current source |  |
+| `setBondVault(address _bondVault)` | Not in the current source |  |
+| `setBurnerBondDeposit(address _burnerBondDeposit)` | Not in the current source |  |
+| `setDiscountCurve(uint8 _curveType, uint256 _curveParameter)` | Not in the current source |  |
+| `setEncumbranceSource(address source, bytes32 kind)` | Not in the current source |  |
 | `setFirstBondId(uint256 firstId)` | `onlyOwner` |  |
 | `setLiquidator(address _liquidator)` | `onlyOwner` |  |
-| `setRollTerm(uint256 _rollTerm)` | `onlyOwner` |  |
-| `setUnderlyingToken(address _underlyingToken)` | `onlyOwner` |  |
+| `setRollTerm(uint256 _rollTerm)` | Not in the current source |  |
+| `setUnderlyingToken(address _underlyingToken)` | Not in the current source |  |
 | `setURI(string newuri)` | `onlyOwner` |  |
 | `transferOwnership(address newOwner)` | The owner |  |
 

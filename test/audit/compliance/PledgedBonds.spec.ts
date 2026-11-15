@@ -3,7 +3,9 @@ import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { ONE_USDC, DAY } from "./rates";
 import { pledgeSigned, pledgeItemSigned, signPledgeItem, MATURITY_INSTRUCTION } from "../../helpers/pledge";
-import { deployBondFactory } from "../../helpers/bonds";
+import { deployBondStack, grantNoticeRole, WIND_DOWN_ROLE } from "../../helpers/bonds";
+import { deployBarePool } from "../../helpers/yieldPool";
+import { grant } from "../../helpers/earnControls";
 
 /*
  * Phase 2e, the Earn addendum (pledged bonds) and founder answer G:
@@ -63,25 +65,19 @@ async function deployStack() {
   await registry.registerCollateralType(INCOME, UNSECURED, 0n, 0n);
   await registry.registerCollateralType(BOOST, UNSECURED, 0n, 0n);
 
-  const pool: any = await upgrades.deployProxy(await ethers.getContractFactory("LendingPool"),
-    [ctx.admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"], { kind: "uups" });
+  // Phase 2f: the Yield Pool, with its valuation module and mock Earn controls (signers 17-19:
+  // Clear Lending's lending account and the two Deployment signers).
+  const { pool, controls } = await deployBarePool(ctx.admin, usdc, signers[17], [signers[18], signers[19]]);
   await pool.setEncumbranceSource(await registry.getAddress(), POOL_SHARE);
 
-  const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
-  // Ten percent off a one-year bond: $900 buys $1,000, and half way through it is worth $950.
-  await factory.updateGlobalParameters(1_000n, 0n, YEAR);
-  const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-  await factory.createCollection(await usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
-  const bond: any = await ethers.getContractAt("BurnerBond",
-    (await factory.getCollectionInfo(await usdc.getAddress())).collectionAddress);
-  const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
-    [ctx.admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
-  await bondVault.grantRole(await bondVault.BOND_ROLE(), await deposit.getAddress());
-  await bondVault.grantRole(await bondVault.BOND_ROLE(), await bond.getAddress());
-  await deposit.setBondVault(await bondVault.getAddress());
-  await bond.setBondVault(await bondVault.getAddress());
-  await bond.setEncumbranceSource(await registry.getAddress(), BOND);
-  await registry.grantRole(await registry.ITEM_ROLLER_ROLE(), await bond.getAddress());
+  // Phase 2f: the new collection, sold by quote at the Ladder's yield, compounding (R4, decision 8).
+  // 11.11% for a year: $900.00 buys $1,000 (it used to be "ten percent off" on the discount curve).
+  const bs = await deployBondStack(ctx.admin, usdc, ctx.tokenRegistry, { registry, kind: BOND, rungs: [[365, 1_111]] });
+  const bond: any = bs.bond;
+  const bondVault: any = bs.vault;
+  const deposit: any = null;
+  await grantNoticeRole(bs.controls, ctx.admin, keeper.address);
+  const harness: any = await (await ethers.getContractFactory("AccretionHarness")).deploy();
   const valuer = await (await ethers.getContractFactory("BondValuer")).deploy(await bond.getAddress());
   await registry.setCollateralValuer(BOND, await valuer.getAddress());
 
@@ -95,17 +91,28 @@ async function deployStack() {
     [ctx.admin.address, await ctx.stableCredit.getAddress(), await clrusd.getAddress(), await vault.getAddress(),
       await usdc.getAddress(), await registry.getAddress()], { kind: "uups" });
   await registry.grantRole(await registry.OPERATOR_ROLE(), await liquidator.getAddress());
-  await pool.grantRole(await pool.LIQUIDATOR_ROLE(), await liquidator.getAddress());
+  // Phase 2f, C5 (decision 7): no LIQUIDATOR_ROLE on the pool; pledged shares are never seized.
   // Before any bond exists, so it takes effect at once: the pledge module's enforcement side.
   await bond.setLiquidator(await liquidator.getAddress());
   await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
   await liquidator.setEarnSources(await pool.getAddress(), await bond.getAddress());
   for (const s of [holdA, holdB]) await liquidator.grantRole(await liquidator.HOLD_ROLE(), s.address);
 
-  return { ctx, usdc, issuer, registry, pool, factory, bond, bondVault, deposit, liquidator, keeper, stranger, holdA, holdB };
+  return { ctx, usdc, issuer, registry, pool, controls, bond, bondVault, deposit, liquidator, keeper, stranger, holdA, holdB, bs, harness };
 }
 
 describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)", function () {
+  // The chain's clock is shared by every spec in a run, and these tests travel years (12- to
+  // 36-month terms, rolls). Each test runs in a snapshot that is reverted afterwards, so it leaves the
+  // clock where it found it and later specs stay inside the BondVault's maturity buckets (to 2109).
+  let clockSnapshot: string;
+  beforeEach(async function () {
+    clockSnapshot = await ethers.provider.send("evm_snapshot", []);
+  });
+  afterEach(async function () {
+    await ethers.provider.send("evm_revert", [clockSnapshot]);
+  });
+
   let s: Awaited<ReturnType<typeof deployStack>>;
   let m: string;
   let I: string;
@@ -118,39 +125,50 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
 
   /** Buys a bond of `face` maturing `term` after the purchase block, and pledges it if asked. */
   async function buyBond(face: bigint, term = YEAR, pledge = true) {
-    const issuedAt = (await now()) + 10n;
-    const maturity = issuedAt + BigInt(term);
-    await s.usdc.mint(m, face);
-    await s.usdc.connect(s.ctx.member).approve(await s.deposit.getAddress(), face);
-    await at(issuedAt);
-    await s.deposit.connect(s.ctx.member).makeDeposit(await s.usdc.getAddress(), face, maturity, await s.bond.calculateDiscount(maturity));
-    const ids = await s.bond.getBondIdsByCreator(m);
-    const id = ids[ids.length - 1];
+    const { id } = await s.bs.buy(s.ctx.member, face, term / DAY);
+    const info = await s.bond.getBondInfo(id);
     if (pledge) await pledgeItemSigned(s.registry, m, BOND, id);
-    return { id, issuedAt, maturity };
+    return { id: id as bigint, issuedAt: info.issuedAt as bigint, maturity: info.maturityDate as bigint };
+  }
+
+  /** The Holder confirms a Roll Notice on `id` and holds an attestation in force at maturity. */
+  async function confirmRoll(id: bigint, maturity: bigint) {
+    await at(maturity - BigInt(21 * DAY));
+    await s.bond.connect(s.keeper).postRollNotice(id, ethers.id("notice"), await s.bond.latestRollDeadline(maturity), 365, 1_111);
+    await s.bond.connect(s.stranger).confirmRoll(id, ethers.id("notice"), await s.bs.confirmSig(s.ctx.member, id));
+    await s.bs.attest(s.ctx.member);
   }
 
   describe("Earn test 18: payPledged", function () {
-    it("pays $500 to the debt and $450 to the Holder on a qualifying default with debt $500 and Accreted Value $950, and burns the bond", async function () {
+    // Phase 2f (R4, decision 8): Accreted Value compounds at the Issue Yield, so half way through a
+    // $1,000 one-year bond bought for $900 it is $948.55 (straight-line it was $950). The split is
+    // the same rule: $500 to the debt, the rest of the Accreted Value to the Holder.
+    it("pays $500 to the debt and the rest of the Accreted Value to the Holder on a qualifying default with debt $500, and burns the bond", async function () {
       const { usdc, issuer, registry, bond, bondVault, liquidator, keeper } = s;
       const { id, issuedAt } = await buyBond(U(1_000));
       expect((await bond.getBondInfo(id)).purchasePrice).to.equal(U(900));
       await usdc.mint(await bondVault.getAddress(), U(1_000)); // the vault's interest to pay accretion
       await issuer.setPrincipal(m, T_BOND, U(500));
       await issuer.setInDefault(m, true); // computed by the issuer: default after notice and cure
+      // Phase 2f, decision 22: enforcement is capped at the Defaulted Amount the issuer recorded,
+      // here a $500 past-due Secured Minimum on the asset-backed position.
+      await issuer.setDefaulted(m, U(500), 0n, 1n);
 
       const memberBefore = await usdc.balanceOf(m);
       const vaultBefore = await usdc.balanceOf(await bondVault.getAddress());
       const keeperBefore = await usdc.balanceOf(keeper.address);
-      // Half way through its year: Accreted Value $950.
-      await at(issuedAt + BigInt(YEAR / 2));
+      // Half way through its year.
+      const half = issuedAt + BigInt(YEAR / 2);
+      const av = await s.harness.accretedValue(U(1_000), 1_111, (await bond.getBondInfo(id)).maturityDate, half);
+      expect(av).to.be.closeTo(948_550_000n, 10_000n);
+      await at(half);
       await expect(bond.connect(keeper).payPledged(id))
-        .to.emit(bond, "PledgePaid").withArgs(id, m, U(950), U(500), U(450))
-        .and.to.emit(liquidator, "PledgePaymentApplied").withArgs(m, I, true, U(950), U(500), U(450));
+        .to.emit(bond, "PledgePaid").withArgs(id, m, av, U(500), av - U(500))
+        .and.to.emit(liquidator, "PledgePaymentApplied").withArgs(m, I, true, av, U(500), av - U(500));
 
       expect(await issuer.principalOf(m, T_BOND)).to.equal(0n); // $500 to the debt
-      expect((await usdc.balanceOf(m)) - memberBefore).to.equal(U(450)); // $450 to the Holder
-      expect(vaultBefore - (await usdc.balanceOf(await bondVault.getAddress()))).to.equal(U(950)); // all of it, no less
+      expect((await usdc.balanceOf(m)) - memberBefore).to.equal(av - U(500)); // the rest to the Holder
+      expect(vaultBefore - (await usdc.balanceOf(await bondVault.getAddress()))).to.equal(av); // all of it, no less
       expect(await usdc.balanceOf(await liquidator.getAddress())).to.equal(0n); // nothing kept
       expect(await usdc.balanceOf(keeper.address)).to.equal(keeperBefore); // nothing to the caller
       // The bond burns and its pledge is released.
@@ -159,6 +177,36 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect(await registry.isItemPledged(m, BOND, id)).to.equal(false);
       expect((await bondVault.obligations(id)).settled).to.equal(true);
       await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
+    });
+
+    // Decision 46: what the debt does not take goes to the Holder's payee, the registered payment
+    // Successor once its 7-day wait has passed, as every other bond payment does.
+    it("pays the rest of the Accreted Value to the registered payment Successor, not the Holder's account", async function () {
+      const { usdc, issuer, bond, bondVault, liquidator, keeper } = s;
+      const signers = await ethers.getSigners();
+      const [p1, p2] = [signers[15], signers[16]];
+      const successor = ethers.Wallet.createRandom().address;
+      await grant(s.bs.controls, s.ctx.admin, "SUCCESSOR_ROLE", p1.address, p2.address);
+      for (const signer of [p1, p2]) {
+        await s.bs.controls.connect(signer).registerPaymentSuccessor(m, successor, ethers.id("letters"));
+      }
+      const { id, issuedAt } = await buyBond(U(1_000));
+      await usdc.mint(await bondVault.getAddress(), U(1_000));
+      await issuer.setPrincipal(m, T_BOND, U(500));
+      await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(500), 0n, 1n);
+      const half = issuedAt + BigInt(YEAR / 2);
+      await at(half);
+      const av = await s.harness.accretedValue(U(1_000), 1_111, (await bond.getBondInfo(id)).maturityDate, half);
+
+      const memberBefore = await usdc.balanceOf(m);
+      await expect(bond.connect(keeper).payPledged(id))
+        .to.emit(liquidator, "PledgePaymentApplied").withArgs(m, I, true, av, U(500), av - U(500));
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
+      expect(await s.bs.controls.payeeOf(m)).to.equal(successor); // its 7-day wait long over
+      expect(await usdc.balanceOf(successor)).to.equal(av - U(500));
+      expect(await usdc.balanceOf(m)).to.equal(memberBefore);
+      expect(await usdc.balanceOf(await liquidator.getAddress())).to.equal(0n);
     });
 
     it("reverts on an unpledged bond, with no recorded enforcement condition, on a Shortfall under 72 hours, and before the cure date", async function () {
@@ -180,8 +228,9 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       // A Shortfall: drawn above what the bond backs at 95%. Under 72 hours from the notice, no.
       const backing = await s.registry.advancedValueOf(m, BOND, 0);
       await issuer.setPrincipal(m, T_BOND, backing + U(10));
-      await liquidator.connect(stranger).noticeShortfall(m, I);
-      const noticedAt = await liquidator.shortfallNoticedAt(m, I);
+      // Decision 21: one combined Shortfall per member, noticed without naming an issuer.
+      await liquidator.connect(stranger).noticeShortfall(m);
+      const noticedAt = await liquidator.shortfallNoticedAt(m, ethers.ZeroAddress);
       await at(noticedAt + BigInt(72 * HOUR) - 1n);
       await expect(bond.connect(stranger).payPledged(id))
         .to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable").withArgs(id);
@@ -193,8 +242,11 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect((await liquidator.pledgePaymentDue(m, id))[0]).to.equal(false);
       await expect(bond.connect(stranger).payPledged(id))
         .to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable").withArgs(id);
-      // Once the cure date passes and the issuer computes the default, it is.
+      // Once the cure date passes and the issuer computes the default, it is: for the Defaulted
+      // Amount the issuer recorded (decision 22).
       await issuer.setInDefault(m, true);
+      expect([...(await liquidator.pledgePaymentDue(m, id))]).to.deep.equal([false, ethers.ZeroAddress, false]);
+      await issuer.setDefaulted(m, U(100), 0n, 1n);
       expect([...(await liquidator.pledgePaymentDue(m, id))]).to.deep.equal([true, I, true]);
       await expect(bond.connect(stranger).payPledged(id)).to.emit(bond, "PledgePaid");
     });
@@ -207,7 +259,7 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       const backing = await s.registry.advancedValueOf(m, BOND, 0);
       await issuer.setPrincipal(m, T_BOND, backing + U(10));
       await issuer.setPrincipal(m, T_BOOST, U(300)); // unsecured: not a Shortfall's to pay
-      await liquidator.noticeShortfall(m, I);
+      await liquidator.noticeShortfall(m); // decision 21: one combined Shortfall
       await advance(72 * HOUR);
 
       const before = await usdc.balanceOf(m);
@@ -218,26 +270,34 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
       expect(await issuer.principalOf(m, T_BOOST)).to.equal(U(300));
       expect((await usdc.balanceOf(m)) - before).to.equal(paid - drawn);
-      expect(await liquidator.shortfallNoticedAt(m, I)).to.equal(0n); // the gap closed
+      expect(await liquidator.shortfallNoticedAt(m, ethers.ZeroAddress)).to.equal(0n); // the gap closed
     });
 
-    it("acts only on as many bonds as the module requests: the smallest that covers the need, then no more", async function () {
+    // Phase 2f, decision 20 replaces Phase 2e's "the smallest bond that covers the need, else the
+    // largest" with MB-05 §7.1's order: the bond nearest maturity first. Still only as many as needed.
+    it("acts only on as many bonds as the module requests: the one nearest maturity, then no more", async function () {
       const { usdc, issuer, bond, liquidator, keeper } = s;
-      const { id: big } = await buyBond(U(2_000));
-      const { id: small } = await buyBond(U(1_000));
-      const { id: spare } = await buyBond(U(600));
+      // Phase 2f: a bond is bought by quote at an offered Ladder term (one year here), so the three
+      // maturities are staggered by buying a day apart, not by asking for shorter terms. The $1,000
+      // bond still matures first, the $2,000 bond a day later and the $600 bond last.
+      const { id: small } = await buyBond(U(1_000), YEAR);
+      await advance(DAY);
+      const { id: big } = await buyBond(U(2_000), YEAR);
+      await advance(DAY);
+      const { id: spare } = await buyBond(U(600), YEAR);
       await usdc.mint(await s.bondVault.getAddress(), U(5_000));
       await advance(30 * DAY);
       await issuer.setPrincipal(m, T_BOND, U(700));
       await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(700), 0n, 1n); // decision 22: $700 past due
 
-      // $700 owed: the $1,000 bond covers it on its own; the $2,000 and $600 bonds are not asked for.
+      // $700 past due: the $1,000 bond matures first and is asked for; the others are not.
       expect((await liquidator.pledgePaymentDue(m, big))[0]).to.equal(false);
       expect((await liquidator.pledgePaymentDue(m, spare))[0]).to.equal(false);
       await expect(bond.connect(keeper).payPledged(big)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
       await expect(bond.connect(keeper).payPledged(spare)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
       await bond.connect(keeper).payPledged(small);
-      // The debt is paid: nothing more is requested.
+      // The Defaulted Amount is paid: nothing more is requested.
       expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
       for (const id of [big, spare]) {
         await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
@@ -245,7 +305,11 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       }
     });
 
-    it("on a default, applies in the module's order: the bond's tier, pool shares' tier, BOOST, INCOME; never Savings", async function () {
+    // Phase 2f, decision 22 replaces Phase 2e's need over whole tiers (`_owedIn`): a bond pays the
+    // Defaulted Amounts the issuer recorded, the past-due Secured Minimum on the asset-backed tiers
+    // (MB-05 §7.1(b)) and then the unpaid Rebalance Amount on the unsecured ones (§7.1(d)), and
+    // the surplus goes to the Holder.
+    it("on a default, applies in the module's order up to the Defaulted Amounts: the bond's tier, pool shares' tier, BOOST, INCOME; never Savings", async function () {
       const { usdc, issuer, bond, keeper } = s;
       const { id } = await buyBond(U(2_000));
       await usdc.mint(await s.bondVault.getAddress(), U(5_000));
@@ -256,14 +320,18 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await issuer.setPrincipal(m, T_BOOST, U(500));
       await issuer.setPrincipal(m, T_INCOME, U(2_000));
       await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(500), U(1_000), 1n); // $500 Secured Minimum, $1,000 Rebalance Amount
       const value = await bond.accretedValue(id);
+      const before = await usdc.balanceOf(m);
       await bond.connect(keeper).payPledged(id);
-      // value is about $1,830: BOND 300, POOL 200, BOOST 500, then INCOME takes the rest.
+      // value is about $1,830: BOND 300 and POOL 200 (the Secured Minimum), BOOST 500 and INCOME
+      // 500 (the Rebalance Amount), and the rest to the Holder.
       expect(await issuer.principalOf(m, T_BOND)).to.equal(0n);
       expect(await issuer.principalOf(m, T_POOL)).to.equal(0n);
       expect(await issuer.principalOf(m, T_BOOST)).to.equal(0n);
-      expect(await issuer.principalOf(m, T_INCOME)).to.be.closeTo(U(2_000) - (value - U(1_000)), U(1));
+      expect(await issuer.principalOf(m, T_INCOME)).to.equal(U(1_500));
       expect(await issuer.principalOf(m, T_SAVINGS)).to.equal(U(400));
+      expect((await usdc.balanceOf(m)) - before).to.be.closeTo(value - U(1_500), 1_000n); // a second's accretion
     });
 
     it("no call can pay less than accretedValue(id) or send any amount elsewhere", async function () {
@@ -272,6 +340,7 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await advance(YEAR / 2);
       await issuer.setPrincipal(m, T_BOND, U(500));
       await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(500), 0n, 1n); // decision 22
 
       // The only argument is the id: no amount, price, destination or debt to choose.
       const fn = bond.interface.getFunction("payPledged")!;
@@ -300,7 +369,7 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await advance(30 * DAY + 1);
       const value = await bond.accretedValue(id);
       await expect(bond.connect(keeper).payPledged(id)).to.emit(bond, "PledgePaid");
-      expect(value).to.be.gte(U(950));
+      expect(value).to.be.gte(U(950)); // about seven months in, compounding
     });
   });
 
@@ -323,6 +392,7 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await usdc.mint(await bondVault.getAddress(), U(1_000));
       await issuer.setPrincipal(m, T_BOND, U(500));
       await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, U(500), 0n, 1n); // decision 22
       await clrusdPause.pauseAccount(m); // the Holder's own CLRUSD account
       expect((await liquidator.pledgePaymentDue(m, id))[0]).to.equal(false);
       await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
@@ -342,8 +412,8 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await advance(30 * DAY);
       const backing = await s.registry.advancedValueOf(m, BOND, 0);
       await issuer.setPrincipal(m, T_BOND, backing + U(10));
-      await liquidator.noticeShortfall(m, I);
-      const noticedAt = await liquidator.shortfallNoticedAt(m, I);
+      await liquidator.noticeShortfall(m); // decision 21: one combined Shortfall
+      const noticedAt = await liquidator.shortfallNoticedAt(m, ethers.ZeroAddress);
       await at(noticedAt + BigInt(10 * HOUR));
       await clrusdPause.pauseAccount(m);
       await at(noticedAt + BigInt(16 * HOUR));
@@ -358,11 +428,12 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
   });
 
   describe("Earn test 19: the pledged maturity split", function () {
-    /** Bond A ($1,000 Maturity Amount, auto-roll off) and bond B (Present Value $500: already matured). */
+    /** Bond A ($1,000 Maturity Amount, no Roll Confirmation) and bond B (Present Value $500: already matured). */
     async function twoBonds(drawn: bigint, vaultExtra = U(10_000)) {
-      const b = await buyBond(U(500), YEAR / 2);
+      // Phase 2f: terms are 12 to 36 months (decision 41), so B is bought first and matures first.
+      const b = await buyBond(U(500), YEAR);
+      await advance(30 * DAY);
       const a = await buyBond(U(1_000), YEAR);
-      await s.bond.connect(s.ctx.member).setAutoRollOptOut(a.id, true);
       await s.usdc.mint(await s.bondVault.getAddress(), vaultExtra);
       await s.issuer.setPrincipal(m, T_BOND, drawn);
       await at(a.maturity);
@@ -408,8 +479,9 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       await expect(bond.connect(stranger).settle(a)).to.emit(bond, "PledgedMaturitySplit").withArgs(a, U(1_000), 0n);
       expect(await usdc.balanceOf(m)).to.equal(before);
       expect(await issuer.principalOf(m, T_BOND)).to.equal(U(600));
-      expect((await liquidator.earnGapOf(m, I))[1]).to.equal(U(125));
-      await expect(liquidator.connect(stranger).noticeShortfall(m, I)).to.emit(liquidator, "ShortfallNoticed").withArgs(m, U(125));
+      // Decision 21: one combined Shortfall (here only bonds are pledged).
+      expect((await liquidator.shortfallOf(m))[0]).to.equal(U(125));
+      await expect(liquidator.connect(stranger).noticeShortfall(m)).to.emit(liquidator, "ShortfallNoticed").withArgs(m, U(125));
       // The Shortfall rules: bond B becomes payable only once the notice is 72 hours old.
       await expect(bond.connect(stranger).payPledged(b)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
       await advance(72 * HOUR);
@@ -561,14 +633,70 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       expect(await issuer.principalOf(m, T_BOND)).to.equal(U(475));
     });
 
-    it("a pledged bond that rolls is not settled; one that has not matured is not either", async function () {
-      const { bond, stranger } = s;
+    // Test 16, second half (Phase 2f, Earn §4A): a confirmed pledged bond is not settled but rolled,
+    // and its replacement is re-pledged in the same transaction. Replaces "a pledged bond that rolls"
+    // under auto-roll; `redeemBond` is gone (decision 8).
+    it("an unmatured bond is not settled; a confirmed pledged bond rolls and its replacement is re-pledged at once (test 16)", async function () {
+      const { bond, stranger, registry } = s;
       const b = await buyBond(U(1_000));
       await expect(bond.connect(stranger).settle(b.id)).to.be.revertedWithCustomError(bond, "BurnerBondNotSettleable");
+      await confirmRoll(b.id, b.maturity);
       await at(b.maturity);
-      await expect(bond.connect(stranger).settle(b.id)).to.be.revertedWithCustomError(bond, "BurnerBondNotSettleable");
-      // And the holder's own redeemBond refuses a pledged bond: it pays out only under its instruction.
-      await expect(bond.connect(s.ctx.member).redeemBond(b.id)).to.be.revertedWithCustomError(bond, "BurnerBondPledged");
+      const tx = await bond.connect(stranger).settle(b.id);
+      await expect(tx).to.emit(bond, "BondRolled").and.not.to.emit(bond, "PledgedMaturitySplit");
+      const replacement = (await bond.getBondIdsByCreator(m)).slice(-1)[0];
+      await expect(tx).to.emit(registry, "ItemCollateralChanged");
+      expect(await registry.isItemPledged(m, BOND, replacement)).to.equal(true);
+      expect(await registry.isItemPledged(m, BOND, b.id)).to.equal(false);
+      expect(bond.interface.getFunction("redeemBond")).to.equal(null);
+    });
+  });
+
+  // Phase 2f stage 3 (integration): under `redeemAll` a pledged bond is paid before maturity, at its
+  // Accreted Value, through the pledged split (decision 14). The collection asks the Liquidator's
+  // `maturityToDebt` with the Accreted Value in place of the Maturity Amount; it is a pure on-chain
+  // computation from that amount, so the debt part never exceeds what the bond pays.
+  describe("decision 14: a pledged bond under redeemAll, before maturity, at its Accreted Value", function () {
+    async function windDown() {
+      const signers = await ethers.getSigners();
+      const [p1, p2] = [signers[15], signers[16]];
+      for (const p of [p1, p2]) await s.bs.controls.connect(s.ctx.admin).grantRoleByResolution(WIND_DOWN_ROLE, p.address, ethers.id("resolution"));
+      await s.bond.connect(p1).setWindDown(true, ethers.id("illegality"));
+      await s.bond.connect(p2).setWindDown(true, ethers.id("illegality"));
+      await advance(30 * DAY);
+      await s.bond.connect(s.keeper).redeemAll();
+    }
+
+    it("applies Asset-Backed Drawn above the limit without the bond, capped at the Accreted Value, and pays the rest to the Holder", async function () {
+      const { usdc, issuer, registry, bond, liquidator, keeper } = s;
+      const a = await buyBond(U(1_000));
+      const b = await buyBond(U(1_000));
+      await usdc.mint(await s.bondVault.getAddress(), U(10_000));
+      await windDown();
+      // Drawn $300, and bond b alone is worth more than that at 95%: nothing of a goes to the debt.
+      await issuer.setPrincipal(m, T_BOND, U(300));
+      let av = await bond.accretedValue(a.id);
+      expect(av).to.be.lt(U(1_000)); // before maturity
+      expect(await liquidator.maturityToDebt(m, a.id, av)).to.equal(0n);
+      let before = await usdc.balanceOf(m);
+      await expect(bond.connect(keeper).redeemUnderWindDown(a.id)).to.emit(bond, "RedeemedUnderWindDown").withArgs(a.id, m, av, 0n);
+      expect((await usdc.balanceOf(m)) - before).to.equal(av);
+      expect(await registry.isItemPledged(m, BOND, a.id)).to.equal(false);
+      expect(await bond.balanceOf(m, a.id)).to.equal(0n);
+
+      // Now drawn $2,000 against bond b only: the limit without it is nothing, so all of b's
+      // Accreted Value goes to the debt, never its $1,000 Maturity Amount.
+      await issuer.setPrincipal(m, T_BOND, U(2_000));
+      av = await bond.accretedValue(b.id);
+      expect(await liquidator.maturityToDebt(m, b.id, av)).to.equal(av);
+      expect(await liquidator.maturityToDebt(m, b.id, U(1_000))).to.equal(U(1_000));
+      before = await usdc.balanceOf(m);
+      await expect(bond.connect(keeper).redeemUnderWindDown(b.id))
+        .to.emit(bond, "RedeemedUnderWindDown").withArgs(b.id, m, av, av)
+        .and.to.emit(liquidator, "MaturityInstructionApplied").withArgs(m, av, av);
+      expect(await issuer.principalOf(m, T_BOND)).to.equal(U(2_000) - av);
+      expect(await usdc.balanceOf(m)).to.equal(before);
+      expect(await registry.isItemPledged(m, BOND, b.id)).to.equal(false);
     });
   });
 
@@ -625,8 +753,9 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
       const { registry, bond, ctx } = s;
       const { id, maturity } = await buyBond(U(1_000));
       await registry.connect(ctx.admin).setCollateralTerms(BOND, 8_000n, 0n);
+      await confirmRoll(id, maturity);
       await at(maturity);
-      await bond.connect(ctx.member).rollBond(id);
+      await bond.connect(s.stranger).settle(id); // Phase 2f: a confirmed roll, settled by anyone
       const replacement = (await bond.getBondIdsByCreator(m)).slice(-1)[0];
       expect(await registry.isItemPledged(m, BOND, replacement)).to.equal(true);
       expect(await registry.itemAdvanceBpsOf(m, BOND, replacement)).to.equal(9_500n);
@@ -645,19 +774,22 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
   });
 
   describe("§1 allowlist (a): a bond burns only on settlement, payPledged, and a roll", function () {
-    it("has no burn entry point but redeemBond, batchRedeemBonds, settle, payPledged and rollBond", async function () {
+    // Phase 2f: the new collection's state-changing functions. Exits: settle (a payout, the pledged
+    // split or a confirmed roll), payPledged, buyback, redeemUnderWindDown and burnPaid (the
+    // Collateral Agent's distributions, through the BondVault only). No Holder redemption, no
+    // auto-roll, no discount curve, no operator approvals (setApprovalForAll reverts).
+    it("has no burn entry point but settle, payPledged, buyback, redeemUnderWindDown and burnPaid", async function () {
       const writes = s.bond.interface.fragments
         .filter((f: any) => f.type === "function" && !["view", "pure"].includes(f.stateMutability))
         .map((f: any) => f.name)
         .sort();
       // Every state-changing function, so a new way to destroy a bond fails this test.
       expect(writes).to.deep.equal([
-        "batchRedeemBonds", "executeLiquidatorChange", "initialize", "mintBond", "payPledged",
-        "redeemBond", "removeBondTrait", "renounceOwnership", "rollBond", "safeBatchTransferFrom",
-        "safeTransferFrom", "setApprovalForAll", "setAutoRollOptOut", "setBondTrait", "setBondTraitFlexible",
-        "setBondVault", "setBurnerBondDeposit", "setDiscountCurve", "setEncumbranceSource", "setFirstBondId",
-        "setLiquidator", "setRollTerm", "setURI", "setUnderlyingToken", "settle", "transferOwnership",
-        "emergencyRecover",
+        "burnPaid", "buyback", "confirmRoll", "confirmRolls", "emergencyRecover", "executeLiquidatorChange",
+        "initialize", "payPledged", "postRollNotice", "purchase", "redeemAll", "redeemUnderWindDown",
+        "renounceOwnership", "safeBatchTransferFrom", "safeTransferFrom", "setBondTrait", "setFirstBondId",
+        "setLiquidator", "setSources", "setURI", "setWindDown", "settle", "transferOwnership",
+        "withdrawRollConfirmation",
       ].sort());
       // A transfer to the zero address is not a burn: ERC-1155 refuses it.
       const { id } = await buyBond(U(1_000), YEAR, false);
@@ -666,9 +798,9 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
 
     it("the module cannot be called on its own, and the implementation pins it by kind", async function () {
       const pledges = await ethers.getContractAt("BurnerBondPledges", await s.bond.pledges());
-      expect(await pledges.extensionKind()).to.equal(ethers.id("BurnerBondPledges.v1"));
+      expect(await pledges.extensionKind()).to.equal(ethers.id("BurnerBondPledges.v2"));
       await expect(pledges.payPledged(1)).to.be.revertedWithCustomError(pledges, "BurnerBondNotPledgePayable");
-      await expect(pledges.settle(1)).to.be.revertedWithCustomError(pledges, "BurnerBondNotSettleable");
+      await expect(pledges.settle(1)).to.be.revertedWithCustomError(pledges, "BurnerBondUnknown");
       // A module of the wrong kind is refused.
       const Bond = await ethers.getContractFactory("BurnerBond");
       await expect(Bond.deploy(await s.registry.getAddress())).to.be.reverted;

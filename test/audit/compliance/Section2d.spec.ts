@@ -152,6 +152,9 @@ const REVIEWED_PULLS: Record<string, string> = {
   "ClaimEscrow.sol:receiveWithAuthorization:sender": "EIP-3009: the sender's own signature, committing to every term",
   "StableCredit.sol:safeTransferFrom:payer": "a repayment: payer is the caller, or what a registered issuer passes (below)",
   "BondVault.sol:safeTransferFrom:treasury": "Clear's own treasury, not a member",
+  // Phase 2f: a bond purchase pulls the Purchase Price into the BondVault from the payer named in a
+  // quote that payer signed (EIP-712, EIP-1271), used once and within 15 minutes.
+  "BurnerBondIssue.sol:safeTransferFrom:q.payer": "the payer's own Wallet Signature over the quote",
   "OffersIssuer.sol:safeTransferFrom:treasury": "Clear's own treasury, not a member",
   "PayoutPool.sol:safeTransferFrom:coopTreasury": "the co-op treasury, not a member",
   "PayoutPool.sol:transferFrom:merchant": "a merchant's StableCredit (a credit token, not USDC), on its own redemption",
@@ -313,7 +316,11 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
       // Bring the unsecured tier's carry onto the ledger first, so the debt read is the one settled.
       await issuer.materialiseCarry(ctx.member.address);
       const r1 = await reserve(), s1 = await supply(), debt = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
-      await liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
+      // Phase 2f, decision 22: the stranger's liquidation reaches only the Defaulted Amount of
+      // Savings-Backed Drawn, none here; the member's own instruction redeems on the same path.
+      await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC);
       const paid = r1 - (await reserve());
       expect(paid).to.equal(400n * ONE_USDC);
       expect(s1 - (await supply())).to.equal(paid);
@@ -531,7 +538,11 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
       await ctx.access.connect(ctx.operator).revokeMember(ctx.member.address);
       await expect(clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 900n * ONE_USDC)).to.be.revertedWithCustomError(clrusd, "ClearUSDEncumbered");
       await driveToDefault(issuer, ctx.member.address, ctx.operator);
-      await liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
+      // (Phase 2f, decision 22: the stranger's call takes nothing, since no savings are past due; the
+      // member's own settlement takes the same exempt seizure path.)
+      await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 300n * ONE_USDC);
       expect(await clrusd.balanceOf(ctx.member.address)).to.equal(699n * ONE_USDC);
     });
 

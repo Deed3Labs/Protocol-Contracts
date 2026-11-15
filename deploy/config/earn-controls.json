@@ -1,0 +1,25 @@
+{
+  "_comment": "EarnControls' initial governed settings, in whole dollars (scaled by the reserve token's decimals at deploy). offeringCap is the one IV-03 §1.3 offering maximum of $1,000,000 across both products, by price paid: bond Purchase Prices and pool subscriptions together, rolls not counted (decision 38). holderCapFloor is decision 23's 7-day setting: a household may hold at most 10% of the greater of Pool Assets and this floor (decision 40). fundingLimit and poolCapacity are placeholders until the Holdings Board (Funding Limit) and the Lending Board (pool capacity) set them; fundingResolution is then that resolution's hash. Two FUNDING_ROLE holders post Lending Co.'s other indebtedness for borrowed money (decision 39).",
+  "decimals": 6,
+  "fundingLimitDollars": 0,
+  "fundingResolution": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "fiscalYear": 2026,
+  "offeringCapDollars": 1000000,
+  "poolCapacityDollars": 0,
+  "holderCapFloorDollars": 1000000,
+  "ladder": [
+    {
+      "termDays": 365,
+      "yieldBps": 475
+    },
+    {
+      "termDays": 730,
+      "yieldBps": 500
+    },
+    {
+      "termDays": 1095,
+      "yieldBps": 525
+    }
+  ],
+  "_ladderComment": "The Ladder (decision 41: terms of 12 to 36 months; 12 months = 365 days, 24 = 730, 36 = 1,095). These are IV-01 Schedule 2's illustration only, not an offer: the Lending Board sets the Ladder, changed afterwards by two LADDER_ROLE signers with 48 hours' notice (decision 31)."
+}

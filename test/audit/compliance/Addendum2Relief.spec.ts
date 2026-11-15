@@ -7,7 +7,7 @@ import { deployCore } from "../deep/deep-setup";
 import { signedOpenPlan } from "../../helpers/plans";
 import { CA, P, CA_BANDS, ONE_USDC, CYCLE, DAY, params, deployRateSchedule } from "./rates";
 import { pledgeItemSigned } from "../../helpers/pledge";
-import { deployBondFactory } from "../../helpers/bonds";
+import { deployBondStack } from "../../helpers/bonds";
 
 /*
  * Phase 2e, the two gaps closed at the owner's request (addendum-2-references.md):
@@ -321,19 +321,10 @@ describe("ADDENDUM 2 references, 12.14: default of a term plan secured under MB-
     const registry: any = await upgrades.deployProxy(await ethers.getContractFactory("CollateralRegistry"),
       [ctx.admin.address, await ctx.networkRegistry.getAddress()], { kind: "uups" });
     await registry.registerCollateralType(BOND, 3, 9_500n, 0n);
-    const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
-    await factory.updateGlobalParameters(1_000n, 0n, 365 * DAY);
-    const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-    await factory.createCollection(u, "USDC", "USD Coin", "ipfs://bonds");
-    const bond: any = await ethers.getContractAt("BurnerBond", (await factory.getCollectionInfo(u)).collectionAddress);
-    const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
-      [ctx.admin.address, u, 90 * DAY], { kind: "uups" });
-    await bondVault.grantRole(await bondVault.BOND_ROLE(), await deposit.getAddress());
-    await bondVault.grantRole(await bondVault.BOND_ROLE(), await bond.getAddress());
-    await deposit.setBondVault(await bondVault.getAddress());
-    await bond.setBondVault(await bondVault.getAddress());
-    await bond.setEncumbranceSource(await registry.getAddress(), BOND);
-    await registry.grantRole(await registry.ITEM_ROLLER_ROLE(), await bond.getAddress());
+    // Phase 2f: the new collection, sold by quote; 11.11% for a year prices $1,000 at $900.
+    const bs = await deployBondStack(ctx.admin, ctx.usdc, ctx.tokenRegistry, { registry, kind: BOND, rungs: [[365, 1_111]] });
+    const bond: any = bs.bond;
+    const bondVault: any = bs.vault;
     await registry.setCollateralValuer(BOND, await (await (await ethers.getContractFactory("BondValuer")).deploy(await bond.getAddress())).getAddress());
     const enforcer: any = await upgrades.deployProxy(await ethers.getContractFactory("Liquidator"),
       [ctx.admin.address, await ctx.stableCredit.getAddress(), u, u, u, await registry.getAddress()], { kind: "uups" });
@@ -347,12 +338,7 @@ describe("ADDENDUM 2 references, 12.14: default of a term plan secured under MB-
     expect(await ctx.networkRegistry.isEnrolled(m, await term.getAddress())).to.equal(true);
 
     // The member buys a $1,000 one-year bond for $900 and pledges it; the vault holds the accretion.
-    const maturity = BigInt(await now()) + BigInt(365 * DAY);
-    await ctx.usdc.mint(m, usd(1_000));
-    await ctx.usdc.connect(ctx.member).approve(await deposit.getAddress(), usd(1_000));
-    await deposit.connect(ctx.member).makeDeposit(u, usd(1_000), maturity, await bond.calculateDiscount(maturity));
-    const ids = await bond.getBondIdsByCreator(m);
-    const id = ids[ids.length - 1];
+    const { id } = await bs.buy(ctx.member, usd(1_000), 365);
     await pledgeItemSigned(registry, m, BOND, id);
     await ctx.usdc.mint(await bondVault.getAddress(), usd(1_000));
 
@@ -361,10 +347,10 @@ describe("ADDENDUM 2 references, 12.14: default of a term plan secured under MB-
       .to.be.revertedWithCustomError(enforcer, "LiquidatorUntrustedIssuer");
     await expect(enforcer.connect(ctx.member).settleFromSavings(await term.getAddress(), 0, 1n))
       .to.be.revertedWithCustomError(enforcer, "LiquidatorUntrustedIssuer");
-    await expect(enforcer.settleExcess(m, await term.getAddress()))
-      .to.be.revertedWithCustomError(enforcer, "LiquidatorUntrustedIssuer");
-    await expect(enforcer.noticeShortfall(m, await term.getAddress()))
-      .to.be.revertedWithCustomError(enforcer, "LiquidatorUntrustedIssuer");
+    // Phase 2f: a missed cycle takes nothing (C2), and the Shortfall is one combined figure over the
+    // revolving lines' asset-backed tiers (decision 21), which a term issuer has none of.
+    expect(enforcer.interface.getFunction("settleExcess")).to.equal(null);
+    await expect(enforcer.noticeShortfall(m)).to.be.revertedWithCustomError(enforcer, "LiquidatorNoShortfall");
 
     // Secured, 61 days past due, notice recorded: still no default, so the bond cannot be paid.
     await secure();
@@ -382,23 +368,33 @@ describe("ADDENDUM 2 references, 12.14: default of a term plan secured under MB-
     expect(due.issuer).to.equal(await term.getAddress());
     expect(due.onDefault).to.equal(true);
     const repaidBefore = (await term.planAt(0)).repaid;
+    // Phase 2f, decision 22 replaces Phase 2e's "what the plan owes" (`_securedOwedOn`): the bond pays
+    // the plan's Defaulted Amount, what its cure notice concerns (the schedule's ask by the notice)
+    // less what has been repaid, and the rest goes to the Holder; the whole balance only once the
+    // plan has itself come due at its end. This plan's schedule has run out, so it has.
+    const sp = await term.securedPlans(0);
+    const plan = await term.planAt(0);
+    const sched = await term.scheduleOf(0);
+    const ended = BigInt(await now()) >= sched.scheduleStart + BigInt(plan.installments) * plan.installmentLength;
+    expect(ended).to.equal(true);
+    const owed = await term.owedOn(0);
+    const defaulted = owed;
+    expect(sp.noticeDue).to.be.gt(0n);
+    expect(defaulted).to.be.gt(0n);
     const cashBefore = await ctx.usdc.balanceOf(m);
     const tx = await bond.connect(keeper).payPledged(id);
     const ev = (await tx.wait()).logs.map((l: any) => { try { return bond.interface.parseLog(l); } catch { return null; } })
       .find((e: any) => e && e.name === "PledgePaid");
     const [, , amount, toDebt, toHolder] = ev.args;
     expect(amount).to.be.gt(usd(900));
-    // The plan owes more than the bond is worth: all of it goes to the defaulted secured plan.
-    expect(toDebt).to.equal(amount);
-    expect(toHolder).to.equal(0n);
+    expect(toDebt).to.equal(defaulted < amount ? defaulted : amount);
+    expect(toHolder).to.equal(amount - toDebt);
     expect((await term.planAt(0)).repaid - repaidBefore).to.equal(toDebt);
-    expect(await ctx.usdc.balanceOf(m)).to.equal(cashBefore);
+    expect((await ctx.usdc.balanceOf(m)) - cashBefore).to.equal(toHolder);
     expect(await bond.balanceOf(m, id)).to.equal(0n);
     expect(await registry.isItemPledged(m, BOND, id)).to.equal(false);
-    // With the default recorded, the operator's share path still cannot act on the term issuer: it
-    // has no tiers to read or settle.
-    expect(await ctx.usdc.balanceOf(m)).to.be.gt(0n); // a "pool" balance the path would read
-    await expect(enforcer.liquidateShares(m, await term.getAddress(), 0, BOND, u)).to.be.reverted;
+    // The pool-share path is PoolShareEnforcer's now (C5); the Liquidator has none to call.
+    expect(enforcer.interface.getFunction("liquidateShares")).to.equal(null);
   });
 
   it("unsecured plans keep the installment rule; no role can declare a secured plan's default", async function () {

@@ -5,7 +5,7 @@ allowed to do each of these is in [Governance](../governance/README.md).
 
 | | |
 |---|---|
-| [`deploying-contracts.md`](./deploying-contracts.md) | Deploying the contracts: scripts `00`–`24` in order, the wiring after them, pointing the apps at the addresses, handing the keys to the Safe, and upgrades |
+| [`deploying-contracts.md`](./deploying-contracts.md) | Deploying the contracts: scripts `00`–`27` in order, the wiring after them, pointing the apps at the addresses, handing the keys to the Safe, and upgrades |
 | [`clrusd-esa-bootstrap.md`](./clrusd-esa-bootstrap.md) | Deploying CLRUSD and its isolated `ESADepositVault`, the redemption lock, CCIP burn/mint pools for cross-chain, and the emergency controls |
 | [`api-deploy.md`](./api-deploy.md) | The API on Railway: what triggers a build, the image, and its environment flags |
 | [`going-live.md`](./going-live.md) | Going live: what decides test or real money, each provider's sandbox and live settings, and every webhook the API takes with the signature it checks |

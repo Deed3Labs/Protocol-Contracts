@@ -85,6 +85,22 @@ describe("compliance deployment and credit timelock handover", function () {
     await wireCompliance({ quiet: true, stateAttester: attester.address });
   });
 
+  // Decision 47: a fresh stack gets the card settler and the mandate source that the retired
+  // pre-audit upgrade scripts set on the old Base Sepolia issuers.
+  it("names RevolvingIssuer as TermIssuer's mandate source, and authorizes the card settler when one is given", async function () {
+    expect(await core.term.mandateSource()).to.equal(await core.revolving.getAddress());
+    const settler = ethers.Wallet.createRandom().address;
+    expect(await core.revolving.isCardSettler(settler)).to.equal(false);
+    process.env.CARD_SETTLER_ADDRESS = settler;
+    try {
+      await wireCompliance({ quiet: true, stateAttester: attester.address });
+    } finally {
+      delete process.env.CARD_SETTLER_ADDRESS;
+    }
+    expect(await core.revolving.isCardSettler(settler)).to.equal(true);
+    expect(await core.revolving.cardSettlementAccount()).to.equal(await core.revolving.carryTreasury());
+  });
+
   it("refuses a credit timelock shorter than 7 days", async function () {
     let error: any;
     try { await deployCreditTimelock(safe.address, CREDIT_TIMELOCK_DELAY - 1); } catch (e) { error = e; }

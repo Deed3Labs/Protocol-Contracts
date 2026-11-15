@@ -9,7 +9,8 @@ import {
   AssuranceSetup, BACKSTOP, ASSURANCE, TAG, MASK, DAY, ASSURANCE_DELAY,
 } from "../../helpers/assurance";
 import { pledgeSigned } from "../../helpers/pledge";
-import { deployBondFactory } from "../../helpers/bonds";
+import { deployBondStack } from "../../helpers/bonds";
+import { deployBarePool } from "../../helpers/yieldPool";
 
 /*
  * Compliance section 13 (Assurance Contracts), acceptance tests 31-33.
@@ -378,20 +379,16 @@ describe("COMPLIANCE section 13: Assurance Contracts (acceptance 31-33)", functi
       await clrusd.setEncumbranceSource(await pledges.getAddress());
       await revolving.connect(ctx.operator).setExposureSource(await pledges.getAddress());
 
-      const lending: any = await upgrades.deployProxy(await ethers.getContractFactory("LendingPool"),
-        [ctx.admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"], { kind: "uups" });
+      // Phase 2f: the Yield Pool, with its valuation module and mock Earn controls.
+      const ys = await ethers.getSigners();
+      const { pool: lending } = await deployBarePool(ctx.admin, usdc, ys[17], [ys[18], ys[19]]);
       await lending.setEncumbranceSource(await pledges.getAddress(), POOL_SHARE);
 
-      const bondVault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
-        [ctx.admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
-      const factory: any = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://b");
-      const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-      await factory.createCollection(await usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
-      const bond: any = await ethers.getContractAt("BurnerBond", (await factory.getCollectionInfo(await usdc.getAddress())).collectionAddress);
-      await bondVault.grantRole(await bondVault.BOND_ROLE(), await deposit.getAddress());
-      await bondVault.grantRole(await bondVault.BOND_ROLE(), await bond.getAddress());
-      await deposit.setBondVault(await bondVault.getAddress());
-      await bond.setBondVault(await bondVault.getAddress());
+      // Phase 2f: the new bond collection (purchase by quote) with its BondVault and EarnControls.
+      const bs = await deployBondStack(ctx.admin, usdc, ctx.tokenRegistry, { rungs: [[365, 475]] });
+      const bondVault: any = bs.vault;
+      const bond: any = bs.bond;
+      const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await bs.factory.getUnifiedDepositContract());
       await bondVault.setBackstops(coop.address, await payoutPool.getAddress());
       await payoutPool.connect(ctx.admin).setBondVault(await bondVault.getAddress());
       await payoutPool.connect(ctx.admin).setYieldPool(await lending.getAddress());
@@ -536,7 +533,9 @@ describe("COMPLIANCE section 13: Assurance Contracts (acceptance 31-33)", functi
       await vault.connect(ctx.member).redeem(await usdc.getAddress(), usd(500), ctx.member.address);
       // Force settlement and liquidation, where they apply.
       await ctx.stableCredit.connect(ctx.member).transfer(core.merchant.address, usd(800));
-      await liquidator.connect(ctx.outsider).settleExcess(ctx.member.address).catch(() => undefined);
+      // (Phase 2f, C2: a missed cycle settles nothing, so there is no excess path; the Shortfall
+      // notice is the one permissionless Earn call left on the Liquidator.)
+      await liquidator.connect(ctx.outsider).noticeShortfall(ctx.member.address).catch(() => undefined);
       await liquidator.connect(ctx.outsider).liquidate(ctx.member.address, await revolving.getAddress(), 0, SAVINGS).catch(() => undefined);
       const after = await snapshotPool(a, usdc);
       expect(after.byId).to.deep.equal(before.byId);

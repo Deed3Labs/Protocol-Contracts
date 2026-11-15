@@ -12,11 +12,15 @@
  *   (`assurance_timelock_handover.ts`, section 13). AssuranceOracle is retired.
  * - DEFAULT_ADMIN_ROLE (authorizes upgrades and settings): NetworkRegistry, CollateralRegistry,
  *   LimitCalculator, Liquidator, MerchantRegistry, ClaimEscrow, MembershipRegistry,
- *   PayoutPool, LendingPool, BondVault,
+ *   PayoutPool,
  *   and the AccessManager, whose admin is the ledger's admin (ClearCredit upgrades are `onlyAdmin`)
  *   and passes every credit role.
  * - The ProxyAdmin of the two transparent proxies (AccessManager, MembershipRegistry).
  * - OffersIssuer's owner, when it is deployed.
+ *
+ * Not here: LendingPool (the Yield Pool), the BondVault and the bond collections. Phase 2f, decision 2:
+ * they are governed by the separate Earn timelock with EarnControls and the CollateralAgent
+ * (`earn_timelock_handover.ts`).
  *
  * Not here: ESADepositVault and CLRUSD. They are Clear Financial Co.'s, under their own timelock
  * with a Clear Financial Safe proposing (`vault_timelock_handover.ts`; Phase 2d, decision 1, which
@@ -50,14 +54,12 @@ export interface CreditContracts {
   membershipRegistry?: any;
   offers?: any;
   payoutPool?: any;
-  lendingPool?: any;
-  bondVault?: any;
 }
 
 const OWNABLE: (keyof CreditContracts)[] = ["revolving", "term", "offers", "rateSchedule"];
 const ADMIN_ONLY: (keyof CreditContracts)[] = [
   "networkRegistry", "collateral", "limits", "liquidator", "merchantRegistry", "claimEscrow", "access",
-  "membershipRegistry", "payoutPool", "lendingPool", "bondVault",
+  "membershipRegistry", "payoutPool",
 ];
 /** Deployed as transparent proxies (deploy/16, deploy/17): their upgrade power is a ProxyAdmin's owner. */
 const TRANSPARENT: (keyof CreditContracts)[] = ["access", "membershipRegistry"];
@@ -162,12 +164,11 @@ async function main() {
     membershipRegistry: await at("MembershipRegistry"),
     offers: await at("OffersIssuer"),
     payoutPool: await at("PayoutPool"),
-    lendingPool: await at("LendingPool"),
-    bondVault: await at("BondVault"),
   };
   await handOverCredit(c, deployer, timelockAddress!, console.log);
   console.log("\nCredit handover done. The deployer holds no credit admin power.");
   console.log("ESADepositVault and CLRUSD are not part of it: run vault_timelock_handover.ts.");
+  console.log("LendingPool, the BondVault and the bond collections are not part of it: run earn_timelock_handover.ts.");
 }
 
 if (require.main === module) {

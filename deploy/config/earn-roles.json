@@ -1,0 +1,47 @@
+{
+  "_comment": "Who holds each Earn operational role, per network: read by deploy/27_wire_Earn.ts (deploy/earnWiring.ts, grantEarnRoles). Every list is null until the owner fills it: the script refuses to grant anything while any is null or short of its minimum (deploy/earnWiring.ts, EARN_ROLE_MINIMUMS). Use [] only where none is the answer (EXCLUDED_HOLDER_ROLE, when Clear has no insiders holding bonds). On the pool: two DEPLOYER_ROLE signers for each Deployment; two VALUATION_ROLE signers, who must not be Deployment signers (PHASE-2F-YIELD-POOL.md section 9); SUSPENSION_ROLE, CCO_ROLE and TREASURER_ROLE for Suspensions and legal holds, two different people, one of them the CCO or the treasurer (decision 34). On EarnControls, each granted with the Lending Board resolution (EARN_RESOLUTION): ATTESTER_ROLE (the app's attestation key, plus the household attesters), and two each of PAUSE_ROLE, SUCCESSOR_ROLE, ELIGIBILITY_ROLE, LADDER_ROLE, FUNDING_ROLE and WIND_DOWN_ROLE; ROLL_NOTICE_ROLE (Clear Lending's notice key); EXCLUDED_HOLDER_ROLE (Clear Lending's certified insiders, decision 30). BOND_ROLE is the collection's, granted by deploy 23. revokeBorrowers: addresses whose old LendingPool BORROWER_ROLE is revoked (decision 17); the card settler is the one ops-roles.map.json records.",
+  "networks": {
+    "base-sepolia": {
+      "LendingPool": {
+        "DEPLOYER_ROLE": null,
+        "VALUATION_ROLE": null,
+        "SUSPENSION_ROLE": null,
+        "CCO_ROLE": null,
+        "TREASURER_ROLE": null
+      },
+      "EarnControls": {
+        "ATTESTER_ROLE": null,
+        "PAUSE_ROLE": null,
+        "SUCCESSOR_ROLE": null,
+        "ELIGIBILITY_ROLE": null,
+        "LADDER_ROLE": null,
+        "FUNDING_ROLE": null,
+        "WIND_DOWN_ROLE": null,
+        "ROLL_NOTICE_ROLE": null,
+        "EXCLUDED_HOLDER_ROLE": null
+      },
+      "revokeBorrowers": ["0x1b535bbe4bc5f1a4152dfbd1d1215d9435ead4f3"]
+    },
+    "base": {
+      "LendingPool": {
+        "DEPLOYER_ROLE": null,
+        "VALUATION_ROLE": null,
+        "SUSPENSION_ROLE": null,
+        "CCO_ROLE": null,
+        "TREASURER_ROLE": null
+      },
+      "EarnControls": {
+        "ATTESTER_ROLE": null,
+        "PAUSE_ROLE": null,
+        "SUCCESSOR_ROLE": null,
+        "ELIGIBILITY_ROLE": null,
+        "LADDER_ROLE": null,
+        "FUNDING_ROLE": null,
+        "WIND_DOWN_ROLE": null,
+        "ROLL_NOTICE_ROLE": null,
+        "EXCLUDED_HOLDER_ROLE": null
+      },
+      "revokeBorrowers": []
+    }
+  }
+}
