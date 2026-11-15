@@ -231,7 +231,13 @@ These are listed, not chosen. Where a decision exists, the decision's version is
    - A transfer approval is open 30 days, in one direction, with no revocation.
    - For bonds only, a Successor registered for payment (IV-01 §6.3) applies after 7 days, and the Holder's own account may cancel it.
    - IV-02 §8.3's "redeem and pay the Successor in dollars" is the pool's own path; `payeeOf` is for bonds.
-10. **The Ladder** is governed through the 7-day Earn timelock (the "GOVERNED PARAMETER" rule). That may be too slow for repricing; a two-person Ladder role without the timelock would be wider. Bounds: terms up to 30 years, yields below 50%.
+10. **The Ladder. Decided (decision 31, Nov 15, 2026).** Ladder changes take effect 48 hours after they are scheduled, not 7 days. Built on `audit/phase-2f-pool-conformance`:
+    - `scheduleRung(term, yield, offered)` needs two different `LADDER_ROLE` holders (a new role, granted like every other with `grantRoleByResolution`; there was no Ladder role before). The second call publishes the change with `RungScheduled(term, yield, offered, effectiveAt, proposer, approver)`.
+    - `applyRung(term)`, by anyone, puts it in force from `effectiveAt`, emits `RungSet` and tells the reserve hook then. A new schedule for the same term replaces a pending one and restarts its 48 hours.
+    - A change never alters a quote or roll notice already given. The rung in force before each change is kept, and `rungAt(term, t)` returns the rate as it stood at time `t`. **Stage 2 hook:** the bond collection captures the term and yield when it gives a quote or posts a roll notice (decision 11) and never re-reads the Ladder at purchase or roll; a purchase can check its quote against `rungAt(term, quotedAt)`. `checkPurchase` still refuses a term that is not offered when the purchase executes.
+    - Everything else stays on the 7-day Earn timelock. `setRung` (`DEFAULT_ADMIN_ROLE`, the timelock) is kept for the initial listing before the handover and as the governed path; it also records the prior rung.
+    - Bounds unchanged: terms up to 30 years, yields up to 50%.
+    - Tests: `test/earn/EarnControls.spec.ts`, "Ladder changes (decision 31)", 5 tests.
 11. **The holder-ineligible flag** needs two `ELIGIBILITY_ROLE` holders and an evidence hash (plan ambiguity 8). It tells the reserve hook in the same transaction.
 
 **Accretion**
@@ -347,7 +353,7 @@ These are listed, not chosen. Where a decision exists, the decision's version is
   - check `holderCapFloorDollars` (1,000,000) and `offeringCapDollars` (1,000,000).
 - **EarnControls roles,** before the handover:
   - `ATTESTER_ROLE`: the app's signing key, plus two funded holders for households;
-  - `PAUSE_ROLE` ×2, `SUCCESSOR_ROLE` ×2, `ELIGIBILITY_ROLE` ×2;
+  - `PAUSE_ROLE` ×2, `SUCCESSOR_ROLE` ×2, `ELIGIBILITY_ROLE` ×2, `LADDER_ROLE` ×2 (decision 31);
   - `BOND_ROLE` for the collection.
 - **EarnControls wiring:**
   - `setSources(MembershipRegistry, LendingPool, BondVault, CollateralAgent, BondVault)`, only once the BondVault has `inReserveShortfall` and the hook; earlier, every subscription would revert;
@@ -373,7 +379,7 @@ These are listed, not chosen. Where a decision exists, the decision's version is
   - Show which limit refused, from `EarnControlsLimit(what, …)`.
 - **Ops consoles.**
   - Two-person `setPauseFlag`, `approveSuccessorTransfer`, `registerPaymentSuccessor` and `setHolderIneligible`.
-  - Ladder proposals through the Earn timelock.
+  - Ladder changes: two `LADDER_ROLE` signers call `scheduleRung`; publish `RungScheduled`; call `applyRung` once 48 hours have run (decision 31).
   - Holders may `cancelPaymentSuccessor` from the app.
 - **Collateral Agent.**
   - After `enforce`, call `snapshotBonds` in batches until complete.

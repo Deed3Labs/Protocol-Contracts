@@ -321,6 +321,82 @@ describe("EarnControls (Earn §§1, 2, 6; IV-02 §§2.4-2.6, 8.1; decisions 1, 1
       await expect(controls.connect(f.bob).setRung(365, 500, true)).to.be.reverted;
     });
 
+    /* Decision 31: Ladder changes take two LADDER_ROLE signers, are published, and take effect 48 hours later. */
+    describe("Ladder changes (decision 31)", function () {
+      let l1: any, l2: any;
+      beforeEach(async function () {
+        [l1, l2] = [f.s1, f.s2];
+        await controls.setSources(await c.membership.getAddress(), f.poolAddress, ethers.ZeroAddress, ethers.ZeroAddress, await sources.getAddress());
+        await grant(controls, f.admin, "LADDER_ROLE", l1.address, l2.address);
+        await controls.setRung(365, 500, true);
+      });
+
+      it("need two different LADDER_ROLE signers, and the second publishes the change with its effective time", async function () {
+        await expect(controls.connect(f.bob).scheduleRung(365, 550, true))
+          .to.be.revertedWithCustomError(controls, "EarnControlsNotAuthorized");
+        await expect(controls.connect(f.admin).scheduleRung(365, 550, true))
+          .to.be.revertedWithCustomError(controls, "EarnControlsNotAuthorized");
+        await controls.connect(l1).scheduleRung(365, 550, true);
+        expect((await controls.pendingRung(365)).effectiveAt).to.equal(0n);
+        await expect(controls.connect(l1).scheduleRung(365, 550, true))
+          .to.be.revertedWithCustomError(controls, "EarnControlsSameSigner");
+        const tx = await controls.connect(l2).scheduleRung(365, 550, true);
+        const at = BigInt(await latest()) + 48n * 3600n;
+        await expect(tx).to.emit(controls, "RungScheduled").withArgs(365, 550, true, at, l1.address, l2.address);
+        expect(await controls.pendingRung(365)).to.deep.equal([550n, true, at]);
+        // Bounds still apply.
+        await expect(controls.connect(l1).scheduleRung(365, 5_001, true))
+          .to.be.revertedWithCustomError(controls, "EarnControlsInvalidValue");
+      });
+
+      it("take effect only after 48 hours, by anyone, and tell the reserve hook then", async function () {
+        await c.two(l1, l2, "scheduleRung", 365, 450, false);
+        await expect(controls.applyRung(365)).to.be.revertedWithCustomError(controls, "EarnControlsNotYet");
+        expect(await controls.isTermOffered(365)).to.equal(true);
+        expect(await controls.ladderYieldBps(365)).to.equal(500n);
+        await increase(48 * 3600 - 5);
+        await expect(controls.connect(f.outsider).applyRung(365)).to.be.revertedWithCustomError(controls, "EarnControlsNotYet");
+        await increase(5);
+        await expect(controls.connect(f.outsider).applyRung(365)).to.emit(controls, "RungSet").withArgs(365, 450, false);
+        expect(await controls.isTermOffered(365)).to.equal(false);
+        expect(await sources.lastTerm()).to.equal(365n);
+        expect(await sources.lastOffered()).to.equal(false);
+        await expect(controls.applyRung(365)).to.be.revertedWithCustomError(controls, "EarnControlsInvalidValue");
+      });
+
+      it("never alter a quote or roll notice already given: the rate at quote time stays readable", async function () {
+        const quotedAt = BigInt(await latest());
+        await c.two(l1, l2, "scheduleRung", 365, 420, true);
+        await increase(48 * 3600);
+        await controls.applyRung(365);
+        const changedAt = BigInt(await latest());
+        expect(await controls.rungAt(365, quotedAt)).to.deep.equal([500n, true]);
+        expect(await controls.rungAt(365, changedAt - 1n)).to.deep.equal([500n, true]);
+        expect(await controls.rungAt(365, changedAt)).to.deep.equal([420n, true]);
+        // A roll notice posted before the change keeps its own yield: the higher of the notice and
+        // the Ladder is evaluated when the notice is posted, never lowered later.
+        expect(await controls.rollYieldFor(365, 500)).to.equal(500n);
+      });
+
+      it("a new schedule for the same term replaces the pending one and restarts its 48 hours", async function () {
+        await c.two(l1, l2, "scheduleRung", 365, 600, true);
+        await increase(47 * 3600);
+        await c.two(l1, l2, "scheduleRung", 365, 650, true);
+        await increase(2 * 3600);
+        await expect(controls.applyRung(365)).to.be.revertedWithCustomError(controls, "EarnControlsNotYet");
+        await increase(46 * 3600);
+        await controls.applyRung(365);
+        expect(await controls.ladderYieldBps(365)).to.equal(650n);
+      });
+
+      it("leave every other setting on the 7-day timelock: a LADDER_ROLE signer cannot change them", async function () {
+        await expect(controls.connect(l1).setRung(365, 600, true)).to.be.reverted;
+        await expect(controls.connect(l1).setHolderCapBps(500)).to.be.reverted;
+        await expect(controls.connect(l1).scheduleHolderCapFloor(1n)).to.be.reverted;
+        await expect(controls.connect(l1).setRefused(f.bob.address, true)).to.be.reverted;
+      });
+    });
+
     it("the holder-ineligible flag takes two signers and an evidence hash, and tells the reserve", async function () {
       await controls.setSources(await c.membership.getAddress(), f.poolAddress, ethers.ZeroAddress, ethers.ZeroAddress, await sources.getAddress());
       const [e1, e2] = [f.s1, f.s2];

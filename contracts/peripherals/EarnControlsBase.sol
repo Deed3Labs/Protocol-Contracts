@@ -12,7 +12,8 @@ import "./interfaces/IEarnControls.sol";
 /// @dev Powers, all granted by the Earn timelock (`DEFAULT_ADMIN_ROLE`, decision 2) with a Lending
 /// Board resolution hash (§10):
 /// - `DEFAULT_ADMIN_ROLE`: the governed settings (Funding Limit, offering maxima, pool capacity,
-///   holder cap and its floor, the Ladder, the refused Clear contracts, the sources) and upgrades.
+///   holder cap and its floor, the refused Clear contracts, the sources) and upgrades. It may
+///   also set a Ladder term directly (`setRung`), through the 7-day timelock.
 /// - `ATTESTER_ROLE`: signs eligibility attestations off chain; two holders record a household.
 /// - `PAUSE_ROLE`: sets and clears, two people each, the Reserve Shortfall pause (L-01 §8.9(e)),
 ///   the Equity Cushion pause (L-01 §8.6A) and the L-01 §2.9(c) flag (IV-02 §2.6).
@@ -20,12 +21,15 @@ import "./interfaces/IEarnControls.sol";
 ///   people with an evidence hash (IV-01 §6.3; IV-02 §8.3).
 /// - `ELIGIBILITY_ROLE`: sets and clears the holder-ineligible flag, two people (§2).
 /// - `BOND_ROLE`: a bond collection: `checkPurchase` and `recordBondExit`.
+/// - `LADDER_ROLE`: schedules a Ladder change, two people; it takes effect 48 hours later and is
+///   published by its event (decision 31). Every other setting stays on the 7-day Earn timelock.
 abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable, EIP712Upgradeable {
     bytes32 public constant ATTESTER_ROLE = keccak256("ATTESTER_ROLE");
     bytes32 public constant PAUSE_ROLE = keccak256("PAUSE_ROLE");
     bytes32 public constant SUCCESSOR_ROLE = keccak256("SUCCESSOR_ROLE");
     bytes32 public constant ELIGIBILITY_ROLE = keccak256("ELIGIBILITY_ROLE");
     bytes32 public constant BOND_ROLE = keccak256("BOND_ROLE");
+    bytes32 public constant LADDER_ROLE = keccak256("LADDER_ROLE");
 
     /// @notice The pause flags (IV-02 §2.6), each set and cleared by two `PAUSE_ROLE` holders.
     uint8 public constant RESERVE_SHORTFALL = 1;
@@ -37,6 +41,8 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
     uint64 public constant HOLDER_CAP_FLOOR_DELAY = 7 days;
     uint64 public constant SUCCESSOR_WINDOW = 30 days;
     uint64 public constant PAYEE_DELAY = 7 days;
+    /// @notice How long a scheduled Ladder change waits before it may take effect (decision 31).
+    uint64 public constant LADDER_DELAY = 48 hours;
 
     struct Eligibility {
         bytes32 exemptionCode;
@@ -54,10 +60,23 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
         uint256 bondCost;
     }
 
+    /// @dev A Ladder term. `priorYieldBps`/`priorOffered` were in force until `changedAt`, so a
+    /// quote or roll notice given before a change can still be checked against the rate it was
+    /// given at (`rungAt`, decision 31).
     struct Rung {
         uint32 yieldBps;
         bool offered;
         bool listed;
+        uint32 priorYieldBps;
+        bool priorOffered;
+        uint64 changedAt;
+    }
+
+    /// @dev A Ladder change scheduled by two `LADDER_ROLE` signers, applicable from `effectiveAt`.
+    struct PendingRung {
+        uint32 yieldBps;
+        bool offered;
+        uint64 effectiveAt;
     }
 
     struct SuccessorApproval {
@@ -121,8 +140,10 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
     mapping(address => mapping(address => SuccessorApproval)) internal _successorTransfers;
     mapping(address => PaymentSuccessor) internal _payees;
     mapping(bytes32 => address) internal _proposerOf;
+    /// @notice Ladder changes waiting for their 48 hours (decision 31).
+    mapping(uint32 => PendingRung) internal _pendingRungs;
 
-    uint256[40] private __gap;
+    uint256[39] private __gap;
 
     event SettingsSet(bytes32 indexed what, uint256 value, bytes32 resolutionHash);
     event OfferingTaken(address indexed holder, bool indexed pool, uint256 amount, uint256 taken);
@@ -136,6 +157,8 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
     event EarnCostRecorded(uint256 indexed memberKey, uint256 poolCost, uint256 bondCost);
     event HolderIneligibleSet(address indexed holder, bool ineligible, bytes32 evidenceHash);
     event RungSet(uint32 indexed termDays, uint32 yieldBps, bool offered);
+    /// @notice A Ladder change is scheduled and published; it may take effect from `effectiveAt`.
+    event RungScheduled(uint32 indexed termDays, uint32 yieldBps, bool offered, uint64 effectiveAt, address proposer, address approver);
     event SuccessorTransferApproved(address indexed from, address indexed to, bytes32 evidenceHash, uint64 openUntil);
     event PaymentSuccessorRegistered(address indexed holder, address indexed payee, bytes32 evidenceHash, uint64 effectiveAt);
     event PaymentSuccessorCancelled(address indexed holder, address indexed payee);
@@ -161,6 +184,7 @@ abstract contract EarnControlsBase is AccessControlUpgradeable, UUPSUpgradeable,
     error EarnControlsHolderCap(address receiver, uint256 held, uint256 limit);
     error EarnControlsNothingToCancel(address holder);
     error EarnControlsModuleMismatch();
+    error EarnControlsNotYet(uint64 effectiveAt);
 
     /// @notice Refused: grant with `grantRoleByResolution`, which records the resolution hash.
     function grantRole(bytes32, address) public pure override {

@@ -51,6 +51,11 @@ interface IEarnControls is IPoolEarnControls {
     /// yield or the Ladder yield for that term, whichever is higher.
     function rollYieldFor(uint32 rollTerm, uint32 noticeYieldBps) external view returns (uint32);
 
+    /// @notice The Ladder term as it stood at time `at` (decision 31). A Ladder change never alters
+    /// a quote or roll notice already given: the bond captures the term and yield when it quotes or
+    /// posts the notice (decision 11), and can check a purchase against the rate at quote time here.
+    function rungAt(uint32 termDays, uint64 at) external view returns (uint32 yieldBps, bool offered);
+
     /// @notice Where a payment to `holder` goes: a Successor registered for payment under
     /// IV-01 §6.3 (two-person, evidence hash, 7-day delay), otherwise `holder` itself.
     function payeeOf(address holder) external view returns (address);

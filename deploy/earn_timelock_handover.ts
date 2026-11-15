@@ -21,7 +21,7 @@
  *
  * Every other role the deployer holds on these contracts is renounced; operational keys
  * (DEPLOYER_ROLE, VALUATION_ROLE, SUSPENSION_ROLE, CCO_ROLE, TREASURER_ROLE, ENFORCER_ROLE on the
- * pool; ATTESTER_ROLE, PAUSE_ROLE, SUCCESSOR_ROLE, ELIGIBILITY_ROLE, BOND_ROLE on the controls)
+ * pool; ATTESTER_ROLE, PAUSE_ROLE, SUCCESSOR_ROLE, ELIGIBILITY_ROLE, BOND_ROLE, LADDER_ROLE on the controls)
  * are granted to their holders before this runs. Afterwards only the Clear Lending Safe, through
  * the 7-day delay, can grant or revoke any of them.
  *
@@ -51,7 +51,7 @@ const POOL_ROLES = [
   "OPERATOR_ROLE", "BORROWER_ROLE", "LOSS_REPORTER_ROLE", "LIQUIDATOR_ROLE", "VALUATION_ROLE", "DEPLOYER_ROLE",
   "SUSPENSION_ROLE", "CCO_ROLE", "TREASURER_ROLE", "ENFORCER_ROLE",
 ];
-const CONTROLS_ROLES = ["ATTESTER_ROLE", "PAUSE_ROLE", "SUCCESSOR_ROLE", "ELIGIBILITY_ROLE", "BOND_ROLE"];
+const CONTROLS_ROLES = ["ATTESTER_ROLE", "PAUSE_ROLE", "SUCCESSOR_ROLE", "ELIGIBILITY_ROLE", "BOND_ROLE", "LADDER_ROLE"];
 const AGENT_ROLES = ["TREASURY_ROLE"];
 
 async function send(txp: Promise<any>) {

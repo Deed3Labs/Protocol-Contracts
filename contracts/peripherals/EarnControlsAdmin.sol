@@ -70,10 +70,61 @@ contract EarnControlsAdmin is EarnControlsBase {
         return ladder > noticeYieldBps ? ladder : noticeYieldBps;
     }
 
-    /// @notice lists, prices or withdraws a Ladder term. Withdrawing a term is what makes a
-    /// confirmed bond of that term unable to roll; the reserve hook is told in the same call.
+    /// @notice the Ladder term as it stood at time `at`: the rate a quote or roll notice given then
+    /// was given at. A change never alters a quote or notice already given (decision 31): the bond
+    /// captures the term and yield when it quotes or posts the notice, and can check them here.
+    /// @dev Exact for any `at` after the term's previous change; a term changes at most once per
+    /// 48 hours through the Ladder path.
+    function rungAt(uint32 termDays, uint64 at) external view returns (uint32 yieldBps, bool offered) {
+        Rung storage r = _rungs[termDays];
+        if (at < r.changedAt) return (r.priorYieldBps, r.priorOffered);
+        return (r.yieldBps, r.offered);
+    }
+
+    /// @notice the Ladder change scheduled for `termDays`, if any (`effectiveAt` 0 when none).
+    function pendingRung(uint32 termDays) external view returns (uint32 yieldBps, bool offered, uint64 effectiveAt) {
+        PendingRung storage p = _pendingRungs[termDays];
+        return (p.yieldBps, p.offered, p.effectiveAt);
+    }
+
+    /// @notice schedules a Ladder change (decision 31): two different `LADDER_ROLE` signers make
+    /// the same call; the second publishes it with `RungScheduled`, and it may take effect 48 hours
+    /// later through `applyRung`. A new schedule for the same term replaces a pending one and
+    /// restarts its 48 hours.
+    function scheduleRung(uint32 termDays, uint32 yieldBps, bool offered) external {
+        _checkRung(termDays, yieldBps);
+        (bool done, address first) =
+            _pair(keccak256(abi.encode(this.scheduleRung.selector, termDays, yieldBps, offered)), LADDER_ROLE);
+        if (!done) return;
+        uint64 effectiveAt = uint64(block.timestamp) + LADDER_DELAY;
+        _pendingRungs[termDays] = PendingRung(yieldBps, offered, effectiveAt);
+        emit RungScheduled(termDays, yieldBps, offered, effectiveAt, first, msg.sender);
+    }
+
+    /// @notice puts a scheduled Ladder change in force once its 48 hours have run. Permissionless.
+    function applyRung(uint32 termDays) external {
+        PendingRung memory p = _pendingRungs[termDays];
+        if (p.effectiveAt == 0) revert EarnControlsInvalidValue();
+        if (block.timestamp < p.effectiveAt) revert EarnControlsNotYet(p.effectiveAt);
+        delete _pendingRungs[termDays];
+        _setRung(termDays, p.yieldBps, p.offered);
+    }
+
+    /// @notice lists, prices or withdraws a Ladder term directly, through the 7-day Earn timelock
+    /// (initial listing before the handover, and governance). Ordinary changes use the 48-hour
+    /// two-signer path (`scheduleRung`).
     function setRung(uint32 termDays, uint32 yieldBps, bool offered) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkRung(termDays, yieldBps);
+        _setRung(termDays, yieldBps, offered);
+    }
+
+    function _checkRung(uint32 termDays, uint32 yieldBps) internal pure {
         if (termDays == 0 || termDays > MAX_TERM_DAYS || yieldBps > MAX_YIELD_BPS) revert EarnControlsInvalidValue();
+    }
+
+    /// @dev Withdrawing a term is what makes a confirmed bond of that term unable to roll; the
+    /// reserve hook is told in the same call. The rung in force until now is kept for `rungAt`.
+    function _setRung(uint32 termDays, uint32 yieldBps, bool offered) internal {
         Rung storage r = _rungs[termDays];
         if (!r.listed) {
             if (_terms.length >= MAX_LADDER_TERMS) revert EarnControlsInvalidValue();
@@ -81,6 +132,9 @@ contract EarnControlsAdmin is EarnControlsBase {
             r.listed = true;
         }
         bool changed = r.offered != offered;
+        r.priorYieldBps = r.yieldBps;
+        r.priorOffered = r.offered;
+        r.changedAt = uint64(block.timestamp);
         r.yieldBps = yieldBps;
         r.offered = offered;
         emit RungSet(termDays, yieldBps, offered);
