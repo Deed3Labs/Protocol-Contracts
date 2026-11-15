@@ -75,7 +75,7 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
 25. **Recoveries (§5.4).** A recovery does not come back as Vault Cash. It is a two-person-attested accounting entry, with the same posting rules as a loss charge, that adds Pool Loss Charges not yet restored back to the Deployed Balance. It is capped at the total of those charges and raises the Share Value. Cash moves later through ordinary Returns.
 26. **Valuation Event (Exhibit A, A4).** A Valuation Event has no direct on-chain effect. It obliges Clear Lending to post an updated Pool Loss Allowance within 2 Business Days. §7.1(d) makes "a Valuation Event has occurred and the update is not yet posted" a Suspension ground. On chain, this is a two-person-attested `valuationEventPending` flag, cleared by the next allowance posting; a VALUATION_PENDING Suspension is allowed only while the flag is set.
 27. **Legend (§8.4).** The legend text, or its hash plus a URI, is stored in the vault's metadata and exposed in the Register views. It is written once at deployment and changed only through the standard two-person, timelocked change process.
-28. **Direct USDC transfers count as Vault Cash (§1.2).** USDC sent straight to the vault is Vault Cash and raises the Share Value at once, as built. There is no sweep or recovery function (§4.7), and a direct transfer is a valid way for a future return-generating contract to add value to the pool. The virtual-share protection already in the vault and the $250 minimum stay. Counsel note: Exhibit A, A6 says "no donation to the Vault can manipulate the Share Value". Counsel should align A6's wording with this decision, for example by saying that a donation can only raise the Share Value, ratably for all Holders.
+28. **Direct USDC transfers count as Vault Cash (§1.2).** USDC sent straight to the vault is Vault Cash and raises the Share Value at once, as built. There is no sweep or recovery function (§4.7), and a direct transfer is a valid way for a future return-generating contract to add value to the pool. The virtual-share protection already in the vault and the $250 minimum stay. IV-02 Exhibit A, A6 now says this: a donation can only raise the Share Value, ratably for all Holders.
 29. **An empty pool restarts at $1.00.** If every Pool Share has been redeemed and USDC is still in the vault (for example from a direct transfer), the next subscription is issued at $1.00 per share. The leftover is not captured by that first subscriber. At the restart it is set aside and recognized into Vault Cash linearly over 30 days, so it accrues ratably to whoever holds shares during that period, like interest. Holdback Amounts, Queue Requests and unclaimed payments are never part of the leftover.
 
 ## Earn controls and Collateral Agent review (owner, Nov 15, 2026)
@@ -83,14 +83,38 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
 31. **Ladder changes take effect after 48 hours,** not 7 days. Ladder rates price only new purchases and new roll offers, and a roll needs the Holder's confirmation after its term and yield are posted (decision 11). A change never alters a roll notice already posted or a quote already given. It needs two signers and is published. Everything else under the Earn timelock stays at 7 days.
 32. **IV-03 caps:** one cumulative offering cap per product until IV-03 is received. Splitting it by exemption comes later.
 
+## Yield Pool conformance review (owner, Nov 15, 2026)
+33. **A loss charge borne partly by holdbacks reduces the Deployed Balance by the FULL charge** (owner, Nov 15, 2026; this reverses the first decision 33). §5.6(d) and A2's "only the rest reduces the Deployed Balance" was a drafting error, now corrected in IV-02. §1.2 and A10 control. On `postLossCharge(L)`:
+    - each open holdback absorbs its ratable share, capped at H, as built;
+    - the absorbed amounts move into Vault Cash;
+    - the full L reduces the Deployed Balance, not L − Σ absorbed;
+    - only the part of L above the Deployed Balance plus accrued Pool Interest leaves the vault to Clear Lending.
+
+    Net: Pool Assets fall by L − Σ absorbed, and the Pool Class bears all of L. **Acceptance test 20:** `postLossCharge($900)` with Pool Assets $89,600 and the $52 holdback open applies $52, adds $52 to Vault Cash and reduces the Deployed Balance by $900. Pool Assets fall by $848, to $88,752, and the remaining shares bear $848, as A10 says. **Test 15** likewise: the full charge reduces the Deployed Balance. The first build reduced it by only $848, so the Pool Class bore $848 of a $900 charge (the leaver $52, the rest $796) and Clear Lending carried the other $52.
+34. **§7.5 legal holds take two signers and an evidence hash** of the order. A hold covers only the shares the order names. It ends when two signers release it or when the order's stated expiry passes.
+35. **§8.3 Successor redemption reuses the bonds' Successor registration.** A registered Successor applies after 7 days, and the Holder's own account can cancel it. The shares are redeemed through the ordinary queue and paid only to that Successor.
+36. **Kept as built:** the recovery cap (decision 25) includes any part of a charge that holdbacks bore, and a loss charge's excess is still paid to Clear Lending while the queue is open.
+
+## IV-03 and the enforcement review (owner, Nov 15, 2026)
+37. **A credit line's closing is recorded on chain.** After an Objective Default, two people (one proposes, a different one approves) may record that the line is closed and its full balance demanded (MB-04 §9.3(a)–(b)). From that record, the full Savings-Backed Drawn is a Defaulted Amount that Encumbered CLRUSD may pay, never more than the Savings-Backed Position (MB-04 §9.4; MB-05 §§1.3, 7.2), and the full balance is a Defaulted Amount for pledged Earn Positions. Without the record, the Defaulted Amount is only what is past due, as built. Counsel note: confirm whether the demand needs its own notice period under MB-05 §6.3.
+38. **One offering maximum across both products (IV-03 §1.3).** A single cumulative counter of $1,000,000, measured by price paid: bond Purchase Prices and pool subscriptions together. This replaces decision 32. Rolls are not counted. Counsel note: IV-03 §6.4(b) calls a roll "a new purchase"; confirm a roll does not count toward the maximum.
+39. **The Funding Limit counts all borrowed money (IV-03 §§1.3, 5.5; L-01 "Funding Limit").** Two people post Lending Co.'s other indebtedness for borrowed money (anything that is not an Earn Product) with an evidence hash, and it is added to the on-chain total of bonds at Maturity Amount and pool shares at Share Value (decision 12). The posted figure can only make the check stricter.
+40. **The household cap during bootstrap.** A household may hold at most 10% of the greater of Pool Assets and `holderCapFloor` (decision 23's 7-day setting, $1,000,000 in config). This replaces decision 23's "no cap below the floor". At the $1m floor, a household holds at most $100,000 while the pool is small, so filling it takes at least ten households (IV-03 counsel note 18). IV-02 §2.5(c) should be reworded to describe it.
+41. **Ladder terms (IV-01; IV-03 §§1.2, 6.3).** A rung may be offered only for terms of 12 to 36 months. A 7-day Earn-timelock setting may raise the maximum to 60 months for Phase 3 under L-02, never higher. A Ladder change is refused when it takes effect if it would leave an offered longer term with a lower Issue Yield than an offered shorter term.
+42. **Eligibility attestations last at most 12 months** (IV-03 §2.1(d)). The contract refuses an attestation whose `validUntil` is more than 12 months after its `issuedAt`.
+43. **No buyback while any bond's maturity payment is unpaid** (IV-03 §6.4(c), "never during a Reserve Shortfall or default"). This is in addition to the Reserve Shortfall and Enforcement Notice blocks.
+44. **A roll needs eligibility at maturity** (IV-03 §6.4(b)). A confirmed roll executes only while the Holder's eligibility attestation is in force, and the replacement bond records that attestation's exemption code. With none in force, the bond is paid, not rolled. The holder-ineligible flag still covers a Rule 506(b) bond whose Holder is not verified for the Rule 506(c) Offering.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
 - **Amount due at enforcement:** Exhibit A says "at the acceleration time", and the Earn spec says "at the enforcement timestamp". The Agent has no power to accelerate, so the amount is fixed at enforcement, with unmatured bonds at Accreted Value.
 - **MB-05 §5.3:** a raise in an advance rate may benefit existing pledges, while Phase 2e stores the rate at pledging. Use the higher of the stored and current rate, so a raise helps existing pledges and a cut does not hurt them.
+- **IV-02 §5.6(d) and A2 (decision 33):** corrected by the owner so the full Pool Loss Charge reduces the Deployed Balance. The corrected IV-02 and `earn-contract-requirements.md` are filed in this folder.
 
 ## Documents
-- IV-02 in full was received on Nov 14, 2026, and is in this folder.
+- IV-02 in full was received on Nov 14, 2026. The corrected IV-02 (§5.6(d), A2, A6), the corrected `earn-contract-requirements.md` (section 4A roll confirmation, tests 2, 6, 15, 19, 20, 24 and 26) and IV-01 were filed on Nov 15, 2026, from `Deed3Labs/clear-agreements` at 6e8193f, verbatim.
+- IV-03 (the Private Placement Memorandum) was filed on Nov 15, 2026, from `Deed3Labs/clear-agreements` at 6e8193f, verbatim.
 - IV-10 (with Exhibit A) and MB-05 in full were received on Nov 14, 2026, and are in this folder.
 
 ## Build order
@@ -98,4 +122,7 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
    - Agent A reworks `LendingPool` into the Yield Pool with its holdback module (decisions 16–17), tests 11–15 and 20–25.
    - Agent B builds `EarnControls`, the compounding library and the Earn timelock script, and `CollateralAgent` once Exhibit A arrives.
 2. **Stage 2, after Phase 2g merges:** the bond contracts, BondVault, CollateralRegistry, the Liquidator slim-down with `PoolShareEnforcer`, and the deploy configuration.
-3. **Stage 3:** integration, storage reports, Slither and the 2f report.
+3. **Stage 3:** integration, storage reports, Slither and the 2f report. Decision 33 (as revised), 34 and 35 are built here, on top of the enforcement branch's LendingPool.
+
+## Base Sepolia redeploy steps
+- Before the first Deployment: call `setLegend` with IV-02's legend, then have two `VALUATION_ROLE` signers post the Pool Tier ceiling (`poolTierPrincipal`). Until the ceiling is posted, no Deployment is possible.
