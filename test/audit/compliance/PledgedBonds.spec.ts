@@ -306,6 +306,59 @@ describe("COMPLIANCE Phase 2e: pledged bonds (Earn addendum, founder answer G)",
     });
   });
 
+  describe("Addendum 4, 10c (decision 6): payPledged and the Shortfall wait under a pause", function () {
+    let clrusdPause: any, vaultPause: any;
+
+    beforeEach(async function () {
+      const Mock = await ethers.getContractFactory("MockPauseSource");
+      clrusdPause = await Mock.deploy();
+      vaultPause = await Mock.deploy();
+      const clock = await (await ethers.getContractFactory("PauseClock"))
+        .deploy(await clrusdPause.getAddress(), await vaultPause.getAddress());
+      await expect(s.liquidator.connect(s.stranger).setPauseClock(await clock.getAddress())).to.be.reverted;
+      await s.liquidator.connect(s.ctx.admin).setPauseClock(await clock.getAddress());
+    });
+
+    it("payPledged and every enforcement path revert while a pause affecting the Holder is in force, and pay once it lifts", async function () {
+      const { usdc, issuer, bond, bondVault, liquidator, keeper } = s;
+      const { id } = await buyBond(U(1_000));
+      await usdc.mint(await bondVault.getAddress(), U(1_000));
+      await issuer.setPrincipal(m, T_BOND, U(500));
+      await issuer.setInDefault(m, true);
+      await clrusdPause.pauseAccount(m); // the Holder's own CLRUSD account
+      expect((await liquidator.pledgePaymentDue(m, id))[0]).to.equal(false);
+      await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
+      await expect(liquidator.liquidate(m, I, T_SAVINGS, SAVINGS)).to.be.revertedWithCustomError(liquidator, "LiquidatorPauseInForce");
+      await clrusdPause.unpauseAccount(m);
+      await vaultPause.pauseAll(); // a vault-wide pause reaches every Holder
+      expect((await liquidator.pledgePaymentDue(m, id))[0]).to.equal(false);
+      await expect(bond.connect(keeper).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
+      await vaultPause.unpauseAll();
+      await expect(bond.connect(keeper).payPledged(id)).to.emit(bond, "PledgePaid");
+    });
+
+    it("the 72-hour Shortfall wait runs longer by the paused time since the notice", async function () {
+      const { usdc, issuer, bond, liquidator, stranger } = s;
+      const { id } = await buyBond(U(1_000));
+      await usdc.mint(await s.bondVault.getAddress(), U(1_000));
+      await advance(30 * DAY);
+      const backing = await s.registry.advancedValueOf(m, BOND, 0);
+      await issuer.setPrincipal(m, T_BOND, backing + U(10));
+      await liquidator.noticeShortfall(m, I);
+      const noticedAt = await liquidator.shortfallNoticedAt(m, I);
+      await at(noticedAt + BigInt(10 * HOUR));
+      await clrusdPause.pauseAccount(m);
+      await at(noticedAt + BigInt(16 * HOUR));
+      await clrusdPause.unpauseAccount(m); // six hours paused
+      await at(noticedAt + BigInt(72 * HOUR));
+      await expect(bond.connect(stranger).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
+      await at(noticedAt + BigInt(78 * HOUR) - 1n);
+      await expect(bond.connect(stranger).payPledged(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotPledgePayable");
+      await at(noticedAt + BigInt(78 * HOUR));
+      await expect(bond.connect(stranger).payPledged(id)).to.emit(bond, "PledgePaid");
+    });
+  });
+
   describe("Earn test 19: the pledged maturity split", function () {
     /** Bond A ($1,000 Maturity Amount, auto-roll off) and bond B (Present Value $500: already matured). */
     async function twoBonds(drawn: bigint, vaultExtra = U(10_000)) {

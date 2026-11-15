@@ -12,7 +12,7 @@ export async function issuerProxyOptions(name: "TermIssuer" | "RevolvingIssuer")
   const { ethers } = require("hardhat");
   const modules = name === "TermIssuer"
     ? ["TermIssuerExtension", "TermIssuerOrigination"]
-    : ["RevolvingIssuerExtension", "RevolvingIssuerCycles", "RevolvingIssuerTerms"];
+    : ["RevolvingIssuerExtension", "RevolvingIssuerCycles", "RevolvingIssuerTerms", "RevolvingIssuerWorkouts"];
   const constructorArgs: string[] = [];
   for (const m of modules) {
     const c = await (await ethers.getContractFactory(m)).deploy();

@@ -190,7 +190,63 @@ and the cycle does not count toward default. Past the window's graces an unpaid 
 `CREDIT_ATTESTER_ROLE` holders (`proposeIncomePause`, then `approveIncomePause` by a different one).
 While it is above zero nothing is due, no miss is recorded, no pause arises and nothing counts toward
 default; it falls by one at each cycle end, and only expiry or the member (`endIncomePause`) ends it.
-A second attestation can only lengthen it.
+A second attestation can only lengthen it. Since Phase 2g (Addendum 4, decision 14) each attestation
+records a `hardshipRef` hash of the documented hardship, of any kind; no category is recorded or
+checked. One hardship never runs more than `incomePauseMaxCycles` consecutive cycles (a further
+attestation for it straight after its pause ran out continues the run), and a different hardship
+may start a fresh pause once the running one has ended (`IncomePauseHardship`).
+
+**Pauses never cause a default (10c, Phase 2g).** A `PauseClock` (no owner, no setter) adds
+CLRUSD's clock (the security pause or the member's own account pause) to the vault-wide pause's
+clock; `setPauseClock` names it once on this issuer and once on the Liquidator. Paused time since a
+close pushes that close's due point back by as much, and no due point is judged while a pause is in
+force, so a payment the pause prevented is never a miss. A close whose pushed due point falls past
+the next cycle end is held (`heldClosedAt`) and judged once it passes, while the next close is
+recorded at its own end. 12.5's grace period runs longer by the paused time since the close of the
+second missed cycle, and `inDefault` is false while a pause is in force. TermIssuer reads the same
+clock through its hold source (the Liquidator): 12.14's 30-day cure runs longer by the paused time
+since the notice, and no secured or installment default is declared while a pause is in force. An
+unsecured plan's installment default (`defaultableAt`) runs later by the paused time since the plan was
+last on time: each plan records the clock at opening and after every payment that leaves it on time
+(owner decision 34). The
+Liquidator refuses every enforcement path, `payPledged` included, while a pause affecting the member
+is in force, and a Shortfall's 72-hour wait runs longer by the paused time since its notice.
+
+**Statement data (12.17, Phase 2g).** Every touch of a live line first closes the cycle ends that
+have passed, so a close's figures are as at its end even when it is recorded later. Each close emits
+`CycleStatement(member, cycleEnd, recordedAt, startPrincipal[], startCarry[], endPrincipal[],
+endCarry[], cycleCarry[], principalSeconds[], rebalanceAmount, securedMinimum, statementRequired,
+workoutState, workoutRef)`, one entry per position, the start figures being the last close's end
+figures. `principalSeconds` is each position's running principal x seconds, kept on every draw and
+payment. The last close is kept for views (`cycleStateOf`: `lastCycleEnd`, `lastRecordedAt`,
+`lastStatementRequired`; `positionStatOf(member, tier)` through the workouts module). A statement is
+required when any position, secured ones included, ends the cycle with a nonzero balance, carry
+included. Draws emit `TierDrawn`; every payment emits `TierPaymentSplit(member, tier, carry,
+principal)` for each position it reduces. Collateral changes: `CollateralRegistry`'s `Pledged`,
+`Released`, `Seized` (member, kind, amount) and `ItemCollateralChanged` (member, kind, item, value,
+pledged); a bond's `PledgePaid`, and the vault's `SettledPledged` and `SettlementCompleted`, each with
+the holder and the amounts. Changes in Encumbered CLRUSD follow the SAVINGS position's events.
+
+**Workouts (12.18, Phase 2g).** Set only by two `CREDIT_ATTESTER_ROLE` holders (`proposeWorkout`,
+then `approveWorkout` by a different one) with a `workoutRef` hash, at most once per member per
+rolling 365 days unless a second, separately attested approval is recorded (`proposeSecondWorkout`,
+`approveSecondWorkout`, with its own hash). The functions run in `RevolvingIssuerWorkouts`, reached
+at the issuer's address through its fallback. A workout only reduces or delays what is due:
+
+| State | Cycles | Effect |
+|---|---|---|
+| DEFERRAL (1) | at most 2 | No Rebalance Amount, and no carry on the unsecured positions; secured carry and the Secured Minimum unchanged |
+| REDUCED (2) | at most 3 | The Rebalance Amount is at most the attested amount |
+| PLAN (3) | at most 12 payments | The unsecured revolving balances (principal and carry) move to the 0% `WORKOUT` position, with no mint, fee or merchant, repaid in equal cycle payments (`payWorkoutPlan`), the last taking the rounding |
+
+The running cycle is the first one covered. While any state is set, unsecured draws are refused. The
+member ends a DEFERRAL or REDUCED early (`endWorkout`, or by signature); a PLAN ends when it is paid
+off. Three consecutive REDUCED or PLAN cycles paid as required reset the miss count (the re-age), at
+most once per rolling 365 days and twice per rolling 5 years. A PLAN's default follows 12.14's timing
+(a payment 60 days past due, a two-person notice, 30 days, longer by paused time, no pause in force)
+and writes off the plan's own position only (`declareWorkoutDefault`); no default of the line is
+recorded, so nothing reaches Savings or other collateral. The plan's principal is outside the
+Combined Ceiling.
 
 **Automatic Clearing (12.2).** The member's authorization runs to the Bank, Clear Financial and Clear
 Lending. It is set at line opening from the member's own choice on a separate screen: "Approve
@@ -407,7 +463,8 @@ line is in default (`inDefault`) only when:
    864,000 s after the timestamp.
 
 With no timestamp there is no default. After the second miss the line is frozen until that amount is
-paid. Income Assurance holds default off while it runs. `triggerDefault(member)` (anyone) records a
+paid. Income Assurance, a DEFERRAL or REDUCED workout, and a pause in force hold default off, and
+paused time lengthens the grace period (Phase 2g). `triggerDefault(member)` (anyone) records a
 computed default and reverts otherwise; the Liquidator's `_requireCurrentDefault` reads the same
 `inDefault`. A member whose only debt is secured never misses, so never defaults on the revolving
 line: an unpaid Secured Minimum only pauses secured draws. Unsecured term plans keep TermIssuer's own

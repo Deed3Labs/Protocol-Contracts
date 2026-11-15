@@ -3,13 +3,15 @@ import { getPayPool } from '../config/postgres.js';
 import { encryptSendContact, decryptSendContact } from '../utils/sendEncryption.js';
 
 /*
- * Autopay rules — "sign once, then recurring gasless deposits" via a ZeroDev session key. The user
- * approves a session scoped to USDC.approve + ESA vault.deposit (lib/autopay on the client); the
- * serialized permission account (which embeds the session key) is stored ENCRYPTED here. The autopay
- * runner (jobs/autopayRunner) executes due rules server-side with that session, no further signing.
+ * Autopay rules — "sign once, then recurring gasless deposits". The member signs the vault's
+ * DepositMandate once (lib/autopay on the client); the signed mandate is stored ENCRYPTED here (the
+ * `approval_enc` column). The autopay runner (jobs/autopayRunner) has the relayer submit
+ * `executeMandateDeposit` for each due run, with no further signing.
  *
- * Stored in the Pay DB (getPayPool). Kind is 'savings_deposit' for now (rent→ownership); the session
- * scope is what makes this safe — the key can ONLY approve + deposit, capped by rate + expiry on-chain.
+ * Stored in the Pay DB (getPayPool). Kind is 'savings_deposit' for now (rent→ownership). What makes
+ * this safe is the mandate: the vault enforces its amount per run, run count, cadence and expiry on
+ * chain, and the relayer can submit nothing else. There is no ZeroDev session key (audit Phase 2g,
+ * decision 12).
  */
 
 export type AutopayCadence = 'weekly' | 'monthly';
@@ -101,7 +103,7 @@ class AutopayStore {
     return Boolean(getPayPool());
   }
 
-  /** Create a rule. `approval` is the serialized ZeroDev permission account (encrypted at rest). */
+  /** Create a rule. `approval` is the signed DepositMandate as JSON (encrypted at rest). */
   async create(input: {
     wallet: string;
     chainId: number;

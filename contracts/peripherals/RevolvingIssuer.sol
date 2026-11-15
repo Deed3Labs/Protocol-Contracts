@@ -35,16 +35,25 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// creation code inside this one and over EIP-3860's 48 KiB limit. Each is checked for its
     /// kind and fixed for the life of this implementation.
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor(address extension_, address cycles_, address terms_) {
+    constructor(address extension_, address cycles_, address terms_, address workouts_) {
         _disableInitializers();
         if (
-            IExtensionKind(extension_).extensionKind() != keccak256("RevolvingIssuerExtension.v3")
-                || IExtensionKind(cycles_).extensionKind() != keccak256("RevolvingIssuerCycles.v2")
-                || IExtensionKind(terms_).extensionKind() != keccak256("RevolvingIssuerTerms.v1")
+            IExtensionKind(extension_).extensionKind() != keccak256("RevolvingIssuerExtension.v4")
+                || IExtensionKind(cycles_).extensionKind() != keccak256("RevolvingIssuerCycles.v3")
+                || IExtensionKind(terms_).extensionKind() != keccak256("RevolvingIssuerTerms.v2")
+                || IExtensionKind(workouts_).extensionKind() != keccak256("RevolvingIssuerWorkouts.v1")
         ) revert RevolvingIssuerExtensionMismatch();
         extension = extension_;
         cycles = cycles_;
         terms = terms_;
+        workouts = workouts_;
+    }
+
+    /// @notice Phase 2g: the workout (12.18), statement (12.17) and pause-clock (10c) functions run
+    /// in RevolvingIssuerWorkouts, reached at this address with that module's ABI. Anything this
+    /// contract does not declare goes there, and the module reverts on anything it does not declare.
+    fallback() external {
+        _forwardTo(workouts);
     }
 
     /// @param _stableCredit the ledger this issuer writes to.
@@ -78,13 +87,6 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         return (tier.kind, tier.index.ratePerCycle, tier.active);
     }
 
-    /// @notice a member's unsecured revolving principal, carry excluded: the tiers priced from
-    /// RateSchedule, which are the revolving part of their small loan under the CFL (DECISIONS #7).
-    function cflPrincipalOf(address member) external view returns (uint256 total) {
-        for (uint256 i = 0; i < tiers.length; i++) {
-            if (tierProduct[i] != bytes32(0)) total += _principalOnly(member, i);
-        }
-    }
 
     /// @notice seconds in this network's credit cycle.
     /// @dev Derived, not stored. The clock already exists on the tiers -- every rate here is
@@ -168,10 +170,6 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         return drawn > capacity ? drawn - capacity : 0;
     }
 
-    /// @notice consecutive missed rebalances, for the Liquidator.
-    function missedInRowOf(address member) external view returns (uint8) {
-        return cycleOf[member].missedInRow;
-    }
 
     /// @notice the CLRUSD token a Savings draw refreshes the lock of (Phase 4b, L-B); zero if unset.
     function clrusdTokenOf() external view returns (address) {
@@ -253,13 +251,23 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// touched can still be brought current.
     /// @param member address of the member.
     function materialiseCarry(address member) public {
+        _judgeFirst(member);
         _materialiseCarry(member);
     }
 
+    /// @notice brings carry up to a cycle end being closed (12.17, Phase 2g): the close's figures are
+    /// as at that end, even when it is recorded later. Only this issuer calls it (from its cycles
+    /// module, by delegatecall); a time before the last one brought up to changes nothing.
+    function closeCarry(address member, uint64 at) external {
+        if (msg.sender != address(this)) revert RevolvingIssuerExtensionMismatch();
+        _materialiseCarryAt(member, at);
+    }
 
-    /// @notice see RevolvingIssuerExtension.openLine. Runs in the extension since Phase 4b, for room.
+
+    /// @notice see RevolvingIssuerCycles.openLine (moved for room: the extension since Phase 4b, the
+    /// cycles module since Phase 2g).
     function openLine(address, uint256[] calldata, uint8) external {
-        _forward();
+        _forwardTo(cycles);
     }
 
     /* ---- cycles are computed (12.1, Phase 2e): no role writes or moves a cycle end ---- */
@@ -314,11 +322,6 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
 
 
 
-    /// @notice what an authorization recorded for a ref still allows.
-    function cardAuthorizationOf(bytes32 ref) external view returns (address member, uint256 amount) {
-        CardAuthorization memory authorization = cardAuthorizations[ref];
-        return (authorization.member, authorization.amount);
-    }
 
 
 
@@ -360,6 +363,15 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// extension, against this contract's storage.
     /// @custom:oz-upgrades-unsafe-allow delegatecall
     function expireCreditPeriod(address member) internal override returns (bool) {
+        uint8 outcome = _judge(member);
+        // 2: default now. The base path writes off and closes the line with this contract's own
+        // `_writeOffAmount` and `_onDefault`, which the extension does not have.
+        if (outcome == 2) return super.expireCreditPeriod(member);
+        return outcome == 0;
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function _judge(address member) private returns (uint8) {
         (bool ok, bytes memory data) =
             cycles.delegatecall(abi.encodeWithSignature("judgeCycle(address)", member));
         if (!ok) {
@@ -367,11 +379,19 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
                 revert(add(data, 32), mload(data))
             }
         }
-        uint8 outcome = abi.decode(data, (uint8));
-        // 2: default now. The base path writes off and closes the line with this contract's own
-        // `_writeOffAmount` and `_onDefault`, which the extension does not have.
-        if (outcome == 2) return super.expireCreditPeriod(member);
-        return outcome == 0;
+        return abi.decode(data, (uint8));
+    }
+
+    /// @dev Before anything changes a live line's positions, every cycle end that has passed is
+    /// closed, and a close a pause held is judged once due (Phase 2g). So a close's figures are as
+    /// at its end (12.17, decision 18), and a payment after a due point never counts toward it. A
+    /// default this finds is recorded by the next transaction that expires the period, never here.
+    function _judgeFirst(address member) private {
+        CycleState storage s = cycleState[member];
+        uint256 end = s.cycleEnd;
+        if (((end != 0 && end <= block.timestamp) || s.heldClosedAt != 0) && creditPeriods[member].expiration != 0) {
+            _judge(member);
+        }
     }
 
     /// @notice in default (12.5, 10b; Phase 2e): two consecutive missed Rebalance Amounts, a
@@ -399,8 +419,8 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         // Bring both parties current before deciding anything. Carry that has accrued since the
         // last touch is part of what is owed, so it belongs on the ledger before a draw measures
         // headroom against it or a repayment is allocated over it.
-        _materialiseCarry(sender);
-        if (recipient != address(0)) _materialiseCarry(recipient);
+        materialiseCarry(sender);
+        if (recipient != address(0)) materialiseCarry(recipient);
 
         // The sender covers what their balance cannot, and that shortfall is what gets minted.
         uint256 balance = stableCredit.balanceOf(sender);
@@ -424,15 +444,17 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         returns (uint256 absorbed)
     {
         if (available == 0) return 0;
-        _materialiseCarry(member);
+        materialiseCarry(member);
 
         uint256 remaining = available;
         // Judged by what each tier costs now, after the caps (Phase 4b, L-G), in the same unit
         // `nextRepaymentRate` reports the band in.
         uint256[] memory rates = _effectiveRates(member);
+        // A defaulted workout plan's write-off (12.18) reaches only the plan's own position.
+        bool planOnly = _p2g().workoutOf[member].planWriteOff;
         for (uint256 i = tiers.length; i > 0 && remaining > 0; i--) {
             uint256 tierId = i - 1;
-            if (rates[tierId] < minRate) continue;
+            if (rates[tierId] < minRate || (planOnly && tiers[tierId].kind != WORKOUT_KIND)) continue;
             uint256 principal = tierPrincipal[member][tierId];
             if (principal == 0) continue;
 
@@ -530,6 +552,11 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
     address public immutable terms;
 
+    /// @notice Where the Phase 2g functions run (RevolvingIssuerWorkouts), and since then the line's
+    /// opening, its tier set-up and the member's clearing settings, for room. Fixed like `extension`.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable workouts;
+
     /// @notice see RevolvingIssuerExtension.settleCardSpend.
     function settleCardSpend(bytes32, address, uint256) external {
         _forward();
@@ -550,9 +577,9 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _forward();
     }
 
-    /// @notice see RevolvingIssuerCycles.repayForMember.
+    /// @notice see RevolvingIssuerExtension.repayForMember (in the cycles module until Phase 2g).
     function repayForMember(bytes32, address, uint256, bytes32) external {
-        _forwardTo(cycles);
+        _forward();
     }
 
     /// @notice see RevolvingIssuerExtension.settleFromCollateral.
@@ -577,27 +604,27 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
 
     /// @notice see RevolvingIssuerExtension: section 12 settings and the member's own switches.
     function setCreditTerms(CreditTerms calldata, uint128, uint128) external {
-        _forwardTo(cycles);
+        _forwardTo(workouts);
     }
 
     function setDepositSource(address) external {
-        _forwardTo(cycles);
+        _forwardTo(workouts);
     }
 
     function setAutoClear(bool, uint8, bytes32) external {
-        _forwardTo(cycles);
+        _forwardTo(workouts);
     }
 
     function setAutoClearWithSignature(address, bool, uint8, bytes32, uint256, bytes calldata) external {
-        _forwardTo(cycles);
+        _forwardTo(workouts);
     }
 
     function setSavingsDrawAllowance(uint256) external {
-        _forwardTo(cycles);
+        _forwardTo(workouts);
     }
 
     function setSavingsDrawAllowanceWithSignature(address, uint256, uint256, bytes calldata) external {
-        _forwardTo(cycles);
+        _forwardTo(workouts);
     }
 
     /* ---- settings, forwarded to RevolvingIssuerTerms since Phase 2e (for room) ---- */
@@ -664,11 +691,11 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _forwardTo(terms);
     }
 
-    function proposeIncomePause(address, uint8) external {
+    function proposeIncomePause(address, uint8, bytes32) external {
         _forwardTo(terms);
     }
 
-    function approveIncomePause(address, uint8) external {
+    function approveIncomePause(address, uint8, bytes32) external {
         _forwardTo(terms);
     }
 

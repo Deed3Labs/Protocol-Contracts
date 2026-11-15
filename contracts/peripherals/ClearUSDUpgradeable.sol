@@ -39,21 +39,36 @@ interface IIntentEscrows {
 ///  - `DEFAULT_ADMIN_ROLE` and `UPGRADER_ROLE` are the vault timelock's (7 days, a Clear Financial
 ///    Safe proposing; `deploy/vault_timelock_handover.ts`). The default admin is the admin of every
 ///    other role, so only that Safe, through the delay, grants or revokes MINTER_ROLE and
-///    BURNER_ROLE (the vault and the CCIP token pool), LIQUIDATOR_ROLE (the Liquidator), FRAUD_ROLE
-///    and SECURITY_ROLE, and sets the encumbrance and membership sources and the pause window;
-///  - every pause action (set, renew, end) takes two distinct holders of its role, in contract
-///    (`_secondSigner`).
+///    BURNER_ROLE (the vault and the CCIP token pool), LIQUIDATOR_ROLE (the Liquidator), FRAUD_ROLE,
+///    SECURITY_ROLE and LISTING_ROLE, and sets the encumbrance and membership sources, the pause
+///    window and `pauseMaxTotal` (shorter only);
+///  - every pause action (set, renew, end) and every de-listing and re-listing takes two distinct
+///    holders of its role, in contract (`_secondSigner`).
 ///
-/// **Members only (spec 12.15, decision 6).** A transfer must be received by a registered member
-/// wallet, read from the member registry (`membershipSource`, the AccessManager). Only receipt is
-/// checked: a wallet that stops being a member can still send to members and redeem, and the
-/// registry logs the de-listing (AccessManager `MemberRemoved`, MembershipRegistry
-/// `MemberStatusUpdated`/`WalletUnlinked`). Exempt: mints, burns (so every redemption), the
-/// Liquidator's seizure, transfers to an address holding MINTER_ROLE, BURNER_ROLE or
-/// LIQUIDATOR_ROLE (the vault, the token pool, the Liquidator), and transfers to or from a redeem
-/// escrow of the registered savings-intent factory (`intentFactory`, set only by the default admin,
-/// the vault timelock). Nothing here screens a transfer: sanctions screening is the app's, before it
-/// submits a Send (12.15).
+/// **Members only (spec 12.15, decision 6), with a CLRUSD listing (10d, Phase 2g decision 7).** A
+/// transfer must be received by a listed wallet. A wallet is listed once the member registry
+/// (`membershipSource`, the AccessManager, which also reads MembershipRegistry) has reported it as a
+/// member and that has been recorded here: by anyone through `syncListing` (the app calls it when a
+/// member registers or links a wallet), or on its own the first time the wallet receives CLRUSD or a
+/// mint. From then on the registry no longer decides: membership expiry, tier and status changes,
+/// `revokeMember` and `unlinkWallet` do not affect receipt. Only a two-person `delist` with a reason
+/// code (MEMBERSHIP_ENDED, HOLDER_REQUEST, or FRAUD after a notice recorded at least 10 days before)
+/// clears a listing, and only a two-person `relist` of a wallet the registry reports as a member
+/// restores it. A wallet never recorded falls back to the registry's live answer. Only receipt is
+/// checked: a de-listed wallet still sends to listed wallets and redeems, and de-listing never touches
+/// a pledge lock or a liquidation. Exempt: mints, burns (so every redemption), the Liquidator's
+/// seizure, transfers to an address holding MINTER_ROLE, BURNER_ROLE or LIQUIDATOR_ROLE (the vault,
+/// the token pool, the Liquidator), and transfers to or from a redeem escrow of the registered
+/// savings-intent factory (`intentFactory`, set only by the default admin, the vault timelock).
+/// Swapping the registry (`setMembershipSource`) stays a timelock action. Nothing here screens a
+/// transfer: sanctions screening is the app's, before it submits a Send (12.15).
+///
+/// **Pauses (10c, Phase 2g decisions 2 to 4, owner decision 33).** Each pause lapses after its
+/// window (72 hours) unless renewed, and nothing carries a pause past `pauseMaxTotal` (at most 30
+/// days, hard-coded) from when its chain began, unless it is a two-person action that records a
+/// legal basis (a code and a non-zero hash). A new pause set less than 30 days after the last one
+/// of the same kind ended continues that chain. The pause clock (`pauseClock`) counts the seconds a
+/// pause affecting an account was in force, for the credit side's grace and cure periods.
 contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @custom:storage-location erc7201:clear.storage.ClearUSD
     struct ClearUSDStorage {
@@ -75,6 +90,43 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         IMembershipSource membershipSource;
         /// @dev Phase 2d, appended: the savings-intent factory whose redeem escrows may receive.
         IIntentEscrows intentFactory;
+        /// @dev Phase 2g (10c), appended: how long a pause may run from when its chain began before
+        /// only a legal-basis action extends it. Zero means PAUSE_MAX_TOTAL.
+        uint64 pauseMaxTotal;
+        /// @dev Phase 2g (decisions 3 and 4), appended: each account pause's current span, for the
+        /// renewal cap and the pause clock.
+        mapping(address => PauseSpan) accountSpan;
+        /// @dev Phase 2g, appended: every security pause, oldest first (they never overlap).
+        SecuritySpan[] securitySpans;
+        /// @dev Phase 2g (10d, decision 7), appended: each wallet's CLRUSD listing.
+        mapping(address => Listing) listing;
+    }
+
+    /// @notice An account pause's current span: when it was first set, the security pause clock at
+    /// that moment, and the seconds earlier spans were in force while no security pause was.
+    struct PauseSpan {
+        uint64 start;
+        uint64 securityAtStart;
+        uint64 alone;
+        /// @dev When the chain this pause continues began (owner decision 33): the cap counts from it.
+        uint64 capStart;
+    }
+
+    /// @notice A security pause: when it was first set, the security pause clock at that moment, and
+    /// when the chain it continues began (owner decision 33). It ends where the next one's clock
+    /// says, or for the last one at `globalPause.until`.
+    struct SecuritySpan {
+        uint64 start;
+        uint64 before;
+        uint64 capStart;
+    }
+
+    /// @notice A wallet's CLRUSD listing (10d): NONE (never recorded), LISTED or DELISTED, the reason
+    /// code of the last de-listing, and when a FRAUD notice was recorded (zero if none is open).
+    struct Listing {
+        uint8 status;
+        uint8 reason;
+        uint64 fraudNoticeAt;
     }
 
     // keccak256(abi.encode(uint256(keccak256("clear.storage.ClearUSD")) - 1)) & ~bytes32(uint256(0xff))
@@ -95,6 +147,27 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// pausing the same account (or everyone) again on their own (Phase 4, M-A). Any other signer
     /// may act at once; this only stops one key chaining pauses into an indefinite freeze.
     uint64 public constant REPAUSE_COOLDOWN = 30 days;
+    /// @notice The longest any pause may run from when its chain began without a legal basis (10c).
+    /// Hard-coded: governance may shorten `pauseMaxTotal`, and no role can raise it past this.
+    uint64 public constant PAUSE_MAX_TOTAL = 30 days;
+    /// @notice A new pause set less than this long after the last pause of the same kind ended
+    /// continues it: its cap counts from when the first pause of the chain was set (owner decision
+    /// 33). The same kind is the same account for an account pause, and the security pause.
+    uint64 public constant CONTINUATION_PERIOD = 30 days;
+    /// @notice May de-list and re-list a wallet (10d), two holders at a time, and record a FRAUD
+    /// notice. Cannot move funds, and reaches receipt only.
+    bytes32 public constant LISTING_ROLE = keccak256("LISTING_ROLE");
+    /// @notice How long before a FRAUD de-listing is approved its notice must be recorded (10d).
+    uint64 public constant FRAUD_NOTICE_PERIOD = 10 days;
+
+    uint8 private constant NONE = 0;
+    uint8 private constant LISTED = 1;
+    uint8 private constant DELISTED = 2;
+    /// @dev De-listing reason codes (10d): MEMBERSHIP_ENDED 1, HOLDER_REQUEST 2, FRAUD 3.
+    uint8 private constant FRAUD = 3;
+    /// @dev Legal-basis codes for a renewal past the cap (10c): a court order 1, other legal process
+    /// 2, a written law-enforcement or regulatory request 3.
+    uint8 private constant MAX_LEGAL_BASIS = 3;
 
     /// @notice A pause in force: until when, why, and who last set or renewed it.
     struct Pause {
@@ -112,10 +185,27 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @dev The two-person rule (spec 10c): nobody keeps a member frozen on their own say-so.
     error ClearUSDSameSigner(address signer);
     error ClearUSDNoPause();
+    error ClearUSDZeroAccount();
     /// @notice thrown when a pause window above MAX_PAUSE_WINDOW is set.
     error ClearUSDPauseWindowTooLong(uint64 window);
-    /// @notice thrown when a transfer's receiver is not a registered member wallet (12.15).
+    /// @notice thrown when a transfer's receiver is not a listed wallet (12.15, 10d).
     error ClearUSDReceiverNotMember(address receiver);
+    /// @notice thrown when a pause or renewal without a legal basis would carry a pause past
+    /// `capEnd`, when its chain began plus `pauseMaxTotal` (10c, owner decision 33).
+    error ClearUSDPauseCapReached(uint256 capEnd);
+    /// @notice thrown when `pauseMaxTotal` is set above PAUSE_MAX_TOTAL.
+    error ClearUSDPauseMaxTotalTooLong(uint64 maxTotal);
+    /// @notice thrown for a legal basis with an unknown code or a zero hash.
+    error ClearUSDInvalidLegalBasis(uint8 legalBasis);
+    /// @notice thrown for a de-listing reason code other than MEMBERSHIP_ENDED, HOLDER_REQUEST or FRAUD.
+    error ClearUSDInvalidReasonCode(uint8 reasonCode);
+    /// @notice thrown for a zero wallet or a zero decision or notice hash.
+    error ClearUSDInvalidListingAction();
+    error ClearUSDAlreadyDelisted(address wallet);
+    error ClearUSDNotDelisted(address wallet);
+    /// @notice thrown for a FRAUD de-listing without a notice recorded at least FRAUD_NOTICE_PERIOD
+    /// before: `noticeAt` is when it was recorded, zero if never.
+    error ClearUSDFraudNoticeRequired(address wallet, uint64 noticeAt);
 
     event EncumbranceSourceUpdated(address indexed source);
     /// @notice The encumbrance source reverted while a holder's CLRUSD moved (audit M-3). Monitoring
@@ -130,6 +220,18 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     event PauseWindowUpdated(uint64 window);
     event MembershipSourceUpdated(address indexed source);
     event IntentFactoryUpdated(address indexed factory);
+    event PauseMaxTotalUpdated(uint64 maxTotal);
+    /// @notice A renewal carried a pause on its legal basis (10c). `account` is zero for the
+    /// security pause.
+    event PauseLegalBasisRecorded(
+        address indexed account, uint8 legalBasis, bytes32 legalBasisHash, uint64 until, address proposer, address approver
+    );
+    /// @notice A wallet's listing was recorded from the member registry.
+    event WalletListed(address indexed wallet);
+    /// @notice A wallet was de-listed (10d): it can no longer receive CLRUSD.
+    event WalletDelisted(address indexed wallet, uint8 reasonCode, bytes32 decisionHash, address proposer, address approver);
+    event WalletRelisted(address indexed wallet, bytes32 decisionHash, address proposer, address approver);
+    event FraudNoticeRecorded(address indexed wallet, bytes32 noticeHash, address indexed signer);
     /// @notice the first half of a two-person pause action: `action` is the hash of its calldata.
     event ActionProposed(bytes32 indexed action, address indexed proposer, bytes4 selector);
     /// @notice the second half, by a different holder of the role; the action ran.
@@ -262,14 +364,103 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         return address(_clearUsdStorage().intentFactory);
     }
 
-    /// @notice whether `account` may receive a CLRUSD transfer now.
+    /// @notice whether `account` may receive a CLRUSD transfer now: an exempt address, a listed
+    /// wallet, or a wallet never recorded that the member registry reports as a member.
     function mayReceive(address account) public view returns (bool) {
-        IMembershipSource source = _clearUsdStorage().membershipSource;
-        if (address(source) == address(0) || account == address(0)) return true;
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        if (account == address(0)) return true;
         if (hasRole(MINTER_ROLE, account) || hasRole(BURNER_ROLE, account) || hasRole(LIQUIDATOR_ROLE, account)) {
             return true;
         }
+        uint8 status = $.listing[account].status;
+        if (status != NONE) return status == LISTED;
+        IMembershipSource source = $.membershipSource;
+        if (address(source) == address(0)) return true;
         return _isIntentEscrow(account) || source.isMember(account);
+    }
+
+    /* ========== LISTING (10d, Phase 2g decisions 7 and 8) ========== */
+
+    /// @notice a wallet's listing: status (0 never recorded, 1 listed, 2 de-listed), the reason code
+    /// of its last de-listing, and when an open FRAUD notice was recorded (zero if none).
+    function listingOf(address wallet) external view returns (uint8 status, uint8 reasonCode, uint64 fraudNoticeAt) {
+        Listing storage l = _clearUsdStorage().listing[wallet];
+        return (l.status, l.reason, l.fraudNoticeAt);
+    }
+
+    /// @notice records a wallet as listed while the member registry reports it as a member.
+    /// @dev Permissionless: it writes only what the governed registry answers, and never touches a
+    /// de-listed wallet (only `relist` does). Once recorded, the registry no longer decides.
+    function syncListing(address wallet) external returns (bool listed) {
+        _noteListing(wallet);
+        return _clearUsdStorage().listing[wallet].status == LISTED;
+    }
+
+    /// @dev Records a never-recorded wallet the registry reports as a member. A registry that does
+    /// not answer records nothing.
+    function _noteListing(address wallet) private {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        Listing storage l = $.listing[wallet];
+        IMembershipSource source = $.membershipSource;
+        if (l.status != NONE || address(source) == address(0) || wallet == address(0)) return;
+        try source.isMember(wallet) returns (bool yes) {
+            if (!yes) return;
+        } catch {
+            return;
+        }
+        l.status = LISTED;
+        emit WalletListed(wallet);
+    }
+
+    /// @notice records a FRAUD notice for `wallet` (10d: written notice, and at least 10 days to
+    /// respond before a FRAUD de-listing is approved). One LISTING_ROLE holder; recording it again
+    /// restarts the period. It changes nothing else.
+    function recordFraudNotice(address wallet, bytes32 noticeHash) external onlyRole(LISTING_ROLE) {
+        Listing storage l = _clearUsdStorage().listing[wallet];
+        if (wallet == address(0) || noticeHash == bytes32(0)) revert ClearUSDInvalidListingAction();
+        if (l.status == DELISTED) revert ClearUSDAlreadyDelisted(wallet);
+        l.fraudNoticeAt = uint64(block.timestamp);
+        emit FraudNoticeRecorded(wallet, noticeHash, _msgSender());
+    }
+
+    /// @notice de-lists a wallet: it can no longer receive CLRUSD (10d). It still sends to listed
+    /// wallets and redeems, and nothing here touches a pledge lock or a liquidation.
+    /// @dev Two-person: one LISTING_ROLE holder's call proposes, a different holder's identical call
+    /// carries it out. FRAUD needs a notice recorded at least FRAUD_NOTICE_PERIOD before that second
+    /// call. The arguments are checked on both calls, so a bad one reverts at once.
+    /// @param reasonCode MEMBERSHIP_ENDED 1, HOLDER_REQUEST 2 or FRAUD 3.
+    /// @param decisionHash the hash of the off-chain decision record. Not zero.
+    function delist(address wallet, uint8 reasonCode, bytes32 decisionHash) external onlyRole(LISTING_ROLE) {
+        if (reasonCode == 0 || reasonCode > FRAUD) revert ClearUSDInvalidReasonCode(reasonCode);
+        if (wallet == address(0) || decisionHash == bytes32(0)) revert ClearUSDInvalidListingAction();
+        Listing storage l = _clearUsdStorage().listing[wallet];
+        if (l.status == DELISTED) revert ClearUSDAlreadyDelisted(wallet);
+        if (reasonCode == FRAUD && l.fraudNoticeAt == 0) revert ClearUSDFraudNoticeRequired(wallet, 0);
+        address proposer = _secondSigner(LISTING_ROLE);
+        if (proposer == address(0)) return;
+        if (reasonCode == FRAUD && block.timestamp < uint256(l.fraudNoticeAt) + FRAUD_NOTICE_PERIOD) {
+            revert ClearUSDFraudNoticeRequired(wallet, l.fraudNoticeAt);
+        }
+        l.status = DELISTED;
+        l.reason = reasonCode;
+        l.fraudNoticeAt = 0;
+        emit WalletDelisted(wallet, reasonCode, decisionHash, proposer, _msgSender());
+    }
+
+    /// @notice lists a de-listed wallet again. Two-person, like `delist`, and only for a wallet the
+    /// member registry reports as a member now, so it can never list a wallet the registry would
+    /// refuse. It is the only way back: `syncListing` and receipt never touch a de-listed wallet.
+    function relist(address wallet, bytes32 decisionHash) external onlyRole(LISTING_ROLE) {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        if (decisionHash == bytes32(0)) revert ClearUSDInvalidListingAction();
+        Listing storage l = $.listing[wallet];
+        if (l.status != DELISTED) revert ClearUSDNotDelisted(wallet);
+        IMembershipSource source = $.membershipSource;
+        if (address(source) != address(0) && !source.isMember(wallet)) revert ClearUSDReceiverNotMember(wallet);
+        address proposer = _secondSigner(LISTING_ROLE);
+        if (proposer == address(0)) return;
+        l.status = LISTED;
+        emit WalletRelisted(wallet, decisionHash, proposer, _msgSender());
     }
 
     /// @dev A redeem escrow of the registered intent factory. An unset or unanswering factory
@@ -308,6 +499,9 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
             // anywhere its config does not name.
             if (!mayReceive(to) && !_isIntentEscrow(from)) revert ClearUSDReceiverNotMember(to);
         }
+        // A member wallet's listing is recorded the first time it receives (10d), so a later change
+        // in the registry no longer decides its receipt.
+        _noteListing(to);
 
         super._update(from, to, value);
     }
@@ -329,33 +523,86 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @dev The DFAL carve-out: stopping a transaction solely in response to unauthorized or
     /// fraudulent activity. It moves nothing, blocks only what the account sends, and lapses on
     /// its own after the window unless a different signer renews it. Not a credit or collections
-    /// tool: nothing in the credit system reads it.
+    /// tool: nothing in the credit system reads it, except to extend a grace or cure period by the
+    /// time it was in force (`pauseClock`).
     /// @param account the account to pause.
     /// @param reason an off-chain case reference.
+    /// @dev A new pause less than CONTINUATION_PERIOD after the account's last one ended continues
+    /// its chain, and reverts `ClearUSDPauseCapReached` if its window would end past the chain's cap
+    /// (owner decision 33); `pauseAccountWithLegalBasis` then sets it.
     function pauseAccount(address account, uint32 reason) external onlyRole(FRAUD_ROLE) {
-        if (!_secondSigner(FRAUD_ROLE)) return;
+        if (account == address(0)) revert ClearUSDZeroAccount();
+        if (_secondSigner(FRAUD_ROLE) == address(0)) return;
+        _pauseAccount(account, reason, false);
+    }
+
+    /// @notice pauses an account past its chain's cap on a legal basis (10c, owner decision 33): a
+    /// court order, other legal process, or a written law-enforcement or regulatory request.
+    /// Two-person, and it records the basis's code and the hash of the document.
+    function pauseAccountWithLegalBasis(address account, uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)
+        external
+        onlyRole(FRAUD_ROLE)
+    {
+        if (account == address(0)) revert ClearUSDZeroAccount();
+        _requireLegalBasis(legalBasis, legalBasisHash);
+        address proposer = _secondSigner(FRAUD_ROLE);
+        if (proposer == address(0)) return;
+        uint64 until = _pauseAccount(account, reason, true);
+        emit PauseLegalBasisRecorded(account, legalBasis, legalBasisHash, until, proposer, _msgSender());
+    }
+
+    function _pauseAccount(address account, uint32 reason, bool legalBasis) private returns (uint64 until) {
         ClearUSDStorage storage $ = _clearUsdStorage();
         Pause storage p = $.accountPause[account];
         _requireMayPause(p);
-        uint64 until = uint64(block.timestamp) + _window();
+        PauseSpan storage sp = $.accountSpan[account];
+        uint64 capStart = _chainStart(p.until, sp.capStart);
+        until = uint64(block.timestamp) + _window();
+        _requireWithinCap(until, capStart, legalBasis);
+        // Close the account's last span into its clock, and open a new one.
+        sp.alone += _aloneIn(sp, p.until);
+        sp.start = uint64(block.timestamp);
+        sp.securityAtStart = uint64(_securityClockAt(block.timestamp));
+        sp.capStart = capStart;
         $.accountPause[account] = Pause({until: until, reason: reason, lastSigner: _msgSender()});
         emit AccountPaused(account, reason, until, _msgSender());
     }
 
     /// @notice renews an account's pause for another window. Needs a different signer from the
-    /// one that set or last renewed it, and a reason; each renewal is logged.
+    /// one that set or last renewed it, and a reason; each renewal is logged. It reverts if the
+    /// pause would then run past `pauseMaxTotal` from when its chain began (10c, owner decision 33).
     function renewAccountPause(address account, uint32 reason) external onlyRole(FRAUD_ROLE) {
-        if (!_secondSigner(FRAUD_ROLE)) return;
-        Pause storage p = _clearUsdStorage().accountPause[account];
-        _renew(p, reason);
+        if (_secondSigner(FRAUD_ROLE) == address(0)) return;
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        Pause storage p = $.accountPause[account];
+        _renew(p, reason, $.accountSpan[account].capStart, false);
         emit AccountPauseRenewed(account, reason, p.until, _msgSender());
+    }
+
+    /// @notice renews an account's pause past the cap on a legal basis (10c): a court order, other
+    /// legal process, or a written law-enforcement or regulatory request. Two-person, like every
+    /// renewal, and it records the basis's code and the hash of the document.
+    /// @param legalBasis 1 court order, 2 other legal process, 3 written law-enforcement or
+    /// regulatory request.
+    function renewAccountPauseWithLegalBasis(address account, uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)
+        external
+        onlyRole(FRAUD_ROLE)
+    {
+        _requireLegalBasis(legalBasis, legalBasisHash);
+        address proposer = _secondSigner(FRAUD_ROLE);
+        if (proposer == address(0)) return;
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        Pause storage p = $.accountPause[account];
+        _renew(p, reason, $.accountSpan[account].capStart, true);
+        emit AccountPauseRenewed(account, reason, p.until, _msgSender());
+        emit PauseLegalBasisRecorded(account, legalBasis, legalBasisHash, p.until, proposer, _msgSender());
     }
 
     /// @notice ends an account's pause early.
     /// @dev Ends it now rather than deleting it, so who set it is remembered: unpausing and pausing
     /// again is not a way for one signer to restart the clock (Phase 4, M-A).
     function unpauseAccount(address account) external onlyRole(FRAUD_ROLE) {
-        if (!_secondSigner(FRAUD_ROLE)) return;
+        if (_secondSigner(FRAUD_ROLE) == address(0)) return;
         _end(_clearUsdStorage().accountPause[account]);
         emit AccountUnpaused(account, _msgSender());
     }
@@ -363,26 +610,153 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     /// @notice pauses every member transfer during a security incident (an exploit: unauthorized
     /// activity). Same limits as an account pause: it moves nothing and lapses after the window
     /// unless a second signer renews it.
+    /// @dev Continues the last security pause's chain the same way an account pause does (owner
+    /// decision 33); `pauseForSecurityWithLegalBasis` sets it past the cap.
     function pauseForSecurity(uint32 reason) external onlyRole(SECURITY_ROLE) {
-        if (!_secondSigner(SECURITY_ROLE)) return;
+        if (_secondSigner(SECURITY_ROLE) == address(0)) return;
+        _pauseForSecurity(reason, false);
+    }
+
+    /// @notice pauses every member transfer past the security chain's cap on a legal basis, as
+    /// `pauseAccountWithLegalBasis` does for an account.
+    function pauseForSecurityWithLegalBasis(uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)
+        external
+        onlyRole(SECURITY_ROLE)
+    {
+        _requireLegalBasis(legalBasis, legalBasisHash);
+        address proposer = _secondSigner(SECURITY_ROLE);
+        if (proposer == address(0)) return;
+        uint64 until = _pauseForSecurity(reason, true);
+        emit PauseLegalBasisRecorded(address(0), legalBasis, legalBasisHash, until, proposer, _msgSender());
+    }
+
+    function _pauseForSecurity(uint32 reason, bool legalBasis) private returns (uint64 until) {
         ClearUSDStorage storage $ = _clearUsdStorage();
         _requireMayPause($.globalPause);
-        uint64 until = uint64(block.timestamp) + _window();
+        uint64 capStart = _chainStart($.globalPause.until, _securityCapStart());
+        until = uint64(block.timestamp) + _window();
+        _requireWithinCap(until, capStart, legalBasis);
+        $.securitySpans.push(
+            SecuritySpan({
+                start: uint64(block.timestamp),
+                before: uint64(_securityClockAt(block.timestamp)),
+                capStart: capStart
+            })
+        );
         $.globalPause = Pause({until: until, reason: reason, lastSigner: _msgSender()});
         emit SecurityPaused(reason, until, _msgSender());
     }
 
     function renewSecurityPause(uint32 reason) external onlyRole(SECURITY_ROLE) {
-        if (!_secondSigner(SECURITY_ROLE)) return;
+        if (_secondSigner(SECURITY_ROLE) == address(0)) return;
         Pause storage p = _clearUsdStorage().globalPause;
-        _renew(p, reason);
+        _renew(p, reason, _securityCapStart(), false);
         emit SecurityPauseRenewed(reason, p.until, _msgSender());
     }
 
+    /// @notice renews the security pause past the cap on a legal basis, as
+    /// `renewAccountPauseWithLegalBasis` does for an account.
+    function renewSecurityPauseWithLegalBasis(uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)
+        external
+        onlyRole(SECURITY_ROLE)
+    {
+        _requireLegalBasis(legalBasis, legalBasisHash);
+        address proposer = _secondSigner(SECURITY_ROLE);
+        if (proposer == address(0)) return;
+        Pause storage p = _clearUsdStorage().globalPause;
+        _renew(p, reason, _securityCapStart(), true);
+        emit SecurityPauseRenewed(reason, p.until, _msgSender());
+        emit PauseLegalBasisRecorded(address(0), legalBasis, legalBasisHash, p.until, proposer, _msgSender());
+    }
+
     function unpauseSecurity() external onlyRole(SECURITY_ROLE) {
-        if (!_secondSigner(SECURITY_ROLE)) return;
+        if (_secondSigner(SECURITY_ROLE) == address(0)) return;
         _end(_clearUsdStorage().globalPause);
         emit SecurityUnpaused(_msgSender());
+    }
+
+    /* ========== PAUSE CLOCK (Phase 2g, decisions 3 and 4) ========== */
+
+    /// @notice the seconds, up to now, in which the security pause or `account`'s own pause was in
+    /// force, counting time when both were once. It never decreases, so the paused time inside any
+    /// period is the difference of two readings. `pauseClock(address(0))` is the security pause alone.
+    /// @dev Only pauses set after Phase 2g are counted.
+    function pauseClock(address account) external view returns (uint256) {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        PauseSpan storage sp = $.accountSpan[account];
+        uint256 until = $.accountPause[account].until;
+        if (until > block.timestamp) until = block.timestamp;
+        return _securityClockAt(block.timestamp) + sp.alone + _aloneIn(sp, until);
+    }
+
+    /// @notice whether the security pause or `account`'s own pause is in force now.
+    function isPauseInForce(address account) external view returns (bool) {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        return $.accountPause[account].until > block.timestamp || $.globalPause.until > block.timestamp;
+    }
+
+    /// @dev The seconds of an account's current span, up to `end`, in which no security pause was in
+    /// force. The span runs from `start` without a break to the pause's end.
+    function _aloneIn(PauseSpan storage sp, uint256 end) private view returns (uint64) {
+        uint256 start = sp.start;
+        if (start == 0 || end <= start) return 0;
+        return uint64((end - start) - (_securityClockAt(end) - sp.securityAtStart));
+    }
+
+    /// @dev The security pause's clock at `t` (no later than now): the seconds before `t` in which a
+    /// security pause was in force. Binary search over the spans, which never overlap.
+    function _securityClockAt(uint256 t) private view returns (uint256) {
+        ClearUSDStorage storage $ = _clearUsdStorage();
+        SecuritySpan[] storage spans = $.securitySpans;
+        uint256 n = spans.length;
+        uint256 lo = 0;
+        uint256 hi = n;
+        while (lo < hi) {
+            uint256 mid = (lo + hi) / 2;
+            if (spans[mid].start <= t) lo = mid + 1;
+            else hi = mid;
+        }
+        if (lo == 0) return 0;
+        SecuritySpan storage span = spans[lo - 1];
+        uint256 end = lo < n ? span.start + (spans[lo].before - span.before) : $.globalPause.until;
+        if (t < end) end = t;
+        return span.before + (end > span.start ? end - span.start : 0);
+    }
+
+    /// @dev When the chain of the security pause in force (or the last one) began; zero if none was
+    /// set after Phase 2g, which fails closed for a renewal (it then needs a legal basis).
+    function _securityCapStart() private view returns (uint256) {
+        SecuritySpan[] storage spans = _clearUsdStorage().securitySpans;
+        return spans.length == 0 ? 0 : spans[spans.length - 1].capStart;
+    }
+
+    /// @dev When a new pause's chain began (owner decision 33): the last chain's start if the last
+    /// pause of the same kind ended less than CONTINUATION_PERIOD ago, otherwise now. A pause from
+    /// before Phase 2g has no recorded chain, so a new one after it starts its own.
+    function _chainStart(uint256 lastEnd, uint256 lastCapStart) private view returns (uint64) {
+        if (lastCapStart != 0 && block.timestamp < lastEnd + CONTINUATION_PERIOD) return uint64(lastCapStart);
+        return uint64(block.timestamp);
+    }
+
+    /// @dev Without a legal basis, nothing may carry a pause past its chain's start + `pauseMaxTotal`.
+    function _requireWithinCap(uint256 until, uint256 capStart, bool legalBasis) private view {
+        uint256 capEnd = capStart + pauseMaxTotal();
+        if (!legalBasis && until > capEnd) revert ClearUSDPauseCapReached(capEnd);
+    }
+
+    /// @notice how long a pause may run from when its chain began before only a legal-basis pause or
+    /// renewal extends it (10c, owner decision 33). At most PAUSE_MAX_TOTAL.
+    function pauseMaxTotal() public view returns (uint64) {
+        uint64 m = _clearUsdStorage().pauseMaxTotal;
+        return m == 0 ? PAUSE_MAX_TOTAL : m;
+    }
+
+    /// @notice shortens `pauseMaxTotal`. Governed: the admin is the timelock. Above PAUSE_MAX_TOTAL
+    /// reverts, so no role can raise the cap; zero means PAUSE_MAX_TOTAL.
+    function setPauseMaxTotal(uint64 maxTotal) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (maxTotal > PAUSE_MAX_TOTAL) revert ClearUSDPauseMaxTotalTooLong(maxTotal);
+        _clearUsdStorage().pauseMaxTotal = maxTotal;
+        emit PauseMaxTotalUpdated(maxTotal);
     }
 
     /// @notice sets how long a pause lasts before it lapses. Governed: the admin is the timelock.
@@ -395,22 +769,22 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
 
     /// @dev Two-person control in contract (Phase 2d, decision 2). The first holder of `role` to
     /// make a call records its exact calldata and gets false, and the call does nothing more. A
-    /// different holder making the identical call gets true, and the call proceeds. The same holder
+    /// different holder making the identical call proceeds. The same holder
     /// twice reverts; a proposer who has since lost the role no longer counts. The 10c rules (the
     /// last signer cannot renew or restart a pause) then apply to the second signer.
-    function _secondSigner(bytes32 role) private returns (bool) {
+    /// It returns the proposer to the second call, and zero to the first.
+    function _secondSigner(bytes32 role) private returns (address first) {
         ClearUSDStorage storage $ = _clearUsdStorage();
         bytes32 action = keccak256(msg.data);
-        address first = $.proposerOf[action];
+        first = $.proposerOf[action];
         if (first == _msgSender()) revert ClearUSDSameSigner(_msgSender());
         if (first == address(0) || !hasRole(role, first)) {
             $.proposerOf[action] = _msgSender();
             emit ActionProposed(action, _msgSender(), msg.sig);
-            return false;
+            return address(0);
         }
         delete $.proposerOf[action];
         emit ActionApproved(action, first, _msgSender());
-        return true;
     }
 
     /// @notice who proposed a pending two-person pause action, by the hash of its calldata.
@@ -418,12 +792,24 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         return _clearUsdStorage().proposerOf[action];
     }
 
-    function _renew(Pause storage p, uint32 reason) private {
+    /// @dev A renewal: only while the pause is in force, by a signer other than the last, for one
+    /// window. Without a legal basis it may not carry the pause past `capStart` + `pauseMaxTotal`,
+    /// where `capStart` is when its chain began (10c, owner decision 33); with none, the pause lapses
+    /// at its end.
+    function _renew(Pause storage p, uint32 reason, uint256 capStart, bool legalBasis) private {
         if (p.until <= block.timestamp) revert ClearUSDNoPause();
         if (p.lastSigner == _msgSender()) revert ClearUSDSameSigner(_msgSender());
-        p.until = uint64(block.timestamp) + _window();
+        uint64 until = uint64(block.timestamp) + _window();
+        _requireWithinCap(until, capStart, legalBasis);
+        p.until = until;
         p.reason = reason;
         p.lastSigner = _msgSender();
+    }
+
+    function _requireLegalBasis(uint8 legalBasis, bytes32 legalBasisHash) private pure {
+        if (legalBasis == 0 || legalBasis > MAX_LEGAL_BASIS || legalBasisHash == bytes32(0)) {
+            revert ClearUSDInvalidLegalBasis(legalBasis);
+        }
     }
 
     /// @dev A new pause is refused while one is active (that is a renewal, by a second signer), and

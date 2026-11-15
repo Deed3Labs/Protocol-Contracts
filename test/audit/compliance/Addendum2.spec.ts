@@ -321,10 +321,10 @@ describe("ADDENDUM 2: calendar cycles, Secured Minimum, Automatic Clearing, defa
 
     // Income Assurance (12.13): while it runs there is no pause.
     const [a, b] = await attesters(revolving);
-    await revolving.connect(a).proposeIncomePause(ctx.member.address, 2);
-    await expect(revolving.connect(a).approveIncomePause(ctx.member.address, 2))
+    await revolving.connect(a).proposeIncomePause(ctx.member.address, 2, ethers.id("hardship-1"));
+    await expect(revolving.connect(a).approveIncomePause(ctx.member.address, 2, ethers.id("hardship-1")))
       .to.be.revertedWithCustomError(revolving, "RevolvingIssuerSameSigner");
-    await revolving.connect(b).approveIncomePause(ctx.member.address, 2);
+    await revolving.connect(b).approveIncomePause(ctx.member.address, 2, ethers.id("hardship-1"));
     [, sm, paused] = await revolving.duesOf(ctx.member.address);
     expect(paused).to.equal(false);
     expect(sm).to.equal(0n);

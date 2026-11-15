@@ -14,7 +14,7 @@ import "./RevolvingIssuerBase.sol";
 contract RevolvingIssuerTerms is RevolvingIssuerBase {
     /// @notice what RevolvingIssuer's constructor checks before pinning this module.
     function extensionKind() external pure returns (bytes32) {
-        return keccak256("RevolvingIssuerTerms.v1");
+        return keccak256("RevolvingIssuerTerms.v2");
     }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -86,27 +86,50 @@ contract RevolvingIssuerTerms is RevolvingIssuerBase {
 
     /* ---- 12.13: Income Assurance (two people) ---- */
 
-    /// @notice proposes a hardship forbearance Clear Lending granted at the member's request on
-    /// documented income loss: `cycles` cycle ends of Income Assurance.
-    function proposeIncomePause(address member, uint8 cycles) external onlyCreditRole(ATTESTER_ROLE) {
+    /// @notice proposes a hardship forbearance Clear Lending granted at the member's request on a
+    /// documented hardship of any kind: `cycles` cycle ends of Income Assurance for `hardshipRef`
+    /// (12.13, decision 14). No hardship category is recorded or checked.
+    function proposeIncomePause(address member, uint8 cycles, bytes32 hardshipRef) external onlyCreditRole(ATTESTER_ROLE) {
         uint8 max = dueTerms.incomePauseMaxCycles;
-        if (cycles == 0 || cycles > max) revert RevolvingIssuerPauseTooLong(cycles, max);
+        if (cycles == 0 || cycles > max || hardshipRef == bytes32(0)) revert RevolvingIssuerPauseTooLong(cycles, max);
         CycleState storage s = cycleState[member];
         s.pauseProposer = _msgSender();
         s.pauseCycles = cycles;
+        s.pauseRef = hardshipRef;
         emit IncomePauseProposed(member, cycles, _msgSender());
     }
 
-    /// @notice a second signer approves the same proposal. It can only lengthen a pause already
-    /// running: only expiry or the member ends one early.
-    function approveIncomePause(address member, uint8 cycles) external onlyCreditRole(ATTESTER_ROLE) {
+    /// @notice a second signer approves the same proposal. One hardship never runs more than
+    /// `incomePauseMaxCycles` consecutive cycles: a second attestation for it can only lengthen a pause
+    /// within that, and one starting right after its pause ran out continues the same run. A
+    /// different hardship starts a fresh pause once the running one has ended. Only expiry or the
+    /// member ends one early.
+    function approveIncomePause(address member, uint8 cycles, bytes32 hardshipRef) external onlyCreditRole(ATTESTER_ROLE) {
         CycleState storage s = cycleState[member];
         address proposer = s.pauseProposer;
-        if (proposer == address(0) || s.pauseCycles != cycles) revert RevolvingIssuerNoProposal(member);
+        if (proposer == address(0) || s.pauseCycles != cycles || s.pauseRef != hardshipRef) revert RevolvingIssuerNoProposal(member);
         if (proposer == _msgSender()) revert RevolvingIssuerSameSigner(proposer);
         s.pauseProposer = address(0);
         s.pauseCycles = 0;
-        if (cycles > s.incomePause) s.incomePause = cycles;
+        uint8 left = s.incomePause;
+        bool same = hardshipRef == s.hardshipRef;
+        if (left != 0 && !same) revert RevolvingIssuerHardshipActive(member, s.hardshipRef);
+        uint256 run;
+        if (left != 0) {
+            // Lengthening the running pause: cycles already used plus the longer of the two.
+            run = s.hardshipRun - left + (cycles > left ? cycles : left);
+        } else if (same && s.hardshipLastEnd != 0 && s.cycleEnd < s.hardshipLastEnd + 45 days) {
+            // Its pause ran out at the last cycle end: this would be consecutive with it.
+            run = s.hardshipRun + cycles;
+        } else {
+            run = cycles;
+        }
+        uint8 max = dueTerms.incomePauseMaxCycles;
+        if (run > max) revert RevolvingIssuerPauseTooLong(run, max);
+        s.hardshipRef = hardshipRef;
+        s.hardshipRun = uint8(run);
+        if (cycles > left) s.incomePause = cycles;
+        emit IncomePauseHardship(member, hardshipRef, uint8(run));
         emit IncomePauseSet(member, s.incomePause);
     }
 
@@ -363,7 +386,10 @@ contract RevolvingIssuerTerms is RevolvingIssuerBase {
         onlyCreditRole(CREDIT_SETTINGS_ROLE)
     {
         _requireTier(tierId);
-        if (tierProduct[tierId] != bytes32(0)) revert RevolvingIssuerTierProductSet(tierId);
+        // The workout plan's position is a fixed 0% (12.18): it is never priced.
+        if (tierProduct[tierId] != bytes32(0) || tiers[tierId].kind == WORKOUT_KIND) {
+            revert RevolvingIssuerTierProductSet(tierId);
+        }
         tierProduct[tierId] = productId;
         emit TierProductSet(tierId, productId);
     }

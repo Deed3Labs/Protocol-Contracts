@@ -75,16 +75,50 @@ transfer into the CCIP pool. Minting has no `from` and is exempt, so an encumber
 A fresh `ClearUSDUpgradeable` has no source and locks nothing. A source that reverts also locks
 nothing: `_encumberedOf` catches the revert and returns zero.
 
-### Members only (spec 12.15)
+### Members only (spec 12.15) and de-listing (10d)
 
-**A CLRUSD transfer must be received by a registered member wallet.** `_update` asks
-`mayReceive(to)`, which reads `membershipSource` (the AccessManager's `isMember`, which also counts
-active MembershipRegistry wallets). Only receipt is checked: a wallet that stops being a member can
-still send to members and redeem, and the registry's own events log the de-listing. Exempt: mints,
-burns (so every redemption), `seize`, and any receiver holding `MINTER_ROLE`, `BURNER_ROLE` or
-`LIQUIDATOR_ROLE` (the vault, the CCIP pool, the Liquidator). With no `membershipSource` set, nothing
-is checked. `setMembershipSource` is admin only, and the admin is the vault timelock. No function
-screens a transfer: OFAC screening happens in the app before it submits a Send.
+**A CLRUSD transfer must be received by a listed wallet.** "A de-listing may stop receipt only, never
+sending or redemption (10d)." `_update` asks `mayReceive(to)`:
+
+| Wallet | May receive |
+|---|---|
+| Holds `MINTER_ROLE`, `BURNER_ROLE` or `LIQUIDATOR_ROLE` (the vault, the CCIP pool, the Liquidator), or is a registered redeem escrow | yes |
+| Listed (`listingOf(wallet).status == 1`) | yes, whatever the registry now says |
+| De-listed (`status == 2`) | no |
+| Never recorded (`status == 0`) | what `membershipSource` (the AccessManager's `isMember`, which also counts active MembershipRegistry wallets) answers now; yes when no source is set |
+
+- **Listing.** A wallet is recorded as listed the first time the registry reports it as a member and
+  it receives CLRUSD or a mint, or when anyone calls `syncListing(wallet)` (the app calls it when a
+  member registers or links a wallet; a backfill script calls it for existing members). From then on
+  membership expiry, tier and status changes, `revokeMember` and `unlinkWallet` do not affect its
+  receipt.
+- **De-listing.** Only `delist(wallet, reasonCode, decisionHash)`, by two distinct `LISTING_ROLE`
+  holders making the identical call. The reason code is 1 MEMBERSHIP_ENDED, 2 HOLDER_REQUEST or
+  3 FRAUD, and the decision hash is not zero. FRAUD also needs `recordFraudNotice(wallet, noticeHash)`
+  at least 10 days before the second call. Every de-listing emits `WalletDelisted`.
+- **Re-listing.** Only `relist(wallet, decisionHash)`, two-person the same way, and only for a wallet
+  the registry reports as a member at that moment (`WalletRelisted`). `syncListing` and receipt never
+  touch a de-listed wallet, so neither the registry nor a transfer can bring one back.
+- **What de-listing never does.** A de-listed holder still sends to listed wallets and redeems
+  (burns are exempt), and its pledge lock and any liquidation (`seize`) are unchanged. Mints stay
+  exempt.
+
+`setMembershipSource` is admin only, and the admin is the vault timelock. No function screens a
+transfer: OFAC screening happens in the app before it submits a Send.
+
+### Pauses (10c)
+
+`FRAUD_ROLE` pauses one account's sending and `SECURITY_ROLE` pauses everyone's; each action is
+two-person, and each pause lapses after 72 hours unless a different signer renews it. Nothing
+carries a pause past `pauseMaxTotal` (hard-coded at most 30 days; the admin may only shorten it) from
+when its chain began, except the legal-basis calls (`pauseAccountWithLegalBasis`,
+`renewAccountPauseWithLegalBasis`, `pauseForSecurityWithLegalBasis`,
+`renewSecurityPauseWithLegalBasis`), which record a legal-basis code and hash
+(`PauseLegalBasisRecorded`). A new pause set less than 30 days after the last one of the same kind
+ended (the same account, or the security pause) continues that chain, so its cap still counts from
+the first pause's start (owner decision 33). `pauseClock(account)` counts the
+seconds the security pause or that account's pause was in force, the overlap once, and
+`isPauseInForce(account)` says whether either is in force now.
 
 ### Seizure
 
@@ -182,15 +216,22 @@ Every power is Clear Financial Co.'s, under two-person control (addendum 10g; se
 
 | Role | May call | Two-person by |
 |---|---|---|
-| `DEFAULT_ADMIN_ROLE` | upgrades, `setAcceptedToken`, `setClrusd`, `setStateSource`, `setPauseWindow`, `setPilotOff`, role grants | the vault timelock: a Clear Financial Safe proposes, 7 days pass |
+| `DEFAULT_ADMIN_ROLE` | upgrades, `setAcceptedToken`, `setClrusd`, `setStateSource`, `setPauseWindow`, `setPauseMaxTotal` (shorter only), `setPilotOff`, role grants | the vault timelock: a Clear Financial Safe proposes, 7 days pass |
 | `RELAYER_ROLE` | the gasless deposit and redeem functions, `executeMandateDeposit`, `cancelMandate` | not two-person: it only submits what a member signed |
-| `PAUSER_ROLE` | `pause`, `renewPause`, `unpause` | two distinct holders make the identical call |
+| `PAUSER_ROLE` | `pause`, `pauseWithLegalBasis`, `renewPause`, `renewPauseWithLegalBasis`, `unpause` | two distinct holders make the identical call |
 | `PILOT_ROLE` | `pauseCaMints`, `unpauseCaMints` | the same |
 | Anyone | `deposit`, `redeem` (for their own CLRUSD), `cancelOwnMandate`, previews | |
 
 `OPERATOR_ROLE` is legacy: nothing accepts it. `initialize` gives `DEFAULT_ADMIN_ROLE`,
 `RELAYER_ROLE` and `PAUSER_ROLE` to `admin`. Pausing stops deposits, redemptions and mandate runs,
-lapses after 72 hours, and does not stop admin calls or `cancelMandate`.
+lapses after 72 hours, and does not stop admin calls or `cancelMandate`. Nothing carries the pause
+past 30 days from when its chain began (`pauseMaxTotal`, hard-coded at most 30 days); a pause set
+less than 30 days after the last one ended continues that chain (owner decision 33). Past the cap only
+`pauseWithLegalBasis` or `renewPauseWithLegalBasis` acts: two-person, with a legal-basis code (1 a court order, 2 other legal
+process, 3 a written law-enforcement or regulatory request) and the document's hash, logged by
+`PauseLegalBasisRecorded`. `pauseClock()` counts the seconds the pause has been in force, and
+`isPauseInForce()` says whether it is now; the credit side extends grace and cure periods by the
+difference of two readings.
 
 ### The reserve and the pilot
 

@@ -237,9 +237,10 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
         .sort();
       expect(writes).to.deep.equal([
         "cancelMandate", "cancelOwnMandate", "deposit", "depositWithAuthorization", "depositWithAuthorizationFor",
-        "executeMandateDeposit", "grantRole", "initialize", "pause", "pauseCaMints", "redeem", "redeemWithAuthorization",
-        "redeemWithSignature", "renewPause", "renounceRole", "revokeRole", "setAcceptedToken", "setClrusd", "setPauseWindow",
-        "setPilotOff", "setStateSource", "unpause", "unpauseCaMints", "upgradeTo", "upgradeToAndCall",
+        "executeMandateDeposit", "grantRole", "initialize", "pause", "pauseCaMints", "pauseWithLegalBasis", "redeem", "redeemWithAuthorization",
+        "redeemWithSignature", "renewPause", "renewPauseWithLegalBasis", "renounceRole", "revokeRole", "setAcceptedToken",
+        "setClrusd", "setPauseMaxTotal", "setPauseWindow", "setPilotOff", "setStateSource", "unpause", "unpauseCaMints",
+        "upgradeTo", "upgradeToAndCall",
       ].sort());
       expect(writes.filter((n: string) => /sweep|rescue|withdraw|skim|recover|drain|transfer/i.test(n))).to.deep.equal([]);
     });
@@ -474,9 +475,17 @@ describe("COMPLIANCE Phase 2d: DFAL control, vault roles, pilot switch, members-
     });
 
     it("a de-listed wallet can still send and redeem; only its receipt stops, and the de-listing is logged", async function () {
-      const { ctx, clrusd, vault, relayer } = s;
+      const { ctx, clrusd, vault, relayer, keyA, keyB } = s;
       await members();
-      await expect(ctx.access.connect(ctx.operator).revokeMember(ctx.member.address)).to.emit(ctx.access, "MemberRemoved").withArgs(ctx.member.address);
+      // Phase 2g (10d, decision 7): the registry no longer decides once a wallet is listed; only
+      // CLRUSD's own two-person de-listing stops receipt.
+      await clrusd.syncListing(ctx.member.address);
+      await ctx.access.connect(ctx.operator).revokeMember(ctx.member.address);
+      await clrusd.connect(ctx.counterparty).transfer(ctx.member.address, 0n);
+      for (const k of [keyA, keyB]) await clrusd.grantRole(await clrusd.LISTING_ROLE(), k.address);
+      await clrusd.connect(keyA).delist(ctx.member.address, 1 /* MEMBERSHIP_ENDED */, ethers.id("decision"));
+      await expect(clrusd.connect(keyB).delist(ctx.member.address, 1, ethers.id("decision")))
+        .to.emit(clrusd, "WalletDelisted").withArgs(ctx.member.address, 1, ethers.id("decision"), keyA.address, keyB.address);
       // Sends.
       await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 100n * ONE_USDC);
       // Redeems, directly and gasless.

@@ -20,8 +20,10 @@
  * What does not: the keys that hold operational roles. They are Clear Financial's, and are granted
  * here (`keys`) before the deployer renounces everything it holds:
  * - RELAYER_ROLE: a single hot key, because it only submits what a member signed (decision 2);
- * - PAUSER_ROLE, PILOT_ROLE (the CA mint pause), FRAUD_ROLE, SECURITY_ROLE: each action needs two
- *   distinct holders in contract, so grant at least two keys of each.
+ * - PAUSER_ROLE, PILOT_ROLE (the CA mint pause), FRAUD_ROLE, SECURITY_ROLE, LISTING_ROLE (CLRUSD
+ *   de-listing and re-listing, Phase 2g 10d): each action needs two distinct holders in contract,
+ *   so grant at least two keys of each. LISTING_ROLE exists from the Phase 2g CLRUSD on, so the
+ *   token is upgraded before this runs.
  * The contract-held roles (the vault's MINTER/BURNER_ROLE, the Liquidator's LIQUIDATOR_ROLE, the
  * pool's MINTER/BURNER_ROLE) stay where they are (decision 3). After the handover only the Safe,
  * through the 7-day delay, can grant or revoke any of them.
@@ -34,6 +36,7 @@
  *
  *   CLEAR_FINANCIAL_SAFE=0x... VAULT_HANDOVER=1 \
  *     VAULT_RELAYERS=0x.. VAULT_PAUSERS=0xA,0xB PILOT_SIGNERS=0xA,0xB FRAUD_SIGNERS=0xA,0xB SECURITY_SIGNERS=0xA,0xB \
+ *     LISTING_SIGNERS=0xA,0xB \
  *     npx hardhat run deploy/vault_timelock_handover.ts --network base-sepolia
  */
 
@@ -54,6 +57,7 @@ export interface VaultKeys {
   pilot?: string[];
   fraud?: string[];
   security?: string[];
+  listing?: string[];
 }
 
 /** A call the Safe proposes to the timelock. */
@@ -65,7 +69,7 @@ export interface TimelockCall {
 }
 
 const VAULT_ROLES = ["DEFAULT_ADMIN_ROLE", "OPERATOR_ROLE", "RELAYER_ROLE", "PAUSER_ROLE", "PILOT_ROLE"];
-const CLRUSD_ROLES = ["UPGRADER_ROLE", "MINTER_ROLE", "BURNER_ROLE", "LIQUIDATOR_ROLE", "FRAUD_ROLE", "SECURITY_ROLE"];
+const CLRUSD_ROLES = ["UPGRADER_ROLE", "MINTER_ROLE", "BURNER_ROLE", "LIQUIDATOR_ROLE", "FRAUD_ROLE", "SECURITY_ROLE", "LISTING_ROLE"];
 
 async function send(txp: Promise<any>) {
   await (await txp).wait();
@@ -135,6 +139,7 @@ export async function handOverVault(
     const t = c.clrusd;
     await grants(t, "clrusd", "FRAUD_ROLE", keys.fraud);
     await grants(t, "clrusd", "SECURITY_ROLE", keys.security);
+    await grants(t, "clrusd", "LISTING_ROLE", keys.listing);
     const upgrader = await t.UPGRADER_ROLE();
     if (!(await t.hasRole(upgrader, timelock))) await send(t.grantRole(upgrader, timelock));
     if ((await t.getCCIPAdmin()) === me) await send(t.setCCIPAdmin(timelock));
@@ -289,6 +294,7 @@ async function main() {
     pilot: list(process.env.PILOT_SIGNERS),
     fraud: list(process.env.FRAUD_SIGNERS),
     security: list(process.env.SECURITY_SIGNERS),
+    listing: list(process.env.LISTING_SIGNERS),
   };
   const pending = await handOverVault(c, deployer, timelockAddress!, keys, console.log);
   console.log("\nThe deployer holds no vault or CLRUSD role. For the Clear Financial Safe to schedule (scheduleBatch, 7 days):");

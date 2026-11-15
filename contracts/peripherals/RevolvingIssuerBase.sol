@@ -10,6 +10,7 @@ import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
 import "./RateSchedule.sol";
 import "../libraries/PacificCalendar.sol";
+import "./PauseClock.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @dev The term issuer's half of the Combined Ceiling (12.3): it brings a member's plans to now.
@@ -25,6 +26,12 @@ interface IRevolvingTouch {
 /// @dev The one CLRUSD call a Savings draw makes (Phase 4b, L-B).
 interface IClrusdLockSync {
     function syncEncumbrance(address holder) external returns (uint256 locked);
+}
+
+/// @dev The issuer's own entry point for carry as at a past cycle end (12.17), called by the cycles
+/// module (see `_closeCarry`).
+interface IRevolvingCloseCarry {
+    function closeCarry(address member, uint64 at) external;
 }
 
 /// @title RevolvingIssuerBase
@@ -241,6 +248,28 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         bool graceEligible; // 12.13: Cycle Assurance enabled by a two-person MB-10 attestation
         address graceProposer; // proposer of a pending eligibility attestation
         uint256 graceUses; // 12.13: the due points of the last four graces used, newest lowest
+        // ---- Phase 2g (Addendum 4) ----
+        bytes32 hardshipRef; // 12.13 (decision 14): the hardship the running Income Assurance is for
+        bytes32 pauseRef; // the hardship of a pending Income Assurance proposal
+        uint8 hardshipRun; // consecutive cycles granted for `hardshipRef`
+        uint64 hardshipLastEnd; // the cycle end at which Income Assurance for it last ran out
+        uint8 closedWorkout; // 12.18: the workout state the open close was made under
+        uint64 psAt; // 12.17: when the principal-seconds were last brought up to
+        uint64 lastCycleEnd; // 12.17: the most recently closed cycle's end
+        uint64 lastRecordedAt; // and when that close was recorded
+        bool lastStatementRequired; // and whether it needs a statement (decision 22)
+        uint256 closeClock; // 10c: the pause clock when the open close was recorded
+        uint256 cureClock; // 10c: the pause clock at the close whose second consecutive miss is unpaid
+        // 10c (decision 5): a close whose due point a pause pushed past the next cycle end. The next
+        // close is still recorded at its own end (12.17), and this one is judged at its pushed due
+        // point. One at a time.
+        uint64 heldClosedAt;
+        uint64 heldDueAt; // its due point before the push
+        uint8 heldWorkout;
+        uint128 heldRA;
+        uint128 heldSM;
+        uint128 heldPaid; // every repayment since its close
+        uint256 heldClock; // the pause clock at its close
     }
     mapping(address => CycleState) internal cycleState;
 
@@ -265,12 +294,81 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// @dev member => payer => 1 the member excluded it, 2 the member removed the exclusion.
     mapping(address => mapping(bytes32 => uint8)) internal payerChoice;
 
-    /// @dev Five slots from the gap: cycleState, dueTerms (2), defaultExcludedPayer, payerChoice.
+    /* ---- Phase 2g: pauses (10c), statement data (12.17) and workouts (12.18) ---- */
+
+    /// @notice A member's workout (12.18, Phase 2g). Set only by a two-person attestation; it can
+    /// only reduce or delay what is due.
+    struct Workout {
+        uint8 state; // 0 none, 1 DEFERRAL, 2 REDUCED, 3 PLAN
+        uint8 cyclesLeft; // DEFERRAL and REDUCED: cycle closes left under it
+        uint8 qualifying; // consecutive REDUCED or PLAN cycles paid as required (re-age)
+        bool planWriteOff; // set only while a PLAN default's write-off is being absorbed
+        bool secondApproved; // a separately attested second workout within 365 days
+        uint64 startedAt; // the last workout's approval: the 365-day rule
+        uint64 reagedAt; // the last re-age
+        uint64 reagedBefore; // the one before it: the 5-year rule
+        uint128 reducedAmount; // REDUCED: the attested Rebalance Amount
+        bytes32 ref; // the workoutRef hash
+        address proposer; // a pending workout proposal
+        bytes32 proposal; // its terms, hashed
+        address secondProposer; // a pending second-workout approval
+        bytes32 secondRef;
+        uint128 planTotal; // PLAN: unsecured principal plus carry moved in
+        uint128 planInstallment; // each cycle's payment; the last takes the rounding
+        uint8 planCycles;
+        uint8 planDueCount; // installments due so far
+        uint64 planPastDueSince; // the due point the plan first fell behind at; zero when current
+        uint64 planNoticeAt; // 12.14's cure-notice timestamp for the plan
+        uint128 planNoticeDue; // what was due by the notice
+        address planNoticeProposer;
+        uint256 planNoticeClock; // the pause clock at the notice
+        uint64 planDefaultedAt;
+    }
+
+    /// @notice One position's 12.17 figures (decisions 17-19): principal-seconds and carry in the
+    /// running cycle, and the most recently closed cycle's end figures.
+    struct PositionStat {
+        uint256 principalSeconds; // running: principal x seconds since the last close
+        uint128 cycleCarry; // running: carry accrued since the last close
+        uint128 endPrincipal; // at the last close: principal
+        uint128 endCarry; // and carry owed
+        uint128 lastCycleCarry; // carry accrued in that cycle
+        uint256 lastPrincipalSeconds; // and the principal-seconds it accrued on
+    }
+
+    /// @notice Phase 2g's storage, in its own ERC-7201 namespace, so the last three slots of the gap
+    /// stay free: each member's workout (12.18), each position's 12.17 figures, and where the pause
+    /// clock is read (10c: paused seconds and whether a pause is in force; set once, and unset no
+    /// pause is counted). Later additions go at the end of this struct.
+    /// @custom:storage-location erc7201:clear.storage.RevolvingIssuer.Phase2g
+    struct Phase2gStorage {
+        mapping(address => Workout) workoutOf;
+        mapping(address => mapping(uint256 => PositionStat)) positionStat;
+        address pauseClock;
+    }
+
+    /// @dev keccak256(abi.encode(uint256(keccak256("clear.storage.RevolvingIssuer.Phase2g")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant PHASE2G_STORAGE = 0x7a57989cedc4800be354084bd8f0675ea6398cffb383790fd867302e96891c00;
+
+    function _p2g() internal pure returns (Phase2gStorage storage $) {
+        bytes32 slot = PHASE2G_STORAGE;
+        assembly {
+            $.slot := slot
+        }
+    }
+
+    /// @dev Three slots, from 300. Phase 2e took five (cycleState, dueTerms (2),
+    /// defaultExcludedPayer, payerChoice). The layout ends at slot 303.
     uint256[3] private __gap;
 
     bytes32 internal constant BOOST_KIND = "BOOST";
     bytes32 internal constant INCOME_KIND = "INCOME";
     bytes32 internal constant SAVINGS_KIND = "SAVINGS";
+    /// @dev The workout plan's position (12.18): a 0% tier no draw ever lands in.
+    bytes32 internal constant WORKOUT_KIND = "WORKOUT";
+    uint8 internal constant WORKOUT_DEFERRAL = 1;
+    uint8 internal constant WORKOUT_REDUCED = 2;
+    uint8 internal constant WORKOUT_PLAN = 3;
     uint8 internal constant SCOPE_ALL = 1;
     uint8 internal constant LEVEL_DUE_ONLY = 2;
     /// @notice 12.5: the cure notice gives at least ten full days (MB-05 6.4). FIXED.
@@ -368,6 +466,37 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     event GraceEligibilitySet(address indexed member);
     event GraceCycleUsed(address indexed member, uint64 dueAt);
     event GraceTermsUpdated(uint8 cyclesPerWindow, uint64 window);
+    // ---- Phase 2g ----
+    event TierPaymentSplit(address indexed member, uint256 indexed tierId, uint256 carry, uint256 principal);
+    event CycleStatement(
+        address indexed member,
+        uint64 cycleEnd,
+        uint64 recordedAt,
+        uint256[] startPrincipal,
+        uint256[] startCarry,
+        uint256[] endPrincipal,
+        uint256[] endCarry,
+        uint256[] cycleCarry,
+        uint256[] principalSeconds,
+        uint256 rebalanceAmount,
+        uint256 securedMinimum,
+        bool statementRequired,
+        uint8 workoutState,
+        bytes32 workoutRef
+    );
+    event PauseClockSet(address clock);
+    event IncomePauseHardship(address indexed member, bytes32 indexed hardshipRef, uint8 consecutiveCycles);
+    event WorkoutProposed(address indexed member, address indexed proposer, uint8 state, uint8 cycles, uint128 reducedAmount, bytes32 workoutRef);
+    event WorkoutStarted(address indexed member, uint8 state, uint8 cycles, uint128 reducedAmount, bytes32 workoutRef);
+    event WorkoutEnded(address indexed member, uint8 state);
+    event SecondWorkoutProposed(address indexed member, address indexed proposer, bytes32 secondRef);
+    event SecondWorkoutApproved(address indexed member, bytes32 secondRef);
+    event WorkoutBalanceMoved(address indexed member, uint256 indexed tierId, uint256 amount);
+    event WorkoutPlanStarted(address indexed member, bytes32 workoutRef, uint256 principal, uint256 carry, uint8 cycles, uint256 installment);
+    event WorkoutNoticeProposed(address indexed member, address indexed proposer);
+    event WorkoutNoticeRecorded(address indexed member, uint64 noticeAt, uint256 due);
+    event WorkoutPlanDefaulted(address indexed member, uint256 writtenOff);
+    event WorkoutReaged(address indexed member, uint64 at);
 
     error RevolvingIssuerUnsecuredCap(uint256 capacity, uint256 cap);
     error RevolvingIssuerExtensionMismatch();
@@ -400,6 +529,13 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// @notice 4c item 3: an earlier default's pledged collateral has not been applied yet.
     error RevolvingIssuerDefaultCollateralUnapplied(address member);
     error RevolvingIssuerTermIssuerSet();
+    error RevolvingIssuerPauseClockSet();
+    error RevolvingIssuerHardshipActive(address member, bytes32 hardshipRef);
+    error RevolvingIssuerWorkoutTerms(uint8 state, uint8 cycles);
+    error RevolvingIssuerWorkoutRunning(address member);
+    error RevolvingIssuerWorkoutTooSoon(address member, uint256 availableAt);
+    error RevolvingIssuerNoWorkoutTier();
+    error RevolvingIssuerPlanNotDefaultable(address member);
 
     /// @notice moves carry accrued in each tier onto the ledger.
     /// @dev Carry deepens the member's negative balance and mints the matching claim to whoever
@@ -415,16 +551,30 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// unsecured tier first. Every snapshot is then reset to now, which is what lets principal be
     /// treated as constant between touches.
     function _materialiseCarry(address member) internal {
+        _materialiseCarryAt(member, block.timestamp);
+    }
+
+    /// @dev The same, as at `at` (now, or a cycle end being closed late: 12.17, decision 18). Every
+    /// change of a position's principal comes right after this, so it is also where each position's
+    /// principal-seconds are brought up to date (decision 19). A time before the last one brought up
+    /// to changes nothing.
+    function _materialiseCarryAt(address member, uint256 at) internal {
         // The Combined Ceiling (12.3): the term issuer's plans take what the revolving tiers leave
         // of the member's ceiling, so they are brought to now on the revolving principal that stood
         // over the stretch, before anything here changes it. Set once; never switched off.
         address terms = dueTerms.termIssuer;
         if (terms != address(0)) ICombinedCeilingTerm(terms).materialiseMember(member);
-        uint256[] memory carries = _pendingCarry(member);
+        CycleState storage cs = cycleState[member];
+        uint256 from = cs.psAt;
+        if (at < from) return;
+        uint256[] memory carries = _pendingCarry(member, at);
         uint256 assetCarry;
         for (uint256 i = 0; i < tiers.length; i++) {
             uint256 carry = carries[i];
+            PositionStat storage ps = _p2g().positionStat[member][i];
+            if (from != 0) ps.principalSeconds += _principalOnly(member, i) * (at - from);
             if (carry > 0) {
+                ps.cycleCarry += uint128(carry);
                 tierPrincipal[member][i] += carry;
                 tierCarry[member][i] += carry;
                 if (_isAssetBacked(i)) assetCarry += carry;
@@ -433,27 +583,36 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
             }
         }
         // Asset-backed carry is part of the Secured Minimum of the cycle it accrues in (12.1).
-        if (assetCarry > 0) cycleState[member].assetCarry += uint128(assetCarry);
-        _resnapshot(member);
+        if (assetCarry > 0) cs.assetCarry += uint128(assetCarry);
+        cs.psAt = uint64(at);
+        _resnapshot(member, at);
     }
 
     /// @dev Carry accrued in each tier since the last touch, after the member-level ceiling.
-    function _pendingCarry(address member) internal view returns (uint256[] memory carries) {
+    function _pendingCarry(address member) internal view returns (uint256[] memory) {
+        return _pendingCarry(member, block.timestamp);
+    }
+
+    /// @dev The same, up to `at`. A DEFERRAL (12.18) accrues nothing on the unsecured positions. The
+    /// workout plan's position accrues nothing either: its tier is added at 0%, and neither its rate
+    /// nor its product can be changed (`addTier`, `setTierRate`, `setTierProduct`).
+    function _pendingCarry(address member, uint256 at) internal view returns (uint256[] memory carries) {
         uint256 n = tiers.length;
         carries = new uint256[](n);
         bytes32 state = snapState[member];
         uint256 basis = snapBasis[member];
         uint256 unsecuredPrincipal;
         uint256 unsecuredCarry;
+        bool deferred = _p2g().workoutOf[member].state == WORKOUT_DEFERRAL;
         for (uint256 i = 0; i < n; i++) {
             uint256 principal = _principalOnly(member, i);
-            if (principal == 0) continue;
+            if (principal == 0 || (deferred && _isUnsecured(i))) continue;
             bool onSchedule = _onSchedule(state, tierProduct[i]);
             // The accumulator this tier reads changed since its snapshot (pricing switched on, or
             // the state's product launched): the two numbers do not compare, so nothing is charged
             // across the change, and the next touch snapshots on the new basis (Phase 4, M-B).
             if (onSchedule != ((basis >> i) & 1 == 1)) continue;
-            uint256 acc = onSchedule ? rateSchedule.snapshot(state, tierProduct[i]).list : _localAcc(i);
+            uint256 acc = onSchedule ? rateSchedule.snapshotAt(state, tierProduct[i], at).list : _localAcc(i, at);
             uint256 snap = tierSnap[member][i];
             if (acc > snap) carries[i] = (principal * (acc - snap)) / RAY;
             if (onSchedule) {
@@ -472,7 +631,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         }
         // The Combined Ceiling (12.3) on the revolving tiers alone: the graduated schedule on their
         // principal. They come first in it, so the term plans never take any of it from them.
-        uint256 cap = rateSchedule.graduatedSince(state, ceilingProduct, unsecuredPrincipal, ceilingSnap[member]);
+        uint256 cap = rateSchedule.graduatedBetween(state, ceilingProduct, unsecuredPrincipal, ceilingSnap[member], at);
         if (unsecuredCarry <= cap) return carries;
         // Over the member's ceiling: trim the excess from the dearest unsecured tier first.
         uint256 excess = unsecuredCarry - cap;
@@ -485,22 +644,23 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         }
     }
 
-    /// @dev Resets every snapshot to now, under the member's current state.
-    function _resnapshot(address member) internal {
+    /// @dev Resets every snapshot to `at` (now, or a cycle end being closed), under the member's
+    /// current state.
+    function _resnapshot(address member, uint256 at) internal {
         bytes32 state = _pricingState(member);
         snapState[member] = state;
         uint256 basis;
         for (uint256 i = 0; i < tiers.length; i++) {
             bytes32 product = tierProduct[i];
             if (_onSchedule(state, product)) {
-                tierSnap[member][i] = rateSchedule.snapshot(state, product).list;
+                tierSnap[member][i] = rateSchedule.snapshotAt(state, product, at).list;
                 basis |= 1 << i;
             } else {
-                tierSnap[member][i] = _localAcc(i);
+                tierSnap[member][i] = _localAcc(i, at);
             }
         }
         if (_onSchedule(state, ceilingProduct)) {
-            ceilingSnap[member] = rateSchedule.snapshot(state, ceilingProduct);
+            ceilingSnap[member] = rateSchedule.snapshotAt(state, ceilingProduct, at);
             basis |= 1 << 255;
         }
         if (snapBasis[member] != basis) snapBasis[member] = basis;
@@ -540,10 +700,15 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// @dev The tier's own rate accumulated since the tier began: monthly bps x 12 / 365 days
     /// per second (DECISIONS #1), checkpointed on rate changes.
     function _localAcc(uint256 tierId) internal view returns (uint256) {
+        return _localAcc(tierId, block.timestamp);
+    }
+
+    /// @dev The same as at `at`; a time before the tier's last checkpoint reads as of it.
+    function _localAcc(uint256 tierId, uint256 at) internal view returns (uint256) {
+        uint256 since = localAccAt[tierId];
         // Multiply before dividing: the per-second rate is never truncated on its own.
         return localAcc[tierId]
-            + (tiers[tierId].index.ratePerCycle * RAY * 12 * (block.timestamp - localAccAt[tierId]))
-                / (BPS_ * 365 days);
+            + (at > since ? (tiers[tierId].index.ratePerCycle * RAY * 12 * (at - since)) / (BPS_ * 365 days) : 0);
     }
 
     /// @notice fills tiers in order, cheapest first.
@@ -554,8 +719,15 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         // An unpaid Secured Minimum pauses new savings- and asset-backed draws (12.1): those tiers
         // take nothing, and unsecured draws go on.
         bool paused = _securedDrawPaused(member);
+        bool workout = _p2g().workoutOf[member].state != 0;
         for (uint256 i = 0; i < tiers.length && remaining > 0; i++) {
-            if (!tiers[i].active || (paused && !_isUnsecured(i))) continue;
+            bool unsecured = _isUnsecured(i);
+            // 12.18: no unsecured draw while any workout state is set, and nothing ever lands in the
+            // workout plan's own position.
+            if (
+                !tiers[i].active || (paused && !unsecured) || (workout && unsecured)
+                    || tiers[i].kind == WORKOUT_KIND
+            ) continue;
             uint256 headroom = _headroom(member, i, tierPrincipal[member][i]);
             if (headroom == 0) continue;
 
@@ -640,10 +812,14 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     /// enforcement reduces the debt, but never cures the default it enforces.
     function _repayTier(address member, uint256 tierId, uint256 pay, bool cures) internal {
         uint256 carry = tierCarry[member][tierId];
-        tierCarry[member][tierId] = carry - (pay < carry ? pay : carry);
+        uint256 carryPart = pay < carry ? pay : carry;
+        tierCarry[member][tierId] = carry - carryPart;
         tierPrincipal[member][tierId] -= pay;
         emit TierRepaid(member, tierId, pay);
-        _notePayment(member, pay, cures);
+        // 12.17 (decision 20): the carry and principal portions of each position reduced.
+        emit TierPaymentSplit(member, tierId, carryPart, pay - carryPart);
+        // The workout plan's payments are its own (12.18), never the cycle's Rebalance Amount.
+        if (tiers[tierId].kind != WORKOUT_KIND) _notePayment(member, pay, cures);
     }
 
     /// @dev A payment counts toward the open cycle's dues, toward a Secured Minimum past due (the
@@ -652,6 +828,7 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     function _notePayment(address member, uint256 pay, bool cures) internal {
         CycleState storage s = cycleState[member];
         s.paidSinceClose += uint128(pay);
+        if (s.heldClosedAt != 0) s.heldPaid += uint128(pay);
         uint256 pastDue = s.securedPastDue;
         if (pastDue != 0) s.securedPastDue = uint128(pay < pastDue ? pastDue - pay : 0);
         uint256 cure = s.cureAmount;
@@ -682,6 +859,14 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         dueUnsecured = ra > paid ? ra - paid : 0;
         if (s.cureAmount > dueUnsecured) dueUnsecured = s.cureAmount;
         dueTotal = owed > paid ? owed - paid : 0;
+        if (s.heldClosedAt != 0) {
+            // A close a pause held past the next end is still open (10c).
+            uint256 hra = s.heldRA;
+            uint256 hOwed = hra + s.heldSM;
+            paid = s.heldPaid;
+            if (hra > paid && hra - paid > dueUnsecured) dueUnsecured = hra - paid;
+            if (hOwed > paid && hOwed - paid > dueTotal) dueTotal = hOwed - paid;
+        }
         if (s.securedPastDue > dueTotal) dueTotal = s.securedPastDue;
         if (dueUnsecured > dueTotal) dueTotal = dueUnsecured;
     }
@@ -690,10 +875,48 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     function _computedDefault(address member) internal view returns (bool) {
         CycleRecord memory c = cycleOf[member];
         CycleState storage s = cycleState[member];
-        if (c.missedInRow < 2 || c.cureNoticeAt == 0 || s.cureAmount == 0 || s.incomePause != 0) return false;
+        uint8 workout = _p2g().workoutOf[member].state;
+        if (
+            c.missedInRow < 2 || c.cureNoticeAt == 0 || s.cureAmount == 0 || s.incomePause != 0
+                || workout == WORKOUT_DEFERRAL || workout == WORKOUT_REDUCED
+        ) return false;
         uint256 graceEnd = s.cureDueAt + creditTerms.cureWindow;
         uint256 noticeEnd = c.cureNoticeAt + NOTICE_GRACE;
-        return block.timestamp >= (graceEnd > noticeEnd ? graceEnd : noticeEnd);
+        // 10c: the grace period runs longer by the paused time since it began, and nothing is
+        // computed while a pause is in force.
+        uint256 end = (graceEnd > noticeEnd ? graceEnd : noticeEnd) + _pauseClockOf(member) - s.cureClock;
+        return block.timestamp >= end && !_pauseInForce(member);
+    }
+
+    /// @dev The workout plan's position: the tier of kind WORKOUT (12.18).
+    function _workoutTier() internal view returns (uint256) {
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tiers[i].kind == WORKOUT_KIND) return i;
+        }
+        revert RevolvingIssuerNoWorkoutTier();
+    }
+
+    /// @dev What the workout plan asks by now: equal cycle payments, the whole plan by the last.
+    function _planDue(Workout storage w) internal view returns (uint256) {
+        return w.planDueCount >= w.planCycles ? w.planTotal : uint256(w.planDueCount) * w.planInstallment;
+    }
+
+    /// @dev What has been paid into it (its position falls by every payment).
+    function _planPaid(address member, Workout storage w) internal view returns (uint256) {
+        uint256 owed = tierPrincipal[member][_workoutTier()];
+        return w.planTotal > owed ? w.planTotal - owed : 0;
+    }
+
+    /// @dev The member's pause clock (10c): cumulative paused seconds. Zero with no clock named.
+    function _pauseClockOf(address member) internal view returns (uint256) {
+        address clock = _p2g().pauseClock;
+        return clock == address(0) ? 0 : IPauseClock(clock).pausedSeconds(member);
+    }
+
+    /// @dev Whether any pause affecting the member is in force now (10c).
+    function _pauseInForce(address member) internal view returns (bool) {
+        address clock = _p2g().pauseClock;
+        return clock != address(0) && IPauseClock(clock).inForce(member);
     }
 
     /// @dev Whether Automatic Clearing must leave a deposit from `payer` alone (12.2): a federal
@@ -733,7 +956,8 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
 
     /// @dev Asset-backed: neither Savings nor unsecured.
     function _isAssetBacked(uint256 tierId) internal view returns (bool) {
-        return !_isUnsecured(tierId) && tiers[tierId].kind != SAVINGS_KIND;
+        bytes32 kind = tiers[tierId].kind;
+        return !_isUnsecured(tierId) && kind != SAVINGS_KIND && kind != WORKOUT_KIND;
     }
 
     /// @dev Whether the member's recorded default belongs to the line they hold today (Phase 4b

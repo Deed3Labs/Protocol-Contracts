@@ -148,10 +148,10 @@ describe("ADDENDUM 2 references, 12.13: Cycle Assurance (graceCycle) and Income 
     const m = ctx.member.address;
     await openAndDraw(ctx.member, usd(500));
     const [a, b] = await attesters(revolving);
-    await revolving.connect(a).proposeIncomePause(m, 3);
-    await revolving.connect(b).approveIncomePause(m, 3);
-    await revolving.connect(a).proposeIncomePause(m, 1);
-    await revolving.connect(b).approveIncomePause(m, 1);
+    await revolving.connect(a).proposeIncomePause(m, 3, ethers.id("hardship-1"));
+    await revolving.connect(b).approveIncomePause(m, 3, ethers.id("hardship-1"));
+    await revolving.connect(a).proposeIncomePause(m, 1, ethers.id("hardship-1"));
+    await revolving.connect(b).approveIncomePause(m, 1, ethers.id("hardship-1"));
     expect((await revolving.cycleStateOf(m)).incomePause).to.equal(3n); // not shortened
     await revolving.connect(ctx.operator).endIncomePause(); // the operator's own record only
     expect((await revolving.cycleStateOf(m)).incomePause).to.equal(3n);

@@ -148,6 +148,9 @@ contract CollateralRegistry is
     event ItemReleased(address indexed member, bytes32 indexed kind, uint256 itemId);
     event ItemSeized(address indexed member, bytes32 indexed kind, uint256 itemId);
     event ItemRolled(address indexed member, bytes32 indexed kind, uint256 oldItemId, uint256 newItemId);
+    /// @notice 12.17 (Phase 2g, decision 21): every change to an item pledge, with the member, the
+    /// item and its value at that moment (before it leaves, when it leaves). Time is the block's.
+    event ItemCollateralChanged(address indexed member, bytes32 indexed kind, uint256 indexed itemId, uint256 value, bool pledged);
     /// @notice An item was pledged with this advance rate and Maturity Instruction (Phase 2e).
     event ItemPledgeTerms(
         address indexed member, bytes32 indexed kind, uint256 itemId, uint256 advanceBps, bytes32 maturityInstruction
@@ -300,6 +303,19 @@ contract CollateralRegistry is
             } catch {
                 // Valued at nothing, as `collateralValueOf` does: under-valuing shrinks a limit.
             }
+        }
+    }
+
+    /// @dev One item's value from its kind's valuer, or nothing when there is none or it cannot answer.
+    function _itemValue(address member, bytes32 kind, uint256 itemId) private view returns (uint256) {
+        address valuer = collateralTypes[kind].valuer;
+        if (valuer == address(0)) return 0;
+        uint256[] memory one = new uint256[](1);
+        one[0] = itemId;
+        try ICollateralValuer(valuer).valueOfItems(member, one) returns (uint256 v) {
+            return v;
+        } catch {
+            return 0;
         }
     }
 
@@ -557,6 +573,7 @@ contract CollateralRegistry is
         maturityInstructionOf[member][kind][itemId] = maturityInstruction;
         emit ItemPledged(member, kind, itemId);
         emit ItemPledgeTerms(member, kind, itemId, rate, maturityInstruction);
+        emit ItemCollateralChanged(member, kind, itemId, _itemValue(member, kind, itemId), true);
         refresh(member);
     }
 
@@ -568,6 +585,7 @@ contract CollateralRegistry is
         if (_drawnUnder(member, kind) > 0) {
             revert CollateralRegistryEncumbered(member, kind, 0, 1);
         }
+        emit ItemCollateralChanged(member, kind, itemId, _itemValue(member, kind, itemId), false);
         _dropItem(member, kind, itemId);
         emit ItemReleased(member, kind, itemId);
         refresh(member);
@@ -587,6 +605,7 @@ contract CollateralRegistry is
         // Instruction the member gave for the bond it replaces (section 9).
         uint256 rate = _itemAdvanceBps[member][kind][oldItemId];
         bytes32 instruction = maturityInstructionOf[member][kind][oldItemId];
+        emit ItemCollateralChanged(member, kind, oldItemId, _itemValue(member, kind, oldItemId), false);
         _dropItem(member, kind, oldItemId);
         if (!itemPledged[member][kind][newItemId]) {
             itemPledged[member][kind][newItemId] = true;
@@ -595,6 +614,7 @@ contract CollateralRegistry is
             maturityInstructionOf[member][kind][newItemId] = instruction;
         }
         emit ItemRolled(member, kind, oldItemId, newItemId);
+        emit ItemCollateralChanged(member, kind, newItemId, _itemValue(member, kind, newItemId), true);
         refresh(member);
     }
 
@@ -608,6 +628,9 @@ contract CollateralRegistry is
         onlyRole(ITEM_ROLLER_ROLE)
     {
         if (!itemPledged[member][kind][itemId]) return;
+        // The collection has paid and burned it; what it paid is in its own events (PledgePaid, the
+        // vault's SettledPledged and SettlementCompleted), each with the member and the amounts.
+        emit ItemCollateralChanged(member, kind, itemId, 0, false);
         _dropItem(member, kind, itemId);
         emit ItemReleased(member, kind, itemId);
         refresh(member);
@@ -618,6 +641,7 @@ contract CollateralRegistry is
         external
         onlyRole(OPERATOR_ROLE)
     {
+        emit ItemCollateralChanged(member, kind, itemId, _itemValue(member, kind, itemId), false);
         _dropItem(member, kind, itemId);
         emit ItemSeized(member, kind, itemId);
         refresh(member);

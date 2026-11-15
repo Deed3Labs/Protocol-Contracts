@@ -70,14 +70,15 @@ How each power is two-person:
 
 | Power | Holder | Two-person by |
 |---|---|---|
-| Upgrades, every setting (accepted token, CLRUSD address, state source, pause window, encumbrance and membership sources, the savings-intent factory whose redeem escrows may receive CLRUSD, CCIP admin), the pilot off switch | `DEFAULT_ADMIN_ROLE` / `UPGRADER_ROLE`: the vault timelock | the Clear Financial Safe (threshold at least 2) proposes, and 7 days pass |
+| Upgrades, every setting (accepted token, CLRUSD address, state source, pause window, `pauseMaxTotal` (shorter only, never above 30 days), encumbrance and membership sources, the savings-intent factory whose redeem escrows may receive CLRUSD, CCIP admin), the pilot off switch | `DEFAULT_ADMIN_ROLE` / `UPGRADER_ROLE`: the vault timelock | the Clear Financial Safe (threshold at least 2) proposes, and 7 days pass |
 | Granting or revoking any role, including the contract-held MINTER_ROLE/BURNER_ROLE (the vault, the token pool) and LIQUIDATOR_ROLE (the Liquidator) | the default admin of each contract: the vault timelock | the same |
 | Vault pause, renewal, early end | `PAUSER_ROLE` keys | in contract: two distinct holders make the identical call (`_secondSigner`) |
 | CA mint pause, set and clear (spec 11) | `PILOT_ROLE` keys | in contract, the same way |
-| CLRUSD account (fraud) and security pauses, renewals, early ends | `FRAUD_ROLE`, `SECURITY_ROLE` keys | in contract, the same way |
+| CLRUSD account (fraud) and security pauses, renewals (with or without a legal basis), early ends | `FRAUD_ROLE`, `SECURITY_ROLE` keys | in contract, the same way |
+| CLRUSD de-listing and re-listing (10d, Phase 2g) | `LISTING_ROLE` keys | in contract, the same way; a FRAUD de-listing also needs a notice one `LISTING_ROLE` key recorded 10 days before |
 | Gasless deposits, redeems, autopay runs, mandate cancels | `RELAYER_ROLE`: one hot key | not two-person, by decision 2: it only submits what a member signed |
 
-The 10c limits still apply to every pause: 72 hours at most, and the second signer of a pause cannot renew it, or sign a new one on the same account for 30 days after it ends (Phase 4, M-A). `handOverVault` grants the operational keys, then renounces every vault and CLRUSD role the deployer holds; `assertNoVaultAdmin` checks the result. `test/deploy/Vault.deploy.spec.ts` runs it with a 2-of-3 stand-in Safe.
+The 10c limits still apply to every pause: 72 hours at most, and the second signer of a pause cannot renew it, or sign a new one on the same account for 30 days after it ends (Phase 4, M-A). Since Phase 2g nothing carries a pause past 30 days from when its chain began unless it records a legal basis (`pauseAccountWithLegalBasis`, `renewAccountPauseWithLegalBasis`, `pauseForSecurityWithLegalBasis`, `renewSecurityPauseWithLegalBasis`, the vault's `pauseWithLegalBasis` and `renewPauseWithLegalBasis`); a new pause set less than 30 days after the last one of the same kind ended continues that chain (owner decision 33). `handOverVault` grants the operational keys, then renounces every vault and CLRUSD role the deployer holds; `assertNoVaultAdmin` checks the result. `test/deploy/Vault.deploy.spec.ts` runs it with a 2-of-3 stand-in Safe.
 
 **Successor trustee (10g).** `successorTrusteeCalls` builds one timelock batch, proposed by the outgoing Safe, that grants the proposer, executor and canceller roles to the successor's Safe, moves any operational roles to new keys, and then revokes the outgoing Safe's roles. It contains only `grantRole` and `revokeRole`, so the reserve cannot move; the test checks the reserve and the supply are unchanged.
 
