@@ -194,8 +194,10 @@ by the API, not by a contract ([`poolFunding.ts`](../../apps/api/src/services/ch
    card-funding wallet as `to`. `totalBorrowed` rises by the amount.
 
 A borrow waits, with the reason stored, while the pool's `availableCash()` is below the amount. A row
-that fails five times becomes `needs_review`. `borrow` needs `BORROWER_ROLE`, which
-`scripts/grant_pool_borrower.ts` grants to the card-settler address; nothing grants it at deploy.
+that fails five times becomes `needs_review`. Since Phase 2f this step cannot succeed: only Clear
+Lending draws from the pool, as a recorded Deployment, `borrow` reverts, and deploy 27 revokes the
+card settler's old `BORROWER_ROLE` (decision 17). The held app PRs move card funding to what Clear
+Lending draws.
 Without a `LendingPool` address the step does nothing. The pool itself is described in
 [LendingPool](./settlement.md#lendingpool).
 

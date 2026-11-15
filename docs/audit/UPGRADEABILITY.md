@@ -119,7 +119,7 @@ ESADepositVault and ClaimEscrow are live on Base mainnet, so their storage chang
 
 OpenZeppelin's storage upgrade report (`@openzeppelin/upgrades-core` `getStorageUpgradeReport`) finds no errors against each implementation recorded in `.openzeppelin/base.json`: the vault at 0xe626…3644 and 0x83CB…26e9, and ClaimEscrow at 0x96F0…2c4e. A slot-by-slot comparison agrees: no existing variable moved. Re-run for Phase 2d with the same result.
 
-The credit contracts exist only on Base Sepolia, where FIX-PLAN allows layout breaks; mainnet gets a fresh deployment of them. PHASE-2-REPORT.md lists the breaks.
+The credit contracts exist only on Base Sepolia, where FIX-PLAN allows layout breaks; mainnet gets a fresh deployment of them. PHASE-2-REPORT.md lists the breaks. Decision 47 (`specs/phase-2f-plan-decisions.md`) deploys the Base Sepolia credit stack fresh as well, so the append-only notes below describe layouts no Base Sepolia upgrade now relies on; they still bind any later upgrade of a deployed contract.
 
 **Phase 2c (section 13), Base Sepolia only, append-only:** the slots that held the old pool's address and its loans are renamed in place and never read (`@custom:oz-renamed-from`): ClearCredit slot 253 (`assurancePool` → `retiredAssurancePool`), PayoutPool slots 271 and 273 (`reserve`, `borrowedFromReserve`), BondVault slots 261 and 264 (`assurancePool`, `owedToReserve`). ClearCredit appends `reserveToken` and `lenderOperating` (it has no gap; ClearCredit adds no storage). NetworkRegistry appends `moneyPathKindOf` and its `__gap` shrinks from 44 to 43, so its layout still ends at slot 300. A loan the old pool made to the payout pool or the bond vault is no longer counted or repaid; the old pool is retired with its books.
 
