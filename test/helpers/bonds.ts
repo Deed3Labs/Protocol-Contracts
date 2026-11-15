@@ -99,7 +99,9 @@ export async function deployBondStack(admin: any, usdc: any, tokenRegistry: any,
     const price = await bond.quotePrice(m, termDays, q.yieldBps);
     await usdc.mint(payer.address, price);
     await usdc.connect(payer).approve(await bond.getAddress(), price);
-    const att = attested.has(payer.address) ? "0x" : await attestation(controls, attester, payer.address);
+    // A fresh attestation when none is in force (they last at most 12 months: decision 42).
+    const inForce = attested.has(payer.address) && (await controls.eligibleCode(payer.address)) !== ethers.ZeroHash;
+    const att = inForce ? "0x" : await attestation(controls, attester, payer.address);
     const cure = async () => {
       if (o.cover !== false && (await vault.inReserveShortfall())) {
         await usdc.mint(await vault.getAddress(), (await vault.requiredReserve()) - (await vault.held()));

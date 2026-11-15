@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/utils/cryptography/SignatureCheckerUpgradeable.sol";
 import "../libraries/PacificCalendar.sol";
 import "./BurnerBondBase.sol";
+import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
 
 /// @dev What the Collateral Agent has paid on a bond through its distributions.
 interface IAgentPaidOn {
@@ -67,7 +68,8 @@ contract BurnerBondIssue is BurnerBondBase {
     /// older than 15 minutes (FIXED), used, or not the Ladder's rate for its term when it was given,
     /// and by EarnControls for a price under $250 (FIXED), a Clear contract as payer, a payer who is
     /// not eligible or not the Holder's own account, a term not offered now, the Funding Limit, the
-    /// offering cap, a Reserve Shortfall, the Equity Cushion pause or an Enforcement Notice.
+    /// offering cap, a Reserve Shortfall, the Equity Cushion pause or an Enforcement Notice. Refused
+    /// too while the wind-down flag is set or the factory has deactivated the collection.
     /// @param attestation an eligibility attestation to record first, or empty to use the one on file
     function purchase(Quote calldata q, bytes calldata sig, bytes calldata attestation)
         external
@@ -75,6 +77,8 @@ contract BurnerBondIssue is BurnerBondBase {
         returns (uint256 bondId)
     {
         if (windDownSetAt != 0 || redeemAllFrom != 0) revert BurnerBondWindDown();
+        // A collection its factory's owner has deactivated stops selling; its bonds still settle.
+        if (!IBurnerBondFactory(factory).getCollectionInfo(address(underlyingToken)).isActive) revert BurnerBondWindDown();
         if (q.quotedAt > block.timestamp || block.timestamp > uint256(q.quotedAt) + QUOTE_LIFETIME || q.maturityAmount == 0) {
             revert BurnerBondBadQuote();
         }
