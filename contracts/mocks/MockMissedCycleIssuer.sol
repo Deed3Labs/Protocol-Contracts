@@ -86,6 +86,14 @@ contract MockMissedCycleIssuer {
         cureNoticeAtOf[member] = at;
     }
 
+    /// @dev Phase 2f, decision 37: the real issuer's two-person record of the line's closing with
+    /// its full balance demanded (MB-04 §9.3(a)-(b)), set directly here.
+    mapping(address => uint64) public lineClosedAt;
+
+    function setLineClosed(address member, uint64 at) external {
+        lineClosedAt[member] = at;
+    }
+
     /// @dev The prefix of the real CycleState the pledge module reads: words 10-13 are
     /// securedPastDue, pastDueSM, cureAmount and cureDueAt.
     function cycleStateOf(address member) external view returns (uint256[14] memory s) {

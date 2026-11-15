@@ -495,8 +495,18 @@ paid or enforced since.
 
 - On the revolving line that is the past-due Secured Minimum (`pastDueSM`, within `securedPastDue`),
   which the line's secured positions may pay, and the unpaid second Rebalance Amount (`cureAmount`),
-  which is unsecured. The whole balance never counts: a default does not make it due, and the line
-  has no other on-chain closing.
+  which is unsecured. A default does not by itself make the whole balance due.
+- **The line's closing (Phase 2f, decision 37; MB-04 §9.3(a)-(b)).** While the Objective Default
+  stands (`inDefault` or `hasDefaultedOnCurrentLine`) and no pause is in force, a
+  `CREDIT_ATTESTER_ROLE` holder calls `proposeLineClosing(member)` and a different one
+  `approveLineClosing(member)` (both on the issuer's address, in `RevolvingIssuerWorkouts`), which
+  records that the line is closed and its full balance demanded (`lineClosedAt(member)`,
+  `LineClosed`). It is recorded once per line and counts only for the line open then. From the
+  record, while the default stands, the whole balance is a Defaulted Amount: the savings tier's for
+  Encumbered CLRUSD, never more than the CLRUSD locked for it (MB-04 §9.4; MB-05 §7.2), and the
+  asset-backed and unsecured tiers' for pledged Earn Positions. Without it, behaviour is as above. A
+  workout plan's default records no default of the line, so it cannot be closed on it (owner
+  decision 35).
 - On a plan secured under MB-05 it is what the cure notice concerned (`noticeDue`) less what has
   been repaid, and the plan's whole balance once its schedule has ended.
 
@@ -514,7 +524,8 @@ notice, otherwise the bond nearest maturity (decision 20). The surplus always go
   with `ClearUSD.seize`, redeems it at `ESADepositVault`, and calls `settleFromCollateral`. Because a
   revolving default turns on the unsecured Rebalance Amount, and the Secured Minimum on savings is
   charged only when no unsecured principal is drawn, a default usually leaves little or none of the
-  savings tier past due: the rest stays owed and locked.
+  savings tier past due: the rest stays owed and locked until the line's closing is recorded, when
+  the whole savings tier may be paid (decision 37).
 - `settleFromSavings` lets a member apply their own savings to their own `SAVINGS` tier at a trusted
   issuer at any time, default or not (MB-05 §7.9): an instruction, not enforcement.
 - Pledged bonds are paid under their own `payPledged`, which asks `Liquidator.pledgePaymentDue` and

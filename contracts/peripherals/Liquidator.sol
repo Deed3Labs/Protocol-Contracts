@@ -89,8 +89,9 @@ contract Liquidator is LiquidatorBase {
     /// @dev Permissionless (compliance spec 10b): the default is computed on chain by a trusted
     /// issuer and recorded only by that computation. The amount is the least of: the Defaulted
     /// Amount of the line's secured positions still open (its past-due Secured Minimum, decision 22;
-    /// the unpaid Rebalance Amount is unsecured debt CLRUSD never pays, MB-05 §2.5(a)), what the
-    /// savings tier owes, the CLRUSD the member holds and what the registry computes as locked.
+    /// the unpaid Rebalance Amount is unsecured debt CLRUSD never pays, MB-05 §2.5(a); once the
+    /// issuer has recorded the line's closing, the whole Savings-Backed Drawn, decision 37), what
+    /// the savings tier owes, the CLRUSD the member holds and what the registry computes as locked.
     /// Redeemed one-for-one, so there is no surplus and no deficiency. What it applies counts
     /// against the same Defaulted Amount as asset-backed enforcement on that line.
     function liquidate(address member, address issuer, uint256 tierId, bytes32 kind)

@@ -277,6 +277,49 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
         }
     }
 
+    /* ---- MB-04 §9.3(a)-(b): the line's closing (two people; Phase 2f, decision 37) ---- */
+
+    /// @notice proposes recording that the member's line is closed and its full balance demanded.
+    /// Only while an Objective Default stands on this line (computed, or recorded on it) and no
+    /// pause is in force (10c). A different signer approves it; nothing is recorded until then.
+    function proposeLineClosing(address member) external onlyCreditRole(ATTESTER_ROLE) {
+        LineClosing storage c = _closingIfDefaulted(member);
+        c.proposer = _msgSender();
+        emit LineClosingProposed(member, _msgSender());
+    }
+
+    /// @notice the second signer records the closing, at this block's time, under the same
+    /// conditions. From then the Liquidator counts the line's whole balance as a Defaulted Amount
+    /// (MB-05 §1.3): the savings tier's for Encumbered CLRUSD, never more than the CLRUSD locked for
+    /// it (MB-04 §9.4; MB-05 §7.2), and the asset-backed and unsecured tiers' for pledged Earn
+    /// Positions. It reaches nothing while no default stands, and never the workout plan.
+    function approveLineClosing(address member) external onlyCreditRole(ATTESTER_ROLE) {
+        LineClosing storage c = _closingIfDefaulted(member);
+        address proposer = c.proposer;
+        if (proposer == address(0)) revert RevolvingIssuerNoProposal(member);
+        if (proposer == _msgSender()) revert RevolvingIssuerSameSigner(proposer);
+        c.proposer = address(0);
+        c.closedAt = uint64(block.timestamp);
+        emit LineClosed(member, uint64(block.timestamp), proposer, _msgSender());
+    }
+
+    /// @notice when the member's current line was recorded closed with its full balance demanded;
+    /// zero if it was not (a closing of an earlier line does not count).
+    function lineClosedAt(address member) public view returns (uint64) {
+        uint64 at = _p2g().lineClosing[member].closedAt;
+        return at != 0 && at >= lineOpenedAt[member] ? at : 0;
+    }
+
+    /// @dev The member's closing record, once checked that an Objective Default stands on the
+    /// current line, no pause is in force and the line is not already recorded closed.
+    function _closingIfDefaulted(address member) private view returns (LineClosing storage c) {
+        if (!(_computedDefault(member) || _defaultedOnCurrentLine(member)) || _pauseInForce(member)) {
+            revert RevolvingIssuerNotInDefault(member);
+        }
+        if (lineClosedAt(member) != 0) revert RevolvingIssuerNothingDue(member);
+        c = _p2g().lineClosing[member];
+    }
+
     /* ---- views ---- */
 
     /// @notice a member's unsecured revolving principal, carry excluded: the tiers priced from

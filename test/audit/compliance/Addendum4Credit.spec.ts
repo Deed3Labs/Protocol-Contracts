@@ -170,6 +170,40 @@ describe("ADDENDUM 4, credit half: pauses, Income Assurance per hardship, statem
       expect(await revolving.hasDefaulted(m)).to.equal(true);
     });
 
+    it("Phase 2f decision 37: the line's closing is recorded by two people, only while the Objective Default stands and no pause is in force, once per line", async function () {
+      const m = c.ctx.member.address;
+      await open(c.ctx.member, [0, 0, 1_000, 0], 15);
+      await spend(c.ctx.member, usd(500));
+      await driveToSecondMiss(revolving, m);
+      const [a, b] = await attesters(revolving);
+      // A second miss is not yet a default: nothing can be recorded.
+      await expect(wk.connect(a).proposeLineClosing(m)).to.be.revertedWithCustomError(revolving, "RevolvingIssuerNotInDefault");
+      await revolving.connect(a).proposeCureNotice(m);
+      const noticeAt = await stamp(revolving.connect(b).approveCureNotice(m));
+      const due = Number((await revolving.cycleStateOf(m)).cureDueAt);
+      await mineAt(Math.max(due + 15 * DAY, noticeAt + 864_000));
+      expect(await revolving.inDefault(m)).to.equal(true);
+
+      // Only the credit attester role; one proposes, a different one approves.
+      await expect(wk.connect(c.ctx.outsider).proposeLineClosing(m)).to.be.reverted;
+      await expect(wk.connect(b).approveLineClosing(m)).to.be.revertedWithCustomError(revolving, "RevolvingIssuerNoProposal");
+      await expect(wk.connect(a).proposeLineClosing(m)).to.emit(revolving, "LineClosingProposed").withArgs(m, a.address);
+      await expect(wk.connect(a).approveLineClosing(m)).to.be.revertedWithCustomError(revolving, "RevolvingIssuerSameSigner");
+      // A pause in force holds it (10c), as it holds the default.
+      await c.clrusdPause.pauseAccount(m);
+      await expect(wk.connect(b).approveLineClosing(m)).to.be.revertedWithCustomError(revolving, "RevolvingIssuerNotInDefault");
+      await c.clrusdPause.unpauseAccount(m);
+      await advance(60);
+      expect(await wk.lineClosedAt(m)).to.equal(0n);
+      const closedAt = await stamp(wk.connect(b).approveLineClosing(m));
+      expect(await wk.lineClosedAt(m)).to.equal(BigInt(closedAt));
+      // Recorded once for the line; the default it rests on stays recorded.
+      await expect(wk.connect(a).proposeLineClosing(m)).to.be.revertedWithCustomError(revolving, "RevolvingIssuerNothingDue");
+      await revolving.connect(c.ctx.outsider).triggerDefault(m);
+      expect(await revolving.hasDefaultedOnCurrentLine(m)).to.equal(true);
+      expect(await wk.lineClosedAt(m)).to.equal(BigInt(closedAt));
+    });
+
     it("decision 5: paused time between a close and its due point pushes the due point back; nothing is judged while a pause is in force, the next close is still recorded at its own end, and a payment inside the pushed window is no miss", async function () {
       const m = c.ctx.member.address;
       const m2 = c.m2.address;
@@ -666,6 +700,8 @@ describe("ADDENDUM 4, credit half: pauses, Income Assurance per hardship, statem
       // No default of the line is recorded: the Liquidator reaches nothing through it.
       expect(await revolving.hasDefaulted(m)).to.equal(false);
       expect(await revolving.inDefault(m)).to.equal(false);
+      // Nor can the line's closing be recorded on it (Phase 2f, decision 37; owner decision 35 kept).
+      await expect(wk.connect(a).proposeLineClosing(m)).to.be.revertedWithCustomError(revolving, "RevolvingIssuerNotInDefault");
     });
 
     it("Combined Ceiling (decision 30): the plan's principal is not unsecured revolving principal", async function () {

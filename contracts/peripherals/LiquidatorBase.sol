@@ -306,8 +306,11 @@ abstract contract LiquidatorBase is AccessControlUpgradeable, UUPSUpgradeable {
 
     /// @dev Decision 22: the Defaulted Amounts still open on a revolving line, as the issuer records
     /// them: what was past due when the grace period ended, less what has been paid or enforced
-    /// since. The whole balance never counts: the line has no on-chain closing apart from default,
-    /// and a default does not by itself make the balance due. Zero without a current default, or when
+    /// since. A default does not by itself make the balance due. Decision 37: once the issuer has
+    /// recorded the line's closing with its full balance demanded (`lineClosedAt`, two people,
+    /// MB-04 §9.3(a)-(b)), the whole balance is a Defaulted Amount, so both parts are unbounded here
+    /// and each caller caps them at what the tiers it reaches owe (and, for CLRUSD, at what is
+    /// locked). Still only while the default stands. Zero without a current default, or when
     /// the issuer cannot answer (fails closed: nothing is enforced). Read from the issuer's
     /// `cycleStateOf`, whose fields are all fixed-size, so its words 10-13 are `securedPastDue`
     /// (what the judged cycle's Rebalance Amount and Secured Minimum still lack; any payment lowers
@@ -330,6 +333,11 @@ abstract contract LiquidatorBase is AccessControlUpgradeable, UUPSUpgradeable {
         sm = s[11] > e.sm ? s[11] - e.sm : 0;
         if (s[10] < sm) sm = s[10];
         ra = s[12] > e.ra ? s[12] - e.ra : 0;
+        (ok, data) = issuer.staticcall(abi.encodeWithSignature("lineClosedAt(address)", member));
+        if (ok && data.length >= 32 && abi.decode(data, (uint256)) != 0) {
+            sm = type(uint256).max;
+            ra = type(uint256).max;
+        }
     }
 
     /// @dev Records that enforcement applied `sm` against the past-due Secured Minimum and `ra`

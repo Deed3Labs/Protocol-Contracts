@@ -345,6 +345,16 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         mapping(address => Workout) workoutOf;
         mapping(address => mapping(uint256 => PositionStat)) positionStat;
         address pauseClock;
+        /// @dev Phase 2f, decision 37: each member's recorded line closing (MB-04 §9.3(a)-(b)).
+        mapping(address => LineClosing) lineClosing;
+    }
+
+    /// @notice A line's closing with its full balance demanded (MB-04 §9.3(a)-(b); Phase 2f,
+    /// decision 37), recorded by two people while an Objective Default stands. It counts only for
+    /// the line open when it was recorded.
+    struct LineClosing {
+        address proposer; // a pending proposal
+        uint64 closedAt; // when the second signer recorded it; zero if never
     }
 
     /// @dev keccak256(abi.encode(uint256(keccak256("clear.storage.RevolvingIssuer.Phase2g")) - 1)) & ~bytes32(uint256(0xff))
@@ -497,6 +507,8 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     event WorkoutNoticeRecorded(address indexed member, uint64 noticeAt, uint256 due);
     event WorkoutPlanDefaulted(address indexed member, uint256 writtenOff);
     event WorkoutReaged(address indexed member, uint64 at);
+    event LineClosingProposed(address indexed member, address indexed proposer);
+    event LineClosed(address indexed member, uint64 closedAt, address proposer, address approver);
 
     error RevolvingIssuerUnsecuredCap(uint256 capacity, uint256 cap);
     error RevolvingIssuerExtensionMismatch();

@@ -27,7 +27,7 @@ import "../core/interfaces/burner-bond/IBurnerBond.sol";
 ///    if they set one before any notice, otherwise the bond nearest maturity first.
 ///  - **The Shortfall (decision 21)** is one figure: Asset-Backed Drawn across the member's lines
 ///    above the total Asset-Backed Limit of their pledged bonds and pool shares. After the wait it
-///    is settled in the smallest amount that ends it, and never accelerates anything else.
+///    is settled in the smallest amount that ends it, and never makes anything else due early.
 ///  - **Where the money goes (MB-05 §§7.5, 7.6).** To the Defaulted Amounts, or to end the
 ///    Shortfall, and the surplus to the Holder at once. Never to Savings, which has its own
 ///    collateral, and never to a cost or fee.

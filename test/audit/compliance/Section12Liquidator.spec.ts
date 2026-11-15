@@ -275,6 +275,64 @@ describe("COMPLIANCE section 12: Liquidator (12.5, 12.6, 12.8)", function () {
     });
   });
 
+  describe("Phase 2f decision 37: a recorded line closing makes the whole balance a Defaulted Amount (MB-04 §9.3)", function () {
+    it("MB-05 example 1 (Dana): with the line closed, the whole $250.00 of Savings-Backed Drawn is redeemed from CLRUSD, leaving $2,750.00", async function () {
+      const { issuer, liquidator, clrusd, stranger } = s;
+      const I = await issuer.getAddress();
+      // $3,000.00 of ESA capital; $400.00 drawn savings-backed, $150.00 repaid: $250.00 owed.
+      await save(U(3_000));
+      await issuer.setPrincipal(m, T_SAVINGS, U(250));
+      await issuer.setPrincipal(m, T_INCOME, U(300));
+      await issuer.setInDefault(m, true);
+      // The default turned on the unsecured Rebalance Amount: no Secured Minimum is past due.
+      await issuer.setDefaulted(m, 0n, U(300), 1n);
+      await expect(liquidator.connect(stranger).liquidate(m, I, T_SAVINGS, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+
+      await issuer.setLineClosed(m, await now());
+      await liquidator.connect(stranger).liquidate(m, I, T_SAVINGS, SAVINGS);
+      expect(await clrusd.balanceOf(m)).to.equal(U(2_750));
+      expect(await issuer.principalOf(m, T_SAVINGS)).to.equal(0n);
+      // CLRUSD never pays the unsecured tier (MB-05 §2.5(a)).
+      expect(await issuer.principalOf(m, T_INCOME)).to.equal(U(300));
+      expect(await clrusd.freeBalanceOf(m)).to.equal(U(2_750));
+      await expect(liquidator.connect(stranger).liquidate(m, I, T_SAVINGS, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+    });
+
+    it("never more than the Savings-Backed Position, and nothing once the default no longer stands", async function () {
+      const { issuer, liquidator, clrusd, stranger } = s;
+      const I = await issuer.getAddress();
+      await save(U(300));
+      await issuer.setPrincipal(m, T_SAVINGS, U(400));
+      await issuer.setLineClosed(m, await now());
+      await issuer.setDefaulted(m, 0n, U(100), 1n);
+      // The record alone, with no default standing, reaches nothing.
+      await expect(liquidator.connect(stranger).liquidate(m, I, T_SAVINGS, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");
+      await issuer.setInDefault(m, true);
+      await liquidator.connect(stranger).liquidate(m, I, T_SAVINGS, SAVINGS);
+      expect(await clrusd.balanceOf(m)).to.equal(0n); // the $300.00 position, not the $400.00 owed
+      expect(await issuer.principalOf(m, T_SAVINGS)).to.equal(U(100));
+    });
+
+    it("for pledged Earn Positions, the whole asset-backed and unsecured balance, never Savings", async function () {
+      const { issuer, liquidator } = s;
+      await issuer.setPrincipal(m, T_SAVINGS, U(250));
+      await issuer.setPrincipal(m, T_POOL, U(700));
+      await issuer.setPrincipal(m, T_INCOME, U(300));
+      await issuer.setInDefault(m, true);
+      await issuer.setDefaulted(m, 0n, U(100), 1n);
+      // Without the record: only what is past due, the $100.00 Rebalance Amount.
+      expect((await liquidator.earnDefaultedOf(m))[0]).to.equal(U(100));
+      await issuer.setLineClosed(m, await now());
+      expect((await liquidator.earnDefaultedOf(m))[0]).to.equal(U(1_000));
+      // Only while the default stands.
+      await issuer.setInDefault(m, false);
+      expect((await liquidator.earnDefaultedOf(m))[0]).to.equal(0n);
+    });
+  });
+
   describe("12.6 Liquidation Hold", function () {
     it("needs two different signers, and while active every enforcement path reverts", async function () {
       const { issuer, liquidator, holdA, holdB, pool } = s;
