@@ -46,6 +46,22 @@ npx hardhat compile
 
 `STATE_ATTESTER_KEY` is unset on purpose. Every other input the scripts ask for is in the rollout file. If a script says an input is missing, stop and report.
 
+### Preflight: the Clear Lending Safe and the Assurance inputs (read-only)
+
+```bash
+npx hardhat run scripts/check_rollout_inputs.ts --network $N
+```
+
+It sends nothing. It must exit 0 with no FAIL. It checks that:
+
+- the five new inputs are set: `ASSURANCE_CL_FEES_PAYER`, `ASSURANCE_DISBURSEMENT` (the two CDP wallets), `ASSURANCE_DRAW_ADDRESS`, `ASSURANCE_LOSS_RESERVE`, and `CLEAR_LENDING_SAFE`, with `CLEAR_LENDING_ACCOUNT` and `LENDER_OPERATING` equal to `ASSURANCE_DRAW_ADDRESS` (CL Operating);
+- the Clear Lending Safe `0xAE8F…419d` has code and needs 2 signatures, and is not the Clear Treasury Safe;
+- CL Operating `0xfAFf…df65` and CL Loss Reserve `0xb425…6bAa` have code, need 1 signature, and their only owner is the Clear Lending Safe;
+- the two CDP wallets are plain accounts;
+- nothing the Assurance Pool would refuse: none is an Assurance signer, a payer is not the draw address, and the five differ.
+
+If the two CDP wallets are still empty, stop: the owner creates them first (`SEPOLIA-OWNER-CHECKLIST.md` step 1). `scripts/signing_plan.ts` also refuses to run while they are empty.
+
 ## Day 0
 
 The expected result of each step is in the table under "Steps, in order" in `docs/audit/SEPOLIA-REHEARSAL.md`.
@@ -177,7 +193,7 @@ npx hardhat run scripts/signing_plan.ts --network $N
 - **D4 and HOLD_ROLE:** AAA grants the credit roles, the credit operator (`0x8801…1edd`) and the two hold keys.
 - **E8 and E9:** for each of the five Collateral Agent changes, Account 3 proposes, Account 4 confirms, and `…698a` (the Agent Key) approves.
 
-The confirm and approve cards only become ready after the proposal, so re-run the plan between rounds. Then the Safe signs the Earn timelock schedule batch in the Safe app; the page can download that batch file.
+The confirm and approve cards only become ready after the proposal, so re-run the plan between rounds. Then the **Clear Lending Safe** (`0xAE8F…419d`, 2 of 2: AAA and `…698a`) signs the Earn timelock schedule batch (`E8-earn-schedule`) in the Safe app; the page can download that batch file. Open that Safe in the Safe app, not the Clear Treasury Safe.
 
 Everything in D4 and HOLD_ROLE must be done before the credit handover (I2): after it, those grants take 7 days.
 
@@ -206,7 +222,16 @@ ASSURANCE_DEPLOY=1 npx hardhat run deploy/08_deploy_AssurancePool.ts --network $
 npx hardhat run deploy/26_deploy_EarnControls.ts --network $N
 ```
 
-The Assurance Pool's payers, its draw and loss-reserve addresses, its disbursement address and its exposure sources are left unset on purpose. The owner has not decided them yet, and they are set later through the pool's own governance.
+```bash
+npx hardhat run scripts/signing_plan.ts --network $N
+```
+
+**SIGN (Assurance):** the pool's setup goes through its own governance. Five calls: `setPayer(CL fees wallet, 7)` (credit enhancement fee, recovery, interchange), `setPayer(Clear Treasury Safe, 8)` (board allocation), `setLendingCoAddresses(CL Operating, CL Loss Reserve)`, `setAssuranceDisbursementAddress(disbursement wallet)` and `setExposureSources([CollateralRegistry])`.
+
+- **Approvals (`AS-…-approve-1`, `AS-…-approve-2`):** for each call, Account 3 sends `approveAction` on the signing page, then Account 4 sends the same. The pool takes either order; the plan asks Account 3 first, so re-run it after Account 3's five.
+- **Schedule (`AS-assurance-schedule`):** once all ten approvals show done, the **Clear Treasury (board) Safe** `0x52e6…cf50` signs the Assurance timelock batch in the Safe app. Today it needs one signature; after the Safe change below, two.
+
+Floor, transfer delay and allocation stay at the pool's defaults (5% floor, 14 days, 50/50). Nothing else is needed for deposits; the monthly floor inputs (`setFloorInputs`, two Assurance signers, no timelock) set the coverage cap a draw needs, and are not part of this run.
 
 ### I1: move the deployer's day-to-day roles to the API's wallets (REVIEW STOP)
 
@@ -222,7 +247,7 @@ DEPLOYER=0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA npx hardhat run scripts/comm
 |---|---|---|
 | Credit operator | `0x8801…1edd` | AccessManager operator, MembershipRegistry registrar |
 | Savings and send relayer | `0x6Cbd…Fcb3`, one CDP wallet | the vault's RELAYER_ROLE, SavingsIntentFactory SETTLER_ROLE, CollateralRegistry OPERATOR_ROLE, ClaimEscrow SETTLER_ROLE |
-| The Safe | `0x52e6…cf50` | the config roles |
+| The Clear Treasury Safe | `0x52e6…cf50` | the config roles |
 
 Anything marked "renounce" is given up by the deployer. Only after the owner says the review passed, run:
 
@@ -230,7 +255,7 @@ Anything marked "renounce" is given up by the deployer. Only after the owner say
 MODE=run CONFIRM=ops-roles DEPLOYER=0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA npx hardhat run scripts/command/ops-roles.ts --network $N
 ```
 
-### I5, the Safe, the handovers
+### I5, the Clear Treasury Safe, the handovers
 
 ```bash
 npx hardhat run scripts/check_retired_credit.ts --network $N
@@ -242,7 +267,7 @@ Expected: one FAIL, the backstop, which clears on day 7. Plus WARNs marked test 
 npx hardhat run scripts/signing_plan.ts --network $N
 ```
 
-**SIGN (the Safe):** in the Safe app, the owner signs the batch `addOwnerWithThreshold(0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a, 2)`. The Safe needs one signature for this one, since it is still 1 of 3. Confirm on chain that the Safe now shows 2 of 4 before going on.
+**SIGN (the Clear Treasury Safe):** in the Safe app, the owner signs the batch `addOwnerWithThreshold(0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a, 2)` on `0x52e6…cf50`. It needs one signature for this one, since it is still 1 of 3. Confirm on chain that it now shows 2 of 4 before going on. The Clear Lending Safe is already 2 of 2 and needs no change.
 
 ```bash
 CREDIT_HANDOVER=1 npx hardhat run deploy/credit_timelock_handover.ts --network $N
@@ -256,11 +281,13 @@ VAULT_HANDOVER=1 npx hardhat run deploy/vault_timelock_handover.ts --network $N
 npx hardhat run scripts/signing_plan.ts --network $N
 ```
 
-**SIGN (I3):** the Safe schedules the vault timelock batch. It now takes two owners: AAA and `…698a`.
+**SIGN (I3):** the Clear Treasury Safe schedules the vault timelock batch. It now takes two owners: AAA and `…698a`.
 
 ```bash
 EARN_HANDOVER=1 npx hardhat run deploy/earn_timelock_handover.ts --network $N
 ```
+
+It checks the Clear Lending Safe (`CLEAR_LENDING_SAFE`) needs two signatures, and prints `Clear Lending Safe 0xAE8F…419d: 2 of 2`.
 
 ### End of day 0
 
@@ -277,7 +304,7 @@ EARN_HANDOVER=1 npx hardhat run deploy/earn_timelock_handover.ts --network $N
    - `deployments/base-sepolia/run-log/`.
 
    Start the subject with `[skip preview]`.
-3. Tell the owner the day-7 date and time, from the plan's "waits until" lines.
+3. Tell the owner the day-7 date and time, from the plan's "waits until" lines (the Earn, vault and Assurance timelocks each give one).
 
 ## Day 7
 
@@ -285,7 +312,13 @@ EARN_HANDOVER=1 npx hardhat run deploy/earn_timelock_handover.ts --network $N
 npx hardhat run scripts/signing_plan.ts --network $N
 ```
 
-**SIGN:** in the Safe app, the Safe executes the Earn timelock batch and the vault timelock batch. Each needs two owners. Executing the Earn batch is what applies the five Collateral Agent changes; their own 7-day wait, built into the Collateral Agent, ends at the same time.
+**SIGN (Day 7):** in the Safe app, three batches, each needing two owners (AAA and `…698a`):
+
+- `E8x-earn-execute`: the **Clear Lending Safe** executes the Earn timelock batch. This applies the five Collateral Agent changes; their own 7-day wait, built into the Collateral Agent, ends at the same time.
+- `I3x-vault-execute`: the **Clear Treasury Safe** executes the vault timelock batch.
+- `ASx-assurance-execute`: the **Clear Treasury (board) Safe** executes the Assurance timelock batch. Its 7 days started at its own schedule (after H1), so it may be ready a little later than the other two; the plan's "waits until" line says when.
+
+Re-run the plan; every step must show `done`.
 
 Run the final checks. Each must exit 0:
 
