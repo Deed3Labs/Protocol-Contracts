@@ -3,24 +3,60 @@
   "networks": {
     "base-sepolia": {
       "LendingPool": {
-        "DEPLOYER_ROLE": null,
-        "VALUATION_ROLE": null,
-        "SUSPENSION_ROLE": null,
-        "CCO_ROLE": null,
-        "TREASURER_ROLE": null
+        "DEPLOYER_ROLE": [
+          "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+          "0x7ec1D6b69398af413edC94692FB167A3864A86cF"
+        ],
+        "VALUATION_ROLE": [
+          "0xD2645348dE8ff9c34dC00064B63fF9Cb8211eFE5",
+          "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a"
+        ],
+        "SUSPENSION_ROLE": [
+          "0x7ec1D6b69398af413edC94692FB167A3864A86cF"
+        ],
+        "CCO_ROLE": [
+          "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA"
+        ],
+        "TREASURER_ROLE": [
+          "0xD2645348dE8ff9c34dC00064B63fF9Cb8211eFE5"
+        ]
       },
       "EarnControls": {
-        "ATTESTER_ROLE": null,
-        "PAUSE_ROLE": null,
-        "SUCCESSOR_ROLE": null,
-        "ELIGIBILITY_ROLE": null,
-        "LADDER_ROLE": null,
-        "FUNDING_ROLE": null,
-        "WIND_DOWN_ROLE": null,
-        "ROLL_NOTICE_ROLE": null,
-        "EXCLUDED_HOLDER_ROLE": null
+        "ATTESTER_ROLE": [
+          "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA"
+        ],
+        "PAUSE_ROLE": [
+          "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+          "0xD2645348dE8ff9c34dC00064B63fF9Cb8211eFE5"
+        ],
+        "SUCCESSOR_ROLE": [
+          "0x7ec1D6b69398af413edC94692FB167A3864A86cF",
+          "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a"
+        ],
+        "ELIGIBILITY_ROLE": [
+          "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+          "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a"
+        ],
+        "LADDER_ROLE": [
+          "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
+          "0x7ec1D6b69398af413edC94692FB167A3864A86cF"
+        ],
+        "FUNDING_ROLE": [
+          "0xD2645348dE8ff9c34dC00064B63fF9Cb8211eFE5",
+          "0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a"
+        ],
+        "WIND_DOWN_ROLE": [
+          "0x7ec1D6b69398af413edC94692FB167A3864A86cF",
+          "0xD2645348dE8ff9c34dC00064B63fF9Cb8211eFE5"
+        ],
+        "ROLL_NOTICE_ROLE": [
+          "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA"
+        ],
+        "EXCLUDED_HOLDER_ROLE": []
       },
-      "revokeBorrowers": ["0x1b535bbe4bc5f1a4152dfbd1d1215d9435ead4f3"]
+      "revokeBorrowers": [
+        "0x1b535bbe4bc5f1a4152dfbd1d1215d9435ead4f3"
+      ]
     },
     "base": {
       "LendingPool": {
