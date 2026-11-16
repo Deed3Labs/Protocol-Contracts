@@ -18,8 +18,8 @@
  *   proposal after it (`moneyPathCalls` gives the calldata).
  *
  * What it does not: name payers, Lending Co.'s addresses, the disbursement address or the exposure
- * source. Those are governed calls -- two signers approve, the board schedules, 7 days pass -- and
- * `governedCalls` prints the calldata for the board Safe to propose.
+ * source. Those are governed calls -- two signers approve, the board schedules, 7 days pass, the
+ * board executes -- and `governedCalls` builds them; scripts/signing_plan.ts turns them into steps.
  *
  * Nothing in credit, savings, payouts or bonds is pointed at the pool: none of them holds its
  * address. This module only builds transactions from the signer it is given; it never reads a key.
@@ -74,25 +74,139 @@ export async function listMoneyPaths(registry: any, addresses: Record<string, st
   }
 }
 
-/** The governed calls that finish the setup, as calldata for the board Safe and the signers. */
-export function governedCalls(pool: any, s: {
-  lendingCoOperating: string; lendingCoDraw: string; lendingCoLossReserve: string;
-  coopTreasury: string; disbursement: string; exposureSource?: string;
-}) {
-  const { ethers } = require("hardhat");
-  const calls: [string, any[]][] = [
-    // Lending Co.'s operating address pays credit-enhancement fees and recoveries; the co-op
-    // treasury pays interchange and board allocations (13c).
-    ["setPayer", [s.lendingCoOperating, (1 << 0) | (1 << 1)]],
-    ["setPayer", [s.coopTreasury, (1 << 2) | (1 << 3)]],
-    ["setLendingCoAddresses", [s.lendingCoDraw, s.lendingCoLossReserve]],
-    ["setAssuranceDisbursementAddress", [s.disbursement]],
+/**
+ * The pool's SourceTag enum (IAssurancePool.SourceTag), in declaration order: `setPayer` takes a bit
+ * mask with bit `1 << tag` for each tag a payer may deposit under, and refuses a mask above 0xF.
+ */
+export const SOURCE_TAG = { CREDIT_ENHANCEMENT_FEE: 0, RECOVERY: 1, INTERCHANGE: 2, BOARD_ALLOCATION: 3 } as const;
+export const sourceTagMask = (...tags: number[]) => tags.reduce((m, t) => m | (1 << t), 0);
+/** Owner decision (Nov 16, 2026): Clear Lending's fees wallet pays the credit enhancement fee, recoveries and interchange. */
+export const CL_FEES_MASK = sourceTagMask(SOURCE_TAG.CREDIT_ENHANCEMENT_FEE, SOURCE_TAG.RECOVERY, SOURCE_TAG.INTERCHANGE);
+/** Owner decision (Nov 16, 2026): the co-op treasury (the Clear Treasury Safe) pays board allocations. */
+export const BOARD_ALLOCATION_MASK = sourceTagMask(SOURCE_TAG.BOARD_ALLOCATION);
+
+/** What the governed setup names. Every address is required; none falls back to another. */
+export interface AssuranceSetup {
+  /** ASSURANCE_CL_FEES_PAYER: pays in under CL_FEES_MASK. */
+  clFeesPayer: string;
+  /** COOP_TREASURY: pays in under BOARD_ALLOCATION_MASK. */
+  coopTreasury: string;
+  /** ASSURANCE_DRAW_ADDRESS: Lending Co.'s Registered Draw Address (requestDraw only). */
+  draw: string;
+  /** ASSURANCE_LOSS_RESERVE: where a released draw is paid. */
+  lossReserve: string;
+  /** ASSURANCE_DISBURSEMENT: where a released Assurance grant is paid. */
+  disbursement: string;
+  /** ASSURANCE_EXPOSURE_SOURCES, or the current CollateralRegistry record. */
+  exposureSources: string[];
+}
+
+/** The env variable behind each address of the setup. */
+export const ASSURANCE_SETUP_ENV: Record<Exclude<keyof AssuranceSetup, "exposureSources">, string> = {
+  clFeesPayer: "ASSURANCE_CL_FEES_PAYER",
+  coopTreasury: "COOP_TREASURY",
+  draw: "ASSURANCE_DRAW_ADDRESS",
+  lossReserve: "ASSURANCE_LOSS_RESERVE",
+  disbursement: "ASSURANCE_DISBURSEMENT",
+};
+
+/**
+ * Reads the setup from `env`. Throws, naming every variable, if any is empty or not an address:
+ * nothing falls back to another address. `defaultExposure` is used when ASSURANCE_EXPOSURE_SOURCES
+ * is unset (the plan passes the current CollateralRegistry record).
+ */
+export function assuranceSetupFromEnv(env: Record<string, string | undefined>, defaultExposure?: string[]): AssuranceSetup {
+  const { getAddress, isAddress } = require("ethers");
+  const bad = Object.values(ASSURANCE_SETUP_ENV).filter((k) => !env[k]?.trim() || !isAddress(env[k]!.trim()));
+  if (bad.length) {
+    throw new Error(`Refusing: ${bad.join(", ")} ${bad.length === 1 ? "is" : "are"} empty or not an address. The owner fills ${bad.length === 1 ? "it" : "them"} in deploy/config/base-sepolia.rollout.env (owner to fill, Nov 16, 2026); nothing falls back to another address.`);
+  }
+  const pick = (k: keyof typeof ASSURANCE_SETUP_ENV) => getAddress(env[ASSURANCE_SETUP_ENV[k]]!.trim());
+  const listed = (env.ASSURANCE_EXPOSURE_SOURCES ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (listed.some((x) => !isAddress(x))) throw new Error(`Refusing: ASSURANCE_EXPOSURE_SOURCES must be addresses, comma-separated: ${env.ASSURANCE_EXPOSURE_SOURCES}.`);
+  return {
+    clFeesPayer: pick("clFeesPayer"),
+    coopTreasury: pick("coopTreasury"),
+    draw: pick("draw"),
+    lossReserve: pick("lossReserve"),
+    disbursement: pick("disbursement"),
+    exposureSources: (listed.length ? listed : defaultExposure ?? []).map((x) => getAddress(x)),
+  };
+}
+
+/**
+ * Every reason the governed setup would revert, or breaks the owner's rule that the five addresses
+ * are different from each other. Pure: the caller passes what the chain says.
+ *   setPayer: payer not zero, mask <= 0xF, not a signer, not the draw address (the one set when it
+ *     runs: today's and the new one), not a money path (NetworkRegistry.isMoneyPath).
+ *   setLendingCoAddresses: neither zero nor a signer; the draw address is no payer (today's payers
+ *     that the batch does not change, and the two the batch names).
+ *   setAssuranceDisbursementAddress: not zero. setExposureSources: at most 4, none zero (an empty
+ *     list is not a problem here: the plan waits for the fresh CollateralRegistry record).
+ */
+export function assuranceSetupProblems(
+  s: AssuranceSetup,
+  signers: string[],
+  chain: { drawAddress?: string; payerTagsOf?: Record<string, bigint>; moneyPath?: Record<string, boolean>; maxExposureSources?: number } = {},
+): string[] {
+  const out: string[] = [];
+  const lc = (a?: string) => (a ?? "").toLowerCase();
+  const ZERO = "0x" + "00".repeat(20);
+  const isSigner = (a: string) => signers.some((x) => lc(x) === lc(a));
+  const names: [string, string][] = [
+    [ASSURANCE_SETUP_ENV.clFeesPayer, s.clFeesPayer], [ASSURANCE_SETUP_ENV.coopTreasury, s.coopTreasury],
+    [ASSURANCE_SETUP_ENV.draw, s.draw], [ASSURANCE_SETUP_ENV.lossReserve, s.lossReserve], [ASSURANCE_SETUP_ENV.disbursement, s.disbursement],
   ];
-  if (s.exposureSource) calls.push(["setExposureSources", [[s.exposureSource]]]);
-  return calls.map(([fn, args]) => {
-    const data = pool.interface.encodeFunctionData(fn, args);
-    return { fn, args, data, action: ethers.keccak256(data) };
+  for (const [k, a] of names) if (lc(a) === ZERO) out.push(`${k} is the zero address (the pool refuses it).`);
+  for (const [k, a] of names) {
+    if (k === ASSURANCE_SETUP_ENV.disbursement) continue; // the pool does not check the disbursement address against the signers
+    if (isSigner(a)) out.push(`${k} ${a} is one of the pool's signers: the pool refuses it (AssurancePoolRoleConflict).`);
+  }
+  if (isSigner(s.disbursement)) out.push(`${ASSURANCE_SETUP_ENV.disbursement} ${s.disbursement} is one of the pool's signers: a signer must not receive the grants it releases.`);
+  for (const [k, a] of [[ASSURANCE_SETUP_ENV.clFeesPayer, s.clFeesPayer], [ASSURANCE_SETUP_ENV.coopTreasury, s.coopTreasury]]) {
+    if (lc(a) === lc(s.draw)) out.push(`${k} ${a} is also ${ASSURANCE_SETUP_ENV.draw}: a payer may not be the draw address (AssurancePoolRoleConflict).`);
+    else if (chain.drawAddress && lc(chain.drawAddress) !== lc(ZERO) && lc(a) === lc(chain.drawAddress)) out.push(`${k} ${a} is the pool's current draw address: setPayer would revert (AssurancePoolRoleConflict).`);
+    if (chain.moneyPath?.[lc(a)]) out.push(`${k} ${a} is a money-path contract in NetworkRegistry: setPayer would revert (AssurancePoolMoneyPath).`);
+  }
+  const drawTags = chain.payerTagsOf?.[lc(s.draw)] ?? 0n;
+  if (drawTags !== 0n && lc(s.draw) !== lc(s.clFeesPayer) && lc(s.draw) !== lc(s.coopTreasury)) {
+    out.push(`${ASSURANCE_SETUP_ENV.draw} ${s.draw} is already a payer (mask ${drawTags}): setLendingCoAddresses would revert (AssurancePoolRoleConflict).`);
+  }
+  const seen = new Map<string, string>();
+  for (const [k, a] of names) {
+    if (seen.has(lc(a))) out.push(`${k} and ${seen.get(lc(a))} are the same address ${a}: the five Assurance addresses must all differ (owner's rule).`);
+    else seen.set(lc(a), k);
+  }
+  if (s.exposureSources.length > (chain.maxExposureSources ?? 4)) out.push(`ASSURANCE_EXPOSURE_SOURCES lists ${s.exposureSources.length}; the pool takes at most ${chain.maxExposureSources ?? 4}.`);
+  for (const e of s.exposureSources) if (lc(e) === ZERO) out.push("An exposure source is the zero address (the pool refuses it).");
+  return out;
+}
+
+/**
+ * The governed calls that finish the setup, in this order: setPayer (Clear Lending's fees wallet:
+ * credit enhancement fee, recovery, interchange), setPayer (the co-op treasury: board allocation),
+ * setLendingCoAddresses, setAssuranceDisbursementAddress, setExposureSources. `action` is what each
+ * signer passes to `approveAction`: keccak256 of the exact calldata the timelock will send.
+ */
+export function governedCalls(pool: any, s: AssuranceSetup) {
+  const { keccak256 } = require("ethers");
+  const calls: [string, string, any[]][] = [
+    ["payer-clfees", "setPayer", [s.clFeesPayer, CL_FEES_MASK]],
+    ["payer-treasury", "setPayer", [s.coopTreasury, BOARD_ALLOCATION_MASK]],
+    ["lendingco", "setLendingCoAddresses", [s.draw, s.lossReserve]],
+    ["disbursement", "setAssuranceDisbursementAddress", [s.disbursement]],
+  ];
+  if (s.exposureSources.length) calls.push(["exposure", "setExposureSources", [s.exposureSources]]);
+  return calls.map(([key, fn, args]) => {
+    const data: string = pool.interface.encodeFunctionData(fn, args);
+    return { key, fn, args, data, action: keccak256(data) as string };
   });
+}
+
+/** The key `_pair` records a signer's half of an `approveAction` under: keccak256(abi.encode("governance", action)). */
+export function approvalKey(action: string): string {
+  const { AbiCoder, keccak256 } = require("ethers");
+  return keccak256(AbiCoder.defaultAbiCoder().encode(["string", "bytes32"], ["governance", action]));
 }
 
 /** Throws if `account` holds any power over the pool, or its governance is under 7 days. */
@@ -159,9 +273,10 @@ export async function runAssuranceDeploy() {
     }
   }
   await assertNoAssuranceAdmin(pool, deployer.address);
-  console.log("\nAssurancePool deployed and governed by the Assurance timelock. Next, for the board Safe and two signers:");
-  console.log("  setPayer (Lending Co. operating: fees, recoveries), setPayer (co-op treasury: interchange, board),");
-  console.log("  setLendingCoAddresses, setAssuranceDisbursementAddress, setExposureSources (CollateralRegistry).");
+  console.log("\nAssurancePool deployed and governed by the Assurance timelock. Next, for two signers and the board Safe");
+  console.log("(scripts/signing_plan.ts writes each step): setPayer (Clear Lending's fees wallet: fee, recovery, interchange),");
+  console.log("  setPayer (co-op treasury: board allocation), setLendingCoAddresses, setAssuranceDisbursementAddress,");
+  console.log("  setExposureSources (CollateralRegistry).");
 }
 
 if (require.main === module) {

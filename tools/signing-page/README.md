@@ -44,12 +44,14 @@ The plan lists the steps in the rollout's order (docs/audit/SEPOLIA-REHEARSAL.md
 | D4 | the deployer | the credit settings and credit attester roles (two each), the credit operator |
 | E8, E9 | treasury signer 1, treasury signer 2, the Agent Key | propose, confirm and approve each Collateral Agent change and the BondVault backstop |
 | E8 | the deployer | the Liquidator's hold role (two), before the credit handover (I2) |
-| E8 | Clear Lending Safe | schedule the changes on the Earn timelock (Safe batch) |
+| E8 | Clear Lending Safe (its own Safe, 2 of 2) | schedule the changes on the Earn timelock (Safe batch) |
 | F2 | credit settings signer 2 | approve the fee recipient deploy 25 proposed |
 | Pool Tier | both valuation signers | post the Pool Tier principal |
-| Safe | the Safe | add the second MetaMask owner and require 2 signatures, before I2 to I4 |
-| I3 | Clear Financial Safe | schedule the vault timelock's acceptances (Safe batch) |
-| Day 7 | the Safes | run the Earn and vault timelock batches (Safe batches) |
+| Safe | the Clear Treasury Safe | add the second MetaMask owner and require 2 signatures, before I2 to I4 |
+| I3 | Clear Financial (Clear Treasury) Safe | schedule the vault timelock's acceptances (Safe batch) |
+| Assurance | Assurance signer 1 (Account 3), then Assurance signer 2 (Account 4) | `approveAction` on each of the pool's five setup calls |
+| Assurance | Clear Treasury (board) Safe | schedule the five calls on the Assurance timelock (Safe batch) |
+| Day 7 | the Safes | the Clear Lending Safe runs the Earn batch; the Clear Treasury Safe the vault and Assurance batches (Safe batches) |
 
 Every signer comes from `deploy/config/base-sepolia.rollout.env` and `deploy/config/earn-roles.json`. To change who signs (say, a new MetaMask account in a slot), change it there and re-run the script.
 

@@ -90,13 +90,13 @@ export async function deployVaultTimelock(safe: string, delay = VAULT_TIMELOCK_D
 }
 
 /** Throws unless `safe` is a contract reporting a threshold of at least two (two-person control). */
-export async function assertTwoPersonSafe(safe: string) {
+export async function assertTwoPersonSafe(safe: string, label = "The Clear Financial Safe") {
   const { ethers } = require("hardhat");
-  if ((await ethers.provider.getCode(safe)) === "0x") throw new Error(`${safe} is not a Safe: it has no code.`);
+  if ((await ethers.provider.getCode(safe)) === "0x") throw new Error(`${label} ${safe} is not a Safe: it has no code.`);
   const s = await ethers.getContractAt(["function getThreshold() view returns (uint256)", "function getOwners() view returns (address[])"], safe);
   const threshold = Number(await s.getThreshold());
   const owners: string[] = await s.getOwners();
-  if (threshold < 2) throw new Error(`The Clear Financial Safe must need two signers; ${safe} needs ${threshold}.`);
+  if (threshold < 2) throw new Error(`${label} must need two signers; ${safe} needs ${threshold}.`);
   return { threshold, owners };
 }
 

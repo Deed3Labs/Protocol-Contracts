@@ -269,7 +269,7 @@ async function main() {
   if (!safe || !ethers.isAddress(safe)) throw new Error("CLEAR_LENDING_SAFE must be the Clear Lending Co. Safe address.");
   const resolution = process.env.EARN_RESOLUTION ?? "";
   if (!/^0x[0-9a-fA-F]{64}$/.test(resolution)) throw new Error("EARN_RESOLUTION must be the Lending Board resolution hash.");
-  const { threshold, owners } = await assertTwoPersonSafe(safe);
+  const { threshold, owners } = await assertTwoPersonSafe(safe, "The Clear Lending Safe");
   console.log(`Clear Lending Safe ${safe}: ${threshold} of ${owners.length}`);
   const [deployer] = await ethers.getSigners();
   const network = (await ethers.provider.getNetwork()).name;

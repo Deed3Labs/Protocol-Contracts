@@ -7,8 +7,10 @@ import { spawnSync } from "child_process";
  *
  * It runs DEPLOY-RUNBOOK.md §2.2 in order. Every deploy, upgrade and check script runs as the
  * operator runs it (`npx hardhat run <script> --network base-sepolia-fork`, the deployer as signer),
- * and every Safe, two-signer and Agent Key action is sent here from the impersonated holder. Each
- * 7-day and 48-hour wait is fast-forwarded with `evm_increaseTime`.
+ * and every co-signer step (the deployer's grants, the treasury signers, the Agent Key, the
+ * Assurance signers, the Safes) is the signing plan's own step (scripts/signing_plan.ts), sent from
+ * its impersonated signer with exactly the plan's `to` and `data`. Each 7-day wait is fast-forwarded
+ * with `evm_increaseTime`.
  *
  * NEVER A REAL NETWORK, NEVER A KEY. It refuses any network but `base-sepolia-fork`, which must be a
  * Hardhat node forked from Base Sepolia (chain 84532, checked through `hardhat_metadata`). The node
@@ -26,9 +28,11 @@ import { spawnSync } from "child_process";
  * Each step's output and the gas ledger go to deployments/base-sepolia-fork/rehearsal/.
  * REHEARSAL_FROM=<step id> resumes at a step on the same node; REHEARSAL_TO=<step id> stops after one.
  *
- * Inputs: deploy/config/base-sepolia.rollout.env, then the process environment, then the stand-ins
- * below for what only the owner can give (each one listed in SEPOLIA-REHEARSAL.md). A stand-in is a
- * synthetic address made from a label: it holds nothing and is used only on the fork.
+ * Inputs: the stand-ins below for what only the owner can give (each one listed in
+ * SEPOLIA-REHEARSAL.md), then deploy/config/base-sepolia.rollout.env's non-empty values (ROLLOUT_ENV=<file>
+ * for another), then the process environment. A stand-in is a synthetic address made from a label:
+ * it holds nothing and is used only on the fork. With the owner's real values in the env file, the
+ * same command rehearses them (the Safes must exist at the fork block).
  */
 
 export const REHEARSAL_NETWORK = "base-sepolia-fork";
@@ -84,10 +88,23 @@ export function standIns(): Record<string, string> {
     AGENT_COST_ADDRESS: standIn("Agent cost address"),
     EXCESS_DESTINATION: standIn("excess destination"),
     ASSURANCE_SIGNERS: two("Assurance pool signer"),
+    // The two CDP wallets of the Assurance setup (plain accounts): stand-ins until the owner names them.
+    ASSURANCE_CL_FEES_PAYER: standIn("CL fees payer (CDP wallet)"),
+    ASSURANCE_DISBURSEMENT: standIn("Assurance disbursement (CDP wallet)"),
   };
 }
 
-const list = (v?: string) => (v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+/**
+ * The rehearsal's inputs: the stand-ins, then the rollout file's non-empty values, then the process
+ * environment's. An empty line in the rollout file ("owner to fill") never blanks a stand-in.
+ */
+export function rehearsalEnv(rollout: Record<string, string>, stand: Record<string, string>, processEnv: Record<string, string | undefined> = process.env) {
+  const env: Record<string, string> = { DEPLOYER: "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA", ...stand };
+  for (const [k, v] of Object.entries(rollout)) if (v.trim()) env[k] = v.trim();
+  for (const k of new Set([...Object.keys(env), ...Object.keys(rollout)])) if (processEnv[k]?.trim()) env[k] = processEnv[k]!.trim();
+  return env;
+}
+
 
 interface LedgerStep {
   id: string;
@@ -174,32 +191,38 @@ async function increaseTime(ctx: Ctx, seconds: number) {
   console.log(`    +${seconds} s: chain time now ${new Date(b.timestamp * 1000).toISOString()}`);
 }
 
-/** Schedules a batch on a TimelockController from its proposer, returning the execute call. */
-async function scheduleBatch(ctx: Ctx, timelock: string, proposer: string, calls: { to: string; data: string; what: string }[], label: string) {
-  const { ethers } = ctx;
-  await ping(ctx);
-  const tl = await ethers.getContractAt("TimelockController", timelock);
-  const delay = await tl.getMinDelay();
-  const targets = calls.map((c) => c.to);
-  const values = calls.map(() => 0n);
-  const payloads = calls.map((c) => c.data);
-  const salt = ethers.id(`rehearsal:${label}`);
-  await sendAs(ctx, proposer, timelock, tl.interface.encodeFunctionData("scheduleBatch", [targets, values, payloads, ethers.ZeroHash, salt, delay]),
-    `scheduleBatch ${label} (${calls.length} calls: ${calls.map((c) => c.what).join("; ")}; delay ${delay} s)`);
-  return { timelock, executor: proposer, data: tl.interface.encodeFunctionData("executeBatch", [targets, values, payloads, ethers.ZeroHash, salt]), label };
+/**
+ * Sends every ready signing-plan step of `stages` (scripts/signing_plan.ts), each from its
+ * impersonated signer with exactly the plan's `to` and `data`, round after round, until none of
+ * those stages has a ready step. The plan is built from the fork's records and the rehearsal's
+ * inputs, as the owner's run builds it from the real ones.
+ */
+async function signPlan(ctx: Ctx, stages: string[]) {
+  const { buildSigningPlan } = require("./signing_plan");
+  const sent: string[] = [];
+  let plan: any;
+  for (let round = 0; round < 10; round++) {
+    await ping(ctx);
+    plan = await buildSigningPlan({ network: REHEARSAL_NETWORK, env: ctx.env, provider: ctx.ethers.provider });
+    const ready = plan.steps.filter((x: any) => stages.includes(x.stage) && x.status === "ready" && x.data);
+    if (!ready.length) break;
+    for (const st of ready) {
+      const rc = await sendAs(ctx, st.signer, st.to, st.data, `${st.id} [${st.signerLabel}] ${st.functionSignature.split("(")[0]}`);
+      if (rc.status !== 1) throw new Error(`${st.id} reverted`);
+      sent.push(st.id);
+    }
+  }
+  const left = plan.steps.filter((x: any) => stages.includes(x.stage) && x.status !== "done");
+  for (const x of left) console.log(`    left: ${x.id} ${x.status}${x.reason ? ` (${x.reason})` : ""}`);
+  fs.writeFileSync(path.join(OUT, `plan-${stages.join("+").replace(/[^A-Za-z0-9+]+/g, "_")}.json`), JSON.stringify(plan, null, 2));
+  return { sent, left: left.map((x: any) => x.id), plan };
 }
 
-/** The co-signed change flow (IV-10 Exhibit A, Part 2 item 6): propose, confirm, Agent approve. */
-async function coSign(ctx: Ctx, target: string, data: string, what: string) {
-  const { ethers } = ctx;
-  const agent = await ethers.getContractAt("CollateralAgent", need("CollateralAgent"));
-  const [s1, s2] = list(ctx.env.TREASURY_SIGNERS);
-  const callHash = ethers.keccak256(data);
-  const descriptionHash = ethers.id(what);
-  await sendAs(ctx, s1, await agent.getAddress(), agent.interface.encodeFunctionData("proposeChange", [target, callHash, descriptionHash]), `proposeChange: ${what}`);
-  const changeId = await agent.openChangeFor(target, callHash);
-  await sendAs(ctx, s2, await agent.getAddress(), agent.interface.encodeFunctionData("confirmChange", [changeId]), `confirmChange ${changeId.slice(0, 10)}…`);
-  await sendAs(ctx, ctx.env.AGENT_KEY, await agent.getAddress(), agent.interface.encodeFunctionData("approveChange", [changeId]), `approveChange ${changeId.slice(0, 10)}…`);
+/** signPlan, then refuse if any step of `stages` is not done. */
+async function signAll(ctx: Ctx, stages: string[]) {
+  const r = await signPlan(ctx, stages);
+  if (r.left.length) throw new Error(`signing-plan steps not done: ${r.left.join(", ")}`);
+  return { note: `${r.sent.length} plan step(s) sent: ${r.sent.join(", ") || "none"}` };
 }
 
 interface Step {
@@ -211,6 +234,10 @@ interface Step {
 
 export function steps(): Step[] {
   return [
+    // ---------------- preflight ----------------
+    { id: "P0", title: "Rollout inputs preflight (scripts/check_rollout_inputs.ts)", who: "nobody (read-only)",
+      run: async (ctx) => { runScript(ctx, "P0", "scripts/check_rollout_inputs.ts"); } },
+
     // ---------------- A. read-only ----------------
     { id: "A6", title: "Baseline the retired-contract check (CHECK_BASELINE=1)", who: "nobody (read-only)",
       run: async (ctx) => { const r = runScript(ctx, "A6", "scripts/check_retired_credit.ts", { CHECK_BASELINE: "1" }, { okExit: [1] }); return { status: r.status === 1 ? "exit 1 (expected)" : "ok" }; } },
@@ -244,12 +271,11 @@ export function steps(): Step[] {
           VAULT_ADMIN: ctx.env.VAULT_ADMIN,
         });
       } },
-    { id: "C1d", title: "ESADepositVault: the vault's admin sends the batch (upgradeToAndCall + RELAYER_ROLE + OPERATOR_ROLE off)", who: "VAULT_ADMIN (the deployer wallet)",
+    { id: "C1d", title: "ESADepositVault: the vault's admin sends the batch (upgradeToAndCall + RELAYER_ROLE + OPERATOR_ROLE off): signing-plan steps C1d", who: "VAULT_ADMIN (the deployer wallet)",
       run: async (ctx) => {
-        const batch = JSON.parse(fs.readFileSync(path.join(SCRATCH, "safe-batches", "vault-1-upgrade.json"), "utf8"));
-        for (const t of batch.transactions) await sendAs(ctx, ctx.env.VAULT_ADMIN, t.to, t.data, "vault-1-upgrade.json");
+        const r = await signAll(ctx, ["C1d"]);
         const v = await ctx.ethers.getContractAt("ESADepositVault", need("ESADepositVault"));
-        return { note: `acceptedToken ${await v.acceptedToken()}` };
+        return { note: `${r.note}; acceptedToken ${await v.acceptedToken()}` };
       } },
     { id: "C2a", title: "ClearUSDUpgradeable: check (deploy/upgrade/checkUpgrade.ts)", who: "nobody (read-only)",
       run: async (ctx) => { runScript(ctx, "C2a", "deploy/upgrade/checkUpgrade.ts", { CONTRACT_NAME: "ClearUSDUpgradeable", PROXY_ADDRESS: need("ClearUSDUpgradeable") }); } },
@@ -275,19 +301,8 @@ export function steps(): Step[] {
       run: async (ctx) => { runScript(ctx, "D3a", "deploy/20_deploy_CreditCore.ts"); } },
     { id: "D3b", title: "Deploy 21: ClearUSDUpgradeable (recorded: reused)", who: "deployer",
       run: async (ctx) => { runScript(ctx, "D3b", "deploy/21_deploy_ClearUSDUpgradeable.ts"); } },
-    { id: "D4", title: "Credit keys on the new AccessManager (not scripted)", who: "deployer (AccessManager admin)",
-      run: async (ctx) => {
-        const { ethers } = ctx;
-        const access = await ethers.getContractAt("AccessManager", need("AccessManager"));
-        const at = await access.getAddress();
-        for (const [role, holders] of [["CREDIT_SETTINGS_ROLE", ctx.env.CREDIT_SETTINGS_SIGNERS], ["CREDIT_ATTESTER_ROLE", ctx.env.CREDIT_ATTESTER_SIGNERS ?? ctx.env.CREDIT_ATTESTERS]] as const) {
-          for (const h of list(holders)) {
-            if (!(await access.hasRole(ethers.id(role), h))) await sendAs(ctx, ctx.env.DEPLOYER, at, access.interface.encodeFunctionData("grantRole", [ethers.id(role), h]), `AccessManager ${role} -> ${h}`);
-          }
-        }
-        const op = ctx.env.CREDIT_OPERATOR_ADDRESS;
-        if (!(await access.isOperator(op))) await sendAs(ctx, ctx.env.DEPLOYER, at, access.interface.encodeFunctionData("grantOperator", [op]), `AccessManager OPERATOR -> ${op}`);
-      } },
+    { id: "D4", title: "Credit keys on the new AccessManager: signing-plan steps D4", who: "deployer (AccessManager admin)",
+      run: async (ctx) => signAll(ctx, ["D4"]) },
 
     // ---------------- E. Earn, and the rest of the credit stack ----------------
     { id: "E1", title: "Deploy 26, first run: Earn timelock, EarnControls, CollateralAgent", who: "deployer",
@@ -309,68 +324,30 @@ export function steps(): Step[] {
         const { out } = runScript(ctx, "E7", "deploy/27_wire_Earn.ts");
         ctx.vars.BACKSTOP_CHANGE = /The BondVault backstop change/.test(out) ? "1" : "";
       } },
-    { id: "E8", title: "Co-signed CollateralAgent changes (and the E9 backstop), proposed, confirmed, approved; the Safe schedules them on the Earn timelock; two HOLD_ROLE keys", who: "treasury signers 1 and 2, the Agent Key, the Clear Lending Safe; the deployer (HOLD_ROLE)",
-      run: async (ctx) => {
-        const { ethers } = ctx;
-        const agentAddress = need("CollateralAgent");
-        const agent = await ethers.getContractAt("CollateralAgent", agentAddress);
-        const calls: { to: string; data: string; what: string }[] = [];
-        const want: [string, string, string][] = [
-          ["vault", "setVault", need("BondVault")],
-          ["bondBook", "setBondBook", need("BondVault")],
-          ["holderDirections", "setHolderDirections", need("HolderDirections")],
-          ["pledgeModule", "setPledgeModule", need("Liquidator")],
-        ];
-        for (const [view, fn, value] of want) {
-          if ((await agent[view]()).toLowerCase() === value.toLowerCase()) continue;
-          const data = agent.interface.encodeFunctionData(fn, [value]);
-          await coSign(ctx, agentAddress, data, `CollateralAgent.${fn}(${value})`);
-          calls.push({ to: agentAddress, data, what: `CollateralAgent.${fn}` });
-        }
-        const vault = await ethers.getContractAt("BondVault", need("BondVault"));
-        const retiredPayout = record("PayoutPoolPreAudit")?.address?.toLowerCase();
-        if ((await vault.payoutPool()).toLowerCase() === retiredPayout && (await vault.lentToPayoutPool()) === 0n) {
-          const data = vault.interface.encodeFunctionData("setBackstops", [await vault.treasury(), ethers.ZeroAddress]);
-          await coSign(ctx, await vault.getAddress(), data, "BondVault.setBackstops(treasury, 0): decision 48 (a)");
-          calls.push({ to: await vault.getAddress(), data, what: "BondVault.setBackstops(treasury, 0)" });
-        }
-        if (calls.length) ctx.vars.EARN_BATCH = JSON.stringify(await scheduleBatch(ctx, need("EarnTimelock"), ctx.env.CLEAR_LENDING_SAFE, calls, "E8 agent changes"));
-        const liq = await ethers.getContractAt("Liquidator", need("Liquidator"));
-        for (const h of list(ctx.env.HOLD_SIGNERS)) {
-          if (!(await liq.hasRole(await liq.HOLD_ROLE(), h))) await sendAs(ctx, ctx.env.DEPLOYER, await liq.getAddress(), liq.interface.encodeFunctionData("grantRole", [await liq.HOLD_ROLE(), h]), `Liquidator HOLD_ROLE -> ${h}`);
-        }
-      } },
+    { id: "E8", title: "Co-signed CollateralAgent changes (and the E9 backstop): proposed, confirmed, approved; the Clear Lending Safe schedules them on the Earn timelock; two HOLD_ROLE keys: signing-plan steps E8, E9", who: "treasury signers 1 and 2, the Agent Key, the Clear Lending Safe; the deployer (HOLD_ROLE)",
+      run: async (ctx) => signAll(ctx, ["E8", "E9"]) },
 
     // ---------------- F. compliance ----------------
     { id: "F2a", title: "Deploy 25: compliance wiring", who: "deployer",
       run: async (ctx) => { runScript(ctx, "F2a", "deploy/25_wire_Compliance.ts"); } },
-    { id: "F2b", title: "The second CREDIT_SETTINGS_ROLE holder approves the fee recipient", who: "CREDIT_SETTINGS_ROLE holder 2",
-      run: async (ctx) => {
-        const { ethers } = ctx;
-        const term = await ethers.getContractAt("TermIssuer", need("TermIssuer"));
-        if ((await term.feeRecipient()) !== ethers.ZeroAddress) return { note: "already named" };
-        const [, second] = list(ctx.env.CREDIT_SETTINGS_SIGNERS);
-        await sendAs(ctx, second, await term.getAddress(), term.interface.encodeFunctionData("approveFeeRecipient", [ctx.env.FEE_RECIPIENT, ethers.encodeBytes32String("INITIAL")]), `approveFeeRecipient(${ctx.env.FEE_RECIPIENT}, "INITIAL")`);
-        return { note: `feeRecipient ${await term.feeRecipient()}` };
-      } },
+    { id: "F2b", title: "The second CREDIT_SETTINGS_ROLE holder approves the fee recipient: signing-plan step F2", who: "CREDIT_SETTINGS_ROLE holder 2",
+      run: async (ctx) => signAll(ctx, ["F2"]) },
 
     // ---------------- G. before the first Deployment ----------------
-    { id: "G1", title: "Pool Tier principal, posted by two VALUATION_ROLE signers", who: "VALUATION_ROLE signers (earn-roles.json)",
+    { id: "G1", title: "Pool Tier principal, posted by two VALUATION_ROLE signers: signing-plan steps G1", who: "VALUATION_ROLE signers (earn-roles.json)",
       run: async (ctx) => {
+        const r = await signAll(ctx, ["Pool Tier"]);
         const { poolAt } = require("../deploy/poolModules");
-        const pool = await poolAt(need("LendingPool"), ctx.ethers.provider);
-        const roles = JSON.parse(fs.readFileSync("deploy/config/earn-roles.json", "utf8")).networks[LIVE_RECORDS].LendingPool.VALUATION_ROLE;
-        for (const signer of roles) {
-          await sendAs(ctx, signer, await pool.getAddress(), pool.interface.encodeFunctionData("postPoolTierPrincipal", [BigInt(ctx.env.POOL_TIER_PRINCIPAL), ctx.env.POOL_TIER_EVIDENCE]), `postPoolTierPrincipal(${ctx.env.POOL_TIER_PRINCIPAL}, POOL_TIER_EVIDENCE)`);
-        }
-        const [posted, at] = await pool.poolTierPrincipal();
-        return { note: `poolTierPrincipal ${posted} at ${at}` };
+        const [posted, at] = await (await poolAt(need("LendingPool"), ctx.ethers.provider)).poolTierPrincipal();
+        return { note: `${r.note}; poolTierPrincipal ${posted} at ${at}` };
       } },
     // ---------------- H. Assurance (before G3: deploy 26's second run refuses AssurancePoolV2) ----------------
     { id: "H1", title: "Deploy 08: the AssurancePool under its timelock", who: "deployer",
       run: async (ctx) => { runScript(ctx, "H1", "deploy/08_deploy_AssurancePool.ts", { ASSURANCE_DEPLOY: "1" }); } },
     { id: "G3", title: "Deploy 26, second run (the refusals; after F2 and H1)", who: "deployer",
       run: async (ctx) => { runScript(ctx, "G3", "deploy/26_deploy_EarnControls.ts"); } },
+    { id: "AS", title: "Assurance Pool setup: each call approved by Assurance signers 1 and 2, then the board Safe schedules the batch on the Assurance timelock: signing-plan steps Assurance", who: "Assurance signers 1 and 2 (Accounts 3 and 4); the Clear Treasury (board) Safe",
+      run: async (ctx) => signAll(ctx, ["Assurance"]) },
 
     // ---------------- I. handovers ----------------
     { id: "I5a", title: "Retired-contract check after the fresh deploy (before the handovers)", who: "nobody (read-only)",
@@ -383,25 +360,16 @@ export function steps(): Step[] {
         if (r.status === 1 && /must need two signers/.test(r.out)) return { status: "refused (expected)", note: "the Safe needs 1 signer: assertTwoPersonSafe refuses" };
         if (r.status !== 0) throw new Error("vault handover failed");
       } },
-    { id: "I3b", title: "Owner action, simulated: the Safe adds SAFE_NEW_OWNER and needs 2 signatures (addOwnerWithThreshold; changeThreshold(2) without one)", who: "the Safe (one owner signs today)",
+    { id: "I3b", title: "The Clear Treasury Safe adds SAFE_NEW_OWNER and needs 2 signatures (addOwnerWithThreshold): signing-plan step safe-owner", who: "the Clear Treasury Safe (one owner signs today)",
       run: async (ctx) => {
-        const safe = ctx.env.CLEAR_FINANCIAL_SAFE;
-        const s = new ctx.ethers.Contract(safe, ["function getThreshold() view returns (uint256)", "function getOwners() view returns (address[])",
-          "function changeThreshold(uint256)", "function addOwnerWithThreshold(address,uint256)"], ctx.ethers.provider);
-        const owner = ctx.env.SAFE_NEW_OWNER;
-        const isOwner = !!owner && (await s.getOwners()).some((o: string) => o.toLowerCase() === owner.toLowerCase());
-        if ((await s.getThreshold()) >= 2n && (!owner || isOwner)) return { note: "already 2 or more" };
-        if (owner && !isOwner) await sendAs(ctx, safe, safe, s.interface.encodeFunctionData("addOwnerWithThreshold", [owner, 2]), `Safe.addOwnerWithThreshold(${owner}, 2)`);
-        else await sendAs(ctx, safe, safe, s.interface.encodeFunctionData("changeThreshold", [2]), "Safe.changeThreshold(2)");
-        return { note: `threshold ${await s.getThreshold()} of ${(await s.getOwners()).length}` };
+        const r = await signAll(ctx, ["Safe (before I2)"]);
+        const s = new ctx.ethers.Contract(ctx.env.CLEAR_FINANCIAL_SAFE, ["function getThreshold() view returns (uint256)", "function getOwners() view returns (address[])"], ctx.ethers.provider);
+        return { note: `${r.note}; threshold ${await s.getThreshold()} of ${(await s.getOwners()).length}` };
       } },
-    { id: "I3c", title: "Vault handover (VAULT_HANDOVER=1)", who: "deployer",
+    { id: "I3c", title: "Vault handover (VAULT_HANDOVER=1); the Clear Financial Safe schedules the acceptances: signing-plan step I3", who: "deployer; the Clear Financial Safe",
       run: async (ctx) => {
-        const { out } = runScript(ctx, "I3c", "deploy/vault_timelock_handover.ts", { VAULT_HANDOVER: "1" });
-        const calls: { to: string; data: string; what: string }[] = [];
-        for (const m of out.matchAll(/^\s+(0x[0-9a-fA-F]{40})\s+(0x[0-9a-fA-F]+)\s+# (.*)$/gm)) calls.push({ to: m[1], data: m[2], what: m[3] });
-        if (calls.length) ctx.vars.VAULT_BATCH = JSON.stringify(await scheduleBatch(ctx, need("VaultTimelock"), ctx.env.CLEAR_FINANCIAL_SAFE, calls, "I3 acceptances"));
-        return { note: `${calls.length} acceptance call(s) scheduled by the Safe` };
+        runScript(ctx, "I3c", "deploy/vault_timelock_handover.ts", { VAULT_HANDOVER: "1" });
+        return signAll(ctx, ["I3"]);
       } },
     { id: "I4", title: "Earn handover (EARN_HANDOVER=1)", who: "deployer",
       run: async (ctx) => { runScript(ctx, "I4", "deploy/earn_timelock_handover.ts", { EARN_HANDOVER: "1" }); } },
@@ -409,17 +377,19 @@ export function steps(): Step[] {
     // ---------------- the waits ----------------
     { id: "W7", title: "Wait 7 days (fast-forwarded): the Agent changes, the Earn and vault timelocks, CLRUSD's 2-day admin delay", who: "nobody",
       run: async (ctx) => { await increaseTime(ctx, 7 * DAY + 3600); } },
-    { id: "E8x", title: "The Safe executes the Earn timelock batch (Agent changes, backstop)", who: "the Clear Lending Safe",
+    { id: "D7", title: "Day 7: the Clear Lending Safe executes the Earn timelock batch, the Clear Treasury Safe the vault and Assurance timelock batches: signing-plan steps Day 7", who: "the Clear Lending Safe; the Clear Treasury (board) Safe",
+      run: async (ctx) => signAll(ctx, ["Day 7"]) },
+    { id: "PLAN", title: "The signing plan: every step done", who: "nobody (read-only)",
       run: async (ctx) => {
-        if (!ctx.vars.EARN_BATCH) return { note: "nothing scheduled" };
-        const b = JSON.parse(ctx.vars.EARN_BATCH);
-        await sendAs(ctx, b.executor, b.timelock, b.data, `executeBatch ${b.label}`);
-      } },
-    { id: "I3x", title: "The Safe executes the vault timelock batch (CLRUSD admin, token pool ownership)", who: "the Clear Financial Safe",
-      run: async (ctx) => {
-        if (!ctx.vars.VAULT_BATCH) return { note: "nothing scheduled" };
-        const b = JSON.parse(ctx.vars.VAULT_BATCH);
-        await sendAs(ctx, b.executor, b.timelock, b.data, `executeBatch ${b.label}`);
+        const { buildSigningPlan } = require("./signing_plan");
+        const plan = await buildSigningPlan({ network: REHEARSAL_NETWORK, env: ctx.env, provider: ctx.ethers.provider });
+        const left = plan.steps.filter((x: any) => x.status !== "done");
+        fs.writeFileSync(path.join(OUT, "plan-final.json"), JSON.stringify(plan, null, 2));
+        if (left.length) throw new Error(`not done: ${left.map((x: any) => `${x.id} (${x.reason ?? x.status})`).join("; ")}`);
+        const pool = await ctx.ethers.getContractAt("AssurancePool", need("AssurancePoolV2"));
+        const note = `${plan.steps.length} steps done; AssurancePool payerTags(CL fees) ${await pool.payerTags(ctx.env.ASSURANCE_CL_FEES_PAYER)}, payerTags(co-op treasury) ${await pool.payerTags(ctx.env.COOP_TREASURY)}, drawAddress ${await pool.drawAddress()}, lossReserve ${await pool.lossReserveAddress()}, disbursement ${await pool.assuranceDisbursementAddress()}, exposureSources ${(await pool.exposureSourceList()).join(",")}`;
+        console.log(`    ${note}`);
+        return { note };
       } },
 
     // ---------------- the gate and the read-only checks ----------------
@@ -451,14 +421,9 @@ async function main() {
   if (!fs.existsSync(SCRATCH)) throw new Error(`No ${SCRATCH}: run with REHEARSAL_RESET=1 first.`);
   fs.mkdirSync(OUT, { recursive: true });
 
-  const rollout = parseEnvFile(fs.readFileSync(ROLLOUT_ENV, "utf8"));
+  const rollout = parseEnvFile(fs.readFileSync(process.env.ROLLOUT_ENV || ROLLOUT_ENV, "utf8"));
   const stand = standIns();
-  const env: Record<string, string> = {
-    DEPLOYER: "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA",
-    ...stand,
-    ...rollout,
-  };
-  for (const k of Object.keys(env)) if (process.env[k]?.trim()) env[k] = process.env[k]!.trim();
+  const env = rehearsalEnv(rollout, stand);
   process.env.CLEAR_LENDING_SAFE = env.CLEAR_LENDING_SAFE;
   const usedStandIns = Object.keys(stand).filter((k) => env[k] === stand[k]);
   fs.writeFileSync(path.join(OUT, "inputs.json"), JSON.stringify({ forkBlock: meta.forkedNetwork.forkBlockNumber, env, standIns: usedStandIns }, null, 2));
