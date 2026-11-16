@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 import * as dotenv from "dotenv";
 dotenv.config();
-import { HardhatUserConfig } from "hardhat/config";
+import { HardhatUserConfig, extendEnvironment } from "hardhat/config";
 import fs from "fs";
 import "hardhat-deploy/dist/src/type-extensions";
 import "hardhat-deploy";
@@ -36,6 +36,23 @@ const baseMainnetRpcUrl =
 // in-process `hardhat` network becomes a fork of it. Deliberately opt-in — the test suite must
 // keep running with no network at all.
 const forkRpcUrl = process.env.FORK_RPC_URL?.trim();
+
+// The Base Sepolia rehearsal (docs/audit/SEPOLIA-REHEARSAL.md): `npx hardhat node` forked as above,
+// then every script run against it with `--network base-sepolia-fork`. Its records are a scratch copy
+// in deployments/base-sepolia-fork/ (never committed). It holds no key: the node signs for
+// impersonated accounts, and FORK_SIGNER (default the Base Sepolia deployer) is the scripts' signer.
+// Inert unless a script names this network.
+const REHEARSAL_NETWORK = "base-sepolia-fork";
+const REHEARSAL_DEFAULT_SIGNER = "0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA";
+extendEnvironment((hre) => {
+  if (hre.network.name !== REHEARSAL_NETWORK) return;
+  const signerAddress = process.env.FORK_SIGNER?.trim() || REHEARSAL_DEFAULT_SIGNER;
+  const ethers = (hre as any).ethers;
+  ethers.getSigners = async () => {
+    await hre.network.provider.send("hardhat_impersonateAccount", [signerAddress]);
+    return [await ethers.getSigner(signerAddress)];
+  };
+});
 // If not set, it uses the hardhat account 0 private key.
 function normalizePrivateKey(rawValue: string | undefined): string {
   const trimmed = (rawValue || "").trim();
@@ -171,8 +188,19 @@ const config: HardhatUserConfig = {
               url: forkRpcUrl,
               ...(process.env.FORK_BLOCK ? { blockNumber: Number(process.env.FORK_BLOCK) } : {}),
             },
+            // FORK_CHAIN_ID=84532 makes the fork answer as Base Sepolia, so chain-keyed settings
+            // (`*_84532` variables, Safe batch files, decision 50's testnet rule) read as on the real run.
+            // (The node answers no call at the fork block itself, chain 84532 having no hardfork
+            // history it knows: mine one block first. scripts/rehearse_sepolia_fork.ts does.)
+            ...(process.env.FORK_CHAIN_ID ? { chainId: Number(process.env.FORK_CHAIN_ID) } : {}),
           }
         : {}),
+    },
+    // The rehearsal: a local `npx hardhat node` forked from Base Sepolia (see REHEARSAL_NETWORK above).
+    [REHEARSAL_NETWORK]: {
+      url: process.env.FORK_NODE_URL || "http://127.0.0.1:8545",
+      accounts: "remote",
+      timeout: 600000,
     },
     // View the networks that are pre-configured.
     // If the network you are looking for is not here you can add new network settings

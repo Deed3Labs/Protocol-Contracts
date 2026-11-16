@@ -19,6 +19,13 @@ batch and the bond unwind report (`FreshCredit`).
 **Nothing in this repository has been run against a network for the audit.** The full order, with
 the waits and every owner-to-confirm item, is [DEPLOY-RUNBOOK.md](../audit/DEPLOY-RUNBOOK.md).
 
+**Rehearse on a fork first.** `scripts/rehearse_sepolia_fork.ts` runs the whole Base Sepolia order
+against a local `npx hardhat node --no-deploy` forked from Base Sepolia (`FORK_RPC_URL`,
+`FORK_BLOCK`, `FORK_CHAIN_ID=84532`), with `--network base-sepolia-fork`. It uses no key: the
+deployer, the Safe and every role holder are impersonated, and the scripts write to a git-ignored
+scratch copy, `deployments/base-sepolia-fork/`. The last run, its gas and the command list for the
+real run are in [SEPOLIA-REHEARSAL.md](../audit/SEPOLIA-REHEARSAL.md).
+
 **Configure** the root `.env` (from `.env.example`):
 
 | | |

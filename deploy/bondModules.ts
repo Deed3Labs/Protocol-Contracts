@@ -68,3 +68,31 @@ export async function bondAt(address: string, signer?: any) {
   const { ethers } = require("hardhat");
   return new ethers.Contract(address, await bondAbi(), signer ?? (await ethers.getSigners())[0]) as any;
 }
+
+/**
+ * The Phase 2f factory makes a collection only for a token its TokenRegistry whitelists
+ * (`createCollection` requires `getIsWhitelisted`). The pre-2f factories gated on the AssuranceOracle
+ * instead, so a registry that never whitelisted the bond token went unnoticed until the fork
+ * rehearsal: on Base Sepolia USDC is not whitelisted, and deploy 23's `createCollection` reverted.
+ *
+ * Whitelists `token` (`registerToken(token, chainId, token, $1)`, which always whitelists) when it is
+ * not and `sender` owns the registry; otherwise throws with the call the owner makes. A token already
+ * whitelisted is left as it is.
+ */
+export async function ensureBondTokenWhitelisted(registryAddress: string, token: string, sender: any, log: (m: string) => void = console.log) {
+  const { ethers } = require("hardhat");
+  const registry = await ethers.getContractAt("TokenRegistry", registryAddress, sender);
+  if (await registry.getIsWhitelisted(token)) return false;
+  const { chainId } = await ethers.provider.getNetwork();
+  const args = [token, chainId, token, ethers.parseEther("1")];
+  const owner: string = await registry.owner();
+  if (owner.toLowerCase() !== (await sender.getAddress()).toLowerCase()) {
+    throw new Error(
+      `TokenRegistry ${registryAddress} does not whitelist ${token}, and the bond factory makes a collection only for a whitelisted token. ` +
+        `Its owner (${owner}) sends registerToken: ${registry.interface.encodeFunctionData("registerToken", args)}`
+    );
+  }
+  await (await registry.registerToken(...args)).wait();
+  log(`  TokenRegistry: ${token} registered and whitelisted (the factory makes collections for whitelisted tokens only)`);
+  return true;
+}

@@ -195,7 +195,9 @@ export const EARN_ROLES_FILE = "deploy/config/earn-roles.json";
 export function loadEarnRoles(network: string, file = EARN_ROLES_FILE): EarnRoleConfig {
   const fs = require("fs");
   const all = JSON.parse(fs.readFileSync(file, "utf8"));
-  const cfg = all.networks?.[network];
+  // A rehearsal network (`base-sepolia-fork`) grants the roles of the network it forks.
+  const { liveNetworkOf } = require("./helpers");
+  const cfg = all.networks?.[network] ?? all.networks?.[liveNetworkOf(network)];
   if (!cfg) throw new Error(`Owner to fill: ${file} has no entry for ${network} (networks.${network}).`);
   return cfg;
 }

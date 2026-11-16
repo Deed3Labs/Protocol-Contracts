@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { getDeployment, requireMainnetConfirmation } from "../deploy/helpers";
+import { getDeployment, liveNetworkOf, requireMainnetConfirmation } from "../deploy/helpers";
 import { KNOWN_USDC, VaultCall, adminBatches, safeBatchFile, vaultAdmin, vaultProxyFor, vaultUpgradeCalls } from "./vaultUpgrade";
 
 /*
@@ -63,7 +63,7 @@ async function main() {
   const proxy = vaultProxyFor(network.name);
   const impl = need("VAULT_IMPL");
   const relayer = need("RELAYER");
-  const usdc = optional("USDC") ?? KNOWN_USDC[network.name];
+  const usdc = optional("USDC") ?? KNOWN_USDC[liveNetworkOf(network.name)];
   if (!usdc) throw new Error(`Set USDC: no known USDC for ${network.name}.`);
   const newClrusd = optional("NEW_CLRUSD");
   const { chainId } = await ethers.provider.getNetwork();

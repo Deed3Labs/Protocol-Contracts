@@ -225,11 +225,13 @@ describe("decision 47: the fresh credit stack and its deploy wiring", function (
   });
 
   describe("the Earn role grants", function () {
-    it("refuse, granting nothing, while any holder list is unset: the shipped config is all owner-to-fill", async function () {
+    it("refuse, granting nothing, while any holder list is unset: the shipped Base config is all owner-to-fill", async function () {
       const [admin] = await ethers.getSigners();
       const { pool } = await freshPool(admin);
       const controls = await deployEarnControls(admin);
-      const shipped = loadEarnRoles("base-sepolia");
+      // Base Sepolia's holders are filled (Nov 16, 2026) and pass every check; Base's are still unset.
+      expect(earnRoleProblems(loadEarnRoles("base-sepolia"))).to.deep.equal([]);
+      const shipped = loadEarnRoles("base");
       const problems = earnRoleProblems(shipped);
       for (const role of [...Object.keys(EARN_ROLE_MINIMUMS.LendingPool), ...Object.keys(EARN_ROLE_MINIMUMS.EarnControls)]) {
         expect(problems.some((p) => p.startsWith("owner to fill") && p.includes(`.${role} `))).to.equal(true, role);

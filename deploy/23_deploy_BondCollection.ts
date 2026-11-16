@@ -1,5 +1,5 @@
 import { saveDeployment, getDeployment, requireMainnetConfirmation } from "./helpers";
-import { bondAbi } from "./bondModules";
+import { bondAbi, ensureBondTokenWhitelisted } from "./bondModules";
 import { earnControlsAt } from "./earnModules";
 import { revokeRetiredVaultRoles } from "./earnWiring";
 import { printProposals } from "./creditWiring";
@@ -47,6 +47,8 @@ async function main() {
 
   let collectionAddress = (await factory.getCollectionInfo(token)).collectionAddress;
   if (collectionAddress === ethers.ZeroAddress) {
+    // The factory refuses a token its TokenRegistry does not whitelist (Base Sepolia's never whitelisted USDC).
+    await ensureBondTokenWhitelisted(await factory.tokenRegistry(), token, (await ethers.getSigners())[0], log);
     log(`Creating a ${symbol} bond collection…`);
     await (await factory.createCollection(token, symbol, name, process.env.BOND_BASE_URI ?? "ipfs://clear-bonds/")).wait();
     collectionAddress = (await factory.getCollectionInfo(token)).collectionAddress;
