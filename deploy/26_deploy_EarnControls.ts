@@ -1,4 +1,4 @@
-import { getDeployment, saveDeployment } from "./helpers";
+import { getDeployment, saveDeployment, liveNetworkOf } from "./helpers";
 import { earnControlsProxyOptions, earnControlsAt } from "./earnModules";
 import { deployEarnTimelock } from "./earn_timelock_handover";
 import { clearContractsToRefuse, refuseClearContracts, pledgeModuleChange } from "./earnWiring";
@@ -38,7 +38,9 @@ async function main() {
   const { ethers, upgrades } = hre;
   const [deployer] = await ethers.getSigners();
   const network = (await ethers.provider.getNetwork()).name;
-  const cfg = require("./config/earn-controls.json");
+  const base = require("./config/earn-controls.json");
+  // A network's own overrides (testnet values; Base mainnet has none), by the live network a fork rehearses.
+  const cfg = { ...base, ...(base.networks?.[liveNetworkOf(network)] ?? {}) };
   const units = (dollars: number) => BigInt(dollars) * 10n ** BigInt(cfg.decimals);
 
   const safe = process.env.CLEAR_LENDING_SAFE;

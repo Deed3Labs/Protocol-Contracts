@@ -172,3 +172,24 @@ describe("the Base Sepolia fork rehearsal's fixes", function () {
     });
   });
 });
+
+describe("earn-controls.json network overrides (deploy 26)", () => {
+  const cfg = require("../../deploy/config/earn-controls.json");
+  const merged = (n: string) => ({ ...cfg, ...(cfg.networks?.[liveNetworkOf(n)] ?? {}) });
+
+  it("gives Base Sepolia (and its fork) a $100,000 Funding Limit and pool capacity with a resolution hash", () => {
+    for (const n of ["base-sepolia", "base-sepolia-fork"]) {
+      const s = merged(n);
+      expect(s.fundingLimitDollars).to.equal(100000);
+      expect(s.poolCapacityDollars).to.equal(100000);
+      expect(s.fundingResolution).to.match(/^0x[0-9a-f]{64}$/).and.not.equal(ethers.ZeroHash);
+    }
+  });
+
+  it("leaves Base mainnet on the Boards' placeholders (0, refusing every subscription)", () => {
+    const s = merged("base");
+    expect(cfg.networks?.base).to.equal(undefined);
+    expect(s.fundingLimitDollars).to.equal(0);
+    expect(s.poolCapacityDollars).to.equal(0);
+  });
+});

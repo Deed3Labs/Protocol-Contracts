@@ -308,3 +308,10 @@ npx hardhat run scripts/check_payout_funding.ts --network $N
 ```
 
 Afterwards, commit the records the run wrote to `deployments/base-sepolia/` and `.openzeppelin/base-sepolia.json` with the deployment, as `docs/operators/deploying-contracts.md` says.
+
+## Owner answers (Nov 16, 2026, after the rehearsal)
+- **The Safe:** option (a). The owner raises `0x52e6…cf50` to 2 of 3 (`changeThreshold(2)`) just before the credit, vault and Earn handovers (I2 to I4); nothing before them needs it.
+- **Accepted:** the rehearsal's additions to `base-sepolia.rollout.env`, the record name `SavingsIntentFactoryPre2d`, deploy 24 (offers) and the Deed redeploy (H2) left out of this run.
+- **Funding Limit and pool capacity:** $100,000 each on Base Sepolia only, through the new `networks` overrides in `deploy/config/earn-controls.json` (read by deploy 26); Base mainnet keeps 0 until the Holdings and Lending Boards set them.
+- **Signer pairs:** filled in `base-sepolia.rollout.env` from …698a, …86cF and …eFE5. The deployer is in none of them: the vault handover renounces every vault and CLRUSD role it holds.
+- **Still open:** the addresses of the API's job wallets (credit operator, savings relayer, send relayer). A read of Base Sepolia shows the deployer still holding every operational role those wallets should get (vault `OPERATOR_ROLE`, ClaimEscrow and SavingsIntentFactory `SETTLER_ROLE`, AccessManager operator, NetworkRegistry `OPERATOR_ROLE`), so `ops-roles.ts` (I1) has not run on Sepolia yet. The public RPC serves only 200 blocks of logs per call, so the role history could not be read.
