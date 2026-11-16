@@ -216,3 +216,39 @@ export async function switchOffPayoutLegs(pools: { name: string; contract: any }
   for (const o of owed) log(`  ! ${o}`);
   return { proposals, owed };
 }
+
+/**
+ * Carry at the payout pool (docs/protocol/settlement.md, "Carry, by who bore the float";
+ * `scripts/configure-carry-recipients.mjs` makes the same change). Each issuer's `carryTreasury`
+ * becomes the fresh `PayoutPool` record, as it was on the pre-audit Base Sepolia stack. Deploy 20
+ * runs before deploy 22 makes the PayoutPool, so the issuers start at CARRY_TREASURY; and TermIssuer
+ * refuses a fee recipient equal to its carry treasury, which on a testnet where one Safe plays every
+ * role made deploy 25 revert at `proposeFeeRecipient` (found by the fork rehearsal). Since Phase 2e
+ * an unset fee recipient no longer falls back to carry, so carry can move first.
+ *
+ * Skipped when no fresh PayoutPool is recorded, or the record is the retired one. A CREDIT_SETTINGS_ROLE
+ * setting (the AccessManager's admin passes it): sent while the sender may, otherwise returned.
+ */
+export async function pointCarryAtPayoutPool(
+  network: string,
+  issuers: { name: string; contract: any }[],
+  sender: any,
+  log: (m: string) => void = console.log
+) {
+  const { ethers } = require("hardhat");
+  const { getDeployment } = require("./helpers");
+  const pool: string | undefined = getDeployment(network, "PayoutPool")?.address;
+  const retired: string | undefined = getDeployment(network, "PayoutPoolPreAudit")?.address;
+  const proposals: Proposal[] = [];
+  if (!pool || (retired && ethers.getAddress(pool) === ethers.getAddress(retired))) {
+    log("! No fresh PayoutPool recorded: carry stays at the issuers' carry treasury (run deploy 22, then this again).");
+    return proposals;
+  }
+  for (const { name, contract } of issuers) {
+    const issuer = contract.connect(sender);
+    if (ethers.getAddress(await issuer.carryTreasury()) === ethers.getAddress(pool)) continue;
+    const canSend: boolean = await issuer.setCarryTreasury.staticCall(pool).then(() => true, () => false);
+    await callOrPropose(issuer, "setCarryTreasury", [pool], canSend, VIA.credit, `${name} carry treasury -> PayoutPool ${pool}`, proposals, log);
+  }
+  return proposals;
+}

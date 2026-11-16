@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
 import { saveDeployment, getDeployment, requireMainnetConfirmation } from "../helpers";
+import { upgradeOptionsFor, verifiesOn } from "./upgradeOptions";
 
 async function main() {
   const hre = require("hardhat");
@@ -33,12 +34,13 @@ async function main() {
 
   // Validate the upgrade
   console.log("Validating upgrade...");
-  await hre.upgrades.validateUpgrade(proxyAddress, ContractFactory);
+  const options = upgradeOptionsFor(contractName);
+  await hre.upgrades.validateUpgrade(proxyAddress, ContractFactory, options);
   console.log("Upgrade validation passed");
 
   // Prepare the upgrade
   console.log("Preparing upgrade...");
-  const upgraded = await hre.upgrades.upgradeProxy(proxyAddress, ContractFactory);
+  const upgraded = await hre.upgrades.upgradeProxy(proxyAddress, ContractFactory, options);
   
   await upgraded.waitForDeployment();
   const upgradedAddress = await upgraded.getAddress();
@@ -51,7 +53,7 @@ async function main() {
   
   // Verify the implementation contract if on a supported network
   try {
-    if (network.name !== "hardhat" && network.name !== "localhost") {
+    if (verifiesOn(network.name)) {
       console.log("Verifying implementation contract...");
       const implementationAddress = await hre.upgrades.erc1967.getImplementationAddress(proxyAddress);
       await hre.run("verify:verify", {
@@ -65,7 +67,8 @@ async function main() {
   }
 
   // Save the upgraded contract information
-  const contractAbi = upgraded.interface.formatJson();
+  // The parsed ABI, as every other script saves it (a JSON string here broke readers of the record).
+  const contractAbi = JSON.parse(upgraded.interface.formatJson());
   
   // Save deployment info
   saveDeployment(

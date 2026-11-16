@@ -40,6 +40,17 @@ export function upgradeCall(vaultInterface: any, impl: string, usdc: string): st
 }
 
 /**
+ * The line `scripts/upgrade_vault.ts` prints once the implementation is deployed: the call's
+ * calldata, or, when no USDC is known for the network, the call in words (encoding a placeholder
+ * used to throw after the implementation had already been deployed).
+ */
+export function upgradeCallLine(vaultInterface: any, proxy: string, impl: string, usdc?: string): string {
+  return usdc
+    ? `The upgrade is one call to ${proxy}: ${upgradeCall(vaultInterface, impl, usdc)}`
+    : `The upgrade is one call to ${proxy}: upgradeToAndCall(${impl}, setAcceptedToken(<USDC>, true)). Set USDC to print its calldata.`;
+}
+
+/**
  * Phase 1 of the vault roll-out (H-3, M-5): the upgrade with its accepted token, then the relayer's
  * role split (`RELAYER_ROLE` granted, the legacy `OPERATOR_ROLE` revoked where the relayer holds it).
  */

@@ -64,6 +64,7 @@ import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
 import { startSweepRunner } from './jobs/sweepRunner.js';
 import { startMemoryMonitor } from './jobs/memoryMonitor.js';
 import { startRelayerGasMonitor } from './jobs/relayerGas.js';
+import { logJobWallets } from './jobs/jobWallets.js';
 import { startSessionCleanup } from './jobs/sessionCleanup.js';
 import { startStripeEventProcessor } from './jobs/stripeEventProcessor.js';
 import { startCardCaptureSafety } from './jobs/cardCaptureSafety.js';
@@ -435,6 +436,8 @@ async function startServer() {
     // A signer with no gas fails silently — the pledge does not happen and every figure downstream
     // is quietly stale. This is the only thing that would have said so.
     startRelayerGasMonitor();
+    // Which wallet does which job, by address only: the operator checks these against the chain's roles.
+    logJobWallets();
     startSessionCleanup();
     // Nothing else rolls a cycle over: without this every member's period runs out and stays out.
     startCreditPeriodRenewer();

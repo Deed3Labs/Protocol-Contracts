@@ -1,5 +1,5 @@
-import { requireMainnetConfirmation } from "../deploy/helpers";
-import { KNOWN_USDC, upgradeCall, vaultProxyFor } from "./vaultUpgrade";
+import { liveNetworkOf, requireMainnetConfirmation } from "../deploy/helpers";
+import { KNOWN_USDC, upgradeCallLine, vaultProxyFor } from "./vaultUpgrade";
 
 /*
  * The ESADepositVault's new implementation. THIS SCRIPT NEVER UPGRADES THE PROXY.
@@ -32,9 +32,9 @@ async function main() {
     return;
   }
   const impl = (await upgrades.prepareUpgrade(proxy, Vault, { kind: "uups" })) as string;
-  const usdc = process.env.USDC?.trim() || KNOWN_USDC[network.name] || "<USDC>";
+  const usdc = process.env.USDC?.trim() || KNOWN_USDC[liveNetworkOf(network.name)];
   console.log(`\nImplementation ${impl}. The proxy was not upgraded.`);
-  console.log(`The upgrade is one call to ${proxy}: ${upgradeCall(Vault.interface, impl, usdc)}`);
+  console.log(upgradeCallLine(Vault.interface, proxy, impl, usdc));
   console.log(`Build the batch for the vault's admin (it checks who that is):\n` +
     `  VAULT_IMPL=${impl} RELAYER=0x… CLEAR_FINANCIAL_SAFE=0x… npx hardhat run scripts/migrate_vault_clrusd.ts --network ${network.name}`);
 }

@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { saveDeployment, getDeployment, requireMainnetConfirmation } from "./helpers";
-import { Proposal, RETIRED_ROLE_CHECKS, VIA, printProposals, revokeRetiredRoles } from "./creditWiring";
+import { Proposal, RETIRED_ROLE_CHECKS, VIA, pointCarryAtPayoutPool, printProposals, revokeRetiredRoles } from "./creditWiring";
 import { retiredContracts } from "./retire_credit_stack";
 
 /**
@@ -263,8 +263,22 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     await (await term.setFeeTerms(wantFees[0], wantFees[1], wantFees[2])).wait();
     log(`  fee cap: ${terms.maxFeeSmallUsd ?? 50} USD up to ${terms.feeCapLargeFromUsd ?? 2500} USD, ${terms.maxFeeLargeUsd ?? 75} USD above`);
   }
+  // ---- carry at the payout pool (docs/protocol/settlement.md, "Carry, by who bore the float") ----
+  const carryProposals = await pointCarryAtPayoutPool(network, [
+    { name: "RevolvingIssuer", contract: revolving },
+    { name: "TermIssuer", contract: term },
+  ], deployer, log);
+  if (carryProposals.length > 0) {
+    log("! The deployer cannot set the carry treasury (CREDIT_SETTINGS_ROLE). Propose:");
+    printProposals(carryProposals, log);
+  }
+
   const feeTo = process.env.FEE_RECIPIENT;
-  if ((await term.feeRecipient()) === ethers.ZeroAddress) {
+  const carryTo: string = await term.carryTreasury();
+  if ((await term.feeRecipient()) === ethers.ZeroAddress && feeTo && ethers.isAddress(feeTo) && carryTo.toLowerCase() === feeTo.toLowerCase()) {
+    // TermIssuer refuses a fee recipient that is its carry treasury (the co-op's): say so, do not revert half way.
+    log(`! FEE_RECIPIENT ${feeTo} is TermIssuer's carry treasury, which it refuses as the fee recipient. Point carry at the PayoutPool first (deploy 22 records it), or name another recipient.`);
+  } else if ((await term.feeRecipient()) === ethers.ZeroAddress) {
     if (feeTo && ethers.isAddress(feeTo)) {
       const reason = ethers.encodeBytes32String("INITIAL");
       const pending = await term.feeRecipientProposalOf();

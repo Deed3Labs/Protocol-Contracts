@@ -1,4 +1,4 @@
-import { saveDeployment, getDeployment } from "./helpers";
+import { saveDeployment, getDeployment, liveNetworkOf } from "./helpers";
 import { issuerProxyOptions } from "./issuerModules";
 
 /**
@@ -313,7 +313,7 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
   log(`  daily caps: capacity ${capacityCap}, term limits ${termLimitCap}, plans ${planCap}, card ${cardTxCap}/${cardDailyCap}`);
 
   // ---- The ledger's own money settings (section 13) ----
-  const reserveToken = process.env.RESERVE_TOKEN ?? KNOWN_USDC[network];
+  const reserveToken = process.env.RESERVE_TOKEN ?? KNOWN_USDC[liveNetworkOf(network)];
   if (reserveToken) {
     if ((await ledger.reserveToken()) === ethers.ZeroAddress) {
       await (await ledger.setReserveToken(reserveToken)).wait();

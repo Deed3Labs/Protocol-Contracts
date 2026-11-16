@@ -111,7 +111,7 @@ export async function assertNoAssuranceAdmin(pool: any, account: string) {
 
 export async function runAssuranceDeploy() {
   const { ethers } = require("hardhat");
-  const { getDeployment, saveDeployment } = require("./helpers");
+  const { getDeployment, saveDeployment, liveNetworkOf } = require("./helpers");
   if (process.env.ASSURANCE_DEPLOY !== "1") {
     throw new Error("Set ASSURANCE_DEPLOY=1 to confirm: this deploys the co-op's AssurancePool under a 7-day timelock.");
   }
@@ -123,7 +123,7 @@ export async function runAssuranceDeploy() {
   }
   const [deployer] = await ethers.getSigners();
   const network = (await ethers.provider.getNetwork()).name;
-  const usdc = process.env.RESERVE_TOKEN ?? ({ "base-sepolia": "0x036CbD53842c5426634e7929541eC2318f3dCF7e", base: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" } as Record<string, string>)[network];
+  const usdc = process.env.RESERVE_TOKEN ?? ({ "base-sepolia": "0x036CbD53842c5426634e7929541eC2318f3dCF7e", base: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" } as Record<string, string>)[liveNetworkOf(network)];
   if (!usdc) throw new Error("RESERVE_TOKEN must be USDC on this network.");
   const registryRecord = getDeployment(network, "NetworkRegistry");
   if (!registryRecord) throw new Error("NetworkRegistry is not deployed: run deploy/20 first.");

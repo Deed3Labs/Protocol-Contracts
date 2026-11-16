@@ -1,4 +1,4 @@
-import { getDeployment } from "../deploy/helpers";
+import { getDeployment, liveNetworkOf } from "../deploy/helpers";
 import { RETIRED_ROLE_CHECKS, roleHash } from "../deploy/creditWiring";
 import { REFUSED_RECORDS } from "../deploy/earnWiring";
 import { RETIRED_SUFFIX, TEST_MONEY_NOTE, isTestMoneyChain, retiredContracts } from "../deploy/retire_credit_stack";
@@ -188,7 +188,7 @@ export async function checkRetiredCredit(options: CheckOptions = {}) {
   }
 
   // ---- balances ----
-  const reserveToken = options.reserveToken ?? process.env.RESERVE_TOKEN ?? KNOWN_RESERVE_TOKEN[network];
+  const reserveToken = options.reserveToken ?? process.env.RESERVE_TOKEN ?? KNOWN_RESERVE_TOKEN[liveNetworkOf(network)];
   const tokens: { label: string; address: string; abi: any[] }[] = [];
   const ERC20 = ["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)"];
   if (reserveToken) tokens.push({ label: "USDC", address: reserveToken, abi: ERC20 });
