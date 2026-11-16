@@ -75,7 +75,7 @@ export function standIns(): Record<string, string> {
     CREDIT_LIMITS_KEY: standIn("credit limits key"),
     CREDIT_OPERATOR_ADDRESS: standIn("credit operator"),
     CREDIT_SETTINGS_SIGNERS: two("CREDIT_SETTINGS_ROLE"),
-    CREDIT_ATTESTERS: two("CREDIT_ATTESTER_ROLE"),
+    CREDIT_ATTESTER_SIGNERS: two("CREDIT_ATTESTER_ROLE"),
     HOLD_SIGNERS: two("Liquidator HOLD_ROLE"),
     STATE_ATTESTER_KEY: standIn("state attester"),
     AGENT_KEY: standIn("Agent Key"),
@@ -280,7 +280,7 @@ export function steps(): Step[] {
         const { ethers } = ctx;
         const access = await ethers.getContractAt("AccessManager", need("AccessManager"));
         const at = await access.getAddress();
-        for (const [role, holders] of [["CREDIT_SETTINGS_ROLE", ctx.env.CREDIT_SETTINGS_SIGNERS], ["CREDIT_ATTESTER_ROLE", ctx.env.CREDIT_ATTESTERS]] as const) {
+        for (const [role, holders] of [["CREDIT_SETTINGS_ROLE", ctx.env.CREDIT_SETTINGS_SIGNERS], ["CREDIT_ATTESTER_ROLE", ctx.env.CREDIT_ATTESTER_SIGNERS ?? ctx.env.CREDIT_ATTESTERS]] as const) {
           for (const h of list(holders)) {
             if (!(await access.hasRole(ethers.id(role), h))) await sendAs(ctx, ctx.env.DEPLOYER, at, access.interface.encodeFunctionData("grantRole", [ethers.id(role), h]), `AccessManager ${role} -> ${h}`);
           }
@@ -383,13 +383,17 @@ export function steps(): Step[] {
         if (r.status === 1 && /must need two signers/.test(r.out)) return { status: "refused (expected)", note: "the Safe needs 1 signer: assertTwoPersonSafe refuses" };
         if (r.status !== 0) throw new Error("vault handover failed");
       } },
-    { id: "I3b", title: "Owner action, simulated: the Safe raises its threshold to 2 (changeThreshold(2))", who: "the Safe (one owner signs today)",
+    { id: "I3b", title: "Owner action, simulated: the Safe adds SAFE_NEW_OWNER and needs 2 signatures (addOwnerWithThreshold; changeThreshold(2) without one)", who: "the Safe (one owner signs today)",
       run: async (ctx) => {
         const safe = ctx.env.CLEAR_FINANCIAL_SAFE;
-        const s = new ctx.ethers.Contract(safe, ["function getThreshold() view returns (uint256)", "function changeThreshold(uint256)"], ctx.ethers.provider);
-        if ((await s.getThreshold()) >= 2n) return { note: "already 2 or more" };
-        await sendAs(ctx, safe, safe, s.interface.encodeFunctionData("changeThreshold", [2]), "Safe.changeThreshold(2)");
-        return { note: `threshold ${await s.getThreshold()}` };
+        const s = new ctx.ethers.Contract(safe, ["function getThreshold() view returns (uint256)", "function getOwners() view returns (address[])",
+          "function changeThreshold(uint256)", "function addOwnerWithThreshold(address,uint256)"], ctx.ethers.provider);
+        const owner = ctx.env.SAFE_NEW_OWNER;
+        const isOwner = !!owner && (await s.getOwners()).some((o: string) => o.toLowerCase() === owner.toLowerCase());
+        if ((await s.getThreshold()) >= 2n && (!owner || isOwner)) return { note: "already 2 or more" };
+        if (owner && !isOwner) await sendAs(ctx, safe, safe, s.interface.encodeFunctionData("addOwnerWithThreshold", [owner, 2]), `Safe.addOwnerWithThreshold(${owner}, 2)`);
+        else await sendAs(ctx, safe, safe, s.interface.encodeFunctionData("changeThreshold", [2]), "Safe.changeThreshold(2)");
+        return { note: `threshold ${await s.getThreshold()} of ${(await s.getOwners()).length}` };
       } },
     { id: "I3c", title: "Vault handover (VAULT_HANDOVER=1)", who: "deployer",
       run: async (ctx) => {

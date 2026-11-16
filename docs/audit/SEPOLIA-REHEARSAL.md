@@ -226,6 +226,8 @@ npx hardhat run scripts/rehearsal_gas.ts --network base-sepolia-fork
 
 From the repository root, with `DEPLOYER_PRIVATE_KEY` in the operator's own environment (never in a file here), the Safe at threshold 2, and the owner inputs above exported. Each step is the one rehearsed above; the expected result is in the table of steps.
 
+**The co-signer steps** (marked `SIGN` below) are not script runs: people send them from their own MetaMask accounts, and the Safe signs its part in the Safe app. `npx hardhat run scripts/signing_plan.ts --network $N` (read-only) writes them as `deployments/$N/signing-plan.json`, with each step's signer from the rollout env and `earn-roles.json`, and the Safe's calls as `deployments/$N/safe-batches/signing-*.json` (Transaction Builder). Open the plan in [the signing page](../../tools/signing-page/README.md), sign the ready steps, and re-run the script after each stage: it marks what the chain shows done and opens what waited for it.
+
 ```bash
 set -a; . deploy/config/base-sepolia.rollout.env; set +a
 export RELAYER=0x… VAULT_RELAYERS=0x… SAVINGS_RELAYER_ADDRESS=0x…
@@ -241,7 +243,7 @@ CHECK_BASELINE=1 npx hardhat run scripts/check_retired_credit.ts --network $N
 npx hardhat run scripts/unwind_legacy_bonds.ts --network $N
 
 # C1: the vault (the batch is written to deployments/base-sepolia/safe-batches/vault-1-upgrade.json;
-# the deployer, VAULT_ADMIN, sends its transactions in order)
+# SIGN C1d: the deployer, VAULT_ADMIN, sends its transactions in order)
 npx hardhat run scripts/upgrade_vault.ts --network $N
 PREPARE_VAULT_IMPL=1 npx hardhat run scripts/upgrade_vault.ts --network $N
 VAULT_IMPL=0x… npx hardhat run scripts/migrate_vault_clrusd.ts --network $N
@@ -262,7 +264,7 @@ npx hardhat run deploy/16_deploy_AccessManager.ts --network $N
 npx hardhat run deploy/18_configure_AccessManagerMembershipRegistry.ts --network $N
 npx hardhat run deploy/20_deploy_CreditCore.ts --network $N
 npx hardhat run deploy/21_deploy_ClearUSDUpgradeable.ts --network $N
-# D4 (the deployer, not scripted): on the new AccessManager, grantRole(keccak256("CREDIT_SETTINGS_ROLE"), …) ×2,
+# SIGN D4 (the deployer, not scripted): on the new AccessManager, grantRole(keccak256("CREDIT_SETTINGS_ROLE"), …) ×2,
 #    grantRole(keccak256("CREDIT_ATTESTER_ROLE"), …) ×2, grantOperator(<credit operator>)
 
 # E1 to E7: Earn, the upgrades, the rest of the credit stack
@@ -274,19 +276,21 @@ npx hardhat run scripts/upgrade_bond_vault_pledge_guard.ts --network $N
 REPLACE_BOND_FACTORY=1 npx hardhat run deploy/22_deploy_BondsAndPool.ts --network $N
 npx hardhat run deploy/23_deploy_BondCollection.ts --network $N
 npx hardhat run deploy/27_wire_Earn.ts --network $N
-# E8, E9: for each of CollateralAgent.setVault(BondVault), setBondBook(BondVault), setHolderDirections(HolderDirections),
+# SIGN E8, E9: for each of CollateralAgent.setVault(BondVault), setBondBook(BondVault), setHolderDirections(HolderDirections),
 #    setPledgeModule(Liquidator) (target: the CollateralAgent), and BondVault.setBackstops(<treasury>, 0x0) (target: the
 #    BondVault; deploy 27 prints its calldata): treasury signer 1 proposeChange(target, keccak256(calldata), descriptionHash),
 #    treasury signer 2 confirmChange(changeId), the Agent Key approveChange(changeId). Then the Clear Lending Safe sends
 #    EarnTimelock.scheduleBatch(the five targets, zeros, the five calldatas, 0x0, salt, 604800).
-#    The deployer grants Liquidator HOLD_ROLE to the two hold keys.
+#    The deployer grants Liquidator HOLD_ROLE to the two hold keys (before I2). The Safe's scheduleBatch is a Safe batch.
+npx hardhat run scripts/signing_plan.ts --network $N   # then sign D4, E8 and E9 on the signing page
 
-# F2: compliance, then the second CREDIT_SETTINGS_ROLE holder sends
+# F2: compliance, then (SIGN) the second CREDIT_SETTINGS_ROLE holder sends
 #    TermIssuer.approveFeeRecipient(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 0x494e495449414c00…00 ("INITIAL"))
 npx hardhat run deploy/25_wire_Compliance.ts --network $N
 
-# G1: …eFE5 and …698a each send LendingPool.postPoolTierPrincipal(100000000000, $POOL_TIER_EVIDENCE)
+# SIGN G1 (Pool Tier): …eFE5 and …698a each send LendingPool.postPoolTierPrincipal(100000000000, $POOL_TIER_EVIDENCE)
 #    (deploy 27 prints the calldata)
+npx hardhat run scripts/signing_plan.ts --network $N   # then sign F2 and the Pool Tier on the signing page
 
 # H1, then G3
 ASSURANCE_DEPLOY=1 npx hardhat run deploy/08_deploy_AssurancePool.ts --network $N
@@ -294,12 +298,16 @@ npx hardhat run deploy/26_deploy_EarnControls.ts --network $N
 
 # I5 (expected: 1 FAIL, the backstop, until day 7), then the handovers
 npx hardhat run scripts/check_retired_credit.ts --network $N
+# SIGN, the Safe (owner decision): addOwnerWithThreshold(0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a, 2) instead of
+#    changeThreshold(2), from the plan's Safe batch (SAFE_NEW_OWNER, SAFE_THRESHOLD in the rollout env). I3 and I4 need it.
 CREDIT_HANDOVER=1 npx hardhat run deploy/credit_timelock_handover.ts --network $N
 VAULT_HANDOVER=1 npx hardhat run deploy/vault_timelock_handover.ts --network $N
-#    then the Clear Financial Safe sends VaultTimelock.scheduleBatch with the two acceptance calls it printed
+#    SIGN: then the Clear Financial Safe sends VaultTimelock.scheduleBatch with the two acceptance calls it printed
+#    (re-run scripts/signing_plan.ts: its I3-vault-schedule Safe batch)
 EARN_HANDOVER=1 npx hardhat run deploy/earn_timelock_handover.ts --network $N
 
-# Day 7: the Clear Lending Safe sends EarnTimelock.executeBatch(…), the Clear Financial Safe VaultTimelock.executeBatch(…)
+# SIGN Day 7: the Clear Lending Safe sends EarnTimelock.executeBatch(…), the Clear Financial Safe VaultTimelock.executeBatch(…)
+#    (re-run scripts/signing_plan.ts on day 7: its E8x and I3x Safe batches; only the Safe may execute)
 
 # I6, the gate, and the read-only checks (each must exit 0)
 npx hardhat run scripts/check_retired_credit.ts --network $N
@@ -310,7 +318,7 @@ npx hardhat run scripts/check_payout_funding.ts --network $N
 Afterwards, commit the records the run wrote to `deployments/base-sepolia/` and `.openzeppelin/base-sepolia.json` with the deployment, as `docs/operators/deploying-contracts.md` says.
 
 ## Owner answers (Nov 16, 2026, after the rehearsal)
-- **The Safe:** option (a). The owner raises `0x52e6…cf50` to 2 of 3 (`changeThreshold(2)`) just before the credit, vault and Earn handovers (I2 to I4); nothing before them needs it.
+- **The Safe:** option (a). The owner raises `0x52e6…cf50` to two signatures just before the credit, vault and Earn handovers (I2 to I4); nothing before them needs it. Updated the same day: not `changeThreshold(2)` but `addOwnerWithThreshold(0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a, 2)`, 2 of 4, since the Safe's other two owners are Privy wallets usable only inside the members app; …7AAA and …698a are MetaMask. The signing plan writes it as a Safe batch.
 - **Accepted:** the rehearsal's additions to `base-sepolia.rollout.env`, the record name `SavingsIntentFactoryPre2d`, deploy 24 (offers) and the Deed redeploy (H2) left out of this run.
 - **Funding Limit and pool capacity:** $100,000 each on Base Sepolia only, through the new `networks` overrides in `deploy/config/earn-controls.json` (read by deploy 26); Base mainnet keeps 0 until the Holdings and Lending Boards set them.
 - **Signer pairs:** filled in `base-sepolia.rollout.env` from …698a, …86cF and …eFE5. The deployer is in none of them: the vault handover renounces every vault and CLRUSD role it holds.

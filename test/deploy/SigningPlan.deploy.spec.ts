@@ -1,0 +1,311 @@
+import { expect } from "chai";
+import { ethers, upgrades } from "hardhat";
+import * as fs from "fs";
+import * as path from "path";
+import { createHash } from "crypto";
+import { buildSigningPlan, writeSigningPlan, PlanStep, SigningPlan } from "../../scripts/signing_plan";
+import { deployEarnTimelock } from "../../deploy/earn_timelock_handover";
+import { deployVaultTimelock } from "../../deploy/vault_timelock_handover";
+import { deployCreditCore } from "../../deploy/20_deploy_CreditCore";
+import { poolAt, poolProxyOptions } from "../../deploy/poolModules";
+
+/*
+ * scripts/signing_plan.ts on the in-process Hardhat network: a small stack in the shape the Base
+ * Sepolia rollout leaves before its co-signer steps (docs/audit/SEPOLIA-REHEARSAL.md), the plan
+ * built from it, and every ready step sent by its signer with exactly the plan's {to, data}, round
+ * after round, until nothing is left. Nothing here touches a live network or uses a key.
+ */
+const DAY = 24 * 3600;
+const DIR = path.join("deployments", "hardhat");
+const random = () => ethers.Wallet.createRandom().address;
+
+async function failure(p: Promise<unknown>): Promise<string> {
+  try {
+    await p;
+  } catch (e: any) {
+    return String(e?.message);
+  }
+  return "";
+}
+
+describe("the signing plan (scripts/signing_plan.ts)", function () {
+  this.timeout(600_000);
+  const saved = process.env.CARRY_TREASURY;
+  let env: Record<string, string>;
+  let valuationSigners: string[];
+  let safe: any;
+  let s: Record<string, any>;
+  let bondVault: any, agent: any, earnTimelock: any, liquidator: any, term: any, pool: any, clrusd: any, vault: any, vaultTimelock: any;
+  let holderDirections: any;
+  const retiredPayout = random();
+
+  const record = (name: string, address: string) => fs.writeFileSync(path.join(DIR, `${name}.json`), JSON.stringify({ address, abi: [] }));
+  const plan = () => buildSigningPlan({ network: "hardhat", env, valuationSigners });
+  const step = (p: SigningPlan, id: string) => {
+    const found = p.steps.find((x) => x.id === id);
+    if (!found) throw new Error(`no step ${id}: ${p.steps.map((x) => x.id).join(", ")}`);
+    return found;
+  };
+
+  /** Sends a plan step exactly as the page would: from its signer, to its `to`, with its data. */
+  async function send(st: PlanStep) {
+    await ethers.provider.send("hardhat_impersonateAccount", [st.signer]);
+    await ethers.provider.send("hardhat_setBalance", [st.signer, "0x" + ethers.parseEther("10").toString(16)]);
+    const signer = await ethers.getSigner(st.signer);
+    const rc = await (await signer.sendTransaction({ to: st.to, data: st.data!, value: 0 })).wait();
+    expect(rc!.status).to.equal(1);
+    expect(rc!.to).to.equal(st.to);
+  }
+
+  /** The MockSafe stands in for the Safe's own addOwnerWithThreshold: owners and threshold written in place. */
+  async function safeAddsOwner(owner: string, threshold: number) {
+    const at = await safe.getAddress();
+    const owners: string[] = await safe.getOwners();
+    const base = BigInt(ethers.keccak256(ethers.zeroPadValue("0x00", 32)));
+    await ethers.provider.send("hardhat_setStorageAt", [at, "0x0", ethers.zeroPadValue(ethers.toBeHex(owners.length + 1), 32)]);
+    await ethers.provider.send("hardhat_setStorageAt", [at, ethers.toBeHex(base + BigInt(owners.length)), ethers.zeroPadValue(owner, 32)]);
+    await ethers.provider.send("hardhat_setStorageAt", [at, "0x1", ethers.zeroPadValue(ethers.toBeHex(threshold), 32)]);
+  }
+
+  before(async function () {
+    const all = await ethers.getSigners();
+    const [deployer, o1, o2, o3, newOwner, t1, t2, key, cs1, cs2, ca1, ca2, h1, h2, v1, v2, relayer, opKey, feeTo, treasury] = all;
+    s = { deployer, o1, o2, o3, newOwner, t1, t2, key, cs1, cs2, ca1, ca2, h1, h2, v1, v2, relayer, opKey, feeTo, treasury };
+    fs.rmSync(DIR, { recursive: true, force: true });
+    fs.mkdirSync(path.join(DIR, "safe-batches"), { recursive: true });
+
+    // The Safe: one owner signs today (threshold 1 of 3), as on Base Sepolia.
+    safe = await (await ethers.getContractFactory("MockSafe")).deploy([o1.address, o2.address, o3.address], 1);
+    const safeAddress = await safe.getAddress();
+
+    // D1, D2, D3: a fresh AccessManager and credit core; the old ones retired.
+    const access = await upgrades.deployProxy(await ethers.getContractFactory("AccessManager"), [deployer.address]);
+    record("AccessManager", await access.getAddress());
+    for (const n of ["AccessManager", "TermIssuer", "Liquidator", "PayoutPool"]) record(`${n}PreAudit`, random());
+    record("PayoutPoolPreAudit", retiredPayout);
+    process.env.CARRY_TREASURY = treasury.address;
+    const core = await deployCreditCore({ quiet: true });
+    term = core.term;
+    // Deploy 25 proposes the fee recipient (the deployer holds the AccessManager's admin).
+    await term.proposeFeeRecipient(feeTo.address, ethers.encodeBytes32String("INITIAL"));
+
+    // E1: the Earn timelock (the Safe proposing and executing) and the CollateralAgent under it.
+    earnTimelock = await deployEarnTimelock(safeAddress);
+    record("EarnTimelock", await earnTimelock.getAddress());
+    const usdc = await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
+    agent = await upgrades.deployProxy(await ethers.getContractFactory("CollateralAgent"),
+      [await earnTimelock.getAddress(), key.address, [t1.address, t2.address], 6, {
+        vault: ethers.ZeroAddress, bondBook: ethers.ZeroAddress, pledgeModule: ethers.ZeroAddress, payeeSource: ethers.ZeroAddress,
+        collateralAccount: safeAddress, costAddress: safeAddress, excessDestination: safeAddress,
+      }], { kind: "uups" });
+    record("CollateralAgent", await agent.getAddress());
+
+    // E3, E6: the BondVault, its backstop still naming the retired PayoutPool, the Agent named.
+    bondVault = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"), [deployer.address, await usdc.getAddress(), 0], { kind: "uups" });
+    await bondVault.setBackstops(treasury.address, retiredPayout);
+    // Deploy 23 gives the Earn timelock the vault's admin before it names the Agent (afterwards a grant is co-signed).
+    await bondVault.grantRole(ethers.ZeroHash, await earnTimelock.getAddress());
+    await bondVault.setEarnSources(await agent.getAddress(), random());
+    record("BondVault", await bondVault.getAddress());
+    holderDirections = await (await ethers.getContractFactory("HolderDirections")).deploy(await bondVault.getAddress(), await agent.getAddress(), random());
+    record("HolderDirections", await holderDirections.getAddress());
+
+    // E4: the fresh Liquidator.
+    liquidator = await upgrades.deployProxy(await ethers.getContractFactory("Liquidator"),
+      [deployer.address, random(), random(), random(), await usdc.getAddress(), random()], { kind: "uups" });
+    record("Liquidator", await liquidator.getAddress());
+
+    // E2, E7: the Yield Pool with its two VALUATION_ROLE signers.
+    pool = await poolAt(await (await upgrades.deployProxy(await ethers.getContractFactory("LendingPool", deployer),
+      [deployer.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"], await poolProxyOptions(deployer))).getAddress(), deployer);
+    for (const v of [v1, v2]) await pool.grantRole(await pool.VALUATION_ROLE(), v.address);
+    record("LendingPool", await pool.getAddress());
+    valuationSigners = [v1.address, v2.address];
+
+    // C1: the savings vault and the batch C1c writes for its admin (the deployer).
+    clrusd = await upgrades.deployProxy(await ethers.getContractFactory("ClearUSDUpgradeable"),
+      ["Clear USD", "CLRUSD", 6, 0, 0, deployer.address, deployer.address],
+      { kind: "uups", unsafeAllow: ["missing-initializer", "missing-initializer-call"] });
+    record("ClearUSDUpgradeable", await clrusd.getAddress());
+    vault = await upgrades.deployProxy(await ethers.getContractFactory("ESADepositVault"), [await clrusd.getAddress(), deployer.address], { kind: "uups" });
+    record("ESADepositVault", await vault.getAddress());
+    await vault.grantRole(ethers.id("OPERATOR_ROLE"), relayer.address);
+    const v = await vault.getAddress();
+    fs.writeFileSync(path.join(DIR, "safe-batches", "vault-1-upgrade.json"), JSON.stringify({
+      version: "1.0", chainId: "31337", createdAt: 0, meta: { name: "Vault upgrade", description: "test" },
+      transactions: [
+        { to: v, value: "0", data: vault.interface.encodeFunctionData("grantRole", [ethers.id("RELAYER_ROLE"), relayer.address]) },
+        { to: v, value: "0", data: vault.interface.encodeFunctionData("revokeRole", [ethers.id("OPERATOR_ROLE"), relayer.address]) },
+      ],
+    }));
+
+    // I3: the vault timelock, and CLRUSD's admin transfer to it begun by the vault handover.
+    vaultTimelock = await deployVaultTimelock(safeAddress);
+    record("VaultTimelock", await vaultTimelock.getAddress());
+    await clrusd.beginDefaultAdminTransfer(await vaultTimelock.getAddress());
+
+    env = {
+      DEPLOYER: deployer.address,
+      VAULT_ADMIN: deployer.address,
+      CLEAR_LENDING_SAFE: safeAddress,
+      CLEAR_FINANCIAL_SAFE: safeAddress,
+      SAFE_NEW_OWNER: newOwner.address,
+      SAFE_THRESHOLD: "2",
+      TREASURY_SIGNERS: `${t1.address},${t2.address}`,
+      AGENT_KEY: key.address,
+      CREDIT_SETTINGS_SIGNERS: `${cs1.address},${cs2.address}`,
+      CREDIT_ATTESTER_SIGNERS: `${ca1.address},${ca2.address}`,
+      HOLD_SIGNERS: `${h1.address},${h2.address}`,
+      FEE_RECIPIENT: feeTo.address,
+      RELAYER: relayer.address,
+      POOL_TIER_PRINCIPAL: "100000000000",
+      POOL_TIER_EVIDENCE: ethers.id("Pool Tier valuation (test)"),
+    };
+  });
+
+  after(function () {
+    fs.rmSync(DIR, { recursive: true, force: true });
+    if (saved === undefined) delete process.env.CARRY_TREASURY; else process.env.CARRY_TREASURY = saved;
+  });
+
+  it("lists every co-signer step, with what is ready now and why the rest waits", async function () {
+    const p = await plan();
+    expect(p.chainId).to.equal(31337);
+    expect(p.stepsSha256).to.equal(createHash("sha256").update(JSON.stringify(p.steps)).digest("hex"));
+    expect(p.steps.map((x) => x.id)).to.deep.equal([
+      "C1d-1", "C1d-2",
+      "D4-settings-1", "D4-settings-2", "D4-attester-1", "D4-attester-2", "D4-operator",
+      ...["vault", "bondbook", "holderdirections", "pledgemodule", "backstop"].flatMap((k) => [`E8-${k}-propose`, `E8-${k}-confirm`, `E8-${k}-approve`]),
+      "E8-hold-1", "E8-hold-2", "E8-earn-schedule", "E8x-earn-execute",
+      "F2-fee-approve", "G1-tier-1", "G1-tier-2", "safe-owner", "I3-vault-schedule", "I3x-vault-execute",
+    ]);
+    const ready = p.steps.filter((x) => x.status === "ready").map((x) => x.id);
+    expect(ready).to.deep.equal([
+      "C1d-1", "D4-settings-1", "D4-settings-2", "D4-attester-1", "D4-attester-2",
+      "E8-vault-propose", "E8-bondbook-propose", "E8-holderdirections-propose", "E8-pledgemodule-propose", "E8-backstop-propose",
+      "E8-hold-1", "E8-hold-2", "G1-tier-1", "G1-tier-2", "I3-vault-schedule",
+    ]);
+    expect(step(p, "C1d-2").reason).to.contain("C1d-1");
+    expect(step(p, "D4-operator").reason).to.contain("CREDIT_OPERATOR_ADDRESS");
+    expect(step(p, "D4-operator").data).to.equal(null);
+    expect(step(p, "E8-vault-confirm").reason).to.contain("proposed");
+    expect(step(p, "E8-vault-confirm").data).to.equal(null);
+    expect(step(p, "F2-fee-approve").reason).to.contain("D4-settings-2");
+    expect(step(p, "E8-earn-schedule").reason).to.contain("E8-vault-confirm");
+    expect(step(p, "E8-earn-schedule").kind).to.equal("safe");
+    // The MockSafe has no addOwnerWithThreshold: the dry run catches what would revert.
+    expect(step(p, "safe-owner").status).to.equal("waiting");
+    expect(step(p, "safe-owner").reason).to.contain("dry run");
+    expect(step(p, "safe-owner").data).to.equal(
+      new ethers.Interface(["function addOwnerWithThreshold(address,uint256)"]).encodeFunctionData("addOwnerWithThreshold", [s.newOwner.address, 2]));
+    expect(step(p, "safe-owner").to).to.equal(await safe.getAddress());
+
+    // Signers come from the inputs, labelled by their slot.
+    expect(step(p, "E8-vault-propose").signer).to.equal(s.t1.address);
+    expect(step(p, "E8-vault-propose").signerLabel).to.equal("treasury signer 1");
+    expect(step(p, "D4-settings-2").args[0].note).to.equal("CREDIT_SETTINGS_ROLE");
+    expect(step(p, "G1-tier-1").title).to.contain("$100,000.00");
+    expect(step(p, "E8-backstop-propose").stage).to.equal("E9");
+    for (const x of p.steps) expect(x.chainId).to.equal(31337);
+  });
+
+  it("sends each ready step from its signer, round after round, until every step is done", async function () {
+    const sent: string[] = [];
+    let p = await plan();
+    const firstWrite = writeSigningPlan(p, DIR);
+    expect(fs.existsSync(firstWrite.planFile)).to.equal(true);
+    // A real plan for the page's browser check (tools/signing-page/page.check.cjs PLAN=<file>).
+    if (process.env.SIGNING_PLAN_SAMPLE) fs.copyFileSync(firstWrite.planFile, process.env.SIGNING_PLAN_SAMPLE);
+    // The vault acceptance is ready to schedule: its Transaction Builder batch is written.
+    expect(firstWrite.batches.map((b) => path.basename(b))).to.deep.equal(["signing-I3-vault-schedule.json"]);
+    const batch = JSON.parse(fs.readFileSync(firstWrite.batches[0], "utf8"));
+    expect(batch.chainId).to.equal("31337");
+    expect(batch.transactions).to.deep.equal([{ to: step(p, "I3-vault-schedule").to, value: "0", data: step(p, "I3-vault-schedule").data }]);
+    const written: SigningPlan = JSON.parse(fs.readFileSync(firstWrite.planFile, "utf8"));
+    expect(written.stepsSha256).to.equal(createHash("sha256").update(JSON.stringify(written.steps)).digest("hex"));
+
+    let advanced = false;
+    let ownerAdded = false;
+    for (let round = 0; round < 12; round++) {
+      const ready = p.steps.filter((x) => x.status === "ready");
+      if (!ready.length) {
+        if (!ownerAdded) {
+          // The Safe app runs addOwnerWithThreshold; the MockSafe cannot, so its state is written.
+          await safeAddsOwner(s.newOwner.address, 2);
+          ownerAdded = true;
+        } else if (!advanced) {
+          // Both 7-day waits are still running; then they pass.
+          expect(step(p, "E8x-earn-execute").status).to.equal("waiting");
+          expect(step(p, "E8x-earn-execute").reason).to.contain("the Earn timelock's 7 days end at");
+          expect(step(p, "E8x-earn-execute").reason).to.contain("the Collateral Agent's 7 days");
+          expect(step(p, "I3x-vault-execute").reason).to.contain("the vault timelock's 7 days end at");
+          await ethers.provider.send("evm_increaseTime", [7 * DAY + 60]);
+          await ethers.provider.send("evm_mine", []);
+          advanced = true;
+        } else break;
+      }
+      for (const st of ready) {
+        await send(st);
+        sent.push(st.id);
+      }
+      const before = p;
+      p = await plan();
+      // Whatever was sent is now done, and nothing done went back.
+      for (const id of ready.map((x) => x.id)) expect(step(p, id).status, id).to.equal("done");
+      for (const x of before.steps.filter((y) => y.status === "done")) expect(step(p, x.id).status, x.id).to.equal("done");
+    }
+
+    expect(sent).to.include.members(["C1d-1", "C1d-2", "E8-vault-confirm", "E8-vault-approve", "F2-fee-approve", "E8-earn-schedule", "E8x-earn-execute", "I3x-vault-execute"]);
+    // Dependents became ready only after what they wait for: confirms after proposals, F2 after its grant.
+    expect(sent.indexOf("E8-vault-confirm")).to.be.greaterThan(sent.indexOf("E8-vault-propose"));
+    expect(sent.indexOf("F2-fee-approve")).to.be.greaterThan(sent.indexOf("D4-settings-2"));
+    expect(sent.indexOf("E8-earn-schedule")).to.be.greaterThan(sent.indexOf("E8-backstop-approve"));
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(["D4-operator"]);
+
+    // The chain shows each change made.
+    expect(await agent.vault()).to.equal(await bondVault.getAddress());
+    expect(await agent.bondBook()).to.equal(await bondVault.getAddress());
+    expect(await agent.holderDirections()).to.equal(await holderDirections.getAddress());
+    expect(await agent.pledgeModule()).to.equal(await liquidator.getAddress());
+    expect(await bondVault.payoutPool()).to.equal(ethers.ZeroAddress);
+    expect(await bondVault.treasury()).to.equal(s.treasury.address);
+    expect(await term.feeRecipient()).to.equal(s.feeTo.address);
+    expect((await pool.poolTierPrincipal())[0]).to.equal(100000000000n);
+    expect(await clrusd.defaultAdmin()).to.equal(await vaultTimelock.getAddress());
+    expect(await vault.hasRole(ethers.id("RELAYER_ROLE"), s.relayer.address)).to.equal(true);
+    expect(await vault.hasRole(ethers.id("OPERATOR_ROLE"), s.relayer.address)).to.equal(false);
+    expect(await liquidator.hasRole(await liquidator.HOLD_ROLE(), s.h2.address)).to.equal(true);
+
+    // The credit operator, once the owner gives its address.
+    env.CREDIT_OPERATOR_ADDRESS = s.opKey.address;
+    p = await plan();
+    expect(step(p, "D4-operator").status).to.equal("ready");
+    await send(step(p, "D4-operator"));
+    p = await plan();
+    expect(p.steps.every((x) => x.status === "done")).to.equal(true);
+    // Nothing left for a Safe to sign: no batch is written.
+    expect(writeSigningPlan(p, DIR).batches).to.deep.equal([]);
+    expect(fs.readdirSync(path.join(DIR, "safe-batches")).filter((f) => f.startsWith("signing-"))).to.deep.equal([]);
+  });
+
+  it("follows the inputs: a new signer in a slot becomes the step's signer", async function () {
+    const other = random();
+    const p = await buildSigningPlan({ network: "hardhat", env: { ...env, HOLD_SIGNERS: `${s.h1.address},${other}` }, valuationSigners });
+    expect(step(p, "E8-hold-2").signer).to.equal(s.deployer.address);
+    expect(step(p, "E8-hold-2").args[1].value).to.equal(other);
+    expect(step(p, "E8-hold-2").status).to.equal("ready");
+  });
+
+  it("refuses a record with no code, and a network that is not the chain it names", async function () {
+    const real = JSON.parse(fs.readFileSync(path.join(DIR, "CollateralAgent.json"), "utf8"));
+    record("CollateralAgent", random());
+    try {
+      expect(await failure(plan())).to.match(/Refusing: the CollateralAgent record 0x[0-9a-fA-F]{40} has no code/);
+    } finally {
+      fs.writeFileSync(path.join(DIR, "CollateralAgent.json"), JSON.stringify(real));
+    }
+    expect(await failure(buildSigningPlan({ network: "base-sepolia", recordsDir: DIR, env, valuationSigners })))
+      .to.contain("Refusing: base-sepolia must be chain 84532, and this node answers as chain 31337");
+    expect(await failure(buildSigningPlan({ network: "base-sepolia-fork", recordsDir: DIR, env, valuationSigners }))).to.contain("must be chain 84532");
+  });
+});
