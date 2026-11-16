@@ -228,6 +228,8 @@ From the repository root, with `DEPLOYER_PRIVATE_KEY` in the operator's own envi
 
 **The co-signer steps** (marked `SIGN` below) are not script runs: people send them from their own MetaMask accounts, and the Safe signs its part in the Safe app. `npx hardhat run scripts/signing_plan.ts --network $N` (read-only) writes them as `deployments/$N/signing-plan.json`, with each step's signer from the rollout env and `earn-roles.json`, and the Safe's calls as `deployments/$N/safe-batches/signing-*.json` (Transaction Builder). Open the plan in [the signing page](../../tools/signing-page/README.md), sign the ready steps, and re-run the script after each stage: it marks what the chain shows done and opens what waited for it.
 
+Tried on a fresh fork at block 59,676,907 (Nov 16, 2026): the rehearsal up to E7, then every plan step (33: C1d ×3, D4 ×5, E8/E9 ×15, HOLD_ROLE ×2, the Earn and vault schedules and day-7 executes, F2, the Pool Tier ×2, the Safe's `addOwnerWithThreshold`) sent by its impersonated signer with exactly the plan's `to` and `data`, the rehearsal's deploy 25, H1 to I4 and the 7-day wait in between. The gate then gave 0 FAIL, 1 WARN, §4.1 107 PASS, and payout funding GREEN.
+
 ```bash
 set -a; . deploy/config/base-sepolia.rollout.env; set +a
 export RELAYER=0x… VAULT_RELAYERS=0x… SAVINGS_RELAYER_ADDRESS=0x…

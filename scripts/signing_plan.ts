@@ -530,13 +530,15 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       else {
         const why: string[] = [];
         if (!(await tl.isOperationReady(opId))) why.push(`the Earn timelock's 7 days end at ${new Date(Number(await tl.getTimestamp(opId)) * 1000).toISOString()}`);
+        let agentWaitEnds = 0n;
         for (const c of pending) {
           const r = (c as any).record;
           if (!r || same(r.confirmer, ZERO_ADDRESS) || !r.agentApproved) why.push(`the change "${c.what}" is not confirmed and approved yet`);
-          else if (now < BigInt(r.confirmedAt) + 7n * 86400n) why.push(`the Collateral Agent's 7 days for "${c.what}" end at ${new Date((Number(r.confirmedAt) + 7 * 86400) * 1000).toISOString()}`);
+          else if (now < BigInt(r.confirmedAt) + 7n * 86400n && BigInt(r.confirmedAt) + 7n * 86400n > agentWaitEnds) agentWaitEnds = BigInt(r.confirmedAt) + 7n * 86400n;
           const tc = await contract("BondVault", c.target!); // DEFAULT_ADMIN_ROLE is 0 on every AccessControl contract
           if (!(await tc.hasRole(ZERO_HASH, earnTimelock))) why.push(`the Earn timelock does not hold the ${c.targetLabel}'s admin yet (the Earn handover, I4, gives it)`);
         }
+        if (agentWaitEnds) why.push(`the Collateral Agent's 7 days (from the last confirmation) end at ${new Date(Number(agentWaitEnds) * 1000).toISOString()}`);
         xSt = why.length ? waitingFor(`Not yet: ${[...new Set(why)].join("; ")}.`) : { status: "ready" };
       }
     }
