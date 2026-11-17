@@ -1,0 +1,213 @@
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:72:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                        ^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:82:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:98:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:272:84:
+    |
+272 |     function applyPledgePayment(address, address, bool, uint256) external returns (uint256 applied) {
+    |                                                                                    ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:277:79:
+    |
+277 |     function maturityToDebt(address, uint256, uint256) external view returns (uint256 toDebt) {
+    |                                                                               ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:292:76:
+    |
+292 |     function enforcementPermitted(address, uint256) external view returns (bool permitted) {
+    |                                                                            ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:297:64:
+    |
+297 |     function defaultedAmountOf(address) external view returns (uint256 due) {
+    |                                                                ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:302:77:
+    |
+302 |     function applyPoolProceeds(address, uint256, uint256) external returns (uint256 applied) {
+    |                                                                             ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:307:57:
+    |
+307 |     function noticeShortfall(address) external returns (uint256 gap) {
+    |                                                         ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:58:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                          ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:71:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                                       ^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:62:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                              ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:75:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                                           ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:57:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                         ^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:69:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                                     ^^^^^^^^^^^^^^
+
+
+Compiled 271 Solidity files successfully (evm target: paris).
+Signing plan for base-sepolia (chain 84532) at block 59950656, 2026-11-17T10:40:00.000Z. Sends nothing.
+
+READY   C1d-1                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).upgradeToAndCall
+WAITING C1d-2                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).grantRole
+        Waits for C1d-1 first.
+WAITING C1d-3                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).revokeRole
+        Waits for C1d-2 first.
+WAITING D4-settings-1              the deployer -> AccessManager.grantRole
+        Waits for D1 and D2: the old AccessManager is not retired yet (D1), so the AccessManager record is still the old one.
+WAITING D4-settings-2              the deployer -> AccessManager.grantRole
+        Waits for D1 and D2: the old AccessManager is not retired yet (D1), so the AccessManager record is still the old one.
+WAITING D4-attester-1              the deployer -> AccessManager.grantRole
+        Waits for D1 and D2: the old AccessManager is not retired yet (D1), so the AccessManager record is still the old one.
+WAITING D4-attester-2              the deployer -> AccessManager.grantRole
+        Waits for D1 and D2: the old AccessManager is not retired yet (D1), so the AccessManager record is still the old one.
+WAITING D4-operator                the deployer -> AccessManager.grantOperator
+        Waits for D1 and D2: the old AccessManager is not retired yet (D1), so the AccessManager record is still the old one.
+WAITING E8-vault-propose           treasury signer 1 -> CollateralAgent.proposeChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-vault-confirm           treasury signer 2 -> CollateralAgent.confirmChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-vault-approve           the Agent Key -> CollateralAgent.approveChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-bondbook-propose        treasury signer 1 -> CollateralAgent.proposeChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-bondbook-confirm        treasury signer 2 -> CollateralAgent.confirmChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-bondbook-approve        the Agent Key -> CollateralAgent.approveChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-holderdirections-propose treasury signer 1 -> CollateralAgent.proposeChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-holderdirections-confirm treasury signer 2 -> CollateralAgent.confirmChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-holderdirections-approve the Agent Key -> CollateralAgent.approveChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-pledgemodule-propose    treasury signer 1 -> CollateralAgent.proposeChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-pledgemodule-confirm    treasury signer 2 -> CollateralAgent.confirmChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-pledgemodule-approve    the Agent Key -> CollateralAgent.approveChange
+        No CollateralAgent record yet (deploy 26, E1).
+WAITING E8-backstop-propose        treasury signer 1 -> CollateralAgent.proposeChange
+        Waits for D1, which retires the PayoutPool the BondVault names (0xe9d1…7D66), and deploy 22 (E4).
+WAITING E8-backstop-confirm        treasury signer 2 -> CollateralAgent.confirmChange
+        Waits for D1, which retires the PayoutPool the BondVault names (0xe9d1…7D66), and deploy 22 (E4).
+WAITING E8-backstop-approve        the Agent Key -> CollateralAgent.approveChange
+        Waits for D1, which retires the PayoutPool the BondVault names (0xe9d1…7D66), and deploy 22 (E4).
+WAITING E8-hold-1                  the deployer -> Liquidator.grantRole
+        Waits for deploy 22 (E4): the old Liquidator is not retired yet (D1), so the Liquidator record is still the old one.
+WAITING E8-hold-2                  the deployer -> Liquidator.grantRole
+        Waits for deploy 22 (E4): the old Liquidator is not retired yet (D1), so the Liquidator record is still the old one.
+WAITING E8-earn-schedule           [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.scheduleBatch
+        Waits for every change to be ready to propose: No CollateralAgent record yet (deploy 26, E1). Waits for D1, which retires the PayoutPool the BondVault names (0xe9d1…7D66), and deploy 22 (E4).
+WAITING E8x-earn-execute           [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.executeBatch
+        Waits for every change to be ready to propose: No CollateralAgent record yet (deploy 26, E1). Waits for D1, which retires the PayoutPool the BondVault names (0xe9d1…7D66), and deploy 22 (E4).
+WAITING F2-fee-approve             credit settings signer 2 -> TermIssuer.approveFeeRecipient
+        Waits for deploy 20 (D3): the old TermIssuer is not retired yet (D1), so the TermIssuer record is still the old one.
+WAITING G1-tier-1                  valuation signer 1 -> LendingPool (the Yield Pool).postPoolTierPrincipal
+        The LendingPool is not the Yield Pool yet (scripts/upgrade_yield_pool.ts, E2).
+WAITING G1-tier-2                  valuation signer 2 -> LendingPool (the Yield Pool).postPoolTierPrincipal
+        The LendingPool is not the Yield Pool yet (scripts/upgrade_yield_pool.ts, E2).
+READY   safe-owner                 [Safe] the Clear Treasury Safe 0x52e6…cf50 (its owners sign in the Safe app) -> the Safe itself.addOwnerWithThreshold
+WAITING I3-vault-schedule          [Safe] Clear Financial Safe (its owners sign in the Safe app) -> vault timelock.scheduleBatch
+        Waits for the vault handover (I3: VAULT_HANDOVER=1 deploy/vault_timelock_handover.ts), which deploys the vault timelock and begins both transfers.
+WAITING I3x-vault-execute          [Safe] Clear Financial Safe (its owners sign in the Safe app) -> vault timelock.executeBatch
+        Waits for the vault handover (I3: VAULT_HANDOVER=1 deploy/vault_timelock_handover.ts), which deploys the vault timelock and begins both transfers.
+WAITING AS-payer-clfees-approve-1  Assurance signer 1 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-payer-clfees-approve-2  Assurance signer 2 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-payer-treasury-approve-1 Assurance signer 1 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-payer-treasury-approve-2 Assurance signer 2 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-lendingco-approve-1     Assurance signer 1 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-lendingco-approve-2     Assurance signer 2 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-disbursement-approve-1  Assurance signer 1 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-disbursement-approve-2  Assurance signer 2 -> AssurancePool.approveAction
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-exposure-approve-1      Assurance signer 1 -> AssurancePool.approveAction
+        No exposure source yet: the old CollateralRegistry is not retired yet (D1), so the CollateralRegistry record is still the old one.
+WAITING AS-exposure-approve-2      Assurance signer 2 -> AssurancePool.approveAction
+        No exposure source yet: the old CollateralRegistry is not retired yet (D1), so the CollateralRegistry record is still the old one.
+WAITING AS-assurance-schedule      [Safe] Clear Treasury (board) Safe (its owners sign in the Safe app) -> Assurance timelock.scheduleBatch
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING ASx-assurance-execute      [Safe] Clear Treasury (board) Safe (its owners sign in the Safe app) -> Assurance timelock.executeBatch
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-floor-1                 Assurance signer 1 -> AssurancePool.setFloorInputs
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING AS-floor-2                 Assurance signer 2 -> AssurancePool.setFloorInputs
+        Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.
+WAITING TU-funder                  the deployer -> PayoutPool.grantRole
+        Waits for deploy 22 (E4), which deploys the fresh PayoutPool: the old PayoutPool is not retired yet (D1), so the PayoutPool record is still the old one.
+READY   TU-safe-module             [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> CL Operating itself.enableModule
+READY   TU-safe-delegate           [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> AllowanceModule.addDelegate
+WAITING TU-safe-allowance          [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> AllowanceModule.setAllowance
+        Waits for TU-safe-delegate first.
+
+NOTE CL Operating's payout top-up setup (TU-safe-module, TU-safe-delegate, TU-safe-allowance) is one batch: safe-batches/signing-TU-cl-operating-setup.json.
+
+4 ready, 47 waiting, 0 done. steps sha256 3504e2608ae0c805f7509f13ed03f81e10742d2c6612e284ea4ab2ee75fa787b
+
+Wrote deployments/base-sepolia/signing-plan.json and 4 Safe batch(es): deployments/base-sepolia/safe-batches/signing-safe-owner.json, deployments/base-sepolia/safe-batches/signing-TU-safe-module.json, deployments/base-sepolia/safe-batches/signing-TU-safe-delegate.json, deployments/base-sepolia/safe-batches/signing-TU-cl-operating-setup.json.
+Open it in tools/signing-page/index.html (see tools/signing-page/README.md). Re-run this after each stage. Live network: base-sepolia.

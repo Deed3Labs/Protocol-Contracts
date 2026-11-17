@@ -1,0 +1,6 @@
+Configuring AccessManager membership registry
+Deployer: 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+Network: base-sepolia (chainId: 84532n )
+AccessManager: 0x23aF9715761156C24C2de3666587753168f28DBe
+MembershipRegistry: 0xE7009eE28a71d8D593Cb57C48E1e648A9fB44dE8
+Membership registry set on AccessManager: 0xE7009eE28a71d8D593Cb57C48E1e648A9fB44dE8

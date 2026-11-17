@@ -1,0 +1,43 @@
++ RateSchedule deployed to 0xdb73Ae35D0A22A4CA6bc03F263CF006D16a28b97
+  product CA/REVOLVING at 0 bps/month
+  product CA/INCOME at 150 bps/month
+  product CA/BOOST at 250 bps/month
+  product CA/PARTNER at 200 bps/month
+  product CA/CASH at 250 bps/month
+  CFL aggregation sources -> RevolvingIssuer, TermIssuer (aggregation on by default)
+  RevolvingIssuer -> RateSchedule
+  tier INCOME priced as INCOME
+  tier BOOST priced as BOOST
+  credit terms: unsecured cap 2499 USD, Boost 500/750 USD, cure 15 days
+  RevolvingIssuer deposit source -> ESADepositVault
+  RevolvingIssuer card settler -> 0x1b535bbe4bc5f1a4152dfbd1d1215d9435ead4f3
+  RevolvingIssuer card settlement account -> 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  TermIssuer mandate source -> RevolvingIssuer
+  due terms: Secured Minimum 100 bps (at least 1 USD), card 500 USD/member/day, Income Assurance 3 cycles
+  TermIssuer Combined Ceiling -> RevolvingIssuer, graduated schedule of the ceiling product
+  RevolvingIssuer Combined Ceiling -> TermIssuer
+  fee cap: 50 USD up to 2500 USD, 75 USD above
+  RevolvingIssuer carry treasury -> PayoutPool 0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861
+  TermIssuer carry treasury -> PayoutPool 0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861
+! Fee recipient 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50 proposed: a second CREDIT_SETTINGS_ROLE holder approves it with approveFeeRecipient(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, "INITIAL"). Plans with a fee cannot open until then.
+  TermIssuer -> RateSchedule
+! STATE_ATTESTER_KEY unset: no member can open credit until a state code is attested for them.
+  Liquidator trusts RevolvingIssuer
+  TermIssuer reads the Liquidation Hold from the Liquidator
+  Liquidator trusts TermIssuer (12.14: pledged bonds pay defaulted secured plans only)
+  Liquidator Earn sources -> LendingPool, BurnerBond
+  BurnerBond pledge module -> Liquidator (proposed; executeLiquidatorChange after 7 days if bonds exist)
++ PoolShareEnforcer deployed to 0xEB6f2c654d078Df56D78946767d5A43307eb4fa1
+  LendingPool: ENFORCER_ROLE and enforcementDestination -> PoolShareEnforcer; the Liquidator's LIQUIDATOR_ROLE revoked
+  Liquidator pool-share proceeds -> PoolShareEnforcer
+  CollateralRegistry enforcement source -> PoolShareEnforcer (set once)
+  POOL_SHARE valued by LendingPool.previewRedeem (MB-05 §1.3)
+  ESADepositVault state source -> NetworkRegistry
+  RevolvingIssuer workout-plan position (12.18) added at 0%
++ PauseClock deployed to 0x794Acc0c1BD0effaa7B413F60C5B56F60A229959
+  RevolvingIssuer pause clock -> PauseClock (set once)
+  Liquidator pause clock -> PauseClock (set once; TermIssuer reads it through its hold source)
+  CLRUSD membership source -> AccessManager (transfers to members only)
+  CLRUSD intent factory -> SavingsIntentFactory (redeem escrows may receive)
+
+Compliance wiring done.

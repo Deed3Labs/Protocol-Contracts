@@ -1,0 +1,44 @@
+EarnControls and the Yield Pool:
+  EarnControls yieldPool -> LendingPool 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23
+Earn roles:
+  LendingPool DEPLOYER_ROLE -> 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+  LendingPool DEPLOYER_ROLE -> 0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23
+  LendingPool VALUATION_ROLE -> 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+  LendingPool VALUATION_ROLE -> 0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a
+  LendingPool SUSPENSION_ROLE -> 0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23
+  LendingPool CCO_ROLE -> 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+  LendingPool TREASURER_ROLE -> 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+  EarnControls ATTESTER_ROLE -> 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+  EarnControls PAUSE_ROLE -> 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+  EarnControls PAUSE_ROLE -> 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+  EarnControls SUCCESSOR_ROLE -> 0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23
+  EarnControls SUCCESSOR_ROLE -> 0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a
+  EarnControls ELIGIBILITY_ROLE -> 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+  EarnControls ELIGIBILITY_ROLE -> 0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a
+  EarnControls LADDER_ROLE -> 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+  EarnControls LADDER_ROLE -> 0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23
+  EarnControls FUNDING_ROLE -> 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+  EarnControls FUNDING_ROLE -> 0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a
+  EarnControls WIND_DOWN_ROLE -> 0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23
+  EarnControls WIND_DOWN_ROLE -> 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+  EarnControls ROLL_NOTICE_ROLE -> 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+Retired pool roles:
+  LendingPool BORROWER_ROLE revoked from 0x1b535BBE4bC5f1a4152DfBD1D1215d9435EaD4f3
+  LendingPool BORROWER_ROLE revoked from 0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66
+Retired contracts' Earn roles (decision 48):
+PayoutPool legs:
+BondVault payout-pool backstop (decision 48):
+! BondVault.setBackstops(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 0): keep the treasury, clear the retired payout pool 0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66 (decision 48): a co-signed change, then the Earn timelock
+  ! co-signed change: BondVault.setBackstops(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 0): keep the treasury, clear the retired payout pool 0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66 (decision 48)
+      treasury signer 1: CollateralAgent.proposeChange(0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855, 0x0ce40418a644765ffdd08f94a6a92515941b0178ab7f1ad4cf7e3e7d8d0d7caf, 0x50e476bdb9a136118769d4ce896e7bf911a033271e93106a537a0406b7293027)
+      treasury signer 2 (a different one): CollateralAgent.confirmChange(<changeId from ChangeProposed or openChangeFor>)
+      Agent Key: CollateralAgent.approveChange(<changeId>)
+      after 7 days from the confirmation, the Earn timelock (the BondVault's admin) calls 0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855 with 0x1eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf500000000000000000000000000000000000000000000000000000000000000000
+! Pool Tier principal not posted. No Deployment is possible until two different VALUATION_ROLE signers each send to 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23: 0x4f910283000000000000000000000000000000000000000000000000000000174876e800273e44a21ee3907847a8caca6a4ce5d85ec814c9825bb98f2b55f255e99dfb7f
+
+The BondVault backstop change (never sent by this script):
+  ! the Earn timelock (Clear Lending Co. Safe): BondVault.setBackstops(0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, 0): keep the treasury, clear the retired payout pool 0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66 (decision 48)
+      to 0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855
+      data 0x1eac95d900000000000000000000000052e6102b7c22eec7a68b11dd71fac7d6d9aecf500000000000000000000000000000000000000000000000000000000000000000
+
+Earn wiring done.

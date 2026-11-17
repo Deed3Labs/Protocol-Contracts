@@ -1,23 +1,80 @@
 {
-  "address": "0xe467d87756FDF9645D751485CDB72A1E14683721",
+  "address": "0x1b1695353f14E889906237D9b9C386eD0393da57",
   "abi": [
     {
-      "type": "error",
-      "name": "InvalidCycleLength",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "NotInitialized",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "RateTooHigh",
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
       "inputs": [
         {
+          "type": "address",
+          "name": "extension_"
+        },
+        {
+          "type": "address",
+          "name": "origination_"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CreditIssuerDailyCapExceeded",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "cap"
+        },
+        {
           "type": "uint256",
-          "name": "ratePerCycle"
+          "name": "requested"
+        },
+        {
+          "type": "uint256",
+          "name": "remaining"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CreditIssuerMissingRole",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CreditIssuerNoPeriod",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CreditIssuerPeriodMayOnlyExtend",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerBadSignature",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
         }
       ]
     },
@@ -33,13 +90,8 @@
     },
     {
       "type": "error",
-      "name": "TermIssuerCollectionUsed",
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": "ref"
-        }
-      ]
+      "name": "TermIssuerCombinedSet",
+      "inputs": []
     },
     {
       "type": "error",
@@ -61,16 +113,36 @@
     },
     {
       "type": "error",
+      "name": "TermIssuerExtensionMismatch",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerFeeRecipientNotAllowed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "recipient"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerHoldSourceSet",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "TermIssuerInvalidSchedule",
       "inputs": []
     },
     {
       "type": "error",
-      "name": "TermIssuerMandateOff",
+      "name": "TermIssuerMerchantNotActive",
       "inputs": [
         {
           "type": "address",
-          "name": "member"
+          "name": "merchant"
         }
       ]
     },
@@ -81,13 +153,13 @@
     },
     {
       "type": "error",
-      "name": "TermIssuerNotCollector",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "caller"
-        }
-      ]
+      "name": "TermIssuerNoFeeRecipient",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerNoProposal",
+      "inputs": []
     },
     {
       "type": "error",
@@ -96,6 +168,16 @@
         {
           "type": "address",
           "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerNotPastDue",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId"
         }
       ]
     },
@@ -121,6 +203,16 @@
     },
     {
       "type": "error",
+      "name": "TermIssuerNotSecured",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "TermIssuerNothingToPay",
       "inputs": [
         {
@@ -131,11 +223,108 @@
     },
     {
       "type": "error",
+      "name": "TermIssuerOnHold",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "TermIssuerPlanClosed",
       "inputs": [
         {
           "type": "uint256",
           "name": "planId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerProductNotEnabled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerRateScheduleSet",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerRefundTermsMismatch",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "address",
+          "name": "planMerchant"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerRefundTermsUnknown",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerResplitNeedsSignature",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerResplitShortens",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerSameSigner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerSignatureExpired",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "deadline"
         }
       ]
     },
@@ -185,6 +374,42 @@
     },
     {
       "type": "error",
+      "name": "TermIssuerTermTooShort",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "term"
+        },
+        {
+          "type": "uint256",
+          "name": "minimum"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerTermsMismatch",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "signedRate"
+        },
+        {
+          "type": "uint256",
+          "name": "rate"
+        },
+        {
+          "type": "uint256",
+          "name": "signedPayout"
+        },
+        {
+          "type": "uint256",
+          "name": "payout"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "TermIssuerUnknownPlan",
       "inputs": [
         {
@@ -192,6 +417,11 @@
           "name": "planId"
         }
       ]
+    },
+    {
+      "type": "error",
+      "name": "TermIssuerWalletCollectionRetired",
+      "inputs": []
     },
     {
       "type": "event",
@@ -252,6 +482,23 @@
         {
           "type": "uint256",
           "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CombinedCeilingSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "revolving",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "product",
           "indexed": false
         }
       ]
@@ -329,11 +576,104 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "DailyCapUpdated",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "cap",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "FeeRecipientChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previous",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "recipient",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "reasonCode",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "FeeRecipientProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "recipient",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "reasonCode",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "FeeRecipientUpdated",
       "inputs": [
         {
           "type": "address",
           "name": "recipient",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "FeeTermsUpdated",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "maxFeeSmall",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "maxFeeLarge",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "largeFrom",
           "indexed": false
         }
       ]
@@ -351,6 +691,18 @@
         {
           "type": "uint256",
           "name": "graceLength",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldSourceSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source",
           "indexed": false
         }
       ]
@@ -428,12 +780,73 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "PlanCarryTrimmed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "PlanClosed",
       "inputs": [
         {
           "type": "uint256",
           "name": "planId",
           "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PlanNoticeProposed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PlanNoticeRecorded",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "noticeAt",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "pastDue",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "defaultFrom",
+          "indexed": false
         }
       ]
     },
@@ -453,18 +866,38 @@
           "indexed": true
         },
         {
+          "type": "address",
+          "name": "merchant",
+          "indexed": true
+        },
+        {
           "type": "uint256",
           "name": "principal",
           "indexed": false
         },
         {
-          "type": "uint256",
-          "name": "ratePerCycle",
+          "type": "uint32",
+          "name": "split",
           "indexed": false
         },
         {
-          "type": "uint32",
-          "name": "installments",
+          "type": "uint256",
+          "name": "rateBps",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "scheduleHash",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "totalCarry",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "disclosureHash",
           "indexed": false
         }
       ]
@@ -533,6 +966,45 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "PlanRepriced",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "rateBps",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "free",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PlanSecured",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "PlanSplitChanged",
       "inputs": [
         {
@@ -560,6 +1032,33 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "PlanTermsSigned",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "disclosureHash",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "nonce",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "ResidualCarryPaid",
       "inputs": [
         {
@@ -576,6 +1075,23 @@
           "type": "uint256",
           "name": "amount",
           "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SecuredPlanDefaulted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
         }
       ]
     },
@@ -673,6 +1189,20 @@
     },
     {
       "type": "function",
+      "name": "CLEAR_CASH_SPLIT",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "DEFAULT_AFTER_INSTALLMENTS",
       "constant": true,
       "stateMutability": "view",
@@ -695,6 +1225,34 @@
       "outputs": [
         {
           "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "PLAN_TERMS_TYPEHASH",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "RATE_SCALE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
           "name": ""
         }
       ]
@@ -751,6 +1309,36 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "approveFeeRecipient",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "approvePlanNotice",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -811,6 +1399,25 @@
     },
     {
       "type": "function",
+      "name": "carryOutstandingOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "carryTreasury",
       "constant": true,
       "stateMutability": "view",
@@ -825,57 +1432,128 @@
     },
     {
       "type": "function",
+      "name": "cflPrincipalOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "total"
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "closePlanForRefund",
       "constant": false,
       "payable": false,
       "inputs": [
         {
           "type": "uint256",
-          "name": "planId"
+          "name": ""
         },
         {
           "type": "uint256",
-          "name": "amount"
+          "name": ""
         },
         {
           "type": "address",
-          "name": "merchant"
+          "name": ""
         },
         {
           "type": "uint256",
-          "name": "payout"
+          "name": ""
         }
       ],
       "outputs": [
         {
           "type": "uint256",
-          "name": "refunded"
+          "name": ""
         }
       ]
     },
     {
       "type": "function",
       "name": "collectForMember",
-      "constant": false,
+      "constant": true,
+      "stateMutability": "pure",
       "payable": false,
       "inputs": [
         {
           "type": "bytes32",
-          "name": "ref"
+          "name": ""
         },
         {
           "type": "address",
-          "name": "member"
+          "name": ""
         },
         {
           "type": "uint256",
-          "name": "amount"
+          "name": ""
         }
       ],
       "outputs": [
         {
           "type": "uint256",
-          "name": "collected"
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "combinedPlanCarryOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": "ids"
+        },
+        {
+          "type": "uint256[]",
+          "name": "monthly"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "combinedProduct",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "combinedRevolving",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
         }
       ]
     },
@@ -953,6 +1631,19 @@
     },
     {
       "type": "function",
+      "name": "declarePlanDefault",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "defaultableAt",
       "constant": true,
       "stateMutability": "view",
@@ -1010,6 +1701,34 @@
     },
     {
       "type": "function",
+      "name": "domainSeparator",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "extension",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "feeRecipient",
       "constant": true,
       "stateMutability": "view",
@@ -1019,6 +1738,62 @@
         {
           "type": "address",
           "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "feeRecipientProposalOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "address",
+              "name": "recipient"
+            },
+            {
+              "type": "address",
+              "name": "proposer"
+            },
+            {
+              "type": "bytes32",
+              "name": "reasonCode"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "feeTermsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint64",
+              "name": "maxFeeSmall"
+            },
+            {
+              "type": "uint64",
+              "name": "maxFeeLarge"
+            },
+            {
+              "type": "uint64",
+              "name": "largeFrom"
+            }
+          ]
         }
       ]
     },
@@ -1075,6 +1850,39 @@
       "outputs": [
         {
           "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "hasDefaultedOnCurrentLine",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdSource",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
           "name": ""
         }
       ]
@@ -1230,6 +2038,19 @@
     },
     {
       "type": "function",
+      "name": "indexOpenPlans",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "initialize",
       "constant": false,
       "payable": false,
@@ -1352,6 +2173,29 @@
     },
     {
       "type": "function",
+      "name": "lockedAllocationOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "allocation"
+        },
+        {
+          "type": "uint256",
+          "name": "drawn"
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "mandateCollectionOf",
       "constant": true,
       "stateMutability": "view",
@@ -1392,6 +2236,19 @@
         {
           "type": "uint256",
           "name": "planId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "materialiseMember",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
         }
       ],
       "outputs": []
@@ -1468,42 +2325,124 @@
       "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "member"
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "address",
+              "name": "member"
+            },
+            {
+              "type": "address",
+              "name": "merchant"
+            },
+            {
+              "type": "bytes32",
+              "name": "productId"
+            },
+            {
+              "type": "uint256",
+              "name": "purchase"
+            },
+            {
+              "type": "uint256",
+              "name": "payout"
+            },
+            {
+              "type": "uint256",
+              "name": "ratePerCycle"
+            },
+            {
+              "type": "uint64",
+              "name": "cycleLength"
+            },
+            {
+              "type": "uint32",
+              "name": "installments"
+            },
+            {
+              "type": "uint64",
+              "name": "installmentLength"
+            },
+            {
+              "type": "bytes32",
+              "name": "disclosureHash"
+            },
+            {
+              "type": "uint256",
+              "name": "deadline"
+            }
+          ]
         },
         {
-          "type": "address",
-          "name": "merchant"
-        },
-        {
-          "type": "uint256",
-          "name": "purchase"
-        },
-        {
-          "type": "uint256",
-          "name": "payout"
-        },
-        {
-          "type": "uint256",
-          "name": "ratePerCycle"
-        },
-        {
-          "type": "uint64",
-          "name": "cycleLength"
-        },
-        {
-          "type": "uint32",
-          "name": "installments"
-        },
-        {
-          "type": "uint64",
-          "name": "installmentLength"
+          "type": "bytes",
+          "name": ""
         }
       ],
       "outputs": [
         {
           "type": "uint256",
-          "name": "planId"
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "openPlansOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "openPrincipalOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "product"
+        },
+        {
+          "type": "uint256",
+          "name": "skip"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "total"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "origination",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
         }
       ]
     },
@@ -1592,11 +2531,11 @@
       "inputs": [
         {
           "type": "address",
-          "name": "member"
+          "name": ""
         },
         {
           "type": "uint256",
-          "name": "amount"
+          "name": ""
         }
       ],
       "outputs": []
@@ -1706,6 +2645,90 @@
     },
     {
       "type": "function",
+      "name": "planNonces",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "planTermsDigest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "tuple",
+          "name": "terms",
+          "components": [
+            {
+              "type": "address",
+              "name": "member"
+            },
+            {
+              "type": "address",
+              "name": "merchant"
+            },
+            {
+              "type": "bytes32",
+              "name": "productId"
+            },
+            {
+              "type": "uint256",
+              "name": "purchase"
+            },
+            {
+              "type": "uint256",
+              "name": "payout"
+            },
+            {
+              "type": "uint256",
+              "name": "ratePerCycle"
+            },
+            {
+              "type": "uint64",
+              "name": "cycleLength"
+            },
+            {
+              "type": "uint32",
+              "name": "installments"
+            },
+            {
+              "type": "uint64",
+              "name": "installmentLength"
+            },
+            {
+              "type": "bytes32",
+              "name": "disclosureHash"
+            },
+            {
+              "type": "uint256",
+              "name": "deadline"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "plansOf",
       "constant": true,
       "stateMutability": "view",
@@ -1725,6 +2748,97 @@
     },
     {
       "type": "function",
+      "name": "pricingOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "bytes32",
+              "name": "state"
+            },
+            {
+              "type": "bytes32",
+              "name": "product"
+            },
+            {
+              "type": "address",
+              "name": "merchant"
+            },
+            {
+              "type": "uint32",
+              "name": "subsidyBps"
+            },
+            {
+              "type": "bool",
+              "name": "free"
+            },
+            {
+              "type": "bool",
+              "name": "priced"
+            },
+            {
+              "type": "uint64",
+              "name": "accruedAt"
+            },
+            {
+              "type": "uint128",
+              "name": "payout"
+            },
+            {
+              "type": "bool",
+              "name": "refundTermsRecorded"
+            },
+            {
+              "type": "address",
+              "name": "feeTo"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proposeFeeRecipient",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "proposePlanNotice",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "proxiableUUID",
       "constant": true,
       "stateMutability": "view",
@@ -1733,6 +2847,20 @@
       "outputs": [
         {
           "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "rateSchedule",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
           "name": ""
         }
       ]
@@ -1783,7 +2911,7 @@
       "inputs": [
         {
           "type": "address",
-          "name": "member"
+          "name": ""
         }
       ],
       "outputs": []
@@ -1804,17 +2932,17 @@
       "inputs": [
         {
           "type": "address",
-          "name": "member"
+          "name": ""
         },
         {
           "type": "uint256",
-          "name": "amount"
+          "name": ""
         }
       ],
       "outputs": [
         {
           "type": "uint256",
-          "name": "pay"
+          "name": ""
         }
       ]
     },
@@ -1836,6 +2964,35 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "resplitWithSignature",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint32",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes",
+          "name": ""
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -1889,26 +3046,128 @@
     },
     {
       "type": "function",
-      "name": "setCarryTreasury",
+      "name": "securePlanWithSignature",
       "constant": false,
       "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "treasury"
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "bytes",
+          "name": ""
         }
       ],
       "outputs": []
     },
     {
       "type": "function",
-      "name": "setFeeRecipient",
+      "name": "securedPlans",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": "secured"
+        },
+        {
+          "type": "address",
+          "name": "noticeProposer"
+        },
+        {
+          "type": "uint64",
+          "name": "noticeAt"
+        },
+        {
+          "type": "uint64",
+          "name": "defaultedAt"
+        },
+        {
+          "type": "uint128",
+          "name": "noticeDue"
+        },
+        {
+          "type": "uint256",
+          "name": "noticeClock"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "setCarryTreasury",
       "constant": false,
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "recipient"
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setCombinedCeiling",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setDailyCaps",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setFeeTerms",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        },
+        {
+          "type": "uint64",
+          "name": ""
+        },
+        {
+          "type": "uint64",
+          "name": ""
         }
       ],
       "outputs": []
@@ -1932,13 +3191,26 @@
     },
     {
       "type": "function",
+      "name": "setHoldSource",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "setMandateSource",
       "constant": false,
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "source"
+          "name": ""
         }
       ],
       "outputs": []
@@ -1962,17 +3234,30 @@
     },
     {
       "type": "function",
+      "name": "setRateSchedule",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "setSplit",
       "constant": false,
       "payable": false,
       "inputs": [
         {
           "type": "uint256",
-          "name": "planId"
+          "name": ""
         },
         {
           "type": "uint32",
-          "name": "installments"
+          "name": ""
         }
       ],
       "outputs": []
@@ -1985,11 +3270,11 @@
       "inputs": [
         {
           "type": "address",
-          "name": "member"
+          "name": ""
         },
         {
           "type": "uint256",
-          "name": "limit"
+          "name": ""
         }
       ],
       "outputs": []

@@ -1,0 +1,4 @@
+LendingPool 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23: the new implementation validates as an upgrade of what the manifest records
+  initializeYieldPool(0xe4a7eF8BaF868264F9C4aF0b95342b683764cD97, 0xfAFf1081F77bF528bA21eea590f251a755bCdf65, 1794787200)
+
+Dry run: validated, nothing deployed or sent. YIELD_POOL_UPGRADE=1 to carry it out.

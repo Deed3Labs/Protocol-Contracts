@@ -1,0 +1,77 @@
+Signing plan for base-sepolia (chain 84532) at block 60137297, 2026-11-17T21:02:08.000Z. Sends nothing.
+
+DONE    C1d-1                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).upgradeToAndCall
+DONE    C1d-2                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).grantRole
+DONE    C1d-3                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).revokeRole
+DONE    D4-settings-1              the deployer -> AccessManager.grantRole
+DONE    D4-settings-2              the deployer -> AccessManager.grantRole
+DONE    D4-attester-1              the deployer -> AccessManager.grantRole
+DONE    D4-attester-2              the deployer -> AccessManager.grantRole
+DONE    D4-operator                the deployer -> AccessManager.grantOperator
+DONE    E8-vault-propose           treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-vault-confirm           treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-vault-approve           the Agent Key -> CollateralAgent.approveChange
+DONE    E8-bondbook-propose        treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-bondbook-confirm        treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-bondbook-approve        the Agent Key -> CollateralAgent.approveChange
+DONE    E8-holderdirections-propose treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-holderdirections-confirm treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-holderdirections-approve the Agent Key -> CollateralAgent.approveChange
+DONE    E8-pledgemodule-propose    treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-pledgemodule-confirm    treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-pledgemodule-approve    the Agent Key -> CollateralAgent.approveChange
+DONE    E8-backstop-propose        treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-backstop-confirm        treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-backstop-approve        the Agent Key -> CollateralAgent.approveChange
+DONE    E8-hold-1                  the deployer -> Liquidator.grantRole
+DONE    E8-hold-2                  the deployer -> Liquidator.grantRole
+DONE    E8-earn-schedule           [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.scheduleBatch
+WAITING E8x-earn-execute           [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.executeBatch
+        Not yet: the Earn timelock's 7 days end at 2026-11-24T18:35:48.000Z; the Collateral Agent's 7 days (from the last confirmation) end at 2026-11-24T18:25:33.000Z.
+DONE    F2-fee-approve             credit settings signer 2 -> TermIssuer.approveFeeRecipient
+DONE    G1-tier-1                  valuation signer 1 -> LendingPool (the Yield Pool).postPoolTierPrincipal
+        Posted: 100000000000 (both signers).
+DONE    G1-tier-2                  valuation signer 2 -> LendingPool (the Yield Pool).postPoolTierPrincipal
+        Posted: 100000000000 (both signers).
+DONE    safe-owner                 [Safe] the Clear Treasury Safe 0x52e6…cf50 (its owners sign in the Safe app) -> the Safe itself.changeThreshold
+        2 of 4.
+DONE    I3-vault-schedule          [Safe] Clear Financial Safe (its owners sign in the Safe app) -> vault timelock.scheduleBatch
+WAITING I3x-vault-execute          [Safe] Clear Financial Safe (its owners sign in the Safe app) -> vault timelock.executeBatch
+        Not yet: the vault timelock's 7 days end at 2026-11-24T21:00:10.000Z; CLRUSD's admin delay ends at 2026-11-19T20:43:36.000Z.
+DONE    AS-payer-clfees-approve-1  Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-payer-clfees-approve-2  Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-payer-treasury-approve-1 Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-payer-treasury-approve-2 Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-lendingco-approve-1     Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-lendingco-approve-2     Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-disbursement-approve-1  Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-disbursement-approve-2  Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-exposure-approve-1      Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-exposure-approve-2      Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-assurance-schedule      [Safe] Clear Treasury (board) Safe (its owners sign in the Safe app) -> Assurance timelock.scheduleBatch
+WAITING ASx-assurance-execute      [Safe] Clear Treasury (board) Safe (its owners sign in the Safe app) -> Assurance timelock.executeBatch
+        Not yet: the Assurance timelock's 7 days end at 2026-11-24T18:55:35.000Z.
+DONE    AS-floor-1                 Assurance signer 1 -> AssurancePool.setFloorInputs
+        Posted: coverage cap $10,000.00 (both signers).
+DONE    AS-floor-2                 Assurance signer 2 -> AssurancePool.setFloorInputs
+        Posted: coverage cap $10,000.00 (both signers).
+DONE    TU-funder                  the deployer -> PayoutPool.grantRole
+DONE    TU-safe-module             [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> CL Operating itself.enableModule
+DONE    TU-safe-delegate           [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> AllowanceModule.addDelegate
+DONE    TU-safe-allowance          [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> AllowanceModule.setAllowance
+        $5,000.00 every 7 days; $0.00 spent this period.
+
+0 ready, 3 waiting, 48 done. steps sha256 70ef78b04232ea2cee83499548a6b6b8d93b8224bbfd047201bab8e7b9b36b43
+
+Wrote deployments/base-sepolia/signing-plan.json.
+Open it in tools/signing-page/index.html (see tools/signing-page/README.md). Re-run this after each stage. Live network: base-sepolia.

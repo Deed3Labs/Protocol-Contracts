@@ -1,1871 +1,2594 @@
 {
-  "address": "0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556",
+  "address": "0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A",
   "abi": [
     {
-      "type": "constructor",
-      "stateMutability": "undefined",
-      "payable": false,
-      "inputs": []
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "ApprovalForAll",
       "inputs": [
         {
-          "type": "address",
+          "internalType": "uint256",
+          "name": "yieldBps",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "daysLeft",
+          "type": "uint256"
+        }
+      ],
+      "name": "AccretionOutOfRange",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BurnerBondAlreadyIssued",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "BurnerBondBadNotice",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BurnerBondBadQuote",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BurnerBondBadSignature",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "BurnerBondBuybackRefused",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BurnerBondInvalidAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "readyAt",
+          "type": "uint256"
+        }
+      ],
+      "name": "BurnerBondLiquidatorNotReady",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BurnerBondModuleMismatch",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BurnerBondNoOperators",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "caller",
+          "type": "address"
+        }
+      ],
+      "name": "BurnerBondNotAuthorized",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "BurnerBondNotPledgePayable",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "BurnerBondNotSettleable",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BurnerBondNotWindingDown",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "BurnerBondNoticeClosed",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "BurnerBondPledged",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        }
+      ],
+      "name": "BurnerBondTransferNotAllowed",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "BurnerBondUnknown",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BurnerBondWindDown",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
           "name": "account",
-          "indexed": true
+          "type": "address"
         },
         {
-          "type": "address",
+          "indexed": true,
+          "internalType": "address",
           "name": "operator",
-          "indexed": true
+          "type": "address"
         },
         {
-          "type": "bool",
+          "indexed": false,
+          "internalType": "bool",
           "name": "approved",
-          "indexed": false
+          "type": "bool"
         }
-      ]
+      ],
+      "name": "ApprovalForAll",
+      "type": "event"
     },
     {
-      "type": "event",
       "anonymous": false,
-      "name": "AutoRollOptOutSet",
       "inputs": [
         {
-          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256",
           "name": "bondId",
-          "indexed": true
+          "type": "uint256"
         },
         {
-          "type": "bool",
-          "name": "optedOut",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "BondMinted",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "creator",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "faceValue",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "maturityDate",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "discountPercentage",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "purchasePrice",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "BondRedeemed",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "redeemer",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "faceValue",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "BondRolled",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "oldBondId",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "newBondId",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "rolledValue",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "BondSeized",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "from",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "to",
-          "indexed": true
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "BondTraitUpdated",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId",
-          "indexed": true
-        },
-        {
-          "type": "bytes32",
-          "name": "traitKey",
-          "indexed": true
-        },
-        {
-          "type": "bytes",
-          "name": "traitValue",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "DiscountCurveUpdated",
-      "inputs": [
-        {
-          "type": "uint8",
-          "name": "curveType",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "maxDiscount",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "maxMaturity",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "curveParameter",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "DiscountParametersUpdated",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "maxDiscount",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "maxMaturity",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "Initialized",
-      "inputs": [
-        {
-          "type": "uint8",
-          "name": "version",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "LiquidatorUpdated",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "liquidator",
-          "indexed": true
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "OwnershipTransferred",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "previousOwner",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "newOwner",
-          "indexed": true
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "RedeemedEarly",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId",
-          "indexed": true
-        },
-        {
-          "type": "address",
+          "indexed": true,
+          "internalType": "address",
           "name": "holder",
-          "indexed": true
+          "type": "address"
         },
         {
-          "type": "uint256",
-          "name": "presentValue",
-          "indexed": false
+          "indexed": true,
+          "internalType": "address",
+          "name": "buyer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "price",
+          "type": "uint256"
         }
-      ]
+      ],
+      "name": "BondBoughtBack",
+      "type": "event"
     },
     {
-      "type": "event",
       "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "holder",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "faceValue",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "maturityDate",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint32",
+          "name": "termDays",
+          "type": "uint32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint32",
+          "name": "yieldBps",
+          "type": "uint32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "purchasePrice",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "exemptionCode",
+          "type": "bytes32"
+        }
+      ],
+      "name": "BondMinted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "holder",
+          "type": "address"
+        }
+      ],
+      "name": "BondPaidThroughDistributions",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "holder",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "BondRedeemed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "oldBondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "newBondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "holder",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newFaceValue",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint32",
+          "name": "termDays",
+          "type": "uint32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint32",
+          "name": "yieldBps",
+          "type": "uint32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "remainder",
+          "type": "uint256"
+        }
+      ],
+      "name": "BondRolled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "traitKey",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes",
+          "name": "traitValue",
+          "type": "bytes"
+        }
+      ],
+      "name": "BondTraitUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [],
+      "name": "EIP712DomainChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "version",
+          "type": "uint8"
+        }
+      ],
+      "name": "Initialized",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "liquidator",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "readyAt",
+          "type": "uint256"
+        }
+      ],
+      "name": "LiquidatorProposed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "liquidator",
+          "type": "address"
+        }
+      ],
+      "name": "LiquidatorUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "OwnershipTransferred",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "holder",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "toDebt",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "toHolder",
+          "type": "uint256"
+        }
+      ],
+      "name": "PledgePaid",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "toDebt",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "toHolder",
+          "type": "uint256"
+        }
+      ],
+      "name": "PledgedMaturitySplit",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "at",
+          "type": "uint64"
+        }
+      ],
+      "name": "RedeemAllStarted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "holder",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "toDebt",
+          "type": "uint256"
+        }
+      ],
+      "name": "RedeemedUnderWindDown",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "holder",
+          "type": "address"
+        }
+      ],
+      "name": "RollConfirmationWithdrawn",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "holder",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "noticeHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "RollConfirmed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "noticeHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "deadline",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint32",
+          "name": "termDays",
+          "type": "uint32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint32",
+          "name": "yieldBps",
+          "type": "uint32"
+        }
+      ],
+      "name": "RollNoticePosted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "bondVault",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "encumbranceSource",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "kind",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "controls",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "agent",
+          "type": "address"
+        }
+      ],
+      "name": "SourcesUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256[]",
+          "name": "ids",
+          "type": "uint256[]"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256[]",
+          "name": "values",
+          "type": "uint256[]"
+        }
+      ],
       "name": "TransferBatch",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "operator",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "from",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "to",
-          "indexed": true
-        },
-        {
-          "type": "uint256[]",
-          "name": "ids"
-        },
-        {
-          "type": "uint256[]",
-          "name": "values"
-        }
-      ]
+      "type": "event"
     },
     {
-      "type": "event",
       "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
+        }
+      ],
       "name": "TransferSingle",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "operator",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "from",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "to",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "id",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "value",
-          "indexed": false
-        }
-      ]
+      "type": "event"
     },
     {
-      "type": "event",
       "anonymous": false,
-      "name": "URI",
       "inputs": [
         {
-          "type": "string",
+          "indexed": false,
+          "internalType": "string",
           "name": "value",
-          "indexed": false
+          "type": "string"
         },
         {
-          "type": "uint256",
+          "indexed": true,
+          "internalType": "uint256",
           "name": "id",
-          "indexed": true
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "assurancePool",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "autoRollOptedOut",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": ""
+          "type": "uint256"
         }
       ],
-      "outputs": [
-        {
-          "type": "bool",
-          "name": ""
-        }
-      ]
+      "name": "URI",
+      "type": "event"
     },
     {
-      "type": "function",
-      "name": "balanceOf",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
+      "anonymous": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "account"
+          "indexed": false,
+          "internalType": "bool",
+          "name": "on",
+          "type": "bool"
         },
         {
-          "type": "uint256",
-          "name": "id"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "balanceOfBatch",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address[]",
-          "name": "accounts"
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "reasonHash",
+          "type": "bytes32"
         },
         {
-          "type": "uint256[]",
-          "name": "ids"
+          "indexed": false,
+          "internalType": "address",
+          "name": "proposer",
+          "type": "address"
         }
       ],
-      "outputs": [
-        {
-          "type": "uint256[]",
-          "name": ""
-        }
-      ]
+      "name": "WindDownProposed",
+      "type": "event"
     },
     {
-      "type": "function",
-      "name": "batchRedeemBonds",
-      "constant": false,
-      "payable": false,
+      "anonymous": false,
       "inputs": [
         {
-          "type": "uint256[]",
-          "name": "bondIds"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "bondCreator",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "bondIdsByCreator",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": ""
+          "indexed": false,
+          "internalType": "bool",
+          "name": "on",
+          "type": "bool"
         },
         {
-          "type": "uint256",
-          "name": ""
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "bondVault",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "bonds",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": "faceValue"
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "reasonHash",
+          "type": "bytes32"
         },
         {
-          "type": "uint256",
-          "name": "maturityDate"
+          "indexed": false,
+          "internalType": "address",
+          "name": "proposer",
+          "type": "address"
         },
         {
-          "type": "uint256",
-          "name": "discountPercentage"
-        },
-        {
-          "type": "uint256",
-          "name": "purchasePrice"
-        },
-        {
-          "type": "bool",
-          "name": "isRedeemed"
-        },
-        {
-          "type": "address",
-          "name": "creator"
-        },
-        {
-          "type": "uint64",
-          "name": "issuedAt"
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "bondsCreatedBy",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": ""
+          "indexed": false,
+          "internalType": "address",
+          "name": "approver",
+          "type": "address"
         }
       ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
+      "name": "WindDownSet",
+      "type": "event"
     },
     {
-      "type": "function",
-      "name": "burnerBondDeposit",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
       "inputs": [],
+      "name": "BUYBACK_TYPEHASH",
       "outputs": [
         {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "calculateDiscount",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "maturityDate"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "calculateDiscountWithCurve",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "maturityDate"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "calculatePurchasePrice",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "faceValue"
-        },
-        {
-          "type": "uint256",
-          "name": "maturityDate"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "collateralKind",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "bytes32",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "collectionDescription",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "string",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "collectionName",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "string",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "collectionSymbol",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "string",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "contractURI",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "string",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "curveParameter",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "curveType",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "uint8",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "description",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "string",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "discountCurveEngine",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "emergencyRecover",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "token"
-        },
-        {
-          "type": "uint256",
-          "name": "amount"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "encumbranceSource",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "factory",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "getBondIdsByCreator",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "creator"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256[]",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "getBondInfo",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "tuple",
+          "internalType": "bytes32",
           "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "CONFIRM_ROLL_TYPEHASH",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "NOTICE_LEAD",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "QUOTE_LIFETIME",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "QUOTE_TYPEHASH",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROLL_NOTICE_ROLE",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "WIND_DOWN_DELAY",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "WIND_DOWN_ROLE",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "accretedValue",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "agent",
+      "outputs": [
+        {
+          "internalType": "contract ICollateralAgent",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        }
+      ],
+      "name": "balanceOf",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address[]",
+          "name": "accounts",
+          "type": "address[]"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "ids",
+          "type": "uint256[]"
+        }
+      ],
+      "name": "balanceOfBatch",
+      "outputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "bondVault",
+      "outputs": [
+        {
+          "internalType": "contract IBondVaultSettlement",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "cent",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "collateralKind",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "collectionDescription",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "collectionName",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "collectionSymbol",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "contractURI",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "controls",
+      "outputs": [
+        {
+          "internalType": "contract IEarnControls",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "description",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "eip712Domain",
+      "outputs": [
+        {
+          "internalType": "bytes1",
+          "name": "fields",
+          "type": "bytes1"
+        },
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "chainId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "verifyingContract",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "salt",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "extensions",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "name": "emergencyRecover",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "encumbranceSource",
+      "outputs": [
+        {
+          "internalType": "contract IBondEncumbrance",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "executeLiquidatorChange",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "factory",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "holder",
+          "type": "address"
+        }
+      ],
+      "name": "getBondIdsByCreator",
+      "outputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "",
+          "type": "uint256[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getBondInfo",
+      "outputs": [
+        {
           "components": [
             {
-              "type": "uint256",
-              "name": "faceValue"
+              "internalType": "uint256",
+              "name": "faceValue",
+              "type": "uint256"
             },
             {
-              "type": "uint256",
-              "name": "maturityDate"
+              "internalType": "uint256",
+              "name": "purchasePrice",
+              "type": "uint256"
             },
             {
-              "type": "uint256",
-              "name": "discountPercentage"
+              "internalType": "uint256",
+              "name": "costBasis",
+              "type": "uint256"
             },
             {
-              "type": "uint256",
-              "name": "purchasePrice"
+              "internalType": "uint256",
+              "name": "paid",
+              "type": "uint256"
             },
             {
-              "type": "bool",
-              "name": "isRedeemed"
+              "internalType": "uint64",
+              "name": "issuedAt",
+              "type": "uint64"
             },
             {
-              "type": "address",
-              "name": "creator"
+              "internalType": "uint64",
+              "name": "maturityDate",
+              "type": "uint64"
             },
             {
-              "type": "uint64",
-              "name": "issuedAt"
+              "internalType": "uint32",
+              "name": "termDays",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint32",
+              "name": "yieldBps",
+              "type": "uint32"
+            },
+            {
+              "internalType": "bool",
+              "name": "isRedeemed",
+              "type": "bool"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "exemptionCode",
+              "type": "bytes32"
             }
-          ]
+          ],
+          "internalType": "struct BurnerBondBase.BondInfo",
+          "name": "",
+          "type": "tuple"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
       "name": "getBondStatistics",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "uint256",
-          "name": "totalMinted"
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         },
         {
-          "type": "uint256",
-          "name": "totalDeposited"
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         },
         {
-          "type": "uint256",
-          "name": "totalRedeemed"
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
       "name": "getBondTraitKeys",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
+      "outputs": [
         {
-          "type": "uint256",
-          "name": "bondId"
+          "internalType": "bytes32[]",
+          "name": "",
+          "type": "bytes32[]"
         }
       ],
-      "outputs": [
-        {
-          "type": "bytes32[]",
-          "name": ""
-        }
-      ]
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "getBondTraitMetadataURI",
-      "constant": true,
-      "stateMutability": "pure",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
+      "inputs": [
         {
-          "type": "string",
-          "name": ""
+          "internalType": "bytes32",
+          "name": "traitKey",
+          "type": "bytes32"
         }
-      ]
-    },
-    {
-      "type": "function",
+      ],
       "name": "getBondTraitName",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": "traitKey"
-        }
-      ],
       "outputs": [
         {
-          "type": "string",
-          "name": ""
+          "internalType": "string",
+          "name": "",
+          "type": "string"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "traitKey",
+          "type": "bytes32"
+        }
+      ],
       "name": "getBondTraitValue",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
-        },
-        {
-          "type": "bytes32",
-          "name": "traitKey"
-        }
-      ],
       "outputs": [
         {
-          "type": "bytes",
-          "name": ""
+          "internalType": "bytes",
+          "name": "",
+          "type": "bytes"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32[]",
+          "name": "traitKeys",
+          "type": "bytes32[]"
+        }
+      ],
       "name": "getBondTraitValues",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
-        },
-        {
-          "type": "bytes32[]",
-          "name": "traitKeys"
-        }
-      ],
       "outputs": [
         {
-          "type": "bytes[]",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "getBondType",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "maturityDate"
+          "internalType": "bytes[]",
+          "name": "",
+          "type": "bytes[]"
         }
       ],
-      "outputs": [
-        {
-          "type": "string",
-          "name": ""
-        }
-      ]
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "getBondsCreatedBy",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "creator"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "getCollectionMetadata",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
       "inputs": [],
-      "outputs": [
-        {
-          "type": "string",
-          "name": "collectionName_"
-        },
-        {
-          "type": "string",
-          "name": "collectionSymbol_"
-        },
-        {
-          "type": "string",
-          "name": "collectionDescription_"
-        },
-        {
-          "type": "address",
-          "name": "underlyingTokenAddress_"
-        },
-        {
-          "type": "uint256",
-          "name": "totalSupply_"
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "getDiscountCurve",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "uint8",
-          "name": ""
-        },
-        {
-          "type": "uint256",
-          "name": ""
-        },
-        {
-          "type": "uint256",
-          "name": ""
-        },
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "getDiscountForMaturity",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "timeToMaturity"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "getDiscountParameters",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        },
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
       "name": "getUnderlyingToken",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "address",
-          "name": ""
+          "internalType": "address",
+          "name": "",
+          "type": "address"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "holderOf",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "factory_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "uri_",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "name_",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "symbol_",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "description_",
+          "type": "string"
+        },
+        {
+          "internalType": "address",
+          "name": "traitStore_",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "legendHash_",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "string",
+          "name": "legendURI_",
+          "type": "string"
+        }
+      ],
       "name": "initialize",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "_burnerBondDeposit"
-        },
-        {
-          "type": "address",
-          "name": "_factory"
-        },
-        {
-          "type": "address",
-          "name": "_assurancePool"
-        },
-        {
-          "type": "address",
-          "name": "_underlyingToken"
-        },
-        {
-          "type": "string",
-          "name": "_uri"
-        },
-        {
-          "type": "string",
-          "name": "_collectionName"
-        },
-        {
-          "type": "string",
-          "name": "_collectionSymbol"
-        },
-        {
-          "type": "string",
-          "name": "_collectionDescription"
-        },
-        {
-          "type": "address",
-          "name": "_traitStore"
-        },
-        {
-          "type": "address",
-          "name": "_discountCurve"
-        }
-      ],
-      "outputs": []
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        }
+      ],
       "name": "isApprovedForAll",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "account"
-        },
-        {
-          "type": "address",
-          "name": "operator"
-        }
-      ],
       "outputs": [
         {
-          "type": "bool",
-          "name": ""
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
       "name": "isBondMature",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
-        }
-      ],
       "outputs": [
         {
-          "type": "bool",
-          "name": ""
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
+      "name": "legendHash",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "legendURI",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "liquidator",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "mintBond",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "faceValue"
-        },
-        {
-          "type": "uint256",
-          "name": "maturityDate"
-        },
-        {
-          "type": "uint256",
-          "name": "discountPercentage"
-        },
-        {
-          "type": "address",
-          "name": "creator"
+          "internalType": "address",
+          "name": "",
+          "type": "address"
         }
       ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
-        }
-      ]
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
       "name": "name",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "string",
-          "name": ""
+          "internalType": "string",
+          "name": "",
+          "type": "string"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
       "name": "owner",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "address",
-          "name": ""
+          "internalType": "address",
+          "name": "",
+          "type": "address"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
+      "name": "pendingLiquidator",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pendingLiquidatorReadyAt",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pledges",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
       "name": "presentValueOf",
-      "constant": true,
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
       "stateMutability": "view",
-      "payable": false,
+      "type": "function"
+    },
+    {
       "inputs": [
         {
-          "type": "uint256",
-          "name": "bondId"
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
         }
       ],
+      "name": "quoteUsed",
       "outputs": [
         {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "redeemBond",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
         }
       ],
-      "outputs": []
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "redeemEarly",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
-        }
-      ],
+      "inputs": [],
+      "name": "redeemAllFrom",
       "outputs": [
         {
-          "type": "uint256",
-          "name": "presentValue"
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "removeBondTrait",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
-        },
-        {
-          "type": "string",
-          "name": "traitName"
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
         }
       ],
-      "outputs": []
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
       "name": "renounceOwnership",
-      "constant": false,
-      "payable": false,
-      "inputs": [],
-      "outputs": []
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "rollBond",
-      "constant": false,
-      "payable": false,
       "inputs": [
         {
-          "type": "uint256",
-          "name": "bondId"
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
         }
       ],
+      "name": "rollNotice",
       "outputs": [
         {
-          "type": "uint256",
-          "name": "newBondId"
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "noticeHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "deadline",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint32",
+              "name": "termDays",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint32",
+              "name": "yieldBps",
+              "type": "uint32"
+            },
+            {
+              "internalType": "bool",
+              "name": "confirmed",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint32",
+              "name": "nonce",
+              "type": "uint32"
+            }
+          ],
+          "internalType": "struct BurnerBondBase.RollNotice",
+          "name": "",
+          "type": "tuple"
         }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "rollTerm",
-      "constant": true,
+      ],
       "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "ids",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "amounts",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        }
+      ],
       "name": "safeBatchTransferFrom",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "from"
-        },
-        {
-          "type": "address",
-          "name": "to"
-        },
-        {
-          "type": "uint256[]",
-          "name": "ids"
-        },
-        {
-          "type": "uint256[]",
-          "name": "amounts"
-        },
-        {
-          "type": "bytes",
-          "name": "data"
-        }
-      ],
-      "outputs": []
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "from",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "id",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "data",
+          "type": "bytes"
+        }
+      ],
       "name": "safeTransferFrom",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "from"
-        },
-        {
-          "type": "address",
-          "name": "to"
-        },
-        {
-          "type": "uint256",
-          "name": "id"
-        },
-        {
-          "type": "uint256",
-          "name": "amount"
-        },
-        {
-          "type": "bytes",
-          "name": "data"
-        }
-      ],
-      "outputs": []
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "seizeBond",
-      "constant": false,
-      "payable": false,
       "inputs": [
         {
-          "type": "uint256",
-          "name": "bondId"
+          "internalType": "address",
+          "name": "",
+          "type": "address"
         },
         {
-          "type": "address",
-          "name": "from"
-        },
-        {
-          "type": "address",
-          "name": "to"
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
         }
       ],
-      "outputs": []
-    },
-    {
-      "type": "function",
       "name": "setApprovalForAll",
-      "constant": false,
-      "payable": false,
+      "outputs": [],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
-          "type": "address",
-          "name": "operator"
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
         },
         {
-          "type": "bool",
-          "name": "approved"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "setAssurancePool",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "_assurancePool"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "setAutoRollOptOut",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
+          "internalType": "bytes32",
+          "name": "traitKey",
+          "type": "bytes32"
         },
         {
-          "type": "bool",
-          "name": "optOut"
+          "internalType": "bytes",
+          "name": "traitValue",
+          "type": "bytes"
         }
       ],
-      "outputs": []
-    },
-    {
-      "type": "function",
       "name": "setBondTrait",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
-        },
-        {
-          "type": "bytes32",
-          "name": "traitKey"
-        },
-        {
-          "type": "bytes",
-          "name": "traitValue"
-        }
-      ],
-      "outputs": []
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "setBondTraitFlexible",
-      "constant": false,
-      "payable": false,
       "inputs": [
         {
-          "type": "uint256",
-          "name": "bondId"
-        },
-        {
-          "type": "bytes",
-          "name": "traitKey"
-        },
-        {
-          "type": "bytes",
-          "name": "traitValue"
-        },
-        {
-          "type": "uint8",
-          "name": "valueType"
+          "internalType": "uint256",
+          "name": "firstId",
+          "type": "uint256"
         }
       ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "setBondVault",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "_bondVault"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "setBurnerBondDeposit",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "_burnerBondDeposit"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "setDiscountCurve",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint8",
-          "name": "_curveType"
-        },
-        {
-          "type": "uint256",
-          "name": "_curveParameter"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "setEncumbranceSource",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "source"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
       "name": "setFirstBondId",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "firstId"
-        }
-      ],
-      "outputs": []
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "liquidator_",
+          "type": "address"
+        }
+      ],
       "name": "setLiquidator",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "_liquidator"
-        }
-      ],
-      "outputs": []
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "setRollTerm",
-      "constant": false,
-      "payable": false,
       "inputs": [
         {
-          "type": "uint256",
-          "name": "_rollTerm"
+          "internalType": "address",
+          "name": "vault_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "encumbrance_",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "kind_",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "controls_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "agent_",
+          "type": "address"
         }
       ],
-      "outputs": []
+      "name": "setSources",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "newuri",
+          "type": "string"
+        }
+      ],
       "name": "setURI",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "string",
-          "name": "newuri"
-        }
-      ],
-      "outputs": []
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "setUnderlyingToken",
-      "constant": false,
-      "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "_underlyingToken"
+          "internalType": "bytes4",
+          "name": "interfaceId",
+          "type": "bytes4"
         }
       ],
-      "outputs": []
-    },
-    {
-      "type": "function",
       "name": "supportsInterface",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "bytes4",
-          "name": "interfaceId"
-        }
-      ],
       "outputs": [
         {
-          "type": "bool",
-          "name": ""
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
       "name": "symbol",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "string",
-          "name": ""
+          "internalType": "string",
+          "name": "",
+          "type": "string"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
       "name": "totalBondsMinted",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "uint256",
-          "name": ""
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
       "name": "totalUSDCDeposited",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "uint256",
-          "name": ""
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
       "name": "totalUSDCRedeemed",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "uint256",
-          "name": ""
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [],
       "name": "traitStore",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
       "outputs": [
         {
-          "type": "address",
-          "name": ""
+          "internalType": "contract IBondTraitStore",
+          "name": "",
+          "type": "address"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
       "name": "transferOwnership",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "newOwner"
-        }
-      ],
-      "outputs": []
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "underlyingToken",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
       "inputs": [],
+      "name": "underlyingToken",
       "outputs": [
         {
-          "type": "address",
-          "name": ""
+          "internalType": "contract IERC20",
+          "name": "",
+          "type": "address"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
       "name": "uri",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ],
       "outputs": [
         {
-          "type": "string",
-          "name": ""
+          "internalType": "string",
+          "name": "",
+          "type": "string"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      "type": "function",
-      "name": "willAutoRoll",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "bondId"
-        }
-      ],
+      "inputs": [],
+      "name": "windDownReason",
       "outputs": [
         {
-          "type": "bool",
-          "name": ""
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
         }
-      ]
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "windDownSetAt",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "price",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "deadline",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "sig",
+          "type": "bytes"
+        }
+      ],
+      "name": "buyback",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "extensionKind",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "issue",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "payPledged",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "redeemUnderWindDown",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "settle",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "toDebt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "toHolder",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "burnPaid",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "price",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "deadline",
+          "type": "uint256"
+        }
+      ],
+      "name": "buybackDigest",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "noticeHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes",
+          "name": "sig",
+          "type": "bytes"
+        }
+      ],
+      "name": "confirmRoll",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "confirmRollDigest",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256[]",
+          "name": "bondIds",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "bytes32[]",
+          "name": "noticeHashes",
+          "type": "bytes32[]"
+        },
+        {
+          "internalType": "bytes[]",
+          "name": "sigs",
+          "type": "bytes[]"
+        }
+      ],
+      "name": "confirmRolls",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "domainSeparator",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "maturity",
+          "type": "uint256"
+        }
+      ],
+      "name": "latestRollDeadline",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "noticeHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "rollDeadline",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint32",
+          "name": "termDays",
+          "type": "uint32"
+        },
+        {
+          "internalType": "uint32",
+          "name": "yieldBps",
+          "type": "uint32"
+        }
+      ],
+      "name": "postRollNotice",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "payer",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "holder",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maturityAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint32",
+              "name": "termDays",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint32",
+              "name": "yieldBps",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "quotedAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint256",
+              "name": "nonce",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BurnerBondIssue.Quote",
+          "name": "q",
+          "type": "tuple"
+        },
+        {
+          "internalType": "bytes",
+          "name": "sig",
+          "type": "bytes"
+        },
+        {
+          "internalType": "bytes",
+          "name": "attestation",
+          "type": "bytes"
+        }
+      ],
+      "name": "purchase",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "payer",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "holder",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "maturityAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint32",
+              "name": "termDays",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint32",
+              "name": "yieldBps",
+              "type": "uint32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "quotedAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint256",
+              "name": "nonce",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BurnerBondIssue.Quote",
+          "name": "q",
+          "type": "tuple"
+        }
+      ],
+      "name": "quoteDigest",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "maturityAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint32",
+          "name": "termDays",
+          "type": "uint32"
+        },
+        {
+          "internalType": "uint32",
+          "name": "yieldBps",
+          "type": "uint32"
+        }
+      ],
+      "name": "quotePrice",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "redeemAll",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bool",
+          "name": "on",
+          "type": "bool"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "reasonHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "setWindDown",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "bondId",
+          "type": "uint256"
+        }
+      ],
+      "name": "withdrawRollConfirmation",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     }
   ],
   "blockNumber": 0

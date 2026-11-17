@@ -1,0 +1,391 @@
+{
+  "address": "0xEB6f2c654d078Df56D78946767d5A43307eb4fa1",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "pool_"
+        },
+        {
+          "type": "address",
+          "name": "liquidator_"
+        },
+        {
+          "type": "address",
+          "name": "registry_"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PoolShareEnforcerBlocked",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PoolShareEnforcerInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "PoolShareEnforcerNotExcess",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "requestId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PoolShareEnforcerNothingNeeded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PoolShareEnforcerNothingToSettle",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EnforcementCancelled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "requestId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EnforcementRequested",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "requestId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "onDefault",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EnforcementSettled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "proceeds",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "applied",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cancelExcess",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256",
+          "name": "requestId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "cancelled"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "defaultLockValue",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforce",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "requestId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "liquidator",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "noticeRecorded",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "registry",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "reserve",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "settle",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "applied"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "settledPaid",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "settledShares",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "sharesNeeded",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "shares"
+        },
+        {
+          "type": "uint256",
+          "name": "value"
+        },
+        {
+          "type": "bool",
+          "name": "onDefault"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "valueNeeded",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "value"
+        },
+        {
+          "type": "bool",
+          "name": "onDefault"
+        }
+      ]
+    }
+  ],
+  "blockNumber": 0
+}

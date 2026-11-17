@@ -1,0 +1,14 @@
+= CollateralAgent already recorded
+Refused payers: 33 Clear contracts recorded on base-sepolia
+  EarnControls refused: Liquidator 0x621784117C037b3D20AF54e04589818e919e33f3 (collateral enforcement (the pledge module))
+  EarnControls refused: PoolShareEnforcer 0xEB6f2c654d078Df56D78946767d5A43307eb4fa1 (collateral enforcement)
+  EarnControls refused: HolderDirections 0x8ec35b88CCb59576957917a4F4B937b491815Cda (Earn (Required-Holder Directions))
+  EarnControls refused: PayoutPool 0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861 (credit (merchant payouts))
+  EarnControls refused: BurnerBond 0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A (Earn funds (a bond collection))
+  EarnControls refused: AssurancePoolV2 0x3c334D3AeD134191B7Ad0744a23978D71357BB15 (the Assurance compartments)
+  EarnControls refused: BurnerBondFactory deposit contract USDC 0xA73E89a2aD7c6C00E6735B54b2e21805b5D6767e (Earn funds (the pre-2f deposit path))
+! CollateralAgent.setPledgeModule(Liquidator) is a co-signed change:
+    treasury signer 1: CollateralAgent.proposeChange(0x48840620F9F4780e7d5986F6365A4acdD7D82825, 0xcfb3af17152ebb6b0c97b98a0666d8ba2708f0e8cb860590c13d6e0458e31ead, 0xc70e4c2319898c76ae435485a35eb085c7690bf50c6568baa13761c27c87d6f7)
+    treasury signer 2 (a different one): CollateralAgent.confirmChange(<changeId from ChangeProposed or openChangeFor>)
+    Agent Key: CollateralAgent.approveChange(<changeId>)
+    after 7 days from the confirmation, the Earn timelock (its admin) calls 0x48840620F9F4780e7d5986F6365A4acdD7D82825 with 0xe37c49af000000000000000000000000621784117c037b3d20af54e04589818e919e33f3

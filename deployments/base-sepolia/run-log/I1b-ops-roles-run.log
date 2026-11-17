@@ -1,0 +1,88 @@
+duplicate definition - constructor
+Deployer 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+
+AccessManager.OPERATOR                       now: deployer + credit-operator   → credit-operator 0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd
+ESADepositVault.RELAYER_ROLE                 now: savings-relayer              → savings-relayer 0x6Cbdf4469856C70C07C95a6c276c218F64e0Fcb3
+SavingsIntentFactory.SETTLER_ROLE            now: deployer + savings-relayer   → savings-relayer 0x6Cbdf4469856C70C07C95a6c276c218F64e0Fcb3
+CollateralRegistry.OPERATOR_ROLE             now: deployer                     → savings-relayer 0x6Cbdf4469856C70C07C95a6c276c218F64e0Fcb3
+ClaimEscrow.SETTLER_ROLE                     now: deployer + send-relayer      → send-relayer 0x6Cbdf4469856C70C07C95a6c276c218F64e0Fcb3
+MembershipRegistry.REGISTRAR_ROLE            now: deployer                     → credit-operator 0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd
+MerchantRegistry.OPERATOR_ROLE               now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+PayoutPool.FUNDER_ROLE                       now: nobody we know of            → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+PayoutPool.OPERATOR_ROLE                     now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+LendingPool.OPERATOR_ROLE                    now: deployer                     → renounced (unused off-chain)
+NetworkRegistry.OPERATOR_ROLE                now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+Liquidator.OPERATOR_ROLE                     now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+LimitCalculator.OPERATOR_ROLE                now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+BondVault.OPERATOR_ROLE                      now: deployer                     → renounced (unused off-chain)
+FundManager.FEE_MANAGER_ROLE                 now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+Validator.CRITERIA_MANAGER_ROLE              now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+Validator.FEE_MANAGER_ROLE                   now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+Validator.METADATA_ROLE                      now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+Validator.VALIDATOR_ROLE                     now: deployer                     → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+AccessManager.MEMBER                         now: deployer                     → renounced (unused off-chain)
+LendingPool.LOSS_REPORTER_ROLE               now: nobody we know of            → renounced (unused off-chain)
+LimitCalculator.ATTESTOR_ROLE                now: deployer                     → renounced (unused off-chain)
+SavingsIntentFactory.CREATOR_ROLE            now: deployer                     → renounced (unused off-chain)
+DeedNFT.MINTER_ROLE                          now: deployer                     → renounced (unused off-chain)
+DeedNFT.VALIDATOR_ROLE                       now: deployer                     → renounced (unused off-chain)
+MetadataRenderer.VALIDATOR_ROLE              now: deployer                     → renounced (unused off-chain)
+FundManager.MINTER_ROLE                      now: deployer                     → renounced (unused off-chain)
+ESADepositVault.OPERATOR_ROLE                now: deployer                     → renounced (unused off-chain)
+ESADepositVaultLegacy.OPERATOR_ROLE          now: deployer                     → renounced (unused off-chain)
+
+Contracts that should hold a role (reported only, never changed here):
+  ok  LendingPool.ENFORCER_ROLE held by PoolShareEnforcer: yes (PoolShareEnforcer.enforce calls enforcementRedeem (Phase 2f, C5); deploy/25_wire_Compliance.ts grants it. LIQUIDATOR_ROLE is retired: nothing needs it)
+  ok  ClearUSDUpgradeable.MINTER_ROLE held by ESADepositVault: yes (savings mint CLRUSD)
+  ok  ClearUSDUpgradeable.BURNER_ROLE held by ESADepositVault: yes (redemptions burn CLRUSD)
+  ok  CollateralRegistry.OPERATOR_ROLE held by Liquidator: yes (recordSeizure (Savings) and recordEnforcementRedemption (pool shares))
+  ok  CollateralRegistry.OPERATOR_ROLE held by LimitCalculator: yes (set at deploy)
+  ok  AccessManager.OPERATOR held by RevolvingIssuer: yes (the issuers call the ledger as operators)
+  ok  AccessManager.OPERATOR held by TermIssuer: yes (the issuers call the ledger as operators)
+  ok  ClearUSDUpgradeable.LIQUIDATOR_ROLE held by Liquidator: yes (seize past the redemption lock; deploy/22_deploy_BondsAndPool.ts grants it (deploy/creditWiring.ts))
+  ok  AccessManager.OPERATOR held by Liquidator: yes (the Liquidator writes to the ledger in its own name; deploy/22_deploy_BondsAndPool.ts grants it)
+  ok  AccessManager.OPERATOR held by ClearCredit: yes (the ledger grants membership when a line opens; deploy/20_deploy_CreditCore.ts grants it)
+  ok  AccessManager.OPERATOR held by LimitCalculator: yes (set at deploy (deploy/20_deploy_CreditCore.ts))
+
+Running:
+  CollateralRegistry: grant OPERATOR_ROLE → savings-relayer 0x6Cbdf4469856C70C07C95a6c276c218F64e0Fcb3
+  MembershipRegistry: grant REGISTRAR_ROLE → credit-operator 0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd
+  MerchantRegistry: grant OPERATOR_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  PayoutPool: grant FUNDER_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  PayoutPool: grant OPERATOR_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  NetworkRegistry: grant OPERATOR_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  Liquidator: grant OPERATOR_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  LimitCalculator: grant OPERATOR_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  FundManager: grant FEE_MANAGER_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  Validator: grant CRITERIA_MANAGER_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  Validator: grant FEE_MANAGER_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  Validator: grant METADATA_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  Validator: grant VALIDATOR_ROLE → safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50
+  AccessManager: renounce OPERATOR from the deployer
+  SavingsIntentFactory: renounce SETTLER_ROLE from the deployer
+  CollateralRegistry: renounce OPERATOR_ROLE from the deployer
+  ClaimEscrow: renounce SETTLER_ROLE from the deployer
+  MembershipRegistry: renounce REGISTRAR_ROLE from the deployer
+  MerchantRegistry: renounce OPERATOR_ROLE from the deployer
+  PayoutPool: renounce OPERATOR_ROLE from the deployer
+  LendingPool: renounce OPERATOR_ROLE from the deployer
+  NetworkRegistry: renounce OPERATOR_ROLE from the deployer
+  Liquidator: renounce OPERATOR_ROLE from the deployer
+  LimitCalculator: renounce OPERATOR_ROLE from the deployer
+  BondVault: renounce OPERATOR_ROLE from the deployer
+  FundManager: renounce FEE_MANAGER_ROLE from the deployer
+  Validator: renounce CRITERIA_MANAGER_ROLE from the deployer
+  Validator: renounce FEE_MANAGER_ROLE from the deployer
+  Validator: renounce METADATA_ROLE from the deployer
+  Validator: renounce VALIDATOR_ROLE from the deployer
+  AccessManager: renounce MEMBER from the deployer
+  LimitCalculator: renounce ATTESTOR_ROLE from the deployer
+  SavingsIntentFactory: renounce CREATOR_ROLE from the deployer
+  DeedNFT: renounce MINTER_ROLE from the deployer
+  DeedNFT: renounce VALIDATOR_ROLE from the deployer
+  MetadataRenderer: renounce VALIDATOR_ROLE from the deployer
+  FundManager: renounce MINTER_ROLE from the deployer
+  ESADepositVault: renounce OPERATOR_ROLE from the deployer
+  ESADepositVaultLegacy: renounce OPERATOR_ROLE from the deployer
+
+Done: the deployer holds none of the mapped roles.

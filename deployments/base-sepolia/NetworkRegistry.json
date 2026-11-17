@@ -1,5 +1,5 @@
 {
-  "address": "0x0a9FE081622d41069DF22898D969F13e65783D7f",
+  "address": "0xee10a0d79a718cd13c49b68ce6ccCda398781164",
   "abi": [
     {
       "type": "constructor",
@@ -10,6 +10,11 @@
     {
       "type": "error",
       "name": "NetworkRegistryInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "NetworkRegistryInvalidStateCode",
       "inputs": []
     },
     {
@@ -29,6 +34,16 @@
         {
           "type": "address",
           "name": "issuer"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "NetworkRegistryMoneyPathSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
         }
       ]
     },
@@ -119,16 +134,6 @@
           "type": "address",
           "name": "stableCredit",
           "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "assurancePool",
-          "indexed": false
-        },
-        {
-          "type": "address",
-          "name": "assuranceOracle",
-          "indexed": false
         }
       ]
     },
@@ -162,6 +167,23 @@
         {
           "type": "address",
           "name": "issuer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "MoneyPathListed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
           "indexed": true
         }
       ]
@@ -235,6 +257,28 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "StateCodeAttested",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "stateCode",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "attester",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Upgraded",
       "inputs": [
         {
@@ -271,6 +315,37 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "STATE_ATTESTER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "attestStateCode",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -479,6 +554,25 @@
     },
     {
       "type": "function",
+      "name": "isMoneyPath",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "issuerCountOf",
       "constant": true,
       "stateMutability": "view",
@@ -511,6 +605,42 @@
       "outputs": [
         {
           "type": "address[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "listMoneyPath",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "moneyPathKindOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
           "name": ""
         }
       ]
@@ -575,14 +705,6 @@
         {
           "type": "address",
           "name": "stableCredit"
-        },
-        {
-          "type": "address",
-          "name": "assurancePool"
-        },
-        {
-          "type": "address",
-          "name": "assuranceOracle"
         }
       ],
       "outputs": []
@@ -620,6 +742,25 @@
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "stateCodeOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
     },
     {
       "type": "function",

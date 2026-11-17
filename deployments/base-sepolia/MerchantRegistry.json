@@ -1,5 +1,5 @@
 {
-  "address": "0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5",
+  "address": "0x8f4C6f9472359BF749c12C840c4269341a423c1b",
   "abi": [
     {
       "type": "constructor",
@@ -86,6 +86,23 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "FreeSplitMaxSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "freeSplitMax",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Initialized",
       "inputs": [
         {
@@ -130,6 +147,23 @@
         {
           "type": "uint256",
           "name": "discountBps",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "NoSurchargeSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "noSurcharge",
           "indexed": false
         }
       ]
@@ -197,6 +231,33 @@
           "type": "address",
           "name": "sender",
           "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SplitTermsSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "installments",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "discountBps",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "subsidyBps",
+          "indexed": false
         }
       ]
     },
@@ -302,6 +363,29 @@
     },
     {
       "type": "function",
+      "name": "discountBpsBySplit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "discountBpsOf",
       "constant": true,
       "stateMutability": "view",
@@ -315,6 +399,25 @@
       "outputs": [
         {
           "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "freeSplitMaxOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint32",
           "name": ""
         }
       ]
@@ -468,6 +571,25 @@
     },
     {
       "type": "function",
+      "name": "noSurcharge",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "payoutWindowOf",
       "constant": true,
       "stateMutability": "view",
@@ -587,6 +709,119 @@
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setFreeSplitMax",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "uint32",
+          "name": "freeSplitMax"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setNoSurcharge",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "bool",
+          "name": "value"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setSplitTerms",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "uint32",
+          "name": "installments"
+        },
+        {
+          "type": "uint256",
+          "name": "discountBps"
+        },
+        {
+          "type": "uint256",
+          "name": "subsidyBps"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "splitTermsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "uint32",
+          "name": "installments"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "discountBps"
+        },
+        {
+          "type": "uint256",
+          "name": "subsidyBps"
+        },
+        {
+          "type": "uint32",
+          "name": "freeSplitMax"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "subsidyBpsBySplit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
     },
     {
       "type": "function",
