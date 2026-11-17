@@ -4,6 +4,7 @@ import { getPostgresPool } from '../../config/postgres.js';
 import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
 import { assurancePoolLive, bondVaultLive, coopLive, offersLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { creditLive, payoutsLive } from './credit.js';
+import { payoutTopUpsLive, payoutTopUpsSeed } from './payoutTopUps.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
@@ -1403,6 +1404,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     // live, Lithic's card spend this month and what's moving through Bridge (null until they've synced)
     ...(feeds ? { CARD_SPEND: cardSpend(feeds.get('lithic')), DEPOSIT_RAIL: depositRail(feeds.get('bridge')) } : {}),
     SET_ASIDE: await shopSetAside(db),
+    // the automatic payout top-ups (decision 51): what the job recorded, live; a sample, seeded
+    PAYOUT_TOPUPS: provider === 'live' ? await payoutTopUpsLive(db) : payoutTopUpsSeed(o.now.getTime()),
     // live, what the yield pane lists since the opening is the pool's own deposits and withdrawals
     figures: {
       ...f,
