@@ -24,6 +24,14 @@ SEND_DEFAULT_CHAIN_ID=84532 SEND_CDP_EVM_ACCOUNT_NAME_84532=assurance-disburseme
 
 The first goes in `ASSURANCE_CL_FEES_PAYER` (pays Clear Lending's credit enhancement fee and recoveries into the pool (interchange is the co-op treasury's)), the second in `ASSURANCE_DISBURSEMENT` (receives each approved member-assistance grant, then pays it out), both in `deploy/config/base-sepolia.rollout.env`. The signing plan refuses to run while either is empty.
 
+**Done Nov 17, 2026: a third CDP wallet, for automatic PayoutPool top-ups (decision 51).** It was created with the same command:
+
+```bash
+SEND_DEFAULT_CHAIN_ID=84532 SEND_CDP_EVM_ACCOUNT_NAME_84532=payout-topup-base-sepolia npm run send:cdp:account
+```
+
+It is `0xC0C4EC7875D1838C0AE610accC16AAdCDb475068`, and it is in `PAYOUT_TOPUP_WALLET`. It is a plain account, it is no other job's wallet, and it holds 0.005 test ETH for gas. Its spending limit on CL Operating is $5,000 a week (`PAYOUT_TOPUP_CAP_USDC`, `PAYOUT_TOPUP_RESET_MINUTES`). What it does: `docs/operators/payout-topups.md`.
+
 **Rule the pool enforces:** none of these may be one of the pool's signers, Account 3 `0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23` or Account 4 `0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7`, and a payer may not be the draw address. The plan also wants the five Assurance addresses (with the Clear Treasury Safe) all different.
 
 ## 2. Already settled (nothing to create)
@@ -49,6 +57,7 @@ The Privy wallets `0x7ec1D6b69398af413edC94692FB167A3864A86cF` and `0xD2645348dE
 | Credit operator | `0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd` | **about 0.01: still to do** (holds 0.0004) |
 | CL Fees (new CDP wallet) | from step 1 | about 0.005 |
 | Assurance Disbursement (new CDP wallet) | from step 1 | about 0.005 |
+| Payout top-up (CDP wallet) | `0xC0C4EC7875D1838C0AE610accC16AAdCDb475068` | done (0.005) |
 | AAA, …698a, Account 3, Account 4, relayer, card settler | as above | done |
 | The Safes (Clear Treasury, Clear Lending, the two nested) | n/a | none needed: whoever submits pays |
 
@@ -57,6 +66,19 @@ The Privy wallets `0x7ec1D6b69398af413edC94692FB167A3864A86cF` and `0xD2645348dE
 This is not done now. The local session stops for it just before the handovers, and the signing page gives the Safe app batch:
 
 `addOwnerWithThreshold(0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a, 2)` on `0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50`, which makes the Safe 2 of 4.
+
+## 4b. Automatic payout top-ups: two one-time signatures
+
+Both are in the signing plan. Do them before the credit handover (I2):
+
+- **`PT-funder`**: the deployer (AAA) grants the fresh PayoutPool's `FUNDER_ROLE` to the top-up wallet. This is a signing-page card, ready once deploy 22 has made the fresh PayoutPool. After I2 it would need a 7-day credit timelock proposal.
+- **CL Operating's setup batch** (`PT-safe-module`, `PT-safe-delegate`, `PT-safe-allowance`): one Transaction Builder batch, `signing-PT-cl-operating-setup.json`. It enables Safe's AllowanceModule on CL Operating, names the top-up wallet its delegate, and gives it $5,000 of USDC a week.
+  1. In the Safe app, open CL Operating.
+  2. Load the batch.
+  3. Confirm it from the Clear Lending Safe (AAA and …698a).
+  4. Execute it.
+
+  No deploy step waits on this batch.
 
 ## 5. The order
 
@@ -70,4 +92,5 @@ This is not done now. The local session stops for it just before the handovers, 
 6. Day 7: the Clear Lending Safe executes the Earn batch, the Clear Treasury Safe the vault and Assurance batches, then the final checks run.
 7. After the deploy, on the API in Railway, set:
    - `OPS_ALERT_EMAIL=ops@useclear.org`;
-   - `PAYOUT_KEEPER_ENABLED=1`.
+   - `PAYOUT_KEEPER_ENABLED=1`;
+   - once the two signatures in 4b are done and `PAYOUT_POOL_84532` names the fresh PayoutPool: `PAYOUT_TOPUP_WALLET=0xC0C4EC7875D1838C0AE610accC16AAdCDb475068`, `PAYOUT_TOPUP_CDP_ACCOUNT_NAME=payout-topup-base-sepolia`, then `PAYOUT_TOPUP_ENABLED=1`.
