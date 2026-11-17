@@ -173,6 +173,10 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       ASSURANCE_DISBURSEMENT: disbursement,
       ASSURANCE_DRAW_ADDRESS: clOperating,
       ASSURANCE_LOSS_RESERVE: clLossReserve,
+      ASSURANCE_COVERAGE_CAP: "10000000000",
+      ASSURANCE_TIMING_SHORTFALL: "0",
+      ASSURANCE_ATTESTED_BOOK: "0",
+      ASSURANCE_FLOOR_EVIDENCE: ethers.id("Assurance Pool floor inputs (test)"),
       SAFE_NEW_OWNER: newOwner.address,
       SAFE_THRESHOLD: "2",
       TREASURY_SIGNERS: `${t1.address},${t2.address}`,
@@ -203,14 +207,16 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       "E8-hold-1", "E8-hold-2", "E8-earn-schedule", "E8x-earn-execute",
       "F2-fee-approve", "G1-tier-1", "G1-tier-2", "safe-owner", "I3-vault-schedule", "I3x-vault-execute",
       ...ASSURANCE_KEYS.flatMap((k) => [`AS-${k}-approve-1`, `AS-${k}-approve-2`]), "AS-assurance-schedule", "ASx-assurance-execute",
+      "AS-floor-1", "AS-floor-2",
     ]);
     const ready = p.steps.filter((x) => x.status === "ready").map((x) => x.id);
     expect(ready).to.deep.equal([
       "C1d-1", "D4-settings-1", "D4-settings-2", "D4-attester-1", "D4-attester-2",
       "E8-vault-propose", "E8-bondbook-propose", "E8-holderdirections-propose", "E8-pledgemodule-propose", "E8-backstop-propose",
       "E8-hold-1", "E8-hold-2", "G1-tier-1", "G1-tier-2", "I3-vault-schedule",
-      ...ASSURANCE_KEYS.map((k) => `AS-${k}-approve-1`),
+      ...ASSURANCE_KEYS.map((k) => `AS-${k}-approve-1`), "AS-floor-1",
     ]);
+    expect(step(p, "AS-floor-2").reason).to.contain("AS-floor-1");
     expect(step(p, "C1d-2").reason).to.contain("C1d-1");
     expect(step(p, "D4-operator").reason).to.contain("CREDIT_OPERATOR_ADDRESS");
     expect(step(p, "D4-operator").data).to.equal(null);
@@ -323,6 +329,9 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(await vault.hasRole(ethers.id("RELAYER_ROLE"), s.relayer.address)).to.equal(true);
     expect(await vault.hasRole(ethers.id("OPERATOR_ROLE"), s.relayer.address)).to.equal(false);
     expect(await liquidator.hasRole(await liquidator.HOLD_ROLE(), s.h2.address)).to.equal(true);
+    // The month's floor inputs: two signers, no timelock; the coverage cap is what draws are held to.
+    expect(await assurancePool.coverageCap()).to.equal(10000000000n);
+    expect(await assurancePool.floorEvidenceHash()).to.equal(ethers.id("Assurance Pool floor inputs (test)"));
     // The Assurance Pool, configured through its own governance.
     expect(await assurancePool.payerTags(clFees)).to.equal(BigInt(CL_FEES_MASK));
     expect(CL_FEES_MASK).to.equal(0b0111); // CREDIT_ENHANCEMENT_FEE | RECOVERY | INTERCHANGE

@@ -231,7 +231,9 @@ npx hardhat run scripts/signing_plan.ts --network $N
 - **Approvals (`AS-…-approve-1`, `AS-…-approve-2`):** for each call, Account 3 sends `approveAction` on the signing page, then Account 4 sends the same. The pool takes either order; the plan asks Account 3 first, so re-run it after Account 3's five.
 - **Schedule (`AS-assurance-schedule`):** once all ten approvals show done, the **Clear Treasury (board) Safe** `0x52e6…cf50` signs the Assurance timelock batch in the Safe app. Today it needs one signature; after the Safe change below, two.
 
-Floor, transfer delay and allocation stay at the pool's defaults (5% floor, 14 days, 50/50). Nothing else is needed for deposits; the monthly floor inputs (`setFloorInputs`, two Assurance signers, no timelock) set the coverage cap a draw needs, and are not part of this run.
+Floor, transfer delay and allocation stay at the pool's defaults (5% floor, 14 days, 50/50). Nothing else is needed for deposits.
+
+**SIGN (floor inputs, `AS-floor-1`, `AS-floor-2`):** Account 3 then Account 4 each send `setFloorInputs` with the same figures, a $10,000 coverage cap, $0 timing shortfall, $0 attested covered book and the placeholder evidence (`ASSURANCE_*` in the rollout file). No timelock: it applies when Account 4's call lands. Without it the coverage cap is $0 and every backstop draw is refused; deposits and member grants do not need it. It is re-posted each month.
 
 ### I1: move the deployer's day-to-day roles to the API's wallets (REVIEW STOP)
 

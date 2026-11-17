@@ -923,6 +923,49 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       ...encode(timelockIface, "executeBatch", [targets, values, payloads, ZERO_HASH, salt], [pending.length ? "AssurancePool" : "", undefined, "the approved calls", "none", "the same label"]),
       dependsOn: ["AS-assurance-schedule"], ...xSt,
     });
+
+    // ---- The month's floor inputs (13d): two signers, no timelock. Until they are posted the
+    // coverage cap is 0 and `approveDraw` refuses every backstop draw; deposits and Member
+    // Assurance grants do not need them. The first signer's call proposes, the same call from the
+    // other signer applies it (`_pair` on keccak256(abi.encode("floor", shortfall, cap, book, evidence))).
+    const units = (k: string) => (env[k] && /^\d+$/.test(env[k]) ? BigInt(env[k]) : undefined);
+    const shortfall = units("ASSURANCE_TIMING_SHORTFALL");
+    const cap = units("ASSURANCE_COVERAGE_CAP");
+    const book = units("ASSURANCE_ATTESTED_BOOK");
+    const floorEvidence = env.ASSURANCE_FLOOR_EVIDENCE && /^0x[0-9a-fA-F]{64}$/.test(env.ASSURANCE_FLOOR_EVIDENCE) && BigInt(env.ASSURANCE_FLOOR_EVIDENCE) !== 0n
+      ? env.ASSURANCE_FLOOR_EVIDENCE : undefined;
+    const floorInputsSet = shortfall !== undefined && cap !== undefined && book !== undefined && floorEvidence !== undefined;
+    const usd = (v?: bigint) => (v === undefined ? "" : `$${Number(ethers.formatUnits(v, 6)).toLocaleString("en-US", { minimumFractionDigits: 2 })}`);
+    const floorAction = floorInputsSet
+      ? ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["string", "uint256", "uint256", "uint256", "bytes32"], ["floor", shortfall, cap, book, floorEvidence]))
+      : undefined;
+    let floorApplied = false;
+    let floorFirst: string | undefined;
+    if (live && floorInputsSet) {
+      floorApplied = BigInt(await live.coverageCap()) === cap && BigInt(await live.timingBufferShortfall()) === shortfall
+        && BigInt(await live.attestedCoveredBook()) === book && String(await live.floorEvidenceHash()).toLowerCase() === floorEvidence!.toLowerCase();
+      floorFirst = ethers.getAddress(await live.proposerOf(floorAction!));
+    }
+    for (const [i, sgn] of assuranceSigners.slice(0, 2).entries()) {
+      let st: { status: StepStatus; reason?: string };
+      if (!floorInputsSet) st = waitingFor("Waiting for input: ASSURANCE_TIMING_SHORTFALL, ASSURANCE_COVERAGE_CAP, ASSURANCE_ATTESTED_BOOK and ASSURANCE_FLOOR_EVIDENCE.");
+      else if (!poolAddress) st = waitingFor("Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.");
+      else if (floorApplied) st = { status: "done", reason: `Posted: coverage cap ${usd(cap)} (both signers).` };
+      else if (same(floorFirst, sgn)) st = { status: "done", reason: "Posted by this signer; waits for the other Assurance signer." };
+      else st = { status: "ready" };
+      const enc = floorInputsSet
+        ? encode(poolC, "setFloorInputs", [shortfall, cap, book, floorEvidence], [
+            `timing-buffer shortfall ${usd(shortfall)}`, `coverage cap ${usd(cap)}`, `attested covered book ${usd(book)}`, "ASSURANCE_FLOOR_EVIDENCE: the month's evidence hash"])
+        : { data: null, functionSignature: signatureOf(poolC, "setFloorInputs"), args: [] };
+      push({
+        id: `AS-floor-${i + 1}`, stage: "Assurance", title: `Post the month's floor inputs (coverage cap ${usd(cap) || "?"}): Assurance signer ${i + 1}`,
+        explanation: i === 0
+          ? "Sets how much the Credit Backstop may pay Clear Lending on a draw (the coverage cap), with the month's timing shortfall and attested covered book. Until both signers post the same figures the cap is $0 and every draw is refused; deposits and member grants don't need it. No timelock: it applies as soon as the second signer sends it. Re-post each month."
+          : "The same figures from the other Assurance signer; this one makes them count.",
+        kind: "wallet", signer: sgn, signerLabel: `Assurance signer ${i + 1}`, to: poolAddress ?? ZERO_ADDRESS, toLabel: "AssurancePool", ...enc,
+        dependsOn: i === 1 ? ["AS-floor-1"] : [], ...st,
+      });
+    }
   }
 
   // ================= dependencies, then a dry run of every ready step =================
