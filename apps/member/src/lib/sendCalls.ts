@@ -1,5 +1,5 @@
 import { encodeFunctionData, parseUnits } from 'viem';
-import { sendCalls, waitForCallsStatus } from '@wagmi/core';
+import { readContract, sendCalls, waitForCallsStatus } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings, recordGaslessPool, recordGaslessBond } from '@/utils/apiClient';
@@ -203,22 +203,24 @@ export async function scRedeem(args: { smartWalletClient?: unknown; ownerWallet:
 }
 
 const POOL_ABI = [
-  { type: 'function', name: 'deposit', stateMutability: 'nonpayable',
-    inputs: [{ name: 'assets', type: 'uint256' }, { name: 'receiver', type: 'address' }],
+  // The Yield Pool (Phase 2f): a subscription carries an eligibility attestation, empty when the
+  // member's is already on file with EarnControls (2f-YP section 9).
+  { type: 'function', name: 'subscribe', stateMutability: 'nonpayable',
+    inputs: [{ name: 'assets', type: 'uint256' }, { name: 'receiver', type: 'address' }, { name: 'attestation', type: 'bytes' }],
     outputs: [{ name: 'shares', type: 'uint256' }] },
-  { type: 'function', name: 'redeem', stateMutability: 'nonpayable',
-    inputs: [{ name: 'shares', type: 'uint256' }, { name: 'receiver', type: 'address' }, { name: 'owner', type: 'address' }],
-    outputs: [{ name: 'assets', type: 'uint256' }] },
-  { type: 'function', name: 'requestWithdrawal', stateMutability: 'nonpayable',
+  // "Take $X now, queue the rest": pays what the pool can now and queues the rest, at Share Value
+  // when filled. The receiver must be the Holder.
+  { type: 'function', name: 'redeemOrQueue', stateMutability: 'nonpayable',
     inputs: [{ name: 'shares', type: 'uint256' }, { name: 'receiver', type: 'address' }],
-    outputs: [{ name: 'requestId', type: 'uint256' }] },
+    outputs: [{ name: 'paidNow', type: 'uint256' }, { name: 'requestId', type: 'uint256' }] },
 ] as const;
 
 /**
- * Ready to allocate (USDC) → the yield pool: [approve, deposit] in ONE sponsored batch.
+ * Ready to allocate (USDC) → the yield pool: [approve, subscribe] in ONE sponsored batch.
  *
- * The same shape as a savings deposit, pointed at a different destination — which is also how the
- * reference describes the screen in front of it.
+ * The same shape as a savings deposit, pointed at a different destination. `subscribe` checks the
+ * member's eligibility on file with EarnControls, the $250 minimum and the holder cap; a member
+ * with no eligibility on file is refused (EarnControlsIneligible) until one is attested.
  */
 export async function scPoolDeposit(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
   const c = clearContracts(args.chainId);
@@ -227,7 +229,7 @@ export async function scPoolDeposit(args: { smartWalletClient?: unknown; ownerWa
   const receiver = args.ownerWallet as `0x${string}`;
   const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.lendingPool, amt] }) },
-    { to: c.lendingPool, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'deposit', args: [amt, receiver] }) },
+    { to: c.lendingPool, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'subscribe', args: [amt, receiver, '0x'] }) },
   ]);
   await recordGaslessPool({ action: 'deposit', amount: amt.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
   askToPledge('POOL_SHARE', args.ownerWallet, args.chainId);
@@ -237,13 +239,10 @@ export async function scPoolDeposit(args: { smartWalletClient?: unknown; ownerWa
 /**
  * The yield pool → Ready to allocate.
  *
- * Two paths, because the pool has a state savings does not: it can be fully lent. `redeem` pays
- * immediately and is capped at `maxRedeem`, which the contract caps at available cash;
- * `requestWithdrawal` burns the shares now and queues the claim, paid as members repay.
- *
- * A member asking for more than is free gets both in one batch — paid what is there, queued for
- * the rest — because refusing the whole amount would be the pool telling somebody their own money
- * is unavailable when most of it is not.
+ * One call since Phase 2f: `redeemOrQueue(shares, holder)` pays what the pool can now (capped at
+ * `maxRedeem`) and queues the rest, whose shares are escrowed and paid at the Share Value when the
+ * queue fills. Refusing the whole amount would be the pool telling somebody their own money is
+ * unavailable when most of it is not.
  */
 export async function scPoolWithdraw(args: {
   smartWalletClient?: unknown;
@@ -259,100 +258,62 @@ export async function scPoolWithdraw(args: {
   if (args.sharesNow === 0n && args.sharesQueued === 0n) throw new Error('Nothing to withdraw.');
   const owner = args.ownerWallet as `0x${string}`;
 
-  const calls: { to: `0x${string}`; data: `0x${string}` }[] = [];
-  if (args.sharesNow > 0n) {
-    calls.push({ to: c.lendingPool, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'redeem', args: [args.sharesNow, owner, owner] }) });
-  }
-  if (args.sharesQueued > 0n) {
-    calls.push({ to: c.lendingPool, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'requestWithdrawal', args: [args.sharesQueued, owner] }) });
-  }
+  const calls = [
+    { to: c.lendingPool, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'redeemOrQueue', args: [args.sharesNow + args.sharesQueued, owner] }) },
+  ];
 
   const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, calls);
   await recordGaslessPool({ action: 'withdraw', amount: (args.sharesNow + args.sharesQueued).toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
   return hash;
 }
 
-const BOND_DEPOSIT_ABI = [
-  { type: 'function', name: 'makeDeposit', stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'tokenAddress', type: 'address' },
-      { name: 'faceValue', type: 'uint256' },
-      { name: 'maturityDate', type: 'uint256' },
-      { name: 'discountPercentage', type: 'uint256' },
-    ],
-    outputs: [{ name: 'bondId', type: 'uint256' }] },
-] as const;
-
 /**
- * Ready to allocate (USDC) → a bond: [approve, makeDeposit] in ONE sponsored batch.
- *
- * A bond is bought at a discount and matures at face, so what a member pays is derived from the
- * face value and the term rather than typed. `approve` is for the price, not the face — approving
- * the face would let the deposit contract take more than the bond costs.
- *
- * The price is quoted by the chain (`calculateRequiredDeposit`) and passed in, so the approval and
- * the purchase agree on one figure that neither this file nor the screen invented.
+ * Buying a bond. The deposit contract and the discount curve (`makeDeposit`) are retired with the
+ * pre-2f collection (decision 8): a bond is now bought with `BurnerBond.purchase(quote, signature,
+ * attestation)` on a Ladder rung, the Quote signed by the buyer's own key. That flow is not built in
+ * the app yet, so nothing is sent; the screen says so.
  */
-export async function scBuyBond(args: {
+export const BOND_PURCHASE_UNAVAILABLE =
+  'Buying a bond in the app is paused while bonds move to signed quotes. Nothing was taken from your balance.';
+
+export async function scBuyBond(_args: {
   smartWalletClient?: unknown;
   ownerWallet: string;
-  /** Face value in whole units — what the bond pays at maturity. */
   faceValue: string;
-  /** Unix seconds. */
   maturityDate: number;
-  /** Basis points, as the collection prices it. */
   discountBps: number;
-  /** What it costs today, quoted by the chain. */
   priceUnits: bigint;
   chainId: number;
 }): Promise<string> {
-  const c = clearContracts(args.chainId);
-  if (!c?.burnerBondDeposit) throw new Error('Bonds are not available on this network.');
-  const face = parseUnits(args.faceValue, 6);
-
-  const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
-    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.burnerBondDeposit, args.priceUnits] }) },
-    { to: c.burnerBondDeposit, data: encodeFunctionData({
-        abi: BOND_DEPOSIT_ABI, functionName: 'makeDeposit',
-        args: [c.usdc, face, BigInt(args.maturityDate), BigInt(args.discountBps)],
-      }) },
-  ]);
-  await recordGaslessBond({ txHash: hash, chainId: args.chainId }).catch(() => {});
-  askToPledge('BOND', args.ownerWallet, args.chainId);
-  return hash;
+  throw new Error(BOND_PURCHASE_UNAVAILABLE);
 }
 
 const BOND_HOLDER_ABI = [
-  { type: 'function', name: 'redeemBond', stateMutability: 'nonpayable', inputs: [{ name: 'bondId', type: 'uint256' }], outputs: [] },
-  { type: 'function', name: 'rollBond', stateMutability: 'nonpayable', inputs: [{ name: 'bondId', type: 'uint256' }], outputs: [{ name: 'newBondId', type: 'uint256' }] },
-  { type: 'function', name: 'setAutoRollOptOut', stateMutability: 'nonpayable',
-    inputs: [{ name: 'bondId', type: 'uint256' }, { name: 'optOut', type: 'bool' }], outputs: [] },
+  // Phase 2f: at maturity anyone may `settle` a bond; it pays the Holder (a pledged bond under its
+  // Maturity Instruction), or rolls it when the Holder confirmed a posted Roll Notice.
+  { type: 'function', name: 'settle', stateMutability: 'nonpayable', inputs: [{ name: 'bondId', type: 'uint256' }],
+    outputs: [{ name: 'toDebt', type: 'uint256' }, { name: 'toHolder', type: 'uint256' }] },
 ] as const;
 
 /**
  * What a holder can do with a bond they hold, sent to the collection that issued it.
  *
- * `redeem` and `roll` work only once it has matured: redeem pays the face value out of the
- * BondVault, roll spends it on a new bond. Before then a holder can only choose which of the two
- * happens -- rolling is the default, so a pledged bond does not lapse on its own. The collection
- * comes with the bond rather than from the network config, because bonds sold before a collection
- * was replaced still live in the old one.
+ * Since Phase 2f the only call here is `settle`, once it has matured. `redeemBond`, `rollBond` and
+ * the auto-roll switch are gone: a roll happens only when Clear posts a Roll Notice and the Holder
+ * signs `ConfirmRoll` with their own key (that screen is not built yet), otherwise the bond pays out.
+ * The collection comes with the bond rather than from the network config, because bonds sold before
+ * a collection was replaced still live in the old one.
  */
 export async function scBondAction(args: {
   smartWalletClient?: unknown;
   ownerWallet: string;
   collection: `0x${string}`;
   bondId: string;
-  action: 'redeem' | 'roll' | 'cash-at-maturity' | 'roll-at-maturity';
+  action: 'redeem';
   chainId: number;
 }): Promise<string> {
   const id = BigInt(args.bondId);
-  const data =
-    args.action === 'redeem'
-      ? encodeFunctionData({ abi: BOND_HOLDER_ABI, functionName: 'redeemBond', args: [id] })
-      : args.action === 'roll'
-        ? encodeFunctionData({ abi: BOND_HOLDER_ABI, functionName: 'rollBond', args: [id] })
-        : encodeFunctionData({ abi: BOND_HOLDER_ABI, functionName: 'setAutoRollOptOut', args: [id, args.action === 'cash-at-maturity'] });
+  const data = encodeFunctionData({ abi: BOND_HOLDER_ABI, functionName: 'settle', args: [id] });
   const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [{ to: args.collection, data }]);
   await recordGaslessBond({ txHash: hash, chainId: args.chainId }).catch(() => {});
   return hash;
@@ -405,10 +366,31 @@ export async function scTransferToken(args: {
   chainId: number;
 }): Promise<string> {
   const amt = parseUnits(args.amount, 6);
+  const c = clearContracts(args.chainId);
+  if (c && args.token.toLowerCase() === c.clrusd.toLowerCase()) {
+    // Phase 2d: CLRUSD moves only to members (and Clear's own contracts). Asked first, so a refusal
+    // is a sentence rather than a reverted transaction.
+    const allowed = await readContract(wagmiAdapter.wagmiConfig, {
+      address: c.clrusd,
+      abi: CLRUSD_MEMBERS_ABI,
+      functionName: 'mayReceive',
+      args: [args.to],
+      chainId: args.chainId,
+    }).catch(() => null);
+    if (allowed === false) throw new Error(CLRUSD_NOT_A_MEMBER);
+  }
   return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
     { to: args.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [args.to, amt] }) },
   ]);
 }
+
+const CLRUSD_MEMBERS_ABI = [
+  { type: 'function', name: 'mayReceive', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ type: 'bool' }] },
+] as const;
+
+/** Why a Savings (CLRUSD) send was refused before anything was sent. */
+export const CLRUSD_NOT_A_MEMBER =
+  'Savings can only be sent to another Clear member. Nothing was sent. Send cash (USDC) instead, which goes to any address.';
 
 const STABLE_CREDIT_ABI = [
   { type: 'function', name: 'repayCreditBalance', stateMutability: 'nonpayable',

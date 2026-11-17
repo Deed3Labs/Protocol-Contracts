@@ -1284,12 +1284,11 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const reserve = provider === 'live' ? await reserveLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
   const feeds = provider === 'live' ? await feedRows(db) : null;
   const bank = feeds ? await bankLive(db, feeds.get('plaid'), feeds.get('stripe'), o.now.getTime()) : null;
-  // live, the AssurancePool's compartments, floor and coverage are the contract's own (Phase 2c). Null until the
-  // new pool is deployed and named in the address book: the retired pool has none of these views.
+  // live, the AssurancePool's compartments, floor and coverage are the contract's own (Phase 2c): the new pool
+  // (AssurancePoolV2). The retired Phase 1 pool has none of these views, so it is never asked.
+  const assurancePoolV2 = getContractAddress(payoutChainId(), 'AssurancePoolV2');
   const assurance =
-    provider === 'live'
-      ? await assurancePoolLive(chainOf(o, 'money'), getContractAddress(payoutChainId(), 'AssurancePool') ?? undefined).catch(() => null)
-      : null;
+    provider === 'live' && assurancePoolV2 ? await assurancePoolLive(chainOf(o, 'money'), assurancePoolV2).catch(() => null) : null;
   // live, what the PayoutPool owes shops and when, and the credit book: the chain's, not the tables' sample
   const payouts = provider === 'live' ? await payoutsLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
   const credit = provider === 'live' ? await creditLive(db, chainOf(o, 'money'), o.now.getTime()) : null;

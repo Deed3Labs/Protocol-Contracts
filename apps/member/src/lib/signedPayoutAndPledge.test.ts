@@ -64,10 +64,9 @@ describe('the member signs every pledge (L-I)', () => {
     expect(ethers.recoverAddress(digest, signature)).toBe(member.address);
   });
 
-  test('after savings, the pool or a bond lands, the app asks for the pledge', () => {
+  test('after savings or the pool lands, the app asks for the pledge (bonds wait for the signed-Quote purchase)', () => {
     expect(SEND_CALLS).toContain("askToPledge('SAVINGS', args.ownerWallet, args.chainId);");
     expect(SEND_CALLS).toContain("askToPledge('POOL_SHARE', args.ownerWallet, args.chainId);");
-    expect(SEND_CALLS).toContain("askToPledge('BOND', args.ownerWallet, args.chainId);");
   });
 
   test('it checks what it signs, and signs any of the registry’s structs the same way', () => {

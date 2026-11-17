@@ -39,7 +39,8 @@ const mint = (to: string, shares: number, when: string) => put('LendingPool', 'T
 // what the contracts say now: the replay's own answer, plus 200 of A's shares sent to C
 const views: Record<string, string> = {
   totalAssets: usdc(1406), totalSupply: usdc(1400), totalBorrowed: '0', availableCash: usdc(1406), queuedAssets: '0', utilizationBps: '0',
-  borrowRatePerCycle: '25', supplyRatePerCycle: '0', baseRatePerCycle: '25', slope1PerCycle: '75', slope2PerCycle: '900', kinkBps: '8000', decimals: '6',
+  // Phase 2f: the Funding Rate and its model, annual WAD (25, 75 and 900 bps a 30-day cycle; kink at 80%)
+  fundingRate: '30416666666666667', decimals: '6',
   cycleLength: '2592000', borrowedFromYield: '0', shortfall: usdc(140.6),
 };
 const held: Record<string, [number, number]> = { [getAddress(A)]: [800, 100], [getAddress(B)]: [400, 0], [getAddress(Cc)]: [200, 0] };
@@ -94,7 +95,7 @@ const reader: ChainReader = {
       if ((c.contract === 'LendingPool' && c.fn === 'asset') || (c.contract === 'BurnerBond' && c.fn === 'underlyingToken')) return USDC;
       // BondVault: the bond buyers' money it holds, in the same token
       if (c.contract === 'BondVault')
-        return c.fn === 'reserveToken' ? USDC : c.fn === 'requiredReserve' ? BigInt(usdc(90)) : c.fn === 'deployableExcess' ? BigInt(usdc(200.38)) : c.fn === 'minReserveBps' ? 3000n : c.fn === 'reserveWindow' ? BigInt(90 * 86400) : BigInt(usdc(290.38));
+        return c.fn === 'reserveToken' ? USDC : c.fn === 'requiredReserve' ? BigInt(usdc(90)) : c.fn === 'deployableExcess' ? BigInt(usdc(200.38)) : c.fn === 'minReserveBps' ? 3000n : c.fn === 'RESERVE_WINDOW' ? BigInt(90 * 86400) : BigInt(usdc(290.38));
       // the AssurancePool (Phase 2c): 125.03 in the Credit Backstop, nothing in Member Assurance
       if (c.contract === 'AssurancePool') return poolAnswer(c, { backstop: 125.03, assurance: 0, floor: 20, coverage: 105.03 });
       // the PayoutPool's claims, the registry's shops and the credit book: none here (credit.test.ts reads them)
@@ -117,6 +118,7 @@ const reader: ChainReader = {
       }
       if (c.fn === 'balanceOf') return BigInt(usdc(held[c.args![0] as string][0]));
       if (c.fn === 'encumberedOf') return BigInt(usdc(held[c.args![0] as string][1]));
+      if (c.contract === 'LendingPool' && c.fn === 'rateModel') return [30416666666666667n, 91250000000000000n, 800000000000000000n, 1095000000000000000n];
       return BigInt(views[c.fn]);
     });
   },
@@ -174,7 +176,7 @@ describe('the yield pool, live', () => {
     expect(m.Y.curve).toEqual({ base: 25, s1: 75, s2: 900, kink: 0.8 });
     expect(m.Y.price).toBeCloseTo(1406 / 1400, 10);
     // every read in one request: the pool's views, the cycle, the payout draw, and each holder's shares and pledge
-    expect([...asked].reverse().find((a) => a.some((c) => c.fn === 'totalAssets'))!.length).toBe(16 + 3 * 2);
+    expect([...asked].reverse().find((a) => a.some((c) => c.fn === 'totalAssets'))!.length).toBe(12 + 3 * 2);
     // the payout gap is the PayoutPool's: a tenth of the pool, so a tenth lent after
     expect(m.Y.toPayout).toBe(140.6);
     expect(m.Y.utilAfter).toBeCloseTo(0.1, 10);
@@ -223,7 +225,10 @@ describe('the yield pool, live', () => {
 
   test('a pool nobody has deposited in yet: zeros, not NaN', async () => {
     const empty: ChainReader = {
-      read: async (calls) => calls.map((c) => (c.fn === 'asset' ? USDC : c.fn === 'decimals' ? 6n : c.fn === 'borrowRatePerCycle' || c.fn === 'baseRatePerCycle' ? 25n : 0n)),
+      read: async (calls) =>
+        calls.map((c) =>
+          c.fn === 'asset' ? USDC : c.fn === 'decimals' ? 6n : c.fn === 'fundingRate' ? 30416666666666667n : c.fn === 'rateModel' ? [30416666666666667n, 0n, 0n, 0n] : 0n,
+        ),
     };
     const fresh = (await testDb()).db;
     await seedCommand(fresh);

@@ -142,6 +142,21 @@ savingsRouter.post('/intents/create', async (req: Request, res: Response) => {
       chainId: parseChainId(body.chainId),
     });
 
+    // Phase 2d: a redeem escrow must be announced on the factory before the member sends CLRUSD to
+    // it, or members-only CLRUSD refuses the transfer. Refused here, before an address is shown.
+    if (payload.action === 'redeem') {
+      try {
+        await savingsRelayerService.announceIntent(payload);
+      } catch (error) {
+        console.error('[savings] announceIntent failed', error instanceof Error ? error.message : error);
+        res.status(503).json({
+          error: 'Redeem address unavailable',
+          message: 'We could not set up a redeem address just now. Nothing was taken. Try again, or redeem from the app.',
+        });
+        return;
+      }
+    }
+
     res.json({
       action: payload.action,
       chainId: payload.chainId,

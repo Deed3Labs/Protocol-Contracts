@@ -177,19 +177,11 @@ const BondDepositForm: React.FC<BondDepositFormProps> = ({ onStatsUpdate }) => {
     setSuccess('');
 
     try {
-      // Mock deposit - in real app, this would call the BurnerBondDeposit contract
-      // The contract expects: makeDeposit(tokenAddress, faceValue, maturityDate, discountPercentage)
-      // where maturityDate is a Unix timestamp in seconds
+      // A mock: nothing is sent. The BurnerBondDeposit contract, `makeDeposit` and the discount curve
+      // are retired (Phase 2f, decision 8): a bond is bought with `BurnerBond.purchase(quote, signature,
+      // attestation)` on a Ladder rung (see ConnectedBuyBond and lib/sendCalls).
       const maturityTimestamp = dateToUnixTimestamp(maturityDate!);
-      
-      // In real implementation, this would be:
-      // await burnerBondDeposit.makeDeposit(
-      //   selectedToken,
-      //   ethers.utils.parseUnits(calculation.faceValue, selectedTokenInfo?.decimals || 6),
-      //   maturityTimestamp,
-      //   Math.floor(calculation.discountPercentage * 100) // Convert to basis points
-      // );
-      
+
       console.log('Bond creation parameters:', {
         tokenAddress: selectedToken,
         faceValue: calculation.faceValue,

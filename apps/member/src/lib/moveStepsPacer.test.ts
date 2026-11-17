@@ -29,12 +29,11 @@ describe('the progress dots move', () => {
     expect(stepsFor(['a', 'b', 'c'], 1, 'processing').map((s) => s.state)).toEqual(['done', 'active', 'waiting']);
   });
 
-  test('savings, pool and bond moves walk the dots before done', () => {
+  test('savings and pool moves walk the dots before done', () => {
     const savings = read('hooks/useSavingsMove.ts');
     expect(savings).toContain('hash = await sponsored({ smartWalletClient: chainClient, ownerWallet: address, amount: amountStr, chainId, onConfirmed });');
     expect(savings).toMatch(/await pace\.to\(stepLabelsLength - 1\);\s*setTxHash\(hash\);\s*setProgress\(\{ status: 'done'/);
     expect(read('hooks/usePoolMove.ts')).toMatch(/await pace\.to\(2\);\s*setTxHash\(hash\);\s*setProgress\(\{ status: 'done', step: 3 \}\);/);
-    expect(read('components/clear/ConnectedBuyBond.tsx')).toMatch(/await pace\.to\(2\);\s*setProgress\(\{ status: 'done', step: 3 \}\);/);
     // The deposit's last dot is in flight while the credits are recorded, not before the money moved.
     expect(read('lib/sendCalls.ts')).toMatch(/args\.onConfirmed\?\.\(\);\s*await recordGaslessSavings\(\{ action: 'deposit'/);
   });

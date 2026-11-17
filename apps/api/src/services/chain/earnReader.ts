@@ -11,37 +11,44 @@ import { scanLogs } from './logScan.js';
  * Same three rules as the other readers: never on the authorization path, a failed read is not a
  * zero, no contract means the product simply is not there.
  *
- * One thing worth saying plainly. Bond terms are computed by asking the collection what it would
- * charge for a bond maturing on a given date, rather than by reproducing the discount curve here.
- * The curve is configurable per collection and its shape is a product decision -- linear, S-curve
- * or logarithmic -- so a copy of it in TypeScript would be a second answer that drifts the first
- * time somebody retunes it. Quoting a price the contract would not honour is worse than showing
- * no price.
+ * One thing worth saying plainly. Bond terms are the Ladder's (Phase 2f): the terms EarnControls
+ * offers (`ladderTerms`, `ladderYieldBps`), priced by the collection itself (`quotePrice`), rather
+ * than a copy of the pricing in TypeScript. The pre-2f discount curve and `calculatePurchasePrice`
+ * are retired with the old collection. Quoting a price the contract would not honour is worse than
+ * showing no price.
+ *
+ * The pool is the Yield Pool (Phase 2f): `fundingRate()` (annual, WAD) on the Deployed Balance and
+ * `utilization()` (WAD) replace the per-cycle rate getters, and `shareValue()` replaces
+ * `navPerShare`.
  */
 
 const POOL_ABI = [
   'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)',
   'event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)',
   'function totalAssets() external view returns (uint256)',
-  'function utilizationBps() external view returns (uint256)',
-  'function supplyRatePerCycle() external view returns (uint256)',
+  'function utilization() external view returns (uint256)',
+  'function fundingRate() external view returns (uint256)',
+  'function deployedBalance() external view returns (uint256)',
   'function balanceOf(address owner) external view returns (uint256)',
   'function convertToAssets(uint256 shares) external view returns (uint256)',
 ];
 
 const BOND_ABI = [
-  'event BondRedeemed(uint256 indexed bondId, address indexed redeemer, uint256 faceValue)',
-  'function getBondIdsByCreator(address creator) external view returns (uint256[])',
-  'function getBondInfo(uint256 bondId) external view returns (tuple(uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, uint256 purchasePrice, bool isRedeemed, address creator, uint64 issuedAt))',
+  'event BondRedeemed(uint256 indexed bondId, address indexed holder, uint256 amount)',
+  'function getBondIdsByCreator(address holder) external view returns (uint256[])',
+  'function getBondInfo(uint256 bondId) external view returns (tuple(uint256 faceValue, uint256 purchasePrice, uint256 costBasis, uint256 paid, uint64 issuedAt, uint64 maturityDate, uint32 termDays, uint32 yieldBps, bool isRedeemed, bytes32 exemptionCode))',
   'function presentValueOf(uint256 bondId) external view returns (uint256)',
-  'function calculatePurchasePrice(uint256 faceValue, uint256 maturityDate) external view returns (uint256)',
+  'function quotePrice(uint256 maturityAmount, uint32 termDays, uint32 yieldBps) external view returns (uint256)',
   'function balanceOf(address account, uint256 id) external view returns (uint256)',
-  'function willAutoRoll(uint256 bondId) external view returns (bool)',
 ];
 
-/** Cycles a year, for turning a per-cycle rate into the annual one a member is shown. */
-const CYCLES_PER_YEAR = 365 / 30;
-const BPS = 10_000;
+/** EarnControls' Ladder (joined ABI, `earnControlsAt`): the terms on offer and their Issue Yields. */
+const LADDER_ABI = [
+  'function ladderTerms() external view returns (uint32[])',
+  'function ladderYieldBps(uint32 termDays) external view returns (uint32)',
+];
+
+const WAD = 10n ** 18n;
 
 export interface ChainPool {
   /** Annualised supply rate as a percentage, e.g. 6.8. */
@@ -71,10 +78,8 @@ export interface ChainHeldBond {
   /** When it was issued. The term is this to maturity; months left is now to maturity. */
   issuedAtUnix: number;
   redeemed: boolean;
-  /** The collection that issued it, which is the one to redeem or roll it with. */
+  /** The collection that issued it, which is the one to settle it with. */
   collection: string;
-  /** Whether it rolls into a new bond at maturity (the default) rather than paying out. */
-  autoRoll: boolean;
   /**
    * Pledged and holding up drawn credit. BondVault refuses to pay it out, so the app shows Redeem as
    * unavailable and says why rather than letting the transaction fail.
@@ -126,12 +131,13 @@ async function readPool(
 ): Promise<ChainPool | null> {
   try {
     const pool = new ethers.Contract(address, POOL_ABI, provider);
-    const [totalAssets, utilization, supplyRate, shares] = await Promise.all([
+    const [totalAssets, utilization, fundingRate, deployed, shares] = await Promise.all([
       pool.totalAssets(),
-      pool.utilizationBps(),
-      pool.supplyRatePerCycle(),
+      pool.utilization(),
+      pool.fundingRate(),
+      pool.deployedBalance(),
       pool.balanceOf(wallet),
-    ]);
+    ]) as [bigint, bigint, bigint, bigint, bigint];
     // Shares are worth what the pool would give for them, which is not their face while the pool
     // has earned anything.
     const position = shares > 0n ? await pool.convertToAssets(shares) : 0n;
@@ -144,9 +150,10 @@ async function readPool(
     const earnedCents = costBasis === null ? 0 : Math.max(0, positionCents - costBasis);
 
     return {
-      apyPercent: (Number(supplyRate) / BPS) * CYCLES_PER_YEAR * 100,
+      // Holders earn the Funding Rate on the Deployed Balance, spread over all Pool Assets.
+      apyPercent: (Number((fundingRate * utilization) / WAD) / Number(WAD)) * 100,
       capacityCents: toCents(totalAssets),
-      lentCents: Math.round((toCents(totalAssets) * Number(utilization)) / BPS),
+      lentCents: toCents(deployed),
       positionCents,
       earnedCents,
     };
@@ -205,10 +212,9 @@ async function readBonds(
       const balance: bigint = await collection.balanceOf(wallet, id);
       if (balance === 0n) continue;
 
-      const [info, worth, autoRoll, backsDrawnCredit] = await Promise.all([
+      const [info, worth, backsDrawnCredit] = await Promise.all([
         collection.getBondInfo(id),
         collection.presentValueOf(id),
-        collection.willAutoRoll(id),
         registry ? registry.isItemEncumbered(wallet, BOND_KIND, id).catch(() => false) : Promise.resolve(false),
       ]);
       held.push({
@@ -220,7 +226,6 @@ async function readBonds(
         issuedAtUnix: Number(info.issuedAt),
         redeemed: info.isRedeemed,
         collection: ethers.getAddress(address),
-        autoRoll: Boolean(autoRoll),
         backsDrawnCredit: Boolean(backsDrawnCredit),
       });
     }
@@ -232,42 +237,44 @@ async function readBonds(
 }
 
 /**
- * The terms on offer, priced by the collection rather than by a copy of its curve.
- *
- * One face value is quoted across the offered maturities so the prices are comparable; the page
- * scales from there. A term the collection refuses to price -- outside its min or max maturity --
- * is dropped rather than shown at a guess.
+ * The terms on offer: the Ladder's rungs (EarnControls), each priced by the collection for one face
+ * value so the prices are comparable; the page scales from there. A rung the collection refuses to
+ * price is dropped rather than shown at a guess.
  */
 async function readTerms(
   provider: ethers.JsonRpcProvider,
   address: string,
+  controlsAddress: string | null,
 ): Promise<ChainBondTerm[] | null> {
-  const OFFERED_MONTHS = [6, 12, 24, 36];
   const QUOTE_FACE = 1_000_000_000n; // 1,000 units at 6dp
+  if (!controlsAddress) return [];
 
   try {
     const collection = new ethers.Contract(address, BOND_ABI, provider);
-    const now = Math.floor(Date.now() / 1000);
+    const ladder = new ethers.Contract(controlsAddress, LADDER_ABI, provider);
+    const rungs = (await ladder.ladderTerms()) as bigint[];
     const terms: ChainBondTerm[] = [];
 
-    for (const months of OFFERED_MONTHS) {
-      const maturity = now + months * 30 * 86_400;
+    for (const rung of rungs) {
+      const termDays = Number(rung);
       try {
-        const price: bigint = await collection.calculatePurchasePrice(QUOTE_FACE, maturity);
+        const yieldBps = Number(await ladder.ladderYieldBps(termDays));
+        const price: bigint = await collection.quotePrice(QUOTE_FACE, termDays, yieldBps);
         if (price === 0n || price >= QUOTE_FACE) continue;
 
         const faceCents = toCents(QUOTE_FACE);
         const priceCents = toCents(price);
-        // The annual rate the discount actually implies, rather than the curve's nominal one.
+        const months = Math.round(termDays / 30);
+        // The annual rate the price actually implies, rather than the rung's nominal one.
         const growth = faceCents / priceCents;
         terms.push({
           months,
           priceCents,
           faceCents,
-          ratePercent: (Math.pow(growth, 12 / months) - 1) * 100,
+          ratePercent: (Math.pow(growth, 365 / termDays) - 1) * 100,
         });
       } catch {
-        // Outside the collection's maturity bounds. Not an error -- just not on offer.
+        // Not priced. Not an error -- just not on offer.
       }
     }
     return terms;
@@ -303,9 +310,9 @@ async function readRedeemedGains(
     );
     let gains = 0;
     for (const event of events) {
-      const { bondId, faceValue } = (event as ethers.EventLog).args;
+      const { bondId, amount } = (event as ethers.EventLog).args;
       const info = await collection.getBondInfo(bondId);
-      gains += Math.max(0, toCents(faceValue) - toCents(info.purchasePrice));
+      gains += Math.max(0, toCents(amount) - toCents(info.purchasePrice));
     }
     return gains;
   } catch (error) {
@@ -337,6 +344,7 @@ async function readChainEarnUncached(
   const poolAddress = getContractAddress(chainId, 'LendingPool');
   const bondAddress = getContractAddress(chainId, 'BurnerBond');
   const registryAddress = getContractAddress(chainId, 'CollateralRegistry');
+  const controlsAddress = getContractAddress(chainId, 'EarnControls');
 
   let provider: ethers.JsonRpcProvider;
   try {
@@ -349,7 +357,7 @@ async function readChainEarnUncached(
   const [pool, bonds, terms, redeemedGains] = await Promise.all([
     poolAddress ? readPool(provider, poolAddress, wallet, chainId) : Promise.resolve(null),
     bondAddress ? readBonds(provider, bondAddress, wallet, registryAddress) : Promise.resolve([]),
-    bondAddress ? readTerms(provider, bondAddress) : Promise.resolve([]),
+    bondAddress ? readTerms(provider, bondAddress, controlsAddress) : Promise.resolve([]),
     bondAddress ? readRedeemedGains(provider, bondAddress, wallet, chainId) : Promise.resolve(0),
   ]);
 

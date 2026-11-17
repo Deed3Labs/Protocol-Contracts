@@ -17,10 +17,10 @@ const read = (p: string) => readFileSync(join(SRC, p), 'utf8');
  * These tests are about coverage rather than behaviour, because that is what was wrong.
  */
 
+// ConnectedBuyBond moves nothing while bond purchases wait for the signed-Quote flow (Phase 2f).
 const MOVERS = [
   'components/clear/ConnectedMoveMoney.tsx',
   'components/clear/ConnectedPoolMove.tsx',
-  'components/clear/ConnectedBuyBond.tsx',
 ];
 
 /*

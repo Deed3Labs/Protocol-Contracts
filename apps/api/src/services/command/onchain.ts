@@ -128,7 +128,9 @@ export interface YieldPoolLive {
   entries: YieldEntry[];
 }
 
-const POOL_EVENTS = ['Deposit', 'Withdraw', 'WithdrawalQueued', 'WithdrawalClaimed', 'Borrowed', 'Repaid', 'LossAbsorbed', 'Transfer'];
+// Phase 2f: the Yield Pool lends only as recorded Deployments and is paid back by Returns; the
+// pre-2f Borrowed and LossAbsorbed stay for history on Base Sepolia.
+const POOL_EVENTS = ['Deposit', 'Withdraw', 'WithdrawalQueued', 'WithdrawalClaimed', 'Borrowed', 'Repaid', 'LossAbsorbed', 'Deployed', 'Returned', 'Transfer'];
 const ZERO = '0x0000000000000000000000000000000000000000';
 
 /**
@@ -153,16 +155,24 @@ export async function yieldPoolLive(db: Queryable, reader: ChainReader, now: num
     else if (e.event === 'Withdraw') (cash -= big(a.assets)), (principal -= big(a.assets));
     else if (e.event === 'WithdrawalQueued') (queued += big(a.assets)), (principal -= big(a.assets));
     else if (e.event === 'WithdrawalClaimed') (cash -= big(a.assets)), (queued -= big(a.assets));
-    else if (e.event === 'Borrowed') (cash -= big(a.amount)), (lent += big(a.amount));
-    else if (e.event === 'Repaid') (cash += big(a.amount)), (lent = big(a.amount) > lent ? 0n : lent - big(a.amount));
+    else if (e.event === 'Borrowed' || e.event === 'Deployed') (cash -= big(a.amount)), (lent += big(a.amount));
+    else if (e.event === 'Returned') {
+      cash += big(a.interestPaid) + big(a.principalPaid) + big(a.excess);
+      lent = big(a.principalPaid) > lent ? 0n : lent - big(a.principalPaid);
+    } else if (e.event === 'Repaid') {
+      // A Return also emits Repaid when the PayoutPool repays; the Returned line has booked it.
+      if (!ev.some((x) => x.tx === e.tx && x.event === 'Returned')) (cash += big(a.amount)), (lent = big(a.amount) > lent ? 0n : lent - big(a.amount));
+    }
     else if (e.event === 'LossAbsorbed') lent -= big(a.absorbed);
     else if (e.event === 'Transfer' && a.to !== ZERO && !holders.has(getAddress(a.to))) holders.set(getAddress(a.to), e.at);
     states.push({ at: e.at, cash, lent, queued });
   }
 
   const who = [...holders.keys()];
-  const [totalAssets, totalSupply, totalBorrowed, availableCash, queuedAssets, util, borrowBps, supplyBps, base, s1, s2, kink, decimals, cycle, toPayouts, payoutShort, ...per] = await reader.read([
-    ...['totalAssets', 'totalSupply', 'totalBorrowed', 'availableCash', 'queuedAssets', 'utilizationBps', 'borrowRatePerCycle', 'supplyRatePerCycle', 'baseRatePerCycle', 'slope1PerCycle', 'slope2PerCycle', 'kinkBps', 'decimals'].map((fn) => ({ contract: 'LendingPool', fn })),
+  // Phase 2f: the Funding Rate (annual, WAD) and its model replace the per-cycle rate getters; they are
+  // turned into basis points per 30-day cycle here so Money's figures keep their units.
+  const [totalAssets, totalSupply, totalBorrowed, availableCash, queuedAssets, util, fundingRate, model, decimals, cycle, toPayouts, payoutShort, ...per] = await reader.read([
+    ...['totalAssets', 'totalSupply', 'totalBorrowed', 'availableCash', 'queuedAssets', 'utilizationBps', 'fundingRate', 'rateModel', 'decimals'].map((fn) => ({ contract: 'LendingPool', fn })),
     { contract: 'RevolvingIssuer', fn: 'cycleLength' },
     { contract: 'PayoutPool', fn: 'borrowedFromYield' },
     { contract: 'PayoutPool', fn: 'shortfall' },
@@ -173,6 +183,11 @@ export async function yieldPoolLive(db: Queryable, reader: ChainReader, now: num
   ]);
   const unit = 10 ** Number(decimals);
   const usd = (v: bigint) => Math.round((Number(v) / unit) * 100) / 100;
+  // an annual WAD rate, in basis points per 30-day cycle
+  const perCycleBps = (wad: unknown) => Math.round((Number(big(wad)) / 1e18) * 10_000 * (30 / 365));
+  const [r0, s1, k, s2] = (Array.isArray(model) ? model : [0n, 0n, 0n, 0n]).map((v) => big(v));
+  const borrowBps = perCycleBps(fundingRate);
+  const supplyBps = Math.round((borrowBps * Number(util)) / 10_000);
   const worth = (shares: bigint) => (big(totalSupply) === 0n ? 0n : (shares * big(totalAssets)) / big(totalSupply));
 
   const firstDeposit = new Map<string, number>();
@@ -207,9 +222,9 @@ export async function yieldPoolLive(db: Queryable, reader: ChainReader, now: num
     queued: usd(big(queuedAssets)),
     principal: usd(principal),
     utilBps: Number(util),
-    borrowBps: Number(borrowBps),
-    supplyBps: Number(supplyBps),
-    curve: { base: Number(base), s1: Number(s1), s2: Number(s2), kink: Number(kink) / 10_000 },
+    borrowBps,
+    supplyBps,
+    curve: { base: perCycleBps(r0), s1: perCycleBps(s1), s2: perCycleBps(s2), kink: Number(k) / 1e18 },
     // a cycle is the credit line's: 30 days until the issuer has a tier to say otherwise
     cycleDays: Number(cycle) ? Number(cycle) / 86_400 : 30,
     toPayouts: usd(big(toPayouts)),
@@ -357,7 +372,8 @@ export interface BondLive {
 
 // RedeemedEarly is the legacy collections' seize-and-redeem path; a Phase 2e collection closes a
 // pledged bond with PledgePaid (its pledge payment term) or PledgedMaturitySplit (settled at maturity).
-const BOND_EVENTS = ['BondMinted', 'BondRedeemed', 'RedeemedEarly', 'PledgePaid', 'PledgedMaturitySplit', 'BondRolled', 'TransferSingle', 'TransferBatch'];
+// Phase 2f adds a buyback, a payment through the Collateral Agent's distributions and redemption under a wind-down.
+const BOND_EVENTS = ['BondMinted', 'BondRedeemed', 'RedeemedEarly', 'PledgePaid', 'PledgedMaturitySplit', 'BondRolled', 'BondBoughtBack', 'BondPaidThroughDistributions', 'RedeemedUnderWindDown', 'TransferSingle', 'TransferBatch'];
 
 /**
  * Every BurnerBond, from its events: what it was minted for (face value, price paid, maturity), who
@@ -540,7 +556,8 @@ export async function bondVaultLive(reader: ChainReader): Promise<BondVaultLive>
     { contract: 'BondVault', fn: 'requiredReserve' },
     { contract: 'BondVault', fn: 'deployableExcess' },
     { contract: 'BondVault', fn: 'minReserveBps' },
-    { contract: 'BondVault', fn: 'reserveWindow' },
+    // Phase 2f fixed the window (RESERVE_WINDOW); the governed reserveWindow() is gone.
+    { contract: 'BondVault', fn: 'RESERVE_WINDOW' },
     { contract: 'BondVault', fn: 'reserveToken' },
   ]);
   const [decimals] = await reader.read([{ contract: 'ERC20', address: String(token), fn: 'decimals' }]);
