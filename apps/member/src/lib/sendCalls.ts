@@ -32,8 +32,29 @@ const VAULT_ABI = [
   { name: 'deposit', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'amount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
   { name: 'redeem', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'token', type: 'address' }, { name: 'clrusdAmount', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const;
+// createTransferWithClaimKey (audit H-4): the lock commits the claim key the link carries, so the
+// recipient, not the settler, chooses the wallet a claim goes to.
 const ESCROW_ABI = [
-  { name: 'createTransfer', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'transferId', type: 'bytes32' }, { name: 'principalUsdc', type: 'uint256' }, { name: 'sponsorFeeUsdc', type: 'uint256' }, { name: 'expiry', type: 'uint64' }, { name: 'recipientHintHash', type: 'bytes32' }], outputs: [] },
+  {
+    name: 'createTransferWithClaimKey',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      {
+        name: 'terms',
+        type: 'tuple',
+        components: [
+          { name: 'transferId', type: 'bytes32' },
+          { name: 'principalUsdc', type: 'uint256' },
+          { name: 'sponsorFeeUsdc', type: 'uint256' },
+          { name: 'expiry', type: 'uint64' },
+          { name: 'recipientHintHash', type: 'bytes32' },
+          { name: 'claimSigner', type: 'address' },
+        ],
+      },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 type Call = { to: `0x${string}`; data: `0x${string}` };
@@ -320,7 +341,7 @@ export async function scBondAction(args: {
   return hash;
 }
 
-/** Send: [approve(escrow), createTransfer] in ONE sponsored batch. Returns the lock tx hash. */
+/** Send: [approve(escrow), createTransferWithClaimKey] in ONE sponsored batch. Returns the lock tx hash. */
 export async function scSendLock(args: {
   smartWalletClient?: unknown;
   ownerWallet: string;
@@ -331,6 +352,8 @@ export async function scSendLock(args: {
   totalLockedUsdcMicros: string;
   recipientHintHash: `0x${string}`;
   expiresAt: string;
+  /** The claim key's address, from prepare: what the claim link can sign for. */
+  claimSigner: `0x${string}`;
 }): Promise<string> {
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
@@ -340,7 +363,14 @@ export async function scSendLock(args: {
   const expiry = BigInt(Math.floor(new Date(args.expiresAt).getTime() / 1000));
   return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.claimEscrow, total] }) },
-    { to: c.claimEscrow, data: encodeFunctionData({ abi: ESCROW_ABI, functionName: 'createTransfer', args: [args.transferId, principal, fee, expiry, args.recipientHintHash] }) },
+    {
+      to: c.claimEscrow,
+      data: encodeFunctionData({
+        abi: ESCROW_ABI,
+        functionName: 'createTransferWithClaimKey',
+        args: [{ transferId: args.transferId, principalUsdc: principal, sponsorFeeUsdc: fee, expiry, recipientHintHash: args.recipientHintHash, claimSigner: args.claimSigner }],
+      }),
+    },
   ]);
 }
 

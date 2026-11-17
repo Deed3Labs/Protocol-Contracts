@@ -207,7 +207,7 @@ describe('the routes', () => {
   test('paying now and approving a plan each take a fresh Face ID; the member’s own charge only', () => {
     expect(routes).toContain("chargesRouter.post('/:code/pay-now', requireAuth, requireStepUp, async");
     expect(routes).toContain("chargesRouter.post('/:code/approve', requireAuth, requireStepUp, async");
-    expect(routes.match(/requireVerifiedWallet\(req, res, charge\.memberWallet, 'charge'\)/g)?.length).toBe(6);
+    expect(routes.match(/requireVerifiedWallet\(req, res, charge\.memberWallet, 'charge'\)/g)?.length).toBe(7); // six member routes and approve/prepare (audit H-4)
   });
   test('held charges are settled by their own reconciliation', () => {
     expect(reconciler).toContain('await reconcilePayNow()');

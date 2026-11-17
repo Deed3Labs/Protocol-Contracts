@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { splitQuote } from './split';
+import { planSchedule, unitsToCents } from './planTerms';
 
 /**
  * The figures both apps must agree on.
@@ -20,26 +21,36 @@ describe('the reference charge: $940 at 2% per cycle', () => {
     expect(q.total).toBeCloseTo(958.8, 10);
   });
 
-  it('in 2 — $484.10 per cycle, carry $28.20, total $968.20', () => {
+  // Levelled (section 12.9): one payment a cycle, A·r / (1 − (1 + r)^−n). Rounded to the cent the
+  // member is billed, as the screens show them.
+  const cents = (n: number) => Number(n.toFixed(2));
+
+  it('in 2 — $484.15 per cycle, carry $28.29, total $968.29', () => {
     const q = splitQuote(AMOUNT, 2, RATE);
-    expect(q.perCycle).toBeCloseTo(484.1, 10);
-    expect(q.carry).toBeCloseTo(28.2, 10);
-    expect(q.total).toBeCloseTo(968.2, 10);
+    expect(cents(q.perCycle)).toBe(484.15);
+    expect(cents(q.carry)).toBe(28.29);
+    expect(cents(q.total)).toBe(968.29);
   });
 
-  it('in 4 — $246.75 per cycle, carry $47.00, total $987.00', () => {
+  it('in 4 — $246.87 per cycle, carry $47.47, total $987.47 (section 12.9)', () => {
     const q = splitQuote(AMOUNT, 4, RATE);
-    expect(q.perCycle).toBeCloseTo(246.75, 10);
-    expect(q.carry).toBeCloseTo(47.0, 10);
-    expect(q.total).toBeCloseTo(987.0, 10);
+    expect(cents(q.perCycle)).toBe(246.87);
+    expect(cents(q.carry)).toBe(47.47);
+    expect(cents(q.total)).toBe(987.47);
   });
 
-  it('in 12 — $88.52 per cycle, carry $122.20, total $1,062.20', () => {
+  it('in 12 — $88.89 per cycle, carry $126.63, total $1,066.63', () => {
     const q = splitQuote(AMOUNT, 12, RATE);
-    // 1062.20 / 12 recurs; the member is billed the rounded figure, so round before comparing.
-    expect(Number(q.perCycle.toFixed(2))).toBe(88.52);
-    expect(q.carry).toBeCloseTo(122.2, 10);
-    expect(q.total).toBeCloseTo(1062.2, 10);
+    expect(cents(q.perCycle)).toBe(88.89);
+    expect(cents(q.carry)).toBe(126.63);
+    expect(cents(q.total)).toBe(1066.63);
+  });
+
+  it('agrees with the chain’s own schedule (planSchedule, TermIssuerBase._fixSchedule) to the cent', () => {
+    for (const n of [1, 2, 4, 6, 12]) {
+      const chain = planSchedule({ principal: 940_000_000n, ratePerCycleBps: 200, installments: n, installmentLengthSeconds: 30 * 86_400 });
+      expect(cents(splitQuote(AMOUNT, n, RATE).perCycle)).toBe(unitsToCents(chain.payment) / 100);
+    }
   });
 });
 

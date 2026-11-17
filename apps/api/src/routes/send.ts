@@ -1,3 +1,4 @@
+import { claimWindowOpen } from '@clear/domain';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { isAddress, Signature } from 'ethers';
 import { requireAuth, requireWalletMatch } from '../middleware/auth.js';
@@ -303,7 +304,17 @@ function publicTransferView(transfer: {
     status: transfer.status,
     region: transfer.region,
     payoutMethods: payoutMethodsForRegion(transfer.region),
+    // The contract the claim key's signature is made for (audit H-4).
+    escrowAddress: sendCryptoService.escrowAddressFor(transfer.chainId),
   };
+}
+
+/**
+ * The claim link's token, checked: sent back by the sender's app after `prepare` handed it out
+ * (audit H-4). The server keeps only a peppered hash of it, so it has to come back to be used.
+ */
+function claimTokenFrom(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length >= 16 ? value.trim() : null;
 }
 
 async function markTransferClaimedFromMethod(
@@ -562,8 +573,16 @@ senderRouter.post('/transfers/prepare', requireAuth, async (req: Request, res: R
       memo: typeof body.memo === 'string' ? body.memo.trim().slice(0, 256) : null,
     });
 
+    /*
+     * The claim key (audit H-4). The lock has to commit the key's address, so the claim link exists
+     * before the lock does: its token is made now and handed to the sender's app, which commits the
+     * derived address on chain and sends the token back to confirm. Only a hash is ever stored.
+     */
+    const claimToken = sendClaimService.generateClaimToken();
+
     return res.json({
       transfer: publicTransferView(transfer),
+      claim: { token: claimToken, signer: sendCryptoService.claimSignerFor(claimToken) },
       recipient: {
         type: parsedRecipient.recipientType,
         masked: sendClaimService.maskContact(parsedRecipient.normalizedContact, parsedRecipient.recipientType),
@@ -607,8 +626,16 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
       transferId?: unknown;
       senderWallet?: unknown;
       aa?: unknown;
+      claimToken?: unknown;
     };
     const isAaLock = body.aa === true;
+    const claimToken = claimTokenFrom(body.claimToken);
+    if (!claimToken) {
+      return res.status(400).json({
+        error: 'Invalid claim token',
+        message: 'claimToken from prepare is required: the lock commits its claim key',
+      });
+    }
 
     if (body.senderWallet != null && !requireWalletMatch(req, res, body.senderWallet, 'senderWallet')) {
       return;
@@ -662,6 +689,7 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
       expectedTotalLockedUsdcMicros: existingTransfer.totalLockedUsdc,
       expectedExpiry: existingTransfer.expiresAt,
       expectedRecipientHintHash: existingTransfer.recipientHintHash,
+      expectedClaimSigner: sendCryptoService.claimSignerFor(claimToken),
     };
     const verification = isAaLock
       ? await sendCryptoService.verifyEscrowLockByEvent(verifyParams)
@@ -674,7 +702,7 @@ senderRouter.post('/transfers/:id/confirm-lock', requireAuth, async (req: Reques
       });
     }
 
-    const claimToken = sendClaimService.generateClaimToken();
+    // The link carries the claim key: it is derived from this token (@clear/domain claimKey).
     const claimTokenHash = sendClaimService.hashClaimToken(claimToken);
     const claimUrl = `${claimAppBaseUrl()}/claim/${encodeURIComponent(claimToken)}`;
 
@@ -745,6 +773,11 @@ senderRouter.post('/transfers/:id/lock-authorization', requireAuth, async (req: 
       return res.status(400).json({ error: 'Invalid transfer id', message: 'Route parameter :id must be a positive integer' });
     }
 
+    const claimToken = claimTokenFrom((req.body as { claimToken?: unknown } | undefined)?.claimToken);
+    if (!claimToken) {
+      return res.status(400).json({ error: 'Invalid claim token', message: 'claimToken from prepare is required' });
+    }
+
     const existingTransfer = await sendTransferStore.getSenderTransferById(id, senderWallet);
     if (!existingTransfer) {
       return res.status(404).json({ error: 'Transfer not found', message: 'No transfer found for this sender and id' });
@@ -757,8 +790,12 @@ senderRouter.post('/transfers/:id/lock-authorization', requireAuth, async (req: 
       senderWallet,
       chainId: existingTransfer.chainId,
       totalLockedUsdcMicros: existingTransfer.totalLockedUsdc,
+      principalUsdcMicros: existingTransfer.principalUsdc,
+      sponsorFeeUsdcMicros: existingTransfer.sponsorFeeUsdc,
+      recipientHintHash: existingTransfer.recipientHintHash,
       transferId: existingTransfer.transferId,
       expiresAt: existingTransfer.expiresAt,
+      claimSigner: sendCryptoService.claimSignerFor(claimToken),
     });
 
     return res.json({
@@ -790,9 +827,13 @@ senderRouter.post('/transfers/:id/submit-authorization', requireAuth, async (req
       return res.status(400).json({ error: 'Invalid transfer id', message: 'Route parameter :id must be a positive integer' });
     }
 
-    const body = req.body as { signature?: unknown; senderWallet?: unknown };
+    const body = req.body as { signature?: unknown; senderWallet?: unknown; claimToken?: unknown };
     if (body.senderWallet != null && !requireWalletMatch(req, res, body.senderWallet, 'senderWallet')) {
       return;
+    }
+    const claimToken = claimTokenFrom(body.claimToken);
+    if (!claimToken) {
+      return res.status(400).json({ error: 'Invalid claim token', message: 'claimToken from prepare is required' });
     }
     if (typeof body.signature !== 'string' || !/^0x[a-fA-F0-9]{130}$/.test(body.signature.trim())) {
       return res.status(400).json({ error: 'Invalid signature', message: 'signature must be a 65-byte hex signature' });
@@ -806,17 +847,22 @@ senderRouter.post('/transfers/:id/submit-authorization', requireAuth, async (req
       return res.status(409).json({ error: 'Transfer already finalized', message: `Transfer is already in status ${existingTransfer.status}` });
     }
 
-    // Re-derive the exact EIP-3009 params from the trusted record (the client only supplied a signature).
+    // Re-derive the exact EIP-3009 params from the trusted record and the claim token (the client only
+    // supplied a signature): the nonce commits every term and the claim key (audit H-4).
     const prepared = await sendCryptoService.buildLockAuthorizationTypedData({
       senderWallet,
       chainId: existingTransfer.chainId,
       totalLockedUsdcMicros: existingTransfer.totalLockedUsdc,
+      principalUsdcMicros: existingTransfer.principalUsdc,
+      sponsorFeeUsdcMicros: existingTransfer.sponsorFeeUsdc,
+      recipientHintHash: existingTransfer.recipientHintHash,
       transferId: existingTransfer.transferId,
       expiresAt: existingTransfer.expiresAt,
+      claimSigner: sendCryptoService.claimSignerFor(claimToken),
     });
     const sig = Signature.from(body.signature.trim());
 
-    const relayResult = await sendRelayerService.createTransferWithAuthorization(
+    const relayResult = await sendRelayerService.createTransferWithAuthorizationAndClaimKey(
       {
         sender: senderWallet,
         transferId: existingTransfer.transferId,
@@ -824,6 +870,7 @@ senderRouter.post('/transfers/:id/submit-authorization', requireAuth, async (req
         sponsorFeeUsdc: BigInt(existingTransfer.sponsorFeeUsdc),
         expiry: prepared.validBefore,
         recipientHintHash: existingTransfer.recipientHintHash,
+        claimSigner: prepared.terms.claimSigner,
         validAfter: prepared.validAfter,
         validBefore: prepared.validBefore,
         authNonce: prepared.authNonce,
@@ -834,7 +881,7 @@ senderRouter.post('/transfers/:id/submit-authorization', requireAuth, async (req
       existingTransfer.chainId,
     );
 
-    const claimToken = sendClaimService.generateClaimToken();
+    // The link carries the claim key the lock just committed.
     const claimTokenHash = sendClaimService.hashClaimToken(claimToken);
     const claimUrl = `${claimAppBaseUrl()}/claim/${encodeURIComponent(claimToken)}`;
 
@@ -1538,7 +1585,7 @@ sendRouter.post('/claim/payout/wallet', payoutRateLimiter, async (req: Request, 
   if (!(await ensureSendStoreReady(res))) return;
 
   try {
-    const body = req.body as { claimSessionToken?: unknown; recipientWallet?: unknown };
+    const body = req.body as { claimSessionToken?: unknown; recipientWallet?: unknown; claimSignature?: unknown };
     const resolved = await getVerifiedClaimSessionContext(body.claimSessionToken);
     if ('error' in resolved) {
       return res.status(resolved.error.status).json(resolved.error.body);
@@ -1562,6 +1609,24 @@ sendRouter.post('/claim/payout/wallet', payoutRateLimiter, async (req: Request, 
 
     const recipientWallet = body.recipientWallet.trim();
 
+    /*
+     * Where the money goes is the claim key's to say, not ours (audit H-4): the recipient's browser
+     * derives the key from the link and signs Claim(transferId, recipientWallet), and this relays
+     * that signature. The escrow refuses a claim after expiry, so this does too, before any gas.
+     */
+    if (typeof body.claimSignature !== 'string' || !/^0x(?:[a-fA-F0-9]{2}){65,}$/.test(body.claimSignature.trim())) {
+      return res.status(400).json({
+        error: 'Claim signature required',
+        message: 'A wallet claim is signed with the key in your claim link. Open the link you were sent and try again.',
+      });
+    }
+    if (!claimWindowOpen(transfer.expiresAt)) {
+      return res.status(410).json({
+        error: 'Transfer expired',
+        message: 'This transfer has expired and can no longer be claimed. It goes back to the sender.',
+      });
+    }
+
     const payoutAttempt = await sendTransferStore.createPayoutAttempt({
       transferRowId: transfer.id,
       claimSessionId: claimSession.id,
@@ -1570,7 +1635,7 @@ sendRouter.post('/claim/payout/wallet', payoutRateLimiter, async (req: Request, 
       status: 'PROCESSING',
     });
 
-    const payoutResult = await sendPayoutService.executeWalletPayout(transfer, recipientWallet);
+    const payoutResult = await sendPayoutService.executeWalletPayout(transfer, recipientWallet, body.claimSignature.trim());
     if (payoutResult.status === 'FAILED') {
       await sendTransferStore.updatePayoutAttempt(payoutAttempt.id, {
         status: 'FAILED',

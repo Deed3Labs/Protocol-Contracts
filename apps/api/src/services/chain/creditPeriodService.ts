@@ -20,7 +20,10 @@ import { chainProvider, writesAs } from './provider.js';
  *                  their balance makes them compliant, and the next pass renews them.
  *   in default     left alone. A default is its own state with its own way out.
  *
- * Operator-signed, and no contract change: `updateCreditPeriod` is already operator-callable.
+ * Signed by the credit operator, which needs CREDIT_LINES_ROLE since the audit split the credit
+ * roles (H-4). `updateCreditPeriod` may now only extend a period, never shorten it or its grace
+ * (H-2). That fits: this renews only a period that has already expired, to now + a full cycle with
+ * the same grace, which is always later.
  */
 
 const ISSUER_ABI = [

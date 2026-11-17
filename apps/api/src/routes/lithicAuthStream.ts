@@ -74,6 +74,17 @@ function amountCentsOf(body: AsaRequestBody): number {
   return 0;
 }
 
+/**
+ * What runs after an approval has been answered: recording it on chain (audit M-2), so settlement
+ * can later draw up to it. Registered at startup (index.ts) rather than imported, so this route
+ * keeps its rule of never calling out: the hook starts only once Lithic has its answer, and its
+ * outcome cannot change that answer.
+ */
+let afterApproval: ((transactionToken: string) => Promise<unknown>) | null = null;
+export function onAuthorizationApproved(hook: (transactionToken: string) => Promise<unknown>): void {
+  afterApproval = hook;
+}
+
 function decline(res: Response, result: AsaResult, reason: string, extra?: Record<string, unknown>) {
   // Always HTTP 200 — the verdict lives in the body. A non-200 is a timeout to Lithic, which
   // declines anyway but tells us nothing and looks like an outage.
@@ -148,6 +159,13 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     res.status(200).json({ result: outcome.decision.result });
+
+    // After the answer, never before it: the credit part of a fresh approval goes on chain.
+    if (afterApproval && outcome.decision.result === 'APPROVED' && outcome.decision.creditCents > 0 && !outcome.replayed) {
+      void afterApproval(transactionToken).catch((error) =>
+        console.error(`[lithic:asa] on-chain authorization for tx=${transactionToken} could not start:`, error),
+      );
+    }
   } catch (error) {
     // Fail closed, loudly. This is the alert condition in the spec.
     console.error('[lithic:asa] decision failed, declining:', error);

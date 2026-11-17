@@ -1,3 +1,4 @@
+import { decodeChainError } from './chain/chainErrors.js';
 import { sendRelayerService } from './sendRelayerService.js';
 import { sendBridgePayoutService } from './sendBridgePayoutService.js';
 import { sendStripePayoutService } from './sendStripePayoutService.js';
@@ -13,6 +14,20 @@ type ClaimRecipientContext = StripeRecipientContext & BridgeRecipientContext;
  * what "the amount is held" means for a send between members -- the only moment it can be held is
  * before the other member has it.
  */
+/** ClaimEscrow's refusals, said plainly (audit H-4). Null for anything else. */
+function claimRefusal(error: unknown): string | null {
+  switch (decodeChainError(error)?.name) {
+    case 'ClaimEscrowBadClaimSignature':
+      return 'This claim link could not authorize that wallet. Open the link you were sent and try again.';
+    case 'ClaimEscrowExpired':
+      return 'This transfer has expired and can no longer be claimed. It goes back to the sender.';
+    case 'ClaimEscrowSignatureRequired':
+      return 'This transfer needs a signed claim.';
+    default:
+      return null;
+  }
+}
+
 async function disputeHold(transferId: string): Promise<{ status: 'FAILED'; failureCode: string; failureReason: string } | null> {
   const open = await disputeStore.openFor(transferId).catch(() => null);
   if (!open || open.holdState !== 'held') return null;
@@ -368,11 +383,24 @@ class SendPayoutService {
     }
   }
 
-  async executeWalletPayout(transfer: SendTransferRecord, recipientWallet: string): Promise<WalletPayoutResult> {
+  /**
+   * Release a transfer to the wallet its claim key signed for (audit H-4). The signature is made in
+   * the recipient's browser with the key the claim link carries; this only relays it.
+   */
+  async executeWalletPayout(
+    transfer: SendTransferRecord,
+    recipientWallet: string,
+    claimSignature: string,
+  ): Promise<WalletPayoutResult> {
     const held = await disputeHold(transfer.transferId);
     if (held) return { ...held, provider: 'send-relayer' };
     try {
-      const walletTx = await sendRelayerService.claimToWallet(transfer.transferId, recipientWallet, transfer.chainId);
+      const walletTx = await sendRelayerService.claimToWalletWithSignature(
+        transfer.transferId,
+        recipientWallet,
+        claimSignature,
+        transfer.chainId,
+      );
       if (walletTx.mode !== 'onchain') {
         return {
           status: 'FAILED',
@@ -392,7 +420,7 @@ class SendPayoutService {
         status: 'FAILED',
         provider: 'send-relayer',
         failureCode: 'WALLET_PAYOUT_ERROR',
-        failureReason: error instanceof Error ? error.message : 'Wallet claim failed',
+        failureReason: claimRefusal(error) ?? (error instanceof Error ? error.message : 'Wallet claim failed'),
       };
     }
   }

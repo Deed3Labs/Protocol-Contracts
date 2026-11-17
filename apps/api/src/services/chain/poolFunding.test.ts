@@ -23,8 +23,10 @@ describe('the pool lends when its tiers are drawn, and is repaid — carry inclu
     expect(service).toContain('if (!funded.has(kind)) continue;');
   });
 
-  test('borrowed into the card-funding wallet; repaid with USDC through LendingPool.repay (above principal is yield)', () => {
-    expect(service).toContain('await pool.borrow(amount, signer.address)');
+  test('borrowed to the settler’s stored destination, within its daily cap (audit H-4); repaid with USDC through LendingPool.repay (above principal is yield)', () => {
+    expect(service).toContain('await pool.borrow(amount, destination)');
+    expect(service.indexOf('pool.borrowDestinationOf(signer.address)')).toBeLessThan(service.indexOf('await pool.borrow('));
+    expect(service.indexOf('if (borrowable < amount)')).toBeLessThan(service.indexOf('await pool.borrow('));
     expect(service).toContain('await pool.repay(amount)');
   });
 

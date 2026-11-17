@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { ethers } from 'ethers';
+import { claimEscrowDomain, claimKeySeed, TRANSFER_TERMS_TYPES, type ClaimTransferTerms } from '@clear/domain';
 
 export interface VerifyEscrowLockParams {
   txHash: string;
@@ -11,6 +12,8 @@ export interface VerifyEscrowLockParams {
   expectedTotalLockedUsdcMicros: string;
   expectedExpiry: Date | string;
   expectedRecipientHintHash: string;
+  /** The claim key's address the lock must have committed (audit H-4), derived from the claim token. */
+  expectedClaimSigner: string;
 }
 
 export interface EscrowVerificationResult {
@@ -80,11 +83,23 @@ const ERC20_DOMAIN_ABI = [
   'function version() view returns (string)',
 ];
 
-const CREATE_TRANSFER_SELECTOR = ethers.id('createTransfer(bytes32,uint256,uint256,uint64,bytes32)').slice(0, 10);
+/*
+ * A sender-paid lock is `createTransferWithClaimKey(terms)` (audit H-4): the plain `createTransfer`
+ * leaves the sender as the only claim authority, so the recipient could never claim to a wallet.
+ */
+const CREATE_TRANSFER_SELECTOR = ethers
+  .id('createTransferWithClaimKey((bytes32,uint256,uint256,uint64,bytes32,address))')
+  .slice(0, 10);
 const CLAIM_ESCROW_INTERFACE = new ethers.Interface([
-  'function createTransfer(bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash)',
+  'function createTransferWithClaimKey((bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash, address claimSigner) terms)',
   'event TransferCreated(bytes32 indexed transferId, address indexed sender, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint256 totalLockedUsdc, uint64 expiry, bytes32 recipientHintHash)',
+  'event ClaimSignerSet(bytes32 indexed transferId, address indexed claimSigner)',
 ]);
+
+/** The claim key a claim token derives (@clear/domain claimKey), as an ethers wallet. */
+function claimKeyWallet(claimToken: string): ethers.Wallet {
+  return new ethers.Wallet(ethers.id(claimKeySeed(claimToken)));
+}
 
 function shouldSkipEscrowTxVerification(): boolean {
   const requestedSkip = (process.env.SEND_SKIP_ESCROW_TX_VERIFICATION || 'false').trim().toLowerCase() === 'true';
@@ -104,6 +119,26 @@ function shouldSkipEscrowTxVerification(): boolean {
 }
 
 class SendCryptoService {
+  /** The escrow this chain sends through, checksummed, or null when it is not configured. */
+  escrowAddressFor(chainId: number): string | null {
+    const escrow = getEscrowAddress(chainId);
+    return escrow && ethers.isAddress(escrow) ? ethers.getAddress(escrow) : null;
+  }
+
+  /** The address of the claim key a claim token derives: what the lock commits on chain. */
+  claimSignerFor(claimToken: string): string {
+    return claimKeyWallet(claimToken).address;
+  }
+
+  /** `ClaimEscrow.transferTermsHash(terms)`, computed here: the gasless sender's EIP-3009 nonce. */
+  transferTermsHash(chainId: number, escrow: string, terms: ClaimTransferTerms): string {
+    return ethers.TypedDataEncoder.hash(
+      claimEscrowDomain(chainId, ethers.getAddress(escrow)),
+      { TransferTerms: [...TRANSFER_TERMS_TYPES.TransferTerms] },
+      terms,
+    );
+  }
+
   generateTransferId(input: {
     senderWallet: string;
     recipientContactHash: string;
@@ -134,17 +169,24 @@ class SendCryptoService {
 
   /**
    * Gasless lock typed data for a prepared transfer. Every EIP-3009 parameter is derived
-   * deterministically from the trusted transfer record (authNonce = transferId, validBefore = expiry,
-   * value = total), so `submit-authorization` can re-derive the exact same params and only needs the
-   * client's signature — nothing the client sends can change what gets pulled or to where.
+   * deterministically from the trusted transfer record and the claim key (validBefore = expiry,
+   * value = total, authNonce = `transferTermsHash(terms)`, which `ClaimEscrow` requires so the
+   * sender's signature commits to every term and the claim key), so `submit-authorization` can
+   * re-derive the exact same params and only needs the client's signature.
    */
   async buildLockAuthorizationTypedData(input: {
     senderWallet: string;
     chainId: number;
     totalLockedUsdcMicros: string;
+    principalUsdcMicros: string;
+    sponsorFeeUsdcMicros: string;
+    recipientHintHash: string;
     transferId: string;
     expiresAt: Date;
+    /** The claim key's address (audit H-4): committed through the nonce, so the relayer cannot swap it. */
+    claimSigner: string;
   }): Promise<{
+    terms: ClaimTransferTerms;
     escrowAddress: string;
     usdcAddress: string;
     value: bigint;
@@ -172,7 +214,18 @@ class SendCryptoService {
     const value = BigInt(input.totalLockedUsdcMicros);
     const validAfter = 0n;
     const validBefore = BigInt(Math.floor(input.expiresAt.getTime() / 1000));
-    const authNonce = input.transferId; // unique bytes32 per transfer
+    const terms: ClaimTransferTerms = {
+      transferId: input.transferId,
+      principalUsdc: BigInt(input.principalUsdcMicros).toString(),
+      sponsorFeeUsdc: BigInt(input.sponsorFeeUsdcMicros).toString(),
+      expiry: validBefore.toString(),
+      recipientHintHash: input.recipientHintHash,
+      claimSigner: ethers.getAddress(input.claimSigner),
+    };
+    if (BigInt(terms.principalUsdc) + BigInt(terms.sponsorFeeUsdc) !== value) {
+      throw new Error('Transfer total does not match principal + sponsor fee.');
+    }
+    const authNonce = this.transferTermsHash(input.chainId, escrowAddress, terms);
 
     const provider = new ethers.JsonRpcProvider(getRpcUrlOrDefault(input.chainId));
     const erc20 = new ethers.Contract(usdc, ERC20_DOMAIN_ABI, provider);
@@ -190,6 +243,7 @@ class SendCryptoService {
     }
 
     return {
+      terms,
       escrowAddress,
       usdcAddress: usdc,
       value,
@@ -289,7 +343,7 @@ class SendCryptoService {
       }
 
       if (!tx.data || !tx.data.startsWith(CREATE_TRANSFER_SELECTOR)) {
-        return { valid: false, reason: 'Transaction is not createTransfer call data' };
+        return { valid: false, reason: 'Transaction is not createTransferWithClaimKey call data' };
       }
 
       let decoded:
@@ -299,23 +353,29 @@ class SendCryptoService {
             sponsorFeeUsdc: bigint;
             expiry: bigint;
             recipientHintHash: string;
+            claimSigner: string;
           }
         | null = null;
       try {
         const parsed = CLAIM_ESCROW_INTERFACE.parseTransaction({ data: tx.data, value: tx.value });
-        if (!parsed || parsed.name !== 'createTransfer') {
-          return { valid: false, reason: 'Transaction did not decode as createTransfer' };
+        if (!parsed || parsed.name !== 'createTransferWithClaimKey') {
+          return { valid: false, reason: 'Transaction did not decode as createTransferWithClaimKey' };
         }
-
+        const terms = parsed.args[0];
         decoded = {
-          transferId: String(parsed.args[0]),
-          principalUsdc: parsed.args[1] as bigint,
-          sponsorFeeUsdc: parsed.args[2] as bigint,
-          expiry: parsed.args[3] as bigint,
-          recipientHintHash: String(parsed.args[4]),
+          transferId: String(terms.transferId),
+          principalUsdc: terms.principalUsdc as bigint,
+          sponsorFeeUsdc: terms.sponsorFeeUsdc as bigint,
+          expiry: terms.expiry as bigint,
+          recipientHintHash: String(terms.recipientHintHash),
+          claimSigner: String(terms.claimSigner),
         };
       } catch {
-        return { valid: false, reason: 'Failed to decode createTransfer call data' };
+        return { valid: false, reason: 'Failed to decode createTransferWithClaimKey call data' };
+      }
+
+      if (normalizeAddress(decoded.claimSigner) !== normalizeAddress(params.expectedClaimSigner)) {
+        return { valid: false, reason: 'Claim key in transaction does not match this transfer’s claim link' };
       }
 
       if (normalizeAddress(decoded.transferId) !== normalizeAddress(params.expectedTransferId)) {
@@ -414,6 +474,25 @@ class SendCryptoService {
       const receipt = await provider.getTransactionReceipt(params.txHash);
       if (!receipt || receipt.status !== 1) {
         return { valid: false, reason: 'Transaction failed or not mined' };
+      }
+
+      // The lock must have committed this transfer's claim key (audit H-4), or the recipient could
+      // never claim to a wallet with the link we are about to send.
+      const claimKeySet = receipt.logs.some((log) => {
+        if (normalizeAddress(log.address) !== expectedEscrow) return false;
+        try {
+          const parsed = CLAIM_ESCROW_INTERFACE.parseLog({ topics: log.topics as string[], data: log.data });
+          return (
+            parsed?.name === 'ClaimSignerSet' &&
+            normalizeAddress(String(parsed.args.transferId)) === normalizeAddress(params.expectedTransferId) &&
+            normalizeAddress(String(parsed.args.claimSigner)) === normalizeAddress(params.expectedClaimSigner)
+          );
+        } catch {
+          return false;
+        }
+      });
+      if (!claimKeySet) {
+        return { valid: false, reason: 'The lock did not commit this transfer’s claim key' };
       }
 
       for (const log of receipt.logs) {

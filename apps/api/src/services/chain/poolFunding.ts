@@ -10,8 +10,11 @@ import { chainProvider, writesAs } from './provider.js';
  * purchase is still paid to the merchant in fiat from the co-op's float -- that does not change --
  * but when such a purchase settles on one of those tiers, the co-op BORROWS the same amount of USDC
  * from the pool. That is what makes the pool's funding real: its cash leaves, `totalBorrowed` rises,
- * and depositors' shares are backed by a loan rather than by nothing. The USDC lands in the co-op's
- * card-funding wallet and reaches the fiat float by the ordinary periodic off-ramp, never per swipe.
+ * and depositors' shares are backed by a loan rather than by nothing. The USDC lands at the
+ * settler's stored borrow destination (`borrowDestinationOf`, the card float named in deploy/22) and
+ * reaches the fiat float by the ordinary periodic off-ramp, never per swipe. Repayments are paid
+ * from the settler's own USDC, so where the destination is not the settler, the float tops the
+ * settler up for repayments the same way the treasury does.
  *
  * When a pool-funded tier is repaid, the co-op REPAYS the pool that amount in USDC. Carry is
  * materialised into a tier's principal on chain, so what a tier repays already includes the carry
@@ -35,6 +38,8 @@ const ISSUER_EVENTS = new ethers.Interface([
 ]);
 const POOL_ABI = [
   'function borrow(uint256 amount, address to)',
+  'function borrowDestinationOf(address borrower) view returns (address)',
+  'function borrowableToday(address borrower) view returns (uint256)',
   'function repay(uint256 amount)',
   'function availableCash() view returns (uint256)',
   'function asset() view returns (address)',
@@ -210,7 +215,29 @@ export async function settlePoolMovements(limit = 25): Promise<PoolSettlement> {
           out.waiting.push({ direction: 'borrow', amountUnits: row.amount_units, reason });
           continue;
         }
-        const tx = await pool.borrow(amount, signer.address);
+        /*
+         * Only to the destination stored for this borrower, and within its daily cap (audit H-4).
+         * Both are the pool admin's to set (`setBorrower`, deploy/22: the card settler borrows to
+         * CARD_FLOAT_ADDRESS). Read rather than assumed, so an unset destination or a spent cap
+         * waits with a reason instead of reverting five times into needs_review.
+         */
+        const [destination, borrowable]: [string, bigint] = await Promise.all([
+          pool.borrowDestinationOf(signer.address),
+          pool.borrowableToday(signer.address),
+        ]);
+        if (destination === ethers.ZeroAddress) {
+          const reason = `no borrow destination is set for the settler ${signer.address} — the pool admin must call setBorrower`;
+          await mark(row, 'waiting', { reason });
+          out.waiting.push({ direction: 'borrow', amountUnits: row.amount_units, reason });
+          continue;
+        }
+        if (borrowable < amount) {
+          const reason = `the settler may borrow ${borrowable} more today, needs ${amount} — waits for tomorrow's cap`;
+          await mark(row, 'waiting', { reason });
+          out.waiting.push({ direction: 'borrow', amountUnits: row.amount_units, reason });
+          continue;
+        }
+        const tx = await pool.borrow(amount, destination);
         await tx.wait(1);
         await mark(row, 'done', { poolTx: tx.hash, reason: null, attempt: true });
       } else {

@@ -131,3 +131,61 @@ describe('carry is owed, paid, and cleared too', () => {
     expect(deposits).toContain('planSettlement(term.remainingCents, outstanding, await readCarryOwed(client, wallet))');
   });
 });
+
+import { CHAIN_ERRORS, decodeChainError, describeCardRefusal } from './chainErrors.js';
+const asaRoute = readFileSync(new URL('../../routes/lithicAuthStream.ts', import.meta.url), 'utf8');
+const encumbrance = readFileSync(new URL('./encumbranceSync.ts', import.meta.url), 'utf8');
+
+describe('authorized at approval, settled only up to it (audit M-2)', () => {
+  test('the Auth Stream records the approval on chain only after it has answered', () => {
+    const answered = asaRoute.indexOf('res.status(200).json({ result: outcome.decision.result });');
+    const hook = asaRoute.indexOf('void afterApproval(transactionToken)');
+    expect(answered).toBeGreaterThan(-1);
+    expect(hook).toBeGreaterThan(answered);
+    // Only a fresh approval with a credit part; a replay was already recorded.
+    expect(asaRoute).toContain("outcome.decision.result === 'APPROVED' && outcome.decision.creditCents > 0 && !outcome.replayed");
+    expect(index).toContain('onAuthorizationApproved(authorizeCardOnChain)');
+    // The route itself still never imports anything that reaches a chain.
+    expect(asaRoute).not.toContain('cardSettlementService');
+  });
+
+  test('settlement makes sure of the authorization first, and never settles more than it allows', () => {
+    const settleAt = service.indexOf('const tx = await issuer.settleCardSpend(ref, row.wallet, units);');
+    expect(service.indexOf('await ensureAuthorized(issuer, ref, row.wallet, units)')).toBeLessThan(settleAt);
+    expect(service.indexOf('if (authorized < units) {')).toBeLessThan(settleAt);
+  });
+
+  test('a re-issue after a dispute is a fresh purchase to the contract, so it is authorized too', () => {
+    const reissue = service.slice(service.indexOf('export async function reissueAfterDispute'));
+    expect(reissue.indexOf('await ensureAuthorized(issuer, ref, row.wallet, units)')).toBeLessThan(reissue.indexOf('issuer.settleCardSpend('));
+  });
+
+  test('a card rule saying no goes to a person at once, not five retries', () => {
+    expect(service).toContain("attempts >= MAX_ATTEMPTS || isCardRefusal(error) ? 'needs_review' : 'failed'");
+  });
+
+  test('refusals are sentences, with the figures', () => {
+    const decode = (name: string, args: unknown[]) =>
+      describeCardRefusal(decodeChainError({ data: CHAIN_ERRORS.encodeErrorResult(name, args) }));
+    expect(decode('RevolvingIssuerMemberNotInGoodStanding', [ethers.ZeroAddress])).toContain('frozen or in default');
+    expect(decode('RevolvingIssuerCardTxCap', [3_000_000_000n, 2_500_000_000n])).toBe(
+      'Over the per-purchase card cap: $3,000.00 asked, the cap is $2,500.00.',
+    );
+    expect(decode('CreditIssuerDailyCapExceeded', [ethers.encodeBytes32String('CARD'), 100_000_000n, 0n])).toContain('today');
+    expect(decode('RevolvingIssuerCardExceedsAuthorization', [ethers.ZeroHash, 2n, 1n])).toContain('more than was authorized');
+  });
+});
+
+describe('a draw on savings keeps the CLRUSD lock current (audit M-3)', () => {
+  test('synced after a settlement and after a re-issue', () => {
+    expect(service.match(/await syncClrusdEncumbrance\(/g)?.length).toBe(2);
+    const settled = service.indexOf('console.log(`[card-settlement] ${token} issued ${target}c on chain');
+    expect(service.indexOf('await syncClrusdEncumbrance(', settled)).toBeGreaterThan(settled);
+  });
+
+  test('a transaction only when the record is behind, and never failing the draw', () => {
+    expect(encumbrance).toContain('clrusd.syncEncumbrance.staticCall(member)');
+    expect(encumbrance).toContain("if (live === recorded) return 'current';");
+    expect(encumbrance).toContain("return 'failed';");
+  });
+});
