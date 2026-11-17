@@ -1,5 +1,8 @@
 import * as path from "path";
 import { assuranceSetupFromEnv, assuranceSetupProblems, ASSURANCE_SETUP_ENV } from "../deploy/assurance_timelock_handover";
+import {
+  ALLOWANCE_MODULE_ABI, SAFE_MODULE_ABI, PAYOUT_POOL_TOPUP_ABI, CANONICAL_ALLOWANCE_MODULE, PAYOUT_POOL_ROLES, parseUsdc, formatUsdc,
+} from "../apps/api/src/services/payoutFunding/topUp";
 
 /*
  * Preflight for the Base Sepolia rollout (docs/audit/SEPOLIA-RUN-HANDOFF.md): are the Clear Lending
@@ -17,7 +20,8 @@ import { assuranceSetupFromEnv, assuranceSetupProblems, ASSURANCE_SETUP_ENV } fr
  *     Reserve (ASSURANCE_LOSS_RESERVE) are contracts, one signature, owned only by the Clear Lending Safe;
  *   - the two CDP wallets (ASSURANCE_CL_FEES_PAYER, ASSURANCE_DISBURSEMENT) are plain accounts;
  *   - nothing the Assurance Pool would refuse (a payer or Lending Co. address that is a signer, a payer
- *     that is the draw address, two of the five the same).
+ *     that is the draw address, two of the five the same);
+ *   - the payout top-ups' setup (decision 51, `checkPayoutTopUpSetup` below): steps not done yet are WARN.
  */
 
 export const ROLLOUT_INPUTS = [
@@ -33,7 +37,7 @@ export interface InputCheck {
   what: string;
 }
 
-export async function checkRolloutInputs(env: Record<string, string | undefined>, provider: any): Promise<InputCheck[]> {
+export async function checkRolloutInputs(env: Record<string, string | undefined>, provider: any, opts: { payoutPool?: string } = {}): Promise<InputCheck[]> {
   const { ethers } = require("ethers");
   const out: InputCheck[] = [];
   const push = (status: InputCheck["status"], what: string) => out.push({ status, what });
@@ -106,7 +110,90 @@ export async function checkRolloutInputs(env: Record<string, string | undefined>
   } catch {
     // The empty ones are listed above.
   }
+  out.push(...(await checkPayoutTopUpSetup(env, provider, opts)));
   return out;
+}
+
+/**
+ * Payout top-ups (decision 51), read-only: the top-up wallet is a plain account no other job uses; the
+ * AllowanceModule is Safe's and enabled on CL Operating; the wallet is its delegate with the rollout's
+ * allowance in the PayoutPool's token; and on the fresh PayoutPool the wallet holds FUNDER_ROLE and
+ * nothing else. A setup step not done yet is a WARN (the signing plan's PT- steps do it); a wrong one
+ * is a FAIL. With PAYOUT_TOPUP_WALLET empty it is one WARN and nothing else is read.
+ */
+export async function checkPayoutTopUpSetup(env: Record<string, string | undefined>, provider: any, opts: { payoutPool?: string } = {}): Promise<InputCheck[]> {
+  const { ethers } = require("ethers");
+  const out: InputCheck[] = [];
+  const push = (status: InputCheck["status"], what: string) => out.push({ status, what });
+  const val = (k: string) => env[k]?.trim() ?? "";
+  const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+  const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+  if (!val("PAYOUT_TOPUP_WALLET")) {
+    push("WARN", "PAYOUT_TOPUP_WALLET is empty: the payout top-up steps (PT-) wait; owner to fill in deploy/config/base-sepolia.rollout.env");
+    return out;
+  }
+  if (!ethers.isAddress(val("PAYOUT_TOPUP_WALLET"))) {
+    push("FAIL", `PAYOUT_TOPUP_WALLET is not an address: ${val("PAYOUT_TOPUP_WALLET")}`);
+    return out;
+  }
+  const wallet = ethers.getAddress(val("PAYOUT_TOPUP_WALLET"));
+  const code: string = await provider.getCode(wallet);
+  push(code === "0x" || code.toLowerCase().startsWith("0xef0100") ? "PASS" : "FAIL", `the payout top-up wallet ${wallet} is a plain account (a CDP wallet)`);
+  const others = ["DEPLOYER", "RELAYER", "SAVINGS_RELAYER_ADDRESS", "SEND_RELAYER_ADDRESS", "CREDIT_OPERATOR_ADDRESS", "CARD_SETTLER_ADDRESS", "ASSURANCE_CL_FEES_PAYER", "ASSURANCE_DISBURSEMENT", "AGENT_KEY", "CLEAR_LENDING_ACCOUNT"]
+    .filter((k) => same(val(k), wallet));
+  push(others.length ? "FAIL" : "PASS", `the payout top-up wallet is no other job's wallet${others.length ? `: it is also ${others.join(", ")}` : ""}`);
+
+  const operating = ethers.isAddress(val("CLEAR_LENDING_ACCOUNT")) ? ethers.getAddress(val("CLEAR_LENDING_ACCOUNT")) : undefined;
+  const moduleAddr = ethers.isAddress(val("PAYOUT_TOPUP_ALLOWANCE_MODULE")) ? ethers.getAddress(val("PAYOUT_TOPUP_ALLOWANCE_MODULE")) : CANONICAL_ALLOWANCE_MODULE;
+  const mod = new ethers.Contract(moduleAddr, ALLOWANCE_MODULE_ABI, provider);
+  const name: string = (await provider.getCode(moduleAddr)) === "0x" ? "" : await mod.NAME().catch(() => "");
+  const version: string = name ? await mod.VERSION().catch(() => "?") : "";
+  push(name === "Allowance Module" ? "PASS" : "FAIL", `${moduleAddr} is Safe's AllowanceModule${name ? ` (${name} ${version})` : ": no such contract here"}`);
+  if (!operating || name !== "Allowance Module") return out;
+
+  const safe = new ethers.Contract(operating, SAFE_MODULE_ABI, provider);
+  const enabled = await safe.isModuleEnabled(moduleAddr).catch(() => false);
+  push(enabled ? "PASS" : "WARN", `the AllowanceModule is enabled on CL Operating ${short(operating)}${enabled ? "" : ": not yet (signing plan PT-safe-module)"}`);
+  const [delegates] = await mod.getDelegates(operating, 0, 50);
+  const isDelegate = (delegates as string[]).some((d) => same(d, wallet));
+  push(isDelegate ? "PASS" : "WARN", `the top-up wallet is CL Operating's spending-limit delegate${isDelegate ? "" : ": not yet (PT-safe-delegate)"}`);
+
+  let pool: any;
+  if (opts.payoutPool && ethers.isAddress(opts.payoutPool) && (await provider.getCode(opts.payoutPool)) !== "0x") {
+    pool = new ethers.Contract(opts.payoutPool, PAYOUT_POOL_TOPUP_ABI, provider);
+  }
+  const token: string | undefined = pool ? ethers.getAddress(await pool.reserveToken()) : ethers.isAddress(val("RESERVE_TOKEN")) ? ethers.getAddress(val("RESERVE_TOKEN")) : undefined;
+  const cap = parseUsdc(val("PAYOUT_TOPUP_CAP_USDC"));
+  const period = Number(val("PAYOUT_TOPUP_RESET_MINUTES"));
+  if (token) {
+    const al = await mod.getTokenAllowance(operating, wallet, token);
+    const [amount, spent, reset] = [BigInt(al[0]), BigInt(al[1]), Number(al[2])];
+    if (amount === 0n) push("WARN", "the top-up wallet has no allowance on CL Operating yet (PT-safe-allowance)");
+    else if (cap !== null && amount === cap && reset === period) push("PASS", `the allowance is ${formatUsdc(amount)} every ${reset} minutes in ${short(token)} (${formatUsdc(spent)} spent this period), as the rollout says`);
+    else push("FAIL", `the allowance is ${formatUsdc(amount)} every ${reset} minutes; the rollout says ${cap === null ? "?" : formatUsdc(cap)} every ${val("PAYOUT_TOPUP_RESET_MINUTES") || "?"}`);
+  }
+  if (!pool) {
+    push("WARN", "no fresh PayoutPool yet (deploy 22): its FUNDER_ROLE grant (PT-funder) waits");
+    return out;
+  }
+  const funder = await pool.hasRole(PAYOUT_POOL_ROLES.FUNDER_ROLE, wallet);
+  push(funder ? "PASS" : "WARN", `the top-up wallet holds the PayoutPool's FUNDER_ROLE${funder ? "" : ": not yet (PT-funder, the deployer, before I2)"}`);
+  const extra: string[] = [];
+  for (const r of ["DEFAULT_ADMIN_ROLE", "OPERATOR_ROLE", "REDEEMER_ROLE"] as const) if (await pool.hasRole(PAYOUT_POOL_ROLES[r], wallet)) extra.push(r);
+  push(extra.length ? "FAIL" : "PASS", `the top-up wallet holds no other PayoutPool role${extra.length ? `: it holds ${extra.join(", ")}` : ""}`);
+  return out;
+}
+
+/** The fresh PayoutPool from the records, once D1 retired the old one; undefined before. */
+export function freshPayoutPoolRecord(network: string): string | undefined {
+  const fs = require("fs");
+  const read = (n: string) => {
+    const f = path.join("deployments", network, `${n}.json`);
+    return fs.existsSync(f) ? (JSON.parse(fs.readFileSync(f, "utf8")).address as string) : undefined;
+  };
+  const current = read("PayoutPool");
+  const retired = read("PayoutPoolPreAudit");
+  return current && retired && current.toLowerCase() !== retired.toLowerCase() ? current : undefined;
 }
 
 async function main() {
@@ -119,7 +206,7 @@ async function main() {
   const chainId = Number((await provider.getNetwork()).chainId);
   if (![84532, 31337].includes(chainId)) throw new Error(`Refusing: this preflight is for Base Sepolia (84532) or its fork; ${hre.network.name} is chain ${chainId}.`);
   console.log(`Rollout inputs preflight on ${hre.network.name} (chain ${chainId}), from ${process.env.ROLLOUT_ENV || path.join("deploy", "config", "base-sepolia.rollout.env")}. Sends nothing.\n`);
-  const results = await checkRolloutInputs(env, provider);
+  const results = await checkRolloutInputs(env, provider, { payoutPool: freshPayoutPoolRecord(hre.network.name === "base-sepolia-fork" ? "base-sepolia" : hre.network.name) });
   for (const r of results) console.log(`${r.status.padEnd(4)}  ${r.what}`);
   const fails = results.filter((r) => r.status === "FAIL").length;
   console.log(`\n${results.filter((r) => r.status === "PASS").length} PASS, ${fails} FAIL, ${results.filter((r) => r.status === "WARN").length} WARN.`);
