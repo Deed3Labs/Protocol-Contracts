@@ -22,7 +22,7 @@ SEND_DEFAULT_CHAIN_ID=84532 SEND_CDP_EVM_ACCOUNT_NAME_84532=cl-fees-base-sepolia
 SEND_DEFAULT_CHAIN_ID=84532 SEND_CDP_EVM_ACCOUNT_NAME_84532=assurance-disbursement-base-sepolia npm run send:cdp:account
 ```
 
-The first goes in `ASSURANCE_CL_FEES_PAYER` (pays Clear Lending's credit enhancement fee, recoveries and interchange into the pool), the second in `ASSURANCE_DISBURSEMENT` (receives each approved member-assistance grant, then pays it out), both in `deploy/config/base-sepolia.rollout.env`. The signing plan refuses to run while either is empty.
+The first goes in `ASSURANCE_CL_FEES_PAYER` (pays Clear Lending's credit enhancement fee and recoveries into the pool (interchange is the co-op treasury's)), the second in `ASSURANCE_DISBURSEMENT` (receives each approved member-assistance grant, then pays it out), both in `deploy/config/base-sepolia.rollout.env`. The signing plan refuses to run while either is empty.
 
 **Rule the pool enforces:** none of these may be one of the pool's signers, Account 3 `0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23` or Account 4 `0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7`, and a payer may not be the draw address. The plan also wants the five Assurance addresses (with the Clear Treasury Safe) all different.
 

@@ -817,8 +817,8 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
 
     const calls = governedCalls(poolC, assurance);
     const what: Record<string, string> = {
-      "payer-clfees": `let Clear Lending's fees wallet pay in (credit enhancement fee, recovery, interchange: mask ${CL_FEES_MASK})`,
-      "payer-treasury": `let the co-op treasury pay in board allocations (mask ${BOARD_ALLOCATION_MASK})`,
+      "payer-clfees": `let Clear Lending's fees wallet pay in (credit enhancement fee, recovery: mask ${CL_FEES_MASK})`,
+      "payer-treasury": `let the co-op treasury pay in interchange and board allocations (mask ${BOARD_ALLOCATION_MASK})`,
       lendingco: "register CL Operating as Lending Co.'s draw address and CL Loss Reserve as where draws are paid",
       disbursement: "register the co-op's Assurance disbursement address, where grants are paid",
       exposure: "name the CollateralRegistry as what reports the covered book",

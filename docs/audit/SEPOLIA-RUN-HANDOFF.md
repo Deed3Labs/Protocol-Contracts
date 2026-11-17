@@ -226,7 +226,7 @@ npx hardhat run deploy/26_deploy_EarnControls.ts --network $N
 npx hardhat run scripts/signing_plan.ts --network $N
 ```
 
-**SIGN (Assurance):** the pool's setup goes through its own governance. Five calls: `setPayer(CL fees wallet, 7)` (credit enhancement fee, recovery, interchange), `setPayer(Clear Treasury Safe, 8)` (board allocation), `setLendingCoAddresses(CL Operating, CL Loss Reserve)`, `setAssuranceDisbursementAddress(disbursement wallet)` and `setExposureSources([CollateralRegistry])`.
+**SIGN (Assurance):** the pool's setup goes through its own governance. Five calls: `setPayer(CL fees wallet, 3)` (credit enhancement fee, recovery), `setPayer(Clear Treasury Safe, 12)` (interchange, board allocation), `setLendingCoAddresses(CL Operating, CL Loss Reserve)`, `setAssuranceDisbursementAddress(disbursement wallet)` and `setExposureSources([CollateralRegistry])`.
 
 - **Approvals (`AS-…-approve-1`, `AS-…-approve-2`):** for each call, Account 3 sends `approveAction` on the signing page, then Account 4 sends the same. The pool takes either order; the plan asks Account 3 first, so re-run it after Account 3's five.
 - **Schedule (`AS-assurance-schedule`):** once all ten approvals show done, the **Clear Treasury (board) Safe** `0x52e6…cf50` signs the Assurance timelock batch in the Safe app. Today it needs one signature; after the Safe change below, two.

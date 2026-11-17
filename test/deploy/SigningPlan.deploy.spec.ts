@@ -250,10 +250,10 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     const payer = step(p, "AS-payer-clfees-approve-1");
     expect(payer.signer).to.equal(ethers.getAddress(a3));
     expect(payer.to).to.equal(await assurancePool.getAddress());
-    expect(payer.args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [clFees, 7])));
+    expect(payer.args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [clFees, 3])));
     expect(step(p, "AS-payer-clfees-approve-2").signer).to.equal(ethers.getAddress(a4));
     expect(step(p, "AS-payer-clfees-approve-2").reason).to.contain("AS-payer-clfees-approve-1");
-    expect(step(p, "AS-payer-treasury-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [await safe.getAddress(), 8])));
+    expect(step(p, "AS-payer-treasury-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [await safe.getAddress(), 12])));
     expect(step(p, "AS-exposure-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setExposureSources", [[await collateralRegistry.getAddress()]])));
     expect(step(p, "AS-assurance-schedule").reason).to.contain("AS-payer-clfees-approve-1");
     for (const x of p.steps) expect(x.chainId).to.equal(31337);
@@ -334,9 +334,9 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(await assurancePool.floorEvidenceHash()).to.equal(ethers.id("Assurance Pool floor inputs (test)"));
     // The Assurance Pool, configured through its own governance.
     expect(await assurancePool.payerTags(clFees)).to.equal(BigInt(CL_FEES_MASK));
-    expect(CL_FEES_MASK).to.equal(0b0111); // CREDIT_ENHANCEMENT_FEE | RECOVERY | INTERCHANGE
+    expect(CL_FEES_MASK).to.equal(0b0011); // CREDIT_ENHANCEMENT_FEE | RECOVERY (Lending Co.)
     expect(await assurancePool.payerTags(await safe.getAddress())).to.equal(BigInt(BOARD_ALLOCATION_MASK));
-    expect(BOARD_ALLOCATION_MASK).to.equal(0b1000); // BOARD_ALLOCATION
+    expect(BOARD_ALLOCATION_MASK).to.equal(0b1100); // INTERCHANGE | BOARD_ALLOCATION (the co-op treasury)
     expect(await assurancePool.drawAddress()).to.equal(ethers.getAddress(clOperating));
     expect(await assurancePool.lossReserveAddress()).to.equal(ethers.getAddress(clLossReserve));
     expect(await assurancePool.assuranceDisbursementAddress()).to.equal(ethers.getAddress(disbursement));
