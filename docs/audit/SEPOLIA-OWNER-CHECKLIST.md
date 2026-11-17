@@ -70,4 +70,5 @@ This is not done now. The local session stops for it just before the handovers, 
 6. Day 7: the Clear Lending Safe executes the Earn batch, the Clear Treasury Safe the vault and Assurance batches, then the final checks run.
 7. After the deploy, on the API in Railway, set:
    - `OPS_ALERT_EMAIL=ops@useclear.org`;
-   - `PAYOUT_KEEPER_ENABLED=1`.
+   - `PAYOUT_KEEPER_ENABLED=1`;
+   - the Assurance fee payer, once the new pool is deployed: `ASSURANCE_POOL_V2_84532` (its address) the same day, then `ASSURANCE_FEE_PAYER_CDP_ACCOUNT_NAME=cl-fees-base-sepolia` and, once the pool's payers are set, `ASSURANCE_FEE_PAYER_ENABLED=1`. Each month Clear Lending's two signers sign CL Operating's funding transfer that Command proposes; the CL Fees wallet then pays the pool on its own. See [`assurance-fee-payer.md`](../operators/assurance-fee-payer.md).

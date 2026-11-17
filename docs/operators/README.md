@@ -10,5 +10,6 @@ allowed to do each of these is in [Governance](../governance/README.md).
 | [`api-deploy.md`](./api-deploy.md) | The API on Railway: what triggers a build, the image, and its environment flags |
 | [`going-live.md`](./going-live.md) | Going live: what decides test or real money, each provider's sandbox and live settings, and every webhook the API takes with the signature it checks |
 | [`command-center-live-switches.md`](./command-center-live-switches.md) | The Command Center's live switches: seeding, `seed` or `live` per section, and the jobs and feeds behind the live data |
+| [`assurance-fee-payer.md`](./assurance-fee-payer.md) | The Assurance fee payer: the daily coverage reading, the monthly Credit Enhancement Fee, the funding CL Operating signs, the automatic deposit, Spread Repayments, interchange, and its Railway variables |
 | [Store builds](../rewards-reference/store-builds.md) | Building a shop's rewards app for the App Store and Google Play |
 | [Measuring the M2](../hardware/m2-timing.md) | Timing a table's card reader on a tablet |
