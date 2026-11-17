@@ -263,7 +263,7 @@ MODE=run CONFIRM=ops-roles DEPLOYER=0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA n
 npx hardhat run scripts/check_retired_credit.ts --network $N
 ```
 
-Expected: one FAIL, the backstop, which clears on day 7. Plus WARNs marked test money.
+Expected (decision 52): exit 0 once the Earn batch (E8-earn-schedule) is scheduled. The backstop to the retired PayoutPool is then a WARN naming that Earn timelock operation and when it may run, alongside the WARNs marked test money. If the Earn batch is not scheduled yet, the backstop is one FAIL, which that schedule turns into the WARN. Any other FAIL: stop.
 
 ```bash
 npx hardhat run scripts/signing_plan.ts --network $N
