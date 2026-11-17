@@ -1,0 +1,4412 @@
+{
+  "address": "0xe4a7eF8BaF868264F9C4aF0b95342b683764cD97",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "admin_"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsBadAttestation",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsBelowMinimum",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "purchasePrice"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsHolderCap",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "uint256",
+          "name": "held"
+        },
+        {
+          "type": "uint256",
+          "name": "limit"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsIneligible",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsInvalidValue",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsLadderOrder",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "shorterTerm"
+        },
+        {
+          "type": "uint32",
+          "name": "longerTerm"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsLimit",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "what"
+        },
+        {
+          "type": "uint256",
+          "name": "used"
+        },
+        {
+          "type": "uint256",
+          "name": "adding"
+        },
+        {
+          "type": "uint256",
+          "name": "limit"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsModuleMismatch",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsNotAuthorized",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsNotSameHolder",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "payer"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsNotYet",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "effectiveAt"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsNothingToCancel",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsPaused",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsRefused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsSameSigner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsTermNotOffered",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsUseResolution",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionApproved",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionProposed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AdminChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousAdmin",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "newAdmin",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BeaconUpgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "beacon",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BondBooksSet",
+      "inputs": [
+        {
+          "type": "address[]",
+          "name": "books"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EIP712DomainChanged",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EarnCostRecorded",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "memberKey",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "poolCost",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "bondCost",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EligibilityAttested",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "attester",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "exemptionCode",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "netWorth",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "issuedAt",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "validUntil",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HolderCapFloorScheduled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "current",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "next",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "effectiveAt",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HolderIneligibleSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "ineligible",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HouseholdSet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "memberKey",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "household",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Initialized",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "OfferingTaken",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "pool",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "taken",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "OtherIndebtednessPosted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PauseFlagSet",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "flag",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "on",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "reasonHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PaymentSuccessorCancelled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "payee",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PaymentSuccessorRegistered",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "payee",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "effectiveAt",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RefusedSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "refused",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleAdminChanged",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "previousAdminRole",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "newAdminRole",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleGranted",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleGrantedByResolution",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleRevoked",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RungScheduled",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "offered",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "effectiveAt",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RungSet",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "offered",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettingsSet",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "what",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SourcesSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "membership",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "yieldPool",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "reserveStatus",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "collateralAgent",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "reserveHook",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SuccessorTransferApproved",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "openUntil",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Upgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "implementation",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "fallback",
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "ATTESTATION_TYPEHASH",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ATTESTER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "BOND_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DEFAULT_ADMIN_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ELIGIBILITY_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "EQUITY_CUSHION",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "FUNDING_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "HOLDER_CAP_FLOOR_DELAY",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LADDER_DELAY",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LADDER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LOW_UTILIZATION_RULE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LOW_UTILIZATION_WINDOW",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_ATTESTATION_LIFE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MIN_PURCHASE_DOLLARS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "NET_WORTH_LIMIT_BPS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "PAUSE_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "PAYEE_DELAY",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "RESERVE_SHORTFALL",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "SUCCESSOR_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "SUCCESSOR_WINDOW",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "adminModule",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "attestEligibility",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "bytes",
+          "name": "attestation"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "attestationDigest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "bytes32",
+          "name": "exemptionCode"
+        },
+        {
+          "type": "uint256",
+          "name": "netWorth"
+        },
+        {
+          "type": "uint64",
+          "name": "issuedAt"
+        },
+        {
+          "type": "uint64",
+          "name": "validUntil"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "bondBooks",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "checkPurchase",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "payer"
+        },
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256",
+          "name": "purchasePrice"
+        },
+        {
+          "type": "uint256",
+          "name": "maturityAmount"
+        },
+        {
+          "type": "uint32",
+          "name": "termDays"
+        },
+        {
+          "type": "bytes",
+          "name": "attestation"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": "exemptionCode"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "checkSubscription",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "payer"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "uint256",
+          "name": "assets"
+        },
+        {
+          "type": "bytes",
+          "name": "attestation"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": "exemptionCode"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "collateralAgent",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "earnCostOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint128",
+              "name": "poolCost"
+            },
+            {
+              "type": "uint128",
+              "name": "poolShares"
+            },
+            {
+              "type": "uint256",
+              "name": "bondCost"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "eip712Domain",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes1",
+          "name": "fields"
+        },
+        {
+          "type": "string",
+          "name": "name"
+        },
+        {
+          "type": "string",
+          "name": "version"
+        },
+        {
+          "type": "uint256",
+          "name": "chainId"
+        },
+        {
+          "type": "address",
+          "name": "verifyingContract"
+        },
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "uint256[]",
+          "name": "extensions"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "eligibilityOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "bytes32",
+              "name": "exemptionCode"
+            },
+            {
+              "type": "address",
+              "name": "attester"
+            },
+            {
+              "type": "uint64",
+              "name": "issuedAt"
+            },
+            {
+              "type": "uint64",
+              "name": "validUntil"
+            },
+            {
+              "type": "uint256",
+              "name": "netWorth"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "eligibleCode",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fundingLimit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fundingLimitFiscalYear",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint16",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fundingLimitResolution",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fundingUsed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "used"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getRoleAdmin",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "grantRole",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "hasRole",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holderCapBps",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holderCapFloor",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holderIneligible",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "householdOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "tuple",
+          "name": "s",
+          "components": [
+            {
+              "type": "address",
+              "name": "admin"
+            },
+            {
+              "type": "uint8",
+              "name": "decimals"
+            },
+            {
+              "type": "address",
+              "name": "membership"
+            },
+            {
+              "type": "uint256",
+              "name": "fundingLimit"
+            },
+            {
+              "type": "bytes32",
+              "name": "fundingResolution"
+            },
+            {
+              "type": "uint16",
+              "name": "fiscalYear"
+            },
+            {
+              "type": "uint256",
+              "name": "offeringCap"
+            },
+            {
+              "type": "uint256",
+              "name": "poolCapacity"
+            },
+            {
+              "type": "uint256",
+              "name": "holderCapFloor"
+            }
+          ]
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "memberKeyOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "memberWalletsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address[]",
+          "name": "wallets"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "membership",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "offeringCap",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "offeringTaken",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "otherIndebtedness",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "otherIndebtednessEvidence",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pauseFlags",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pendingHolderCapFloor",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "floor"
+        },
+        {
+          "type": "uint64",
+          "name": "effectiveAt"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "poolCapacity",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "postOtherIndebtedness",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "proxiableUUID",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "purchasesPaused",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "recordBondExit",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256",
+          "name": "purchasePrice"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "refused",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "renounceRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "reserveHook",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "reserveStatus",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "revokeRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "rollAllowed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "sameHolder",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "a"
+        },
+        {
+          "type": "address",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "setPauseFlag",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "flag"
+        },
+        {
+          "type": "bool",
+          "name": "on"
+        },
+        {
+          "type": "bytes32",
+          "name": "reasonHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "subscriptionsPaused",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "supportsInterface",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes4",
+          "name": "interfaceId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transferAllowed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "unit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "upgradeTo",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeToAndCall",
+      "constant": false,
+      "stateMutability": "payable",
+      "payable": true,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "walletsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address[]",
+          "name": "all"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "yieldPool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsBadAttestation",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsBelowMinimum",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "purchasePrice"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsHolderCap",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "receiver"
+        },
+        {
+          "type": "uint256",
+          "name": "held"
+        },
+        {
+          "type": "uint256",
+          "name": "limit"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsIneligible",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsInvalidValue",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsLadderOrder",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "shorterTerm"
+        },
+        {
+          "type": "uint32",
+          "name": "longerTerm"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsLimit",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "what"
+        },
+        {
+          "type": "uint256",
+          "name": "used"
+        },
+        {
+          "type": "uint256",
+          "name": "adding"
+        },
+        {
+          "type": "uint256",
+          "name": "limit"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsModuleMismatch",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsNotAuthorized",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsNotSameHolder",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "payer"
+        },
+        {
+          "type": "address",
+          "name": "receiver"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsNotYet",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "effectiveAt"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsNothingToCancel",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsPaused",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsRefused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsSameSigner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsTermNotOffered",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "EarnControlsUseResolution",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionApproved",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionProposed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AdminChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousAdmin",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "newAdmin",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BeaconUpgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "beacon",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BondBooksSet",
+      "inputs": [
+        {
+          "type": "address[]",
+          "name": "books"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EIP712DomainChanged",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EarnCostRecorded",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "memberKey",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "poolCost",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "bondCost",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EligibilityAttested",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "attester",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "exemptionCode",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "netWorth",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "issuedAt",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "validUntil",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HolderCapFloorScheduled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "current",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "next",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "effectiveAt",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HolderIneligibleSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "ineligible",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HouseholdSet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "memberKey",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "household",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Initialized",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "OfferingTaken",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "pool",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "taken",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "OtherIndebtednessPosted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PauseFlagSet",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "flag",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "on",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "reasonHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PaymentSuccessorCancelled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "payee",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PaymentSuccessorRegistered",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "payee",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "effectiveAt",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RefusedSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "refused",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleAdminChanged",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "previousAdminRole",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "newAdminRole",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleGranted",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleGrantedByResolution",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RoleRevoked",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "sender",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RungScheduled",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "offered",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "effectiveAt",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RungSet",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "offered",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettingsSet",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "what",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SourcesSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "membership",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "yieldPool",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "reserveStatus",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "collateralAgent",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "reserveHook",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SuccessorTransferApproved",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "openUntil",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Upgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "implementation",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ATTESTER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "BOND_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DEFAULT_ADMIN_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DEFAULT_MAX_TERM_MONTHS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ELIGIBILITY_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "EQUITY_CUSHION",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "FUNDING_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "HOLDER_CAP_FLOOR_DELAY",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LADDER_DELAY",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LADDER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LIMIT_TERM_MONTHS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "LOW_UTILIZATION_RULE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_ATTESTATION_LIFE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_BOND_BOOKS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_HOUSEHOLD",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_LADDER_TERMS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_TERM_DAYS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_YIELD_BPS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MIN_TERM_MONTHS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "PAUSE_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "PAYEE_DELAY",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "RESERVE_SHORTFALL",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "SUCCESSOR_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "SUCCESSOR_WINDOW",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "applyRung",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "applyRungs",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32[]",
+          "name": "termDays"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "approveSuccessorTransfer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "cancelPaymentSuccessor",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "collateralAgent",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "eip712Domain",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes1",
+          "name": "fields"
+        },
+        {
+          "type": "string",
+          "name": "name"
+        },
+        {
+          "type": "string",
+          "name": "version"
+        },
+        {
+          "type": "uint256",
+          "name": "chainId"
+        },
+        {
+          "type": "address",
+          "name": "verifyingContract"
+        },
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "uint256[]",
+          "name": "extensions"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "extensionKind",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fundingLimit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fundingLimitFiscalYear",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint16",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "fundingLimitResolution",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getRoleAdmin",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "grantRole",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "grantRoleByResolution",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "hasRole",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holderCapBps",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holderIneligible",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "householdMembers",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "household"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "householdOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "isTermOffered",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ladderTerms",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "ladderYieldBps",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "maxTermMonths",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "memberKeyOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "memberWalletsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address[]",
+          "name": "wallets"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "membership",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "monthsToDays",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "months"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "offeringCap",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "offeringTaken",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "otherIndebtedness",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "otherIndebtednessEvidence",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pauseFlags",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "payeeOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "paymentSuccessorOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "address",
+              "name": "payee"
+            },
+            {
+              "type": "uint64",
+              "name": "effectiveAt"
+            },
+            {
+              "type": "bytes32",
+              "name": "evidenceHash"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pendingRung",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": "yieldBps"
+        },
+        {
+          "type": "bool",
+          "name": "offered"
+        },
+        {
+          "type": "uint64",
+          "name": "effectiveAt"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "poolCapacity",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proxiableUUID",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "refused",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "registerPaymentSuccessor",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "address",
+          "name": "payee"
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "renounceRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "reserveHook",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "reserveStatus",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "revokeRole",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "role"
+        },
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "rollTermFor",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": "best"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "rollYieldFor",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "rollTerm"
+        },
+        {
+          "type": "uint32",
+          "name": "noticeYieldBps"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "rungAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        },
+        {
+          "type": "uint64",
+          "name": "at"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint32",
+          "name": "yieldBps"
+        },
+        {
+          "type": "bool",
+          "name": "offered"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "sameHolder",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "a"
+        },
+        {
+          "type": "address",
+          "name": "b"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "scheduleHolderCapFloor",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "floor"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "scheduleRung",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps"
+        },
+        {
+          "type": "bool",
+          "name": "offered"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "scheduleRungs",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32[]",
+          "name": "termDays"
+        },
+        {
+          "type": "uint32[]",
+          "name": "yieldBps"
+        },
+        {
+          "type": "bool[]",
+          "name": "offered"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setBondBooks",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address[]",
+          "name": "books"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setFundingLimit",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "limit"
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash"
+        },
+        {
+          "type": "uint16",
+          "name": "fiscalYear"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setHolderCapBps",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bps"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setHolderIneligible",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "bool",
+          "name": "ineligible"
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setHousehold",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "bytes32",
+          "name": "household"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setMaxTermMonths",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "months"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setOfferingLimits",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "cap"
+        },
+        {
+          "type": "uint256",
+          "name": "capacity"
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setRefused",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "bool",
+          "name": "isRefused"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setRung",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "termDays"
+        },
+        {
+          "type": "uint32",
+          "name": "yieldBps"
+        },
+        {
+          "type": "bool",
+          "name": "offered"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setSources",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "membership_"
+        },
+        {
+          "type": "address",
+          "name": "yieldPool_"
+        },
+        {
+          "type": "address",
+          "name": "reserveStatus_"
+        },
+        {
+          "type": "address",
+          "name": "collateralAgent_"
+        },
+        {
+          "type": "address",
+          "name": "reserveHook_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "successorTransfer",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint64",
+              "name": "approvedAt"
+            },
+            {
+              "type": "bytes32",
+              "name": "evidenceHash"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "supportsInterface",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes4",
+          "name": "interfaceId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "unit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "upgradeTo",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeToAndCall",
+      "constant": false,
+      "stateMutability": "payable",
+      "payable": true,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "yieldPool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    }
+  ],
+  "blockNumber": 0
+}

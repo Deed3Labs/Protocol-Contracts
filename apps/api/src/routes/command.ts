@@ -25,6 +25,7 @@ import { settingsSection } from '../services/command/settings.js';
 import { liveSafeReader, safeAppUrl, safeConfig, SafeServiceError, type SafeConfig, type SafeReader } from '../services/command/safe.js';
 import { getAddress, isAddress, recoverTypedDataAddress, verifyMessage, type Hex } from 'viem';
 import { BUILDERS, BuildError, onChain, safeTxFor, safeTxHash, typedDataFor, type SafeTxData } from '../services/command/safeTx.js';
+import { liquidatorAddress, prepareHoldCall, readEnforcement, type HoldCall } from '../services/chain/enforcement.js';
 import { indexStatus } from '../services/command/indexer.js';
 import type { ChainReader } from '../services/command/onchain.js';
 import { codeStatus } from '../services/command/github.js';
@@ -564,6 +565,40 @@ export function commandRouter(deps: CommandDeps) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
     }
+  });
+
+  /*
+   * Liquidation Holds and shortfall notices (Phase 2b, 12.6 and 12.8). The list is read from the
+   * Liquidator. A hold step is only ENCODED here: the HOLD_ROLE signer sends it from their own wallet,
+   * and a second, different signer confirms, renews or finishes clearing it. No key is held for this.
+   */
+  router.get('/liquidation-holds', need('money', SEE), async (_req, res) => {
+    const read = await readEnforcement();
+    if (!read) return fail(res, 501, 'NOT_LIVE_YET', 'The Liquidator could not be read on this network');
+    const { address, chainId } = liquidatorAddress();
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ liquidator: address, chainId, ...read });
+  });
+
+  router.post('/liquidation-holds/prepare', limits.write, need('money', PROPOSE), async (req, res) => {
+    const { address, chainId } = liquidatorAddress();
+    if (!address) return fail(res, 501, 'NOT_LIVE_YET', 'No Liquidator on this network');
+    const b = req.body ?? {};
+    const prepared = prepareHoldCall(
+      {
+        action: b.action,
+        member: String(b.member ?? ''),
+        reason: b.reason,
+        durationDays: Number(b.durationDays),
+        evidence: String(b.evidence ?? ''),
+        untilUnix: Number(b.untilUnix),
+      } as HoldCall,
+      address,
+      chainId,
+    );
+    if ('error' in prepared) return fail(res, 400, 'BAD_HOLD', prepared.error);
+    await auditFrom(req, { area: 'money', action: `Prepared a Liquidation Hold step: ${String(b.action)}`, detail: `${String(b.member)} · sent from the signer's own wallet`, result: 'done' });
+    res.json(prepared);
   });
 
   router.get('/sections/contracts', need('contracts', TOTALS), async (req, res) => {

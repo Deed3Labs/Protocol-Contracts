@@ -1,8 +1,9 @@
 // Enhanced Service Worker for PWA
 // Combines offline support, caching, and WebSocket integration
 // Bumped when a strategy changes, so installed apps drop what the old one cached. v3: API reads
-// went network-first, and the stale balances v2 cached must not survive the update.
-const CACHE_VERSION = 'v5';
+// went network-first, and the stale balances v2 cached must not survive the update. v6: bank details
+// (/api/lithic/account*) are never cached, and what v5 kept of them goes with the old cache.
+const CACHE_VERSION = 'v6';
 const STATIC_CACHE = `protocol-static-${CACHE_VERSION}`;
 const API_CACHE = `protocol-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `protocol-images-${CACHE_VERSION}`;
@@ -104,6 +105,12 @@ self.addEventListener('fetch', (event) => {
     // The phone pages' bills and receipts (/api/p, /api/r): a bill changes by the second, and a
     // receipt is someone else's on a shared phone. Never kept.
     if (isPhonePageAPI(url)) {
+      event.respondWith(networkOnly(request));
+      return;
+    }
+    // Bank details: routing and account numbers. Cache Storage ignores the API's no-store, so this
+    // has to say so itself: never kept on the device.
+    if (isBankDetailsAPI(url)) {
       event.respondWith(networkOnly(request));
       return;
     }
@@ -301,6 +308,11 @@ function isReferenceAPI(url) {
 
 function isPhonePageAPI(url) {
   return url.pathname.startsWith('/api/p/') || url.pathname.startsWith('/api/r/');
+}
+
+/** The member's own account and routing numbers (/api/lithic/account, /api/lithic/account-details…). */
+function isBankDetailsAPI(url) {
+  return url.pathname.startsWith('/api/lithic/account');
 }
 
 function isPlaidAPI(url) {

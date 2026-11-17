@@ -1,5 +1,5 @@
 {
-  "address": "0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593",
+  "address": "0x621784117C037b3D20AF54e04589818e919e33f3",
   "abi": [
     {
       "type": "constructor",
@@ -9,8 +9,63 @@
     },
     {
       "type": "error",
+      "name": "LiquidatorBadParameter",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorHoldExists",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "LiquidatorInvalidAddress",
       "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorNoHold",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorNoShortfall",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorNotCollateralAgent",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorNotEarnBonds",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
     },
     {
       "type": "error",
@@ -28,15 +83,11 @@
     },
     {
       "type": "error",
-      "name": "LiquidatorNotRealizable",
+      "name": "LiquidatorNotPoolShareEnforcer",
       "inputs": [
         {
           "type": "address",
-          "name": "collateral"
-        },
-        {
-          "type": "uint256",
-          "name": "seized"
+          "name": "caller"
         }
       ]
     },
@@ -57,6 +108,64 @@
     {
       "type": "error",
       "name": "LiquidatorNothingToSeize",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorOnHold",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint8",
+          "name": "reason"
+        },
+        {
+          "type": "uint64",
+          "name": "until"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorPauseClockSet",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorPauseInForce",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorReentered",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorSameSigner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorShortfallNoticed",
       "inputs": [
         {
           "type": "address",
@@ -106,6 +215,177 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "DistributionApplied",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "applied",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "toHolder",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EarnSourcesUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "pool",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "bonds",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldClearProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldCleared",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldConfirmed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "until",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldLapsed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldProposed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "reason",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "until",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "HoldRenewed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        },
+        {
+          "type": "uint64",
+          "name": "until",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Initialized",
       "inputs": [
         {
@@ -144,6 +424,138 @@
           "type": "uint256",
           "name": "repaid",
           "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "MaturityInstructionApplied",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "toDebt",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "applied",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "MaxHoldUpdated",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "reason",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "maxSeconds",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PauseClockSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "clock",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PledgePaymentApplied",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "issuer",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "onDefault",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "applied",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "surplus",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PoolProceedsApplied",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "applied",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "surplus",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PoolShareEnforcerUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "enforcer",
+          "indexed": true
         }
       ]
     },
@@ -243,7 +655,19 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "SharesSeized",
+      "name": "ShortfallCleared",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ShortfallNoticed",
       "inputs": [
         {
           "type": "address",
@@ -251,23 +675,20 @@
           "indexed": true
         },
         {
-          "type": "address",
-          "name": "pool",
-          "indexed": true
-        },
-        {
           "type": "uint256",
-          "name": "shares",
+          "name": "gap",
           "indexed": false
-        },
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ShortfallWaitUpdated",
+      "inputs": [
         {
-          "type": "uint256",
-          "name": "realized",
-          "indexed": false
-        },
-        {
-          "type": "bool",
-          "name": "queued",
+          "type": "uint64",
+          "name": "waitSeconds",
           "indexed": false
         }
       ]
@@ -317,6 +738,62 @@
     },
     {
       "type": "function",
+      "name": "HOLD_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_HOLD_CEILING",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_SHORTFALL_WAIT",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MIN_SHORTFALL_WAIT",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "OPERATOR_ROLE",
       "constant": true,
       "stateMutability": "view",
@@ -328,6 +805,113 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "applyDistribution",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "applyMaturityInstruction",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "applyPledgePayment",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bool",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "applied"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "applyPoolProceeds",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "applied"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "clearHold",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -354,6 +938,126 @@
         {
           "type": "address",
           "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "confirmHold",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "defaultedAmountOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "due"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "earnBonds",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "earnDefaultedOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "due"
+        },
+        {
+          "type": "address",
+          "name": "issuer"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "earnPool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforcement",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforcementPermitted",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": "permitted"
         }
       ]
     },
@@ -413,6 +1117,78 @@
         {
           "type": "bool",
           "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdEvidence",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "holdOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "hold",
+          "components": [
+            {
+              "type": "address",
+              "name": "proposer"
+            },
+            {
+              "type": "uint8",
+              "name": "reason"
+            },
+            {
+              "type": "bool",
+              "name": "confirmed"
+            },
+            {
+              "type": "uint64",
+              "name": "setAt"
+            },
+            {
+              "type": "address",
+              "name": "lastSigner"
+            },
+            {
+              "type": "uint64",
+              "name": "until"
+            },
+            {
+              "type": "address",
+              "name": "clearProposer"
+            }
+          ]
+        },
+        {
+          "type": "bool",
+          "name": "active"
         }
       ]
     },
@@ -481,7 +1257,153 @@
     },
     {
       "type": "function",
-      "name": "liquidateShares",
+      "name": "maturityToDebt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "toDebt"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "maxHoldOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "reason"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "nextBondOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": "found"
+        },
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "noticeShortfall",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "gap"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pauseClock",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pledgePaymentDue",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": "due"
+        },
+        {
+          "type": "address",
+          "name": "issuer"
+        },
+        {
+          "type": "bool",
+          "name": "onDefault"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "poolShareEnforcer",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proposeHold",
       "constant": false,
       "payable": false,
       "inputs": [
@@ -490,32 +1412,19 @@
           "name": "member"
         },
         {
-          "type": "address",
-          "name": "issuer"
+          "type": "uint8",
+          "name": "reason"
         },
         {
-          "type": "uint256",
-          "name": "tierId"
+          "type": "uint64",
+          "name": "duration"
         },
         {
           "type": "bytes32",
-          "name": "kind"
-        },
-        {
-          "type": "address",
-          "name": "pool"
+          "name": "evidenceHash"
         }
       ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": "realized"
-        },
-        {
-          "type": "bool",
-          "name": "queued"
-        }
-      ]
+      "outputs": []
     },
     {
       "type": "function",
@@ -530,6 +1439,42 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "realizedPendingOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "renewHold",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint64",
+          "name": "until"
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -581,6 +1526,79 @@
     },
     {
       "type": "function",
+      "name": "setEarnSources",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "pool"
+        },
+        {
+          "type": "address",
+          "name": "bonds"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setMaxHold",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "reason"
+        },
+        {
+          "type": "uint64",
+          "name": "maxSeconds"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setPauseClock",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "clock"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setPoolShareEnforcer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "enforcer"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setShortfallWait",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "waitSeconds"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "setTrustedSavingsIssuer",
       "constant": false,
       "payable": false,
@@ -624,28 +1642,63 @@
     },
     {
       "type": "function",
-      "name": "settleRealized",
-      "constant": false,
+      "name": "shortfallNoticedAt",
+      "constant": true,
+      "stateMutability": "view",
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "member"
+          "name": ""
         },
         {
           "type": "address",
-          "name": "issuer"
-        },
-        {
-          "type": "uint256",
-          "name": "tierId"
-        },
-        {
-          "type": "uint256",
-          "name": "amount"
+          "name": ""
         }
       ],
-      "outputs": []
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "shortfallOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "gap"
+        },
+        {
+          "type": "uint256",
+          "name": "dueAt"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "shortfallWait",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
     },
     {
       "type": "function",

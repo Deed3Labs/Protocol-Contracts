@@ -1,0 +1,2114 @@
+{
+  "address": "0x3c334D3AeD134191B7Ad0744a23978D71357BB15",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolAboveCoverage",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "available"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolBackstopShareLowered",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "current"
+        },
+        {
+          "type": "uint256",
+          "name": "proposed"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolBadAllocation",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolBadDrawState",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "drawId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolBadTransfer",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "transferId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolBelowFloor",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "backstopBalance"
+        },
+        {
+          "type": "uint256",
+          "name": "required"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolCompartmentExists",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "compartment"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolCompartmentFixed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "compartment"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolCompartmentNotEmpty",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "compartment"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolCompartmentShort",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "compartment"
+        },
+        {
+          "type": "uint256",
+          "name": "balance"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolDrawOutOfOrder",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "drawId"
+        },
+        {
+          "type": "uint256",
+          "name": "next"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolGovernanceDelayTooShort",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "delay"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolGrantAlreadyPaid",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "grantId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolInvalidAmount",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolMoneyPath",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolNotApproved",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolNotDrawAddress",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolNotGovernance",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolNotPaused",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolNotPayer",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "payer"
+        },
+        {
+          "type": "uint8",
+          "name": "sourceTag"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolNotSigner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolPaused",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "until"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolPeriodAlreadyDrawn",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "periodId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolRoleConflict",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolSameSigner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolTooFewSigners",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolTooManyCompartments",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolTransferTooEarly",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "executableAt"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AssurancePoolUnknownCompartment",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "compartment"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionApproved",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionProposed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AdminChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousAdmin",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "newAdmin",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AllocationSet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "programYear",
+          "indexed": true
+        },
+        {
+          "type": "bytes32[]",
+          "name": "compartments"
+        },
+        {
+          "type": "uint16[]",
+          "name": "bps"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AssuranceDisbursementAddressSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "disbursement",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AssuranceReleased",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "grantId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BeaconUpgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "beacon",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CompartmentAdded",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "compartment",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CompartmentCredited",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "sourceTag",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "compartment",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CompartmentRemoved",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "compartment",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DrawApproved",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "drawId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "approvedAmount",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DrawReleased",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "drawId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "releaser",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DrawRequested",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "drawId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "periodId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ExposureSourcesSet",
+      "inputs": [
+        {
+          "type": "address[]",
+          "name": "sources"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "FloorBpsSet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "floorBps",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "FloorInputsSet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "timingBufferShortfall",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "coverageCap",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "attestedCoveredBook",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "GovernanceSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "governance",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Initialized",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LendingCoAddressesSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "drawAddress",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "lossReserveAddress",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "NetworkRegistrySet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "registry",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PayerSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "payer",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "sourceTagMask",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SecurityPaused",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "until",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SecurityUnpaused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SignerSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "allowed",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TransferDelaySet",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "delay",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TransferExecuted",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "transferId",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "from",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "executor",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TransferProposed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "transferId",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "from",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Upgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "implementation",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "BPS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "CREDIT_BACKSTOP",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_COMPARTMENTS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_EXPOSURE_SOURCES",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MEMBER_ASSURANCE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MIN_GOVERNANCE_DELAY",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MIN_SIGNERS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MIN_TRANSFER_DELAY",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "PAUSE_WINDOW",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "PROGRAM_YEAR",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "addCompartment",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "allocationOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "compartment"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "allocationYear",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "approveAction",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "approveDraw",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "drawId"
+        },
+        {
+          "type": "uint256",
+          "name": "approvedAmount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "approvedAction",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "approvedUnpaidDraws",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "asset",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "assuranceDisbursementAddress",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "attestedCoveredBook",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "availableCoverage",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "backstopBalance",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "backstopFloor",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "balanceOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "compartment"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "compartments",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "coverageCap",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "coveredBookPrincipal",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "covered"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "currentProgramYear",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deposit",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "sourceTag"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "drawAddress",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "drawAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "drawId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint64",
+              "name": "periodId"
+            },
+            {
+              "type": "uint8",
+              "name": "status"
+            },
+            {
+              "type": "address",
+              "name": "approver"
+            },
+            {
+              "type": "uint128",
+              "name": "requested"
+            },
+            {
+              "type": "uint128",
+              "name": "approved"
+            },
+            {
+              "type": "bytes32",
+              "name": "evidenceHash"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "drawCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "drawOfPeriod",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "executeTransfer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "transferId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "exposureSourceList",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "floorBps",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "floorEvidenceHash",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "floorInputsAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "governance",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "grantPaid",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "asset_"
+        },
+        {
+          "type": "address",
+          "name": "governance_"
+        },
+        {
+          "type": "address",
+          "name": "registry_"
+        },
+        {
+          "type": "address[]",
+          "name": "signers_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "isSigner",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lossReserveAddress",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "networkRegistry",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "nextDraw",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pause",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "pauseEpoch",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "paused",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pausedUntil",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "payerTags",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pendingDrawRequests",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "programYearStart",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proposeTransfer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "from"
+        },
+        {
+          "type": "bytes32",
+          "name": "to"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "bytes32",
+          "name": "resolutionHash"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "transferId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proposerOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proxiableUUID",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "releaseAssurance",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "grantId"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "releaseDraw",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "drawId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "removeCompartment",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "renewPause",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "requestDraw",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "periodId"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "drawId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "setAllocation",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint16[]",
+          "name": "bps"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setAssuranceDisbursementAddress",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "disbursement"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setExposureSources",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address[]",
+          "name": "sources"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setFloorBps",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "floorBps_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setFloorInputs",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "shortfall"
+        },
+        {
+          "type": "uint256",
+          "name": "cap"
+        },
+        {
+          "type": "uint256",
+          "name": "attestedBook"
+        },
+        {
+          "type": "bytes32",
+          "name": "evidenceHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setGovernance",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "governance_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setLendingCoAddresses",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "draw_"
+        },
+        {
+          "type": "address",
+          "name": "lossReserve_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setNetworkRegistry",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "registry"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setPayer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "payer"
+        },
+        {
+          "type": "uint256",
+          "name": "sourceTagMask"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setSigner",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer"
+        },
+        {
+          "type": "bool",
+          "name": "allowed"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setTransferDelay",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "delay"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "signerCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "timingBufferShortfall",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalAccounted",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transferAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "transferId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "bytes32",
+              "name": "from"
+            },
+            {
+              "type": "bytes32",
+              "name": "to"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "bytes32",
+              "name": "resolutionHash"
+            },
+            {
+              "type": "address",
+              "name": "proposer"
+            },
+            {
+              "type": "uint64",
+              "name": "proposedAt"
+            },
+            {
+              "type": "bool",
+              "name": "executed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transferCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transferDelay",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "unpause",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeTo",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeToAndCall",
+      "constant": false,
+      "stateMutability": "payable",
+      "payable": true,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": []
+    }
+  ],
+  "blockNumber": 0
+}

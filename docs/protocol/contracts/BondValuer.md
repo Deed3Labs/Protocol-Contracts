@@ -6,7 +6,7 @@ Source: [`contracts/peripherals/BondValuer.sol`](../../../contracts/peripherals/
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x5cf830BE04a0E42246334b90870B87ccd898c31e`](https://sepolia.basescan.org/address/0x5cf830BE04a0E42246334b90870B87ccd898c31e) |
+| Base Sepolia | 84532 | [`0x7f63e01B1BBd79509138D825B5Ef4b186E9502C8`](https://sepolia.basescan.org/address/0x7f63e01B1BBd79509138D825B5Ef4b186E9502C8) |
 
 ## Functions that change state
 

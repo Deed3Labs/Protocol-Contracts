@@ -6,6 +6,9 @@ import { intentConfigOf, savingsIntentService, type SavingsIntentPayload } from 
 const FACTORY_ABI = [
   'function settleDeterministic(bytes32 salt, (address depositor,address receiver,address transferToken,address vaultToken,address vault,uint256 amount,uint64 expiry,uint8 action) config) external returns (address escrow, uint256 resultAmount)',
   'function refundDeterministic(bytes32 salt, (address depositor,address receiver,address transferToken,address vaultToken,address vault,uint256 amount,uint64 expiry,uint8 action) config) external returns (address escrow, uint256 refundedAmount)',
+  // Phase 2d: a redeem escrow is announced before the member funds it, so members-only CLRUSD lets it
+  // receive. Needs the factory's CREATOR_ROLE on the relayer.
+  'function announceIntent(bytes32 salt, (address depositor,address receiver,address transferToken,address vaultToken,address vault,uint256 amount,uint64 expiry,uint8 action) config) external returns (address escrow)',
 ] as const;
 
 const ESCROW_ABI = [
@@ -383,6 +386,18 @@ class SavingsRelayerService {
     const config = savingsIntentService.resolveChainConfig(payload.chainId);
     const iface = new ethers.Interface(FACTORY_ABI);
     const data = iface.encodeFunctionData('settleDeterministic', [payload.salt, this.buildConfigTuple(payload)]);
+    return this.submit(payload.chainId, config.factoryAddress, data);
+  }
+
+  /**
+   * Records a redeem intent's escrow on the factory before the member funds it (Phase 2d, section 7):
+   * CLRUSD lets only members and recorded escrows receive, so an unannounced address would refuse the
+   * member's transfer. Deploys nothing. Deposit intents hold USDC and need none.
+   */
+  async announceIntent(payload: SavingsIntentPayload): Promise<string> {
+    const config = savingsIntentService.resolveChainConfig(payload.chainId);
+    const iface = new ethers.Interface(FACTORY_ABI);
+    const data = iface.encodeFunctionData('announceIntent', [payload.salt, this.buildConfigTuple(payload)]);
     return this.submit(payload.chainId, config.factoryAddress, data);
   }
 

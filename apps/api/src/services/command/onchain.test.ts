@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import chain from '@clear/command-types/src/chain/base-sepolia.json';
-import { getAddress } from 'viem';
+import { readFileSync } from 'node:fs';
+import { getAddress, stringToHex } from 'viem';
 import type { Db } from '../../db/db.js';
 import { testDb } from '../../db/testDb.js';
 import { syncInventory } from './indexer.js';
-import { assurancePoolLive, bondsLive, coopLive, deployedName, offersAddress, offersLive, type ChainCall, type ChainReader } from './onchain.js';
+import { ASSURANCE_POOL_VIEWS, assurancePoolLive, bondsLive, coopLive, deployedName, offersAddress, offersLive, type ChainCall, type ChainReader } from './onchain.js';
 import { contractsSection, moneySection } from './sections.js';
 import { seedCommand } from './seed.js';
 import { TOTALS } from './levels.js';
@@ -38,13 +39,50 @@ const mint = (to: string, shares: number, when: string) => put('LendingPool', 'T
 // what the contracts say now: the replay's own answer, plus 200 of A's shares sent to C
 const views: Record<string, string> = {
   totalAssets: usdc(1406), totalSupply: usdc(1400), totalBorrowed: '0', availableCash: usdc(1406), queuedAssets: '0', utilizationBps: '0',
-  borrowRatePerCycle: '25', supplyRatePerCycle: '0', baseRatePerCycle: '25', slope1PerCycle: '75', slope2PerCycle: '900', kinkBps: '8000', decimals: '6',
+  // Phase 2f: the Funding Rate and its model, annual WAD (25, 75 and 900 bps a 30-day cycle; kink at 80%)
+  fundingRate: '30416666666666667', decimals: '6',
   cycleLength: '2592000', borrowedFromYield: '0', shortfall: usdc(140.6),
 };
 const held: Record<string, [number, number]> = { [getAddress(A)]: [800, 100], [getAddress(B)]: [400, 0], [getAddress(Cc)]: [200, 0] };
 const asked: ChainCall[][] = [];
 // the savings reserve: CLRUSD in issue, and the USDC the vault holds (50 cents short)
 const USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+
+/** The Phase 2c AssurancePool's views, answered from a few figures (USDC, 6 decimals). */
+function poolAnswer(
+  c: ChainCall,
+  v: { backstop: number; assurance: number; floor: number; coverage: number; pending?: number; draws?: [number, number, number][] },
+): unknown {
+  const keys = [stringToHex('CREDIT_BACKSTOP', { size: 32 }), stringToHex('MEMBER_ASSURANCE', { size: 32 })];
+  switch (c.fn) {
+    case 'asset':
+      return USDC;
+    case 'compartments':
+      return keys;
+    case 'balanceOf':
+      return BigInt(usdc(c.args![0] === keys[0] ? v.backstop : v.assurance));
+    case 'allocationOf':
+      return 5000n;
+    case 'backstopFloor':
+      return BigInt(usdc(v.floor));
+    case 'backstopBalance':
+      return BigInt(usdc(v.backstop));
+    case 'availableCoverage':
+      return BigInt(usdc(v.coverage));
+    case 'pendingDrawRequests':
+      return BigInt(usdc(v.pending ?? 0));
+    case 'drawCount':
+      return BigInt(v.draws?.length ?? 0);
+    case 'drawAt': {
+      const [status, requested, approved] = v.draws![Number(c.args![0])];
+      return { periodId: 1n, status, approver: USDC, requested: BigInt(usdc(requested)), approved: BigInt(usdc(approved)), evidenceHash: '0x' };
+    }
+    case 'paused':
+      return false;
+    default:
+      return 0n;
+  }
+}
 const reserve = { clrusd: 900, vault: 899.5 };
 // the co-op's fee recipient (the Ops Safe) and the ClearCredit it holds
 const SAFE = getAddress('0x52e6102b7c22eec7a68b11dd71fac7d6d9aecf50');
@@ -57,10 +95,9 @@ const reader: ChainReader = {
       if ((c.contract === 'LendingPool' && c.fn === 'asset') || (c.contract === 'BurnerBond' && c.fn === 'underlyingToken')) return USDC;
       // BondVault: the bond buyers' money it holds, in the same token
       if (c.contract === 'BondVault')
-        return c.fn === 'reserveToken' ? USDC : c.fn === 'requiredReserve' ? BigInt(usdc(90)) : c.fn === 'deployableExcess' ? BigInt(usdc(200.38)) : c.fn === 'minReserveBps' ? 3000n : c.fn === 'reserveWindow' ? BigInt(90 * 86400) : BigInt(usdc(290.38));
-      // the AssurancePool: all of it in the buffer reserve, as on Base Sepolia
-      if (c.contract === 'AssurancePool')
-        return c.fn === 'reserveToken' ? USDC : c.fn === 'bufferBalance' ? BigInt(usdc(125.03)) : c.fn === 'targetRTD' ? 800_000_000_000_000_000n : c.fn === 'hasValidRTD' ? true : 0n;
+        return c.fn === 'reserveToken' ? USDC : c.fn === 'requiredReserve' ? BigInt(usdc(90)) : c.fn === 'deployableExcess' ? BigInt(usdc(200.38)) : c.fn === 'minReserveBps' ? 3000n : c.fn === 'RESERVE_WINDOW' ? BigInt(90 * 86400) : BigInt(usdc(290.38));
+      // the AssurancePool (Phase 2c): 125.03 in the Credit Backstop, nothing in Member Assurance
+      if (c.contract === 'AssurancePool') return poolAnswer(c, { backstop: 125.03, assurance: 0, floor: 20, coverage: 105.03 });
       // the PayoutPool's claims, the registry's shops and the credit book: none here (credit.test.ts reads them)
       // what the PayoutPool holds to pay them: the September half-dollar and the $10 the offers line settled
       if (c.contract === 'PayoutPool' && c.fn === 'held') return BigInt(usdc(10.5));
@@ -81,6 +118,7 @@ const reader: ChainReader = {
       }
       if (c.fn === 'balanceOf') return BigInt(usdc(held[c.args![0] as string][0]));
       if (c.fn === 'encumberedOf') return BigInt(usdc(held[c.args![0] as string][1]));
+      if (c.contract === 'LendingPool' && c.fn === 'rateModel') return [30416666666666667n, 91250000000000000n, 800000000000000000n, 1095000000000000000n];
       return BigInt(views[c.fn]);
     });
   },
@@ -138,7 +176,7 @@ describe('the yield pool, live', () => {
     expect(m.Y.curve).toEqual({ base: 25, s1: 75, s2: 900, kink: 0.8 });
     expect(m.Y.price).toBeCloseTo(1406 / 1400, 10);
     // every read in one request: the pool's views, the cycle, the payout draw, and each holder's shares and pledge
-    expect([...asked].reverse().find((a) => a.some((c) => c.fn === 'totalAssets'))!.length).toBe(16 + 3 * 2);
+    expect([...asked].reverse().find((a) => a.some((c) => c.fn === 'totalAssets'))!.length).toBe(12 + 3 * 2);
     // the payout gap is the PayoutPool's: a tenth of the pool, so a tenth lent after
     expect(m.Y.toPayout).toBe(140.6);
     expect(m.Y.utilAfter).toBeCloseTo(0.1, 10);
@@ -187,7 +225,10 @@ describe('the yield pool, live', () => {
 
   test('a pool nobody has deposited in yet: zeros, not NaN', async () => {
     const empty: ChainReader = {
-      read: async (calls) => calls.map((c) => (c.fn === 'asset' ? USDC : c.fn === 'decimals' ? 6n : c.fn === 'borrowRatePerCycle' || c.fn === 'baseRatePerCycle' ? 25n : 0n)),
+      read: async (calls) =>
+        calls.map((c) =>
+          c.fn === 'asset' ? USDC : c.fn === 'decimals' ? 6n : c.fn === 'fundingRate' ? 30416666666666667n : c.fn === 'rateModel' ? [30416666666666667n, 0n, 0n, 0n] : 0n,
+        ),
     };
     const fresh = (await testDb()).db;
     await seedCommand(fresh);
@@ -288,46 +329,53 @@ describe('the savings reserve, live (6b)', () => {
   });
 });
 
-describe('the AssurancePool, live', () => {
-  // a pool reading what it's told: its reserves, target, exposure (credit decimals 18, reserve 6)
-  const pool = (v: { primary: number; buffer?: number; target: number; exposure: number; bonds?: number }): ChainReader => ({
-    read: async (calls) =>
-      calls.map((c) => {
-        if (c.fn === 'reserveToken') return USDC;
-        if (c.fn === 'decimals') return 6n;
-        if (c.fn === 'primaryBalance') return BigInt(usdc(v.primary));
-        if (c.fn === 'bufferBalance') return BigInt(usdc(v.buffer ?? 0));
-        if (c.fn === 'targetRTD') return BigInt(Math.round(v.target * 1e6)) * 10n ** 12n;
-        if (c.fn === 'poolExposure') return BigInt(Math.round(v.exposure * 1e6)) * 10n ** 12n;
-        if (c.fn === 'convertStableCreditToReserveToken') return (c.args![0] as bigint) / 10n ** 12n;
-        if (c.fn === 'RTD') return v.exposure ? (BigInt(usdc(v.primary)) * 10n ** 18n) / BigInt(usdc(v.exposure)) : 0n;
-        if (c.fn === 'hasValidRTD') return !v.exposure || v.primary / v.exposure >= v.target;
-        if (c.fn === 'bondExposure') {
-          // a pool from before the bond backstop has no such function
-          if (v.bonds == null) throw new Error('no bondExposure');
-          return BigInt(usdc(v.bonds));
-        }
-        return 0n;
-      }),
+describe('the AssurancePool, live (Phase 2c)', () => {
+  const pool = (v: Parameters<typeof poolAnswer>[1]): ChainReader => ({
+    read: async (calls) => calls.map((c) => (c.fn === 'decimals' ? 6n : poolAnswer(c, v))),
   });
 
-  test('with nothing out, RTD is undefined and the pool is at its target, whatever it holds', async () => {
-    const a = await assurancePoolLive(pool({ primary: 0, buffer: 125.03, target: 0.8, exposure: 0 }));
-    expect(a).toMatchObject({ total: 125.03, primary: 0, buffer: 125.03, target: 0.8, exposure: 0, rtd: null, valid: true, gap: 0, room: 0 });
+  test('two compartments, the backstop’s floor and the coverage it leaves, from the contract', async () => {
+    const a = await assurancePoolLive(pool({ backstop: 300, assurance: 120.5, floor: 250, coverage: 40, pending: 10, draws: [[1, 30, 20]] }));
+    expect(a).toMatchObject({
+      total: 420.5,
+      compartments: [
+        { key: 'CREDIT_BACKSTOP', balance: 300, allocationBps: 5000 },
+        { key: 'MEMBER_ASSURANCE', balance: 120.5, allocationBps: 5000 },
+      ],
+      floor: 250,
+      backstop: 300,
+      coverage: 40,
+      pendingDraws: 10,
+      paused: false,
+    });
+    expect(a.draws).toEqual([{ id: 0, status: 'Requested', requested: 30, approved: 20 }]);
   });
 
-  test('with credit out: RTD on the primary reserve alone, how far above or below target in dollars, and the room left', async () => {
-    const above = await assurancePoolLive(pool({ primary: 200, buffer: 50, target: 0.8, exposure: 100 }));
-    expect(above).toMatchObject({ rtd: 2, valid: true, gap: 120, room: 150 });
-    const below = await assurancePoolLive(pool({ primary: 40, target: 0.8, exposure: 100 }));
-    expect(below).toMatchObject({ rtd: 0.4, valid: false, gap: -40, room: 0 });
+  test('read with the inline views, never the retired pool’s RTD or buffer', async () => {
+    const seen: ChainCall[] = [];
+    await assurancePoolLive({ read: async (calls) => (seen.push(...calls), calls.map((c) => (c.fn === 'decimals' ? 6n : poolAnswer(c, { backstop: 1, assurance: 1, floor: 0, coverage: 1 })))) });
+    const fns = seen.filter((c) => c.contract === 'AssurancePool').map((c) => c.fn);
+    expect(fns).toContain('backstopFloor');
+    expect(fns).toContain('availableCoverage');
+    expect(fns).not.toContain('RTD');
+    expect(fns).not.toContain('bufferBalance');
+    expect(seen.filter((c) => c.contract === 'AssurancePool').every((c) => Array.isArray(c.abi))).toBe(true);
   });
 
-  test('the bond gap it backs counts beside members’ exposure, and a pool without it reads none', async () => {
-    const a = await assurancePoolLive(pool({ primary: 200, target: 0.8, exposure: 100, bonds: 50 }));
-    // 0.8 × (100 + 50) = 120 needed of the 200: 80 above, room for 100 more
-    expect(a).toMatchObject({ exposure: 100, bonds: 50, gap: 80, room: 100 });
-    expect((await assurancePoolLive(pool({ primary: 200, target: 0.8, exposure: 100 }))).bonds).toBe(0);
+  test('every inline view is in AssurancePool.sol, argument for argument', () => {
+    let solidity = '';
+    try {
+      solidity = readFileSync(new URL('../../../../../contracts/peripherals/AssurancePool.sol', import.meta.url), 'utf8');
+    } catch {
+      return;
+    }
+    for (const f of ASSURANCE_POOL_VIEWS) {
+      const name = (f as { name: string }).name;
+      // a public getter, or a function of that name
+      expect(solidity).toMatch(new RegExp(`(function ${name}\\(|public ${name};| public ${name}\\b)`));
+    }
+    expect(solidity).toContain('function balanceOf(bytes32 compartment) public view');
+    expect(solidity).toContain('function drawAt(uint256 drawId) external view returns (Draw memory)');
   });
 
   test('the Payout pool account is what the PayoutPool holds, as the cash flow chart reads it', async () => {
@@ -336,13 +384,14 @@ describe('the AssurancePool, live', () => {
     expect(m.ACCTS.find((a: any[]) => a[0] === 'pay')[5]).toBe(10.5);
   });
 
-  test('what it holds is the contract’s: primary, buffer and excess reserves together', async () => {
+  test('what it holds is the contract’s: its compartments together, with the backstop’s floor and coverage', async () => {
     const m: any = await moneySection(db, read());
     expect(m.M.assurance).toBe(125.03);
     expect(m.ACCTS.find((a: any[]) => a[0] === 'ap')[5]).toBe(125.03);
-    // the weekly series ends on it, and RTD has no unsecured credit to divide by
     expect(m.AP_BAL.at(-1)).toBe(125.03);
-    expect(Number.isFinite(m.M.rtd)).toBe(true);
+    expect(m.M).toMatchObject({ backstop: 125.03, backstopFloor: 20, coverage: 105.03 });
+    expect(m.figures['money.assurance'].compartments.map((c: any) => c.key)).toEqual(['CREDIT_BACKSTOP', 'MEMBER_ASSURANCE']);
+    expect(m.figures['money.rtd']).toBeUndefined();
   });
 });
 
@@ -380,7 +429,16 @@ describe('the co-op’s balance, live', () => {
 });
 
 describe('the $10 offers’ line, live', () => {
-  test('reads what the co-op owes on the deployed OffersIssuer, and Money sends it', async () => {
+  // The pre-audit OffersIssuer is retired and none was deployed with the fresh credit stack (decision 47),
+  // so the chain record has no OffersIssuer: the line reads as not there, never as the retired one's.
+  test('reads what the co-op owes on the deployed OffersIssuer, and Money sends it; nothing while none is deployed', async () => {
+    if (!C.OffersIssuer) {
+      expect(offersAddress()).toBeNull();
+      expect(await offersLive(reader)).toBeNull();
+      const m: any = await moneySection(db, read());
+      expect(m.OFFERS ?? null).toBeNull();
+      return;
+    }
     expect(offersAddress()).toBe(C.OffersIssuer.address.toLowerCase());
     expect(await offersLive(reader)).toEqual({ owed: 40, cap: 1000, unspent: 20, granted: 50, expired: 10, settled: 0 });
     const m: any = await moneySection(db, read());

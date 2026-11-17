@@ -6,7 +6,7 @@ Source: [`contracts/peripherals/PayoutPool.sol`](../../../contracts/peripherals/
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66`](https://sepolia.basescan.org/address/0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66) |
+| Base Sepolia | 84532 | [`0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861`](https://sepolia.basescan.org/address/0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861) |
 
 ## Functions that change state
 
@@ -21,6 +21,7 @@ Source: [`contracts/peripherals/PayoutPool.sol`](../../../contracts/peripherals/
 | `payQueue(uint256 maxClaims)` | Anyone |  |
 | `payRefund(address member, uint256 amount)` | Checked inside the function |  |
 | `payRefundsOwed()` | Anyone |  |
+| `payRefundsOwedUpTo(uint256 maxRefundees)` | Anyone |  |
 | `receiveRepayment(uint256 amount)` | Checked inside the function |  |
 | `redeem(uint256 amount)` | Checked inside the function |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
@@ -28,7 +29,7 @@ Source: [`contracts/peripherals/PayoutPool.sol`](../../../contracts/peripherals/
 | `setBondVault(address vault)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setCoopIncomeRecipient(address recipient)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setCoopTreasury(address treasury)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `setLenders(address yieldPool_, address reserve_)` | Not in the current source |  |
+| `setYieldPool(address yieldPool_)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |
 | `withdrawCapital(uint256 amount, address to)` | Anyone; acts on the caller's own account |  |
@@ -44,7 +45,6 @@ Anyone can call these; they change nothing.
 | `advancedTotal()` | uint256 |
 | `bondVault()` | address |
 | `borrowed()` | uint256 |
-| `borrowedFromReserve()` | uint256 |
 | `borrowedFromVault()` | uint256 |
 | `borrowedFromYield()` | uint256 |
 | `canPayNext()` | bool |
@@ -56,7 +56,9 @@ Anyone can call these; they change nothing.
 | `coopIncomeRecipient()` | address |
 | `coopTreasury()` | address |
 | `DEFAULT_ADMIN_ROLE()` | bytes32 |
+| `DEFAULT_REFUND_PAGE()` | uint256 |
 | `distributableCarry()` | uint256 |
+| `dueWithin(uint256 horizon, uint256 maxClaims)` | uint256[] ids, uint256 amount, uint256 short |
 | `FUNDER_ROLE()` | bytes32 |
 | `fundersWithCapital()` | address[] |
 | `getRoleAdmin(bytes32 role)` | bytes32 |
@@ -64,16 +66,18 @@ Anyone can call these; they change nothing.
 | `held()` | uint256 |
 | `idleCapitalOf(address funder)` | uint256 |
 | `inFlight()` | uint256 |
+| `MAX_QUEUED_WINDOWS()` | uint256 |
 | `memberFunded()` | uint256 |
 | `merchantRegistry()` | address |
 | `nextUnpaid()` | uint256 |
 | `OPERATOR_ROLE()` | bytes32 |
 | `proxiableUUID()` | bytes32 |
 | `queuedTotal()` | uint256 |
+| `queuedWindowsList()` | uint32[] |
 | `redeemableOf(address merchant)` | uint256 |
+| `REDEEMER_ROLE()` | bytes32 |
 | `refundOwedOf(address member)` | uint256 |
 | `refundsOwed()` | uint256 |
-| `reserve()` | address |
 | `reserveToken()` | address |
 | `shortfall()` | uint256 |
 | `stableCredit()` | address |
@@ -95,26 +99,24 @@ Anyone can call these; they change nothing.
 | `CoopIncomeRecipientUpdated(address recipient indexed)` |
 | `CoopIncomeWithdrawn(address paidTo indexed, uint256 amount)` |
 | `DrewFromBondVault(uint256 amount)` |
-| `DrewFromReserve(uint256 amount)` |
 | `DrewFromTreasury(uint256 amount)` |
 | `DrewFromYieldPool(uint256 amount)` |
 | `Funded(address from indexed, uint256 amount)` |
 | `Initialized(uint8 version)` |
 | `InterestPaid(address lender indexed, uint256 amount)` |
-| `LendersUpdated(address yieldPool indexed, address reserve indexed)` |
 | `PositionAdvanced(address funder indexed, uint256 amount)` |
 | `PositionSettled(uint256 amount)` |
 | `Redeemed(address merchant indexed, uint256 amount, bool paidNow, uint256 claimId)` |
 | `RefundPaid(address member indexed, uint256 amount)` |
 | `RefundQueued(address member indexed, uint256 amount)` |
 | `RepaidBondVault(uint256 amount)` |
-| `RepaidReserve(uint256 amount)` |
 | `RepaidYieldPool(uint256 amount)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoleRevoked(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `ShortfallReported(uint256 shortfall)` |
 | `Upgraded(address implementation indexed)` |
+| `YieldPoolUpdated(address yieldPool indexed)` |
 
 ## Errors
 
@@ -125,5 +127,7 @@ Anyone can call these; they change nothing.
 | `PayoutPoolInsufficientFunds(uint256 held, uint256 required)` |
 | `PayoutPoolInvalidAddress()` |
 | `PayoutPoolMerchantInactive(address merchant)` |
+| `PayoutPoolNotEligible(address holder)` |
 | `PayoutPoolNothingToRedeem(address merchant)` |
 | `PayoutPoolOutOfOrder(uint256 claimId, uint256 expected)` |
+| `PayoutPoolTooManyWindows(uint32 window)` |

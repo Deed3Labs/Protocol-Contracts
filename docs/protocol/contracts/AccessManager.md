@@ -6,7 +6,7 @@ Source: [`contracts/peripherals/AccessManager.sol`](../../../contracts/periphera
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x19aBfD8aC2015743238a85F849873870fEDcf207`](https://sepolia.basescan.org/address/0x19aBfD8aC2015743238a85F849873870fEDcf207) |
+| Base Sepolia | 84532 | [`0x23aF9715761156C24C2de3666587753168f28DBe`](https://sepolia.basescan.org/address/0x23aF9715761156C24C2de3666587753168f28DBe) |
 
 ## Functions that change state
 
@@ -30,8 +30,12 @@ Anyone can call these; they change nothing.
 
 | Function | Returns |
 |---|---|
+| `CREDIT_LIMITS_ROLE()` | bytes32 |
+| `CREDIT_LINES_ROLE()` | bytes32 |
+| `CREDIT_SETTINGS_ROLE()` | bytes32 |
 | `DEFAULT_ADMIN_ROLE()` | bytes32 |
 | `getRoleAdmin(bytes32 role)` | bytes32 |
+| `hasCreditRole(bytes32 role, address account)` | bool |
 | `hasRole(bytes32 role, address account)` | bool |
 | `isAdmin(address admin)` | bool |
 | `isMember(address member)` | bool |

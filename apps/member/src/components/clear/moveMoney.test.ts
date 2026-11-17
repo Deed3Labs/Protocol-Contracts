@@ -444,10 +444,16 @@ describe('fully lent is queued, not refused', () => {
     expect(POOL_HOOK).toContain('const sharesQueued = wanted - sharesNow;');
   });
 
-  test('both legs of the split go in one batch', () => {
+  test('both legs of the split are one call: take what is free now, queue the rest (Phase 2f)', () => {
     const send = readFileSync(join(import.meta.dir, '../../lib/sendCalls.ts'), 'utf8');
-    expect(send).toContain("functionName: 'requestWithdrawal'");
+    expect(send).toContain("functionName: 'redeemOrQueue', args: [args.sharesNow + args.sharesQueued, owner]");
+    expect(send).not.toContain("functionName: 'requestWithdrawal'");
     expect(send).toContain('scPoolWithdraw');
+  });
+
+  test('a subscription goes through subscribe, with the eligibility on file', () => {
+    const send = readFileSync(join(import.meta.dir, '../../lib/sendCalls.ts'), 'utf8');
+    expect(send).toContain("functionName: 'subscribe', args: [amt, receiver, '0x']");
   });
 });
 
@@ -584,9 +590,10 @@ describe('a fetched price needs the amount as it is typed', () => {
     expect(DIALOG.split('setTyped(').length - 1).toBe(1);
   });
 
-  test('and the bond quotes its price from the chain for what is on screen', () => {
+  test('and the bond shows no price the chain has not agreed to: the deposit contract is retired (Phase 2f)', () => {
     const bond = readFileSync(join(import.meta.dir, 'ConnectedBuyBond.tsx'), 'utf8');
-    expect(bond).toContain("functionName: 'calculateRequiredDeposit'");
+    expect(bond).not.toContain("functionName: 'calculateRequiredDeposit'");
+    expect(bond).toContain('setError(BOND_PURCHASE_UNAVAILABLE)');
     expect(bond).toContain('onAmountChange={setFace}');
   });
 });

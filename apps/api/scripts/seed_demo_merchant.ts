@@ -34,7 +34,7 @@ const SHOP_NAME = process.env.SEED_SHOP_NAME || 'Clear Demo Shop';
 const OWNER_NAME = process.env.SEED_OWNER_NAME || '';
 const OWNER_PIN = process.env.SEED_OWNER_PIN || '4821';
 
-const REGISTRY = process.env.MERCHANT_REGISTRY_84532 || '0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5';
+const REGISTRY = process.env.MERCHANT_REGISTRY_84532 || '0x8f4C6f9472359BF749c12C840c4269341a423c1b';
 const RPC = process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org';
 /** 2.5% and a $2,000 ceiling — the terms every figure in the reference is computed from. */
 const DISCOUNT_BPS = 250;

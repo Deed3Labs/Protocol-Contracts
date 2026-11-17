@@ -200,6 +200,8 @@ process:
 | `sweepRunner` | Executes sweeps and auto-save |
 | `reconciler` | General reconciliation |
 | `memoryMonitor` | Cheap, and the only thing that reports the *shape* of memory use rather than its peak |
+| `enforcementKeeper` | Phase 2b, as Phase 2f left it. Hourly: `noticeShortfall(member)` where the Asset-Backed Drawn is above the Asset-Backed Limit (`shortfallOf`), the same call to clear a notice whose gap closed, and an ops alert once a notice's wait has passed (settling it, `PoolShareEnforcer.enforce` then `payPledged`, is not automated yet). A missed cycle takes no collateral (decision 4), so there is no excess to settle. Never for a member under an active Liquidation Hold; bounded (`ENFORCEMENT_KEEPER_MAX_PER_RUN`, 25). |
+| `cycleKeeper` | Phase 2b. RevolvingIssuer judges a cycle (Clean, missed, cure notice, default) only when someone calls `syncCreditPeriod(member)`. Hourly, it syncs each member whose grace window has ended (or whose line is clean at expiry, or whose cure window has passed), oldest first, at most `CYCLE_KEEPER_MAX_PER_RUN` (50) a run, and alerts on failures. A judged cycle rolls, so reruns send nothing. On a 2b issuer `creditPeriodRenewer` stands down |
 | `relayerGas` | A signer with no gas fails silently — every figure downstream goes quietly stale. This is the only thing that would say so |
 
 Shutdown is graceful on `SIGTERM`/`SIGINT`: listeners and sockets cleaned up, Redis and the Postgres
@@ -243,7 +245,11 @@ The ones without which nothing works:
 
 Then, per provider as you enable it: `PLAID_*`, `BRIDGE_*` (including `BRIDGE_WEBHOOK_PUBLIC_KEY`),
 `LITHIC_*` (`LITHIC_API_KEY`, `LITHIC_WEBHOOK_SECRET`; production needs **both** `LITHIC_ENV=production`
-and `LITHIC_ALLOW_PRODUCTION=true`, because one mistyped variable should not move real money),
+and `LITHIC_ALLOW_PRODUCTION=true`, because one mistyped variable should not move real money;
+`LITHIC_PARTNER_BANK_NAME` is the partner bank shown on Spendable's account details, since Lithic's
+API does not name it — unset, the bank row reads "Lithic partner bank", as Lithic places accounts
+across several partner banks. The full account number is served only after re-authentication:
+Face ID, or without it a sign-in made in the last ten minutes, never the session alone),
 `STRIPE_*`, `SEND_*` and `SAVINGS_*` for the relayers, and the at-rest encryption keys
 (`PLAID_TOKEN_MASTER_KEY`, `MEMBER_PRIVATE_DATA_MASTER_KEY`, `SEND_CONTACT_ENCRYPTION_KEY`), each
 32 bytes, base64 or hex, with an optional keyring for rotation.
@@ -275,10 +281,14 @@ is the map the role handover reads.
 |---|---|---|
 | `CREDIT_OPERATOR_PRIVATE_KEY` | `RevolvingIssuer.openLine`, `updateCreditPeriod` (renewals; may only extend), `TermIssuer.openPlan` (on the member's signed terms), `closePlanForRefund`, `OffersIssuer.grant` | AccessManager `CREDIT_LINES_ROLE` |
 | `CREDIT_OPERATOR_PRIVATE_KEY` | `TermIssuer.setTermLimit` (`apps/api/scripts/set_term_limit.ts`, termLimitService), tier capacity | AccessManager `CREDIT_LIMITS_ROLE` |
-| `CREDIT_OPERATOR_PRIVATE_KEY` | `CollateralRegistry.pledge`/`release` (unless the savings relayer signs them), `MembershipRegistry` writes | CollateralRegistry `OPERATOR_ROLE`, MembershipRegistry `REGISTRAR_ROLE` (unchanged) |
-| `CARD_SETTLER_PRIVATE_KEY` | `RevolvingIssuer.authorizeCardSpend` (after the Auth Stream approves), `settleCardSpend`, `reverseCardSpend`, `repayCardSpend`, `repayForMember`; `TermIssuer.collectForMember`, `declareDefault`, `reinstate`; `ClearUSD.syncEncumbrance` | a card settler (`setCardSettler`, the Safe's); `LendingPool` `BORROWER_ROLE` plus `setBorrower(settler, destination, dailyCap)` |
+| `CREDIT_OPERATOR_PRIVATE_KEY` | `CollateralRegistry.pledge`/`pledgeItem` (Phase 4b, L-I: only with the member's EIP-712 `Pledge`/`PledgeItem` signature, which the app asks for after a deposit or bond purchase: `POST /api/savings/pledge/prepare`, then `/submit`) and `release` (no signature: it only gives back), unless the savings relayer signs them; `MembershipRegistry` writes | CollateralRegistry `OPERATOR_ROLE`, MembershipRegistry `REGISTRAR_ROLE` (unchanged) |
+| `CARD_SETTLER_PRIVATE_KEY` | `RevolvingIssuer.authorizeCardSpend` (after the Auth Stream approves), `settleCardSpend`, `reverseCardSpend`, `repayCardSpend`, `repayForMember(ref, member, amount, payer)`; `TermIssuer.declareDefault`, `reinstate` (`collectForMember` is retired, Phase 2d); `ClearUSD.syncEncumbrance` | a card settler (`setCardSettler`, the Safe's). No `LendingPool` role: nothing borrows from the Yield Pool (decision 17); Clear Lending funds card settlement from its Deployments |
+| `CARD_SETTLER_PRIVATE_KEY` (auto-clear, Phase 2b) | `RevolvingIssuer.repayForMember` now pulls the reserve token from the **settler** (`msg.sender`): the sweep approves the RevolvingIssuer for exactly what it pays, and the settler must hold that USDC. The member's dollars for it move to the Lithic settlement account (below) | a card settler; USDC for the clearings, and the approval this service sends |
+| `CARD_SETTLER_PRIVATE_KEY` (cycle keeper, Phase 2b) | `RevolvingIssuer.syncCreditPeriod(member)` (jobs/cycleKeeper, hourly), and `setAutoClearWithSignature` / `setSavingsDrawAllowanceWithSignature` with the member's signature | no role, only gas: all three are permissionless (the member's signature decides the last two) |
+| `CARD_SETTLER_PRIVATE_KEY` (enforcement keeper, Phase 2b/2f) | `Liquidator.noticeShortfall(member)` (jobs/enforcementKeeper, hourly; skips a member under an active Liquidation Hold) | no role, only gas: it is permissionless. The Liquidator must have its Earn sources set |
+| none (a person's own wallet) | `Liquidator.proposeHold`, `confirmHold`, `renewHold`, `clearHold`, from Command (Money → Credit). The API only encodes each step (`POST /api/command/liquidation-holds/prepare`); the signer sends it | Liquidator `HOLD_ROLE`, held by at least two people: confirming, renewing and finishing a clear must each come from a different signer than the step before |
 | `SAVINGS_RELAYER_*` | `ESADepositVault.depositWithAuthorization(For)`, `redeemWithSignature`, `executeMandateDeposit`; `SavingsIntentFactory.settle/refundDeterministic` | ESADepositVault `RELAYER_ROLE` (no function accepts `OPERATOR_ROLE` now); SavingsIntentFactory `SETTLER_ROLE` |
-| `SEND_RELAYER_*` | `ClaimEscrow.createTransferWithAuthorizationAndClaimKey`, `claimToPayoutTreasury`, `claimToWalletWithSignature` | ClaimEscrow `SETTLER_ROLE` (the wallet claim needs none: the claim key's signature decides) |
+| `SEND_RELAYER_*` | `ClaimEscrow.createTransferWithAuthorizationAndClaimKey`, `claimToPayoutTreasuryWithSignature` (Phase 2d, L-D: with the claim link's or the sender's `PayoutClaim` signature, made in the recipient's browser after `POST /api/send/claim/payout/prepare`), `claimToWalletWithSignature` | ClaimEscrow `SETTLER_ROLE` (the wallet claim needs none: the claim key's signature decides) |
 | `PRIVY_AUTHORIZATION_PRIVATE_KEY` | a shop's own wallet: `PayoutPool.redeem` | the shop registered and active in MerchantRegistry |
 
 The plain AccessManager `OPERATOR` role passes no credit check any more, so a credit operator that
@@ -294,7 +304,56 @@ an alert instead.
 **Claim keys.** A Send's claim link is its claim key: `keccak256("clear-claim-key/v1:" + token)`
 (`@clear/domain` `claimKey`). The lock commits the key's address; a wallet claim is signed in the
 recipient's browser. A link rotated by `send:recover-claim` derives a different key, so a recovered
-link can still be paid out to a bank or card (`claimToPayoutTreasury`) but not to a wallet.
+link can still be paid out to a bank or card (`claimToPayoutTreasuryWithSignature`, signed with the key the recovered link derives) but not to a wallet.
+
+### Auto-clear moves the dollars, not just the line (Phase 2b, 12.2)
+
+Automatic clearing "sweeps Spendable deposits at the bank". The settler pays the line on chain
+(`repayForMember`), and exactly what the chain applied (`AutoCleared.applied`, never the deposit)
+moves from the member's Lithic cash account to Clear's settlement account in a Lithic book transfer.
+Only a Spendable (Lithic ACH) deposit with auto-clear ON starts one; Bridge deposits, Ready to
+allocate USDC and CLRUSD are never touched. One clearing per deposit, keyed by a ref derived from the
+deposit receipt: the same ref is `repayForMember`'s on-chain idempotency key, and the Lithic hold and
+transfer tokens are derived from it (UUIDv5s, sent as each object's `token` and as the
+`Idempotency-Key` header, which Lithic requires to be a valid UUID). The order:
+
+1. read on chain what the clearing will apply, A = min(what the deposit set aside, what is owed now);
+2. hold exactly A in the member's account (the rest of the deposit is never held);
+3. send `repayForMember` / `payPlan` for A;
+4. book-transfer exactly what was applied with `hold_token`, which settles the hold.
+
+There is no window between releasing the money and moving it. The one exception is the chain
+applying less than A (the member repaid in between): Lithic does not document settling part of a
+hold, so the hold is voided, the applied amount transferred without it, and ops are alerted. Holds
+expire an hour after the release (`AUTO_CLEAR_MAX_HOLD_HOURS` + 1h), so Lithic frees one if nothing
+voids it. The states, retries and compensating steps are documented in
+`src/services/deposits/autoClearRuns.ts` (table `auto_clear_runs`).
+
+Term plans' dues a Spendable deposit pays (only with auto-clear ON: paying them is part of
+auto-clear) go through the same machine, one clearing per plan keyed by the deposit receipt and the
+plan id: held, paid on chain with `payPlan` from the settler's float, and exactly what `PlanPaid`
+says moves to the settlement account. `payPlan` has no on-chain key, so a send whose outcome cannot
+be read is never resent: it goes to `needs_review` with the money still held, and ops are alerted.
+
+Before it runs:
+
+| Setting | What it is |
+|---|---|
+| `LITHIC_AUTO_CLEAR_SETTLEMENT_ACCOUNT_TOKEN` | Clear's own financial account at Lithic that receives the cleared dollars (the program's settlement or operating account, from which the settler's USDC is replenished). **Without it nothing is held, cleared or moved**, and ops get one alert |
+| `LITHIC_AUTO_CLEAR_TRANSFER_SUBTYPE` | **Required.** The subtype Lithic's implementation specialist issues for this transfer (e.g. `001`). There is no default: **without it nothing is held, cleared or moved** |
+| `LITHIC_AUTO_CLEAR_TRANSFER_CATEGORY`, `_TYPE` | Defaults `BALANCE_OR_FUNDING` and `COLLECTION` (Lithic: "moving funds from a cash-funded account to a credit account, to collect on a credit statement"). Use whatever Lithic enables for the program |
+| `AUTO_CLEAR_MAX_HOLD_HOURS` | How long a clearing may wait for something to be owed on chain (a card purchase still pending), default 72. Nothing is held while it waits; after it, the clearing is released and the money is the member's |
+
+What the program needs from Lithic: the **Holds** API (`POST /v1/financial_accounts/{token}/holds`,
+`GET /v1/holds/{token}`, `POST /v1/holds/{token}/void`) and the **Book Transfers** API
+(`POST`/`GET /v1/book_transfers`, including `hold_token`) enabled for `LITHIC_API_KEY`, and book
+transfers allowed from members' cash accounts to the settlement account with the classification
+above. Book transfer types and subtypes are set up with Lithic's implementation specialist, and
+Lithic notes they "typically require approval from your sponsor bank": agree the type and subtype
+for automatic clearing with both before turning this on. Earmarks recorded before this change (`auto_repay_due`) had no hold and are released, not paid.
+A declined transfer after the chain has applied means Clear is owed that amount: ops are alerted, it
+is retried with a new token only once the last one is confirmed declined, and after five attempts it
+waits for a person.
 
 ---
 

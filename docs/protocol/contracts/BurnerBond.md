@@ -6,39 +6,36 @@ Source: [`contracts/peripherals/BurnerBond.sol`](../../../contracts/peripherals/
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556`](https://sepolia.basescan.org/address/0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556) |
+| Base Sepolia | 84532 | [`0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A`](https://sepolia.basescan.org/address/0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A) |
 
 ## Functions that change state
 
 | Function | Who can call | Also |
 |---|---|---|
-| `batchRedeemBonds(uint256[] bondIds)` | Not in the current source |  |
+| `burnPaid(uint256 bondId)` | Not in the current source |  |
+| `buyback(uint256 bondId, uint256 price, uint256 deadline, bytes sig)` | Not in the current source |  |
+| `confirmRoll(uint256 bondId, bytes32 noticeHash, bytes sig)` | Not in the current source |  |
+| `confirmRolls(uint256[] bondIds, bytes32[] noticeHashes, bytes[] sigs)` | Not in the current source |  |
 | `emergencyRecover(address token, uint256 amount)` | `onlyOwner` |  |
-| `initialize(address _burnerBondDeposit, address _factory, address _assurancePool, address _underlyingToken, string _uri, string _collectionName, string _collectionSymbol, string _collectionDescription, address _traitStore, address _discountCurve)` | Not in the current source |  |
-| `mintBond(uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, address creator)` | Not in the current source |  |
-| `redeemBond(uint256 bondId)` | Not in the current source |  |
-| `redeemEarly(uint256 bondId)` | Not in the current source |  |
-| `removeBondTrait(uint256 bondId, string traitName)` | Not in the current source |  |
+| `executeLiquidatorChange()` | `onlyOwner` |  |
+| `initialize(address factory_, address token, string uri_, string name_, string symbol_, string description_, address traitStore_, bytes32 legendHash_, string legendURI_)` | Once, when the proxy is initialised |  |
+| `payPledged(uint256 bondId)` | Not in the current source |  |
+| `postRollNotice(uint256 bondId, bytes32 noticeHash, uint64 rollDeadline, uint32 termDays, uint32 yieldBps)` | Not in the current source |  |
+| `purchase((address,address,uint256,uint32,uint32,uint64,uint256) q, bytes sig, bytes attestation)` | Not in the current source |  |
+| `redeemAll()` | Not in the current source |  |
+| `redeemUnderWindDown(uint256 bondId)` | Not in the current source |  |
 | `renounceOwnership()` | The owner |  |
-| `rollBond(uint256 bondId)` | Not in the current source |  |
 | `safeBatchTransferFrom(address from, address to, uint256[] ids, uint256[] amounts, bytes data)` | The holder, or an approved operator |  |
 | `safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)` | The holder, or an approved operator |  |
-| `seizeBond(uint256 bondId, address from, address to)` | Not in the current source |  |
-| `setApprovalForAll(address operator, bool approved)` | Anyone |  |
-| `setAssurancePool(address _assurancePool)` | Not in the current source |  |
-| `setAutoRollOptOut(uint256 bondId, bool optOut)` | Not in the current source |  |
 | `setBondTrait(uint256 bondId, bytes32 traitKey, bytes traitValue)` | `onlyOwner` |  |
-| `setBondTraitFlexible(uint256 bondId, bytes traitKey, bytes traitValue, uint8 valueType)` | Not in the current source |  |
-| `setBondVault(address _bondVault)` | Not in the current source |  |
-| `setBurnerBondDeposit(address _burnerBondDeposit)` | Not in the current source |  |
-| `setDiscountCurve(uint8 _curveType, uint256 _curveParameter)` | Not in the current source |  |
-| `setEncumbranceSource(address source, bytes32 kind)` | Not in the current source |  |
 | `setFirstBondId(uint256 firstId)` | `onlyOwner` |  |
-| `setLiquidator(address _liquidator)` | `onlyOwner` |  |
-| `setRollTerm(uint256 _rollTerm)` | Not in the current source |  |
-| `setUnderlyingToken(address _underlyingToken)` | Not in the current source |  |
+| `setLiquidator(address liquidator_)` | `onlyOwner` |  |
+| `setSources(address vault_, address encumbrance_, bytes32 kind_, address controls_, address agent_)` | `onlyOwner` |  |
+| `settle(uint256 bondId)` | Not in the current source |  |
 | `setURI(string newuri)` | `onlyOwner` |  |
+| `setWindDown(bool on, bytes32 reasonHash)` | Not in the current source |  |
 | `transferOwnership(address newOwner)` | The owner |  |
+| `withdrawRollConfirmation(uint256 bondId)` | Not in the current source |  |
 
 ## Read functions
 
@@ -46,52 +43,60 @@ Anyone can call these; they change nothing.
 
 | Function | Returns |
 |---|---|
-| `assurancePool()` | address |
-| `autoRollOptedOut(uint256)` | bool |
+| `accretedValue(uint256 bondId)` | uint256 |
+| `agent()` | address |
 | `balanceOf(address account, uint256 id)` | uint256 |
 | `balanceOfBatch(address[] accounts, uint256[] ids)` | uint256[] |
-| `bondCreator(uint256)` | address |
-| `bondIdsByCreator(address, uint256)` | uint256 |
-| `bonds(uint256)` | uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, uint256 purchasePrice, bool isRedeemed, address creator, uint64 issuedAt |
-| `bondsCreatedBy(address)` | uint256 |
 | `bondVault()` | address |
-| `burnerBondDeposit()` | address |
-| `calculateDiscount(uint256 maturityDate)` | uint256 |
-| `calculateDiscountWithCurve(uint256 maturityDate)` | uint256 |
-| `calculatePurchasePrice(uint256 faceValue, uint256 maturityDate)` | uint256 |
+| `BUYBACK_TYPEHASH()` | bytes32 |
+| `buybackDigest(uint256 bondId, uint256 price, uint256 deadline)` | bytes32 |
+| `cent()` | uint256 |
 | `collateralKind()` | bytes32 |
 | `collectionDescription()` | string |
 | `collectionName()` | string |
 | `collectionSymbol()` | string |
+| `CONFIRM_ROLL_TYPEHASH()` | bytes32 |
+| `confirmRollDigest(uint256 bondId)` | bytes32 |
 | `contractURI()` | string |
-| `curveParameter()` | uint256 |
-| `curveType()` | uint8 |
+| `controls()` | address |
 | `description()` | string |
-| `discountCurveEngine()` | address |
+| `domainSeparator()` | bytes32 |
+| `eip712Domain()` | bytes1 fields, string name, string version, uint256 chainId, address verifyingContract, bytes32 salt, uint256[] extensions |
 | `encumbranceSource()` | address |
+| `extensionKind()` | bytes32 |
 | `factory()` | address |
-| `getBondIdsByCreator(address creator)` | uint256[] |
-| `getBondInfo(uint256 bondId)` | (uint256,uint256,uint256,uint256,bool,address,uint64) |
-| `getBondsCreatedBy(address creator)` | uint256 |
-| `getBondStatistics()` | uint256 totalMinted, uint256 totalDeposited, uint256 totalRedeemed |
+| `getBondIdsByCreator(address holder)` | uint256[] |
+| `getBondInfo(uint256 bondId)` | (uint256,uint256,uint256,uint256,uint64,uint64,uint32,uint32,bool,bytes32) |
+| `getBondStatistics()` | uint256, uint256, uint256 |
 | `getBondTraitKeys(uint256 bondId)` | bytes32[] |
-| `getBondTraitMetadataURI()` | string |
 | `getBondTraitName(bytes32 traitKey)` | string |
 | `getBondTraitValue(uint256 bondId, bytes32 traitKey)` | bytes |
 | `getBondTraitValues(uint256 bondId, bytes32[] traitKeys)` | bytes[] |
-| `getBondType(uint256 maturityDate)` | string |
-| `getCollectionMetadata()` | string collectionName_, string collectionSymbol_, string collectionDescription_, address underlyingTokenAddress_, uint256 totalSupply_ |
-| `getDiscountCurve()` | uint8, uint256, uint256, uint256 |
-| `getDiscountForMaturity(uint256 timeToMaturity)` | uint256 |
-| `getDiscountParameters()` | uint256, uint256 |
 | `getUnderlyingToken()` | address |
+| `holderOf(uint256)` | address |
 | `isApprovedForAll(address account, address operator)` | bool |
 | `isBondMature(uint256 bondId)` | bool |
+| `issue()` | address |
+| `latestRollDeadline(uint256 maturity)` | uint256 |
+| `legendHash()` | bytes32 |
+| `legendURI()` | string |
 | `liquidator()` | address |
 | `name()` | string |
+| `NOTICE_LEAD()` | uint64 |
 | `owner()` | address |
+| `pendingLiquidator()` | address |
+| `pendingLiquidatorReadyAt()` | uint256 |
+| `pledges()` | address |
 | `presentValueOf(uint256 bondId)` | uint256 |
-| `rollTerm()` | uint256 |
+| `QUOTE_LIFETIME()` | uint64 |
+| `QUOTE_TYPEHASH()` | bytes32 |
+| `quoteDigest((address,address,uint256,uint32,uint32,uint64,uint256) q)` | bytes32 |
+| `quotePrice(uint256 maturityAmount, uint32 termDays, uint32 yieldBps)` | uint256 |
+| `quoteUsed(bytes32)` | bool |
+| `redeemAllFrom()` | uint64 |
+| `ROLL_NOTICE_ROLE()` | bytes32 |
+| `rollNotice(uint256 bondId)` | (bytes32,uint64,uint32,uint32,bool,uint32) |
+| `setApprovalForAll(address, bool)` | — |
 | `supportsInterface(bytes4 interfaceId)` | bool |
 | `symbol()` | string |
 | `totalBondsMinted()` | uint256 |
@@ -100,29 +105,61 @@ Anyone can call these; they change nothing.
 | `traitStore()` | address |
 | `underlyingToken()` | address |
 | `uri(uint256)` | string |
-| `willAutoRoll(uint256 bondId)` | bool |
+| `WIND_DOWN_DELAY()` | uint64 |
+| `WIND_DOWN_ROLE()` | bytes32 |
+| `windDownReason()` | bytes32 |
+| `windDownSetAt()` | uint64 |
 
 ## Events
 
 | Event |
 |---|
 | `ApprovalForAll(address account indexed, address operator indexed, bool approved)` |
-| `AutoRollOptOutSet(uint256 bondId indexed, bool optedOut)` |
-| `BondMinted(uint256 bondId indexed, address creator indexed, uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, uint256 purchasePrice)` |
-| `BondRedeemed(uint256 bondId indexed, address redeemer indexed, uint256 faceValue)` |
-| `BondRolled(uint256 oldBondId indexed, uint256 newBondId indexed, uint256 rolledValue)` |
-| `BondSeized(uint256 bondId indexed, address from indexed, address to indexed)` |
+| `BondBoughtBack(uint256 bondId indexed, address holder indexed, address buyer indexed, uint256 price)` |
+| `BondMinted(uint256 bondId indexed, address holder indexed, uint256 faceValue, uint256 maturityDate, uint32 termDays, uint32 yieldBps, uint256 purchasePrice, bytes32 exemptionCode)` |
+| `BondPaidThroughDistributions(uint256 bondId indexed, address holder indexed)` |
+| `BondRedeemed(uint256 bondId indexed, address holder indexed, uint256 amount)` |
+| `BondRolled(uint256 oldBondId indexed, uint256 newBondId indexed, address holder indexed, uint256 newFaceValue, uint32 termDays, uint32 yieldBps, uint256 remainder)` |
 | `BondTraitUpdated(uint256 bondId indexed, bytes32 traitKey indexed, bytes traitValue)` |
-| `DiscountCurveUpdated(uint8 curveType, uint256 maxDiscount, uint256 maxMaturity, uint256 curveParameter)` |
-| `DiscountParametersUpdated(uint256 maxDiscount, uint256 maxMaturity)` |
+| `EIP712DomainChanged()` |
 | `Initialized(uint8 version)` |
+| `LiquidatorProposed(address liquidator indexed, uint256 readyAt)` |
 | `LiquidatorUpdated(address liquidator indexed)` |
 | `OwnershipTransferred(address previousOwner indexed, address newOwner indexed)` |
-| `RedeemedEarly(uint256 bondId indexed, address holder indexed, uint256 presentValue)` |
+| `PledgedMaturitySplit(uint256 bondId indexed, uint256 toDebt, uint256 toHolder)` |
+| `PledgePaid(uint256 bondId indexed, address holder indexed, uint256 amount, uint256 toDebt, uint256 toHolder)` |
+| `RedeemAllStarted(uint64 at)` |
+| `RedeemedUnderWindDown(uint256 bondId indexed, address holder indexed, uint256 amount, uint256 toDebt)` |
+| `RollConfirmationWithdrawn(uint256 bondId indexed, address holder indexed)` |
+| `RollConfirmed(uint256 bondId indexed, address holder indexed, bytes32 noticeHash)` |
+| `RollNoticePosted(uint256 bondId indexed, bytes32 noticeHash, uint64 deadline, uint32 termDays, uint32 yieldBps)` |
+| `SourcesUpdated(address bondVault, address encumbranceSource, bytes32 kind, address controls, address agent)` |
 | `TransferBatch(address operator indexed, address from indexed, address to indexed, uint256[] ids, uint256[] values)` |
 | `TransferSingle(address operator indexed, address from indexed, address to indexed, uint256 id, uint256 value)` |
 | `URI(string value, uint256 id indexed)` |
+| `WindDownProposed(bool on, bytes32 reasonHash, address proposer)` |
+| `WindDownSet(bool on, bytes32 reasonHash, address proposer, address approver)` |
 
 ## Errors
 
-No custom errors; failures revert with a reason string.
+| Error |
+|---|
+| `AccretionOutOfRange(uint256 yieldBps, uint256 daysLeft)` |
+| `BurnerBondAlreadyIssued()` |
+| `BurnerBondBadNotice(uint256 bondId)` |
+| `BurnerBondBadQuote()` |
+| `BurnerBondBadSignature()` |
+| `BurnerBondBuybackRefused(uint256 bondId)` |
+| `BurnerBondInvalidAddress()` |
+| `BurnerBondLiquidatorNotReady(uint256 readyAt)` |
+| `BurnerBondModuleMismatch()` |
+| `BurnerBondNoOperators()` |
+| `BurnerBondNotAuthorized(address caller)` |
+| `BurnerBondNoticeClosed(uint256 bondId)` |
+| `BurnerBondNotPledgePayable(uint256 bondId)` |
+| `BurnerBondNotSettleable(uint256 bondId)` |
+| `BurnerBondNotWindingDown()` |
+| `BurnerBondPledged(uint256 bondId)` |
+| `BurnerBondTransferNotAllowed(address from, address to)` |
+| `BurnerBondUnknown(uint256 bondId)` |
+| `BurnerBondWindDown()` |

@@ -1,5 +1,5 @@
 {
-  "address": "0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA",
+  "address": "0xf36dE3553509BAafB835bC37c97f529Adf42a96a",
   "abi": [
     {
       "type": "constructor",
@@ -8,15 +8,23 @@
       "inputs": [
         {
           "type": "address",
-          "name": "_assurancePool"
-        },
-        {
-          "type": "address",
-          "name": "_assuranceOracle"
+          "name": "_tokenRegistry"
         },
         {
           "type": "string",
           "name": "_baseURI"
+        },
+        {
+          "type": "address",
+          "name": "_bondImplementation"
+        },
+        {
+          "type": "bytes32",
+          "name": "_legendHash"
+        },
+        {
+          "type": "string",
+          "name": "_legendURI"
         }
       ]
     },
@@ -119,34 +127,6 @@
     },
     {
       "type": "function",
-      "name": "assuranceOracle",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "assurancePool",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
       "name": "baseURI",
       "constant": true,
       "stateMutability": "view",
@@ -155,20 +135,6 @@
       "outputs": [
         {
           "type": "string",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "bondDiscountCurve",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
           "name": ""
         }
       ]
@@ -663,6 +629,34 @@
     },
     {
       "type": "function",
+      "name": "legendHash",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "legendURI",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "string",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "maxDiscount",
       "constant": true,
       "stateMutability": "view",
@@ -782,32 +776,6 @@
     },
     {
       "type": "function",
-      "name": "setAssuranceOracle",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "_assuranceOracle"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "setAssurancePool",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "_assurancePool"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
       "name": "setBaseURI",
       "constant": false,
       "payable": false,
@@ -834,6 +802,19 @@
     },
     {
       "type": "function",
+      "name": "setTokenRegistry",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_tokenRegistry"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "tokenIndex",
       "constant": true,
       "stateMutability": "view",
@@ -847,6 +828,20 @@
       "outputs": [
         {
           "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "tokenRegistry",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
           "name": ""
         }
       ]

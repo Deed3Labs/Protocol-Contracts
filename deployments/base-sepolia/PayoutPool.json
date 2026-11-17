@@ -1,5 +1,5 @@
 {
-  "address": "0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66",
+  "address": "0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861",
   "abi": [
     {
       "type": "constructor",
@@ -62,6 +62,16 @@
     },
     {
       "type": "error",
+      "name": "PayoutPoolNotEligible",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "PayoutPoolNothingToRedeem",
       "inputs": [
         {
@@ -81,6 +91,16 @@
         {
           "type": "uint256",
           "name": "expected"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PayoutPoolTooManyWindows",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "window"
         }
       ]
     },
@@ -230,18 +250,6 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "DrewFromReserve",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "amount",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
       "name": "DrewFromTreasury",
       "inputs": [
         {
@@ -306,23 +314,6 @@
           "type": "uint256",
           "name": "amount",
           "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "LendersUpdated",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "yieldPool",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "reserve",
-          "indexed": true
         }
       ]
     },
@@ -420,18 +411,6 @@
       "type": "event",
       "anonymous": false,
       "name": "RepaidBondVault",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "amount",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "RepaidReserve",
       "inputs": [
         {
           "type": "uint256",
@@ -543,6 +522,18 @@
       ]
     },
     {
+      "type": "event",
+      "anonymous": false,
+      "name": "YieldPoolUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "yieldPool",
+          "indexed": true
+        }
+      ]
+    },
+    {
       "type": "function",
       "name": "DEFAULT_ADMIN_ROLE",
       "constant": true,
@@ -552,6 +543,20 @@
       "outputs": [
         {
           "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DEFAULT_REFUND_PAGE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
           "name": ""
         }
       ]
@@ -572,7 +577,35 @@
     },
     {
       "type": "function",
+      "name": "MAX_QUEUED_WINDOWS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "OPERATOR_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "REDEEMER_ROLE",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -634,20 +667,6 @@
     {
       "type": "function",
       "name": "borrowed",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "borrowedFromReserve",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -867,6 +886,37 @@
         {
           "type": "uint256",
           "name": "drawn"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "dueWithin",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "horizon"
+        },
+        {
+          "type": "uint256",
+          "name": "maxClaims"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": "ids"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "short"
         }
       ]
     },
@@ -1142,6 +1192,24 @@
     },
     {
       "type": "function",
+      "name": "payRefundsOwedUpTo",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "maxRefundees"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "paid"
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "proxiableUUID",
       "constant": true,
       "stateMutability": "view",
@@ -1164,6 +1232,20 @@
       "outputs": [
         {
           "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "queuedWindowsList",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint32[]",
           "name": ""
         }
       ]
@@ -1274,20 +1356,6 @@
     },
     {
       "type": "function",
-      "name": "reserve",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
       "name": "reserveToken",
       "constant": true,
       "stateMutability": "view",
@@ -1358,17 +1426,13 @@
     },
     {
       "type": "function",
-      "name": "setLenders",
+      "name": "setYieldPool",
       "constant": false,
       "payable": false,
       "inputs": [
         {
           "type": "address",
           "name": "yieldPool_"
-        },
-        {
-          "type": "address",
-          "name": "reserve_"
         }
       ],
       "outputs": []

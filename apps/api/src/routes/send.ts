@@ -1,4 +1,4 @@
-import { claimWindowOpen } from '@clear/domain';
+import { claimWindowOpen, payoutClaimTypedData } from '@clear/domain';
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { isAddress, Signature } from 'ethers';
 import { requireAuth, requireWalletMatch } from '../middleware/auth.js';
@@ -79,7 +79,7 @@ async function notifySenderClaimed(transferRowId: number): Promise<void> {
   }
 }
 import { sendBridgeWebhookVerifier } from '../services/sendBridgeWebhookVerifier.js';
-import { sendPayoutService } from '../services/sendPayoutService.js';
+import { payoutRefHash, sendPayoutService } from '../services/sendPayoutService.js';
 import { sendStripePayoutService } from '../services/sendStripePayoutService.js';
 import { sendNotificationService } from '../services/sendNotificationService.js';
 import { sendRelayerService } from '../services/sendRelayerService.js';
@@ -1328,6 +1328,42 @@ async function getVerifiedClaimSessionContext(claimSessionToken: unknown): Promi
   return { sessionContext };
 }
 
+/**
+ * POST /api/send/claim/payout/prepare { claimSessionToken, method } — what the claim link signs to
+ * pay this transfer out by card or bank (Phase 2d, L-D): `PayoutClaim(transferId, payoutTreasury,
+ * payoutRefHash)` in the escrow's domain, with the treasury read from the escrow itself. The
+ * recipient's browser derives the claim key from the link, checks this, signs, and sends the
+ * signature with the payout request. Writes nothing.
+ */
+sendRouter.post('/claim/payout/prepare', payoutRateLimiter, async (req: Request, res: Response) => {
+  if (!(await ensureSendStoreReady(res))) return;
+  try {
+    const body = req.body as { claimSessionToken?: unknown; method?: unknown };
+    const method = body.method === 'DEBIT' || body.method === 'BANK' ? body.method : null;
+    if (!method) return res.status(400).json({ error: 'Invalid method' });
+    const resolved = await getVerifiedClaimSessionContext(body.claimSessionToken);
+    if ('error' in resolved) return res.status(resolved.error.status).json(resolved.error.body);
+    const { transfer } = resolved.sessionContext;
+    const escrow = sendCryptoService.escrowAddressFor(transfer.chainId);
+    const treasury = await sendRelayerService.payoutTreasury(transfer.chainId).catch(() => null);
+    if (!escrow || !treasury) {
+      return res.status(503).json({ error: 'Payouts by card or bank are not available on this network just now.' });
+    }
+    return res.json({
+      typedData: payoutClaimTypedData({
+        chainId: transfer.chainId,
+        escrow,
+        transferId: transfer.transferId,
+        payoutTreasury: treasury,
+        payoutRefHash: payoutRefHash(transfer.transferId, method),
+      }),
+    });
+  } catch (error) {
+    console.error('Payout prepare error:', error);
+    return res.status(500).json({ error: 'Could not prepare the payout' });
+  }
+});
+
 sendRouter.post('/claim/payout/debit', payoutRateLimiter, async (req: Request, res: Response) => {
   if (!(await ensureSendStoreReady(res))) return;
 
@@ -1336,6 +1372,8 @@ sendRouter.post('/claim/payout/debit', payoutRateLimiter, async (req: Request, r
       claimSessionToken?: unknown;
       bridgeFullName?: unknown;
       bridgeEmail?: unknown;
+      /** The claim key's PayoutClaim signature, made where the link is (Phase 2d, L-D). */
+      payoutSignature?: unknown;
     };
     const resolved = await getVerifiedClaimSessionContext(body.claimSessionToken);
     if ('error' in resolved) {
@@ -1366,6 +1404,7 @@ sendRouter.post('/claim/payout/debit', payoutRateLimiter, async (req: Request, r
       recipientContact,
       bridgeFullName: typeof body.bridgeFullName === 'string' ? body.bridgeFullName.trim() : undefined,
       bridgeEmail: typeof body.bridgeEmail === 'string' ? body.bridgeEmail.trim().toLowerCase() : undefined,
+      payoutSignature: typeof body.payoutSignature === 'string' ? body.payoutSignature.trim() : undefined,
     });
 
     if (payoutResult.status === 'ACTION_REQUIRED') {
@@ -1470,6 +1509,8 @@ sendRouter.post('/claim/payout/bank', payoutRateLimiter, async (req: Request, re
       claimSessionToken?: unknown;
       bridgeFullName?: unknown;
       bridgeEmail?: unknown;
+      /** The claim key's PayoutClaim signature, made where the link is (Phase 2d, L-D). */
+      payoutSignature?: unknown;
     };
     const resolved = await getVerifiedClaimSessionContext(body.claimSessionToken);
     if ('error' in resolved) {
@@ -1499,6 +1540,7 @@ sendRouter.post('/claim/payout/bank', payoutRateLimiter, async (req: Request, re
       recipientContact,
       bridgeFullName: typeof body.bridgeFullName === 'string' ? body.bridgeFullName.trim() : undefined,
       bridgeEmail: typeof body.bridgeEmail === 'string' ? body.bridgeEmail.trim().toLowerCase() : undefined,
+      payoutSignature: typeof body.payoutSignature === 'string' ? body.payoutSignature.trim() : undefined,
     });
 
     if (payoutResult.status === 'ACTION_REQUIRED') {

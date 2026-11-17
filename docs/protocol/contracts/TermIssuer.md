@@ -6,7 +6,7 @@ Source: [`contracts/peripherals/TermIssuer.sol`](../../../contracts/peripherals/
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0xe467d87756FDF9645D751485CDB72A1E14683721`](https://sepolia.basescan.org/address/0xe467d87756FDF9645D751485CDB72A1E14683721) |
+| Base Sepolia | 84532 | [`0x1b1695353f14E889906237D9b9C386eD0393da57`](https://sepolia.basescan.org/address/0x1b1695353f14E889906237D9b9C386eD0393da57) |
 
 ## Functions that change state
 
@@ -14,26 +14,38 @@ Source: [`contracts/peripherals/TermIssuer.sol`](../../../contracts/peripherals/
 |---|---|---|
 | `__CreditIssuer_init(address _stableCredit)` | `onlyInitializing` |  |
 | `absorbRepayment(address member, uint256 available, uint256 minRate)` | `onlyStableCredit` |  |
-| `closePlanForRefund(uint256 planId, uint256 amount, address merchant, uint256 payout)` | Anyone |  |
-| `collectForMember(bytes32 ref, address member, uint256 amount)` | Anyone |  |
+| `approveFeeRecipient(address, bytes32)` | Anyone |  |
+| `approvePlanNotice(uint256)` | Anyone |  |
+| `closePlanForRefund(uint256, uint256, address, uint256)` | Anyone |  |
 | `declareDefault(address member)` | Anyone | `notNull(member)` |
+| `declarePlanDefault(uint256)` | Anyone |  |
+| `indexOpenPlans(address)` | Anyone |  |
 | `initialize(address _stableCredit, address _carryTreasury)` | Once, when the proxy is initialised |  |
 | `initializeCreditLine(address member, uint256 limit, uint256 initialBalance, uint256 periodLength, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` | `notNull(member)`, `notInActivePeriod(member)` |
 | `materialiseCarry(uint256 planId)` | Anyone |  |
-| `openPlan(address member, address merchant, uint256 purchase, uint256 payout, uint256 ratePerCycle, uint64 cycleLength, uint32 installments, uint64 installmentLength)` | Not in the current source |  |
+| `materialiseMember(address member)` | Anyone |  |
+| `openPlan((address,address,bytes32,uint256,uint256,uint256,uint64,uint32,uint64,bytes32,uint256), bytes)` | Anyone |  |
 | `pausePeriodOf(address member)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
 | `payPlan(uint256 planId, uint256 amount)` | Anyone; acts on the caller's own account |  |
-| `payResidualCarry(address member, uint256 amount)` | Anyone |  |
-| `reinstate(address member)` | Anyone |  |
+| `payResidualCarry(address, uint256)` | Anyone |  |
+| `proposeFeeRecipient(address, bytes32)` | Anyone |  |
+| `proposePlanNotice(uint256)` | Anyone |  |
+| `reinstate(address)` | Anyone |  |
 | `renounceOwnership()` | The owner |  |
-| `repayWrittenOff(address member, uint256 amount)` | Anyone |  |
-| `setCarryTreasury(address treasury)` | Anyone |  |
-| `setFeeRecipient(address recipient)` | Not in the current source |  |
+| `repayWrittenOff(address, uint256)` | Anyone |  |
+| `resplitWithSignature(uint256, uint32, uint256, uint256, bytes)` | Anyone |  |
+| `securePlanWithSignature(uint256, uint256, bytes)` | Anyone |  |
+| `setCarryTreasury(address)` | Anyone |  |
+| `setCombinedCeiling(address, bytes32)` | Anyone |  |
+| `setDailyCaps(uint256, uint256)` | Anyone |  |
+| `setFeeTerms(uint64, uint64, uint64)` | Anyone |  |
 | `setGraceLengthOf(address member, uint256 graceLength)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
-| `setMandateSource(address source)` | Anyone |  |
+| `setHoldSource(address)` | Anyone |  |
+| `setMandateSource(address)` | Anyone |  |
 | `setPeriodExpirationOf(address member, uint256 periodExpiration)` | `onlyCreditRole(CREDIT_LINES_ROLE)` |  |
-| `setSplit(uint256 planId, uint32 installments)` | Anyone |  |
-| `setTermLimit(address member, uint256 limit)` | Anyone |  |
+| `setRateSchedule(address)` | Anyone |  |
+| `setSplit(uint256, uint32)` | Anyone |  |
+| `setTermLimit(address, uint256)` | Anyone |  |
 | `syncCreditPeriod(address member)` | Anyone |  |
 | `syncCreditPositions(address sender, address recipient, uint256 amount)` | `onlyStableCredit` |  |
 | `transferOwnership(address newOwner)` | The owner |  |
@@ -53,17 +65,30 @@ Anyone can call these; they change nothing.
 | `arrearsOf(uint256 planId)` | uint256 |
 | `averageBalanceCarriedOf(address member)` | uint256 |
 | `carryOn(uint256 planId)` | uint256 |
+| `carryOutstandingOf(uint256)` | uint256 |
 | `carryTreasury()` | address |
+| `cflPrincipalOf(address member)` | uint256 total |
+| `CLEAR_CASH_SPLIT()` | uint32 |
+| `collectForMember(bytes32, address, uint256)` | uint256 |
+| `combinedPlanCarryOf(address member)` | uint256[] ids, uint256[] monthly |
+| `combinedProduct()` | bytes32 |
+| `combinedRevolving()` | address |
 | `creditPeriods(address)` | uint256 issuedAt, uint256 expiration, uint256 graceLength, bool paused |
 | `debtByKind(address member)` | bytes32[] kinds, uint256[] amounts |
 | `DEFAULT_AFTER_INSTALLMENTS()` | uint256 |
 | `defaultableAt(uint256 planId)` | uint256 |
 | `defaultedAt(address)` | uint64 |
 | `delinquentSince(uint256 planId)` | uint256 |
+| `domainSeparator()` | bytes32 |
+| `extension()` | address |
 | `feeRecipient()` | address |
+| `feeRecipientProposalOf()` | (address,address,bytes32) |
+| `feeTermsOf()` | (uint64,uint64,uint64) |
 | `graceExpirationOf(address member)` | uint256 |
 | `hasBalanceToMeasure(address member)` | bool |
 | `hasDefaulted(address member)` | bool |
+| `hasDefaultedOnCurrentLine(address member)` | bool |
+| `holdSource()` | address |
 | `inActivePeriod(address member)` | bool |
 | `incomeOf(address)` | uint256 creditsReceived, uint256 depositsReceived, uint256 debtSeconds, uint64 lastAccrued, uint64 windowStart |
 | `inCompliance(address member)` | bool |
@@ -75,26 +100,37 @@ Anyone can call these; they change nothing.
 | `isFrozen(address member)` | bool |
 | `isOfferedSplit(uint32 installments)` | bool |
 | `itdOf(address member)` | uint256 |
+| `lockedAllocationOf(address member)` | uint256 allocation, uint256 drawn |
 | `mandateCollectionOf(bytes32 ref)` | uint256 |
 | `mandateSource()` | address |
 | `MAX_SPLIT_CHANGES()` | uint8 |
 | `meetsITD(address member, uint256 minimumItd)` | bool |
 | `memberDefaultableAt(address member)` | uint256 soonest |
 | `nextRepaymentRate(address member)` | uint256 rate, bool hasPosition |
+| `openPlansOf(address member)` | uint256[] |
+| `openPrincipalOf(address member, bytes32 product, uint256 skip)` | uint256 total |
+| `origination()` | address |
 | `owedOn(uint256 planId)` | uint256 |
 | `owner()` | address |
 | `paused()` | bool |
 | `pendingCarryOn(uint256 planId)` | uint256 |
 | `periodExpirationOf(address member)` | uint256 |
+| `PLAN_TERMS_TYPEHASH()` | bytes32 |
 | `planAt(uint256 planId)` | address member, uint256 principal, uint256 principalOutstanding, uint256 repaid, uint64 openedAt, uint32 installments, uint64 installmentLength, uint256 ratePerCycle, bool closed |
 | `planCount()` | uint256 |
+| `planNonces(address)` | uint256 |
 | `plansOf(address member)` | uint256[] |
+| `planTermsDigest((address,address,bytes32,uint256,uint256,uint256,uint64,uint32,uint64,bytes32,uint256) terms)` | bytes32 |
+| `pricingOf(uint256 planId)` | (bytes32,bytes32,address,uint32,bool,bool,uint64,uint128,bool,address) |
 | `proxiableUUID()` | bytes32 |
+| `RATE_SCALE()` | uint256 |
+| `rateSchedule()` | address |
 | `recoveredOf(address)` | uint256 |
 | `refundedOf(uint256)` | uint256 |
 | `residualCarryOf(address member)` | uint256 |
 | `scheduledPrincipalDue(uint256 planId)` | uint256 |
 | `scheduleOf(uint256 planId)` | uint256 installmentAmount, uint256 scheduleTotal, uint32 installments, uint64 scheduleStart |
+| `securedPlans(uint256)` | bool secured, address noticeProposer, uint64 noticeAt, uint64 defaultedAt, uint128 noticeDue, uint256 noticeClock |
 | `splitAllowance(uint256 planId)` | uint8 remaining, uint256 availableAt |
 | `stableCredit()` | address |
 | `TERM_KIND()` | bytes32 |
@@ -113,25 +149,38 @@ Anyone can call these; they change nothing.
 | `BeaconUpgraded(address beacon indexed)` |
 | `CarryTreasuryUpdated(address treasury)` |
 | `CollectedForMember(bytes32 ref indexed, address member indexed, uint256 amount)` |
+| `CombinedCeilingSet(address revolving, bytes32 product)` |
 | `CreditLineDefaulted(address member)` |
 | `CreditPeriodCreated(address member, uint256 periodExpiration, uint256 graceLength)` |
 | `CreditPeriodExpired(address member)` |
 | `CreditTermsPaused(address member)` |
 | `CreditTermsUnpaused(address member)` |
+| `DailyCapUpdated(bytes32 cap indexed, uint256 amount)` |
+| `FeeRecipientChanged(address previous indexed, address recipient indexed, bytes32 reasonCode indexed, address proposer, address approver)` |
+| `FeeRecipientProposed(address recipient indexed, bytes32 reasonCode indexed, address proposer indexed)` |
 | `FeeRecipientUpdated(address recipient)` |
+| `FeeTermsUpdated(uint64 maxFeeSmall, uint64 maxFeeLarge, uint64 largeFrom)` |
 | `GraceLengthUpdated(address member, uint256 graceLength)` |
+| `HoldSourceSet(address source)` |
 | `Initialized(uint8 version)` |
 | `MandateSourceUpdated(address source)` |
 | `OwnershipTransferred(address previousOwner indexed, address newOwner indexed)` |
 | `Paused(address account)` |
 | `PlanCarryMaterialised(uint256 planId indexed, uint256 amount)` |
+| `PlanCarryTrimmed(uint256 planId indexed, uint256 amount)` |
 | `PlanClosed(uint256 planId indexed)` |
-| `PlanOpened(uint256 planId indexed, address member indexed, uint256 principal, uint256 ratePerCycle, uint32 installments)` |
+| `PlanNoticeProposed(uint256 planId indexed, address proposer indexed)` |
+| `PlanNoticeRecorded(uint256 planId indexed, uint64 noticeAt, uint256 pastDue, uint64 defaultFrom)` |
+| `PlanOpened(uint256 planId indexed, address member indexed, address merchant indexed, uint256 principal, uint32 split, uint256 rateBps, bytes32 scheduleHash, uint256 totalCarry, bytes32 disclosureHash)` |
 | `PlanPaid(uint256 planId indexed, uint256 amount, uint256 principalPortion)` |
 | `PlanRefunded(uint256 planId indexed, uint256 amount)` |
 | `PlanRefundPaid(uint256 planId indexed, uint256 returned, uint256 carryWithheld)` |
+| `PlanRepriced(uint256 planId indexed, uint256 rateBps, bool free)` |
+| `PlanSecured(uint256 planId indexed, address member indexed)` |
 | `PlanSplitChanged(uint256 planId indexed, uint32 installments, uint256 spread, uint256 carriedArrears)` |
+| `PlanTermsSigned(uint256 planId indexed, address member indexed, bytes32 disclosureHash, uint256 nonce)` |
 | `ResidualCarryPaid(address member indexed, address payer indexed, uint256 amount)` |
+| `SecuredPlanDefaulted(uint256 planId indexed, address member indexed)` |
 | `TermDefaulted(address member indexed, uint256 writtenOff)` |
 | `TermLimitUpdated(address member indexed, uint256 limit)` |
 | `TermReinstated(address member indexed)` |
@@ -143,23 +192,43 @@ Anyone can call these; they change nothing.
 
 | Error |
 |---|
-| `InvalidCycleLength()` |
-| `NotInitialized()` |
-| `RateTooHigh(uint256 ratePerCycle)` |
+| `CreditIssuerDailyCapExceeded(bytes32 cap, uint256 requested, uint256 remaining)` |
+| `CreditIssuerMissingRole(bytes32 role, address caller)` |
+| `CreditIssuerNoPeriod(address member)` |
+| `CreditIssuerPeriodMayOnlyExtend(address member)` |
+| `TermIssuerBadSignature(address member)` |
 | `TermIssuerBehindSchedule(address member)` |
-| `TermIssuerCollectionUsed(bytes32 ref)` |
+| `TermIssuerCombinedSet()` |
 | `TermIssuerExceedsTermLimit(address member, uint256 requested, uint256 limit)` |
+| `TermIssuerExtensionMismatch()` |
+| `TermIssuerFeeRecipientNotAllowed(address recipient)` |
+| `TermIssuerHoldSourceSet()` |
 | `TermIssuerInvalidSchedule()` |
-| `TermIssuerMandateOff(address member)` |
+| `TermIssuerMerchantNotActive(address merchant)` |
 | `TermIssuerNoCarryRecipient()` |
-| `TermIssuerNotCollector(address caller)` |
+| `TermIssuerNoFeeRecipient()` |
+| `TermIssuerNoProposal()` |
 | `TermIssuerNotDefaultable(address member)` |
 | `TermIssuerNothingToPay(uint256 planId)` |
+| `TermIssuerNotPastDue(uint256 planId)` |
 | `TermIssuerNotPlanHolder(address caller)` |
 | `TermIssuerNotReinstatable(address member)` |
+| `TermIssuerNotSecured(uint256 planId)` |
+| `TermIssuerOnHold(address member)` |
 | `TermIssuerPlanClosed(uint256 planId)` |
+| `TermIssuerProductNotEnabled(address member, bytes32 stateCode, bytes32 productId)` |
+| `TermIssuerRateScheduleSet()` |
+| `TermIssuerRefundTermsMismatch(address merchant, address planMerchant)` |
+| `TermIssuerRefundTermsUnknown(uint256 planId)` |
+| `TermIssuerResplitNeedsSignature(uint256 planId)` |
+| `TermIssuerResplitShortens(uint256 planId)` |
+| `TermIssuerSameSigner(address signer)` |
+| `TermIssuerSignatureExpired(uint256 deadline)` |
 | `TermIssuerSplitLimitReached(uint256 planId)` |
 | `TermIssuerSplitNotOffered(uint32 installments)` |
 | `TermIssuerSplitTooSoon(uint256 planId, uint256 availableAt)` |
 | `TermIssuerSuspended(address member)` |
+| `TermIssuerTermsMismatch(uint256 signedRate, uint256 rate, uint256 signedPayout, uint256 payout)` |
+| `TermIssuerTermTooShort(uint256 term, uint256 minimum)` |
 | `TermIssuerUnknownPlan(uint256 planId)` |
+| `TermIssuerWalletCollectionRetired()` |

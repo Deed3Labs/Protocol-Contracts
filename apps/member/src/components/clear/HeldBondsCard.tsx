@@ -14,11 +14,12 @@ import { markChainStale } from '@/lib/chainStale';
 import { shortMoveReason } from '@/hooks/usePoolMove';
 import { track } from '@/lib/analytics';
 
-type BondAction = 'redeem' | 'roll' | 'cash-at-maturity' | 'roll-at-maturity';
+type BondAction = 'redeem';
 
 /**
- * What a holder can do with one bond: once it has matured, take the face value or roll it into a
- * new bond; before then, choose which of the two happens. Sent to the collection that issued it.
+ * What a holder can do with one bond: once it has matured, settle it (Phase 2f), which pays it out,
+ * or rolls it if the Holder confirmed a posted Roll Notice. Sent to the collection that issued it.
+ * There is no auto-roll any more: a roll needs the Holder's own ConfirmRoll signature on a notice.
  */
 function useBondAction(bond: HeldBond, onDone: () => void) {
   const address = useOptionalAddress();
@@ -45,7 +46,7 @@ function useBondAction(bond: HeldBond, onDone: () => void) {
         action,
         chainId: ACTIVE_CHAIN_ID,
       });
-      track(action === 'redeem' ? 'bond_redeemed' : action === 'roll' ? 'bond_rolled' : 'bond_maturity_choice', {});
+      track('bond_redeemed', {});
       // The bond list, the shelf and the limit it backs all move with this.
       markChainStale();
       onDone();
@@ -110,29 +111,22 @@ function BondDetailDialog({
         <>
           {actionable && matured && (
             <div className="c-pair mb-s2">
-              {!bond.backsDrawnCredit && (
-                <Btn primary disabled={busy !== null} onClick={() => run('redeem')}>
-                  {busy === 'redeem' ? 'Redeeming…' : `Redeem ${money(bond.face)}`}
-                </Btn>
-              )}
-              {bond.autoRoll !== false && (
-                <Btn disabled={busy !== null} onClick={() => run('roll')}>
-                  {busy === 'roll' ? 'Rolling…' : 'Roll it over'}
-                </Btn>
-              )}
+              <Btn primary disabled={busy !== null} onClick={() => run('redeem')}>
+                {busy === 'redeem' ? 'Settling…' : `Settle ${money(bond.face)}`}
+              </Btn>
             </div>
           )}
           {error && <p className="c-det text-negative mb-s2">{error}</p>}
           <div className="c-footnote mt-0! border-t-0! pt-0!">
             {matured && bond.backsDrawnCredit ? (
               <p>
-                Matured, and backing credit you&rsquo;ve drawn &mdash; roll it over to keep it there, or pay the credit down
-                first to redeem it.
+                Matured, and backing credit you&rsquo;ve drawn. Settling it pays your Asset-Backed Drawn first, under the
+                Maturity Instruction you signed, and the rest to Ready to allocate.
               </p>
             ) : matured ? (
               <p>
-                Matured. Redeem it for the face value, paid to Ready to allocate, or roll it into a new bond so it keeps
-                backing your credit line.
+                Matured. Settling it pays the face value to Ready to allocate. It rolls only if you confirmed a roll notice
+                from Clear before its roll deadline.
               </p>
             ) : (
               <p>
@@ -196,23 +190,11 @@ function BondDetailDialog({
             <span className="c-v">{money(Math.round(bond.worthToday * ltv * 100) / 100, { cents: true })}</span>
           </div>
         </div>
-        {actionable && !matured && (
+        {!matured && (
           <div>
             <div className="c-kv">
               <span>At maturity</span>
-              <span className="c-v">
-                {bond.autoRoll === false ? 'Pays out' : 'Rolls over'}
-                {' · '}
-                <button
-                  type="button"
-                  className="underline hover:text-ink disabled:opacity-50"
-                  aria-label={bond.autoRoll === false ? 'Roll it over at maturity instead' : 'Take the cash at maturity instead'}
-                  disabled={busy !== null}
-                  onClick={() => run(bond.autoRoll === false ? 'roll-at-maturity' : 'cash-at-maturity')}
-                >
-                  {busy === 'cash-at-maturity' || busy === 'roll-at-maturity' ? 'Saving…' : 'Change'}
-                </button>
-              </span>
+              <span className="c-v">Pays out, unless you confirm a roll notice from Clear</span>
             </div>
           </div>
         )}

@@ -1,0 +1,4 @@
+LendingPool 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23: the new implementation validates as an upgrade of what the manifest records
+= LendingPool is already the Yield Pool: initializeYieldPool has run, and is not run again
+  legend set (IV-02 §8.4)
+! Pool Tier principal not posted. No Deployment is possible until two different VALUATION_ROLE signers each send to 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23: 0x4f910283000000000000000000000000000000000000000000000000000000174876e800273e44a21ee3907847a8caca6a4ce5d85ec814c9825bb98f2b55f255e99dfb7f

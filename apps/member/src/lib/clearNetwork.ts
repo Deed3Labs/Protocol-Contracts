@@ -30,9 +30,11 @@ export interface ClearContracts {
    * calling a zero address.
    */
   lendingPool?: `0x${string}`;
-  /** Where a bond is bought. Optional for the same reason as the pool — testnet only so far. */
-  burnerBondDeposit?: `0x${string}`;
-  /** The collection a bought bond is minted into, and what the app reads holdings from. */
+  /**
+   * The bond collection (Phase 2f): what the app reads holdings from and settles a matured bond on.
+   * Testnet only so far. There is no deposit contract any more: a bond is bought by a signed Quote
+   * on the collection itself (decision 8).
+   */
   burnerBond?: `0x${string}`;
   /** Holds the face-value and maturity limits every mint is checked against. */
   burnerBondFactory?: `0x${string}`;
@@ -44,6 +46,8 @@ export interface ClearContracts {
   liquidator?: `0x${string}`;
   /** Term plans: a member pays one down by naming it (`payPlan`), and re-splits it (`setSplit`). */
   termIssuer?: `0x${string}`;
+  /** Where a member's signed pledges are recorded (Phase 4b, L-I): the domain they sign in. */
+  collateralRegistry?: `0x${string}`;
 }
 const CONTRACTS: Record<number, ClearContracts> = {
   8453: {
@@ -54,14 +58,16 @@ const CONTRACTS: Record<number, ClearContracts> = {
   },
   84532: {
     lendingPool: '0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23',
-    // Replaced 2026-11-03 (scripts/redeploy_bonds.ts); the old collection's bonds were all redeemed.
-    burnerBondDeposit: '0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c',
-    burnerBond: '0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556',
-    burnerBondFactory: '0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA',
-    stableCredit: '0x1d9f1ECDc70b31256aFA75A73F991cfAa8bC928C',
-    revolvingIssuer: '0x7f15E45aB5eAF0307200274211a90FcbD6716070',
-    liquidator: '0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593',
-    termIssuer: '0xe467d87756FDF9645D751485CDB72A1E14683721',
+    // The fresh Base Sepolia credit stack (decision 47) and the Phase 2f bond collection and factory,
+    // from deployments/base-sepolia/<name>.json. The pre-audit and pre-2f contracts are retired
+    // (`*PreAudit`, `*Pre2f`), and so is the bond deposit contract (decision 8).
+    burnerBond: '0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A',
+    burnerBondFactory: '0xf36dE3553509BAafB835bC37c97f529Adf42a96a',
+    stableCredit: '0x5923e02EdFb6724a08A28B79C902b40c748082Bc',
+    revolvingIssuer: '0xBec598bee24cF2973d42eA85e6028621180fE2F0',
+    liquidator: '0x621784117C037b3D20AF54e04589818e919e33f3',
+    termIssuer: '0x1b1695353f14E889906237D9b9C386eD0393da57',
+    collateralRegistry: '0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A',
     // Replacement pair. The vault and token these succeed are still deployed and still
     // mutually redeemable -- ESADepositVaultLegacy holds the USDC behind the CLRUSD that was
     // outstanding when the swap happened, so nobody who held the old token is stranded.

@@ -1,0 +1,146 @@
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:72:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                        ^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:82:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:98:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:272:84:
+    |
+272 |     function applyPledgePayment(address, address, bool, uint256) external returns (uint256 applied) {
+    |                                                                                    ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:277:79:
+    |
+277 |     function maturityToDebt(address, uint256, uint256) external view returns (uint256 toDebt) {
+    |                                                                               ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:292:76:
+    |
+292 |     function enforcementPermitted(address, uint256) external view returns (bool permitted) {
+    |                                                                            ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:297:64:
+    |
+297 |     function defaultedAmountOf(address) external view returns (uint256 due) {
+    |                                                                ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:302:77:
+    |
+302 |     function applyPoolProceeds(address, uint256, uint256) external returns (uint256 applied) {
+    |                                                                             ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:307:57:
+    |
+307 |     function noticeShortfall(address) external returns (uint256 gap) {
+    |                                                         ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:58:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                          ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:71:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                                       ^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:62:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                              ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:75:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                                           ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:57:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                         ^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:69:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                                     ^^^^^^^^^^^^^^
+
+
+Compiled 271 Solidity files successfully (evm target: paris).
+Preparing to upgrade ClearUSDUpgradeable...
+Proxy address: 0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1
+Validating upgrade...
+Warning: Potentially unsafe deployment of contracts/peripherals/ClearUSDUpgradeable.sol:ClearUSDUpgradeable
+
+    You are using the `unsafeAllow.missing-initializer` flag.
+    Make sure you have manually checked that the contract has an initializer and that it correctly calls all parent initializers.
+
+Warning: Potentially unsafe deployment of contracts/peripherals/ClearUSDUpgradeable.sol:ClearUSDUpgradeable
+
+    You are using the `unsafeAllow.missing-initializer-call` flag.
+    Make sure you have manually checked that the contract initializer calls all parent initializers.
+
+Upgrade validation passed
+Preparing upgrade...
+Warning: Potentially unsafe deployment of contracts/peripherals/ClearUSDUpgradeable.sol:ClearUSDUpgradeable
+
+    You are using the `unsafeAllow.missing-initializer` flag.
+    Make sure you have manually checked that the contract has an initializer and that it correctly calls all parent initializers.
+
+Warning: Potentially unsafe deployment of contracts/peripherals/ClearUSDUpgradeable.sol:ClearUSDUpgradeable
+
+    You are using the `unsafeAllow.missing-initializer-call` flag.
+    Make sure you have manually checked that the contract initializer calls all parent initializers.
+
+Upgrade complete!
+New implementation deployed to: 0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1
+Verifying implementation contract...
+[WARNING] Network and explorer-specific api keys are deprecated in favour of the new Etherscan v2 api. Support for v1 is expected to end by May 31st, 2025. To migrate, please specify a single Etherscan.io api key the apiKey config value.
+Successfully submitted source code for contract
+contracts/peripherals/ClearUSDUpgradeable.sol:ClearUSDUpgradeable at 0xf32AfF0D8A159b2e3168Dce2b8dEbF33bd35428c
+for verification on the block explorer. Waiting for verification result...
+
+Successfully verified contract ClearUSDUpgradeable on the block explorer.
+https://base-sepolia.blockscout.com/address/0xf32AfF0D8A159b2e3168Dce2b8dEbF33bd35428c#code
+
+Verification failed: Failed to send contract verification request.
+Endpoint URL: https://sourcify.dev/server/check-all-by-addresses?addresses=0xf32AfF0D8A159b2e3168Dce2b8dEbF33bd35428c&chainIds=84532
+The HTTP server response is not ok. Status code: 404 Response text: {"type":"https://sourcify.dev/server/api-docs/","title":"API v1 is removed","status":404,"detail":"This path was part of the Sourcify API v1. API v1 is removed. Use API v2.","replacements":{"/files/..., /repository/contracts/...":"GET /v2/contract/{chainId}/{address}?fields=sources,metadata","/check-by-addresses, /check-all-by-addresses":"GET /v2/contract/{chainId}/{address} or GET /v2/contract/all-chains/{address}","/verify, /session/...":"POST /v2/verify/{chainId}/{address}, then GET /v2/verify/{verificationId}"},"rules":["Request only the fields that you need, for example fields=abi or fields=sources.","For data on many contracts, use the free Parquet export or the BigQuery dataset.","Send a descriptive User-Agent with your tool name, version, and a contact URL or email."],"apiDocs":"https://sourcify.dev/server/api-docs/","openapi":"https://sourcify.dev/server/openapi.json","fullGuidance":"https://docs.sourcify.dev/llms.txt","bulkData":"https://docs.sourcify.dev/docs/repository/download-dataset/","contact":"hello@sourcify.dev"}
+Deployment information saved for ClearUSDUpgradeable on base-sepolia

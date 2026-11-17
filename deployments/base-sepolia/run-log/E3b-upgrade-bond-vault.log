@@ -1,0 +1,9 @@
+network             base-sepolia (84532)
+signer              0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+BondVault           0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855
+CollateralRegistry  0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A
+validates as upgrade-safe against what is deployed
+
+upgrading BondVault…
+implementation      0x07d4E5c297FBe326971D0Ac35C3F0a360E60b2c2
+encumbranceSource   0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A  kind BOND

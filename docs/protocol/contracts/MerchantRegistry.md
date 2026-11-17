@@ -6,7 +6,7 @@ Source: [`contracts/peripherals/MerchantRegistry.sol`](../../../contracts/periph
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5`](https://sepolia.basescan.org/address/0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5) |
+| Base Sepolia | 84532 | [`0x8f4C6f9472359BF749c12C840c4269341a423c1b`](https://sepolia.basescan.org/address/0x8f4C6f9472359BF749c12C840c4269341a423c1b) |
 
 ## Functions that change state
 
@@ -19,6 +19,9 @@ Source: [`contracts/peripherals/MerchantRegistry.sol`](../../../contracts/periph
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `setActive(address merchant, bool active)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `setDefaultPayoutWindow(uint32 payoutWindow)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `setFreeSplitMax(address merchant, uint32 freeSplitMax)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `setNoSurcharge(address merchant, bool value)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `setSplitTerms(address merchant, uint32 installments, uint256 discountBps, uint256 subsidyBps)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `updateTerms(address merchant, uint32 payoutWindow, uint256 approvalCap, uint256 discountBps)` | `onlyRole(OPERATOR_ROLE)` |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |
@@ -32,16 +35,21 @@ Anyone can call these; they change nothing.
 | `approvalCapOf(address merchant)` | uint256 |
 | `DEFAULT_ADMIN_ROLE()` | bytes32 |
 | `defaultPayoutWindow()` | uint32 |
+| `discountBpsBySplit(address, uint32)` | uint256 |
 | `discountBpsOf(address merchant)` | uint256 |
+| `freeSplitMaxOf(address)` | uint32 |
 | `getRoleAdmin(bytes32 role)` | bytes32 |
 | `hasRole(bytes32 role, address account)` | bool |
 | `isActive(address merchant)` | bool |
 | `isRegistered(address merchant)` | bool |
 | `merchantAt(uint256 index)` | address |
 | `merchantCount()` | uint256 |
+| `noSurcharge(address)` | bool |
 | `OPERATOR_ROLE()` | bytes32 |
 | `payoutWindowOf(address merchant)` | uint32 |
 | `proxiableUUID()` | bytes32 |
+| `splitTermsOf(address merchant, uint32 installments)` | uint256 discountBps, uint256 subsidyBps, uint32 freeSplitMax |
+| `subsidyBpsBySplit(address, uint32)` | uint256 |
 | `supportsInterface(bytes4 interfaceId)` | bool |
 | `termsOf(address merchant)` | (uint32,uint256,uint256,bool,bool) |
 
@@ -52,12 +60,15 @@ Anyone can call these; they change nothing.
 | `AdminChanged(address previousAdmin, address newAdmin)` |
 | `BeaconUpgraded(address beacon indexed)` |
 | `DefaultPayoutWindowUpdated(uint32 payoutWindow)` |
+| `FreeSplitMaxSet(address merchant indexed, uint32 freeSplitMax)` |
 | `Initialized(uint8 version)` |
 | `MerchantActiveSet(address merchant indexed, bool active)` |
 | `MerchantRegistered(address merchant indexed, uint32 payoutWindow, uint256 discountBps)` |
+| `NoSurchargeSet(address merchant indexed, bool noSurcharge)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoleRevoked(bytes32 role indexed, address account indexed, address sender indexed)` |
+| `SplitTermsSet(address merchant indexed, uint32 installments, uint256 discountBps, uint256 subsidyBps)` |
 | `TermsUpdated(address merchant indexed, uint32 payoutWindow, uint256 approvalCap, uint256 discountBps)` |
 | `Upgraded(address implementation indexed)` |
 

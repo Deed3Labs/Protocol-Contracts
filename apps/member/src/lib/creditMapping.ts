@@ -8,7 +8,7 @@ import type {
   LimitBacking,
   LimitBackingRow,
 } from '@/lib/clearModel';
-import { money, count } from '@clear/domain';
+import { money } from '@clear/domain';
 import type { CreditTierRow, CreditCycleRow, CreditTermCeiling, CreditTermPlanRow } from '@/utils/apiClient';
 
 /**
@@ -273,28 +273,6 @@ export function toLimitBacking(rows: CreditTierRow[], fallback: LimitBacking): L
 
 
 /**
- * The ELPA row, against the member's actual credits.
- *
- * Its unlock condition is a balance, not a date or a behaviour, so the row is the one place a
- * member watches that balance climb toward the thing they are saving for. It read a hardcoded "0
- * of 15,000" — the same for a member with nothing and a member with fourteen thousand.
- *
- * Returns the row with no `lockedNote` once the goal is met, which is what unlocks it: the shelf
- * treats a row as locked precisely when it carries a reason it is locked.
- */
-function withElpaProgress(plan: TermPlan, equity?: { credits: number; goal: number }): TermPlan {
-  if (!equity) return plan;
-  if (equity.credits >= equity.goal) {
-    const { lockedNote: _locked, ...unlocked } = plan;
-    return unlocked;
-  }
-  return {
-    ...plan,
-    lockedNote: `${count(equity.credits)} of ${count(equity.goal)} credits`,
-  };
-}
-
-/**
  * The term-plan shelf, from the plans the contracts hold.
  *
  * The last placeholder on Home, and the one that made day one's two arrivals unreachable: the page
@@ -306,9 +284,12 @@ function withElpaProgress(plan: TermPlan, equity?: { credits: number; goal: numb
  * something still being paid.
  *
  * The locked rows in `fallback` are kept. They are not placeholder data standing in for something
- * unread: partner credit and an ELPA are real products a member has not unlocked yet, and the
+ * unread: partner credit and Clear Cash are real products a member has not unlocked yet, and the
  * spec is explicit that they are visible from the first minute with their own unlock conditions.
  * Dropping them because the chain returned one plan would delete the point of the component.
+ *
+ * The ELPA is not here and never comes through here: it is not credit, a term plan or a mortgage
+ * (Addendum 3). It is read from Clear's books on its own (lib/elpa) and shown on Savings.
  */
 const shortDate = (unix: number) => new Date(unix * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -323,18 +304,10 @@ export function splitBlockedReason(row: CreditTermPlanRow, now = Date.now() / 10
 export function toTermPlans(
   rows: CreditTermPlanRow[],
   fallback: TermPlans,
-  /** The member's equity credits, and what an ELPA needs. Omitted before they have been read. */
-  equity?: { credits: number; goal: number },
   /** The term ceiling as read, for whether term credit is paused by a default. */
   ceiling?: CreditTermCeiling | null,
 ): TermPlans {
-  const locked = fallback.plans
-    .filter((plan) => plan.lockedNote)
-    .map((plan) => (plan.id === 'elpa' ? withElpaProgress(plan, equity) : plan))
-    // An ELPA whose condition is met is no longer a locked row; it is a product the member can
-    // take up, and leaving it greyed out would be telling them they cannot have the thing they
-    // just spent two years qualifying for.
-    .filter((plan) => plan.lockedNote !== undefined);
+  const locked = fallback.plans.filter((plan) => plan.lockedNote);
 
   const live: TermPlan[] = rows.map((row) => {
     const cyclesLeft =

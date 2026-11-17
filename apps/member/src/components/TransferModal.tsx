@@ -26,6 +26,7 @@ import { getContractAddressForNetwork, getAbiPathForNetwork } from '@/config/net
 import { useNetworkValidation } from "@/hooks/useNetworkValidation";
 import { useSmartAccountDeployment } from "@/hooks/useSmartAccountDeployment";
 import type { Eip1193Provider } from 'ethers';
+import { deedTrustOf, transferBlockedReason } from '@/lib/deedTrust';
 
 interface TransferModalProps {
   isOpen: boolean;
@@ -223,6 +224,18 @@ const TransferModal: React.FC<TransferModalProps> = ({
       if (embeddedWalletInfo && !embeddedWalletInfo.isSmartAccountDeployed) {
         console.warn("Embedded wallet not deployed, but continuing with regular wallet");
       }
+
+      /*
+       * DeedNFT v5: a trust deed's transfer rules are on chain (IDeedTrust, served from DeedNFT's
+       * fallback). A Coop-policy deed changes hands only through the co-op's agent, and a retired or
+       * frozen deed not at all; say so before anything is signed. A v4 DeedNFT has no trust record.
+       */
+      const trust = await deedTrustOf(
+        new ethers.Contract(contractAddress, abi, new ethers.BrowserProvider(walletProvider as unknown as Eip1193Provider)) as never,
+        deedNFT.tokenId,
+      );
+      const blocked = transferBlockedReason(trust);
+      if (blocked) throw new Error(blocked);
 
       // Encode the transfer function
       const data = new ethers.Interface(abi).encodeFunctionData('transferFrom', [

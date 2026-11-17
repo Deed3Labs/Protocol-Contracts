@@ -2,9 +2,9 @@ import { ethers } from 'ethers';
 import { getPayPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainProvider, writesAs } from './provider.js';
-import { recordPoolMovements } from './poolFunding.js';
 import { CHAIN_ERROR_FRAGMENTS, chainErrorReason, decodeChainError, describeCardRefusal } from './chainErrors.js';
 import { syncClrusdEncumbrance } from './encumbranceSync.js';
+import { notificationStore } from '../notificationStore.js';
 
 /*
  * A settled card purchase becomes debt on chain — build plan §4, step 4.
@@ -66,6 +66,10 @@ const ISSUER_ABI = [
   'function drawnOf(address member, uint256 tierId) view returns (uint256)',
   'function carryRecipientOf(uint256 tierId) view returns (address)',
   'function cardSettlementAccount() view returns (address)',
+  // Phase 2b (12.7): card spending draws against Savings only within the member's own allowance.
+  'function savingsDrawAllowance(address member) view returns (uint256)',
+  'function tierAt(uint256 tierId) view returns (bytes32 kind, uint256 ratePerCycle, bool active)',
+  'function headroomOf(address member, uint256 tierId) view returns (uint256)',
   // The custom errors, so a revert arrives decoded rather than as calldata.
   ...CHAIN_ERROR_FRAGMENTS,
 ];
@@ -160,6 +164,33 @@ function reasonOf(error: unknown): string {
   return (describeCardRefusal(decodeChainError(error)) ?? chainErrorReason(error)).slice(0, 400);
 }
 
+/**
+ * Phase 2b (12.7): when the line has no room, say whether it is because Savings count only as far as
+ * the member authorized card spending against them. `authorizeCardSpend` takes the Savings tier's
+ * room only up to `savingsDrawAllowance(member)`, so a member with savings and no allowance is
+ * refused for "no room" while their savings sit there. Null when that is not the reason.
+ */
+export async function savingsAllowanceShort(issuer: ethers.Contract, member: string, error: unknown): Promise<string | null> {
+  if (decodeChainError(error)?.name !== 'RevolvingIssuerCardHeadroom') return null;
+  try {
+    const count = Number(await issuer.tierCount());
+    for (let i = 0; i < count; i++) {
+      const [kind, , active] = (await issuer.tierAt(i)) as [string, bigint, boolean];
+      if (!active || ethers.decodeBytes32String(kind) !== 'SAVINGS') continue;
+      const [room, allowed] = (await Promise.all([issuer.headroomOf(member, i), issuer.savingsDrawAllowance(member)])) as [bigint, bigint];
+      if (room <= allowed) return null;
+      const dollars = (units: bigint) =>
+        (Number(units / CENTS_TO_UNITS) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+      return allowed === 0n
+        ? `Savings can back card spending only once the member allows it, and they have not (${dollars(room)} of savings room unused). They can allow it in Settings.`
+        : `Savings can back only ${dollars(allowed)} more of card spending, the amount the member allowed (${dollars(room)} of savings room). They can raise it in Settings.`;
+    }
+  } catch {
+    /* the plain reason stands */
+  }
+  return null;
+}
+
 /** A card rule refused it: no retry will change that, so a person looks. */
 function isCardRefusal(error: unknown): boolean {
   return describeCardRefusal(decodeChainError(error)) !== null;
@@ -187,8 +218,7 @@ async function ensureAuthorized(
     return { authorized: amount };
   }
   const tx = await issuer.authorizeCardSpend(ref, member, units);
-  // Draws nothing, but read like every other write here, so no receipt is ever skipped.
-  await recordPoolMovements(await tx.wait(1));
+  await tx.wait(1);
   return { authorized: units, tx: tx.hash };
 }
 
@@ -302,7 +332,7 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
           return { transactionToken: token, action: 'needs_review' };
         }
         const tx = await issuer.settleCardSpend(ref, row.wallet, units);
-        await recordPoolMovements(await tx.wait(1));
+        await tx.wait(1);
         await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true });
         console.log(`[card-settlement] ${token} issued ${target}c on chain for ${row.wallet} (${tx.hash})`);
         // A draw on savings moves the CLRUSD lock: keep its last-known record current (audit M-3).
@@ -312,7 +342,7 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
 
       if (target < issued) {
         const tx = await issuer.reverseCardSpend(ref, BigInt(issued - target) * CENTS_TO_UNITS);
-        await recordPoolMovements(await tx.wait(1));
+        await tx.wait(1);
         await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true });
         console.log(`[card-settlement] ${token} gave back ${issued - target}c on chain (${tx.hash})`);
         return { transactionToken: token, action: 'reversed', txHash: tx.hash };
@@ -379,9 +409,17 @@ export async function sweepCardSettlements(limit = 25): Promise<SettlementSync[]
  * covers the common case of a member paying before a purchase has even settled: it settles, then it
  * is cleared on the next pass.
  *
- * Carry included. Carry accrued on the tiers is written into our ledger as it accrues (so a deposit
- * pays it, first) and measured on chain through the tiers' own figures, so a repayment that covers
- * carry clears carry too. The one exception is carry owed to a pool — see readCardDebt.
+ * Carry included. Carry accrued on the tiers is written into our ledger as it accrues and measured
+ * on chain through the tiers' own figures, so a repayment that covers carry clears carry too. The
+ * one exception is carry owed to a pool — see readCardDebt.
+ *
+ * Phase 2b (section 12.2 as replaced): a deposit no longer pays the line. With auto-clear OFF a
+ * Spendable deposit changes no credit position (acceptance 19), and with it ON the clearing happens
+ * on chain (`repayForMember`, the auto-clear sweep) and is booked from that transaction, on the
+ * `chain` rail. So nothing books a fiat repayment from a deposit any more, and this target-based
+ * netting acts only on fiat settlements already in the books from before. It is left running because
+ * the target is still right: with no fiat repayment booked, what should be on chain is everything
+ * owed, and it clears nothing.
  */
 
 const NETTING = 'card_repayment_netting';
@@ -694,7 +732,7 @@ export async function syncCardRepayment(walletInput: string): Promise<RepaymentS
 
     try {
       const tx = await issuer.repayCardSpend(attempt.ref, wallet, BigInt(position.toClearCents) * CENTS_TO_UNITS);
-      await recordPoolMovements(await tx.wait(1));
+      await tx.wait(1);
       await pool.query(
         `UPDATE ${NETTING} SET status = 'done', tx = $3, error = NULL, attempts = attempts + 1, updated_at = now()
           WHERE wallet = $1 AND seq = $2`,
@@ -754,7 +792,7 @@ export async function reverseForDispute(transactionToken: string, cents: number)
   if (!row) return null;
   const issuer = await settlerIssuer();
   const tx = await issuer.reverseCardSpend(refFor(transactionToken, row.onchain_ref), BigInt(cents) * CENTS_TO_UNITS);
-  await recordPoolMovements(await tx.wait(1));
+  await tx.wait(1);
   const left = Math.max(0, Number(row.onchain_cents ?? 0) - cents);
   await record(transactionToken, { status: 'held', cents: left, tx: tx.hash, error: null, attempt: true });
   console.log(`[card-settlement] ${transactionToken} ${cents}c taken off chain for a dispute (${tx.hash})`);
@@ -789,7 +827,7 @@ export async function reissueAfterDispute(transactionToken: string, cents: numbe
     try {
       await ensureAuthorized(issuer, ref, row.wallet, units);
       const tx = await issuer.settleCardSpend(ref, row.wallet, units);
-      await recordPoolMovements(await tx.wait(1));
+      await tx.wait(1);
       hash = tx.hash;
     } catch (error) {
       throw new Error(`re-issue refused: ${reasonOf(error)}`);
@@ -861,8 +899,23 @@ export async function authorizeCardOnChain(transactionToken: string): Promise<Au
     return tx ? 'authorized' : 'already';
   } catch (error) {
     const refused = isCardRefusal(error);
-    await setAuth(refused ? 'refused' : 'failed', { error: reasonOf(error) });
-    console.error(`[card-authorization] ${token} ${refused ? 'refused' : 'failed'}: ${reasonOf(error)}`);
+    const allowanceShort = await savingsAllowanceShort(issuer, row.wallet, error);
+    const reason = (allowanceShort ?? reasonOf(error)).slice(0, 400);
+    await setAuth(refused ? 'refused' : 'failed', { error: reason });
+    // Phase 2b (12.7): the member can fix this one themselves, so they are told how.
+    if (allowanceShort) {
+      await notificationStore
+        .emit({
+          wallet: row.wallet,
+          kind: 'card',
+          title: 'Your card needs your OK to use Savings',
+          body: 'This purchase needed your Savings, and card spending can draw on them only as far as you allow. Set how much in Settings, Permissions.',
+          data: { transactionToken: token },
+          dedupeKey: `savings-allowance:${token}`,
+        })
+        .catch(() => null);
+    }
+    console.error(`[card-authorization] ${token} ${refused ? 'refused' : 'failed'}: ${reason}`);
     return refused ? 'refused' : 'failed';
   }
 }

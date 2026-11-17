@@ -6,6 +6,8 @@ import { PlusIcon } from '@/components/clear/brand/icons';
 import ConnectedMoveMoney from '@/components/clear/ConnectedMoveMoney';
 import ConnectedAutoSave from '@/components/clear/ConnectedAutoSave';
 import Modal from '@/components/clear/Modal';
+import YourHome from '@/components/clear/YourHome';
+import type { ElpaState } from '@/lib/elpa';
 import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { count, money } from '@clear/domain';
 import { cn } from '@/lib/utils';
@@ -17,6 +19,8 @@ import {
   type AutoSave,
   type SavingsData,
 } from '@/lib/clearModel';
+
+const NO_ELPA: ElpaState = { status: 'none' };
 
 /** Credits shown as money take the dollar sign and no decimals: "$1,500". */
 const credits$ = (n: number) => money(Math.round(n), { cents: false });
@@ -62,7 +66,14 @@ function Both({ wide, phone }: { wide: ReactNode; phone: ReactNode }) {
  * cannot disagree. On a phone the buttons under the balance go: Move money is the nav's action
  * button and auto-save sits behind the path footer's Change.
  */
-export default function SavingsPage({ data = SAVINGS_DAY_ONE }: { data?: SavingsData }) {
+export default function SavingsPage({
+  data = SAVINGS_DAY_ONE,
+  elpa = NO_ELPA,
+}: {
+  data?: SavingsData;
+  /** The ELPA, from Clear's books. Its own slab; never part of the credit view or term plans. */
+  elpa?: ElpaState;
+}) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [addOpen, setAddOpen] = useState(false);
@@ -268,6 +279,9 @@ export default function SavingsPage({ data = SAVINGS_DAY_ONE }: { data?: Savings
           )}
         </div>
       </div>
+
+      {/* The ELPA, when there is one: equity toward Redemption and the Community Fee bill. */}
+      <YourHome elpa={elpa} />
 
       <div className="c-sv-slab">
         <section className="c-sv-blk" aria-label="Your home path">

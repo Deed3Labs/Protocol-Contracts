@@ -1,0 +1,176 @@
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:72:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                        ^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:82:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:98:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:272:84:
+    |
+272 |     function applyPledgePayment(address, address, bool, uint256) external returns (uint256 applied) {
+    |                                                                                    ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:277:79:
+    |
+277 |     function maturityToDebt(address, uint256, uint256) external view returns (uint256 toDebt) {
+    |                                                                               ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:292:76:
+    |
+292 |     function enforcementPermitted(address, uint256) external view returns (bool permitted) {
+    |                                                                            ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:297:64:
+    |
+297 |     function defaultedAmountOf(address) external view returns (uint256 due) {
+    |                                                                ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:302:77:
+    |
+302 |     function applyPoolProceeds(address, uint256, uint256) external returns (uint256 applied) {
+    |                                                                             ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:307:57:
+    |
+307 |     function noticeShortfall(address) external returns (uint256 gap) {
+    |                                                         ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:58:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                          ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:71:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                                       ^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:62:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                              ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:75:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                                           ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:57:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                         ^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:69:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                                     ^^^^^^^^^^^^^^
+
+
+Compiled 271 Solidity files successfully (evm target: paris).
+Retired credit check on base-sepolia, chain 84532 (a testnet: loans, legs, the backstop and balances left in retired contracts are WARN (test money, decision 50)), baseline: the records about to be retired: 19 retired contract(s). Sends nothing.
+
+FAIL  PayoutPool: holds LendingPool BORROWER_ROLE (0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66)
+FAIL  LendingPool.encumbranceSource(): names the retired CollateralRegistry 0x62fBdf62Ad0C3f52d898b28b2d1FB31e9EB152Cf
+FAIL  Liquidator: holds ClearUSDUpgradeable LIQUIDATOR_ROLE (0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593)
+FAIL  ClearUSDUpgradeable.encumbranceSource(): names the retired CollateralRegistry 0x62fBdf62Ad0C3f52d898b28b2d1FB31e9EB152Cf
+FAIL  BurnerBond: holds BondVault BOND_ROLE (0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556)
+FAIL  BurnerBondDeposit: holds BondVault BOND_ROLE (0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c)
+FAIL  BurnerBondLegacy: holds BondVault BOND_ROLE (0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148)
+FAIL  BondVault.payoutPool(): names the retired PayoutPool 0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66 (decision 52: scheduling its clearing change in the Earn timelock, step E8-earn-schedule, turns this into a WARN on a testnet; re-run scripts/signing_plan.ts first)
+FAIL  BondVault.encumbranceSource(): names the retired CollateralRegistry 0x62fBdf62Ad0C3f52d898b28b2d1FB31e9EB152Cf
+FAIL  PayoutPool.yieldPool(): still 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23: deploy 27 (and deploy 22) switch it off once borrowedFromYield is 0
+FAIL  PayoutPool.bondVault(): still 0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855: deploy 22 and deploy 27 switch it off once borrowedFromVault is 0
+WARN  PayoutPool: holds 10.5 USDC (test money, decision 50)
+PASS  ESADepositVault.clrusd(): 0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1, not a retired contract
+PASS  BondVault.treasury(): 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, not a retired contract
+PASS  ClaimEscrow.PAYOUT_TREASURY(): 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50, not a retired contract
+PASS  AccessManager: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  ClearCredit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  NetworkRegistry: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  RevolvingIssuer: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  TermIssuer: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  CollateralRegistry: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  LimitCalculator: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  MerchantRegistry: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  PayoutPool: no role on ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  Liquidator: no role on LendingPool, ESADepositVault, BondVault, ClaimEscrow
+PASS  OffersIssuer: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  BurnerBondFactory: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  BurnerBond: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, ClaimEscrow
+PASS  BurnerBondDeposit: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, ClaimEscrow
+PASS  BondValuer: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  BurnerBondLegacy: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, ClaimEscrow
+PASS  BurnerBondDepositLegacy: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  BurnerBondFactoryLegacy: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  BondValuerLegacy: no role on LendingPool, ClearUSDUpgradeable, ESADepositVault, BondVault, ClaimEscrow
+PASS  AccessManager: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  ClearCredit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  NetworkRegistry: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  RevolvingIssuer: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  TermIssuer: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  CollateralRegistry: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  LimitCalculator: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  MerchantRegistry: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  PayoutPool: holds no CLRUSD or legacy CLRUSD
+PASS  Liquidator: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  OffersIssuer: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondFactory: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBond: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondDeposit: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BondValuer: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondLegacy: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondDepositLegacy: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BurnerBondFactoryLegacy: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  BondValuerLegacy: holds no USDC or CLRUSD or legacy CLRUSD
+PASS  PayoutPool.borrowedFromVault(): 0
+PASS  PayoutPool.borrowedFromYield(): 0
+PASS  BondVault.lentToPayoutPool(): 0
+INFO  LendingPool.earnControls(): not answered (the contract predates it): names nothing
+INFO  LendingPool.deploymentAccount(): not answered (the contract predates it): names nothing
+INFO  LendingPool.enforcementDestination(): not answered (the contract predates it): names nothing
+INFO  ClearUSDUpgradeable.membershipSource(): not answered (the contract predates it): names nothing
+INFO  ClearUSDUpgradeable.intentFactory(): not answered (the contract predates it): names nothing
+INFO  ESADepositVault.stateSource(): not answered (the contract predates it): names nothing
+INFO  BondVault.agent(): not answered (the contract predates it): names nothing
+INFO  BondVault.controls(): not answered (the contract predates it): names nothing
+INFO  EarnControls: not recorded on this network: not checked
+INFO  EarnControls: not recorded: the refusals cannot be confirmed (deploy 26 refuses them)
+
+11 FAIL, 1 WARN. Still connected: see each FAIL.

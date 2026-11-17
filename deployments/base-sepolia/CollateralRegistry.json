@@ -1,10 +1,25 @@
 {
-  "address": "0x62fBdf62Ad0C3f52d898b28b2d1FB31e9EB152Cf",
+  "address": "0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A",
   "abi": [
     {
       "type": "constructor",
       "stateMutability": "undefined",
       "payable": false,
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "CollateralRegistryBadSignature",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CollateralRegistryClrusdTermsFixed",
       "inputs": []
     },
     {
@@ -31,6 +46,11 @@
     },
     {
       "type": "error",
+      "name": "CollateralRegistryEnforcementSourceSet",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "CollateralRegistryHaircutTooHigh",
       "inputs": [
         {
@@ -43,6 +63,40 @@
       "type": "error",
       "name": "CollateralRegistryInvalidAddress",
       "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "CollateralRegistryNoMaturityInstruction",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "itemId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CollateralRegistryNoticeRecorded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "CollateralRegistrySignatureExpired",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "deadline"
+        }
+      ]
     },
     {
       "type": "error",
@@ -118,6 +172,18 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "ClrusdTokenUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "token",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "CollateralTypeRegistered",
       "inputs": [
         {
@@ -179,6 +245,61 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "EnforcementOrderSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
+          "indexed": true
+        },
+        {
+          "type": "uint256[]",
+          "name": "itemIds"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EnforcementRedeemed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "units",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EnforcementSourceSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "ExposureRefreshed",
       "inputs": [
         {
@@ -206,6 +327,70 @@
         {
           "type": "uint8",
           "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ItemCollateralChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "itemId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "pledged",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ItemPledgeTerms",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "itemId",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "advanceBps",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "maturityInstruction",
           "indexed": false
         }
       ]
@@ -299,6 +484,28 @@
         {
           "type": "uint256",
           "name": "itemId",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PledgeAdvanceRate",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "kind",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "advanceBps",
           "indexed": false
         }
       ]
@@ -463,6 +670,20 @@
     },
     {
       "type": "function",
+      "name": "ENFORCEMENT_ORDER_TYPEHASH",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "ITEM_ROLLER_ROLE",
       "constant": true,
       "stateMutability": "view",
@@ -491,11 +712,112 @@
     },
     {
       "type": "function",
+      "name": "PLEDGE_ITEM_TYPEHASH",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "PLEDGE_TYPEHASH",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "PRICE_SCALE",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "advanceBpsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "advancedValueOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "excludeItem"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "value"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "backedHeadroomOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        }
+      ],
       "outputs": [
         {
           "type": "uint256",
@@ -513,6 +835,20 @@
       "outputs": [
         {
           "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "clrusdToken",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
           "name": ""
         }
       ]
@@ -591,6 +927,20 @@
     },
     {
       "type": "function",
+      "name": "domainSeparator",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "encumberedOf",
       "constant": true,
       "stateMutability": "view",
@@ -627,6 +977,74 @@
       "outputs": [
         {
           "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforcementOrderDigest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256[]",
+          "name": "itemIds"
+        },
+        {
+          "type": "uint256",
+          "name": "deadline"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforcementOrderOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "enforcementSource",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
           "name": ""
         }
       ]
@@ -778,6 +1196,87 @@
     },
     {
       "type": "function",
+      "name": "isItemPledged",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "itemId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "itemAdvanceBpsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "itemId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "maturityInstructionOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "networkRegistry",
       "constant": true,
       "stateMutability": "view",
@@ -807,9 +1306,48 @@
         {
           "type": "uint256",
           "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "deadline"
+        },
+        {
+          "type": "bytes",
+          "name": "signature"
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "pledgeDigest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "deadline"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
     },
     {
       "type": "function",
@@ -828,9 +1366,75 @@
         {
           "type": "uint256",
           "name": "itemId"
+        },
+        {
+          "type": "bytes32",
+          "name": "maturityInstruction"
+        },
+        {
+          "type": "uint256",
+          "name": "deadline"
+        },
+        {
+          "type": "bytes",
+          "name": "signature"
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "pledgeItemDigest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "itemId"
+        },
+        {
+          "type": "bytes32",
+          "name": "maturityInstruction"
+        },
+        {
+          "type": "uint256",
+          "name": "deadline"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pledgeNonces",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
     },
     {
       "type": "function",
@@ -905,6 +1509,27 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "recordEnforcementRedemption",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "units"
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -1054,6 +1679,27 @@
     },
     {
       "type": "function",
+      "name": "releaseRetiredItem",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "itemId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "renounceRole",
       "constant": false,
       "payable": false,
@@ -1126,6 +1772,19 @@
     },
     {
       "type": "function",
+      "name": "setClrusdToken",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "token"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "setCollateralTerms",
       "constant": false,
       "payable": false,
@@ -1164,6 +1823,48 @@
     },
     {
       "type": "function",
+      "name": "setEnforcementOrder",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "uint256[]",
+          "name": "itemIds"
+        },
+        {
+          "type": "uint256",
+          "name": "deadline"
+        },
+        {
+          "type": "bytes",
+          "name": "signature"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setEnforcementSource",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "supportsInterface",
       "constant": true,
       "stateMutability": "view",
@@ -1192,6 +1893,25 @@
         {
           "type": "uint256",
           "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "unsecuredExcessOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "excess"
         }
       ]
     },

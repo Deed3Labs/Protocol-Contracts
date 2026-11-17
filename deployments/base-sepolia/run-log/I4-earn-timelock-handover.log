@@ -1,0 +1,22 @@
+Clear Lending Safe 0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d: 2 of 2
+  retired BurnerBondPre2f 0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556: ownership to the Earn timelock
+  retired BurnerBondDepositPre2f 0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c: ownership to the Earn timelock
+  retired BurnerBondLegacy 0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148: ownership to the Earn timelock
+  retired BurnerBondDepositLegacy 0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3: ownership to the Earn timelock
+  BurnerBondFactory 0xf36dE3553509BAafB835bC37c97f529Adf42a96a: ownership to the Earn timelock
+  BurnerBondFactoryPre2f 0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA: ownership to the Earn timelock
+  BurnerBondFactoryLegacy 0x77e261F967491100906a607b8E46eD670684edDb: ownership to the Earn timelock
+lendingPool: admin -> Earn timelock; the deployer holds no pool role
+earnControls: admin -> Earn timelock; the deployer holds no controls role
+collateralAgent: admin is the Earn timelock; the deployer holds no role
+bondVault: admin -> Earn timelock; the deployer holds no vault role
+bond collection 0xe7F6d3E21189e8B6a73f6dee0955322b7a32cC2A: owner -> Earn timelock
+bond collection 0x618bf90E36a81e1B05b22A09B4EF1557C24Ad556: owner -> Earn timelock
+bond collection 0xA03051A97b63B7c0E2EFBa6FA47Fc45fA659dB8c: owner -> Earn timelock
+bond collection 0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148: owner -> Earn timelock
+bond collection 0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3: owner -> Earn timelock
+bond factory 0xf36dE3553509BAafB835bC37c97f529Adf42a96a: owner -> Earn timelock
+bond factory 0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA: owner -> Earn timelock
+bond factory 0x77e261F967491100906a607b8E46eD670684edDb: owner -> Earn timelock
+
+Earn handover done. The deployer holds no Earn role.

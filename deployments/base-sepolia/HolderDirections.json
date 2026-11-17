@@ -1,0 +1,567 @@
+{
+  "address": "0x8ec35b88CCb59576957917a4F4B937b491815Cda",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "register_"
+        },
+        {
+          "type": "address",
+          "name": "agent_"
+        },
+        {
+          "type": "address",
+          "name": "controls_"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "AccretionOutOfRange",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "yieldBps"
+        },
+        {
+          "type": "uint256",
+          "name": "daysLeft"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "HolderDirectionsBadSignature",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "HolderDirectionsBond",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "HolderDirectionsInvalid",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "HolderDirectionsNotReached",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "signedValue"
+        },
+        {
+          "type": "uint256",
+          "name": "totalValue"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "InvalidShortString",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "StringTooLong",
+      "inputs": [
+        {
+          "type": "string",
+          "name": "str"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DirectionExecuted",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "signedValue",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "totalValue",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DirectionOpened",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "kind",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "subject",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "directionHash",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "recordTime",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DirectionSigned",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256[]",
+          "name": "bondIds"
+        },
+        {
+          "type": "uint256",
+          "name": "value",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "signedValue",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DirectionTallied",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "cursor",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "totalValue",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "complete",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "EIP712DomainChanged",
+      "inputs": []
+    },
+    {
+      "type": "function",
+      "name": "BLOCK_REPLACEMENT",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "COST_APPROVAL",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DIRECTION_TYPEHASH",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "EXCLUDED_HOLDER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "REQUIRED_BPS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "agent",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "controls",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "counted",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "direction",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint8",
+              "name": "kind"
+            },
+            {
+              "type": "bool",
+              "name": "tallied"
+            },
+            {
+              "type": "bool",
+              "name": "executed"
+            },
+            {
+              "type": "uint32",
+              "name": "period"
+            },
+            {
+              "type": "uint64",
+              "name": "recordTime"
+            },
+            {
+              "type": "uint256",
+              "name": "subject"
+            },
+            {
+              "type": "bytes32",
+              "name": "directionHash"
+            },
+            {
+              "type": "uint256",
+              "name": "signedValue"
+            },
+            {
+              "type": "uint256",
+              "name": "totalValue"
+            },
+            {
+              "type": "uint256",
+              "name": "cursor"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "directionDigest",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id"
+        },
+        {
+          "type": "uint256[]",
+          "name": "bondIds"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "eip712Domain",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes1",
+          "name": "fields"
+        },
+        {
+          "type": "string",
+          "name": "name"
+        },
+        {
+          "type": "string",
+          "name": "version"
+        },
+        {
+          "type": "uint256",
+          "name": "chainId"
+        },
+        {
+          "type": "address",
+          "name": "verifyingContract"
+        },
+        {
+          "type": "bytes32",
+          "name": "salt"
+        },
+        {
+          "type": "uint256[]",
+          "name": "extensions"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "execute",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "open",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "kind"
+        },
+        {
+          "type": "uint256",
+          "name": "subject"
+        },
+        {
+          "type": "bytes32",
+          "name": "directionHash"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": "id"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "register",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "sign",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id"
+        },
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256[]",
+          "name": "bondIds"
+        },
+        {
+          "type": "bytes",
+          "name": "sig"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "signed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        },
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "tally",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "id"
+        },
+        {
+          "type": "uint256",
+          "name": "maxCount"
+        }
+      ],
+      "outputs": []
+    }
+  ],
+  "blockNumber": 0
+}

@@ -1,0 +1,1262 @@
+{
+  "address": "0xdb73Ae35D0A22A4CA6bc03F263CF006D16a28b97",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RateScheduleBadBands",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RateScheduleBandsFixed",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RateScheduleUnknownProduct",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AdminChanged",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousAdmin",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "newAdmin",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BandsSet",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "productId",
+          "indexed": true
+        },
+        {
+          "type": "tuple[]",
+          "name": "bands",
+          "components": [
+            {
+              "type": "uint128",
+              "name": "upperBound"
+            },
+            {
+              "type": "uint32",
+              "name": "monthlyBps"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "BeaconUpgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "beacon",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CflSourcesSet",
+      "inputs": [
+        {
+          "type": "address[]",
+          "name": "sources"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Initialized",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "OwnershipTransferred",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousOwner",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "newOwner",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ProductSet",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "productId",
+          "indexed": true
+        },
+        {
+          "type": "tuple",
+          "name": "params",
+          "indexed": false,
+          "components": [
+            {
+              "type": "bool",
+              "name": "enabled"
+            },
+            {
+              "type": "uint32",
+              "name": "listMonthlyBps"
+            },
+            {
+              "type": "uint32",
+              "name": "flatMonthlyBps"
+            },
+            {
+              "type": "uint128",
+              "name": "largeLoanThreshold"
+            },
+            {
+              "type": "uint32",
+              "name": "annualCapBps"
+            },
+            {
+              "type": "uint64",
+              "name": "minTermSeconds"
+            },
+            {
+              "type": "bool",
+              "name": "freeInFull"
+            },
+            {
+              "type": "uint128",
+              "name": "freeBelowAmount"
+            },
+            {
+              "type": "uint32",
+              "name": "freeSplitMax"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Upgraded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "implementation",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "RATE_SCALE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "aggregatePrincipalOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "total"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "bandsFor",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple[]",
+          "name": "",
+          "components": [
+            {
+              "type": "uint128",
+              "name": "upperBound"
+            },
+            {
+              "type": "uint32",
+              "name": "monthlyBps"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "capFor",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "tuple",
+          "name": "from",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "cap"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "capMonthlyBps",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "capSince",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "tuple",
+          "name": "from",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cflSourcesOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "chargesFor",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "tuple",
+          "name": "from",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "listCarry"
+        },
+        {
+          "type": "uint256",
+          "name": "capCarry"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "chargesSince",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "tuple",
+          "name": "from",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "listCarry"
+        },
+        {
+          "type": "uint256",
+          "name": "capCarry"
+        },
+        {
+          "type": "tuple",
+          "name": "now_",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "combinedTrim",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "revolvingPrincipal"
+        },
+        {
+          "type": "uint256",
+          "name": "revolvingMonthly"
+        },
+        {
+          "type": "uint256[]",
+          "name": "planPrincipals"
+        },
+        {
+          "type": "uint256[]",
+          "name": "planMonthly"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": "allowed"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "effectiveMonthlyBps",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "graduatedBetween",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "tuple",
+          "name": "from",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        },
+        {
+          "type": "uint256",
+          "name": "at"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "total"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "graduatedMonthly",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "total"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "graduatedSince",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "tuple",
+          "name": "from",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "hasProduct",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "owner_"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "isEnabled",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "keyOf",
+      "constant": true,
+      "stateMutability": "pure",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "owner",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "paramsOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "bool",
+              "name": "enabled"
+            },
+            {
+              "type": "uint32",
+              "name": "listMonthlyBps"
+            },
+            {
+              "type": "uint32",
+              "name": "flatMonthlyBps"
+            },
+            {
+              "type": "uint128",
+              "name": "largeLoanThreshold"
+            },
+            {
+              "type": "uint32",
+              "name": "annualCapBps"
+            },
+            {
+              "type": "uint64",
+              "name": "minTermSeconds"
+            },
+            {
+              "type": "bool",
+              "name": "freeInFull"
+            },
+            {
+              "type": "uint128",
+              "name": "freeBelowAmount"
+            },
+            {
+              "type": "uint32",
+              "name": "freeSplitMax"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "proxiableUUID",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "renounceOwnership",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "revolvingRatesOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "ceilingProduct"
+        },
+        {
+          "type": "bytes32[]",
+          "name": "productIds"
+        },
+        {
+          "type": "uint256[]",
+          "name": "principals"
+        },
+        {
+          "type": "uint256[]",
+          "name": "ownRates"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": "rates"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "setCflSources",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address[]",
+          "name": "sources"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setProduct",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "tuple",
+          "name": "params",
+          "components": [
+            {
+              "type": "bool",
+              "name": "enabled"
+            },
+            {
+              "type": "uint32",
+              "name": "listMonthlyBps"
+            },
+            {
+              "type": "uint32",
+              "name": "flatMonthlyBps"
+            },
+            {
+              "type": "uint128",
+              "name": "largeLoanThreshold"
+            },
+            {
+              "type": "uint32",
+              "name": "annualCapBps"
+            },
+            {
+              "type": "uint64",
+              "name": "minTermSeconds"
+            },
+            {
+              "type": "bool",
+              "name": "freeInFull"
+            },
+            {
+              "type": "uint128",
+              "name": "freeBelowAmount"
+            },
+            {
+              "type": "uint32",
+              "name": "freeSplitMax"
+            }
+          ]
+        },
+        {
+          "type": "tuple[]",
+          "name": "bands",
+          "components": [
+            {
+              "type": "uint128",
+              "name": "upperBound"
+            },
+            {
+              "type": "uint32",
+              "name": "monthlyBps"
+            }
+          ]
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "snapshot",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "snapshotAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "at"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "snap",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "termChargeFor",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "tuple",
+          "name": "from",
+          "components": [
+            {
+              "type": "uint256",
+              "name": "list"
+            },
+            {
+              "type": "uint256",
+              "name": "flatAlt"
+            },
+            {
+              "type": "uint256",
+              "name": "annual"
+            },
+            {
+              "type": "uint256[]",
+              "name": "bands"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "charge"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "termRateOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "bytes32",
+          "name": "stateCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "productId"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
+        },
+        {
+          "type": "uint256",
+          "name": "subsidyBps"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "rate"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transferOwnership",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newOwner"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeTo",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "upgradeToAndCall",
+      "constant": false,
+      "stateMutability": "payable",
+      "payable": true,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newImplementation"
+        },
+        {
+          "type": "bytes",
+          "name": "data"
+        }
+      ],
+      "outputs": []
+    }
+  ],
+  "blockNumber": 0
+}

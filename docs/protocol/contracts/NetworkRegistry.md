@@ -6,17 +6,19 @@ Source: [`contracts/peripherals/NetworkRegistry.sol`](../../../contracts/periphe
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x0a9FE081622d41069DF22898D969F13e65783D7f`](https://sepolia.basescan.org/address/0x0a9FE081622d41069DF22898D969F13e65783D7f) |
+| Base Sepolia | 84532 | [`0xee10a0d79a718cd13c49b68ce6ccCda398781164`](https://sepolia.basescan.org/address/0xee10a0d79a718cd13c49b68ce6ccCda398781164) |
 
 ## Functions that change state
 
 | Function | Who can call | Also |
 |---|---|---|
+| `attestStateCode(address member, bytes32 stateCode)` | `onlyRole(STATE_ATTESTER_ROLE)` |  |
 | `deregisterIssuer(address issuer)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `enrolMember(address member, address issuer)` | Anyone; acts on the caller's own account |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address admin)` | Once, when the proxy is initialised |  |
-| `registerIssuer(address issuer, address stableCredit, address assurancePool, address assuranceOracle)` | Not in the current source |  |
+| `listMoneyPath(address account, bytes32 kind)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `registerIssuer(address issuer, address stableCredit)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
@@ -37,11 +39,15 @@ Anyone can call these; they change nothing.
 | `isEnrolled(address member, address issuer)` | bool |
 | `isIssuer(address issuer)` | bool |
 | `isIssuerOf(address issuer, address stableCredit)` | bool |
+| `isMoneyPath(address account)` | bool |
 | `issuerCountOf(address member)` | uint256 |
 | `issuersOf(address member)` | address[] |
+| `moneyPathKindOf(address)` | bytes32 |
 | `networkOf(address issuer)` | (address,address,address) |
 | `OPERATOR_ROLE()` | bytes32 |
 | `proxiableUUID()` | bytes32 |
+| `STATE_ATTESTER_ROLE()` | bytes32 |
+| `stateCodeOf(address)` | bytes32 |
 | `supportsInterface(bytes4 interfaceId)` | bool |
 
 ## Events
@@ -52,12 +58,14 @@ Anyone can call these; they change nothing.
 | `BeaconUpgraded(address beacon indexed)` |
 | `Initialized(uint8 version)` |
 | `IssuerDeregistered(address issuer indexed)` |
-| `IssuerRegistered(address issuer indexed, address stableCredit indexed, address assurancePool, address assuranceOracle)` |
+| `IssuerRegistered(address issuer indexed, address stableCredit indexed)` |
 | `MemberEnrolled(address member indexed, address issuer indexed)` |
 | `MemberWithdrawn(address member indexed, address issuer indexed)` |
+| `MoneyPathListed(address account indexed, bytes32 kind indexed)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoleRevoked(bytes32 role indexed, address account indexed, address sender indexed)` |
+| `StateCodeAttested(address member indexed, bytes32 stateCode, address attester indexed)` |
 | `Upgraded(address implementation indexed)` |
 
 ## Errors
@@ -65,7 +73,9 @@ Anyone can call these; they change nothing.
 | Error |
 |---|
 | `NetworkRegistryInvalidAddress()` |
+| `NetworkRegistryInvalidStateCode()` |
 | `NetworkRegistryIssuerAlreadyRegistered(address issuer)` |
 | `NetworkRegistryMemberStillEnrolled(address issuer)` |
+| `NetworkRegistryMoneyPathSet(address account)` |
 | `NetworkRegistryUnauthorized(address caller)` |
 | `NetworkRegistryUnknownIssuer(address issuer)` |

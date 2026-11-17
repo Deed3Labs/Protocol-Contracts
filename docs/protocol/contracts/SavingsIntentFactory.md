@@ -6,12 +6,13 @@ Source: [`contracts/peripherals/SavingsIntentFactory.sol`](../../../contracts/pe
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0xee289AF20ddf5654E688ABDEa45D0d741528C8Bc`](https://sepolia.basescan.org/address/0xee289AF20ddf5654E688ABDEa45D0d741528C8Bc) |
+| Base Sepolia | 84532 | [`0xF8074182d9ec61970bBC9E4aaE182B42dF7Bb74B`](https://sepolia.basescan.org/address/0xF8074182d9ec61970bBC9E4aaE182B42dF7Bb74B) |
 
 ## Functions that change state
 
 | Function | Who can call | Also |
 |---|---|---|
+| `announceIntent(bytes32 salt, (address,address,address,address,address,uint256,uint64,uint8) config)` | `onlyRole(CREATOR_ROLE)` |  |
 | `createIntentDeterministic(bytes32 salt, (address,address,address,address,address,uint256,uint64,uint8) config)` | `onlyRole(CREATOR_ROLE)` |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `refundDeterministic(bytes32 salt, (address,address,address,address,address,uint256,uint64,uint8) config)` | `onlyRole(SETTLER_ROLE)` |  |
@@ -30,7 +31,9 @@ Anyone can call these; they change nothing.
 | `escrowImplementation()` | address |
 | `getRoleAdmin(bytes32 role)` | bytes32 |
 | `hasRole(bytes32 role, address account)` | bool |
-| `predictIntentAddress(bytes32 salt)` | address |
+| `intentSalt(bytes32 userSalt, (address,address,address,address,address,uint256,uint64,uint8) config)` | bytes32 |
+| `isIntentEscrow(address)` | bool |
+| `predictIntentAddress(bytes32 userSalt, (address,address,address,address,address,uint256,uint64,uint8) config)` | address |
 | `SETTLER_ROLE()` | bytes32 |
 | `supportsInterface(bytes4 interfaceId)` | bool |
 
@@ -38,6 +41,7 @@ Anyone can call these; they change nothing.
 
 | Event |
 |---|
+| `IntentAnnounced(bytes32 salt indexed, address escrow indexed, address depositor indexed, uint256 amount)` |
 | `IntentCreated(bytes32 salt indexed, address escrow indexed, address depositor indexed, uint8 action, uint256 amount)` |
 | `IntentRefunded(bytes32 salt indexed, address escrow indexed, uint256 refundedAmount)` |
 | `IntentSettled(bytes32 salt indexed, address escrow indexed, uint256 resultAmount)` |
@@ -49,4 +53,6 @@ Anyone can call these; they change nothing.
 
 | Error |
 |---|
+| `SavingsIntentFactoryDepositorNotMember(address depositor)` |
 | `SavingsIntentFactoryInvalidAddress()` |
+| `SavingsIntentFactoryNotRedeem()` |

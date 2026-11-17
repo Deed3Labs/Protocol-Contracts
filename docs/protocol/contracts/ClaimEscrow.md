@@ -13,10 +13,12 @@ Source: [`contracts/peripherals/ClaimEscrow.sol`](../../../contracts/peripherals
 
 | Function | Who can call | Also |
 |---|---|---|
-| `claimToPayoutTreasury(bytes32 transferId)` | `onlyRole(SETTLER_ROLE)` |  |
-| `claimToWallet(bytes32 transferId, address recipientWallet)` | `onlyRole(SETTLER_ROLE)` |  |
+| `claimToPayoutTreasuryWithSignature(bytes32 transferId, bytes32 payoutRefHash, bytes signature)` | `onlyRole(SETTLER_ROLE)` |  |
+| `claimToWalletWithSignature(bytes32 transferId, address recipientWallet, bytes signature)` | Checked inside the function |  |
 | `createTransfer(bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash)` | Checked inside the function |  |
 | `createTransferWithAuthorization(address sender, bytes32 transferId, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint64 expiry, bytes32 recipientHintHash, uint256 validAfter, uint256 validBefore, bytes32 authNonce, uint8 v, bytes32 r, bytes32 s)` | `onlyRole(SETTLER_ROLE)` |  |
+| `createTransferWithAuthorizationAndClaimKey(address sender, (bytes32,uint256,uint256,uint64,bytes32,address) terms, (uint256,uint256,bytes32,uint8,bytes32,bytes32) auth)` | `onlyRole(SETTLER_ROLE)` |  |
+| `createTransferWithClaimKey((bytes32,uint256,uint256,uint64,bytes32,address) terms)` | Checked inside the function |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address usdc, address payoutTreasury, address admin)` | Once, when the proxy is initialised |  |
 | `refundExpired(bytes32 transferId)` | Anyone |  |
@@ -31,14 +33,22 @@ Anyone can call these; they change nothing.
 
 | Function | Returns |
 |---|---|
+| `claimAuthorityOf(bytes32 transferId)` | address |
+| `claimDigest(bytes32 transferId, address recipientWallet)` | bytes32 |
+| `claimSignerOf(bytes32)` | address |
+| `claimToPayoutTreasury(bytes32)` | — |
+| `claimToWallet(bytes32, address)` | — |
 | `DEFAULT_ADMIN_ROLE()` | bytes32 |
+| `domainSeparator()` | bytes32 |
 | `getRoleAdmin(bytes32 role)` | bytes32 |
 | `hasRole(bytes32 role, address account)` | bool |
 | `PAYOUT_TREASURY()` | address |
+| `payoutClaimDigest(bytes32 transferId, bytes32 payoutRefHash)` | bytes32 |
 | `proxiableUUID()` | bytes32 |
 | `SETTLER_ROLE()` | bytes32 |
 | `supportsInterface(bytes4 interfaceId)` | bool |
 | `transfers(bytes32)` | address sender, uint256 principalUsdc, uint256 sponsorFeeUsdc, uint256 totalLockedUsdc, uint64 expiry, bytes32 recipientHintHash, bool claimed, bool refunded |
+| `transferTermsHash((bytes32,uint256,uint256,uint64,bytes32,address) terms)` | bytes32 |
 | `USDC()` | address |
 
 ## Events
@@ -47,7 +57,9 @@ Anyone can call these; they change nothing.
 |---|
 | `AdminChanged(address previousAdmin, address newAdmin)` |
 | `BeaconUpgraded(address beacon indexed)` |
+| `ClaimSignerSet(bytes32 transferId indexed, address claimSigner indexed)` |
 | `Initialized(uint8 version)` |
+| `PayoutClaimAuthorized(bytes32 transferId indexed, address signer indexed, bytes32 payoutRefHash)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoleRevoked(bytes32 role indexed, address account indexed, address sender indexed)` |
@@ -59,4 +71,10 @@ Anyone can call these; they change nothing.
 
 ## Errors
 
-No custom errors; failures revert with a reason string.
+| Error |
+|---|
+| `ClaimEscrowBadClaimSignature()` |
+| `ClaimEscrowExpired(uint64 expiry)` |
+| `ClaimEscrowInvalidClaimSigner()` |
+| `ClaimEscrowSignatureRequired()` |
+| `ClaimEscrowTermsNotAuthorized()` |

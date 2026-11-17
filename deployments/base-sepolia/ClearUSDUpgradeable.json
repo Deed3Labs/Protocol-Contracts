@@ -77,6 +77,16 @@
     },
     {
       "type": "error",
+      "name": "ClearUSDAlreadyDelisted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "ClearUSDEncumbered",
       "inputs": [
         {
@@ -90,6 +100,138 @@
         {
           "type": "uint256",
           "name": "amount"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDEncumbranceUnreadable",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDFraudNoticeRequired",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet"
+        },
+        {
+          "type": "uint64",
+          "name": "noticeAt"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDInvalidLegalBasis",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "legalBasis"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDInvalidListingAction",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDInvalidReasonCode",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "reasonCode"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDNoPause",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDNotDelisted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDPauseCapReached",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "capEnd"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDPauseMaxTotalTooLong",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "maxTotal"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDPauseWindowTooLong",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "window"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDPaused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint32",
+          "name": "reason"
+        },
+        {
+          "type": "uint64",
+          "name": "until"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDReceiverNotMember",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "receiver"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDSameSigner",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer"
         }
       ]
     },
@@ -110,6 +252,11 @@
           "name": "amount"
         }
       ]
+    },
+    {
+      "type": "error",
+      "name": "ClearUSDZeroAccount",
+      "inputs": []
     },
     {
       "type": "error",
@@ -249,6 +396,121 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "AccountPauseRenewed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "reason",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "until",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AccountPaused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "reason",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "until",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AccountUnpaused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionApproved",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ActionProposed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": true
+        },
+        {
+          "type": "bytes4",
+          "name": "selector",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Approval",
       "inputs": [
         {
@@ -334,6 +596,23 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "EncumbranceSourceReverted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "lastKnownLock",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "EncumbranceSourceUpdated",
       "inputs": [
         {
@@ -346,11 +625,118 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "FraudNoticeRecorded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "noticeHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Initialized",
       "inputs": [
         {
           "type": "uint64",
           "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "IntentFactoryUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "factory",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "MembershipSourceUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PauseLegalBasisRecorded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "legalBasis",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "legalBasisHash",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "until",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PauseMaxTotalUpdated",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "maxTotal",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PauseWindowUpdated",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "window",
           "indexed": false
         }
       ]
@@ -424,6 +810,62 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "SecurityPauseRenewed",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "reason",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "until",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SecurityPaused",
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "reason",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "until",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SecurityUnpaused",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "signer",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Transfer",
       "inputs": [
         {
@@ -456,6 +898,77 @@
       ]
     },
     {
+      "type": "event",
+      "anonymous": false,
+      "name": "WalletDelisted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet",
+          "indexed": true
+        },
+        {
+          "type": "uint8",
+          "name": "reasonCode",
+          "indexed": false
+        },
+        {
+          "type": "bytes32",
+          "name": "decisionHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WalletListed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "WalletRelisted",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet",
+          "indexed": true
+        },
+        {
+          "type": "bytes32",
+          "name": "decisionHash",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "proposer",
+          "indexed": false
+        },
+        {
+          "type": "address",
+          "name": "approver",
+          "indexed": false
+        }
+      ]
+    },
+    {
       "type": "function",
       "name": "BURNER_ROLE",
       "constant": true,
@@ -471,7 +984,63 @@
     },
     {
       "type": "function",
+      "name": "CONTINUATION_PERIOD",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "DEFAULT_ADMIN_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "DEFAULT_PAUSE_WINDOW",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "FRAUD_NOTICE_PERIOD",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "FRAUD_ROLE",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -499,7 +1068,77 @@
     },
     {
       "type": "function",
+      "name": "LISTING_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MAX_PAUSE_WINDOW",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "MINTER_ROLE",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "bytes32",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "PAUSE_MAX_TOTAL",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "REPAUSE_COOLDOWN",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "SECURITY_ROLE",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -750,6 +1389,27 @@
     },
     {
       "type": "function",
+      "name": "delist",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet"
+        },
+        {
+          "type": "uint8",
+          "name": "reasonCode"
+        },
+        {
+          "type": "bytes32",
+          "name": "decisionHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "encumbranceSource",
       "constant": true,
       "stateMutability": "view",
@@ -906,6 +1566,85 @@
     },
     {
       "type": "function",
+      "name": "intentFactory",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "isPauseInForce",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lastKnownLockOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "listingOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint8",
+          "name": "status"
+        },
+        {
+          "type": "uint8",
+          "name": "reasonCode"
+        },
+        {
+          "type": "uint64",
+          "name": "fraudNoticeAt"
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "maxSupply",
       "constant": true,
       "stateMutability": "view",
@@ -914,6 +1653,39 @@
       "outputs": [
         {
           "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "mayReceive",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "membershipSource",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
           "name": ""
         }
       ]
@@ -965,6 +1737,134 @@
     },
     {
       "type": "function",
+      "name": "pauseAccount",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "uint32",
+          "name": "reason"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "pauseAccountWithLegalBasis",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "uint32",
+          "name": "reason"
+        },
+        {
+          "type": "uint8",
+          "name": "legalBasis"
+        },
+        {
+          "type": "bytes32",
+          "name": "legalBasisHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "pauseClock",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pauseForSecurity",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "reason"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "pauseForSecurityWithLegalBasis",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "reason"
+        },
+        {
+          "type": "uint8",
+          "name": "legalBasis"
+        },
+        {
+          "type": "bytes32",
+          "name": "legalBasisHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "pauseMaxTotal",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pausedUntil",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "pendingDefaultAdmin",
       "constant": true,
       "stateMutability": "view",
@@ -1001,6 +1901,25 @@
     },
     {
       "type": "function",
+      "name": "proposerOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "action"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "proxiableUUID",
       "constant": true,
       "stateMutability": "view",
@@ -1012,6 +1931,116 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "recordFraudNotice",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet"
+        },
+        {
+          "type": "bytes32",
+          "name": "noticeHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "relist",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet"
+        },
+        {
+          "type": "bytes32",
+          "name": "decisionHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "renewAccountPause",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "uint32",
+          "name": "reason"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "renewAccountPauseWithLegalBasis",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        },
+        {
+          "type": "uint32",
+          "name": "reason"
+        },
+        {
+          "type": "uint8",
+          "name": "legalBasis"
+        },
+        {
+          "type": "bytes32",
+          "name": "legalBasisHash"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "renewSecurityPause",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "reason"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "renewSecurityPauseWithLegalBasis",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint32",
+          "name": "reason"
+        },
+        {
+          "type": "uint8",
+          "name": "legalBasis"
+        },
+        {
+          "type": "bytes32",
+          "name": "legalBasisHash"
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -1104,6 +2133,58 @@
     },
     {
       "type": "function",
+      "name": "setIntentFactory",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "factory"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setMembershipSource",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "source"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setPauseMaxTotal",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "maxTotal"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setPauseWindow",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "window"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "supportsInterface",
       "constant": true,
       "stateMutability": "pure",
@@ -1132,6 +2213,42 @@
         {
           "type": "string",
           "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "syncEncumbrance",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "locked"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "syncListing",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "wallet"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": "listed"
         }
       ]
     },
@@ -1196,6 +2313,27 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "unpauseAccount",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "unpauseSecurity",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
     },
     {
       "type": "function",

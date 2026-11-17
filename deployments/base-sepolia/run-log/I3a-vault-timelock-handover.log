@@ -1,0 +1,15 @@
+Clear Financial Safe 0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50: 2 of 4
++ VaultTimelock deployed to 0xb49c85E8E7eFB4401aaAb2745C9198a239071994
+vault: RELAYER_ROLE -> 0x6Cbdf4469856C70C07C95a6c276c218F64e0Fcb3
+vault: PAUSER_ROLE -> 0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a, 0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23
+vault: PILOT_ROLE -> 0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a, 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+vault: admin -> timelock; the deployer holds no vault role
+clrusd: FRAUD_ROLE -> 0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23, 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+clrusd: SECURITY_ROLE -> 0x608d8A767C4Bf5063f5FA5DfE29F31DA3BF77c23, 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+clrusd: LISTING_ROLE -> 0x558D4318071EBC15e7ED13d8e880Dc1D17A7698a, 0xA0e10CCAd487937195A0b756fc1055cd810Bd8a7
+clrusd: UPGRADER_ROLE and CCIP admin -> timelock; DEFAULT_ADMIN_ROLE transfer begun
+token pool: ownership transfer to the timelock begun
+
+The deployer holds no vault or CLRUSD role. For the Clear Financial Safe to schedule (scheduleBatch, 7 days):
+  0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1  0xcefc1429   # CLRUSD: the timelock accepts DEFAULT_ADMIN_ROLE (after the token's admin delay)
+  0xd8a171c293969E8b97EFE1a9dA7742205e23CCc1  0x79ba5097   # token pool: the timelock accepts ownership

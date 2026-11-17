@@ -31,7 +31,7 @@ const GUIDES = {
   CollateralRegistry: 'credit.md', LimitCalculator: 'credit.md', Liquidator: 'credit.md', AccessManager: 'credit.md',
   MembershipRegistry: 'credit.md', NetworkRegistry: 'credit.md',
   PayoutPool: 'settlement.md', MerchantRegistry: 'settlement.md', LendingPool: 'settlement.md',
-  AssurancePool: 'reserve.md', AssuranceOracle: 'reserve.md', TokenRegistry: 'token-registry.md',
+  AssurancePool: 'reserve.md', AssurancePoolV2: 'reserve.md', AssuranceOracle: 'reserve.md', TokenRegistry: 'token-registry.md',
   BondVault: 'bonds.md', BurnerBond: 'bonds.md', BurnerBondDeposit: 'bonds.md', BurnerBondFactory: 'bonds.md', BondValuer: 'bonds.md',
   DeedNFT: 'deed-track/smart-contracts.md', Validator: 'deed-track/validation-system.md', ValidatorRegistry: 'deed-track/validation-system.md',
   FundManager: 'deed-track/smart-contracts.md', MetadataRenderer: 'deed-track/metadata-renderer.md',
@@ -89,8 +89,13 @@ for (const file of solFiles) {
   }
 }
 
+// A record named apart from its source: AssurancePoolV2 is AssurancePool.sol's Phase 2c contract,
+// deployed beside the retired one (decision 47).
+const SOURCE_OF = { AssurancePoolV2: 'AssurancePool' };
+
 function sourceFor(name) {
-  return contracts.has(name) ? name : null;
+  const source = SOURCE_OF[name] ?? name;
+  return contracts.has(source) ? source : null;
 }
 
 /** The contract and its in-repo parents, nearest first. */
@@ -168,7 +173,13 @@ const param = (p) => `${type(p)}${p.name ? ' ' + p.name : ''}${p.indexed ? ' ind
 const sig = (x) => `${x.name}(${(x.inputs ?? []).map(param).join(', ')})`;
 const esc = (s) => s.replace(/\|/g, '\\|');
 
-const SUPERSEDED = /(Legacy|V\d+)$/;
+// Superseded and retired deployments stay on record but aren't documented: the `*Legacy` and `*V1`
+// generations, the pre-audit credit stack (`*PreAudit`, decision 48), the pre-2f bonds (`*Pre2f`) and
+// the pre-2d intent factory (`*Pre2d`). AssurancePoolV2 is the live pool, so V2 and above are kept.
+const SUPERSEDED = /(Legacy|V1|PreAudit|Pre2f|Pre2d)$/;
+// A record left under a retired contract's old name: the bond deposit contract (decision 8), whose
+// record still names the pre-2f deposit contract.
+const RETIRED = new Set(['BurnerBondDeposit']);
 
 function loadDeployments() {
   const byName = new Map();
@@ -181,7 +192,7 @@ function loadDeployments() {
       if (!record.address || !Array.isArray(abi)) continue;
       const name = f.replace(/\.json$/, '');
       // Superseded deployments (`*Legacy`, `*V1`…) stay on record in deployments/ but aren't documented.
-      if (SUPERSEDED.test(name)) continue;
+      if (SUPERSEDED.test(name) || RETIRED.has(name)) continue;
       if (!byName.has(name)) byName.set(name, { name, abi, networks: [] });
       byName.get(name).networks.push({ ...net, address: record.address });
     }

@@ -1,0 +1,41 @@
+Deploying the credit core to base-sepolia as 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+
+= AccessManager at 0x23aF9715761156C24C2de3666587753168f28DBe
++ ClearCredit deployed to 0x5923e02EdFb6724a08A28B79C902b40c748082Bc
++ NetworkRegistry deployed to 0xee10a0d79a718cd13c49b68ce6ccCda398781164
++ RevolvingIssuer deployed to 0xBec598bee24cF2973d42eA85e6028621180fE2F0
++ TermIssuer deployed to 0x1b1695353f14E889906237D9b9C386eD0393da57
++ CollateralRegistry deployed to 0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A
++ LimitCalculator deployed to 0x6C0859EcD05C6BB604c91B9De1CAf04724744a20
+
+Wiring:
+  operator granted to ClearCredit
+  operator granted to RevolvingIssuer
+  operator granted to TermIssuer
+  operator granted to LimitCalculator
+  ledger -> NetworkRegistry
+  CollateralRegistry operator -> LimitCalculator
+  RevolvingIssuer -> CollateralRegistry
+  tier SAVINGS at 0 bps/cycle
+  tier BOND at 65 bps/cycle
+  tier POOL_SHARE at 75 bps/cycle
+  tier INCOME at 150 bps/cycle
+  tier BOOST at 300 bps/cycle
+  collateral SAVINGS at 100%
+  collateral BOND at 95%
+  collateral POOL_SHARE at 70%
+  collateral INCOME at 0%
+  collateral BOOST at 0%
+  clrusdKind -> SAVINGS
+  CollateralRegistry clrusdToken -> ClearUSDUpgradeable
+  RevolvingIssuer clrusdToken -> ClearUSDUpgradeable
+  CREDIT_LIMITS_ROLE -> 0x6C0859EcD05C6BB604c91B9De1CAf04724744a20
+  CREDIT_LINES_ROLE -> 0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd
+  CREDIT_LIMITS_ROLE -> 0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd
+  daily caps: capacity 50000000000, term limits 50000000000, plans 50000000000, card 2500000000/25000000000
+  ledger reserve token -> 0x036CbD53842c5426634e7929541eC2318f3dCF7e
+  ledger remainder -> Lending Co. 0xfAFf1081F77bF528bA21eea590f251a755bCdf65
+  registered RevolvingIssuer against the ledger
+  registered TermIssuer against the ledger
+
+Credit core deployed.

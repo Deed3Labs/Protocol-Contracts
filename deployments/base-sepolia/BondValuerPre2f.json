@@ -1,0 +1,54 @@
+{
+  "address": "0x5cf830BE04a0E42246334b90870B87ccd898c31e",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_collection"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "collection",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "valueOfItems",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256[]",
+          "name": "itemIds"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "value"
+        }
+      ]
+    }
+  ],
+  "blockNumber": 0
+}

@@ -100,11 +100,61 @@ export {
   claimKeySeed,
   claimTypedData,
   claimWindowOpen,
+  PAYOUT_CLAIM_TYPE_STRING,
+  PAYOUT_CLAIM_TYPES,
+  PAYOUT_REF_PREFIX,
+  payoutClaimTypedData,
+  payoutRefSeed,
   TRANSFER_TERMS_TYPES,
+  type ClaimPayoutMethod,
   type ClaimTransferTerms,
 } from './claimKey';
 
+export {
+  COLLATERAL_REGISTRY_DOMAIN_NAME,
+  COLLATERAL_REGISTRY_DOMAIN_VERSION,
+  COLLATERAL_SIGNED_TYPES,
+  collateralMessage,
+  collateralMismatch,
+  collateralRegistryDomain,
+  collateralTypedData,
+  collateralTypeString,
+  MATURITY_INSTRUCTION_VERSION,
+  maturityInstructionLines,
+  maturityInstructionText,
+  PLEDGE_SIGNATURE_TTL_SECONDS,
+  pledgeTypedData,
+  type CollateralDomain,
+  type CollateralPrimaryType,
+  type CollateralShown,
+  type CollateralTypedData,
+} from './pledge';
+
 export { formatCalendarDate, parseCalendarDate } from './dates';
+
+export {
+  AUTO_CLEAR_AUTHORIZATION_VERSION,
+  AUTO_CLEAR_SCOPE,
+  AUTO_CLEAR_TYPE_STRING,
+  autoClearAuthorizationLines,
+  autoClearAuthorizationText,
+  AUTO_CLEAR_TYPES,
+  autoClearMessage,
+  autoClearTypedData,
+  REVOLVING_DOMAIN_NAME,
+  REVOLVING_DOMAIN_VERSION,
+  revolvingDomain,
+  SAVINGS_DRAW_TYPE_STRING,
+  SAVINGS_DRAW_TYPES,
+  savingsDrawMessage,
+  savingsDrawTypedData,
+  SWITCH_SIGNATURE_TTL_SECONDS,
+  switchMismatch,
+  ZERO_AUTH_HASH,
+  type AutoClearScope,
+  type AutoClearTypedData,
+  type SavingsDrawTypedData,
+} from './revolvingSwitches';
 
 export type {
   Charge,

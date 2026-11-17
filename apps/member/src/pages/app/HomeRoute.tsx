@@ -1,6 +1,8 @@
+import CycleStandingNotice from '@/components/clear/CycleStandingNotice';
 import PendingFigures from '@/components/clear/PendingFigures';
 import { useEffect, useState } from 'react';
 import HomePage from './HomePage';
+import { useLogout } from '@/hooks/useLogout';
 import { HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
@@ -17,13 +19,11 @@ import { useRemembered, walletKey } from '@/lib/rememberedState';
 import {
   getCardTransactions,
   getCredit,
-  getLithicAccount,
   getPaySummary,
   readAutopay,
   type AutopaySummary,
   type CardTransaction,
   type CreditState,
-  type LithicAccountResponse,
   type PaySummary,
 } from '@/utils/apiClient';
 import { autoSaveFromRules, withOnTrack } from '@/lib/clearModel';
@@ -45,8 +45,7 @@ import { autoSaveFromRules, withOnTrack } from '@/lib/clearModel';
 /**
  * Live Home.
  *
- * Balances, savings, equity credits, recent activity, the deposit numbers behind "Account details"
- * and now the credit tiers are all real. The tiers come from /api/credit, which reads the
+ * Balances, savings, equity credits, recent activity and now the credit tiers are all real. The tiers come from /api/credit, which reads the
  * contracts rather than recomputing what they already decide.
  *
  * Carry cost, the cycle and the limit backing are read too. All three were assumed to need
@@ -55,23 +54,17 @@ import { autoSaveFromRules, withOnTrack } from '@/lib/clearModel';
  *
  * Term plans are real too now, which is what makes day one's two arrivals reachable: the page
  * reverses its order for a member who has an active plan, and a counter member who approved a
- * charge now has one. The locked rows beneath are kept — partner credit and an ELPA are products
+ * charge now has one. The locked rows beneath are kept — partner credit and Clear Cash are products
  * nobody has unlocked yet, not fields that failed to load.
  *
- * The account numbers are fetched and never cached to disk: they are bank details, and the server
- * reads them from Lithic on demand for the same reason.
+ * The account numbers are not read here at all. Spendable's details surface (AccountDetailsDialog)
+ * reads them from Lithic when it opens and drops them when it closes; holding them for the session
+ * on Home would keep bank details in memory that nobody asked to see.
  */
 export default function HomeRoute() {
   const { address } = useAppKitAccount();
   const { cash, savings, loading: balancesLoading } = useClearBalances();
   const { items, loading: txLoading } = useClearTransactions();
-  // Remembered for the session: returning to Home draws what it showed, then refreshes.
-  const [lithic, setLithic] = useRemembered<LithicAccountResponse | null>(
-    `home:lithic:${walletKey(address)}`,
-    null,
-    // Carries the direct-deposit account and routing numbers: this session only, never the device.
-    { device: false },
-  );
   const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${walletKey(address)}`, null);
   // The auto-save rule, for the savings card's "On track for" date. Same key as Savings.
   const [autopay, setAutopay] = useRemembered<AutopaySummary | null>(`autosave:${walletKey(address)}`, null);
@@ -86,6 +79,8 @@ export default function HomeRoute() {
   // Your shops (rewards spec, section 6): shown on Home once they've joined one.
   const yourShops = useYourShops(address);
   const repay = useCreditRepay();
+  // Spendable's full number, for a member without Face ID: a fresh sign-in, as the lock screen does.
+  const logout = useLogout();
   const payPlan = usePayPlan();
   const setSplit = useSetPlanSplit();
   const payBack = useRepayWrittenOff();
@@ -93,9 +88,6 @@ export default function HomeRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    void getLithicAccount().then((result) => {
-      if (!cancelled) setLithic(result);
-    });
     // Recent activity is both halves of what a member spent, so this page needs the card's side of
     // it too. Without this the preview showed sends and withdrawals and no purchases at all.
     void getCardTransactions().then(({ value }) => {
@@ -111,7 +103,7 @@ export default function HomeRoute() {
    *
    * One effect and one listener on purpose. As two, the credit read refreshed after a deposit and
    * the equity ledger did not — so the limit moved while the credits feeding the savings card and
-   * the ELPA row sat at their old figures until the member changed page. They are downstream of
+   * the milestone path sat at their old figures until the member changed page. They are downstream of
    * the same deposit; splitting them was splitting one fact into two that could disagree.
    */
   useEffect(() => {
@@ -147,7 +139,6 @@ export default function HomeRoute() {
     };
   }, [address]);
 
-  const deposit = lithic?.deposit ?? null;
   // Only override a figure once it has been read. A zero balance mid-fetch tells a member their
   // money is gone, which is a worse thing to show than the placeholder it would replace.
   const haveBalances = Boolean(address) && !balancesLoading;
@@ -179,9 +170,6 @@ export default function HomeRoute() {
       // Savings or Earn but never to the card. This is where that balance belongs -- leaving it at
       // zero told a member holding 35 USDC that they had nothing to place.
       ...(haveBalances ? { readyToAllocate: cash } : {}),
-      ...(deposit
-        ? { accountNumber: deposit.accountNumber, routingNumber: deposit.routingNumber }
-        : {}),
     },
     /*
      * Home shows a preview; Activity shows the list. Empty is the honest answer for a new member,
@@ -206,14 +194,8 @@ export default function HomeRoute() {
           // The last placeholder on this page, and the one that made day one's two arrivals
           // unreachable: HomePage already reverses its order for a member who has a plan, and
           // until now no member could have one it could see.
-          // Credits come from the equity ledger, so the ELPA row shows the member's real progress
-          // toward it rather than a hardcoded zero.
-          termPlans: toTermPlans(
-            credit.plans,
-            HOME_DAY_ONE.termPlans,
-            pay ? { credits: pay.totalEquity, goal: HOME_DAY_ONE.savings.creditsGoal } : undefined,
-            credit.term,
-          ),
+          // No ELPA here: it is not a term plan (Addendum 3), and Savings shows it from the books.
+          termPlans: toTermPlans(credit.plans, HOME_DAY_ONE.termPlans, credit.term),
         }
       : {}),
   };
@@ -229,6 +211,8 @@ export default function HomeRoute() {
 
   return (
     <PendingFigures pending={pending}>
+    {/* Phase 2b: a missed cycle or a cure notice, and the Boost cap, from the chain's own record. */}
+    <CycleStandingNotice standing={credit?.standing} />
     <HomePage
       pending={pending}
       data={data}
@@ -239,6 +223,7 @@ export default function HomeRoute() {
       onPayBack={payBack}
       savingsFree={savingsFree}
       yourShops={yourShops}
+      onSignInAgain={() => void logout({ sendCode: true })}
     />
     </PendingFigures>
   );

@@ -1,6 +1,17 @@
 {
-  "address": "0x1d9f1ECDc70b31256aFA75A73F991cfAa8bC928C",
+  "address": "0x5923e02EdFb6724a08A28B79C902b40c748082Bc",
   "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "StableCreditBurnDisabled",
+      "inputs": []
+    },
     {
       "type": "error",
       "name": "StableCreditCeilingExceeded",
@@ -21,8 +32,32 @@
     },
     {
       "type": "error",
+      "name": "StableCreditInvalidAddress",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "StableCreditInvalidCarryRecipient",
       "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "StableCreditLostDebtNotRedeemable",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "StableCreditMerchantMayOnlyRedeem",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        }
+      ]
     },
     {
       "type": "error",
@@ -40,7 +75,17 @@
     },
     {
       "type": "error",
+      "name": "StableCreditNoLenderOperating",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "StableCreditNoPayoutPool",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "StableCreditNoReserveToken",
       "inputs": []
     },
     {
@@ -73,6 +118,20 @@
     },
     {
       "type": "error",
+      "name": "StableCreditRecipientNotEligible",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "from"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "StableCreditRefundExceedsPayment",
       "inputs": [
         {
@@ -84,6 +143,11 @@
           "name": "paid"
         }
       ]
+    },
+    {
+      "type": "error",
+      "name": "StableCreditReserveTokenSet",
+      "inputs": []
     },
     {
       "type": "error",
@@ -192,18 +256,6 @@
         {
           "type": "uint256",
           "name": "value",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "AssurancePoolUpdated",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "assurancePool",
           "indexed": false
         }
       ]
@@ -391,6 +443,18 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "LenderOperatingUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "lenderOperating",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "LostDebtBurned",
       "inputs": [
         {
@@ -402,6 +466,18 @@
           "type": "uint256",
           "name": "amount",
           "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "MerchantRegistryUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchantRegistry",
+          "indexed": true
         }
       ]
     },
@@ -530,6 +606,40 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "RefundReceivableCollected",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RefundReceivableRecorded",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "RefundRepaid",
       "inputs": [
         {
@@ -562,6 +672,35 @@
         {
           "type": "uint256",
           "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ReserveTokenSet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "reserveToken",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SystemRecipientUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "recipient",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "allowed",
           "indexed": false
         }
       ]
@@ -720,20 +859,6 @@
     },
     {
       "type": "function",
-      "name": "assurancePool",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
       "name": "balanceOf",
       "constant": true,
       "stateMutability": "view",
@@ -754,12 +879,13 @@
     {
       "type": "function",
       "name": "burn",
-      "constant": false,
+      "constant": true,
+      "stateMutability": "pure",
       "payable": false,
       "inputs": [
         {
           "type": "uint256",
-          "name": "amount"
+          "name": ""
         }
       ],
       "outputs": []
@@ -767,16 +893,17 @@
     {
       "type": "function",
       "name": "burnFrom",
-      "constant": false,
+      "constant": true,
+      "stateMutability": "pure",
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "account"
+          "name": ""
         },
         {
           "type": "uint256",
-          "name": "amount"
+          "name": ""
         }
       ],
       "outputs": []
@@ -784,13 +911,33 @@
     {
       "type": "function",
       "name": "burnLostDebt",
-      "constant": false,
+      "constant": true,
+      "stateMutability": "pure",
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "member"
+          "name": ""
         },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "convertStableCreditToReserveToken",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
         {
           "type": "uint256",
           "name": "amount"
@@ -962,6 +1109,63 @@
     },
     {
       "type": "function",
+      "name": "isActiveMerchant",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "isEligibleRecipient",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "recipient"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "isSystemRecipient",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "issuerCreditLimit",
       "constant": true,
       "stateMutability": "view",
@@ -985,6 +1189,20 @@
     },
     {
       "type": "function",
+      "name": "lenderOperating",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "lostDebt",
       "constant": true,
       "stateMutability": "view",
@@ -993,6 +1211,20 @@
       "outputs": [
         {
           "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "merchantRegistry",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
           "name": ""
         }
       ]
@@ -1088,6 +1320,39 @@
     },
     {
       "type": "function",
+      "name": "refundReceivableOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "refundReceivables",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "repayCreditBalance",
       "constant": false,
       "payable": false,
@@ -1163,6 +1428,20 @@
     },
     {
       "type": "function",
+      "name": "reserveToken",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "reversePurchase",
       "constant": false,
       "payable": false,
@@ -1209,13 +1488,26 @@
     },
     {
       "type": "function",
-      "name": "setAssurancePool",
+      "name": "setLenderOperating",
       "constant": false,
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "_assurancePool"
+          "name": "operating"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setMerchantRegistry",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_merchantRegistry"
         }
       ],
       "outputs": []
@@ -1242,6 +1534,36 @@
         {
           "type": "address",
           "name": "_payoutPool"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setReserveToken",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "token"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setSystemRecipient",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "recipient"
+        },
+        {
+          "type": "bool",
+          "name": "allowed"
         }
       ],
       "outputs": []

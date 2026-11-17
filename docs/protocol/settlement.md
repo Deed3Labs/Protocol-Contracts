@@ -345,29 +345,10 @@ headroom for the whole amount, draws the tiers in tier order (`_draw`), and call
 discount. That account then holds an ordinary positive balance. `reverseCardSpend` undoes it through
 `reversePurchase`. Details are in [`credit.md`](./credit.md).
 
-**Since Phase 2f the card settler no longer borrows from the pool** (decision 17): `borrow` reverts
-and `borrowableToday` is zero, and Clear Lending funds card settlement from what it draws as
-Deployments. The API path below
-([`poolFunding.ts`](../../apps/api/src/services/chain/poolFunding.ts)) describes the pre-2f flow; the
-held app PRs (#887, #890) must stop drawing from the pool directly.
-
-- **Which tiers.** `POOL_FUNDED_TIER_KINDS`, by default `INCOME,BOOST`: the unsecured tiers.
-  Savings-backed and asset-backed credit is not funded from the pool.
-- **Borrowing.** The API reads `TierDrawn` on a pool-funded tier from the receipts of the
-  transactions it sends (settlement, reversal, netting, re-issue) and borrows the same amount to
-  the card-funding wallet. The merchant is still paid in fiat from the co-op's float; moving the
-  borrowed USDC into that float is a periodic off-ramp outside the API.
-- **Repaying.** On `TierRepaid` it calls `LendingPool.repay` for the amount repaid. Carry is
-  materialised into the tier's principal (`RevolvingIssuer._materialiseCarry`) before any payment
-  is placed, so that amount includes the carry accrued on the tier.
-- **Where the carry lands.** `repay` lowers `totalBorrowed` by the whole amount. While other loans
-  are outstanding, the carry part therefore lowers `totalBorrowed` instead of raising
-  `totalAssets`, and does not move the share price. It reaches the share price once
-  `totalBorrowed` has fallen to zero.
-- **Waiting.** A borrow waits while the pool's `availableCash()` is short; a repayment waits while
-  the card-funding wallet holds too little USDC, and the row says to top it up from treasury. Each
-  movement is one row, keyed by transaction and log index, so a receipt read twice is recorded
-  once.
+**The card settler does not borrow from the pool** (decision 17): `borrow` reverts and
+`borrowableToday` is zero. Clear Lending funds card settlement from what it draws as recorded
+Deployments, and its treasury pays them back as Returns (`returnFunds`). The API moves no money
+to or from the pool: it sends the settlement, reversal and netting calls above and nothing else.
 
 ## Refunds
 
