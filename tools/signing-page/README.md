@@ -24,15 +24,17 @@ One page for the Base Sepolia rollout's co-signer steps: the calls that people s
    [http://localhost:8080/tools/signing-page/?plan=../../deployments/base-sepolia/signing-plan.json](http://localhost:8080/tools/signing-page/?plan=../../deployments/base-sepolia/signing-plan.json).
    (Or serve only this folder, `cd tools/signing-page && python3 -m http.server 8080 --bind 127.0.0.1`, open http://localhost:8080 and drop the plan file on the page.)
 
-   The yellow bar says "Base Sepolia test network". The page refuses a plan for any other chain, and a plan changed after the script wrote it.
+   The heading says "Base Sepolia rollout" with a "Base Sepolia · test money only" tag. The page refuses a plan for any other chain, a plan changed after the script wrote it, and a `?plan=` on another site.
 
-3. **Connect MetaMask.** The page asks MetaMask to switch to Base Sepolia (and to add it if it is missing).
+   The page follows Command Center's Build, Signing tab: the **signing run** (one column per stage, done / ready / waiting counts, the block the plan was read at and its fingerprint), the **steps** list, **your wallet**, and a side panel with each step's detail. Click a stage to show only its steps (click it again to show all).
 
-4. **Sign the ready steps.** Each card says who signs, which contract, the function and its arguments. "Sign and send" works only when MetaMask is on the account the step names; otherwise the card says which account to switch to. MetaMask shows the call for you to confirm, then the page shows the transaction with a link to sepolia.basescan.org and whether it succeeded. Each signer needs a little Base Sepolia ETH for gas.
+3. **Connect MetaMask.** The page asks MetaMask to switch to Base Sepolia (and to add it if it is missing). The list then shows "Ready for this wallet": the ready steps the connected account signs. Switch accounts in MetaMask and the page follows.
 
-5. **Safe steps** (marked "Safe") are not sent from this page. Open the Safe app (app.safe.global) on the Safe, choose Apps, Transaction Builder, and drop in the batch file the script wrote (the card can also download it). Today the Safe needs one signature (the deployer's MetaMask account); after the step that adds the second MetaMask owner (`addOwnerWithThreshold(…698a, 2)`), every Safe transaction needs both.
+4. **Sign the ready steps.** Click a step: the panel says who signs, which contract, the function, its arguments and the exact call data. "Sign and send" works only when MetaMask is on the account the step names and on the plan's network; otherwise the panel says which account to switch to. MetaMask shows the call for you to confirm, then the panel shows the transaction with a link to sepolia.basescan.org and whether it succeeded. Each signer needs a little Base Sepolia ETH for gas.
 
-6. **Re-run the plan script after each stage** and load the new plan. It reads the chain again: steps you sent show as done, and the steps that waited for them (for example a change's confirmation, which needs the change number from its proposal) become ready.
+5. **Safe steps** (marked "Safe batch", chip "In the Safe app") are not sent from this page. In the step's panel, "Download batch file" saves the step's call as a Transaction Builder batch (the script also writes it next to the plan), and "Open in the Safe app" opens app.safe.global's Transaction Builder for that Safe on Base Sepolia: drop the file in and sign there. The page cannot see the Safe's queue, so the step stays "Ready" until the chain shows it done. Today the Safe needs one signature (the deployer's MetaMask account); after the step that adds the second MetaMask owner (`addOwnerWithThreshold(…698a, 2)`), every Safe transaction needs both.
+
+6. **Re-run the plan script after each stage, then press "Read the chain again".** When the page was opened with `?plan=`, it reads the plan file again (and checks its chain and fingerprint again), then reads the receipt of every step you sent through MetaMask: confirmed steps turn done, failed ones say so. A step that waited only for steps now done opens straight away when its call is already in the plan; one whose call needs a value from an earlier step (a change's confirmation needs the change number from its proposal) says to re-run the plan script. Opened from a file, load the new plan with "Load a plan". The page remembers what this browser sent, per plan.
 
 ## The order
 
@@ -57,11 +59,12 @@ Every signer comes from `deploy/config/base-sepolia.rollout.env` and `deploy/con
 
 ## Checking the page
 
-`page.check.cjs` loads the page in Chromium with a mock MetaMask and checks the send button, the exact request, the refusals and that the page makes no outside request:
+`page.check.cjs` loads the page in Chromium with a mock MetaMask and checks the filters, the stage track, the send button, the exact request, the Safe batch file and link, "Read the chain again", the refusals and that the page makes no outside request:
 
 ```bash
 node tools/signing-page/page.check.cjs
-PLAN=deployments/base-sepolia/signing-plan.json node tools/signing-page/page.check.cjs   # also load a real plan
+PLAN=deployments/base-sepolia/signing-plan.json node tools/signing-page/page.check.cjs   # also click through a real plan
+# several plans, separated by ":" (a local one: SIGNING_PLAN_SAMPLE=<file> on test/deploy/SigningPlan.deploy.spec.ts writes it)
 ```
 
 It needs Playwright's Chromium (`npx playwright install chromium` if it is missing). It is not part of CI.
