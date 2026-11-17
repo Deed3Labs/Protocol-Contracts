@@ -1,101 +1,40 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "../core/interfaces/stable-credit/IStableCredit.sol";
-import "../core/interfaces/stable-credit/ICreditIssuer.sol";
-import "../core/interfaces/IESADepositVault.sol";
-
-interface IClearUSDSeizable {
-    function seize(address holder, address to, uint256 amount) external;
-    function approve(address spender, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
-
-interface ICollateralSeizureSink {
-    function recordSeizure(address member, bytes32 kind, uint256 amount) external;
-}
-
-interface ISeizableShares {
-    function seizeShares(address holder, address to, uint256 shares) external;
-    function balanceOf(address account) external view returns (uint256);
-    function previewRedeem(uint256 shares) external view returns (uint256);
-    function maxRedeem(address owner) external view returns (uint256);
-    function redeem(uint256 shares, address receiver, address owner) external returns (uint256);
-    function requestWithdrawal(uint256 shares, address receiver) external returns (uint256);
-}
-
-interface ITierSettler {
-    function settleFromCollateral(address member, uint256 tierId, uint256 amount) external;
-    function principalOf(address member, uint256 tierId) external view returns (uint256);
-    function tierAt(uint256 tierId) external view returns (bytes32 kind, uint256 ratePerCycle, bool active);
-}
+import "./LiquidatorBase.sol";
+import "./LiquidatorEnforcement.sol";
 
 /// @title Liquidator
-/// @notice Turns a defaulted member's pledged savings into a repayment of their own debt.
-/// @dev This is why there is far less lost debt here than in the ledger this forked from. A
-/// default normally orphans supply: the credits were spent and are in someone else's hands, the
-/// obligation is written off, and the claims remain with nothing behind them. Seizing the
-/// collateral first covers the position instead, so nothing is orphaned and no lost debt is
-/// created -- which is the entire justification for RTD counting only what collateral does not
-/// reach.
+/// @notice The pledge module's enforcement side under MB-05: Savings on a default, pledged bonds
+/// through their own terms, pledged pool shares through `PoolShareEnforcer`, and the Liquidation
+/// Hold that delays all of it.
+/// @dev The path for Savings is deliberately mundane. Take the CLRUSD that was standing behind the
+/// credit, redeem it at the vault for the USDC that always backed it, and repay the member's savings
+/// tier with that USDC. Every step is a thing the system already does.
 ///
-/// The path is deliberately mundane. Take the CLRUSD that was standing behind the credit, redeem
-/// it at the vault for the USDC that always backed it, and repay the member's balance with that
-/// USDC. Every step is a thing the system already does; nothing is invented for the default case,
-/// which is the case least likely to be exercised before it matters.
-///
-/// Repayment goes through the ledger's public path, so the issuers are told and each absorbs its
-/// share through the same cost-ordered waterfall an ordinary payment would follow. A liquidation
-/// is not a special kind of money.
-contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
+/// What it does, and since Phase 2f (decisions 4, 7, 9, 10, 20-22) what it no longer does:
+///  - Savings (`liquidate`) only on a computed default, only against the savings tier, and only up
+///    to the Defaulted Amount still open and what the savings lock holds (MB-05 §7.2).
+///  - A missed cycle takes nothing (C2, decision 4): it halves the limit and counts toward default,
+///    and the registry keeps the Earn pledge locked behind the excess. `settleExcess` is gone.
+///  - Pledged pool shares are never seized (C5, decision 7). `PoolShareEnforcer` redeems them
+///    through the Yield Pool's queue and hands the proceeds here to apply.
+///  - Pledged bonds are paid under their own terms (`payPledged`, `settle`); this contract says
+///    whether MB-05 permits enforcement and applies what the bond pays.
+///  - The Earn rules (the Defaulted Amount, the combined Shortfall, the MB-05 §7.1 order) run in
+///    `LiquidatorEnforcement`, a delegatecall module created by this implementation's constructor.
+///  - The Liquidation Hold (12.6) and any 10c pause delay every enforcement path. They move nothing.
+contract Liquidator is LiquidatorBase {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
-    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
-    /// @dev The savings collateral kind, as the registry and the issuer both name it.
-    bytes32 private constant SAVINGS_KIND = "SAVINGS";
-
-    IStableCredit public stableCredit;
-    IClearUSDSeizable public clrusd;
-    IESADepositVault public vault;
-    IERC20Upgradeable public reserveToken;
-    ICollateralSeizureSink public collateralRegistry;
-
-    /// @notice issuers a member may settle against with their own savings. Operator-set.
-    /// @dev A member names the issuer in `settleFromSavings`, and the redeemed USDC is approved to
-    /// it -- so an untrusted issuer would be a way to walk locked collateral out of the lock. Only
-    /// issuers on this list are ever handed the member's savings.
-    mapping(address => bool) public trustedSavingsIssuer;
-
-    uint256[42] private __gap;
-
-    error LiquidatorInvalidAddress();
-    error LiquidatorNotInDefault(address member, address issuer);
-    error LiquidatorNothingToSeize(address member);
-    error LiquidatorNotRealizable(address collateral, uint256 seized);
-    error LiquidatorUntrustedIssuer(address issuer);
-    error LiquidatorNotSavingsTier(uint256 tierId, bytes32 kind);
-
-    event SharesSeized(
-        address indexed member, address indexed pool, uint256 shares, uint256 realized, bool queued
-    );
-
-    event Liquidated(
-        address indexed member,
-        address indexed issuer,
-        uint256 seized,
-        uint256 redeemed,
-        uint256 repaid
-    );
-
-    event TrustedSavingsIssuerUpdated(address indexed issuer, bool trusted);
-    event SettledFromSavings(address indexed member, address indexed issuer, uint256 seized, uint256 repaid);
+    /// @notice Where the Earn functions run (LiquidatorEnforcement). Created by this
+    /// implementation's constructor and fixed with it: upgrading the Liquidator deploys a fresh pair.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable enforcement;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
+        enforcement = address(new LiquidatorEnforcement());
         _disableInitializers();
     }
 
@@ -123,9 +62,7 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         reserveToken = IERC20Upgradeable(_reserveToken);
     }
 
-    function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
-
-    /// @notice allows or revokes an issuer members may settle against with their own savings.
+    /// @notice allows or revokes an issuer whose debt the pledge module answers for.
     function setTrustedSavingsIssuer(address issuer, bool trusted) external onlyRole(OPERATOR_ROLE) {
         if (issuer == address(0)) revert LiquidatorInvalidAddress();
         trustedSavingsIssuer[issuer] = trusted;
@@ -133,169 +70,282 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     /// @notice the member settles their savings-backed credit out of the savings that back it.
-    /// @dev The same move as a liquidation, chosen instead of suffered: the member's locked CLRUSD is
-    /// seized past the lock, redeemed one-for-one, and settled against the savings tier. Their savings
-    /// and their debt shrink by the same amount, and the lock lifts with it.
-    ///
-    /// Only ever the caller's own savings against the caller's own SAVINGS tier:
-    ///  - the issuer must be trusted, because it is handed the redeemed USDC;
-    ///  - the tier must be the savings tier, or collateral pledged against it could settle a dearer
-    ///    tier and leave the savings tier drawn against a pledge that no longer exists;
-    ///  - the seizure is recorded as SAVINGS, so it reduces the pledge it actually came from;
-    ///  - it is capped at what the tier owes, what the member holds, and (in the token) what is
-    ///    encumbered -- collateral beyond the debt stays theirs.
-    /// @param issuer address of the issuer holding the savings tier.
-    /// @param tierId the savings tier.
-    /// @param amount the most to settle, in ledger units.
-    /// @return repaid amount settled against the member's debt.
-    function settleFromSavings(address issuer, uint256 tierId, uint256 amount) external returns (uint256 repaid) {
-        if (!trustedSavingsIssuer[issuer]) revert LiquidatorUntrustedIssuer(issuer);
+    /// @dev The member's own instruction (MB-05 §7.9), not enforcement: their locked CLRUSD is taken
+    /// past the lock, redeemed one-for-one and settled against their own SAVINGS tier, capped at
+    /// what the tier owes and what they hold. Only a trusted issuer is handed the USDC.
+    function settleFromSavings(address issuer, uint256 tierId, uint256 amount) external noReenter returns (uint256 repaid) {
+        _requireTrusted(issuer);
         (bytes32 kind, , ) = ITierSettler(issuer).tierAt(tierId);
         if (kind != SAVINGS_KIND) revert LiquidatorNotSavingsTier(tierId, kind);
 
         address member = _msgSender();
-        uint256 owed = ITierSettler(issuer).principalOf(member, tierId);
-        uint256 available = clrusd.balanceOf(member);
-        uint256 seizing = amount;
-        if (owed < seizing) seizing = owed;
-        if (available < seizing) seizing = available;
+        uint256 seizing = _min(amount, _min(ITierSettler(issuer).principalOf(member, tierId), clrusd.balanceOf(member)));
         if (seizing == 0) revert LiquidatorNothingToSeize(member);
-
-        clrusd.seize(member, address(this), seizing);
-        collateralRegistry.recordSeizure(member, SAVINGS_KIND, seizing);
-        clrusd.approve(address(vault), seizing);
-        uint256 redeemed = vault.redeem(address(reserveToken), seizing, address(this));
-        reserveToken.forceApprove(issuer, redeemed);
-        ITierSettler(issuer).settleFromCollateral(member, tierId, redeemed);
-        repaid = redeemed;
-
+        repaid = _redeemSavings(member, issuer, tierId, seizing);
         emit SettledFromSavings(member, issuer, seizing, repaid);
     }
 
-    /// @notice covers a defaulted member's debt out of the collateral they pledged.
-    /// @dev The default is checked against the issuer that holds the position rather than taken
-    /// on the caller's word. The token bounds the seizure to what is actually encumbered, so the
-    /// worst a mistaken call can do is repay somebody's debt with their own collateral early.
-    /// @param member address of the defaulted member.
-    /// @param issuer address of the issuer the member defaulted with.
-    /// @return repaid amount of the member's balance settled.
+    /// @notice applies a defaulted member's Encumbered CLRUSD to their savings tier (MB-05 §7.2).
+    /// @dev Permissionless (compliance spec 10b): the default is computed on chain by a trusted
+    /// issuer and recorded only by that computation. The amount is the least of: the Defaulted
+    /// Amount of the line's secured positions still open (its past-due Secured Minimum, decision 22;
+    /// the unpaid Rebalance Amount is unsecured debt CLRUSD never pays, MB-05 §2.5(a); once the
+    /// issuer has recorded the line's closing, the whole Savings-Backed Drawn, decision 37), what
+    /// the savings tier owes, the CLRUSD the member holds and what the registry computes as locked.
+    /// Redeemed one-for-one, so there is no surplus and no deficiency. What it applies counts
+    /// against the same Defaulted Amount as asset-backed enforcement on that line.
     function liquidate(address member, address issuer, uint256 tierId, bytes32 kind)
         external
-        onlyRole(OPERATOR_ROLE)
+        noReenter
         returns (uint256 repaid)
     {
-        ICreditIssuer creditIssuer = ICreditIssuer(issuer);
-        // `inDefault` reads the credit period, and expiring one deletes it, so a member
-        // liquidated after the write-off would read as never having defaulted at all.
-        if (!creditIssuer.inDefault(member) && !creditIssuer.hasDefaulted(member)) {
-            revert LiquidatorNotInDefault(member, issuer);
-        }
+        _requireTrusted(issuer);
+        _requireNoHold(member);
+        // Savings settle only the savings tier (spec 12.5; MB-05 §2.5(a)).
+        (bytes32 tierKind, , ) = ITierSettler(issuer).tierAt(tierId);
+        if (kind != SAVINGS_KIND || tierKind != SAVINGS_KIND) revert LiquidatorNotSavingsTier(tierId, tierKind);
+        if (!_currentDefault(member, issuer)) revert LiquidatorNotInDefault(member, issuer);
 
-        // Never take more than the tier the collateral was pledged against still owes. Collateral
-        // beyond that is still the member's; a default is not a forfeiture of everything they
-        // saved.
-        uint256 owed = ITierSettler(issuer).principalOf(member, tierId);
-        uint256 available = clrusd.balanceOf(member);
-        uint256 seizing = owed < available ? owed : available;
+        (uint256 due, , uint64 episode) = _revolvingDue(member, issuer);
+        uint256 seizing = _min(_min(due, ITierSettler(issuer).principalOf(member, tierId)), clrusd.balanceOf(member));
+        seizing = _min(seizing, collateralRegistry.encumberedOfKind(member, kind));
         if (seizing == 0) revert LiquidatorNothingToSeize(member);
 
+        repaid = _redeemSavings(member, issuer, tierId, seizing);
+        _noteEnforced(member, issuer, episode, repaid, 0);
+        emit Liquidated(member, issuer, seizing, repaid, repaid);
+    }
+
+    /// @dev Takes `seizing` CLRUSD past the lock, records it, redeems it at the vault and settles
+    /// the USDC against the savings tier.
+    function _redeemSavings(address member, address issuer, uint256 tierId, uint256 seizing) private returns (uint256 redeemed) {
         clrusd.seize(member, address(this), seizing);
-        // The registry has to stop counting a pledge that is no longer there, or it will report
-        // the position as covered by collateral somebody else now holds.
-        collateralRegistry.recordSeizure(member, kind, seizing);
-
-        // The CLRUSD was always backed one-for-one by USDC in the vault. Redeeming turns the
-        // collateral back into the thing a repayment is actually made in.
+        // The registry stops counting a pledge that is no longer there.
+        collateralRegistry.recordSeizure(member, SAVINGS_KIND, seizing);
         clrusd.approve(address(vault), seizing);
-        uint256 redeemed = vault.redeem(address(reserveToken), seizing, address(this));
-
-        // Settled against the tier the collateral backed rather than through the waterfall, which
-        // would put it toward whichever tier costs most and leave this one drawn against a pledge
-        // that no longer exists.
+        redeemed = vault.redeem(address(reserveToken), seizing, address(this));
         reserveToken.forceApprove(issuer, redeemed);
         ITierSettler(issuer).settleFromCollateral(member, tierId, redeemed);
-        repaid = redeemed;
-
-        emit Liquidated(member, issuer, seizing, redeemed, repaid);
     }
 
-    /// @notice covers a defaulted member's debt out of pool shares they pledged.
-    /// @dev The other half of liquidation. Savings-backed collateral is CLRUSD, which redeems
-    /// one-for-one on demand, so seizing it and settling the debt happen in the same breath. Pool
-    /// shares do not work that way: they are a claim on a pool that may have lent the money out,
-    /// so turning them into cash can land in the withdrawal queue behind other depositors.
-    ///
-    /// That is the timing risk the haircut does not price. A haircut says what the collateral is
-    /// worth; it says nothing about when. So this settles what it can realize now and queues the
-    /// rest, rather than pretending a claim on a lent-out pool is money.
-    ///
-    /// The debt is not forgiven while that happens. The member still owes it, the co-op holds the
-    /// shares, and settlement follows the cash.
-    /// @param member address of the defaulted member.
-    /// @param issuer address of the issuer holding the position.
-    /// @param tierId tier the shares were pledged against.
-    /// @param kind collateral type, as the registry knows it.
-    /// @param pool the share pool.
-    /// @return realized amount settled against the member's debt now.
-    /// @return queued whether the remainder is waiting on the pool.
-    function liquidateShares(
-        address member,
-        address issuer,
-        uint256 tierId,
-        bytes32 kind,
-        address pool
-    ) external onlyRole(OPERATOR_ROLE) returns (uint256 realized, bool queued) {
-        ICreditIssuer creditIssuer = ICreditIssuer(issuer);
-        if (!creditIssuer.inDefault(member) && !creditIssuer.hasDefaulted(member)) {
-            revert LiquidatorNotInDefault(member, issuer);
-        }
-
-        ISeizableShares shares = ISeizableShares(pool);
-        uint256 held = shares.balanceOf(member);
-        if (held == 0) revert LiquidatorNothingToSeize(member);
-
-        // Never take more than the tier owes, valued at what the shares would fetch.
-        uint256 owed = ITierSettler(issuer).principalOf(member, tierId);
-        uint256 needed = shares.previewRedeem(held) > owed && shares.previewRedeem(held) > 0
-            ? (held * owed) / shares.previewRedeem(held)
-            : held;
-        if (needed == 0) revert LiquidatorNothingToSeize(member);
-
-        shares.seizeShares(member, address(this), needed);
-        collateralRegistry.recordSeizure(member, kind, needed);
-
-        // Redeem what the pool can pay today; queue whatever it cannot.
-        uint256 redeemableNow = shares.maxRedeem(address(this));
-        if (redeemableNow > needed) redeemableNow = needed;
-
-        if (redeemableNow > 0) {
-            realized = shares.redeem(redeemableNow, address(this), address(this));
-            reserveToken.forceApprove(issuer, realized);
-            ITierSettler(issuer).settleFromCollateral(member, tierId, realized);
-        }
-
-        uint256 leftover = needed - redeemableNow;
-        if (leftover > 0) {
-            // Waiting in line rather than failing. The claim is real; the cash is not here yet.
-            shares.requestWithdrawal(leftover, address(this));
-            queued = true;
-        }
-
-        emit SharesSeized(member, pool, needed, realized, queued);
+    /// @dev A trusted issuer with tiers. A trusted term issuer (no tiers) is reached only by pledged
+    /// Earn under 12.14, never by CLRUSD.
+    function _requireTrusted(address issuer) private view {
+        if (!trustedSavingsIssuer[issuer] || _tierCountOf(issuer) == 0) revert LiquidatorUntrustedIssuer(issuer);
     }
 
-    /// @notice settles a member's debt with cash the co-op has since collected on their behalf.
-    /// @dev What a queued redemption pays out eventually still belongs against the debt it was
-    /// seized for. The co-op holds it in the meantime; this is how it gets there.
-    /// @param member address of the member.
-    /// @param issuer address of the issuer holding the position.
-    /// @param tierId tier to settle.
-    /// @param amount amount of reserve token to apply.
-    function settleRealized(address member, address issuer, uint256 tierId, uint256 amount)
+    /* ========== SETTINGS ========== */
+
+    /// @notice names where the member's pause clock is read (Phase 2g, 10c). Set once.
+    function setPauseClock(address clock) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (clock == address(0) || pauseClock != address(0)) revert LiquidatorPauseClockSet();
+        pauseClock = clock;
+        emit PauseClockSet(clock);
+    }
+
+    /// @notice sets the shortfall wait. It can only lengthen the addendum's 72 hours.
+    function setShortfallWait(uint64 waitSeconds) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (waitSeconds < MIN_SHORTFALL_WAIT || waitSeconds > MAX_SHORTFALL_WAIT) revert LiquidatorBadParameter();
+        _shortfallWait = waitSeconds;
+        emit ShortfallWaitUpdated(waitSeconds);
+    }
+
+    /// @notice names the Yield Pool and the bond collection whose pledges MB-05 reaches. Either may
+    /// be zero, which turns that kind off. What is reached stays bounded by each one's own rules.
+    function setEarnSources(address pool, address bonds) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        earnPool = ISeizableShares(pool);
+        earnBonds = IEarnBonds(bonds);
+        emit EarnSourcesUpdated(pool, bonds);
+    }
+
+    /// @notice names the `PoolShareEnforcer` whose redemption proceeds this contract applies. It
+    /// can only bring USDC in: what it hands over goes to the Holder's debt or back to the Holder.
+    function setPoolShareEnforcer(address enforcer) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        poolShareEnforcer = enforcer;
+        emit PoolShareEnforcerUpdated(enforcer);
+    }
+
+    /* ========== LIQUIDATION HOLD (12.6) ========== */
+
+    /// @notice a member's hold, and whether it is active now.
+    function holdOf(address member) external view returns (Hold memory hold, bool active) {
+        hold = _holds[member];
+        active = hold.confirmed && block.timestamp < hold.until;
+    }
+
+    /// @notice the governed longest a hold for this reason may run from when it was set.
+    /// @dev Defaults: bankruptcy 180 days, death 90 days (decision 5), billing dispute 90 days,
+    /// late default notice 30 days.
+    function maxHoldOf(HoldReason reason) public view returns (uint64) {
+        uint64 stored = _maxHold[reason];
+        if (stored != 0) return stored;
+        if (reason == HoldReason.BANKRUPTCY) return 180 days;
+        if (reason == HoldReason.DEATH || reason == HoldReason.BILLING_DISPUTE) return 90 days;
+        if (reason == HoldReason.LATE_NOTICE) return 30 days;
+        return 0;
+    }
+
+    /// @notice governs a reason's maximum. Never above `MAX_HOLD_CEILING`.
+    function setMaxHold(HoldReason reason, uint64 maxSeconds) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (reason == HoldReason.NONE || maxSeconds == 0 || maxSeconds > MAX_HOLD_CEILING) {
+            revert LiquidatorBadParameter();
+        }
+        _maxHold[reason] = maxSeconds;
+        emit MaxHoldUpdated(reason, maxSeconds);
+    }
+
+    /// @notice proposes a hold on enforcement against a member. Inactive until a second signer
+    /// confirms it.
+    /// @param duration seconds from now; never more than the reason's maximum.
+    /// @param evidenceHash hash of the evidence. A hold that lapsed is proposed again only with
+    /// different evidence, and runs its own maximum.
+    function proposeHold(address member, HoldReason reason, uint64 duration, bytes32 evidenceHash)
         external
-        onlyRole(OPERATOR_ROLE)
+        onlyRole(HOLD_ROLE)
     {
-        reserveToken.forceApprove(issuer, amount);
-        ITierSettler(issuer).settleFromCollateral(member, tierId, amount);
+        if (
+            member == address(0) || reason == HoldReason.NONE || duration == 0 || duration > maxHoldOf(reason)
+                || evidenceHash == bytes32(0)
+        ) {
+            revert LiquidatorBadParameter();
+        }
+        Hold storage hold = _holds[member];
+        if (hold.confirmed) {
+            if (block.timestamp < hold.until) revert LiquidatorHoldExists(member);
+            if (evidenceHash == holdEvidence[member]) revert LiquidatorBadParameter();
+            emit HoldLapsed(member);
+        }
+        uint64 until = uint64(block.timestamp) + duration;
+        _holds[member] = Hold(_msgSender(), reason, false, uint64(block.timestamp), _msgSender(), until, address(0));
+        holdEvidence[member] = evidenceHash;
+        emit HoldProposed(member, reason, _msgSender(), until, evidenceHash);
+    }
+
+    /// @notice confirms a proposed hold. Must be a different signer from the proposer.
+    function confirmHold(address member) external onlyRole(HOLD_ROLE) {
+        Hold storage hold = _holds[member];
+        if (hold.setAt == 0 || hold.confirmed || block.timestamp >= hold.until) revert LiquidatorNoHold(member);
+        if (_msgSender() == hold.proposer) revert LiquidatorSameSigner(_msgSender());
+        hold.confirmed = true;
+        hold.lastSigner = _msgSender();
+        emit HoldConfirmed(member, _msgSender(), hold.until);
+    }
+
+    /// @notice extends an active hold. A different signer from the last one, and never past the
+    /// reason's maximum from when the hold was set.
+    function renewHold(address member, uint64 until) external onlyRole(HOLD_ROLE) {
+        Hold storage hold = _holds[member];
+        if (!hold.confirmed || block.timestamp >= hold.until) revert LiquidatorNoHold(member);
+        if (_msgSender() == hold.lastSigner) revert LiquidatorSameSigner(_msgSender());
+        if (until <= hold.until || until > hold.setAt + maxHoldOf(hold.reason)) revert LiquidatorBadParameter();
+        hold.until = until;
+        hold.lastSigner = _msgSender();
+        hold.clearProposer = address(0);
+        emit HoldRenewed(member, _msgSender(), until);
+    }
+
+    /// @notice ends a hold. An active hold needs two different signers: the first call proposes,
+    /// the second clears. A proposal nobody confirmed, or a hold that has lapsed, is simply dropped.
+    function clearHold(address member) external onlyRole(HOLD_ROLE) {
+        Hold storage hold = _holds[member];
+        if (hold.setAt == 0) revert LiquidatorNoHold(member);
+        if (hold.confirmed && block.timestamp >= hold.until) {
+            delete _holds[member];
+            emit HoldLapsed(member);
+        } else if (hold.confirmed && (hold.clearProposer == address(0) || hold.clearProposer == _msgSender())) {
+            hold.clearProposer = _msgSender();
+            emit HoldClearProposed(member, _msgSender());
+        } else {
+            delete _holds[member];
+            emit HoldCleared(member, _msgSender());
+        }
+    }
+
+    /* ========== FORWARDED TO LiquidatorEnforcement ========== */
+
+    /// @notice see LiquidatorEnforcement.pledgePaymentDue.
+    function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+        _forwardView();
+    }
+
+    /// @notice see LiquidatorEnforcement.applyPledgePayment.
+    function applyPledgePayment(address, address, bool, uint256) external returns (uint256 applied) {
+        _forward();
+    }
+
+    /// @notice see LiquidatorEnforcement.maturityToDebt.
+    function maturityToDebt(address, uint256, uint256) external view returns (uint256 toDebt) {
+        _forwardView();
+    }
+
+    /// @notice see LiquidatorEnforcement.applyMaturityInstruction.
+    function applyMaturityInstruction(address, uint256) external {
+        _forward();
+    }
+
+    /// @notice see LiquidatorEnforcement.applyDistribution (IAgentPledgeModule).
+    function applyDistribution(address, uint256, uint256) external {
+        _forward();
+    }
+
+    /// @notice see LiquidatorEnforcement.enforcementPermitted (IAgentPledgeModule).
+    function enforcementPermitted(address, uint256) external view returns (bool permitted) {
+        _forwardView();
+    }
+
+    /// @notice see LiquidatorEnforcement.defaultedAmountOf (IAgentPledgeModule).
+    function defaultedAmountOf(address) external view returns (uint256 due) {
+        _forwardView();
+    }
+
+    /// @notice see LiquidatorEnforcement.applyPoolProceeds.
+    function applyPoolProceeds(address, uint256, uint256) external returns (uint256 applied) {
+        _forward();
+    }
+
+    /// @notice see LiquidatorEnforcement.noticeShortfall.
+    function noticeShortfall(address) external returns (uint256 gap) {
+        _forward();
+    }
+
+    /// @notice see LiquidatorEnforcement.shortfallOf.
+    function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+        _forwardView();
+    }
+
+    /// @notice see LiquidatorEnforcement.earnDefaultedOf.
+    function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+        _forwardView();
+    }
+
+    /// @notice see LiquidatorEnforcement.nextBondOf.
+    function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+        _forwardView();
+    }
+
+    /// @dev Runs the module's implementation of this call against this contract's storage, and
+    /// returns or reverts exactly as it did.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function _forward() private {
+        address target = enforcement;
+        assembly {
+            calldatacopy(0, 0, calldatasize())
+            let ok := delegatecall(gas(), target, 0, calldatasize(), 0, 0)
+            returndatacopy(0, 0, returndatasize())
+            switch ok
+            case 0 { revert(0, returndatasize()) }
+            default { return(0, returndatasize()) }
+        }
+    }
+
+    /// @dev `_forward` for a view: a delegatecall the compiler lets a view make, by casting it to
+    /// one. The module's views write nothing, and a write would revert under a static call anyway.
+    function _forwardView() private view {
+        function() internal fn = _forward;
+        function() internal view viewFn;
+        assembly {
+            viewFn := fn
+        }
+        viewFn();
     }
 }

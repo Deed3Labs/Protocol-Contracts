@@ -151,6 +151,20 @@ contract Validator is
     // Mapping to track royalty balances per token
     mapping(address => uint256) private royaltyBalances;
 
+    // ============ Trust agreement v5 (appended) ============
+
+    /// @notice Agreement and rider versions this validator has adopted, per asset type: asset type =>
+    ///         content hash => URI. Empty = not adopted. DeedNFT mints and elections accept only adopted
+    ///         hashes (brief item 4; DECISIONS, Addendum 1 item 4).
+    mapping(uint256 => mapping(bytes32 => string)) public agreementVersionURI;
+
+    event AgreementVersionAdopted(uint256 indexed assetTypeId, bytes32 indexed versionHash, string uri);
+    event AgreementVersionRevoked(uint256 indexed assetTypeId, bytes32 indexed versionHash);
+
+    /// @dev The trust agreement applies only to Land and Estate (Addendum 1).
+    error AgreementOutsideAssetScope(uint256 assetTypeId);
+    error EmptyAgreementVersion();
+
     // ============ Constructor ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -888,6 +902,33 @@ contract Validator is
         operatingAgreements[uri] = name;
         registeredAgreementURIs.push(uri);
         emit OperatingAgreementRegistered(uri, name);
+    }
+
+    /**
+     * @notice Adopts a trust agreement (or rider) version for an asset type, so holders of this validator's
+     *         deeds may mint with it or elect it. Land and Estate only: the validator refuses to attach the
+     *         agreement to Vehicle or CommercialEquipment (Addendum 1). The URI is also registered by name,
+     *         so validateDeed accepts it as the deed's operating agreement.
+     * @dev Adoption is forward-looking: revoking it stops new mints and elections and never touches a deed
+     *      already on it. A validator cannot change any deed's agreement hash.
+     */
+    function adoptAgreementVersion(uint256 assetTypeId, bytes32 versionHash, string calldata uri, string calldata name)
+        external
+        onlyRole(METADATA_ROLE)
+    {
+        if (assetTypeId != uint256(IDeedNFT.AssetType.Land) && assetTypeId != uint256(IDeedNFT.AssetType.Estate)) {
+            revert AgreementOutsideAssetScope(assetTypeId);
+        }
+        if (versionHash == bytes32(0) || bytes(uri).length == 0 || bytes(name).length == 0) revert EmptyAgreementVersion();
+        agreementVersionURI[assetTypeId][versionHash] = uri;
+        operatingAgreements[uri] = name;
+        emit AgreementVersionAdopted(assetTypeId, versionHash, uri);
+    }
+
+    /// @notice Stops new mints and elections on a version. Deeds already on it keep it.
+    function revokeAgreementVersion(uint256 assetTypeId, bytes32 versionHash) external onlyRole(METADATA_ROLE) {
+        delete agreementVersionURI[assetTypeId][versionHash];
+        emit AgreementVersionRevoked(assetTypeId, versionHash);
     }
 
     /**

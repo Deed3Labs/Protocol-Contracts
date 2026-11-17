@@ -94,10 +94,18 @@ describe("credit core deployment", function () {
     expect((core.term as Record<string, unknown>).exposureSource).to.equal(undefined);
   });
 
-  it("leaves the issuers unregistered while there is no AssurancePool", async function () {
-    // Deliberate: registering an issuer against a pool that does not exist is what the inherited
-    // AssurancePool script did with a zero address, and it defers the failure to the first draw.
-    expect(await core.networkRegistry.isIssuer(await core.revolving.getAddress())).to.equal(false);
+  // Section 13: an issuer is wired to its ledger and nothing else. It used to wait for an
+  // AssurancePool and AssuranceOracle; the pool is now walled off from credit and the oracle is
+  // retired, so the issuers register at once and nothing in the wiring names the pool.
+  it("registers the issuers against the ledger alone", async function () {
+    for (const issuer of [core.revolving, core.term]) {
+      const address = await issuer.getAddress();
+      expect(await core.networkRegistry.isIssuer(address)).to.equal(true);
+      const network = await core.networkRegistry.networkOf(address);
+      expect(network.stableCredit).to.equal(await core.ledger.getAddress());
+      expect(network.assurancePool).to.equal(ethers.ZeroAddress);
+      expect(network.assuranceOracle).to.equal(ethers.ZeroAddress);
+    }
   });
 
   it("configures the tiers, ascending, so nobody draws Boost before their own savings", async function () {

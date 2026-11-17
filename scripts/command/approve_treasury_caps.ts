@@ -5,7 +5,7 @@ import { SAFE_ABI } from "./safe";
 /*
  * The treasury's caps: the Safe's USDC allowances to the contracts that may draw on it.
  *
- *  - BondVault: pays a maturing bond the vault can't, after the vault and before the AssurancePool.
+ *  - BondVault: pays a maturing bond the vault can't, after the vault (and nothing after it).
  *  - PayoutPool: pays a claim that has come due, after the yield pool and BondVault, as capital.
  *  - OffersIssuer: pays the $10 offers' line down (settle()).
  *
@@ -34,7 +34,8 @@ async function main() {
 
   const payout = await ethers.getContractAt(["function coopTreasury() view returns (address)"], at("PayoutPool"));
   const safeAddress: string = await payout.coopTreasury();
-  const pool = await ethers.getContractAt(["function reserveToken() view returns (address)"], at("AssurancePool"));
+  // The ledger's own reserve token (section 13: nothing reads it from the AssurancePool any more).
+  const pool = await ethers.getContractAt(["function reserveToken() view returns (address)"], at("ClearCredit"));
   const usdc = await ethers.getContractAt(
     ["function decimals() view returns (uint8)", "function allowance(address,address) view returns (uint256)", "function balanceOf(address) view returns (uint256)", "function approve(address,uint256) returns (bool)"],
     await pool.reserveToken()

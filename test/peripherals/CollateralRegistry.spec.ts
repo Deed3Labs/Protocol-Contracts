@@ -1,6 +1,9 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { issuerProxyOptions } from "../helpers/issuers";
+import { deployAssurancePool } from "../helpers/assurance";
+import { pledgeSigned, signPledge } from "../helpers/pledge";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -26,13 +29,11 @@ describe("CollateralRegistry", function () {
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     revolving = await upgrades.deployProxy(
-      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" }
     );
     await ctx.networkRegistry.registerIssuer(
       await revolving.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await revolving.getAddress());
     await ctx.access.connect(ctx.operator).grantMember(coop.address);
@@ -63,7 +64,7 @@ describe("CollateralRegistry", function () {
   async function openLine(capacities: bigint[]) {
     await revolving
       .connect(ctx.operator)
-      .openLine(ctx.member.address, capacities, ONE_YEAR, CYCLE);
+      .openLine(ctx.member.address, capacities, 0);
   }
 
   async function spend(amount: bigint) {
@@ -74,7 +75,7 @@ describe("CollateralRegistry", function () {
     it("counts nothing against savings-backed credit", async function () {
       // The plan's test: with only savings-backed credit live, reserves needed are exactly zero.
       await openLine([1_000n * ONE_USDC, 0n, 0n]);
-      await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
       await spend(1_000n * ONE_USDC);
       await registry.refresh(ctx.member.address);
 
@@ -85,7 +86,7 @@ describe("CollateralRegistry", function () {
     it("counts the shortfall on an under-collateralized asset-backed position", async function () {
       // 2,600 pledged at 95% realizes 2,470 against 2,600 drawn: a 130 gap.
       await openLine([0n, 2_600n * ONE_USDC, 0n]);
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 2_600n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 2_600n * ONE_USDC);
       await spend(2_600n * ONE_USDC);
       await registry.refresh(ctx.member.address);
 
@@ -102,8 +103,8 @@ describe("CollateralRegistry", function () {
 
     it("haircuts an internal claim and an external asset differently", async function () {
       // The same debt against the same value: a bond at 95% and a deed at 70%.
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
-      await registry.pledge(ctx.member.address, ASSET_EXTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_EXTERNAL, 1_000n * ONE_USDC);
 
       expect(await registry.collateralValueOf(ctx.member.address, ASSET_INTERNAL))
         .to.equal(1_000n * ONE_USDC);
@@ -118,8 +119,8 @@ describe("CollateralRegistry", function () {
 
     it("adds up a mixed book rather than reaching for either extreme", async function () {
       await openLine([500n * ONE_USDC, 1_000n * ONE_USDC, 400n * ONE_USDC]);
-      await registry.pledge(ctx.member.address, SAVINGS, 500n * ONE_USDC);
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 500n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
       await spend(1_900n * ONE_USDC);
       await registry.refresh(ctx.member.address);
 
@@ -179,29 +180,34 @@ describe("CollateralRegistry", function () {
       expect(await registry.poolExposure()).to.equal(600n * ONE_USDC);
     });
 
-    it("drives the AssurancePool's reserve requirement", async function () {
-      // The seam Phase 0 left open, now filled.
-      await ctx.assurancePool
-        .connect(ctx.admin)
-        .setExposureSource(await registry.getAddress());
+    // Section 13: the registry is the exposure source behind the Credit Backstop's floor.
+    it("drives the Credit Backstop's floor", async function () {
+      const a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry, {
+        exposureSources: [await registry.getAddress()],
+      });
 
-      await openLine([1_000n * ONE_USDC, 0n, 0n]);
-      await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+      await openLine([1_000n * ONE_USDC, 0n, 1_000n * ONE_USDC]);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
       await spend(1_000n * ONE_USDC);
       await registry.refresh(ctx.member.address);
 
-      // Credit outstanding, an empty reserve, and nothing needed: it is all savings-backed.
+      // Credit outstanding, an empty backstop, and no floor: it is all savings-backed.
       expect(await ctx.stableCredit.totalSupply()).to.equal(1_000n * ONE_USDC);
-      expect(await ctx.assurancePool.poolExposure()).to.equal(0n);
-      expect(await ctx.assurancePool.neededReserves()).to.equal(0n);
-      expect(await ctx.assurancePool.hasValidRTD()).to.equal(true);
+      expect(await a.pool.coveredBookPrincipal()).to.equal(0n);
+      expect(await a.pool.backstopFloor()).to.equal(0n);
+
+      // Unsecured credit on top raises the covered book, and the floor is 5% of it.
+      await spend(600n * ONE_USDC);
+      await registry.refresh(ctx.member.address);
+      expect(await a.pool.coveredBookPrincipal()).to.equal(600n * ONE_USDC);
+      expect(await a.pool.backstopFloor()).to.equal(30n * ONE_USDC);
     });
   });
 
   describe("pledges are locked while they back something", function () {
     it("lets a member release what is not backing anything", async function () {
       await openLine([1_000n * ONE_USDC, 0n, 0n]);
-      await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
 
       expect(await registry.freeCollateralOf(ctx.member.address, SAVINGS))
         .to.equal(1_000n * ONE_USDC);
@@ -211,7 +217,7 @@ describe("CollateralRegistry", function () {
 
     it("refuses to release what is holding up drawn credit", async function () {
       await openLine([1_000n * ONE_USDC, 0n, 0n]);
-      await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
       await spend(1_000n * ONE_USDC);
 
       expect(await registry.freeCollateralOf(ctx.member.address, SAVINGS)).to.equal(0n);
@@ -221,7 +227,7 @@ describe("CollateralRegistry", function () {
 
     it("frees collateral again as the credit is repaid", async function () {
       await openLine([1_000n * ONE_USDC, 0n, 0n]);
-      await registry.pledge(ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
       await spend(1_000n * ONE_USDC);
 
       await ctx.stableCredit
@@ -236,9 +242,9 @@ describe("CollateralRegistry", function () {
       // A bond realizing 95% has to cover 600 of debt with 631.5 of pledge; savings at par
       // covers it with 600.
       await openLine([600n * ONE_USDC, 700n * ONE_USDC, 0n]);
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 700n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 700n * ONE_USDC);
       await spend(600n * ONE_USDC); // fills the savings tier first
-      await registry.pledge(ctx.member.address, SAVINGS, 600n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, SAVINGS, 600n * ONE_USDC);
 
       expect(await registry.freeCollateralOf(ctx.member.address, SAVINGS)).to.equal(0n);
       expect(await registry.freeCollateralOf(ctx.member.address, ASSET_INTERNAL))
@@ -263,7 +269,7 @@ describe("CollateralRegistry", function () {
 
     it("raises what the pool reserves when collateral is marked down", async function () {
       await openLine([0n, 1_000n * ONE_USDC, 0n]);
-      await registry.pledge(ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
+      await pledgeSigned(registry, ctx.member.address, ASSET_INTERNAL, 1_000n * ONE_USDC);
       await spend(1_000n * ONE_USDC);
       await registry.refresh(ctx.member.address);
       expect(await registry.poolExposure()).to.equal(50n * ONE_USDC);
@@ -276,8 +282,10 @@ describe("CollateralRegistry", function () {
     });
 
     it("is operator gated", async function () {
+      // Even with the member's signature (Phase 4b, L-I), only the operator submits.
+      const signed = await signPledge(registry, ctx.member, SAVINGS, 1n);
       await expect(
-        registry.connect(ctx.outsider).pledge(ctx.member.address, SAVINGS, 1n)
+        registry.connect(ctx.outsider).pledge(ctx.member.address, SAVINGS, 1n, signed.deadline, signed.signature)
       ).to.be.reverted;
       await expect(
         registry.connect(ctx.outsider).setCollateralTerms(SAVINGS, 1n, 1n)

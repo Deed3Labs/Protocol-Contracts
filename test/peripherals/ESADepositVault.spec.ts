@@ -137,7 +137,12 @@ describe("ClearUSD + ESADepositVault", function () {
       vault.connect(user).deposit(await usdt.getAddress(), ONE_USDC, user.address)
     ).to.be.revertedWithCustomError(vault, "ESADepositVaultTokenNotAccepted");
 
+    // Two pausers (Phase 2d, decision 2): the first call proposes, the second pauses.
+    await vault.grantRole(await vault.PAUSER_ROLE(), other.address);
     await vault.pause();
+    expect(await vault.paused()).to.equal(false);
+    await vault.connect(other).pause();
+    expect(await vault.paused()).to.equal(true);
     await usdc.connect(user).approve(await vault.getAddress(), ONE_USDC);
     await expect(
       vault.connect(user).deposit(await usdc.getAddress(), ONE_USDC, user.address)

@@ -36,8 +36,6 @@ async function main() {
 
     const contracts = [
       "TokenRegistry",
-      "AssurancePool",
-      "AssuranceOracle",
       "BurnerBondFactory",
       "BurnerBondDeposit"
     ];
@@ -79,56 +77,6 @@ async function main() {
     console.log("│ 2️⃣  Verifying Contract Relationships                     │");
     console.log("└─────────────────────────────────────────────────────────┘\n");
 
-    // Check AssurancePool has AssuranceOracle set
-    if (deploymentStatus.contracts.AssurancePool?.deployed && 
-        deploymentStatus.contracts.AssuranceOracle?.deployed) {
-      try {
-        const AssurancePool = await hre.ethers.getContractAt(
-          "AssurancePool",
-          deploymentStatus.contracts.AssurancePool.address
-        );
-        const oracleAddress = await AssurancePool.assuranceOracle();
-        
-        if (oracleAddress === deploymentStatus.contracts.AssuranceOracle.address) {
-          console.log("✓ AssurancePool → AssuranceOracle link verified");
-          deploymentStatus.relationships.poolToOracle = true;
-        } else {
-          console.log("✗ AssurancePool oracle mismatch");
-          console.log(`  Expected: ${deploymentStatus.contracts.AssuranceOracle.address}`);
-          console.log(`  Got:      ${oracleAddress}`);
-          deploymentStatus.relationships.poolToOracle = false;
-          deploymentStatus.errors.push("AssurancePool oracle mismatch");
-        }
-      } catch (error: any) {
-        console.log("✗ Failed to verify AssurancePool → AssuranceOracle:", error.message);
-        deploymentStatus.errors.push("Failed to verify pool-oracle link");
-      }
-    }
-
-    // Check AssuranceOracle has TokenRegistry
-    if (deploymentStatus.contracts.AssuranceOracle?.deployed &&
-        deploymentStatus.contracts.TokenRegistry?.deployed) {
-      try {
-        const AssuranceOracle = await hre.ethers.getContractAt(
-          "AssuranceOracle",
-          deploymentStatus.contracts.AssuranceOracle.address
-        );
-        const registryAddress = await AssuranceOracle.tokenRegistry();
-        
-        if (registryAddress === deploymentStatus.contracts.TokenRegistry.address) {
-          console.log("✓ AssuranceOracle → TokenRegistry link verified");
-          deploymentStatus.relationships.oracleToRegistry = true;
-        } else {
-          console.log("✗ AssuranceOracle TokenRegistry mismatch");
-          deploymentStatus.relationships.oracleToRegistry = false;
-          deploymentStatus.errors.push("AssuranceOracle TokenRegistry mismatch");
-        }
-      } catch (error: any) {
-        console.log("✗ Failed to verify AssuranceOracle → TokenRegistry:", error.message);
-        deploymentStatus.errors.push("Failed to verify oracle-registry link");
-      }
-    }
-
     // Check BurnerBondFactory references
     if (deploymentStatus.contracts.BurnerBondFactory?.deployed) {
       try {
@@ -137,25 +85,15 @@ async function main() {
           deploymentStatus.contracts.BurnerBondFactory.address
         );
         
-        const poolAddress = await BurnerBondFactory.assurancePool();
-        const oracleAddress = await BurnerBondFactory.assuranceOracle();
-        
-        if (poolAddress === deploymentStatus.contracts.AssurancePool?.address) {
-          console.log("✓ BurnerBondFactory → AssurancePool link verified");
-          deploymentStatus.relationships.factoryToPool = true;
+        // Section 13: the factory reads the TokenRegistry's whitelist and holds no AssurancePool.
+        const registryAddress = await BurnerBondFactory.tokenRegistry();
+        if (registryAddress === deploymentStatus.contracts.TokenRegistry?.address) {
+          console.log("✓ BurnerBondFactory → TokenRegistry link verified");
+          deploymentStatus.relationships.factoryToRegistry = true;
         } else {
-          console.log("✗ BurnerBondFactory AssurancePool mismatch");
-          deploymentStatus.relationships.factoryToPool = false;
-          deploymentStatus.errors.push("BurnerBondFactory pool mismatch");
-        }
-        
-        if (oracleAddress === deploymentStatus.contracts.AssuranceOracle?.address) {
-          console.log("✓ BurnerBondFactory → AssuranceOracle link verified");
-          deploymentStatus.relationships.factoryToOracle = true;
-        } else {
-          console.log("✗ BurnerBondFactory AssuranceOracle mismatch");
-          deploymentStatus.relationships.factoryToOracle = false;
-          deploymentStatus.errors.push("BurnerBondFactory oracle mismatch");
+          console.log("✗ BurnerBondFactory TokenRegistry mismatch");
+          deploymentStatus.relationships.factoryToRegistry = false;
+          deploymentStatus.errors.push("BurnerBondFactory TokenRegistry mismatch");
         }
       } catch (error: any) {
         console.log("✗ Failed to verify BurnerBondFactory links:", error.message);
@@ -218,24 +156,6 @@ async function main() {
       } catch (error: any) {
         console.log("✗ Failed to check factory parameters:", error.message);
         deploymentStatus.errors.push("Failed to check factory parameters");
-      }
-    }
-
-    // Check AssuranceOracle target RTD
-    if (deploymentStatus.contracts.AssuranceOracle?.deployed) {
-      try {
-        const AssuranceOracle = await hre.ethers.getContractAt(
-          "AssuranceOracle",
-          deploymentStatus.contracts.AssuranceOracle.address
-        );
-        
-        const targetRTD = await AssuranceOracle.targetRTD();
-        deploymentStatus.configuration.targetRTD = hre.ethers.formatEther(targetRTD);
-        
-        console.log(`\n✓ AssuranceOracle Target RTD: ${hre.ethers.formatEther(targetRTD)} (${Number(targetRTD) / 1e16}%)`);
-      } catch (error: any) {
-        console.log("✗ Failed to check target RTD:", error.message);
-        deploymentStatus.errors.push("Failed to check target RTD");
       }
     }
 

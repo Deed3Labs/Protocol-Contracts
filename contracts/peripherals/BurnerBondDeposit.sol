@@ -9,7 +9,6 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "../core/interfaces/burner-bond/IBurnerBondDeposit.sol";
 import "../core/interfaces/burner-bond/IBurnerBond.sol";
-import "../core/interfaces/stable-credit/IAssurancePool.sol";
 import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
@@ -39,9 +38,6 @@ contract BurnerBondDeposit is
     /// @notice Factory contract for managing collections (single source of truth for parameters)
     IBurnerBondFactory public factory;
     
-    /// @notice AssurancePool contract for token deposits
-    IAssurancePool public assurancePool;
-
     /// @notice Where bond proceeds are held.
     /// @dev Not the AssurancePool. Bondholders are creditors and their principal must not be put
     /// to work absorbing other people's defaults.
@@ -83,16 +79,15 @@ contract BurnerBondDeposit is
 
     /// @notice sets the deposit contract up.
     /// @param _factory Address of the parameter source
-    /// @param _assurancePool Address of the AssurancePool contract
-    function initialize(address _factory, address _assurancePool) external initializer {
+    /// @dev Takes no AssurancePool (section 13): bond principal never enters it, and the bond
+    /// contracts hold no address to send it there with.
+    function initialize(address _factory) external initializer {
         __Ownable_init();
         __ReentrancyGuard_init();
 
         require(_factory != address(0), "Invalid factory address");
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
         
         factory = IBurnerBondFactory(_factory);
-        assurancePool = IAssurancePool(_assurancePool);
         
         // Start deposit ID counter at 1
         _depositIdCounter.increment();
@@ -277,7 +272,7 @@ contract BurnerBondDeposit is
         require(bondId > 0, "Bond minting failed");
         
         // If we reach here, both deposit and minting succeeded
-        // The bond is now fully backed by underlying token in the AssurancePool
+        // The bond is now backed by the underlying token held in the bond vault
         
         // Update deposit information
         deposits[depositId].bondId = bondId;
@@ -376,13 +371,6 @@ contract BurnerBondDeposit is
         bondVault = IBondVault(_bondVault);
     }
 
-    /// @notice Set the AssurancePool contract address
-    /// @param _assurancePool Address of the AssurancePool contract
-    function setAssurancePool(address _assurancePool) external override onlyOwner {
-        require(_assurancePool != address(0), "Invalid AssurancePool address");
-        assurancePool = IAssurancePool(_assurancePool);
-    }
-    
     /// @notice Emergency function to recover stuck tokens (owner only)
     /// @param token Token address to recover
     /// @param amount Amount to recover
@@ -417,7 +405,7 @@ contract BurnerBondDeposit is
         }
         
         // Call factory to create collection
-        // This will revert if token is not whitelisted by AssuranceOracle
+        // This will revert if the token is not whitelisted in the TokenRegistry
         IBurnerBondFactory(factory).createCollection(
             tokenAddress,
             tokenSymbol,
@@ -451,11 +439,12 @@ contract BurnerBondDeposit is
         // Get the underlying token
         IERC20 underlyingToken = IERC20(deposit.tokenAddress);
 
-        // Approve AssurancePool to spend underlying token
-        underlyingToken.approve(address(assurancePool), deposit.amount);
-
-        // Deposit underlying token into AssurancePool excess reserve
-        assurancePool.depositTokenIntoExcess(deposit.tokenAddress, deposit.amount);
+        // Into the bond vault, as `makeDeposit` does, and never the AssurancePool (compliance
+        // addendum 12.11). This path used to put the principal into the AssurancePool's excess
+        // reserve, where it funded other people's defaults and the bond's redemption competed
+        // with them. The vault holds it against this bond's redemption and books what it owes.
+        require(address(bondVault) != address(0), "Bond vault not set");
+        underlyingToken.safeTransfer(address(bondVault), deposit.amount);
 
         // Mint bond using BurnerBond contract
         bondId = burnerBond.mintBond(
@@ -464,6 +453,7 @@ contract BurnerBondDeposit is
             deposit.discountPercentage,
             deposit.depositor
         );
+        bondVault.recordPurchase(bondId, deposit.amount, deposit.faceValue, uint64(deposit.maturityDate));
 
         // Update deposit information
         deposit.bondId = bondId;

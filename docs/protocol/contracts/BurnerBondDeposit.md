@@ -14,13 +14,13 @@ Source: [`contracts/peripherals/BurnerBondDeposit.sol`](../../../contracts/perip
 |---|---|---|
 | `batchProcessDeposits(uint256[] depositIds)` | Anyone | `nonReentrant` |
 | `emergencyRecover(address token, uint256 amount)` | `onlyOwner` |  |
-| `initialize(address _factory, address _assurancePool)` | Once, when the proxy is initialised |  |
+| `initialize(address _factory, address _assurancePool)` | Not in the current source |  |
 | `makeDeposit(address tokenAddress, uint256 faceValue, uint256 maturityDate, uint256 discountPercentage)` | Anyone | `nonReentrant` |
 | `processDeposit(uint256 depositId)` | Anyone | `nonReentrant` |
 | `refundDeposit(uint256 depositId)` | `onlyOwner` | `nonReentrant` |
 | `registerCollection(address tokenAddress, address collectionAddress)` | Checked inside the function |  |
 | `renounceOwnership()` | The owner |  |
-| `setAssurancePool(address _assurancePool)` | `onlyOwner` |  |
+| `setAssurancePool(address _assurancePool)` | Not in the current source |  |
 | `setBondVault(address _bondVault)` | `onlyOwner` |  |
 | `setFactory(address _factory)` | `onlyOwner` |  |
 | `transferOwnership(address newOwner)` | The owner |  |

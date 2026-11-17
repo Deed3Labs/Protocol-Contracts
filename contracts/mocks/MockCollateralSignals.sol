@@ -42,6 +42,23 @@ contract MockCollateralSignals {
         return itemEncumbered[holder][itemId];
     }
 
+    /// @dev Pledged whether or not anything is drawn (Phase 2e). An encumbered item is pledged too.
+    mapping(address => mapping(uint256 => bool)) public itemPledged;
+
+    function setItemPledged(address holder, uint256 itemId, bool pledged) external {
+        itemPledged[holder][itemId] = pledged;
+    }
+
+    function isItemPledged(address holder, bytes32, uint256 itemId) external view returns (bool) {
+        require(!broken, "source broken");
+        return itemPledged[holder][itemId] || itemEncumbered[holder][itemId];
+    }
+
+    function releaseRetiredItem(address holder, bytes32, uint256 itemId) external {
+        itemPledged[holder][itemId] = false;
+        itemEncumbered[holder][itemId] = false;
+    }
+
     function rollItem(address, bytes32, uint256, uint256) external {}
 
     function inDefault(address member) external view returns (bool) {

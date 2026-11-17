@@ -4,8 +4,9 @@ import { attrs, css, hasHtml, html } from '../runtime/dom';
 import { run } from '../live/actions';
 import { REAL } from '../live/env';
 import { CC } from './cc';
-import { LOG, S } from './data';
+import { LOG, S, vars } from './data';
 import { moneyLive, settleMove } from './moneyLive';
+import { demoTopUps, topUpsParts } from './payoutTopUps';
 import { keep, registerPage, shadowHost } from './pageHost';
 import { openItem, render as renderShell, toast, vLevel } from './shell';
 
@@ -16,6 +17,15 @@ import { openItem, render as renderShell, toast, vLevel } from './shell';
  * it, the module's code runs against a stand-in `document` (DOCP) that reads inside the shadow root, so
  * its lookups and its click/input listeners stay on the page. Links out go through CC.go.
  */
+
+/** Hands the person a JSON file (a Safe Transaction Builder batch) to load in the Safe app. */
+function saveJson(obj, name) {
+  const a = window.document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
 
 /** The page's skeleton: the reference template's markup. */
 function skeleton() {
@@ -780,7 +790,65 @@ function makeMoney() {
         wmx = L ? Math.max(1, ...apW) : Math.max(...apW);
       const a = cell('s7', 'Against the floor', <span className="lbl">{L ? `AssurancePool · ${srcTxt('protocol')}` : 'AssurancePool · Protocol · 12 s'}</span>, <div className="npd"><div className="m-big">{money(M.assurance)}{" "}<small>{"covers "}{money(M.unsecured)}{" of unsecured credit"}</small></div><div className="ncb-bar"><i style={css(`flex:${req}`)} /><i style={css(`flex:${M.assurance - req};background:var(--land)`)} /></div><div className="f-key"><span><i style={css("background:var(--fg)")} />{L ? `Needed for the ${Math.round(M.floor * 100)}% floor ` : "Needed for the 20% floor "}<b>{money(req)}</b></span><span><i style={css("background:var(--land)")} />{"Spare "}<b>{money(M.assurance - req)}</b></span></div>{lbl('Added each week · its share of credit fees')}{L && !apW.length ? <p className="nmv-e">No weeks recorded yet.</p> : ''}<div className="nlm wk">{apW.map((v, i) => <div key={i}><span>{money0(v)}</span><i style={css(`height:${v / wmx * 100}%`)} className={i === apW.length - 1 ? 'hi' : ''} /><s>{NW[i + 1]}</s></div>)}</div></div>, <><span>{L ? 'It only lends its spare, never the floor' : 'Lent out $0.00 · it only lends its spare, never the floor'}</span><span /></>);
       const b = L && L.creditReal ? cell('s5', 'Losses it paid', <span className="lbl">{`All time · ${CR.losses.length}`}</span>, CR.losses.length ? <div className="nl">{CR.losses.map(([d, s, id, v], __k) => <div key={__k} className="nl-r">{leaf(d)}<span><b>{s}</b><span>Written off</span></span><b>−{money(v)}</b></div>)}</div> : <p className="nmv-e">No losses yet.</p>, <><span>{money(CR.poolPaid)}{" paid by the AssurancePool"}</span><button data-ntab="credit">Credit →</button></>) : L ? notReal('s5', 'Losses it paid', 'Needs the credit ledger’s charge-offs: each loss the AssurancePool paid, and when.') : cell('s5', 'Losses it paid', <span className="lbl">All time · 3</span>, <div className="nl">{CR.losses.map(([d, s, id, v], __k) => <div key={__k} className="nl-r">{leaf(d)}<span><b>{s}</b><span>Member M•••, 90 days late · before the yield pool opened</span></span><b>−{money(v)}</b></div>)}</div>, <><span>{money(M.lost)}{" absorbed · loss rate 1.1%"}</span><button data-ntab="credit">Credit →</button></>);
-      return band(<>{a}{b}</>);
+      return <>{band(<>{a}{b}</>)}{assuranceFees()}</>;
+    }
+    /* Assurance fees (docs/operators/assurance-fee-payer.md): what Clear Lending pays into the new pool. Each item
+       goes due → funding proposed (CL Operating's transfer to the CL Fees wallet, signed in the Safe app) → funded
+       → paid (the API's job deposits it); the treasury's interchange goes to the Clear Treasury Safe. */
+    // live only: the prototype has no such card (the API sends its seeded one when Money reads the seed)
+    const AF = () => L ? L.AF : null;
+    const AF_KIND = {
+      fee: 'Credit Enhancement Fee',
+      spread_repayment: 'Spread Repayment',
+      recovery: 'Recovery'
+    };
+    const AF_ST = [['due', 'Due'], ['funding_proposed', 'Funding proposed'], ['funded', 'Funded'], ['paid', 'Paid']];
+    const AF_NOW = {
+      sending: ['funded', 'Paying'],
+      failed: ['funded', 'Stopped']
+    };
+    const afMonth = m => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC'
+    });
+    const afShort = a => a ? `${a.slice(0, 6)}…${a.slice(-4)}` : '—';
+    const afLast = () => {
+      const d = new Date(TODAY);
+      d.setUTCDate(0);
+      return d.toISOString().slice(0, 7);
+    };
+    function afSteps(st) {
+      const [at, word] = AF_NOW[st] ?? [st, null];
+      const k = AF_ST.findIndex(([s]) => s === at);
+      return <span className="naf-st">{AF_ST.map(([s, n], i) => <i key={s} className={i < k ? 'on' : i === k ? 'now' : ''}>{i === k && word ? word : n}</i>)}</span>;
+    }
+    function afItem(i) {
+      const tx = (h, l, w) => h ? <a href={l || '#'} target="_blank" rel="noopener">{`${w} ${h.slice(0, 10)}…`}</a> : '';
+      const b = i.basis;
+      const sub = i.kind === 'fee' && b ? `${AF().feeBps / 100}% a year on ${money(b.average)} average Available Coverage · ${b.days} days${b.filled ? `, ${b.filled} filled` : ''}${b.zero ? `, ${b.zero} at zero` : ''}` : i.note || (i.tag === 1 ? 'Into the Credit Backstop' : '');
+      return <div key={i.id} className="nl-r"><span className="naf-m">{afMonth(i.month).replace(/ \d+$/, '').slice(0, 3)}</span><span><b>{`${AF_KIND[i.kind] ?? i.kind} · ${afMonth(i.month)}`}</b><span>{sub}</span>{i.status === 'nothing_due' ? <span>Nothing due</span> : afSteps(i.status)}{i.error ? <span className="naf-w">{i.error}</span> : ''}<span className="naf-a">{(i.status === 'due' || i.status === 'funding_proposed') && CAN() ? <button className="btn sm-b" data-nafund={i.id}>{i.funding ? 'Build the batch again' : 'Propose funding'}</button> : ''}{i.funding ? <><button className="lnk" data-nabatch={i.id}>Batch file</button><a href={i.funding.link} target="_blank" rel="noopener">Open CL Operating in the Safe app →</a></> : ''}{tx(i.approveTx, i.approveLink, 'Approve')}{tx(i.depositTx, i.depositLink, 'Deposit')}{i.status === 'failed' && APPR() ? <button className="btn sm-b" data-naretry={i.id}>Retry after checking</button> : ''}</span></span><b>{money(i.amount)}</b></div>;
+    }
+    function assuranceFees() {
+      if (!L) return '';
+      const A = AF();
+      if (!A) return band(notReal('s12', 'Assurance fees', 'Needs the API’s Assurance fee records (ASSURANCE_FEES in the money section).'));
+      if (!A.configured) return band(notReal('s12', 'Assurance fees', A.why || 'The new Assurance Pool isn’t configured yet.'));
+      const tm = A.thisMonth,
+        lm = A.lastMonth,
+        adv = A.advances;
+      const items = A.items.filter(i => i.status !== 'nothing_due' || i.kind === 'fee').slice(0, 12);
+      const rate = `${A.feeBps / 100}% a year on average daily Available Coverage, actual/365`;
+      const summary = <div className="led">{[[tm ? `${afMonth(tm.month)} so far · ${tm.read} of ${tm.days} days read` : 'This month', tm ? money(tm.fee) : '—'], [lm ? `${afMonth(lm.month)} · ${money(lm.average)} average over ${lm.days} days${lm.filled ? `, ${lm.filled} filled` : ''}${lm.zero ? `, ${lm.zero} at zero` : ''}` : 'Last month', lm ? money(lm.fee) : 'Not accrued yet'], ['Available Coverage now', A.coverage ? money(A.coverage.available) : '—'], [adv ? `Advances outstanding · ${adv.draws} draw${adv.draws === 1 ? '' : 's'} released, ${money(adv.repaidPaid)} paid back` : 'Advances outstanding', adv ? money(adv.outstanding) : '—'], [`CL Fees wallet ${afShort(A.wallet?.address)}`, A.wallet?.balance == null ? '—' : money(A.wallet.balance)]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>;
+      const floor = A.floor && A.floor.stale ? <p className="naf-w">{A.floor.at ? `The floor figures were last posted ${A.floor.days} days ago: post this month’s (setFloorInputs, two signers).` : 'The floor figures have never been posted: post them (setFloorInputs, two signers).'}</p> : '';
+      const fees = cell('s7', 'Assurance fees', <span className="lbl">{A.demo ? 'Prototype' : `Credit Backstop · ${A.payerEnabled ? 'paying on' : 'paying off'}`}</span>, <div className="npd">{summary}{floor}{lbl('What’s owed, oldest month first')}{items.length ? <div className="nl">{items.map(afItem)}</div> : <p className="nmv-e">Nothing accrued yet. The first fee is worked out once a month the pool was read in has ended.</p>}</div>, <><span>{rate}</span><span>{A.links?.clOperatingQueue ? <a href={A.links.clOperatingQueue} target="_blank" rel="noopener">CL Operating’s queue →</a> : ''}</span></>);
+      const room = adv ? adv.room : 0;
+      const repay = CAN() && !A.demo ? <div className="npf">{lbl('Enter a Spread Repayment or recovery')}<label>{lbl('What')}<select id="narep-kind" className="vin" defaultValue="spread_repayment"><option value="spread_repayment">Spread Repayment (retained Spread, Step 5)</option><option value="recovery">Recovery (the Credit Backstop’s share)</option></select></label><label>{lbl('Month')}<input id="narep-month" className="vin" defaultValue={afLast()} placeholder="YYYY-MM" /></label><label>{lbl('Amount, $')}<input id="narep-amt" className="vin" inputMode="decimal" placeholder="0.00" /></label><label>{lbl('Note')}<input id="narep-note" className="vin" placeholder="What it is" /></label><label>{lbl('Evidence')}<input id="narep-ev" className="vin" placeholder="A link or reference" /></label><p className="small quiet" id="narep-warn">{`Up to ${money(room)}: the advances outstanding, less what’s already entered. Paid under RECOVERY, all of it to the Credit Backstop.`}</p><button className="btn" data-narep="">Enter it</button></div> : '';
+      const ix = A.interchange ?? [];
+      const ixList = ix.length ? <div className="led">{ix.map(x => <div key={x.month}><span>{`${afMonth(x.month)} · ${x.bps / 100}% of ${money(x.interchange)} · ${x.outbox === 'sent' ? 'in the Safe’s queue' : x.outbox === 'queued' ? 'waiting to be put in the Safe (Build → Safe)' : 'batch file'}`}{" "}<button className="lnk" data-naibatch={x.month}>Batch</button></span><b>{money(x.amount)}</b></div>)}</div> : <p className="small quiet">No interchange proposed yet.</p>;
+      const inter = <div className="npf">{lbl('Interchange · the co-op treasury’s')}{ixList}{CAN() && !A.demo ? <><label>{lbl('Month')}<input id="naint-month" className="vin" defaultValue={afLast()} placeholder="YYYY-MM" /></label><label>{lbl('The month’s card interchange, $')}<input id="naint-amt" className="vin" inputMode="decimal" placeholder="0.00" /></label><p className="small quiet" id="naint-x">{`${A.interchangeBps / 100}% of it goes in: approve and deposit(INTERCHANGE), signed by the Clear Treasury Safe’s owners.`}</p><button className="btn" data-naint="">Propose to the Clear Treasury Safe</button></> : ''}</div>;
+      const side = cell('s5', 'Repayments and interchange', <span className="lbl">Into the pool</span>, <div className="npd">{repay}{inter}</div>, <><span>Nothing moves until the Safe’s signers sign</span><span /></>);
+      return band(<>{fees}{side}</>);
     }
     function poolPay() {
       // live, the shops' payouts in the schedule's next 14 days
@@ -795,7 +863,10 @@ function makeMoney() {
           return <div key={i} className={`nq-r ${same ? 'same' : ''} ${grp ? 'grp' : ''}`}><span className="nq-d">{same ? <i className="tie" aria-hidden="true" /> : leaf(d)}</span><span className="nq-k"><b>{k}</b><span>{cov >= v ? 'Covered now' : cov > 0 ? `${money(cov)} covered now` : 'From repayments, then the yield pool'}</span></span><span className="nq-b"><i style={css(`width:${cov / v * 100}%`)} /></span><b>{money(v)}</b></div>;
         })}</div>, <><span className="f-key"><i style={css("background:var(--fg)")} />{"Covered now "}<i className="hx" />Repayments, then the yield pool</span><button data-ngo="merchants/payouts">Payouts →</button></>);
       const b = cell('s5', 'How it’s funded', <span className="lbl">Funded beats queued</span>, <div className="led npl">{(L ? [['Today', money(M.payout)], ['Repayments due, 14 days', money(M.dueMembers)], ['Owed, 14 days', money(M.owed14)], ['Borrowed from the yield pool', money(M.short)], ['Paid back', 'From repayments'], ['Order', 'Oldest claim first, always']] : [['Today', money(M.payout)], ['Repayments due by 4 Nov', money(M.dueMembers)], ['Owed by 4 Nov', money(M.owed14)], ['Borrowed from the yield pool', money(M.short)], ['Paid back', '6 Nov, from repayments'], ['Order', 'Oldest claim first, always']]).map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>, <><span>Top-ups need a second person</span>{!L || CAN() ? <button className="btn sm-b" data-npropose="topup">Propose a top-up</button> : <span />}</>);
-      return band(<>{a}{b}</>);
+      // the automatic top-ups (decision 51): what the payout top-up job last saw and did
+      const T = L ? vars.payoutTopUps : demoTopUps(Date.now());
+      const c = T ? cell('s12', 'Automatic top-ups', ...topUpsParts(T, money)) : notReal('s12', 'Automatic top-ups', 'Needs the payout top-up job (PAYOUT_TOPUP_ENABLED) to have checked the PayoutPool: its projections, the spending limit and each top-up it made.');
+      return band(<>{a}{b}{c}</>);
     }
     /* live, the rate is the carry members pay, not the LendingPool's curve, which no contract charges: the pool lends to the
        PayoutPool to pay shops, and the PayoutPool hands each lender the carry on what it funded. Members pay it on revolving
@@ -1048,6 +1119,59 @@ function makeMoney() {
       if (!t) return;
       const d = t.dataset;
       // the offers line's new cap, proposed to the Ops Safe; never below what the line already owes
+      // Assurance fees: the funding batch for CL Operating, Spread Repayments and recoveries, interchange, a retry
+      if (d.nafund !== undefined || d.narep !== undefined || d.naint !== undefined || d.naretry !== undefined) {
+        if (!L) return;
+        if (d.nafund !== undefined) {
+          t.disabled = true;
+          return run('money', 'assurance-fund', {
+            id: d.nafund
+          }, r => {
+            const f = r?.result?.funding;
+            if (f) saveJson(f.batch, `cl-operating-assurance-${d.nafund.slice(0, 8)}.json`);
+            toast('Batch saved · load it in the Transaction Builder on CL Operating; the Clear Lending Safe’s owners sign');
+          });
+        }
+        if (d.naretry !== undefined) {
+          t.disabled = true;
+          return run('money', 'assurance-retry', {
+            id: d.naretry
+          });
+        }
+        const val = id => (document.getElementById(id)?.value || '').trim();
+        if (d.narep !== undefined) {
+          const amount = parseFloat(val('narep-amt').replace(/[$,\s]/g, ''));
+          const room = L.AF?.advances?.room ?? 0;
+          if (!(amount > 0)) return toast('Enter the amount');
+          if (amount > room + 1e-9) return toast(`More than the advances outstanding: ${money(room)} is left`);
+          if (!val('narep-note')) return toast('Add a note: what it is');
+          t.disabled = true;
+          return run('money', 'assurance-repayment', {
+            kind: val('narep-kind'),
+            month: val('narep-month'),
+            amount,
+            note: val('narep-note'),
+            evidence: val('narep-ev')
+          }, () => toast('Entered · propose its funding when you’re ready'));
+        }
+        const interchange = parseFloat(val('naint-amt').replace(/[$,\s]/g, ''));
+        if (!(interchange > 0)) return toast('Enter the month’s card interchange');
+        t.disabled = true;
+        return run('money', 'assurance-interchange', {
+          month: val('naint-month'),
+          interchange
+        }, r => toast(`Sent to the Clear Treasury Safe to sign · ${money(r?.result?.amount ?? 0)}`));
+      }
+      if (d.nabatch !== undefined) {
+        const i = AF()?.items.find(x => x.id === d.nabatch);
+        if (i?.funding) saveJson(i.funding.batch, `cl-operating-assurance-${i.month}-${i.kind}.json`);
+        return;
+      }
+      if (d.naibatch !== undefined) {
+        const x = AF()?.interchange?.find(y => y.month === d.naibatch);
+        if (x) saveJson(x.batch, `clear-treasury-interchange-${x.month}.json`);
+        return;
+      }
       if (d.noffcap !== undefined && L && L.OFFERS) {
         const cap = parseFloat((document.getElementById('noffcap')?.value || '').replace(/[$,\s]/g, ''));
         if (!(cap > 0)) return toast('Enter the new cap');
@@ -1304,6 +1428,21 @@ function makeMoney() {
           el = document.getElementById('nafter');
         if (el) el.textContent = L ? money(M.payout + v) : money((N.panel && KINDS[N.panel.kind] && KINDS[N.panel.kind].from === 'bv' ? M.bv : M.cash) - v);
         N.panel.amt = v;
+      }
+      // a Spread Repayment or recovery is never more than the advances outstanding; interchange shows its share
+      if (e.target.id === 'narep-amt' && L?.AF) {
+        const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')) || 0,
+          room = L.AF.advances?.room ?? 0,
+          w = document.getElementById('narep-warn');
+        if (w) {
+          w.textContent = v > room + 1e-9 ? `More than the advances outstanding: only ${money(room)} is left, so it can’t be entered.` : `Up to ${money(room)}: the advances outstanding, less what’s already entered. Paid under RECOVERY, all of it to the Credit Backstop.`;
+          w.classList.toggle('naf-w', v > room + 1e-9);
+        }
+      }
+      if (e.target.id === 'naint-amt' && L?.AF) {
+        const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')) || 0,
+          el = document.getElementById('naint-x');
+        if (el) el.textContent = `${L.AF.interchangeBps / 100}% of it goes in: ${money(Math.floor(v * L.AF.interchangeBps / 100) / 100)}, by approve and deposit(INTERCHANGE), signed by the Clear Treasury Safe’s owners.`;
       }
       if (e.target.id === 'npayee') N.panel.payee = e.target.value;
       if (e.target.id === 'nwhy') N.panel.why = e.target.value;

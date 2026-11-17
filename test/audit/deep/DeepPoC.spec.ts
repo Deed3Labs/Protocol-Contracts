@@ -11,7 +11,7 @@ describe("DEEP AUDIT PoC", function () {
   it("X-1 (fixed): refunding a paid plan never touches the member's other debt; the merchant owes the shortfall itself", async function () {
     const { ctx, revolving, term, pool, merchant } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     await ctx.stableCredit.connect(m).transfer(merchant.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
@@ -37,7 +37,8 @@ describe("DEEP AUDIT PoC", function () {
   it("X-2 (fixed): a pre-funded pool still takes member repayments, and settles the claim with them instead of selling it to the funder", async function () {
     const { ctx, term, pool, merchant, funder } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
-    const apBefore = (await ctx.assurancePool.primaryBalance()) + (await ctx.assurancePool.bufferBalance());
+    // Section 13: past the payout pool, a repayment now goes to Lending Co.'s operating address.
+    const apBefore = await ctx.usdc.balanceOf(ctx.lenderOperating.address);
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);
     await term.connect(m).payPlan(0, 2_000n * ONE_USDC);
@@ -45,7 +46,7 @@ describe("DEEP AUDIT PoC", function () {
 
     // The repayment went to the pool as members' money, not past it.
     expect(await pool.memberFunded()).to.be.closeTo(1_000n * ONE_USDC, 100n); // + a few wei of carry
-    const apAfter = (await ctx.assurancePool.primaryBalance()) + (await ctx.assurancePool.bufferBalance());
+    const apAfter = await ctx.usdc.balanceOf(ctx.lenderOperating.address);
     expect(apAfter - apBefore).to.equal(0n);
 
     // The merchant is paid out of it and the claim is burned; the funder keeps all its capital.
@@ -62,7 +63,8 @@ describe("DEEP AUDIT PoC", function () {
     await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 0n, CYCLE, 1, CYCLE);
     await term.connect(m).payPlan(0, 1_000n * ONE_USDC);
     await pool.connect(merchant).redeem(975n * ONE_USDC);
-    const coopBefore = await ctx.stableCredit.balanceOf(coop.address);
+    const fee = await term.feeRecipient(); // Clear Lending's, since Addendum 2 (12.16)
+    const coopBefore = await ctx.stableCredit.balanceOf(fee);
 
     await term.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 975n * ONE_USDC);
     expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(975n * ONE_USDC);
@@ -71,8 +73,9 @@ describe("DEEP AUDIT PoC", function () {
     expect(await pool.refundOwedOf(m.address)).to.equal(975n * ONE_USDC);
     expect(await pool.distributableCarry()).to.equal(0n);
     await pool.connect(ctx.outsider).distributeCarry();
-    // The co-op gave back its 25 fee and gained nothing.
-    expect(coopBefore - (await ctx.stableCredit.balanceOf(coop.address))).to.equal(25n * ONE_USDC);
+    // The fee recipient gave back its 25 fee, and the co-op gained nothing.
+    expect(coopBefore - (await ctx.stableCredit.balanceOf(fee))).to.equal(25n * ONE_USDC);
+    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
   });
 
   it("X-4 (fixed): a merchant's refund debt is collected out of its next sale, and that sale's repayment funds the member's refund", async function () {
@@ -137,7 +140,7 @@ describe("DEEP AUDIT PoC", function () {
   it("X-6 (fixed): a term default writes off the term plan only; the revolving tier and the ledger stay in step", async function () {
     const { ctx, revolving, term, merchant } = await deployCore({ fundPool: 20_000n * ONE_USDC });
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 0n, 1_000n * ONE_USDC], 3650 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 0n, 1_000n * ONE_USDC], 0);
     await ctx.stableCredit.connect(m).transfer(merchant.address, 1_000n * ONE_USDC);
     await term.connect(ctx.operator).setTermLimit(m.address, 1_000n * ONE_USDC);
     await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC, 975n * ONE_USDC, 150n, CYCLE, 1, CYCLE);

@@ -11,6 +11,11 @@ import "./TermIssuerBase.sol";
 /// proxy's storage with the original caller. Called directly it acts on its own empty storage,
 /// which it never initializes.
 contract TermIssuerExtension is TermIssuerBase {
+    /// @notice what TermIssuer's constructor checks before pinning this module.
+    function extensionKind() external pure returns (bytes32) {
+        return keccak256("TermIssuerExtension.v2");
+    }
+
     using CarryIndex for CarryIndex.Index;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -30,14 +35,16 @@ contract TermIssuerExtension is TermIssuerBase {
     /// reversal below because only principal is unwound. Refunding the carry too would mean the
     /// co-op paid a member to hold a balance.
     ///
-    /// The merchant and payout are arguments rather than plan state: the plan never recorded them,
-    /// and appending fields to a struct inside a dynamic array would move every element of it,
-    /// which is not something an upgrade may do. StableCredit asserts the legs net, exactly as it
-    /// does on the way in, so a caller cannot invent a split that does not add up.
+    /// The merchant and the payout are the ones the plan recorded when it opened (Phase 4, H-A),
+    /// never the caller's. A refund takes back only what that merchant was paid for this sale, so
+    /// it cannot create an obligation on anyone else, or move the merchant's share onto the co-op.
+    /// `merchant` must name the plan's merchant, as a check on the caller; `payout` is kept in the
+    /// signature so existing callers keep working, and is ignored -- the merchant's share of the
+    /// refund is the recorded payout in proportion to the purchase.
     /// @param planId the plan being unwound.
     /// @param amount principal to give back, capped at what is still outstanding.
-    /// @param merchant address whose claim is taken back.
-    /// @param payout the merchant's share of `amount`.
+    /// @param merchant the plan's merchant; anything else reverts.
+    /// @param payout ignored (see above).
     /// @return refunded principal actually unwound.
     function closePlanForRefund(uint256 planId, uint256 amount, address merchant, uint256 payout)
         external
@@ -46,6 +53,12 @@ contract TermIssuerExtension is TermIssuerBase {
     {
         _requirePlan(planId);
         Plan storage plan = plans[planId];
+        {
+            PlanPricing storage terms = planPricing[planId];
+            if (!terms.refundTermsRecorded) revert TermIssuerRefundTermsUnknown(planId);
+            if (merchant != terms.merchant) revert TermIssuerRefundTermsMismatch(merchant, terms.merchant);
+            payout = terms.payout;
+        }
 
         /*
          * A plan a member has PAID OFF is closed, and giving that purchase back is the commonest
@@ -84,7 +97,8 @@ contract TermIssuerExtension is TermIssuerBase {
         uint256 returnable = plan.repaid > refundedOf[planId] ? plan.repaid - refundedOf[planId] : 0;
         if (cash > returnable) cash = returnable;
         if (refunded == 0 && cash == 0) revert TermIssuerPlanClosed(planId);
-        if (payout > refundable) revert TermIssuerInvalidSchedule();
+        // The merchant's share of what is being given back, in the proportion it was paid.
+        payout = (payout * refundable) / plan.principal;
 
         // The merchant's share of the whole refund, split between the two legs in the same
         // proportion, with the remainder falling to the co-op rather than clawing a cent from a
@@ -93,7 +107,7 @@ contract TermIssuerExtension is TermIssuerBase {
 
         if (refunded > 0) {
             stableCredit.reversePurchase(
-                plan.member, refunded, merchant, payoutReversed, _feeRecipient(), refunded - payoutReversed
+                plan.member, refunded, merchant, payoutReversed, _feeFrom(planId), refunded - payoutReversed
             );
         }
 
@@ -109,16 +123,13 @@ contract TermIssuerExtension is TermIssuerBase {
             refundedOf[planId] += cash;
             uint256 merchantCash = (payout * cash) / refundable;
             stableCredit.repayRefund(
-                plan.member, cash, merchant, merchantCash, _feeRecipient(), cash - merchantCash, withheld
+                plan.member, cash, merchant, merchantCash, _feeFrom(planId), cash - merchantCash, withheld
             );
             // The member's cash net of the carry withheld, which is what actually reached them
             // (audit X-14).
             emit PlanRefundPaid(planId, cash - withheld, withheld);
         }
 
-        uint256 index = plan.index.currentIndex(block.timestamp);
-        uint256 reduction = CarryIndex.normalizeUp(refunded, index);
-        plan.normalized = reduction >= plan.normalized ? 0 : plan.normalized - reduction;
         plan.principalOutstanding -= refunded;
 
         // Not added to `repaid`. Nobody paid this -- it was given back, and a plan that reports it
@@ -142,7 +153,6 @@ contract TermIssuerExtension is TermIssuerBase {
          */
         if (plan.principalOutstanding <= carry) {
             plan.principalOutstanding = 0;
-            plan.normalized = 0;
             carryOutstandingOf[planId] = 0;
             plan.closed = true;
             _untrackOpen(planId);
@@ -172,24 +182,64 @@ contract TermIssuerExtension is TermIssuerBase {
     /// @param planId plan to re-split.
     /// @param installments new number of cycles: 1, 2, 4, 6 or 12.
     function setSplit(uint256 planId, uint32 installments) external {
+        _resplit(planId, installments, false, 0);
+    }
+
+    bytes32 public constant RESPLIT_TYPEHASH = keccak256(
+        "Resplit(uint256 planId,uint32 installments,uint256 rateBps,uint256 nonce,uint256 deadline)"
+    );
+
+    /// @notice re-splits a plan on new finance-charge terms the member has signed for.
+    /// @dev Spec item 6. A re-split that makes the plan cost more -- a free plan becoming charged, a
+    /// higher rate, or the same rate over more installments -- creates new finance-charge terms, so
+    /// it needs the member's EIP-712 signature over the new split and rate at their current nonce.
+    function resplitWithSignature(
+        uint256 planId,
+        uint32 installments,
+        uint256 rateBps,
+        uint256 deadline,
+        bytes calldata signature
+    ) external {
+        _requirePlan(planId);
+        address member = plans[planId].member;
+        if (block.timestamp > deadline) revert TermIssuerSignatureExpired(deadline);
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                domainSeparator(),
+                keccak256(abi.encode(RESPLIT_TYPEHASH, planId, installments, rateBps, planNonces[member], deadline))
+            )
+        );
+        if (!SignatureChecker.isValidSignatureNow(member, digest, signature)) {
+            revert TermIssuerBadSignature(member);
+        }
+        planNonces[member]++;
+        _resplit(planId, installments, true, rateBps);
+    }
+
+    /// @dev Accrues to now, sets the new rate going forward only, and re-fixes the schedule over
+    /// what is left (spec item 6). Nothing before the switch is ever charged at the new rate,
+    /// because carry up to now is materialised at the old one first.
+    function _resplit(uint256 planId, uint32 installments, bool signed, uint256 signedRate) internal {
         _requirePlan(planId);
         Plan storage plan = plans[planId];
         if (plan.closed) revert TermIssuerPlanClosed(planId);
         if (
             msg.sender != plan.member
                 && !stableCredit.access().hasCreditRole(CREDIT_LINES_ROLE, msg.sender)
+                && !signed
         ) {
             revert TermIssuerNotPlanHolder(msg.sender);
         }
-        if (!isOfferedSplit(installments)) revert TermIssuerSplitNotOffered(installments);
 
         /*
          * The member's own re-splits are bounded: not while behind (catch up first -- a re-split
          * is how a plan is reshaped, not how a missed installment is put off), at most
-         * MAX_SPLIT_CHANGES in a plan's life, and at most one an installment period. An operator
-         * re-splitting for hardship is not held to these.
+         * MAX_SPLIT_CHANGES in a plan's life, and at most one an installment period. A re-split the
+         * member signed is theirs too, whoever submits it. An operator re-splitting for hardship,
+         * unsigned (so never at a higher cost), is not held to these.
          */
-        if (msg.sender == plan.member) {
+        if (msg.sender == plan.member || signed) {
             if (arrearsOf(planId) > 0) revert TermIssuerBehindSchedule(plan.member);
             SplitLog storage log = splitLogs[planId];
             if (log.changes >= MAX_SPLIT_CHANGES) revert TermIssuerSplitLimitReached(planId);
@@ -200,8 +250,54 @@ contract TermIssuerExtension is TermIssuerBase {
             log.lastChangedAt = uint64(block.timestamp);
         }
 
-        // Bring the plan current first, so the remainder being re-split is what is really owed.
+        /*
+         * Anyone else's re-split -- the operator's, unsigned -- may only help the member (Phase 4,
+         * H-B): never fewer installments than are left, never a higher installment, and it carries
+         * no arrears in that were not already there. Shortening a plan the member did not sign
+         * for would bring payments forward and could put them into default.
+         */
+        bool unsigned = msg.sender != plan.member && !signed;
+        uint256 oldInstallment = plan.installmentAmount;
+        if (unsigned) {
+            uint256 dueNow = installmentsDue(planId);
+            if (plan.installments > dueNow && installments < plan.installments - dueNow) {
+                revert TermIssuerResplitShortens(planId);
+            }
+        }
+
+        // Bring the plan current first, at the old rate, so the remainder being re-split is what is
+        // really owed and nothing before now is charged at the new one.
         _materialiseCarry(planId);
+
+        PlanPricing storage pricing = planPricing[planId];
+        bool largeLoan;
+        if (pricing.priced) {
+            Quote memory q = _quote(
+                plan.member,
+                pricing.merchant,
+                pricing.product,
+                plan.principalOutstanding - carryOutstandingOf[planId],
+                installments,
+                plan.installmentLength,
+                IOpenPrincipal(address(this)).openPrincipalOf(plan.member, pricing.product, planId)
+            );
+            largeLoan = q.largeTerm;
+            uint256 oldRate = plan.index.ratePerCycle;
+            uint256 due = installmentsDue(planId);
+            uint256 remaining = plan.installments > due ? plan.installments - due : 0;
+            bool costRises = q.rateBps > oldRate || (q.rateBps > 0 && installments > remaining);
+            if (costRises && !signed) revert TermIssuerResplitNeedsSignature(planId);
+            if (signed && signedRate != q.rateBps) {
+                revert TermIssuerTermsMismatch(signedRate, q.rateBps, 0, 0);
+            }
+            pricing.free = q.free;
+            pricing.subsidyBps = q.subsidyBps;
+            plan.index.ratePerCycle = q.rateBps;
+            emit PlanRepriced(planId, q.rateBps, q.free);
+        }
+        if (!isOfferedSplit(installments) && !(largeLoan && installments == CLEAR_CASH_SPLIT)) {
+            revert TermIssuerSplitNotOffered(installments);
+        }
 
         uint256 repaid = plan.repaid;
         uint256 behind = arrearsOf(planId);
@@ -212,72 +308,23 @@ contract TermIssuerExtension is TermIssuerBase {
         plan.scheduleBase = spread;
         plan.installments = installments;
         _fixSchedule(plan);
+        if (unsigned && plan.installmentAmount > oldInstallment) revert TermIssuerResplitShortens(planId);
 
         emit PlanSplitChanged(planId, installments, spread, behind);
     }
 
-    /// @notice collects what is due on a member's plans from their own USDC, under the mandate they
-    /// set on the revolving line.
-    /// @dev The term half of "there is no pay button". Bounded like the revolving half: only a
-    /// card settler, only for a member who switched automatic repayment on, only once per ref, and
-    /// only toward what is DUE -- each plan's arrears, oldest first, then residual carry. Never an
-    /// installment early: that would be lending the member their own money.
-    /// @param ref idempotency key.
-    /// @param member address being collected for; also the payer.
-    /// @param amount the most to collect.
-    /// @return collected what was actually taken.
-    function collectForMember(bytes32 ref, address member, uint256 amount)
-        external
-        notNull(member)
-        returns (uint256 collected)
-    {
-        if (mandateSource == address(0) || !IRevolvingMandate(mandateSource).isCardSettler(msg.sender)) {
-            revert TermIssuerNotCollector(msg.sender);
-        }
-        if (!IRevolvingMandate(mandateSource).autoRepayEnabled(member)) revert TermIssuerMandateOff(member);
-        if (mandateCollections[ref] != 0) revert TermIssuerCollectionUsed(ref);
-
-        uint256 remaining = amount;
-        uint256[] memory ids = openPlanIds[member];
-        for (uint256 i = 0; i < ids.length && remaining > 0; i++) {
-            uint256 planId = ids[i];
-            if (plans[planId].closed) continue;
-            uint256 behind = arrearsOf(planId);
-            if (behind == 0) continue;
-            _materialiseCarry(planId);
-            uint256 owed = plans[planId].principalOutstanding;
-            uint256 pay = behind < remaining ? behind : remaining;
-            if (pay > owed) pay = owed;
-            if (pay == 0) continue;
-            stableCredit.repayCreditBalanceFor(member, member, uint128(pay));
-            _applyPlanPayment(planId, pay);
-            remaining -= pay;
-            collected += pay;
-        }
-        uint256 residual = residualCarryOf(member);
-        if (remaining > 0 && residual > 0) {
-            uint256 pay = residual < remaining ? residual : remaining;
-            stableCredit.repayCreditBalanceFor(member, member, uint128(pay));
-            emit ResidualCarryPaid(member, member, pay);
-            collected += pay;
-        }
-        if (collected == 0) revert TermIssuerNothingToPay(type(uint256).max);
-        mandateCollections[ref] = collected;
-        emit CollectedForMember(ref, member, collected);
-    }
-
-    /// @notice pays back what a term default wrote off, into the assurance reserve that covered it.
+    /// @notice pays back what a term default wrote off, to Lending Co., whose charge-off it was.
     /// @dev Anyone may pay for a member. Paying it all back is one way to term credit again.
+    /// Section 13: the write-off is Lending Co.'s loss, so the recovery is its money, paid to its
+    /// operating address. If the co-op's Credit Backstop covered the loss, Lending Co. pays it back
+    /// itself with `deposit(RECOVERY)`; no credit path calls the Assurance contracts.
     function repayWrittenOff(address member, uint256 amount) external notNull(member) returns (uint256 pay) {
         uint256 outstanding = writtenOffOf[member] - recoveredOf[member];
         pay = amount < outstanding ? amount : outstanding;
         if (pay == 0) revert TermIssuerNothingToPay(type(uint256).max);
-        IAssurancePool pool = stableCredit.assurancePool();
-        IERC20Upgradeable token = pool.reserveToken();
-        SafeERC20Upgradeable.safeTransferFrom(token, msg.sender, address(this), pay);
-        SafeERC20Upgradeable.safeApprove(token, address(pool), 0);
-        SafeERC20Upgradeable.safeApprove(token, address(pool), pay);
-        pool.deposit(pay);
+        address lender = stableCredit.lenderOperating();
+        if (lender == address(0)) revert TermIssuerNothingToPay(type(uint256).max);
+        SafeERC20Upgradeable.safeTransferFrom(stableCredit.reserveToken(), msg.sender, lender, pay);
         recoveredOf[member] += pay;
         emit WrittenOffRepaid(member, msg.sender, pay);
     }

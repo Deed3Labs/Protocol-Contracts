@@ -44,12 +44,29 @@ contract MerchantRegistry is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice The window a merchant gets if none was agreed.
     uint32 public defaultPayoutWindow;
 
-    uint256[44] private __gap;
+    /// @notice Merchant terms by plan length (compliance spec item 8).
+    /// @dev merchant => installments => what the merchant gives up on a plan of that length.
+    /// Zero falls back to the merchant's flat `discountBps`.
+    mapping(address => mapping(uint32 => uint256)) public discountBpsBySplit;
+    /// @dev merchant => installments => monthly bps the merchant pays to make that split cheaper
+    /// for the member, or free when it covers the whole rate.
+    mapping(address => mapping(uint32 => uint256)) public subsidyBpsBySplit;
+    /// @notice merchant => plans with this many installments or fewer are free. Zero is off.
+    mapping(address => uint32) public freeSplitMaxOf;
+    /// @notice merchant => has agreed not to surcharge credit. Informational: the contract terms
+    /// enforce it.
+    mapping(address => bool) public noSurcharge;
+
+    uint256[40] private __gap;
 
     error MerchantRegistryInvalidAddress();
     error MerchantRegistryAlreadyRegistered(address merchant);
     error MerchantRegistryUnknown(address merchant);
     error MerchantRegistryDiscountTooHigh(uint256 discountBps);
+
+    event SplitTermsSet(address indexed merchant, uint32 installments, uint256 discountBps, uint256 subsidyBps);
+    event FreeSplitMaxSet(address indexed merchant, uint32 freeSplitMax);
+    event NoSurchargeSet(address indexed merchant, bool noSurcharge);
 
     event MerchantRegistered(address indexed merchant, uint32 payoutWindow, uint256 discountBps);
     event TermsUpdated(address indexed merchant, uint32 payoutWindow, uint256 approvalCap, uint256 discountBps);
@@ -165,5 +182,44 @@ contract MerchantRegistry is AccessControlUpgradeable, UUPSUpgradeable {
     function setDefaultPayoutWindow(uint32 payoutWindow) external onlyRole(OPERATOR_ROLE) {
         defaultPayoutWindow = payoutWindow;
         emit DefaultPayoutWindowUpdated(payoutWindow);
+    }
+
+    /// @notice what a plan of `installments` costs the merchant and saves the member.
+    /// @return discountBps the co-op's share of the purchase.
+    /// @return subsidyBps monthly bps the merchant takes off the member's rate.
+    /// @return freeSplitMax plans this short or shorter are free at this merchant (zero is off).
+    function splitTermsOf(address merchant, uint32 installments)
+        external
+        view
+        returns (uint256 discountBps, uint256 subsidyBps, uint32 freeSplitMax)
+    {
+        discountBps = discountBpsBySplit[merchant][installments];
+        if (discountBps == 0) discountBps = terms[merchant].discountBps;
+        subsidyBps = subsidyBpsBySplit[merchant][installments];
+        freeSplitMax = freeSplitMaxOf[merchant];
+    }
+
+    /// @notice sets a merchant's discount and subsidy for one plan length.
+    function setSplitTerms(address merchant, uint32 installments, uint256 discountBps, uint256 subsidyBps)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        if (!terms[merchant].registered) revert MerchantRegistryUnknown(merchant);
+        if (discountBps > BPS) revert MerchantRegistryDiscountTooHigh(discountBps);
+        discountBpsBySplit[merchant][installments] = discountBps;
+        subsidyBpsBySplit[merchant][installments] = subsidyBps;
+        emit SplitTermsSet(merchant, installments, discountBps, subsidyBps);
+    }
+
+    function setFreeSplitMax(address merchant, uint32 freeSplitMax) external onlyRole(OPERATOR_ROLE) {
+        if (!terms[merchant].registered) revert MerchantRegistryUnknown(merchant);
+        freeSplitMaxOf[merchant] = freeSplitMax;
+        emit FreeSplitMaxSet(merchant, freeSplitMax);
+    }
+
+    function setNoSurcharge(address merchant, bool value) external onlyRole(OPERATOR_ROLE) {
+        if (!terms[merchant].registered) revert MerchantRegistryUnknown(merchant);
+        noSurcharge[merchant] = value;
+        emit NoSurchargeSet(merchant, value);
     }
 }

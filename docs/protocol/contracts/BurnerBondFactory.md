@@ -17,8 +17,8 @@ Source: [`contracts/core/factories/BurnerBondFactory.sol`](../../../contracts/co
 | `emergencyRecover(address token, uint256 amount)` | `onlyOwner` |  |
 | `reactivateCollection(address tokenAddress)` | `onlyOwner` |  |
 | `renounceOwnership()` | The owner |  |
-| `setAssuranceOracle(address _assuranceOracle)` | `onlyOwner` |  |
-| `setAssurancePool(address _assurancePool)` | `onlyOwner` |  |
+| `setAssuranceOracle(address _assuranceOracle)` | Not in the current source |  |
+| `setAssurancePool(address _assurancePool)` | Not in the current source |  |
 | `setBaseURI(string _baseURI)` | `onlyOwner` |  |
 | `setMinDiscount(uint256 _minDiscount)` | `onlyOwner` |  |
 | `transferOwnership(address newOwner)` | The owner |  |

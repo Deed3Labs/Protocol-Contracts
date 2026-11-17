@@ -12,38 +12,38 @@ Source: [`contracts/peripherals/AssurancePool.sol`](../../../contracts/periphera
 
 | Function | Who can call | Also |
 |---|---|---|
-| `deposit(uint256 amount)` | Anyone; acts on the caller's own account | `nonReentrant` |
-| `depositIntoBufferReserve(uint256 amount)` | Anyone; acts on the caller's own account | `nonReentrant` |
-| `depositIntoExcessReserve(uint256 amount)` | Anyone |  |
-| `depositIntoPrimaryReserve(uint256 amount)` | Anyone; acts on the caller's own account |  |
-| `depositRepayment(uint256 amount)` | Anyone; acts on the caller's own account | `nonReentrant` |
-| `depositToken(address token, uint256 amount)` | Anyone; acts on the caller's own account | `nonReentrant` |
-| `depositTokenIntoBuffer(address token, uint256 amount)` | Anyone |  |
-| `depositTokenIntoExcess(address token, uint256 amount)` | Anyone |  |
-| `depositTokenIntoPrimary(address token, uint256 amount)` | Anyone |  |
-| `initialize(address _stableCredit, address _reserveToken)` | Once, when the proxy is initialised |  |
-| `lendToBondVault(uint256 amount)` | Checked inside the function | `nonReentrant` |
-| `lendToPayoutPool(uint256 amount)` | Checked inside the function | `nonReentrant` |
-| `moveBufferToPrimary(uint256 amount)` | `onlyOperator` | `nonReentrant` |
-| `reallocateExcessBalance()` | `onlyOperator` |  |
-| `rebalanceRTD()` | `onlyOperator` |  |
-| `rebalanceRTDPublic()` | Anyone |  |
-| `reimburse(address account, uint256 amount)` | `onlyStableCredit` | `nonReentrant` |
+| `deposit(uint256 amount)` | Anyone |  |
+| `depositIntoBufferReserve(uint256 amount)` | Not in the current source |  |
+| `depositIntoExcessReserve(uint256 amount)` | Not in the current source |  |
+| `depositIntoPrimaryReserve(uint256 amount)` | Not in the current source |  |
+| `depositRepayment(uint256 amount)` | Not in the current source |  |
+| `depositToken(address token, uint256 amount)` | Not in the current source |  |
+| `depositTokenIntoBuffer(address token, uint256 amount)` | Not in the current source |  |
+| `depositTokenIntoExcess(address token, uint256 amount)` | Not in the current source |  |
+| `depositTokenIntoPrimary(address token, uint256 amount)` | Not in the current source |  |
+| `initialize(address _stableCredit, address _reserveToken)` | Not in the current source |  |
+| `lendToBondVault(uint256 amount)` | Not in the current source |  |
+| `lendToPayoutPool(uint256 amount)` | Not in the current source |  |
+| `moveBufferToPrimary(uint256 amount)` | Not in the current source |  |
+| `reallocateExcessBalance()` | Not in the current source |  |
+| `rebalanceRTD()` | Not in the current source |  |
+| `rebalanceRTDPublic()` | Not in the current source |  |
+| `reimburse(address account, uint256 amount)` | Not in the current source |  |
 | `renounceOwnership()` | The owner |  |
-| `repayFromBondVault(uint256 amount)` | Checked inside the function | `nonReentrant` |
-| `repayFromPayoutPool(uint256 amount)` | Checked inside the function | `nonReentrant` |
-| `setAssuranceOracle(address _assuranceOracle)` | `onlyAdmin` |  |
-| `setBondVault(address vault)` | `onlyOperator` |  |
-| `setExposureSource(address _exposureSource)` | `onlyAdmin` |  |
-| `setPayoutPool(address pool)` | `onlyOperator` |  |
-| `setReserveToken(address _reserveToken)` | `onlyAdmin` |  |
-| `setTokenAddresses(address _usdcAddress, address _usdtAddress, address _daiAddress)` | `onlyAdmin` |  |
-| `setWithdrawalCaller(address caller, bool allowed)` | `onlyAdmin` |  |
+| `repayFromBondVault(uint256 amount)` | Not in the current source |  |
+| `repayFromPayoutPool(uint256 amount)` | Not in the current source |  |
+| `setAssuranceOracle(address _assuranceOracle)` | Not in the current source |  |
+| `setBondVault(address vault)` | Not in the current source |  |
+| `setExposureSource(address _exposureSource)` | Not in the current source |  |
+| `setPayoutPool(address pool)` | Not in the current source |  |
+| `setReserveToken(address _reserveToken)` | Not in the current source |  |
+| `setTokenAddresses(address _usdcAddress, address _usdtAddress, address _daiAddress)` | Not in the current source |  |
+| `setWithdrawalCaller(address caller, bool allowed)` | Not in the current source |  |
 | `transferOwnership(address newOwner)` | The owner |  |
-| `upgradeTo(address newImplementation)` | `onlyOwner` (via `_authorizeUpgrade`) |  |
-| `upgradeToAndCall(address newImplementation, bytes data)` | `onlyOwner` (via `_authorizeUpgrade`) | payable |
-| `withdraw(uint256 amount)` | `onlyWithdrawalCaller` | `nonReentrant` |
-| `withdrawToken(address token, uint256 amount)` | `onlyWithdrawalCaller` | `nonReentrant` |
+| `upgradeTo(address newImplementation)` | Whoever `_authorizeUpgrade` allows |  |
+| `upgradeToAndCall(address newImplementation, bytes data)` | Whoever `_authorizeUpgrade` allows | payable |
+| `withdraw(uint256 amount)` | The share owner, or an approved spender |  |
+| `withdrawToken(address token, uint256 amount)` | Not in the current source |  |
 
 ## Read functions
 

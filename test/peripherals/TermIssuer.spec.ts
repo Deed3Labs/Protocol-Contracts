@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
+import { issuerProxyOptions } from "../helpers/issuers";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -22,14 +23,12 @@ describe("TermIssuer", function () {
 
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
     issuer = await upgrades.deployProxy(
-      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" }
     );
 
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await issuer.getAddress());
     for (const who of [coop, merchant]) {
@@ -82,14 +81,15 @@ describe("TermIssuer", function () {
   }
 
   describe("origination is a three-party mint", function () {
-    it("debits the member, credits the merchant, credits the co-op the difference", async function () {
+    it("debits the member, credits the merchant, credits Clear Lending's fee recipient the difference (12.16)", async function () {
       await setLimit(2_000n * ONE_USDC);
       await openPlan(1_000n * ONE_USDC, 970n * ONE_USDC); // 3% discount
 
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address))
         .to.equal(1_000n * ONE_USDC);
       expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(970n * ONE_USDC);
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(30n * ONE_USDC);
+      expect(await ctx.stableCredit.balanceOf(await issuer.feeRecipient())).to.equal(30n * ONE_USDC);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n); // the co-op gets nothing
     });
 
     it("nets to zero", async function () {
@@ -99,16 +99,18 @@ describe("TermIssuer", function () {
       const debit = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
       const credits =
         (await ctx.stableCredit.balanceOf(merchant.address)) +
-        (await ctx.stableCredit.balanceOf(coop.address));
+        (await ctx.stableCredit.balanceOf(await issuer.feeRecipient()));
       expect(debit).to.equal(credits);
       expect(await ctx.stableCredit.totalSupply()).to.equal(debit);
     });
 
     it("requires no capital: nothing is transferred in at origination", async function () {
       await setLimit(2_000n * ONE_USDC);
-      const reserveBefore = await ctx.assurancePool.reserveBalance();
+      const usdcBefore = await ctx.usdc.balanceOf(await ctx.stableCredit.getAddress());
+      const lenderBefore = await ctx.usdc.balanceOf(ctx.lenderOperating.address);
       await openPlan(1_000n * ONE_USDC, 970n * ONE_USDC);
-      expect(await ctx.assurancePool.reserveBalance()).to.equal(reserveBefore);
+      expect(await ctx.usdc.balanceOf(await ctx.stableCredit.getAddress())).to.equal(usdcBefore);
+      expect(await ctx.usdc.balanceOf(ctx.lenderOperating.address)).to.equal(lenderBefore);
     });
 
     it("refuses a purchase whose legs do not sum to zero", async function () {
@@ -174,7 +176,10 @@ describe("TermIssuer", function () {
       await openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC);
       await advance(6 * CYCLE);
 
-      expect(await issuer.carryOn(0)).to.be.greaterThan(await issuer.carryOn(1));
+      // Opening the second plan brought the first to now (Addendum 2: a member's plans move
+      // together), so what each has run up is what is on the ledger plus what is pending.
+      const total = async (id: number) => (await issuer.carryOutstandingOf(id)) + (await issuer.carryOn(id));
+      expect(await total(0)).to.be.greaterThan(await total(1));
     });
 
     it("brings carry onto the ledger, owed to the treasury", async function () {
@@ -233,7 +238,7 @@ describe("TermIssuer", function () {
     // from carry-so-far is right about what is owed and wrong about what the member was told:
     // the figure climbs all term, and every rise is a support call the co-op loses.
 
-    it("asks the same amount every period", async function () {
+    it("asks a fixed, known amount each period: one levelled payment of principal plus carry (section 12.9)", async function () {
       await setLimit(2_000n * ONE_USDC);
       await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 65n, 12);
 
@@ -246,13 +251,10 @@ describe("TermIssuer", function () {
         previous = cumulative;
       }
 
-      // Every period but the last asks for the quoted figure exactly.
-      const [quoted] = await issuer.scheduleOf(0);
-      for (let i = 0; i < 11; i++) {
-        expect(steps[i]).to.equal(quoted);
-      }
-      // The last settles the remainder, so it is never larger than the rest.
-      expect(steps[11]).to.be.lessThanOrEqual(quoted);
+      // Every period asks the quoted payment: levelled, so it never moves and never creeps up.
+      const [quoted, total] = await issuer.scheduleOf(0);
+      for (let i = 0; i < 12; i++) expect(steps[i]).to.equal(quoted);
+      expect(steps.reduce((a, b) => a + b, 0n)).to.equal(total);
     });
 
     it("prices the carry in from the first period rather than letting it creep", async function () {
@@ -390,14 +392,18 @@ describe("TermIssuer", function () {
       await setLimit(2_000n * ONE_USDC);
       await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 12);
       await advance(3 * MONTH + ONE_DAY);
-      await issuer.connect(ctx.operator).setSplit(0, 6);
+      // The co-op's unsigned re-split may only lengthen what is left (Phase 4, H-B): nine
+      // installments are left, so six would shorten it.
+      await expect(issuer.connect(ctx.operator).setSplit(0, 6))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerResplitShortens");
+      await issuer.connect(ctx.operator).setSplit(0, 12);
 
       await issuer.connect(payer).payPlan(0, 300n * ONE_USDC);
       expect(await issuer.arrearsOf(0)).to.equal(0n);
 
-      // 900 left over six cycles.
+      // 900 left over twelve cycles.
       await advance(MONTH);
-      expect(await issuer.arrearsOf(0)).to.equal(150n * ONE_USDC);
+      expect(await issuer.arrearsOf(0)).to.equal(75n * ONE_USDC);
     });
 
     it("still sums to the principal after a re-split", async function () {
@@ -658,10 +664,15 @@ describe("TermIssuer", function () {
       expect((await issuer.planAt(0)).closed).to.equal(true);
     });
 
-    it("refuses legs that do not add up", async function () {
+    it("takes the legs from the plan, not the caller (Phase 4, H-A)", async function () {
+      // Another merchant is refused: a refund takes back only what this plan's merchant was paid.
       await expect(
-        issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PURCHASE + 1n)
-      ).to.be.reverted;
+        issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, payer.address, PAYOUT)
+      ).to.be.revertedWithCustomError(issuer, "TermIssuerRefundTermsMismatch");
+      // A payout that does not add up is ignored: the payout recorded at opening is used.
+      const before = await ctx.stableCredit.balanceOf(merchant.address);
+      await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PURCHASE + 1n);
+      expect(before - (await ctx.stableCredit.balanceOf(merchant.address))).to.equal(PAYOUT);
     });
 
     it("a partial refund leaves the rest of the plan running", async function () {
@@ -758,7 +769,9 @@ describe("TermIssuer", function () {
       await expect(setLimit(1_000n * ONE_USDC)).to.be.revertedWithCustomError(issuer, "TermIssuerSuspended");
     });
 
-    it("paying back what was written off funds the reserve, and reinstates", async function () {
+    // Section 13: the write-off is Lending Co.'s charge-off, so the recovery goes to its operating
+    // address. It used to be deposited into the AssurancePool; no credit path calls the pool now.
+    it("paying back what was written off pays Lending Co., and reinstates", async function () {
       await openFlat();
       await advance(3 * MONTH + ONE_DAY);
       await issuer.declareDefault(ctx.member.address);
@@ -767,8 +780,7 @@ describe("TermIssuer", function () {
         .to.be.revertedWithCustomError(issuer, "TermIssuerNotReinstatable");
 
       await ctx.usdc.connect(payer).approve(await issuer.getAddress(), PLAN);
-      // The pool tops its primary reserve up to target and keeps the rest as excess.
-      const held = async () => (await ctx.assurancePool.reserveBalance()) + (await ctx.assurancePool.excessBalance());
+      const held = async () => ctx.usdc.balanceOf(ctx.lenderOperating.address);
       const before = await held();
       await issuer.connect(payer).repayWrittenOff(ctx.member.address, PLAN + 1n);
       expect(await held()).to.equal(before + PLAN);
@@ -828,28 +840,28 @@ describe("TermIssuer", function () {
       await ctx.usdc.connect(ctx.member).approve(await ctx.stableCredit.getAddress(), 10_000n * ONE_USDC);
     });
 
-    it("takes only what is due, from the member, once per ref, for a settler under a mandate", async function () {
+    // Phase 2d (the owner's decision on 10f): recovery never takes Ready to allocate USDC, so the
+    // settler's pull from the member's wallet is retired. Term dues are swept from Spendable at the
+    // bank; the member pays a plan with their own `payPlan`.
+    it("collectForMember is retired: no settler takes a member's wallet USDC, even under a mandate with an allowance; the member pays with payPlan", async function () {
       await setLimit(4_000n * ONE_USDC);
       await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 12);
       await advance(MONTH + ONE_DAY);
-      const ref = ethers.id("collect-1");
-
-      await expect(issuer.connect(payer).collectForMember(ref, ctx.member.address, 500n * ONE_USDC))
-        .to.be.revertedWithCustomError(issuer, "TermIssuerNotCollector");
       await issuer.connect(ctx.operator).setMandateSource(await mandate.getAddress());
       await mandate.setCardSettler(payer.address, true);
-      await expect(issuer.connect(payer).collectForMember(ref, ctx.member.address, 500n * ONE_USDC))
-        .to.be.revertedWithCustomError(issuer, "TermIssuerMandateOff");
-
       await mandate.setAutoRepay(ctx.member.address, true);
       const usdcBefore = await ctx.usdc.balanceOf(ctx.member.address);
-      await issuer.connect(payer).collectForMember(ref, ctx.member.address, 500n * ONE_USDC);
-      // What was due, not what was offered: never an installment early.
-      expect(await ctx.usdc.balanceOf(ctx.member.address)).to.equal(usdcBefore - 100n * ONE_USDC);
+      await expect(issuer.connect(payer).collectForMember(ethers.id("collect-1"), ctx.member.address, 500n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerWalletCollectionRetired");
+      expect(await ctx.usdc.balanceOf(ctx.member.address)).to.equal(usdcBefore);
+      expect(await issuer.mandateCollectionOf(ethers.id("collect-1"))).to.equal(0n);
+
+      // The member's own payment still clears what is due.
+      const due = await issuer.arrearsOf(0);
+      await ctx.usdc.connect(ctx.member).approve(await issuer.getAddress(), due);
+      await ctx.usdc.connect(ctx.member).approve(await ctx.stableCredit.getAddress(), due);
+      await issuer.connect(ctx.member).payPlan(0, due);
       expect(await issuer.arrearsOf(0)).to.equal(0n);
-      expect(await issuer.mandateCollectionOf(ref)).to.equal(100n * ONE_USDC);
-      await expect(issuer.connect(payer).collectForMember(ref, ctx.member.address, 500n * ONE_USDC))
-        .to.be.revertedWithCustomError(issuer, "TermIssuerCollectionUsed");
     });
 
     async function refundLeavingCarry() {
@@ -872,12 +884,16 @@ describe("TermIssuer", function () {
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
     });
 
-    it("a mandated collection clears residual carry too", async function () {
+    it("residual carry is not collected from the member's wallet either; the member clears it themselves", async function () {
       await refundLeavingCarry();
       await issuer.connect(ctx.operator).setMandateSource(await mandate.getAddress());
       await mandate.setCardSettler(payer.address, true);
       await mandate.setAutoRepay(ctx.member.address, true);
-      await issuer.connect(payer).collectForMember(ethers.id("collect-carry"), ctx.member.address, 100n * ONE_USDC);
+      await expect(issuer.connect(payer).collectForMember(ethers.id("collect-carry"), ctx.member.address, 100n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerWalletCollectionRetired");
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      await ctx.usdc.connect(ctx.member).approve(await issuer.getAddress(), owed);
+      await issuer.connect(ctx.member).payResidualCarry(ctx.member.address, owed);
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
     });
 

@@ -1,4 +1,5 @@
-import { saveDeployment, getDeployment } from "./helpers";
+import { saveDeployment, getDeployment, liveNetworkOf } from "./helpers";
+import { issuerProxyOptions } from "./issuerModules";
 
 /**
  * The credit core: the ledger, the registries, and the two issuers that sit on it.
@@ -19,12 +20,22 @@ import { saveDeployment, getDeployment } from "./helpers";
  * redeployed, so a failed run can simply be run again. Re-running the wiring is harmless -- every
  * call is a set, not an append.
  *
- * AssurancePool and AssuranceOracle are Phase C. If they are already deployed, the issuers are
- * registered against them here; if not, this stops short of that and says so, rather than
- * registering against a zero address the way `08_deploy_AssurancePool.ts` used to.
+ * Section 13 took the AssurancePool out of the credit network. The issuers register against the
+ * ledger alone, and the ledger gets its own reserve token (USDC, set once) and Lending Co.'s
+ * operating address, where a repayment's remainder goes. The co-op's AssurancePool is deployed by
+ * `08_deploy_AssurancePool.ts` and nothing here holds its address.
+ *
+ *   RESERVE_TOKEN   the reserve token; defaults to USDC on base and base-sepolia
+ *   LENDER_OPERATING  Lending Co.'s operating address (required for repayments to settle)
  *
  *   npx hardhat run deploy/20_deploy_CreditCore.ts --network base-sepolia
  */
+
+/** USDC, by network. The ledger's reserve token unless RESERVE_TOKEN says otherwise. */
+const KNOWN_USDC: Record<string, string> = {
+  "base-sepolia": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  base: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+};
 
 const LEDGER_NAME = "Clear Credit";
 const LEDGER_SYMBOL = "CLRC";
@@ -51,6 +62,11 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
   const { ethers, upgrades } = hre;
   const [deployer] = await ethers.getSigners();
   const network = (await ethers.provider.getNetwork()).name;
+  // On a real chain or a fork LENDER_OPERATING is required, checked before anything is sent: no
+  // silent run without Lending Co.'s operating address, and nothing falls back to another address.
+  if (!process.env.LENDER_OPERATING?.trim() && (await ethers.provider.getNetwork()).chainId !== 31337n) {
+    throw new Error("LENDER_OPERATING is empty: set it to Lending Co.'s operating address (on Base Sepolia, CL Operating; deploy/config/base-sepolia.rollout.env).");
+  }
   const log = options.quiet ? () => {} : console.log;
 
   log(`Deploying the credit core to ${network} as ${deployer.address}\n`);
@@ -71,7 +87,12 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
       return ethers.getContractAt(contractName, existing.address);
     }
     const factory = await ethers.getContractFactory(contractName);
+    // TermIssuer and RevolvingIssuer take their modules as constructor arguments (EIP-3860).
+    const modules = contractName === "TermIssuer" || contractName === "RevolvingIssuer"
+      ? await issuerProxyOptions(contractName)
+      : {};
     const instance = await upgrades.deployProxy(factory, args, {
+      ...modules,
       initializer: "initialize",
       kind: "uups",
     });
@@ -247,6 +268,18 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
     log("! No ClearUSDUpgradeable yet: run deploy/21, then re-run this to name it (savings back nothing until then).");
   }
 
+  // Re-review L-B: every Savings draw refreshes CLRUSD's recorded lock, so a registry outage cannot
+  // fail open for a holder who drew after their last CLRUSD move. Set once, by the issuer's owner
+  // (the deployer until the credit timelock handover; after it, a timelock proposal).
+  if (clrusdRecord && (await revolving.clrusdTokenOf()) === ethers.ZeroAddress) {
+    if ((await revolving.owner()) === deployer.address) {
+      await (await revolving.setClrusdToken(clrusdRecord.address)).wait();
+      log("  RevolvingIssuer clrusdToken -> ClearUSDUpgradeable");
+    } else {
+      log(`! RevolvingIssuer has no CLRUSD token: propose setClrusdToken(${clrusdRecord.address}) through the credit timelock.`);
+    }
+  }
+
   /*
    * The credit operator's powers are split by job (audit H-4). The deployer is the AccessManager
    * admin and passes every role; these grants are for the keys that do each job day to day.
@@ -284,43 +317,47 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
   await (await term.setDailyCaps(termLimitCap, planCap)).wait();
   log(`  daily caps: capacity ${capacityCap}, term limits ${termLimitCap}, plans ${planCap}, card ${cardTxCap}/${cardDailyCap}`);
 
-  // ---- Phase C's half, done here only if it already exists ----
-  const pool = getDeployment(network, "AssurancePool");
-  const oracle = getDeployment(network, "AssuranceOracle");
-
-  if (pool && oracle) {
-    const assurancePool = await ethers.getContractAt("AssurancePool", pool.address);
-    // The pool's exposure source is the RTD denominator: what it would actually pay if every
-    // member defaulted. Without it the pool reserves against all credit, savings-backed included.
-    if ((await assurancePool.exposureSource()) !== collateralAddress) {
-      await (await assurancePool.setExposureSource(collateralAddress)).wait();
-      log("  AssurancePool -> CollateralRegistry");
-    }
-    if ((await ledger.assurancePool()) !== pool.address) {
-      await (await ledger.setAssurancePool(pool.address)).wait();
-      log("  ledger -> AssurancePool");
-    }
-    for (const [label, issuerAddress] of [
-      ["RevolvingIssuer", revolvingAddress],
-      ["TermIssuer", termAddress],
-    ] as const) {
-      if (!(await networkRegistry.isIssuer(issuerAddress))) {
-        await (
-          await networkRegistry.registerIssuer(
-            issuerAddress,
-            ledgerAddress,
-            pool.address,
-            oracle.address
-          )
-        ).wait();
-        log(`  registered ${label} against the ledger`);
-      }
+  // ---- The ledger's own money settings (section 13) ----
+  const reserveToken = process.env.RESERVE_TOKEN ?? KNOWN_USDC[liveNetworkOf(network)];
+  if (reserveToken) {
+    if ((await ledger.reserveToken()) === ethers.ZeroAddress) {
+      await (await ledger.setReserveToken(reserveToken)).wait();
+      log(`  ledger reserve token -> ${reserveToken}`);
     }
   } else {
-    log(
-      "\n! No AssurancePool/AssuranceOracle on this network yet, so the issuers are NOT registered."
-    );
-    log("  A member cannot draw until they are. Deploy those (Phase C), then re-run this.");
+    log("\n! No RESERVE_TOKEN for this network: repayments revert until the ledger has one.");
+  }
+  const lenderOperating = process.env.LENDER_OPERATING?.trim();
+  if (lenderOperating) {
+    if (!ethers.isAddress(lenderOperating)) throw new Error(`LENDER_OPERATING ${lenderOperating} is not an address.`);
+    if ((await ledger.lenderOperating()).toLowerCase() !== lenderOperating.toLowerCase()) {
+      await (await ledger.setLenderOperating(lenderOperating)).wait();
+      log(`  ledger remainder -> Lending Co. ${lenderOperating}`);
+    }
+  } else {
+    log("! LENDER_OPERATING unset: a repayment above what the payout pool is owed reverts until it is.");
+  }
+
+  // ---- Issuers, registered against the ledger and nothing else ----
+  // Re-review M-E: registration is NetworkRegistry's admin power. On a fresh deploy the deployer
+  // holds it until the credit timelock handover; on a re-run after the handover, print the proposal.
+  const deployerIsRegistryAdmin = await networkRegistry.hasRole(
+    await networkRegistry.DEFAULT_ADMIN_ROLE(),
+    deployer.address
+  );
+  for (const [label, issuerAddress] of [
+    ["RevolvingIssuer", revolvingAddress],
+    ["TermIssuer", termAddress],
+  ] as const) {
+    if (!(await networkRegistry.isIssuer(issuerAddress))) {
+      if (deployerIsRegistryAdmin) {
+        await (await networkRegistry.registerIssuer(issuerAddress, ledgerAddress)).wait();
+        log(`  registered ${label} against the ledger`);
+      } else {
+        log(`! ${label} is not registered and the deployer is not NetworkRegistry's admin: propose`);
+        log(`  registerIssuer(${issuerAddress}, ${ledgerAddress}) through the credit timelock.`);
+      }
+    }
   }
 
   log("\nCredit core deployed.");

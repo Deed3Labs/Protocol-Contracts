@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
+import { issuerProxyOptions } from "../helpers/issuers";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -23,20 +24,18 @@ describe("a balance shared between issuers", function () {
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     revolving = await upgrades.deployProxy(
-      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" }
     );
 
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
     term = await upgrades.deployProxy(
-      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" }
     );
 
     for (const issuer of [revolving, term]) {
       await ctx.networkRegistry.registerIssuer(
         await issuer.getAddress(),
-        await ctx.stableCredit.getAddress(),
-        await ctx.assurancePool.getAddress(),
-        await ctx.assuranceOracle.getAddress()
+        await ctx.stableCredit.getAddress()
       );
       await ctx.access.grantOperator(await issuer.getAddress());
     }
@@ -65,7 +64,7 @@ describe("a balance shared between issuers", function () {
     await revolving
       .connect(ctx.operator)
       .openLine(
-        ctx.member.address, [0n, 500n * ONE_USDC, 0n], ONE_YEAR, MONTH
+        ctx.member.address, [0n, 500n * ONE_USDC, 0n], 0
       );
 
     await term.connect(ctx.operator).setTermLimit(ctx.member.address, 2_000n * ONE_USDC);

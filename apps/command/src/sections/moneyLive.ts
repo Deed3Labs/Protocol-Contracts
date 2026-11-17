@@ -119,6 +119,10 @@ export function moneyLive() {
     COOP: vars.coop ?? null,
     // what the co-op owes for $10 offers on their own line; null until OffersIssuer is deployed
     OFFERS: vars.offers ?? null,
+    // the Assurance fees card: the fee, its items and their states, advances outstanding, interchange; read when drawn, as Money reloads
+    get AF() {
+      return vars.assuranceFees ?? null;
+    },
     // the next 30 days, from today
     FLOWS: FLOWS.filter((f) => f[0] >= 0 && f[0] <= 30)
       .map((f) => [num(f[0]), f[1], num(f[2]), f[3] ?? '', f[4] ?? ''])

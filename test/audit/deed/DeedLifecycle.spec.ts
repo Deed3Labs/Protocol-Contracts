@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
-import { deployDeedTrack, mintValidatedLand, subdivideDeed, k, dec, coder, Ctx } from "./fixture";
+import { deployDeedTrack, mintValidatedLand, mintVehicle, subdivideDeed, trustParams, deedIdFor, signTrust, k, dec, coder, Ctx } from "./fixture";
 
 /*
  * Deed-track audit regressions: token ids, burn, transfer policy, pause, fees, factory.
@@ -13,10 +13,12 @@ describe("AUDIT deed: lifecycle, ids, transfers", function () {
 
   // Report D-8 (spec label D-09)
   it("D-8: a burned id can never be minted again; salted ids live outside the sequential range; a subdivided parent cannot be burned", async () => {
-    const { deed, renderer, alice, carol, deployer } = ctx;
+    const { deed, trust, renderer, alice, carol, deployer, trustee } = ctx;
     const salt = 777n;
     const def = "Parcel 0123-456-78";
-    const id = await deed.generateUniqueTokenId(alice.address, 0, def, salt);
+    // v5 (brief item 2): a trust deed's ID is the hash of its agreement, riders and identity, in [2^127, 2^128)
+    const params = trustParams(ctx, alice, { salt, definition: def });
+    const id = await deedIdFor(ctx, params);
     expect(id >= 2n ** 127n && id < 2n ** 128n).to.equal(true);   // not 9 digits, not sequential, fits Subdivide packing
     await mintValidatedLand(ctx, alice, salt, def);
     expect(await deed.wasEverMinted(id)).to.equal(true);
@@ -31,14 +33,20 @@ describe("AUDIT deed: lifecycle, ids, transfers", function () {
 
     await deed.connect(alice).burnAsset(id);
     // Same id cannot be minted again, by the same inputs or any other route
-    await expect(deed.mintAsset(alice.address, 0, "", def, "", ethers.ZeroAddress, ethers.ZeroAddress, salt))
-      .to.be.revertedWith("Token ID already exists");
+    const sig = await signTrust(ctx, trustee, "TrusteeAcceptance", { tokenId: id, trustee: trustee.address, nonce: 0 });
+    await expect(trust.mintTrustDeed(params, sig)).to.be.revertedWithCustomError(trust, "DeedIdUnavailable").withArgs(id);
     expect(await deed.wasEverMinted(id)).to.equal(true);
 
+    // Legacy salted IDs (Vehicle, CommercialEquipment) share the range and the never-reuse rule
+    const vid = await deed.generateUniqueTokenId(alice.address, 1, "VIN X", salt);
+    expect(vid >= 2n ** 127n && vid < 2n ** 128n).to.equal(true);
+    expect(await mintVehicle(ctx, alice, salt, "VIN X")).to.equal(vid);
+    await deed.connect(alice).burnAsset(vid);
+    await expect(deed.mintAsset(alice.address, 1, "", "VIN X", "", ethers.ZeroAddress, ethers.ZeroAddress, salt))
+      .to.be.revertedWithCustomError(trust, "DeedIdUnavailable");
+
     // Sequential minting keeps working and never lands on a salted id
-    const rc = await (await deed.mintAsset(alice.address, 0, "", "seq", "", ethers.ZeroAddress, ethers.ZeroAddress, 0)).wait();
-    const ev = rc.logs.map((l: any) => { try { return deed.interface.parseLog(l); } catch { return null; } }).find((e: any) => e?.name === "DeedNFTMinted");
-    expect(ev.args.tokenId < 2n ** 127n).to.equal(true);
+    expect((await mintVehicle(ctx, alice, 0n, "seq")) < 2n ** 127n).to.equal(true);
   });
 
   // Report D-17 (spec label D-10)
@@ -59,20 +67,22 @@ describe("AUDIT deed: lifecycle, ids, transfers", function () {
   });
 
   // Report D-19 (spec label D-11)
-  it("D-19: a deed moving into a custody contract keeps its depositor as beneficiary", async () => {
-    const { deed, fractionalize, alice, bob } = ctx;
+  it("D-19 / v5 item 5: a deed in a custody contract still belongs to its depositor (beneficialOwnerOf)", async () => {
+    const { deed, trust, fractionalize, alice, bob } = ctx;
     const id = await mintValidatedLand(ctx, alice);
-    expect(coder.decode(["address"], await deed.getTraitValue(id, k("beneficiary")))[0]).to.equal(alice.address);
+    // The beneficiary trait is gone: holding the token is not beneficial ownership (brief item 5)
+    expect(await deed.getTraitValue(id, k("beneficiary"))).to.equal("0x");
+    expect(await trust.beneficialOwnerOf(id)).to.equal(alice.address);
     await deed.connect(alice).approve(await fractionalize.getAddress(), id);
     await fractionalize.connect(alice).createFraction({
       assetType: 0, originalTokenId: id, name: "F", description: "", symbol: "F", collectionUri: "",
       totalShares: 100, burnable: true, approvalPercentage: 51,
     });
     expect(await deed.ownerOf(id)).to.equal(await fractionalize.getAddress());
-    expect(coder.decode(["address"], await deed.getTraitValue(id, k("beneficiary")))[0]).to.equal(alice.address);
-    // leaving custody to a new holder updates it
+    expect(await trust.beneficialOwnerOf(id)).to.equal(alice.address);
+    // leaving custody to a new holder: the holder is the beneficial owner again
     await fractionalize.connect(alice).unlockAsset({ fractionId: 1, to: bob.address, checkApprovals: false });
-    expect(coder.decode(["address"], await deed.getTraitValue(id, k("beneficiary")))[0]).to.equal(bob.address);
+    expect(await trust.beneficialOwnerOf(id)).to.equal(bob.address);
   });
 
   // Report D-18 (spec label D-12)
@@ -106,7 +116,7 @@ describe("AUDIT deed: lifecycle, ids, transfers", function () {
     await usdc.approve(await fundManager.getAddress(), ethers.MaxUint256);   // minter's standing approval
 
     const usdcAddr = await usdc.getAddress();
-    const mint = () => deed.mintAsset(alice.address, 0, "", "def", "", ethers.ZeroAddress, usdcAddr, 0);
+    const mint = () => deed.mintAsset(alice.address, 1, "", "def", "", ethers.ZeroAddress, usdcAddr, 0);
     // no cap set: no fee is ever paid
     await expect(mint()).to.be.revertedWithCustomError(fundManager, "FeeAboveMax");
     await fundManager.setMaxFee(usdcAddr, 100n * 10n ** 6n);          // the minter caps the fee

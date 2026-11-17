@@ -10,12 +10,13 @@ are in [`credit.md`](./credit.md); the AssurancePool and BondVault, as lenders, 
 |---|---|
 | `MerchantRegistry` | Per-merchant terms: payout window, approval cap, discount, active flag |
 | `PayoutPool` | Turns a positive balance into reserve tokens. Queues claims, borrows for due ones, repays lenders, splits carry |
-| `LendingPool` | ERC-4626 vault. Lends cash to `BORROWER_ROLE` holders and takes it back through `repay` |
+| `LendingPool` | The Clear Earn Yield Pool (Phase 2f): an ERC-4626 vault of Pool Shares. Lends only to Clear Lending, as recorded Deployments |
 | `IPayoutSink` | The five calls the ledger makes on the PayoutPool |
 | `IPayoutLenders` | `ILendingPool` and `IAssuranceLender`: the calls the PayoutPool makes on its lenders |
 | `StableCredit` | Routes members' repayments (`_routeRepayment`) and burns claims the pool settles (`settleClaim`) |
 
 `MerchantRegistry`, `PayoutPool` and `LendingPool` are UUPS proxies with `AccessControl`; upgrades need `DEFAULT_ADMIN_ROLE`.
+`LendingPool`'s `DEFAULT_ADMIN_ROLE` moves to the separate 7-day Earn timelock (Phase 2f decision 2).
 `PayoutPool` storage is append-only, and its file marks where new variables go.
 
 ## The payable
@@ -118,8 +119,10 @@ without drawing if the pool's cash, less `refundsOwed`, already covers it.
 
 The shortfall is drawn from each source in turn, each only for what the one before could not cover:
 
-1. **Lending pool.** `ILendingPool(yieldPool).borrow(take, pool)`, up to its `availableCash()`.
-   Recorded in `borrowedFromYield`.
+1. **Lending pool.** `ILendingPool(yieldPool).borrow(take, pool)`, up to the lesser of its
+   `availableCash()` and `borrowableToday(pool)`. Recorded in `borrowedFromYield`. Since Phase 2f
+   the Yield Pool reports `borrowableToday` as zero and `borrow` reverts, so this step takes nothing
+   (decision 17); `setYieldPool(0)` switches it off once `borrowedFromYield` is repaid.
 2. **Bond vault.** `IAssuranceLender(bondVault).lendToPayoutPool(short)`. The vault lends from its
    deployable excess only. Recorded in `borrowedFromVault`.
 3. **Treasury.** `safeTransferFrom(coopTreasury, pool, take)`, up to `treasuryAvailable()` (the
@@ -134,7 +137,7 @@ plus `refundsOwed`, it pays the claim in the same call.
 
 Each lender is set by `OPERATOR_ROLE`: `setLenders(yieldPool, reserve)` and `setBondVault(vault)`.
 An unset address is skipped. The AssurancePool and BondVault accept `lendToPayoutPool` only from
-their configured payout pool; the LendingPool requires `BORROWER_ROLE`. The
+their configured payout pool; the LendingPool no longer lends to it (decision 17). The
 AssurancePool's and BondVault's side of this is in [`reserve.md`](./reserve.md).
 
 ## Repayment comes back
@@ -202,55 +205,137 @@ repays.
 
 ## LendingPool
 
-**An ERC-4626 vault over the reserve token whose `totalAssets` counts what is lent out.**
-`totalAssets()` is cash plus `totalBorrowed`, less `queuedAssets`. `availableCash()` is cash less
-`queuedAssets`, and caps both `borrow` and `maxWithdraw`.
+**The Clear Earn Yield Pool.** Since Phase 2f (decision 16) the `LendingPool` proxy is the Yield
+Pool, upgraded in place: same name, address and balances, storage append-only against Base Sepolia.
+Pool Shares are limited-recourse subordinated demand notes (IV-02). The requirements are in
+[`earn-contract-requirements.md`](../audit/specs/earn-contract-requirements.md) §§6–8; the change
+record is [`PHASE-2F-YIELD-POOL.md`](../audit/PHASE-2F-YIELD-POOL.md). Valuation, the holdback
+ledger, Suspension, the rate model and Deployments run in the `YieldPoolValuation` module by
+delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poolModules.ts)).
 
-- **Depositing.** The standard ERC-4626 calls (`deposit`, `mint`, `withdraw`, `redeem`) are not
-  overridden. No role or membership check gates a deposit. `maxWithdraw` and `maxRedeem` are capped
-  by `availableCash()`, so a withdrawal larger than the free cash has to queue.
-- **Borrowing.** `borrow(amount, to)` needs `BORROWER_ROLE`. Nothing grants it at deploy.
-  `scripts/upgrade_reserve_draw.ts` grants it to the PayoutPool, and `scripts/grant_pool_borrower.ts`
-  to the card-settler wallet.
-- **Repaying.** `repay(amount)` is open to anyone and is treated as principal while anything is
-  owed. Interest arrives as a plain transfer (see above).
-- **The queue.** A depositor whose cash is lent out calls `requestWithdrawal(shares, receiver)`. The
-  shares are burned now and the claim is fixed in assets at `previewRedeem`, so it stops earning and
-  stops carrying loss. `claimWithdrawal(id)` pays it to the receiver. Only the request's owner can
-  call it, and it reverts while the pool's cash is below the request (`isClaimable` says whether it
-  would pass). Nothing pays a request automatically, and requests are not paid in order.
-- **The rate curve is a view.** `borrowRatePerCycle()` and `supplyRatePerCycle()` compute a kinked
-  curve from `utilizationBps()`, set by `setRateCurve`. No contract reads either; `borrow` and
-  `repay` move principal only. What depositors earn is what comes back above principal, which for
-  the PayoutPool's loans is their share of member carry.
-- **Losses.** `absorbLoss(amount)` (`LOSS_REPORTER_ROLE`) writes down `totalBorrowed` by up to what
-  it holds, which lowers the share price: depositors take the first loss on what the pool funded.
-  A loss larger than `totalBorrowed` is reported as `uncovered` in `LossAbsorbed`; no contract acts
-  on it. No deploy script grants `LOSS_REPORTER_ROLE`, and no contract or service calls
-  `absorbLoss`.
-- **Shares as collateral.** Shares the source set by `setEncumbranceSource` reports as backing
-  drawn credit (`encumberedOf`) cannot leave the holder: not by transfer, and not by a burn, so the
-  holder's own `withdraw`, `redeem` and `requestWithdrawal` are refused for them
-  (`LendingPoolEncumbered`). Only a mint, or a call by a `LIQUIDATOR_ROLE` holder, skips the check.
-  If the source can't be read, nothing is treated as pledged. `seizeShares(holder, to, shares)`
-  (`LIQUIDATOR_ROLE`) can take only pledged shares. See
-  [`credit.md`](./credit.md#collateral-and-the-ceiling).
-- **Seizing on default.** `Liquidator.liquidateShares` seizes the shares a defaulted tier needs,
-  redeems what the pool can pay now and queues the rest with `requestWithdrawal`, owned by the
-  Liquidator ([`credit.md`](./credit.md#default)).
+- **Share Value.** `shareValue()` = Pool Assets ÷ outstanding Pool Shares (WAD, `1e18` = $1.00),
+  where Pool Assets (`totalAssets()`) = Vault Cash + the Deployed Balance + accrued unpaid Pool
+  Interest. Vault Cash (`vaultCash()`) is the pool's USDC less Holdback Amounts, cash still owed to
+  requests queued before 2f, payments waiting to be claimed and any restart leftover not yet
+  recognized. A Pool Loss Allowance never lowers it. USDC sent straight to the pool is Vault Cash
+  and raises the Share Value at once (decision 28). With no Pool Share outstanding the next
+  subscription issues at exactly $1.00, and whatever is left in the pool is set aside and
+  recognized into Vault Cash over 30 days (`leftover()`, decision 29).
+- **Subscriptions.** `subscribe(assets, receiver, attestation)`, or ERC-4626 `deposit`/`mint` with no
+  attestation. At least $250 (FIXED). The shared Earn controls (`earnControls()`, the
+  `IPoolEarnControls` interface) check eligibility and refuse Clear-contract payers, return the
+  `exemptionCode` that `Subscribed` records, and report the Equity Cushion and Reserve Shortfall
+  pauses. Subscriptions also stop during a Suspension, while a loss charge is being applied, and
+  from the Final Maturity Date. The 10% holder cap is the controls' (per household, above
+  `holderCapFloor`). The first subscription records `initialClosing`.
+- **Deployments and Returns (decision 17).** `deploy(amount, ref)`: two `DEPLOYER_ROLE` signers
+  (one proposes, a different one sends), only to `deploymentAccount()`, only with no open queue
+  request, no Suspension and no pending loss charge, before Final Maturity, and only if afterwards
+  Utilization is at most 90% (FIXED) and the Deployed Balance is within the Pool Tier principal two
+  `VALUATION_ROLE` signers last posted (`postPoolTierPrincipal`, IV-02 §4.3; none before it is
+  posted). Each is recorded (`Deployed`, `deploymentCount`, `totalDeployed`).
+- **Pool Interest (IV-02 §4.6, decision 24).** It accrues per second on the Deployed Balance at the
+  Funding Rate, on a 365-day year. At each Pacific month end the interest accrued and unpaid is
+  billed (`billedInterest()`), due by 23:59:59 Pacific on the 5th weekday after; whatever is still
+  unpaid then is capitalized into the Deployed Balance and earns interest itself. Booking is lazy:
+  it happens at every change, and anyone may call `accrue()`; the views project it to now.
+  `returnFunds(amount)` (anyone; `repay` is the same call, kept for the PayoutPool) pays accrued
+  interest first, the billed month's first, then the Deployed Balance; any excess stays as cash.
+  `borrow` reverts and `borrowableToday` is zero for everyone.
+- **Utilization** (`utilization()`) is the Deployed Balance ÷ (the Deployed Balance + Vault Cash);
+  accrued interest is not in it. `lowUtilizationSince()` is the time since which it has stayed
+  below 50%, or 0; `EarnControls` reads it for the L-01 §2.9(c) pause (IV-02 §2.6).
+- **Funding Rate.** `fundingRate()` and `fundingRateAt(u)`: R₀ + S₁·U/K up to the kink, then
+  R₀ + S₁ + S₂·(U−K)/(1−K), initially 2%, 3%, 80%, 5% (IV-02 Sch. 2), with FIXED bounds.
+  `proposeRateModel` (`DEFAULT_ADMIN_ROLE`) takes effect through `applyRateModel` after 48 hours, or
+  after 30 days for a change that lowers the rate anywhere, at most one per calendar quarter (UTC).
+- **Redemptions.** `redeem`/`withdraw` pay on demand only while no queue request is open, there is
+  no Suspension or pending loss charge, and Vault Cash covers the full gross amount; `maxRedeem` and
+  `maxWithdraw` say so (zero while the queue is open). `redeemOrQueue(shares, receiver)` pays what it
+  can now and queues the rest; `requestWithdrawal` queues all of it.
+- **The queue.** Strict FIFO. Queued shares wait in escrow in the pool, keep earning and bear
+  losses, and are filled by anyone (`fillQueue(maxCount)`), whole or partial, at the Share Value at
+  fill less the Loss Holdback then applying (C4; this replaces audit fix X-7's cap at the value when
+  queued). Owners cancel (`cancelRequest`) at any time. `oldestRequestAge()` feeds the off-chain 30-
+  and 90-day rules. A payment the token refuses is kept in `unpaidOf` for `claimUnpaid`, so it cannot
+  block the queue.
+- **Loss Holdback (§6A).** `postAllowance(value, evidence)` (two `VALUATION_ROLE` signers) sets the
+  Holdback Percentage `holdbackRate()` = allowance ÷ Pool Assets (WAD; `holdbackBps()` rounds it up
+  for display), and nothing else. While it is above zero, every redemption pays G less
+  G × the percentage rounded up, and records the rest to the Holder
+  (`holdbackAt`, `holdbackOf`, `totalHoldback`). A lower posting starts a release pass, and
+  `releaseHoldbacks(maxCount)` (anyone) pays releases and age releases (`holdbackMaxAge`, 540 days;
+  `releasableAt(id)`) only to the Holder. `postLossCharge(value, evidence)` (two signers) is applied
+  first to the open holdbacks ratably (`applyHoldbacks`), and what they absorb moves into Vault
+  Cash. Then the whole charge reduces the Deployed Balance, then accrued interest; only the part
+  above both leaves the vault, to Clear Lending (IV-02 §5.6(d) and Exhibit A, A2 as corrected;
+  decision 33). Pool Assets so fall by the charge less what the holdbacks absorbed.
+  `postRecovery(value, evidence)` (two signers, the same rules) adds unrestored charges back to the
+  Deployed Balance, up to `unrestoredCharges()` (IV-02 §5.4, decision 25). The cap counts each
+  charge in full, including any part a holdback bore (decision 36), which is now exactly what the
+  charge took off the Deployed Balance and interest or paid out.
+- **Suspension (§8).** `suspend(reason, evidence, resolution)` for LOSS_EVENT, LEGAL_ORDER,
+  USDC_OR_NETWORK or VALUATION_PENDING only, by two different authorized individuals
+  (`SUSPENSION_ROLE`, `CCO_ROLE`, `TREASURER_ROLE`), one of them the CCO or treasurer. 72 hours
+  (VALUATION_PENDING 48 and not renewable); `renewSuspension` by a different signer; a Lending Board
+  resolution hash beyond 240 hours; never past 30 days except a LEGAL_ORDER with an order hash.
+  Both limits count the total on the same facts, across suspensions. VALUATION_PENDING is allowed
+  once per Valuation Event, recorded by two `VALUATION_ROLE` signers (`recordValuationEvent`), and
+  the next allowance posting clears the event and ends that Suspension (decision 26).
+  It stops subscriptions, redemptions, fills and Deployments; cancellations go on and interest
+  accrues.
+- **Holds required by law (§7.5, decision 34).** `placeLegalHold(holder, shares, orderHash, expiresAt)`
+  holds `shares` of one holder's Pool Shares, and only those, for a legal order: two authorized
+  individuals under the Suspension's rule (`SUSPENSION_ROLE`, `CCO_ROLE`, `TREASURER_ROLE`, one
+  of them the CCO or treasurer) with the order's hash. While in force those shares cannot be
+  redeemed, queued, transferred or pledged (`CollateralRegistry.pledge` refuses them), and an
+  MB-05 enforcement waits for it; the holder's other shares are untouched (`freeSharesOf` and
+  `maxRedeem` leave out `heldSharesOf`). It ends on `releaseLegalHold(id)` by two signers or when
+  the order's stated expiry passes (`expiresAt`, 0 for none). It moves, burns and pays nothing.
+  Views: `legalHold(id)`, `legalHoldsOf(holder)`, `legalHoldCount()`. A hold reaches only shares
+  in the holder's account, not shares already in the queue; at most 8 are open per holder.
+- **Final Maturity.** `finalMaturity()` is the 20th anniversary of `initialClosing`. From then,
+  subscriptions and Deployments stop, and `requestRunOff(holder)` (anyone) queues a holder's free
+  shares in queue order (decision 15).
+- **Transfers.** Only between two accounts of one Holder, or by the Successor path, as the Earn
+  controls report (`transferAllowed`); every other transfer reverts (FIXED). A plain transfer into
+  the pool reverts: shares enter escrow only through the queue. Redemption proceeds go only to the
+  account that held the shares (IV-02 §6.5), except enforcement and the Successor path.
+- **Successor redemption (§8.3, decision 35).** Where the Holder's account cannot be accessed,
+  two `SUCCESSOR_ROLE` signers register a Successor for the Holder's payments in EarnControls
+  (`registerPaymentSuccessor`, in effect after 7 days; `cancelPaymentSuccessor` from the Holder's
+  own account). Once `payeeOf(holder)` names it, that Successor, and nobody else, may call
+  `successorRedeem(holder, shares)`: the Holder's free shares (not pledged, held or queued) join
+  the ordinary queue as the Holder's request, fill in order at Share Value, and pay only the
+  Successor; any holdback is recorded to, and released to, the Successor. The Holder's account
+  can still cancel the request with `cancelRequest`.
+- **Legend.** `legend()` and `legendHash()` carry IV-02 §8.4's legend. It is written once at setup
+  (`setLegend`, `DEFAULT_ADMIN_ROLE`); a later change waits 7 days (`applyLegend`, decision 27).
+- **Modules.** Pool Interest, Suspension, legal holds, the rate model, recoveries, the legend and the restart
+  leftover run in `YieldPoolLedger`. The functions added in the IV-02 conformance pass are served
+  by the pool's fallback, so clients need the joined ABI (`deploy/poolModules.ts`, `poolAt`).
+- **Shares as collateral.** Pledged shares (`encumberedOf`, from the source set by
+  `setEncumbranceSource`) cannot be transferred, redeemed or queued by the holder
+  (`LendingPoolEncumbered`); if the source can't be read, a holder last seen pledged is treated as
+  fully locked (audit M-3). An MB-05 enforcement redemption, `enforcementRedeem(holder, shares)`
+  (`ENFORCER_ROLE`, held by `PoolShareEnforcer`), queues pledged shares in order and pays only
+  `enforcementDestination()` (the enforcer); any holdback goes to the holder, and
+  `enforcementFilledOf(holder)` records what each holder's fills burned and paid. `previewRedeem(shares)`
+  is the Pool Share Value of MB-05 §1.3, and CollateralRegistry values pledged shares by it. Nothing
+  seizes a share: `seizeShares` and the Liquidator's exemption are gone (Phase 2f stage 2, C5), and
+  `LIQUIDATOR_ROLE` is kept only so scripts can revoke it.
+- **Requests queued before 2f** were fixed in assets with their shares burned. `claimWithdrawal(id)`
+  still pays them to the owner; until then their cash is outside Pool Assets.
 
 **Known limitations**
 
-- **No deploy script grants the pool's `LIQUIDATOR_ROLE` to the `Liquidator`.** Only
-  `scripts/command/ops-roles.ts`, run with `FIX_CHECKS=1`, does
-  ([Handing over the keys](../operators/deploying-contracts.md#handing-over-the-keys)). Until then
-  `liquidateShares` reverts and pledged pool shares are not seized.
-- **The `Liquidator` has no call to `claimWithdrawal`.** The part of a seizure it queues is owned
-  by the Liquidator, and only the owner can claim it, so that cash stays in the pool until the
-  Liquidator is upgraded.
-- **Nothing in the apps claims a queued withdrawal.** The member app queues with
-  `requestWithdrawal` and never calls `claimWithdrawal` or shows the request
-  ([Developers → Known limitations](../developers/README.md#member-app)).
+- **Governance.** The Earn timelock and the Lending Board resolution hash for role grants (§10) are
+  built separately (decision 2). Until then the pool's admin is whatever holds `DEFAULT_ADMIN_ROLE`.
+- **No Earn controls yet.** `EarnControls` is built separately; until `setEarnControls` names it,
+  subscriptions and holder-to-holder transfers revert (the pool fails closed).
+- **Contract reference.** The generated [contract page](./contracts/LendingPool.md) reads access
+  from the function declaration, so the module-forwarded functions show as callable by anyone; the
+  module checks the caller.
 
 ## Card settlement
 
@@ -260,9 +345,11 @@ headroom for the whole amount, draws the tiers in tier order (`_draw`), and call
 discount. That account then holds an ordinary positive balance. `reverseCardSpend` undoes it through
 `reversePurchase`. Details are in [`credit.md`](./credit.md).
 
-**The card-settler wallet's borrowing from the LendingPool is driven by the API, not by a
-contract** ([`poolFunding.ts`](../../apps/api/src/services/chain/poolFunding.ts)). The pool records
-each `borrow` and `repay`; nothing on-chain requires either.
+**Since Phase 2f the card settler no longer borrows from the pool** (decision 17): `borrow` reverts
+and `borrowableToday` is zero, and Clear Lending funds card settlement from what it draws as
+Deployments. The API path below
+([`poolFunding.ts`](../../apps/api/src/services/chain/poolFunding.ts)) describes the pre-2f flow; the
+held app PRs (#887, #890) must stop drawing from the pool directly.
 
 - **Which tiers.** `POOL_FUNDED_TIER_KINDS`, by default `INCOME,BOOST`: the unsecured tiers.
   Savings-backed and asset-backed credit is not funded from the pool.
@@ -311,16 +398,22 @@ refund shortfall. The arithmetic and worked examples are in
 | `fund` | `FUNDER_ROLE` |
 | `setLenders`, `setBondVault`, `setCoopTreasury`, `setCoopIncomeRecipient`, `withdrawCoopIncome` | `OPERATOR_ROLE` |
 | `MerchantRegistry.registerMerchant`, `updateTerms`, `setActive`, `setDefaultPayoutWindow` | `OPERATOR_ROLE` |
-| `LendingPool.deposit`, `mint`, `withdraw`, `redeem`, `requestWithdrawal` | Anyone. Only free shares can be burned |
-| `LendingPool.claimWithdrawal` | The request's owner |
-| `LendingPool.repay` | Anyone |
-| `LendingPool.borrow` | `BORROWER_ROLE` |
-| `LendingPool.setRateCurve`, `setEncumbranceSource` | `OPERATOR_ROLE` |
-| `LendingPool.absorbLoss` | `LOSS_REPORTER_ROLE` |
-| `LendingPool.seizeShares` | `LIQUIDATOR_ROLE` |
-| `LendingPool` role grants and upgrades (UUPS) | `DEFAULT_ADMIN_ROLE` |
+| `LendingPool.subscribe`, `deposit`, `mint` | Eligible accounts, as the Earn controls report |
+| `LendingPool.withdraw`, `redeem`, `redeemOrQueue`, `requestWithdrawal` | The share owner (or an approved spender for `withdraw`/`redeem`). Only free shares |
+| `LendingPool.cancelRequest` | The request's owner; an enforcement request only `ENFORCER_ROLE` |
+| `LendingPool.fillQueue`, `returnFunds`, `repay`, `releaseHoldbacks`, `applyHoldbacks`, `requestRunOff`, `applyRateModel`, `syncEncumbrance`, `accrue`, `applyLegend` | Anyone |
+| `LendingPool.claimWithdrawal` (pre-2f requests), `claimUnpaid` | The request's owner; the payee |
+| `LendingPool.deploy` | Two different `DEPLOYER_ROLE` signers; pays only `deploymentAccount` |
+| `LendingPool.postAllowance`, `postLossCharge`, `postRecovery`, `recordValuationEvent`, `postPoolTierPrincipal` | Two different `VALUATION_ROLE` signers |
+| `LendingPool.suspend`, `placeLegalHold`, `releaseLegalHold` | Two different authorized individuals, one the CCO or treasurer |
+| `LendingPool.renewSuspension`, `liftSuspension` | An authorized individual (renewal: not the last signer) |
+| `LendingPool.enforcementRedeem` | `ENFORCER_ROLE`; pays only `enforcementDestination` |
+| `LendingPool.successorRedeem` | Only the Successor `EarnControls.payeeOf(holder)` names; pays only that Successor |
+| `LendingPool.borrow` | Nobody (reverts) |
+| `LendingPool.initializeYieldPool`, `setEarnControls`, `setDeploymentAccount`, `setEnforcementDestination`, `setEncumbranceSource`, `setHoldbackMaxAge`, `proposeRateModel`, `setLegend`, role grants and upgrades (UUPS) | `DEFAULT_ADMIN_ROLE` (the Earn timelock) |
 
 Tests: `test/peripherals/PayoutPool.spec.ts`, `test/peripherals/LendingPool.spec.ts`,
+`test/earn/YieldPool.spec.ts`, `test/earn/YieldPoolConformance.spec.ts`, `test/earn/YieldPoolUpgrade.spec.ts`,
 `test/core/PayoutLifecycle.spec.ts`, `test/core/RepaymentRouting.spec.ts`,
 `test/core/SharedBalance.spec.ts`. To rehearse a redemption against a fork of a live deployment,
 use `scripts/drill_redemption.ts`.

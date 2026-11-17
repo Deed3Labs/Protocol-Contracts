@@ -13,7 +13,7 @@
  */
 import { ethers, network } from "hardhat";
 import { Contract, Wallet, concat, getAddress } from "ethers";
-import { deployments, execute, plan, survey } from "./handover";
+import { opsSafeDeployments, execute, plan, survey } from "./handover";
 
 import { SAFE_FACTORY as FACTORY, createSafe } from "./safe";
 
@@ -39,7 +39,7 @@ async function main() {
   await network.provider.request({ method: "evm_mine", params: [] });
   if ((await ethers.provider.getCode(FACTORY)) === "0x") throw new Error("Safe's factory isn't on this fork: is it Base Sepolia?");
 
-  const list = deployments();
+  const list = opsSafeDeployments(); // not the vault, CLRUSD or its pool: vault_timelock_handover.ts
   const byName = Object.fromEntries(list.map((d) => [d.name, d]));
   const deployer = getAddress(process.env.DEPLOYER?.trim() || (await new Contract(byName.TokenRegistry.address, byName.TokenRegistry.abi, ethers.provider).owner()));
   await network.provider.request({ method: "hardhat_impersonateAccount", params: [deployer] });

@@ -1,632 +1,834 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "../core/interfaces/stable-credit/IEncumbranceSource.sol";
+import "./LendingPoolBase.sol";
+import "../libraries/PacificCalendar.sol";
 
-/// @title LendingPool
-/// @notice Member money funding the unsecured tiers, priced by how much of it is in use.
-/// @dev ERC-4626 because the interface is worth more than anything a bespoke one would buy: it is
-/// auditable against a spec people already know, and composable with everything that speaks it.
-/// The vault semantics are kept honest rather than bent -- `maxWithdraw` reports what would
-/// actually succeed, and the queue below is a separate path rather than a `withdraw` that
-/// silently does something else.
+/// @dev What `LendingPool` reads from its valuation module at construction.
+interface YieldPoolModule {
+    function ledger() external view returns (address);
+}
+
+/// @title LendingPool (the Yield Pool)
+/// @notice The Clear Earn Yield Pool: Pool Shares are limited-recourse subordinated demand notes
+/// whose Share Value is principal plus accrued interest less realized loss write-downs (IV-02).
+/// @dev An ERC-4626 vault, upgraded in place from the LendingPool (Phase 2f, decision 16). It
+/// keeps its name, address and balances; storage is append-only (see `LendingPoolBase`).
 ///
-/// **Only the unsecured tiers.** Savings-backed and asset-backed credit is funded by the
-/// collateral behind it and needs no capital. What needs funding is the part collateral does not
-/// reach, which is also the only part that can lose money.
+/// - **Share Value** = Pool Assets ÷ outstanding Pool Shares, where Pool Assets are Vault Cash
+///   (less Holdback Amounts), the Deployed Balance and accrued unpaid Pool Interest. An expected
+///   loss allowance never lowers it; it sets a Loss Holdback on redemptions instead (§6A).
+/// - **Deployments** go only to Clear Lending's registered lending account, by two people, and
+///   each is recorded (decision 17). Pool Interest accrues per second on the Deployed Balance at
+///   the Funding Rate; Returns (`returnFunds`, by anyone) pay interest first, then principal.
+///   Direct borrowing by the PayoutPool and the card settler is off: `borrowableToday` is zero
+///   and `borrow` reverts, so the PayoutPool, whose code is unchanged, simply skips this lender.
+/// - **Redemptions** are on demand only while no queue request is open and Vault Cash covers the
+///   full gross amount. Otherwise they wait in a strict FIFO queue whose shares stay in escrow,
+///   keep earning and bearing losses, and fill at the Share Value at fill (C4, replacing X-7).
+/// - **Suspension** only for the four listed Suspension Events, two signers, 72 hours at a time.
+/// - **Final Maturity**: from the 20th anniversary of the Initial Closing, subscriptions and
+///   Deployments stop and shares run off in queue order (decision 15).
+/// - The valuation postings, the holdback ledger and Deployments run in `YieldPoolValuation`, and
+///   Pool Interest, Suspension, the rate model, recoveries and the legend in `YieldPoolLedger`,
+///   both by delegatecall, pinned at construction. The ledger's functions added in the IV-02
+///   conformance pass are served by this contract's fallback: clients use the joined ABI
+///   (`deploy/poolModules.ts`, `poolAt`).
 ///
-/// **The rate rises with utilization, so the pool regulates itself.** Capital arriving faster than
-/// demand for it drops the yield, which sends the next dollar somewhere else; demand outrunning
-/// capital raises the yield and pulls it back. Nobody has to decide the pool is full, which is
-/// good, because deciding that correctly requires knowing tomorrow's loan demand.
-///
-/// **It takes losses before the AssurancePool does.** That is an ordering fact about the
-/// waterfall rather than a reserve arrangement: depositors here are earning the return on
-/// unsecured lending, so they carry its first loss. The AssurancePool is what stands behind them
-/// once they are exhausted.
-///
-/// **Audit fixes (Phase 1).**
-/// - H-4: a borrower draws only to the destination stored for it (`borrowDestinationOf`) and only
-///   up to its daily cap. The card-settler key used to be able to `borrow(amount, anyAddress)`.
-/// - X-7: a queued withdrawal escrows its shares and is priced at claim time, capped at its value
-///   when queued, so a depositor who queues just before a loss still carries their share of it.
-/// - X-18: cash that arrives outside a tracked deposit or principal repayment (interest) is
-///   streamed into the share price over `INTEREST_STREAM_PERIOD`, so a deposit-and-withdraw around
-///   a repayment cannot capture it.
-/// - M-3: an unreadable encumbrance source no longer unlocks every pledged share. See
-///   `encumberedOf`.
-contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgradeable {
-    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
-    /// @notice May draw from the pool to fund unsecured credit.
-    bytes32 public constant BORROWER_ROLE = keccak256("BORROWER_ROLE");
-    /// @notice May report a loss on the credit book.
-    bytes32 public constant LOSS_REPORTER_ROLE = keccak256("LOSS_REPORTER_ROLE");
-    /// @notice May take shares that are backing drawn credit, and only those.
-    bytes32 public constant LIQUIDATOR_ROLE = keccak256("LIQUIDATOR_ROLE");
+/// Governance (`DEFAULT_ADMIN_ROLE`) moves to the separate 7-day Earn timelock (decision 2).
+contract LendingPool is LendingPoolBase {
+    using MathUpgradeable for uint256;
 
-    uint256 internal constant BPS = 10_000;
-    /// @notice How long a lump of interest takes to reach the share price in full (audit X-18).
-    /// @dev Long enough that a holder who is in the pool only around a repayment captures a small
-    /// fraction of it; short enough that depositors see the yield within the cycle it was earned.
-    uint256 public constant INTEREST_STREAM_PERIOD = 7 days;
-
-    /// @notice A depositor waiting for cash the pool has lent out.
-    struct WithdrawalRequest {
-        address owner;
-        address receiver;
-        uint256 assets;
-        uint64 requestedAt;
-        bool claimed;
-    }
-
-    /// @notice Principal the pool has lent and not been repaid.
-    uint256 public totalBorrowed;
-    /// @notice Cash reserved for depositors who have queued: each request's value when queued,
-    /// which caps what it is paid (audit X-7). Requests queued before that fix burned their
-    /// shares, so their part is also deducted from `totalAssets`; see `escrowedQueueCaps`.
-    uint256 public queuedAssets;
-
-    WithdrawalRequest[] private requests;
-    /// @dev owner => request ids
-    mapping(address => uint256[]) private requestsOf;
-
-    /// @notice Rate at zero utilization, per cycle, in basis points.
-    uint256 public baseRatePerCycle;
-    /// @notice Additional rate at the kink, per cycle, in basis points.
-    uint256 public slope1PerCycle;
-    /// @notice Additional rate from the kink to full utilization, per cycle, in basis points.
-    uint256 public slope2PerCycle;
-    /// @notice Utilization the curve steepens at, in basis points.
-    uint256 public kinkBps;
-
-    /// @notice Reports how many of a holder's shares are backing drawn credit.
-    /// @dev Pool shares are collateral like anything else, so they need the same two things
-    /// CLRUSD has: a refusal to move while pledged, and a way for the co-op to take them when the
-    /// member defaults. Recording a pledge in a registry does neither -- the member holds the
-    /// shares.
-    IEncumbranceSource public encumbranceSource;
-    /// @notice The collateral kind these shares are pledged as.
-    bytes32 public collateralKind;
-
-    /* ========== ADDED BY THE AUDIT FIXES (append-only; 9 slots from the gap) ========== */
-
-    /// @notice Where each borrower's draws must go (audit H-4). Unset means it cannot borrow.
-    /// @dev The PayoutPool's destination is itself; the card settler's is the card float.
-    mapping(address => address) public borrowDestinationOf;
-    /// @notice Most each borrower may draw per UTC day, in assets (audit H-4).
-    mapping(address => uint256) public dailyBorrowCapOf;
-    /// @dev What each borrower has drawn on `day`.
-    struct BorrowWindow {
-        uint64 day;
-        uint192 drawn;
-    }
-    mapping(address => BorrowWindow) private borrowWindowOf;
-    /// @dev Shares held in escrow by this pool for each queued request (audit X-7). Zero for a
-    /// request queued before the fix, whose shares were burned and whose claim is fixed in assets.
-    mapping(uint256 => uint256) private requestSharesOf;
-    /// @notice The part of `queuedAssets` that belongs to escrowed (priced-at-claim) requests.
-    uint256 public escrowedQueueCaps;
-    /// @dev Interest not yet streamed into the share price, as it stood at `interestLockedAt`.
-    uint192 private lockedInterest;
-    uint64 private interestLockedAt;
-    /// @dev Cash the pool has accounted for. Anything above it is untracked inflow -- interest.
-    uint256 private accountedCash;
-    /// @dev False on a proxy upgraded from before X-18 until its first state change, which adopts
-    /// the current balance as accounted rather than treating every dollar held as new interest.
-    bool private cashAccountingOn;
-    /// @notice The lock last read successfully for each holder (audit M-3). If the source later
-    /// reverts, a holder with a non-zero record is treated as fully locked.
-    mapping(address => uint256) public lastKnownLock;
-
-    uint256[31] private __gap;
-
-    error LendingPoolInvalidAddress();
-    error LendingPoolInvalidCurve();
-    error LendingPoolInsufficientCash(uint256 available, uint256 requested);
-    error LendingPoolNothingQueued(uint256 requestId);
-    error LendingPoolNotRequestOwner(uint256 requestId);
-    error LendingPoolEncumbered(address holder, uint256 free, uint256 amount);
-    error LendingPoolSeizureExceedsEncumbrance(address holder, uint256 encumbered, uint256 amount);
-    error LendingPoolDestinationNotAllowed(address borrower, address to);
-    error LendingPoolDailyCapExceeded(address borrower, uint256 remaining, uint256 requested);
-    error LendingPoolEncumbranceUnreadable(address holder);
-
-    event Borrowed(address indexed borrower, address indexed to, uint256 amount);
-    event Repaid(address indexed from, uint256 amount);
-    event LossAbsorbed(uint256 reported, uint256 absorbed, uint256 uncovered);
-    event WithdrawalQueued(uint256 indexed requestId, address indexed owner, uint256 assets);
-    event WithdrawalClaimed(uint256 indexed requestId, address indexed receiver, uint256 assets);
-    event RateCurveUpdated(uint256 base, uint256 slope1, uint256 slope2, uint256 kinkBps);
-    event EncumbranceSourceUpdated(address indexed source);
-    event SharesSeized(address indexed holder, address indexed to, uint256 shares);
-    event BorrowerConfigured(address indexed borrower, address indexed destination, uint256 dailyCap);
-    event InterestStreamed(uint256 inflow, uint256 locked);
-    /// @notice The encumbrance source reverted while a holder's shares moved (audit M-3). Alert on it.
-    event EncumbranceSourceReverted(address indexed holder, uint256 lastKnownLock);
+    /// @notice The valuation module, fixed for the life of this implementation.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable valuation;
+    /// @notice The ledger module, the one `valuation` pins.
+    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+    address public immutable ledger;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(address valuation_) {
         _disableInitializers();
+        if (IExtensionKind(valuation_).extensionKind() != keccak256("YieldPoolValuation.v2")) {
+            revert LendingPoolModuleMismatch();
+        }
+        valuation = valuation_;
+        ledger = YieldPoolModule(valuation_).ledger();
     }
 
+    function _ledgerModule() internal view override returns (address) {
+        return ledger;
+    }
+
+    /// @notice sets up a new pool. A pool upgraded from before Phase 2f calls
+    /// `initializeYieldPool` instead.
     function initialize(address admin, address reserveToken, string memory name_, string memory symbol_)
         external
         initializer
     {
-        if (admin == address(0) || reserveToken == address(0)) {
-            revert LendingPoolInvalidAddress();
-        }
+        if (admin == address(0) || reserveToken == address(0)) revert LendingPoolInvalidAddress();
         __ERC20_init(name_, symbol_);
         __ERC4626_init(IERC20Upgradeable(reserveToken));
         __AccessControl_init();
         __UUPSUpgradeable_init();
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(OPERATOR_ROLE, admin);
-        cashAccountingOn = true;
-
-        // A conservative starting curve: cheap while the pool is idle, steep once it is not.
-        baseRatePerCycle = 25;
-        slope1PerCycle = 75;
-        slope2PerCycle = 900;
-        kinkBps = 8_000;
+        _rateModel = RateModel(0.02e18, 0.03e18, 0.8e18, 0.05e18);
+        _holdbackMaxAge = 540 days;
+        _lastAccrualAt = uint64(block.timestamp);
     }
 
-    function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    /* ========== STATE ========== */
+
+    /// @notice The shared Earn controls: eligibility, exemption tag, pauses, wallets, transfers.
+    function earnControls() external view returns (IPoolEarnControls) {
+        return _earnControls;
+    }
+
+    /// @notice Clear Lending's registered lending account: the only place a Deployment goes.
+    function deploymentAccount() external view returns (address) {
+        return _deploymentAccount;
+    }
+
+    /// @notice Where an MB-05 enforcement redemption pays.
+    function enforcementDestination() external view returns (address) {
+        return _enforcementDestination;
+    }
+
+    /// @notice When Pool Interest was last booked.
+    function lastAccrualAt() external view returns (uint256) {
+        return _lastAccrualAt;
+    }
+
+    /// @notice The first issue of Pool Shares (the Initial Closing).
+    function initialClosing() external view returns (uint256) {
+        return _initialClosing;
+    }
+
+    /// @notice The calendar quarter (year x 4 + quarter, plus one) of the last rate-lowering change.
+    function lastLoweringQuarter() external view returns (uint256) {
+        return _lastLoweringQuarter;
+    }
+
+    /// @notice The first queue request that may still be open.
+    function queueHead() external view returns (uint256) {
+        return _queueHead;
+    }
+
+    /// @notice Shares waiting in the queue.
+    function queuedShares() external view returns (uint256) {
+        return _queuedShares;
+    }
+
+    /// @notice The first holdback that may still be open.
+    function holdbackHead() external view returns (uint256) {
+        return _holdbackHead;
+    }
+
+    /// @notice Holdback Amounts: the sum of H over open holdbacks.
+    function totalHoldback() external view returns (uint256) {
+        return _totalHoldback;
+    }
+
+    /// @notice The maximum age of a holdback, in seconds.
+    function holdbackMaxAge() external view returns (uint256) {
+        return _holdbackMaxAge;
+    }
+
+    /// @notice The last posted Pool Loss Allowance.
+    function poolLossAllowance() external view returns (uint256) {
+        return _poolLossAllowance;
+    }
+
+    /// @notice When the Pool Loss Allowance was last posted.
+    function allowancePostedAt() external view returns (uint256) {
+        return _allowancePostedAt;
+    }
+
+    /// @notice Whether releases from a lower posting are still to be processed.
+    function releasePending() external view returns (bool) {
+        return _releasePending;
+    }
+
+    /// @notice Pool Loss Charges posted so far.
+    function lossChargeCount() external view returns (uint256) {
+        return _lossChargeCount;
+    }
+
+    /// @notice Payments owed to accounts whose token transfer refused them.
+    function totalUnpaid() external view returns (uint256) {
+        return _totalUnpaid;
+    }
+
+    /// @notice Deployments made.
+    function deploymentCount() external view returns (uint256) {
+        return _deploymentCount;
+    }
+
+    /// @notice The total of all Deployments.
+    function totalDeployed() external view returns (uint256) {
+        return _totalDeployed;
+    }
+
+    /// @notice Shares an owner has waiting in the queue.
+    function queuedSharesOf(address key) external view returns (uint256) {
+        return _queuedSharesOf[key];
+    }
+
+    /// @notice Pledged shares of a holder queued by an enforcement redemption.
+    function enforcementQueuedOf(address key) external view returns (uint256) {
+        return _enforcementQueuedOf[key];
+    }
+
+    /// @notice What the queue has filled of a holder's enforcement redemptions, cumulatively: the
+    /// shares burned and what was paid to `enforcementDestination` for them.
+    function enforcementFilledOf(address key) external view returns (uint256 shares, uint256 paid) {
+        EnforcementFill storage f = _enforcementFilled[key];
+        return (f.shares, f.paid);
+    }
+
+    /// @notice A Holder's Holdback Amounts: the sum of H over their open holdbacks.
+    function holdbackOf(address key) external view returns (uint256) {
+        return _holdbackOf[key];
+    }
+
+    /// @notice The first signer of a two-person action still waiting for its second.
+    function proposerOf(bytes32 key) external view returns (address) {
+        return _proposerOf[key];
+    }
+
+    /// @notice What a refused transfer left owed to an account.
+    function unpaidOf(address key) external view returns (uint256) {
+        return _unpaidOf[key];
+    }
+
+    /// @notice The current Funding Rate model (annual, WAD).
+    function rateModel() external view returns (uint256 r0, uint256 s1, uint256 k, uint256 s2) {
+        RateModel memory m = _rateModel;
+        return (m.r0, m.s1, m.k, m.s2);
+    }
+
+    /// @notice A rate-model change waiting for its notice period.
+    function pendingRate()
+        external
+        view
+        returns (uint256 r0, uint256 s1, uint256 k, uint256 s2, uint256 effectiveAt, bool lowers)
+    {
+        PendingRate memory p = _pendingRate;
+        return (p.model.r0, p.model.s1, p.model.k, p.model.s2, p.effectiveAt, p.lowers);
+    }
+
+    /// @notice The current or last Suspension: in force while `expiresAt` is in the future.
+    function suspension()
+        external
+        view
+        returns (uint256 eventId, uint8 reason, uint256 startedAt, uint256 expiresAt, address lastSigner, bytes32 evidenceHash)
+    {
+        Suspension memory x = _suspension;
+        return (x.eventId, x.reason, x.startedAt, x.expiresAt, x.lastSigner, x.evidenceHash);
+    }
 
     /* ========== VIEWS ========== */
 
-    /// @notice everything the pool owns, lent or not.
-    /// @dev Cash plus what is out on loan, less two things:
-    /// - claims of requests queued before the X-7 fix, whose shares were burned (counting them
-    ///   would count them twice). Requests queued since keep their shares in escrow, so they stay
-    ///   in the share price and share its losses until claimed;
-    /// - interest not yet streamed in (X-18).
+    /// @notice the Share Value of one whole Pool Share, in asset units scaled by 1e18 per asset
+    /// unit per share unit (1e18 = $1.00 per share). Replaces `navPerShare`. $1.00 while no Pool
+    /// Share is outstanding: the next subscription restarts the pool there (decision 29).
+    function shareValue() external view returns (uint256) {
+        uint256 supply = totalSupply();
+        return supply == 0 ? WAD : (totalAssets() + 1).mulDiv(WAD, supply + 1);
+    }
+
+    /// @notice Pool Assets now. Between bookings, Pool Interest since the last one is projected
+    /// by the ledger, month ends and capitalization included.
     function totalAssets() public view override returns (uint256) {
-        uint256 total = _cash() + totalBorrowed;
-        uint256 deduct = (queuedAssets - escrowedQueueCaps) + unvestedInterest();
-        return total > deduct ? total - deduct : 0;
+        uint256 t = _lastAccrualAt;
+        if (t == 0 || t == block.timestamp) return _poolAssets();
+        (bool ok, bytes memory ret) = address(this).staticcall(abi.encodeWithSignature("projectedPoolAssets()"));
+        if (!ok) revert LendingPoolInvalidAmount();
+        return abi.decode(ret, (uint256));
     }
 
-    /// @notice interest received but not yet in the share price (audit X-18).
-    /// @dev What was locked at the last sync, decaying linearly over the stream period, plus any
-    /// untracked inflow since, which has not started streaming yet.
-    function unvestedInterest() public view returns (uint256) {
-        uint256 locked = lockedInterest;
-        uint256 elapsed = block.timestamp - interestLockedAt;
-        uint256 remaining =
-            elapsed >= INTEREST_STREAM_PERIOD ? 0 : (locked * (INTEREST_STREAM_PERIOD - elapsed)) / INTEREST_STREAM_PERIOD;
-        return remaining + _pendingInflow();
+    /// @dev With no Pool Share outstanding, shares and assets convert one to one: the pool restarts
+    /// at $1.00, and a leftover is set aside rather than captured (decision 29).
+    function _convertToShares(uint256 assets, MathUpgradeable.Rounding r) internal view override returns (uint256) {
+        return totalSupply() == 0 ? assets : super._convertToShares(assets, r);
     }
 
-    function _cash() private view returns (uint256) {
-        return IERC20Upgradeable(asset()).balanceOf(address(this));
+    function _convertToAssets(uint256 shares, MathUpgradeable.Rounding r) internal view override returns (uint256) {
+        return totalSupply() == 0 ? shares : super._convertToAssets(shares, r);
     }
 
-    function _pendingInflow() private view returns (uint256) {
-        if (!cashAccountingOn) return 0;
-        uint256 cash = _cash();
-        return cash > accountedCash ? cash - accountedCash : 0;
+    /// @notice USDC in the vault other than Holdback Amounts (and other money owed out).
+    function vaultCash() external view returns (uint256) {
+        return _vaultCash();
     }
 
-    /// @notice starts streaming any interest that has arrived since the pool last changed state.
-    /// @dev Permissionless. Interest paid in by plain transfer (the payout pool's return) would
-    /// otherwise wait for the next deposit or withdrawal before it began to vest.
-    function syncInterest() external {
-        _syncInterest();
+    /// @notice the Deployed Balance now (see YieldPoolLedger.deployedBalance).
+    function deployedBalance() external view returns (uint256) {
+        _ledgerView();
     }
 
-    /// @dev Starts streaming any untracked inflow. Called before every state change, so the share
-    /// price a deposit or withdrawal is priced at is the one `totalAssets` already reported.
-    function _syncInterest() private {
-        uint256 cash = _cash();
-        if (!cashAccountingOn) {
-            cashAccountingOn = true;
-            accountedCash = cash;
-            return;
-        }
-        if (cash > accountedCash) {
-            uint256 inflow = cash - accountedCash;
-            uint256 locked = unvestedInterest(); // includes the inflow
-            lockedInterest = uint192(locked);
-            interestLockedAt = uint64(block.timestamp);
-            emit InterestStreamed(inflow, locked);
-        }
-        accountedCash = cash;
+    /// @notice accrued and unpaid Pool Interest, to now (see YieldPoolLedger.accruedInterest).
+    function accruedInterest() external view returns (uint256) {
+        _ledgerView();
     }
 
-    // Tracked paths (deposit, withdrawal, borrow, claim, principal repayment) adjust
-    // `accountedCash` by the amount they move, before moving it, so it is never mistaken for
-    // interest and no state is written after a token call.
+    /// @notice the Deployed Balance ÷ (the Deployed Balance + Vault Cash), as WAD (IV-02 §1.2).
+    function utilization() external view returns (uint256) {
+        _ledgerView();
+    }
 
-    /// @notice cash on hand and not already claimed by the queue.
+    /// @notice utilization in basis points (kept for the apps).
+    function utilizationBps() external view returns (uint256) {
+        _ledgerView();
+    }
+
+    /// @notice the Funding Rate now, annual, as WAD.
+    function fundingRate() external view returns (uint256) {
+        _ledgerView();
+    }
+
+    /// @notice the Funding Rate at utilization `u` (WAD) under the current model.
+    function fundingRateAt(uint256) external view returns (uint256) {
+        _ledgerView();
+    }
+
+    /// @notice the Holdback Percentage in basis points, rounded up (`holdbackRate` is exact).
+    function holdbackBps() external view returns (uint256) {
+        _ledgerView();
+    }
+
+    /// @notice Vault Cash not already spoken for by the queue.
     function availableCash() public view returns (uint256) {
-        uint256 cash = IERC20Upgradeable(asset()).balanceOf(address(this));
-        return cash > queuedAssets ? cash - queuedAssets : 0;
+        uint256 cash = _vaultCash();
+        uint256 owed = _convertToAssets(_queuedShares, MathUpgradeable.Rounding.Down);
+        return cash > owed ? cash - owed : 0;
     }
 
-    /// @notice how much of the pool is lent out, in basis points.
-    function utilizationBps() public view returns (uint256) {
-        uint256 total = totalAssets();
-        if (total == 0) return 0;
-        uint256 used = totalBorrowed > total ? total : totalBorrowed;
-        return (used * BPS) / total;
+    /// @notice Retired with direct borrowing (decision 17): always zero.
+    function borrowableToday(address) external pure returns (uint256) {
+        return 0;
     }
 
-    /// @notice what borrowing costs at the current utilization, per cycle, in basis points.
-    /// @dev Two slopes meeting at a kink. Below it the rate rises gently, so capital is cheap
-    /// while there is plenty; above it steeply, so the last of the cash is expensive and the
-    /// pool refills before it runs dry rather than after.
-    function borrowRatePerCycle() public view returns (uint256) {
-        uint256 utilization = utilizationBps();
-        if (utilization <= kinkBps) {
-            if (kinkBps == 0) return baseRatePerCycle;
-            return baseRatePerCycle + (slope1PerCycle * utilization) / kinkBps;
-        }
-        uint256 excess = utilization - kinkBps;
-        uint256 span = BPS - kinkBps;
-        return baseRatePerCycle + slope1PerCycle + (slope2PerCycle * excess) / span;
+    /// @notice the Final Maturity Date: the 20th anniversary of the Initial Closing (0 if none).
+    function finalMaturity() public view returns (uint256) {
+        uint256 start = _initialClosing;
+        if (start == 0) return 0;
+        (uint256 y, uint256 m, uint256 d) = PacificCalendar.civilFromDays(start / 1 days);
+        y += 20;
+        if (m == 2 && d == 29 && !(y % 4 == 0 && (y % 100 != 0 || y % 400 == 0))) d = 28;
+        return PacificCalendar.daysFromCivil(y, m, d) * 1 days + (start % 1 days);
     }
 
-    /// @notice what depositors earn, per cycle, in basis points.
-    /// @dev The borrow rate scaled by how much of the pool is actually earning it. Idle capital
-    /// dilutes the yield, which is the mechanism that sends the next dollar elsewhere.
-    function supplyRatePerCycle() public view returns (uint256) {
-        return (borrowRatePerCycle() * utilizationBps()) / BPS;
+    function _matured() internal view returns (bool) {
+        uint256 at = finalMaturity();
+        return at != 0 && block.timestamp >= at;
     }
 
-    /// @inheritdoc ERC4626Upgradeable
-    /// @dev Bounded by cash rather than by holdings, because the spec says this is what would
-    /// actually succeed. A depositor whose money is out on loan is not refused silently -- they
-    /// are told to queue, which is a different thing from a failed withdrawal.
-    function maxWithdraw(address owner) public view override returns (uint256) {
-        uint256 owned = super.maxWithdraw(owner);
-        uint256 cash = availableCash();
-        return owned < cash ? owned : cash;
+    function queueLength() external view returns (uint256) {
+        return queue.length;
     }
 
-    /// @inheritdoc ERC4626Upgradeable
-    function maxRedeem(address owner) public view override returns (uint256) {
-        uint256 shares = super.maxRedeem(owner);
-        uint256 withdrawable = previewWithdraw(maxWithdraw(owner));
-        return shares < withdrawable ? shares : withdrawable;
+    function queueRequest(uint256 id)
+        external
+        view
+        returns (address owner, address receiver, uint256 shares, uint256 requestedAt, bool enforcement)
+    {
+        QueueRequest storage r = queue[id];
+        return (r.owner, r.receiver, r.shares, r.requestedAt, r.enforcement);
     }
 
-    function requestCount() external view returns (uint256) {
-        return requests.length;
+    /// @notice seconds the oldest open request has waited, for the off-chain 30- and 90-day rules
+    /// (IV-02 §6.4). Zero when the queue is empty.
+    function oldestRequestAge() external view returns (uint256) {
+        if (_queuedShares == 0) return 0;
+        uint256 i = _queueHead;
+        while (queue[i].shares == 0) ++i;
+        return block.timestamp - queue[i].requestedAt;
     }
 
-    function requestsOwnedBy(address owner) external view returns (uint256[] memory) {
-        return requestsOf[owner];
+    function holdbackCount() external view returns (uint256) {
+        return holdbacks.length;
     }
 
+    function holdbackAt(uint256 id)
+        external
+        view
+        returns (address holder, uint256 createdAt, uint256 maxAge, uint256 gross, uint256 held)
+    {
+        Holdback storage h = holdbacks[id];
+        return (h.holder, h.createdAt, h.maxAge, h.gross, h.held);
+    }
+
+    /// @notice when holdback `id` may be released in full by age: its creation plus the lowest
+    /// maximum age in force since then (a later raise never applies; a lowering does).
+    function releasableAt(uint256 id) external view returns (uint256) {
+        return _releaseAt(id);
+    }
+
+    /// @notice the pending Pool Loss Charge, if any.
+    function pendingLossCharge()
+        external
+        view
+        returns (bool pending, uint256 id, uint256 amount, uint256 absorbed, uint256 cursor, uint256 end)
+    {
+        LossCharge storage c = lossCharge;
+        return (c.pending, c.id, c.amount, c.absorbed, c.cursor, c.end);
+    }
+
+    /// @notice a pre-2f queued request (shares burned, claim fixed in assets).
     function requestAt(uint256 requestId)
         external
         view
         returns (address owner, address receiver, uint256 assets, uint64 requestedAt, bool claimed)
     {
-        WithdrawalRequest storage request = requests[requestId];
-        return (request.owner, request.receiver, request.assets, request.requestedAt, request.claimed);
+        WithdrawalRequest storage r = requests[requestId];
+        return (r.owner, r.receiver, r.assets, r.requestedAt, r.claimed);
     }
 
-    /// @notice what a queued request would pay if claimed now (audit X-7).
-    /// @dev The escrowed shares at today's price, capped at what they were worth when queued: a
-    /// queued depositor stops earning but still carries their share of any loss. A request from
-    /// before the fix pays its fixed amount.
-    function requestValue(uint256 requestId) public view returns (uint256) {
-        WithdrawalRequest storage request = requests[requestId];
-        if (request.claimed) return 0;
-        uint256 shares = requestSharesOf[requestId];
-        if (shares == 0) return request.assets;
-        uint256 value = convertToAssets(shares);
-        return value < request.assets ? value : request.assets;
+    /* ========== ERC-4626 ========== */
+
+    function _exitsBlocked() internal view returns (bool) {
+        return _queuedShares > 0 || isSuspended() || lossCharge.pending;
     }
 
-    /// @notice whether a queued request can be paid right now.
-    function isClaimable(uint256 requestId) public view returns (bool) {
-        WithdrawalRequest storage request = requests[requestId];
-        if (request.claimed) return false;
-        return _cash() >= requestValue(requestId);
+    function _subscriptionsBlocked() internal view returns (bool) {
+        IPoolEarnControls c = _earnControls;
+        return lossCharge.pending || isSuspended() || _matured() || address(c) == address(0)
+            || c.subscriptionsPaused();
     }
 
-    /* ========== COLLATERAL ========== */
-
-    /// @notice how many of a holder's shares are pledged against drawn credit.
-    /// @dev Fails closed for pledgers, open for everyone else (audit M-3). This used to return 0
-    /// whenever the source reverted, so a bad registry upgrade -- or a caller sending just enough
-    /// gas for the registry call to run out -- unlocked every pledged share with no sign on chain.
-    /// Now, when the source reverts, a holder whose last successfully read lock was non-zero is
-    /// treated as fully locked; a holder never seen locked (who has never pledged, or whose
-    /// pledge was last read as zero) is not frozen. Reads are recorded on every share movement
-    /// and by the permissionless `syncEncumbrance`, which the credit side should call after a draw
-    /// so the record is current before anything can go wrong.
-    function encumberedOf(address holder) public view returns (uint256) {
-        (uint256 locked, bool ok) = _readLock(holder);
-        if (ok) return locked;
-        return lastKnownLock[holder] > 0 ? type(uint256).max : 0;
+    /// @dev The net payment for `gross`: G less G × the Holdback Percentage rounded up.
+    function _net(uint256 gross) internal view returns (uint256) {
+        return gross - _heldOf(gross);
     }
 
-    /// @notice records a holder's current lock from the source. Permissionless: it can only write
-    /// what the source reports, and reverts (writing nothing) if the source cannot be read.
-    function syncEncumbrance(address holder) external returns (uint256 locked) {
-        if (address(encumbranceSource) == address(0) || collateralKind == bytes32(0)) return 0;
-        locked = encumbranceSource.encumberedOfKind(holder, collateralKind);
-        lastKnownLock[holder] = locked;
+    function maxDeposit(address) public view override returns (uint256) {
+        return _subscriptionsBlocked() ? 0 : type(uint256).max;
     }
 
-    /// @dev The source's answer, and whether it gave one. Unconfigured is a valid answer of zero.
-    function _readLock(address holder) private view returns (uint256 locked, bool ok) {
-        if (address(encumbranceSource) == address(0) || collateralKind == bytes32(0)) return (0, true);
-        try encumbranceSource.encumberedOfKind(holder, collateralKind) returns (uint256 value) {
-            return (value, true);
-        } catch {
-            return (0, false);
-        }
+    function maxMint(address) public view override returns (uint256) {
+        return _subscriptionsBlocked() ? 0 : type(uint256).max;
     }
 
-    /// @notice how many of a holder's shares may leave.
-    function freeSharesOf(address holder) public view returns (uint256) {
-        uint256 balance = balanceOf(holder);
-        uint256 locked = encumberedOf(holder);
-        return balance > locked ? balance - locked : 0;
+    /// @notice shares `owner` can redeem right now: zero while a queue request is open, a
+    /// Suspension is in force or a loss charge is being applied; otherwise their free shares,
+    /// up to what Vault Cash covers at the full gross amount.
+    function maxRedeem(address owner) public view override returns (uint256) {
+        if (_exitsBlocked()) return 0;
+        uint256 free = freeSharesOf(owner);
+        uint256 byCash = _convertToShares(_vaultCash(), MathUpgradeable.Rounding.Down);
+        return free < byCash ? free : byCash;
     }
 
-    /// @notice takes shares that are backing drawn credit.
-    /// @dev Bounded by what is actually pledged, so it cannot reach a depositor's free shares or
-    /// touch somebody who has drawn nothing. It does not decide whether a default has happened --
-    /// the caller does, and the caller should be a contract that checks.
-    ///
-    /// What it hands over is shares, not money. Turning them back into money is a redemption from
-    /// this pool like any other, which may have to wait behind the queue -- collateral can be
-    /// sufficient and still not be available today.
-    function seizeShares(address holder, address to, uint256 shares)
+    /// @notice net of the Loss Holdback.
+    function maxWithdraw(address owner) public view override returns (uint256) {
+        return previewRedeem(maxRedeem(owner));
+    }
+
+    /// @notice what redeeming `shares` pays now: Share Value less the Loss Holdback then applying.
+    /// This is the Pool Share Value of MB-05 §1.3.
+    function previewRedeem(uint256 shares) public view override returns (uint256) {
+        return _net(_convertToAssets(shares, MathUpgradeable.Rounding.Down));
+    }
+
+    /// @notice shares needed for a net payment of `assets`, rounded up.
+    function previewWithdraw(uint256 assets) public view override returns (uint256) {
+        uint256 rate = _holdbackRate;
+        if (rate >= WAD) return type(uint256).max;
+        uint256 gross = assets.mulDiv(WAD, WAD - rate, MathUpgradeable.Rounding.Up);
+        return _convertToShares(gross, MathUpgradeable.Rounding.Up);
+    }
+
+    /// @notice subscribes with the eligibility attestation, whose exemption tag is stored in the
+    /// subscription event.
+    function subscribe(uint256 assets, address receiver, bytes calldata attestation)
         external
-        onlyRole(LIQUIDATOR_ROLE)
+        returns (uint256 shares)
     {
-        // A seizure needs a real answer: "fully locked" is a reason to refuse a transfer, never a
-        // licence to take everything.
-        (uint256 encumbered, bool ok) = _readLock(holder);
-        if (!ok) revert LendingPoolEncumbranceUnreadable(holder);
-        if (shares > encumbered) {
-            revert LendingPoolSeizureExceedsEncumbrance(holder, encumbered, shares);
+        _accrue();
+        shares = previewDeposit(assets);
+        _subscribe(receiver, assets, shares, attestation);
+    }
+
+    /// @notice a subscription with no attestation attached (the controls may hold one already).
+    function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
+        _accrue();
+        shares = previewDeposit(assets);
+        _subscribe(receiver, assets, shares, "");
+    }
+
+    function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
+        _accrue();
+        assets = previewMint(shares);
+        _subscribe(receiver, assets, shares, "");
+    }
+
+    /// @dev Mints at Share Value with nothing deducted, whatever the Holdback Percentage. The holder
+    /// cap is `EarnControls`' (per household, above its floor; decision 23), checked in
+    /// `checkSubscription`. With no Pool Share outstanding, it issues at exactly $1.00 and sets
+    /// aside any USDC left in the vault that is owed to no one, to be recognized into Vault Cash
+    /// over 30 days (decision 29). Holdback Amounts, queued shares and unclaimed payments are
+    /// never part of it.
+    function _subscribe(address receiver, uint256 assets, uint256 shares, bytes memory attestation) internal {
+        if (assets < MIN_SUBSCRIPTION_UNITS * 10 ** uint256(decimals())) revert LendingPoolBelowMinimum(assets);
+        if (shares == 0 || receiver == address(0)) revert LendingPoolInvalidAmount();
+        if (lossCharge.pending) revert LendingPoolChargePending();
+        if (isSuspended()) revert LendingPoolSuspended();
+        if (_matured()) revert LendingPoolFinalMaturity();
+        IPoolEarnControls controls = _earnControls;
+        if (address(controls) == address(0)) revert LendingPoolNoControls();
+        if (controls.subscriptionsPaused()) revert LendingPoolSubscriptionsPaused();
+        bytes32 code = controls.checkSubscription(msg.sender, receiver, assets, attestation);
+        if (_initialClosing == 0) {
+            _initialClosing = uint64(block.timestamp);
+            emit InitialClosingRecorded(block.timestamp, finalMaturity());
         }
-        _transfer(holder, to, shares);
-        emit SharesSeized(holder, to, shares);
-    }
-
-    /// @notice sets the contract reporting what is pledged, and the kind to ask about.
-    function setEncumbranceSource(address source, bytes32 kind) external onlyRole(OPERATOR_ROLE) {
-        encumbranceSource = IEncumbranceSource(source);
-        collateralKind = kind;
-        emit EncumbranceSourceUpdated(source);
-    }
-
-    /// @dev Pledged shares do not leave by an ordinary transfer either. Refusing to let them move
-    /// is what makes the pledge mean anything, since the member holds them.
-    ///
-    /// Nor by a burn: `withdraw`, `redeem` and `requestWithdrawal` all burn the holder's shares, and
-    /// this used to wave every burn through -- so a member could take pledged shares out as cash
-    /// while the credit they backed was still drawn. Only a mint skips the check.
-    function _beforeTokenTransfer(address from, address to, uint256 amount)
-        internal
-        virtual
-        override
-    {
-        super._beforeTokenTransfer(from, to, amount);
-        if (from == address(0)) return;
-        // The pool's own escrow (queued requests, X-7) pledges nothing.
-        if (from == address(this)) return;
-        if (hasRole(LIQUIDATOR_ROLE, _msgSender())) return;
-        (uint256 locked, bool ok) = _readLock(from);
-        if (ok) {
-            if (locked != lastKnownLock[from]) lastKnownLock[from] = locked;
-        } else {
-            locked = lastKnownLock[from] > 0 ? type(uint256).max : 0;
-            emit EncumbranceSourceReverted(from, lastKnownLock[from]);
+        if (totalSupply() == 0) {
+            uint256 gross = _cash() + totalBorrowed + interestAccrued;
+            uint256 owed = _spokenFor();
+            uint256 left = gross > owed ? gross - owed : 0;
+            _leftover = left;
+            _leftoverStart = uint64(block.timestamp);
+            if (left > 0) emit LeftoverSetAside(left, block.timestamp + LEFTOVER_PERIOD);
         }
-        uint256 balance = balanceOf(from);
-        uint256 free = balance > locked ? balance - locked : 0;
-        if (amount > free) revert LendingPoolEncumbered(from, free, amount);
+        _deposit(msg.sender, receiver, assets, shares);
+        emit Subscribed(msg.sender, receiver, assets, shares, code);
+        _syncClock();
     }
 
-    /// @dev Every ERC-4626 entry point lands here. Interest is synced first so the price used is
-    /// the one already reported, and the deposit is then recorded as accounted cash.
-    function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override {
-        _syncInterest();
-        accountedCash += assets; // booked before the transfer in, which reverts the lot if it fails
-        super._deposit(caller, receiver, assets, shares);
+    /// @notice redeems on demand for a net payment of exactly `assets`.
+    function withdraw(uint256 assets, address receiver, address owner) public override returns (uint256 shares) {
+        _accrue();
+        shares = previewWithdraw(assets);
+        _redeemNow(receiver, owner, shares, assets);
     }
 
-    function _withdraw(address caller, address receiver, address owner, uint256 assets, uint256 shares)
+    /// @notice redeems on demand at Share Value, less the Loss Holdback.
+    function redeem(uint256 shares, address receiver, address owner) public override returns (uint256 assets) {
+        assets = _redeemNow(receiver, owner, shares, type(uint256).max);
+    }
+
+    /// @dev `net` is the exact payment for `withdraw`, or max for `redeem`. Liquidity is checked
+    /// against the full gross amount. Proceeds go only to the Smart Account that held the shares
+    /// (IV-02 §6.5): `receiver` must be `owner`.
+    function _redeemNow(address receiver, address owner, uint256 shares, uint256 net)
         internal
-        override
+        returns (uint256 paid)
     {
-        _syncInterest();
-        accountedCash -= assets;
-        super._withdraw(caller, receiver, owner, assets, shares);
+        if (receiver != owner) revert LendingPoolReceiverNotOwner(receiver);
+        if (shares == 0) revert LendingPoolInvalidAmount();
+        if (lossCharge.pending) revert LendingPoolChargePending();
+        if (isSuspended()) revert LendingPoolSuspended();
+        if (_queuedShares > 0) revert LendingPoolQueueOpen();
+        if (msg.sender != owner) _spendAllowance(owner, msg.sender, shares);
+        _accrue();
+        uint256 gross = _convertToAssets(shares, MathUpgradeable.Rounding.Down);
+        uint256 cash = _vaultCash();
+        if (gross > cash) revert LendingPoolInsufficientCash(cash, gross);
+        _burn(owner, shares);
+        paid = _finish(owner, receiver, gross, net);
+        emit Withdraw(msg.sender, receiver, owner, paid, shares);
+        _syncClock();
+    }
+
+    /// @dev Burned shares worth `gross`: records H = G × the Holdback Percentage (rounded up) as the holder's
+    /// holdback (§6A) and pays G − H, or `cap` if less (a `withdraw` for an exact amount). What
+    /// the cap leaves, a unit or two of rounding, stays in Vault Cash for the remaining holders.
+    function _finish(address holder, address receiver, uint256 gross, uint256 cap) internal returns (uint256 paid) {
+        uint256 held = _heldOf(gross);
+        paid = gross - held;
+        if (paid > cap) paid = cap;
+        if (held > 0) {
+            uint256 id = holdbacks.length;
+            holdbacks.push(Holdback(holder, uint64(block.timestamp), uint32(_holdbackMaxAge), uint128(gross), uint128(held)));
+            _totalHoldback += held;
+            openHoldbackGross += gross;
+            _holdbackOf[holder] += held;
+            emit HoldbackRecorded(holder, id, gross, held);
+        }
+        _send(receiver, paid);
     }
 
     /* ========== THE QUEUE ========== */
 
-    /// @notice queues a withdrawal the pool has no cash for yet.
-    /// @dev The shares go into escrow here and the claim is priced when it is paid, capped at what
-    /// the shares were worth when queued (audit X-7). So a depositor who queues stops earning from
-    /// that moment, but does not stop carrying loss: burning the shares and fixing the claim in
-    /// assets, as this used to, let anyone who saw a default coming queue at the pre-loss price
-    /// and push their share of it onto everyone who stayed.
-    ///
-    /// A queue rather than a revert. A depositor whose money is out on loan has not made a
-    /// mistake, and the app can show them where they stand instead of an error.
-    /// @param shares shares to redeem.
-    /// @param receiver address to pay.
-    /// @return requestId the queued claim.
-    function requestWithdrawal(uint256 shares, address receiver) external returns (uint256 requestId) {
-        if (receiver == address(0)) revert LendingPoolInvalidAddress();
-        _syncInterest();
-        uint256 assets = previewRedeem(shares);
-        // Pledged shares cannot be queued: the transfer runs the same lock check a burn did.
-        _transfer(_msgSender(), address(this), shares);
-        queuedAssets += assets;
-        escrowedQueueCaps += assets;
-
-        requestId = requests.length;
-        requests.push(
-            WithdrawalRequest({
-                owner: _msgSender(),
-                receiver: receiver,
-                assets: assets,
-                requestedAt: uint64(block.timestamp),
-                claimed: false
-            })
-        );
-        requestSharesOf[requestId] = shares;
-        requestsOf[_msgSender()].push(requestId);
-        emit WithdrawalQueued(requestId, _msgSender(), assets);
+    /// @notice "Take $X now, queue the rest": pays what Vault Cash allows and queues the rest in
+    /// the same transaction. While a request is open, a Suspension is in force or a loss charge is
+    /// being applied, it pays nothing now and queues everything.
+    /// @return paidNow paid now, net of any holdback.
+    /// @return requestId the queued request, or `NO_REQUEST`.
+    function redeemOrQueue(uint256 shares, address receiver) external returns (uint256 paidNow, uint256 requestId) {
+        if (receiver != msg.sender) revert LendingPoolReceiverNotOwner(receiver);
+        _accrue();
+        uint256 now_ = maxRedeem(msg.sender);
+        if (now_ > shares) now_ = shares;
+        if (now_ > 0) paidNow = _redeemNow(receiver, msg.sender, now_, type(uint256).max);
+        requestId = shares > now_ ? _enqueue(msg.sender, receiver, shares - now_, false) : NO_REQUEST;
     }
 
-    /// @notice pays a queued withdrawal once the cash is back.
-    function claimWithdrawal(uint256 requestId) external returns (uint256 assets) {
-        WithdrawalRequest storage request = requests[requestId];
-        if (request.claimed || request.assets == 0) revert LendingPoolNothingQueued(requestId);
-        if (request.owner != _msgSender()) revert LendingPoolNotRequestOwner(requestId);
+    /// @notice queues all of `shares` (kept for the Liquidator and the apps). The proceeds go to
+    /// the caller's own account (IV-02 §6.5).
+    function requestWithdrawal(uint256 shares, address receiver) external returns (uint256) {
+        if (receiver != msg.sender) revert LendingPoolReceiverNotOwner(receiver);
+        return _enqueue(msg.sender, receiver, shares, false);
+    }
 
-        _syncInterest();
-        uint256 cap = request.assets;
-        uint256 shares = requestSharesOf[requestId];
-        assets = requestValue(requestId);
-        uint256 cash = _cash();
-        if (cash < assets) revert LendingPoolInsufficientCash(cash, assets);
-
-        request.claimed = true;
-        queuedAssets -= cap;
-        if (shares > 0) {
-            // What the shares were worth above the payout stays in the pool, for the depositors
-            // who carried the risk while this one waited.
-            escrowedQueueCaps -= cap;
-            requestSharesOf[requestId] = 0;
-            _burn(address(this), shares);
+    /// @notice fills the queue in order, whole or partial, up to Vault Cash, at the Share Value
+    /// now, less the Loss Holdback now applying. Permissionless.
+    /// @param maxCount most requests to look at.
+    function fillQueue(uint256 maxCount) external returns (uint256 filled) {
+        if (isSuspended()) revert LendingPoolSuspended();
+        if (lossCharge.pending) revert LendingPoolChargePending();
+        _accrue();
+        uint256 i = _queueHead;
+        uint256 n = queue.length;
+        for (uint256 seen; i < n && seen < maxCount; ++seen) {
+            QueueRequest storage r = queue[i];
+            uint256 shares = r.shares;
+            if (shares == 0) {
+                ++i;
+                continue;
+            }
+            uint256 cash = _vaultCash();
+            uint256 take = _convertToShares(cash, MathUpgradeable.Rounding.Down);
+            if (take > shares) take = shares;
+            if (take == 0) break;
+            uint256 gross = _convertToAssets(take, MathUpgradeable.Rounding.Down);
+            uint256 left = shares - take;
+            r.shares = uint128(left);
+            _dequeue(r, take);
+            _burn(address(this), take);
+            // The holdback is the Holder's, or on the Successor path the Successor's (§6A).
+            uint256 paid = _finish(r.enforcement ? r.owner : r.receiver, r.receiver, gross, type(uint256).max);
+            if (r.enforcement) {
+                EnforcementFill storage f = _enforcementFilled[r.owner];
+                f.shares += uint128(take);
+                f.paid += uint128(paid);
+            }
+            emit QueueFilled(i, take, gross, paid, left);
+            ++filled;
+            if (left > 0) break;
+            ++i;
         }
-        accountedCash -= assets;
-        SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(asset()), request.receiver, assets);
-        emit WithdrawalClaimed(requestId, request.receiver, assets);
+        _queueHead = i;
+        _syncClock();
     }
 
-    /* ========== BORROWING ========== */
+    /* ========== DEPLOYMENTS AND RETURNS ========== */
 
-    /// @notice draws cash to fund unsecured credit.
-    /// @dev Only to the borrower's stored destination and within its daily cap (audit H-4). The
-    /// card settler is a key on a server, and `to` used to be anything it liked, which made the
-    /// pool's whole cash balance one leaked key away. The signature is unchanged so the PayoutPool,
-    /// whose destination is itself, keeps calling it as before.
-    function borrow(uint256 amount, address to) external onlyRole(BORROWER_ROLE) {
-        address borrower = _msgSender();
-        address destination = borrowDestinationOf[borrower];
-        if (destination == address(0) || to != destination) revert LendingPoolDestinationNotAllowed(borrower, to);
-        _syncInterest();
-        uint256 cash = availableCash();
-        if (amount > cash) revert LendingPoolInsufficientCash(cash, amount);
-
-        BorrowWindow storage window = borrowWindowOf[borrower];
-        uint64 today = uint64(block.timestamp / 1 days);
-        uint256 drawnToday = window.day == today ? window.drawn : 0;
-        uint256 cap = dailyBorrowCapOf[borrower];
-        uint256 remaining = cap > drawnToday ? cap - drawnToday : 0;
-        if (amount > remaining) revert LendingPoolDailyCapExceeded(borrower, remaining, amount);
-        window.day = today;
-        window.drawn = uint192(drawnToday + amount);
-
-        totalBorrowed += amount;
-        accountedCash -= amount;
-        SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(asset()), to, amount);
-        emit Borrowed(borrower, to, amount);
+    /// @notice Retired (decision 17): only Clear Lending draws, as a recorded Deployment.
+    function borrow(uint256, address) external pure {
+        revert LendingPoolDirectBorrowOff();
     }
 
-    /// @notice what a borrower may still draw today.
-    function borrowableToday(address borrower) external view returns (uint256) {
-        BorrowWindow storage window = borrowWindowOf[borrower];
-        uint256 drawnToday = window.day == uint64(block.timestamp / 1 days) ? window.drawn : 0;
-        uint256 cap = dailyBorrowCapOf[borrower];
-        return cap > drawnToday ? cap - drawnToday : 0;
+    /* ========== COLLATERAL ========== */
+
+    /// @notice how many of a holder's shares are pledged.
+    /// @dev Fails closed for pledgers, open for everyone else (audit M-3).
+    function encumberedOf(address holder) public view returns (uint256) {
+        return _encumberedOf(holder);
     }
 
-    /// @notice returns borrowed cash, and anything above the principal is yield.
-    /// @dev Repaying more than was borrowed leaves the surplus as cash against unchanged
-    /// liabilities, which is exactly how a share price rises. Carry earned on the tiers this pool
-    /// funded arrives here, and it arrives for the depositors rather than for the co-op.
-    ///
-    /// The surplus streams in rather than landing at once (audit X-18): it is locked as interest
-    /// and starts vesting immediately.
-    function repay(uint256 amount) external {
-        _syncInterest();
-        uint256 principal = amount > totalBorrowed ? totalBorrowed : amount;
-        totalBorrowed -= principal;
-        if (amount > principal) {
-            // The surplus is interest: lock it now, as the next sync would on finding it.
-            uint256 locked = unvestedInterest() + (amount - principal);
-            lockedInterest = uint192(locked);
-            interestLockedAt = uint64(block.timestamp);
-            emit InterestStreamed(amount - principal, locked);
+    /// @notice how many of a holder's shares may leave.
+    function freeSharesOf(address holder) public view returns (uint256) {
+        return _freeSharesOf(holder);
+    }
+
+    /// @dev The transfer allowlist (FIXED, §6) and the pledge lock. A mint and the pool's own escrow
+    /// pass; nobody is exempt (C5: the Liquidator's exemption is gone). Shares go into escrow only through the queue, and
+    /// pledged ones only through an enforcement redemption. Every other move, a burn included,
+    /// checks the pledge lock; a move that is not a burn or escrow must also be one the controls
+    /// allow (same Holder, or the Successor path).
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal override {
+        super._beforeTokenTransfer(from, to, amount);
+        if (from == address(0) || from == address(this)) return;
+        if (to == address(this)) {
+            uint8 mode = escrowMode;
+            if (mode == 0) revert LendingPoolTransferNotAllowed(from, to);
+            if (mode == 2) return;
         }
-        // All of it is accounted for now: the principal as cash, the surplus as locked interest.
-        accountedCash += amount;
-        SafeERC20Upgradeable.safeTransferFrom(
-            IERC20Upgradeable(asset()), _msgSender(), address(this), amount
-        );
-        emit Repaid(_msgSender(), amount);
+        (uint256 locked, bool ok) = _readLock(from);
+        if (ok) {
+            if (locked != lastKnownLock[from]) lastKnownLock[from] = locked;
+            locked = _lockOnBalance(from, locked);
+        } else {
+            locked = lastKnownLock[from] > 0 ? type(uint256).max : 0;
+            emit EncumbranceSourceReverted(from, lastKnownLock[from]);
+        }
+        uint256 free = _unheld(balanceOf(from), locked, from);
+        if (amount > free) revert LendingPoolEncumbered(from, free, amount);
+        if (to == address(0) || to == address(this)) return;
+        IPoolEarnControls controls = _earnControls;
+        if (address(controls) == address(0) || !controls.transferAllowed(from, to)) {
+            revert LendingPoolTransferNotAllowed(from, to);
+        }
     }
 
-    /* ========== FIRST LOSS ========== */
+    /* ========== VALUATION MODULE (delegatecall) ========== */
 
-    /// @notice writes off credit this pool funded, and reports what it could not cover.
-    /// @dev The waterfall's first step. Depositors here earn the return on unsecured lending, so
-    /// they carry its first loss: the loan stops being an asset, the share price falls, and the
-    /// AssurancePool is not touched.
-    ///
-    /// It reports back rather than reverting when the loss is larger than the pool. A loss that
-    /// exceeds first-loss capacity is precisely when the next layer is supposed to act, and a
-    /// revert there would stall the write-off instead of escalating it.
-    /// @param amount loss to absorb.
-    /// @return absorbed what this pool covered.
-    /// @return uncovered what the next layer must cover.
-    function absorbLoss(uint256 amount)
-        external
-        onlyRole(LOSS_REPORTER_ROLE)
-        returns (uint256 absorbed, uint256 uncovered)
-    {
-        absorbed = amount > totalBorrowed ? totalBorrowed : amount;
-        uncovered = amount - absorbed;
-        totalBorrowed -= absorbed;
-        emit LossAbsorbed(amount, absorbed, uncovered);
+    /// @notice see YieldPoolValuation.requestRunOff.
+    function requestRunOff(address) external returns (uint256) {
+        _forward();
     }
 
-    /* ========== RESTRICTED ========== */
-
-    /// @notice names where a borrower's draws go and how much it may draw per day (audit H-4).
-    /// @dev Admin, like granting `BORROWER_ROLE` itself, so this adds no power the admin did not
-    /// already hold. A zero destination or cap switches the borrower off.
-    function setBorrower(address borrower, address destination, uint256 dailyCap)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
-        if (borrower == address(0)) revert LendingPoolInvalidAddress();
-        borrowDestinationOf[borrower] = destination;
-        dailyBorrowCapOf[borrower] = dailyCap;
-        emit BorrowerConfigured(borrower, destination, dailyCap);
+    /// @notice see YieldPoolValuation.enforcementRedeem.
+    function enforcementRedeem(address, uint256) external returns (uint256) {
+        _forward();
     }
 
+    /// @notice see YieldPoolValuation.cancelRequest.
+    function cancelRequest(uint256, uint256) external {
+        _forward();
+    }
 
-    /// @notice sets the shape of the rate curve.
-    function setRateCurve(uint256 base, uint256 slope1, uint256 slope2, uint256 kink)
-        external
-        onlyRole(OPERATOR_ROLE)
-    {
-        if (kink == 0 || kink >= BPS) revert LendingPoolInvalidCurve();
-        baseRatePerCycle = base;
-        slope1PerCycle = slope1;
-        slope2PerCycle = slope2;
-        kinkBps = kink;
-        emit RateCurveUpdated(base, slope1, slope2, kink);
+    /// @notice see YieldPoolValuation.claimWithdrawal.
+    function claimWithdrawal(uint256) external returns (uint256) {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.claimUnpaid.
+    function claimUnpaid() external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.returnFunds.
+    function returnFunds(uint256) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.repay.
+    function repay(uint256) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.syncEncumbrance.
+    function syncEncumbrance(address) external returns (uint256) {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.setEncumbranceSource.
+    function setEncumbranceSource(address, bytes32) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.initializeYieldPool.
+    function initializeYieldPool(address, address, uint64) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.setEarnControls.
+    function setEarnControls(address) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.setDeploymentAccount.
+    function setDeploymentAccount(address) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.setEnforcementDestination.
+    function setEnforcementDestination(address) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.setHoldbackMaxAge.
+    function setHoldbackMaxAge(uint256) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.deploy.
+    function deploy(uint256, bytes32) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.postAllowance.
+    function postAllowance(uint256, bytes32) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.postLossCharge.
+    function postLossCharge(uint256, bytes32) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.releaseHoldbacks.
+    function releaseHoldbacks(uint256) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.applyHoldbacks.
+    function applyHoldbacks(uint256) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolLedger.suspend.
+    function suspend(uint8, bytes32, bytes32) external {
+        _forwardTo(ledger);
+    }
+
+    /// @notice see YieldPoolLedger.renewSuspension.
+    function renewSuspension(bytes32, bytes32) external {
+        _forwardTo(ledger);
+    }
+
+    /// @notice see YieldPoolLedger.liftSuspension.
+    function liftSuspension() external {
+        _forwardTo(ledger);
+    }
+
+    /// @notice see YieldPoolLedger.proposeRateModel.
+    function proposeRateModel(uint256, uint256, uint256, uint256) external {
+        _forwardTo(ledger);
+    }
+
+    /// @notice see YieldPoolLedger.applyRateModel.
+    function applyRateModel() external {
+        _forwardTo(ledger);
+    }
+
+    /// @notice Every other call goes to the ledger module: the functions it gained in the IV-02
+    /// conformance pass (`accrue`, `postRecovery`, `recordValuationEvent`, `postPoolTierPrincipal`,
+    /// the legend, and their views). Use the joined ABI.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    fallback() external {
+        _forwardTo(ledger);
+    }
+
+    /// @notice Serves the ledger's views to this contract's own view functions, which call it by
+    /// staticcall; no one else may call it.
+    function ledgerView(bytes calldata data) external {
+        if (msg.sender != address(this)) revert LendingPoolNotAuthorized(msg.sender);
+        bytes memory ret = _delegate(ledger, data);
+        assembly {
+            return(add(ret, 32), mload(ret))
+        }
+    }
+
+    /// @dev Answers a view from the ledger: a staticcall to `ledgerView` with this call's data.
+    function _ledgerView() private view {
+        (bool ok, bytes memory ret) = address(this).staticcall(abi.encodeCall(this.ledgerView, (msg.data)));
+        assembly {
+            switch ok
+            case 0 { revert(add(ret, 32), mload(ret)) }
+            default { return(add(ret, 32), mload(ret)) }
+        }
+    }
+
+    function _forward() private {
+        _forwardTo(valuation);
+    }
+
+    /// @dev Runs the module's implementation of this call against this contract's storage, and
+    /// returns or reverts exactly as it did.
+    /// @custom:oz-upgrades-unsafe-allow delegatecall
+    function _forwardTo(address target) private {
+        assembly {
+            calldatacopy(0, 0, calldatasize())
+            let ok := delegatecall(gas(), target, 0, calldatasize(), 0, 0)
+            returndatacopy(0, 0, returndatasize())
+            switch ok
+            case 0 { revert(0, returndatasize()) }
+            default { return(0, returndatasize()) }
+        }
     }
 }

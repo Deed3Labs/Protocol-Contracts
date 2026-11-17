@@ -105,6 +105,10 @@ contract Fractionalize is
     /// @notice Factory for creating ERC-20 tokens
     address public fractionTokenFactory;
 
+    /// @notice DeedNFT token ID => the active fraction holding it (0 when none). Appended for trust
+    ///         agreement v5, item 5: lets beneficialOwnerOf answer for a deed this contract holds.
+    mapping(uint256 => uint256) public fractionOfDeed;
+
     // ============ Constructor & Initializer ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -175,6 +179,8 @@ contract Fractionalize is
         newFraction.assetType = params.assetType;
         newFraction.originalTokenId = params.originalTokenId;
         newFraction.collectionAdmin = msg.sender;
+
+        if (params.assetType == FractionAssetType.DeedNFT) fractionOfDeed[params.originalTokenId] = fractionId;
 
         // Deploy ERC-20 token for this fraction
         address tokenAddress = _deployFractionToken(fractionId, params);
@@ -652,6 +658,7 @@ contract Fractionalize is
      */
     function _transferAsset(FractionInfo storage fraction, address to) internal {
         if (fraction.assetType == FractionAssetType.DeedNFT) {
+            delete fractionOfDeed[fraction.originalTokenId];
             deedNFT.transferFrom(address(this), to, fraction.originalTokenId);
         } else {
             IERC1155Upgradeable(address(subdivideNFT)).safeTransferFrom(address(this), to, fraction.originalTokenId, 1, "");
@@ -717,6 +724,16 @@ contract Fractionalize is
     }
 
     /// @notice Checks if an account can receive another share (based on wallet limit).
+    /**
+     * @notice Trust agreement v5, item 5 (IDeedCustody): a deed locked here belongs to its depositor (the
+     *         fraction's collection admin), not to this contract. address(0) when no active fraction holds it.
+     */
+    function beneficialOwnerOf(uint256 tokenId) external view returns (address) {
+        uint256 fractionId = fractionOfDeed[tokenId];
+        if (fractionId == 0 || !fractions[fractionId].isActive) return address(0);
+        return fractions[fractionId].collectionAdmin;
+    }
+
     function canReceiveShares(uint256 fractionId, address account) public view returns (bool) {
         FractionInfo storage fraction = fractions[fractionId];
         if (!fraction.isActive || fraction.maxSharesPerWallet == 0) {

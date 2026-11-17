@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { deployCore, advance, ONE_USDC, CYCLE } from "./deep-setup";
 import { signedOpenPlan } from "../../helpers/plans";
+import { issuerProxyOptions } from "../../helpers/issuers";
 
 /*
  * Regression tests for the credit core's Low findings fixed in Phase 1 step 8.
@@ -14,17 +15,21 @@ describe("AUDIT credit Lows: L-1, L-2, L-7, L-8", function () {
       ["RevolvingIssuer", [await ctx.stableCredit.getAddress(), ctx.admin.address]],
       ["TermIssuer", [await ctx.stableCredit.getAddress(), ctx.admin.address]],
       ["OffersIssuer", [await ctx.stableCredit.getAddress(), ctx.admin.address, 1n, 1n]],
-      ["AssurancePool", [await ctx.stableCredit.getAddress(), await ctx.usdc.getAddress()]],
+      ["AssurancePool", [await ctx.usdc.getAddress(), ctx.admin.address, await ctx.networkRegistry.getAddress(), [ctx.admin.address, ctx.operator.address]]],
     ] as [string, any[]][]) {
       const F = await ethers.getContractFactory(name);
-      const impl: any = await F.deploy();
+      // The issuers take their delegatecall modules as constructor arguments (EIP-3860).
+      const ctorArgs = name === "TermIssuer" || name === "RevolvingIssuer"
+        ? (await issuerProxyOptions(name)).constructorArgs
+        : [];
+      const impl: any = await F.deploy(...ctorArgs);
       await expect(impl.initialize(...args)).to.be.revertedWith("Initializable: contract is already initialized");
     }
   });
 
   it("L-2 (fixed): a holder cannot burn a claim", async function () {
     const { ctx, revolving, merchant } = await deployCore();
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 100n * ONE_USDC);
     await expect(ctx.stableCredit.connect(merchant).burn(1n))
       .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditBurnDisabled");
@@ -73,7 +78,7 @@ describe("AUDIT credit Lows: L-1, L-2, L-7, L-8", function () {
 
   it("L-8 (fixed): the ledger refuses a zero address where zero is not an off switch", async function () {
     const { ctx, pool } = await deployCore();
-    for (const fn of ["setAccessManager", "setAssurancePool", "setNetworkRegistry", "setMerchantRegistry"]) {
+    for (const fn of ["setAccessManager", "setLenderOperating", "setNetworkRegistry", "setMerchantRegistry"]) {
       await expect((ctx.stableCredit.connect(ctx.admin) as any)[fn](ethers.ZeroAddress))
         .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditInvalidAddress");
     }
@@ -82,13 +87,13 @@ describe("AUDIT credit Lows: L-1, L-2, L-7, L-8", function () {
     await pool.grantRole(await pool.OPERATOR_ROLE(), op.address);
     await expect(pool.connect(op).setCoopTreasury(op.address)).to.be.reverted;
     await expect(pool.connect(op).setCoopIncomeRecipient(op.address)).to.be.reverted;
-    await expect(pool.connect(op).setLenders(op.address, op.address)).to.be.reverted;
+    await expect(pool.connect(op).setYieldPool(op.address)).to.be.reverted;
   });
 
   it("X-11 (fixed): a position at the rate ceiling for years can still be touched", async function () {
     const { ctx, revolving, merchant } = await deployCore();
     await revolving.connect(ctx.admin).setTierRate(3, 5_000n);
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 0n, 100n * ONE_USDC], 3650 * 24 * 3600, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 0n, 100n * ONE_USDC], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(merchant.address, 1n);
     await advance(140 * CYCLE);
     await revolving.materialiseCarry(ctx.member.address);

@@ -2,6 +2,8 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
+import { driveToDefault } from "../helpers/default";
+import { issuerProxyOptions } from "../helpers/issuers";
 
 /*
  * Audit proofs of concept, flipped into regression tests once each finding was fixed. A test
@@ -29,15 +31,15 @@ describe("AUDIT PoC", function () {
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     revolving = await upgrades.deployProxy(
-      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+      RevolvingIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("RevolvingIssuer")),  kind: "uups" });
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
     term = await upgrades.deployProxy(
-      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" });
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" });
 
     for (const issuer of [revolving, term]) {
       await ctx.networkRegistry.registerIssuer(
-        await issuer.getAddress(), await ctx.stableCredit.getAddress(),
-        await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+        await issuer.getAddress(), await ctx.stableCredit.getAddress()
+);
       await ctx.access.grantOperator(await issuer.getAddress());
     }
     for (const [name, rate] of [["SAVINGS", 0n], ["ASSET_INTERNAL", 65n], ["INCOME", 150n], ["BOOST", 300n]] as const) {
@@ -93,7 +95,7 @@ describe("AUDIT PoC", function () {
 
   it("C-1b (fixed): a revolving draw to an unregistered wallet is refused, with or without the registry wired", async function () {
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 1_000n * ONE_USDC], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 1_000n * ONE_USDC], 0);
     // Registry not yet wired to the ledger: the issuer's draw check fails closed.
     await expect(ctx.stableCredit.connect(m).transfer(attackerWallet.address, 3_000n * ONE_USDC))
       .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditTransactionInvalid");
@@ -115,7 +117,7 @@ describe("AUDIT PoC", function () {
     await pool.connect(funder).withdrawCapital(20_000n * ONE_USDC, funder.address);
     await wireLedgerToRegistry();
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     await expect(ctx.stableCredit.connect(m).transfer(attackerWallet.address, 2_000n * ONE_USDC))
       .to.be.revertedWithCustomError(ctx.stableCredit, "StableCreditRecipientNotEligible");
     await expect(pool.connect(attackerWallet).redeem(2_000n * ONE_USDC))
@@ -153,8 +155,8 @@ describe("AUDIT PoC", function () {
     const offers = await upgrades.deployProxy(
       OffersIssuer, [await ctx.stableCredit.getAddress(), coop.address, 10n * ONE_USDC, 90 * DAY], { kind: "uups" });
     await ctx.networkRegistry.registerIssuer(
-      await offers.getAddress(), await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress());
+      await offers.getAddress(), await ctx.stableCredit.getAddress()
+);
     await offers.connect(ctx.operator).setCap(1_000n * ONE_USDC);
     await offers.connect(ctx.operator).grant(member2.address);
 
@@ -167,19 +169,24 @@ describe("AUDIT PoC", function () {
   it("H-2 (fixed): syncing a compliant member at expiry rolls the period forward, and the line can still default", async function () {
     await wireLedgerToRegistry();
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     // Cycle and grace run out while compliant (balance zero).
     await advance(CYCLE + CYCLE + 1);
-    // Permissionless, as before -- but now it renews instead of deleting.
+    // Permissionless, as before -- but it renews instead of deleting. Since Addendum 2 the period
+    // follows the calendar: it now ends on the member's next Cycle End Day, a month on.
     await revolving.connect(attackerWallet).syncCreditPeriod(m.address);
     const [issuedAt, expiration] = await revolving.creditPeriods(m.address);
+    const state = await revolving.cycleStateOf(m.address);
     const now = BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
-    expect(issuedAt).to.equal(now);
-    expect(expiration).to.equal(now + BigInt(CYCLE));
+    expect(issuedAt).to.equal(state.closedAt);
+    expect(expiration).to.equal(state.cycleEnd);
+    expect(expiration).to.be.gt(now);
+    expect(expiration - issuedAt).to.be.gte(BigInt(27 * DAY));
 
     // Draw the whole line and sit on it: the period runs out, grace runs out, and it defaults.
     await ctx.stableCredit.connect(m).transfer(merchant.address, 2_000n * ONE_USDC);
-    await advance(365 * DAY);
+    // Section 12.5: two missed rebalances in a row, each judged, then the cure window.
+    await driveToDefault(revolving, m.address, ctx.operator);
     expect(await revolving.inDefault(m.address)).to.equal(true);
     await revolving.syncCreditPeriod(m.address);
     expect(await revolving.hasDefaulted(m.address)).to.equal(true);
@@ -187,25 +194,19 @@ describe("AUDIT PoC", function () {
     expect(await ctx.stableCredit.lostDebt()).to.be.greaterThan(0n);
   });
 
-  it("H-2 (fixed): operators may extend or pause a period, never bring a deadline closer", async function () {
+  it("H-2 (fixed), Addendum 2: no operator can set, extend, shorten or pause a revolving cycle; it ends on the member's Cycle End Day", async function () {
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 2_000n * ONE_USDC, 0n], 0);
     const [, expiration, grace] = await revolving.creditPeriods(m.address);
-    await expect(revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration - 1n))
-      .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");
-    await expect(revolving.connect(ctx.operator).setGraceLengthOf(m.address, grace - 1n))
-      .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");
-    await expect(revolving.connect(ctx.operator).updateCreditPeriod(m.address, expiration - 1n, grace))
-      .to.be.revertedWithCustomError(revolving, "CreditIssuerPeriodMayOnlyExtend");
-    await revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration + 10n);
-    await revolving.connect(ctx.operator).setGraceLengthOf(m.address, grace + 10n);
-
-    // A pause that outlasts the period does not turn into a default the moment it is lifted.
-    await ctx.stableCredit.connect(m).transfer(ctx.counterparty.address, 100n * ONE_USDC);
-    await revolving.connect(ctx.operator).pausePeriodOf(m.address);
-    await advance(4 * CYCLE);
-    await revolving.connect(ctx.operator).unpausePeriodOf(m.address);
-    expect(await revolving.inDefault(m.address)).to.equal(false);
-    expect(await revolving.isFrozen(m.address)).to.equal(true);
+    for (const call of [
+      () => revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration - 1n),
+      () => revolving.connect(ctx.operator).setPeriodExpirationOf(m.address, expiration + 10n),
+      () => revolving.connect(ctx.operator).setGraceLengthOf(m.address, grace + 10n),
+      () => revolving.connect(ctx.operator).updateCreditPeriod(m.address, expiration - 1n, grace),
+      () => revolving.connect(ctx.operator).pausePeriodOf(m.address),
+      () => revolving.connect(ctx.operator).unpausePeriodOf(m.address),
+    ]) await expect(call()).to.be.revertedWithCustomError(revolving, "RevolvingIssuerCyclesComputed");
+    expect((await revolving.creditPeriods(m.address))[1]).to.equal(expiration);
+    expect(expiration).to.equal((await revolving.cycleStateOf(m.address)).cycleEnd);
   });
 });

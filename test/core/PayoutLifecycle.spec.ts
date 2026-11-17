@@ -2,6 +2,9 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { signedOpenPlan, signedOpenPlanStatic } from "../helpers/plans";
+import { issuerProxyOptions } from "../helpers/issuers";
+import { deployAssurancePool, fund as fundAssurance, balances, TAG } from "../helpers/assurance";
+import { deployBarePool } from "../helpers/yieldPool";
 
 const ONE_USDC = 10n ** 6n;
 const DAY = 24 * 60 * 60;
@@ -42,13 +45,11 @@ describe("a purchase, from the shop to the money", function () {
 
     const TermIssuer = await ethers.getContractFactory("TermIssuer");
     term = await upgrades.deployProxy(
-      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { kind: "uups" }
+      TermIssuer, [await ctx.stableCredit.getAddress(), coop.address], { ...(await issuerProxyOptions("TermIssuer")),  kind: "uups" }
     );
     await ctx.networkRegistry.registerIssuer(
       await term.getAddress(),
-      await ctx.stableCredit.getAddress(),
-      await ctx.assurancePool.getAddress(),
-      await ctx.assuranceOracle.getAddress()
+      await ctx.stableCredit.getAddress()
     );
     await ctx.access.grantOperator(await term.getAddress());
 
@@ -97,7 +98,12 @@ describe("a purchase, from the shop to the money", function () {
       .approve(await ctx.stableCredit.getAddress(), ethers.MaxUint256);
   });
 
-  /** A $100 purchase at the shop, 2.5% to the co-op, split over four cycles. */
+  /** Clear Lending's fee recipient: the third leg of the mint since Addendum 2 (12.16). */
+  async function feeTo() {
+    return term.feeRecipient();
+  }
+
+  /** A $100 purchase at the shop, a 2.5% fee to Clear Lending (12.16), split over four cycles. */
   async function buy(purchase = 100n * ONE_USDC) {
     const payout = (purchase * 975n) / 1000n;
     await signedOpenPlan(term, ctx.operator, ctx.member.address, merchant.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
@@ -128,7 +134,8 @@ describe("a purchase, from the shop to the money", function () {
 
     expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(purchase);
     expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(payout);
-    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(discount);
+    expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(discount);
+    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
     // Nobody lent anything: the three legs are the whole of it.
     expect(await ctx.stableCredit.totalSupply()).to.equal(purchase);
   });
@@ -141,7 +148,9 @@ describe("a purchase, from the shop to the money", function () {
     expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
     // Their money went where the merchant is owed from, not into loss absorption.
     expect(await pool.held()).to.equal(purchase);
-    expect(await ctx.assurancePool.bufferBalance()).to.equal(0n);
+    // Nothing went past the payout pool to Lending Co. (section 13; it used to go into the
+    // AssurancePool's buffer).
+    expect(await ctx.usdc.balanceOf(ctx.lenderOperating.address)).to.equal(0n);
     expect(await pool.memberFunded()).to.equal(purchase);
 
     await pool.connect(merchant).redeem(payout);
@@ -164,8 +173,9 @@ describe("a purchase, from the shop to the money", function () {
     expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
     // The member still owes it, so the claim did not go -- it changed hands.
     expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(100n * ONE_USDC);
-    // The co-op holds what it funded, on top of the fee it was minted at the sale.
-    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(payout + (100n * ONE_USDC - payout));
+    // The co-op holds what it funded; the fee minted at the sale is Clear Lending's (12.16).
+    expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(payout);
+    expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(100n * ONE_USDC - payout);
     expect(await pool.advancedOf(coop.address)).to.equal(payout);
   });
 
@@ -236,10 +246,31 @@ describe("a purchase, from the shop to the money", function () {
    * there; this is the case where their turn came, their terms ran out, and it is not.
    */
   describe("a claim that has come due", function () {
-    let yieldLender: any, reserve: any;
+    let yieldLender: any;
+
+    // Phase 2f: the LendingPool is the Yield Pool and lends to no one but Clear Lending, as recorded
+    // Deployments (decision 17). The PayoutPool's yield-pool leg is unchanged code, switched off by
+    // configuration once its loans are repaid, so these tests keep exercising it against the pool
+    // it was written for (`LendingPoolPre2f`, the pre-2f source). The last test shows that with the
+    // Yield Pool itself named, the leg takes nothing.
+    it("takes nothing from the Yield Pool itself, which lends only to Clear Lending (decision 17)", async function () {
+      const signers = await ethers.getSigners();
+      const { pool: yieldPool } = await deployBarePool(ctx.admin, ctx.usdc, signers[17], [signers[18], signers[19]]);
+      await pool.connect(ctx.admin).setYieldPool(await yieldPool.getAddress());
+      await ctx.usdc.mint(ctx.admin.address, 500n * ONE_USDC);
+      await ctx.usdc.approve(await yieldPool.getAddress(), 500n * ONE_USDC);
+      await yieldPool.deposit(500n * ONE_USDC, ctx.admin.address);
+      const { payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+      await elapse(NET_30 + DAY);
+
+      await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+      expect(await yieldPool.vaultCash()).to.equal(500n * ONE_USDC);
+      expect(await pool.borrowedFromYield()).to.equal(0n);
+    });
 
     beforeEach(async function () {
-      const LendingPool = await ethers.getContractFactory("LendingPool");
+      const LendingPool = await ethers.getContractFactory("LendingPoolPre2f");
       yieldLender = await upgrades.deployProxy(
         LendingPool,
         [ctx.admin.address, await ctx.usdc.getAddress(), "Clear Yield", "cYLD"],
@@ -248,9 +279,7 @@ describe("a purchase, from the shop to the money", function () {
       await yieldLender.grantRole(await yieldLender.BORROWER_ROLE(), await pool.getAddress());
       // A borrower draws only to its stored destination, within a daily cap (audit H-4).
       await yieldLender.setBorrower(await pool.getAddress(), await pool.getAddress(), ethers.MaxUint256);
-      reserve = ctx.assurancePool;
-      await reserve.connect(ctx.operator).setPayoutPool(await pool.getAddress());
-      await pool.connect(ctx.admin).setLenders(await yieldLender.getAddress(), await reserve.getAddress());
+      await pool.connect(ctx.admin).setYieldPool(await yieldLender.getAddress());
     });
 
     async function depositIntoYieldPool(amount: bigint) {
@@ -281,27 +310,31 @@ describe("a purchase, from the shop to the money", function () {
       // And the pool holds what that money bought, NOT the co-op -- which never bore this float
       // and must not collect the carry on it.
       expect(await pool.advancedOf(await pool.getAddress())).to.equal(payout);
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(100n * ONE_USDC - payout);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(100n * ONE_USDC - payout);
     });
 
-    it("falls back to the reserve, out of excess and never the primary cover", async function () {
+    it("never falls back to the AssurancePool, even with money in it (section 13)", async function () {
+      // Was "falls back to the reserve, out of excess and never the primary cover", then (12.11)
+      // "never falls back to the reserve". The co-op's AssurancePool is walled off: the payout pool
+      // holds no address to call it with, and every compartment stays where it was.
+      const a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry);
+      await fundAssurance(a, ctx.usdc, a.treasury, TAG.BOARD_ALLOCATION, 700n * ONE_USDC);
+      const before = await balances(a.pool);
+
       const { payout } = await buy();
       await pool.connect(merchant).redeem(payout);
-
-      // Primary cover first, which this must not touch, then spare on top.
-      await ctx.usdc.mint(ctx.admin.address, 1_000n * ONE_USDC);
-      await ctx.usdc.approve(await reserve.getAddress(), 1_000n * ONE_USDC);
-      await reserve.depositIntoPrimaryReserve(400n * ONE_USDC);
-      await reserve.depositIntoExcessReserve(300n * ONE_USDC);
-      const primaryBefore = await reserve.primaryBalance();
       await elapse(NET_30 + DAY);
 
-      await pool.drawForDueClaim();
+      await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
 
-      expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
-      expect(await pool.borrowedFromReserve()).to.equal(payout);
-      expect(await reserve.primaryBalance()).to.equal(primaryBefore);
-      expect(await reserve.excessBalance()).to.equal(300n * ONE_USDC - payout);
+      expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
+      expect(await ctx.usdc.balanceOf(await a.pool.getAddress())).to.equal(700n * ONE_USDC);
+      // What the operator needs to know instead: the claim is overdue and this much is missing.
+      const [ids, amount, short] = await pool.dueWithin(0, 10);
+      expect(ids).to.deep.equal([0n]);
+      expect(amount).to.equal(payout);
+      expect(short).to.equal(payout);
     });
 
     it("pays the lender what it earned, out of the same repayment that carries it", async function () {
@@ -376,7 +409,7 @@ describe("a purchase, from the shop to the money", function () {
       expect(earned).to.be.greaterThan(0n);
 
       // The yield pool is unset before the member pays: nothing can reach it.
-      await pool.connect(ctx.admin).setLenders(ethers.ZeroAddress, await reserve.getAddress());
+      await pool.connect(ctx.admin).setYieldPool(ethers.ZeroAddress);
       const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
       await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, owed);
 
@@ -404,7 +437,7 @@ describe("a purchase, from the shop to the money", function () {
       expect(await pool.memberFunded()).to.equal(purchase - payout);
     });
 
-    describe("after the yield pool: the bond vault, then the treasury, then the reserve", function () {
+    describe("after the yield pool: the bond vault, then the treasury, never the AssurancePool", function () {
       let vault: any;
       const MONTH = 30 * DAY;
 
@@ -412,7 +445,7 @@ describe("a purchase, from the shop to the money", function () {
         const BondVault = await ethers.getContractFactory("BondVault");
         vault = await upgrades.deployProxy(BondVault, [ctx.admin.address, await ctx.usdc.getAddress(), 3 * MONTH], { kind: "uups" });
         await vault.grantRole(await vault.BOND_ROLE(), ctx.admin.address);
-        await vault.setBackstops(ethers.ZeroAddress, ethers.ZeroAddress, await pool.getAddress());
+        await vault.setBackstops(ethers.ZeroAddress, await pool.getAddress());
         await pool.connect(ctx.admin).setBondVault(await vault.getAddress());
       });
 
@@ -420,7 +453,7 @@ describe("a purchase, from the shop to the money", function () {
       async function bondProceeds(held: bigint, face: bigint) {
         await ctx.usdc.mint(await vault.getAddress(), held);
         const at = BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
-        await vault.recordPurchase(1, held, face, at + BigInt(12 * MONTH));
+        await vault.recordPurchase(1, held, face, at + BigInt(12 * MONTH), 0, 365);
       }
 
       async function treasuryAllows(amount: bigint) {
@@ -428,85 +461,43 @@ describe("a purchase, from the shop to the money", function () {
         await ctx.usdc.connect(coop).approve(await pool.getAddress(), amount);
       }
 
-      it("borrows the vault's deployable excess once the yield pool runs out", async function () {
+      // C1 and decision 3 (Phase 2f): the vault lends nothing any more. Its `lendToPayoutPool` is a
+      // stub returning 0, so PayoutPool's unchanged draw skips it until its vault leg is switched off
+      // by configuration. Replaces "borrows the vault's deployable excess" and "never lends the
+      // reserve" (and the carry-share test below, which needed a vault loan).
+      it("draws nothing from the bond vault, whatever its deployable excess", async function () {
         const { payout } = await buy();
         await pool.connect(merchant).redeem(payout);
         await depositIntoYieldPool(50n * ONE_USDC);
         await bondProceeds(500n * ONE_USDC, 600n * ONE_USDC);
         await elapse(NET_30 + DAY);
 
-        await pool.drawForDueClaim();
-
-        expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
-        expect(await pool.borrowedFromYield()).to.equal(50n * ONE_USDC);
-        expect(await pool.borrowedFromVault()).to.equal(payout - 50n * ONE_USDC);
-        expect(await vault.lentToPayoutPool()).to.equal(payout - 50n * ONE_USDC);
-        // Bought with borrowed money, so the pool holds the position for its lenders.
-        expect(await pool.advancedOf(await pool.getAddress())).to.equal(payout);
-      });
-
-      it("never lends the vault's redemption reserve", async function () {
-        const { payout } = await buy();
-        await pool.connect(merchant).redeem(payout);
-        // 100 held against 300 of face: 90 kept back, 10 deployable.
-        await bondProceeds(100n * ONE_USDC, 300n * ONE_USDC);
-        await treasuryAllows(1_000n * ONE_USDC);
-        await elapse(NET_30 + DAY);
-
-        await pool.drawForDueClaim();
-
-        expect(await pool.borrowedFromVault()).to.equal(10n * ONE_USDC);
-        expect(await vault.held()).to.equal(90n * ONE_USDC);
+        await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+        expect(await pool.borrowedFromVault()).to.equal(0n);
+        expect(await vault.lentToPayoutPool()).to.equal(0n);
+        expect(await vault.held()).to.equal(500n * ONE_USDC);
       });
 
       it("takes the treasury's money as capital, up to its allowance, and it holds the position", async function () {
+        // The reserve used to lend what the treasury's allowance left over. It no longer does
+        // (addendum 12.11, section 13): with the treasury's allowance alone short, the draw
+        // refuses with nothing moved, and succeeds once the yield pool covers the rest.
         const { payout } = await buy();
         await pool.connect(merchant).redeem(payout);
         await treasuryAllows(60n * ONE_USDC);
-        await ctx.usdc.mint(ctx.admin.address, 1_000n * ONE_USDC);
-        await ctx.usdc.approve(await reserve.getAddress(), 1_000n * ONE_USDC);
-        await reserve.depositIntoExcessReserve(100n * ONE_USDC);
         await elapse(NET_30 + DAY);
 
+        await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolInsufficientFunds");
+
+        await depositIntoYieldPool(payout - 60n * ONE_USDC);
         await expect(pool.drawForDueClaim()).to.emit(pool, "DrewFromTreasury").withArgs(60n * ONE_USDC);
 
         expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
         // The co-op's own money buys the position it pays for, as when the Safe funds by hand.
         expect(await pool.advancedOf(coop.address)).to.equal(60n * ONE_USDC);
-        expect(await pool.borrowedFromReserve()).to.equal(payout - 60n * ONE_USDC);
-        expect(await reserve.excessBalance()).to.equal(100n * ONE_USDC - (payout - 60n * ONE_USDC));
+        expect(await pool.borrowed()).to.equal(payout - 60n * ONE_USDC);
       });
 
-      it("pays the vault its share of the carry beside the yield pool, as each bore it", async function () {
-        const { payout } = await buy();
-        await pool.connect(merchant).redeem(payout);
-        await depositIntoYieldPool(50n * ONE_USDC);
-        await bondProceeds(500n * ONE_USDC, 600n * ONE_USDC);
-        await elapse(NET_30 + DAY);
-        await pool.drawForDueClaim();
-        const vaultBefore = await vault.held();
-
-        await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
-        await term.materialiseCarry(0);
-        await pool.distributeCarry();
-        const earned = await pool.carryEarned();
-        expect(earned).to.be.greaterThan(0n);
-
-        const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
-        await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, owed);
-
-        expect(await pool.borrowed()).to.equal(0n);
-        expect(await pool.carryEarned()).to.equal(0n);
-        expect(await vault.lentToPayoutPool()).to.equal(0n);
-        await yieldLender.syncInterest();
-        await elapse(7 * DAY); // the yield pool's share streams in, audit X-18
-        const toVault = (await vault.held()) - vaultBefore - (payout - 50n * ONE_USDC);
-        const toYield = (await yieldLender.totalAssets()) - 50n * ONE_USDC;
-        // Each paid for what it bore (to the unit the division rounds), and between them all of it.
-        expect(toVault).to.be.closeTo((earned * (payout - 50n * ONE_USDC)) / payout, 1n);
-        expect(toVault).to.be.greaterThan(0n);
-        expect(toVault + toYield).to.equal(earned);
-      });
     });
   });
 
@@ -569,7 +560,7 @@ describe("a purchase, from the shop to the money", function () {
       expect(back).to.be.lessThanOrEqual(6n * ONE_USDC);
     });
 
-    it("takes it back off the merchant and the co-op, so the legs still net", async function () {
+    it("takes it back off the merchant and the fee recipient, so the legs still net", async function () {
       const { purchase, payout, discount } = await buy();
       await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, purchase);
       // Paid in full, so the whole refund is cash and nothing is left to cancel.
@@ -581,7 +572,7 @@ describe("a purchase, from the shop to the money", function () {
       expect((await ctx.usdc.balanceOf(ctx.member.address)) - before).to.equal(purchase);
       // Both gave back what they were paid for the sale.
       expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(0n);
       expect(discount).to.be.greaterThan(0n);
       expect(await ctx.stableCredit.totalSupply()).to.equal(0n);
     });
@@ -709,19 +700,19 @@ describe("a purchase, from the shop to the money", function () {
   // carryTreasury at the pool -- the only way carry reaches the split -- used to take the co-op's
   // 2.5% with it, and the split would have handed funders a share of the co-op's income.
   describe("the fee and the carry are not one thing", function () {
-    it("keeps minting the fee where it always went, until somebody says otherwise", async function () {
+    it("mints the fee to Clear Lending's fee recipient, never the co-op (12.16)", async function () {
       const { discount } = await buy();
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(discount);
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(discount);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
     });
 
-    it("leaves the fee with the co-op when carry moves to the pool", async function () {
-      await term.connect(ctx.operator).setFeeRecipient(coop.address);
+    it("leaves the fee with Clear Lending when carry moves to the pool", async function () {
       await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
 
       const { purchase, payout, discount } = await buy();
 
-      // The sale's fee is the co-op's, wherever carry now goes.
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(discount);
+      // The sale's fee is Clear Lending's, wherever carry now goes.
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(discount);
       expect(await pool.distributableCarry()).to.equal(0n);
 
       // And carry alone arrives at the pool to be split.
@@ -741,24 +732,24 @@ describe("a purchase, from the shop to the money", function () {
     });
 
     it("unwinds a refund against the address that holds the fee", async function () {
-      // A plan opened before the split and refunded after it: the fee is burned from where it was
-      // minted, because the recipient did not move -- only carry did.
       const { purchase, payout, discount } = await buy();
-      await term.connect(ctx.operator).setFeeRecipient(coop.address);
       await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
 
       await term.connect(ctx.operator).closePlanForRefund(0, purchase, merchant.address, payout);
 
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
+      expect(await ctx.stableCredit.balanceOf(await feeTo())).to.equal(0n);
       expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
       expect(discount).to.be.greaterThan(0n);
     });
 
-    it("is an operator's call, and never nobody", async function () {
-      await expect(term.connect(ctx.outsider).setFeeRecipient(ctx.outsider.address)).to.be.reverted;
-      await expect(
-        term.connect(ctx.operator).setFeeRecipient(ethers.ZeroAddress)
-      ).to.be.revertedWithCustomError(term, "TermIssuerNoCarryRecipient");
+    it("is two signers' call, and never nobody or the co-op", async function () {
+      const reason = ethers.encodeBytes32String("ROTATE");
+      await expect(term.connect(ctx.outsider).proposeFeeRecipient(ctx.outsider.address, reason)).to.be.reverted;
+      await expect(term.connect(ctx.operator).proposeFeeRecipient(ethers.ZeroAddress, reason))
+        .to.be.revertedWithCustomError(term, "TermIssuerFeeRecipientNotAllowed");
+      await expect(term.connect(ctx.operator).proposeFeeRecipient(coop.address, reason))
+        .to.be.revertedWithCustomError(term, "TermIssuerFeeRecipientNotAllowed");
+      expect(term.interface.getFunction("setFeeRecipient")).to.equal(null);
     });
   });
 
