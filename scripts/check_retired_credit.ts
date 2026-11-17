@@ -41,6 +41,10 @@ import { RETIRED_SUFFIX, TEST_MONEY_NOTE, isTestMoneyChain, retiredContracts } f
  * Every role, every other source and EarnControls' refusals stay FAIL on every chain: they keep the
  * new system's wiring right.
  *
+ * Decision 52 (owner, Nov 17, 2026): on a testnet, the BondVault's backstop to the retired PayoutPool
+ * is a WARN once the Earn timelock holds the exact batch that clears it (scripts/scheduledClear.ts),
+ * so the apps can go live on day 0 while it waits out the delay. Base mainnet: still FAIL.
+ *
  * Where it runs (DEPLOY-RUNBOOK §2.2): on Base Sepolia before the fresh deploy with CHECK_BASELINE=1,
  * which takes the records about to be retired under their current names (the list of what the later
  * steps must disconnect, so it is expected to FAIL); after the fresh deploy and the I-steps; and as
@@ -178,7 +182,21 @@ export async function checkRetiredCredit(options: CheckOptions = {}) {
         add(leftover, `${spec.record}.${link}()`, testMoney
           ? `names the retired ${hit.name} ${hit.address}, left in place while ${lent} is lent to it (${TEST_MONEY_NOTE})`
           : `names the retired ${hit.name} ${hit.address}, with ${lent} lent to it: it must repay through repayFromPayoutPool before the backstop can be cleared (decision 48 (a))`);
-      } else if (hit) add("FAIL", `${spec.record}.${link}()`, `names the retired ${hit.name} ${hit.address}`);
+      } else if (hit) {
+        // Decision 52: on a testnet, the backstop whose clearing change is already scheduled in the
+        // Earn timelock only waits out the delay; it does not hold the apps. Base mainnet: FAIL.
+        const earnTimelock = testMoney && spec.record === "BondVault" && link === "payoutPool" ? lookup("EarnTimelock")?.address : undefined;
+        const scheduled = earnTimelock
+          ? await require("./scheduledClear").scheduledBackstopClear({
+              provider: ethers.provider, network, bondVault: record.address, earnTimelock, retired: retired.map((x: any) => x.address),
+            }).catch(() => null)
+          : null;
+        if (scheduled) {
+          add("WARN", `${spec.record}.${link}()`, `names the retired ${hit.name} ${hit.address}; the change that clears it (setBackstops, payoutPool ${scheduled.payoutPool}) is scheduled in the Earn timelock and may run from ${scheduled.readyAt.toISOString()} (decision 52: on a testnet a change waiting in a timelock does not hold the apps)`);
+        } else {
+          add("FAIL", `${spec.record}.${link}()`, `names the retired ${hit.name} ${hit.address}${testMoney && spec.record === "BondVault" && link === "payoutPool" ? " (decision 52: scheduling its clearing change in the Earn timelock, step E8-earn-schedule, turns this into a WARN on a testnet; re-run scripts/signing_plan.ts first)" : ""}`);
+        }
+      }
       else add("PASS", `${spec.record}.${link}()`, value === ethers.ZeroAddress ? "unset" : `${value}, not a retired contract`);
     }
   }
