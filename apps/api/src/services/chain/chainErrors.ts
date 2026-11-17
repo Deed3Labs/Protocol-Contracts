@@ -50,6 +50,11 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error RevolvingIssuerMemberNotInGoodStanding(address member)',
   'error RevolvingIssuerAutoRepayNotEnabled(address member)',
   'error RevolvingIssuerAutoRepayAlreadyUsed(bytes32 ref)',
+  // Phase 2e (12.1, 12.2): computed cycles, hybridMode and excluded payers
+  'error RevolvingIssuerCyclesComputed()',
+  'error RevolvingIssuerBadCycleDay(uint256 day)',
+  'error RevolvingIssuerHybridMode(address member)',
+  'error RevolvingIssuerExcludedPayer(address member, bytes32 payer)',
   // TermIssuer
   'error TermIssuerExceedsTermLimit(address member, uint256 requested, uint256 limit)',
   'error TermIssuerSplitNotOffered(uint32 installments)',

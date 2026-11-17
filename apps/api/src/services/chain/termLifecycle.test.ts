@@ -10,11 +10,9 @@ describe('a term plan after it opens', () => {
     expect(SWEEP).toContain('await sweepTermLifecycle()');
   });
 
-  test('collects only under the mandate, only what is due, bounded by what the member holds and approved', () => {
-    expect(SOURCE).toMatch(/if \(!\(await revolving\.autoRepayEnabled\(wallet\)\)\) return null;/);
-    expect(SOURCE).toContain('const due = arrears + residual;');
-    expect(SOURCE).toMatch(/for \(const cap of \[held, allowed\]\) if \(cap < amount\) amount = cap;/);
-    expect(SOURCE).toContain("await recordUsdcRepayment(wallet, tx.hash, 'auto');");
+  test('collects nothing from the member’s own USDC: collectForMember is retired (Phase 2d, section 7)', () => {
+    expect(SOURCE).not.toContain('collectForMember(');
+    expect(SOURCE).not.toContain('usdc.allowance(wallet');
   });
 
   test('declares a default only when the chain says it is due', () => {

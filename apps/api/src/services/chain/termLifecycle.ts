@@ -1,19 +1,19 @@
 import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainProvider, writesAs } from './provider.js';
-import { recordUsdcRepayment } from './usdcRepaymentService.js';
 
 /*
  * A term plan's life after it opens, run by the sweep. For each member holding plans:
  *
- *   1. Collect   what is due (arrears, oldest plan first, then carry a refund left on nothing) from
- *                the member's own USDC, if they switched on automatic repayment. The contract bounds
- *                it: a card settler, the mandate on, only what is due, once per ref.
- *   2. Default   a plan two installments overdue. `declareDefault` checks the schedule itself, so
+ *   1. Default   a plan two installments overdue. `declareDefault` checks the schedule itself, so
  *                this only calls it when the chain says it is due. Term plans are written off; the
  *                member keeps their card, savings and membership.
- *   3. Reinstate a suspended member who paid back what was written off (anyone may), or who has had
+ *   2. Reinstate a suspended member who paid back what was written off (anyone may), or who has had
  *                CLEAN_CYCLES clean cycles since (the co-op's call, so the operator key).
+ *
+ * Nothing is collected from the member's own USDC any more: `collectForMember` is retired (Phase 2d,
+ * section 7). A plan's dues are paid by the member, or cleared from a Spendable deposit by auto-clear
+ * (`termCollection.ts`, with the settler's cash).
  *
  * A clean cycle is measured here as a cycle passing with the revolving line never frozen or in
  * default. The issuer cannot see cycles on the other line; this is where that judgement lives.
@@ -32,7 +32,6 @@ const TERM_ABI = [
   'function writtenOffOf(address member) view returns (uint256)',
   'function recoveredOf(address member) view returns (uint256)',
   'function defaultedAt(address member) view returns (uint64)',
-  'function collectForMember(bytes32 ref, address member, uint256 amount) returns (uint256)',
   'function declareDefault(address member) returns (uint256)',
   'function reinstate(address member)',
 ];
@@ -53,7 +52,7 @@ const operatorKey = () => (process.env.CREDIT_OPERATOR_PRIVATE_KEY || '').trim()
 
 export interface LifecycleResult {
   wallet: string;
-  action: 'collected' | 'defaulted' | 'reinstated' | 'failed';
+  action: 'defaulted' | 'reinstated' | 'failed';
   cents?: number;
   txHash?: string;
   reason?: string;
@@ -100,8 +99,6 @@ export async function sweepTermLifecycle(): Promise<LifecycleResult[]> {
   for (const [wallet, hasOpen] of await termMembers(term)) {
     try {
       if (hasOpen) {
-        const collected = await collect(wallet, term, revolving, provider);
-        if (collected) results.push(collected);
         const defaulted = await maybeDefault(wallet, term);
         if (defaulted) results.push(defaulted);
       }
@@ -114,42 +111,6 @@ export async function sweepTermLifecycle(): Promise<LifecycleResult[]> {
     }
   }
   return results;
-}
-
-async function collect(
-  wallet: string,
-  term: ethers.Contract,
-  revolving: ethers.Contract,
-  provider: ethers.Provider,
-): Promise<LifecycleResult | null> {
-  if (!(await revolving.autoRepayEnabled(wallet))) return null;
-  const [arrears, residual]: bigint[] = await Promise.all([term.totalArrearsOf(wallet), term.residualCarryOf(wallet)]);
-  const due = arrears + residual;
-  if (due === 0n) return null;
-
-  // Bounded by what the member holds and approved: the contract would revert past either.
-  const stableCredit = String(await revolving.stableCredit());
-  // Phase 2c: the reserve token is the ledger's own (`StableCredit.reserveToken`); the ledger no
-  // longer names an AssurancePool.
-  const ledger = new ethers.Contract(stableCredit, ['function reserveToken() view returns (address)'], provider);
-  const usdc = new ethers.Contract(
-    String(await ledger.reserveToken()),
-    ['function balanceOf(address) view returns (uint256)', 'function allowance(address,address) view returns (uint256)'],
-    provider,
-  );
-  const [held, allowed]: bigint[] = await Promise.all([usdc.balanceOf(wallet), usdc.allowance(wallet, stableCredit)]);
-  let amount = due;
-  for (const cap of [held, allowed]) if (cap < amount) amount = cap;
-  if (amount <= 0n) return null;
-
-  const ref = ethers.id(`term-collect:${wallet}:${Date.now()}`);
-  const tx = await term.collectForMember(ref, wallet, amount);
-  await tx.wait(1);
-  // The books and Activity from the transaction's own events, as for any repayment.
-  await recordUsdcRepayment(wallet, tx.hash, 'auto');
-  const cents = Number(amount / UNITS_PER_CENT);
-  console.log(`[term-lifecycle] ${wallet} collected ${cents}c due on plans from their USDC (${tx.hash})`);
-  return { wallet, action: 'collected', cents, txHash: tx.hash };
 }
 
 async function maybeDefault(wallet: string, term: ethers.Contract): Promise<LifecycleResult | null> {
