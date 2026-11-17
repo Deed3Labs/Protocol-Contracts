@@ -44,7 +44,7 @@ describe('everything that moves money says so', () => {
  * Named per file rather than checked in the abstract, because "the file mentions onChainStale"
  * was the assertion that let this through the first time: HomeRoute listened for its credit read
  * and not for its equity read, the test saw the listener and passed, and the credits feeding the
- * savings card and the ELPA row stayed stale until a page change.
+ * savings card and the milestone path stayed stale until a page change.
  */
 const CHAIN_READS: Record<string, string[]> = {
   'pages/app/HomeRoute.tsx': ['getCredit(address)', 'getPaySummary(address)'],

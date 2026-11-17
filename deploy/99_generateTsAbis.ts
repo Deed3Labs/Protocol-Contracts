@@ -27,6 +27,26 @@ function getContractNames(path: string) {
     .map(dirent => dirent.name.split(".")[0]);
 }
 
+/**
+ * DeedNFT v5 serves its trust functions (`IDeedTrust`) from its fallback, so callers need that ABI
+ * on the DeedNFT address. The deploy scripts save DeedNFT's ABI merged with it; a deployment record
+ * saved before that (or by hand) may not be, so it is merged here too, from the compiled interface.
+ * Entries already present (same type, name and input types) are kept as they are.
+ */
+const DEED_TRUST_ARTIFACT = `${ARTIFACTS_DIR}/contracts/core/interfaces/IDeedTrust.sol/IDeedTrust.json`;
+
+function abiKey(entry: any): string {
+  const types = (entry.inputs ?? []).map((i: any) => i.type).join(",");
+  return `${entry.type}:${entry.name ?? ""}(${types})`;
+}
+
+export function withDeedTrust(contractName: string, abi: any[]): any[] {
+  if (contractName !== "DeedNFT" || !fs.existsSync(DEED_TRUST_ARTIFACT)) return abi;
+  const trust = JSON.parse(fs.readFileSync(DEED_TRUST_ARTIFACT).toString()).abi as any[];
+  const seen = new Set(abi.map(abiKey));
+  return [...abi, ...trust.filter(entry => !seen.has(abiKey(entry)))];
+}
+
 function getContractDataFromDeployments() {
   if (!fs.existsSync(DEPLOYMENTS_DIR)) {
     throw Error("At least one other deployment script should exist to generate an actual contract.");
@@ -37,7 +57,8 @@ function getContractDataFromDeployments() {
     for (const contractName of getContractNames(`${DEPLOYMENTS_DIR}/${chainName}`)) {
       const json = fs.readFileSync(`${DEPLOYMENTS_DIR}/${chainName}/${contractName}.json`).toString();
       const { abi, address } = JSON.parse(json);
-      contracts[contractName] = { address, abi };
+      const parsed = typeof abi === "string" ? JSON.parse(abi) : abi;
+      contracts[contractName] = { address, abi: withDeedTrust(contractName, parsed) };
     }
     output[chainName] = contracts;
   }

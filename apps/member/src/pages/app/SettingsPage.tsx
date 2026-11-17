@@ -125,9 +125,11 @@ export default function SettingsPage({
     file: (input: { kind: DisputeKind; ref: string; detail: string; reason?: CardDisputeReason }) => Promise<FileDisputeResult>;
     mine: MemberDispute[];
     withdraw: (token: string) => Promise<string | null>;
+    /** Signs a lost partner dispute back onto a plan (two presses: read the terms, then sign). */
+    reopen?: (token: string) => Promise<{ lines?: string[]; error?: string; done?: boolean }>;
   };
   /** Automatic repayment from USDC deposits. Absent in the preview harness. */
-  autoRepay?: { enabled: boolean; busy: boolean; error: string | null; onChange: (enabled: boolean) => void };
+  autoRepay?: import('@/hooks/useAutoRepay').AutoRepay;
   /**
    * What guards payments at the wallet (Privy MFA): Face ID, an authenticator app, or nothing yet.
    * Absent in the preview harness, which shows the rows without acting on them.
@@ -433,6 +435,7 @@ export default function SettingsPage({
         onPolicy={() => go('legal')}
         mine={disputes ? disputes.mine : DISPUTE_SAMPLE_MINE}
         onWithdraw={disputes?.withdraw ?? (async () => 'Sign in to withdraw a dispute — nothing was changed.')}
+        onReopen={disputes?.reopen}
       />
     ),
     bylaws: <BylawsPanel bylaws={data.bylaws} />,

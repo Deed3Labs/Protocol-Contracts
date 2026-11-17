@@ -85,3 +85,20 @@ describe('a dispute can be withdrawn, and says where it stands', () => {
     expect(dialog).toContain('<span>{info.heldLine}</span>');
   });
 });
+
+describe('a lost partner dispute goes back on a plan only on the member’s signature (audit H-4)', () => {
+  const panel = read('components/settings/DisputesPanel.tsx');
+
+  test('offered only when the server says it is waiting, terms shown before the sign press', () => {
+    expect(panel).toContain('d.awaitingPlanSignature && onReopen');
+    expect(panel).toContain("reopenTerms?.token === d.token ? 'Sign the plan' : 'Put it on a plan'");
+    expect(page).toContain('onReopen={disputes?.reopen}');
+  });
+
+  test('the terms are rebuilt on the phone and checked before anything is signed', () => {
+    const reopen = route.slice(route.indexOf('const reopen = useCallback'));
+    expect(reopen.indexOf('prepareDisputeReopen(token)')).toBeLessThan(reopen.indexOf('signPlanTerms('));
+    expect(reopen).toContain('disclosureFor(next.typedData');
+    expect(reopen.indexOf('signPlanTerms(')).toBeLessThan(reopen.indexOf('submitDisputeReopen(token, signed)'));
+  });
+});

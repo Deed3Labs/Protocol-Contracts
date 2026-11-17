@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { track } from '@/lib/analytics';
 import {
   approveCharge,
+  prepareChargeApproval,
   declineCharge,
   getCharge,
   getCredit,
@@ -19,9 +20,11 @@ import { KycProvider } from '@/context/KycContext';
 import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
 import AddMoneyModal from '@/components/app-ui/AddMoneyModal';
 import { getNetworkByChainId } from '@/config/networks';
-import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
+import { disclosureFor, signPlanTerms } from '@/lib/planSigning';
+import type { PlanTermsTypedData } from '@clear/domain';
 import { PAY_OVER_TIME_MIN_CENTS, shopSlug, splitsOffered } from '@clear/domain';
-import { closeOrFallback, doneLine, hasNoClearAccount, overTimeShown as showsOverTime, shopHostFor, type ApprovalView } from '@/lib/approvalPage';
+import { chooserRate, chooserSplits, closeOrFallback, doneLine, hasNoClearAccount, overTimeShown as showsOverTime, shopHostFor, type ApprovalView } from '@/lib/approvalPage';
 import ChargeApproval, { type PayMode } from './ChargeApproval';
 import { NoClearAccount } from './ApprovalPage';
 
@@ -61,6 +64,10 @@ function PayNowProviders({ children }: { children: ReactNode }) {
 
 const PAYING: Record<PayNowStep, string> = { 1: 'Confirm with Face ID…', 2: 'Paying…', 3: 'Checking…' };
 
+/** The same words the server uses (chainErrors STATE_NOT_CONFIRMED): not a refusal, a wait. */
+const STATE_NOT_CONFIRMED =
+  'Your state of residence isn’t confirmed yet, so Clear can’t offer you credit. Nothing was charged. You can still pay now, and credit opens once your state is confirmed.';
+
 /**
  * `approval`: opened as Pay with Clear's approval page (`/approve/:id`, ApprovalPageRoute), which has
  * already read the payment. The charge is its `chargeCode`, and the screen is the online sheet; when
@@ -88,7 +95,11 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
   const [splitInto, setSplitInto] = useState(4);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The plan terms fetched to sign, and the disclosure rebuilt from them (audit H-4). */
+  const [prepared, setPrepared] = useState<{ typedData: PlanTermsTypedData; disclosure: string[] } | null>(null);
   const [perCycleLimit, setPerCycleLimit] = useState<number | null>(null);
+  /** Nobody has attested the member's state yet, so the chain refuses any plan (Phase 2). */
+  const [stateUnconfirmed, setStateUnconfirmed] = useState(false);
   const [mode, setMode] = useState<PayMode>('choose');
   const [paying, setPaying] = useState<PayNowStep | null>(null);
   const [addMoneyOpen, setAddMoneyOpen] = useState(false);
@@ -184,7 +195,10 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
     if (!address) return;
     let cancelled = false;
     void getCredit(address).then((credit) => {
-      if (cancelled || !credit?.term) return;
+      if (cancelled) return;
+      // Phase 2: no plan (in full included) without an attested state. Paying now still works.
+      if (credit?.stateConfirmed === false) setStateUnconfirmed(true);
+      if (!credit?.term) return;
       setPerCycleLimit(credit.term.availableCents / 100);
     });
     return () => {
@@ -194,11 +208,26 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
 
   const amount = useMemo(() => (charge ? charge.amountCents / 100 : 0), [charge]);
   // Under the pay-over-time minimum a charge is paid now: over time is shown greyed, with the reason.
-  const splitOptions = useMemo(() => (charge ? splitsOffered(charge.amountCents, SPLITS) : SPLITS), [charge]);
-  const payNowOnly = splitOptions.length === 1;
+  const offered = useMemo(() => (charge ? splitsOffered(charge.amountCents, SPLITS) : SPLITS), [charge]);
+  /*
+   * The chain prices every split before one is picked (the charge's `splitQuotes`), so the chooser
+   * shows the rate the member will sign rather than an estimate. Splits the chain would refuse are
+   * not offered; if it would refuse them all, they stay, and the refusal is said when one is picked.
+   */
+  const quoteFor = (n: number) => charge?.splitQuotes?.find((q) => q.installments === n) ?? null;
+  const splitOptions = useMemo(() => chooserSplits(offered, charge?.splitQuotes), [offered, charge?.splitQuotes]);
+  // Under the pay-over-time minimum, not merely because the chain refused the longer splits.
+  const payNowOnly = offered.length === 1;
+  const chosenQuote = charge ? quoteFor(charge.splitInto ?? splitInto) : null;
+  // Monthly bps over a 30-day cycle; a free split is 0. No quote (the chain unread): the default.
+  const chosenRate = chooserRate(chosenQuote);
   useEffect(() => {
     if (payNowOnly) setSplitInto(1);
   }, [payNowOnly]);
+  // A split the chain would refuse is not offered; move off it to the longest one that is.
+  useEffect(() => {
+    if (!splitOptions.includes(splitInto)) setSplitInto(splitOptions[splitOptions.length - 1]);
+  }, [splitOptions, splitInto]);
 
   /*
    * Online: the charge says so itself (`online`), or the approval page knows it from the payment.
@@ -274,19 +303,67 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
     [charge],
   );
 
+  // Terms are for one split: choosing another means fetching (and reading) them again.
+  useEffect(() => {
+    setPrepared(null);
+  }, [splitInto]);
+
+  /**
+   * Approving over time is reading the terms, then signing them (audit H-4).
+   *
+   * The first press fetches the plan's terms and shows them, rebuilt on this phone from the fields
+   * being signed. The second signs them with the member's own wallet, after checking them against
+   * the screen, and the server submits that signature: TermIssuer opens a plan only on it.
+   */
   const onApprove = useCallback(async () => {
-    if (!charge) return;
-    setBusy(true);
-    setError(null);
-    const result = await approveCharge(charge.code, splitInto);
-    setBusy(false);
-    if (result.error || !result.charge) {
-      setError(result.error ?? 'We could not approve this charge.');
+    if (!charge || !address) return;
+    if (stateUnconfirmed) {
+      setError(STATE_NOT_CONFIRMED);
       return;
     }
-    setCharge(result.charge);
-    track('charge_approved', { installments: splitInto }); // split only, no amount and no merchant
-  }, [charge, splitInto]);
+    setBusy(true);
+    setError(null);
+    try {
+      const fresh =
+        prepared &&
+        Number(prepared.typedData.message.installments) === splitInto &&
+        Number(prepared.typedData.message.deadline) > Math.floor(Date.now() / 1000) + 30;
+      if (!fresh) {
+        const next = await prepareChargeApproval(charge.code, splitInto);
+        if (next.error || !next.typedData) {
+          setError(next.error ?? 'We could not get this plan ready. Nothing was charged.');
+          return;
+        }
+        setPrepared({ typedData: next.typedData, disclosure: disclosureFor(next.typedData, charge.merchantName) });
+        return;
+      }
+
+      const termIssuer = clearContracts(ACTIVE_CHAIN_ID)?.termIssuer;
+      if (!termIssuer) {
+        setError('Paying over time is not available on this network yet.');
+        return;
+      }
+      const signed = await signPlanTerms({
+        typedData: prepared.typedData,
+        shown: { member: address, purchaseCents: charge.amountCents, installments: splitInto, disclosure: prepared.disclosure },
+        expected: { chainId: ACTIVE_CHAIN_ID, termIssuer },
+      });
+      const result = await approveCharge(charge.code, splitInto, signed);
+      // Signed terms are good for one attempt: a nonce is used either way, so the next press starts over.
+      setPrepared(null);
+      if (result.error || !result.charge) {
+        setError(result.error ?? 'We could not approve this charge.');
+        return;
+      }
+      setCharge(result.charge);
+      track('charge_approved', { installments: splitInto }); // split only, no amount and no merchant
+    } catch (e) {
+      setPrepared(null);
+      setError(e instanceof Error && e.message.startsWith('These terms') ? e.message : 'Nothing was signed, and nothing was charged.');
+    } finally {
+      setBusy(false);
+    }
+  }, [charge, splitInto, address, prepared, stateUnconfirmed]);
 
   const onDecline = useCallback(async () => {
     if (!charge) return;
@@ -394,10 +471,12 @@ function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
       splitInto={charge.splitInto ?? splitInto}
       onSplitChange={setSplitInto}
       splitOptions={splitOptions}
+      ratePerCycle={chosenRate ?? undefined}
       perCycleLimit={perCycleLimit}
       doneBy={(n) => `${n} cycle${n === 1 ? '' : 's'} from now`}
       busy={busy}
-      error={error}
+      error={error ?? chosenQuote?.refusal ?? null}
+      planTerms={prepared?.disclosure ?? null}
       onApprove={onApprove}
       onDecline={onDecline}
       // Closing leaves it waiting: Shop charges and the banner on Send and Activity bring it back.

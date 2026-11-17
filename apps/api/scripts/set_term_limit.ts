@@ -18,7 +18,9 @@
  *   railway ssh "npx tsx scripts/set_term_limit.ts <member> <usd>"
  *
  * Add --dry-run to read the current state and stop. Requires CREDIT_OPERATOR_PRIVATE_KEY (or
- * DEPLOYER_PRIVATE_KEY) holding OPERATOR_ROLE on the issuer.
+ * DEPLOYER_PRIVATE_KEY) holding CREDIT_LIMITS_ROLE on the AccessManager (audit H-4: the plain
+ * OPERATOR role passes no credit check any more), or its admin. Raising a limit also counts against
+ * TermIssuer's daily cap on term-limit increases.
  */
 import { ethers } from 'ethers';
 
@@ -32,10 +34,11 @@ const ABI = [
   'function stableCredit() view returns (address)',
 ];
 
-// `onlyOperator` is `stableCredit.access().isOperator(caller)` — an AccessManager two hops away,
-// not a role on the issuer itself.
+// `setTermLimit` is `onlyCreditRole(CREDIT_LIMITS_ROLE)`: `stableCredit.access().hasCreditRole(...)`,
+// an AccessManager two hops away, not a role on the issuer itself.
 const STABLE_CREDIT_ABI = ['function access() view returns (address)'];
-const ACCESS_ABI = ['function isOperator(address) view returns (bool)'];
+const ACCESS_ABI = ['function hasCreditRole(bytes32 role, address account) view returns (bool)'];
+const CREDIT_LIMITS_ROLE = ethers.id('CREDIT_LIMITS_ROLE');
 
 const usd = (units: bigint) =>
   `$${(Number(units) / 10 ** DECIMALS).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
@@ -82,7 +85,8 @@ async function main() {
     STABLE_CREDIT_ABI,
     provider,
   ).access();
-  const isOperator: boolean = await new ethers.Contract(access, ACCESS_ABI, provider).isOperator(
+  const isOperator: boolean = await new ethers.Contract(access, ACCESS_ABI, provider).hasCreditRole(
+    CREDIT_LIMITS_ROLE,
     signer.address,
   );
 
@@ -92,13 +96,13 @@ async function main() {
   console.log(`ceiling    ${usd(current)}${current === 0n ? '  (never set — no split can open)' : ''}`);
   console.log(`drawn      ${usd(principal)}`);
 
-  console.log(`operator   ${signer.address}${isOperator ? '' : '  (NOT an operator)'}`);
+  console.log(`operator   ${signer.address}${isOperator ? '' : '  (does NOT hold CREDIT_LIMITS_ROLE)'}`);
 
   // Asked before sending, so a missing grant is a sentence rather than a revert.
   if (!isOperator) {
     throw new Error(
-      `${signer.address} is not an operator on ${access}. ` +
-        'Grant it there, or run this with the key that is.',
+      `${signer.address} does not hold CREDIT_LIMITS_ROLE on ${access}. ` +
+        'Grant it there (the Safe), or run this with the key that does.',
     );
   }
 

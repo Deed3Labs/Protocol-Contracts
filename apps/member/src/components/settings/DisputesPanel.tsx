@@ -28,6 +28,7 @@ export default function DisputesPanel({
   onPolicy,
   mine = [],
   onWithdraw,
+  onReopen,
 }: {
   /** The phone's one-line lede under the header title. */
   intro?: boolean;
@@ -37,11 +38,18 @@ export default function DisputesPanel({
   mine?: MemberDispute[];
   /** Withdraws one; resolves with an error message, or null when it was withdrawn. */
   onWithdraw?: (token: string) => Promise<string | null>;
+  /**
+   * Puts a lost partner dispute back on a plan, in two presses: the first returns the plan's terms
+   * to read, the second signs them. Resolves with `lines` to show, an `error`, or `done`.
+   */
+  onReopen?: (token: string) => Promise<{ lines?: string[]; error?: string; done?: boolean }>;
 }) {
   // Withdrawing cannot be undone, so it takes a second tap on the same button.
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The reopened plan's terms, shown before the member signs them. */
+  const [reopenTerms, setReopenTerms] = useState<{ token: string; lines: string[] } | null>(null);
   const open = mine.filter((d) => d.status === 'open' || d.status === 'with_network').length;
 
   return (
@@ -91,7 +99,37 @@ export default function DisputesPanel({
                             {busy === d.token ? 'Withdrawing…' : confirming === d.token ? 'Confirm withdraw' : 'Withdraw'}
                           </Btn>
                         )}
+                        {d.awaitingPlanSignature && onReopen && (
+                          <Btn
+                            className="h-[30px]! shrink-0 px-3! text-detail!"
+                            disabled={busy === d.token}
+                            onClick={() => {
+                              setBusy(d.token);
+                              setError(null);
+                              void onReopen(d.token).then((result) => {
+                                setBusy(null);
+                                if (result.error) {
+                                  setReopenTerms(null);
+                                  setError(result.error);
+                                } else if (result.lines) {
+                                  setReopenTerms({ token: d.token, lines: result.lines });
+                                } else {
+                                  setReopenTerms(null);
+                                }
+                              });
+                            }}
+                          >
+                            {busy === d.token ? 'Working…' : reopenTerms?.token === d.token ? 'Sign the plan' : 'Put it on a plan'}
+                          </Btn>
+                        )}
                       </Line>
+                      {reopenTerms?.token === d.token && (
+                        <div className="c-footnote mt-s2">
+                          {reopenTerms.lines.map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

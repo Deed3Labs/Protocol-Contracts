@@ -170,8 +170,8 @@ describe('joining (§3)', () => {
     const shop = await miCasa();
     const { session } = await modalFor(shop);
     const marco = await marcoSignsIn(session);
-    // You're new to Clear: "Join Clear and split it · In 4 is about $48.65 a cycle".
-    expect(marco.person).toEqual({ kind: 'new', contact: '(909) 555-0188', join: { split: { installments: 4, perCycleCents: 4865 } } });
+    // You're new to Clear: "Join Clear and split it · In 4 is about $48.67 a cycle" (levelled, 12.9).
+    expect(marco.person).toEqual({ kind: 'new', contact: '(909) 555-0188', join: { split: { installments: 4, perCycleCents: 4867 } } });
 
     // Step 1 in the modal, then the window's address.
     const handoff = JoinHandoff.parse(await json(await post(`/api/checkout/${session}/join`, MARCO_BASICS, { 'X-Pay-Session': marco.token })));
@@ -192,11 +192,10 @@ describe('joining (§3)', () => {
     expect(state.state).toBe('done');
     const quote = MemberQuote.parse(await json(await fetch(`${base}/api/checkout/${session}/member`, { headers: { 'X-Pay-Session': state.token! } })));
     expect(quote.firstName).toBe('Marco');
-    expect(quote.splits.find((s) => s.installments === 4)?.perCycleCents).toBe(4865);
-    const res = await post(`/api/checkout/${session}/approve`, { installments: 4, idempotencyKey: key() }, { 'X-Pay-Session': state.token! });
-    expect(res.status).toBe(200);
-    expect(PaidView.parse(await json(res))).toMatchObject({ method: 'clear', installments: 4 });
-    expect(approved.at(-1)).toMatchObject({ wallet: MARCO, installments: 4 });
+    expect(quote.splits.find((s) => s.installments === 4)?.perCycleCents).toBe(4867);
+    // A live plan opens on Marco's own signature over its terms (audit H-4), so he approves it in
+    // the Clear app's window rather than in the frame.
+    expect(quote.approveIn).toBe('window');
     // The rest of the file meets Marco before he's joined.
     members.delete('+19095550188');
   });

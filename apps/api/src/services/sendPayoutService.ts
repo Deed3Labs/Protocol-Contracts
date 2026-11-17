@@ -1,3 +1,6 @@
+import { ethers } from 'ethers';
+import { payoutRefSeed, type ClaimPayoutMethod } from '@clear/domain';
+import { decodeChainError } from './chain/chainErrors.js';
 import { sendRelayerService } from './sendRelayerService.js';
 import { sendBridgePayoutService } from './sendBridgePayoutService.js';
 import { sendStripePayoutService } from './sendStripePayoutService.js';
@@ -6,13 +9,57 @@ import type { StripeRecipientContext } from './sendStripePayoutService.js';
 import type { BridgeRecipientContext } from './sendBridgePayoutService.js';
 import { disputeStore } from './disputes/disputeStore.js';
 
-type ClaimRecipientContext = StripeRecipientContext & BridgeRecipientContext;
+type ClaimRecipientContext = StripeRecipientContext &
+  BridgeRecipientContext & {
+    /**
+     * The claim key's (or the sender's) signature over `PayoutClaim(transferId, payoutTreasury,
+     * payoutRefHash)` for this method (Phase 2d, L-D). Made where the link is, never here.
+     */
+    payoutSignature?: string;
+  };
+
+/** `payoutRefHash` for a card or bank payout of this transfer: what the signature commits to. */
+export function payoutRefHash(transferId: string, method: ClaimPayoutMethod): string {
+  return ethers.keccak256(ethers.toUtf8Bytes(payoutRefSeed(transferId, method)));
+}
+
+const PAYOUT_SIGNATURE_HEX = /^0x[0-9a-fA-F]{130,}$/;
+
+/** The payout's authorization, or why there is none. Checked before anything is sent. */
+function payoutAuth(
+  transferId: string,
+  method: ClaimPayoutMethod,
+  context?: ClaimRecipientContext,
+): { payoutRefHash: string; signature: string } | { failureCode: string; failureReason: string } {
+  const signature = (context?.payoutSignature ?? '').trim();
+  if (!PAYOUT_SIGNATURE_HEX.test(signature)) {
+    return {
+      failureCode: 'PAYOUT_SIGNATURE_REQUIRED',
+      failureReason: 'This payout needs the claim link’s signature. Open the link you were sent and try again.',
+    };
+  }
+  return { payoutRefHash: payoutRefHash(transferId, method), signature };
+}
 
 /**
  * A send under an open dispute is held: nobody can claim it until the dispute is decided. That is
  * what "the amount is held" means for a send between members -- the only moment it can be held is
  * before the other member has it.
  */
+/** ClaimEscrow's refusals, said plainly (audit H-4). Null for anything else. */
+function claimRefusal(error: unknown): string | null {
+  switch (decodeChainError(error)?.name) {
+    case 'ClaimEscrowBadClaimSignature':
+      return 'This claim link could not authorize that. Open the link you were sent and try again.';
+    case 'ClaimEscrowExpired':
+      return 'This transfer has expired and can no longer be claimed. It goes back to the sender.';
+    case 'ClaimEscrowSignatureRequired':
+      return 'This transfer needs a signed claim.';
+    default:
+      return null;
+  }
+}
+
 async function disputeHold(transferId: string): Promise<{ status: 'FAILED'; failureCode: string; failureReason: string } | null> {
   const open = await disputeStore.openFor(transferId).catch(() => null);
   if (!open || open.holdState !== 'held') return null;
@@ -140,8 +187,11 @@ class SendPayoutService {
       return eligibility;
     }
 
+    const debitAuth = payoutAuth(transfer.transferId, 'DEBIT', recipientContext);
+    if ('failureCode' in debitAuth) return { status: 'FAILED', provider: this.debitProvider, ...debitAuth };
+
     try {
-      const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId);
+      const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId, debitAuth);
       if (treasuryTx.mode !== 'onchain') {
         return {
           status: 'FAILED',
@@ -190,7 +240,7 @@ class SendPayoutService {
         status: 'FAILED',
         provider: this.debitProvider,
         failureCode: 'DEBIT_PAYOUT_ERROR',
-        failureReason: error instanceof Error ? error.message : 'Debit payout execution failed',
+        failureReason: claimRefusal(error) ?? (error instanceof Error ? error.message : 'Debit payout execution failed'),
       };
     }
   }
@@ -294,8 +344,11 @@ class SendPayoutService {
       }
     }
 
+    const bankAuth = payoutAuth(transfer.transferId, 'BANK', recipientContext);
+    if ('failureCode' in bankAuth) return { status: 'FAILED', provider: this.bankProvider, ...bankAuth };
+
     try {
-      const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId);
+      const treasuryTx = await sendRelayerService.claimToPayoutTreasury(transfer.transferId, transfer.chainId, bankAuth);
       if (treasuryTx.mode !== 'onchain') {
         return {
           status: 'FAILED',
@@ -363,16 +416,29 @@ class SendPayoutService {
         status: 'FAILED',
         provider: this.bankProvider,
         failureCode: 'BANK_PAYOUT_ERROR',
-        failureReason: error instanceof Error ? error.message : 'Bank payout execution failed',
+        failureReason: claimRefusal(error) ?? (error instanceof Error ? error.message : 'Bank payout execution failed'),
       };
     }
   }
 
-  async executeWalletPayout(transfer: SendTransferRecord, recipientWallet: string): Promise<WalletPayoutResult> {
+  /**
+   * Release a transfer to the wallet its claim key signed for (audit H-4). The signature is made in
+   * the recipient's browser with the key the claim link carries; this only relays it.
+   */
+  async executeWalletPayout(
+    transfer: SendTransferRecord,
+    recipientWallet: string,
+    claimSignature: string,
+  ): Promise<WalletPayoutResult> {
     const held = await disputeHold(transfer.transferId);
     if (held) return { ...held, provider: 'send-relayer' };
     try {
-      const walletTx = await sendRelayerService.claimToWallet(transfer.transferId, recipientWallet, transfer.chainId);
+      const walletTx = await sendRelayerService.claimToWalletWithSignature(
+        transfer.transferId,
+        recipientWallet,
+        claimSignature,
+        transfer.chainId,
+      );
       if (walletTx.mode !== 'onchain') {
         return {
           status: 'FAILED',
@@ -392,7 +458,7 @@ class SendPayoutService {
         status: 'FAILED',
         provider: 'send-relayer',
         failureCode: 'WALLET_PAYOUT_ERROR',
-        failureReason: error instanceof Error ? error.message : 'Wallet claim failed',
+        failureReason: claimRefusal(error) ?? (error instanceof Error ? error.message : 'Wallet claim failed'),
       };
     }
   }

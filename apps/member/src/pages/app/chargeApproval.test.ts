@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { chooserRate, chooserSplits } from '../../lib/approvalPage';
 
 const ROUTE = readFileSync(join(import.meta.dir, 'ChargeApprovalRoute.tsx'), 'utf8');
 const SCREEN = readFileSync(join(import.meta.dir, 'ChargeApproval.tsx'), 'utf8');
@@ -42,11 +43,11 @@ describe('a code is not a credential', () => {
   });
 
   test('and re-checks the charge belongs to the caller', () => {
-    // Six routes (open, approve, decline, and pay now's start, confirm and back), six checks.
+    // Seven routes (open, prepare, approve, decline, and pay now's start, confirm and back), seven checks.
     // requireVerifiedWallet falls through to true when there is no req.auth at all, which is why the
     // requireAuth test above is not redundant with this one.
     const checks = ROUTES.split('requireVerifiedWallet(req, res, charge.memberWallet').length - 1;
-    expect(checks).toBe(6);
+    expect(checks).toBe(7);
   });
 
   test('the merchant route is the only one without a session', () => {
@@ -198,7 +199,7 @@ describe('the first payment matches what was quoted', () => {
   test('and the two disagree, which is why it matters', async () => {
     const { splitQuote } = await import('@/lib/clearModel');
     const quoted = splitQuote(940, 4, 0.02).perCycle;
-    expect(quoted).toBeCloseTo(246.75, 2);
+    expect(quoted).toBeCloseTo(246.87, 2); // levelled (section 12.9)
     expect(quoted).not.toBeCloseTo(940 / 4, 2);
   });
 });
@@ -334,5 +335,33 @@ describe('a table’s bill', () => {
     const paid = SCREEN.slice(SCREEN.indexOf('// ---- Paid now, or on its way'), SCREEN.indexOf('// ---- Approved over time'));
     expect(paid).toContain("[props.table, 'From Ready to allocate'");
     expect(paid).toContain('<Items items={props.items}');
+  });
+});
+
+/*
+ * Phase 2: the chooser shows the chain's price for each split (TermIssuer `_quote`, served as the
+ * charge's `splitQuotes`), not a flat 2% estimate, and does not offer a split the chain would refuse.
+ */
+describe('the split chooser shows the chain’s price', () => {
+  const q = (installments: number, rateBps: number, free = false, refusal: string | null = null) => ({ installments, rateBps, free, refusal });
+
+  test('a free split shows 0, a charged one its chain rate, an unknown one nothing', () => {
+    expect(chooserRate(q(1, 0, true))).toBe(0);
+    expect(chooserRate(q(4, 187))).toBeCloseTo(0.0187);
+    expect(chooserRate(null)).toBeNull();
+    expect(chooserRate(q(12, 0, false, 'Not offered here.'))).toBeNull();
+  });
+
+  test('splits the chain would refuse are not offered, unless it would refuse them all', () => {
+    expect(chooserSplits([1, 2, 4, 12], [q(1, 0, true), q(2, 200), q(4, 200), q(12, 0, false, 'too long')])).toEqual([1, 2, 4]);
+    const none = [1, 4].map((n) => q(n, 0, false, 'Your state isn’t confirmed yet.'));
+    expect(chooserSplits([1, 4], none)).toEqual([1, 4]);
+    expect(chooserSplits([1, 4], null)).toEqual([1, 4]);
+  });
+
+  test('the charge view carries the quotes, and the route uses them', () => {
+    expect(ROUTES).toContain('splitQuotesForCharge(');
+    expect(ROUTE).toContain('ratePerCycle={chosenRate ?? undefined}');
+    expect(ROUTE).toContain('payNowOnly = offered.length === 1');
   });
 });

@@ -20,7 +20,10 @@ import { chainProvider, writesAs } from './provider.js';
  *                  their balance makes them compliant, and the next pass renews them.
  *   in default     left alone. A default is its own state with its own way out.
  *
- * Operator-signed, and no contract change: `updateCreditPeriod` is already operator-callable.
+ * Signed by the credit operator, which needs CREDIT_LINES_ROLE since the audit split the credit
+ * roles (H-4). `updateCreditPeriod` may now only extend a period, never shorten it or its grace
+ * (H-2). That fits: this renews only a period that has already expired, to now + a full cycle with
+ * the same grace, which is always later.
  */
 
 const ISSUER_ABI = [
@@ -29,6 +32,8 @@ const ISSUER_ABI = [
   'function cycleLength() view returns (uint64)',
   'function inCompliance(address member) view returns (bool)',
   'function inDefault(address member) view returns (bool)',
+  // Phase 2b: present only on an issuer that judges its own cycles.
+  'function creditTerms() view returns (uint128 unsecuredLineCap, uint64 cureWindow, uint8 boostCleanCycles, uint8 boostDepositCycles, bool autoClearOffGlobal)',
 ];
 
 export interface RenewalResult {
@@ -73,6 +78,15 @@ async function memberWallets(): Promise<string[]> {
   return rows.map((r) => r.primary_wallet.toLowerCase());
 }
 
+async function judgesOwnCycles(reader: ethers.Contract): Promise<boolean> {
+  try {
+    await reader.creditTerms();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Renew every expired period that belongs to a member the chain considers clear.
  *
@@ -87,6 +101,14 @@ export async function renewExpiredPeriods(now = Math.floor(Date.now() / 1000)): 
   const reader = new ethers.Contract(issuerAddress, ISSUER_ABI, provider);
   const cycle = Number(await reader.cycleLength());
   if (!cycle) return [];
+
+  /*
+   * Phase 2b: the issuer judges each cycle itself (Clean, missed, cure notice, default) and rolls the
+   * period when it does. Renewing a period by hand here would skip that judgement, so a member who
+   * cleared their line would never be counted a Clean Cycle (and never earn the higher Boost cap).
+   * On such an issuer this stands down and the cycle keeper (jobs/cycleKeeper) syncs instead.
+   */
+  if (await judgesOwnCycles(reader)) return [];
 
   const wallets = await memberWallets();
   const results: RenewalResult[] = [];

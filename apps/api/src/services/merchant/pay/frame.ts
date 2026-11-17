@@ -285,7 +285,12 @@ export async function memberQuote(db: Db, deps: FrameDeps, input: { session: str
     splits,
     clearsFrom: test ? TEST_MEMBER_BANK : await deps.bankLabel(member.wallet).catch(() => null),
     points: await pointsLine(db, s.merchant, orderId, member.wallet, now),
-    approveIn: member.hasPasskey ? 'window' : 'frame',
+    /*
+     * A live plan opens only on the member's own signature over its terms (audit H-4), and only the
+     * Clear app holds their wallet: over time is approved there, in the window, for everyone. Test
+     * mode opens no plan, so the frame can still approve it.
+     */
+    approveIn: s.livemode || member.hasPasskey ? 'window' : 'frame',
   };
 }
 
@@ -306,8 +311,9 @@ async function pointsLine(db: Db, merchant: string, orderId: string, wallet: str
 // ---- Approving -------------------------------------------------------------------------------------
 
 /**
- * `POST /api/checkout/:session/approve`: over time, in the frame, for a member without Face ID. The
- * server opens the plan, as when the Clear app approves.
+ * `POST /api/checkout/:session/approve`: over time, in the frame, in test mode. A live plan needs the
+ * member's wallet signature on its terms (audit H-4), which the frame cannot collect, so a live
+ * session is approved in the Clear app (`approveIn: 'window'`) and this refuses it.
  */
 export async function approveInFrame(db: Db, deps: FrameDeps, input: { session: string; token: string | undefined; request: unknown; now?: Date }): Promise<PaidView> {
   const now = input.now ?? new Date();

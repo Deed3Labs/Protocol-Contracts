@@ -4,7 +4,8 @@ import { wagmiAdapter } from '@/AppKitProvider';
 import { useOptionalAddress, useOptionalSmartWalletClient } from './useOptionalWallet';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { SAVINGS_TIER_ID, scPayPlan, scPayPlanFromSavings, scRepayWrittenOff, scSetSplit, scRepayCredit, scRepayFromSavings, STABLE_CREDIT_ABI, TERM_PLAN_ABI, TIER_PRINCIPAL_ABI } from '@/lib/sendCalls';
-import { recordCreditRepayment } from '@/utils/apiClient';
+import { prepareResplit, recordCreditRepayment, submitResplit } from '@/utils/apiClient';
+import { resplitDisclosureFor, signResplit } from '@/lib/planSigning';
 import { markChainStale } from '@/lib/chainStale';
 
 export interface RepayOutcome {
@@ -175,18 +176,66 @@ export function usePayPlan(): (
   );
 }
 
+/** What a re-split came to: done, refused, or waiting for the member to sign new terms. */
+export interface SplitOutcome {
+  ok?: boolean;
+  error?: string;
+  /**
+   * Phase 2: this split costs more, so it needs the member's signature on new terms. `lines` are
+   * those terms, rebuilt from the fields being signed; `sign` checks, signs and submits them.
+   */
+  needsSignature?: { lines: string[]; sign: () => Promise<{ ok?: boolean; error?: string }> };
+}
+
 /**
- * Re-split what is left of a plan, on chain. The member signs it; `setSplit` carries anything they
- * are behind into the new schedule as due now, so a re-split never clears arrears.
+ * Re-split what is left of a plan, on chain. `setSplit` carries anything they are behind into the
+ * new schedule as due now, so a re-split never clears arrears.
+ *
+ * Phase 2 (spec item 6): a re-split that costs more (a higher rate, or a charged plan spread over
+ * more installments than it has left) reverts from `setSplit` with `ResplitNeedsSignature`. The
+ * server says which beforehand; for one that does, the member reads and signs `Resplit` and the
+ * operator submits it. Otherwise the member's wallet calls `setSplit` as before.
  */
-export function useSetPlanSplit(): (planId: number, installments: number) => Promise<{ ok?: boolean; error?: string }> {
+export function useSetPlanSplit(): (planId: number, installments: number) => Promise<SplitOutcome> {
   const address = useOptionalAddress();
   const getClientForChain = useOptionalSmartWalletClient();
 
   return useCallback(
-    async (planId: number, installments: number) => {
+    async (planId: number, installments: number): Promise<SplitOutcome> => {
       if (!address) return { error: 'Connect a wallet first.' };
       const chainId = ACTIVE_CHAIN_ID;
+      const prepared = await prepareResplit(address, planId, installments);
+      if ('error' in prepared && prepared.error) return { error: prepared.error };
+      if ('needsSignature' in prepared && prepared.needsSignature) {
+        const { typedData, remaining, installmentLength } = prepared;
+        const termIssuer = clearContracts(chainId)?.termIssuer;
+        if (!termIssuer) return { error: 'Changing a split is not available on this network yet.' };
+        return {
+          needsSignature: {
+            lines: resplitDisclosureFor(typedData, remaining, installmentLength),
+            sign: async () => {
+              try {
+                const signature = await signResplit({
+                  typedData,
+                  member: address,
+                  shown: { planId, installments, rateBps: Number(typedData.message.rateBps) },
+                  expected: { chainId, termIssuer },
+                });
+                const result = await submitResplit(address, planId, {
+                  installments,
+                  rateBps: typedData.message.rateBps,
+                  deadline: typedData.message.deadline,
+                  signature,
+                });
+                if (result.ok) markChainStale();
+                return result.ok ? { ok: true } : { error: result.error };
+              } catch (e) {
+                return { error: e instanceof Error && e.message.startsWith('These terms') ? e.message : 'Nothing was signed. The split is unchanged.' };
+              }
+            },
+          },
+        };
+      }
       try {
         const client = getClientForChain ? await getClientForChain({ id: chainId }).catch(() => undefined) : undefined;
         await scSetSplit({ smartWalletClient: client, ownerWallet: address, planId, installments, chainId });

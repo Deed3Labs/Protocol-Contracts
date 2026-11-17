@@ -84,9 +84,11 @@ export function defaultFrameDeps(db: Db, orders: OrderDeps): FrameDeps {
       });
     },
     attachCharge: async (code, wallet) => Boolean(await chargeStore.attachMember(code, wallet)),
+    // No member signature reaches the frame, so a live plan is approved in the Clear app (audit H-4);
+    // approveCharge refuses one without the signed terms, and says so.
     approveCharge: async (code, wallet, installments) => {
-      const r = await approveCharge(code, wallet, installments);
-      return r.ok ? { ok: true } : { ok: false, reason: r.reason ?? 'It couldn’t be approved' };
+      const r = await approveCharge(code, wallet, installments, null);
+      return r.ok ? { ok: true } : { ok: false, reason: 'Approve this one in the Clear app, where you sign the plan’s terms.' };
     },
     async creditAvailable(wallet) {
       const credit = await readChainCredit(wallet);

@@ -174,3 +174,27 @@ export function closeOrFallback(
     if (!win.closed) onFallback();
   }, delayMs);
 }
+
+/** The chain's price for one split (the charge's `splitQuotes`). */
+export interface SplitQuoteView {
+  installments: number;
+  rateBps: number;
+  free: boolean;
+  refusal: string | null;
+}
+
+/**
+ * The splits to offer: those the chain would not refuse. If it would refuse every one (a member
+ * whose state is not confirmed, say), all stay, so the refusal can be said when one is picked.
+ */
+export function chooserSplits(offered: number[], quotes: SplitQuoteView[] | null | undefined): number[] {
+  if (!quotes) return offered;
+  const priced = offered.filter((n) => !quotes.find((q) => q.installments === n)?.refusal);
+  return priced.length > 0 ? priced : offered;
+}
+
+/** The rate per 30-day cycle the chooser shows for a split: the chain's, 0 if free, null if unknown. */
+export function chooserRate(quote: SplitQuoteView | null | undefined): number | null {
+  if (!quote || quote.refusal) return null;
+  return quote.free ? 0 : quote.rateBps / 10_000;
+}

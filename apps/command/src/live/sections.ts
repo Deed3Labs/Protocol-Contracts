@@ -256,6 +256,8 @@ const apply = {
     // and the PayoutPool's unpaid claims (null until the API reads the chain)
     vars.merchantRuns = d.RUNS ?? [];
     vars.payoutClaims = d.CLAIMS ?? null;
+    // Phase 2b (12.10): claims due within two business days and what the pool is short of them (PayoutPool.dueWithin)
+    vars.payoutDueSoon = d.DUE_SOON ?? null;
     vars.refurb = d.REFURB ?? [];
     vars.preorders = d.PREORDERS ?? [];
     vars.enquiries = d.ENQ ?? [];

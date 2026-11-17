@@ -4,6 +4,7 @@ import { SplitConsequences, SplitControl } from './SplitChooser';
 import { Btn } from './brand/anatomy';
 import { money } from '@clear/domain';
 import type { TermPlan } from '@/lib/clearModel';
+import type { SplitOutcome } from '@/hooks/useCreditRepay';
 
 /**
  * Change your split — opened from a plan on Term plans.
@@ -33,7 +34,7 @@ export default function SplitPlanDialog({
    * Commit the chosen split. Nothing changes until this runs. On chain it can fail, so it may
    * return a promise with an error to show; the dialog stays open until it lands.
    */
-  onSave?: (splitInto: number) => void | Promise<{ ok?: boolean; error?: string } | void>;
+  onSave?: (splitInto: number) => void | Promise<SplitOutcome | void>;
   /** Back to where it was opened from, without changing anything. */
   onBack?: () => void;
   open: boolean;
@@ -44,21 +45,39 @@ export default function SplitPlanDialog({
   const [splitInto, setSplitInto] = useState(plan.splitInto ?? 1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Phase 2: a split that costs more needs the member to read and sign new terms first. */
+  const [toSign, setToSign] = useState<NonNullable<SplitOutcome['needsSignature']> | null>(null);
 
   // Reopening should show what the plan is actually on, not the last thing that was auditioned.
   useEffect(() => {
     if (!open) return;
     setSplitInto(plan.splitInto ?? 1);
     setError(null);
+    setToSign(null);
   }, [open, plan.splitInto]);
+
+  // Terms are for one split: choosing another means reading them again.
+  useEffect(() => {
+    setToSign(null);
+  }, [splitInto]);
 
   const save = async () => {
     if (!onSave) return;
     setBusy(true);
     setError(null);
+    if (toSign) {
+      // Signed terms are good for one attempt; the next press starts over.
+      const signed = await toSign.sign();
+      setToSign(null);
+      setBusy(false);
+      if (signed.error) setError(signed.error);
+      else onOpenChange(false);
+      return;
+    }
     const result = await onSave(splitInto);
     setBusy(false);
     if (result && result.error) setError(result.error);
+    else if (result && result.needsSignature) setToSign(result.needsSignature);
   };
 
   const rate = `${+(ratePerCycle * 100).toFixed(2)}%`;
@@ -77,13 +96,21 @@ export default function SplitPlanDialog({
             <p>Clearing early always costs less. You can change this any time.</p>
             {(plan.behind ?? 0) > 0 && <p>What you are behind stays due now; only the rest is re-spread.</p>}
           </div>
+          {toSign && (
+            <div className="c-footnote mt-s2">
+              <p>This split costs more, so it changes your terms. Read them, then sign:</p>
+              {toSign.lines.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+          )}
           {error && <p className="c-det mt-s2 c-errline">{error}</p>}
           <div className="c-pair mt-s2">
             <Btn disabled={busy} onClick={() => (onBack ? onBack() : onOpenChange(false))}>
               Back
             </Btn>
             <Btn primary disabled={splitInto === plan.splitInto || busy} onClick={() => void save()}>
-              {busy ? 'Saving…' : 'Use this split'}
+              {busy ? 'Saving…' : toSign ? 'Sign and use this split' : 'Use this split'}
             </Btn>
           </div>
         </>

@@ -121,11 +121,8 @@ const LOCKED_PLANS: TermPlan[] = [
     name: 'Clear Cash',
     lockedNote: 'Unlocks after six clean cycles · 2.5% / cycle',
   },
-  {
-    id: 'elpa',
-    name: 'ELPA — buy a home',
-    lockedNote: '1,500 of 15,000 credits · on track for Feb 2028',
-  },
+  // No ELPA row. The ELPA is not credit, a term plan or a mortgage (Addendum 3): it is equity toward
+  // Redemption plus a Community Fee bill, shown on Savings (components/clear/YourHome).
 ];
 
 /**
@@ -240,7 +237,6 @@ export const HOME_IN_USE: HomeData = {
         rate: '2.5% / cycle',
         ratePerCycle: 0.025,
       },
-      lockedPlan('elpa'),
     ],
     balanceLimit: 3000,
     perCycleLimit: 850,
@@ -292,9 +288,6 @@ export const HOME_DAY_ONE: HomeData = {
         lockedNote: 'Unlocks with a linked account · at partner shops · 2% / cycle',
       },
       lockedPlan('cash-plan'),
-      // The credits figure is rewritten from the member's real balance by `toTermPlans`; this is
-      // only what shows before anything has been read.
-      lockedPlan('elpa'),
     ],
     accounts: [],
     splitOptions: SPLIT_OPTIONS,

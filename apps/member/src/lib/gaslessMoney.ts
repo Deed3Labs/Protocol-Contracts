@@ -139,12 +139,17 @@ export async function gaslessWalletTransfer(args: {
   return result.txHash;
 }
 
-/** Gasless Send lock: sign the EIP-3009 authorization for a prepared transfer; relayer locks + issues claim link. */
+/**
+ * Gasless Send lock: sign the EIP-3009 authorization for a prepared transfer; relayer locks + issues
+ * claim link. The authorization's nonce commits the transfer's claim key (audit H-4), so the claim
+ * token from prepare travels with both calls.
+ */
 export async function gaslessSendLock(args: {
   transferRowId: number;
   ownerWallet: string;
+  claimToken: string;
 }): Promise<{ claimUrl?: string; relayTxHash: string; transfer: SendTransferSummary }> {
-  const prepared = await prepareSendLockAuthorization(args.transferRowId);
+  const prepared = await prepareSendLockAuthorization(args.transferRowId, args.claimToken);
   const signature = await signTypedData(prepared.chainId, args.ownerWallet, prepared.typedData);
-  return submitSendLockAuthorization(args.transferRowId, signature);
+  return submitSendLockAuthorization(args.transferRowId, signature, args.claimToken);
 }

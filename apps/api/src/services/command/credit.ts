@@ -293,7 +293,7 @@ export async function creditLive(db: Queryable, reader: ChainReader, now: number
   const t = new Date(now);
   const first = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), 1);
   const ev = (await events(db, ['ClearCredit', 'RevolvingIssuer', 'TermIssuer', 'AssurancePool'], [
-    'PurchaseOriginated', 'PurchaseReversed', 'CardSpendSettled', 'CardSpendReversed', 'CarryAccrued', 'CreditBalanceRepaid', 'CreditLineWrittenOff', 'TermDefaulted', 'AccountReimbursed',
+    'PurchaseOriginated', 'PurchaseReversed', 'CardSpendSettled', 'CardSpendReversed', 'CarryAccrued', 'CreditBalanceRepaid', 'CreditLineWrittenOff', 'TermDefaulted', 'DrawReleased',
   ]));
   // an expired $10 offer comes back as a reversal against the offers line; it was never a purchase
   const month = ev.filter((e) => e.at >= first && !(e.event === 'PurchaseReversed' && offers && lc(e.args.member) === offers));
@@ -315,7 +315,9 @@ export async function creditLive(db: Queryable, reader: ChainReader, now: number
   const losses = lossEv
     .map((e) => [-Math.floor((now - e.at) / DAY), memberLabel(lc(e.args.member)), `${e.tx.slice(0, 10)}`, usd(e.event === 'TermDefaulted' ? e.args.writtenOff : e.args.amount)] as [number, string, string, number])
     .reverse();
-  const poolPaid = round2(ev.filter((e) => e.event === 'AccountReimbursed').reduce((a, e) => a + usd(e.args.amount), 0));
+  // Phase 2c: the pool no longer reimburses the ledger (`reimburse` is gone). A loss is Lending Co.'s charge-off,
+  // and what the Credit Backstop covered is a released draw to its loss reserve (`DrawReleased`).
+  const poolPaid = round2(ev.filter((e) => e.event === 'DrawReleased').reduce((a, e) => a + usd(e.args.amount), 0));
 
   const sizes = new Map<number, number>();
   for (const w of who) if (w.limit > 0) sizes.set(Math.round(w.limit), (sizes.get(Math.round(w.limit)) ?? 0) + 1);

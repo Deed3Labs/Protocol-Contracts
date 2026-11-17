@@ -46,9 +46,59 @@ function getDeedNFTAbi(): any[] {
     'function tokenURI(uint256 tokenId) external view returns (string)',
     'function getValidationStatus(uint256 tokenId) external view returns (bool, address)',
     'function getTraitValue(uint256 tokenId, bytes32 key) external view returns (bytes)',
+    // v4 only; DeedNFT v5 has neither, so these read as zero there (caught below).
     'function token(uint256 tokenId) external view returns (address)',
     'function salt(uint256 tokenId) external view returns (uint256)',
+    ...DEED_TRUST_VIEWS,
   ];
+}
+
+/**
+ * DeedNFT v5's trust views (`IDeedTrust`, served from DeedNFT's fallback, so called on the DeedNFT
+ * address). Checked against contracts/core/interfaces/IDeedTrust.sol by nftService.test.ts. On a v4
+ * DeedNFT they revert, and the deed simply has no `trust`.
+ */
+export const DEED_TRUST_VIEWS = [
+  'function isTrustDeed(uint256 tokenId) view returns (bool)',
+  'function beneficialOwnerOf(uint256 tokenId) view returns (address)',
+  'function trustRecordOf(uint256 tokenId) view returns ((bytes32 agreementHash, bytes32 ridersHash, address trustee, bool trusteeSuspended, uint8 transferPolicy, uint8 status, uint8 voidReason, bool versionConsentRequired, uint16 rofrPeriodDays, uint16 completionWindowDays, address protector, uint64 nonce, address standbyTrustee, address lastFrom, bytes32 programId, address programSponsor, address titleAdministrator, bytes32 programParamsHash))',
+];
+
+export const TRANSFER_POLICIES = ['Open', 'Verified', 'Coop'] as const;
+export const DEED_STATUSES = ['Active', 'Retired', 'Void'] as const;
+
+/** A v5 trust deed's record, as the app needs it. */
+export interface DeedTrust {
+  trustee: string;
+  trusteeSuspended: boolean;
+  /** Zero means the current holder is the protector. */
+  protector: string;
+  standbyTrustee: string;
+  transferPolicy: (typeof TRANSFER_POLICIES)[number];
+  status: (typeof DEED_STATUSES)[number];
+  agreementHash: string;
+  /** The beneficial owner: the holder is not, under the agreement (brief item 5). */
+  beneficialOwner: string;
+}
+
+/** The trust record of one deed, or null for a legacy (v4, Vehicle, Equipment) deed or an unreadable one. */
+export async function readDeedTrust(contract: ethers.Contract, tokenId: bigint): Promise<DeedTrust | null> {
+  try {
+    if (!(await contract.isTrustDeed(tokenId))) return null;
+    const [record, beneficial] = await Promise.all([contract.trustRecordOf(tokenId), contract.beneficialOwnerOf(tokenId)]);
+    return {
+      trustee: String(record.trustee),
+      trusteeSuspended: Boolean(record.trusteeSuspended),
+      protector: String(record.protector),
+      standbyTrustee: String(record.standbyTrustee),
+      transferPolicy: TRANSFER_POLICIES[Number(record.transferPolicy)] ?? 'Open',
+      status: DEED_STATUSES[Number(record.status)] ?? 'Active',
+      agreementHash: String(record.agreementHash),
+      beneficialOwner: String(beneficial),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export interface DeedNFTData {
@@ -63,6 +113,8 @@ export interface DeedNFTData {
   salt: string;
   isMinted: boolean;
   priceUSD?: number; // Optional: price from OpenSea or other sources
+  /** DeedNFT v5: the trust record of a Land or Estate deed; absent for a legacy deed. */
+  trust?: DeedTrust | null;
 }
 
 export interface GeneralNFTData {
@@ -227,9 +279,10 @@ export async function getDeedNFTs(
       try {
         // Get token() and salt() from contract (only 2 RPC calls per NFT)
         const tokenId = BigInt(tokenIdString);
-        const [tokenResult, saltResult] = await Promise.allSettled([
+        const [tokenResult, saltResult, trustResult] = await Promise.allSettled([
           withRetry(() => contract.token(tokenId)).catch(() => ethers.ZeroAddress),
           withRetry(() => contract.salt(tokenId)).catch(() => 0n),
+          readDeedTrust(contract, tokenId),
         ]);
 
         const token = tokenResult.status === 'fulfilled' ? tokenResult.value : ethers.ZeroAddress;
@@ -256,6 +309,7 @@ export async function getDeedNFTs(
           salt,
           isMinted: true,
           priceUSD: collectionFloorPrice,
+          trust: trustResult.status === 'fulfilled' ? trustResult.value : null,
         });
       } catch (err) {
         console.warn(`[getDeedNFTs] Error processing token ${tokenIdString}:`, err);
