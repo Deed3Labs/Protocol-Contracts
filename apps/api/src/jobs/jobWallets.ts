@@ -11,6 +11,9 @@ import { ethers } from 'ethers';
 export const JOB_WALLET_KEYS: Array<{ job: string; envVar: string }> = [
   { job: 'credit operator', envVar: 'CREDIT_OPERATOR_PRIVATE_KEY' },
   { job: 'card settler', envVar: 'CARD_SETTLER_PRIVATE_KEY' },
+  // The chain keepers pay their gas from the card settler's key (docs/operators/keepers.md): cycle
+  // and default, shortfall notices, pledged pool shares and bonds, and the Yield Pool's queue.
+  { job: 'chain keepers', envVar: 'CARD_SETTLER_PRIVATE_KEY' },
   { job: 'membership registrar', envVar: 'MEMBERSHIP_REGISTRAR_PRIVATE_KEY' },
   { job: 'savings relayer', envVar: 'SAVINGS_RELAYER_PRIVATE_KEY' },
   { job: 'send relayer', envVar: 'SEND_RELAYER_PRIVATE_KEY' },

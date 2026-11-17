@@ -1,4 +1,4 @@
-import { enforcementDeps, isEnforcementConfigured, liquidatorHasSection12, runEnforcementKeeper } from '../services/chain/enforcement.js';
+import { enforcementDeps, isEnforcementConfigured, liquidatorHasSection12, runEnforcementKeeper, shortfallNoticeMode } from '../services/chain/enforcement.js';
 
 /*
  * The enforcement keeper's clock (Phase 2b, 12.5 and 12.8), the cycle keeper's sibling. See
@@ -7,7 +7,9 @@ import { enforcementDeps, isEnforcementConfigured, liquidatorHasSection12, runEn
  * Hourly. A shortfall's wait is at least 72 hours and an excess is settled once it stands, so an hour
  * is prompt; a pass with nothing due is a few reads per member. Bounded per run
  * (ENFORCEMENT_KEEPER_MAX_PER_RUN, default 25). A member under an active Liquidation Hold is skipped.
- * Only on a Liquidator with the section 12 paths.
+ * Only on a Liquidator with the section 12 paths. On unless ENFORCEMENT_KEEPER_ENABLED=0, as it has
+ * been since Phase 2b; ENFORCEMENT_KEEPER_DRY_RUN=1 simulates and reports without sending. Settling a
+ * shortfall past its wait is the pledge keepers' (jobs/pledgeKeeper, decision 53).
  */
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -27,6 +29,11 @@ async function tick(): Promise<void> {
 }
 
 export async function startEnforcementKeeper(): Promise<void> {
+  const mode = shortfallNoticeMode();
+  if (mode === 'off') {
+    console.log('[enforcement] disabled (ENFORCEMENT_KEEPER_ENABLED=0)');
+    return;
+  }
   if (!isEnforcementConfigured()) {
     console.log('[enforcement] disabled (needs the Liquidator, the RevolvingIssuer, CARD_SETTLER_PRIVATE_KEY for gas, and the members DB)');
     return;
@@ -37,5 +44,5 @@ export async function startEnforcementKeeper(): Promise<void> {
   }
   setInterval(() => void tick(), HOUR_MS).unref?.();
   void tick();
-  console.log('[enforcement] started (hourly)');
+  console.log(`[enforcement] started (hourly; noticeShortfall${mode === 'dry_run' ? ', dry run' : ''})`);
 }

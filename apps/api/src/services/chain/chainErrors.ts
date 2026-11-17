@@ -111,6 +111,16 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error LiquidatorNotEarnBonds(address caller)',
   'error LiquidatorNotPoolShareEnforcer(address caller)',
   'error LiquidatorNotCollateralAgent(address caller)',
+  // The keepers' permissionless upkeep calls (decision 53): each contract's own "not now"
+  'error RevolvingIssuerNotInDefault(address member)',
+  'error PoolShareEnforcerBlocked(address holder)',
+  'error PoolShareEnforcerNothingNeeded(address holder)',
+  'error PoolShareEnforcerNothingToSettle(address holder)',
+  'error PoolShareEnforcerNotExcess(uint256 requestId)',
+  'error BurnerBondNotPledgePayable(uint256 bondId)',
+  'error BondVaultEnforcementInForce()',
+  'error LendingPoolSuspended()',
+  'error LendingPoolChargePending()',
   // PayoutPool
   'error PayoutPoolNotEligible(address holder)',
   'error PayoutPoolMerchantInactive(address merchant)',
@@ -382,6 +392,41 @@ export function describeLiquidatorRefusal(decoded: DecodedChainError | null): st
       return 'A pause is in force for this member, so enforcement waits until it ends. Nothing was taken.';
     case 'LiquidatorReentered':
       return 'The Liquidator refused a re-entrant call. Nothing was taken.';
+    default:
+      return null;
+  }
+}
+
+/**
+ * The keepers' refusals (decision 53): each is the contract's own rule saying the upkeep call is not
+ * due now, so a keeper treats it as "not due", never as a failure. Null for anything else, which a
+ * keeper does treat as a failure. Words for an operator reading the log or an alert.
+ */
+export function describeKeeperRefusal(decoded: DecodedChainError | null): string | null {
+  switch (decoded?.name) {
+    case 'RevolvingIssuerNotInDefault':
+      return 'Not in default: no cure-notice timestamp, the grace has not ended, the amount was paid, or a pause or Income Assurance is in force.';
+    case 'PoolShareEnforcerBlocked':
+      return 'A Liquidation Hold or a 10c pause is in force for this holder, so pool-share enforcement waits.';
+    case 'PoolShareEnforcerNothingNeeded':
+      return 'No pledged pool shares need queuing now: nothing is defaulted, no shortfall is past its wait, or enough is already queued.';
+    case 'PoolShareEnforcerNothingToSettle':
+      return 'The queue has paid nothing new for this holder’s enforcement request since the last settlement.';
+    case 'PoolShareEnforcerNotExcess':
+      return 'That queued enforcement request is not more than is needed now, so nothing is given back.';
+    case 'BurnerBondNotPledgePayable':
+      return 'The Liquidator does not ask for this bond to be paid now: it is not the next pledged bond, nothing is due, or a hold or pause is in force.';
+    case 'BondVaultEnforcementInForce':
+      return 'The Collateral Agent’s Enforcement Notice is in force: pledged bonds are paid only through the Agent’s rounds.';
+    case 'LendingPoolSuspended':
+      return 'The Yield Pool is suspended, so the queue is not filled.';
+    case 'LendingPoolChargePending':
+      return 'A Pool Loss Charge is pending, so the queue is not filled until it is applied.';
+    case 'LiquidatorOnHold':
+    case 'LiquidatorPauseInForce':
+    case 'LiquidatorNoShortfall':
+    case 'LiquidatorShortfallNoticed':
+      return describeLiquidatorRefusal(decoded);
     default:
       return null;
   }

@@ -190,3 +190,24 @@ describe('Liquidation Hold steps, prepared for the signer’s own wallet', () =>
     expect(prepareHoldCall({ action: 'confirm', member: 'nobody' }, LIQUIDATOR, 84532)).toHaveProperty('error');
   });
 });
+
+describe('decision 53: the dry run, and who settles a due shortfall', () => {
+  test('dry run: each notice is simulated and reported, none is sent', async () => {
+    member(W(1), { gap: 5n });
+    const simulated: string[] = [];
+    const run = await runEnforcementKeeper(
+      deps({ dryRun: true, writer: { noticeShortfall, simulateNoticeShortfall: async (w: string) => simulated.push(w) } }),
+    );
+    expect(sent).toEqual([]);
+    expect(simulated).toEqual([W(1)]);
+    expect(run.results[0]).toMatchObject({ ok: true, reason: 'dry run: would send noticeShortfall' });
+    expect(alerts).toEqual(['Enforcement keeper (dry run): would send 1 noticeShortfall call(s)']);
+  });
+
+  test('the due alert says whether the pledge keepers settle it', async () => {
+    member(W(1), { gap: 5n, noticedAt: now - WAIT - 1 });
+    const bodies: string[] = [];
+    await runEnforcementKeeper(deps({ settledBy: 'The pledge keepers send those.', alert: async (a) => void bodies.push(a.body) }));
+    expect(bodies[0]).toContain('The pledge keepers send those.');
+  });
+});

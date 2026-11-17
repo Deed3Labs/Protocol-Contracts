@@ -46,6 +46,10 @@ export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
     PayoutPool: process.env.PAYOUT_POOL_84532 || '0xb4704046d1fA6C3F78DcBB60b40A9D1cdD9fF861',
     MerchantRegistry: process.env.MERCHANT_REGISTRY_84532 || '0x8f4C6f9472359BF749c12C840c4269341a423c1b',
     Liquidator: process.env.LIQUIDATOR_84532 || '0x621784117C037b3D20AF54e04589818e919e33f3',
+    // The pledge module's pool-share side (Phase 2f, decisions 7 and 10): the pool-enforcement keeper
+    // calls its permissionless enforce / settle / cancelExcess. Must be the Liquidator's own
+    // `poolShareEnforcer()`; the keeper checks that before it runs.
+    PoolShareEnforcer: process.env.POOL_SHARE_ENFORCER_84532 || '0xEB6f2c654d078Df56D78946767d5A43307eb4fa1',
     // The co-op's $10 offers, on a capped line of their own. The pre-audit OffersIssuer is retired
     // and none was deployed with the fresh stack, so this stays unset and the offers job and the
     // Command reads stay off. Never point it at OffersIssuerPreAudit.

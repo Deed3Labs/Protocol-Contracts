@@ -184,7 +184,7 @@ hangs the failed request off the error and one of these routes carries an SSN.
 address and `subscribe` to chains and topics; balances, transactions, NFTs and prices are then
 pushed on their own intervals. `services/eventListenerService.ts` watches chain events.
 
-Twelve jobs start with the server, each non-blocking and each logging rather than crashing the
+The jobs below start with the server, each non-blocking and each logging rather than crashing the
 process:
 
 | Job | |
@@ -200,8 +200,10 @@ process:
 | `sweepRunner` | Executes sweeps and auto-save |
 | `reconciler` | General reconciliation |
 | `memoryMonitor` | Cheap, and the only thing that reports the *shape* of memory use rather than its peak |
-| `enforcementKeeper` | Phase 2b, as Phase 2f left it. Hourly: `noticeShortfall(member)` where the Asset-Backed Drawn is above the Asset-Backed Limit (`shortfallOf`), the same call to clear a notice whose gap closed, and an ops alert once a notice's wait has passed (settling it, `PoolShareEnforcer.enforce` then `payPledged`, is not automated yet). A missed cycle takes no collateral (decision 4), so there is no excess to settle. Never for a member under an active Liquidation Hold; bounded (`ENFORCEMENT_KEEPER_MAX_PER_RUN`, 25). |
-| `cycleKeeper` | Phase 2b. RevolvingIssuer judges a cycle (Clean, missed, cure notice, default) only when someone calls `syncCreditPeriod(member)`. Hourly, it syncs each member whose grace window has ended (or whose line is clean at expiry, or whose cure window has passed), oldest first, at most `CYCLE_KEEPER_MAX_PER_RUN` (50) a run, and alerts on failures. A judged cycle rolls, so reruns send nothing. On a 2b issuer `creditPeriodRenewer` stands down |
+| `enforcementKeeper` | Phase 2b, as Phase 2f left it. Hourly: `noticeShortfall(member)` where the Asset-Backed Drawn is above the Asset-Backed Limit (`shortfallOf`), the same call to clear a notice whose gap closed, and an ops alert once a notice's wait has passed (saying whether the pledge keepers below are on). Never for a member under an active Liquidation Hold; bounded (`ENFORCEMENT_KEEPER_MAX_PER_RUN`, 25). On unless `ENFORCEMENT_KEEPER_ENABLED=0`; `ENFORCEMENT_KEEPER_DRY_RUN=1` sends nothing |
+| `cycleKeeper` | Phase 2b, checked against the day-0 issuer (decision 53). RevolvingIssuer judges a cycle only when someone calls `syncCreditPeriod(member)`. Hourly, it syncs each member whose cycle end has passed (`creditPeriods.expiration`), a frozen line only when its next cycle end passes (`cycleStateOf`), oldest first, at most `CYCLE_KEEPER_MAX_PER_RUN` (50) a run. A computed default (`inDefault`) gets `triggerDefault(member)`, only with `CREDIT_DEFAULT_KEEPER_ENABLED=1`, and is never synced instead. Each call simulated first. On a 2b issuer `creditPeriodRenewer` stands down |
+| `pledgeKeeper` | Decision 53. Hourly, off unless switched on: `PoolShareEnforcer.settle`, `cancelExcess` and `enforce(holder)` (`POOL_ENFORCE_KEEPER_ENABLED=1`) and `BurnerBond.payPledged(bondId)` for the Liquidator's `nextBondOf`/`pledgePaymentDue` (`BOND_PLEDGE_KEEPER_ENABLED=1`), only when the contracts say it is due, never under a Liquidation Hold or a 10c pause; each send alerts ops |
+| `queueFillKeeper` | Decision 53. Every 15 minutes, off unless `QUEUE_FILL_KEEPER_ENABLED=1`: `LendingPool.fillQueue(maxCount)` when shares are queued, Vault Cash is above zero, the pool is not suspended and no Pool Loss Charge is pending, and the simulation fills at least one request |
 | `relayerGas` | A signer with no gas fails silently — every figure downstream goes quietly stale. This is the only thing that would say so |
 
 Shutdown is graceful on `SIGTERM`/`SIGINT`: listeners and sockets cleaned up, Redis and the Postgres
@@ -217,7 +219,7 @@ src/
   index.ts        CORS, health, mounts, jobs, shutdown — the whole wiring, in order
   routes/         one file per mount
   services/       the work: chain/, deposits/, lithic/, merchant/, savings/, sweeps/, reconciliation/
-  jobs/           the twelve above
+  jobs/           the ones above, and more
   middleware/     auth (Privy), merchantAuth, memberCapabilities, rateLimiter, asyncRouter
   config/         postgres, redis, merchantDb, contracts, dataChains, servedRegions
   utils/          redact, and friends
@@ -242,6 +244,20 @@ The ones without which nothing works:
 | `PRIVY_APP_ID`, `PRIVY_APP_SECRET` | Member auth |
 | `ALCHEMY_API_KEY` | Chain data. **Server-side only** — never a `VITE_` variable; see the member app's README for why |
 | `CORS_ORIGIN` | Comma-separated. Unset falls back to allow-all with a warning; set `STRICT_CORS=true` to fail closed instead |
+
+The chain keepers' switches (each `_ENABLED`, with `_DRY_RUN=1` to simulate and report without
+sending; all pay gas from `CARD_SETTLER_PRIVATE_KEY`). What each sends, when, and how to stop it:
+[`docs/operators/keepers.md`](../../docs/operators/keepers.md).
+
+| Variable | |
+|---|---|
+| `CYCLE_KEEPER_ENABLED`, `_DRY_RUN`, `_MAX_PER_RUN` | `syncCreditPeriod`. On unless `0` (it has run since Phase 2b); 50 a run |
+| `CREDIT_DEFAULT_KEEPER_ENABLED`, `_DRY_RUN` | `triggerDefault`, in the cycle keeper's pass. Off unless `1` |
+| `ENFORCEMENT_KEEPER_ENABLED`, `_DRY_RUN`, `_MAX_PER_RUN` | `noticeShortfall`. On unless `0`; 25 a run |
+| `POOL_ENFORCE_KEEPER_ENABLED`, `_DRY_RUN`, `_MAX_PER_RUN` | `PoolShareEnforcer.enforce`, `settle`, `cancelExcess`. Off unless `1`; 25 a run |
+| `BOND_PLEDGE_KEEPER_ENABLED`, `_DRY_RUN`, `_MAX_PER_RUN` | `BurnerBond.payPledged`. Off unless `1`; 25 a run |
+| `QUEUE_FILL_KEEPER_ENABLED`, `_DRY_RUN`, `_MINUTES`, `_MAX_COUNT` | `LendingPool.fillQueue`. Off unless `1`; every 15 minutes; 25 requests a call |
+| `POOL_SHARE_ENFORCER_84532` | The PoolShareEnforcer; defaults to `deployments/base-sepolia/PoolShareEnforcer.json`. Must be the Liquidator's `poolShareEnforcer()` or the pledge keepers do not start |
 
 Then, per provider as you enable it: `PLAID_*`, `BRIDGE_*` (including `BRIDGE_WEBHOOK_PUBLIC_KEY`),
 `LITHIC_*` (`LITHIC_API_KEY`, `LITHIC_WEBHOOK_SECRET`; production needs **both** `LITHIC_ENV=production`
@@ -285,7 +301,9 @@ is the map the role handover reads.
 | `CARD_SETTLER_PRIVATE_KEY` | `RevolvingIssuer.authorizeCardSpend` (after the Auth Stream approves), `settleCardSpend`, `reverseCardSpend`, `repayCardSpend`, `repayForMember(ref, member, amount, payer)`; `TermIssuer.declareDefault`, `reinstate` (`collectForMember` is retired, Phase 2d); `ClearUSD.syncEncumbrance` | a card settler (`setCardSettler`, the Safe's). No `LendingPool` role: nothing borrows from the Yield Pool (decision 17); Clear Lending funds card settlement from its Deployments |
 | `CARD_SETTLER_PRIVATE_KEY` (auto-clear, Phase 2b) | `RevolvingIssuer.repayForMember` now pulls the reserve token from the **settler** (`msg.sender`): the sweep approves the RevolvingIssuer for exactly what it pays, and the settler must hold that USDC. The member's dollars for it move to the Lithic settlement account (below) | a card settler; USDC for the clearings, and the approval this service sends |
 | `CARD_SETTLER_PRIVATE_KEY` (cycle keeper, Phase 2b) | `RevolvingIssuer.syncCreditPeriod(member)` (jobs/cycleKeeper, hourly), and `setAutoClearWithSignature` / `setSavingsDrawAllowanceWithSignature` with the member's signature | no role, only gas: all three are permissionless (the member's signature decides the last two) |
+| `CARD_SETTLER_PRIVATE_KEY` (default keeper, decision 53) | `RevolvingIssuer.triggerDefault(member)` (jobs/cycleKeeper, only with `CREDIT_DEFAULT_KEEPER_ENABLED=1`) | no role, only gas: it is permissionless and fails closed unless the issuer computes the default |
 | `CARD_SETTLER_PRIVATE_KEY` (enforcement keeper, Phase 2b/2f) | `Liquidator.noticeShortfall(member)` (jobs/enforcementKeeper, hourly; skips a member under an active Liquidation Hold) | no role, only gas: it is permissionless. The Liquidator must have its Earn sources set |
+| `CARD_SETTLER_PRIVATE_KEY` (pledge and queue keepers, decision 53) | `PoolShareEnforcer.enforce`, `settle`, `cancelExcess`; `BurnerBond.payPledged`; `LendingPool.fillQueue` (jobs/pledgeKeeper, jobs/queueFillKeeper; see [`docs/operators/keepers.md`](../../docs/operators/keepers.md)) | no role, only gas: all are permissionless and move only what the contracts compute |
 | none (a person's own wallet) | `Liquidator.proposeHold`, `confirmHold`, `renewHold`, `clearHold`, from Command (Money → Credit). The API only encodes each step (`POST /api/command/liquidation-holds/prepare`); the signer sends it | Liquidator `HOLD_ROLE`, held by at least two people: confirming, renewing and finishing a clear must each come from a different signer than the step before |
 | `SAVINGS_RELAYER_*` | `ESADepositVault.depositWithAuthorization(For)`, `redeemWithSignature`, `executeMandateDeposit`; `SavingsIntentFactory.settle/refundDeterministic` | ESADepositVault `RELAYER_ROLE` (no function accepts `OPERATOR_ROLE` now); SavingsIntentFactory `SETTLER_ROLE` |
 | `SEND_RELAYER_*` | `ClaimEscrow.createTransferWithAuthorizationAndClaimKey`, `claimToPayoutTreasuryWithSignature` (Phase 2d, L-D: with the claim link's or the sender's `PayoutClaim` signature, made in the recipient's browser after `POST /api/send/claim/payout/prepare`), `claimToWalletWithSignature` | ClaimEscrow `SETTLER_ROLE` (the wallet claim needs none: the claim key's signature decides) |
