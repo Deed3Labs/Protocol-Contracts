@@ -6,6 +6,13 @@ import { recordDeposit } from '../services/deposits/depositReceiptService.js';
 import { handleReturn } from '../services/lithic/achOriginationService.js';
 import { handleCardTransaction } from '../services/lithic/cardTransactionEvents.js';
 
+/** The ACH originator's company id on a Lithic payment, when Lithic reports one. */
+function achCompanyIdOf(payload: Record<string, unknown>): string | null {
+  const attributes = payload.method_attributes as Record<string, unknown> | undefined;
+  const id = attributes?.company_id;
+  return typeof id === 'string' && id.trim() ? id.trim() : null;
+}
+
 const router = express.Router();
 
 /*
@@ -161,7 +168,8 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
           externalId: token,
           wallet: member.wallet,
           amountCents: Math.round(amountCents),
-          metadata: { eventType, financialAccountToken },
+          // The ACH originator, so a clearing can name its payer on chain (Phase 2e, 12.2).
+          metadata: { eventType, financialAccountToken, achCompanyId: achCompanyIdOf(payload) },
         });
 
         if (outcome.recorded) {

@@ -1,29 +1,28 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { ethers } from 'ethers';
 import { CHAIN_ERRORS } from './chainErrors';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   enforcementDue,
   LIQUIDATOR_ABI,
   prepareHoldCall,
   runEnforcementKeeper,
-  SETTLE_COOLDOWN_SECONDS,
   type EnforcementDeps,
   type EnforcementReader,
 } from './enforcement';
 
 /*
- * The enforcement keeper against a stand-in Liquidator and RevolvingIssuer, injected (no module
- * mocks). It calls the permissionless section 12 paths only when the chain says they are due, never
- * for a member under an active hold, bounded, and not twice in a row for one member.
+ * The enforcement keeper against a stand-in Liquidator, injected (no module mocks). Since Phase 2f it
+ * only notices an Earn shortfall (`noticeShortfall(member)`), clears a notice whose gap closed, and
+ * alerts ops when one is past its wait; never for a member under an active hold, and bounded.
  */
 
-const ISSUER = '0x00000000000000000000000000000000000000c4';
 const LIQUIDATOR = '0x00000000000000000000000000000000000000d5';
 const now = 1_800_000_000;
 const WAIT = 72 * 3600;
 const W = (n: number) => `0x${String(n).padStart(40, '0')}`;
 
-type Member = { excess: bigint; gap: bigint; noticedAt: number; hold: 'none' | 'active' | 'proposed' | 'lapsed' };
+type Member = { gap: bigint; noticedAt: number; hold: 'none' | 'active' | 'proposed' | 'lapsed' };
 let chain: Map<string, Member>;
 let sent: string[];
 let alerts: string[];
@@ -38,34 +37,27 @@ const holdTuple = (m: Member) => {
 
 const reader: EnforcementReader = {
   holdOf: async (w) => holdTuple(chain.get(w)!),
-  shortfallNoticedAt: async (w) => BigInt(chain.get(w)!.noticedAt),
   shortfallWait: async () => BigInt(WAIT),
-  earnGapOf: async (w) => [chain.get(w)!.gap, 0n],
-  unsecuredExcessOf: async (w) => chain.get(w)!.excess,
+  shortfallOf: async (w) => {
+    const m = chain.get(w)!;
+    return [m.gap, m.noticedAt === 0 ? 0n : BigInt(m.noticedAt + WAIT)];
+  },
 };
 
 const tx = (label: string) => ({ hash: `0x${label}`, wait: async () => ({}) });
-function call(action: 'settleExcess' | 'noticeShortfall' | 'settleShortfall') {
-  return async (wallet: string) => {
-    const err = refuse.get(`${action}:${wallet}`);
-    if (err) throw { data: CHAIN_ERRORS.encodeErrorResult(err, err === 'LiquidatorOnHold' ? [wallet, 2, now + 1] : [wallet]) };
-    sent.push(`${action}:${wallet}`);
-    const m = chain.get(wallet)!;
-    if (action === 'settleExcess') m.excess = 0n;
-    if (action === 'noticeShortfall') m.noticedAt = now;
-    if (action === 'settleShortfall') {
-      m.gap = 0n;
-      m.noticedAt = 0;
-    }
-    return tx(action);
-  };
+async function noticeShortfall(wallet: string) {
+  const err = refuse.get(wallet);
+  if (err) throw { data: CHAIN_ERRORS.encodeErrorResult(err, err === 'LiquidatorOnHold' ? [wallet, 2, now + 1] : [wallet]) };
+  sent.push(wallet);
+  const m = chain.get(wallet)!;
+  m.noticedAt = m.gap > 0n ? now : 0;
+  return tx('notice');
 }
 
 function deps(over: Partial<EnforcementDeps> = {}): EnforcementDeps {
   return {
     reader,
-    writer: { settleExcess: call('settleExcess'), noticeShortfall: call('noticeShortfall'), settleShortfall: call('settleShortfall') },
-    issuer: ISSUER,
+    writer: { noticeShortfall },
     wallets: async () => [...chain.keys()],
     alert: async (a) => alerts.push(a.subject),
     now,
@@ -75,7 +67,7 @@ function deps(over: Partial<EnforcementDeps> = {}): EnforcementDeps {
 }
 
 function member(w: string, m: Partial<Member>) {
-  chain.set(w, { excess: 0n, gap: 0n, noticedAt: 0, hold: 'none', ...m });
+  chain.set(w, { gap: 0n, noticedAt: 0, hold: 'none', ...m });
 }
 
 beforeEach(() => {
@@ -85,67 +77,81 @@ beforeEach(() => {
   refuse = new Map();
 });
 
+describe('the keeper calls only what the Phase 2f Liquidator has', () => {
+  test('noticeShortfall(member) and shortfallOf; settleExcess, settleShortfall and earnGapOf are gone', () => {
+    const iface = new ethers.Interface(LIQUIDATOR_ABI);
+    expect(iface.getFunction('noticeShortfall')?.format()).toBe('noticeShortfall(address)');
+    expect(iface.getFunction('shortfallOf')?.format()).toBe('shortfallOf(address)');
+    for (const gone of ['settleExcess', 'settleShortfall', 'earnGapOf', 'liquidateShares', 'settleRealized']) {
+      expect(iface.getFunction(gone)).toBeNull();
+    }
+    const source = new URL('../../../../../contracts/peripherals/Liquidator.sol', import.meta.url);
+    if (!existsSync(source)) return;
+    const sol = readFileSync(source, 'utf8');
+    expect(sol).toContain('function noticeShortfall(address) external returns (uint256 gap)');
+    expect(sol).toContain('function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt)');
+    expect(sol).not.toContain('function settleExcess(');
+  });
+});
+
 describe('what is due, from chain', () => {
-  test('an excess is settled; a gap is noticed; a matured notice is settled', async () => {
-    member(W(1), { excess: 5n });
-    member(W(2), { gap: 7n });
+  test('a gap is noticed; a closed gap clears its notice; a matured one is due; inside the wait, nothing', async () => {
+    member(W(1), { gap: 7n });
+    member(W(2), { gap: 0n, noticedAt: now - 60 });
     member(W(3), { gap: 7n, noticedAt: now - WAIT });
     member(W(4), { gap: 7n, noticedAt: now - WAIT + 60 });
-    expect((await enforcementDue(reader, ISSUER, W(1), now, WAIT)).actions).toEqual(['settleExcess']);
-    expect((await enforcementDue(reader, ISSUER, W(2), now, WAIT)).actions).toEqual(['noticeShortfall']);
-    expect((await enforcementDue(reader, ISSUER, W(3), now, WAIT)).actions).toEqual(['settleShortfall']);
-    // Still inside the 72-hour wait: nothing.
-    expect((await enforcementDue(reader, ISSUER, W(4), now, WAIT)).actions).toEqual([]);
+    member(W(5), {});
+    expect((await enforcementDue(reader, W(1), now)).actions).toEqual(['noticeShortfall']);
+    expect((await enforcementDue(reader, W(2), now)).actions).toEqual(['clearShortfall']);
+    expect((await enforcementDue(reader, W(3), now)).actions).toEqual(['shortfallDue']);
+    expect((await enforcementDue(reader, W(4), now)).actions).toEqual([]);
+    expect((await enforcementDue(reader, W(5), now)).actions).toEqual([]);
   });
 
   test('an active hold stops all of it; a proposed or lapsed one does not', async () => {
-    member(W(1), { excess: 5n, gap: 7n, hold: 'active' });
-    member(W(2), { excess: 5n, hold: 'proposed' });
-    member(W(3), { excess: 5n, hold: 'lapsed' });
-    expect(await enforcementDue(reader, ISSUER, W(1), now, WAIT)).toEqual({ held: true, actions: [] });
-    expect((await enforcementDue(reader, ISSUER, W(2), now, WAIT)).actions).toEqual(['settleExcess']);
-    expect((await enforcementDue(reader, ISSUER, W(3), now, WAIT)).actions).toEqual(['settleExcess']);
+    member(W(1), { gap: 7n, hold: 'active' });
+    member(W(2), { gap: 7n, hold: 'proposed' });
+    member(W(3), { gap: 7n, hold: 'lapsed' });
+    expect(await enforcementDue(reader, W(1), now)).toEqual({ held: true, actions: [] });
+    expect((await enforcementDue(reader, W(2), now)).actions).toEqual(['noticeShortfall']);
+    expect((await enforcementDue(reader, W(3), now)).actions).toEqual(['noticeShortfall']);
   });
 });
 
 describe('a pass', () => {
-  test('calls each due path once, skips the held member, and a rerun sends nothing', async () => {
-    member(W(1), { excess: 5n });
+  test('notices each gap once, skips the held member, and a rerun sends nothing', async () => {
+    member(W(1), { gap: 5n });
     member(W(2), { gap: 7n });
-    member(W(3), { excess: 5n, hold: 'active' });
+    member(W(3), { gap: 5n, hold: 'active' });
     const d = deps();
     const run = await runEnforcementKeeper(d);
-    expect(sent.sort()).toEqual([`noticeShortfall:${W(2)}`, `settleExcess:${W(1)}`]);
+    expect(sent.sort()).toEqual([W(1), W(2)]);
     expect(run.held).toBe(1);
     sent = [];
     await runEnforcementKeeper(d);
     expect(sent).toEqual([]);
   });
 
-  test('a settled member is not tried again within the cooldown, even if the excess still stands', async () => {
-    member(W(1), { excess: 5n });
-    const d = deps();
-    await runEnforcementKeeper(d);
-    chain.get(W(1))!.excess = 3n; // a pool withdrawal still queued
-    sent = [];
-    await runEnforcementKeeper(d);
+  test('a shortfall past its wait is alerted, not settled here', async () => {
+    member(W(1), { gap: 5n, noticedAt: now - WAIT - 1 });
+    const run = await runEnforcementKeeper(deps());
     expect(sent).toEqual([]);
-    await runEnforcementKeeper({ ...d, now: now + SETTLE_COOLDOWN_SECONDS });
-    expect(sent).toEqual([`settleExcess:${W(1)}`]);
+    expect(run.results).toEqual([{ wallet: W(1), action: 'shortfallDue', ok: true }]);
+    expect(alerts).toEqual(['Enforcement: 1 Earn shortfall(s) past their wait']);
   });
 
   test('bounded per run', async () => {
-    for (let i = 1; i <= 4; i++) member(W(i), { excess: 1n });
+    for (let i = 1; i <= 4; i++) member(W(i), { gap: 1n });
     const run = await runEnforcementKeeper(deps({ maxPerRun: 3 }));
     expect(sent).toHaveLength(3);
     expect(run.deferred).toBe(1);
   });
 
   test('a hold confirmed between the read and the call is not a failure; a real failure alerts', async () => {
-    member(W(1), { excess: 5n });
-    member(W(2), { excess: 5n });
-    refuse.set(`settleExcess:${W(1)}`, 'LiquidatorOnHold');
-    refuse.set(`settleExcess:${W(2)}`, 'LiquidatorNothingToSeize');
+    member(W(1), { gap: 5n });
+    member(W(2), { gap: 5n });
+    refuse.set(W(1), 'LiquidatorOnHold');
+    refuse.set(W(2), 'LiquidatorNothingToSeize');
     const run = await runEnforcementKeeper(deps());
     expect(run.held).toBe(1);
     expect(run.results.find((r) => r.wallet === W(2))).toMatchObject({ ok: false });

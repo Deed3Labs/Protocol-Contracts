@@ -133,8 +133,11 @@ export {
 export { formatCalendarDate, parseCalendarDate } from './dates';
 
 export {
+  AUTO_CLEAR_AUTHORIZATION_VERSION,
   AUTO_CLEAR_SCOPE,
   AUTO_CLEAR_TYPE_STRING,
+  autoClearAuthorizationLines,
+  autoClearAuthorizationText,
   AUTO_CLEAR_TYPES,
   autoClearMessage,
   autoClearTypedData,
@@ -147,6 +150,7 @@ export {
   savingsDrawTypedData,
   SWITCH_SIGNATURE_TTL_SECONDS,
   switchMismatch,
+  ZERO_AUTH_HASH,
   type AutoClearScope,
   type AutoClearTypedData,
   type SavingsDrawTypedData,

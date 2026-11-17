@@ -1,5 +1,13 @@
+import { keccak256, toBytes } from 'viem';
 import { signTypedData, switchChain } from '@wagmi/core';
-import { AUTO_CLEAR_SCOPE, AUTO_CLEAR_TYPES, autoClearMessage, switchMismatch } from '@clear/domain';
+import {
+  AUTO_CLEAR_SCOPE,
+  AUTO_CLEAR_TYPES,
+  autoClearAuthorizationLines,
+  autoClearAuthorizationText,
+  autoClearMessage,
+  switchMismatch,
+} from '@clear/domain';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { prepareAutoClear, submitAutoClear } from '@/utils/apiClient';
@@ -8,12 +16,18 @@ import { prepareAutoClear, submitAutoClear } from '@/utils/apiClient';
  * Turning auto-clear on by signature (Phase 2b, section 12.2): how onboarding sets it, so a new
  * member is not asked for a transaction before they have anything on their line.
  *
- * The server builds `AutoClear(member, on, scope, nonce, deadline)` in RevolvingIssuer's domain at
- * the member's `memberNonces`; this checks it is exactly the choice being made (this member, this
- * contract and chain, on, UNSECURED_ONLY), signs it with the member's own wallet, and the server
- * submits `setAutoClearWithSignature`. The member can turn it off, or change what it covers, in
- * Settings at any time.
+ * The server builds `AutoClear(member, on, level, authHash, nonce, deadline)` in RevolvingIssuer's
+ * domain at the member's `memberNonces`; this checks it is exactly the choice being made (this member,
+ * this contract and chain, on, UNSECURED_ONLY, and the hash of the authorization this app builds for
+ * that level -- Phase 2e), signs it with the member's own wallet, and the server submits
+ * `setAutoClearWithSignature`. The member can turn it off, or change what it covers, in Settings at
+ * any time.
  */
+
+/** keccak256 of the auto-clear authorization for a level, as the server and the issuer hash it. */
+export function autoClearAuthHash(level: number): `0x${string}` {
+  return keccak256(toBytes(autoClearAuthorizationText(autoClearAuthorizationLines(level))));
+}
 export async function signAutoClearOn(member: string, scope: number = AUTO_CLEAR_SCOPE.UNSECURED_ONLY): Promise<{ ok: boolean; error?: string }> {
   const revolvingIssuer = clearContracts(ACTIVE_CHAIN_ID)?.revolvingIssuer;
   if (!revolvingIssuer) return { ok: false, error: 'Not available on this network yet.' };
@@ -22,7 +36,7 @@ export async function signAutoClearOn(member: string, scope: number = AUTO_CLEAR
   const td = prepared.typedData;
   const mismatch = switchMismatch({
     typedData: td,
-    shown: { member, on: true, scope },
+    shown: { member, on: true, scope, authHash: autoClearAuthHash(scope) },
     expected: { chainId: ACTIVE_CHAIN_ID, revolvingIssuer },
     nowSeconds: Math.floor(Date.now() / 1000),
   });

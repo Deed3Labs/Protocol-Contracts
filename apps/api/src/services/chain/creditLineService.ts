@@ -24,7 +24,9 @@ import { decodeChainError } from './chainErrors.js';
  */
 
 const ISSUER_ABI = [
-  'function openLine(address member, uint256[] capacities, uint256 periodLength, uint256 graceLength) external',
+  // Phase 2e (12.1): cycles are computed on the calendar. A line opens on its Cycle End Day (1 to
+  // 28; 0 lets the contract pick the default day), not on a period and grace the caller chooses.
+  'function openLine(address member, uint256[] capacities, uint8 cycleEndDay) external',
   'function tierCount() external view returns (uint256)',
   'function cycleLength() external view returns (uint64)',
   'function creditPeriods(address member) external view returns (uint256 issuedAt, uint256 expiration, uint256 graceLength, bool paused)',
@@ -71,9 +73,9 @@ export async function hasCreditLine(wallet: string): Promise<boolean> {
  * active period, so re-running the backfill would otherwise fail loudly on everyone it had
  * already done.
  *
- * The period is passed as zero, which the issuer reads as the network's own cycle. That is the
- * point of the default -- a caller naming its own number is how members ended up on different
- * clocks.
+ * The Cycle End Day is passed as zero, which the issuer reads as its default day (Phase 2e, 12.1).
+ * The member can move it later with their own signature (`setCycleEndDayWithSignature`); no role
+ * can.
  */
 export async function openCreditLine(wallet: string): Promise<OpenLineResult> {
   const issuerAddress = getContractAddress(chainId(), 'RevolvingIssuer');
@@ -95,11 +97,7 @@ export async function openCreditLine(wallet: string): Promise<OpenLineResult> {
     if (tiers === 0) return { opened: false, reason: 'issuer has no tiers configured' };
     const capacities = new Array(tiers).fill(0n);
 
-    // Grace matches the cycle: a member gets one cycle to clear and one more before the limit
-    // contracts, which is the shape the plan describes.
-    const cycle = await issuer.cycleLength();
-
-    const tx = await issuer.openLine(wallet, capacities, 0, cycle);
+    const tx = await issuer.openLine(wallet, capacities, 0);
     const receipt = await tx.wait();
     return { opened: true, txHash: receipt?.hash ?? tx.hash };
   } catch (error) {

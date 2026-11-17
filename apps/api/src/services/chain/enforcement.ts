@@ -6,24 +6,24 @@ import { chainErrorReason, decodeChainError } from './chainErrors.js';
 import { alertOps } from '../opsAlert.js';
 
 /*
- * Enforcement after a missed cycle or an Earn shortfall (Phase 2b, 12.5, 12.6, 12.8), and the
+ * Enforcement after an Earn shortfall (Phase 2b, 12.6 and 12.8, as Phase 2f left it), and the
  * Liquidation Hold that pauses it.
  *
- * The Liquidator's section 12 paths are permissionless and need no role, only gas:
- *   - `settleExcess(member, issuer)`: after a missed cycle halves the unsecured limit, what is drawn
- *     above it (`RevolvingIssuer.unsecuredExcessOf`) is settled from pledged pool shares, then bonds.
- *     Never Savings.
- *   - `noticeShortfall(member, issuer)`: records that pledged Earn no longer backs what is drawn
- *     against it (`earnGapOf`). Moves nothing; starts the governed wait (72 hours or more).
- *   - `settleShortfall(member, issuer)`: once the wait has passed, redeems the smallest amount of
- *     Earn pledge that closes the gap. Never Savings.
- * Each reverts `LiquidatorOnHold` while a Liquidation Hold is active, so the keeper reads the hold
- * first and leaves a held member alone.
+ * A missed cycle takes no collateral at all (decision 4, MB-05 §6.1), so there is no excess to
+ * settle any more: `settleExcess`, `settleShortfall`, `liquidateShares`, `settleRealized` and
+ * `earnGapOf` are gone from the Liquidator (Phase 2f enforcement, section 8). What is left for a
+ * keeper here is the notice:
+ *   - `noticeShortfall(member)`: records that the member's Asset-Backed Drawn is above their
+ *     Asset-Backed Limit (`shortfallOf(member)` -> gap, dueAt). Moves nothing; starts the governed
+ *     wait (72 hours or more). With the gap closed, the same call clears a notice.
+ * Once the wait has passed (`dueAt`), the shortfall is settled from Pledged Pool Shares through the
+ * queue (`PoolShareEnforcer.enforce`) and then Pledged BurnerBonds (`payPledged`), decision 21. That
+ * settlement keeper is not built here: a due shortfall is alerted to ops instead.
+ * `noticeShortfall` reverts `LiquidatorOnHold` while a Liquidation Hold is active, so the keeper reads
+ * the hold first and leaves a held member alone.
  *
  * The keeper is bounded per run, never runs twice at once, and is idempotent: a notice is sent only
- * when none is open, a settlement only when its condition still stands on chain, and a member it has
- * just settled is not tried again for a cooldown (a pool withdrawal can stay queued, and the excess
- * with it, until the pool pays it).
+ * when none is open and the gap stands, a clearing only when a notice is open and the gap closed.
  *
  * Holds are two-person `HOLD_ROLE` actions taken from each signer's own wallet; `prepareHoldCall`
  * only encodes the call. No key for them is held here.
@@ -33,12 +33,11 @@ export const LIQUIDATOR_ABI = [
   'function holdOf(address member) view returns ((address proposer, uint8 reason, bool confirmed, uint64 setAt, address lastSigner, uint64 until, address clearProposer) hold, bool active)',
   'function holdEvidence(address member) view returns (bytes32)',
   'function maxHoldOf(uint8 reason) view returns (uint64)',
-  'function shortfallNoticedAt(address member, address issuer) view returns (uint64)',
   'function shortfallWait() view returns (uint64)',
-  'function earnGapOf(address member, address issuer) view returns (uint256 poolGap, uint256 bondGap)',
-  'function settleExcess(address member, address issuer) returns (uint256 applied)',
-  'function noticeShortfall(address member, address issuer) returns (uint256 gap)',
-  'function settleShortfall(address member, address issuer) returns (uint256 applied)',
+  'function shortfallOf(address member) view returns (uint256 gap, uint256 dueAt)',
+  'function earnDefaultedOf(address member) view returns (uint256 due, address issuer)',
+  'function nextBondOf(address member) view returns (bool found, uint256 bondId)',
+  'function noticeShortfall(address member) returns (uint256 gap)',
   'function proposeHold(address member, uint8 reason, uint64 duration, bytes32 evidenceHash)',
   'function confirmHold(address member)',
   'function renewHold(address member, uint64 until)',
@@ -83,20 +82,22 @@ export function toHold(raw: readonly unknown[] | { hold: unknown; active: unknow
 
 export interface EnforcementReader {
   holdOf(member: string): Promise<readonly unknown[]>;
-  shortfallNoticedAt(member: string, issuer: string): Promise<bigint>;
   shortfallWait(): Promise<bigint>;
-  earnGapOf(member: string, issuer: string): Promise<readonly [bigint, bigint] | readonly unknown[]>;
-  unsecuredExcessOf(member: string): Promise<bigint>;
+  /** (gap, dueAt): dueAt is 0 while no notice is open. */
+  shortfallOf(member: string): Promise<readonly [bigint, bigint] | readonly unknown[]>;
 }
 
 type Tx = { hash: string; wait: (confirms?: number) => Promise<unknown> };
 export interface EnforcementWriter {
-  settleExcess(member: string, issuer: string): Promise<Tx>;
-  noticeShortfall(member: string, issuer: string): Promise<Tx>;
-  settleShortfall(member: string, issuer: string): Promise<Tx>;
+  noticeShortfall(member: string): Promise<Tx>;
 }
 
-export type EnforcementAction = 'settleExcess' | 'noticeShortfall' | 'settleShortfall';
+/**
+ * `noticeShortfall` opens a notice; `clearShortfall` is the same call once the gap has closed;
+ * `shortfallDue` sends nothing: the wait is over, and settling it is the enforcement keeper's to
+ * come (PoolShareEnforcer, payPledged), so ops are told.
+ */
+export type EnforcementAction = 'noticeShortfall' | 'clearShortfall' | 'shortfallDue';
 
 export interface EnforcementResult {
   wallet: string;
@@ -109,7 +110,6 @@ export interface EnforcementResult {
 export interface EnforcementDeps {
   reader: EnforcementReader;
   writer: EnforcementWriter;
-  issuer: string;
   wallets: () => Promise<string[]>;
   alert: (input: { key: string; subject: string; body: string }) => Promise<unknown>;
   now?: number;
@@ -128,21 +128,19 @@ export interface EnforcementRun {
 /** What is due for one member now, read from chain; nothing while a hold is active. */
 export async function enforcementDue(
   reader: EnforcementReader,
-  issuer: string,
   wallet: string,
   now: number,
-  wait: number,
 ): Promise<{ held: boolean; actions: EnforcementAction[] }> {
   const hold = toHold(await reader.holdOf(wallet));
   if (hold?.active) return { held: true, actions: [] };
+  const [gap, dueAt] = (await reader.shortfallOf(wallet)) as [bigint, bigint];
   const actions: EnforcementAction[] = [];
-  if ((await reader.unsecuredExcessOf(wallet)) > 0n) actions.push('settleExcess');
-  const noticedAt = Number(await reader.shortfallNoticedAt(wallet, issuer));
-  if (noticedAt === 0) {
-    const [poolGap, bondGap] = (await reader.earnGapOf(wallet, issuer)) as [bigint, bigint];
-    if (poolGap + bondGap > 0n) actions.push('noticeShortfall');
-  } else if (now >= noticedAt + wait) {
-    actions.push('settleShortfall');
+  if (Number(dueAt) === 0) {
+    if (gap > 0n) actions.push('noticeShortfall');
+  } else if (gap === 0n) {
+    actions.push('clearShortfall');
+  } else if (now >= Number(dueAt)) {
+    actions.push('shortfallDue');
   }
   return { held: false, actions };
 }
@@ -157,21 +155,19 @@ export async function runEnforcementKeeper(deps: EnforcementDeps): Promise<Enfor
     const now = deps.now ?? Math.floor(Date.now() / 1000);
     const max = deps.maxPerRun ?? DEFAULT_ENFORCEMENT_MAX_PER_RUN;
     const tried = deps.tried ?? new Map<string, number>();
-    const wait = Number(await deps.reader.shortfallWait());
     const queue: { wallet: string; action: EnforcementAction }[] = [];
+    const due: string[] = [];
     for (const wallet of await deps.wallets()) {
       run.checked += 1;
       try {
-        const due = await enforcementDue(deps.reader, deps.issuer, wallet, now, wait);
-        if (due.held) {
+        const next = await enforcementDue(deps.reader, wallet, now);
+        if (next.held) {
           run.held += 1;
           continue;
         }
-        for (const action of due.actions) {
-          const last = tried.get(`${action}:${wallet}`);
-          // A notice is idempotent on chain (it reverts once noticed); settlements wait out the cooldown.
-          if (action !== 'noticeShortfall' && last !== undefined && now - last < SETTLE_COOLDOWN_SECONDS) continue;
-          queue.push({ wallet, action });
+        for (const action of next.actions) {
+          if (action === 'shortfallDue') due.push(wallet);
+          else queue.push({ wallet, action });
         }
       } catch (error) {
         run.results.push({ wallet, action: 'held', ok: false, reason: `read: ${chainErrorReason(error)}` });
@@ -182,22 +178,36 @@ export async function runEnforcementKeeper(deps: EnforcementDeps): Promise<Enfor
     for (const { wallet, action } of queue.slice(0, max)) {
       tried.set(`${action}:${wallet}`, now);
       try {
-        const tx = await deps.writer[action](wallet, deps.issuer);
+        const tx = await deps.writer.noticeShortfall(wallet);
         await tx.wait(1);
         run.results.push({ wallet, action, ok: true, txHash: tx.hash });
       } catch (error) {
         const name = decodeChainError(error)?.name;
         // Moved on since it was read: a hold confirmed, a gap closed, already noticed. Not a failure.
-        if (name === 'LiquidatorOnHold') {
+        if (name === 'LiquidatorOnHold' || name === 'LiquidatorPauseInForce') {
           run.held += 1;
           continue;
         }
-        if (name === 'LiquidatorNoExcess' || name === 'LiquidatorNoShortfall' || name === 'LiquidatorShortfallNoticed' || name === 'LiquidatorShortfallNotDue') {
+        if (name === 'LiquidatorNoShortfall' || name === 'LiquidatorShortfallNoticed') {
           run.results.push({ wallet, action, ok: true, reason: `nothing to do: ${name}` });
           continue;
         }
         run.results.push({ wallet, action, ok: false, reason: chainErrorReason(error).slice(0, 300) });
       }
+    }
+
+    if (due.length) {
+      for (const wallet of due) run.results.push({ wallet, action: 'shortfallDue', ok: true });
+      await deps
+        .alert({
+          key: `enforcement:due:${new Date(now * 1000).toISOString().slice(0, 10)}`,
+          subject: `Enforcement: ${due.length} Earn shortfall(s) past their wait`,
+          body:
+            `The shortfall notice's wait has passed for ${due.join(', ')}. It is settled from Pledged Pool Shares ` +
+            '(PoolShareEnforcer.enforce, then fillQueue and settle) and then Pledged BurnerBonds (payPledged), smallest amount first ' +
+            '(decision 21). No keeper sends those yet: do it by hand, or leave it while a Liquidation Hold is proposed.',
+        })
+        .catch(() => null);
     }
 
     const failed = run.results.filter((r) => !r.ok);
@@ -209,7 +219,7 @@ export async function runEnforcementKeeper(deps: EnforcementDeps): Promise<Enfor
           subject: `Enforcement keeper: ${failed.length} call(s) failed`,
           body:
             `Liquidator calls failed: ${failed.map((f) => `${f.action} ${f.wallet} (${f.reason})`).join('; ')}. ` +
-            'They are permissionless and need only gas: check the card settler key has ETH, the Liquidator trusts the RevolvingIssuer, and its Earn sources are set.',
+            'noticeShortfall is permissionless and needs only gas: check the card settler key has ETH, and the Liquidator’s Earn sources are set.',
         })
         .catch(() => null);
     }
@@ -260,23 +270,18 @@ const triedAcrossRuns = new Map<string, number>();
 
 export function enforcementDeps(): EnforcementDeps | null {
   const liquidator = getContractAddress(chainId(), 'Liquidator');
-  const issuer = getContractAddress(chainId(), 'RevolvingIssuer');
-  if (!liquidator || !issuer || !keeperKey()) return null;
+  if (!liquidator || !keeperKey()) return null;
   const provider = chainProvider(chainId());
   const reads = new ethers.Contract(liquidator, LIQUIDATOR_ABI, provider);
-  const issuerReads = new ethers.Contract(issuer, ISSUER_ABI, provider);
   const writer = new ethers.Contract(liquidator, LIQUIDATOR_ABI, writesAs(new ethers.Wallet(keeperKey(), provider)));
   const maxPerRun = Number(process.env.ENFORCEMENT_KEEPER_MAX_PER_RUN || DEFAULT_ENFORCEMENT_MAX_PER_RUN);
   return {
     reader: {
       holdOf: (m) => reads.holdOf(m),
-      shortfallNoticedAt: (m, i) => reads.shortfallNoticedAt(m, i),
       shortfallWait: () => reads.shortfallWait(),
-      earnGapOf: (m, i) => reads.earnGapOf(m, i),
-      unsecuredExcessOf: (m) => issuerReads.unsecuredExcessOf(m),
+      shortfallOf: (m) => reads.shortfallOf(m),
     },
     writer: writer as unknown as EnforcementWriter,
-    issuer,
     wallets: memberWallets,
     alert: (input) => alertOps(input),
     maxPerRun: Number.isFinite(maxPerRun) && maxPerRun > 0 ? maxPerRun : DEFAULT_ENFORCEMENT_MAX_PER_RUN,
@@ -289,7 +294,7 @@ export function enforcementDeps(): EnforcementDeps | null {
 export interface MemberEnforcement {
   wallet: string;
   hold: HoldState | null;
-  /** When a shortfall was noticed with the RevolvingIssuer, and when it may be settled. */
+  /** When a shortfall was noticed, and when it may be settled (`shortfallOf`'s dueAt). */
   shortfall: { noticedAt: number; settleableAt: number; gapCents: number } | null;
   excessCents: number;
 }
@@ -313,15 +318,15 @@ export async function readEnforcement(limit = 500): Promise<{ members: MemberEnf
     for (let r = 1; r < HOLD_REASONS.length; r++) maxHoldDays[HOLD_REASONS[r]] = Math.round(Number(await reads.maxHoldOf(r)) / 86_400);
     const members: MemberEnforcement[] = [];
     for (const wallet of (await memberWallets()).slice(0, limit)) {
-      const [hold, noticedAt, excess] = await Promise.all([
+      const [hold, [gap, dueAt], excess] = await Promise.all([
         reads.holdOf(wallet).then(toHold),
-        reads.shortfallNoticedAt(wallet, issuer).then(Number),
+        reads.shortfallOf(wallet) as Promise<[bigint, bigint]>,
         issuerReads.unsecuredExcessOf(wallet) as Promise<bigint>,
       ]);
       let shortfall: MemberEnforcement['shortfall'] = null;
-      if (noticedAt > 0) {
-        const [poolGap, bondGap] = (await reads.earnGapOf(wallet, issuer)) as [bigint, bigint];
-        shortfall = { noticedAt, settleableAt: noticedAt + wait, gapCents: cents(poolGap + bondGap) };
+      if (Number(dueAt) > 0) {
+        // dueAt is the notice plus the wait (and any pause clock); the notice time is read back from it.
+        shortfall = { noticedAt: Number(dueAt) - wait, settleableAt: Number(dueAt), gapCents: cents(gap) };
       }
       if (hold || shortfall || excess > 0n) members.push({ wallet, hold, shortfall, excessCents: cents(excess) });
     }

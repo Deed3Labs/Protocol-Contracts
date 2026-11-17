@@ -541,10 +541,10 @@ export async function preparePledge(wallet: string, name: PledgeKindName): Promi
     if (wanted.itemId !== undefined) {
       // A bond pledge carries the Maturity Instruction's hash (Phase 2e section 9; MB-05 5.6).
       const instructionLines = maturityInstructionLines(wanted.itemId);
-      const typedData = pledgeTypedData({ ...common, itemId: wanted.itemId, maturityInstruction: maturityInstructionHash(wanted.itemId) });
+      const typedData = pledgeTypedData({ ...common, itemId: wanted.itemId, maturityInstruction: maturityInstructionHash(wanted.itemId) }) as CollateralTypedData;
       return { ok: true, needsSignature: true, kind: name, typedData, maturityInstruction: instructionLines };
     }
-    const typedData = pledgeTypedData({ ...common, amount: wanted.amount! });
+    const typedData = pledgeTypedData({ ...common, amount: wanted.amount! }) as CollateralTypedData;
     return { ok: true, needsSignature: true, kind: name, typedData };
   } catch (error) {
     console.error('[collateral] pledge prepare failed for', wallet, error instanceof Error ? error.message : error);
