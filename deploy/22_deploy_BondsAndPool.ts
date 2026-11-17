@@ -62,6 +62,11 @@ async function main() {
   const vault = need("ESADepositVault");
   const reserveToken = process.env.RESERVE_TOKEN ?? "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
   const coopTreasury = process.env.COOP_TREASURY ?? deployer.address;
+  // On a real chain or a fork CLEAR_LENDING_ACCOUNT is required (checked before anything is sent): a
+  // Deployment goes nowhere else, and nothing falls back to another address.
+  if (!process.env.CLEAR_LENDING_ACCOUNT?.trim() && (await ethers.provider.getNetwork()).chainId !== 31337n) {
+    throw new Error("CLEAR_LENDING_ACCOUNT is empty: set it to Clear Lending's account (on Base Sepolia, CL Operating; deploy/config/base-sepolia.rollout.env).");
+  }
 
   if (!process.env.COOP_TREASURY) {
     log(`! COOP_TREASURY unset — using the deployer (${deployer.address}).`);
@@ -237,9 +242,9 @@ async function main() {
   // Phase 2f, decision 17: only Clear Lending draws from the Yield Pool, as a recorded Deployment
   // to its registered lending account (two DEPLOYER_ROLE signers). The PayoutPool and the card
   // settler no longer borrow from it; the pool's `borrowableToday` is zero and `borrow` reverts.
-  const lendingAccount = process.env.CLEAR_LENDING_ACCOUNT;
-  if (lendingAccount && ethers.isAddress(lendingAccount)
-      && (await lendingPool.deploymentAccount()) !== lendingAccount) {
+  const lendingAccount = process.env.CLEAR_LENDING_ACCOUNT?.trim();
+  if (lendingAccount && !ethers.isAddress(lendingAccount)) throw new Error(`CLEAR_LENDING_ACCOUNT ${lendingAccount} is not an address.`);
+  if (lendingAccount && (await lendingPool.deploymentAccount()).toLowerCase() !== lendingAccount.toLowerCase()) {
     await (await lendingPool.setDeploymentAccount(lendingAccount)).wait();
     log(`  LendingPool deployment account -> ${lendingAccount}`);
   }

@@ -4,6 +4,9 @@ import { createHash } from "crypto";
 import { liveNetworkOf } from "../deploy/helpers";
 import { RETIRED_SUFFIX } from "../deploy/retire_credit_stack";
 import { parseEnvFile } from "./rehearse_sepolia_fork";
+import {
+  assuranceSetupFromEnv, assuranceSetupProblems, governedCalls, approvalKey, CL_FEES_MASK, BOARD_ALLOCATION_MASK, AssuranceSetup,
+} from "../deploy/assurance_timelock_handover";
 
 /*
  * The Base Sepolia rollout's co-signer steps, as a signing plan (docs/audit/SEPOLIA-REHEARSAL.md).
@@ -221,6 +224,21 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
   label(feeRecipient, "fee recipient");
   label(addr(env.RELAYER), "savings relayer");
   label(addr(env.SAFE_NEW_OWNER), "new Safe owner");
+  label(addr(env.BOARD_SAFE), "Clear Treasury (board) Safe");
+  label(addr(env.COOP_TREASURY), "co-op treasury");
+  label(addr(env.CLEAR_LENDING_ACCOUNT), "CL Operating");
+  label(addr(env.ASSURANCE_DRAW_ADDRESS), "Assurance draw address");
+  label(addr(env.ASSURANCE_LOSS_RESERVE), "CL Loss Reserve");
+  label(addr(env.ASSURANCE_CL_FEES_PAYER), "CL fees payer");
+  label(addr(env.ASSURANCE_DISBURSEMENT), "Assurance disbursement");
+
+  // The Assurance Pool's governed setup (owner decision, Nov 16, 2026). Its inputs are checked first,
+  // and loudly: an empty one, or one the pool would refuse, stops the plan (nothing falls back).
+  const assuranceSigners = addrList("ASSURANCE_SIGNERS");
+  if (assuranceSigners.length < 2) throw new Error("Refusing: ASSURANCE_SIGNERS must list the Assurance Pool's two signers (deploy/config/base-sepolia.rollout.env).");
+  const exposureDefault = await fresh("CollateralRegistry");
+  const assurance: AssuranceSetup = assuranceSetupFromEnv(env, exposureDefault.address ? [exposureDefault.address] : []);
+  assuranceSigners.forEach((a, i) => label(a, `Assurance signer ${ordinal(i)}`));
 
   /** Call data, signature and labelled arguments for `fn` on `c`. */
   const encode = (c: any, fn: string, values: any[], notesFor: (string | undefined)[] = []) => {
@@ -649,10 +667,20 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       "function addOwnerWithThreshold(address owner, uint256 _threshold)",
       "function changeThreshold(uint256 _threshold)",
     ];
-    const safes = [...new Map([financialSafe, lendingSafe].filter(Boolean).map((s) => [s!.toLowerCase(), s!])).values()];
-    for (const [i, safe] of safes.entries()) {
+    // The Safes that sign a batch here must each need two signatures (the handovers refuse one that
+    // does not). SAFE_NEW_OWNER and SAFE_THRESHOLD are the Clear Financial Safe's day-0 change; any
+    // other Safe (the Clear Lending Safe, a separate board Safe) is only read.
+    for (const [what, other] of [["Clear Lending Safe", lendingSafe], ["Clear Treasury (board) Safe", addr(env.BOARD_SAFE)]] as [string, string | undefined][]) {
+      if (!other || same(other, financialSafe)) continue;
+      if (!(await hasCode(other))) throw new Error(`Refusing: the ${what} ${other} has no code on ${network} (chain ${chainId}). Wrong network, or a wrong address in the rollout env?`);
+      const o = new ethers.Contract(other, SAFE_ABI, provider);
+      const t = BigInt(await o.getThreshold());
+      if (t < 2n) notes.push(`The ${what} ${other} needs only ${t} signature(s): the handovers and two-person control want 2 or more.`);
+    }
+    const safes = financialSafe ? [financialSafe] : [];
+    for (const safe of safes) {
       const s = new ethers.Contract(safe, SAFE_ABI, provider);
-      const id = safes.length > 1 ? `safe-owner-${i + 1}` : "safe-owner";
+      const id = "safe-owner";
       if (!(await hasCode(safe))) throw new Error(`Refusing: the Safe ${safe} has no code on ${network} (chain ${chainId}).`);
       const owners: string[] = (await s.getOwners()).map((a: string) => ethers.getAddress(a));
       const now_ = BigInt(await s.getThreshold());
@@ -672,7 +700,7 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       push({
         id, stage: "Safe (before I2)", title,
         explanation: `The vault and Earn handovers (I3, I4) refuse a Safe one person can run. Today it needs ${now_} of ${owners.length} (${owners.map(short).join(", ")}). Owners other than the deployer may sign only inside the members app (Privy), so a second MetaMask account becomes an owner and every Safe transaction then needs ${threshold} signatures. Today's owner signs this in the Safe app, just before the credit handover (I2); nothing before it needs it.`,
-        kind: "safe", signer: safe, signerLabel: `the Safe ${short(safe)} (its owners sign in the Safe app)`, to: safe, toLabel: "the Safe itself", ...enc, dependsOn: [], ...st,
+        kind: "safe", signer: safe, signerLabel: `the Clear Treasury Safe ${short(safe)} (its owners sign in the Safe app)`, to: safe, toLabel: "the Safe itself", ...enc, dependsOn: [], ...st,
       });
     }
   }
@@ -751,6 +779,195 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
     });
   }
 
+  // ================= The Assurance Pool's governed setup: two signers, the board Safe, 7 days =================
+  // Each call runs through `_governed()`: only the Assurance timelock may make it, and its exact
+  // calldata must carry two different ASSURANCE_SIGNERS' approvals (`approveAction(keccak256(calldata))`;
+  // the first records itself, the second completes it, either order). The board Safe is the
+  // timelock's only proposer and executor (deploy 08), so it schedules on day 0 and executes on day 7.
+  {
+    const poolAddress = await rec("AssurancePoolV2");
+    const asTimelock = await rec("AssuranceTimelock");
+    const board = addr(env.BOARD_SAFE);
+    label(poolAddress, "AssurancePool");
+    label(asTimelock, "Assurance timelock");
+    for (const e of assurance.exposureSources) label(e, same(e, exposureDefault.address) ? "CollateralRegistry" : "exposure source");
+    const poolC = await contract("AssurancePool", poolAddress ?? ZERO_ADDRESS);
+    const live = poolAddress ? poolC : undefined;
+
+    // What the pool would refuse, from the inputs and (once it exists) the chain.
+    const chain: Parameters<typeof assuranceSetupProblems>[2] = {};
+    const extra: string[] = [];
+    if (live) {
+      chain.drawAddress = await live.drawAddress();
+      chain.payerTagsOf = { [assurance.draw.toLowerCase()]: BigInt(await live.payerTags(assurance.draw)) };
+      const registry = new ethers.Contract(await live.networkRegistry(), ["function isMoneyPath(address) view returns (bool)"], provider);
+      chain.moneyPath = {};
+      for (const a of [assurance.clFeesPayer, assurance.coopTreasury]) chain.moneyPath[a.toLowerCase()] = await registry.isMoneyPath(a);
+      chain.maxExposureSources = Number(await live.MAX_EXPOSURE_SOURCES());
+      for (const sgn of assuranceSigners) if (!(await live.isSigner(sgn))) extra.push(`ASSURANCE_SIGNERS lists ${sgn}, which is not one of the AssurancePool's signers.`);
+      if (asTimelock && !same(await live.governance(), asTimelock)) extra.push(`The AssurancePool's governance is ${await live.governance()}, not the AssuranceTimelock record ${asTimelock}.`);
+    }
+    for (const e of assurance.exposureSources) {
+      if (!(await hasCode(e))) { extra.push(`The exposure source ${e} has no code.`); continue; }
+      const ok = await provider.call({ to: e, data: "0x" + ethers.id("poolExposure()").slice(2, 10) }).then((r: string) => r.length >= 66, () => false);
+      if (!ok) extra.push(`The exposure source ${e} does not answer poolExposure().`);
+    }
+    const problems = [...assuranceSetupProblems(assurance, assuranceSigners, chain), ...extra];
+    if (problems.length) throw new Error(`Refusing: the Assurance Pool setup would not go through:\n  - ${problems.join("\n  - ")}`);
+
+    const calls = governedCalls(poolC, assurance);
+    const what: Record<string, string> = {
+      "payer-clfees": `let Clear Lending's fees wallet pay in (credit enhancement fee, recovery, interchange: mask ${CL_FEES_MASK})`,
+      "payer-treasury": `let the co-op treasury pay in board allocations (mask ${BOARD_ALLOCATION_MASK})`,
+      lendingco: "register CL Operating as Lending Co.'s draw address and CL Loss Reserve as where draws are paid",
+      disbursement: "register the co-op's Assurance disbursement address, where grants are paid",
+      exposure: "name the CollateralRegistry as what reports the covered book",
+    };
+    const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => same(x, b[i]));
+    const applied = async (key: string): Promise<boolean> => {
+      if (!live) return false;
+      if (key === "payer-clfees") return BigInt(await live.payerTags(assurance.clFeesPayer)) === BigInt(CL_FEES_MASK);
+      if (key === "payer-treasury") return BigInt(await live.payerTags(assurance.coopTreasury)) === BigInt(BOARD_ALLOCATION_MASK);
+      if (key === "lendingco") return same(await live.drawAddress(), assurance.draw) && same(await live.lossReserveAddress(), assurance.lossReserve);
+      if (key === "disbursement") return same(await live.assuranceDisbursementAddress(), assurance.disbursement);
+      return sameList([...(await live.exposureSourceList())], assurance.exposureSources);
+    };
+    const keys = ["payer-clfees", "payer-treasury", "lendingco", "disbursement", "exposure"];
+    const pending: { key: string; data: string; action: string; approved: boolean }[] = [];
+    const approvalIds: string[] = [];
+    let blocked: string | undefined = !poolAddress ? "Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool." : undefined;
+    for (const key of keys) {
+      const c = calls.find((x) => x.key === key);
+      if (!c && !blocked) blocked = `No exposure source yet: ${exposureDefault.why ?? "set ASSURANCE_EXPOSURE_SOURCES"}.`;
+      const isApplied = c ? await applied(key) : false;
+      const approved = c && live ? Boolean(await live.approvedAction(c.action)) : false;
+      const first: string | undefined = c && live ? ethers.getAddress(await live.proposerOf(approvalKey(c.action))) : undefined;
+      if (c && !isApplied) pending.push({ key, data: c.data, action: c.action, approved });
+      for (const [i, sgn] of assuranceSigners.slice(0, 2).entries()) {
+        const id = `AS-${key}-approve-${i + 1}`;
+        let st: { status: StepStatus; reason?: string };
+        if (!c) st = waitingFor(`No exposure source yet: ${exposureDefault.why ?? "set ASSURANCE_EXPOSURE_SOURCES"}.`);
+        else if (isApplied) st = { status: "done", reason: "The pool already shows it." };
+        else if (blocked) st = waitingFor(blocked);
+        else if (approved) st = { status: "done", reason: "Both signers approved this exact call." };
+        else if (same(first, sgn)) st = { status: "done", reason: "Approved by this signer; waits for the other Assurance signer." };
+        else st = { status: "ready" };
+        const enc = c
+          ? encode(poolC, "approveAction", [c.action], [`keccak256 of the exact call the Assurance timelock will make: ${c.fn}(${c.args.map((a: any) => (Array.isArray(a) ? `[${a.join(", ")}]` : String(a))).join(", ")})`])
+          : { data: null, functionSignature: signatureOf(poolC, "approveAction"), args: [] };
+        push({
+          id, stage: "Assurance", title: `Assurance signer ${i + 1} approves: ${what[key]}`,
+          explanation: i === 0
+            ? "The Assurance Pool changes a setting only when the Assurance timelock calls it, and only if two of its signers approved that exact call first. This is the first approval; the other Assurance signer sends the same one next. Nothing changes yet: the board Safe schedules it, and runs it 7 days later."
+            : "The second approval of the same call, from the other Assurance signer. With both, the Assurance timelock may make the call once.",
+          kind: "wallet", signer: sgn, signerLabel: `Assurance signer ${i + 1}`, to: poolAddress ?? ZERO_ADDRESS, toLabel: "AssurancePool", ...enc,
+          dependsOn: i === 1 ? [`AS-${key}-approve-1`] : [], ...st,
+        });
+        if (c && !isApplied) approvalIds.push(id);
+      }
+    }
+
+    const tl = asTimelock ? await timelockOf(asTimelock) : undefined;
+    const salt = ethers.id("signing-plan: Assurance Pool governed setup");
+    const targets = pending.map(() => poolAddress ?? ZERO_ADDRESS);
+    const values = pending.map(() => 0n);
+    const payloads = pending.map((p) => p.data);
+    const delay: bigint = tl ? await tl.getMinDelay() : 604800n;
+    const opId: string = tl && pending.length && !blocked ? await tl.hashOperationBatch(targets, values, payloads, ZERO_HASH, salt) : ZERO_HASH;
+    let sSt: { status: StepStatus; reason?: string };
+    let xSt: { status: StepStatus; reason?: string };
+    if (blocked) sSt = xSt = waitingFor(blocked);
+    else if (!pending.length) sSt = xSt = { status: "done", reason: "The pool shows every setting." };
+    else if (!tl || !board) sSt = xSt = waitingFor(!board ? "Waiting for input: BOARD_SAFE." : "No AssuranceTimelock record yet (H1).");
+    else if (!(await tl.hasRole(await tl.PROPOSER_ROLE(), board)) || !(await tl.hasRole(await tl.EXECUTOR_ROLE(), board))) {
+      sSt = xSt = waitingFor(`BOARD_SAFE ${board} is not the Assurance timelock's proposer and executor (${asTimelock}).`);
+    } else {
+      if (await tl.isOperation(opId)) sSt = { status: "done" };
+      else {
+        sSt = { status: "ready" };
+        // Each call as the timelock will make it: catches a conflict the pool would revert on.
+        if (pending.every((p) => p.approved)) {
+          for (const p of pending) {
+            try {
+              await provider.call({ from: asTimelock, to: poolAddress, data: p.data });
+            } catch (e: any) {
+              const data: string | undefined = e?.data ?? e?.error?.data ?? e?.info?.error?.data;
+              let why = String(e?.shortMessage ?? e?.message ?? e).split("\n")[0];
+              try { const q = poolC.interface.parseError(data!); if (q) why = `${q.name}(${q.args.map(String).join(", ")})`; } catch { /* raw */ }
+              sSt = waitingFor(`The pool would refuse ${p.key} when the timelock makes it: ${why}. Fix the input before scheduling.`);
+            }
+          }
+        }
+      }
+      if (await tl.isOperationDone(opId)) xSt = { status: "done" };
+      else if (!(await tl.isOperation(opId))) xSt = waitingFor("Waits for the schedule step, then 7 days.");
+      else {
+        const why: string[] = [];
+        if (!(await tl.isOperationReady(opId))) why.push(`the Assurance timelock's 7 days end at ${new Date(Number(await tl.getTimestamp(opId)) * 1000).toISOString()}`);
+        for (const p of pending) if (!p.approved) why.push(`${p.key} does not carry both signers' approval`);
+        xSt = why.length ? waitingFor(`Not yet: ${why.join("; ")}.`) : { status: "ready" };
+      }
+    }
+    const listed = pending.map((p) => p.key).join(", ");
+    push({
+      id: "AS-assurance-schedule", stage: "Assurance", title: "Clear Treasury (board) Safe: schedule the Assurance Pool's setup on the Assurance timelock",
+      explanation: `Queues the approved call${pending.length === 1 ? "" : "s"} (${listed || "none left"}): the payers, Clear Lending's draw and loss-reserve addresses, the disbursement address and the exposure source. They can run 7 days later. Sign it in the Safe app: Transaction Builder, load the batch file.`,
+      kind: "safe", signer: board ?? ZERO_ADDRESS, signerLabel: "Clear Treasury (board) Safe (its owners sign in the Safe app)", to: asTimelock ?? ZERO_ADDRESS, toLabel: "Assurance timelock",
+      ...encode(timelockIface, "scheduleBatch", [targets, values, payloads, ZERO_HASH, salt, delay], [pending.length ? "AssurancePool" : "", undefined, "the approved calls", "none", "a fixed label for this batch", `${Number(delay) / 86400} days`]),
+      dependsOn: approvalIds, ...sSt,
+    });
+    push({
+      id: "ASx-assurance-execute", stage: "Day 7", title: "Clear Treasury (board) Safe: run the Assurance Pool's setup (day 7)",
+      explanation: "After the Assurance timelock's 7 days, the board Safe runs the queued calls; the pool checks each one carries its two approvals. Only the board Safe may run them: it is the timelock's only executor.",
+      kind: "safe", signer: board ?? ZERO_ADDRESS, signerLabel: "Clear Treasury (board) Safe (its owners sign in the Safe app)", to: asTimelock ?? ZERO_ADDRESS, toLabel: "Assurance timelock",
+      ...encode(timelockIface, "executeBatch", [targets, values, payloads, ZERO_HASH, salt], [pending.length ? "AssurancePool" : "", undefined, "the approved calls", "none", "the same label"]),
+      dependsOn: ["AS-assurance-schedule"], ...xSt,
+    });
+
+    // ---- The month's floor inputs (13d): two signers, no timelock. Until they are posted the
+    // coverage cap is 0 and `approveDraw` refuses every backstop draw; deposits and Member
+    // Assurance grants do not need them. The first signer's call proposes, the same call from the
+    // other signer applies it (`_pair` on keccak256(abi.encode("floor", shortfall, cap, book, evidence))).
+    const units = (k: string) => (env[k] && /^\d+$/.test(env[k]) ? BigInt(env[k]) : undefined);
+    const shortfall = units("ASSURANCE_TIMING_SHORTFALL");
+    const cap = units("ASSURANCE_COVERAGE_CAP");
+    const book = units("ASSURANCE_ATTESTED_BOOK");
+    const floorEvidence = env.ASSURANCE_FLOOR_EVIDENCE && /^0x[0-9a-fA-F]{64}$/.test(env.ASSURANCE_FLOOR_EVIDENCE) && BigInt(env.ASSURANCE_FLOOR_EVIDENCE) !== 0n
+      ? env.ASSURANCE_FLOOR_EVIDENCE : undefined;
+    const floorInputsSet = shortfall !== undefined && cap !== undefined && book !== undefined && floorEvidence !== undefined;
+    const usd = (v?: bigint) => (v === undefined ? "" : `$${Number(ethers.formatUnits(v, 6)).toLocaleString("en-US", { minimumFractionDigits: 2 })}`);
+    const floorAction = floorInputsSet
+      ? ethers.keccak256(ethers.AbiCoder.defaultAbiCoder().encode(["string", "uint256", "uint256", "uint256", "bytes32"], ["floor", shortfall, cap, book, floorEvidence]))
+      : undefined;
+    let floorApplied = false;
+    let floorFirst: string | undefined;
+    if (live && floorInputsSet) {
+      floorApplied = BigInt(await live.coverageCap()) === cap && BigInt(await live.timingBufferShortfall()) === shortfall
+        && BigInt(await live.attestedCoveredBook()) === book && String(await live.floorEvidenceHash()).toLowerCase() === floorEvidence!.toLowerCase();
+      floorFirst = ethers.getAddress(await live.proposerOf(floorAction!));
+    }
+    for (const [i, sgn] of assuranceSigners.slice(0, 2).entries()) {
+      let st: { status: StepStatus; reason?: string };
+      if (!floorInputsSet) st = waitingFor("Waiting for input: ASSURANCE_TIMING_SHORTFALL, ASSURANCE_COVERAGE_CAP, ASSURANCE_ATTESTED_BOOK and ASSURANCE_FLOOR_EVIDENCE.");
+      else if (!poolAddress) st = waitingFor("Waits for H1 (ASSURANCE_DEPLOY=1 deploy/08_deploy_AssurancePool.ts), which deploys the AssurancePool.");
+      else if (floorApplied) st = { status: "done", reason: `Posted: coverage cap ${usd(cap)} (both signers).` };
+      else if (same(floorFirst, sgn)) st = { status: "done", reason: "Posted by this signer; waits for the other Assurance signer." };
+      else st = { status: "ready" };
+      const enc = floorInputsSet
+        ? encode(poolC, "setFloorInputs", [shortfall, cap, book, floorEvidence], [
+            `timing-buffer shortfall ${usd(shortfall)}`, `coverage cap ${usd(cap)}`, `attested covered book ${usd(book)}`, "ASSURANCE_FLOOR_EVIDENCE: the month's evidence hash"])
+        : { data: null, functionSignature: signatureOf(poolC, "setFloorInputs"), args: [] };
+      push({
+        id: `AS-floor-${i + 1}`, stage: "Assurance", title: `Post the month's floor inputs (coverage cap ${usd(cap) || "?"}): Assurance signer ${i + 1}`,
+        explanation: i === 0
+          ? "Sets how much the Credit Backstop may pay Clear Lending on a draw (the coverage cap), with the month's timing shortfall and attested covered book. Until both signers post the same figures the cap is $0 and every draw is refused; deposits and member grants don't need it. No timelock: it applies as soon as the second signer sends it. Re-post each month."
+          : "The same figures from the other Assurance signer; this one makes them count.",
+        kind: "wallet", signer: sgn, signerLabel: `Assurance signer ${i + 1}`, to: poolAddress ?? ZERO_ADDRESS, toLabel: "AssurancePool", ...enc,
+        dependsOn: i === 1 ? ["AS-floor-1"] : [], ...st,
+      });
+    }
+  }
+
   // ================= dependencies, then a dry run of every ready step =================
   const byId = new Map(steps.map((s) => [s.id, s]));
   for (const s of steps) {
@@ -761,7 +978,7 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       s.reason = `Waits for ${open.join(", ")} first.`;
     }
   }
-  const ifaces = await Promise.all(["AccessManager", "CollateralAgent", "BondVault", "Liquidator", "TermIssuer", "TimelockController", "ESADepositVault", "YieldPoolLedger", "LendingPool"].map(async (n) => new ethers.Interface((await artifacts.readArtifact(n)).abi)));
+  const ifaces = await Promise.all(["AccessManager", "CollateralAgent", "BondVault", "Liquidator", "TermIssuer", "TimelockController", "ESADepositVault", "YieldPoolLedger", "LendingPool", "AssurancePool"].map(async (n) => new ethers.Interface((await artifacts.readArtifact(n)).abi)));
   const decodeRevert = (e: any): string => {
     const data: string | undefined = e?.data ?? e?.error?.data ?? e?.info?.error?.data;
     if (typeof data === "string" && data.length >= 10) {

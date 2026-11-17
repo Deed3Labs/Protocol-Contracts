@@ -207,6 +207,40 @@ Also seen, and left as is: deploy 26's second run prints the `setPledgeModule` c
    - **The Ops Safe handover** (`scripts/command/safe-handover.ts`), for what the three timelock handovers do not cover: the new SavingsIntentFactory's admin and the TokenRegistry's owner stay with the deployer.
    - **The app address list** in runbook §4.2.
 
+## Re-run, Nov 16, 2026: the Assurance Pool setup and the Clear Lending Safe split
+
+**What changed.** The owner decided (1) the Assurance Pool is configured on testnet through its own governance, and (2) Clear Lending gets its own Safe. In `base-sepolia.rollout.env`: `CLEAR_LENDING_SAFE` is the Clear Lending (testnet) Safe `0xAE8F…419d` (v1.5.0, 2 of 2: …7AAA, …698a); CL Operating `0xfAFf…df65` is `CLEAR_LENDING_ACCOUNT`, `LENDER_OPERATING` and `ASSURANCE_DRAW_ADDRESS`; CL Loss Reserve `0xb425…6bAa` is `ASSURANCE_LOSS_RESERVE` (both nested Safes, 1 of 1, owned by the Clear Lending Safe). The Clear Treasury Safe `0x52e6…cf50` keeps every other Safe role, board Safe and co-op treasury included. `ASSURANCE_CL_FEES_PAYER` and `ASSURANCE_DISBURSEMENT` (two CDP wallets) are still empty: the signing plan and `scripts/check_rollout_inputs.ts` refuse to run without them.
+
+**The Assurance steps** (`scripts/signing_plan.ts`, stage "Assurance"). Five governed calls: `setPayer(CL fees wallet, 7)` (bits 0 to 2: credit enhancement fee, recovery, interchange; the pool's mask is a bit per `SourceTag`, at most 0xF), `setPayer(Clear Treasury Safe, 8)` (bit 3: board allocation), `setLendingCoAddresses(CL Operating, CL Loss Reserve)`, `setAssuranceDisbursementAddress(disbursement wallet)`, `setExposureSources([the fresh CollateralRegistry])` (or `ASSURANCE_EXPOSURE_SOURCES`). For each, Assurance signer 1 (Account 3) then signer 2 (Account 4) sends `approveAction(keccak256(calldata))`. The pool takes either order, and refuses the same signer twice. Then the board Safe (`BOARD_SAFE`, the Assurance timelock's only proposer and executor) schedules all five as one batch on the Assurance timelock, and on day 7 executes it. The pool checks at execution that each call carries its two approvals (`_governed()`), and spends them. The plan refuses inputs the pool would revert on:
+
+- a payer or Lending Co. address that is a signer;
+- a payer that is the draw address, today's or the new one;
+- a payer on NetworkRegistry's money-path list;
+- the draw address already a payer;
+- zero addresses, or more than four exposure sources.
+
+It also refuses two of the five addresses being the same (the owner's rule). Before scheduling it dry-runs each call from the timelock. Floor (5%), transfer delay (14 days) and allocation (50/50) stay at the pool's defaults: deposits need nothing more. A draw needs a coverage cap, which the two signers set monthly with `setFloorInputs` (no timelock); that is not part of this run.
+
+**Script fixes**, each with a test in `test/deploy/`:
+
+- The rehearsal let an empty "owner to fill" line in the env file blank its stand-in (`rehearsalEnv`).
+- The Safe-owner step looped over the Clear Financial and Clear Lending Safes as if they were one. It now applies `SAFE_NEW_OWNER` to the Clear Treasury Safe only, and checks that the other Safes have code and need two signatures.
+- The two-person Safe check called every Safe "the Clear Financial Safe".
+- Deploys 20 and 22 skipped an empty `LENDER_OPERATING` and `CLEAR_LENDING_ACCOUNT` silently. Off the local chain they now refuse, before sending anything.
+- `check_sepolia_wiring.ts` now checks the pool's setup, the ledger's `lenderOperating()` and the Clear Lending Safe's threshold. An empty input is a FAIL.
+
+The rehearsal now sends every co-signer step from the signing plan itself: each step from its impersonated signer, with the plan's own `to` and `data`.
+
+**Fork result** (block 59,723,160; the three new Safes are real on the fork; the two CDP wallets are plain-account stand-ins):
+
+- P0, the new preflight: 19 PASS. A6: 11 FAIL and 1 WARN, as before.
+- The plan's 45 steps all sent and done, in these stages: C1d ×3, D4 ×5, E8/E9 ×18 (the Earn schedule from the Clear Lending Safe), F2, Pool Tier ×2, Assurance ×11 (10 approvals and the schedule from the Clear Treasury Safe), the Safe's `addOwnerWithThreshold` (then 2 of 4), I3, and on day 7 ×3 (the Earn, vault and Assurance executes).
+- The pool afterwards: `payerTags` 7 (CL fees) and 8 (Clear Treasury); `drawAddress` CL Operating; `lossReserveAddress` CL Loss Reserve; `assuranceDisbursementAddress` the stand-in; `exposureSourceList` the fresh CollateralRegistry.
+- Gate I6: **0 FAIL, 1 WARN** (PayoutPoolPreAudit's 10.5 USDC of test money).
+- §4.1 checks: **118 PASS, 0 FAIL**. That is 107 plus 11 new lines: 9 for the Assurance Pool, `lenderOperating`, and the Clear Lending Safe's threshold. They also include `EarnTimelock: CLEAR_LENDING_SAFE proposes and executes` and the deployment account being CL Operating.
+- Payout funding: **GREEN**.
+- 339 transactions, 181.1M gas. The Assurance steps used 0.64M on day 0 and part of day 7's 0.63M.
+
 ## Running the rehearsal again
 
 ```bash
@@ -219,6 +253,16 @@ FORK_RPC_URL=https://sepolia.base.org FORK_BLOCK=<recent block> FORK_CHAIN_ID=84
 REHEARSAL_RESET=1 npx hardhat run scripts/rehearse_sepolia_fork.ts --network base-sepolia-fork
 npx hardhat run scripts/rehearsal_gas.ts --network base-sepolia-fork
 ```
+
+**With the owner's real addresses.** Fill `ASSURANCE_CL_FEES_PAYER` and `ASSURANCE_DISBURSEMENT` in `deploy/config/base-sepolia.rollout.env`, or export them; nothing else changes. Then, from a fork block after the wallets exist:
+
+```bash
+npx hardhat compile
+FORK_RPC_URL=https://sepolia.base.org FORK_BLOCK=<recent block> FORK_CHAIN_ID=84532 npx hardhat node --no-deploy
+REHEARSAL_RESET=1 npx hardhat run scripts/rehearse_sepolia_fork.ts --network base-sepolia-fork
+```
+
+The run's `inputs.json` lists which stand-ins were still used; with both wallets set, only `STATE_ATTESTER_KEY` remains.
 
 `REHEARSAL_FROM=<step id>` resumes at a step on the same node, and `REHEARSAL_TO=<step id>` stops after one. Each step's output, the ledger, the inputs used and the gas are written to `deployments/base-sepolia-fork/rehearsal/`. An input set in the environment wins over the env file and over the stand-ins, so the owner's real inputs can be rehearsed before the real run.
 
@@ -308,8 +352,10 @@ VAULT_HANDOVER=1 npx hardhat run deploy/vault_timelock_handover.ts --network $N
 #    (re-run scripts/signing_plan.ts: its I3-vault-schedule Safe batch)
 EARN_HANDOVER=1 npx hardhat run deploy/earn_timelock_handover.ts --network $N
 
-# SIGN Day 7: the Clear Lending Safe sends EarnTimelock.executeBatch(…), the Clear Financial Safe VaultTimelock.executeBatch(…)
-#    (re-run scripts/signing_plan.ts on day 7: its E8x and I3x Safe batches; only the Safe may execute)
+# SIGN Assurance (after H1): Accounts 3 then 4 approveAction each of the five setup calls, then the Clear Treasury
+#    (board) Safe schedules them on the Assurance timelock (the plan's AS-* steps and AS-assurance-schedule batch)
+# SIGN Day 7: the Clear Lending Safe sends EarnTimelock.executeBatch(…), the Clear Treasury Safe VaultTimelock.executeBatch(…)
+#    and AssuranceTimelock.executeBatch(…) (re-run scripts/signing_plan.ts on day 7: its E8x, I3x and ASx Safe batches)
 
 # I6, the gate, and the read-only checks (each must exit 0)
 npx hardhat run scripts/check_retired_credit.ts --network $N

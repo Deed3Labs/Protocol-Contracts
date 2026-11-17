@@ -9,8 +9,11 @@ import { getDeployment } from "../deploy/helpers";
  *
  * Optional, to check who holds what: DEPLOYER (holds no admin power afterwards), RELAYER (the vault's
  * RELAYER_ROLE), CLEAR_LENDING_ACCOUNT, COOP_TREASURY, OPS_SAFE, CLEAR_FINANCIAL_SAFE, CLEAR_LENDING_SAFE
- * and BOARD_SAFE (each timelock's proposer and executor). `scripts/check_retired_credit.ts` checks the
- * retired contracts; this checks the new wiring.
+ * and BOARD_SAFE (each timelock's proposer and executor). Required once their contracts are recorded
+ * (an empty one is a FAIL): LENDER_OPERATING (the ledger), and the Assurance Pool's setup:
+ * ASSURANCE_SIGNERS, ASSURANCE_CL_FEES_PAYER, COOP_TREASURY, ASSURANCE_DRAW_ADDRESS,
+ * ASSURANCE_LOSS_RESERVE, ASSURANCE_DISBURSEMENT (ASSURANCE_EXPOSURE_SOURCES, else the CollateralRegistry
+ * record). `scripts/check_retired_credit.ts` checks the retired contracts; this checks the new wiring.
  */
 
 type Status = "PASS" | "FAIL";
@@ -145,6 +148,48 @@ export async function checkSepoliaWiring(options: { network?: string; log?: (m: 
     await check("PayoutPool: bondVault() and yieldPool() off", async () => (await payout.bondVault()) === ethers.ZeroAddress && (await payout.yieldPool()) === ethers.ZeroAddress);
     if (env("COOP_TREASURY")) await check("PayoutPool: REDEEMER_ROLE for the co-op treasury", async () => payout.hasRole(await payout.REDEEMER_ROLE(), env("COOP_TREASURY")));
   }
+  // Lending Co.'s operating address on the ledger (deploy 20): CL Operating on Base Sepolia.
+  const ledger = rec("ClearCredit") ? await ethers.getContractAt(["function lenderOperating() view returns (address)"], rec("ClearCredit")!) : undefined;
+  if (ledger) {
+    if (env("LENDER_OPERATING")) await check("ClearCredit.lenderOperating() is LENDER_OPERATING", async () => same(await ledger.lenderOperating(), env("LENDER_OPERATING")));
+    else results.push({ status: "FAIL", what: "LENDER_OPERATING is empty (owner to fill): the ledger's operating address cannot be checked" });
+  }
+  // The Assurance Pool's governed setup (scripts/signing_plan.ts, steps AS and ASx). Every input is
+  // required: an empty one is a FAIL, never a silent skip.
+  const assurance = rec("AssurancePoolV2") ? await ethers.getContractAt("AssurancePool", rec("AssurancePoolV2")!) : undefined;
+  if (assurance) {
+    const required = (k: string) => {
+      if (!env(k)) results.push({ status: "FAIL", what: `${k} is empty (owner to fill): the Assurance Pool's setup cannot be checked` });
+      return env(k);
+    };
+    const { CL_FEES_MASK, BOARD_ALLOCATION_MASK } = require("../deploy/assurance_timelock_handover");
+    await check("AssurancePool.governance() is the AssuranceTimelock", async () => same(await assurance.governance(), rec("AssuranceTimelock")));
+    for (const sgn of (process.env.ASSURANCE_SIGNERS ?? "").split(",").map((x) => x.trim()).filter((x) => ethers.isAddress(x))) {
+      await check(`AssurancePool: ${sgn} is a signer`, async () => assurance.isSigner(sgn));
+    }
+    const fees = required("ASSURANCE_CL_FEES_PAYER");
+    if (fees) await check(`AssurancePool: ASSURANCE_CL_FEES_PAYER pays the fee, recovery and interchange (mask ${CL_FEES_MASK})`, async () => BigInt(await assurance.payerTags(fees)) === BigInt(CL_FEES_MASK));
+    const treasury = required("COOP_TREASURY");
+    if (treasury) await check(`AssurancePool: COOP_TREASURY pays board allocations (mask ${BOARD_ALLOCATION_MASK})`, async () => BigInt(await assurance.payerTags(treasury)) === BigInt(BOARD_ALLOCATION_MASK));
+    const draw = required("ASSURANCE_DRAW_ADDRESS");
+    if (draw) await check("AssurancePool.drawAddress() is ASSURANCE_DRAW_ADDRESS (CL Operating)", async () => same(await assurance.drawAddress(), draw));
+    const reserve = required("ASSURANCE_LOSS_RESERVE");
+    if (reserve) await check("AssurancePool.lossReserveAddress() is ASSURANCE_LOSS_RESERVE (CL Loss Reserve)", async () => same(await assurance.lossReserveAddress(), reserve));
+    const disbursement = required("ASSURANCE_DISBURSEMENT");
+    if (disbursement) await check("AssurancePool.assuranceDisbursementAddress() is ASSURANCE_DISBURSEMENT", async () => same(await assurance.assuranceDisbursementAddress(), disbursement));
+    const sources = (process.env.ASSURANCE_EXPOSURE_SOURCES ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    const wanted = sources.length ? sources : rec("CollateralRegistry") ? [rec("CollateralRegistry")!] : [];
+    await check(`AssurancePool.exposureSourceList() is ${sources.length ? "ASSURANCE_EXPOSURE_SOURCES" : "[CollateralRegistry]"}`, async () => {
+      const got: string[] = [...(await assurance.exposureSourceList())];
+      return got.length === wanted.length && got.every((g, i) => same(g, wanted[i]));
+    });
+  }
+  // The Safes behind the Earn timelock and Clear Lending's account (Clear Lending Safe split, Nov 16, 2026).
+  const SAFE = ["function getThreshold() view returns (uint256)", "function getOwners() view returns (address[])"];
+  if (env("CLEAR_LENDING_SAFE")) {
+    await check("the Clear Lending Safe needs two signatures or more", async () => (await (await ethers.getContractAt(SAFE, env("CLEAR_LENDING_SAFE"))).getThreshold()) >= 2n);
+  }
+
   // The timelocks: 7 days at least, no admin for the deployer, the right Safe proposing and executing.
   const timelocks: [string, string, string[]][] = [
     ["CreditTimelock", "OPS_SAFE", []],

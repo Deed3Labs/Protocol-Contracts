@@ -62,6 +62,11 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
   const { ethers, upgrades } = hre;
   const [deployer] = await ethers.getSigners();
   const network = (await ethers.provider.getNetwork()).name;
+  // On a real chain or a fork LENDER_OPERATING is required, checked before anything is sent: no
+  // silent run without Lending Co.'s operating address, and nothing falls back to another address.
+  if (!process.env.LENDER_OPERATING?.trim() && (await ethers.provider.getNetwork()).chainId !== 31337n) {
+    throw new Error("LENDER_OPERATING is empty: set it to Lending Co.'s operating address (on Base Sepolia, CL Operating; deploy/config/base-sepolia.rollout.env).");
+  }
   const log = options.quiet ? () => {} : console.log;
 
   log(`Deploying the credit core to ${network} as ${deployer.address}\n`);
@@ -322,9 +327,10 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
   } else {
     log("\n! No RESERVE_TOKEN for this network: repayments revert until the ledger has one.");
   }
-  const lenderOperating = process.env.LENDER_OPERATING;
+  const lenderOperating = process.env.LENDER_OPERATING?.trim();
   if (lenderOperating) {
-    if ((await ledger.lenderOperating()) !== lenderOperating) {
+    if (!ethers.isAddress(lenderOperating)) throw new Error(`LENDER_OPERATING ${lenderOperating} is not an address.`);
+    if ((await ledger.lenderOperating()).toLowerCase() !== lenderOperating.toLowerCase()) {
       await (await ledger.setLenderOperating(lenderOperating)).wait();
       log(`  ledger remainder -> Lending Co. ${lenderOperating}`);
     }

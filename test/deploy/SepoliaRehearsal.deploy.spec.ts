@@ -10,7 +10,9 @@ import { deployBondFactory, ensureBondTokenWhitelisted } from "../../deploy/bond
 import { deployCreditCore } from "../../deploy/20_deploy_CreditCore";
 import { pointCarryAtPayoutPool } from "../../deploy/creditWiring";
 import { PRE2D_FACTORY_RECORD, planSavingsFactory } from "../../deploy/19_deploy_SavingsIntentFactory";
-import { parseEnvFile, standIn } from "../../scripts/rehearse_sepolia_fork";
+import { parseEnvFile, standIn, standIns, rehearsalEnv } from "../../scripts/rehearse_sepolia_fork";
+import { assertTwoPersonSafe } from "../../deploy/vault_timelock_handover";
+import { checkRolloutInputs } from "../../scripts/check_rollout_inputs";
 
 /*
  * The script bugs the Base Sepolia fork rehearsal found (docs/audit/SEPOLIA-REHEARSAL.md), each
@@ -40,11 +42,69 @@ describe("the Base Sepolia fork rehearsal's fixes", function () {
 
     it("reads the rollout inputs and makes a stand-in only from a label", function () {
       const env = parseEnvFile(fs.readFileSync(path.join("deploy", "config", "base-sepolia.rollout.env"), "utf8"));
-      expect(env.CLEAR_LENDING_SAFE).to.equal("0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50");
+      // The Clear Lending Safe split (Nov 16, 2026): its own Safe; CL Operating is its account, the ledger's operating
+      // address and the Assurance draw address; the Clear Treasury Safe keeps every other Safe role.
+      expect(env.CLEAR_LENDING_SAFE).to.equal("0xAE8FF4Fa84d786Ece2C7Ab87886A2CD6086c419d");
+      expect(env.CLEAR_LENDING_ACCOUNT).to.equal("0xfAFf1081F77bF528bA21eea590f251a755bCdf65");
+      expect(env.LENDER_OPERATING).to.equal(env.CLEAR_LENDING_ACCOUNT);
+      expect(env.ASSURANCE_DRAW_ADDRESS).to.equal(env.CLEAR_LENDING_ACCOUNT);
+      expect(env.ASSURANCE_LOSS_RESERVE).to.equal("0xb42561F3FE68B6719628C0eAC398eA097DD56bAa");
+      for (const k of ["CLEAR_FINANCIAL_SAFE", "OPS_SAFE", "COOP_TREASURY", "BOARD_SAFE", "CARRY_TREASURY", "FEE_RECIPIENT", "CARD_SETTLEMENT_ACCOUNT", "COLLATERAL_ACCOUNT", "AGENT_COST_ADDRESS", "EXCESS_DESTINATION", "SAFE_ADDRESS"]) {
+        expect(env[k], k).to.equal("0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50");
+      }
+      // The two CDP wallets the owner created on Nov 17, 2026 (cl-fees-base-sepolia, assurance-disbursement-base-sepolia).
+      expect(env.ASSURANCE_CL_FEES_PAYER).to.equal("0xB9ed7ea800c3a32a8F2cf7d2aB50AE2d4831cDFd");
+      expect(env.ASSURANCE_DISBURSEMENT).to.equal("0x510cDFa8e647C3f1fe0c431fe903fA60aA4F926B");
       expect(env.FIRST_BOND_ID).to.equal("1000");
       expect(Object.keys(env).filter((k) => /PRIVATE_KEY|MNEMONIC|SECRET/.test(k))).to.deep.equal([]); // addresses only, never a key
       expect(standIn("Agent Key")).to.equal(standIn("Agent Key"));
       expect(standIn("Agent Key")).to.not.equal(standIn("vault pauser 1"));
+    });
+  });
+
+  describe("the rehearsal's inputs with an owner-to-fill line in the rollout env", function () {
+    it("keeps the stand-in where the rollout file is empty, and lets a real value or the environment win", function () {
+      const stand = standIns();
+      const env = rehearsalEnv({ ASSURANCE_CL_FEES_PAYER: "", ASSURANCE_DISBURSEMENT: "0x00000000000000000000000000000000000000d1", AGENT_KEY: "0x00000000000000000000000000000000000000a1" }, stand, { AGENT_KEY: "0x00000000000000000000000000000000000000a2" });
+      // The bug: `{ ...standIns, ...rollout }` let an empty "owner to fill" line blank the stand-in.
+      expect(env.ASSURANCE_CL_FEES_PAYER).to.equal(stand.ASSURANCE_CL_FEES_PAYER);
+      expect(env.ASSURANCE_DISBURSEMENT).to.equal("0x00000000000000000000000000000000000000d1");
+      expect(env.AGENT_KEY).to.equal("0x00000000000000000000000000000000000000a2");
+      expect(env.DEPLOYER).to.equal("0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA");
+    });
+  });
+
+  describe("the two-person Safe check", function () {
+    it("names the Safe it refuses (the Clear Lending Safe for the Earn handover)", async function () {
+      const [o1, o2] = await ethers.getSigners();
+      const one = await (await ethers.getContractFactory("MockSafe")).deploy([o1.address, o2.address], 1);
+      expect(await failure(assertTwoPersonSafe(await one.getAddress(), "The Clear Lending Safe"))).to.contain("The Clear Lending Safe must need two signers");
+      expect(await failure(assertTwoPersonSafe(await one.getAddress()))).to.contain("The Clear Financial Safe must need two signers");
+    });
+  });
+
+  describe("scripts/check_rollout_inputs.ts (the preflight)", function () {
+    it("fails each empty input, a Safe of the wrong shape and a conflicting Assurance input; passes the right ones", async function () {
+      const [aaa, k698a, a3, a4, other] = await ethers.getSigners();
+      const F = await ethers.getContractFactory("MockSafe");
+      const treasury = await F.deploy([aaa.address], 1);
+      const lending = await F.deploy([aaa.address, k698a.address], 2);
+      const operating = await F.deploy([await lending.getAddress()], 1);
+      const reserve = await F.deploy([await lending.getAddress()], 1);
+      const env: Record<string, string> = {
+        CLEAR_FINANCIAL_SAFE: await treasury.getAddress(), BOARD_SAFE: await treasury.getAddress(), COOP_TREASURY: await treasury.getAddress(),
+        CLEAR_LENDING_SAFE: await lending.getAddress(), CLEAR_LENDING_ACCOUNT: await operating.getAddress(), LENDER_OPERATING: await operating.getAddress(),
+        ASSURANCE_DRAW_ADDRESS: await operating.getAddress(), ASSURANCE_LOSS_RESERVE: await reserve.getAddress(),
+        ASSURANCE_CL_FEES_PAYER: random(), ASSURANCE_DISBURSEMENT: random(), ASSURANCE_SIGNERS: `${a3.address},${a4.address}`,
+      };
+      const fails = async (e: Record<string, string>) => (await checkRolloutInputs(e, ethers.provider)).filter((r) => r.status === "FAIL").map((r) => r.what);
+      expect(await fails(env)).to.deep.equal([]);
+      expect(await fails({ ...env, ASSURANCE_CL_FEES_PAYER: "" })).to.deep.equal(["ASSURANCE_CL_FEES_PAYER is empty: owner to fill in deploy/config/base-sepolia.rollout.env"]);
+      expect((await fails({ ...env, CLEAR_LENDING_SAFE: env.CLEAR_FINANCIAL_SAFE })).join("\n")).to.contain("CLEAR_LENDING_SAFE is its own Safe");
+      expect((await fails({ ...env, LENDER_OPERATING: other.address })).join("\n")).to.contain("LENDER_OPERATING is CL Operating");
+      expect((await fails({ ...env, ASSURANCE_LOSS_RESERVE: await treasury.getAddress() })).join("\n")).to.contain("wanted 1 of 1, owned by the Clear Lending Safe");
+      expect((await fails({ ...env, ASSURANCE_DISBURSEMENT: a3.address })).join("\n")).to.contain("one of the pool's signers");
+      expect((await fails({ ...env, CLEAR_LENDING_SAFE: other.address })).join("\n")).to.contain("has no code");
     });
   });
 

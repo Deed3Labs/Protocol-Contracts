@@ -4,10 +4,12 @@ import * as fs from "fs";
 import * as path from "path";
 import { createHash } from "crypto";
 import { buildSigningPlan, writeSigningPlan, PlanStep, SigningPlan } from "../../scripts/signing_plan";
+import { checkSepoliaWiring } from "../../scripts/check_sepolia_wiring";
 import { deployEarnTimelock } from "../../deploy/earn_timelock_handover";
 import { deployVaultTimelock } from "../../deploy/vault_timelock_handover";
 import { deployCreditCore } from "../../deploy/20_deploy_CreditCore";
 import { poolAt, poolProxyOptions } from "../../deploy/poolModules";
+import { deployAssuranceTimelock, deployAssurancePool, CL_FEES_MASK, BOARD_ALLOCATION_MASK } from "../../deploy/assurance_timelock_handover";
 
 /*
  * scripts/signing_plan.ts on the in-process Hardhat network: a small stack in the shape the Base
@@ -16,6 +18,7 @@ import { poolAt, poolProxyOptions } from "../../deploy/poolModules";
  * after round, until nothing is left. Nothing here touches a live network or uses a key.
  */
 const DAY = 24 * 3600;
+const ASSURANCE_KEYS = ["payer-clfees", "payer-treasury", "lendingco", "disbursement", "exposure"];
 const DIR = path.join("deployments", "hardhat");
 const random = () => ethers.Wallet.createRandom().address;
 
@@ -37,6 +40,10 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
   let s: Record<string, any>;
   let bondVault: any, agent: any, earnTimelock: any, liquidator: any, term: any, pool: any, clrusd: any, vault: any, vaultTimelock: any;
   let holderDirections: any;
+  let lendingSafe: any, assurancePool: any, assuranceTimelock: any, collateralRegistry: any;
+  // The Assurance Pool's signers (Accounts 3 and 4 on Base Sepolia) and the addresses its setup names.
+  const a3 = random(), a4 = random();
+  const clFees = random(), disbursement = random(), clOperating = random(), clLossReserve = random();
   const retiredPayout = random();
 
   const record = (name: string, address: string) => fs.writeFileSync(path.join(DIR, `${name}.json`), JSON.stringify({ address, abi: [] }));
@@ -81,16 +88,19 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     // D1, D2, D3: a fresh AccessManager and credit core; the old ones retired.
     const access = await upgrades.deployProxy(await ethers.getContractFactory("AccessManager"), [deployer.address]);
     record("AccessManager", await access.getAddress());
-    for (const n of ["AccessManager", "TermIssuer", "Liquidator", "PayoutPool"]) record(`${n}PreAudit`, random());
+    for (const n of ["AccessManager", "TermIssuer", "Liquidator", "PayoutPool", "CollateralRegistry"]) record(`${n}PreAudit`, random());
     record("PayoutPoolPreAudit", retiredPayout);
     process.env.CARRY_TREASURY = treasury.address;
     const core = await deployCreditCore({ quiet: true });
     term = core.term;
+    collateralRegistry = core.collateral;
     // Deploy 25 proposes the fee recipient (the deployer holds the AccessManager's admin).
     await term.proposeFeeRecipient(feeTo.address, ethers.encodeBytes32String("INITIAL"));
 
-    // E1: the Earn timelock (the Safe proposing and executing) and the CollateralAgent under it.
-    earnTimelock = await deployEarnTimelock(safeAddress);
+    // The Clear Lending Safe: its own Safe, two of two (owner decision, Nov 16, 2026).
+    lendingSafe = await (await ethers.getContractFactory("MockSafe")).deploy([deployer.address, newOwner.address], 2);
+    // E1: the Earn timelock (the Clear Lending Safe proposing and executing) and the CollateralAgent under it.
+    earnTimelock = await deployEarnTimelock(await lendingSafe.getAddress());
     record("EarnTimelock", await earnTimelock.getAddress());
     const usdc = await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
     agent = await upgrades.deployProxy(await ethers.getContractFactory("CollateralAgent"),
@@ -144,11 +154,29 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     record("VaultTimelock", await vaultTimelock.getAddress());
     await clrusd.beginDefaultAdminTransfer(await vaultTimelock.getAddress());
 
+    // H1: the Assurance timelock (the Clear Treasury Safe as board) and the pool it governs.
+    assuranceTimelock = await deployAssuranceTimelock(safeAddress);
+    assurancePool = await deployAssurancePool(await usdc.getAddress(), await assuranceTimelock.getAddress(), await core.networkRegistry.getAddress(), [a3, a4]);
+    record("AssuranceTimelock", await assuranceTimelock.getAddress());
+    record("AssurancePoolV2", await assurancePool.getAddress());
+
     env = {
       DEPLOYER: deployer.address,
       VAULT_ADMIN: deployer.address,
-      CLEAR_LENDING_SAFE: safeAddress,
+      CLEAR_LENDING_SAFE: await lendingSafe.getAddress(),
       CLEAR_FINANCIAL_SAFE: safeAddress,
+      BOARD_SAFE: safeAddress,
+      COOP_TREASURY: safeAddress,
+      CLEAR_LENDING_ACCOUNT: clOperating,
+      ASSURANCE_SIGNERS: `${a3},${a4}`,
+      ASSURANCE_CL_FEES_PAYER: clFees,
+      ASSURANCE_DISBURSEMENT: disbursement,
+      ASSURANCE_DRAW_ADDRESS: clOperating,
+      ASSURANCE_LOSS_RESERVE: clLossReserve,
+      ASSURANCE_COVERAGE_CAP: "10000000000",
+      ASSURANCE_TIMING_SHORTFALL: "0",
+      ASSURANCE_ATTESTED_BOOK: "0",
+      ASSURANCE_FLOOR_EVIDENCE: ethers.id("Assurance Pool floor inputs (test)"),
       SAFE_NEW_OWNER: newOwner.address,
       SAFE_THRESHOLD: "2",
       TREASURY_SIGNERS: `${t1.address},${t2.address}`,
@@ -178,13 +206,17 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       ...["vault", "bondbook", "holderdirections", "pledgemodule", "backstop"].flatMap((k) => [`E8-${k}-propose`, `E8-${k}-confirm`, `E8-${k}-approve`]),
       "E8-hold-1", "E8-hold-2", "E8-earn-schedule", "E8x-earn-execute",
       "F2-fee-approve", "G1-tier-1", "G1-tier-2", "safe-owner", "I3-vault-schedule", "I3x-vault-execute",
+      ...ASSURANCE_KEYS.flatMap((k) => [`AS-${k}-approve-1`, `AS-${k}-approve-2`]), "AS-assurance-schedule", "ASx-assurance-execute",
+      "AS-floor-1", "AS-floor-2",
     ]);
     const ready = p.steps.filter((x) => x.status === "ready").map((x) => x.id);
     expect(ready).to.deep.equal([
       "C1d-1", "D4-settings-1", "D4-settings-2", "D4-attester-1", "D4-attester-2",
       "E8-vault-propose", "E8-bondbook-propose", "E8-holderdirections-propose", "E8-pledgemodule-propose", "E8-backstop-propose",
       "E8-hold-1", "E8-hold-2", "G1-tier-1", "G1-tier-2", "I3-vault-schedule",
+      ...ASSURANCE_KEYS.map((k) => `AS-${k}-approve-1`), "AS-floor-1",
     ]);
+    expect(step(p, "AS-floor-2").reason).to.contain("AS-floor-1");
     expect(step(p, "C1d-2").reason).to.contain("C1d-1");
     expect(step(p, "D4-operator").reason).to.contain("CREDIT_OPERATOR_ADDRESS");
     expect(step(p, "D4-operator").data).to.equal(null);
@@ -206,6 +238,24 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(step(p, "D4-settings-2").args[0].note).to.equal("CREDIT_SETTINGS_ROLE");
     expect(step(p, "G1-tier-1").title).to.contain("$100,000.00");
     expect(step(p, "E8-backstop-propose").stage).to.equal("E9");
+    // The Earn timelock's batches are the Clear Lending Safe's; the vault's and Assurance's the Clear Treasury Safe's.
+    expect(step(p, "E8-earn-schedule").signer).to.equal(await lendingSafe.getAddress());
+    expect(step(p, "E8-earn-schedule").signerLabel).to.contain("Clear Lending Safe");
+    expect(step(p, "I3-vault-schedule").signer).to.equal(await safe.getAddress());
+    expect(step(p, "AS-assurance-schedule").signer).to.equal(await safe.getAddress());
+    expect(step(p, "ASx-assurance-execute").signer).to.equal(await safe.getAddress());
+    expect(step(p, "AS-assurance-schedule").kind).to.equal("safe");
+    expect(step(p, "AS-assurance-schedule").to).to.equal(await assuranceTimelock.getAddress());
+    // Account 3 first, then Account 4, on the exact calldata the timelock will send.
+    const payer = step(p, "AS-payer-clfees-approve-1");
+    expect(payer.signer).to.equal(ethers.getAddress(a3));
+    expect(payer.to).to.equal(await assurancePool.getAddress());
+    expect(payer.args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [clFees, 7])));
+    expect(step(p, "AS-payer-clfees-approve-2").signer).to.equal(ethers.getAddress(a4));
+    expect(step(p, "AS-payer-clfees-approve-2").reason).to.contain("AS-payer-clfees-approve-1");
+    expect(step(p, "AS-payer-treasury-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [await safe.getAddress(), 8])));
+    expect(step(p, "AS-exposure-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setExposureSources", [[await collateralRegistry.getAddress()]])));
+    expect(step(p, "AS-assurance-schedule").reason).to.contain("AS-payer-clfees-approve-1");
     for (const x of p.steps) expect(x.chainId).to.equal(31337);
   });
 
@@ -239,6 +289,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
           expect(step(p, "E8x-earn-execute").reason).to.contain("the Earn timelock's 7 days end at");
           expect(step(p, "E8x-earn-execute").reason).to.contain("the Collateral Agent's 7 days");
           expect(step(p, "I3x-vault-execute").reason).to.contain("the vault timelock's 7 days end at");
+          expect(step(p, "ASx-assurance-execute").reason).to.contain("the Assurance timelock's 7 days end at");
           await ethers.provider.send("evm_increaseTime", [7 * DAY + 60]);
           await ethers.provider.send("evm_mine", []);
           advanced = true;
@@ -260,6 +311,9 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(sent.indexOf("E8-vault-confirm")).to.be.greaterThan(sent.indexOf("E8-vault-propose"));
     expect(sent.indexOf("F2-fee-approve")).to.be.greaterThan(sent.indexOf("D4-settings-2"));
     expect(sent.indexOf("E8-earn-schedule")).to.be.greaterThan(sent.indexOf("E8-backstop-approve"));
+    expect(sent.indexOf("AS-payer-clfees-approve-2")).to.be.greaterThan(sent.indexOf("AS-payer-clfees-approve-1"));
+    expect(sent.indexOf("AS-assurance-schedule")).to.be.greaterThan(sent.indexOf("AS-exposure-approve-2"));
+    expect(sent.indexOf("ASx-assurance-execute")).to.be.greaterThan(sent.indexOf("AS-assurance-schedule"));
     expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(["D4-operator"]);
 
     // The chain shows each change made.
@@ -275,6 +329,38 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(await vault.hasRole(ethers.id("RELAYER_ROLE"), s.relayer.address)).to.equal(true);
     expect(await vault.hasRole(ethers.id("OPERATOR_ROLE"), s.relayer.address)).to.equal(false);
     expect(await liquidator.hasRole(await liquidator.HOLD_ROLE(), s.h2.address)).to.equal(true);
+    // The month's floor inputs: two signers, no timelock; the coverage cap is what draws are held to.
+    expect(await assurancePool.coverageCap()).to.equal(10000000000n);
+    expect(await assurancePool.floorEvidenceHash()).to.equal(ethers.id("Assurance Pool floor inputs (test)"));
+    // The Assurance Pool, configured through its own governance.
+    expect(await assurancePool.payerTags(clFees)).to.equal(BigInt(CL_FEES_MASK));
+    expect(CL_FEES_MASK).to.equal(0b0111); // CREDIT_ENHANCEMENT_FEE | RECOVERY | INTERCHANGE
+    expect(await assurancePool.payerTags(await safe.getAddress())).to.equal(BigInt(BOARD_ALLOCATION_MASK));
+    expect(BOARD_ALLOCATION_MASK).to.equal(0b1000); // BOARD_ALLOCATION
+    expect(await assurancePool.drawAddress()).to.equal(ethers.getAddress(clOperating));
+    expect(await assurancePool.lossReserveAddress()).to.equal(ethers.getAddress(clLossReserve));
+    expect(await assurancePool.assuranceDisbursementAddress()).to.equal(ethers.getAddress(disbursement));
+    expect(await assurancePool.exposureSourceList()).to.deep.equal([await collateralRegistry.getAddress()]);
+    // The approvals were spent by the calls they approved.
+    for (const fn of [["setPayer", [clFees, 7]], ["setLendingCoAddresses", [clOperating, clLossReserve]]] as [string, any[]][]) {
+      expect(await assurancePool.approvedAction(ethers.keccak256(assurancePool.interface.encodeFunctionData(fn[0], fn[1])))).to.equal(false);
+    }
+
+    // scripts/check_sepolia_wiring.ts reads the same: every Assurance line passes; an empty input is a FAIL.
+    const keys = ["ASSURANCE_SIGNERS", "ASSURANCE_CL_FEES_PAYER", "COOP_TREASURY", "ASSURANCE_DRAW_ADDRESS", "ASSURANCE_LOSS_RESERVE", "ASSURANCE_DISBURSEMENT"];
+    const before = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    try {
+      for (const k of keys) process.env[k] = env[k];
+      const wiring = await checkSepoliaWiring({ network: "hardhat", log: () => undefined });
+      const lines = wiring.results.filter((r) => r.what.startsWith("AssurancePool"));
+      expect(lines.length).to.equal(9);
+      expect(lines.filter((r) => r.status !== "PASS")).to.deep.equal([]);
+      process.env.ASSURANCE_DISBURSEMENT = "";
+      const empty = await checkSepoliaWiring({ network: "hardhat", log: () => undefined });
+      expect(empty.failures.map((r) => r.what)).to.include("ASSURANCE_DISBURSEMENT is empty (owner to fill): the Assurance Pool's setup cannot be checked");
+    } finally {
+      for (const k of keys) if (before[k] === undefined) delete process.env[k]; else process.env[k] = before[k];
+    }
 
     // The credit operator, once the owner gives its address.
     env.CREDIT_OPERATOR_ADDRESS = s.opKey.address;
@@ -286,6 +372,27 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     // Nothing left for a Safe to sign: no batch is written.
     expect(writeSigningPlan(p, DIR).batches).to.deep.equal([]);
     expect(fs.readdirSync(path.join(DIR, "safe-batches")).filter((f) => f.startsWith("signing-"))).to.deep.equal([]);
+  });
+
+  it("refuses Assurance inputs that are empty, or that the pool would refuse", async function () {
+    const refused = (over: Record<string, string>) => failure(buildSigningPlan({ network: "hardhat", env: { ...env, ...over }, valuationSigners }));
+    // Empty: no silent fallback to another address.
+    expect(await refused({ ASSURANCE_CL_FEES_PAYER: "" })).to.contain("Refusing: ASSURANCE_CL_FEES_PAYER is empty");
+    expect(await refused({ ASSURANCE_DISBURSEMENT: "", ASSURANCE_LOSS_RESERVE: "" })).to.contain("ASSURANCE_LOSS_RESERVE, ASSURANCE_DISBURSEMENT are empty");
+    expect(await refused({ ASSURANCE_SIGNERS: a3 })).to.contain("ASSURANCE_SIGNERS must list");
+    // setPayer: a payer may be neither a signer nor the draw address.
+    expect(await refused({ ASSURANCE_CL_FEES_PAYER: a3 })).to.match(/ASSURANCE_CL_FEES_PAYER 0x[0-9a-fA-F]{40} is one of the pool's signers/);
+    expect(await refused({ ASSURANCE_CL_FEES_PAYER: clOperating })).to.contain("a payer may not be the draw address");
+    expect(await refused({ COOP_TREASURY: clOperating })).to.contain("COOP_TREASURY");
+    // setLendingCoAddresses: neither the draw address nor the loss reserve may be a signer.
+    expect(await refused({ ASSURANCE_DRAW_ADDRESS: a4 })).to.contain("ASSURANCE_DRAW_ADDRESS");
+    expect(await refused({ ASSURANCE_LOSS_RESERVE: a4 })).to.contain("ASSURANCE_LOSS_RESERVE");
+    // The owner's rule: five different addresses. And a payer on a money path (NetworkRegistry).
+    expect(await refused({ ASSURANCE_LOSS_RESERVE: clOperating })).to.contain("must all differ");
+    expect(await refused({ ASSURANCE_CL_FEES_PAYER: await term.getAddress() })).to.contain("AssurancePoolMoneyPath");
+    // A signer list that is not the pool's.
+    expect(await refused({ ASSURANCE_SIGNERS: `${a3},${random()}` })).to.contain("not one of the AssurancePool's signers");
+    expect(await refused({ ASSURANCE_EXPOSURE_SOURCES: random() })).to.contain("has no code");
   });
 
   it("follows the inputs: a new signer in a slot becomes the step's signer", async function () {

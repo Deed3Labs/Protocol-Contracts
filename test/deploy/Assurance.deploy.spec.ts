@@ -30,9 +30,10 @@ describe("Assurance deployment", function () {
 
     // The governed calls, proposed by the board, approved by two signers, 7 days later.
     const calls = governedCalls(pool, {
-      lendingCoOperating: lendingCo.address, lendingCoDraw: drawer.address, lendingCoLossReserve: lossReserve.address,
-      coopTreasury: treasury.address, disbursement: disbursement.address,
+      clFeesPayer: lendingCo.address, draw: drawer.address, lossReserve: lossReserve.address,
+      coopTreasury: treasury.address, disbursement: disbursement.address, exposureSources: [await registry.getAddress()],
     });
+    expect(calls.map((c) => c.fn)).to.deep.equal(["setPayer", "setPayer", "setLendingCoAddresses", "setAssuranceDisbursementAddress", "setExposureSources"]);
     const target = await pool.getAddress();
     for (const [i, c] of calls.entries()) {
       await pool.connect(a).approveAction(c.action);
@@ -44,8 +45,10 @@ describe("Assurance deployment", function () {
     for (const [i, c] of calls.entries()) {
       await timelock.connect(board).execute(target, 0, c.data, ethers.ZeroHash, ethers.toBeHex(i + 1, 32));
     }
-    expect(await pool.payerTags(lendingCo.address)).to.equal(3n);
-    expect(await pool.payerTags(treasury.address)).to.equal(12n);
+    // Owner decision (Nov 16, 2026): Clear Lending's fees wallet pays the fee, recoveries and interchange; the treasury board allocations.
+    expect(await pool.payerTags(lendingCo.address)).to.equal(7n);
+    expect(await pool.payerTags(treasury.address)).to.equal(8n);
+    expect(await pool.exposureSourceList()).to.deep.equal([await registry.getAddress()]);
     expect(await pool.drawAddress()).to.equal(drawer.address);
     expect(await pool.lossReserveAddress()).to.equal(lossReserve.address);
     expect(await pool.assuranceDisbursementAddress()).to.equal(disbursement.address);
