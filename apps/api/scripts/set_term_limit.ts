@@ -62,7 +62,7 @@ async function main() {
   const chainId = Number(
     (process.env.SAVINGS_DEFAULT_CHAIN_ID || process.env.SEND_DEFAULT_CHAIN_ID || '').trim() || 84532,
   );
-  const address = process.env.TERM_ISSUER_84532 || '0xe467d87756FDF9645D751485CDB72A1E14683721';
+  const address = process.env.TERM_ISSUER_84532 || '0x1b1695353f14E889906237D9b9C386eD0393da57';
   if (chainId !== 84532 && !process.env.TERM_ISSUER_84532) {
     throw new Error(`Set TERM_ISSUER_${chainId} — the built-in address is Base Sepolia's`);
   }

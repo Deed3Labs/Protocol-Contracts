@@ -36,7 +36,7 @@ mock.module('../../config/postgres.js', () => ({
   getPayPool: () => null,
 }));
 mock.module('../../config/contracts.js', () => ({
-  getContractAddress: (_chain: number, name: string) => (name === 'RevolvingIssuer' ? '0x7f15E45aB5eAF0307200274211a90FcbD6716070' : ''),
+  getContractAddress: (_chain: number, name: string) => (name === 'RevolvingIssuer' ? '0xBec598bee24cF2973d42eA85e6028621180fE2F0' : ''),
 }));
 mock.module('./provider.js', () => ({
   chainProvider: () => ({ _isProvider: true }),

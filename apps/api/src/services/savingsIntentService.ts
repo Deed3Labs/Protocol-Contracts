@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { ethers } from 'ethers';
+import { getContractAddress } from '../config/contracts.js';
 
 export type SavingsIntentAction = 'deposit' | 'redeem';
 
@@ -123,14 +124,18 @@ class SavingsIntentService {
     const factoryAddress =
       process.env[`SAVINGS_INTENT_FACTORY_${resolvedChainId}` as keyof NodeJS.ProcessEnv]?.trim() ||
       process.env.SAVINGS_INTENT_FACTORY?.trim() ||
+      // The deployment record's (config/contracts.ts): Phase 2d's factory, not SavingsIntentFactoryPre2d.
+      getContractAddress(resolvedChainId, 'SavingsIntentFactory') ||
       '';
     const vaultAddress =
       process.env[`SAVINGS_ESA_VAULT_${resolvedChainId}` as keyof NodeJS.ProcessEnv]?.trim() ||
       process.env[`VITE_ESA_VAULT_${resolvedChainId}` as keyof NodeJS.ProcessEnv]?.trim() ||
+      getContractAddress(resolvedChainId, 'ESADepositVault') ||
       '';
     const clrusdAddress =
       process.env[`SAVINGS_CLRUSD_${resolvedChainId}` as keyof NodeJS.ProcessEnv]?.trim() ||
       process.env[`VITE_CLRUSD_${resolvedChainId}` as keyof NodeJS.ProcessEnv]?.trim() ||
+      getContractAddress(resolvedChainId, 'CLRUSD') ||
       '';
     const usdcAddress =
       process.env[`SAVINGS_USDC_${resolvedChainId}` as keyof NodeJS.ProcessEnv]?.trim() ||

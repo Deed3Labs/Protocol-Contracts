@@ -23,7 +23,7 @@ let serviceDown = false;
 const tx = (nonce: number, confirmations: string[], executed = false): SafeTx => ({
   safeTxHash: '0x' + String(nonce).padStart(64, '0'),
   nonce,
-  to: '0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5',
+  to: '0x8f4C6f9472359BF749c12C840c4269341a423c1b',
   value: '0',
   data: '0x',
   method: 'setCap',

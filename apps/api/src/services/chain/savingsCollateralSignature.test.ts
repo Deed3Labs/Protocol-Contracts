@@ -44,7 +44,7 @@ describe('the registry’s signed pledges, as the API calls them', () => {
 
   test('a member’s signature over the typed data recovers against the digest the registry builds', async () => {
     const member = ethers.Wallet.createRandom();
-    const registry = '0x62fBdf62Ad0C3f52d898b28b2d1FB31e9EB152Cf';
+    const registry = '0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A';
     const td = pledgeTypedData({ chainId: 84532, registry, member: member.address, kind: SAVINGS_KIND, amount: 5_000_000n, nonce: 4n, deadline: 2_000_000_000 });
     const signature = await member.signTypedData(td.domain, { Pledge: [...COLLATERAL_SIGNED_TYPES.Pledge] }, td.message);
 
