@@ -15,8 +15,7 @@ The Lithic side (the money model, provisioning, deposits, the savings sweep) is 
 | `RevolvingIssuer` | Draws the member's tiers when the purchase settles, and clears them on a refund or a repayment |
 | `StableCredit` (`ClearCredit`) | The ledger. Records the member's obligation and the matching claim |
 | `cardSettlementAccount` | The operator-set address that holds the claim for every settled card purchase |
-| Card-funding wallet | The card-settler key's own address. Borrows from and repays the `LendingPool` |
-| `LendingPool` | Funds the pool-funded tiers (`POOL_FUNDED_TIER_KINDS`, by default `INCOME,BOOST`) |
+| Card-funding wallet | The card-settler key's own address. Sends the settlement calls; funded by Clear Lending, never by the pool |
 
 ```mermaid
 sequenceDiagram
@@ -25,8 +24,6 @@ sequenceDiagram
     participant A as Clear API
     participant R as RevolvingIssuer
     participant S as StableCredit
-    participant W as Card-funding wallet
-    participant P as LendingPool
 
     M->>L: Swipes the card
     L->>A: ASA request
@@ -38,14 +35,10 @@ sequenceDiagram
     A->>R: settleCardSpend(ref, member, credit part)
     R->>R: Draw tiers cheapest first, emit TierDrawn
     R->>S: originatePurchase to cardSettlementAccount
-    A->>W: Sweep reads TierDrawn on a pool-funded tier
-    W->>P: borrow(amount, card-funding wallet)
     M->>L: Fiat deposit to the cash account
     L->>A: payment_transaction settled
     A->>R: repayCardSpend(ref, member, amount)
     R->>S: reversePurchase burns the account's claim
-    A->>W: Sweep reads TierRepaid on a pool-funded tier
-    W->>P: repay(amount, carry included)
     L->>A: card_transaction with a lower amount
     A->>R: reverseCardSpend(ref, difference)
 ```
@@ -121,9 +114,8 @@ payment call for it. What the code records:
   comparing that figure with itself
   ([`reconcileService.ts`](../../apps/api/src/services/reconciliation/reconcileService.ts),
   [Reconciliation](../developers/integrations/lithic.md#3-reconciliation)).
-- **For pool-funded tiers**, USDC borrowed from the `LendingPool` lands in the card-funding wallet
-  ([section 4](#4-borrowing-from-the-lendingpool)). Moving it into the fiat float is a periodic
-  off-ramp outside the API, not one per purchase.
+- **Clear Lending funds the credit part.** Nothing is borrowed from the `LendingPool` per purchase
+  ([section 4](#4-borrowing-from-the-lendingpool)).
 
 ## 3. Settlement on chain
 
@@ -173,33 +165,12 @@ part as a pending hold. The function reference is in
 
 ## 4. Borrowing from the LendingPool
 
-> **Phase 2f (decision 17):** the `LendingPool` is now the Yield Pool and lends only to Clear
-> Lending, as recorded two-person Deployments. Its `borrow` reverts, so the card-funding wallet no
-> longer draws from it; Clear Lending funds card settlement from what it deploys. This section
-> describes the pre-2f flow until the API follows (held PRs #887, #890). See
-> [Settlement → LendingPool](./settlement.md#lendingpool).
-
-Credit on a pool-funded tier is funded by the `LendingPool`'s depositors. The borrowing is driven
-by the API, not by a contract ([`poolFunding.ts`](../../apps/api/src/services/chain/poolFunding.ts)).
-
-1. **Read the receipt.** After every transaction the card-settler key sends (settlement, reversal,
-   repayment netting, re-issue after a dispute) and every member repayment it records, the API reads
-   the `RevolvingIssuer`'s `TierDrawn` and `TierRepaid` events from the receipt.
-2. **Keep the pool-funded ones.** It looks up each tier's kind with `tierAt` and keeps those listed
-   in `POOL_FUNDED_TIER_KINDS` (default `INCOME,BOOST`). Savings-backed and asset-backed credit is
-   not funded from the pool.
-3. **One row per event** in `pool_funding_movements`, keyed by transaction hash and log index, so a
-   receipt read twice is recorded once. `TierDrawn` is a borrow; `TierRepaid` is a repayment.
-4. **Settle the rows.** The last step of each sweep calls `LendingPool.borrow(amount, to)` with the
-   card-funding wallet as `to`. `totalBorrowed` rises by the amount.
-
-A borrow waits, with the reason stored, while the pool's `availableCash()` is below the amount. A row
-that fails five times becomes `needs_review`. Since Phase 2f this step cannot succeed: only Clear
-Lending draws from the pool, as a recorded Deployment, `borrow` reverts, and deploy 27 revokes the
-card settler's old `BORROWER_ROLE` (decision 17). The held app PRs move card funding to what Clear
-Lending draws.
-Without a `LendingPool` address the step does nothing. The pool itself is described in
-[LendingPool](./settlement.md#lendingpool).
+Nothing borrows from it. Since Phase 2f (decision 17) the `LendingPool` is the Yield Pool and lends
+only to Clear Lending, as recorded two-person Deployments. `borrow` reverts and `borrowableToday` is
+zero, and deploy 27 revoked the card settler's old `BORROWER_ROLE`. Clear Lending funds card
+settlement from what it deploys, and its treasury pays the pool back as Returns (`returnFunds`).
+The API sends no pool transaction for a card purchase or a repayment. The pool itself is described
+in [LendingPool](./settlement.md#lendingpool).
 
 ## 5. Repayment and carry
 
@@ -237,12 +208,9 @@ at least that much on the ledger.
 sends the money next is in [Repayment comes back](./settlement.md#repayment-comes-back) and the
 ledger's routing in [Repayment](./credit.md#repayment).
 
-**Pool-funded tiers are repaid to the pool.** Every one of these routes emits `TierRepaid`. On a
-pool-funded tier, the sweep calls `LendingPool.repay(amount)` from the card-funding wallet. Carry is
-materialised into the tier's principal before any payment is placed, so the amount repaid includes
-the carry that accrued on it. A repayment waits while the card-funding wallet holds too little USDC,
-and the row says to top it up from treasury. How `repay` treats the carry part is in
-[Card settlement](./settlement.md#card-settlement).
+**Nothing is repaid to the pool.** These routes emit `TierRepaid`, and no tier is funded by the
+`LendingPool` any more ([section 4](#4-borrowing-from-the-lendingpool)), so the API sends no pool
+transaction after a repayment.
 
 ## 6. Reversals and refunds
 
@@ -272,8 +240,8 @@ event itself and again in the sweep:
 
 - **Credit part lower** (a refund on the same transaction): `reverseCardSpend(ref, difference)`. It
   reverts above what the ref has left, materialises carry, clears the tiers dearest first, and takes
-  the claim back from `cardSettlementAccount` with `reversePurchase`. Its `TierRepaid` events repay
-  the pool for pool-funded tiers ([section 4](#4-borrowing-from-the-lendingpool)).
+  the claim back from `cardSettlementAccount` with `reversePurchase`. Nothing is repaid to the
+  pool ([section 4](#4-borrowing-from-the-lendingpool)).
 - **Credit part higher**: the contract settles a ref once, so the purchase is marked
   `needs_review` with the difference in the error.
 
@@ -303,5 +271,4 @@ the member wins, it is marked `waived` and never issued.
   `cardSettlementAccount` is a different address, so carry on card debt stays on chain until it is
   repaid in USDC.
 - **No script sets a per-tier carry recipient.** Nothing calls `setTierCarryRecipient`, so carry on
-  the pool-funded `INCOME` and `BOOST` tiers is minted to the PayoutPool. The card-funding wallet's
-  `LendingPool.repay` for those tiers also includes that carry.
+  the `INCOME` and `BOOST` tiers is minted to the PayoutPool.

@@ -52,7 +52,8 @@ describe('Phase 2’s errors decode, and match the Solidity', () => {
     TermIssuerResplitNeedsSignature: 'TermIssuerBase.sol',
     RevolvingIssuerStateNotEnabled: 'RevolvingIssuerBase.sol',
     ClearUSDPaused: 'ClearUSDUpgradeable.sol',
-    ESADepositVaultPilotCapReached: 'ESADepositVault.sol',
+    ESADepositVaultCaMintsPaused: 'ESADepositVault.sol',
+    ESADepositVaultStateNotAttested: 'ESADepositVault.sol',
     // Phase 2b (section 12)
     RevolvingIssuerUnsecuredCap: 'RevolvingIssuerBase.sol',
     RevolvingIssuerBoostCap: 'RevolvingIssuerBase.sol',
@@ -87,7 +88,8 @@ describe('Phase 2’s errors decode, and match the Solidity', () => {
       TermIssuerResplitNeedsSignature: [3n],
       RevolvingIssuerStateNotEnabled: [SHOP, ethers.ZeroHash],
       ClearUSDPaused: [SHOP, 1, 1_900_000_000n],
-      ESADepositVaultPilotCapReached: [1n, 2n, 3n],
+      ESADepositVaultCaMintsPaused: [1n],
+      ESADepositVaultStateNotAttested: [SHOP],
       RevolvingIssuerUnsecuredCap: [3_000_000_000n, 2_499_000_000n],
       RevolvingIssuerBoostCap: [600_000_000n, 500_000_000n],
       RevolvingIssuerAutoClearOff: [],
@@ -127,7 +129,7 @@ describe('Phase 2b: the Liquidator’s errors decode, and match the Solidity (en
   test('every Liquidator error in the contract has its fragment, argument for argument', () => {
     let solidity: string;
     try {
-      solidity = readFileSync(new URL('../../../../../contracts/peripherals/Liquidator.sol', import.meta.url), 'utf8');
+      solidity = readFileSync(new URL('../../../../../contracts/peripherals/LiquidatorBase.sol', import.meta.url), 'utf8');
     } catch {
       return;
     }

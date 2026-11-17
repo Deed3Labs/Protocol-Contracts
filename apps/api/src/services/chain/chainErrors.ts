@@ -14,7 +14,7 @@ import { ethers } from 'ethers';
  * Phase 2 (compliance) adds the term-pricing errors (`TermIssuerProductNotEnabled`,
  * `TermIssuerTermsMismatch`, `TermIssuerTermTooShort`, `TermIssuerResplitNeedsSignature`), the
  * revolving state gate (`RevolvingIssuerStateNotEnabled`), CLRUSD's lapsing pauses (`ClearUSDPaused`)
- * and the vault's pilot cap (`ESADepositVaultPilotCapReached`). `describeCreditRefusal` gives each a
+ * and the vault's CA mint pause (`ESADepositVaultCaMintsPaused`, Phase 2d). `describeCreditRefusal` gives each a
  * sentence a member can read.
  *
  * Fragments only, copied from the contracts' error declarations. Nothing here imports Solidity.
@@ -87,12 +87,13 @@ export const CHAIN_ERROR_FRAGMENTS = [
   // ClearUSD (CLRUSD), Phase 2: FRAUD_ROLE pauses one account, SECURITY_ROLE everyone; each lapses
   'error ClearUSDPaused(address holder, uint32 reason, uint64 until)',
   'error ClearUSDEncumbered(address holder, uint256 free, uint256 amount)',
-  // Liquidator, Phase 2b (12.5, 12.6, 12.8). `HoldReason` is an enum, so uint8 in the selector.
+  // Liquidator (LiquidatorBase.sol), as Phase 2f left it. `HoldReason` is an enum, so uint8 in the selector.
   'error LiquidatorReentered()',
+  'error LiquidatorPauseClockSet()',
+  'error LiquidatorPauseInForce(address member)',
   'error LiquidatorInvalidAddress()',
   'error LiquidatorNotInDefault(address member, address issuer)',
   'error LiquidatorNothingToSeize(address member)',
-  'error LiquidatorNotRealizable(address collateral, uint256 seized)',
   'error LiquidatorUntrustedIssuer(address issuer)',
   'error LiquidatorNotSavingsTier(uint256 tierId, bytes32 kind)',
   'error LiquidatorOnHold(address member, uint8 reason, uint64 until)',
@@ -100,32 +101,39 @@ export const CHAIN_ERROR_FRAGMENTS = [
   'error LiquidatorNoHold(address member)',
   'error LiquidatorSameSigner(address signer)',
   'error LiquidatorBadParameter()',
-  'error LiquidatorNoExcess(address member)',
   'error LiquidatorNoShortfall(address member)',
   'error LiquidatorShortfallNoticed(address member)',
-  'error LiquidatorShortfallNotDue(address member, uint256 dueAt)',
-  'error LiquidatorBelowPresentValue(uint256 bondId, uint256 received, uint256 presentValue)',
+  'error LiquidatorNotEarnBonds(address caller)',
+  'error LiquidatorNotPoolShareEnforcer(address caller)',
+  'error LiquidatorNotCollateralAgent(address caller)',
   // PayoutPool
   'error PayoutPoolNotEligible(address holder)',
   'error PayoutPoolMerchantInactive(address merchant)',
   'error PayoutPoolNothingToRedeem(address merchant)',
-  // LendingPool
-  'error LendingPoolDestinationNotAllowed(address borrower, address to)',
-  'error LendingPoolDailyCapExceeded(address borrower, uint256 remaining, uint256 requested)',
+  // LendingPool (the Yield Pool): nothing borrows from it since Phase 2f (decision 17)
+  'error LendingPoolDirectBorrowOff()',
   'error LendingPoolInsufficientCash(uint256 available, uint256 requested)',
   // ESADepositVault
   'error ESADepositVaultReceiverNotAuthorized()',
   'error ESADepositVaultBadSignature()',
   'error ESADepositVaultTokenNotAccepted()',
   'error ESADepositVaultInsufficientLiquidity()',
-  // Phase 2: the rolling 365-day CA pilot cap on mints (redeems are never blocked)
-  'error ESADepositVaultPilotCapReached(uint256 volume, uint256 amount, uint256 cap)',
+  // Phase 2d replaced the CA pilot cap with a two-person CA mint pause and an off switch, and Phase 4
+  // (L-E) refuses a mint to a receiver with no attested state. Redeems are never blocked.
+  'error ESADepositVaultCaMintsPaused(uint32 reason)',
+  'error ESADepositVaultStateNotAttested(address receiver)',
+  'error ESADepositVaultPilotOff()',
   // ClaimEscrow
   'error ClaimEscrowSignatureRequired()',
   'error ClaimEscrowBadClaimSignature()',
   'error ClaimEscrowExpired(uint64 expiry)',
   'error ClaimEscrowTermsNotAuthorized()',
   'error ClaimEscrowInvalidClaimSigner()',
+  // CollateralRegistry (Phase 4b, L-I): pledges take the member's signature
+  'error CollateralRegistryUnknownType(bytes32 kind)',
+  'error CollateralRegistrySignatureExpired(uint256 deadline)',
+  'error CollateralRegistryBadSignature(address member)',
+  'error CollateralRegistryEncumbered(address member, bytes32 kind, uint256 free, uint256 amount)',
 ] as const;
 
 export const CHAIN_ERRORS = new ethers.Interface(CHAIN_ERROR_FRAGMENTS as unknown as string[]);
@@ -300,8 +308,10 @@ export function describeCreditRefusal(decoded: DecodedChainError | null): string
       return `Clear savings are paused for a security review ${until(decoded.args.until)}. Nothing moved. Contact support if this is unexpected.`;
     case 'ClearUSDEncumbered':
       return 'Part of your savings backs credit you have drawn, so it can’t move until that is repaid. Nothing moved.';
-    case 'ESADepositVaultPilotCapReached':
-      return 'Clear has reached this year’s limit for new savings in your state during the pilot. Nothing was taken. Withdrawals are not affected.';
+    case 'ESADepositVaultCaMintsPaused':
+      return 'New Clear savings are paused in your state for now. Nothing was taken. Withdrawals are not affected.';
+    case 'ESADepositVaultStateNotAttested':
+      return 'Clear needs to confirm your state before it can add to your savings. Nothing was taken.';
     // Phase 2b (section 12)
     case 'RevolvingIssuerUnsecuredCap':
       return `Income-backed credit and Boost together can’t go above ${usd(units(decoded.args.cap))}. Nothing changed.`;
@@ -330,6 +340,19 @@ const HOLD_REASON_WORDS = ['none', 'bankruptcy', 'death', 'a billing dispute', '
  * The Liquidator's refusals (Phase 2b), in words an operator can act on. Null when the error is not
  * the Liquidator's.
  */
+export function describePledgeRefusal(decoded: DecodedChainError | null): string | null {
+  switch (decoded?.name) {
+    case 'CollateralRegistrySignatureExpired':
+      return 'Your signature timed out before it reached the network. Nothing was pledged. Try again to sign it afresh.';
+    case 'CollateralRegistryBadSignature':
+      return 'That signature is not your wallet’s for this pledge, or another pledge used it first. Nothing was pledged. Try again.';
+    case 'CollateralRegistryUnknownType':
+      return 'This kind of collateral cannot back a line on this network yet. Nothing was pledged.';
+    default:
+      return null;
+  }
+}
+
 export function describeLiquidatorRefusal(decoded: DecodedChainError | null): string | null {
   switch (decoded?.name) {
     case 'LiquidatorOnHold':
@@ -342,20 +365,16 @@ export function describeLiquidatorRefusal(decoded: DecodedChainError | null): st
       return 'There is no hold in that state to act on: it was never proposed, is already confirmed, or has lapsed.';
     case 'LiquidatorBadParameter':
       return 'The hold’s reason, length or evidence is not allowed: the length must be within the reason’s maximum, and a lapsed hold needs new evidence.';
-    case 'LiquidatorNoExcess':
-      return 'Nothing is drawn above the halved limit any more. Nothing was taken.';
     case 'LiquidatorNoShortfall':
       return 'The member’s Earn pledge backs what is drawn against it. No shortfall to notice.';
     case 'LiquidatorShortfallNoticed':
       return 'A shortfall notice is already open for this member.';
-    case 'LiquidatorShortfallNotDue':
-      return `The shortfall can be settled once its wait has passed, ${until(decoded.args.dueAt)}.`;
     case 'LiquidatorUntrustedIssuer':
       return 'The Liquidator does not trust this issuer (setTrustedSavingsIssuer).';
     case 'LiquidatorNothingToSeize':
       return 'The member has no pledged pool shares or bonds to settle it from. Savings are never used for this.';
-    case 'LiquidatorBelowPresentValue':
-      return 'A bond would have redeemed below its present value, so it was not taken.';
+    case 'LiquidatorPauseInForce':
+      return 'A pause is in force for this member, so enforcement waits until it ends. Nothing was taken.';
     case 'LiquidatorReentered':
       return 'The Liquidator refused a re-entrant call. Nothing was taken.';
     default:

@@ -191,7 +191,7 @@ describe('the sweeps read as nobody and write as the settler', () => {
   test('every background pass that reads through the settler uses it', () => {
     // Settlement, repayment netting, dispute steps, and the on-chain authorization after an approval (audit M-2).
     expect(read('./cardSettlementService.ts').match(/issuerFor\(writesAs\(signer\)\)/g)?.length).toBe(4);
-    for (const f of ['./poolFunding.ts', './termCollection.ts', './autoRepayService.ts', './termLifecycle.ts']) {
+    for (const f of ['./termCollection.ts', './autoRepayService.ts', './termLifecycle.ts']) {
       expect(read(f)).toContain('writesAs(');
     }
   });
