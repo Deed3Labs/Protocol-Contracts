@@ -52,9 +52,9 @@ describe("the Base Sepolia fork rehearsal's fixes", function () {
       for (const k of ["CLEAR_FINANCIAL_SAFE", "OPS_SAFE", "COOP_TREASURY", "BOARD_SAFE", "CARRY_TREASURY", "FEE_RECIPIENT", "CARD_SETTLEMENT_ACCOUNT", "COLLATERAL_ACCOUNT", "AGENT_COST_ADDRESS", "EXCESS_DESTINATION", "SAFE_ADDRESS"]) {
         expect(env[k], k).to.equal("0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50");
       }
-      // The two CDP wallets: placeholders, empty until the owner names them.
-      expect(env.ASSURANCE_CL_FEES_PAYER).to.equal("");
-      expect(env.ASSURANCE_DISBURSEMENT).to.equal("");
+      // The two CDP wallets the owner created on Nov 17, 2026 (cl-fees-base-sepolia, assurance-disbursement-base-sepolia).
+      expect(env.ASSURANCE_CL_FEES_PAYER).to.equal("0xB9ed7ea800c3a32a8F2cf7d2aB50AE2d4831cDFd");
+      expect(env.ASSURANCE_DISBURSEMENT).to.equal("0x510cDFa8e647C3f1fe0c431fe903fA60aA4F926B");
       expect(env.FIRST_BOND_ID).to.equal("1000");
       expect(Object.keys(env).filter((k) => /PRIVATE_KEY|MNEMONIC|SECRET/.test(k))).to.deep.equal([]); // addresses only, never a key
       expect(standIn("Agent Key")).to.equal(standIn("Agent Key"));
