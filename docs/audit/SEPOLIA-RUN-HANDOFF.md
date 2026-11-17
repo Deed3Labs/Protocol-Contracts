@@ -299,7 +299,7 @@ It checks the Clear Lending Safe (`CLEAR_LENDING_SAFE`) needs two signatures, an
    npx hardhat run scripts/check_retired_credit.ts --network $N
    ```
 
-   Expected: only the backstop FAIL and the timelock proposals still waiting. Report the output to the owner.
+   Expected on Base Sepolia (decision 52): **exit 0**. The backstop to the retired PayoutPool shows as a WARN that names the Earn timelock operation clearing it and when it may run; the WARNs for test money (decision 50) stay. First re-run `npx hardhat run scripts/signing_plan.ts --network $N`, since the gate reads the Earn batch from the plan file. Any FAIL: stop and report. Report the output to the owner: an exit 0 is the day-0 go-live signal (Railway Phase 2, then the app address update and the held app PRs).
 2. Commit what the run wrote, records only and no keys, on `claude/new-session-e5u3cp`, then push:
    - `deployments/base-sepolia/` (not the git-ignored plan files);
    - `.openzeppelin/base-sepolia.json`;
