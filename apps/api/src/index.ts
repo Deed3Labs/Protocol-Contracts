@@ -94,6 +94,7 @@ import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
 import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
 import { startPayoutFundingKeeper } from './jobs/payoutFundingKeeper.js';
+import { startPayoutTopUp } from './jobs/payoutTopUp.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 import stepUpRouter from './routes/stepUp.js';
@@ -464,6 +465,7 @@ async function startServer() {
     // Merchant payouts are funded ahead of time by hand (decision 17). This says when they are not:
     // read-only, hourly, off unless PAYOUT_KEEPER_ENABLED=1.
     startPayoutFundingKeeper();
+    startPayoutTopUp();
 
     // The merchant back office's tables. Awaited so the merchant endpoints never see a half-built
     // schema, but a failure doesn't take the member API down with it: nothing member-facing reads
