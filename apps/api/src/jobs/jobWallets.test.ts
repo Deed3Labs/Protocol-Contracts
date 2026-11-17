@@ -24,6 +24,12 @@ describe('the job wallets printed at startup', () => {
     expect(jobWalletLines({ SEND_RELAYER_PRIVATE_KEY: bad }).join('\n')).not.toContain('still-secret');
   });
 
+  test('says when an unset key is expected (registrar fallback, CDP relayers)', () => {
+    const lines = jobWalletLines({}).join('\n');
+    expect(lines).toContain('[wallets] savings relayer: not set (needed only in local-key mode; a CDP relayer has no key here) (SAVINGS_RELAYER_PRIVATE_KEY)');
+    expect(lines).toContain('[wallets] membership registrar: not set (the credit operator registers members instead)');
+  });
+
   test('flags one wallet doing several jobs', () => {
     const lines = jobWalletLines({ CREDIT_OPERATOR_PRIVATE_KEY: a.privateKey, MEMBERSHIP_REGISTRAR_PRIVATE_KEY: a.privateKey });
     expect(lines.at(-1)).toBe(`[wallets] one wallet does several jobs: ${a.address} (credit operator, membership registrar)`);
