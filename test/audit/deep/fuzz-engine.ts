@@ -56,7 +56,7 @@ export async function runFuzz(cfg: FuzzConfig, env?: any) {
 
   if (!env) {
     for (const m of members) {
-      await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 3650 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 0);
       await term.connect(ctx.operator).setTermLimit(m.address, 2_000n * ONE_USDC);
     }
     if (cfg.treasuryAllowance) await ctx.usdc.connect(coop).approve(poolAddr, cfg.treasuryAllowance);

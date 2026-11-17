@@ -1,69 +1,48 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { deployBondFactory, deployBondStack, bondAt, BOND_LEGEND, U, DAY } from "../helpers/bonds";
 
-const ONE_USDC = 10n ** 6n;
-const DAY = 24 * 60 * 60;
-const MONTH = 30 * DAY;
-
-// Coverage written before the factory is converted to clones, deliberately: it is asserted
-// against the behaviour, not the deployment mechanism, so the same tests should pass unchanged
-// once BurnerBond becomes initializer-based and the factory stops carrying a copy of it.
+/*
+ * The BurnerBond collection (Phase 2f: the new collection).
+ *
+ * Changed in Phase 2f and why (decision 8, C7; R4; Earn §§1, 4, 4A):
+ *  - "pricing", "the discount curve", "the factory's bounds": removed. A bond is priced by a quote at
+ *    the Ladder's Issue Yield with compounding Accreted Value (Accretion), not the discount curve.
+ *  - "buying a bond": by a quote the payer signs, straight into the vault (BurnerBondDeposit's
+ *    makeDeposit path is retired for the new collection). Bounds are EarnControls' ($250 minimum,
+ *    Ladder terms of 12-36 months, decision 41); test/earn/Bonds.spec.ts covers them.
+ *  - "redeeming" and "batch redemption": Holder redemption is gone; `settle` is permissionless.
+ *  - "auto-roll": replaced by roll by confirmation (Earn §4A), tested in test/earn/Bonds.spec.ts.
+ *  - "pays whoever holds it, since the bond is transferable": a bond moves only within Earn §1's
+ *    allowlist now.
+ */
 describe("BurnerBond", function () {
+  // The chain's clock is shared by every spec in a run, and these tests travel years (12- to
+  // 36-month terms, rolls). Each test runs in a snapshot that is reverted afterwards, so it leaves the
+  // clock where it found it and later specs stay inside the BondVault's maturity buckets (to 2109).
+  let clockSnapshot: string;
+  beforeEach(async function () {
+    clockSnapshot = await ethers.provider.send("evm_snapshot", []);
+  });
+  afterEach(async function () {
+    await ethers.provider.send("evm_revert", [clockSnapshot]);
+  });
+
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
-  let factory: any, deposit: any, bond: any, vault: any;
-  let buyer: any, other: any;
+  let s: Awaited<ReturnType<typeof deployBondStack>>;
+  let factory: any, bond: any, vault: any;
+  let buyer: any, other: any, keeper: any;
 
   beforeEach(async function () {
     ctx = await deployPhase0Network();
     const signers = await ethers.getSigners();
-    [buyer, other] = [signers[8], signers[9]];
-
-    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
-    factory = await BurnerBondFactory.deploy(
-      await ctx.tokenRegistry.getAddress(),
-      "ipfs://bonds"
-    );
-
-    deposit = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-    // The factory reads the TokenRegistry's whitelist (section 13 retired the AssuranceOracle,
-    // which whitelisted USDT by default). USDC is registered by the fixture; USDT is here.
+    [buyer, other, keeper] = [signers[8], signers[9], signers[10]];
+    // USDT is whitelisted for the "own storage" test (the fixture registers USDC).
     await ctx.tokenRegistry.registerToken(await ctx.usdt.getAddress(), 31337, await ctx.usdt.getAddress(), 0);
-
-    await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
-    const info = await factory.getCollectionInfo(await ctx.usdc.getAddress());
-    bond = await ethers.getContractAt("BurnerBond", info.collectionAddress);
-
-    const BondVault = await ethers.getContractFactory("BondVault");
-    vault = await upgrades.deployProxy(
-      BondVault,
-      [ctx.admin.address, await ctx.usdc.getAddress(), 3 * MONTH],
-      { kind: "uups" }
-    );
-    await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
-    await vault.grantRole(await vault.BOND_ROLE(), await bond.getAddress());
-    await deposit.setBondVault(await vault.getAddress());
-    await bond.setBondVault(await vault.getAddress());
-
-    await ctx.usdc.mint(buyer.address, 1_000_000n * ONE_USDC);
-    await ctx.usdc.connect(buyer).approve(await deposit.getAddress(), 1_000_000n * ONE_USDC);
+    s = await deployBondStack(ctx.admin, ctx.usdc, ctx.tokenRegistry, { rungs: [[365, 475], [730, 500]] });
+    ({ factory, bond, vault } = s);
   });
-
-  async function now() {
-    return BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
-  }
-
-  /// Buys a bond at the maximum discount the curve allows for that maturity.
-  async function buyBond(face: bigint, maturity: bigint) {
-    const discount = await bond.calculateDiscount(maturity);
-    return deposit
-      .connect(buyer)
-      .makeDeposit(await ctx.usdc.getAddress(), face, maturity, discount);
-  }
-
-  async function costOf(face: bigint, maturity: bigint) {
-    return deposit.calculateRequiredDeposit(await ctx.usdc.getAddress(), face, maturity);
-  }
 
   async function advance(seconds: number) {
     await ethers.provider.send("evm_increaseTime", [seconds]);
@@ -71,686 +50,160 @@ describe("BurnerBond", function () {
   }
 
   describe("the collection", function () {
-    it("is created against a whitelisted token", async function () {
+    it("is created against a whitelisted token and carries the IV-01 §4.12 legend", async function () {
       expect(await bond.collectionName()).to.equal("USD Coin BurnerBonds");
       expect(await bond.collectionSymbol()).to.equal("USDC-BB");
       expect(await bond.underlyingToken()).to.equal(await ctx.usdc.getAddress());
+      expect(await bond.legendHash()).to.equal(ethers.id(BOND_LEGEND));
+      expect(await bond.contractURI()).to.contain(await bond.legendURI());
+      expect(await bond.cent()).to.equal(10_000n);
     });
 
-    it("refuses a token the oracle does not whitelist", async function () {
-      const MockERC20 = await ethers.getContractFactory("MockERC20");
-      const stranger = await MockERC20.deploy("Stranger", "STR", 18);
-      await expect(
-        factory.createCollection(await stranger.getAddress(), "STR", "Stranger", "ipfs://bonds")
-      ).to.be.revertedWith("Token not whitelisted");
+    it("refuses a token the registry does not whitelist", async function () {
+      const stranger = await (await ethers.getContractFactory("MockERC20")).deploy("Stranger", "STR", 18);
+      await expect(factory.createCollection(await stranger.getAddress(), "STR", "Stranger", "ipfs://bonds"))
+        .to.be.revertedWith("Token not whitelisted");
     });
 
-    it("sells only in the token its vault holds and pays out", async function () {
-      // The vault holds USDC, and proceeds in anything else would sit there uncounted, so this is
-      // refused before any collection is looked up.
-      await expect(
-        deposit
-          .connect(buyer)
-          .makeDeposit(await ctx.weth.getAddress(), 1_000n * ONE_USDC, (await now()) + BigInt(12 * MONTH), 0n)
-      ).to.be.revertedWith("Not the vault's reserve token");
+    it("pays only into a vault holding its own token", async function () {
+      const weth: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"),
+        [ctx.admin.address, await ctx.weth.getAddress(), 0], { kind: "uups" });
+      await expect(bond.setSources(await weth.getAddress(), ethers.ZeroAddress, ethers.ZeroHash, await s.controls.getAddress(), ethers.ZeroAddress))
+        .to.be.revertedWithCustomError(bond, "BurnerBondInvalidAddress");
     });
 
     it("can start its ids above another collection's, and shares the vault without colliding", async function () {
-      // A collection that replaces another shares its vault, which keys bonds by id alone.
-      const maturity = (await now()) + BigInt(12 * MONTH);
-      await buyBond(1_000n * ONE_USDC, maturity); // bond 1 in this collection
-
-      const Next = await ethers.getContractFactory("BurnerBondFactory");
-      const nextFactory = await Next.deploy(
-        await ctx.tokenRegistry.getAddress(), "ipfs://bonds"
-      );
+      await s.buy(buyer, U(1_000), 365); // bond 1 in this collection
+      const nextFactory = await deployBondFactory(await ctx.tokenRegistry.getAddress(), "ipfs://bonds");
       await nextFactory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds");
-      const next = await ethers.getContractAt(
-        "BurnerBond", (await nextFactory.getCollectionInfo(await ctx.usdc.getAddress())).collectionAddress
-      );
-      const nextDeposit = await ethers.getContractAt("BurnerBondDeposit", await nextFactory.getUnifiedDepositContract());
-      await next.setBondVault(await vault.getAddress());
-      await nextDeposit.setBondVault(await vault.getAddress());
+      const next = await bondAt((await nextFactory.getCollectionInfo(await ctx.usdc.getAddress())).collectionAddress, ctx.admin);
+      await next.setSources(await vault.getAddress(), ethers.ZeroAddress, ethers.ZeroHash, await s.controls.getAddress(), ethers.ZeroAddress);
       await vault.grantRole(await vault.BOND_ROLE(), await next.getAddress());
-      await vault.grantRole(await vault.BOND_ROLE(), await nextDeposit.getAddress());
+      await s.controls.grantRoleByResolution(await s.controls.BOND_ROLE(), await next.getAddress(), ethers.id("resolution"));
       await next.setFirstBondId(1001n);
-      await ctx.usdc.connect(buyer).approve(await nextDeposit.getAddress(), 1_000_000n * ONE_USDC);
-
-      await nextDeposit
-        .connect(buyer)
-        .makeDeposit(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, maturity, await next.calculateDiscount(maturity));
-      expect(await next.balanceOf(buyer.address, 1001n)).to.equal(1n);
-      expect((await vault.obligations(1n)).faceValue).to.equal(1_000n * ONE_USDC);
-      expect((await vault.obligations(1001n)).faceValue).to.equal(1_000n * ONE_USDC);
-
-      await expect(next.setFirstBondId(5000n)).to.be.revertedWith("Bonds already issued");
+      expect(await next.totalBondsMinted()).to.equal(0n);
+      expect((await vault.obligations(1n)).faceValue).to.equal(U(1_000));
+      await expect(bond.setFirstBondId(5000n)).to.be.revertedWithCustomError(bond, "BurnerBondAlreadyIssued");
     });
 
     it("refuses a second collection for the same token", async function () {
-      await expect(
-        factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds")
-      ).to.be.revertedWith("Collection already exists");
+      await expect(factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://bonds"))
+        .to.be.revertedWith("Collection already exists");
     });
 
     it("hands ownership to the factory owner, not the factory", async function () {
       expect(await bond.owner()).to.equal(ctx.admin.address);
     });
-  });
 
-  describe("pricing", function () {
-    it("discounts further out maturities more", async function () {
-      const soon = (await now()) + BigInt(2 * MONTH);
-      const later = (await now()) + BigInt(12 * MONTH);
-      expect(await bond.calculateDiscount(later))
-        .to.be.greaterThan(await bond.calculateDiscount(soon));
-    });
-
-    it("prices a bond below its face value", async function () {
-      const maturity = (await now()) + BigInt(12 * MONTH);
-      const cost = await costOf(1_000n * ONE_USDC, maturity);
-      expect(cost).to.be.lessThan(1_000n * ONE_USDC);
-      expect(cost).to.be.greaterThan(0n);
-    });
-
-    it("never discounts past the configured ceiling", async function () {
-      const maturity = (await now()) + BigInt(24 * MONTH);
-      const discount = await bond.calculateDiscount(maturity);
-      expect(discount).to.be.lessThanOrEqual(await factory.getMaxDiscount());
-    });
-  });
-
-  /*
-   * The curve's parameter is stored on a 10,000 scale and its maths runs in 1e18. Before the two
-   * met, a BONDING curve priced every term at the minimum and a LOGARITHMIC one reverted.
-   */
-  describe("the discount curve", function () {
-    /** A maturity halfway to the factory's longest term. */
-    async function halfway() {
-      return (await now()) + (await factory.getMaxMaturity()) / 2n;
-    }
-
-    it("prices a BONDING curve above the linear one halfway out", async function () {
-      const linear = await bond.calculateDiscount(await halfway());
-      await bond.setDiscountCurve(1, 20_000n); // steepness 2.0: 1 - (1 - t)^2
-      const bonding = await bond.calculateDiscount(await halfway());
-
-      const max = await factory.getMaxDiscount();
-      expect(bonding).to.be.greaterThan(linear);
-      // Three quarters of the range at t = 0.5, to within the second it took to ask.
-      expect(bonding).to.be.closeTo((max * 3n) / 4n, 2n);
-    });
-
-    it("prices a LOGARITHMIC curve with diminishing returns, not as a straight line", async function () {
-      const linear = await bond.calculateDiscount(await halfway());
-      await bond.setDiscountCurve(2, 20_000n); // base 2.0: log2(1 + t)
-      const discount = await bond.calculateDiscount(await halfway());
-
-      const max = await factory.getMaxDiscount();
-      expect(discount).to.be.greaterThan(linear);
-      // log2(1.5) = 0.58496...
-      expect(discount).to.be.closeTo((max * 58496n) / 100000n, 2n);
-    });
-
-    it("takes a fractional steepness as given, not rounded down", async function () {
-      await bond.setDiscountCurve(1, 25_000n); // 1 - (1 - t)^2.5
-      const discount = await bond.calculateDiscount(await halfway());
-
-      const max = await factory.getMaxDiscount();
-      // 1 - 0.5^2.5 = 0.82322...
-      expect(discount).to.be.closeTo((max * 82322n) / 100000n, 2n);
-    });
-
-    it("reaches the full range at the longest term, whatever the shape", async function () {
-      const max = await factory.getMaxDiscount();
-      const longest = (await now()) + (await factory.getMaxMaturity()) + 10n;
-      for (const [type, param] of [[1, 37_500n], [2, 100_000n], [2, 15_000n]] as const) {
-        await bond.setDiscountCurve(type, param);
-        expect(await bond.calculateDiscount(longest)).to.be.closeTo(max, 1n);
-      }
-    });
-
-    it("takes only the shape; its bounds stay the factory's", async function () {
-      await expect(bond.setDiscountCurve(1, 20_000n))
-        .to.emit(bond, "DiscountCurveUpdated")
-        .withArgs(1, await factory.getMaxDiscount(), await factory.getMaxMaturity(), 20_000n);
-      const [curveType, maxDiscount, maxMaturity, parameter] = await bond.getDiscountCurve();
-      expect([curveType, maxDiscount, maxMaturity, parameter]).to.deep.equal([
-        1n, await factory.getMaxDiscount(), await factory.getMaxMaturity(), 20_000n,
-      ]);
-    });
-  });
-
-  describe("the factory's bounds", function () {
-    it("are set on the factory, and every collection reads them", async function () {
-      await factory.updateGlobalParameters(3_000n, 100n, 20n * 365n * BigInt(DAY));
-      const [maxDiscount, maxMaturity] = await bond.getDiscountParameters();
-      expect(maxDiscount).to.equal(3_000n);
-      expect(maxMaturity).to.equal(20n * 365n * BigInt(DAY));
-    });
-
-    it("have no setters on the collection or the deposit contract to fail through", async function () {
-      for (const name of ["updateDiscountParameters", "setMinDiscount", "updateFaceValueLimits", "updateMinMaturity"]) {
-        expect(bond.interface.getFunction(name)).to.equal(null);
-      }
-      for (const name of ["updateDepositParameters", "setMinDiscount", "updateFaceValueLimits", "updateMinMaturity"]) {
-        expect(deposit.interface.getFunction(name)).to.equal(null);
-      }
-    });
-  });
-
-  describe("a deactivated collection", function () {
-    it("stops selling, and sells again once reactivated", async function () {
-      const maturity = (await now()) + BigInt(12 * MONTH);
+    it("a deactivated collection stops selling, sells again once reactivated, and still settles", async function () {
+      const { id } = await s.buy(buyer, U(1_000), 365);
       await factory.deactivateCollection(await ctx.usdc.getAddress());
-      await expect(buyBond(1_000n * ONE_USDC, maturity)).to.be.revertedWith("Collection inactive");
-
+      await expect(s.buy(buyer, U(1_000), 365)).to.be.revertedWithCustomError(bond, "BurnerBondWindDown");
+      await advance(365 * DAY);
+      await ctx.usdc.mint(await vault.getAddress(), U(100));
+      await bond.connect(keeper).settle(id);
       await factory.reactivateCollection(await ctx.usdc.getAddress());
-      await buyBond(1_000n * ONE_USDC, maturity);
-      expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
-    });
-
-    it("still redeems the bonds it already sold", async function () {
-      const maturity = (await now()) + BigInt(2 * MONTH);
-      await buyBond(1_000n * ONE_USDC, maturity);
-      await factory.deactivateCollection(await ctx.usdc.getAddress());
-
-      await advance(3 * MONTH);
-      await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
-      await bond.connect(buyer).setAutoRollOptOut(1, true);
-      await bond.connect(buyer).redeemBond(1);
-      expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
+      await s.buy(buyer, U(1_000), 365);
     });
   });
 
-  describe("buying a bond", function () {
-    it("takes the purchase price and mints a bond to the buyer", async function () {
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      const cost = await costOf(1_000n * ONE_USDC, maturity);
+  describe("buying a bond (Earn §1)", function () {
+    it("takes the Purchase Price into the vault, never the AssurancePool, and books the Maturity Amount at once", async function () {
       const before = await ctx.usdc.balanceOf(buyer.address);
-
-      await buyBond(1_000n * ONE_USDC, maturity);
-
-      expect(before - (await ctx.usdc.balanceOf(buyer.address))).to.equal(cost);
-      expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
+      const { id, price } = await s.buy(buyer, U(1_000), 365);
+      expect(await bond.balanceOf(buyer.address, id)).to.equal(1n);
+      expect(await vault.held()).to.equal(price);
+      expect((await ctx.usdc.balanceOf(buyer.address)) - before).to.equal(0n); // the helper funded exactly the price
+      expect(await vault.totalFaceOutstanding()).to.equal(U(1_000));
+      expect(price).to.equal(await bond.quotePrice(U(1_000), 365, 475));
+      expect(price).to.be.lessThan(U(1_000));
     });
 
-    it("sends the proceeds to the vault rather than the AssurancePool", async function () {
-      // The seniority fix, seen from the buying side: principal never enters loss absorption.
-      // Since section 13 the bond contracts hold no AssurancePool address at all.
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      const cost = await costOf(1_000n * ONE_USDC, maturity);
-
-      await buyBond(1_000n * ONE_USDC, maturity);
-
-      expect(await vault.held()).to.equal(cost);
-      expect(await ctx.usdc.balanceOf(await deposit.getAddress())).to.equal(0n);
-      expect(await ctx.usdc.balanceOf(await bond.getAddress())).to.equal(0n);
+    it("records what was bought: Maturity Amount, Issue Yield, term, issue and maturity dates, cost and exemption tag", async function () {
+      const { id, price } = await s.buy(buyer, U(2_500), 730);
+      const b = await bond.getBondInfo(id);
+      expect(b.faceValue).to.equal(U(2_500));
+      expect(b.yieldBps).to.equal(500n);
+      expect(b.termDays).to.equal(730n);
+      expect(b.maturityDate - b.issuedAt).to.equal(730n * BigInt(DAY));
+      expect(b.purchasePrice).to.equal(price);
+      expect(b.costBasis).to.equal(price);
+      expect(b.exemptionCode).to.equal(ethers.encodeBytes32String("506C"));
+      expect(await bond.holderOf(id)).to.equal(buyer.address);
+      expect((await vault.bondTerms(id)).yieldBps).to.equal(500n);
     });
 
-    it("books the face value as owed the moment it takes the money", async function () {
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      await buyBond(1_000n * ONE_USDC, maturity);
-
-      expect(await vault.totalFaceOutstanding()).to.equal(1_000n * ONE_USDC);
-    });
-
-    it("refuses a face value outside the configured bounds", async function () {
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      const tooSmall = (await factory.getMinFaceValue()) - 1n;
-      await expect(
-        buyBond(tooSmall, maturity)
-      ).to.be.reverted;
-    });
-
-    it("refuses a maturity in the past", async function () {
-      const past = (await now()) - 1n;
-      await expect(
-        buyBond(1_000n * ONE_USDC, past)
-      ).to.be.reverted;
-    });
-
-    it("refuses a maturity further out than the ceiling", async function () {
-      const tooFar = (await now()) + (await factory.getMaxMaturity()) + BigInt(DAY);
-      await expect(
-        buyBond(1_000n * ONE_USDC, tooFar)
-      ).to.be.reverted;
+    it("counts what it has issued and reports maturity honestly", async function () {
+      const { id } = await s.buy(buyer, U(1_000), 365);
+      await s.buy(buyer, U(1_000), 365);
+      expect(await bond.totalBondsMinted()).to.equal(2n);
+      expect(await bond.isBondMature(id)).to.equal(false);
+      await advance(365 * DAY);
+      expect(await bond.isBondMature(id)).to.equal(true);
     });
   });
 
-  describe("redeeming", function () {
-    async function buy(face: bigint, monthsOut: number) {
-      const maturity = (await now()) + BigInt(monthsOut * MONTH);
-      await buyBond(face, maturity);
-      return maturity;
-    }
-
-    it("refuses before maturity", async function () {
-      await buy(1_000n * ONE_USDC, 6);
-      await expect(bond.connect(buyer).redeemBond(1)).to.be.revertedWith("Bond not yet mature");
+  describe("value (R4: compounding at the Issue Yield)", function () {
+    it("is about its Purchase Price at issue, accretes as the term runs, and is its Maturity Amount at maturity", async function () {
+      const { id, price } = await s.buy(buyer, U(1_000), 365);
+      const atIssue = await bond.accretedValue(id);
+      expect(atIssue - price).to.be.lessThan(10_000n); // the price is floored to the cent
+      await advance(180 * DAY);
+      const half = await bond.accretedValue(id);
+      expect(half).to.be.greaterThan(atIssue);
+      expect(await bond.presentValueOf(id)).to.equal(half);
+      await advance(186 * DAY);
+      expect(await bond.accretedValue(id)).to.equal(U(1_000));
     });
+  });
 
-    it("pays face value at maturity", async function () {
-      await buy(1_000n * ONE_USDC, 6);
-      // The vault grows into its obligation; here it is topped up to stand in for that.
-      await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
-      await advance(7 * MONTH);
-
+  describe("settlement (Earn §4)", function () {
+    it("refuses before maturity, and pays the Holder at maturity whoever calls", async function () {
+      const { id } = await s.buy(buyer, U(1_000), 365);
+      await expect(bond.connect(keeper).settle(id)).to.be.revertedWithCustomError(bond, "BurnerBondNotSettleable");
+      await advance(365 * DAY);
+      await ctx.usdc.mint(await vault.getAddress(), U(100));
       const before = await ctx.usdc.balanceOf(buyer.address);
-      await bond.connect(buyer).redeemBond(1);
-
-      expect((await ctx.usdc.balanceOf(buyer.address)) - before).to.equal(1_000n * ONE_USDC);
-      expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
-    });
-
-    it("refuses a second redemption of the same bond", async function () {
-      await buy(1_000n * ONE_USDC, 6);
-      await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
-      await advance(7 * MONTH);
-      await bond.connect(buyer).redeemBond(1);
-
-      await expect(bond.connect(buyer).redeemBond(1)).to.be.reverted;
-    });
-
-    it("refuses redemption by someone who does not hold it", async function () {
-      await buy(1_000n * ONE_USDC, 6);
-      await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
-      await advance(7 * MONTH);
-
-      await expect(bond.connect(other).redeemBond(1)).to.be.revertedWith("Not bond holder");
-    });
-
-    it("pays whoever holds it, since the bond is transferable", async function () {
-      await buy(1_000n * ONE_USDC, 6);
-      await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
-      await bond.connect(buyer).safeTransferFrom(buyer.address, other.address, 1, 1, "0x");
-      await advance(7 * MONTH);
-
-      await bond.connect(other).redeemBond(1);
-      expect(await ctx.usdc.balanceOf(other.address)).to.equal(1_000n * ONE_USDC);
-    });
-
-    it("refuses when the vault cannot cover it, rather than paying partially", async function () {
-      await buy(1_000n * ONE_USDC, 6);
-      await advance(7 * MONTH);
-      // The vault holds only the discounted proceeds, not the full face.
-      await expect(bond.connect(buyer).redeemBond(1))
-        .to.be.revertedWithCustomError(vault, "BondVaultInsufficientFunds");
-    });
-  });
-
-  describe("bond state", function () {
-    it("records what was bought", async function () {
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      await buyBond(1_000n * ONE_USDC, maturity);
-
-      const info = await bond.getBondInfo(1);
-      expect(info.faceValue).to.equal(1_000n * ONE_USDC);
-      expect(info.maturityDate).to.equal(maturity);
-      expect(info.isRedeemed).to.equal(false);
-      expect(info.creator).to.equal(buyer.address);
-    });
-
-    it("reports maturity honestly", async function () {
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      await buyBond(1_000n * ONE_USDC, maturity);
-
-      expect(await bond.isBondMature(1)).to.equal(false);
-      await advance(7 * MONTH);
-      expect(await bond.isBondMature(1)).to.equal(true);
-    });
-
-    it("counts what it has issued", async function () {
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      for (let i = 0; i < 3; i++) {
-        await buyBond(1_000n * ONE_USDC, maturity);
-      }
-      expect(await bond.totalBondsMinted()).to.equal(3n);
-    });
-  });
-
-  describe("wiring", function () {
-    it("cannot redeem before the vault is set", async function () {
-      // A collection created but never pointed at a vault would take money in and have no way to
-      // pay it back out.
-      await factory.createCollection(
-        await ctx.usdt.getAddress(), "USDT", "Tether USD", "ipfs://bonds"
-      );
-      const info = await factory.getCollectionInfo(await ctx.usdt.getAddress());
-      const fresh = await ethers.getContractAt("BurnerBond", info.collectionAddress);
-
-      expect(await fresh.bondVault()).to.equal(ethers.ZeroAddress);
-    });
-
-    it("only lets the owner point it at a vault", async function () {
-      await expect(bond.connect(other).setBondVault(await vault.getAddress())).to.be.reverted;
-    });
-
-    it("refuses a zero vault", async function () {
-      await expect(bond.setBondVault(ethers.ZeroAddress))
-        .to.be.revertedWith("Invalid BondVault address");
+      await bond.connect(keeper).settle(id);
+      expect((await ctx.usdc.balanceOf(buyer.address)) - before).to.equal(U(1_000));
+      await expect(bond.connect(keeper).settle(id)).to.be.revertedWithCustomError(bond, "BurnerBondUnknown");
     });
   });
 
   describe("collections are clones", function () {
-    it("keeps the factory deployable, which carrying a copy of this did not", async function () {
+    it("keeps the factory deployable", async function () {
       const code = await ethers.provider.getCode(await factory.getAddress());
       expect((code.length - 2) / 2).to.be.lessThan(24_576);
     });
 
     it("gives each collection its own storage", async function () {
-      await factory.createCollection(
-        await ctx.usdt.getAddress(), "USDT", "Tether USD", "ipfs://bonds"
-      );
-      const info = await factory.getCollectionInfo(await ctx.usdt.getAddress());
-      const other = await ethers.getContractAt("BurnerBond", info.collectionAddress);
-
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      await buyBond(1_000n * ONE_USDC, maturity);
-
+      await factory.createCollection(await ctx.usdt.getAddress(), "USDT", "Tether USD", "ipfs://bonds");
+      const other_ = await bondAt((await factory.getCollectionInfo(await ctx.usdt.getAddress())).collectionAddress);
+      await s.buy(buyer, U(1_000), 365);
       expect(await bond.totalBondsMinted()).to.equal(1n);
-      expect(await other.totalBondsMinted()).to.equal(0n);
-      expect(await other.underlyingToken()).to.equal(await ctx.usdt.getAddress());
+      expect(await other_.totalBondsMinted()).to.equal(0n);
+      expect(await other_.underlyingToken()).to.equal(await ctx.usdt.getAddress());
     });
 
     it("costs a fraction of a deployment to open one", async function () {
-      const tx = await factory.createCollection(
-        await ctx.usdt.getAddress(), "USDT", "Tether USD", "ipfs://bonds"
-      );
-      const receipt = await tx.wait();
-      // A full BurnerBond deployment is millions of gas; a clone plus its initializer is not.
+      const receipt = await (await factory.createCollection(await ctx.usdt.getAddress(), "USDT", "Tether USD", "ipfs://bonds")).wait();
       expect(receipt!.gasUsed).to.be.lessThan(1_500_000n);
     });
 
-    it("leaves the implementation itself uninitialisable", async function () {
-      // A clone's implementation is never meant to be used directly, and one left open is an
-      // implementation anybody can take ownership of.
-      const implementation = await ethers.getContractAt(
-        "BurnerBond", await factory.bondImplementation()
-      );
-      await expect(
-        implementation.initialize(
-          buyer.address, buyer.address, buyer.address, "", "", "", "",
-          buyer.address, buyer.address
-        )
-      ).to.be.revertedWith("Initializable: contract is already initialized");
+    it("leaves the implementation itself uninitialisable, and the factory takes only a Phase 2f implementation", async function () {
+      const implementation = await ethers.getContractAt("BurnerBond", await factory.bondImplementation());
+      await expect(implementation.initialize(other.address, await ctx.usdc.getAddress(), "", "", "", "", other.address, ethers.ZeroHash, ""))
+        .to.be.revertedWith("Initializable: contract is already initialized");
+      const Factory = await ethers.getContractFactory("BurnerBondFactory");
+      await expect(Factory.deploy(await ctx.tokenRegistry.getAddress(), "ipfs://x", await vault.getAddress(), ethers.ZeroHash, "")).to.be.reverted;
     });
   });
 
-  describe("batch redemption", function () {
-    it("pays for every bond it burns", async function () {
-      // It burned them and paid nothing: the payout was replaced when redemption moved to the
-      // vault, and its twin twenty lines away was not.
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      await buyBond(1_000n * ONE_USDC, maturity);
-      await buyBond(500n * ONE_USDC, maturity);
-      await ctx.usdc.mint(await vault.getAddress(), 1_500n * ONE_USDC);
-      await advance(7 * MONTH);
-
-      const before = await ctx.usdc.balanceOf(buyer.address);
-      await bond.connect(buyer).batchRedeemBonds([1, 2]);
-
-      expect((await ctx.usdc.balanceOf(buyer.address)) - before).to.equal(1_500n * ONE_USDC);
-      expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
-      expect(await bond.balanceOf(buyer.address, 2)).to.equal(0n);
+  describe("wiring", function () {
+    it("only lets the owner name its sources, and refuses a zero vault or controls", async function () {
+      await expect(bond.connect(other).setSources(await vault.getAddress(), ethers.ZeroAddress, ethers.ZeroHash, await s.controls.getAddress(), ethers.ZeroAddress)).to.be.reverted;
+      await expect(bond.setSources(ethers.ZeroAddress, ethers.ZeroAddress, ethers.ZeroHash, await s.controls.getAddress(), ethers.ZeroAddress))
+        .to.be.revertedWithCustomError(bond, "BurnerBondInvalidAddress");
     });
-
-    it("refuses the whole batch if one bond is not redeemable", async function () {
-      const maturity = (await now()) + BigInt(6 * MONTH);
-      const far = (await now()) + BigInt(18 * MONTH);
-      await buyBond(1_000n * ONE_USDC, maturity);
-      await buyBond(500n * ONE_USDC, far);
-      await ctx.usdc.mint(await vault.getAddress(), 1_500n * ONE_USDC);
-      await advance(7 * MONTH);
-
-      await expect(bond.connect(buyer).batchRedeemBonds([1, 2]))
-        .to.be.revertedWith("Bond not yet mature");
-      expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
-    });
-
-    it("refuses an empty batch", async function () {
-      await expect(bond.connect(buyer).batchRedeemBonds([]))
-        .to.be.revertedWith("No bonds to redeem");
-    });
-  });
-});
-
-describe("BurnerBond as collateral", function () {
-  // A bond pledged against a credit line has to be reachable when the member defaults. It is one
-  // token with an id rather than a balance, and it pays at maturity rather than on demand -- so
-  // the co-op takes the bond and is paid what it is worth today, not what it will be worth.
-  let ctx: any, factory: any, deposit: any, bond: any, vault: any, signals: any;
-  let buyer: any, coop: any, liquidator: any, other: any;
-
-  const ONE = 10n ** 6n;
-  const M = 30 * 24 * 60 * 60;
-
-  beforeEach(async function () {
-    const { deployPhase0Network } = await import("../helpers/phase0-fixture");
-    ctx = await deployPhase0Network();
-    const signers = await ethers.getSigners();
-    [buyer, coop, liquidator, other] = [signers[8], signers[9], signers[10], signers[11]];
-
-    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
-    factory = await BurnerBondFactory.deploy(
-      await ctx.tokenRegistry.getAddress(), "ipfs://b"
-    );
-    deposit = await ethers.getContractAt(
-      "BurnerBondDeposit", await factory.getUnifiedDepositContract()
-    );
-    await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
-    const info = await factory.getCollectionInfo(await ctx.usdc.getAddress());
-    bond = await ethers.getContractAt("BurnerBond", info.collectionAddress);
-
-    const BondVault = await ethers.getContractFactory("BondVault");
-    vault = await upgrades.deployProxy(
-      BondVault, [ctx.admin.address, await ctx.usdc.getAddress(), 3 * M], { kind: "uups" }
-    );
-    await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
-    await vault.grantRole(await vault.BOND_ROLE(), await bond.getAddress());
-    await deposit.setBondVault(await vault.getAddress());
-    await bond.setBondVault(await vault.getAddress());
-    await bond.setLiquidator(liquidator.address);
-
-    await ctx.usdc.mint(buyer.address, 100_000n * ONE);
-    await ctx.usdc.connect(buyer).approve(await deposit.getAddress(), 100_000n * ONE);
-
-    const maturity = BigInt((await ethers.provider.getBlock("latest"))!.timestamp) + BigInt(12 * M);
-    const discount = await bond.calculateDiscount(maturity);
-    await deposit
-      .connect(buyer)
-      .makeDeposit(await ctx.usdc.getAddress(), 1_000n * ONE, maturity, discount);
-
-    // Audit M-6: a seizure needs the bond pledged against drawn credit and its holder in default.
-    // This suite is about what happens once a seizure is legitimate, so the buyer is both.
-    signals = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
-    await bond.setEncumbranceSource(await signals.getAddress(), ethers.id("BOND"));
-    await bond.setDefaultSource(await signals.getAddress());
-    await signals.setItemEncumbered(buyer.address, 1, true);
-    await signals.setInDefault(buyer.address, true);
-  });
-
-  it("is worth its purchase price at the start and its face at maturity", async function () {
-    const info = await bond.getBondInfo(1);
-    const pv = await bond.presentValueOf(1);
-    expect(pv).to.be.greaterThanOrEqual(info.purchasePrice);
-    expect(pv).to.be.lessThan(1_000n * ONE);
-
-    await ethers.provider.send("evm_increaseTime", [13 * M]);
-    await ethers.provider.send("evm_mine", []);
-    expect(await bond.presentValueOf(1)).to.equal(1_000n * ONE);
-  });
-
-  it("accretes toward face as the term runs", async function () {
-    const early = await bond.presentValueOf(1);
-    await ethers.provider.send("evm_increaseTime", [6 * M]);
-    await ethers.provider.send("evm_mine", []);
-    const later = await bond.presentValueOf(1);
-
-    expect(later).to.be.greaterThan(early);
-    expect(later).to.be.lessThan(1_000n * ONE);
-  });
-
-  it("lets the co-op take a bond, and nobody else", async function () {
-    await expect(bond.connect(other).seizeBond(1, buyer.address, coop.address))
-      .to.be.revertedWith("Only liquidator can seize");
-
-    await bond.connect(liquidator).seizeBond(1, buyer.address, coop.address);
-    expect(await bond.balanceOf(coop.address, 1)).to.equal(1n);
-    expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
-  });
-
-  it("pays the co-op what the bond is worth today, not what it will be", async function () {
-    // Paying face for a bond that has not matured hands over interest nobody waited for.
-    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
-    await ethers.provider.send("evm_increaseTime", [6 * M]);
-    await ethers.provider.send("evm_mine", []);
-
-    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-    const pv = await bond.presentValueOf(1);
-    await bond.connect(liquidator).redeemEarly(1);
-
-    expect(await ctx.usdc.balanceOf(liquidator.address)).to.be.closeTo(pv, 2n); // one second of accretion either way
-    expect(pv).to.be.lessThan(1_000n * ONE);
-  });
-
-  it("keeps the unearned interest in the vault", async function () {
-    const funded = await vault.held();
-    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
-    await ethers.provider.send("evm_increaseTime", [6 * M]);
-    await ethers.provider.send("evm_mine", []);
-
-    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-    const pv = await bond.presentValueOf(1);
-    await bond.connect(liquidator).redeemEarly(1);
-
-    // The obligation is gone in full; only the present value left the vault.
-    expect(await vault.totalFaceOutstanding()).to.equal(0n);
-    expect(await vault.held()).to.be.closeTo(funded + 1_000n * ONE - pv, 2n);
-  });
-
-  it("refuses early redemption to a holder who is not the co-op", async function () {
-    await expect(bond.connect(buyer).redeemEarly(1))
-      .to.be.revertedWith("Only liquidator can redeem early");
-  });
-
-  it("refuses to pay the same bond twice", async function () {
-    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
-    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-    await bond.connect(liquidator).redeemEarly(1);
-    // The bond was burned when it paid out, so there is nothing left to present.
-    await expect(bond.connect(liquidator).redeemEarly(1))
-      .to.be.revertedWith("Not bond holder");
-  });
-});
-
-describe("auto-roll", function () {
-  // A pledged bond that simply matures leaves the member's limit contracting hard the day it
-  // does, and if they have already spent the proceeds there is nothing to replace it with.
-  let ctx: any, factory: any, deposit: any, bond: any, vault: any;
-  let buyer: any, liquidator: any;
-
-  const ONE = 10n ** 6n;
-  const M = 30 * 24 * 60 * 60;
-
-  beforeEach(async function () {
-    const { deployPhase0Network } = await import("../helpers/phase0-fixture");
-    ctx = await deployPhase0Network();
-    const signers = await ethers.getSigners();
-    [buyer, liquidator] = [signers[8], signers[10]];
-
-    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
-    factory = await BurnerBondFactory.deploy(
-      await ctx.tokenRegistry.getAddress(), "ipfs://b"
-    );
-    deposit = await ethers.getContractAt(
-      "BurnerBondDeposit", await factory.getUnifiedDepositContract()
-    );
-    await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
-    const info = await factory.getCollectionInfo(await ctx.usdc.getAddress());
-    bond = await ethers.getContractAt("BurnerBond", info.collectionAddress);
-
-    const BondVault = await ethers.getContractFactory("BondVault");
-    vault = await upgrades.deployProxy(
-      BondVault, [ctx.admin.address, await ctx.usdc.getAddress(), 3 * M], { kind: "uups" }
-    );
-    await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
-    await vault.grantRole(await vault.BOND_ROLE(), await bond.getAddress());
-    await deposit.setBondVault(await vault.getAddress());
-    await bond.setBondVault(await vault.getAddress());
-    await bond.setLiquidator(liquidator.address);
-
-    await ctx.usdc.mint(buyer.address, 100_000n * ONE);
-    await ctx.usdc.connect(buyer).approve(await deposit.getAddress(), 100_000n * ONE);
-    const maturity = BigInt((await ethers.provider.getBlock("latest"))!.timestamp) + BigInt(6 * M);
-    await deposit.connect(buyer).makeDeposit(
-      await ctx.usdc.getAddress(), 1_000n * ONE, maturity, await bond.calculateDiscount(maturity)
-    );
-  });
-
-  async function mature() {
-    await ethers.provider.send("evm_increaseTime", [7 * M]);
-    await ethers.provider.send("evm_mine", []);
-  }
-
-  it("rolls by default, so a pledged position does not lapse", async function () {
-    expect(await bond.willAutoRoll(1)).to.equal(true);
-    await mature();
-
-    await bond.connect(buyer).rollBond(1);
-    expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
-    expect(await bond.balanceOf(buyer.address, 2)).to.equal(1n);
-  });
-
-  it("buys more face value with the matured value, without moving cash", async function () {
-    const held = await vault.held();
-    await mature();
-    await bond.connect(buyer).rollBond(1);
-
-    const replacement = await bond.getBondInfo(2);
-    expect(replacement.purchasePrice).to.equal(1_000n * ONE);
-    expect(replacement.faceValue).to.be.greaterThan(1_000n * ONE);
-    // The vault keeps what it had: rolling is not a payout.
-    expect(await vault.held()).to.equal(held);
-  });
-
-  it("moves the obligation rather than clearing it", async function () {
-    await mature();
-    await bond.connect(buyer).rollBond(1);
-
-    const replacement = await bond.getBondInfo(2);
-    expect(await vault.totalFaceOutstanding()).to.equal(replacement.faceValue);
-  });
-
-  it("lets a holder ask for the cash instead", async function () {
-    await bond.connect(buyer).setAutoRollOptOut(1, true);
-    expect(await bond.willAutoRoll(1)).to.equal(false);
-    await mature();
-
-    await expect(bond.connect(buyer).rollBond(1))
-      .to.be.revertedWith("Bond opted out of rolling");
-
-    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
-    await bond.connect(buyer).redeemBond(1);
-    expect(await ctx.usdc.balanceOf(buyer.address)).to.be.greaterThan(0n);
-  });
-
-  it("refuses to roll before maturity", async function () {
-    await expect(bond.connect(buyer).rollBond(1)).to.be.revertedWith("Bond not yet mature");
-  });
-
-  it("will not roll a bond the co-op has seized", async function () {
-    // A seized bond is collateral somebody is waiting on. Rolling it would put the recovery
-    // another term away, so the co-op redeems it early instead.
-    const signals = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
-    await bond.setEncumbranceSource(await signals.getAddress(), ethers.id("BOND"));
-    await bond.setDefaultSource(await signals.getAddress());
-    await signals.setItemEncumbered(buyer.address, 1, true);
-    await signals.setInDefault(buyer.address, true);
-    await mature();
-
-    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-
-    await expect(bond.connect(liquidator).rollBond(1))
-      .to.be.revertedWith("Seized bonds are redeemed, not rolled");
   });
 });

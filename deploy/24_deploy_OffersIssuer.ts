@@ -16,7 +16,8 @@ import { saveDeployment, getDeployment } from "./helpers";
  *
  * OFFERS_TREASURY is the Safe that pays the line down; unset, it is the PayoutPool's coopTreasury.
  * OFFERS_CAP (default 1000), OFFER_AMOUNT (default 10) and OFFER_EXPIRY_DAYS (default 90) are in
- * dollars and days. Needs operator access on the AccessManager and NetworkRegistry.
+ * dollars and days. Needs operator access on the AccessManager, and NetworkRegistry's admin role to
+ * register the issuer (re-review M-E); after the credit timelock handover it prints that proposal.
  *
  * Two things are left for after it, and said so at the end: the API's OFFERS_ISSUER_<chainId>, and
  * the Safe's USDC allowance to the contract, which is what `settle` pays the line down with.
@@ -64,9 +65,16 @@ async function main() {
   const address = await offers.getAddress();
 
   const networkRegistry = await ethers.getContractAt("NetworkRegistry", registry.address);
+  // Re-review M-E: registering an issuer is NetworkRegistry's admin power (the credit timelock
+  // after the handover). Before the handover the deployer holds it; after, print the proposal.
   if (!(await networkRegistry.isIssuer(address))) {
-    await (await networkRegistry.registerIssuer(address, ledger.address)).wait();
-    console.log("  registered against the ledger");
+    if (await networkRegistry.hasRole(await networkRegistry.DEFAULT_ADMIN_ROLE(), deployer.address)) {
+      await (await networkRegistry.registerIssuer(address, ledger.address)).wait();
+      console.log("  registered against the ledger");
+    } else {
+      console.log("! The deployer is not NetworkRegistry's admin: propose this through the credit timelock:");
+      console.log(`  registerIssuer(${address}, ${ledger.address})`);
+    }
   }
   if ((await offers.cap()) !== cap) {
     await (await offers.setCap(cap)).wait();

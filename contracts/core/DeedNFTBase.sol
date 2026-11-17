@@ -101,6 +101,19 @@ abstract contract DeedNFTBase is
     address internal _fcRegistry;
     address internal _membershipRegistry;
 
+    // ============ Phase 4b (re-review M-F), appended ============
+
+    /// @dev A trust deed's validator reassignment, waiting out the delay. Until `effectiveAt` the old
+    ///      validator is still the deed's validator, and may still void it.
+    struct PendingValidator {
+        address validator;
+        uint64 effectiveAt;
+    }
+    mapping(uint256 => PendingValidator) internal _pendingValidator;
+    /// @dev The governed delay before a trust deed's validator reassignment takes effect; zero means
+    ///      the default of 7 days. Set by the admin (the Deed timelock), within bounds.
+    uint64 internal _validatorReassignDelay;
+
     // ============ Shared constants ============
 
     /// @dev Salted and trust IDs live in [2^127, 2^128): above any reachable sequential ID, and below 2^128
@@ -124,6 +137,9 @@ abstract contract DeedNFTBase is
     event DeedValidated(uint256 indexed tokenId, bool isValid);
     event MarketplaceApproved(address indexed marketplace, bool approved);
     event RoyaltyEnforcementChanged(bool enforced);
+    /// @notice Phase 4c: a trust deed changed hands (or was burned) with a validator reassignment pending, so the
+    ///         request lapsed; the new holder decides.
+    event ValidatorReassignmentCancelled(uint256 indexed tokenId, address indexed validator);
 
     // ============ Errors ============
     /// @dev Caller is neither the deed's holder nor a signer of the deed's own validator.

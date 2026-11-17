@@ -36,7 +36,7 @@ describe("bond seniority", function () {
     const latest = BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
     await vault
       .connect(bondContract)
-      .recordPurchase(1, 950n * ONE_USDC, 1_000n * ONE_USDC, latest + BigInt(2 * MONTH));
+      .recordPurchase(1, 950n * ONE_USDC, 1_000n * ONE_USDC, latest + BigInt(2 * MONTH), 0, 365);
   });
 
   it("keeps bond proceeds out of the AssurancePool entirely", async function () {
@@ -80,8 +80,9 @@ describe("bond seniority", function () {
     // deployable at all.
     expect(await vault.requiredReserve()).to.equal(1_000n * ONE_USDC);
     expect(await vault.deployableExcess()).to.equal(0n);
-    await expect(vault.connect(safe).withdrawDeployable(1n, safe.address))
-      .to.be.revertedWithCustomError(vault, "BondVaultWouldBreachReserve");
+    // C1 (Phase 2f): no single-key withdrawal; only the Collateral Agent reaches the excess.
+    await expect(vault.connect(safe).agentWithdrawExcess(safe.address, 1n))
+      .to.be.revertedWithCustomError(vault, "BondVaultNotAgent");
   });
 
   it("leaves the AssurancePool with no way to reach bond money, nor bond money a way in", async function () {

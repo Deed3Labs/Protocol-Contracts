@@ -35,19 +35,69 @@
  *
  * Nothing about the co-op's share changes: what no funder bore still reaches the co-op, through
  * `distributeCarry` rather than directly.
+ *
+ * The addresses (decision 48): read from the current deployment records, `deployments/<network>/`
+ * `PayoutPool.json`, `TermIssuer.json` and `RevolvingIssuer.json`, so after the fresh Base Sepolia
+ * credit stack (decision 47) it names the fresh contracts, never the retired `*PreAudit` ones. An
+ * environment override (PAYOUT_POOL_<chain>, TERM_ISSUER_<chain>, REVOLVING_ISSUER_<chain>) still
+ * wins, but the script refuses any address that is a retired `*PreAudit` record. Base mainnet
+ * (8453) with --apply needs CONFIRM_MAINNET=1.
  */
 import 'dotenv/config';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ethers } from 'ethers';
 
 const APPLY = process.argv.includes('--apply');
 const CHAIN = Number(process.env.SAVINGS_DEFAULT_CHAIN_ID || 84532);
+const ROOT = new URL('../', import.meta.url).pathname;
+
+const NETWORKS = {
+  84532: { dir: 'base-sepolia', rpc: process.env.RPC_URL_84532 || 'https://sepolia.base.org' },
+  8453: { dir: 'base', rpc: process.env.RPC_URL_8453 || 'https://mainnet.base.org' },
+};
+
+const net = NETWORKS[CHAIN];
+if (!net) {
+  console.error(`No deployment records for chain ${CHAIN}.`);
+  process.exit(1);
+}
+if (CHAIN === 8453 && APPLY && process.env.CONFIRM_MAINNET !== '1') {
+  console.error('This would act on Base mainnet. Set CONFIRM_MAINNET=1 to confirm that is meant.');
+  process.exit(1);
+}
+
+const recordsDir = join(ROOT, 'deployments', net.dir);
+const recordAddress = (name) => {
+  const file = join(recordsDir, `${name}.json`);
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).address : undefined;
+};
+// Decision 47: the retired credit stack keeps its records as `<Name>PreAudit`.
+const retired = new Map(
+  ['PayoutPool', 'TermIssuer', 'RevolvingIssuer']
+    .map((name) => [recordAddress(`${name}PreAudit`)?.toLowerCase(), `${name}PreAudit`])
+    .filter(([address]) => address),
+);
+const pick = (name, envName) => {
+  const address = process.env[envName] || recordAddress(name);
+  if (!address || !ethers.isAddress(address)) {
+    console.error(`No ${name} record in deployments/${net.dir}/ and no ${envName}: deploy it first.`);
+    process.exit(1);
+  }
+  const old = retired.get(address.toLowerCase());
+  if (old) {
+    console.error(`${name} ${address} is the retired ${old}: point carry at the fresh ${name} record instead.`);
+    process.exit(1);
+  }
+  return address;
+};
 
 const ADDRESSES = {
-  84532: {
-    payoutPool: process.env.PAYOUT_POOL_84532 || '0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66',
-    termIssuer: process.env.TERM_ISSUER_84532 || '0xe467d87756FDF9645D751485CDB72A1E14683721',
-    revolvingIssuer: process.env.REVOLVING_ISSUER_84532 || '0x7f15E45aB5eAF0307200274211a90FcbD6716070',
-    rpc: process.env.RPC_URL_84532 || 'https://sepolia.base.org',
+  [CHAIN]: {
+    payoutPool: pick('PayoutPool', `PAYOUT_POOL_${CHAIN}`),
+    termIssuer: pick('TermIssuer', `TERM_ISSUER_${CHAIN}`),
+    revolvingIssuer: pick('RevolvingIssuer', `REVOLVING_ISSUER_${CHAIN}`),
+    rpc: net.rpc,
   },
 };
 
@@ -57,7 +107,6 @@ const ISSUER_ABI = [
 ];
 const FEE_ABI = [
   'function feeRecipient() view returns (address)',
-  'function setFeeRecipient(address recipient) external',
 ];
 
 const where = ADDRESSES[CHAIN];
@@ -76,7 +125,11 @@ const provider = new ethers.JsonRpcProvider(where.rpc);
 const signer = key ? new ethers.Wallet(key, provider) : null;
 
 /*
- * Step 1, and only TermIssuer has a fee to move. Done first so that step 2 cannot take it along.
+ * Step 1, report only. Since Addendum 2 (12.16, Phase 2e) the origination fee is Clear Lending's,
+ * never the co-op's: `feeRecipient` is changed only by two CREDIT_SETTINGS_ROLE holders
+ * (`proposeFeeRecipient` then `approveFeeRecipient`, with a reason code), and the co-op's treasury
+ * is refused. An unset recipient no longer falls back to the carry treasury; a plan with a fee
+ * simply cannot open, so step 2 cannot take the fee along.
  */
 const term = new ethers.Contract(where.termIssuer, FEE_ABI, provider);
 const fee = await term.feeRecipient().catch(() => null);
@@ -86,12 +139,7 @@ if (fee === null) {
 }
 const coop = where.coopTreasury || (await new ethers.Contract(where.termIssuer, ISSUER_ABI, provider).carryTreasury());
 if (fee === ethers.ZeroAddress) {
-  console.log(`TermIssuer feeRecipient: unset -> ${coop}`);
-  if (APPLY) {
-    const tx = await term.connect(signer).setFeeRecipient(coop);
-    await tx.wait(1);
-    console.log(`  done (${tx.hash})`);
-  }
+  console.log(`TermIssuer feeRecipient: unset. Clear Lending's recipient is named by two signers (never the co-op, ${coop}).`);
 } else {
   console.log(`TermIssuer feeRecipient: already ${fee}`);
 }

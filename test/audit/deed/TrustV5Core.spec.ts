@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import {
-  deployDeedTrack, mintTrust, mintValidatedLand, mintVehicle, trustParams, deedIdFor, signTrust,
+  deployDeedTrack, mintTrust, mintValidatedLand, mintVehicle, trustParams, deedIdFor, signTrust, freeze,
   k, enc, dec, coder, Ctx, AGREEMENT_V5, AGREEMENT_V5_URI, KIND_CUSTODY,
 } from "./fixture";
 
@@ -325,8 +325,8 @@ describe("AUDIT deed: trust agreement v5", function () {
         await expect(deed.connect(who).transferFrom(alice.address, who.address, id)).to.be.reverted;
         await expect(deed.connect(who).burnAsset(id)).to.be.revertedWith("Not deed owner");
       }
-      await expect(trust.connect(trustee).markVoid(id, 128, ethers.ZeroHash, "")).to.be.revertedWithCustomError(trust, "FreezeNeedsValidator");
-      await expect(trust.connect(sponsor).markVoid(id, 1, ethers.ZeroHash, "")).to.be.revertedWithCustomError(trust, "NotTrustParty");
+      await expect(trust.connect(trustee).markVoid(id, 128, ethers.ZeroHash, "", ethers.ZeroAddress, "0x")).to.be.revertedWithCustomError(trust, "FreezeNeedsValidator");
+      await expect(trust.connect(sponsor).markVoid(id, 1, ethers.ZeroHash, "", ethers.ZeroAddress, "0x")).to.be.revertedWithCustomError(trust, "NotTrustParty");
       await deed.connect(alice).transferFrom(alice.address, bob.address, id);
       expect(await deed.ownerOf(id)).to.equal(bob.address);
     });
@@ -384,13 +384,18 @@ describe("AUDIT deed: trust agreement v5", function () {
     });
 
     it("applyLicensingDetermination posts a notice and promotes the standby", async () => {
+      // Phase 4b (re-review M-G): the standby's own call promotes it only with the protector's consent
+      // (here the holder, as the protector record is zero). Without it, see Decisions.spec M-G.
       const { trust, alice, standby, trustee, mallory } = ctx;
       const id = await mintValidatedLand(ctx, alice);
       const nonce = (await trust.trustRecordOf(id)).nonce;
       await trust.connect(alice).setStandbyTrustee(id, standby.address,
         await signTrust(ctx, standby, "StandbyAcceptance", { tokenId: id, standby: standby.address, nonce }));
-      await expect(trust.connect(mallory).applyLicensingDetermination(id, k("doc"), "ipfs://det")).to.be.revertedWithCustomError(trust, "NotTrustParty");
-      await expect(trust.connect(standby).applyLicensingDetermination(id, k("doc"), "ipfs://det"))
+      await expect(trust.connect(mallory).applyLicensingDetermination(id, k("doc"), "ipfs://det", "0x")).to.be.revertedWithCustomError(trust, "NotTrustParty");
+      const consent = await signTrust(ctx, alice, "LicensingConsent", {
+        tokenId: id, standby: standby.address, docHash: k("doc"), nonce: (await trust.trustRecordOf(id)).nonce,
+      });
+      await expect(trust.connect(standby).applyLicensingDetermination(id, k("doc"), "ipfs://det", consent))
         .to.emit(trust, "NoticePosted").withArgs(id, standby.address, k("doc"), "ipfs://det", trustee.address, alice.address)
         .and.to.emit(trust, "StandbyPromoted").withArgs(id, trustee.address, standby.address);
       const r = await trust.trustRecordOf(id);
@@ -402,10 +407,10 @@ describe("AUDIT deed: trust agreement v5", function () {
     it("without a standby the trustee is suspended and loses its powers until the protector names one", async () => {
       const { deed, trust, alice, trustee, standby } = ctx;
       const id = await mintValidatedLand(ctx, alice);
-      await expect(trust.connect(trustee).applyLicensingDetermination(id, k("doc"), "ipfs://det"))
+      await expect(trust.connect(trustee).applyLicensingDetermination(id, k("doc"), "ipfs://det", "0x"))
         .to.emit(trust, "TrusteeSuspended").withArgs(id, trustee.address);
       expect(coder.decode(["bool"], await deed.getTraitValue(id, k("trusteeSuspended")))[0]).to.equal(true);
-      await expect(trust.connect(trustee).markVoid(id, 1, ethers.ZeroHash, "")).to.be.revertedWithCustomError(trust, "NotTrustParty");
+      await expect(trust.connect(trustee).markVoid(id, 1, ethers.ZeroHash, "", ethers.ZeroAddress, "0x")).to.be.revertedWithCustomError(trust, "NotTrustParty");
       await expect(trust.connect(trustee).correctDefinition(id, "x", "", "0x")).to.be.revertedWithCustomError(trust, "NotTrustParty");
       const nonce = (await trust.trustRecordOf(id)).nonce;
       await trust.connect(alice).setTrustee(id, standby.address,
@@ -439,16 +444,16 @@ describe("AUDIT deed: trust agreement v5", function () {
     it("markVoid: validator or trustee; transferable by default; freezing codes only by the validator; burn always works", async () => {
       const { deed, trust, alice, bob, trustee, deployer, mallory } = ctx;
       const id = await mintValidatedLand(ctx, alice);
-      await expect(trust.connect(mallory).markVoid(id, 1, k("rec"), "ipfs://tax-sale")).to.be.revertedWithCustomError(trust, "NotTrustParty");
-      await expect(trust.connect(trustee).markVoid(id, 1, k("rec"), "ipfs://tax-sale"))
+      await expect(trust.connect(mallory).markVoid(id, 1, k("rec"), "ipfs://tax-sale", ethers.ZeroAddress, "0x")).to.be.revertedWithCustomError(trust, "NotTrustParty");
+      await expect(trust.connect(trustee).markVoid(id, 1, k("rec"), "ipfs://tax-sale", ethers.ZeroAddress, "0x"))
         .to.emit(trust, "DeedVoided").withArgs(id, 1, k("rec"), "ipfs://tax-sale", true);
       expect(await trust.statusOf(id)).to.equal(2);
-      await expect(trust.connect(trustee).markVoid(id, 1, k("rec"), "")).to.be.revertedWithCustomError(trust, "NotActive");
+      await expect(trust.connect(trustee).markVoid(id, 1, k("rec"), "", ethers.ZeroAddress, "0x")).to.be.revertedWithCustomError(trust, "NotActive");
       // the right to wind-up proceeds travels with the void token
       await deed.connect(alice).transferFrom(alice.address, bob.address, id);
 
       const id2 = await mintValidatedLand(ctx, alice);
-      await expect(trust.connect(deployer).markVoid(id2, 128, k("rec2"), "ipfs://order"))
+      await expect(freeze(ctx, id2, 128, k("rec2"), "ipfs://order"))
         .to.emit(trust, "DeedVoided").withArgs(id2, 128, k("rec2"), "ipfs://order", false);
       await expect(deed.connect(alice).transferFrom(alice.address, bob.address, id2)).to.be.revertedWithCustomError(trust, "DeedFrozen");
       await deed.connect(alice).burnAsset(id2);

@@ -3,6 +3,8 @@ import { ethers, upgrades } from "hardhat";
 import { advance, ONE_USDC, DAY } from "./deep-setup";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 import { deployAssurancePool, fund as fundAssurance, balances, TAG } from "../../helpers/assurance";
+import { deployBondFactory, deployBondStack } from "../../helpers/bonds";
+import { deployBarePool } from "../../helpers/yieldPool";
 
 /*
  * Phase 1, workstream 1B: regression tests for the money peripherals.
@@ -67,12 +69,15 @@ async function vaultDomain(vault: any) {
 
 /* ------------------------------------------------------------------ helpers: lending pool */
 
+// Phase 2f: the LendingPool is the Yield Pool, with its valuation module and mock Earn controls.
+// Signers 17-19 are Clear Lending's lending account and the two Deployment signers.
 async function deployLendingPool(admin: any) {
   const MockERC20 = await ethers.getContractFactory("MockERC20");
   const usdc: any = await MockERC20.deploy("USDC", "USDC", 6);
-  const LP = await ethers.getContractFactory("LendingPool");
-  const lp: any = await upgrades.deployProxy(LP, [admin.address, await usdc.getAddress(), "Yield", "yUSDC"], { kind: "uups" });
-  return { usdc, lp };
+  const signers = await ethers.getSigners();
+  const lending = signers[17];
+  const { pool: lp, controls, deploy } = await deployBarePool(admin, usdc, lending, [signers[18], signers[19]]);
+  return { usdc, lp, controls, deploy, lending };
 }
 
 describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
@@ -289,7 +294,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       const sig = await signClaim(escrow, claimKey, transferId, recipient.address);
       await expect(escrow.connect(settler).claimToWalletWithSignature(transferId, recipient.address, sig))
         .to.be.revertedWithCustomError(escrow, "ClaimEscrowExpired");
-      await expect(escrow.connect(settler).claimToPayoutTreasury(transferId))
+      await expect(escrow.connect(settler).claimToPayoutTreasuryWithSignature(transferId, ethers.ZeroHash, sig))
         .to.be.revertedWithCustomError(escrow, "ClaimEscrowExpired");
       await escrow.refundExpired(transferId);
     });
@@ -351,89 +356,88 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
   /* ================================================================ LendingPool */
 
   describe("LendingPool", function () {
-    it("H-4: the card settler can borrow only to its stored destination and within its daily cap", async function () {
+    it("H-4, superseded by decision 17: no borrower key can draw; money leaves only as a two-person Deployment to the registered account", async function () {
+      // Changed: H-4 bounded the card settler's draws by destination and daily cap. Phase 2f
+      // removes direct borrowing altogether: only Clear Lending draws, as a recorded Deployment.
       const [admin, depositor, settler, float, attacker] = await ethers.getSigners();
-      const { usdc, lp } = await deployLendingPool(admin);
+      const { usdc, lp, deploy, lending } = await deployLendingPool(admin);
       await usdc.mint(depositor.address, 10_000n * ONE_USDC);
       await usdc.connect(depositor).approve(await lp.getAddress(), ethers.MaxUint256);
       await lp.connect(depositor).deposit(10_000n * ONE_USDC, depositor.address);
       await lp.grantRole(await lp.BORROWER_ROLE(), settler.address);
 
-      // Unconfigured: no destination, no borrowing.
       await expect(lp.connect(settler).borrow(1n, float.address))
-        .to.be.revertedWithCustomError(lp, "LendingPoolDestinationNotAllowed");
-      await expect(lp.connect(settler).setBorrower(settler.address, attacker.address, 10n ** 12n)).to.be.reverted;
-      await lp.setBorrower(settler.address, float.address, 1_000n * ONE_USDC);
-
-      // The leaked key aims the pool at itself: refused.
-      await expect(lp.connect(settler).borrow(500n * ONE_USDC, attacker.address))
-        .to.be.revertedWithCustomError(lp, "LendingPoolDestinationNotAllowed")
-        .withArgs(settler.address, attacker.address);
-      await lp.connect(settler).borrow(600n * ONE_USDC, float.address);
-      await expect(lp.connect(settler).borrow(500n * ONE_USDC, float.address))
-        .to.be.revertedWithCustomError(lp, "LendingPoolDailyCapExceeded")
-        .withArgs(settler.address, 400n * ONE_USDC, 500n * ONE_USDC);
-      await advance(DAY);
-      await lp.connect(settler).borrow(500n * ONE_USDC, float.address);
-      expect(await usdc.balanceOf(float.address)).to.equal(1_100n * ONE_USDC);
+        .to.be.revertedWithCustomError(lp, "LendingPoolDirectBorrowOff");
+      expect(await lp.borrowableToday(settler.address)).to.equal(0n);
+      // A leaked key cannot repoint the destination or deploy on its own.
+      await expect(lp.connect(settler).setDeploymentAccount(attacker.address)).to.be.reverted;
+      await expect(lp.connect(attacker).deploy(1n, ethers.ZeroHash))
+        .to.be.revertedWithCustomError(lp, "LendingPoolNotAuthorized");
+      await deploy(600n * ONE_USDC);
+      expect(await usdc.balanceOf(lending.address)).to.equal(600n * ONE_USDC);
       expect(await usdc.balanceOf(attacker.address)).to.equal(0n);
+      expect(await usdc.balanceOf(float.address)).to.equal(0n);
     });
 
-    it("X-7: a depositor who queues just before a loss carries their share of it, and is not paid at par from later cash", async function () {
-      // Flipped from DeepPoC.spec.ts > X-7, where A got 1,000 back and B was left with 0.
-      const [admin, a, b, borrower, reporter] = await ethers.getSigners();
-      const { usdc, lp } = await deployLendingPool(admin);
-      await lp.grantRole(await lp.BORROWER_ROLE(), borrower.address);
-      await lp.setBorrower(borrower.address, borrower.address, 10n ** 12n);
-      await lp.grantRole(await lp.LOSS_REPORTER_ROLE(), reporter.address);
+    it("X-7, replaced by C4: a depositor who queues just before a loss carries their share of it, and is filled at the Share Value at fill", async function () {
+      // Changed: X-7 capped a queued claim at its value when queued. The spec (C4) keeps queued
+      // shares earning and bearing losses and fills them at the Share Value at fill, which still
+      // stops a leaver escaping a loss by queueing just before it.
+      const [admin, a, b, v1, v2] = await ethers.getSigners();
+      const { usdc, lp, deploy, lending } = await deployLendingPool(admin);
+      for (const v of [v1, v2]) await lp.grantRole(await lp.VALUATION_ROLE(), v.address);
       for (const w of [a, b]) {
         await usdc.mint(w.address, 1_000n * ONE_USDC);
         await usdc.connect(w).approve(await lp.getAddress(), ethers.MaxUint256);
         await lp.connect(w).deposit(1_000n * ONE_USDC, w.address);
       }
-      await lp.connect(borrower).borrow(1_500n * ONE_USDC, borrower.address); // only 500 cash left
+      await deploy(1_500n * ONE_USDC); // only 500 cash left
       await lp.connect(a).requestWithdrawal(await lp.balanceOf(a.address), a.address);
-      await lp.connect(reporter).absorbLoss(1_000n * ONE_USDC);
+      await lp.connect(v1).postLossCharge(1_000n * ONE_USDC, ethers.id("loss"));
+      await lp.connect(v2).postLossCharge(1_000n * ONE_USDC, ethers.id("loss"));
 
       // The loss is shared: 500 each.
-      expect(await lp.requestValue(0)).to.be.closeTo(500n * ONE_USDC, 1n);
-      expect(await lp.previewRedeem(await lp.balanceOf(b.address))).to.be.closeTo(500n * ONE_USDC, 1n);
+      expect(await lp.convertToAssets(await lp.queuedShares())).to.be.closeTo(500n * ONE_USDC, ONE_USDC / 100n);
+      expect(await lp.previewRedeem(await lp.balanceOf(b.address))).to.be.closeTo(500n * ONE_USDC, ONE_USDC / 100n);
 
-      await usdc.mint(await lp.getAddress(), 500n * ONE_USDC); // e.g. a later repayment
-      await lp.connect(a).claimWithdrawal(0);
-      expect(await usdc.balanceOf(a.address)).to.be.closeTo(500n * ONE_USDC, 1n);
+      await usdc.mint(lending.address, 500n * ONE_USDC);
+      await usdc.connect(lending).approve(await lp.getAddress(), ethers.MaxUint256);
+      await lp.connect(lending).returnFunds(500n * ONE_USDC); // a later Return
+      await lp.fillQueue(10);
+      expect(await usdc.balanceOf(a.address)).to.be.closeTo(500n * ONE_USDC, ONE_USDC / 100n);
     });
 
-    it("X-18: interest arriving in one lump streams into the share price, so a just-in-time deposit captures almost none of it", async function () {
-      const [admin, alice, jit, borrower] = await ethers.getSigners();
-      const { usdc, lp } = await deployLendingPool(admin);
-      await lp.grantRole(await lp.BORROWER_ROLE(), borrower.address);
-      await lp.setBorrower(borrower.address, borrower.address, 10n ** 12n);
-      for (const w of [alice, jit, borrower]) {
+    it("X-18, superseded: interest is a receivable accruing per second, so a Return moves no price and a just-in-time deposit captures none of it", async function () {
+      // Changed: X-18 streamed interest that arrived as cash. Pool Interest now accrues per second
+      // on the Deployed Balance (Earn §6), so it is in the Share Value before it is paid, and paying
+      // it is a Return that changes nothing.
+      const [admin, alice, jit] = await ethers.getSigners();
+      const { usdc, lp, deploy, lending } = await deployLendingPool(admin);
+      for (const w of [alice, jit, lending]) {
         await usdc.mint(w.address, 10_000n * ONE_USDC);
         await usdc.connect(w).approve(await lp.getAddress(), ethers.MaxUint256);
       }
       await lp.connect(alice).deposit(1_000n * ONE_USDC, alice.address);
-      await lp.connect(borrower).borrow(500n * ONE_USDC, borrower.address);
+      await deploy(500n * ONE_USDC);
+      await advance(180 * DAY);
 
-      // JIT: deposit, the repayment lands with 100 of interest (repaid as the PayoutPool does --
-      // principal through repay, interest as a plain transfer), withdraw.
       await lp.connect(jit).deposit(1_000n * ONE_USDC, jit.address);
-      await lp.connect(borrower).repay(500n * ONE_USDC);
-      await usdc.connect(borrower).transfer(await lp.getAddress(), 100n * ONE_USDC);
+      const sv = await lp.shareValue();
+      await lp.connect(lending).returnFunds(500n * ONE_USDC + (await lp.accruedInterest()));
+      expect(await lp.shareValue()).to.be.closeTo(sv, 10n ** 9n);
       const before = await usdc.balanceOf(jit.address);
       await lp.connect(jit).redeem(await lp.balanceOf(jit.address), jit.address, jit.address);
       const captured = (await usdc.balanceOf(jit.address)) - before - 1_000n * ONE_USDC;
-      expect(captured).to.be.lessThan(ONE_USDC); // was ~50 before the fix
-
-      // The depositor who was there gets it, over the stream period.
-      await advance(7 * DAY);
-      expect(await lp.previewRedeem(await lp.balanceOf(alice.address))).to.be.closeTo(1_100n * ONE_USDC, ONE_USDC);
+      expect(captured).to.be.lessThan(ONE_USDC / 100n);
+      // The depositor who was there has it already.
+      expect(await lp.previewRedeem(await lp.balanceOf(alice.address))).to.be.greaterThan(1_009n * ONE_USDC);
     });
 
     it("M-3: an unreadable encumbrance source keeps a pledger's shares locked, frees a non-pledger's, and blocks seizure", async function () {
       const [admin, pledger, saver, liquidator] = await ethers.getSigners();
-      const { usdc, lp } = await deployLendingPool(admin);
+      const { usdc, lp, controls } = await deployLendingPool(admin);
+      // Two accounts of one Holder, so the transfer allowlist (Earn §6) lets them move between them.
+      await controls.link(pledger.address, saver.address);
       const signals: any = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
       await lp.setEncumbranceSource(await signals.getAddress(), ethers.id("LP"));
       await lp.grantRole(await lp.LIQUIDATOR_ROLE(), liquidator.address);
@@ -453,9 +457,12 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       await expect(lp.connect(saver).transfer(pledger.address, 1n))
         .to.emit(lp, "EncumbranceSourceReverted")
         .withArgs(saver.address, 0n);
-      // And "fully locked" is not a licence to seize.
-      await expect(lp.connect(liquidator).seizeShares(pledger.address, liquidator.address, 1n))
-        .to.be.revertedWithCustomError(lp, "LendingPoolEncumbranceUnreadable");
+      // And "fully locked" is not a licence to take anything: since Phase 2f stage 2 (C5, decision 7)
+      // there is no seizure at all, and LIQUIDATOR_ROLE (granted above) exempts nothing.
+      expect(lp.interface.getFunction("seizeShares")).to.equal(null);
+      await lp.connect(pledger).approve(liquidator.address, 1n);
+      await expect(lp.connect(liquidator).transferFrom(pledger.address, liquidator.address, 1n))
+        .to.be.revertedWithCustomError(lp, "LendingPoolEncumbered");
     });
   });
 
@@ -538,12 +545,17 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
 
   describe("BondVault and BurnerBond", function () {
     it("M-8 / X-17: BondVault takes a payout-pool repayment only from the payout pool, and books carry apart", async function () {
+      // C1 and decision 3 (Phase 2f): the vault no longer lends. `lendToPayoutPool` is a stub that
+      // lends nothing; `repayFromPayoutPool` stays, payout pool only, until old loans are repaid.
       const [admin, payout, outsider] = await ethers.getSigners();
       const usdc: any = await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
       const vault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"), [admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
       await vault.setBackstops(ethers.ZeroAddress, payout.address);
       await usdc.mint(await vault.getAddress(), 1_000n * ONE_USDC);
+      expect(await vault.connect(payout).lendToPayoutPool.staticCall(100n * ONE_USDC)).to.equal(0n);
       await vault.connect(payout).lendToPayoutPool(100n * ONE_USDC);
+      expect(await vault.held()).to.equal(1_000n * ONE_USDC);
+      expect(await vault.lentToPayoutPool()).to.equal(0n);
 
       for (const w of [payout, outsider]) {
         await usdc.mint(w.address, 200n * ONE_USDC);
@@ -551,102 +563,67 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
       }
       await expect(vault.connect(outsider).repayFromPayoutPool(100n * ONE_USDC))
         .to.be.revertedWithCustomError(vault, "BondVaultNotTrackedBorrower");
-      await expect(vault.setBackstops(ethers.ZeroAddress, outsider.address))
-        .to.be.revertedWithCustomError(vault, "BondVaultLoanOutstanding");
-      await expect(vault.connect(payout).repayFromPayoutPool(105n * ONE_USDC))
+      await expect(vault.connect(payout).repayFromPayoutPool(5n * ONE_USDC))
         .to.emit(vault, "InterestReceived")
-        .withArgs(100n * ONE_USDC, 5n * ONE_USDC);
-      expect(await vault.lentToPayoutPool()).to.equal(0n);
+        .withArgs(0n, 5n * ONE_USDC);
     });
 
-    it("X-10: reading face due within the window costs the same however many bonds are outstanding, and the minimum face is raised", async function () {
+    it("X-10: reading face due within the window costs the same however many bonds are outstanding", async function () {
       // Flipped from DeepPoC2.spec.ts > X-10, where each $100 bond added ~8,000 gas to every RTD read.
-      // The RTD is retired (section 13); the vault's own required-reserve read stands in for it.
+      // Phase 2f: bonds are bought by quote (the $250 minimum is EarnControls'), and the reserve
+      // reads two trees (every bond's face, and confirmed rolls) plus the glide bands.
       const ctx = await deployPhase0Network();
       const { admin, usdc, tokenRegistry, outsider } = ctx;
-      const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
-        await tokenRegistry.getAddress(), "ipfs://x"
-      );
-      const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.burnerBondDeposit());
-      const vault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"), [admin.address, await usdc.getAddress(), 90 * DAY], { kind: "uups" });
-      await deposit.setBondVault(await vault.getAddress());
-      await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
-      await usdc.mint(outsider.address, 10_000_000n * ONE_USDC);
-      await usdc.connect(outsider).approve(await deposit.getAddress(), ethers.MaxUint256);
-      const t0 = await now();
-
-      // The $100 bond the PoC used is below the minimum now.
-      await expect(
-        deposit.connect(outsider).makeDeposit(await usdc.getAddress(), 100n * ONE_USDC, t0 + 60 * DAY, 0)
-      ).to.be.revertedWith("Face value too low");
-
-      const before = await vault.requiredReserve.estimateGas();
-      const N = 40;
-      for (let i = 0; i < N; i++) {
-        const maturity = t0 + 60 * DAY + i * DAY; // inside and outside the 90-day window
-        await deposit.connect(outsider).makeDeposit(await usdc.getAddress(), 500n * ONE_USDC, maturity, 0);
-      }
-      const after = await vault.requiredReserve.estimateGas();
+      const s = await deployBondStack(admin, usdc, tokenRegistry, { rungs: [[365, 475]] });
+      const before = await s.vault.requiredReserve.estimateGas();
+      const N = 20;
+      for (let i = 0; i < N; i++) await s.buy(outsider, 500n * ONE_USDC, 365);
+      const after = await s.vault.requiredReserve.estimateGas();
       expect(after - before).to.be.lessThan(50_000n); // a fixed number of bucket reads, not N
-      expect(await vault.outstandingCount()).to.equal(BigInt(N));
-      // And the bucketed sum is right: maturities at day 60..89 fall inside the 90-day window. The
-      // bond at day 90 may count too: buckets are whole days and round toward "due".
-      const due = await vault.faceDueWithin(90 * DAY);
-      expect(due).to.be.gte(30n * 500n * ONE_USDC);
-      expect(due).to.be.lte(31n * 500n * ONE_USDC);
-      expect(await vault.faceDueWithin(365 * DAY)).to.equal(BigInt(N) * 500n * ONE_USDC);
+      expect(await s.vault.outstandingCount()).to.equal(BigInt(N));
+      expect(await s.vault.faceDueWithin(366 * DAY)).to.equal(BigInt(N) * 500n * ONE_USDC);
     });
 
     async function bondSetup() {
       const ctx = await deployPhase0Network();
       const signers = await ethers.getSigners();
       const [buyer, liquidator, owner] = [signers[8], signers[10], ctx.admin];
-      const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
-        await ctx.tokenRegistry.getAddress(), "ipfs://b"
-      );
-      const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-      await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
-      const bond: any = await ethers.getContractAt("BurnerBond", (await factory.getCollectionInfo(await ctx.usdc.getAddress())).collectionAddress);
-      const vault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"), [owner.address, await ctx.usdc.getAddress(), 3 * MONTH], { kind: "uups" });
-      await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
-      await vault.grantRole(await vault.BOND_ROLE(), await bond.getAddress());
-      await deposit.setBondVault(await vault.getAddress());
-      await bond.setBondVault(await vault.getAddress());
+      const s = await deployBondStack(owner, ctx.usdc, ctx.tokenRegistry);
+      const bond = s.bond;
       await bond.setLiquidator(liquidator.address); // before any bond: takes effect at once
-      await ctx.usdc.mint(buyer.address, 100_000n * ONE_USDC);
-      await ctx.usdc.connect(buyer).approve(await deposit.getAddress(), ethers.MaxUint256);
-      const maturity = BigInt(await now()) + BigInt(12 * MONTH);
-      await deposit.connect(buyer).makeDeposit(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, maturity, await bond.calculateDiscount(maturity));
-      return { ctx, factory, bond, buyer, liquidator, owner };
+      const { id } = await s.buy(buyer, 1_000n * ONE_USDC, 365);
+      return { ctx, s, bond, buyer, liquidator, owner, id };
     }
 
-    it("M-6: seizeBond takes only a pledged bond from a member in default", async function () {
-      const { bond, buyer, liquidator } = await bondSetup();
-      // No sources configured: nothing is seizable (it used to take any bond from anyone).
-      await expect(bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address))
-        .to.be.revertedWithCustomError(bond, "BurnerBondNotSeizable");
+    it("M-6, superseded by founder answer G: no seizeBond; a pledged bond is not movable by the liquidator, pledged or in default", async function () {
+      const { s, bond, buyer, liquidator, id } = await bondSetup();
+      // The seize path is gone (Phase 2e): the function does not exist, and nothing reaches it.
+      expect(bond.interface.getFunction("seizeBond")).to.equal(null);
+      const legacy = new ethers.Interface(["function seizeBond(uint256,address,address)"]);
+      await expect(liquidator.sendTransaction({
+        to: await bond.getAddress(), data: legacy.encodeFunctionData("seizeBond", [id, buyer.address, liquidator.address]),
+      })).to.be.reverted;
 
+      // Pledged and "in default": the named liquidator still cannot move it, and no operator can be
+      // approved at all (Earn §1, Phase 2f). Only `payPledged`, asked by the pledge module, pays it.
       const signals: any = await (await ethers.getContractFactory("MockCollateralSignals")).deploy();
-      await bond.setEncumbranceSource(await signals.getAddress(), ethers.id("BOND"));
-      await bond.setDefaultSource(await signals.getAddress());
+      await bond.setSources(await s.vault.getAddress(), await signals.getAddress(), ethers.id("BOND"), await s.controls.getAddress(), ethers.ZeroAddress);
       await signals.setInDefault(buyer.address, true);
-      await expect(bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address))
-        .to.be.revertedWithCustomError(bond, "BurnerBondNotSeizable"); // in default, but not pledged
-      await signals.setInDefault(buyer.address, false);
-      await signals.setItemEncumbered(buyer.address, 1, true);
-      await expect(bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address))
-        .to.be.revertedWithCustomError(bond, "BurnerBondNotSeizable"); // pledged, but not in default
-      await signals.setInDefault(buyer.address, true);
-      await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
-      expect(await bond.balanceOf(liquidator.address, 1)).to.equal(1n);
+      await signals.setItemEncumbered(buyer.address, id, true);
+      await expect(bond.connect(buyer).setApprovalForAll(liquidator.address, true))
+        .to.be.revertedWithCustomError(bond, "BurnerBondNoOperators");
+      await expect(bond.connect(liquidator).safeTransferFrom(buyer.address, liquidator.address, id, 1, "0x")).to.be.reverted;
+      await expect(bond.connect(buyer).safeTransferFrom(buyer.address, liquidator.address, id, 1, "0x"))
+        .to.be.revertedWithCustomError(bond, "BurnerBondPledged");
+      expect(await bond.balanceOf(buyer.address, id)).to.equal(1n);
     });
 
-    it("M-6: once bonds exist, the owner cannot name itself liquidator and seize in the same breath", async function () {
-      const { bond, buyer, owner, liquidator } = await bondSetup();
+    it("M-6: once bonds exist, the owner cannot name a new liquidator (pledge module) in the same breath", async function () {
+      const { bond, buyer, owner, liquidator, id } = await bondSetup();
       await bond.connect(owner).setLiquidator(owner.address);
       expect(await bond.liquidator()).to.equal(liquidator.address); // unchanged: only proposed
       expect(await bond.pendingLiquidator()).to.equal(owner.address);
-      await expect(bond.connect(owner).seizeBond(1, buyer.address, owner.address)).to.be.revertedWith("Only liquidator can seize");
+      expect(await bond.balanceOf(buyer.address, id)).to.equal(1n);
       await expect(bond.connect(owner).executeLiquidatorChange())
         .to.be.revertedWithCustomError(bond, "BurnerBondLiquidatorNotReady");
       await advance(7 * DAY);
@@ -659,7 +636,7 @@ describe("PERIPHERAL REGRESSIONS (Phase 1, workstream 1B)", function () {
 
     it("X-19: a stranger cannot create (squat) a bond collection", async function () {
       const ctx = await deployPhase0Network();
-      const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
+      const factory: any = await deployBondFactory(
         await ctx.tokenRegistry.getAddress(), "ipfs://b"
       );
       await expect(

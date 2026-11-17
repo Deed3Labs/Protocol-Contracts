@@ -146,10 +146,14 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
   it("acceptance 7: Clear Cash $3,000 over 12 x 30 days reverts; over 13 x 30 days (>= 365) at 2.5%/30d succeeds under the annual cap", async function () {
     const { term, ctx } = core;
     await expect(open(ctx.member, 3_000n * ONE_USDC, 12, CASH)).to.be.revertedWithCustomError(term, "TermIssuerTermTooShort");
+    // Under $2,500 (and with no other Clear Cash open) the large-loan regime does not apply and 13
+    // is not an offered split.
+    await expect(open(ctx.member, 2_000n * ONE_USDC, 13, CASH)).to.be.revertedWithCustomError(term, "TermIssuerSplitNotOffered");
     await expect(open(ctx.member, 3_000n * ONE_USDC, 13, CASH)).to.emit(term, "PlanOpened");
     expect((await term.planAt(0)).ratePerCycle).to.equal(250n);
-    // Under $2,500 the large-loan regime does not apply and 13 is not an offered split.
-    await expect(open(ctx.member, 2_000n * ONE_USDC, 13, CASH)).to.be.revertedWithCustomError(term, "TermIssuerSplitNotOffered");
+    // Phase 4b (re-review L-F): the term rule is judged on the member's open Clear Cash principal,
+    // so with $3,000 open a $2,000 plan is a large loan for its term: 12 x 30 days is too short.
+    await expect(open(ctx.member, 2_000n * ONE_USDC, 12, CASH)).to.be.revertedWithCustomError(term, "TermIssuerTermTooShort");
   });
 
   it("acceptance 8: a member with no stateCode, or in a state without the product, cannot open any credit product", async function () {
@@ -164,12 +168,12 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     // The revolving line is gated the same way.
     await rates.setProduct(CA, P("REVOLVING"), params(), CA_BANDS);
     await revolving.connect(ctx.admin).setPricing(await rates.getAddress(), P("REVOLVING"));
-    await expect(revolving.connect(ctx.operator).openLine(member2.address, [0n, 0n, 100n, 0n], 0, CYCLE))
+    await expect(revolving.connect(ctx.operator).openLine(member2.address, [0n, 0n, 100n, 0n], 0))
       .to.be.revertedWithCustomError(revolving, "RevolvingIssuerStateNotEnabled");
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 100n, 0n], 0, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 100n, 0n], 0);
   });
 
-  it("DECISIONS #7: term plans and unsecured revolving principal are one loan for the cap, until governance turns it off", async function () {
+  it("12.3 (Addendum 2, replacing DECISIONS #7): term plans and unsecured revolving principal are one loan for the cap, permanently; the plan is trimmed before the line", async function () {
     const { term, revolving, ctx } = core;
     const INCOME = 2;
     await rates.setProduct(CA, P("INCOME"), params({ listMonthlyBps: 150 }), CA_BANDS);
@@ -177,34 +181,23 @@ describe("COMPLIANCE term plans (spec items 5-9)", function () {
     await revolving.connect(ctx.admin).setPricing(await rates.getAddress(), P("REVOLVING"));
     await revolving.connect(ctx.admin).setTierProduct(INCOME, P("INCOME"));
     await rates.setCflSources([await revolving.getAddress(), await term.getAddress()]);
-    expect(await rates.cflAggregationOff()).to.equal(false); // on by default
+    await term.connect(ctx.operator).setCombinedCeiling(await revolving.getAddress(), P("REVOLVING"));
+    await revolving.connect(ctx.operator).setTermIssuer(await term.getAddress());
+    // There is no switch any more.
+    expect(rates.interface.getFunction("setCflAggregation")).to.equal(null);
 
-    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 365 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(ctx.member.address, [0n, 0n, 1_000n * ONE_USDC, 0n], 0);
     await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 1_000n * ONE_USDC);
     await open(ctx.member, 940n * ONE_USDC, 4);
     expect(await rates.aggregatePrincipalOf(ctx.member.address)).to.equal(1_940n * ONE_USDC);
 
-    const snap = await ethers.provider.send("evm_snapshot", []);
     await advance(CYCLE);
     await term.materialiseCarry(0);
     await revolving.materialiseCarry(ctx.member.address);
-    // The cap on $1,940 is $33.275 a month. The plan's share (940/1,940) is $16.12, under its
-    // $18.80 list charge, so it is trimmed; the line's share ($17.15) is above its $15.00 list,
-    // so the line is charged in full.
-    const share = (33_275_000n * 940n) / 1_940n;
-    // A term plan is charged per 30-day cycle (section 12.9), so a full cycle is the whole share.
-    expect(await term.carryOutstandingOf(0)).to.be.closeTo(share, 20_000n);
+    // The cap on $1,940 is $33.275 a month. The line keeps its $15.00 list carry; the plan gets the
+    // rest, $18.275 a month ($0.525 under its $18.80 list), which it accrues per second.
+    expect(await term.carryOutstandingOf(0)).to.be.closeTo(thirtyDays(18_275_000n), 20_000n);
     expect(await revolving.carryOf(ctx.member.address, INCOME)).to.be.closeTo(thirtyDays(15_000_000n), 5_000n);
-
-    // Off: each loan is capped alone, and the plan pays its list rate.
-    await ethers.provider.send("evm_revert", [snap]);
-    await expect(rates.setCflAggregation(false)).to.emit(rates, "CflAggregationSet").withArgs(false);
-    expect(await rates.aggregatePrincipalOf(ctx.member.address)).to.equal(0n);
-    await advance(CYCLE);
-    await term.materialiseCarry(0);
-    expect(await term.carryOutstandingOf(0)).to.be.closeTo(18_800_000n, 20_000n);
-    // Only the governor (the credit timelock in production) can flip it.
-    await expect(rates.connect(ctx.member).setCflAggregation(true)).to.be.reverted;
   });
 
   it("acceptance 10: a full refund after the merchant redeemed leaves it owing the payout; its next payout nets that first", async function () {

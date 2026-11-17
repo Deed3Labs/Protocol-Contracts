@@ -53,7 +53,9 @@ webflow/.vite/
 # Local OP-stack / infra runtime + heavy data (never commit — ~GBs of chaindata, secrets, etc.)
 ops/
 tmp/
-tools/
+tools/*
+# ... except the signing page (tools/signing-page/README.md), which is source.
+!tools/signing-page/
 *.sst
 **/jwt.txt
 
@@ -82,3 +84,9 @@ apps/pay/public/_ref/
 
 # The browser script, copied in by apps/pay's prebuild for js.useclear.org (packages/clear-js), not committed.
 apps/pay/public/js/
+
+# The Base Sepolia fork rehearsal's scratch records (docs/audit/SEPOLIA-REHEARSAL.md): never committed
+deployments/base-sepolia-fork/
+# The signing plan and its Safe batches (scripts/signing_plan.ts): regenerated from the chain after each stage.
+deployments/*/signing-plan.json
+deployments/*/safe-batches/signing-*.json

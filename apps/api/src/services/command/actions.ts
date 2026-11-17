@@ -11,6 +11,11 @@ import { requestSync } from './feeds.js';
 import { BATCH_ORDERS, sendBatch } from './waitlist.js';
 import { ActionError } from './actionError.js';
 import { overLimit, readSetting, settingsActions } from './settings.js';
+import { assuranceFeeConfig, type AssuranceFeeConfig } from '../assuranceFees/config.js';
+import { liveFeeChain } from '../assuranceFees/chain.js';
+import { toUnits, usd } from '../assuranceFees/feeMath.js';
+import { fundingProposal, interchangeBatch } from '../assuranceFees/proposals.js';
+import { AssuranceRefusal, itemById, markFundingProposed, recordInterchange, recordRepayment, retryFailed } from '../assuranceFees/store.js';
 
 /*
  * Each section's own actions (docs/command-center-plan.md: the step after Phase 3).
@@ -1820,6 +1825,106 @@ const shop: Record<string, Action> = {
 
 // ── Money ───────────────────────────────────────────────────────────────────
 
+/*
+ * The Assurance fees card (services/assuranceFees, docs/operators/assurance-fee-payer.md). Nothing here
+ * moves money: funding is a Transaction Builder batch CL Operating's signers sign in the Safe app, the
+ * interchange goes to the Clear Treasury Safe's own signers, and the job pays only what they funded.
+ */
+const MONTH = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Which month? (YYYY-MM)');
+const ASSURANCE_KIND: Record<string, string> = { fee: 'Credit Enhancement Fee', spread_repayment: 'Spread Repayment', recovery: 'Recovery' };
+
+/** The pool and what reads it, or why not. */
+function assurancePool() {
+  const cfg = assuranceFeeConfig();
+  if (!cfg.pool) throw new ActionError(409, 'NO_POOL', `The new Assurance Pool isn’t configured on chain ${cfg.chainId} yet`);
+  return { cfg: cfg as AssuranceFeeConfig & { pool: string }, chain: liveFeeChain(cfg.chainId) };
+}
+const refused = (e: unknown): never => {
+  if (e instanceof AssuranceRefusal) throw new ActionError(409, e.code, e.message);
+  throw e;
+};
+async function chainRead<T>(p: Promise<T>, what: string): Promise<T> {
+  try {
+    return await p;
+  } catch {
+    throw new ActionError(502, 'CHAIN', `Couldn’t read ${what} from the chain right now`);
+  }
+}
+
+function assuranceActions(): Record<string, Action> {
+  return {
+    // CL Operating -> the CL Fees wallet, exactly the item's amount: the batch its signers sign (Step 5's confirmation)
+    'assurance-fund': {
+      body: z.object({ id: z.string().uuid() }),
+      summary: async (b, db) => {
+        const i = await itemById(db, b.id).catch(() => null);
+        return i ? `Proposed CL Operating’s funding of the ${i.month} ${ASSURANCE_KIND[i.kind]} · ${usd(i.amount)}` : 'Proposed CL Operating’s funding of an Assurance payment';
+      },
+      apply: async ({ tx, person, at }, b) => {
+        const { cfg, chain } = assurancePool();
+        if (!cfg.clOperating || !cfg.clFees) throw new ActionError(409, 'NO_WALLETS', 'CL Operating and the CL Fees wallet aren’t configured');
+        const item = await itemById(tx, b.id);
+        if (!item || item.chainId !== cfg.chainId) throw new ActionError(404, 'NOT_FOUND', 'No such Assurance payment');
+        if (item.status !== 'due' && item.status !== 'funding_proposed') throw new ActionError(409, 'NOT_DUE', `That payment is ${item.status}, not waiting for funding`);
+        const token = await chainRead(chain.asset(cfg.pool), 'the pool’s token');
+        const funding = fundingProposal({ chainId: cfg.chainId, clOperating: cfg.clOperating, clearLendingSafe: cfg.clearLendingSafe, clFees: cfg.clFees, token, amount: item.amount, kind: item.kind, month: item.month, itemId: item.id, at: at.getTime() });
+        if (!(await markFundingProposed(tx, item.id, funding, person.id, at))) throw new ActionError(409, 'NOT_DUE', 'That payment moved on: load Money again');
+        return { funding };
+      },
+    },
+    // a Spread Repayment or a recovery: paid under RECOVERY, never more than the advances outstanding
+    'assurance-repayment': {
+      level: APPROVE,
+      body: z.object({ kind: z.enum(['spread_repayment', 'recovery']), month: MONTH, amount: money.positive(), note: text(500).min(1), evidence: text(500).default('') }),
+      summary: (b) => `Entered a ${ASSURANCE_KIND[b.kind]} for ${b.month} · $${b.amount.toFixed(2)}`,
+      apply: async ({ tx, person }, b) => {
+        const { cfg, chain } = assurancePool();
+        const released = await chainRead(chain.releasedDraws(cfg.pool), 'the pool’s draws');
+        const item = await recordRepayment(tx, { chainId: cfg.chainId, kind: b.kind, month: b.month, amount: toUnits(b.amount), note: b.note, evidence: b.evidence, by: person.id, released: released.total }).catch(refused);
+        return { id: item.id };
+      },
+    },
+    // the co-op treasury's 25%: approve + deposit(INTERCHANGE), to the Clear Treasury Safe through the outbox (safeTx.ts)
+    'assurance-interchange': {
+      level: APPROVE,
+      body: z.object({ month: MONTH, interchange: money.positive(), note: text(500).default('') }),
+      summary: (b) => `Proposed ${b.month}’s interchange contribution to the Assurance Pool · from $${b.interchange.toFixed(2)} interchange`,
+      apply: async ({ tx, person, at }, b) => {
+        const { cfg, chain } = assurancePool();
+        const safe = cfg.treasurySafe;
+        if (!safe) throw new ActionError(409, 'NO_TREASURY', 'The Clear Treasury Safe isn’t configured');
+        const token = await chainRead(chain.asset(cfg.pool), 'the pool’s token');
+        const interchange = toUnits(b.interchange);
+        const row = await recordInterchange(tx, {
+          chainId: cfg.chainId,
+          month: b.month,
+          interchange,
+          bps: cfg.interchangeBps,
+          safe,
+          note: b.note,
+          by: person.id,
+          batch: (amount) => interchangeBatch({ chainId: cfg.chainId, safe, pool: cfg.pool, token, amount, interchange, bps: cfg.interchangeBps, month: b.month, at: at.getTime() }),
+        }).catch(refused);
+        return { amount: Number(row.amount) / 1e6, batch: row.batch };
+      },
+      outbox: true,
+    },
+    // after a person has looked at a stop: paying resumes, and a deposit that did land is found, not paid again
+    'assurance-retry': {
+      level: APPROVE,
+      body: z.object({ id: z.string().uuid() }),
+      summary: async (b, db) => {
+        const i = await itemById(db, b.id).catch(() => null);
+        return i ? `Resume paying the ${i.month} ${ASSURANCE_KIND[i.kind]} into the Assurance Pool · ${usd(i.amount)}` : 'Resume an Assurance payment';
+      },
+      second: () => true,
+      apply: async ({ tx }, b) => {
+        if (!(await retryFailed(tx, b.id))) throw new ActionError(409, 'NOT_FAILED', 'That payment isn’t stopped');
+      },
+    },
+  };
+}
+
 const moneyActions: Record<string, Action> = {
   top: { body: z.object({ amount: money.positive(), from: text(40).default('ops') }), summary: (b) => `Top up the PayoutPool · $${b.amount.toFixed(2)}`, second: () => true, outbox: true },
   // a sandbox feed syncs at the next tick (Phase 6a); the chain's catch-up is the indexer's own
@@ -1831,6 +1936,7 @@ const moneyActions: Record<string, Action> = {
   },
   reserve: { body: z.object({}).default({}), summary: () => 'Run the reserve check again', outbox: true },
   vote: { body: z.object({ what: text(300).min(1), amount: money.nullable().default(null) }), summary: (b) => `Propose a member vote on the co-op balance · ${b.what}`, second: () => true, outbox: true },
+  ...assuranceActions(),
 };
 
 // ── Contracts ───────────────────────────────────────────────────────────────

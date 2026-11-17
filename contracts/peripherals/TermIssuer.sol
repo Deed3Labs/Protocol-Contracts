@@ -10,7 +10,9 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
 /// @title TermIssuer
-/// @notice Term plans: partner credit, Clear Cash, and the ELPA that buys a home.
+/// @notice Term plans: partner credit and Clear Cash.
+/// @dev The ELPA is not a term plan: it is an off-chain equity contract right, and nothing here
+/// issues, prices or services it (phase-2f decisions).
 /// @dev A different rule set from the revolving line, which is why it is a different issuer
 /// rather than a fifth tier. All balance drawn in a revolving tier shares a rate and a clock, so
 /// a tier carries one index. A term plan has its own rate, its own opening date and its own split
@@ -22,7 +24,7 @@ import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 ///
 /// A plan is originated as a three-party mint that nets to zero. Nothing is lent at origination
 /// and no capital is required: the member is debited, the merchant is credited what they are
-/// owed, and the co-op is credited the difference.
+/// owed, and Clear Lending's fee recipient is credited the capped fee (12.16, Addendum 2).
 contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     using CarryIndex for CarryIndex.Index;
 
@@ -137,6 +139,137 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         return _pendingPlanCarry(planId);
     }
 
+    /* ---- the Combined Ceiling (12.3, Addendum 2) ---- */
+
+    /// @notice brings every open plan of a member to now, under the Combined Ceiling.
+    /// @dev Permissionless, like `materialiseCarry`: it only puts on the ledger what has accrued.
+    /// The revolving line calls it before it changes the member's unsecured revolving principal, and
+    /// every plan path calls it before a plan's principal changes, so the principals the ceiling is
+    /// shared on stand still over every stretch it is applied to.
+    function materialiseMember(address member) public {
+        (uint256[] memory ids, uint256[] memory carries,) = _memberCarries(member);
+        for (uint256 i = 0; i < ids.length; i++) {
+            uint256 planId = ids[i];
+            Plan storage plan = plans[planId];
+            uint256 carry = carries[i];
+            if (carry > 0) {
+                plan.principalOutstanding += carry;
+                carryOutstandingOf[planId] += carry;
+                stableCredit.accrueCarry(member, carryTreasury, carry);
+                emit PlanCarryMaterialised(planId, carry);
+            }
+            PlanPricing storage pricing = planPricing[planId];
+            pricing.accruedAt = uint64(block.timestamp);
+            if (pricing.priced && !pricing.free) {
+                planSnap[planId] = rateSchedule.snapshot(pricing.state, pricing.product);
+            }
+        }
+    }
+
+    /// @notice each open plan's monthly figure under the Combined Ceiling (12.3), in ledger units,
+    /// oldest plan first: a plan the ceiling leaves alone carries its list rate per 30-day cycle
+    /// (decision C); a trimmed plan carries what the ceiling allows it a month.
+    function combinedPlanCarryOf(address member)
+        external
+        view
+        returns (uint256[] memory ids, uint256[] memory monthly)
+    {
+        uint256[] memory rates;
+        (ids,, rates) = _memberCarries(member);
+        monthly = new uint256[](ids.length);
+        for (uint256 i = 0; i < ids.length; i++) {
+            uint256 figure = (plans[ids[i]].principalOutstanding - carryOutstandingOf[ids[i]]) * rates[i];
+            if (rates[i] == _ownRate(ids[i])) figure = (figure * 360) / 365;
+            monthly[i] = figure / (BPS_ * RATE_SCALE);
+        }
+    }
+
+    /// @dev Every open plan of the member, oldest first, with the carry each has accrued since the
+    /// member's plans were last brought to now and the monthly rate each costs from now (RATE_SCALE).
+    ///
+    /// Each plan first accrues on its own terms (decision C: list rate per 30-day cycle, trimmed to
+    /// the per-second-fitted cap on its principal, less any subsidy). Then the Combined Ceiling: the
+    /// unsecured revolving tiers and every plan opened under the large-loan threshold ($2,500) are
+    /// one loan, and their monthly carry never exceeds the graduated schedule on their combined
+    /// principal. The revolving tiers keep their share; the excess comes off the newest plan first,
+    /// then earlier ones (RateSchedule.combinedTrim). A trimmed plan accrues what it is allowed a
+    /// month, per second at monthly x 12 / 365, like every cap. Clear Cash plans of $2,500 or more
+    /// are outside the ceiling and keep their own (annual) cap.
+    function _memberCarries(address member)
+        internal
+        view
+        returns (uint256[] memory ids, uint256[] memory carries, uint256[] memory rates)
+    {
+        ids = _openOldestFirst(member);
+        uint256 n = ids.length;
+        carries = new uint256[](n);
+        rates = new uint256[](n);
+        if (n == 0) return (ids, carries, rates);
+        uint256[] memory principals = new uint256[](n);
+        uint256[] memory monthly = new uint256[](n);
+        bytes32 product = combinedProduct;
+        bool combined = product != bytes32(0) && address(rateSchedule) != address(0);
+        bytes32 state;
+        uint256 revPrincipal;
+        uint256 revMonthly;
+        if (combined && combinedRevolving != address(0)) {
+            (state,, revPrincipal, revMonthly) = ICombinedCeilingRevolving(combinedRevolving).combinedInputsOf(member);
+        }
+        if (state == bytes32(0)) state = stableCredit.networkRegistry().stateCodeOf(member);
+        uint256 threshold;
+        if (combined && rateSchedule.hasProduct(state, product)) {
+            threshold = rateSchedule.paramsOf(state, product).largeLoanThreshold;
+        } else {
+            combined = false;
+        }
+        for (uint256 i = 0; i < n; i++) {
+            uint256 planId = ids[i];
+            carries[i] = _listCharge(planId);
+            rates[i] = _ownRate(planId);
+            Plan storage plan = plans[planId];
+            if (combined && planPricing[planId].priced && (threshold == 0 || plan.principal < threshold)) {
+                uint256 p = plan.principalOutstanding - carryOutstandingOf[planId];
+                principals[i] = p;
+                // The plan's monthly figure is its carry per 30-day cycle (decision C).
+                monthly[i] = (p * rates[i] * 360) / 365;
+            }
+        }
+        if (!combined) return (ids, carries, rates);
+        uint256[] memory allowed = rateSchedule.combinedTrim(state, product, revPrincipal, revMonthly, principals, monthly);
+        for (uint256 i = 0; i < n; i++) {
+            if (allowed[i] >= monthly[i]) continue;
+            uint256 elapsed = block.timestamp - planPricing[ids[i]].accruedAt;
+            uint256 cap = (allowed[i] * 12 * elapsed) / (365 days * BPS_ * RATE_SCALE);
+            if (carries[i] > cap) carries[i] = cap;
+            rates[i] = allowed[i] / principals[i];
+        }
+    }
+
+    /// @dev A member's open plan ids, oldest (lowest id) first.
+    function _openOldestFirst(address member) private view returns (uint256[] memory ids) {
+        ids = openPlanIds[member];
+        for (uint256 i = 1; i < ids.length; i++) {
+            uint256 id = ids[i];
+            uint256 j = i;
+            while (j > 0 && ids[j - 1] > id) {
+                ids[j] = ids[j - 1];
+                j--;
+            }
+            ids[j] = id;
+        }
+    }
+
+    /// @dev One plan's carry since its last touch, under the Combined Ceiling.
+    function _pendingPlanCarry(uint256 planId) private view returns (uint256) {
+        Plan storage plan = plans[planId];
+        if (plan.closed) return 0;
+        (uint256[] memory ids, uint256[] memory carries,) = _memberCarries(plan.member);
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (ids[i] == planId) return carries[i];
+        }
+        return 0;
+    }
+
     /// @notice a member's term principal, carry excluded, as one part of their small loan under
     /// the CFL (DECISIONS #7). Free plans count: they are principal the member owes all the same.
     function cflPrincipalOf(address member) external view returns (uint256 total) {
@@ -145,6 +278,33 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
             if (plans[ids[i]].closed) continue;
             total += plans[ids[i]].principalOutstanding - carryOutstandingOf[ids[i]];
         }
+    }
+
+    /// @notice a member's open principal under `product`, carry excluded, leaving out plan `skip`:
+    /// what the large-loan minimum term is judged on, with the new plan added (Phase 4b, L-F).
+    /// @dev The same aggregation as the rate cap (DECISIONS #7): zero while governance has CFL
+    /// aggregation off, so the term rule is then judged per plan, as the cap is. The modules ask
+    /// this contract for it, which keeps the loop out of the size-bound extension.
+    function openPrincipalOf(address member, bytes32 product, uint256 skip) external view returns (uint256 total) {
+        if (address(rateSchedule) == address(0)) return 0;
+        uint256[] memory ids = openPlanIds[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            uint256 id = ids[i];
+            if (id == skip || plans[id].closed || planPricing[id].product != product) continue;
+            total += plans[id].principalOutstanding - carryOutstandingOf[id];
+        }
+    }
+
+    /// @notice whether a secured plan of the member's has a recorded 12.14 default and is still owed:
+    /// what the pledge module reads to reach the Earn collateral securing plans.
+    /// @dev A 12.14 default exists only once recorded by `declarePlanDefault` (permissionless, and
+    /// refused under a Liquidation Hold), so `inDefault` keeps its inherited meaning unchanged.
+    function hasDefaultedOnCurrentLine(address member) external view returns (bool) {
+        uint256[] memory ids = openPlanIds[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (securedPlans[ids[i]].defaultedAt != 0) return true;
+        }
+        return false;
     }
 
     /// @notice how a plan is priced: its state and product, merchant subsidy, and whether it is
@@ -162,20 +322,23 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     /// schedule began. Past that, installment k is covered once `repaid` reaches what the schedule
     /// asks for after k installments; the first uncovered one is when the plan fell behind.
     function delinquentSince(uint256 planId) public view returns (uint256) {
-        if (arrearsOf(planId) == 0) return 0;
-        Plan storage plan = plans[planId];
-        if (plan.repaid < plan.scheduleFloor) return plan.scheduleStart;
-        uint256 n = plan.installments;
-        uint256 k = 1;
-        while (k < n && plan.repaid >= _dueAt(plan, k)) k++;
-        return plan.scheduleStart + k * plan.installmentLength;
+        return _delinquentSince(planId);
     }
 
-    /// @notice when a plan that is behind becomes defaultable. Zero for a plan that is on time.
+    /// @notice when an unsecured plan that is behind becomes defaultable under the installment-count
+    /// rule. Zero for a plan that is on time, and always for a plan secured under MB-05, which
+    /// follows 12.14 (`declarePlanDefault`).
     function defaultableAt(uint256 planId) public view returns (uint256) {
-        uint256 since = delinquentSince(planId);
+        if (securedPlans[planId].secured) return 0;
+        uint256 since = _delinquentSince(planId);
         if (since == 0) return 0;
-        return since + DEFAULT_AFTER_INSTALLMENTS * plans[planId].installmentLength;
+        Plan storage plan = plans[planId];
+        since += DEFAULT_AFTER_INSTALLMENTS * plan.installmentLength;
+        // 10c (owner decision 34): later by the paused time since the plan was last on time, which
+        // covers every pause since it fell behind.
+        address clock = _pauseClock();
+        if (clock != address(0)) since += IPauseClock(clock).pausedSeconds(plan.member) - currentClock[planId];
+        return since;
     }
 
     /// @notice the soonest any of a member's plans becomes defaultable. Zero when none is behind.
@@ -268,48 +431,87 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
 
     /* ========== RESTRICTED FUNCTIONS ========== */
 
-    /// @notice sets a member's ceiling for term plans.
-    /// @dev Underwritten off-chain against attested income and entered here as an attestation,
-    /// not as raw data. Separate from the revolving tiers, which are backed by pledged collateral.
-    function setTermLimit(address member, uint256 limit)
-        external
-        onlyCreditRole(CREDIT_LIMITS_ROLE)
-        notNull(member)
-    {
-        // A default is not undone by writing a new number over it; reinstatement is its own step.
-        if (termSuspended[member] && limit > 0) revert TermIssuerSuspended(member);
-        uint256 previous = termLimitOf[member];
-        if (limit > previous) _consumeDailyCap(limitIncreaseCap, "TERM_LIMIT", limit - previous);
-        termLimitOf[member] = limit;
-        emit TermLimitUpdated(member, limit);
-        // The first allocation is what enrols the member with this issuer; after that the
-        // allocation is adjusted in place. A member may hold a revolving line as well, and this
-        // sets only this issuer's contribution to their ceiling.
-        if (stableCredit.networkRegistry().isEnrolled(member, address(this))) {
-            stableCredit.updateCreditLimit(member, limit);
-        } else {
-            stableCredit.createCreditLine(member, limit, 0);
-        }
+
+
+
+    /* ---- settings, forwarded to TermIssuerOrigination since Phase 2e (for room) ---- */
+
+    function setTermLimit(address, uint256) external {
+        _forwardTo(origination);
+    }
+
+    function setCarryTreasury(address) external {
+        _forwardTo(origination);
+    }
+
+    function setRateSchedule(address) external {
+        _forwardTo(origination);
+    }
+
+    function setDailyCaps(uint256, uint256) external {
+        _forwardTo(origination);
+    }
+
+    function setMandateSource(address) external {
+        _forwardTo(origination);
+    }
+
+    function indexOpenPlans(address) external {
+        _forwardTo(origination);
+    }
+
+    /// @notice see TermIssuerOrigination.proposeFeeRecipient (12.16: two people, a reason code).
+    function proposeFeeRecipient(address, bytes32) external {
+        _forwardTo(origination);
+    }
+
+    /// @notice see TermIssuerOrigination.approveFeeRecipient.
+    function approveFeeRecipient(address, bytes32) external {
+        _forwardTo(origination);
+    }
+
+    /// @notice see TermIssuerOrigination: 12.14 for plans secured under MB-05.
+    function securePlanWithSignature(uint256, uint256, bytes calldata) external {
+        _forwardTo(origination);
+    }
+
+    function proposePlanNotice(uint256) external {
+        _forwardTo(origination);
+    }
+
+    function approvePlanNotice(uint256) external {
+        _forwardTo(origination);
+    }
+
+    function declarePlanDefault(uint256) external {
+        _forwardTo(origination);
+    }
+
+    function setHoldSource(address) external {
+        _forwardTo(origination);
+    }
+
+    /// @notice see TermIssuerOrigination.setFeeTerms.
+    function setFeeTerms(uint64, uint64, uint64) external {
+        _forwardTo(origination);
+    }
+
+    /// @notice see TermIssuerOrigination.setCombinedCeiling.
+    function setCombinedCeiling(address, bytes32) external {
+        _forwardTo(origination);
+    }
+
+    /// @notice the fee cap (12.16): zero fields are the initial $50, $75 and $2,500.
+    function feeTermsOf() external view returns (FeeTerms memory) {
+        return feeTerms;
+    }
+
+    /// @notice a pending change of the fee recipient.
+    function feeRecipientProposalOf() external view returns (FeeRecipientProposal memory) {
+        return feeRecipientProposal;
     }
 
 
-
-    /// @notice where the co-op's share of a purchase is minted.
-    /// @dev Name this before moving `carryTreasury`, never after: between the two the fee would be
-    /// minted wherever carry had gone.
-    function setFeeRecipient(address recipient) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        if (recipient == address(0)) revert TermIssuerNoCarryRecipient();
-        feeRecipient = recipient;
-        emit FeeRecipientUpdated(recipient);
-    }
-
-
-    /// @notice moves the co-op treasury.
-    function setCarryTreasury(address treasury) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        if (treasury == address(0)) revert TermIssuerNoCarryRecipient();
-        carryTreasury = treasury;
-        emit CarryTreasuryUpdated(treasury);
-    }
 
     /// @notice opens a term plan against a partner purchase, on terms the member signed.
     /// @dev Runs in TermIssuerOrigination (see `origination`).
@@ -322,23 +524,7 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         return _planTermsDigest(terms);
     }
 
-    /// @notice names the RateSchedule plans are priced from.
-    function setRateSchedule(address rateSchedule_) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        rateSchedule = RateSchedule(rateSchedule_);
-    }
 
-    /// @notice caps on new term credit per day, across every member.
-    /// @param limitCap most that term limits may be raised by in a day.
-    /// @param planCap most that new plans may total in a day.
-    function setDailyCaps(uint256 limitCap, uint256 planCap)
-        external
-        onlyCreditRole(CREDIT_SETTINGS_ROLE)
-    {
-        limitIncreaseCap.cap = limitCap;
-        planTotalCap.cap = planCap;
-        emit DailyCapUpdated("TERM_LIMIT", limitCap);
-        emit DailyCapUpdated("PLANS", planCap);
-    }
 
 
     /// @notice brings a plan's accrued carry onto the ledger.
@@ -373,7 +559,7 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
 
 
 
-    /// @notice what a mandated collection ref took, zero if unused.
+    /// @notice what a mandated collection ref took before `collectForMember` was retired, zero if unused.
     function mandateCollectionOf(bytes32 ref) external view returns (uint256) {
         return mandateCollections[ref];
     }
@@ -387,13 +573,15 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
     /// reserve covers.
     function declareDefault(address member) external notNull(member) returns (uint256 writtenOff) {
         uint256 at = memberDefaultableAt(member);
-        if (at == 0 || block.timestamp < at) revert TermIssuerNotDefaultable(member);
-
-        uint256[] memory ids = openPlanIds[member];
-        for (uint256 i = 0; i < ids.length; i++) {
-            _materialiseCarry(ids[i]);
+        // 10c (Phase 2g): no default is declared while a pause affecting the member is in force.
+        address clock = _pauseClock();
+        if (at == 0 || block.timestamp < at || (clock != address(0) && IPauseClock(clock).inForce(member))) {
+            revert TermIssuerNotDefaultable(member);
         }
-        writtenOff = totalPrincipalOf(member);
+
+        materialiseMember(member);
+        // Only the unsecured plans: a plan secured under MB-05 stays owed and follows 12.14.
+        writtenOff = _writeOffAmount(member);
         defaultedAt[member] = uint64(block.timestamp);
         stableCredit.writeOffCreditLine(member, writtenOff);
         writtenOffOf[member] += writtenOff;
@@ -403,11 +591,6 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
 
 
 
-    /// @notice names the revolving line whose mandate and settlers a mandated collection honours.
-    function setMandateSource(address source) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        mandateSource = source;
-        emit MandateSourceUpdated(source);
-    }
 
 
     /* ========== INTERNAL ========== */
@@ -429,31 +612,26 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         returns (uint256 absorbed)
     {
         if (available == 0) return 0;
-        uint256[] memory ids = openPlanIds[member];
+        // What each plan costs now, after the caps and the Combined Ceiling, in the unit the band is
+        // in (Phase 4b, L-G), judged before anything moves.
+        (uint256[] memory ids,, uint256[] memory rates) = _memberCarries(member);
+        materialiseMember(member);
         uint256 remaining = available;
 
         for (uint256 i = 0; i < ids.length && remaining > 0; i++) {
             uint256 planId = ids[i];
             Plan storage plan = plans[planId];
             if (plan.closed || plan.principalOutstanding == 0) continue;
-            if (plan.index.ratePerCycle < minRate) continue;
+            if (rates[i] < minRate) continue;
 
-            _materialiseCarry(planId);
             uint256 owed = plan.principalOutstanding;
             uint256 pay = owed < remaining ? owed : remaining;
 
-            plan.principalOutstanding = owed - pay;
-            plan.repaid += pay;
-            uint256 principalPortion = pay - _clearCarry(planId, pay);
-
             remaining -= pay;
             absorbed += pay;
-            emit PlanPaid(planId, pay, principalPortion);
-            if (plan.principalOutstanding == 0) {
-                plan.closed = true;
-                _untrackOpen(planId);
-                emit PlanClosed(planId);
-            }
+            // The same bookkeeping as a directed payment: carry first, closing a plan paid off,
+            // and the pause clock noted when it leaves the plan on time (owner decision 34).
+            _applyPlanPayment(planId, pay);
         }
     }
 
@@ -464,23 +642,51 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         override
         returns (uint256 rate, bool hasPosition)
     {
-        uint256[] memory ids = openPlanIds[member];
+        (uint256[] memory ids,, uint256[] memory rates) = _memberCarries(member);
         for (uint256 i = 0; i < ids.length; i++) {
             Plan storage plan = plans[ids[i]];
             if (plan.closed || plan.principalOutstanding == 0) continue;
             // Plans are not ordered by rate, so every open one has to be considered.
-            if (!hasPosition || plan.index.ratePerCycle > rate) {
-                rate = plan.index.ratePerCycle;
+            uint256 planRate = rates[i];
+            if (!hasPosition || planRate > rate) {
+                rate = planRate;
                 hasPosition = true;
             }
         }
     }
 
+    /// @notice the unit repayment rates are compared in: monthly basis points times 1e18, the same
+    /// unit RevolvingIssuer reports, so the ledger's band walk compares like with like.
+    uint256 public constant RATE_SCALE = 1e18;
+
+    /// @dev What a plan costs the member from now on its own terms, as a monthly rate scaled by
+    /// RATE_SCALE (Phase 4b, L-G), before the Combined Ceiling (`_memberCarries` applies that). The
+    /// cap moves with the plan's principal, so the most expensive position is judged on what
+    /// RateSchedule would charge now, less the merchant's subsidy. A free plan costs nothing. A plan
+    /// priced from its own terms costs that rate per 30 days, stated per month.
+    function _ownRate(uint256 planId) private view returns (uint256) {
+        PlanPricing storage pricing = planPricing[planId];
+        if (pricing.free) return 0;
+        Plan storage plan = plans[planId];
+        if (!pricing.priced) return (plan.index.ratePerCycle * RATE_SCALE * 365) / 360;
+        return rateSchedule.termRateOf(
+            plan.member,
+            pricing.state,
+            pricing.product,
+            plan.principalOutstanding - carryOutstandingOf[planId],
+            pricing.subsidyBps
+        );
+    }
+
     /// @notice this issuer's share of a member's debt.
     /// @dev Only what sits in its plans. A member who also holds a revolving balance has debt this
     /// issuer does not own and must not write off.
-    function _writeOffAmount(address member) internal view override returns (uint256) {
-        return totalPrincipalOf(member);
+    function _writeOffAmount(address member) internal view override returns (uint256 total) {
+        uint256[] memory ids = openPlanIds[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (plans[ids[i]].closed || securedPlans[ids[i]].secured) continue;
+            total += plans[ids[i]].principalOutstanding;
+        }
     }
 
     /// @notice clears the member's plans on default, and suspends their term credit.
@@ -491,7 +697,7 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         uint256[] memory ids = openPlanIds[member];
         for (uint256 i = 0; i < ids.length; i++) {
             Plan storage plan = plans[ids[i]];
-            if (plan.closed) continue;
+            if (plan.closed || securedPlans[ids[i]].secured) continue;
             plan.principalOutstanding = 0;
             carryOutstandingOf[ids[i]] = 0;
             plan.closed = true;
@@ -509,17 +715,6 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         return openPlanIds[member];
     }
 
-    /// @notice rebuilds a member's open-plan index from their plan history.
-    /// @dev For a proxy upgraded from before the index existed: its open plans were never added.
-    /// Permissionless, because it only records which of the member's plans are open, which is a
-    /// fact anyone can read. Bounded by the member's own history.
-    function indexOpenPlans(address member) external {
-        uint256[] storage all = memberPlans[member];
-        for (uint256 i = 0; i < all.length; i++) {
-            uint256 planId = all[i];
-            if (!plans[planId].closed && openPlanSlot[planId] == 0) _trackOpen(member, planId);
-        }
-    }
 
     /* ========== FORWARDED TO THE EXTENSION ========== */
 
@@ -549,9 +744,12 @@ contract TermIssuer is TermIssuerBase, ICreditPositionSource {
         _forward();
     }
 
-    /// @notice see TermIssuerExtension.collectForMember.
-    function collectForMember(bytes32, address, uint256) external returns (uint256) {
-        _forward();
+    /// @notice Retired (Phase 2d, the owner's decision on 10f): it let a card settler take what was
+    /// due on a member's plans from the member's own wallet USDC. Recovery never uses Ready to
+    /// allocate USDC; term dues are cleared from Spendable at the bank, and the member pays a plan
+    /// themselves with `payPlan`. Kept so callers fail with a reason, not an unknown selector.
+    function collectForMember(bytes32, address, uint256) external pure returns (uint256) {
+        revert TermIssuerWalletCollectionRetired();
     }
 
     /// @notice see TermIssuerExtension.repayWrittenOff.

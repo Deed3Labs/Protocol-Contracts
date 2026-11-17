@@ -3,19 +3,15 @@ import { getPayPool } from '../config/postgres.js';
 import { encryptSendContact, decryptSendContact } from '../utils/sendEncryption.js';
 
 /*
- * Autopay rules: "sign once, then recurring gasless deposits" through the vault's on-chain
- * `DepositMandate`. No session key is held here, and none exists: the server cannot sign for the
- * member.
+ * Autopay rules — "sign once, then recurring gasless deposits". The member signs the vault's
+ * DepositMandate once (lib/autopay on the client); the signed mandate is stored ENCRYPTED here (the
+ * `approval_enc` column). The autopay runner (jobs/autopayRunner) has the relayer submit
+ * `executeMandateDeposit` for each due run, with no further signing.
  *
- * The member signs, once and without gas (apps/member/src/lib/autopay.ts): a USDC allowance to the
- * vault (an EIP-2612 `permit`, or a sponsored `approve` from a smart account) and the vault's EIP-712
- * `DepositMandate` (amount per run, interval, number of runs, expiry). `approval_enc` stores that
- * signed mandate, encrypted at rest. The autopay runner (jobs/autopayRunner, services/autopayService)
- * submits `executeMandateDeposit` with it when a rule is due, through the savings relayer
- * (`RELAYER_ROLE`). The vault enforces the amount, cadence, run count and expiry on chain, so the
- * relayer can only make the deposits the member signed for, into the member's own savings.
- *
- * Stored in the Pay DB (getPayPool). Kind is 'savings_deposit' for now (rent to ownership).
+ * Stored in the Pay DB (getPayPool). Kind is 'savings_deposit' for now (rent→ownership). What makes
+ * this safe is the mandate: the vault enforces its amount per run, run count, cadence and expiry on
+ * chain, and the relayer can submit nothing else. There is no ZeroDev session key (audit Phase 2g,
+ * decision 12).
  */
 
 export type AutopayCadence = 'weekly' | 'monthly';
@@ -107,7 +103,7 @@ class AutopayStore {
     return Boolean(getPayPool());
   }
 
-  /** Create a rule. `approval` is the member's signed `DepositMandate`, as JSON (encrypted at rest). */
+  /** Create a rule. `approval` is the signed DepositMandate as JSON (encrypted at rest). */
   async create(input: {
     wallet: string;
     chainId: number;

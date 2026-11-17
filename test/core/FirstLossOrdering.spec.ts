@@ -1,6 +1,7 @@
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { ethers } from "hardhat";
 import { deployPhase0Network } from "../helpers/phase0-fixture";
+import { deployYieldPool } from "../helpers/yieldPool";
 import { deployAssurancePool, fund, balances, TAG, BACKSTOP, AssuranceSetup } from "../helpers/assurance";
 
 const ONE_USDC = 10n ** 6n;
@@ -11,64 +12,59 @@ const ONE_USDC = 10n ** 6n;
 // reached only by Lending Co.'s own draw request, approved by one co-op signer and released by
 // another (section 13). It is an ordering fact, not a wire between the two pools: neither holds
 // the other's address, and nothing in the LendingPool can move a compartment.
+//
+// Phase 2f: the LendingPool is the Yield Pool. A loss reaches it only as a two-person Pool Loss
+// Charge (Earn §6), never above its Pool Assets and holdbacks, so there is no "uncovered" figure
+// for the pool to report: what it cannot take is Lending Co.'s own charge-off, as before.
 describe("first loss ordering", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
-  let pool: any, a: AssuranceSetup;
-  let depositor: any, borrower: any;
+  let pool: any, a: AssuranceSetup, y: Awaited<ReturnType<typeof deployYieldPool>>;
+  let depositor: any;
 
   beforeEach(async function () {
     ctx = await deployPhase0Network();
-    const signers = await ethers.getSigners();
-    [depositor, borrower] = [signers[8], signers[9]];
 
     // The co-op's AssurancePool standing behind Lending Co. Set up first: its governance waits
     // out the timelock, and the loan below should not age through that.
     a = await deployAssurancePool(ctx.usdc, ctx.networkRegistry);
     await fund(a, ctx.usdc, a.lendingCo, TAG.RECOVERY, 2_000n * ONE_USDC);
 
-    const LendingPool = await ethers.getContractFactory("LendingPool");
-    pool = await upgrades.deployProxy(
-      LendingPool,
-      [ctx.admin.address, await ctx.usdc.getAddress(), "Clear Lending Pool", "clrLP"],
-      { kind: "uups" }
-    );
-    await pool.grantRole(await pool.BORROWER_ROLE(), borrower.address);
-    // Audit H-4: a borrower draws only to its stored destination, within a daily cap.
-    await pool.setBorrower(borrower.address, borrower.address, 1_000_000n * ONE_USDC);
-    await pool.grantRole(await pool.LOSS_REPORTER_ROLE(), ctx.admin.address);
-
-    await ctx.usdc.mint(depositor.address, 10_000n * ONE_USDC);
-    await ctx.usdc.connect(depositor).approve(await pool.getAddress(), 10_000n * ONE_USDC);
+    // Changed (decision 17): the money goes out as a two-person Deployment to Clear Lending, not
+    // a borrower's draw, and a loss is a two-person Pool Loss Charge, not `absorbLoss`.
+    y = await deployYieldPool({ usdc: ctx.usdc });
+    pool = y.pool;
+    depositor = y.alice;
     await pool.connect(depositor).deposit(1_000n * ONE_USDC, depositor.address);
-    await pool.connect(borrower).borrow(1_000n * ONE_USDC, borrower.address);
+    // At most 90% can be deployed (Earn §6, FIXED).
+    await y.deploy(900n * ONE_USDC);
   });
 
-  /// The waterfall: offer the loss to first loss, and escalate only what it could not take.
+  /// The waterfall's first step: a Pool Loss Charge, which the pool takes up to its Pool Assets.
   async function applyLoss(amount: bigint) {
-    const [absorbed, uncovered] = await pool.absorbLoss.staticCall(amount);
-    await pool.absorbLoss(amount);
-    return { absorbed, uncovered };
+    await y.lossCharge(amount);
   }
 
   it("takes a loss the pool can cover without touching the AssurancePool", async function () {
     const before = await balances(a.pool);
 
-    const { absorbed, uncovered } = await applyLoss(400n * ONE_USDC);
+    await applyLoss(400n * ONE_USDC);
 
-    expect(absorbed).to.equal(400n * ONE_USDC);
-    expect(uncovered).to.equal(0n);
+    expect(await pool.deployedBalance()).to.equal(500n * ONE_USDC);
     expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
     // The depositors wear it.
-    expect(await pool.totalAssets()).to.equal(600n * ONE_USDC);
+    expect(await pool.totalAssets()).to.be.closeTo(600n * ONE_USDC, ONE_USDC / 100n);
   });
 
   it("escalates only what first loss could not reach, and only through Lending Co.'s draw", async function () {
     const before = await balances(a.pool);
-    const { absorbed, uncovered } = await applyLoss(1_500n * ONE_USDC);
-
-    expect(absorbed).to.equal(1_000n * ONE_USDC);
-    expect(uncovered).to.equal(500n * ONE_USDC);
-    // Reporting the loss moves nothing in the pool.
+    // Changed: the pool cannot be charged more than it has; the charge is refused, not split.
+    await pool.connect(y.v1).postLossCharge(1_500n * ONE_USDC, ethers.id("loss"));
+    await expect(pool.connect(y.v2).postLossCharge(1_500n * ONE_USDC, ethers.id("loss")))
+      .to.be.revertedWithCustomError(pool, "LendingPoolInvalidAmount");
+    await applyLoss(1_000n * ONE_USDC);
+    expect(await pool.deployedBalance()).to.equal(0n);
+    const uncovered = 500n * ONE_USDC;
+    // Charging the pool moves nothing in the AssurancePool.
     expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
 
     // The remainder is Lending Co.'s charge-off: it asks, one signer approves, another releases.
@@ -88,10 +84,11 @@ describe("first loss ordering", function () {
     expect(await pool.totalBorrowed()).to.equal(0n);
     expect((await balances(a.pool)).byId).to.deep.equal(before.byId);
 
-    // Only now is anything left over.
-    const { absorbed, uncovered } = await applyLoss(300n * ONE_USDC);
-    expect(absorbed).to.equal(0n);
-    expect(uncovered).to.equal(300n * ONE_USDC);
+    // Only interest is left; a charge beyond what the pool holds is refused, and is Lending Co.'s.
+    const left: bigint = await pool.totalAssets();
+    await pool.connect(y.v1).postLossCharge(left + 300n * ONE_USDC, ethers.id("loss-2"));
+    await expect(pool.connect(y.v2).postLossCharge(left + 300n * ONE_USDC, ethers.id("loss-2")))
+      .to.be.revertedWithCustomError(pool, "LendingPoolInvalidAmount");
   });
 
   it("keeps the two pools apart: neither counts the other's money", async function () {

@@ -1,4 +1,5 @@
 import hre from "hardhat";
+import { getDeployment, requireMainnetConfirmation } from "../deploy/helpers";
 
 /*
  * Put working capital into the PayoutPool.
@@ -7,14 +8,20 @@ import hre from "hardhat";
  * so this is deliberately a script somebody runs as a chosen address rather than something a sweep
  * does. Amount in whole USDC: FUND_USDC=6.
  *
+ * The pool is the `PayoutPool` record (decision 47: on Base Sepolia the fresh one, not the retired
+ * `PayoutPoolPreAudit`), unless PAYOUT_POOL_84532 names another.
+ *
  *   npx hardhat run scripts/fund_payout_pool.ts --network base-sepolia
  */
 const { ethers } = hre;
 
-const POOL = process.env.PAYOUT_POOL_84532 || "0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66";
 const USDC = process.env.USDC_84532 || "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 
 async function main() {
+  const network = (await ethers.provider.getNetwork()).name;
+  requireMainnetConfirmation(network, "scripts/fund_payout_pool.ts");
+  const POOL = process.env.PAYOUT_POOL_84532 || getDeployment(network, "PayoutPool")?.address;
+  if (!POOL) throw new Error(`No PayoutPool recorded for ${network}: set PAYOUT_POOL_84532.`);
   const [signer] = await ethers.getSigners();
   const amount = ethers.parseUnits(process.env.FUND_USDC || "6", 6);
   const u = (v: bigint) => ethers.formatUnits(v, 6);

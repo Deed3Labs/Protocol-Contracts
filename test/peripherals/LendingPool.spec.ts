@@ -1,36 +1,20 @@
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { ethers } from "hardhat";
+import { U, DAY, deployYieldPool, increase } from "../helpers/yieldPool";
 
-const ONE_USDC = 10n ** 6n;
-const BPS = 10_000n;
-
+/*
+ * Phase 2f: LendingPool is the Yield Pool (decision 16). This file kept its original questions and
+ * now answers them for the Yield Pool. Each changed test says why. The full acceptance tests are in
+ * test/earn/YieldPool.spec.ts.
+ */
 describe("LendingPool", function () {
+  let f: Awaited<ReturnType<typeof deployYieldPool>>;
   let pool: any, usdc: any;
-  let admin: any, alice: any, bob: any, borrower: any, outsider: any;
+  let alice: any, bob: any, outsider: any;
 
   beforeEach(async function () {
-    [admin, alice, bob, borrower, outsider] = await ethers.getSigners();
-
-    const MockERC20 = await ethers.getContractFactory("MockERC20");
-    usdc = await MockERC20.deploy("USD Coin", "USDC", 6);
-
-    const LendingPool = await ethers.getContractFactory("LendingPool");
-    pool = await upgrades.deployProxy(
-      LendingPool,
-      [admin.address, await usdc.getAddress(), "Clear Lending Pool", "clrLP"],
-      { kind: "uups" }
-    );
-    await pool.grantRole(await pool.BORROWER_ROLE(), borrower.address);
-    // Audit H-4: a borrower draws only to its stored destination, within a daily cap.
-    await pool.setBorrower(borrower.address, borrower.address, 1_000_000n * ONE_USDC);
-    await pool.grantRole(await pool.LOSS_REPORTER_ROLE(), admin.address);
-
-    for (const who of [alice, bob]) {
-      await usdc.mint(who.address, 100_000n * ONE_USDC);
-      await usdc.connect(who).approve(await pool.getAddress(), 100_000n * ONE_USDC);
-    }
-    await usdc.mint(borrower.address, 100_000n * ONE_USDC);
-    await usdc.connect(borrower).approve(await pool.getAddress(), 100_000n * ONE_USDC);
+    f = await deployYieldPool();
+    ({ pool, usdc, alice, bob, outsider } = f);
   });
 
   async function deposit(who: any, amount: bigint) {
@@ -39,241 +23,170 @@ describe("LendingPool", function () {
 
   describe("it is a real ERC-4626 vault", function () {
     it("takes deposits and hands back proportional shares", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      expect(await pool.totalAssets()).to.equal(1_000n * ONE_USDC);
-      expect(await pool.convertToAssets(await pool.balanceOf(alice.address)))
-        .to.equal(1_000n * ONE_USDC);
+      await deposit(alice, U(1_000));
+      expect(await pool.totalAssets()).to.equal(U(1_000));
+      expect(await pool.convertToAssets(await pool.balanceOf(alice.address))).to.equal(U(1_000));
     });
 
-    it("counts lent money as an asset, because it is one", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(600n * ONE_USDC, borrower.address);
-
-      expect(await pool.totalAssets()).to.equal(1_000n * ONE_USDC);
-      expect(await pool.availableCash()).to.equal(400n * ONE_USDC);
-      expect(await pool.totalBorrowed()).to.equal(600n * ONE_USDC);
+    it("counts deployed money as an asset, because it is one", async function () {
+      // Changed (decision 17): money leaves only as a recorded Deployment to Clear Lending's
+      // lending account, not as a borrower's draw. It is still an asset: the Deployed Balance.
+      await deposit(alice, U(1_000));
+      await f.deploy(U(600));
+      expect(await pool.totalAssets()).to.be.closeTo(U(1_000), 10n);
+      expect(await pool.availableCash()).to.equal(U(400));
+      expect(await pool.totalBorrowed()).to.equal(U(600));
+      expect(await pool.deployedBalance()).to.equal(U(600));
     });
 
     it("reports what would actually succeed, rather than what is owned", async function () {
-      // The spec says maxWithdraw is what a withdrawal would return. A depositor whose money is
-      // out on loan cannot have it back this second, and saying otherwise makes the number a lie.
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(900n * ONE_USDC, borrower.address);
-
-      expect(await pool.maxWithdraw(alice.address)).to.equal(100n * ONE_USDC);
-      await pool.connect(alice).withdraw(100n * ONE_USDC, alice.address, alice.address);
-      expect(await pool.maxWithdraw(alice.address)).to.equal(0n);
+      await deposit(alice, U(1_000));
+      await f.deploy(U(900));
+      expect(await pool.maxWithdraw(alice.address)).to.be.closeTo(U(100), 1n);
+      await pool.connect(alice).withdraw(U(100) - 1n, alice.address, alice.address);
+      expect(await pool.maxWithdraw(alice.address)).to.be.lessThan(2n);
     });
 
-    it("raises the share price when more comes back than went out", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(500n * ONE_USDC, borrower.address);
-
-      // The carry earned on the tiers this pool funded comes back with the principal.
-      await pool.connect(borrower).repay(550n * ONE_USDC);
-
-      // It streams in over a week rather than landing at once (audit X-18).
-      expect(await pool.totalAssets()).to.equal(1_000n * ONE_USDC);
-      await ethers.provider.send("evm_increaseTime", [7 * 24 * 3600]);
-      await ethers.provider.send("evm_mine", []);
-      expect(await pool.totalAssets()).to.equal(1_050n * ONE_USDC);
-      expect(await pool.convertToAssets(await pool.balanceOf(alice.address)))
-        .to.be.greaterThan(1_049n * ONE_USDC);
+    it("raises the Share Value as Pool Interest accrues", async function () {
+      // Changed (Earn §6): interest is no longer cash that arrives and streams in over a week
+      // (X-18). Clear Lending owes Pool Interest per second on the Deployed Balance, and the
+      // receivable is in Pool Assets as it accrues.
+      await deposit(alice, U(1_000));
+      await f.deploy(U(500));
+      await increase(365 * DAY);
+      expect(await pool.totalAssets()).to.be.greaterThan(U(1_015));
+      expect(await pool.convertToAssets(await pool.balanceOf(alice.address))).to.be.greaterThan(U(1_015));
     });
   });
 
   describe("the rate rises with utilization", function () {
-    it("is cheapest when nothing is lent", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      expect(await pool.utilizationBps()).to.equal(0n);
-      expect(await pool.borrowRatePerCycle()).to.equal(await pool.baseRatePerCycle());
+    // Changed (IV-02 Sch. 2): an annual Funding Rate with fixed bounds and notice rules replaces
+    // the per-cycle curve the operator could reshape at will.
+    it("is cheapest when nothing is deployed", async function () {
+      await deposit(alice, U(1_000));
+      expect(await pool.utilization()).to.equal(0n);
+      expect(await pool.fundingRate()).to.equal(ethers.parseUnits("0.02", 18));
     });
 
     it("climbs gently below the kink and steeply above it", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-
-      await pool.connect(borrower).borrow(400n * ONE_USDC, borrower.address);
-      const atForty = await pool.borrowRatePerCycle();
-
-      await pool.connect(borrower).borrow(400n * ONE_USDC, borrower.address);
-      const atEighty = await pool.borrowRatePerCycle(); // the kink
-
-      await pool.connect(borrower).borrow(150n * ONE_USDC, borrower.address);
-      const atNinetyFive = await pool.borrowRatePerCycle();
-
-      expect(atForty).to.be.greaterThan(0n);
-      expect(atEighty).to.be.greaterThan(atForty);
-      expect(atNinetyFive).to.be.greaterThan(atEighty);
-
-      // The steep part is steep: the last fifteen points cost more than the first eighty.
-      expect(atNinetyFive - atEighty).to.be.greaterThan(atEighty - atForty);
+      const at = (x: string) => pool.fundingRateAt(ethers.parseUnits(x, 18));
+      const r40 = await at("0.4"), r80 = await at("0.8"), r95 = await at("0.95");
+      expect(r80).to.be.greaterThan(r40);
+      expect(r95).to.be.greaterThan(r80);
+      expect(r95 - r80).to.be.greaterThan(r80 - r40);
     });
 
-    it("dilutes the yield when capital arrives faster than demand", async function () {
-      // The self-regulation. Nobody has to decide the pool is full.
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(800n * ONE_USDC, borrower.address);
-      const before = await pool.supplyRatePerCycle();
-
-      await deposit(bob, 4_000n * ONE_USDC);
-      const after = await pool.supplyRatePerCycle();
-
-      expect(after).to.be.lessThan(before);
-    });
-
-    it("pays depositors the borrow rate scaled by how much is earning it", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(500n * ONE_USDC, borrower.address);
-
-      const expected =
-        ((await pool.borrowRatePerCycle()) * (await pool.utilizationBps())) / BPS;
-      expect(await pool.supplyRatePerCycle()).to.equal(expected);
-    });
-
-    it("only lets an operator reshape the curve, and refuses a nonsense kink", async function () {
-      await expect(pool.connect(outsider).setRateCurve(1n, 1n, 1n, 5_000n)).to.be.reverted;
-      await expect(pool.setRateCurve(1n, 1n, 1n, 0n))
-        .to.be.revertedWithCustomError(pool, "LendingPoolInvalidCurve");
-      await expect(pool.setRateCurve(1n, 1n, 1n, BPS))
-        .to.be.revertedWithCustomError(pool, "LendingPoolInvalidCurve");
+    it("only governance proposes a model, within the fixed bounds", async function () {
+      const p = (x: string) => ethers.parseUnits(x, 18);
+      await expect(pool.connect(outsider).proposeRateModel(p("0.02"), p("0.03"), p("0.8"), p("0.05"))).to.be.reverted;
+      await expect(pool.proposeRateModel(p("0.02"), p("0.03"), p("0.5"), p("0.05")))
+        .to.be.revertedWithCustomError(pool, "LendingPoolInvalidRateModel");
     });
   });
 
   describe("the withdrawal queue", function () {
-    it("queues rather than failing when the cash is out on loan", async function () {
-      // A depositor whose money is lent has not made a mistake, and the app can show them where
-      // they stand instead of an error.
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(900n * ONE_USDC, borrower.address);
-
+    it("queues rather than failing when the cash is deployed", async function () {
+      // Changed (Earn §7, C4): the request escrows its shares in a FIFO queue; nothing is fixed in
+      // assets and there is no per-request claim.
+      await deposit(alice, U(1_000));
+      await f.deploy(U(900));
       const shares = await pool.balanceOf(alice.address);
       await pool.connect(alice).requestWithdrawal(shares, alice.address);
-
       expect(await pool.balanceOf(alice.address)).to.equal(0n);
-      const [owner, , assets, , claimed] = await pool.requestAt(0);
+      const [owner, receiver, queued] = await pool.queueRequest(0);
       expect(owner).to.equal(alice.address);
-      expect(assets).to.equal(1_000n * ONE_USDC);
-      expect(claimed).to.equal(false);
-      expect(await pool.isClaimable(0)).to.equal(false);
+      expect(receiver).to.equal(alice.address);
+      expect(queued).to.equal(shares);
     });
 
-    it("stops the queued depositor earning, but has them carry their share of a loss (X-7)", async function () {
-      // Changed by the X-7 fix: the claim used to be fixed in assets when queued, so queueing just
-      // before a loss pushed all of it onto the depositors who stayed. The shares now wait in
-      // escrow and are priced at claim time, capped at their value when queued.
-      await deposit(alice, 1_000n * ONE_USDC);
-      await deposit(bob, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(1_500n * ONE_USDC, borrower.address);
-
+    it("keeps the queued depositor earning and bearing losses, priced at fill (C4, replaces X-7)", async function () {
+      // Changed: X-7 stopped a queued depositor earning and capped the claim at its value when
+      // queued. The spec has queued shares keep earning and bear losses, filled at Share Value.
+      await deposit(alice, U(1_000));
+      await deposit(bob, U(1_000));
+      await f.deploy(U(1_500));
       await pool.connect(alice).requestWithdrawal(await pool.balanceOf(alice.address), alice.address);
-      const [, , queued] = await pool.requestAt(0);
-      expect(queued).to.equal(1_000n * ONE_USDC);
-
-      await pool.absorbLoss(500n * ONE_USDC);
-      const bobAfter = await pool.convertToAssets(await pool.balanceOf(bob.address));
-
-      // Half each: 750 for Alice's claim, 750 for Bob's shares.
-      expect(await pool.requestValue(0)).to.be.closeTo(750n * ONE_USDC, 1n);
-      expect(bobAfter).to.be.closeTo(750n * ONE_USDC, 1n);
+      await f.lossCharge(U(500));
+      // Half each: 750 for Alice's queued shares, 750 for Bob's.
+      expect(await pool.convertToAssets(await pool.queuedShares())).to.be.closeTo(U(750), U(0.01));
+      expect(await pool.convertToAssets(await pool.balanceOf(bob.address))).to.be.closeTo(U(750), U(0.01));
     });
 
-
-    it("pays out once the loans come back", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(900n * ONE_USDC, borrower.address);
+    it("pays out, in order, once Clear Lending returns funds", async function () {
+      // Changed: fills are pushed in order by anyone (`fillQueue`) instead of claimed by each owner.
+      await deposit(alice, U(1_000));
+      await f.deploy(U(900));
       await pool.connect(alice).requestWithdrawal(await pool.balanceOf(alice.address), alice.address);
-
-      await pool.connect(borrower).repay(900n * ONE_USDC);
-      expect(await pool.isClaimable(0)).to.equal(true);
-
+      await pool.connect(f.lending).returnFunds(U(1_000));
       const before = await usdc.balanceOf(alice.address);
-      await pool.connect(alice).claimWithdrawal(0);
-      expect(await usdc.balanceOf(alice.address) - before).to.equal(1_000n * ONE_USDC);
-      expect(await pool.queuedAssets()).to.equal(0n);
+      await pool.connect(outsider).fillQueue(10);
+      expect(await usdc.balanceOf(alice.address) - before).to.be.greaterThanOrEqual(U(1_000));
+      expect(await pool.queuedShares()).to.equal(0n);
     });
 
-    it("does not lend out cash that is already spoken for", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(900n * ONE_USDC, borrower.address);
+    it("does not deploy cash the queue is waiting for", async function () {
+      // Changed: with a request open no Deployment can go out at all (Earn §6).
+      await deposit(alice, U(1_000));
+      await f.deploy(U(900));
       await pool.connect(alice).requestWithdrawal(await pool.balanceOf(alice.address), alice.address);
-      await pool.connect(borrower).repay(900n * ONE_USDC);
-
-      // The cash is back, but it belongs to the queue.
+      await pool.connect(f.lending).returnFunds(U(900));
       expect(await pool.availableCash()).to.equal(0n);
-      await expect(pool.connect(borrower).borrow(1n, borrower.address))
-        .to.be.revertedWithCustomError(pool, "LendingPoolInsufficientCash");
+      await expect(pool.connect(f.d1).deploy(1n, ethers.ZeroHash)).to.be.revertedWithCustomError(pool, "LendingPoolQueueOpen");
     });
 
-    it("refuses a claim from anyone but the depositor who queued", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(alice).requestWithdrawal(await pool.balanceOf(alice.address), alice.address);
-      await expect(pool.connect(outsider).claimWithdrawal(0))
+    it("lets only the owner cancel a request", async function () {
+      // Changed: there is no claim to refuse; the owner's control is cancellation.
+      await deposit(alice, U(1_000));
+      await pool.connect(alice).requestWithdrawal(U(500), alice.address);
+      await expect(pool.connect(outsider).cancelRequest(0, U(500)))
         .to.be.revertedWithCustomError(pool, "LendingPoolNotRequestOwner");
-    });
-
-    it("refuses to pay the same claim twice", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(alice).requestWithdrawal(await pool.balanceOf(alice.address), alice.address);
-      await pool.connect(alice).claimWithdrawal(0);
-      await expect(pool.connect(alice).claimWithdrawal(0))
+      await pool.connect(alice).cancelRequest(0, U(500));
+      await expect(pool.connect(alice).cancelRequest(0, 1n))
         .to.be.revertedWithCustomError(pool, "LendingPoolNothingQueued");
     });
   });
 
   describe("first loss sits here, ahead of the AssurancePool", function () {
-    it("takes the loss out of the share price", async function () {
-      // Depositors earn the return on unsecured lending, so they carry its first loss.
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(600n * ONE_USDC, borrower.address);
+    // Changed (Earn §6): a loss is a two-person Pool Loss Charge with evidence, not a single
+    // LOSS_REPORTER_ROLE call (`absorbLoss` is gone).
+    it("takes a loss charge out of the Share Value", async function () {
+      await deposit(alice, U(1_000));
+      await f.deploy(U(600));
       const before = await pool.convertToAssets(await pool.balanceOf(alice.address));
-
-      const [absorbed, uncovered] = await pool.absorbLoss.staticCall(200n * ONE_USDC);
-      await pool.absorbLoss(200n * ONE_USDC);
-
-      expect(absorbed).to.equal(200n * ONE_USDC);
-      expect(uncovered).to.equal(0n);
-      expect(await pool.totalAssets()).to.equal(800n * ONE_USDC);
-      expect(await pool.convertToAssets(await pool.balanceOf(alice.address)))
-        .to.be.lessThan(before);
+      await f.lossCharge(U(200));
+      expect(await pool.deployedBalance()).to.equal(U(400));
+      expect(await pool.totalAssets()).to.be.closeTo(U(800), U(0.01));
+      expect(await pool.convertToAssets(await pool.balanceOf(alice.address))).to.be.lessThan(before);
     });
 
-    it("reports what it could not cover instead of reverting", async function () {
-      // A loss larger than first-loss capacity is exactly when the next layer is meant to act.
-      // Reverting there would stall the write-off rather than escalate it.
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(300n * ONE_USDC, borrower.address);
-
-      const [absorbed, uncovered] = await pool.absorbLoss.staticCall(500n * ONE_USDC);
-      expect(absorbed).to.equal(300n * ONE_USDC);
-      expect(uncovered).to.equal(200n * ONE_USDC);
+    it("pays Clear Lending only the part above the Deployed Balance and interest, never touching the AssurancePool", async function () {
+      // Changed: the old pool reported an uncovered loss and kept the cash. The spec sends the part
+      // of a charge above the Deployed Balance and accrued interest to Clear Lending (§6).
+      await deposit(alice, U(1_000));
+      await f.deploy(U(300));
+      const lending = await usdc.balanceOf(f.lending.address);
+      await f.lossCharge(U(500));
+      expect(await pool.deployedBalance()).to.equal(0n);
+      expect(await usdc.balanceOf(f.lending.address) - lending).to.be.closeTo(U(200), U(0.01));
     });
 
-    it("never reaches a depositor's cash, only the loans", async function () {
-      // The pool can lose what it lent. It cannot lose what it never lent out.
-      await deposit(alice, 1_000n * ONE_USDC);
-      await pool.connect(borrower).borrow(200n * ONE_USDC, borrower.address);
-
-      await pool.absorbLoss(10_000n * ONE_USDC);
-      expect(await pool.totalBorrowed()).to.equal(0n);
-      expect(await pool.totalAssets()).to.equal(800n * ONE_USDC);
-      expect(await usdc.balanceOf(await pool.getAddress())).to.equal(800n * ONE_USDC);
-    });
-
-    it("only lets a loss reporter report one", async function () {
-      await expect(pool.connect(outsider).absorbLoss(1n)).to.be.reverted;
+    it("only two valuation signers can post one", async function () {
+      await expect(pool.connect(outsider).postLossCharge(1n, ethers.id("e")))
+        .to.be.revertedWithCustomError(pool, "LendingPoolNotAuthorized");
     });
   });
 
   describe("borrowing", function () {
-    it("is gated to the borrower role", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      await expect(pool.connect(outsider).borrow(1n, outsider.address)).to.be.reverted;
+    // Changed (decision 17): only Clear Lending draws, as a two-person recorded Deployment.
+    it("is off for every borrower", async function () {
+      await deposit(alice, U(1_000));
+      await expect(pool.connect(outsider).borrow(1n, outsider.address))
+        .to.be.revertedWithCustomError(pool, "LendingPoolDirectBorrowOff");
     });
 
-    it("cannot lend more cash than the pool holds", async function () {
-      await deposit(alice, 1_000n * ONE_USDC);
-      await expect(pool.connect(borrower).borrow(1_001n * ONE_USDC, borrower.address))
-        .to.be.revertedWithCustomError(pool, "LendingPoolInsufficientCash");
+    it("cannot deploy more cash than the pool holds", async function () {
+      await deposit(alice, U(1_000));
+      await expect(f.deploy(U(1_001))).to.be.revertedWithCustomError(pool, "LendingPoolInsufficientCash");
     });
   });
 });

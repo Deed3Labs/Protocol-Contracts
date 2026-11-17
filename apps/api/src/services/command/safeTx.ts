@@ -1,7 +1,10 @@
 import chain from '@clear/command-types/src/chain/base-sepolia.json';
 import { concatHex, encodeFunctionData, encodePacked, getAddress, hashTypedData, isAddress, isHex, parseUnits, size, zeroAddress, type Abi, type AbiFunction, type Address, type Hex } from 'viem';
 import type { Queryable } from '../../db/db.js';
-import type { SafeConfig } from './safe.js';
+import { safeConfig, type SafeConfig } from './safe.js';
+import { assuranceFeeConfig } from '../assuranceFees/config.js';
+import { interchangeCalls } from '../assuranceFees/proposals.js';
+import { interchangeFor } from '../assuranceFees/store.js';
 
 /*
  * Safe transactions for the outbox's on-chain acts (docs/command-center-plan.md, Phase 4b).
@@ -125,6 +128,20 @@ export const BUILDERS: Record<string, Builder> = {
       call('PayoutPool', 'fund', [amount], `Fund the PayoutPool with $${Number(b.amount).toFixed(2)}`),
     ];
   },
+  // the co-op treasury's interchange contribution (services/assuranceFees): approve + deposit(INTERCHANGE), exactly the amount recorded for the month
+  'money.assurance-interchange': async (b, { db, chain }) => {
+    const cfg = assuranceFeeConfig();
+    if (!cfg.pool) throw new BuildError('NO_POOL', 'The new Assurance Pool isn’t configured yet');
+    const ops = safeConfig();
+    if (!ops || !cfg.treasurySafe || ops.address.toLowerCase() !== cfg.treasurySafe.toLowerCase()) {
+      throw new BuildError('NOT_TREASURY', 'Command’s Safe isn’t the Clear Treasury Safe: load the interchange batch file in the Safe app instead');
+    }
+    const row = await interchangeFor(db, cfg.chainId, b.month);
+    if (!row) throw new BuildError('NO_INTERCHANGE', `Nothing is recorded for ${b.month}’s interchange`);
+    const pool = getAddress(cfg.pool);
+    const token = getAddress(String(await chain.read(pool, POOL_ASSET, 'asset', [])));
+    return interchangeCalls(pool, token, row.amount).map((c) => ({ to: getAddress(c.to), value: 0n, data: c.data as Hex, label: c.label }));
+  },
   'contracts.propose': async (b) => {
     if (!b.fn) throw new BuildError('NO_CALL', 'Pick the function and its arguments first');
     const c = contract(b.contract);
@@ -138,6 +155,7 @@ export const BUILDERS: Record<string, Builder> = {
 };
 export const onChain = (section: string, kind: string) => `${section}.${kind}` in BUILDERS;
 
+const POOL_ASSET = [{ type: 'function', name: 'asset', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }] as const;
 const ERC20_APPROVE = [{ type: 'function', name: 'approve', stateMutability: 'nonpayable', inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] }] as const;
 const MULTISEND = [{ type: 'function', name: 'multiSend', stateMutability: 'payable', inputs: [{ name: 'transactions', type: 'bytes' }], outputs: [] }] as const;
 

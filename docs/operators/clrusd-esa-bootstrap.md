@@ -48,14 +48,15 @@ recorded `ClearUSD`, then `CLRUSD_ADDRESS`. The script:
 - records the vault as `ESADepositVault`, or as `VAULT_DEPLOYMENT_NAME` so a replacement can be
   recorded without overwriting the vault it replaces
 
-**3. The redemption lock.** No script sets it. The token's admin calls
-`ClearUSDUpgradeable.setEncumbranceSource` with the `CollateralRegistry` (deployed by script `20`),
-which reports how much of each holder's CLRUSD stands behind drawn credit. Until it is set, nothing
-is locked.
+**3. The redemption lock.** Script `22` names the `CollateralRegistry` (deployed by script `20`) as
+`ClearUSDUpgradeable`'s encumbrance source: it reports how much of each holder's CLRUSD stands
+behind drawn credit. Until it is set, nothing is locked. It needs the token's admin, so after the
+vault handover the script prints it as a vault-timelock proposal instead.
 
-**4. The liquidator.** After script `22` deploys the `Liquidator`,
-`scripts/upgrade_liquidator_savings.ts` upgrades it and grants it `LIQUIDATOR_ROLE` on the token, so
-savings-backed credit can be settled from a member's savings. It is idempotent.
+**4. The liquidator.** Script `22` also makes the `Liquidator` an AccessManager operator and grants
+it `LIQUIDATOR_ROLE` on the token, so savings-backed credit can be settled from a member's savings,
+and revokes the role from a Liquidator retired with the old Base Sepolia credit stack (decision 47).
+It is idempotent.
 
 **5. Registry and cross-chain.**
 

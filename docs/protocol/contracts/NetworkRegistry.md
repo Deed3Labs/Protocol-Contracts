@@ -12,7 +12,7 @@ Source: [`contracts/peripherals/NetworkRegistry.sol`](../../../contracts/periphe
 
 | Function | Who can call | Also |
 |---|---|---|
-| `deregisterIssuer(address issuer)` | `onlyRole(OPERATOR_ROLE)` |  |
+| `deregisterIssuer(address issuer)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `enrolMember(address member, address issuer)` | Anyone; acts on the caller's own account |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(address admin)` | Once, when the proxy is initialised |  |

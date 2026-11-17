@@ -19,7 +19,7 @@
       "product": "BOOST",
       "role": "revolving-tier",
       "tier": "BOOST",
-      "listMonthlyBps": 300
+      "listMonthlyBps": 250
     },
     {
       "state": "CA",

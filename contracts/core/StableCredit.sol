@@ -77,7 +77,9 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
 
     /// @notice Most distinct rate bands a repayment will work down in one transfer.
     /// @dev A member holds a handful of tiers and a handful of plans, so this bounds a loop that
-    /// is already short rather than capping anything real.
+    /// is already short rather than capping anything real. Effective rates (Phase 4b, L-G) are finer
+    /// than configured ones, so a member can hold more; what the bands leave goes to the fallback
+    /// pass in `_settleRepayment` (Phase 4c), never nowhere.
     uint256 private constant MAX_WATERFALL_BANDS = 16;
 
     /* ========== STATE VARIABLES ========== */
@@ -880,28 +882,66 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// Drawing runs the other way, cheapest first, which is why the two together are a waterfall
     /// rather than a rule anyone has to enforce.
     ///
-    /// Anything left unattributed means the issuers collectively hold less than the ledger says
-    /// is owed. That is a drift they cannot cause on their own and the ledger does not try to
-    /// paper over: the payment still settled, and the discrepancy stays visible.
+    /// The walk stops after `MAX_WATERFALL_BANDS` bands. A member holding more distinct rates than
+    /// that would otherwise leave the rest of a large payment unattributed, so whatever the bands
+    /// leave goes to a fallback pass (Phase 4c): each issuer still holding a position is offered it
+    /// with no band, the one holding the dearest remaining position first, and takes it against
+    /// all of its positions.
+    ///
+    /// Anything left unattributed after that means the issuers collectively hold less than the
+    /// ledger says is owed. That is a drift they cannot cause on their own and the ledger does not
+    /// try to paper over: the payment still settled, and the discrepancy stays visible.
     function _settleRepayment(address member, uint256 burned) private {
         if (burned == 0 || address(networkRegistry) == address(0)) return;
         address[] memory issuers = networkRegistry.issuersOf(member);
         if (issuers.length == 0) return;
 
         uint256 remaining = burned;
-        for (uint256 round = 0; round < MAX_WATERFALL_BANDS && remaining > 0; round++) {
+        uint256 round;
+        for (; round < MAX_WATERFALL_BANDS && remaining > 0; round++) {
             (uint256 band, bool any) = _dearestOpenRate(member, issuers);
             if (!any) break;
-
             uint256 before = remaining;
-            for (uint256 i = 0; i < issuers.length && remaining > 0; i++) {
-                uint256 absorbed =
-                    ICreditIssuer(issuers[i]).absorbRepayment(member, remaining, band);
-                if (absorbed > remaining) absorbed = remaining;
-                remaining -= absorbed;
-            }
+            remaining = _offerBand(member, issuers, remaining, band);
             // A band that absorbs nothing will absorb nothing next time either.
             if (remaining == before) break;
+        }
+        if (remaining > 0 && round == MAX_WATERFALL_BANDS) _settleBeyondBands(member, issuers, remaining);
+    }
+
+    /// @dev Offers `remaining` to every issuer at `band`, and returns what none of them took.
+    function _offerBand(address member, address[] memory issuers, uint256 remaining, uint256 band)
+        private
+        returns (uint256)
+    {
+        for (uint256 i = 0; i < issuers.length && remaining > 0; i++) {
+            uint256 absorbed = ICreditIssuer(issuers[i]).absorbRepayment(member, remaining, band);
+            remaining -= absorbed > remaining ? remaining : absorbed;
+        }
+        return remaining;
+    }
+
+    /// @notice Phase 4c: what the bands left goes to the dearest remaining positions.
+    /// @dev Bounded by the issuer count, not the position count: every issuer still holding a
+    /// position is offered the rest once, with no band (`minRate` 0), in order of the dearest
+    /// position it reports, so the issuer holding the dearest remaining position is offered it
+    /// first and takes it against all of its positions, in its own repayment order.
+    function _settleBeyondBands(address member, address[] memory issuers, uint256 remaining) private {
+        uint256 n = issuers.length;
+        uint256[] memory rates = new uint256[](n);
+        bool[] memory open = new bool[](n);
+        for (uint256 i = 0; i < n; i++) {
+            (rates[i], open[i]) = ICreditIssuer(issuers[i]).nextRepaymentRate(member);
+        }
+        while (remaining > 0) {
+            uint256 next = n;
+            for (uint256 i = 0; i < n; i++) {
+                if (open[i] && (next == n || rates[i] > rates[next])) next = i;
+            }
+            if (next == n) return;
+            open[next] = false;
+            uint256 absorbed = ICreditIssuer(issuers[next]).absorbRepayment(member, remaining, 0);
+            remaining -= absorbed > remaining ? remaining : absorbed;
         }
     }
 
