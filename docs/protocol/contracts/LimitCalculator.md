@@ -6,7 +6,7 @@ Source: [`contracts/peripherals/LimitCalculator.sol`](../../../contracts/periphe
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0xbA9880F46128027D39F7694e3cfdf077D716c0a7`](https://sepolia.basescan.org/address/0xbA9880F46128027D39F7694e3cfdf077D716c0a7) |
+| Base Sepolia | 84532 | [`0x6C0859EcD05C6BB604c91B9De1CAf04724744a20`](https://sepolia.basescan.org/address/0x6C0859EcD05C6BB604c91B9De1CAf04724744a20) |
 
 ## Functions that change state
 

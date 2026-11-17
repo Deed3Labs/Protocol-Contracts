@@ -54,6 +54,7 @@ export const JOBS = {
   LendingPool: 'Member money funding unsecured tiers',
   BondVault: 'Holds bond proceeds',
   AssurancePool: 'Reserve tokens against defaults',
+  AssurancePoolV2: 'Credit Backstop and Member Assurance compartments (Phase 2c)',
   NetworkRegistry: 'Parent registry for issuers',
   MerchantRegistry: 'What each merchant was promised',
   CollateralRegistry: 'What each member has pledged',
@@ -92,14 +93,16 @@ const CREDIT = {
   nodes: {
     RevolvingIssuer: ['RevolvingIssuer', 300, 250],
     TermIssuer: ['TermIssuer', 300, 50],
-    OffersIssuer: ['OffersIssuer', 300, 150],
+    // Not deployed with the fresh credit stack (decision 47); the pre-audit one is retired.
+    OffersIssuer: [null, 300, 150, 'protocol/credit', 'The $10 offer to a new member. Not deployed yet'],
     ClearCredit: ['ClearCredit', 500, 150],
     ClearUSD: ['ClearUSDUpgradeable', 500, 350],
     ESADepositVault: ['ESADepositVault', 300, 350],
     PayoutPool: ['PayoutPool', 700, 150],
     LendingPool: ['LendingPool', 900, 50],
     BondVault: ['BondVault', 900, 150],
-    AssurancePool: ['AssurancePool', 900, 250],
+    // The Phase 2c pool (AssurancePoolV2); the Phase 1 pool keeps its own page for its history.
+    AssurancePool: ['AssurancePoolV2', 900, 250],
     NetworkRegistry: ['NetworkRegistry', 100, 50],
     MerchantRegistry: ['MerchantRegistry', 700, 50],
     CollateralRegistry: ['CollateralRegistry', 100, 150],

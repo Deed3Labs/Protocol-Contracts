@@ -6,7 +6,7 @@ Source: [`contracts/core/factories/BurnerBondFactory.sol`](../../../contracts/co
 
 | Network | Chain id | Address |
 |---|---|---|
-| Base Sepolia | 84532 | [`0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA`](https://sepolia.basescan.org/address/0x61bDBb2f30094bE7A502d9A1f896df01E6F8FDAA) |
+| Base Sepolia | 84532 | [`0xf36dE3553509BAafB835bC37c97f529Adf42a96a`](https://sepolia.basescan.org/address/0xf36dE3553509BAafB835bC37c97f529Adf42a96a) |
 
 ## Functions that change state
 
@@ -17,10 +17,9 @@ Source: [`contracts/core/factories/BurnerBondFactory.sol`](../../../contracts/co
 | `emergencyRecover(address token, uint256 amount)` | `onlyOwner` |  |
 | `reactivateCollection(address tokenAddress)` | `onlyOwner` |  |
 | `renounceOwnership()` | The owner |  |
-| `setAssuranceOracle(address _assuranceOracle)` | Not in the current source |  |
-| `setAssurancePool(address _assurancePool)` | Not in the current source |  |
 | `setBaseURI(string _baseURI)` | `onlyOwner` |  |
 | `setMinDiscount(uint256 _minDiscount)` | `onlyOwner` |  |
+| `setTokenRegistry(address _tokenRegistry)` | `onlyOwner` |  |
 | `transferOwnership(address newOwner)` | The owner |  |
 | `updateFaceValueLimits(uint256 _minFaceValue, uint256 _maxFaceValue)` | `onlyOwner` |  |
 | `updateGlobalParameters(uint256 _maxDiscount, uint256 _minDiscount, uint256 _maxMaturity)` | `onlyOwner` |  |
@@ -33,10 +32,7 @@ Anyone can call these; they change nothing.
 | Function | Returns |
 |---|---|
 | `allTokens(uint256)` | address |
-| `assuranceOracle()` | address |
-| `assurancePool()` | address |
 | `baseURI()` | string |
-| `bondDiscountCurve()` | address |
 | `bondImplementation()` | address |
 | `bondTraits()` | address |
 | `burnerBondDeposit()` | address |
@@ -58,6 +54,8 @@ Anyone can call these; they change nothing.
 | `getMinMaturity()` | uint256 |
 | `getUnifiedDepositContract()` | address |
 | `hasCollection(address tokenAddress)` | bool |
+| `legendHash()` | bytes32 |
+| `legendURI()` | string |
 | `maxDiscount()` | uint256 |
 | `maxFaceValue()` | uint256 |
 | `maxMaturity()` | uint256 |
@@ -66,6 +64,7 @@ Anyone can call these; they change nothing.
 | `minMaturity()` | uint256 |
 | `owner()` | address |
 | `tokenIndex(address)` | uint256 |
+| `tokenRegistry()` | address |
 
 ## Events
 

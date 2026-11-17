@@ -177,6 +177,24 @@
     ]
    ]
   },
+  "CollateralAgent": {
+   "source": "contracts/peripherals/CollateralAgent.sol",
+   "sha256": "d9d7c6f9414be489bfab54c405dfe8ad68fe174a16c011b63ea79ace2d3c1944",
+   "immutables": [
+    [
+     8897,
+     32
+    ],
+    [
+     9263,
+     32
+    ],
+    [
+     12519,
+     32
+    ]
+   ]
+  },
   "CollateralRegistry": {
    "source": "contracts/peripherals/CollateralRegistry.sol",
    "sha256": "e0d24c240288ea9c313e707e18d4ab2ec33c71c602d464fe66cd86adfd007603",
@@ -268,6 +286,32 @@
     ]
    ]
   },
+  "EarnControls": {
+   "source": "contracts/peripherals/EarnControls.sol",
+   "sha256": "d891f4cfacebfa497881b0dd26b4e367ae5de01c7b72c16273b0ab5e5d9261ab",
+   "immutables": [
+    [
+     3386,
+     32
+    ],
+    [
+     3858,
+     32
+    ],
+    [
+     4114,
+     32
+    ],
+    [
+     4180,
+     32
+    ],
+    [
+     11632,
+     32
+    ]
+   ]
+  },
   "FractionTokenFactory": {
    "source": "contracts/core/factories/FractionTokenFactory.sol",
    "sha256": "75766a249f5fed2a3f1cbc91696dece80874b3f360eb04e20ee4d96c962c45db",
@@ -318,6 +362,80 @@
     ],
     [
      5586,
+     32
+    ]
+   ]
+  },
+  "HolderDirections": {
+   "source": "contracts/peripherals/HolderDirections.sol",
+   "sha256": "c15c938c8925af3f96eadca97ac36565cc1822d72c344a8c9bb4092019adbdaa",
+   "immutables": [
+    [
+     281,
+     32
+    ],
+    [
+     497,
+     32
+    ],
+    [
+     782,
+     32
+    ],
+    [
+     1791,
+     32
+    ],
+    [
+     2733,
+     32
+    ],
+    [
+     2806,
+     32
+    ],
+    [
+     2848,
+     32
+    ],
+    [
+     3105,
+     32
+    ],
+    [
+     3868,
+     32
+    ],
+    [
+     4546,
+     32
+    ],
+    [
+     5088,
+     32
+    ],
+    [
+     5961,
+     32
+    ],
+    [
+     6560,
+     32
+    ],
+    [
+     6614,
+     32
+    ],
+    [
+     6693,
+     32
+    ],
+    [
+     6731,
+     32
+    ],
+    [
+     6803,
      32
     ]
    ]
@@ -495,20 +613,32 @@
     ]
    ]
   },
-  "OffersIssuer": {
-   "source": "contracts/peripherals/OffersIssuer.sol",
-   "sha256": "8ab121c2c3597ac8cc0690c34f88ba0c66cb839e62086b47bb2bcdaaa80164a8",
+  "PauseClock": {
+   "source": "contracts/peripherals/PauseClock.sol",
+   "sha256": "78dcd520fb69ddae083b6f339dd90253e606384d9359acc674e9ffecf981c42e",
    "immutables": [
     [
-     4696,
+     97,
      32
     ],
     [
-     5288,
+     216,
      32
     ],
     [
-     6507,
+     315,
+     32
+    ],
+    [
+     537,
+     32
+    ],
+    [
+     616,
+     32
+    ],
+    [
+     838,
      32
     ]
    ]
@@ -527,6 +657,114 @@
     ],
     [
      11151,
+     32
+    ]
+   ]
+  },
+  "PoolShareEnforcer": {
+   "source": "contracts/peripherals/PoolShareEnforcer.sol",
+   "sha256": "7161c43431baf37ca00b6fa7c46d6ae612ed583811954d55749e6ed6bb195ec9",
+   "immutables": [
+    [
+     302,
+     32
+    ],
+    [
+     500,
+     32
+    ],
+    [
+     786,
+     32
+    ],
+    [
+     942,
+     32
+    ],
+    [
+     1092,
+     32
+    ],
+    [
+     1228,
+     32
+    ],
+    [
+     1440,
+     32
+    ],
+    [
+     2017,
+     32
+    ],
+    [
+     2102,
+     32
+    ],
+    [
+     2809,
+     32
+    ],
+    [
+     3147,
+     32
+    ],
+    [
+     3302,
+     32
+    ],
+    [
+     3376,
+     32
+    ],
+    [
+     4055,
+     32
+    ],
+    [
+     4273,
+     32
+    ],
+    [
+     4870,
+     32
+    ],
+    [
+     5303,
+     32
+    ],
+    [
+     5396,
+     32
+    ],
+    [
+     6769,
+     32
+    ],
+    [
+     6919,
+     32
+    ],
+    [
+     7438,
+     32
+    ]
+   ]
+  },
+  "RateSchedule": {
+   "source": "contracts/peripherals/RateSchedule.sol",
+   "sha256": "5ef08e06aa2755caab71fc3d7038865ea0a95788f2e4ceb5798f189587182d49",
+   "immutables": [
+    [
+     4326,
+     32
+    ],
+    [
+     4538,
+     32
+    ],
+    [
+     5168,
      32
     ]
    ]

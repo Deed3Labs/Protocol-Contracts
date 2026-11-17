@@ -12,23 +12,34 @@ Source: [`contracts/peripherals/BondVault.sol`](../../../contracts/peripherals/B
 
 | Function | Who can call | Also |
 |---|---|---|
+| `agentTransfer(address to, uint256 amount)` | Anyone |  |
+| `agentWithdrawExcess(address to, uint256 amount)` | Anyone | `notEnforced` |
+| `burnPaid(uint256 bondId)` | Anyone |  |
+| `completeSettlement(uint256 bondId)` | Anyone | `notEnforced` |
 | `grantRole(bytes32 role, address account)` | Anyone |  |
-| `initialize(address admin, address _reserveToken, uint64 _reserveWindow)` | Once, when the proxy is initialised |  |
-| `lendToPayoutPool(uint256 amount)` | Checked inside the function |  |
-| `recordPurchase(uint256 bondId, uint256 principal, uint256 faceValue, uint64 maturity)` | Not in the current source |  |
+| `holderEligibilityChanged(address holder, bool ineligible)` | Checked inside the function |  |
+| `initialize(address admin, address _reserveToken, uint64)` | Once, when the proxy is initialised |  |
+| `pokeReserve()` | Anyone; acts on the caller's own account |  |
+| `raiseReserveFloor(uint256 bps)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `recordPurchase(uint256 bondId, uint256 principal, uint256 faceValue, uint64 maturity, uint32 yieldBps, uint32 termDays)` | `onlyRole(BOND_ROLE)` | `notEnforced` |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `repayFromPayoutPool(uint256 amount)` | Checked inside the function |  |
-| `repayReserve()` | Not in the current source |  |
+| `retireUnpaid(uint256 bondId)` | `onlyRole(BOND_ROLE)` | `notEnforced` |
 | `revokeRole(bytes32 role, address account)` | Anyone |  |
-| `roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)` | Not in the current source |  |
-| `setBackstops(address _treasury, address _assurancePool, address _payoutPool)` | Not in the current source |  |
+| `roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity, uint32 yieldBps, uint32 termDays, address holder, uint256 remainder)` | `onlyRole(BOND_ROLE)` | `notEnforced` |
+| `setBackstops(address _treasury, address _payoutPool)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setEarnSources(address agent_, address controls_)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setEncumbranceSource(address source, bytes32 kind)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
-| `setReserveTerms(uint64 window, uint256 floorBps)` | Not in the current source |  |
-| `settle(uint256 bondId, address to)` | `onlyRole(BOND_ROLE)` |  |
+| `setGlideSchedule(uint32[] bandDays, uint16[] bandBps)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setRollConfirmation(uint256 bondId, address holder, bool confirmed)` | `onlyRole(BOND_ROLE)` |  |
+| `settle(uint256 bondId, address holder)` | `onlyRole(BOND_ROLE)` |  |
+| `settleAt(uint256 bondId, address debtTo, uint256 toDebt, address holder, uint256 amount)` | `onlyRole(BOND_ROLE)` |  |
 | `settleEarly(uint256 bondId, address to, uint256 presentValue)` | `onlyRole(BOND_ROLE)` | `notEnforced` |
+| `settlePledged(uint256 bondId, address debtTo, uint256 toDebt, address holder)` | `onlyRole(BOND_ROLE)` |  |
+| `termOfferChanged(uint32 termDays, bool)` | Checked inside the function |  |
+| `topUp(uint256 amount)` | Anyone; acts on the caller's own account |  |
 | `upgradeTo(address newImplementation)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(DEFAULT_ADMIN_ROLE)` (via `_authorizeUpgrade`) | payable |
-| `withdrawDeployable(uint256 amount, address to)` | Not in the current source |  |
 
 ## Read functions
 
@@ -36,35 +47,54 @@ Anyone can call these; they change nothing.
 
 | Function | Returns |
 |---|---|
-| `assurancePool()` | address |
+| `agent()` | address |
+| `amountDueAt(uint256 bondId, uint256 timestamp)` | uint256 |
 | `BOND_ROLE()` | bytes32 |
+| `bondTerms(uint256 bondId)` | (address,uint32,uint64,address,uint64,bool,uint64,uint32) |
+| `collateralAssets()` | uint256 |
 | `collateralKind()` | bytes32 |
+| `confirmedBondsOf(address holder)` | uint256[] |
+| `controls()` | address |
 | `coversNearTermMaturities()` | bool |
 | `DEFAULT_ADMIN_ROLE()` | bytes32 |
 | `deployableExcess()` | uint256 |
 | `encumbranceSource()` | address |
-| `faceDueWithin(uint64 window)` | uint256 due |
+| `faceDueWithin(uint64 window)` | uint256 |
 | `getRoleAdmin(bytes32 role)` | bytes32 |
+| `glideReserve()` | uint256 |
+| `glideSchedule()` | uint32[] bandDays, uint16[] bandBps |
 | `hasRole(bytes32 role, address account)` | bool |
 | `held()` | uint256 |
+| `holderOf(uint256 bondId)` | address |
+| `inReserveShortfall()` | bool |
+| `lendToPayoutPool(uint256)` | uint256 |
 | `lentToPayoutPool()` | uint256 |
-| `MAX_RESERVE_FLOOR_BPS()` | uint256 |
+| `MAX_GLIDE_BANDS()` | uint256 |
 | `MIN_RESERVE_FLOOR_BPS()` | uint256 |
 | `minReserveBps()` | uint256 |
+| `nearTermReserve()` | uint256 |
 | `obligations(uint256)` | uint256 principal, uint256 faceValue, uint64 maturity, bool settled |
 | `OPERATOR_ROLE()` | bytes32 |
+| `outstandingAt(uint256 index)` | uint256 |
 | `outstandingBonds()` | uint256[] |
 | `outstandingCount()` | uint256 |
-| `owedToReserve()` | uint256 |
 | `payoutPool()` | address |
+| `pendingSettlement(uint256)` | address holder, address debtTo, uint256 debtOwed, uint256 holderOwed |
 | `proxiableUUID()` | bytes32 |
+| `registerAt(uint256 i)` | uint256 |
+| `registerEntry(uint256 bondId)` | uint256 faceValue, uint64 maturity, uint32 yieldBps, uint64 issuedAt, uint64 endedAt, address holder |
+| `registerLength()` | uint256 |
 | `requiredReserve()` | uint256 |
+| `RESERVE_WINDOW()` | uint64 |
 | `reserveToken()` | address |
-| `reserveWindow()` | uint64 |
+| `rollingDueWithin(uint64 window)` | uint256 |
+| `seriesFaceOutstanding(uint64)` | uint256 |
+| `shortfallSince()` | uint64 |
 | `supportsInterface(bytes4 interfaceId)` | bool |
 | `totalFaceOutstanding()` | uint256 |
 | `totalFaceSettled()` | uint256 |
 | `totalPrincipal()` | uint256 |
+| `totalSettlementOwed()` | uint256 |
 | `TREASURY_ROLE()` | bytes32 |
 | `treasury()` | address |
 | `treasuryAvailable()` | uint256 |
@@ -75,35 +105,57 @@ Anyone can call these; they change nothing.
 | Event |
 |---|
 | `AdminChanged(address previousAdmin, address newAdmin)` |
-| `BackstopsUpdated(address treasury indexed, address assurancePool indexed, address payoutPool indexed)` |
+| `AgentTransfer(address to indexed, uint256 amount)` |
+| `BackstopsUpdated(address treasury indexed, address payoutPool indexed)` |
 | `BeaconUpgraded(address beacon indexed)` |
-| `DeployableWithdrawn(address to indexed, uint256 amount)` |
-| `DrewFromReserve(uint256 amount, uint256 owed)` |
+| `BondPaidThroughDistributions(uint256 bondId indexed, uint256 faceValue)` |
+| `BondRetired(uint256 bondId indexed, uint256 faceValue)` |
+| `BondTermsRecorded(uint256 bondId indexed, address collection indexed, uint32 yieldBps, uint64 seriesId)` |
 | `DrewFromTreasury(uint256 amount)` |
+| `EarnSourcesSet(address agent indexed, address controls indexed)` |
 | `EncumbranceSourceUpdated(address source indexed, bytes32 kind)` |
+| `ExcessWithdrawn(address to indexed, uint256 amount)` |
+| `GlideScheduleSet(uint32[] bandDays, uint16[] bandBps)` |
 | `Initialized(uint8 version)` |
-| `LentToPayoutPool(uint256 amount, uint256 outstanding)` |
+| `InterestReceived(uint256 principal, uint256 interest)` |
 | `PurchaseRecorded(uint256 bondId indexed, uint256 principal, uint256 faceValue, uint64 maturity)` |
 | `RepaidFromPayoutPool(uint256 amount, uint256 outstanding)` |
-| `RepaidReserve(uint256 amount, uint256 owed)` |
-| `ReserveTermsUpdated(uint64 window, uint256 minReserveBps)` |
+| `ReserveFloorRaised(uint256 previousBps, uint256 bps)` |
+| `ReserveShortfall(uint256 required, uint256 held)` |
+| `ReserveShortfallCured(uint256 required, uint256 held, uint64 since)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoleRevoked(bytes32 role indexed, address account indexed, address sender indexed)` |
+| `RollConfirmationSet(uint256 bondId indexed, address holder indexed, bool confirmed, bool rolling)` |
 | `Rolled(uint256 oldBondId indexed, uint256 newBondId indexed, uint256 rolledPrincipal, uint256 newFaceValue, uint64 newMaturity)` |
+| `RollRemainderPaid(uint256 oldBondId indexed, address holder indexed, address payee indexed, uint256 amount)` |
 | `Settled(uint256 bondId indexed, address to indexed, uint256 faceValue)` |
 | `SettledEarly(uint256 bondId indexed, address to indexed, uint256 presentValue, uint256 faceValue)` |
+| `SettledPledged(uint256 bondId indexed, address holder indexed, uint256 paidToDebt, uint256 paidToHolder)` |
+| `SettlementCompleted(uint256 bondId indexed, address holder indexed, uint256 paidToDebt, uint256 paidToHolder, uint256 debtOwed, uint256 holderOwed)` |
+| `SettlementShortfall(uint256 bondId indexed, address holder indexed, uint256 debtOwed, uint256 holderOwed)` |
+| `ToppedUp(address from indexed, uint256 amount)` |
 | `Upgraded(address implementation indexed)` |
 
 ## Errors
 
 | Error |
 |---|
+| `AccretionOutOfRange(uint256 yieldBps, uint256 daysLeft)` |
 | `BondVaultAlreadySettled(uint256 bondId)` |
+| `BondVaultBadGlide()` |
+| `BondVaultBadSplit(uint256 toDebt, uint256 amount)` |
 | `BondVaultBondExists(uint256 bondId)` |
 | `BondVaultBondPledged(uint256 bondId)` |
+| `BondVaultEnforcementInForce()` |
 | `BondVaultInsufficientFunds(uint256 held, uint256 required)` |
 | `BondVaultInvalidAddress()` |
+| `BondVaultLoanOutstanding(uint256 outstanding)` |
+| `BondVaultMaturityOutOfRange(uint64 maturity)` |
+| `BondVaultNotAgent(address caller)` |
+| `BondVaultNotControls(address caller)` |
+| `BondVaultNothingOwed(uint256 bondId)` |
+| `BondVaultNotTrackedBorrower(address caller)` |
 | `BondVaultReserveFloorOutOfBounds(uint256 bps)` |
 | `BondVaultUnknownBond(uint256 bondId)` |
 | `BondVaultWouldBreachReserve(uint256 deployable, uint256 requested)` |

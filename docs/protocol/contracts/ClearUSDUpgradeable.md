@@ -20,18 +20,37 @@ Source: [`contracts/peripherals/ClearUSDUpgradeable.sol`](../../../contracts/per
 | `burnFrom(address account, uint256 amount)` | `onlyRole(BURNER_ROLE)` |  |
 | `cancelDefaultAdminTransfer()` | The default admin |  |
 | `changeDefaultAdminDelay(uint48 newDelay)` | The default admin |  |
+| `delist(address wallet, uint8 reasonCode, bytes32 decisionHash)` | `onlyRole(LISTING_ROLE)` |  |
 | `grantMintAndBurnRoles(address burnAndMinter)` | `DEFAULT_ADMIN_ROLE` (it calls `grantRole`) |  |
 | `grantRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `initialize(string name, string symbol, uint8 decimals_, uint256 maxSupply_, uint256 preMint, address defaultAdmin, address defaultUpgrader)` | Once, when the proxy is initialised |  |
 | `mint(address account, uint256 amount)` | `onlyRole(MINTER_ROLE)` |  |
+| `pauseAccount(address account, uint32 reason)` | `onlyRole(FRAUD_ROLE)` |  |
+| `pauseAccountWithLegalBasis(address account, uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)` | `onlyRole(FRAUD_ROLE)` |  |
+| `pauseForSecurity(uint32 reason)` | `onlyRole(SECURITY_ROLE)` |  |
+| `pauseForSecurityWithLegalBasis(uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)` | `onlyRole(SECURITY_ROLE)` |  |
+| `recordFraudNotice(address wallet, bytes32 noticeHash)` | `onlyRole(LISTING_ROLE)` |  |
+| `relist(address wallet, bytes32 decisionHash)` | `onlyRole(LISTING_ROLE)` |  |
+| `renewAccountPause(address account, uint32 reason)` | `onlyRole(FRAUD_ROLE)` |  |
+| `renewAccountPauseWithLegalBasis(address account, uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)` | `onlyRole(FRAUD_ROLE)` |  |
+| `renewSecurityPause(uint32 reason)` | `onlyRole(SECURITY_ROLE)` |  |
+| `renewSecurityPauseWithLegalBasis(uint32 reason, uint8 legalBasis, bytes32 legalBasisHash)` | `onlyRole(SECURITY_ROLE)` |  |
 | `renounceRole(bytes32 role, address account)` | Only the account renouncing its own role |  |
 | `revokeRole(bytes32 role, address account)` | The role's admin role (`DEFAULT_ADMIN_ROLE` unless set otherwise) |  |
 | `rollbackDefaultAdminDelay()` | The default admin |  |
 | `seize(address holder, address to, uint256 amount)` | `onlyRole(LIQUIDATOR_ROLE)` |  |
 | `setCCIPAdmin(address newAdmin)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
 | `setEncumbranceSource(address source)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setIntentFactory(address factory)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setMembershipSource(address source)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setPauseMaxTotal(uint64 maxTotal)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `setPauseWindow(uint64 window)` | `onlyRole(DEFAULT_ADMIN_ROLE)` |  |
+| `syncEncumbrance(address holder)` | Anyone |  |
+| `syncListing(address wallet)` | Checked inside the function |  |
 | `transfer(address to, uint256 value)` | The token holder |  |
 | `transferFrom(address from, address to, uint256 value)` | The holder, or an approved spender |  |
+| `unpauseAccount(address account)` | `onlyRole(FRAUD_ROLE)` |  |
+| `unpauseSecurity()` | `onlyRole(SECURITY_ROLE)` |  |
 | `upgradeToAndCall(address newImplementation, bytes data)` | `onlyRole(UPGRADER_ROLE)` (via `_authorizeUpgrade`) | payable |
 
 ## Read functions
@@ -43,24 +62,43 @@ Anyone can call these; they change nothing.
 | `allowance(address owner, address spender)` | uint256 |
 | `balanceOf(address account)` | uint256 |
 | `BURNER_ROLE()` | bytes32 |
+| `CONTINUATION_PERIOD()` | uint64 |
 | `decimals()` | uint8 |
 | `DEFAULT_ADMIN_ROLE()` | bytes32 |
+| `DEFAULT_PAUSE_WINDOW()` | uint64 |
 | `defaultAdmin()` | address |
 | `defaultAdminDelay()` | uint48 |
 | `defaultAdminDelayIncreaseWait()` | uint48 |
 | `encumbranceSource()` | address |
+| `FRAUD_NOTICE_PERIOD()` | uint64 |
+| `FRAUD_ROLE()` | bytes32 |
 | `freeBalanceOf(address holder)` | uint256 |
 | `getCCIPAdmin()` | address |
 | `getRoleAdmin(bytes32 role)` | bytes32 |
 | `hasRole(bytes32 role, address account)` | bool |
+| `intentFactory()` | address |
+| `isPauseInForce(address account)` | bool |
+| `lastKnownLockOf(address holder)` | uint256 |
 | `LIQUIDATOR_ROLE()` | bytes32 |
+| `LISTING_ROLE()` | bytes32 |
+| `listingOf(address wallet)` | uint8 status, uint8 reasonCode, uint64 fraudNoticeAt |
+| `MAX_PAUSE_WINDOW()` | uint64 |
 | `maxSupply()` | uint256 |
+| `mayReceive(address account)` | bool |
+| `membershipSource()` | address |
 | `MINTER_ROLE()` | bytes32 |
 | `name()` | string |
 | `owner()` | address |
+| `PAUSE_MAX_TOTAL()` | uint64 |
+| `pauseClock(address account)` | uint256 |
+| `pausedUntil(address account)` | uint64 |
+| `pauseMaxTotal()` | uint64 |
 | `pendingDefaultAdmin()` | address newAdmin, uint48 schedule |
 | `pendingDefaultAdminDelay()` | uint48 newDelay, uint48 schedule |
+| `proposerOf(bytes32 action)` | address |
 | `proxiableUUID()` | bytes32 |
+| `REPAUSE_COOLDOWN()` | uint64 |
+| `SECURITY_ROLE()` | bytes32 |
 | `supportsInterface(bytes4 interfaceId)` | bool |
 | `symbol()` | string |
 | `totalSupply()` | uint256 |
@@ -71,19 +109,37 @@ Anyone can call these; they change nothing.
 
 | Event |
 |---|
+| `AccountPaused(address account indexed, uint32 reason, uint64 until, address signer indexed)` |
+| `AccountPauseRenewed(address account indexed, uint32 reason, uint64 until, address signer indexed)` |
+| `AccountUnpaused(address account indexed, address signer indexed)` |
+| `ActionApproved(bytes32 action indexed, address proposer indexed, address approver indexed)` |
+| `ActionProposed(bytes32 action indexed, address proposer indexed, bytes4 selector)` |
 | `Approval(address owner indexed, address spender indexed, uint256 value)` |
 | `CCIPAdminTransferred(address previousAdmin indexed, address newAdmin indexed)` |
 | `DefaultAdminDelayChangeCanceled()` |
 | `DefaultAdminDelayChangeScheduled(uint48 newDelay, uint48 effectSchedule)` |
 | `DefaultAdminTransferCanceled()` |
 | `DefaultAdminTransferScheduled(address newAdmin indexed, uint48 acceptSchedule)` |
+| `EncumbranceSourceReverted(address holder indexed, uint256 lastKnownLock)` |
 | `EncumbranceSourceUpdated(address source indexed)` |
+| `FraudNoticeRecorded(address wallet indexed, bytes32 noticeHash, address signer indexed)` |
 | `Initialized(uint64 version)` |
+| `IntentFactoryUpdated(address factory indexed)` |
+| `MembershipSourceUpdated(address source indexed)` |
+| `PauseLegalBasisRecorded(address account indexed, uint8 legalBasis, bytes32 legalBasisHash, uint64 until, address proposer, address approver)` |
+| `PauseMaxTotalUpdated(uint64 maxTotal)` |
+| `PauseWindowUpdated(uint64 window)` |
 | `RoleAdminChanged(bytes32 role indexed, bytes32 previousAdminRole indexed, bytes32 newAdminRole indexed)` |
 | `RoleGranted(bytes32 role indexed, address account indexed, address sender indexed)` |
 | `RoleRevoked(bytes32 role indexed, address account indexed, address sender indexed)` |
+| `SecurityPaused(uint32 reason, uint64 until, address signer indexed)` |
+| `SecurityPauseRenewed(uint32 reason, uint64 until, address signer indexed)` |
+| `SecurityUnpaused(address signer indexed)` |
 | `Transfer(address from indexed, address to indexed, uint256 value)` |
 | `Upgraded(address implementation indexed)` |
+| `WalletDelisted(address wallet indexed, uint8 reasonCode, bytes32 decisionHash, address proposer, address approver)` |
+| `WalletListed(address wallet indexed)` |
+| `WalletRelisted(address wallet indexed, bytes32 decisionHash, address proposer, address approver)` |
 
 ## Errors
 
@@ -97,8 +153,23 @@ Anyone can call these; they change nothing.
 | `AddressEmptyCode(address target)` |
 | `BurnMintERC20UUPS__InvalidRecipient(address recipient)` |
 | `BurnMintERC20UUPS__MaxSupplyExceeded(uint256 supplyAfterMint)` |
+| `ClearUSDAlreadyDelisted(address wallet)` |
 | `ClearUSDEncumbered(address holder, uint256 free, uint256 amount)` |
+| `ClearUSDEncumbranceUnreadable(address holder)` |
+| `ClearUSDFraudNoticeRequired(address wallet, uint64 noticeAt)` |
+| `ClearUSDInvalidLegalBasis(uint8 legalBasis)` |
+| `ClearUSDInvalidListingAction()` |
+| `ClearUSDInvalidReasonCode(uint8 reasonCode)` |
+| `ClearUSDNoPause()` |
+| `ClearUSDNotDelisted(address wallet)` |
+| `ClearUSDPauseCapReached(uint256 capEnd)` |
+| `ClearUSDPaused(address holder, uint32 reason, uint64 until)` |
+| `ClearUSDPauseMaxTotalTooLong(uint64 maxTotal)` |
+| `ClearUSDPauseWindowTooLong(uint64 window)` |
+| `ClearUSDReceiverNotMember(address receiver)` |
+| `ClearUSDSameSigner(address signer)` |
 | `ClearUSDSeizureExceedsEncumbrance(address holder, uint256 encumbered, uint256 amount)` |
+| `ClearUSDZeroAccount()` |
 | `ERC1967InvalidImplementation(address implementation)` |
 | `ERC1967NonPayable()` |
 | `ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 needed)` |
