@@ -180,6 +180,24 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
     - **Deploy 27's backstop step** (`payoutBackstopChange` in `deploy/earnWiring.ts`). On a testnet with a loan open, it skips the change and logs that the backstop is "left in place, test money, decision 50; BondVault lends nothing and the old pool can only repay into it". On Base mainnet it still refuses. Either way the run goes on. Once `lentToPayoutPool` is 0, the change is printed as decision 48 (a) describes.
     - **(b) The bond factories move to the Earn timelock**, as the bond collections already do (`deploy/earn_timelock_handover.ts`): the new `BurnerBondFactory`, and every `BurnerBondFactoryPre2f` and `BurnerBondFactoryLegacy` on record. Each factory is OpenZeppelin `Ownable` (v4: one step, no roles), so `transferOwnership` moves every power it has. Those powers reach only the factory and what it creates: `createCollection`, `deactivateCollection` and `reactivateCollection`, the registry or oracle and pool pointers, the base URI, the discount, maturity and face-value limits, and `emergencyRecover`, which pays the owner. No power is widened: the deployer loses them, and every later use is a Clear Lending Safe proposal with 7 days. A collection a factory makes after the handover belongs to the timelock from the start. The retired valuers keep their owner.
 
+## Automatic payout top-ups (owner, Nov 17, 2026)
+
+51. **Bounded automatic PayoutPool top-ups (owner-approved Nov 17, 2026).** Amends decision 49's "funding stays manual" for routine top-ups only.
+    - **Trigger-based, not scheduled.** A job (`apps/api/src/jobs/payoutTopUp.ts`, off unless `PAYOUT_TOPUP_ENABLED=1`) checks every 15 minutes, reading views only. It moves money only when `PayoutPool.dueWithin(14 days).short > 0`, which includes an unfunded overdue claim. 14 days sits well ahead of addendum 12.10's two business days, and the job refuses a low horizon under 7 days.
+    - **Refill target.** When it moves, it refills to `dueWithin(30 days).short` (decision 49's standing balance) plus a margin ($100 by default), so moves stay weeks apart. Nothing short at 14 days means no move, even when the 30-day picture is short. If that 30-day need is more than the limit has left, it alerts once instead. A `dueWithin` list that is still full at 3,200 claims is taken as everything queued: it may over-fund, but it never under-funds silently.
+    - **Capped by a Safe spending limit.**
+      - The money comes from CL Operating through Safe's AllowanceModule v0.1.1 (the canonical `0xAA46…091C`). CL Operating's owner sets the limit on chain: $5,000 a week on Base Sepolia.
+      - The top-up wallet, a CDP server wallet holding the PayoutPool's `FUNDER_ROLE` and nothing else, sends three exact calls: `executeAllowanceTransfer` (the delegate sends it itself, with an empty signature), `approve(PayoutPool, amount)` and `fund(amount)`. It never calls `withdrawCapital`.
+      - What the limit cannot cover is prepared as a Transaction Builder batch for CL Operating's owners, and alerted. The job never works around the limit.
+      - When CL Operating lacks the money, it alerts and does not try.
+    - **Safety.**
+      - Each transaction is dry-run first.
+      - Each top-up is recorded (migration 0078) before it starts. At most one is in flight per pool, and a restart finishes it from the chain, so one trigger is never funded twice.
+      - Any revert stops the job until a person clears it.
+      - The read-only keeper (decision 49) is unchanged.
+    - **One-time setup** (signing plan steps `TU-funder`, `TU-safe-module`, `TU-safe-delegate`, `TU-safe-allowance`): the deployer grants `FUNDER_ROLE` on the fresh PayoutPool before I2; CL Operating's owner signs one batch that enables the module, adds the delegate and sets the allowance. `docs/operators/payout-topups.md` has the detail.
+    - **Accepted risk.** A stolen top-up key could move at most the limit per period from CL Operating. Beyond that it could reach only the wallet's own idle capital in the PayoutPool and the positions its capital bought. Revoking `FUNDER_ROLE` and removing the delegate stop it. Returning those positions to CL Operating is not automated yet.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**

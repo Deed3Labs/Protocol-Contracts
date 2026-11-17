@@ -4,6 +4,7 @@ import { getPostgresPool } from '../../config/postgres.js';
 import { PROPOSE, SEE, TOTALS, type Level } from './levels.js';
 import { assurancePoolLive, bondVaultLive, coopLive, offersLive, bondsLive, codeMatchLive, deployedName, inventory, keyRolesLive, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { creditLive, payoutsLive } from './credit.js';
+import { payoutTopUpsLive, payoutTopUpsSeed } from './payoutTopUps.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { catalogPayload, catalogProducts, siteProduct, variantParts, type ShopProduct, type SiteProduct } from './catalog.js';
@@ -1406,6 +1407,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     SET_ASIDE: await shopSetAside(db),
     // what Clear Lending pays into the new Assurance Pool: live from its records and the pool once it's configured, the prototype's otherwise
     ASSURANCE_FEES: provider === 'live' ? await assuranceFeesLive(db, o.now).catch(() => null) : assuranceFeesDemo(),
+    // the automatic payout top-ups (decision 51): what the job recorded, live; a sample, seeded
+    PAYOUT_TOPUPS: provider === 'live' ? await payoutTopUpsLive(db) : payoutTopUpsSeed(o.now.getTime()),
     // live, what the yield pane lists since the opening is the pool's own deposits and withdrawals
     figures: {
       ...f,

@@ -373,7 +373,7 @@ The kept contracts' defaults in those files (`ESADepositVault`, `ClearUSDUpgrade
 
 **Indexers:** the event lists in P2e §7 (bond half, item 5), P2g A6, 2f-YP §9, 2f-PC §5 (`InterestBilled` … `RungScheduled`), 2f-EC §5, 2f-ENF §8, 2f-B §6 and 2f-INT §6 (`LossChargeCompleted` now books the full charge: subtract `value − absorbed`; `LegalHold*`, `SuccessorRedemptionRequested`, `LineClosed`), and P4c §7 (`ValidatorReassignmentCancelled`, `DeedFreezeConfirmed`).
 
-### 4.3 Payout funding keeper (decision 49)
+### 4.3 Payout funding keeper (decision 49) and automatic top-ups (decision 51)
 
 Do this after PayoutPool, the Yield Pool and BondVault are deployed and their addresses are in the API's config: `PAYOUT_POOL_<chainId>`, `LENDING_POOL_<chainId>` and `BOND_VAULT_<chainId>`, or the defaults in `apps/api/src/config/contracts.ts` (see §4.2). Until then the keeper watches the old pool.
 
@@ -386,6 +386,13 @@ Do this after PayoutPool, the Yield Pool and BondVault are deployed and their ad
 - **RED** means a claim is unfunded within 2 business days of its payout deadline, or is already past it. Fund the amount shown now. If the pool already holds the money, call `payNext()`.
 
 Funding comes from a recorded Yield Pool Deployment, from BondVault excess withdrawn through the Collateral Agent, or from the treasury. The keeper reports how much each option has available. It moves nothing, holds no key and sends no transactions.
+
+**Automatic top-ups (decision 51).** Routine top-ups can run on their own, within a limit. A separate job (`apps/api/src/jobs/payoutTopUp.ts`, off unless `PAYOUT_TOPUP_ENABLED=1`) checks every 15 minutes. It moves money only when the claims due within 14 days cannot all be paid, and then refills to the claims due within 30 days plus a margin. The money comes out of CL Operating through Safe's AllowanceModule, whose spending limit ($5,000 a week on Base Sepolia) caps everything the job can move. The keeper above is unchanged and keeps alerting. Full detail: [`docs/operators/payout-topups.md`](../operators/payout-topups.md).
+
+4. **Day 0, before I2:** the deployer sends `TU-funder` from the signing plan, which grants the fresh PayoutPool's `FUNDER_ROLE` to the top-up wallet `0xC0C4EC7875D1838C0AE610accC16AAdCDb475068` (CDP `payout-topup-base-sepolia`). After I2 this is a 7-day credit timelock proposal instead.
+5. CL Operating's owner, the Clear Lending Safe, signs one Transaction Builder batch on CL Operating: `safe-batches/signing-TU-cl-operating-setup.json`, the plan's `TU-safe-module`, `TU-safe-delegate` and `TU-safe-allowance`. It enables the module, names the wallet a delegate, and sets its allowance.
+6. Check the setup read-only with `scripts/check_rollout_inputs.ts`. Point `PAYOUT_POOL_84532` at the fresh PayoutPool (§4.2), then set these on the API and restart: `PAYOUT_TOPUP_WALLET`, `PAYOUT_TOPUP_CDP_ACCOUNT_NAME=payout-topup-base-sepolia`, then `PAYOUT_TOPUP_ENABLED=1`. The log shows `[payout-topup] started`.
+7. Day to day: alerts say when CL Operating needs money, or when its owners must sign a remainder the limit could not cover (the batch is in the alert and on the Command Center). Any revert stops the job until a person clears it with `bun src/scripts/clearPayoutTopUpHalt.ts`.
 
 ## 5. Open items
 

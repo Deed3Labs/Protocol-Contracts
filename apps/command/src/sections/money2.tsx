@@ -4,8 +4,9 @@ import { attrs, css, hasHtml, html } from '../runtime/dom';
 import { run } from '../live/actions';
 import { REAL } from '../live/env';
 import { CC } from './cc';
-import { LOG, S } from './data';
+import { LOG, S, vars } from './data';
 import { moneyLive, settleMove } from './moneyLive';
+import { demoTopUps, topUpsParts } from './payoutTopUps';
 import { keep, registerPage, shadowHost } from './pageHost';
 import { openItem, render as renderShell, toast, vLevel } from './shell';
 
@@ -862,7 +863,10 @@ function makeMoney() {
           return <div key={i} className={`nq-r ${same ? 'same' : ''} ${grp ? 'grp' : ''}`}><span className="nq-d">{same ? <i className="tie" aria-hidden="true" /> : leaf(d)}</span><span className="nq-k"><b>{k}</b><span>{cov >= v ? 'Covered now' : cov > 0 ? `${money(cov)} covered now` : 'From repayments, then the yield pool'}</span></span><span className="nq-b"><i style={css(`width:${cov / v * 100}%`)} /></span><b>{money(v)}</b></div>;
         })}</div>, <><span className="f-key"><i style={css("background:var(--fg)")} />{"Covered now "}<i className="hx" />Repayments, then the yield pool</span><button data-ngo="merchants/payouts">Payouts →</button></>);
       const b = cell('s5', 'How it’s funded', <span className="lbl">Funded beats queued</span>, <div className="led npl">{(L ? [['Today', money(M.payout)], ['Repayments due, 14 days', money(M.dueMembers)], ['Owed, 14 days', money(M.owed14)], ['Borrowed from the yield pool', money(M.short)], ['Paid back', 'From repayments'], ['Order', 'Oldest claim first, always']] : [['Today', money(M.payout)], ['Repayments due by 4 Nov', money(M.dueMembers)], ['Owed by 4 Nov', money(M.owed14)], ['Borrowed from the yield pool', money(M.short)], ['Paid back', '6 Nov, from repayments'], ['Order', 'Oldest claim first, always']]).map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div>, <><span>Top-ups need a second person</span>{!L || CAN() ? <button className="btn sm-b" data-npropose="topup">Propose a top-up</button> : <span />}</>);
-      return band(<>{a}{b}</>);
+      // the automatic top-ups (decision 51): what the payout top-up job last saw and did
+      const T = L ? vars.payoutTopUps : demoTopUps(Date.now());
+      const c = T ? cell('s12', 'Automatic top-ups', ...topUpsParts(T, money)) : notReal('s12', 'Automatic top-ups', 'Needs the payout top-up job (PAYOUT_TOPUP_ENABLED) to have checked the PayoutPool: its projections, the spending limit and each top-up it made.');
+      return band(<>{a}{b}{c}</>);
     }
     /* live, the rate is the carry members pay, not the LendingPool's curve, which no contract charges: the pool lends to the
        PayoutPool to pay shops, and the PayoutPool hands each lender the carry on what it funded. Members pay it on revolving
