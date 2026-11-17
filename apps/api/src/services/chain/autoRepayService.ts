@@ -33,7 +33,7 @@ import { termChainSide } from './termCollection.js';
  * within the scope they chose: UNSECURED_ONLY (income-backed and Boost, the default) or ALL. When a
  * deposit arrives, what they owe is earmarked as one clearing (`auto_clear_runs`, keyed by a ref
  * derived from the deposit receipt) and auto-save runs only on the rest. This sweep clears it ON
- * CHAIN with `repayForMember(ref, member, amount)`, and moves exactly what the chain applied out of
+ * CHAIN with `repayForMember(ref, member, amount, payer)`, and moves exactly what the chain applied out of
  * the member's Spendable account to Clear's settlement account (a Lithic book transfer, against a
  * hold placed first). The ordering, the compensating steps and the states are in `autoClearRuns.ts`.
  *
@@ -61,7 +61,9 @@ const ISSUER_ABI = [
   'function tierProduct(uint256) view returns (bytes32)',
   'function drawnOf(address member, uint256 tierId) view returns (uint256)',
   'function totalDrawnOf(address) view returns (uint256)',
-  'function repayForMember(bytes32 ref, address member, uint256 amount)',
+  // Phase 2e (12.2): `payer` names the deposit's originator; a federal benefit payer is excluded by
+  // default, and a sweep that names no payer is refused (RevolvingIssuerExcludedPayer).
+  'function repayForMember(bytes32 ref, address member, uint256 amount, bytes32 payer)',
   'function autoRepaymentOf(bytes32 ref) view returns (uint256)',
   'function stableCredit() view returns (address)',
   'event AutoCleared(bytes32 indexed ref, address indexed member, uint256 applied, uint256 remainder)',
@@ -73,6 +75,29 @@ const ERC20_ABI = [
 ];
 const CENTS = 10n ** 4n;
 const ZERO_BYTES32 = ethers.ZeroHash;
+
+/**
+ * The payer a deposit names on chain (Phase 2e, 12.2): its ACH originator, as
+ * keccak256("ach:<company id>"), from the receipt Lithic sent (`method_attributes.company_id`, kept
+ * in the receipt's metadata as `achCompanyId`). Federal benefit payers are on the issuer's governed
+ * default exclusion list under the same ids, and only the member's own `PayerExclusion` signature
+ * removes one. Null when the originator is not known.
+ */
+export function payerIdFor(metadata: unknown): string | null {
+  const id = metadata && typeof metadata === 'object' ? (metadata as { achCompanyId?: unknown }).achCompanyId : null;
+  const company = typeof id === 'string' ? id.trim() : '';
+  return company ? ethers.id(`ach:${company}`) : null;
+}
+
+async function depositPayerId(rail: string, externalId: string): Promise<string | null> {
+  const pool = getPayPool();
+  if (!pool) return null;
+  const { rows } = await pool.query<{ metadata: unknown }>(
+    `SELECT metadata FROM deposit_receipts WHERE rail = $1 AND external_id = $2`,
+    [rail, externalId.replace(/#term:.*$/, '')],
+  );
+  return payerIdFor(rows[0]?.metadata);
+}
 
 /** `RevolvingIssuerBase` scopes: 0 = income-backed and Boost only (the default), 1 = every tier. */
 export const SCOPE_UNSECURED_ONLY = 0;
@@ -238,7 +263,10 @@ function settlerChain(issuer: ethers.Contract, usdc: ethers.Contract, settler: s
       return null;
     },
     submit: async (run, cents) => {
-      const tx = await issuer.repayForMember(run.ref, run.wallet, BigInt(cents) * CENTS);
+      // Unknown originator: zero, which the chain refuses before anything is sent, so the hold waits
+      // and is released rather than clearing from a payer the member may have excluded.
+      const payer = (await depositPayerId(run.rail, run.externalId)) ?? ZERO_BYTES32;
+      const tx = await issuer.repayForMember(run.ref, run.wallet, BigInt(cents) * CENTS, payer);
       const applied = (async () => {
         const receipt = await tx.wait(1);
         for (const log of receipt?.logs ?? []) {

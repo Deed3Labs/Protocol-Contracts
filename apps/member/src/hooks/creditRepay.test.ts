@@ -52,7 +52,8 @@ describe('automatic repayment from USDC deposits', () => {
   const panel = read('components/settings/PermissionsPanel.tsx');
 
   test('Phase 2b: one sponsored call sets on/off and scope; no approval, so nothing is swept', () => {
-    expect(calls).toContain("functionName: 'setAutoClear', args: [args.enabled, args.scope]");
+    expect(calls).toContain("functionName: 'setAutoClear',");
+    expect(calls).toContain('args: [args.enabled, args.scope, args.enabled ? autoClearAuthHash(args.scope) : ZERO_AUTH_HASH]');
     const fn = calls.slice(calls.indexOf('export async function scSetAutoClear'), calls.indexOf('export async function scSetSavingsDrawAllowance'));
     // Never an allowance to take the member's USDC; turning it off withdraws any old one.
     expect(fn).not.toContain('MAX_UINT256');
