@@ -16,7 +16,8 @@
  *
  * The deployer must still hold each contract's admin role to grant, so run this BEFORE the admin
  * handover to the Safe (or have the Safe grant instead). FIX_CHECKS=1 also grants contracts the roles
- * the "checks" list says they need and don't hold (LendingPool's LIQUIDATOR_ROLE for the Liquidator).
+ * the "checks" list says they need and don't hold (LendingPool's ENFORCER_ROLE for PoolShareEnforcer).
+ * A check whose contract or holder is not deployed on the network is skipped.
  */
 import { readFileSync } from "fs";
 import path from "path";
@@ -41,8 +42,9 @@ export const CHECKS: Array<{ contract: string; role: string; holder: string; why
 export async function fixChecks(deployer: Signer, list: Deployed[], log: (s: string) => void = console.log) {
   const byName = new Map(list.map((d) => [d.name, d]));
   for (const k of CHECKS) {
-    const d = byName.get(k.contract)!,
-      h = byName.get(k.holder)!;
+    const d = byName.get(k.contract),
+      h = byName.get(k.holder);
+    if (!d || !h) continue;
     const c = new Contract(d.address, d.abi, deployer);
     const hash = /_ROLE$/.test(k.role) && d.abi.getFunction(k.role) ? await c[k.role]() : roleHash(k.role);
     if (await c.hasRole(hash, h.address)) continue;
@@ -55,8 +57,12 @@ export async function checkContracts(runner: ContractRunner, list: Deployed[]) {
   const byName = new Map(list.map((d) => [d.name, d]));
   const out: Array<{ line: string; ok: boolean }> = [];
   for (const k of CHECKS) {
-    const d = byName.get(k.contract)!,
-      h = byName.get(k.holder)!;
+    const d = byName.get(k.contract),
+      h = byName.get(k.holder);
+    if (!d || !h) {
+      out.push({ ok: true, line: `${k.contract}.${k.role} held by ${k.holder}: skipped, not deployed here (${k.why})` });
+      continue;
+    }
     const c = new Contract(d.address, d.abi, runner);
     const hash = /_ROLE$/.test(k.role) && d.abi.getFunction(k.role) ? await c[k.role]() : roleHash(k.role);
     const ok = await c.hasRole(hash, h.address);

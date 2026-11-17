@@ -1,0 +1,985 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<title>Signing Page</title>
+<style>
+  /* Tokens from Command Center (Build, Signing). Fonts are local stacks only: nothing is fetched. */
+  :root {
+    --ground: #DFE3DE;
+    --raised: #E9ECE7;
+    --fg: #16211D;
+    --fg-70: rgb(22 33 29 / .70);
+    --fg-50: rgb(22 33 29 / .66);
+    --line: rgb(22 33 29 / .28);
+    --hair: rgb(22 33 29 / .13);
+    --live: #24409E;
+    --settled: #0E6B4E;
+    --underway: #8A5512;
+    --absent: #9B2C22;
+    --scrim: rgb(22 33 29 / .42);
+    --f-display: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --f-text: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #16211D; --raised: #1E2C27; --fg: #DFE3DE;
+      --fg-70: rgb(223 227 222 / .70); --fg-50: rgb(223 227 222 / .66);
+      --line: rgb(223 227 222 / .28); --hair: rgb(223 227 222 / .13);
+      --live: #7C8CC5; --settled: #6FCB9F; --underway: #E3B667; --absent: #E58C7F;
+      --scrim: rgb(9 14 12 / .62);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #16211D; --raised: #1E2C27; --fg: #DFE3DE;
+    --fg-70: rgb(223 227 222 / .70); --fg-50: rgb(223 227 222 / .66);
+    --line: rgb(223 227 222 / .28); --hair: rgb(223 227 222 / .13);
+    --live: #7C8CC5; --settled: #6FCB9F; --underway: #E3B667; --absent: #E58C7F;
+    --scrim: rgb(9 14 12 / .62);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--ground); color: var(--fg); font: 400 15px/1.55 var(--f-text); -webkit-font-smoothing: antialiased; }
+  body.pn-open { overflow: hidden; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+  .mono { font-family: var(--f-mono); font-weight: 500; letter-spacing: .02em; }
+  .lbl { font: 400 11px/1.3 var(--f-mono); text-transform: uppercase; letter-spacing: .1em; color: var(--fg-50); }
+  .quiet { color: var(--fg-70); }
+  .small { font-size: 13px; line-height: 1.45; }
+
+  main { max-width: 1360px; margin: 0 auto; padding: 32px 32px 64px; }
+
+  /* page header */
+  .top { display: flex; flex-direction: column; gap: 8px; margin: 0 0 28px; }
+  .top-t { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .top h1 { font: 650 28px/1.15 var(--f-display); letter-spacing: -.02em; margin: 0; }
+  .top p { margin: 0; color: var(--fg-70); max-width: 72ch; font-size: 14.5px; }
+  .sn-net { font: 500 10px/1 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--underway); border: 1px solid currentColor; padding: 4px 7px; white-space: nowrap; }
+  .sn-net.loc { color: var(--fg-70); }
+
+  /* buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 34px; padding: 0 16px; border-radius: 999px; font-weight: 500; font-size: 14px; border: 1px solid var(--line); white-space: nowrap; text-decoration: none; color: var(--fg); background: transparent; transition: border-color .2s var(--ease), background .2s var(--ease); }
+  .btn:hover { border-color: var(--fg); }
+  .btn.p { background: var(--fg); color: var(--ground); border-color: var(--fg); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn:disabled:hover { border-color: var(--line); }
+  .btn.p:disabled:hover { border-color: var(--fg); }
+  .btn.sm { height: 28px; padding: 0 11px; font-size: 12.5px; }
+  .btn.wide { width: 100%; height: 36px; }
+
+  /* bento: cards share their borders */
+  .band + .band { margin-top: 32px; }
+  .bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+  .cell { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
+  .s4 { grid-column: span 4; } .s8 { grid-column: span 8; } .s12 { grid-column: span 12; }
+  .hd { min-height: 56px; display: flex; align-items: center; gap: 12px; padding: 10px 22px; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
+  .hd h2 { font: 600 17px/1.2 var(--f-display); letter-spacing: -.01em; margin: 0; }
+  .hd .r { margin-left: auto; display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .ft { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; min-height: 52px; padding: 10px 22px; border-top: 1px solid var(--hair); font-size: 13px; color: var(--fg-70); }
+
+  /* label / value list */
+  .led { display: flex; flex-direction: column; border-top: 1px solid var(--line); margin: 0; }
+  .led > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--hair); font-size: 14px; }
+  .led > div > span { color: var(--fg-70); flex: none; }
+  .led > div > b { font-weight: 500; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+  .led .mono { font-size: 12.5px; }
+  .led .sub { display: block; font-size: 12px; color: var(--fg-50); font-weight: 400; }
+  .lnk { font-size: 13px; font-weight: 500; color: var(--fg); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+  .lnk:hover { text-decoration-color: var(--fg); }
+
+  /* loader */
+  .drop { margin: 18px 22px; min-height: 190px; display: grid; place-items: center; text-align: center; padding: 24px 16px; border: 1px dashed var(--line);
+          background: repeating-linear-gradient(135deg, transparent 0 7px, var(--hair) 7px 8px); }
+  .drop.over { border-color: var(--fg); }
+  .drop > div { background: var(--ground); padding: 14px 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 100%; }
+  .drop b { font-weight: 600; }
+  .err { margin: 0 22px 18px; padding: 10px 14px; font-size: 13.5px; color: var(--absent); box-shadow: inset 3px 0 0 var(--absent); background: color-mix(in srgb, var(--absent) 7%, transparent); overflow-wrap: anywhere; }
+  .err:empty { display: none; }
+  .err.top { margin: 0 0 20px; }
+
+  /* signing run */
+  .sn-run { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 18px 22px 18px; }
+  .sn-tr { display: grid; grid-template-columns: repeat(var(--n, 9), minmax(0, 1fr)); gap: 14px 2px; }
+  .sn-tk { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 0 2px 8px; text-align: left; box-shadow: inset 0 -2px 0 transparent; }
+  .sn-tk i { height: 6px; background: var(--hair); }
+  .sn-tk.done i { background: var(--fg); }
+  .sn-tk.now i { background: repeating-linear-gradient(135deg, var(--fg) 0 2px, transparent 2px 5px); outline: 1px solid var(--fg); outline-offset: -1px; }
+  .sn-tk b { font: 500 10px/1 var(--f-mono); letter-spacing: .04em; color: var(--fg-50); margin-top: 4px; }
+  .sn-tk span { font-size: 12.5px; color: var(--fg); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sn-tk em { font-style: normal; font-size: 11.5px; color: var(--fg-50); }
+  .sn-tk.done em { color: var(--settled); }
+  .sn-tk:hover span { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+  .sn-tk.on { box-shadow: inset 0 -2px 0 var(--fg); }
+  .sn-tk.on span { font-weight: 600; }
+  .sn-sum { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 440px); gap: 0 48px; align-items: end; border-top: 1px solid var(--hair); padding-top: 18px; }
+  .sn-cnt { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding-bottom: 4px; }
+  .sn-ns { display: flex; gap: 10px 32px; flex-wrap: wrap; }
+  .sn-ns > span { display: flex; align-items: baseline; gap: 8px; }
+  .sn-ns small { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--fg-70); }
+  .m-big { color: var(--fg); font-weight: 600; font-size: 34px; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .sn-d { display: inline-block; width: 8px; height: 8px; flex: none; }
+  .sn-d.done, .sn-bar .done { background: var(--fg); }
+  .sn-d.ready, .sn-bar .ready { background: var(--live); }
+  .sn-d.pending, .sn-bar .pending { background: var(--underway); }
+  .sn-d.failed, .sn-bar .failed { background: var(--absent); }
+  .sn-d.waiting, .sn-bar .waiting { background: repeating-linear-gradient(135deg, var(--fg-50) 0 1px, transparent 1px 4px); box-shadow: inset 0 0 0 1px var(--line); }
+  .sn-bar { display: flex; gap: 2px; height: 8px; }
+  .sn-bar i { display: block; min-width: 4px; }
+  .sn-notes { border-top: 1px solid var(--hair); padding-top: 12px; font-size: 13px; color: var(--fg-70); }
+  .sn-notes summary { cursor: pointer; }
+  .sn-notes ul { margin: 8px 0 0; padding-left: 18px; }
+  .sn-notes li { overflow-wrap: anywhere; margin: 4px 0; }
+  .sn-fa { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+
+  /* steps */
+  .sn-fl { display: inline-flex; flex-wrap: wrap; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+  .sn-fl button { font-size: 12px; padding: 5px 9px; color: var(--fg-70); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .sn-fl button:hover { color: var(--fg); }
+  .sn-fl button.on { background: var(--fg); color: var(--ground); }
+  .sn-ls { flex: 1; display: flex; flex-direction: column; }
+  .sn-r { display: grid; grid-template-columns: 150px minmax(0, 1fr) 170px 118px; grid-template-areas: "id k w s"; gap: 14px; align-items: center; padding: 12px 22px; border-bottom: 1px solid var(--hair); text-align: left; width: 100%; }
+  .sn-r:hover { background: var(--raised); }
+  .sn-r.wt { color: var(--fg-70); }
+  .sn-r.wt .sn-k b { font-weight: 500; }
+  .sn-r.me { box-shadow: inset 3px 0 0 var(--live); }
+  .sn-id { grid-area: id; font-size: 11px; color: var(--fg-50); overflow-wrap: anywhere; line-height: 1.35; }
+  .sn-k { grid-area: k; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .sn-k b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sn-k > span { font-size: 12px; color: var(--fg-50); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sn-k > span .mono { font-size: 11.5px; }
+  .sn-w { grid-area: w; font-size: 12.5px; color: var(--fg-70); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sn-s { display: inline-block; height: 20px; padding: 0 7px; font: 500 10px/20px var(--f-mono); text-align: center; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; vertical-align: middle; }
+  .sn-r > .sn-s { grid-area: s; justify-self: end; }
+  .sn-s.rd { color: var(--live); box-shadow: inset 0 0 0 1px var(--live); }
+  .sn-s.dn { color: var(--settled); box-shadow: inset 0 0 0 1px var(--settled); }
+  .sn-s.wt { color: var(--fg-50); }
+  .sn-s.pd { color: var(--underway); box-shadow: inset 0 0 0 1px var(--underway); }
+  .sn-s.bad { color: var(--absent); box-shadow: inset 0 0 0 1px var(--absent); }
+  .sn-empty { flex: 1; min-height: 180px; display: grid; place-items: center; padding: 16px; background: repeating-linear-gradient(135deg, transparent 0 7px, var(--hair) 7px 8px); }
+  .sn-empty span { background: var(--ground); padding: 6px 10px; font-size: 13px; color: var(--fg-70); text-align: center; max-width: 100%; }
+
+  /* wallet */
+  .sn-wl { flex: 1; display: flex; flex-direction: column; gap: 18px; padding: 16px 22px 18px; }
+  .sn-p { margin: 0; font-size: 13px; color: var(--fg-70); line-height: 1.5; }
+  .sn-p.warn { color: var(--underway); }
+  .sn-wa { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .sn-wa b { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+  .sn-wa .mono { font-size: 12px; color: var(--fg-50); }
+  .sn-nx { display: flex; flex-direction: column; }
+  .sn-nx .lbl { margin-bottom: 6px; }
+  .sn-nr { display: grid; grid-template-columns: minmax(0, 1fr) 14px; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--hair); font-size: 13px; text-align: left; width: 100%; }
+  .sn-nr:last-child { border-bottom: 1px solid var(--hair); }
+  .sn-nr > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .sn-nr .mono { font-size: 11px; color: var(--fg-50); overflow-wrap: anywhere; }
+  .sn-nr b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sn-nr svg { width: 14px; height: 14px; fill: none; stroke: var(--fg-50); stroke-width: 1.5; }
+  .sn-nr:hover b { text-decoration: underline; text-underline-offset: 3px; }
+  .sn-ck { margin-top: auto; }
+  .fst { display: inline-block; height: 18px; padding: 0 6px; font: 500 10px/18px var(--f-mono); text-transform: uppercase; letter-spacing: .06em; color: var(--fg-70); box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+  .fst.ok { color: var(--settled); box-shadow: inset 0 0 0 1px var(--settled); }
+  .fst.bad { color: var(--absent); box-shadow: inset 0 0 0 1px var(--absent); }
+
+  /* side panel */
+  .scrim { position: fixed; inset: 0; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .2s var(--ease); z-index: 59; }
+  .panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(500px, 100vw); background: var(--ground); border-left: 1px solid var(--line); z-index: 60; transform: translateX(100%); visibility: hidden; transition: transform .28s var(--ease), visibility 0s linear .28s; display: flex; flex-direction: column; box-shadow: -24px 0 60px -30px rgb(0 0 0 / .4); }
+  body.pn-open .scrim { opacity: 1; pointer-events: auto; }
+  body.pn-open .panel { transform: none; visibility: visible; transition: transform .28s var(--ease); }
+  .pn-hd { height: 60px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 24px; border-bottom: 1px solid var(--line); min-width: 0; }
+  .pn-hd .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .pn-hd .lbl .id { text-transform: none; }
+  .pn-hd .x { margin-left: auto; flex: none; width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); }
+  .pn-hd .x:hover { border-color: var(--fg); }
+  .pn-hd .x svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+  .pn-b { flex: 1; overflow: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+  .pn-ft { flex: none; border-top: 1px solid var(--line); padding: 14px 24px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; min-height: 66px; }
+  .pn-ft .note { margin-right: auto; font-size: 13px; color: var(--fg-70); min-width: 0; flex: 1 1 180px; overflow-wrap: anywhere; }
+  .pn-ft .note.warn { color: var(--underway); }
+  .pn-ft .btn { height: 40px; padding: 0 18px; font-size: 14.5px; }
+  .bpn-t { font: 700 24px/1.15 var(--f-display); letter-spacing: -.02em; margin: 0; overflow-wrap: anywhere; }
+  .bpn-s { margin: 6px 0 0; font-size: 13px; color: var(--fg-70); }
+  .bpn-n { margin: 0; font-size: 13px; color: var(--fg-70); line-height: 1.55; overflow-wrap: anywhere; }
+  .bpn-n b { color: var(--fg); font-weight: 600; }
+  .bpn-w { margin: 0; font-size: 12.5px; color: var(--fg-70); line-height: 1.5; padding: 12px 14px; background: color-mix(in srgb, var(--live) 7%, transparent); box-shadow: inset 3px 0 0 var(--live); overflow-wrap: anywhere; }
+  .bd-tk { display: flex; gap: 2px; }
+  .bd-tk span { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--fg-50); min-width: 0; }
+  .bd-tk i { height: 6px; background: var(--hair); }
+  .bd-tk .done i { background: var(--fg); }
+  .bd-tk .done { color: var(--fg-70); }
+  .bd-tk .now i { background: var(--live); }
+  .bd-tk .now { color: var(--live); font-weight: 600; }
+  .bd-tk .bad i { background: var(--absent); }
+  .bd-tk .bad { color: var(--absent); font-weight: 600; }
+  .pn-b .led > div > b { max-width: 72%; }
+  .pn-b .lnk + .lnk { margin-left: 8px; }
+  .sn-args { display: flex; flex-direction: column; border-top: 1px solid var(--line); margin-top: 6px; }
+  .sn-args > div { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--hair); font-size: 12.5px; }
+  .sn-args > div > span:first-child { overflow-wrap: anywhere; }
+  .sn-args em { font-style: normal; color: var(--fg-50); font-family: var(--f-mono); font-size: 11px; margin-left: 4px; }
+  .sn-args .mono { font-size: 12px; overflow-wrap: anywhere; }
+  .sn-args small { display: block; font-size: 12px; color: var(--fg-50); margin-top: 2px; overflow-wrap: anywhere; }
+  .sn-cd summary { cursor: pointer; font-size: 12.5px; color: var(--fg-70); }
+  .sn-cd p { font-size: 11.5px; overflow-wrap: anywhere; word-break: break-all; color: var(--fg-70); margin: 8px 0 0; }
+  .sn-cd p span { color: var(--fg-50); }
+
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 70; max-width: calc(100vw - 32px); background: var(--fg); color: var(--ground); padding: 10px 14px; font-size: 13px; }
+  .toast:empty { display: none; }
+
+  @media (max-width: 1100px) {
+    .s4, .s8 { grid-column: span 12; }
+    .sn-tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .sn-sum { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .sn-r { grid-template-columns: 112px minmax(0, 1fr) 118px; grid-template-areas: "id k s"; }
+    .sn-w { display: none; }
+    .sn-ck { margin-top: 0; }
+  }
+  @media (max-width: 640px) {
+    main { padding: 20px 16px 48px; }
+    .top h1 { font-size: 23px; }
+    .hd, .ft { padding-left: 16px; padding-right: 16px; }
+    .sn-run { padding: 16px; }
+    .sn-wl { padding: 16px; }
+    .drop, .err { margin-left: 16px; margin-right: 16px; }
+    .sn-tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sn-ns { gap: 10px 20px; }
+    .m-big { font-size: 28px; }
+    .sn-r { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "id s" "k k"; gap: 4px 12px; padding: 12px 16px; }
+    .led > div { flex-wrap: wrap; gap: 2px 16px; }
+    .led > div > b { text-align: left; }
+    .pn-b .led > div > b { max-width: 100%; }
+    .pn-hd, .pn-b, .pn-ft { padding-left: 16px; padding-right: 16px; }
+    .pn-ft .btn { flex: 1; }
+    .sn-args > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <span class="lbl" id="kicker">Signing page · holds no key</span>
+    <div class="top-t">
+      <h1 id="planName">Signing page</h1>
+      <span class="sn-net" id="netTag" hidden></span>
+    </div>
+    <p>Load the plan from scripts/signing_plan.ts, connect MetaMask, and send each ready step from the account it names. Nothing is sent until you press Sign and send and confirm in MetaMask.</p>
+  </header>
+
+  <div class="err top" id="loadError" role="alert"></div>
+
+  <section class="bento" id="loader">
+    <div class="cell s12">
+      <div class="hd"><h2>Load a signing plan</h2><span class="r"><span class="lbl">clear-signing-plan/1</span></span></div>
+      <div class="drop" id="drop">
+        <div>
+          <b>Drop signing-plan.json here</b>
+          <label class="btn sm">Choose the file<input type="file" id="file" accept=".json,application/json" hidden></label>
+          <span class="small quiet">The plan script writes it to deployments/base-sepolia/signing-plan.json.</span>
+        </div>
+      </div>
+      <div class="ft"><span>Base Sepolia (84532) or a local test chain (31337) only</span><span>The fingerprint must match</span></div>
+    </div>
+  </section>
+
+  <div id="app" hidden>
+    <section class="band bento" id="run"></section>
+    <section class="band bento" id="work"></section>
+  </div>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="pnTitle"></aside>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+  var BASE_SEPOLIA = 84532;
+  var LOCAL = 31337;
+  var CHAINS = {
+    84532: { hex: "0x14a34", name: "Base Sepolia", tag: "Base Sepolia · test money only", explorer: "https://sepolia.basescan.org", safePrefix: "basesep",
+      add: { chainId: "0x14a34", chainName: "Base Sepolia", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+             rpcUrls: ["https://sepolia.base.org"], blockExplorerUrls: ["https://sepolia.basescan.org"] } },
+    31337: { hex: "0x7a69", name: "Local test chain", tag: "Local test chain", explorer: null, safePrefix: null, add: null }
+  };
+  /* The rollout's stages (docs/audit/SEPOLIA-REHEARSAL.md): a short code and name for the track. */
+  var STAGES = {
+    "C1d": ["C1d", "Savings vault"],
+    "D4": ["D4", "Credit roles"],
+    "E8": ["E8", "Earn changes"],
+    "E9": ["E9", "Backstop change"],
+    "F2": ["F2", "Fee recipient"],
+    "Pool Tier": ["PT", "Pool Tier"],
+    "Safe (before I2)": ["SF", "Second owner"],
+    "I3": ["I3", "Vault timelock"],
+    "Assurance": ["AS", "Assurance"],
+    "Payout top-ups": ["TU", "Payout top-ups"],
+    "Day 7": ["D7", "Day 7 runs"]
+  };
+  function stageOf(st) { return STAGES[st] || [st, st]; }
+
+  var plan = null;          // the verified plan
+  var source = null;        // { kind: "query" | "file", name, query? }
+  var byId = {};
+  var account = null;
+  var walletChain = null;
+  var sent = {};            // step id -> { hash, state: "pending" | "success" | "failed", at, block? }
+  var busy = {};
+  var filter = "ready";
+  var panelId = null;
+  var reading = false;
+  var lastRead = null;
+  var walletError = "";
+
+  var $ = function (id) { return document.getElementById(id); };
+  function h(tag, props) {
+    var n = document.createElement(tag);
+    if (props) for (var k in props) {
+      var v = props[k];
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k === "style") n.setAttribute("style", v);
+      else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (var i = 2; i < arguments.length; i++) add(n, arguments[i]);
+    return n;
+  }
+  function add(n, c) {
+    if (c === null || c === undefined || c === false) return;
+    if (Array.isArray(c)) { c.forEach(function (x) { add(n, x); }); return; }
+    n.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+  }
+  function svg(path) {
+    var s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("viewBox", "0 0 16 16"); s.setAttribute("aria-hidden", "true");
+    var p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", path); s.appendChild(p);
+    return s;
+  }
+  function short(a) { return a ? a.slice(0, 6) + "…" + a.slice(-4) : ""; }
+  function same(a, b) { return !!a && !!b && a.toLowerCase() === b.toLowerCase(); }
+  function isAddress(a) { return typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a); }
+  function isHex(a) { return typeof a === "string" && /^0x([0-9a-fA-F]{2})*$/.test(a); }
+  function plural(n, one, many) { return n === 1 ? one : many; }
+  function joinAnd(list) { return list.length < 2 ? list.join("") : list.slice(0, -1).join(", ") + " and " + list[list.length - 1]; }
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function fmtTime(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso || "");
+    return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()] + " " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + " UTC";
+  }
+  function fmtInt(n) { return Number(n).toLocaleString("en-US"); }
+  var toastTimer = null;
+  function toast(msg) {
+    $("toast").textContent = msg;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { $("toast").textContent = ""; }, 4000);
+  }
+
+  // ---------- remembered transactions, per plan ----------
+  function storeKey(p) { return "clear-signing-page:" + (p || plan).stepsSha256; }
+  function loadSent(p) {
+    var out = {};
+    try { var raw = window.localStorage.getItem(storeKey(p)); if (raw) out = JSON.parse(raw) || {}; } catch (e) { out = {}; }
+    return out;
+  }
+  function saveSent() {
+    try { window.localStorage.setItem(storeKey(), JSON.stringify(sent)); } catch (e) { /* storage off: the page still works */ }
+  }
+
+  // ---------- the state of each step ----------
+  // The plan's status, then what this browser sent: "done" | "pending" | "success" | "failed" | "ready" | "waiting".
+  function stateOf(s) {
+    if (s.status === "done") return "done";
+    var r = sent[s.id];
+    if (r && (r.state === "pending" || r.state === "success" || r.state === "failed")) return r.state;
+    if (s.status === "ready") return "ready";
+    return opens(s) ? "ready" : "waiting";
+  }
+  function isDone(s) { var x = s && stateOf(s); return x === "done" || x === "success"; }
+  /* A waiting step opens here once every step it depends on is done, but only when the plan script held it
+     back for those steps alone ("Waits for … first.") and its call data is already known. */
+  var DEPENDENCY_ONLY = /^Waits for .+ first\.$/;
+  function depsDone(s) { return s.dependsOn && s.dependsOn.length > 0 && s.dependsOn.every(function (d) { return isDone(byId[d]); }); }
+  function opens(s) { return s.status === "waiting" && !!s.data && DEPENDENCY_ONLY.test(s.reason || "") && depsDone(s); }
+  function needsRerun(s) { return stateOf(s) === "waiting" && depsDone(s); }
+  function mine(s) { return !!account && s.kind === "wallet" && same(s.signer, account); }
+  function canSend(s) { var x = stateOf(s); return s.kind === "wallet" && !!s.data && (x === "ready" || x === "failed"); }
+  var CHIP = { ready: ["Ready", "rd"], waiting: ["Waiting", "wt"], done: ["Done", "dn"], pending: ["Sent", "pd"], success: ["Confirmed", "dn"], failed: ["Failed", "bad"] };
+  function chip(s) {
+    var x = stateOf(s);
+    var c = CHIP[x];
+    return h("span", { class: "sn-s " + c[1], "data-chip": x }, s.kind === "safe" && x === "ready" ? "In the Safe app" : c[0]);
+  }
+  function shortLabel(l) { return String(l || "").replace(/\s*\(.*\)\s*$/, ""); }
+  function fnName(sig) { return String(sig || "").split("(")[0]; }
+
+  // ---------- loading ----------
+  async function sha256Hex(text) {
+    if (!window.crypto || !window.crypto.subtle) return null;
+    var buf = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.prototype.map.call(new Uint8Array(buf), function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+  }
+
+  /** Checks a plan's text. Returns { plan } or { error }. */
+  async function verifyPlan(text) {
+    var p;
+    try { p = JSON.parse(text); } catch (e) { return { error: "This file is not JSON." }; }
+    if (!p || p.format !== "clear-signing-plan/1" || !Array.isArray(p.steps)) return { error: "This is not a signing plan (it should come from scripts/signing_plan.ts)." };
+    if (p.chainId !== BASE_SEPOLIA && p.chainId !== LOCAL) return { error: "Refused: this plan is for chain " + p.chainId + ". This page only signs on Base Sepolia (84532), or a local test chain (31337)." };
+    for (var i = 0; i < p.steps.length; i++) {
+      var s = p.steps[i];
+      if (!s || typeof s.id !== "string") return { error: "Refused: step " + (i + 1) + " is malformed." };
+      if (s.chainId !== p.chainId) return { error: "Refused: step " + s.id + " is for chain " + s.chainId + ", not the plan's " + p.chainId + "." };
+      if (!isAddress(s.signer) || !isAddress(s.to) || (s.data !== null && !isHex(s.data)) || s.value !== "0") return { error: "Refused: step " + s.id + " is malformed." };
+    }
+    var digest = await sha256Hex(JSON.stringify(p.steps));
+    if (digest === null) return { error: "This browser cannot check the plan's fingerprint here. Open the page from http://localhost (see the README)." };
+    if (digest !== p.stepsSha256) return { error: "Refused: the plan's steps do not match its fingerprint (stepsSha256). It was changed after the script wrote it. Re-run the plan script." };
+    p.steps.forEach(function (s) {
+      if (!Array.isArray(s.dependsOn)) s.dependsOn = [];
+      if (!Array.isArray(s.args)) s.args = [];
+    });
+    return { plan: p };
+  }
+
+  function adopt(p, src) {
+    var old = plan, oldSent = sent, oldById = byId;
+    plan = p;
+    source = src;
+    byId = {};
+    p.steps.forEach(function (s) { byId[s.id] = s; });
+    sent = loadSent(p);
+    // A re-run plan: keep what this browser sent for a step whose call is unchanged and the chain does not yet show done.
+    if (old && old.stepsSha256 !== p.stepsSha256) {
+      var carried = false;
+      for (var id in oldSent) {
+        var a = oldById[id], b = byId[id];
+        if (!sent[id] && a && b && b.status !== "done" && same(a.to, b.to) && a.data === b.data) { sent[id] = oldSent[id]; carried = true; }
+      }
+      if (carried) saveSent();
+    }
+    if (panelId && !byId[panelId]) closePanel();
+    $("loadError").textContent = "";
+    $("loader").hidden = true;
+    $("app").hidden = false;
+    var chain = CHAINS[p.chainId];
+    var name = p.chainId === BASE_SEPOLIA ? "Base Sepolia rollout" + (p.network && p.network !== "base-sepolia" ? " (" + p.network + ")" : "") : "Local test chain rollout";
+    $("planName").textContent = name;
+    document.title = name + " · Signing Page";
+    var tag = $("netTag");
+    tag.textContent = chain.tag;
+    tag.className = "sn-net" + (p.chainId === LOCAL ? " loc" : "");
+    tag.hidden = false;
+    render();
+    resumePolling();
+  }
+
+  async function acceptPlan(text, src) {
+    var res = await verifyPlan(text);
+    if (res.error) { $("loadError").textContent = res.error; return false; }
+    adopt(res.plan, src);
+    return true;
+  }
+
+  function readFile(f) {
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { acceptPlan(String(r.result), { kind: "file", name: f.name }); };
+    r.onerror = function () { $("loadError").textContent = "Could not read that file."; };
+    r.readAsText(f);
+  }
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t && t.type === "file" && t.files && t.files[0]) { readFile(t.files[0]); t.value = ""; }
+  });
+  var drop = $("drop");
+  ["dragenter", "dragover"].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (t) { drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+  document.addEventListener("dragover", function (e) { e.preventDefault(); });
+  document.addEventListener("drop", function (e) { e.preventDefault(); if (e.dataTransfer && e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); });
+
+  // ?plan=: only a relative address, served next to the page. The page never reaches another site.
+  function relativeOk(q) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(q) || q.indexOf("//") === 0 || q.indexOf("\\") !== -1) return false;
+    try { return new URL(q, window.location.href).origin === window.location.origin; } catch (e) { return false; }
+  }
+  function fetchPlan(q) {
+    return fetch(q, { cache: "no-store", credentials: "omit" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status + " " + r.statusText); return r.text(); });
+  }
+  function baseName(q) { return String(q).split(/[?#]/)[0].split("/").pop() || q; }
+  var query = new URLSearchParams(window.location.search).get("plan");
+  if (query) {
+    if (!relativeOk(query)) $("loadError").textContent = "Refused: ?plan= must be a relative address on this server.";
+    else fetchPlan(query)
+      .then(function (t) { return acceptPlan(t, { kind: "query", name: baseName(query), query: query }); })
+      .catch(function (e) { $("loadError").textContent = "Could not load " + query + ": " + e.message; });
+  }
+
+  // ---------- the wallet ----------
+  function provider() { return window.ethereum || null; }
+  function chainOk() { return !!plan && walletChain === plan.chainId; }
+  function chainName(id) { return id === null ? "an unknown network" : CHAINS[id] ? CHAINS[id].name : "chain " + id; }
+  function setAccount(a) {
+    var was = account;
+    account = a || null;
+    // The list follows the wallet once it connects: "All ready" becomes "Ready for this wallet".
+    if (!was && account && filter === "ready") filter = "mine";
+  }
+
+  async function switchChain() {
+    var eth = provider();
+    var chain = CHAINS[plan.chainId];
+    try {
+      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chain.hex }] });
+    } catch (e) {
+      var code = e && (e.code || (e.data && e.data.originalError && e.data.originalError.code));
+      if (code === 4902 && chain.add) {
+        await eth.request({ method: "wallet_addEthereumChain", params: [chain.add] });
+      } else throw e;
+    }
+  }
+
+  async function refreshWallet() {
+    var eth = provider();
+    if (eth) {
+      try {
+        var accts = await eth.request({ method: "eth_accounts" });
+        setAccount(accts && accts[0]);
+        walletChain = parseInt(await eth.request({ method: "eth_chainId" }), 16);
+      } catch (e) { /* leave as is */ }
+    }
+    render();
+  }
+
+  async function connect() {
+    walletError = "";
+    var eth = provider();
+    if (!eth) { render(); return; }
+    try {
+      var accts = await eth.request({ method: "eth_requestAccounts" });
+      setAccount(accts && accts[0]);
+      walletChain = parseInt(await eth.request({ method: "eth_chainId" }), 16);
+      if (plan && walletChain !== plan.chainId) {
+        await switchChain();
+        walletChain = parseInt(await eth.request({ method: "eth_chainId" }), 16);
+      }
+    } catch (e) {
+      walletError = (e && e.code === 4001) ? "You declined in MetaMask. Nothing was changed." : "MetaMask said: " + (e && e.message ? e.message : e);
+    }
+    render();
+  }
+
+  if (provider() && provider().on) {
+    provider().on("accountsChanged", function (accts) { setAccount(accts && accts[0]); render(); });
+    provider().on("chainChanged", function (hex) { walletChain = parseInt(hex, 16); render(); });
+  }
+  refreshWallet();
+
+  // ---------- sending ----------
+  function explorerTx(hash) { var c = CHAINS[plan.chainId]; return c.explorer ? c.explorer + "/tx/" + hash : null; }
+
+  async function sendStep(step) {
+    walletError = "";
+    var eth = provider();
+    if (!eth || !account || !same(account, step.signer) || !chainOk() || !canSend(step) || busy[step.id]) return;
+    busy[step.id] = true; render();
+    try {
+      // Exactly the plan's call: this page never builds one.
+      var hash = await eth.request({ method: "eth_sendTransaction", params: [{ from: step.signer, to: step.to, data: step.data, value: "0x0" }] });
+      sent[step.id] = { hash: hash, state: "pending", at: new Date().toISOString() };
+      saveSent();
+      poll(step.id);
+    } catch (e) {
+      walletError = (e && e.code === 4001) ? "You declined in MetaMask. Nothing was sent." : "MetaMask could not send it: " + (e && e.message ? e.message : e);
+    }
+    busy[step.id] = false; render();
+  }
+
+  async function checkReceipt(id) {
+    var rec = sent[id];
+    if (!rec || !rec.hash || !provider()) return false;
+    var r = await provider().request({ method: "eth_getTransactionReceipt", params: [rec.hash] });
+    if (r && r.status) {
+      rec.state = parseInt(r.status, 16) === 1 ? "success" : "failed";
+      rec.block = parseInt(r.blockNumber, 16);
+      saveSent();
+      return true;
+    }
+    return false;
+  }
+
+  var polling = {};
+  function poll(id) {
+    if (polling[id]) return;
+    polling[id] = true;
+    var tries = 0;
+    var tick = async function () {
+      var rec = sent[id];
+      if (!rec || rec.state !== "pending" || !plan) { polling[id] = false; return; }
+      try { if (await checkReceipt(id)) { render(); polling[id] = false; return; } } catch (e) { /* try again */ }
+      tries++;
+      setTimeout(tick, tries < 30 ? 2000 : 6000);
+    };
+    tick();
+  }
+  function resumePolling() { for (var id in sent) if (sent[id] && sent[id].state === "pending") poll(id); }
+
+  /* Read the chain again: a re-run plan (when it came from ?plan=), then every sent step's receipt. */
+  async function readChain() {
+    if (!plan || reading) return;
+    reading = true; render();
+    var said = [];
+    if (source && source.kind === "query" && source.query && relativeOk(source.query)) {
+      try {
+        var res = await verifyPlan(await fetchPlan(source.query));
+        if (res.error) { $("loadError").textContent = res.error + " Kept the plan already loaded."; said.push("The plan file was refused"); }
+        else if (res.plan.stepsSha256 !== plan.stepsSha256) { adopt(res.plan, source); said.push("Loaded the re-run plan (block " + fmtInt(res.plan.block) + ")"); }
+        else { $("loadError").textContent = ""; said.push("The plan file is unchanged"); }
+      } catch (e) { said.push("Could not re-read " + source.query + ": " + e.message); }
+    }
+    var before = plan.steps.filter(function (s) { return stateOf(s) === "ready"; }).length;
+    var confirmed = 0, failed = 0;
+    if (provider()) {
+      for (var id in sent) {
+        if (!byId[id] || !sent[id].hash) continue;
+        var was = sent[id].state;
+        try { await checkReceipt(id); } catch (e) { /* stays as it was */ }
+        if (sent[id].state !== was) { if (sent[id].state === "success") confirmed++; else if (sent[id].state === "failed") failed++; }
+      }
+    } else if (Object.keys(sent).length) said.push("MetaMask is not here to read the receipts");
+    var after = plan.steps.filter(function (s) { return stateOf(s) === "ready"; }).length;
+    if (confirmed) said.push(confirmed + " confirmed");
+    if (failed) said.push(failed + " failed");
+    if (after > before) said.push((after - before) + " more ready");
+    lastRead = new Date().toISOString();
+    reading = false;
+    render();
+    toast("Read the chain again" + (said.length ? ": " + said.join(" · ") : ": nothing changed"));
+  }
+
+  // ---------- Safe steps ----------
+  function safeBatchJson(step) {
+    return JSON.stringify({ version: "1.0", chainId: String(plan.chainId), createdAt: Date.now(),
+      meta: { name: step.title, description: step.explanation + " From the signing plan at block " + plan.block + "." },
+      transactions: [{ to: step.to, value: "0", data: step.data }] }, null, 2);
+  }
+  function downloadBatch(step) {
+    if (!step.data) return;
+    var blob = new Blob([safeBatchJson(step)], { type: "application/json" });
+    var a = h("a", { href: URL.createObjectURL(blob), download: "signing-" + step.id + ".json" });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    toast("Downloaded signing-" + step.id + ".json for the Safe's Transaction Builder");
+  }
+  function safeAppUrl(step) {
+    var c = CHAINS[plan.chainId];
+    if (!c.safePrefix) return null;
+    return "https://app.safe.global/apps/open?safe=" + c.safePrefix + ":" + step.signer + "&appUrl=" + encodeURIComponent("https://apps-portal.safe.global/tx-builder");
+  }
+
+  // ---------- rendering ----------
+  function counts() {
+    var c = { done: 0, ready: 0, pending: 0, failed: 0, waiting: 0 };
+    plan.steps.forEach(function (s) { var x = stateOf(s); c[x === "success" ? "done" : x]++; });
+    return c;
+  }
+  function stagesInOrder() {
+    var seen = [], groups = {};
+    plan.steps.forEach(function (s) { if (!groups[s.stage]) { groups[s.stage] = []; seen.push(s.stage); } groups[s.stage].push(s); });
+    // Plan order, except that the day-7 runs come last: they follow every other stage's schedule step.
+    var last = seen.filter(function (k) { return k === "Day 7"; });
+    return seen.filter(function (k) { return k !== "Day 7"; }).concat(last).map(function (k) { return { key: k, steps: groups[k] }; });
+  }
+  function cell(size, title, right, body, foot, id) {
+    return h("div", { class: "cell " + size, id: id },
+      h("div", { class: "hd" }, h("h2", null, title), h("span", { class: "r" }, right)),
+      body,
+      foot ? h("div", { class: "ft" }, foot) : null);
+  }
+  function ledRow(k, v, attrs) { return h("div", attrs || null, h("span", null, k), h("b", null, v)); }
+
+  function renderRun() {
+    var c = counts();
+    var track = h("div", { class: "sn-tr", style: "--n:" + Math.max(1, stagesInOrder().length) },
+      stagesInOrder().map(function (g) {
+        var d = g.steps.filter(isDone).length, r = g.steps.filter(function (s) { return stateOf(s) === "ready"; }).length;
+        var all = d === g.steps.length, on = filter === "st:" + g.key, sc = stageOf(g.key);
+        return h("button", { class: "sn-tk" + (all ? " done" : r ? " now" : "") + (on ? " on" : ""), type: "button", "data-f": on ? "all" : "st:" + g.key,
+            "data-k": "st:" + g.key, "aria-pressed": on ? "true" : "false", title: (on ? "Show all steps" : "Show only " + g.key) },
+          h("i"), h("b", null, sc[0]), h("span", null, sc[1]),
+          h("em", null, all ? "Done" : d + " of " + g.steps.length + (r ? " · " + r + " ready" : "")));
+      }));
+    var ns = [["done", "done"], ["ready", "ready to sign"], ["pending", "sent, on chain soon"], ["failed", "failed"], ["waiting", "waiting on an earlier step"]]
+      .filter(function (x) { return (x[0] !== "pending" && x[0] !== "failed") || c[x[0]]; })
+      .map(function (x) { return h("span", { "data-count": x[0] }, h("span", { class: "m-big" }, c[x[0]]), h("small", null, h("i", { class: "sn-d " + x[0] }), x[1])); });
+    var bar = h("div", { class: "sn-bar", "aria-hidden": "true" }, ["done", "pending", "failed", "ready", "waiting"].map(function (k) { return c[k] ? h("i", { class: k, style: "flex:" + c[k] }) : null; }));
+    var led = h("div", { class: "led sn-fp" },
+      ledRow("Read from the chain", "block " + fmtInt(plan.block) + " · " + fmtTime(plan.blockTime), { title: "Generated " + plan.generatedAt }),
+      ledRow("Plan fingerprint", [h("span", { class: "mono", title: plan.stepsSha256 }, plan.stepsSha256.slice(0, 12) + "…"), " · checked"]),
+      ledRow("Plan file", h("span", { class: "mono" }, source ? source.name : "")),
+      lastRead ? ledRow("Last read again", fmtTime(lastRead)) : null);
+    var notes = plan.notes && plan.notes.length ? h("details", { class: "sn-notes" },
+      h("summary", null, plan.notes.length + " " + plural(plan.notes.length, "note", "notes") + " from the plan script"),
+      h("ul", null, plan.notes.map(function (n) { return h("li", null, String(n)); }))) : null;
+    var body = h("div", { class: "sn-run" }, track,
+      h("div", { class: "sn-sum" }, h("div", { class: "sn-cnt" }, h("div", { class: "sn-ns" }, ns), bar), led), notes);
+    var fromQuery = source && source.kind === "query";
+    var foot = [
+      h("span", null, fromQuery ? "After each stage, re-run scripts/signing_plan.ts and read the chain again: sent steps turn done and the next ones open"
+        : "After each stage, re-run scripts/signing_plan.ts and load the new plan; Read the chain again checks what you sent"),
+      h("span", { class: "sn-fa" },
+        h("label", { class: "btn sm", "data-k": "load" }, "Load a plan", h("input", { type: "file", accept: ".json,application/json", hidden: true })),
+        h("button", { class: "btn sm p", type: "button", "data-readchain": "", "data-k": "read", disabled: reading }, reading ? "Reading…" : "Read the chain again"))
+    ];
+    var run = $("run"); run.textContent = "";
+    run.appendChild(cell("s12", "Signing run", h("span", { class: "lbl" }, plan.steps.length + " steps · " + stagesInOrder().length + " stages"), body, foot));
+  }
+
+  function listFor(f) {
+    return plan.steps.filter(function (s) {
+      var x = stateOf(s);
+      return f === "mine" ? mine(s) && x === "ready"
+        : f === "ready" ? x === "ready"
+        : f === "safe" ? s.kind === "safe"
+        : f === "done" ? x === "done" || x === "success"
+        : f.indexOf("st:") === 0 ? s.stage === f.slice(3)
+        : true;
+    });
+  }
+
+  function renderSteps() {
+    var FL = [["mine", "Ready for this wallet"], ["ready", "All ready"], ["safe", "Safe steps"], ["all", "All steps"], ["done", "Done"]];
+    var seg = h("span", { class: "sn-fl", role: "group", "aria-label": "Show" }, FL.map(function (x) {
+      return h("button", { type: "button", class: filter === x[0] ? "on" : "", "data-f": x[0], "data-k": "f:" + x[0], "aria-pressed": filter === x[0] ? "true" : "false" }, x[1]);
+    }));
+    var list = listFor(filter);
+    var body;
+    if (list.length) {
+      body = h("div", { class: "sn-ls", id: "stepList" }, list.map(function (s) {
+        var x = stateOf(s);
+        return h("button", { type: "button", class: "sn-r " + CHIP[x][1] + (mine(s) && x === "ready" ? " me" : ""), "data-open": s.id, "data-step": s.id, "data-k": "row:" + s.id },
+          h("span", { class: "sn-id mono" }, s.id),
+          h("span", { class: "sn-k" }, h("b", { title: s.title }, s.title),
+            h("span", null, s.toLabel + " · ", h("span", { class: "mono" }, fnName(s.functionSignature)), s.kind === "safe" ? " · Safe batch" : "")),
+          h("span", { class: "sn-w", title: s.signerLabel }, shortLabel(s.signerLabel)),
+          chip(s));
+      }));
+    } else {
+      var msg = filter === "mine"
+        ? (account ? "Nothing is ready for this account. Switch accounts in MetaMask, or see all ready steps." : "Connect MetaMask to see the steps it signs.")
+        : filter === "ready" ? "Nothing is ready to sign. Re-run scripts/signing_plan.ts after the next stage." : "No steps here.";
+      body = h("div", { class: "sn-empty", id: "stepList" }, h("span", null, msg));
+    }
+    var stageNote = filter.indexOf("st:") === 0 ? h("span", null, "Stage " + stageOf(filter.slice(3))[0] + " · " + list.length + " " + plural(list.length, "step", "steps")) : null;
+    return cell("s8", "Steps", seg, body,
+      [stageNote || h("span", null, plan.steps.length + " steps · signers from the rollout config"), h("span", null, "Each step carries its exact call data")], "stepsCell");
+  }
+
+  function accountLabel() {
+    var labels = [];
+    plan.steps.forEach(function (s) { if (same(s.signer, account)) { var l = shortLabel(s.signerLabel); if (labels.indexOf(l) === -1) labels.push(l); } });
+    return labels.length ? labels.join(" · ") : "Not a signer in this plan";
+  }
+
+  function renderWallet() {
+    var eth = provider();
+    var right, body, foot;
+    var err = walletError ? h("p", { class: "sn-p warn", id: "walletError", role: "alert" }, walletError) : null;
+    if (!account) {
+      right = h("span", { class: "lbl" }, "Not connected");
+      body = h("div", { class: "sn-wl", id: "wallet" },
+        eth ? h("p", { class: "sn-p" }, "This page holds no key; MetaMask shows every call.")
+            : h("p", { class: "sn-p warn" }, "MetaMask was not found in this browser. Open this page in the browser that has MetaMask, served from http://localhost (not opened as a file)."),
+        h("button", { class: "btn p wide", type: "button", "data-connect": "", "data-k": "connect", disabled: !eth }, "Connect MetaMask"),
+        err,
+        h("div", { class: "led sn-ck" },
+          ledRow("Network", "Base Sepolia or a local chain"),
+          ledRow("Plan", "Fingerprint must match"),
+          ledRow("Account", "Must be the step’s signer")));
+      foot = [h("span", null, "Holds no key · MetaMask signs every call")];
+    } else {
+      var ok = chainOk();
+      right = h("span", { class: "fst " + (ok ? "ok" : "bad"), id: "netChip" }, ok ? CHAINS[plan.chainId].name : "Wrong network");
+      var ready = plan.steps.filter(function (s) { return mine(s) && stateOf(s) === "ready"; });
+      body = h("div", { class: "sn-wl", id: "wallet" },
+        h("div", { class: "sn-wa" }, h("b", { id: "acctLabel" }, accountLabel()), h("span", { class: "mono", title: account }, short(account))),
+        ok ? null : h("div", { class: "sn-wa" },
+          h("p", { class: "sn-p warn", id: "netWarn" }, "MetaMask is on " + chainName(walletChain) + ". This plan needs " + CHAINS[plan.chainId].name + "."),
+          h("span", null, h("button", { class: "btn sm", type: "button", "data-connect": "", "data-k": "switch", style: "margin-top:8px" }, "Switch to " + CHAINS[plan.chainId].name))),
+        err,
+        h("div", { class: "sn-nx" },
+          h("span", { class: "lbl" }, "Next for this account · " + ready.length + " ready"),
+          ready.length ? ready.slice(0, 3).map(function (s) {
+            return h("button", { class: "sn-nr", type: "button", "data-open": s.id, "data-k": "nx:" + s.id },
+              h("span", null, h("b", { title: s.title }, s.title), h("span", { class: "mono" }, s.id)), svg("M6 3l5 5-5 5"));
+          }) : h("p", { class: "sn-p" }, "Nothing is ready for this account.")),
+        h("p", { class: "sn-p" }, "To sign as another account, switch accounts in MetaMask. This page follows."));
+      foot = [h("span", null, "Refuses other chains · checks the fingerprint")];
+    }
+    return cell("s4", "Your wallet", right, body, foot, "walletCell");
+  }
+
+  function track(s) {
+    var x = stateOf(s);
+    var T = s.kind === "safe" ? ["Planned", "Ready", "Queued", "Owners signed", "Done"] : ["Planned", "Ready", "Sent", "Confirmed"];
+    var at = s.kind === "safe" ? ({ waiting: 0, ready: 1, pending: 2, failed: 1, success: 4, done: 4 })[x]
+                               : ({ waiting: 0, ready: 1, pending: 2, failed: 2, success: 3, done: 3 })[x];
+    return h("div", { class: "bd-tk", "data-at": T[at] }, T.map(function (t, i) {
+      var bad = x === "failed" && i === at && s.kind === "wallet";
+      return h("span", { class: i < at ? "done" : i === at ? (bad ? "bad" : "now") : "" }, h("i"), bad ? "Failed" : t);
+    }));
+  }
+
+  function depLinks(ids) {
+    return ids.map(function (d) {
+      return byId[d] ? h("button", { class: "lnk", type: "button", "data-open": d, "data-k": "dep:" + d }, d) : h("span", { class: "mono" }, d);
+    });
+  }
+
+  function panelFooter(s) {
+    var x = stateOf(s);
+    var note = function (t, warn, id) { return h("span", { class: "note" + (warn ? " warn" : ""), id: id || "pnNote" }, t); };
+    var sendBtn = function (enabled, label) { return h("button", { class: "btn p", type: "button", "data-send": s.id, "data-k": "send", disabled: !enabled }, label || "Sign and send"); };
+    if (x === "done" || x === "success") return [note("Nothing to send: the chain shows this done")];
+    if (x === "pending") return [note("Sent. Waiting for the chain; Read the chain again to check")];
+    if (x === "waiting") {
+      var open = s.dependsOn.filter(function (d) { return !isDone(byId[d]); });
+      var why = needsRerun(s) ? "Re-run scripts/signing_plan.ts to open this step"
+        : open.length ? "Opens when " + joinAnd(open) + " " + (open.length > 1 ? "are" : "is") + " done"
+        : (s.reason || "Not ready yet");
+      return [note(why), s.kind === "safe"
+        ? h("button", { class: "btn p", type: "button", disabled: true }, "Open in the Safe app")
+        : sendBtn(false)];
+    }
+    if (s.kind === "safe") {
+      var url = safeAppUrl(s);
+      return [
+        url ? null : note("Open the Safe's Transaction Builder and drop in the batch file"),
+        h("button", { class: "btn", type: "button", "data-dl": s.id, "data-k": "dl", disabled: !s.data }, "Download batch file"),
+        url ? h("a", { class: "btn p", href: url, target: "_blank", rel: "noopener noreferrer", "data-safeapp": s.id, "data-k": "safeapp" }, "Open in the Safe app") : null
+      ];
+    }
+    // a wallet step that is ready (or failed, to send again)
+    if (!s.data) return [note("Its call data is not known yet: re-run scripts/signing_plan.ts"), sendBtn(false)];
+    if (!provider()) return [note("MetaMask was not found in this browser", true), sendBtn(false)];
+    if (!account) return [note("Connect MetaMask first"), h("button", { class: "btn p", type: "button", "data-connect": "", "data-k": "pconnect" }, "Connect MetaMask")];
+    if (!same(account, s.signer)) return [note("Switch MetaMask to " + shortLabel(s.signerLabel) + " (…" + s.signer.slice(-4) + ")", true), sendBtn(false)];
+    if (!chainOk()) return [note("MetaMask is on the wrong network. Switch to " + CHAINS[plan.chainId].name, true),
+      h("button", { class: "btn", type: "button", "data-connect": "", "data-k": "pswitch" }, "Switch network"), sendBtn(false)];
+    if (busy[s.id]) return [note("Confirm in MetaMask"), sendBtn(false, "Waiting for MetaMask…")];
+    return [note(x === "failed" ? "It failed on chain. Check why before sending it again" : "MetaMask shows the call to confirm", x === "failed"), sendBtn(true, x === "failed" ? "Send again" : "Sign and send")];
+  }
+
+  function renderPanel() {
+    var pn = $("panel");
+    pn.textContent = "";
+    var s = panelId && byId[panelId];
+    if (!s || !plan) return;
+    var x = stateOf(s), r = sent[s.id];
+    var nxt = plan.steps.filter(function (o) { return o.dependsOn.indexOf(s.id) !== -1; });
+    var rows = [
+      ledRow("Who signs", [shortLabel(s.signerLabel), h("span", { class: "sub mono" }, s.signer)]),
+      ledRow("Contract", [s.toLabel, h("span", { class: "sub mono" }, s.to)]),
+      ledRow("Function", h("span", { class: "mono" }, s.functionSignature)),
+      s.dependsOn.length ? ledRow("After", depLinks(s.dependsOn)) : null,
+      nxt.length ? ledRow("Opens next", depLinks(nxt.map(function (o) { return o.id; }))) : null,
+      s.kind === "safe" && s.safeBatchFile ? ledRow("Batch file", [h("span", { class: "mono" }, s.safeBatchFile), h("span", { class: "sub" }, "next to the plan")]) : null
+    ];
+    if (r && r.hash) {
+      var link = explorerTx(r.hash);
+      rows.push(ledRow("Transaction", [
+        link ? h("a", { class: "lnk mono", href: link, target: "_blank", rel: "noopener noreferrer", id: "txLink" }, r.hash) : h("span", { class: "mono", id: "txLink" }, r.hash),
+        h("span", { class: "sub", id: "txState" }, r.state === "success" ? "Confirmed in block " + r.block : r.state === "failed" ? "Failed on chain in block " + r.block : "Sent, waiting for the chain")
+      ], { id: "txRow" }));
+    }
+    var why = null;
+    if (x === "waiting") {
+      why = h("p", { class: "bpn-n", id: "whyWaits" }, h("b", null, "Why it waits. "), s.reason || "An earlier step comes first.",
+        needsRerun(s) ? h("span", null, " The steps before it are done here. Re-run scripts/signing_plan.ts to open this step.") : null);
+    } else if (s.reason && x !== "ready") {
+      why = h("p", { class: "bpn-n" }, s.reason);
+    }
+    var args = s.args.length ? h("div", null, h("span", { class: "lbl" }, "Arguments"), h("div", { class: "sn-args" }, s.args.map(function (a) {
+      return h("div", null, h("span", null, String(a.name), h("em", null, String(a.type))),
+        h("span", null, h("span", { class: "mono" }, String(a.value)), a.note ? h("small", null, String(a.note)) : null));
+    }))) : null;
+    var cd = h("details", { class: "sn-cd", id: "callData" }, h("summary", null, "The exact call data"),
+      s.data ? h("p", { class: "mono" }, h("span", null, "to " + s.to + " · value 0 · data "), h("span", { class: "data", style: "color:inherit" }, s.data))
+             : h("p", null, "Not known yet: re-run scripts/signing_plan.ts once the steps before it are done."));
+    var safeNote = s.kind === "safe" ? h("p", { class: "bpn-w" }, "The Safe signs this, not MetaMask directly. Download the batch file, open the Safe app for this Safe on "
+      + CHAINS[plan.chainId].name + ", choose Transaction Builder and drop the file in. Its owners sign there. This page cannot see the Safe's queue: after the owners sign, read the chain again (re-run the plan script) to see it done.") : null;
+    var sc = stageOf(s.stage);
+    pn.appendChild(h("div", { class: "pn-hd" },
+      h("span", { class: "lbl" }, h("span", { class: "id" }, s.id), " · " + sc[1]),
+      h("span", { class: "sn-s " + CHIP[x][1], id: "pnChip" }, s.kind === "safe" && x === "ready" ? "In the Safe app" : CHIP[x][0]),
+      h("button", { class: "x", type: "button", "data-close": "", "data-k": "close", "aria-label": "Close" }, svg("M3 3l10 10M13 3L3 13"))));
+    pn.appendChild(h("div", { class: "pn-b" },
+      h("div", null, h("p", { class: "bpn-t", id: "pnTitle" }, s.title), h("p", { class: "bpn-s" }, s.explanation)),
+      track(s), why, h("div", { class: "led" }, rows), args, cd, safeNote));
+    pn.appendChild(h("div", { class: "pn-ft", id: "pnFoot" }, panelFooter(s)));
+    pn.setAttribute("data-step", s.id);
+  }
+
+  var lastFocus = null;
+  function openPanel(id) {
+    if (!byId[id]) return;
+    if (!panelId) lastFocus = document.activeElement;
+    panelId = id;
+    document.body.classList.add("pn-open");
+    renderPanel();
+    var x = $("panel").querySelector("[data-close]");
+    if (x) x.focus();
+  }
+  function closePanel() {
+    panelId = null;
+    document.body.classList.remove("pn-open");
+    $("panel").textContent = "";
+    if (lastFocus && document.body.contains(lastFocus)) lastFocus.focus();
+    lastFocus = null;
+  }
+
+  function render() {
+    if (!plan) return;
+    var active = document.activeElement && document.activeElement.getAttribute ? document.activeElement.getAttribute("data-k") : null;
+    var inPanel = active && $("panel").contains(document.activeElement);
+    renderRun();
+    var work = $("work"); work.textContent = "";
+    work.appendChild(renderSteps());
+    work.appendChild(renderWallet());
+    if (panelId) renderPanel();
+    if (active) {
+      var scope = inPanel ? $("panel") : $("app");
+      var again = scope.querySelector('[data-k="' + active.replace(/["\\]/g, "\\$&") + '"]');
+      if (again) again.focus({ preventScroll: true });
+    }
+  }
+
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest ? e.target.closest("[data-f],[data-open],[data-connect],[data-send],[data-dl],[data-close],[data-readchain]") : null;
+    if (!t) { if (e.target === $("scrim")) closePanel(); return; }
+    if (t.hasAttribute("data-f")) { filter = t.getAttribute("data-f"); render(); return; }
+    if (t.hasAttribute("data-open")) { openPanel(t.getAttribute("data-open")); return; }
+    if (t.hasAttribute("data-connect")) { connect(); return; }
+    if (t.hasAttribute("data-send")) { var s = byId[t.getAttribute("data-send")]; if (s) sendStep(s); return; }
+    if (t.hasAttribute("data-dl")) { var d = byId[t.getAttribute("data-dl")]; if (d) downloadBatch(d); return; }
+    if (t.hasAttribute("data-close")) { closePanel(); return; }
+    if (t.hasAttribute("data-readchain")) { readChain(); return; }
+  });
+  $("scrim").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && panelId) closePanel(); });
+})();
+</script>
+</body>
+</html>

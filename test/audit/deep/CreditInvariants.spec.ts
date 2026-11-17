@@ -50,7 +50,7 @@ describe("DEEP AUDIT: credit-core invariants (seeded stateful fuzz)", function (
     dump("seed4-funded", res);
   });
 
-  it("seed 5: overdraw allowed (the known C-1 path) -- (ii) breaks on draw", async function () {
+  it("seed 5: overdraw attempted (the audited C-1 path) -- refused since Phase 1 (RevolvingIssuerDrawUnplaced)", async function () {
     const res = await runFuzz({ seed: 5, steps: STEPS, allowOverdraw: true });
     dump("seed5-overdraw", res);
   });
@@ -60,14 +60,17 @@ describe("DEEP AUDIT: credit-core invariants (seeded stateful fuzz)", function (
     const { ctx, revolving, term, merchant, coop } = env;
     const { DAY, CYCLE } = await import("./deep-setup");
     const m = ctx.member;
-    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 3650 * DAY, CYCLE);
+    await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 0);
     await term.connect(ctx.operator).setTermLimit(m.address, 2_000n * ONE_USDC);
     const t0 = (await ethers.provider.getBlock("latest"))!.timestamp + 10;
     const snapId = await ethers.provider.send("evm_snapshot", []);
     const at = async (t: number) => ethers.provider.send("evm_setNextBlockTimestamp", [t]);
     const run = async (daily: boolean) => {
       await at(t0); await ctx.stableCredit.connect(m).transfer(merchant.address, 1_700n * ONE_USDC + 123_457n);
-      await at(t0 + 1); await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC + 7n, 975n * ONE_USDC, 150n, CYCLE, 4, CYCLE);
+      // 140 bps per 30-day cycle, under the Income tier's 150 a month. Since Phase 4b (L-G) repayment
+      // order compares what each position really costs, and a plan at 150 per 30 days costs more than
+      // 150 a month, so the undirected repayments below would close the plan before its own payments.
+      await at(t0 + 1); await signedOpenPlan(term, ctx.operator, m.address, merchant.address, 1_000n * ONE_USDC + 7n, 975n * ONE_USDC, 140n, CYCLE, 4, CYCLE);
       for (let d = 1; d <= 120; d++) {
         const t = t0 + d * DAY;
         if (daily) { await at(t); await revolving.materialiseCarry(m.address); await at(t + 1); await term.materialiseCarry(0); }
@@ -105,7 +108,7 @@ describe("DEEP AUDIT: credit-core invariants (seeded stateful fuzz)", function (
     const { ctx, revolving, term } = env;
     const { DAY, CYCLE } = await import("./deep-setup");
     for (const m of [ctx.member, env.member2, env.member3]) {
-      await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 3650 * DAY, CYCLE);
+      await revolving.connect(ctx.operator).openLine(m.address, [0n, 0n, 1_500n * ONE_USDC, 500n * ONE_USDC], 0);
       await term.connect(ctx.operator).setTermLimit(m.address, 2_000n * ONE_USDC);
     }
     const snapId = await ethers.provider.send("evm_snapshot", []);

@@ -281,6 +281,8 @@ const apply = {
     replace(COOP_W, d.COOP_W);
     vars.coop = d.COOP ?? null;
     vars.offers = d.OFFERS ?? null;
+    // what Clear Lending pays into the new Assurance Pool (the Assurance fees card); null when the API couldn't read it
+    vars.assuranceFees = d.ASSURANCE_FEES ?? null;
     replace(FLOWS, d.FLOWS);
     replace(BONDS, d.BONDS);
     replace(ACCTS, d.ACCTS);
@@ -297,6 +299,8 @@ const apply = {
     // the chain's credit book (Money's Credit tab); null until the API reads it
     vars.credit = d.CREDIT ?? null;
     vars.depositRail = d.DEPOSIT_RAIL ?? null;
+    // the automatic payout top-ups (decision 51); null until the job has checked
+    vars.payoutTopUps = d.PAYOUT_TOPUPS ?? null;
   },
   shop(d) {
     replace(PR, d.PR);

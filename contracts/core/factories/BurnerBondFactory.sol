@@ -7,7 +7,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../../peripherals/BondTraits.sol";
-import "../../peripherals/BondDiscountCurve.sol";
 import "../interfaces/burner-bond/IBurnerBondFactory.sol";
 import "../interfaces/burner-bond/IBurnerBondDeposit.sol";
 import "../interfaces/ITokenRegistry.sol";
@@ -48,9 +47,10 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     /// answers.
     address public immutable bondTraits;
 
-    /// @notice Shared discount-curve engine. One deployment prices every collection this factory
-    /// makes; each collection's configuration is keyed by its own address.
-    address public immutable bondDiscountCurve;
+    /// @notice The IV-01 §4.12 legend every collection's metadata carries: its hash, and a URI for
+    /// its text (Earn §1).
+    bytes32 public immutable legendHash;
+    string public legendURI;
     
     /// @notice Mapping from token address to collection information
     mapping(address => CollectionInfo) public collections;
@@ -80,16 +80,31 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     /// @notice Initialize the BurnerBondFactory
     /// @param _tokenRegistry Address of the TokenRegistry whose whitelist gates collections
     /// @param _baseURI Base URI template for new collections
-    constructor(address _tokenRegistry, string memory _baseURI) {
+    /// @param _bondImplementation The BurnerBond implementation every collection is cloned from,
+    /// deployed on its own with its modules (Phase 2f, `deploy/bondModules.ts`), so its creation code
+    /// is not inside this factory's. Its pinned module must be the Phase 2f one.
+    /// @param _legendHash the IV-01 §4.12 legend's hash; `_legendURI` where its text is
+    constructor(
+        address _tokenRegistry,
+        string memory _baseURI,
+        address _bondImplementation,
+        bytes32 _legendHash,
+        string memory _legendURI
+    ) {
         require(_tokenRegistry != address(0), "Invalid TokenRegistry address");
+        require(
+            IExtensionKind(BurnerBond(_bondImplementation).pledges()).extensionKind() == keccak256("BurnerBondPledges.v2"),
+            "Not a Phase 2f bond implementation"
+        );
         tokenRegistry = ITokenRegistry(_tokenRegistry);
         baseURI = _baseURI;
-        
-        // The implementations. Deployed once here, cloned from for every collection after.
-        bondImplementation = address(new BurnerBond());
+        legendHash = _legendHash;
+        legendURI = _legendURI;
+
+        // The implementations. The bond one is prebuilt; the rest are deployed once here.
+        bondImplementation = _bondImplementation;
         depositImplementation = address(new BurnerBondDeposit());
         bondTraits = address(new BondTraits());
-        bondDiscountCurve = address(new BondDiscountCurve());
 
         // The single unified deposit contract, as a clone of the implementation above.
         BurnerBondDeposit deployedDeposit =
@@ -268,15 +283,15 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         // whitelisted token gets its own collection, it just costs a fraction of a deployment.
         BurnerBond newCollection = BurnerBond(Clones.clone(bondImplementation));
         newCollection.initialize(
-            address(burnerBondDeposit), // Use unified deposit contract
-            address(this), // Factory address (single source of truth for parameters)
-            tokenAddress, // Use the token as the underlying token for this collection
+            address(this),
+            tokenAddress,
             fullBaseURI,
             collectionName,
             collectionSymbol,
             collectionDescription,
             bondTraits,
-            bondDiscountCurve
+            legendHash,
+            legendURI
         );
         
         // Register this collection with the unified deposit contract

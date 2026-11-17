@@ -17,7 +17,8 @@ describe("COMPLIANCE RateSchedule (spec item 1)", function () {
     await rates.setProduct(CA, P("PARTNER"), params({ listMonthlyBps: 200 }), CA_BANDS);
   });
 
-  it("acceptance 1: on $500 the monthly cap is $11.125; Boost at 3% accrues the cap's per-second share (~$10.97) over 30 days", async function () {
+  it("acceptance 1 (amended, Addendum 2): Boost at a 2.5% list rate accrues no more than $11.125 per 30 days on $500 (the cap's per-second share, ~$10.97)", async function () {
+    await rates.setProduct(CA, P("BOOST"), params({ listMonthlyBps: 250 }), CA_BANDS);
     expect(await rates.capMonthlyBps(CA, P("BOOST"), 500n * ONE_USDC)).to.equal(222n); // 11.125/500 = 2.225%
     const snap = await snapshotOf(rates, CA, P("BOOST"));
     await advance(CYCLE);
@@ -25,10 +26,11 @@ describe("COMPLIANCE RateSchedule (spec item 1)", function () {
     const expectedCap = thirtyDays(11_125_000n); // $11.125 × 360/365
     expect(cap).to.be.closeTo(expectedCap, 2_000n);
     expect(cap).to.be.lte(11_125_000n);
-    expect(list).to.be.closeTo(thirtyDays(15_000_000n), 2_000n); // 3% of 500 = $15 a month
-    // What is charged is the lesser: about $10.97.
+    expect(list).to.be.closeTo(thirtyDays(12_500_000n), 2_000n); // 2.5% of 500 = $12.50 a month
+    // What is charged is the lesser: about $10.97, within $11.125.
     const charged = list < cap ? list : cap;
     expect(charged).to.be.closeTo(10_972_602n, 2_000n);
+    expect(charged).to.be.lte(11_125_000n);
   });
 
   it("acceptance 2: partner credit at 2% is under the cap on $940 and trimmed to it on $1,500; breakeven $1,125", async function () {

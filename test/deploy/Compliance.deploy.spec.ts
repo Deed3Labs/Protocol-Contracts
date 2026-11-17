@@ -47,7 +47,21 @@ describe("compliance deployment and credit timelock handover", function () {
     expect(await core.revolving.ceilingProduct()).to.equal(ethers.encodeBytes32String("REVOLVING"));
     expect(await core.term.rateSchedule()).to.equal(await rates.getAddress());
     expect(await rates.cflSourcesOf()).to.deep.equal([await core.revolving.getAddress(), await core.term.getAddress()]);
-    expect(await rates.cflAggregationOff()).to.equal(false);
+    // Addendum 2: the Combined Ceiling is wired once, both ways; DECISIONS #7's switch is gone.
+    expect(rates.interface.getFunction("setCflAggregation")).to.equal(null);
+    expect(await core.term.combinedRevolving()).to.equal(await core.revolving.getAddress());
+    expect(await core.term.combinedProduct()).to.equal(ethers.encodeBytes32String("REVOLVING"));
+    expect((await core.revolving.dueTermsOf()).termIssuer).to.equal(await core.term.getAddress());
+    // The dues and the fee cap from credit-terms.json.
+    const due = await core.revolving.dueTermsOf();
+    // From zero, 100 bps is a raise: it binds cycles closing 45 days on (12.1).
+    expect(due.raisedBps).to.equal(100n);
+    expect(due.securedMinimumFloor).to.equal(10n ** 6n);
+    expect(due.cardMemberDailyCap).to.equal(500n * 10n ** 6n);
+    expect(due.incomePauseMaxCycles).to.equal(3n);
+    const fees = await core.term.feeTermsOf();
+    expect(fees.maxFeeSmall).to.equal(50n * 10n ** 6n);
+    expect(fees.maxFeeLarge).to.equal(75n * 10n ** 6n);
     // Section 12 terms from deploy/config/credit-terms.json.
     const terms = await core.revolving.creditTerms();
     expect(terms.unsecuredLineCap).to.equal(2_499n * 10n ** 6n);
@@ -69,6 +83,22 @@ describe("compliance deployment and credit timelock handover", function () {
   it("grants the state attester its role, and is safe to run again", async function () {
     expect(await core.networkRegistry.hasRole(await core.networkRegistry.STATE_ATTESTER_ROLE(), attester.address)).to.equal(true);
     await wireCompliance({ quiet: true, stateAttester: attester.address });
+  });
+
+  // Decision 47: a fresh stack gets the card settler and the mandate source that the retired
+  // pre-audit upgrade scripts set on the old Base Sepolia issuers.
+  it("names RevolvingIssuer as TermIssuer's mandate source, and authorizes the card settler when one is given", async function () {
+    expect(await core.term.mandateSource()).to.equal(await core.revolving.getAddress());
+    const settler = ethers.Wallet.createRandom().address;
+    expect(await core.revolving.isCardSettler(settler)).to.equal(false);
+    process.env.CARD_SETTLER_ADDRESS = settler;
+    try {
+      await wireCompliance({ quiet: true, stateAttester: attester.address });
+    } finally {
+      delete process.env.CARD_SETTLER_ADDRESS;
+    }
+    expect(await core.revolving.isCardSettler(settler)).to.equal(true);
+    expect(await core.revolving.cardSettlementAccount()).to.equal(await core.revolving.carryTreasury());
   });
 
   it("refuses a credit timelock shorter than 7 days", async function () {

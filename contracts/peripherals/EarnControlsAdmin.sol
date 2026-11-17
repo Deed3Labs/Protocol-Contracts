@@ -1,0 +1,392 @@
+// SPDX-License-Identifier: AGPL-3.0
+pragma solidity ^0.8.29;
+
+import "./EarnControlsBase.sol";
+
+/// @title EarnControlsAdmin
+/// @notice `EarnControls`' delegatecall module: the governed settings, the Ladder, the Successor
+/// path, households and the holder-ineligible flag (Phase 2f, decision 1; IV-02 §§2.5, 8.3).
+/// @dev Pinned at `EarnControls`' construction, like the pool's and issuers' modules. Never called
+/// directly in production: it runs against the `EarnControls` proxy's storage, with the original
+/// caller, through its fallback. It declares no storage (see `EarnControlsBase`).
+contract EarnControlsAdmin is EarnControlsBase {
+    /// @notice Decision 41: Ladder terms run from 12 to 36 months, and the Earn timelock may raise the
+    /// top to 60 months, never higher. A term is a number of days, because Accretion counts days and a
+    /// Maturity Date is the Issue Date plus the term in days; a month is one twelfth of Accretion's
+    /// 365-day year, so 12 months = 365 days, 36 months = 1,095 days and 60 months = 1,825 days
+    /// (`termDays` from `months * 365 / 12`, rounded down).
+    uint32 public constant MIN_TERM_MONTHS = 12;
+    uint32 public constant DEFAULT_MAX_TERM_MONTHS = 36;
+    uint32 public constant LIMIT_TERM_MONTHS = 60;
+    uint32 public constant MAX_TERM_DAYS = 1_825;
+    uint32 public constant MAX_YIELD_BPS = 5_000;
+    uint256 public constant MAX_LADDER_TERMS = 32;
+    uint256 public constant MAX_BOND_BOOKS = 8;
+    uint256 public constant MAX_HOUSEHOLD = 12;
+
+    /// @notice what EarnControls' constructor checks before pinning this module.
+    function extensionKind() external pure returns (bytes32) {
+        return keccak256("EarnControlsAdmin.v1");
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /* ========== ROLES ========== */
+
+    /// @notice Grants `role` with the Lending Board resolution that approved it (§10).
+    function grantRoleByResolution(bytes32 role, address account, bytes32 resolutionHash)
+        external
+        onlyRole(getRoleAdmin(role))
+    {
+        if (resolutionHash == bytes32(0) || account == address(0)) revert EarnControlsInvalidValue();
+        _grantRole(role, account);
+        emit RoleGrantedByResolution(role, account, resolutionHash);
+    }
+
+    /* ========== LADDER (IV-01 §5.2) ========== */
+
+    function isTermOffered(uint32 termDays) external view returns (bool) {
+        return _rungs[termDays].offered;
+    }
+
+    function ladderYieldBps(uint32 termDays) external view returns (uint32) {
+        return _rungs[termDays].yieldBps;
+    }
+
+    /// @notice every term ever listed on the Ladder, offered or not.
+    function ladderTerms() external view returns (uint32[] memory) {
+        return _terms;
+    }
+
+    /// @notice the term a bond of `termDays` rolls into: the same term if offered, else the
+    /// nearest shorter offered term; 0 if none.
+    function rollTermFor(uint32 termDays) external view returns (uint32 best) {
+        if (_rungs[termDays].offered) return termDays;
+        uint32[] memory terms = _terms;
+        for (uint256 i; i < terms.length; ++i) {
+            uint32 t = terms[i];
+            if (t < termDays && t > best && _rungs[t].offered) best = t;
+        }
+    }
+
+    /// @notice the Roll Notice yield or the Ladder yield for `rollTerm`, whichever is higher.
+    function rollYieldFor(uint32 rollTerm, uint32 noticeYieldBps) external view returns (uint32) {
+        uint32 ladder = _rungs[rollTerm].offered ? _rungs[rollTerm].yieldBps : 0;
+        return ladder > noticeYieldBps ? ladder : noticeYieldBps;
+    }
+
+    /// @notice the Ladder term as it stood at time `at`: the rate a quote or roll notice given then
+    /// was given at. A change never alters a quote or notice already given (decision 31): the bond
+    /// captures the term and yield when it quotes or posts the notice, and can check them here.
+    /// @dev Exact for any `at` after the term's previous change; a term changes at most once per
+    /// 48 hours through the Ladder path.
+    function rungAt(uint32 termDays, uint64 at) external view returns (uint32 yieldBps, bool offered) {
+        Rung storage r = _rungs[termDays];
+        if (at < r.changedAt) return (r.priorYieldBps, r.priorOffered);
+        return (r.yieldBps, r.offered);
+    }
+
+    /// @notice the days in `months` months (decision 41): `months * 365 / 12`, rounded down.
+    function monthsToDays(uint32 months) public pure returns (uint32) {
+        return (months * 365) / 12;
+    }
+
+    /// @notice the longest term a rung may have now, in months (36 unless the Earn timelock raised it).
+    function maxTermMonths() public view returns (uint32) {
+        uint8 m = _maxTermMonths;
+        return m == 0 ? DEFAULT_MAX_TERM_MONTHS : m;
+    }
+
+    /// @notice sets the longest Ladder term, from 36 to 60 months (decision 41): the Earn timelock.
+    function setMaxTermMonths(uint8 months) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (months < DEFAULT_MAX_TERM_MONTHS || months > LIMIT_TERM_MONTHS) revert EarnControlsInvalidValue();
+        _maxTermMonths = months;
+        emit SettingsSet("maxTermMonths", months, bytes32(0));
+    }
+
+    /// @notice the Ladder change scheduled for `termDays`, if any (`effectiveAt` 0 when none).
+    function pendingRung(uint32 termDays) external view returns (uint32 yieldBps, bool offered, uint64 effectiveAt) {
+        PendingRung storage p = _pendingRungs[termDays];
+        return (p.yieldBps, p.offered, p.effectiveAt);
+    }
+
+    /// @notice schedules a Ladder change (decision 31): two different `LADDER_ROLE` signers make
+    /// the same call; the second publishes it with `RungScheduled`, and it may take effect 48 hours
+    /// later through `applyRung`. A new schedule for the same term replaces a pending one and
+    /// restarts its 48 hours.
+    function scheduleRung(uint32 termDays, uint32 yieldBps, bool offered) external {
+        _checkRung(termDays, yieldBps);
+        (bool done, address first) =
+            _pair(keccak256(abi.encode(this.scheduleRung.selector, termDays, yieldBps, offered)), LADDER_ROLE);
+        if (!done) return;
+        _schedule(termDays, yieldBps, offered, first);
+    }
+
+    /// @notice schedules several terms' changes together (decision 41: a Ladder-wide move), on the
+    /// same two-signer, 48-hour rules as `scheduleRung`; `applyRungs` then puts them in force at once.
+    function scheduleRungs(uint32[] calldata termDays, uint32[] calldata yieldBps, bool[] calldata offered) external {
+        uint256 n = termDays.length;
+        if (n == 0 || n != yieldBps.length || n != offered.length) revert EarnControlsInvalidValue();
+        for (uint256 i; i < n; ++i) _checkRung(termDays[i], yieldBps[i]);
+        (bool done, address first) =
+            _pair(keccak256(abi.encode(this.scheduleRungs.selector, termDays, yieldBps, offered)), LADDER_ROLE);
+        if (!done) return;
+        for (uint256 i; i < n; ++i) _schedule(termDays[i], yieldBps[i], offered[i], first);
+    }
+
+    /// @notice puts a scheduled Ladder change in force once its 48 hours have run. Permissionless.
+    /// Reverts if it would leave an offered longer term yielding less than an offered shorter one.
+    function applyRung(uint32 termDays) external {
+        _applyPending(termDays);
+        _checkLadderOrder();
+    }
+
+    /// @notice puts several scheduled changes in force together, then checks the Ladder's order once.
+    function applyRungs(uint32[] calldata termDays) external {
+        for (uint256 i; i < termDays.length; ++i) _applyPending(termDays[i]);
+        _checkLadderOrder();
+    }
+
+    function _schedule(uint32 termDays, uint32 yieldBps, bool offered, address first) internal {
+        uint64 effectiveAt = uint64(block.timestamp) + LADDER_DELAY;
+        _pendingRungs[termDays] = PendingRung(yieldBps, offered, effectiveAt);
+        emit RungScheduled(termDays, yieldBps, offered, effectiveAt, first, msg.sender);
+    }
+
+    function _applyPending(uint32 termDays) internal {
+        PendingRung memory p = _pendingRungs[termDays];
+        if (p.effectiveAt == 0) revert EarnControlsInvalidValue();
+        if (block.timestamp < p.effectiveAt) revert EarnControlsNotYet(p.effectiveAt);
+        delete _pendingRungs[termDays];
+        _setRung(termDays, p.yieldBps, p.offered);
+    }
+
+    /// @dev Decision 41: no offered longer term may yield less than an offered shorter term.
+    function _checkLadderOrder() internal view {
+        uint32[] memory terms = _terms;
+        for (uint256 i; i < terms.length; ++i) {
+            Rung storage a = _rungs[terms[i]];
+            if (!a.offered) continue;
+            for (uint256 j; j < terms.length; ++j) {
+                Rung storage b = _rungs[terms[j]];
+                if (b.offered && terms[j] > terms[i] && b.yieldBps < a.yieldBps) {
+                    revert EarnControlsLadderOrder(terms[i], terms[j]);
+                }
+            }
+        }
+    }
+
+    /// @notice lists, prices or withdraws a Ladder term directly, through the 7-day Earn timelock
+    /// (initial listing before the handover, and governance). Ordinary changes use the 48-hour
+    /// two-signer path (`scheduleRung`).
+    function setRung(uint32 termDays, uint32 yieldBps, bool offered) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _checkRung(termDays, yieldBps);
+        _setRung(termDays, yieldBps, offered);
+        _checkLadderOrder();
+    }
+
+    /// @dev Decision 41: a term from 12 months to the maximum now in force (36, or up to 60).
+    function _checkRung(uint32 termDays, uint32 yieldBps) internal view {
+        if (
+            termDays < monthsToDays(MIN_TERM_MONTHS) || termDays > monthsToDays(maxTermMonths())
+                || yieldBps > MAX_YIELD_BPS
+        ) revert EarnControlsInvalidValue();
+    }
+
+    /// @dev Withdrawing a term is what makes a confirmed bond of that term unable to roll; the
+    /// reserve hook is told in the same call. The rung in force until now is kept for `rungAt`.
+    function _setRung(uint32 termDays, uint32 yieldBps, bool offered) internal {
+        Rung storage r = _rungs[termDays];
+        if (!r.listed) {
+            if (_terms.length >= MAX_LADDER_TERMS) revert EarnControlsInvalidValue();
+            _terms.push(termDays);
+            r.listed = true;
+        }
+        bool changed = r.offered != offered;
+        r.priorYieldBps = r.yieldBps;
+        r.priorOffered = r.offered;
+        r.changedAt = uint64(block.timestamp);
+        r.yieldBps = yieldBps;
+        r.offered = offered;
+        emit RungSet(termDays, yieldBps, offered);
+        address hook = reserveHook;
+        if (changed && hook != address(0)) IEarnControlsHook(hook).termOfferChanged(termDays, offered);
+    }
+
+    /* ========== SUCCESSOR PATH (IV-01 §6.3; IV-02 §8.3) ========== */
+
+    /// @notice where a payment to `holder` goes: a Successor registered for payment, after its
+    /// 7 days, otherwise `holder` itself.
+    function payeeOf(address holder) external view returns (address) {
+        PaymentSuccessor storage p = _payees[holder];
+        return p.payee != address(0) && block.timestamp >= p.effectiveAt ? p.payee : holder;
+    }
+
+    function paymentSuccessorOf(address holder) external view returns (PaymentSuccessor memory) {
+        return _payees[holder];
+    }
+
+    function successorTransfer(address from, address to) external view returns (SuccessorApproval memory) {
+        return _successorTransfers[from][to];
+    }
+
+    /// @notice opens the transfer by operation of law from a Holder's account to the Successor's
+    /// verified Smart Account for 30 days. The transfer is still signed from `from`: no Clear key
+    /// moves a position (IV-02 §8.5).
+    function approveSuccessorTransfer(address from, address to, bytes32 evidenceHash) external {
+        if (from == address(0) || to == address(0) || from == to || evidenceHash == bytes32(0)) {
+            revert EarnControlsInvalidValue();
+        }
+        (bool done,) = _pair(
+            keccak256(abi.encode(this.approveSuccessorTransfer.selector, from, to, evidenceHash)), SUCCESSOR_ROLE
+        );
+        if (!done) return;
+        _successorTransfers[from][to] = SuccessorApproval(uint64(block.timestamp), evidenceHash);
+        emit SuccessorTransferApproved(from, to, evidenceHash, uint64(block.timestamp) + SUCCESSOR_WINDOW);
+    }
+
+    /// @notice records a Successor as entitled to a bond's payments where the Holder's account
+    /// cannot be accessed (IV-01 §6.3). It applies after 7 days; the Holder's account may cancel it.
+    function registerPaymentSuccessor(address holder, address payee, bytes32 evidenceHash) external {
+        if (holder == address(0) || payee == address(0) || holder == payee || evidenceHash == bytes32(0)) {
+            revert EarnControlsInvalidValue();
+        }
+        (bool done,) = _pair(
+            keccak256(abi.encode(this.registerPaymentSuccessor.selector, holder, payee, evidenceHash)), SUCCESSOR_ROLE
+        );
+        if (!done) return;
+        uint64 at = uint64(block.timestamp) + PAYEE_DELAY;
+        _payees[holder] = PaymentSuccessor(payee, at, evidenceHash);
+        emit PaymentSuccessorRegistered(holder, payee, evidenceHash, at);
+    }
+
+    /// @notice the Holder's own account cancels a Successor registered for its payments: an account
+    /// that can sign is one that can be accessed.
+    function cancelPaymentSuccessor() external {
+        address payee = _payees[msg.sender].payee;
+        if (payee == address(0)) revert EarnControlsNothingToCancel(msg.sender);
+        delete _payees[msg.sender];
+        emit PaymentSuccessorCancelled(msg.sender, payee);
+    }
+
+    /* ========== HOUSEHOLDS AND THE INELIGIBLE FLAG ========== */
+
+    /// @notice the accounts recorded in a household (one per member).
+    function householdMembers(bytes32 household) external view returns (address[] memory) {
+        return _households[household];
+    }
+
+    /// @notice records the household of the member behind `account` (IV-02 §2.5(c): the member
+    /// with their Immediate Family in their household), two `ATTESTER_ROLE` holders. A zero
+    /// household takes the member out of theirs, so they count alone.
+    function setHousehold(address account, bytes32 household) external {
+        if (account == address(0)) revert EarnControlsInvalidValue();
+        (bool done,) = _pair(keccak256(abi.encode(this.setHousehold.selector, account, household)), ATTESTER_ROLE);
+        if (!done) return;
+        uint256 key = memberKeyOf(account);
+        bytes32 old = householdOf[key];
+        if (old != bytes32(0)) {
+            address[] storage list = _households[old];
+            for (uint256 i; i < list.length; ++i) {
+                if (memberKeyOf(list[i]) == key) {
+                    list[i] = list[list.length - 1];
+                    list.pop();
+                    break;
+                }
+            }
+        }
+        householdOf[key] = household;
+        if (household != bytes32(0)) {
+            if (_households[household].length >= MAX_HOUSEHOLD) revert EarnControlsInvalidValue();
+            _households[household].push(account);
+        }
+        emit HouseholdSet(key, account, household);
+    }
+
+    /// @notice sets or clears the holder-ineligible flag (§2): a flagged Holder's bonds do not roll.
+    function setHolderIneligible(address holder, bool ineligible, bytes32 evidenceHash) external {
+        if (holder == address(0) || evidenceHash == bytes32(0)) revert EarnControlsInvalidValue();
+        (bool done,) = _pair(
+            keccak256(abi.encode(this.setHolderIneligible.selector, holder, ineligible, evidenceHash)), ELIGIBILITY_ROLE
+        );
+        if (!done) return;
+        holderIneligible[holder] = ineligible;
+        emit HolderIneligibleSet(holder, ineligible, evidenceHash);
+        address hook = reserveHook;
+        if (hook != address(0)) IEarnControlsHook(hook).holderEligibilityChanged(holder, ineligible);
+    }
+
+    /* ========== GOVERNED SETTINGS (DEFAULT_ADMIN_ROLE: the Earn timelock) ========== */
+
+    function setFundingLimit(uint256 limit, bytes32 resolutionHash, uint16 fiscalYear)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        if (resolutionHash == bytes32(0)) revert EarnControlsInvalidValue();
+        fundingLimit = limit;
+        fundingLimitResolution = resolutionHash;
+        fundingLimitFiscalYear = fiscalYear;
+        emit SettingsSet("fundingLimit", limit, resolutionHash);
+    }
+
+    /// @notice the one offering maximum across both products (decision 38) and the pool capacity,
+    /// with the resolution.
+    function setOfferingLimits(uint256 cap, uint256 capacity, bytes32 resolutionHash)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        offeringCap = cap;
+        poolCapacity = capacity;
+        emit SettingsSet("offeringCap", cap, resolutionHash);
+        emit SettingsSet("poolCapacity", capacity, resolutionHash);
+    }
+
+    function setHolderCapBps(uint256 bps) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (bps == 0 || bps > BPS) revert EarnControlsInvalidValue();
+        holderCapBps = bps;
+        emit SettingsSet("holderCapBps", bps, bytes32(0));
+    }
+
+    /// @notice schedules a new holder-cap floor (decision 23), applying 7 days from now on top of
+    /// the Earn timelock's own delay. A later schedule replaces one not yet applied.
+    function scheduleHolderCapFloor(uint256 floor) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint64 at = _holderCapFloorAt;
+        uint256 current = at != 0 && block.timestamp >= at ? _pendingHolderCapFloor : _holderCapFloor;
+        _holderCapFloor = current;
+        _pendingHolderCapFloor = floor;
+        at = uint64(block.timestamp) + HOLDER_CAP_FLOOR_DELAY;
+        _holderCapFloorAt = at;
+        emit HolderCapFloorScheduled(current, floor, at);
+    }
+
+    function setRefused(address account, bool isRefused) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (account == address(0)) revert EarnControlsInvalidAddress();
+        refused[account] = isRefused;
+        emit RefusedSet(account, isRefused);
+    }
+
+    function setSources(
+        address membership_,
+        address yieldPool_,
+        address reserveStatus_,
+        address collateralAgent_,
+        address reserveHook_
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        membership = IEarnMembership(membership_);
+        yieldPool = yieldPool_;
+        reserveStatus = reserveStatus_;
+        collateralAgent = collateralAgent_;
+        reserveHook = reserveHook_;
+        emit SourcesSet(membership_, yieldPool_, reserveStatus_, collateralAgent_, reserveHook_);
+    }
+
+    function setBondBooks(address[] calldata books) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (books.length > MAX_BOND_BOOKS) revert EarnControlsInvalidValue();
+        for (uint256 i; i < books.length; ++i) if (books[i] == address(0)) revert EarnControlsInvalidAddress();
+        _bondBooks = books;
+        emit BondBooksSet(books);
+    }
+}

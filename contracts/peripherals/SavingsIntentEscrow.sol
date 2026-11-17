@@ -134,7 +134,11 @@ contract SavingsIntentEscrow is Initializable, ReentrancyGuardUpgradeable {
         if (action == Action.Deposit) {
             resultAmount = IESADepositVault(vault).deposit(vaultToken, amount, receiver);
         } else {
-            resultAmount = IESADepositVault(vault).redeem(vaultToken, amount, receiver);
+            // The vault pays a plain redeem only to the redeemer (Phase 2d), so the escrow redeems to
+            // itself and forwards exactly what it received to the receiver its config names. The
+            // depositor fixed that receiver by funding this address (audit H-4).
+            resultAmount = IESADepositVault(vault).redeem(vaultToken, amount, address(this));
+            IERC20(vaultToken).safeTransfer(receiver, resultAmount);
         }
 
         emit Finalized(action, depositor, receiver, amount, resultAmount);

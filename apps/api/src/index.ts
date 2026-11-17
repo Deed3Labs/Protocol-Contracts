@@ -65,6 +65,7 @@ import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
 import { startSweepRunner } from './jobs/sweepRunner.js';
 import { startMemoryMonitor } from './jobs/memoryMonitor.js';
 import { startRelayerGasMonitor } from './jobs/relayerGas.js';
+import { logJobWallets } from './jobs/jobWallets.js';
 import { startSessionCleanup } from './jobs/sessionCleanup.js';
 import { startStripeEventProcessor } from './jobs/stripeEventProcessor.js';
 import { startCardCaptureSafety } from './jobs/cardCaptureSafety.js';
@@ -95,6 +96,9 @@ import { startOffersGranter } from './jobs/offersGranter.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
 import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
+import { startPayoutFundingKeeper } from './jobs/payoutFundingKeeper.js';
+import { startAssuranceFeePayer } from './jobs/assuranceFeePayer.js';
+import { startPayoutTopUp } from './jobs/payoutTopUp.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 import stepUpRouter from './routes/stepUp.js';
@@ -439,6 +443,8 @@ async function startServer() {
     // A signer with no gas fails silently — the pledge does not happen and every figure downstream
     // is quietly stale. This is the only thing that would have said so.
     startRelayerGasMonitor();
+    // Which wallet does which job, by address only: the operator checks these against the chain's roles.
+    logJobWallets();
     startSessionCleanup();
     // Nothing else rolls a cycle over: without this every member's period runs out and stays out.
     startCreditPeriodRenewer();
@@ -469,6 +475,11 @@ async function startServer() {
     startCardSettlementSweeper().catch((error) => {
       console.error('Failed to start card settlement sweeper:', error);
     });
+
+    // Merchant payouts are funded ahead of time by hand (decision 17). This says when they are not:
+    // read-only, hourly, off unless PAYOUT_KEEPER_ENABLED=1.
+    startPayoutFundingKeeper();
+    startPayoutTopUp();
 
     // The merchant back office's tables. Awaited so the merchant endpoints never see a half-built
     // schema, but a failure doesn't take the member API down with it: nothing member-facing reads
@@ -508,6 +519,10 @@ async function startServer() {
     startCommandGeocoder();
     // …and the invites a batch queued, emailed once it's approved.
     startCommandInvites();
+    // The Assurance Pool's fee: read daily, accrued monthly, paid from the CL Fees wallet once CL
+    // Operating's signers fund it. Off without ASSURANCE_POOL_V2_<chain>; pays only with
+    // ASSURANCE_FEE_PAYER_ENABLED=1 (docs/operators/assurance-fee-payer.md). After the migrations.
+    startAssuranceFeePayer();
     // Acts on the Stripe webhooks the merchant back office stored. After the migrations, which
     // create the inbox it reads.
     startStripeEventProcessor();

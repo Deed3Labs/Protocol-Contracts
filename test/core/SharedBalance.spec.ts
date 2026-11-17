@@ -64,7 +64,7 @@ describe("a balance shared between issuers", function () {
     await revolving
       .connect(ctx.operator)
       .openLine(
-        ctx.member.address, [0n, 500n * ONE_USDC, 0n], ONE_YEAR, MONTH
+        ctx.member.address, [0n, 500n * ONE_USDC, 0n], 0
       );
 
     await term.connect(ctx.operator).setTermLimit(ctx.member.address, 2_000n * ONE_USDC);

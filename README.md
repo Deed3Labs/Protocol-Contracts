@@ -375,7 +375,7 @@ npm run test:gas
 
 ### Deployment
 
-The `deploy/` scripts are numbered `00`–`24` and run in order; `deploy/deploy_all.ts` deploys the
+The `deploy/` scripts are numbered `00`–`27` and run in order; `deploy/deploy_all.ts` deploys the
 Deed track — the contracts of `00`–`06` — in one run.
 
 ```bash

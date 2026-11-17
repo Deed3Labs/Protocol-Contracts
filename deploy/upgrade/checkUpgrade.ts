@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { upgradeOptionsFor } from "./upgradeOptions";
 
 async function main() {
   const hre = require("hardhat");
@@ -30,7 +31,7 @@ async function main() {
   // Check if the contract can be upgraded
   console.log("\nChecking upgrade safety...");
   try {
-    await hre.upgrades.validateUpgrade(proxyAddress, ContractFactory);
+    await hre.upgrades.validateUpgrade(proxyAddress, ContractFactory, upgradeOptionsFor(contractName));
     console.log("✅ Contract can be safely upgraded");
   } catch (error) {
     console.log("❌ Upgrade validation failed:");
@@ -43,7 +44,11 @@ async function main() {
   // Check if the contract has the correct UUPS interface
   console.log("\nChecking UUPS interface...");
   try {
-    const hasUUPS = await contract.supportsInterface("0x52d1902d");
+    // 0x52d1902d is proxiableUUID()'s selector, not an ERC-165 interface id: asking supportsInterface
+    // reported every UUPS contract without ERC-165 (ClaimEscrow) as not UUPS. A UUPS implementation
+    // answers proxiableUUID() with the ERC-1967 implementation slot (through the proxy it reverts).
+    const implementation = new hre.ethers.Contract(implementationAddress, ["function proxiableUUID() view returns (bytes32)"], hre.ethers.provider);
+    const hasUUPS = (await implementation.proxiableUUID().catch(() => "")) === "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
     console.log(hasUUPS ? "✅ Contract supports UUPS" : "❌ Contract does not support UUPS");
   } catch (error) {
     console.log("❌ Error checking UUPS interface:", error.message);

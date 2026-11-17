@@ -19,9 +19,10 @@ describe("NetworkRegistry", function () {
     stableCredit = ethers.Wallet.createRandom().address;
   });
 
+  // Re-review M-E: registering an issuer is the admin's (the credit timelock's), not the operator's.
   async function register(issuer: any, credit: string = stableCredit) {
     await registry
-      .connect(operator)
+      .connect(admin)
       .registerIssuer(issuer.address, credit);
   }
 
@@ -65,14 +66,17 @@ describe("NetworkRegistry", function () {
         [z, stableCredit],
         [revolving.address, z],
       ]) {
-        await expect(registry.connect(operator).registerIssuer(...(args as [string, string])))
+        await expect(registry.connect(admin).registerIssuer(...(args as [string, string])))
           .to.be.revertedWithCustomError(registry, "NetworkRegistryInvalidAddress");
       }
     });
 
-    it("is operator gated", async function () {
+    it("is admin gated: neither an outsider nor the operator may register (M-E)", async function () {
       await expect(
         registry.connect(outsider).registerIssuer(revolving.address, stableCredit)
+      ).to.be.reverted;
+      await expect(
+        registry.connect(operator).registerIssuer(revolving.address, stableCredit)
       ).to.be.reverted;
     });
   });
@@ -194,7 +198,7 @@ describe("NetworkRegistry", function () {
       await register(revolving);
       await registry.connect(revolving).enrolMember(member.address, revolving.address);
 
-      await expect(registry.connect(operator).deregisterIssuer(revolving.address))
+      await expect(registry.connect(admin).deregisterIssuer(revolving.address))
         .to.be.revertedWithCustomError(registry, "NetworkRegistryMemberStillEnrolled");
     });
 
@@ -207,14 +211,14 @@ describe("NetworkRegistry", function () {
       await registry.connect(revolving).withdrawMember(member.address, revolving.address);
       await registry.connect(revolving).withdrawMember(other.address, revolving.address);
 
-      await registry.connect(operator).deregisterIssuer(revolving.address);
+      await registry.connect(admin).deregisterIssuer(revolving.address);
       expect(await registry.isIssuer(revolving.address)).to.equal(false);
       expect(await registry.isIssuerOf(revolving.address, stableCredit)).to.equal(false);
     });
 
     it("lets a deregistered issuer be registered again", async function () {
       await register(revolving);
-      await registry.connect(operator).deregisterIssuer(revolving.address);
+      await registry.connect(admin).deregisterIssuer(revolving.address);
       await register(revolving);
       expect(await registry.isIssuer(revolving.address)).to.equal(true);
     });
