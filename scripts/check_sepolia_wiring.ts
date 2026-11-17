@@ -168,9 +168,9 @@ export async function checkSepoliaWiring(options: { network?: string; log?: (m: 
       await check(`AssurancePool: ${sgn} is a signer`, async () => assurance.isSigner(sgn));
     }
     const fees = required("ASSURANCE_CL_FEES_PAYER");
-    if (fees) await check(`AssurancePool: ASSURANCE_CL_FEES_PAYER pays the fee, recovery and interchange (mask ${CL_FEES_MASK})`, async () => BigInt(await assurance.payerTags(fees)) === BigInt(CL_FEES_MASK));
+    if (fees) await check(`AssurancePool: ASSURANCE_CL_FEES_PAYER pays the fee and recoveries (mask ${CL_FEES_MASK})`, async () => BigInt(await assurance.payerTags(fees)) === BigInt(CL_FEES_MASK));
     const treasury = required("COOP_TREASURY");
-    if (treasury) await check(`AssurancePool: COOP_TREASURY pays board allocations (mask ${BOARD_ALLOCATION_MASK})`, async () => BigInt(await assurance.payerTags(treasury)) === BigInt(BOARD_ALLOCATION_MASK));
+    if (treasury) await check(`AssurancePool: COOP_TREASURY pays interchange and board allocations (mask ${BOARD_ALLOCATION_MASK})`, async () => BigInt(await assurance.payerTags(treasury)) === BigInt(BOARD_ALLOCATION_MASK));
     const draw = required("ASSURANCE_DRAW_ADDRESS");
     if (draw) await check("AssurancePool.drawAddress() is ASSURANCE_DRAW_ADDRESS (CL Operating)", async () => same(await assurance.drawAddress(), draw));
     const reserve = required("ASSURANCE_LOSS_RESERVE");

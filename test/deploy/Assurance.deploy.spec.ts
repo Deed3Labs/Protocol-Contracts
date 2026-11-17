@@ -45,9 +45,9 @@ describe("Assurance deployment", function () {
     for (const [i, c] of calls.entries()) {
       await timelock.connect(board).execute(target, 0, c.data, ethers.ZeroHash, ethers.toBeHex(i + 1, 32));
     }
-    // Owner decision (Nov 16, 2026): Clear Lending's fees wallet pays the fee, recoveries and interchange; the treasury board allocations.
-    expect(await pool.payerTags(lendingCo.address)).to.equal(7n);
-    expect(await pool.payerTags(treasury.address)).to.equal(8n);
+    // docs/protocol/reserve.md "Money in": Lending Co. pays the fee and recoveries; the co-op treasury interchange and board allocations.
+    expect(await pool.payerTags(lendingCo.address)).to.equal(3n);
+    expect(await pool.payerTags(treasury.address)).to.equal(12n);
     expect(await pool.exposureSourceList()).to.deep.equal([await registry.getAddress()]);
     expect(await pool.drawAddress()).to.equal(drawer.address);
     expect(await pool.lossReserveAddress()).to.equal(lossReserve.address);

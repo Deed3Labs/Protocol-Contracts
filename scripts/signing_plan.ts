@@ -7,6 +7,9 @@ import { parseEnvFile } from "./rehearse_sepolia_fork";
 import {
   assuranceSetupFromEnv, assuranceSetupProblems, governedCalls, approvalKey, CL_FEES_MASK, BOARD_ALLOCATION_MASK, AssuranceSetup,
 } from "../deploy/assurance_timelock_handover";
+import {
+  ALLOWANCE_MODULE_ABI, SAFE_MODULE_ABI, CANONICAL_ALLOWANCE_MODULE, PAYOUT_POOL_ROLES, parseUsdc, formatUsdc,
+} from "../apps/api/src/services/payoutFunding/topUp";
 
 /*
  * The Base Sepolia rollout's co-signer steps, as a signing plan (docs/audit/SEPOLIA-REHEARSAL.md).
@@ -817,8 +820,8 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
 
     const calls = governedCalls(poolC, assurance);
     const what: Record<string, string> = {
-      "payer-clfees": `let Clear Lending's fees wallet pay in (credit enhancement fee, recovery, interchange: mask ${CL_FEES_MASK})`,
-      "payer-treasury": `let the co-op treasury pay in board allocations (mask ${BOARD_ALLOCATION_MASK})`,
+      "payer-clfees": `let Clear Lending's fees wallet pay in (credit enhancement fee, recovery: mask ${CL_FEES_MASK})`,
+      "payer-treasury": `let the co-op treasury pay in interchange and board allocations (mask ${BOARD_ALLOCATION_MASK})`,
       lendingco: "register CL Operating as Lending Co.'s draw address and CL Loss Reserve as where draws are paid",
       disbursement: "register the co-op's Assurance disbursement address, where grants are paid",
       exposure: "name the CollateralRegistry as what reports the covered book",
@@ -968,6 +971,128 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
     }
   }
 
+  // ================= Payout top-ups (decision 51): the one-time setup =================
+  // The top-up wallet (a CDP server wallet) gets the fresh PayoutPool's FUNDER_ROLE from the deployer
+  // before the credit handover (I2); CL Operating enables Safe's AllowanceModule and gives the wallet
+  // a spending limit in USDC. Any of its inputs may be empty: its steps then wait, and nothing else does.
+  {
+    const wallet = addr(env.PAYOUT_TOPUP_WALLET);
+    const operating = addr(env.CLEAR_LENDING_ACCOUNT);
+    const moduleAddr = addr(env.PAYOUT_TOPUP_ALLOWANCE_MODULE) ?? CANONICAL_ALLOWANCE_MODULE;
+    const cap = parseUsdc(env.PAYOUT_TOPUP_CAP_USDC);
+    const periodRaw = Number(env.PAYOUT_TOPUP_RESET_MINUTES ?? "");
+    const period = env.PAYOUT_TOPUP_RESET_MINUTES && Number.isInteger(periodRaw) && periodRaw > 0 && periodRaw <= 65535 ? periodRaw : undefined;
+    const baseRaw = Number(env.PAYOUT_TOPUP_RESET_BASE_MINUTES || "0");
+    const base = Number.isInteger(baseRaw) && baseRaw >= 0 && baseRaw < 2 ** 32 ? baseRaw : undefined;
+    label(wallet, "payout top-up wallet");
+    label(moduleAddr, "AllowanceModule");
+    const payout = await fresh("PayoutPool");
+    label(payout.address, "PayoutPool");
+    const pp = await contract("PayoutPool", payout.address ?? ZERO_ADDRESS);
+    const live = payout.address ? pp : undefined;
+    const FUNDER = PAYOUT_POOL_ROLES.FUNDER_ROLE;
+    const noWallet = !wallet
+      ? waitingFor(env.PAYOUT_TOPUP_WALLET ? `PAYOUT_TOPUP_WALLET is not an address: ${env.PAYOUT_TOPUP_WALLET}.` : "Waiting for input: PAYOUT_TOPUP_WALLET (the CDP wallet payout-topup-base-sepolia; owner to fill in deploy/config/base-sepolia.rollout.env).")
+      : undefined;
+    if (wallet) {
+      const code: string = await provider.getCode(wallet);
+      if (code !== "0x" && !code.toLowerCase().startsWith("0xef0100")) notes.push(`PAYOUT_TOPUP_WALLET ${wallet} has contract code: a CDP server wallet (a plain account) was expected.`);
+    }
+
+    // The deployer grants FUNDER_ROLE on the fresh PayoutPool: a day-0 step, before I2.
+    {
+      let st: { status: StepStatus; reason?: string };
+      if (noWallet) st = noWallet;
+      else if (!deployer) st = waitingFor("Waiting for input: DEPLOYER.");
+      else if (!live) st = waitingFor(`Waits for deploy 22 (E4), which deploys the fresh PayoutPool: ${payout.why}.`);
+      else if (await live.hasRole(FUNDER, wallet)) st = { status: "done" };
+      else if (!(await live.hasRole(ZERO_HASH, deployer))) st = waitingFor("The deployer no longer holds the PayoutPool's admin (the credit handover, I2, moved it to the credit timelock): this grant is now an Ops Safe proposal on the credit timelock, with its 7 days.");
+      else st = { status: "ready" };
+      if (live && wallet) {
+        for (const r of ["DEFAULT_ADMIN_ROLE", "OPERATOR_ROLE", "REDEEMER_ROLE"] as const) {
+          if (await live.hasRole(PAYOUT_POOL_ROLES[r], wallet)) notes.push(`The payout top-up wallet ${wallet} holds the PayoutPool's ${r}: it must hold FUNDER_ROLE and nothing else. Revoke it.`);
+        }
+      }
+      push({
+        id: "TU-funder", stage: "Payout top-ups", title: "Give the payout top-up wallet the PayoutPool's FUNDER_ROLE (day 0, before I2)",
+        explanation: "Lets the top-up wallet fund the PayoutPool (fund pulls the wallet's own USDC), and nothing else. Send it before the credit handover (I2): until then the deployer holds the PayoutPool's admin; afterwards the grant is a 7-day credit timelock proposal. The wallet never calls withdrawCapital (decision 51).",
+        kind: "wallet", signer: deployer ?? ZERO_ADDRESS, signerLabel: "the deployer", to: payout.address ?? ZERO_ADDRESS, toLabel: "PayoutPool",
+        ...encode(pp, "grantRole", [FUNDER, wallet ?? ZERO_ADDRESS], ["FUNDER_ROLE"]), dependsOn: [], ...st,
+      });
+    }
+
+    // CL Operating's one-time setup: three calls, signed once as one Transaction Builder batch.
+    const opHasCode = !!operating && (await hasCode(operating));
+    const modHasCode = await hasCode(moduleAddr);
+    const mod = new ethers.Contract(modHasCode ? moduleAddr : ZERO_ADDRESS, ALLOWANCE_MODULE_ABI, provider);
+    const safeC = new ethers.Contract(opHasCode ? operating! : ZERO_ADDRESS, SAFE_MODULE_ABI, provider);
+    let moduleProblem: string | undefined;
+    if (!modHasCode) moduleProblem = `No AllowanceModule at ${moduleAddr} on this chain (PAYOUT_TOPUP_ALLOWANCE_MODULE).`;
+    else if ((await mod.NAME().catch(() => "")) !== "Allowance Module") moduleProblem = `${moduleAddr} does not answer as Safe's AllowanceModule (NAME()).`;
+    const opProblem = !operating ? "Waiting for input: CLEAR_LENDING_ACCOUNT (CL Operating)." : !opHasCode ? `CL Operating ${operating} has no code on this chain.` : undefined;
+    // The token is what the PayoutPool pays in; before the fresh pool exists, the rollout's RESERVE_TOKEN.
+    const usdc = live ? ethers.getAddress(await live.reserveToken()) : addr(env.RESERVE_TOKEN);
+    if (live && addr(env.RESERVE_TOKEN) && !same(usdc, env.RESERVE_TOKEN)) notes.push(`The PayoutPool's reserveToken is ${usdc}, not RESERVE_TOKEN ${env.RESERVE_TOKEN}: the allowance uses the PayoutPool's.`);
+    const capText = cap !== null && cap !== 0n ? formatUsdc(cap) : "?";
+    const periodText = period ? (period % 1440 === 0 ? `${period / 1440} day${period === 1440 ? "" : "s"}` : `${period} minutes`) : "?";
+    const via = "CL Operating's only owner is the Clear Lending Safe (2 of 2): in the Safe app open CL Operating, load the batch in Transaction Builder, confirm it from the Clear Lending Safe (a nested-Safe confirmation, both owners), then execute.";
+    const batchHint = "Sign all three at once: safe-batches/signing-TU-cl-operating-setup.json (written while they are ready).";
+    const safeStep = (id: string, title: string, explanation: string, to: string | undefined, enc: any, st: { status: StepStatus; reason?: string }, dependsOn: string[] = []) =>
+      push({
+        id, stage: "Payout top-ups", title, explanation: `${explanation} ${via} ${batchHint}`,
+        kind: "safe", signer: operating ?? ZERO_ADDRESS, signerLabel: "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+        to: to ?? ZERO_ADDRESS, toLabel: to && same(to, operating) ? "CL Operating itself" : "AllowanceModule", ...enc, dependsOn, ...st,
+      });
+    {
+      const st = opProblem ? waitingFor(opProblem) : moduleProblem ? waitingFor(moduleProblem)
+        : (await safeC.isModuleEnabled(moduleAddr)) ? { status: "done" as const } : { status: "ready" as const };
+      safeStep("TU-safe-module", "CL Operating: enable Safe's AllowanceModule",
+        `Lets CL Operating give one wallet a spending limit. The module (Safe's audited AllowanceModule v0.1.1, ${moduleAddr}) moves CL Operating's money only for a delegate CL Operating names, within the limit CL Operating sets for it.`,
+        opHasCode ? operating : undefined, encode(safeC, "enableModule", [moduleAddr], ["Safe's AllowanceModule v0.1.1"]), st);
+    }
+    {
+      let delegateAdded = false;
+      if (opHasCode && !moduleProblem && wallet) {
+        let start = 0n;
+        for (let page = 0; page < 20; page++) {
+          const [list, next] = await mod.getDelegates(operating, start, 50);
+          if ((list as string[]).some((d) => same(d, wallet))) { delegateAdded = true; break; }
+          if (BigInt(next) === 0n) break;
+          start = BigInt(next);
+        }
+      }
+      const st = noWallet ?? (opProblem ? waitingFor(opProblem) : moduleProblem ? waitingFor(moduleProblem) : delegateAdded ? { status: "done" as const } : { status: "ready" as const });
+      safeStep("TU-safe-delegate", "CL Operating: name the payout top-up wallet a spending-limit delegate",
+        "The top-up wallet may then spend from CL Operating, but only within the allowance the next call sets.",
+        modHasCode ? moduleAddr : undefined, encode(mod, "addDelegate", [wallet ?? ZERO_ADDRESS]), st);
+    }
+    {
+      let st: { status: StepStatus; reason?: string };
+      const inputs: string[] = [];
+      if (cap === null || cap === 0n) inputs.push("PAYOUT_TOPUP_CAP_USDC (dollars per period)");
+      if (!period) inputs.push("PAYOUT_TOPUP_RESET_MINUTES (1 to 65535)");
+      if (base === undefined) inputs.push("PAYOUT_TOPUP_RESET_BASE_MINUTES (unix minutes, or 0)");
+      if (!usdc) inputs.push("RESERVE_TOKEN (USDC)");
+      if (noWallet) st = noWallet;
+      else if (inputs.length) st = waitingFor(`Waiting for input: ${inputs.join(", ")}.`);
+      else if (opProblem) st = waitingFor(opProblem);
+      else if (moduleProblem) st = waitingFor(moduleProblem);
+      else if (base! > Number(now / 60n)) st = waitingFor(`PAYOUT_TOPUP_RESET_BASE_MINUTES ${base} is in the future (the module refuses it).`);
+      else {
+        const al = await mod.getTokenAllowance(operating, wallet, usdc);
+        st = BigInt(al[0]) === cap && Number(al[2]) === period ? { status: "done", reason: `${capText} every ${periodText}; ${formatUsdc(BigInt(al[1]))} spent this period.` } : { status: "ready" };
+        if (st.status !== "done" && BigInt(al[0]) !== 0n) notes.push(`CL Operating's allowance for the top-up wallet is ${formatUsdc(BigInt(al[0]))} every ${al[2]} minutes; TU-safe-allowance sets it to ${capText} every ${periodText}.`);
+      }
+      const complete = cap !== null && cap !== 0n && !!period && base !== undefined && !!usdc && !!wallet;
+      const enc = complete
+        ? encode(mod, "setAllowance", [wallet, usdc, cap, period, base], [undefined, "USDC", `${capText} per period (USDC base units)`, `${periodText}: the limit resets this often`, base ? `periods counted from ${new Date(base * 60000).toISOString()}` : "periods counted from when it is set"])
+        : { data: null, functionSignature: signatureOf(mod, "setAllowance"), args: [] };
+      safeStep("TU-safe-allowance", `CL Operating: let the payout top-up wallet move up to ${capText} of USDC every ${periodText}`,
+        "The spending limit is the most the automatic top-ups can move out of CL Operating in a period, whatever happens to the bot or its key. What a top-up needs beyond it is prepared for CL Operating's owners to sign. Change it the same way.",
+        modHasCode ? moduleAddr : undefined, enc, st, ["TU-safe-delegate"]);
+    }
+  }
+
   // ================= dependencies, then a dry run of every ready step =================
   const byId = new Map(steps.map((s) => [s.id, s]));
   for (const s of steps) {
@@ -1054,6 +1179,20 @@ export function writeSigningPlan(plan: SigningPlan, outDir: string) {
     fs.writeFileSync(file, JSON.stringify(safeBatch(plan.chainId, s.title, `${s.explanation} Generated by scripts/signing_plan.ts at block ${plan.block}. Review every call before signing.`, [{ to: s.to, data: s.data }]), null, 2));
     s.safeBatchFile = path.relative(outDir, file);
     written.push(file);
+  }
+  // Payout top-ups: CL Operating's three setup calls, as one batch to sign once. Written while one is
+  // ready and the rest wait only on each other (setAllowance's dry run needs the delegate added first).
+  const setup = plan.steps.filter((s) => s.kind === "safe" && s.id.startsWith("TU-safe-") && s.status !== "done");
+  if (
+    setup.some((s) => s.status === "ready") &&
+    setup.every((s) => s.data && s.to !== ZERO_ADDRESS && (s.status === "ready" || /^Waits for TU-safe-[a-z]+(, TU-safe-[a-z]+)* first\.$/.test(s.reason ?? "")))
+  ) {
+    const file = path.join(batches, "signing-TU-cl-operating-setup.json");
+    fs.writeFileSync(file, JSON.stringify(safeBatch(plan.chainId, "CL Operating: set up the payout top-ups' spending limit",
+      `${setup.map((s) => s.title).join("; ")}. Decision 51. Generated by scripts/signing_plan.ts at block ${plan.block}. Review every call before signing.`,
+      setup.map((s) => ({ to: s.to, data: s.data! }))), null, 2));
+    written.push(file);
+    plan.notes.push(`CL Operating's payout top-up setup (${setup.map((s) => s.id).join(", ")}) is one batch: ${path.relative(outDir, file)}.`);
   }
   // The file names are added after the hash: recompute it over what is written.
   plan.stepsSha256 = stepsSha256(plan.steps);

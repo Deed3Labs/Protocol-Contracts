@@ -10,6 +10,10 @@ import { deployVaultTimelock } from "../../deploy/vault_timelock_handover";
 import { deployCreditCore } from "../../deploy/20_deploy_CreditCore";
 import { poolAt, poolProxyOptions } from "../../deploy/poolModules";
 import { deployAssuranceTimelock, deployAssurancePool, CL_FEES_MASK, BOARD_ALLOCATION_MASK } from "../../deploy/assurance_timelock_handover";
+import { checkRolloutInputs, checkPayoutTopUpSetup } from "../../scripts/check_rollout_inputs";
+import {
+  ALLOWANCE_MODULE_ABI, ERC20_ABI, PAYOUT_POOL_TOPUP_ABI, SAFE_MODULE_ABI, CANONICAL_ALLOWANCE_MODULE, topUpCalls, assertTopUpCall,
+} from "../../apps/api/src/services/payoutFunding/topUp";
 
 /*
  * scripts/signing_plan.ts on the in-process Hardhat network: a small stack in the shape the Base
@@ -41,6 +45,8 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
   let bondVault: any, agent: any, earnTimelock: any, liquidator: any, term: any, pool: any, clrusd: any, vault: any, vaultTimelock: any;
   let holderDirections: any;
   let lendingSafe: any, assurancePool: any, assuranceTimelock: any, collateralRegistry: any;
+  let usdcToken: any;
+  const PT_STEPS = ["TU-funder", "TU-safe-module", "TU-safe-delegate", "TU-safe-allowance"];
   // The Assurance Pool's signers (Accounts 3 and 4 on Base Sepolia) and the addresses its setup names.
   const a3 = random(), a4 = random();
   const clFees = random(), disbursement = random(), clOperating = random(), clLossReserve = random();
@@ -103,6 +109,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     earnTimelock = await deployEarnTimelock(await lendingSafe.getAddress());
     record("EarnTimelock", await earnTimelock.getAddress());
     const usdc = await (await ethers.getContractFactory("MockERC20")).deploy("USD Coin", "USDC", 6);
+    usdcToken = usdc;
     agent = await upgrades.deployProxy(await ethers.getContractFactory("CollateralAgent"),
       [await earnTimelock.getAddress(), key.address, [t1.address, t2.address], 6, {
         vault: ethers.ZeroAddress, bondBook: ethers.ZeroAddress, pledgeModule: ethers.ZeroAddress, payeeSource: ethers.ZeroAddress,
@@ -208,6 +215,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       "F2-fee-approve", "G1-tier-1", "G1-tier-2", "safe-owner", "I3-vault-schedule", "I3x-vault-execute",
       ...ASSURANCE_KEYS.flatMap((k) => [`AS-${k}-approve-1`, `AS-${k}-approve-2`]), "AS-assurance-schedule", "ASx-assurance-execute",
       "AS-floor-1", "AS-floor-2",
+      ...PT_STEPS,
     ]);
     const ready = p.steps.filter((x) => x.status === "ready").map((x) => x.id);
     expect(ready).to.deep.equal([
@@ -217,6 +225,11 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       ...ASSURANCE_KEYS.map((k) => `AS-${k}-approve-1`), "AS-floor-1",
     ]);
     expect(step(p, "AS-floor-2").reason).to.contain("AS-floor-1");
+    // Payout top-ups (decision 51) with no top-up inputs: their steps wait, and nothing is refused.
+    expect(step(p, "TU-funder").reason).to.contain("Waiting for input: PAYOUT_TOPUP_WALLET");
+    expect(step(p, "TU-safe-allowance").reason).to.contain("PAYOUT_TOPUP_WALLET");
+    expect(step(p, "TU-safe-module").reason).to.contain("has no code");
+    for (const id of PT_STEPS) expect(step(p, id).to, id).to.equal(ethers.ZeroAddress);
     expect(step(p, "C1d-2").reason).to.contain("C1d-1");
     expect(step(p, "D4-operator").reason).to.contain("CREDIT_OPERATOR_ADDRESS");
     expect(step(p, "D4-operator").data).to.equal(null);
@@ -250,10 +263,10 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     const payer = step(p, "AS-payer-clfees-approve-1");
     expect(payer.signer).to.equal(ethers.getAddress(a3));
     expect(payer.to).to.equal(await assurancePool.getAddress());
-    expect(payer.args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [clFees, 7])));
+    expect(payer.args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [clFees, 3])));
     expect(step(p, "AS-payer-clfees-approve-2").signer).to.equal(ethers.getAddress(a4));
     expect(step(p, "AS-payer-clfees-approve-2").reason).to.contain("AS-payer-clfees-approve-1");
-    expect(step(p, "AS-payer-treasury-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [await safe.getAddress(), 8])));
+    expect(step(p, "AS-payer-treasury-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setPayer", [await safe.getAddress(), 12])));
     expect(step(p, "AS-exposure-approve-1").args[0].value).to.equal(ethers.keccak256(assurancePool.interface.encodeFunctionData("setExposureSources", [[await collateralRegistry.getAddress()]])));
     expect(step(p, "AS-assurance-schedule").reason).to.contain("AS-payer-clfees-approve-1");
     for (const x of p.steps) expect(x.chainId).to.equal(31337);
@@ -314,7 +327,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(sent.indexOf("AS-payer-clfees-approve-2")).to.be.greaterThan(sent.indexOf("AS-payer-clfees-approve-1"));
     expect(sent.indexOf("AS-assurance-schedule")).to.be.greaterThan(sent.indexOf("AS-exposure-approve-2"));
     expect(sent.indexOf("ASx-assurance-execute")).to.be.greaterThan(sent.indexOf("AS-assurance-schedule"));
-    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(["D4-operator"]);
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(["D4-operator", ...PT_STEPS]);
 
     // The chain shows each change made.
     expect(await agent.vault()).to.equal(await bondVault.getAddress());
@@ -334,9 +347,9 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(await assurancePool.floorEvidenceHash()).to.equal(ethers.id("Assurance Pool floor inputs (test)"));
     // The Assurance Pool, configured through its own governance.
     expect(await assurancePool.payerTags(clFees)).to.equal(BigInt(CL_FEES_MASK));
-    expect(CL_FEES_MASK).to.equal(0b0111); // CREDIT_ENHANCEMENT_FEE | RECOVERY | INTERCHANGE
+    expect(CL_FEES_MASK).to.equal(0b0011); // CREDIT_ENHANCEMENT_FEE | RECOVERY (Lending Co.)
     expect(await assurancePool.payerTags(await safe.getAddress())).to.equal(BigInt(BOARD_ALLOCATION_MASK));
-    expect(BOARD_ALLOCATION_MASK).to.equal(0b1000); // BOARD_ALLOCATION
+    expect(BOARD_ALLOCATION_MASK).to.equal(0b1100); // INTERCHANGE | BOARD_ALLOCATION (the co-op treasury)
     expect(await assurancePool.drawAddress()).to.equal(ethers.getAddress(clOperating));
     expect(await assurancePool.lossReserveAddress()).to.equal(ethers.getAddress(clLossReserve));
     expect(await assurancePool.assuranceDisbursementAddress()).to.equal(ethers.getAddress(disbursement));
@@ -368,7 +381,8 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(step(p, "D4-operator").status).to.equal("ready");
     await send(step(p, "D4-operator"));
     p = await plan();
-    expect(p.steps.every((x) => x.status === "done")).to.equal(true);
+    // Everything but the payout top-ups, which wait for their inputs (the last test walks them).
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(PT_STEPS);
     // Nothing left for a Safe to sign: no batch is written.
     expect(writeSigningPlan(p, DIR).batches).to.deep.equal([]);
     expect(fs.readdirSync(path.join(DIR, "safe-batches")).filter((f) => f.startsWith("signing-"))).to.deep.equal([]);
@@ -414,5 +428,143 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(await failure(buildSigningPlan({ network: "base-sepolia", recordsDir: DIR, env, valuationSigners })))
       .to.contain("Refusing: base-sepolia must be chain 84532, and this node answers as chain 31337");
     expect(await failure(buildSigningPlan({ network: "base-sepolia-fork", recordsDir: DIR, env, valuationSigners }))).to.contain("must be chain 84532");
+  });
+
+  /*
+   * Payout top-ups (decision 51) on the real code: Safe's AllowanceModule v0.1.1 and a Safe v1.5.0 (singleton and
+   * proxy), their runtime bytecode read from Base Sepolia (test/deploy/fixtures), not a mock. CL Operating is a real
+   * Safe proxy, set up with the Clear Lending Safe as its only owner, as on Base Sepolia.
+   */
+  it("payout top-ups: waits on empty inputs, then the setup and one top-up run on the real AllowanceModule and Safe", async function () {
+    const fx = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "safe-allowance-module.base-sepolia.json"), "utf8")).contracts;
+    const setCode = (at: string, code: string) => ethers.provider.send("hardhat_setCode", [at, code]);
+    await setCode(CANONICAL_ALLOWANCE_MODULE, fx.AllowanceModule.code);
+    const singleton = fx.SafeSingleton.address;
+    await setCode(singleton, fx.SafeSingleton.code);
+    const clOp = ethers.Wallet.createRandom().address;
+    await setCode(clOp, fx.SafeProxy.code);
+    await ethers.provider.send("hardhat_setStorageAt", [clOp, "0x0", ethers.zeroPadValue(singleton, 32)]);
+    const owner = await lendingSafe.getAddress();
+    const safe = new ethers.Contract(clOp, [...SAFE_MODULE_ABI, "function setup(address[],uint256,address,bytes,address,address,uint256,address)"], s.deployer);
+    await (await safe.setup([owner], 1, ethers.ZeroAddress, "0x", ethers.ZeroAddress, ethers.ZeroAddress, 0, ethers.ZeroAddress)).wait();
+    expect(await safe.VERSION()).to.equal("1.5.0");
+    expect(await safe.getOwners()).to.deep.equal([owner]);
+    const module = new ethers.Contract(CANONICAL_ALLOWANCE_MODULE, ALLOWANCE_MODULE_ABI, ethers.provider);
+    expect([await module.NAME(), await module.VERSION()]).to.deep.equal(["Allowance Module", "0.1.1"]);
+
+    // Deploy 22's fresh PayoutPool, the deployer its admin.
+    const payoutPool = await upgrades.deployProxy(await ethers.getContractFactory("PayoutPool"),
+      [s.deployer.address, random(), await usdcToken.getAddress(), random(), s.treasury.address], { initializer: "initialize", kind: "uups" });
+    record("PayoutPool", await payoutPool.getAddress());
+    const wallet = ethers.Wallet.createRandom().address;
+    const base = { ...env, CLEAR_LENDING_ACCOUNT: clOp };
+
+    // No top-up inputs yet: the steps wait, the plan is not refused, and CL Operating may already enable the module.
+    let p = await buildSigningPlan({ network: "hardhat", env: base, valuationSigners });
+    expect(step(p, "TU-funder").reason).to.contain("Waiting for input: PAYOUT_TOPUP_WALLET");
+    expect(step(p, "TU-safe-delegate").status).to.equal("waiting");
+    expect(step(p, "TU-safe-allowance").reason).to.contain("PAYOUT_TOPUP_WALLET");
+    expect(step(p, "TU-safe-module").status).to.equal("ready");
+    // And the preflight only warns.
+    const pre = await checkPayoutTopUpSetup(base, ethers.provider, { payoutPool: await payoutPool.getAddress() });
+    expect(pre.map((r) => r.status)).to.deep.equal(["WARN"]);
+
+    const inputs = {
+      ...base, PAYOUT_TOPUP_WALLET: wallet, PAYOUT_TOPUP_CAP_USDC: "5000", PAYOUT_TOPUP_RESET_MINUTES: "10080",
+      PAYOUT_TOPUP_RESET_BASE_MINUTES: String(Math.floor((await ethers.provider.getBlock("latest"))!.timestamp / 60) - 60),
+    };
+    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners });
+    expect(PT_STEPS.map((id) => step(p, id).status)).to.deep.equal(["ready", "ready", "ready", "waiting"]);
+    expect(step(p, "TU-safe-allowance").reason).to.equal("Waits for TU-safe-delegate first.");
+    expect(step(p, "TU-funder").stage).to.equal("Payout top-ups");
+    expect(step(p, "TU-funder").title).to.contain("before I2");
+    expect(step(p, "TU-funder").signer).to.equal(s.deployer.address);
+    expect(step(p, "TU-funder").data).to.equal(payoutPool.interface.encodeFunctionData("grantRole", [ethers.id("FUNDER_ROLE"), wallet]));
+    for (const id of ["TU-safe-module", "TU-safe-delegate", "TU-safe-allowance"]) {
+      expect(step(p, id).kind).to.equal("safe");
+      expect(step(p, id).signer).to.equal(clOp);
+    }
+    expect(step(p, "TU-safe-module").to).to.equal(clOp);
+    expect(step(p, "TU-safe-allowance").data).to.equal(module.interface.encodeFunctionData("setAllowance",
+      [wallet, await usdcToken.getAddress(), 5000n * 10n ** 6n, 10080, Number(inputs.PAYOUT_TOPUP_RESET_BASE_MINUTES)]));
+    expect(step(p, "TU-safe-allowance").title).to.contain("$5,000.00 of USDC every 7 days");
+
+    // The one batch CL Operating's owner signs: all three calls, in order.
+    const w = writeSigningPlan(p, DIR);
+    const combined = w.batches.find((b) => b.endsWith("signing-TU-cl-operating-setup.json"))!;
+    const batch = JSON.parse(fs.readFileSync(combined, "utf8"));
+    expect(batch.transactions.map((t: any) => t.to)).to.deep.equal([clOp, CANONICAL_ALLOWANCE_MODULE, CANONICAL_ALLOWANCE_MODULE]);
+    expect(batch.transactions.map((t: any) => t.data)).to.deep.equal(["TU-safe-module", "TU-safe-delegate", "TU-safe-allowance"].map((id) => step(p, id).data));
+    expect(p.notes.join("\n")).to.contain("signing-TU-cl-operating-setup.json");
+
+    // The credit handover (I2) before the grant: the deployer no longer can, and the step says how it goes now.
+    const creditTimelock = ethers.Wallet.createRandom().address;
+    await (await payoutPool.grantRole(ethers.ZeroHash, creditTimelock)).wait();
+    await (await payoutPool.renounceRole(ethers.ZeroHash, s.deployer.address)).wait();
+    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners });
+    expect(step(p, "TU-funder").reason).to.contain("credit handover, I2");
+    // Undo it for the rest of this test (the timelock gives the admin back).
+    await ethers.provider.send("hardhat_impersonateAccount", [creditTimelock]);
+    await ethers.provider.send("hardhat_setBalance", [creditTimelock, "0x" + ethers.parseEther("1").toString(16)]);
+    await (await payoutPool.connect(await ethers.getSigner(creditTimelock)).grantRole(ethers.ZeroHash, s.deployer.address)).wait();
+    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners });
+
+    // The deployer grants FUNDER_ROLE; CL Operating sends the batch's calls in order (as its Safe transaction would).
+    await send(step(p, "TU-funder"));
+    for (const t of batch.transactions) await send({ ...step(p, "TU-safe-module"), to: t.to, data: t.data });
+    p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners });
+    for (const id of PT_STEPS) expect(step(p, id).status, id).to.equal("done");
+    expect(step(p, "TU-safe-allowance").reason).to.contain("$5,000.00 every 7 days");
+    expect(p.steps.every((x) => x.status === "done")).to.equal(true);
+    expect(writeSigningPlan(p, DIR).batches).to.deep.equal([]);
+
+    // The preflight: every line passes; a wallet with another PayoutPool role fails.
+    const ok = await checkPayoutTopUpSetup(inputs, ethers.provider, { payoutPool: await payoutPool.getAddress() });
+    expect(ok.filter((r) => r.status !== "PASS")).to.deep.equal([]);
+    expect(ok.length).to.be.greaterThan(4);
+    const all = await checkRolloutInputs(inputs, ethers.provider, { payoutPool: await payoutPool.getAddress() });
+    expect(all.map((r) => r.what)).to.include.members(ok.map((r) => r.what));
+
+    // A top-up, exactly as the job sends it: the delegate pulls with an empty signature, approves, funds.
+    const usdc = new ethers.Contract(await usdcToken.getAddress(), ERC20_ABI, ethers.provider);
+    await (await usdcToken.mint(clOp, 20_000n * 10n ** 6n)).wait();
+    const addresses = { payoutPool: await payoutPool.getAddress(), safe: clOp, module: CANONICAL_ALLOWANCE_MODULE, usdc: await usdc.getAddress(), wallet };
+    const ifaces: Record<string, ethers.Interface> = { executeAllowanceTransfer: module.interface, approve: usdc.interface, fund: new ethers.Interface(PAYOUT_POOL_TOPUP_ABI) };
+    await ethers.provider.send("hardhat_impersonateAccount", [wallet]);
+    await ethers.provider.send("hardhat_setBalance", [wallet, "0x" + ethers.parseEther("1").toString(16)]);
+    const bot = await ethers.getSigner(wallet);
+    const amount = 1_300n * 10n ** 6n;
+    const nonceBefore = Number((await module.getTokenAllowance(clOp, wallet, addresses.usdc))[4]);
+    for (const c of topUpCalls(addresses, amount)) {
+      const tx = { to: c.to, data: ifaces[c.fn].encodeFunctionData(c.fn, c.args) };
+      assertTopUpCall(addresses, tx, amount);
+      await ethers.provider.call({ from: wallet, ...tx }); // the job's dry run
+      const rc = await (await bot.sendTransaction(tx)).wait();
+      expect(rc!.status).to.equal(1);
+    }
+    expect(await usdc.balanceOf(clOp)).to.equal(20_000n * 10n ** 6n - amount);
+    expect(await usdc.balanceOf(wallet)).to.equal(0n);
+    expect(await usdc.allowance(wallet, addresses.payoutPool)).to.equal(0n);
+    expect(await payoutPool.held()).to.equal(amount);
+    expect(await payoutPool.capitalOf(wallet)).to.equal(amount);
+    const al = await module.getTokenAllowance(clOp, wallet, addresses.usdc);
+    expect([al[0], al[1], al[2], Number(al[4])]).to.deep.equal([5000n * 10n ** 6n, amount, 10080n, nonceBefore + 1]);
+
+    // The cap holds: past what is left this period the module refuses, whoever asks.
+    const over = ifaces.executeAllowanceTransfer.encodeFunctionData("executeAllowanceTransfer", [clOp, addresses.usdc, wallet, 5000n * 10n ** 6n - amount + 1n, ethers.ZeroAddress, 0, wallet, "0x"]);
+    expect(await failure(bot.sendTransaction({ to: CANONICAL_ALLOWANCE_MODULE, data: over }))).to.contain("newSpent <= allowance.amount");
+    // Only the delegate itself: another account sending the same call with an empty signature is refused.
+    const left = ifaces.executeAllowanceTransfer.encodeFunctionData("executeAllowanceTransfer", [clOp, addresses.usdc, wallet, 1n, ethers.ZeroAddress, 0, wallet, "0x"]);
+    expect(await failure(s.o1.sendTransaction({ to: CANONICAL_ALLOWANCE_MODULE, data: left }))).to.contain("expectedDelegate == signer");
+    // The period resets: a week on, the whole cap is there again.
+    await ethers.provider.send("evm_increaseTime", [7 * DAY + 60]);
+    await ethers.provider.send("evm_mine", []);
+    expect((await module.getTokenAllowance(clOp, wallet, addresses.usdc))[1]).to.equal(0n);
+
+    // A wallet holding any other PayoutPool role fails the preflight.
+    await (await payoutPool.grantRole(ethers.id("OPERATOR_ROLE"), wallet)).wait();
+    const bad = await checkPayoutTopUpSetup(inputs, ethers.provider, { payoutPool: await payoutPool.getAddress() });
+    expect(bad.filter((r) => r.status === "FAIL").map((r) => r.what).join("\n")).to.contain("OPERATOR_ROLE");
+    await (await payoutPool.revokeRole(ethers.id("OPERATOR_ROLE"), wallet)).wait();
   });
 });

@@ -81,9 +81,11 @@ export async function listMoneyPaths(registry: any, addresses: Record<string, st
 export const SOURCE_TAG = { CREDIT_ENHANCEMENT_FEE: 0, RECOVERY: 1, INTERCHANGE: 2, BOARD_ALLOCATION: 3 } as const;
 export const sourceTagMask = (...tags: number[]) => tags.reduce((m, t) => m | (1 << t), 0);
 /** Owner decision (Nov 16, 2026): Clear Lending's fees wallet pays the credit enhancement fee, recoveries and interchange. */
-export const CL_FEES_MASK = sourceTagMask(SOURCE_TAG.CREDIT_ENHANCEMENT_FEE, SOURCE_TAG.RECOVERY, SOURCE_TAG.INTERCHANGE);
+// docs/protocol/reserve.md "Money in": Lending Co. pays the credit enhancement fee and recoveries; the co-op
+// treasury pays interchange (its 25% policy, IV-01 §8.3) and board allocations.
+export const CL_FEES_MASK = sourceTagMask(SOURCE_TAG.CREDIT_ENHANCEMENT_FEE, SOURCE_TAG.RECOVERY);
 /** Owner decision (Nov 16, 2026): the co-op treasury (the Clear Treasury Safe) pays board allocations. */
-export const BOARD_ALLOCATION_MASK = sourceTagMask(SOURCE_TAG.BOARD_ALLOCATION);
+export const BOARD_ALLOCATION_MASK = sourceTagMask(SOURCE_TAG.INTERCHANGE, SOURCE_TAG.BOARD_ALLOCATION);
 
 /** What the governed setup names. Every address is required; none falls back to another. */
 export interface AssuranceSetup {
