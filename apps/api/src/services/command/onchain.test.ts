@@ -429,7 +429,16 @@ describe('the co-op’s balance, live', () => {
 });
 
 describe('the $10 offers’ line, live', () => {
-  test('reads what the co-op owes on the deployed OffersIssuer, and Money sends it', async () => {
+  // The pre-audit OffersIssuer is retired and none was deployed with the fresh credit stack (decision 47),
+  // so the chain record has no OffersIssuer: the line reads as not there, never as the retired one's.
+  test('reads what the co-op owes on the deployed OffersIssuer, and Money sends it; nothing while none is deployed', async () => {
+    if (!C.OffersIssuer) {
+      expect(offersAddress()).toBeNull();
+      expect(await offersLive(reader)).toBeNull();
+      const m: any = await moneySection(db, read());
+      expect(m.OFFERS ?? null).toBeNull();
+      return;
+    }
     expect(offersAddress()).toBe(C.OffersIssuer.address.toLowerCase());
     expect(await offersLive(reader)).toEqual({ owed: 40, cap: 1000, unspent: 20, granted: 50, expired: 10, settled: 0 });
     const m: any = await moneySection(db, read());

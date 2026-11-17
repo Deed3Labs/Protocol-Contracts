@@ -91,7 +91,7 @@ describe('Money with only the structure', () => {
                 ? 6n
                 : c.contract !== 'BondVault'
                   ? 0n
-                  : ({ held: 290_380_000n, requiredReserve: 90_000_000n, deployableExcess: 200_380_000n, minReserveBps: 3000n, reserveWindow: 90n * 86400n } as Record<string, bigint>)[c.fn] ?? 0n,
+                  : ({ held: 290_380_000n, requiredReserve: 90_000_000n, deployableExcess: 200_380_000n, minReserveBps: 3000n, RESERVE_WINDOW: 90n * 86400n } as Record<string, bigint>)[c.fn] ?? 0n,
           ),
       };
       const m: any = await moneySection(db, { level: TOTALS, reveal: false, now: new Date(), chain });

@@ -24,20 +24,19 @@ function withDeedTrust(name: string, abi: AbiEntry[]): AbiEntry[] {
   return [...abi, ...trust.filter((e) => !seen.has(abiKey(e)))];
 }
 /*
- * The joined ABIs (DEPLOY-RUNBOOK 4.2). A contract that serves part of its interface from modules
- * through its fallback is called at its own address with the module's functions: RevolvingIssuer's
- * `RevolvingIssuerWorkouts` (line closing, `cardAuthorizationOf`, `cflPrincipalOf`, `missedInRowOf`)
- * and its other modules, TermIssuer's, the Liquidator's enforcement module, the Yield Pool's ledger and
- * valuation modules and the bond collection's issue and pledge modules. A record saved without them
- * gets them here from the compiled modules, so Command's reads and Safe builders find them. A
+ * The joined ABIs (DEPLOY-RUNBOOK 4.2). A contract whose fallback forwards to a module is called at
+ * its own address with that module's functions: RevolvingIssuer's `RevolvingIssuerWorkouts` (line
+ * closing, workouts, `cardAuthorizationOf`, `cflPrincipalOf`, `missedInRowOf`), the Yield Pool's
+ * ledger (`YieldPoolLedger`) and the bond collection's pledge module (`BurnerBondPledges`). A record
+ * saved without them gets them here from the compiled modules, so Command's reads and Safe builders
+ * find them. Only a fallback's target is joined: a module reached through stubs (TermIssuer's, the
+ * Liquidator's) is already in its contract's ABI, and its other functions are not reachable. A
  * module's own `extensionKind` is left out: it describes the module, not the contract.
  */
 const MODULES: Record<string, string[]> = {
-  RevolvingIssuer: ['RevolvingIssuerExtension', 'RevolvingIssuerCycles', 'RevolvingIssuerTerms', 'RevolvingIssuerWorkouts'],
-  TermIssuer: ['TermIssuerExtension', 'TermIssuerOrigination'],
-  Liquidator: ['LiquidatorEnforcement'],
-  LendingPool: ['YieldPoolLedger', 'YieldPoolValuation'],
-  BurnerBond: ['BurnerBondIssue', 'BurnerBondPledges'],
+  RevolvingIssuer: ['RevolvingIssuerWorkouts'],
+  LendingPool: ['YieldPoolLedger'],
+  BurnerBond: ['BurnerBondPledges'],
 };
 const moduleArtifact = (name: string) => new URL(`../../../artifacts/contracts/peripherals/${name}.sol/${name}.json`, import.meta.url);
 function withModules(name: string, abi: AbiEntry[]): AbiEntry[] {

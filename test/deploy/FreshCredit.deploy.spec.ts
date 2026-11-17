@@ -174,10 +174,13 @@ describe("decision 47: the fresh credit stack and its deploy wiring", function (
       expect(r.owed[0]).to.contain("still owes 5");
     });
 
-    // The Base Sepolia PayoutPool predates setYieldPool: its record's ABI has setLenders(yieldPool, reserve).
+    // The pre-audit Base Sepolia PayoutPool predates setYieldPool: its record's ABI has setLenders(yieldPool, reserve).
+    // Since the day-0 deploy that record is PayoutPoolPreAudit (deploy/retire_credit_stack.ts), and
+    // PayoutPool names the fresh one.
     it("switches the pre-audit PayoutPool's yield leg off with setLenders(0, its reserve)", async function () {
       const [admin] = await ethers.getSigners();
-      const record = JSON.parse(fs.readFileSync("deployments/base-sepolia/PayoutPool.json", "utf8"));
+      const retired = "deployments/base-sepolia/PayoutPoolPreAudit.json";
+      const record = JSON.parse(fs.readFileSync(fs.existsSync(retired) ? retired : "deployments/base-sepolia/PayoutPool.json", "utf8"));
       const reserve = random();
       const calls: unknown[][] = [];
       const old: any = {

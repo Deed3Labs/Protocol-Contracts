@@ -93,9 +93,12 @@ beforeAll(async () => {
   // Phase 2c: what the Credit Backstop paid is a released draw to Lending Co.'s loss reserve, not a reimbursement
   await put('AssurancePool', 'DrawReleased', { drawId: '0', amount: String(usdc(80)), to: B, releaser: A }, Date.parse('2026-09-30T10:00:00Z'));
   // the $10 offers' own line, and an unspent offer of A's taken back: neither is members' credit
-  const offers = String(C.OffersIssuer.address);
-  await put('ClearCredit', 'CreditLineCreated', { member: offers, creditLimit: String(usdc(1000)), balance: '0' }, NOW - 30 * DAY);
-  await put('ClearCredit', 'PurchaseReversed', { member: offers, merchant: A, purchase: String(usdc(6)), payout: String(usdc(6)), discount: '0' }, NOW - 2 * DAY);
+  // (only while an OffersIssuer is deployed: none is on the fresh Base Sepolia stack, decision 47)
+  if (C.OffersIssuer) {
+    const offers = String(C.OffersIssuer.address);
+    await put('ClearCredit', 'CreditLineCreated', { member: offers, creditLimit: String(usdc(1000)), balance: '0' }, NOW - 30 * DAY);
+    await put('ClearCredit', 'PurchaseReversed', { member: offers, merchant: A, purchase: String(usdc(6)), payout: String(usdc(6)), discount: '0' }, NOW - 2 * DAY);
+  }
 });
 
 describe('what the PayoutPool owes shops', () => {
