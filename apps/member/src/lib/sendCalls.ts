@@ -5,6 +5,8 @@ import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings, recordGaslessPool, recordGaslessBond } from '@/utils/apiClient';
 import { requireStepUp, walletEnforcesMfa } from '@/lib/stepUp';
 import { pledgeWhatIsHeld } from '@/lib/pledgeSigning';
+import { autoClearAuthHash } from '@/lib/autoClearSigning';
+import { ZERO_AUTH_HASH } from '@clear/domain';
 
 /*
  * After savings, the pool or a bond lands: pledge it so it backs the line. The member signs each
@@ -590,9 +592,10 @@ export async function scRepayFromSavings(args: { smartWalletClient?: unknown; ow
 
 const AUTO_REPAY_ABI = [
   { type: 'function', name: 'setAutoRepay', stateMutability: 'nonpayable', inputs: [{ name: 'enabled', type: 'bool' }], outputs: [] },
-  // Phase 2b (12.2): on/off and scope (0 = income-backed and Boost only, 1 = everything).
+  // Phase 2b (12.2): on/off and level (0 = income-backed and Boost only, 1 = everything). Phase 2e:
+  // turning it on records `authHash`, the hash of the authorization the member approved.
   { type: 'function', name: 'setAutoClear', stateMutability: 'nonpayable',
-    inputs: [{ name: 'on', type: 'bool' }, { name: 'scope', type: 'uint8' }], outputs: [] },
+    inputs: [{ name: 'on', type: 'bool' }, { name: 'level', type: 'uint8' }, { name: 'authHash', type: 'bytes32' }], outputs: [] },
   // Phase 2b (12.7): how much card spending may draw against Savings; 0 revokes it.
   { type: 'function', name: 'setSavingsDrawAllowance', stateMutability: 'nonpayable',
     inputs: [{ name: 'amount', type: 'uint256' }], outputs: [] },
@@ -619,7 +622,14 @@ export async function scSetAutoClear(args: {
   const c = clearContracts(args.chainId);
   if (!c?.stableCredit || !c.revolvingIssuer) throw new Error('Automatic clearing is not available on this network yet.');
   return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
-    { to: c.revolvingIssuer, data: encodeFunctionData({ abi: AUTO_REPAY_ABI, functionName: 'setAutoClear', args: [args.enabled, args.scope] }) },
+    {
+      to: c.revolvingIssuer,
+      data: encodeFunctionData({
+        abi: AUTO_REPAY_ABI,
+        functionName: 'setAutoClear',
+        args: [args.enabled, args.scope, args.enabled ? autoClearAuthHash(args.scope) : ZERO_AUTH_HASH],
+      }),
+    },
     ...(args.enabled
       ? []
       : [{ to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.stableCredit, 0n] }) }]),

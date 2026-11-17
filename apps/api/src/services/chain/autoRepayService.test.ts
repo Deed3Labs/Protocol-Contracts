@@ -19,12 +19,24 @@ describe('a Spendable deposit clears what is owed first, then the rest is theirs
   });
 });
 
+describe('the deposit names its payer (Phase 2e, 12.2)', () => {
+  test('the ACH originator, hashed; none when Lithic sent none, which the chain refuses', async () => {
+    const { payerIdFor } = await import('./autoRepayService');
+    const { ethers } = await import('ethers');
+    expect(payerIdFor({ achCompanyId: '9031036000' })).toBe(ethers.id('ach:9031036000'));
+    expect(payerIdFor({ achCompanyId: '  ' })).toBeNull();
+    expect(payerIdFor(null)).toBeNull();
+    expect(service).toContain("'function repayForMember(bytes32 ref, address member, uint256 amount, bytes32 payer)'");
+    expect(readFileSync(new URL('../../routes/lithicWebhook.ts', import.meta.url), 'utf8')).toContain('achCompanyId: achCompanyIdOf(payload)');
+  });
+});
+
 describe('repaid on chain under the member’s mandate, bounded by the chain', () => {
   // How a clearing behaves (hold, chain, transfer, retries) is tested against stand-ins in
   // deposits/autoClearRuns.test.ts. These check the wiring to the real chain.
   test('Phase 2b: capped at what is owed in the member’s scope, never at their USDC or approval', () => {
     expect(service).toContain('return Number((await owedInScope(issuer, run.wallet, scope)) / CENTS);');
-    expect(service).toContain('await issuer.repayForMember(run.ref, run.wallet, BigInt(cents) * CENTS)');
+    expect(service).toContain('await issuer.repayForMember(run.ref, run.wallet, BigInt(cents) * CENTS, payer)');
     // Nothing reads the member's balance or allowance any more: the settler delivers the cash.
     expect(service).not.toContain('usdc.balanceOf(wallet)');
     expect(service).not.toContain('usdc.allowance(wallet');

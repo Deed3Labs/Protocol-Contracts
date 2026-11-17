@@ -1,6 +1,9 @@
 import { ethers } from 'ethers';
 import {
+  autoClearAuthorizationLines,
+  autoClearAuthorizationText,
   autoClearTypedData,
+  ZERO_AUTH_HASH,
   savingsDrawTypedData,
   SWITCH_SIGNATURE_TTL_SECONDS,
   type AutoClearTypedData,
@@ -14,7 +17,8 @@ import { setAutoRepayChoice } from './autoRepayService.js';
 /*
  * The member's own switches on the revolving line, by signature (Phase 2b, 12.2 and 12.7).
  *
- * `setAutoClearWithSignature(member, on, scope, deadline, sig)` and
+ * `setAutoClearWithSignature(member, on, level, authHash, deadline, sig)` (Phase 2e: `authHash` is the
+ * hash of the authorization the member approved, needed to turn it on) and
  * `setSavingsDrawAllowanceWithSignature(member, amount, deadline, sig)` take the member's EIP-712
  * signature (`@clear/domain` revolvingSwitches) at `memberNonces(member)`. The contract checks the
  * signature; any key may submit, and no role is needed, only gas. The API submits with the card
@@ -26,7 +30,7 @@ import { setAutoRepayChoice } from './autoRepayService.js';
 
 const ISSUER_ABI = [
   'function memberNonces(address) view returns (uint256)',
-  'function setAutoClearWithSignature(address member, bool on, uint8 scope, uint256 deadline, bytes signature)',
+  'function setAutoClearWithSignature(address member, bool on, uint8 level, bytes32 authHash, uint256 deadline, bytes signature)',
   'function setSavingsDrawAllowanceWithSignature(address member, uint256 amount, uint256 deadline, bytes signature)',
 ];
 
@@ -45,7 +49,14 @@ function issuerAddress(): string | null {
   return getContractAddress(chainId(), 'RevolvingIssuer');
 }
 
-export type PrepareSwitch<T> = { ok: true; typedData: T } | { ok: false; reason: string };
+/** `authorization`: for turning auto-clear on, the lines whose hash is signed as `authHash`. */
+export type PrepareSwitch<T> = { ok: true; typedData: T; authorization?: string[] } | { ok: false; reason: string };
+
+/** The `authHash` for a level: keccak256 of its authorization text when on, zero when off. */
+export function autoClearAuthHash(on: boolean, level: number): string {
+  if (!on) return ZERO_AUTH_HASH;
+  return ethers.keccak256(ethers.toUtf8Bytes(autoClearAuthorizationText(autoClearAuthorizationLines(level))));
+}
 export type SubmitSwitch = { ok: true; txHash: string } | { ok: false; reason: string };
 
 async function nonceOf(wallet: string): Promise<bigint | null> {
@@ -68,9 +79,11 @@ export async function prepareAutoClear(wallet: string, on: boolean, scope: numbe
         member: ethers.getAddress(wallet),
         on,
         scope,
+        authHash: autoClearAuthHash(on, scope),
         nonce,
         deadline: Math.floor(Date.now() / 1000) + SWITCH_SIGNATURE_TTL_SECONDS,
       }),
+      ...(on ? { authorization: autoClearAuthorizationLines(scope) } : {}),
     };
   } catch (error) {
     console.error('[auto-clear] prepare failed for', wallet, error instanceof Error ? error.message : error);
@@ -133,7 +146,9 @@ export async function submitAutoClear(
   const refused = checkSubmission(input.deadline, input.signature);
   if (refused) return { ok: false, reason: refused };
   const result = await submit(
-    (issuer) => issuer.setAutoClearWithSignature(wallet, input.on, input.scope, BigInt(input.deadline), input.signature.trim()),
+    // The hash is rebuilt for the level, never taken from the request: the member signed it.
+    (issuer) =>
+      issuer.setAutoClearWithSignature(wallet, input.on, input.scope, autoClearAuthHash(input.on, input.scope), BigInt(input.deadline), input.signature.trim()),
     'auto-clear',
     wallet,
   );
