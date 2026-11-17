@@ -21,7 +21,7 @@ import type {
   RefundSavingsIntentResponse,
 } from '@/types/savings';
 import { getAccessToken } from '@privy-io/react-auth';
-import type { AutoClearTypedData, PlanTerms, PlanTermsTypedData, ResplitTypedData } from '@clear/domain';
+import type { AutoClearTypedData, CollateralTypedData, PlanTerms, PlanTermsTypedData, ResplitTypedData, payoutClaimTypedData } from '@clear/domain';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
 import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
 import type { AccountDetailsSource, FullNumberRead, MaskedAccountDetails, MaskedRead } from '@/lib/accountDetails';
@@ -1289,12 +1289,13 @@ export async function resendClaimOtp(
 
 export async function claimPayoutDebit(
   claimSessionToken: string,
-  options?: { bridgeFullName?: string; bridgeEmail?: string }
+  options?: { bridgeFullName?: string; bridgeEmail?: string; payoutSignature?: string }
 ): Promise<ClaimPayoutResponse | null> {
   const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/debit', {
     method: 'POST',
     body: JSON.stringify({
       claimSessionToken,
+      ...(options?.payoutSignature ? { payoutSignature: options.payoutSignature } : {}),
       ...(options?.bridgeFullName ? { bridgeFullName: options.bridgeFullName } : {}),
       ...(options?.bridgeEmail ? { bridgeEmail: options.bridgeEmail } : {}),
     }),
@@ -1309,12 +1310,13 @@ export async function claimPayoutDebit(
 
 export async function claimPayoutBank(
   claimSessionToken: string,
-  options?: { bridgeFullName?: string; bridgeEmail?: string }
+  options?: { bridgeFullName?: string; bridgeEmail?: string; payoutSignature?: string }
 ): Promise<ClaimPayoutResponse | null> {
   const response = await apiRequest<ClaimPayoutResponse>('/api/send/claim/payout/bank', {
     method: 'POST',
     body: JSON.stringify({
       claimSessionToken,
+      ...(options?.payoutSignature ? { payoutSignature: options.payoutSignature } : {}),
       ...(options?.bridgeFullName ? { bridgeFullName: options.bridgeFullName } : {}),
       ...(options?.bridgeEmail ? { bridgeEmail: options.bridgeEmail } : {}),
     }),
@@ -3107,6 +3109,52 @@ export async function submitResplit(
     body: JSON.stringify(input),
   });
   return r.error || !r.data ? { ok: false, error: r.error || 'That did not go through. The split is unchanged.' } : { ok: true };
+}
+
+/** The kinds a member pledges (Phase 4b, L-I). */
+export type PledgeKindName = 'SAVINGS' | 'POOL_SHARE' | 'BOND';
+
+/**
+ * What the member is asked to sign to pledge what they hold and have not pledged: `Pledge` (an
+ * amount) or `PledgeItem` (a bond), read by the server from the chain.
+ */
+export async function preparePledge(
+  kind: PledgeKindName,
+): Promise<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData; maturityInstruction?: string[] } | { error: string }> {
+  // `maturityInstruction`: for a bond, the lines of the Maturity Instruction whose hash is signed (MB-05 5.6).
+  const r = await apiRequest<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData; maturityInstruction?: string[] }>('/api/savings/pledge/prepare', {
+    method: 'POST',
+    body: JSON.stringify({ kind }),
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not get this pledge ready. Nothing was pledged.' };
+  return r.data;
+}
+
+/** The member's signed pledge, for the server to submit. */
+export async function submitPledge(input: {
+  kind: PledgeKindName;
+  amount?: string;
+  itemId?: string;
+  deadline: number;
+  signature: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>('/api/savings/pledge/submit', { method: 'POST', body: JSON.stringify(input) });
+  return r.error || !r.data ? { ok: false, error: r.error || 'That did not go through. Nothing was pledged.' } : { ok: true };
+}
+
+/**
+ * What the claim link signs to pay a transfer out by card or bank (Phase 2d, L-D):
+ * `PayoutClaim(transferId, payoutTreasury, payoutRefHash)` in the escrow's domain.
+ */
+export async function prepareClaimPayout(
+  claimSessionToken: string,
+  method: 'DEBIT' | 'BANK',
+): Promise<{ typedData: ReturnType<typeof payoutClaimTypedData> } | { error: string }> {
+  const r = await apiRequest<{ typedData: ReturnType<typeof payoutClaimTypedData> }>('/api/send/claim/payout/prepare', {
+    method: 'POST',
+    body: JSON.stringify({ claimSessionToken, method }),
+  });
+  return r.error || !r.data ? { error: r.error || 'We could not get this payout ready.' } : r.data;
 }
 
 /** Take a dispute back before it is decided. */

@@ -5,7 +5,6 @@ import {
   walletsWithCardDebtOnChain,
 } from '../services/chain/cardSettlementService.js';
 import { enforceDisputes } from '../services/disputes/disputeEnforcement.js';
-import { settlePoolMovements } from '../services/chain/poolFunding.js';
 import { sweepAutoRepay } from '../services/chain/autoRepayService.js';
 import { sweepTermCollections } from '../services/chain/termCollection.js';
 import { sweepTermLifecycle } from '../services/chain/termLifecycle.js';
@@ -84,13 +83,9 @@ export async function tick(): Promise<number> {
       overflowLogged = overflow;
     }
 
-    // Last: the pool's side of whatever the passes above drew or repaid on pool-funded tiers.
-    const pooled = await settlePoolMovements().catch((error) => {
-      console.error('[pool-funding] pass failed:', error);
-      return { settled: 0, waiting: [] };
-    });
-    for (const w of pooled.waiting) console.warn(`[pool-funding] waiting: ${w.direction} ${w.amountUnits} — ${w.reason}`);
-    return acted.length + cleared + disputes + pooled.settled;
+    // Nothing here borrows from or repays the Yield Pool (decision 17): Clear Lending funds card
+    // settlement from its recorded Deployments, and its treasury makes the Returns.
+    return acted.length + cleared + disputes;
   } catch (error) {
     console.error('[card-settlement] sweep failed:', error);
     return 0;

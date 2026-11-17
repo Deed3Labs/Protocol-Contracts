@@ -100,9 +100,35 @@ export {
   claimKeySeed,
   claimTypedData,
   claimWindowOpen,
+  PAYOUT_CLAIM_TYPE_STRING,
+  PAYOUT_CLAIM_TYPES,
+  PAYOUT_REF_PREFIX,
+  payoutClaimTypedData,
+  payoutRefSeed,
   TRANSFER_TERMS_TYPES,
+  type ClaimPayoutMethod,
   type ClaimTransferTerms,
 } from './claimKey';
+
+export {
+  COLLATERAL_REGISTRY_DOMAIN_NAME,
+  COLLATERAL_REGISTRY_DOMAIN_VERSION,
+  COLLATERAL_SIGNED_TYPES,
+  collateralMessage,
+  collateralMismatch,
+  collateralRegistryDomain,
+  collateralTypedData,
+  collateralTypeString,
+  MATURITY_INSTRUCTION_VERSION,
+  maturityInstructionLines,
+  maturityInstructionText,
+  PLEDGE_SIGNATURE_TTL_SECONDS,
+  pledgeTypedData,
+  type CollateralDomain,
+  type CollateralPrimaryType,
+  type CollateralShown,
+  type CollateralTypedData,
+} from './pledge';
 
 export { formatCalendarDate, parseCalendarDate } from './dates';
 
