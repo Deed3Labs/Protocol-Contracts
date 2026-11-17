@@ -15,11 +15,11 @@ Everything the owner does or provides for the Base Sepolia rollout, in one place
 **Still to create: two CDP wallets.** Run these in the local session, from `apps/api`. They use the CDP keys already in its `.env`, create the wallet by name (or find it if it already exists), and print its address.
 
 ```bash
-SEND_DEFAULT_CHAIN_ID=84532 SEND_CDP_EVM_ACCOUNT_NAME=cl-fees-base-sepolia npm run send:cdp:account
+SEND_DEFAULT_CHAIN_ID=84532 SEND_CDP_EVM_ACCOUNT_NAME_84532=cl-fees-base-sepolia npm run send:cdp:account
 ```
 
 ```bash
-SEND_DEFAULT_CHAIN_ID=84532 SEND_CDP_EVM_ACCOUNT_NAME=assurance-disbursement-base-sepolia npm run send:cdp:account
+SEND_DEFAULT_CHAIN_ID=84532 SEND_CDP_EVM_ACCOUNT_NAME_84532=assurance-disbursement-base-sepolia npm run send:cdp:account
 ```
 
 The first goes in `ASSURANCE_CL_FEES_PAYER` (pays Clear Lending's credit enhancement fee, recoveries and interchange into the pool), the second in `ASSURANCE_DISBURSEMENT` (receives each approved member-assistance grant, then pays it out), both in `deploy/config/base-sepolia.rollout.env`. The signing plan refuses to run while either is empty.
