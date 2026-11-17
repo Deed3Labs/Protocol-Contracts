@@ -6,6 +6,9 @@ import {
   collateralMismatch,
   collateralTypedData,
   collateralTypeString,
+  maturityInstructionLines,
+  maturityInstructionText,
+  MATURITY_INSTRUCTION_VERSION,
   pledgeTypedData,
 } from './pledge';
 import { PAYOUT_CLAIM_TYPE_STRING, payoutClaimTypedData, payoutRefSeed } from './claimKey';
@@ -13,12 +16,13 @@ import { PAYOUT_CLAIM_TYPE_STRING, payoutClaimTypedData, payoutRefSeed } from '.
 const MEMBER = '0x00000000000000000000000000000000000000a1';
 const REGISTRY = '0x00000000000000000000000000000000000000c5';
 const SAVINGS = '0x534156494e475300000000000000000000000000000000000000000000000000';
+const INSTRUCTION = '0x' + 'ab'.repeat(32);
 const registrySol = new URL('../../../contracts/peripherals/CollateralRegistry.sol', import.meta.url);
 
 describe('a pledge is the contract’s typed data (Phase 4b, L-I)', () => {
   test('Pledge and PledgeItem, field for field', () => {
     expect(collateralTypeString('Pledge')).toBe('Pledge(address member,bytes32 kind,uint256 amount,uint256 nonce,uint256 deadline)');
-    expect(collateralTypeString('PledgeItem')).toBe('PledgeItem(address member,bytes32 kind,uint256 itemId,uint256 nonce,uint256 deadline)');
+    expect(collateralTypeString('PledgeItem')).toBe('PledgeItem(address member,bytes32 kind,uint256 itemId,bytes32 maturityInstruction,uint256 nonce,uint256 deadline)');
   });
 
   test('and still match CollateralRegistry.sol, domain included', () => {
@@ -36,10 +40,10 @@ describe('a pledge is the contract’s typed data (Phase 4b, L-I)', () => {
     expect(amount.primaryType).toBe('Pledge');
     expect(amount.message).toEqual({ member: MEMBER, kind: SAVINGS, amount: '5000000', nonce: '3', deadline: '2000000000' });
     expect(amount.domain).toEqual({ name: 'Clear CollateralRegistry', version: '1', chainId: 84532, verifyingContract: REGISTRY });
-    const item = pledgeTypedData({ chainId: 84532, registry: REGISTRY, member: MEMBER, kind: SAVINGS, itemId: 7n, nonce: 3n, deadline: 2_000_000_000 });
+    const item = pledgeTypedData({ chainId: 84532, registry: REGISTRY, member: MEMBER, kind: SAVINGS, itemId: 7n, maturityInstruction: INSTRUCTION, nonce: 3n, deadline: 2_000_000_000 });
     expect(item.primaryType).toBe('PledgeItem');
     expect(item.message.itemId).toBe('7');
-    expect(collateralMessage(item)).toEqual({ member: MEMBER, kind: SAVINGS, itemId: 7n, nonce: 3n, deadline: 2_000_000_000n });
+    expect(collateralMessage(item)).toEqual({ member: MEMBER, kind: SAVINGS, itemId: 7n, maturityInstruction: INSTRUCTION, nonce: 3n, deadline: 2_000_000_000n });
   });
 
   test('a struct with a field missing is refused before anything is signed', () => {
@@ -71,8 +75,25 @@ describe('what the phone checks before it signs a pledge', () => {
     expect(check({ expected: { ...expected, chainId: 1 } })).toBe('wrong network');
     expect(check({ expected: { ...expected, registry: MEMBER } })).toBe('not the collateral registry');
     expect(check({ nowSeconds: 2_100_000_000 })).toBe('a pledge that has expired');
-    const item = pledgeTypedData({ chainId: 84532, registry: REGISTRY, member: MEMBER, kind: SAVINGS, itemId: 7n, nonce: 3n, deadline: 2_000_000_000 });
-    expect(check({ typedData: item, shown: { member: MEMBER, kind: SAVINGS, itemId: 8n } })).toBe('a different item');
+    const item = pledgeTypedData({ chainId: 84532, registry: REGISTRY, member: MEMBER, kind: SAVINGS, itemId: 7n, maturityInstruction: INSTRUCTION, nonce: 3n, deadline: 2_000_000_000 });
+    expect(check({ typedData: item, shown: { member: MEMBER, kind: SAVINGS, itemId: 8n, maturityInstruction: INSTRUCTION } })).toBe('a different item');
+    expect(check({ typedData: item, shown: { member: MEMBER, kind: SAVINGS, itemId: 7n, maturityInstruction: INSTRUCTION } })).toBeNull();
+    expect(check({ typedData: item, shown: { member: MEMBER, kind: SAVINGS, itemId: 7n, maturityInstruction: '0x' + 'cd'.repeat(32) } })).toBe(
+      'a different maturity instruction',
+    );
+    expect(check({ typedData: item, shown: { member: MEMBER, kind: SAVINGS, itemId: 7n } })).toBe('a different maturity instruction');
+  });
+});
+
+describe('the Maturity Instruction a bond pledge carries (Phase 2e section 9, MB-05 5.6)', () => {
+  test('versioned, names the bond, and never rolls it', () => {
+    const lines = maturityInstructionLines(42n);
+    expect(lines[0]).toBe(MATURITY_INSTRUCTION_VERSION);
+    expect(lines[1]).toContain('BurnerBond #42');
+    expect(lines.join(' ')).toContain('never rolls the bond');
+    expect(maturityInstructionLines('42')).toEqual(lines);
+    expect(maturityInstructionText(lines)).toBe(lines.join('\n'));
+    expect(maturityInstructionText(maturityInstructionLines(43n))).not.toBe(maturityInstructionText(lines));
   });
 });
 

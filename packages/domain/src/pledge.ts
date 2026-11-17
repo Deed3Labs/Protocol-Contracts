@@ -7,15 +7,22 @@
  *
  *   domain  { name: "Clear CollateralRegistry", version: "1", chainId, verifyingContract: registry }
  *   Pledge(address member,bytes32 kind,uint256 amount,uint256 nonce,uint256 deadline)
- *   PledgeItem(address member,bytes32 kind,uint256 itemId,uint256 nonce,uint256 deadline)
+ *   PledgeItem(address member,bytes32 kind,uint256 itemId,bytes32 maturityInstruction,uint256 nonce,uint256 deadline)
  *
  * at `pledgeNonces(member)`, used up by each pledge. Checked against `CollateralRegistry.sol` by the
  * tests.
  *
+ * A bond pledge also carries the hash of the member's Maturity Instruction (Phase 2e, section 9;
+ * MB-05 §5.6): what happens to the bond's maturity payment if it does not roll. The text is built
+ * here (`maturityInstructionLines`), with fixed wording and a version line, so the server and the
+ * phone hash the same bytes: `maturityInstruction = keccak256(utf8(lines.join('\n')))`. The phone
+ * rebuilds the text for the bond it was told, hashes it, and refuses to sign if the typed data
+ * carries another hash. The registry refuses a zero one (`CollateralRegistryNoMaturityInstruction`).
+ *
  * The registry's signed structs are one table (`COLLATERAL_SIGNED_TYPES`), and the typed data,
  * the message for a local hasher and the phone's checks are built from it for any entry. A further
- * signed struct in this domain -- the Earn pledge's Maturity Instruction for bonds (Phase 2e) -- is a
- * new entry there and its own few fields in `CollateralShown`, not a second signing path.
+ * signed struct in this domain is a new entry there and its own few fields in `CollateralShown`, not
+ * a second signing path.
  *
  * No dependencies, like the rest of this package.
  */
@@ -36,6 +43,7 @@ export const COLLATERAL_SIGNED_TYPES = {
     { name: 'member', type: 'address' },
     { name: 'kind', type: 'bytes32' },
     { name: 'itemId', type: 'uint256' },
+    { name: 'maturityInstruction', type: 'bytes32' },
     { name: 'nonce', type: 'uint256' },
     { name: 'deadline', type: 'uint256' },
   ],
@@ -47,6 +55,31 @@ export type CollateralPrimaryType = keyof typeof COLLATERAL_SIGNED_TYPES;
 export function collateralTypeString(primaryType: CollateralPrimaryType): string {
   const fields = COLLATERAL_SIGNED_TYPES[primaryType];
   return `${primaryType}(${fields.map((f) => `${f.type} ${f.name}`).join(',')})`;
+}
+
+/** The first line of every Maturity Instruction: a change of wording is a change of hash. */
+export const MATURITY_INSTRUCTION_VERSION = 'Clear Maturity Instruction, v1';
+
+/**
+ * The Maturity Instruction a member signs with a bond pledge (MB-05 §5.6), line by line, for one
+ * bond. It only directs where the maturity payment goes if the bond does not roll; it never rolls
+ * one. Plain text with fixed wording, so it can be shown, kept in Documents and hashed the same way
+ * on the server and the phone.
+ */
+export function maturityInstructionLines(itemId: bigint | string): string[] {
+  return [
+    MATURITY_INSTRUCTION_VERSION,
+    `BurnerBond #${BigInt(itemId).toString()}, pledged under MB-05 (Security and Pledge Agreement), Section 5.6.`,
+    'If this bond does not roll, at maturity:',
+    '(a) the part of the maturity payment needed to keep my Asset-Backed Drawn within my Asset-Backed Limit, once this bond is no longer pledged, is paid to Clear Lending and applied to my Asset-Backed Drawn, on my own instruction under Section 7.9; and',
+    '(b) the rest is paid in USDC to my Ready to allocate, free of any pledge, lock or other restriction.',
+    'This instruction never rolls the bond. Before maturity I may reduce or remove part (a) by repaying Asset-Backed Drawn or pledging other Earn Positions.',
+  ];
+}
+
+/** The exact bytes hashed into `maturityInstruction`: the lines, joined by newlines. */
+export function maturityInstructionText(lines: string[]): string {
+  return lines.join('\n');
 }
 
 /** How long a pledge signature stays good for. */
@@ -106,14 +139,14 @@ export function pledgeTypedData(input: {
   kind: string;
   nonce: bigint | string;
   deadline: number;
-} & ({ amount: bigint | string } | { itemId: bigint | string })): CollateralTypedData<'Pledge'> | CollateralTypedData<'PledgeItem'> {
+} & ({ amount: bigint | string } | { itemId: bigint | string; maturityInstruction: string })): CollateralTypedData<'Pledge'> | CollateralTypedData<'PledgeItem'> {
   const common = { member: input.member, kind: input.kind, nonce: String(input.nonce), deadline: String(Math.floor(input.deadline)) };
   if ('itemId' in input) {
     return collateralTypedData({
       primaryType: 'PledgeItem',
       chainId: input.chainId,
       registry: input.registry,
-      message: { ...common, itemId: String(input.itemId) },
+      message: { ...common, itemId: String(input.itemId), maturityInstruction: input.maturityInstruction },
     });
   }
   return collateralTypedData({
@@ -142,6 +175,8 @@ export interface CollateralShown {
   amount?: bigint | string;
   /** For `PledgeItem`: the item. */
   itemId?: bigint | string;
+  /** For `PledgeItem`: the hash of the Maturity Instruction the phone built for that item. */
+  maturityInstruction?: string;
 }
 
 /** What the phone checks before signing. The reason to refuse, or null. */
@@ -161,6 +196,12 @@ export function collateralMismatch(input: {
   if (String(m.kind).toLowerCase() !== shown.kind.toLowerCase()) return 'a different kind of collateral';
   if (td.primaryType === 'Pledge' && (shown.amount === undefined || BigInt(m.amount) !== BigInt(shown.amount))) return 'a different amount';
   if (td.primaryType === 'PledgeItem' && (shown.itemId === undefined || BigInt(m.itemId) !== BigInt(shown.itemId))) return 'a different item';
+  if (
+    td.primaryType === 'PledgeItem' &&
+    (!shown.maturityInstruction || String(m.maturityInstruction ?? '').toLowerCase() !== shown.maturityInstruction.toLowerCase())
+  ) {
+    return 'a different maturity instruction';
+  }
   if (BigInt(m.deadline) <= BigInt(Math.floor(input.nowSeconds))) return 'a pledge that has expired';
   return null;
 }

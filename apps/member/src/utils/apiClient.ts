@@ -3070,8 +3070,9 @@ export type PledgeKindName = 'SAVINGS' | 'POOL_SHARE' | 'BOND';
  */
 export async function preparePledge(
   kind: PledgeKindName,
-): Promise<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData } | { error: string }> {
-  const r = await apiRequest<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData }>('/api/savings/pledge/prepare', {
+): Promise<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData; maturityInstruction?: string[] } | { error: string }> {
+  // `maturityInstruction`: for a bond, the lines of the Maturity Instruction whose hash is signed (MB-05 5.6).
+  const r = await apiRequest<{ needsSignature: false } | { needsSignature: true; typedData: CollateralTypedData; maturityInstruction?: string[] }>('/api/savings/pledge/prepare', {
     method: 'POST',
     body: JSON.stringify({ kind }),
   });

@@ -6,7 +6,13 @@ import { websocketService } from '../websocketService.js';
 import { chainProvider } from './provider.js';
 import { invalidate } from './readCache.js';
 import { decodeChainError, describePledgeRefusal } from './chainErrors.js';
-import { PLEDGE_SIGNATURE_TTL_SECONDS, pledgeTypedData, type CollateralTypedData } from '@clear/domain';
+import {
+  maturityInstructionLines,
+  maturityInstructionText,
+  PLEDGE_SIGNATURE_TTL_SECONDS,
+  pledgeTypedData,
+  type CollateralTypedData,
+} from '@clear/domain';
 
 /*
  * Making savings back a credit line.
@@ -385,7 +391,7 @@ const BOND_COLLECTION_ABI = [
 ];
 
 const REGISTRY_ITEM_ABI = [
-  'function pledgeItem(address member, bytes32 kind, uint256 itemId, uint256 deadline, bytes signature)',
+  'function pledgeItem(address member, bytes32 kind, uint256 itemId, bytes32 maturityInstruction, uint256 deadline, bytes signature)',
   'function releaseItem(address member, bytes32 kind, uint256 itemId)',
   'function pledgedItemsOf(address member, bytes32 kind) view returns (uint256[])',
 ];
@@ -507,8 +513,14 @@ async function pledgeable(member: string, name: PledgeKindName): Promise<{ amoun
 
 export type PreparePledgeResult =
   | { ok: true; needsSignature: false }
-  | { ok: true; needsSignature: true; kind: PledgeKindName; typedData: CollateralTypedData }
+  /** `maturityInstruction`: for a bond, the lines of the Maturity Instruction whose hash is signed. */
+  | { ok: true; needsSignature: true; kind: PledgeKindName; typedData: CollateralTypedData; maturityInstruction?: string[] }
   | { ok: false; reason: string };
+
+/** The hash a bond pledge signs: keccak256 of the Maturity Instruction's text for that bond. */
+export function maturityInstructionHash(itemId: bigint | string): string {
+  return ethers.keccak256(ethers.toUtf8Bytes(maturityInstructionText(maturityInstructionLines(itemId))));
+}
 
 /**
  * Step one: what the member is asked to sign, read from the chain (what they hold against what is
@@ -526,7 +538,13 @@ export async function preparePledge(wallet: string, name: PledgeKindName): Promi
     const nonce: bigint = await registry.pledgeNonces(member);
     const deadline = Math.floor(Date.now() / 1000) + PLEDGE_SIGNATURE_TTL_SECONDS;
     const common = { chainId: chainId(), registry: ethers.getAddress(registryAddress), member, kind: PLEDGE_KINDS[name], nonce, deadline };
-    const typedData = wanted.itemId !== undefined ? pledgeTypedData({ ...common, itemId: wanted.itemId }) : pledgeTypedData({ ...common, amount: wanted.amount! });
+    if (wanted.itemId !== undefined) {
+      // A bond pledge carries the Maturity Instruction's hash (Phase 2e section 9; MB-05 5.6).
+      const instructionLines = maturityInstructionLines(wanted.itemId);
+      const typedData = pledgeTypedData({ ...common, itemId: wanted.itemId, maturityInstruction: maturityInstructionHash(wanted.itemId) });
+      return { ok: true, needsSignature: true, kind: name, typedData, maturityInstruction: instructionLines };
+    }
+    const typedData = pledgeTypedData({ ...common, amount: wanted.amount! });
     return { ok: true, needsSignature: true, kind: name, typedData };
   } catch (error) {
     console.error('[collateral] pledge prepare failed for', wallet, error instanceof Error ? error.message : error);
@@ -565,7 +583,9 @@ export async function submitPledge(
       const pledged = ((await registry.pledgedItemsOf(member, BOND_KIND)) as bigint[]).map(String);
       const balance: bigint = await collection.balanceOf(member, BigInt(input.itemId));
       if (balance === 0n || pledged.includes(input.itemId)) return { ok: false, reason: 'That bond is not yours to pledge, or it is pledged already.' };
-      txHash = await sendCollateralTx(registryAddress, REGISTRY_ITEM_ABI, 'pledgeItem', [member, kind, BigInt(input.itemId), BigInt(input.deadline), signature]);
+      // The instruction is rebuilt for this bond, never taken from the request: the member signed its hash.
+      const instruction = maturityInstructionHash(input.itemId);
+      txHash = await sendCollateralTx(registryAddress, REGISTRY_ITEM_ABI, 'pledgeItem', [member, kind, BigInt(input.itemId), instruction, BigInt(input.deadline), signature]);
     } else {
       if (!input.amount || !/^\d+$/.test(input.amount) || BigInt(input.amount) === 0n) return { ok: false, reason: 'How much? Nothing was pledged.' };
       const wanted = await pledgeable(member, input.kind);

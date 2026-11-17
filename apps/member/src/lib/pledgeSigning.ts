@@ -1,8 +1,11 @@
+import { keccak256, toBytes } from 'viem';
 import { signTypedData, switchChain } from '@wagmi/core';
 import {
   COLLATERAL_SIGNED_TYPES,
   collateralMessage,
   collateralMismatch,
+  maturityInstructionLines,
+  maturityInstructionText,
   type CollateralShown,
   type CollateralTypedData,
 } from '@clear/domain';
@@ -20,9 +23,16 @@ import { preparePledge, submitPledge, type PledgeKindName } from '@/utils/apiCli
  * network, and the amount or bond it was told, and the member's own wallet signs. A smart account
  * signs through EIP-1271, which the registry accepts (SignatureChecker).
  *
- * The signer is generic over the registry's signed structs (`COLLATERAL_SIGNED_TYPES`), so a further
- * one -- the bond Maturity Instruction (Phase 2e) -- signs through `signCollateral` unchanged.
+ * The signer is generic over the registry's signed structs (`COLLATERAL_SIGNED_TYPES`). A bond's
+ * `PledgeItem` also carries the hash of its Maturity Instruction (Phase 2e section 9; MB-05 5.6): the
+ * phone builds that text for the bond itself, hashes it, and signs only if the typed data carries
+ * the same hash (`maturityInstructionHash`).
  */
+
+/** keccak256 of the Maturity Instruction's text for one bond, as the server and the registry hash it. */
+export function maturityInstructionHash(itemId: bigint | string): `0x${string}` {
+  return keccak256(toBytes(maturityInstructionText(maturityInstructionLines(itemId))));
+}
 
 /** Check a registry struct against what the phone expects, then sign it with the member's wallet. */
 export async function signCollateral(args: {
@@ -72,7 +82,9 @@ export async function pledgeWhatIsHeld(args: { kind: PledgeKindName; member: str
     const shown: CollateralShown = {
       member: args.member,
       kind: String(td.message.kind),
-      ...(td.primaryType === 'PledgeItem' ? { itemId: td.message.itemId } : { amount: td.message.amount }),
+      ...(td.primaryType === 'PledgeItem'
+        ? { itemId: td.message.itemId, maturityInstruction: maturityInstructionHash(td.message.itemId) }
+        : { amount: td.message.amount }),
     };
     const signature = await signCollateral({ typedData: td, shown, chainId: args.chainId });
     const submitted = await submitPledge({

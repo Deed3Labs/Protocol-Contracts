@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { ethers } from 'ethers';
-import { COLLATERAL_SIGNED_TYPES, collateralTypeString, pledgeTypedData } from '@clear/domain';
+import {
+  COLLATERAL_SIGNED_TYPES,
+  collateralTypeString,
+  maturityInstructionLines,
+  maturityInstructionText,
+  pledgeTypedData,
+} from '@clear/domain';
 
 /*
  * The member signs every pledge (Phase 4b, decision L-I, #892).
@@ -16,18 +22,20 @@ const registrySol = new URL('../../../../../contracts/peripherals/CollateralRegi
 const service = readFileSync(new URL('./savingsCollateralService.ts', import.meta.url), 'utf8');
 const routes = readFileSync(new URL('../../routes/savings.ts', import.meta.url), 'utf8');
 
-const { REGISTRY_ABI, SAVINGS_KIND, submitPledge } = await import('./savingsCollateralService');
+const { REGISTRY_ABI, SAVINGS_KIND, maturityInstructionHash, submitPledge } = await import('./savingsCollateralService');
 
 describe('the registry’s signed pledges, as the API calls them', () => {
   test('the fragments are CollateralRegistry.sol’s', () => {
     const iface = new ethers.Interface(REGISTRY_ABI);
     expect(iface.getFunction('pledge')?.format()).toBe('pledge(address,bytes32,uint256,uint256,bytes)');
     expect(iface.getFunction('pledgeNonces')?.format()).toBe('pledgeNonces(address)');
-    expect(service).toContain("'function pledgeItem(address member, bytes32 kind, uint256 itemId, uint256 deadline, bytes signature)'");
+    expect(service).toContain("'function pledgeItem(address member, bytes32 kind, uint256 itemId, bytes32 maturityInstruction, uint256 deadline, bytes signature)'");
     if (!existsSync(registrySol)) return;
     const source = readFileSync(registrySol, 'utf8');
     expect(source).toContain('function pledge(address member, bytes32 kind, uint256 amount, uint256 deadline, bytes calldata signature)');
-    expect(source).toContain('function pledgeItem(address member, bytes32 kind, uint256 itemId, uint256 deadline, bytes calldata signature)');
+    expect(source).toMatch(
+      /function pledgeItem\(\s*address member,\s*bytes32 kind,\s*uint256 itemId,\s*bytes32 maturityInstruction,\s*uint256 deadline,\s*bytes calldata signature\s*\)/,
+    );
     expect(source).toContain('mapping(address => uint256) public pledgeNonces;');
     for (const primary of Object.keys(COLLATERAL_SIGNED_TYPES) as (keyof typeof COLLATERAL_SIGNED_TYPES)[]) {
       expect(source).toContain(`"${collateralTypeString(primary)}"`);
@@ -58,11 +66,15 @@ describe('the registry’s signed pledges, as the API calls them', () => {
     expect(ethers.recoverAddress(digest, signature)).toBe(member.address);
   });
 
-  test('a bond pledges by item: PledgeItem', async () => {
+  test('a bond pledges by item: PledgeItem, with its Maturity Instruction’s hash (Phase 2e section 9)', async () => {
     const member = ethers.Wallet.createRandom();
-    const td = pledgeTypedData({ chainId: 84532, registry: ethers.ZeroAddress, member: member.address, kind: SAVINGS_KIND, itemId: 9n, nonce: 0n, deadline: 2_000_000_000 });
+    const instruction = maturityInstructionHash(9n);
+    expect(instruction).toBe(ethers.keccak256(ethers.toUtf8Bytes(maturityInstructionText(maturityInstructionLines(9n)))));
+    expect(instruction).not.toBe(ethers.ZeroHash);
+    const td = pledgeTypedData({ chainId: 84532, registry: ethers.ZeroAddress, member: member.address, kind: SAVINGS_KIND, itemId: 9n, maturityInstruction: instruction, nonce: 0n, deadline: 2_000_000_000 });
     expect(td.primaryType).toBe('PledgeItem');
     expect(td.message.itemId).toBe('9');
+    expect(td.message.maturityInstruction).toBe(instruction);
   });
 });
 
@@ -72,7 +84,7 @@ describe('nothing pledges without the member’s signature', () => {
     expect(service.match(/'pledge', \[/g)).toHaveLength(1);
     expect(service.match(/'pledgeItem', \[/g)).toHaveLength(1);
     expect(service).toContain("[member, kind, BigInt(input.amount), BigInt(input.deadline), signature]");
-    expect(service).toContain("[member, kind, BigInt(input.itemId), BigInt(input.deadline), signature]");
+    expect(service).toContain("[member, kind, BigInt(input.itemId), instruction, BigInt(input.deadline), signature]");
     expect(service).toContain("needsSignature = { kind, amount: (targetUnits - current).toString() };");
     expect(service).toContain('needsSignature: { kind: BOND_KIND, itemIds: unpledged }');
     // Releasing needs none: it only gives back what is the member's.
