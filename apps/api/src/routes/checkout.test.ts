@@ -140,15 +140,16 @@ describe('the spec’s order, end to end in test mode', () => {
     const signedIn = CodeVerified.parse(await json(await post(`/api/checkout/${session}/code`, { code: '000000' })));
     expect(signedIn.person).toEqual({ kind: 'member', firstName: 'Test' });
 
-    // Hi Test: the split control's figures, from the member's terms at 2%.
+    // Hi Test: the split control's figures, from the member's terms at 2%, levelled the way
+    // TermIssuer schedules a plan (section 12.9): the spec's $48.65 is now $48.67.
     const quote = MemberQuote.parse(await json(await fetch(`${base}/api/checkout/${session}/member`, { headers: { 'X-Pay-Session': signedIn.token } })));
     expect(quote.splits.map((s) => [s.installments, s.perCycleCents])).toEqual([
       [1, 18903],
-      [2, 9544],
-      [4, 4865],
-      [12, 1745],
+      [2, 9545],
+      [4, 4867],
+      [12, 1752],
     ]);
-    expect(quote.splits.find((s) => s.installments === 4)!.carryCents).toBe(927);
+    expect(quote.splits.find((s) => s.installments === 4)!.carryCents).toBe(936); // levelled (12.9)
     expect(quote).toMatchObject({ firstName: 'Test', totalCents: 18532, clearsFrom: 'Test Bank •••• 0000', approveIn: 'frame' });
     expect(quote.points).toEqual({ earns: 256, shopName: 'Mi Casa', multiplierLabel: '1.5× for paying with Clear', before: 0, after: 256 });
 
@@ -156,7 +157,7 @@ describe('the spec’s order, end to end in test mode', () => {
     const res = await post(`/api/checkout/${session}/approve`, { installments: 4, idempotencyKey: key() }, { 'X-Pay-Session': signedIn.token });
     expect(res.status).toBe(200);
     const done = PaidView.parse(await json(res));
-    expect(done).toEqual({ method: 'clear', installments: 4, firstCycle: { amountCents: 4865, on: firstCycleDate(new Date(), 'America/Los_Angeles') }, points: { earned: 256, now: 256 }, receipt: 'In Clear and by email' });
+    expect(done).toEqual({ method: 'clear', installments: 4, firstCycle: { amountCents: 4867, on: firstCycleDate(new Date(), 'America/Los_Angeles') }, points: { earned: 256, now: 256 }, receipt: 'In Clear and by email' });
 
     // The payment succeeded, its webhook event is a test one, and nothing reached the books.
     const v1 = await json<{ status: string; method: string }>(await fetch(`${base}/v1/payments/${payment.id}`, { headers: { Authorization: `Bearer ${shop.testSecret}` } }));
