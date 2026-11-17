@@ -94,6 +94,7 @@ import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
 import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
 import { startPayoutFundingKeeper } from './jobs/payoutFundingKeeper.js';
+import { startAssuranceFeePayer } from './jobs/assuranceFeePayer.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 import stepUpRouter from './routes/stepUp.js';
@@ -503,6 +504,10 @@ async function startServer() {
     startCommandGeocoder();
     // …and the invites a batch queued, emailed once it's approved.
     startCommandInvites();
+    // The Assurance Pool's fee: read daily, accrued monthly, paid from the CL Fees wallet once CL
+    // Operating's signers fund it. Off without ASSURANCE_POOL_V2_<chain>; pays only with
+    // ASSURANCE_FEE_PAYER_ENABLED=1 (docs/operators/assurance-fee-payer.md). After the migrations.
+    startAssuranceFeePayer();
     // Acts on the Stripe webhooks the merchant back office stored. After the migrations, which
     // create the inbox it reads.
     startStripeEventProcessor();

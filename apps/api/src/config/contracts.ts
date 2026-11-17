@@ -26,6 +26,10 @@ export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
     CollateralRegistry: process.env.COLLATERAL_REGISTRY_84532 || '0x62fBdf62Ad0C3f52d898b28b2d1FB31e9EB152Cf',
     LimitCalculator: process.env.LIMIT_CALCULATOR_84532 || '0xbA9880F46128027D39F7694e3cfdf077D716c0a7',
     AssurancePool: process.env.ASSURANCE_POOL_84532 || '0xf5E40414410672636Ab1691ae19D2Aa1c1705840',
+    // The co-op's new Assurance Pool (compartments, Credit Backstop). Unset until it's deployed; the
+    // Assurance fee payer (jobs/assuranceFeePayer.ts) stays off without it. AssurancePool above is
+    // still the Phase 1 reserve the Money page reads.
+    AssurancePoolV2: process.env.ASSURANCE_POOL_V2_84532 || '',
     // Phase E: bonds, capital and merchant payouts.
     BondVault: process.env.BOND_VAULT_84532 || '0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855',
     // The bond collection replaced on 2026-11-03 (scripts/redeploy_bonds.ts), ids from 1001. Every
