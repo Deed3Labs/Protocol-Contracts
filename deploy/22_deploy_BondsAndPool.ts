@@ -1,4 +1,10 @@
-import { saveDeployment, getDeployment } from "./helpers";
+import { saveDeployment, getDeployment, requireMainnetConfirmation } from "./helpers";
+import { deployBondFactory } from "./bondModules";
+import { POOL_SHARE_LEGEND, poolAt, poolProxyOptions } from "./poolModules";
+import {
+  RETIRED_ROLE_CHECKS, VIA, printProposals, revokeRetiredRoles, switchOffPayoutLegs, wireLiquidatorGrants,
+} from "./creditWiring";
+import { RETIRED_SUFFIX, retiredContracts } from "./retire_credit_stack";
 
 /**
  * Phase E: the contracts that put something real behind the asset-backed tier, and pay merchants.
@@ -20,6 +26,15 @@ import { saveDeployment, getDeployment } from "./helpers";
  *
  * Idempotent, like 20. Anything already recorded is reused.
  *
+ * Decision 47: on Base Sepolia MerchantRegistry, PayoutPool and the Liquidator are deployed fresh with
+ * the rest of the credit stack (`deploy/retire_credit_stack.ts` moves their old records aside as
+ * `*PreAudit`); LendingPool and BondVault are reused and re-pointed. Run it after the Yield Pool
+ * upgrade (`scripts/upgrade_yield_pool.ts`): it writes the pool's legend. On a fresh chain it also
+ * makes the Liquidator an AccessManager operator and grants it CLRUSD's LIQUIDATOR_ROLE, and names
+ * the CollateralRegistry as CLRUSD's encumbrance source (`deploy/creditWiring.ts`); after the
+ * handovers it prints those as timelock proposals instead. Decision 48 (b): it also revokes every
+ * CLRUSD and AccessManager role a retired contract (`*PreAudit`, `*Pre2f`, `*Legacy`) still holds.
+ *
  *   npx hardhat run deploy/22_deploy_BondsAndPool.ts --network base-sepolia
  */
 async function main() {
@@ -27,6 +42,7 @@ async function main() {
   const { ethers, upgrades } = hre;
   const [deployer] = await ethers.getSigners();
   const network = (await ethers.provider.getNetwork()).name;
+  requireMainnetConfirmation(network, "deploy/22_deploy_BondsAndPool.ts");
   const log = (m: string) => console.log(m);
 
   const need = (name: string) => {
@@ -46,13 +62,18 @@ async function main() {
   const vault = need("ESADepositVault");
   const reserveToken = process.env.RESERVE_TOKEN ?? "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
   const coopTreasury = process.env.COOP_TREASURY ?? deployer.address;
+  // On a real chain or a fork CLEAR_LENDING_ACCOUNT is required (checked before anything is sent): a
+  // Deployment goes nowhere else, and nothing falls back to another address.
+  if (!process.env.CLEAR_LENDING_ACCOUNT?.trim() && (await ethers.provider.getNetwork()).chainId !== 31337n) {
+    throw new Error("CLEAR_LENDING_ACCOUNT is empty: set it to Clear Lending's account (on Base Sepolia, CL Operating; deploy/config/base-sepolia.rollout.env).");
+  }
 
   if (!process.env.COOP_TREASURY) {
     log(`! COOP_TREASURY unset — using the deployer (${deployer.address}).`);
     log("  Redeemed merchant positions land here. Set it to the multisig anywhere real.\n");
   }
 
-  async function ensure(name: string, args: unknown[], contractName = name) {
+  async function ensure(name: string, args: unknown[], contractName = name, options: Record<string, unknown> = {}) {
     const existing = getDeployment(network, name);
     if (existing) {
       log(`= ${name} already at ${existing.address}`);
@@ -62,6 +83,7 @@ async function main() {
     const instance = await upgrades.deployProxy(factory, args, {
       initializer: "initialize",
       kind: "uups",
+      ...options,
     });
     await instance.waitForDeployment();
     const address = await instance.getAddress();
@@ -87,30 +109,52 @@ async function main() {
   const payoutPoolAddress = await payoutPool.getAddress();
 
   // ---- capital ----
+  // Phase 2f: the Yield Pool, with its YieldPoolValuation and YieldPoolLedger modules pinned at
+  // construction.
   const lendingPool = await ensure("LendingPool", [
     deployer.address,
     reserveToken,
     "Clear Lending Pool",
     "clrLP",
-  ]);
+  ], "LendingPool", await poolProxyOptions());
   const lendingPoolAddress = await lendingPool.getAddress();
+  // A recorded pool from before Phase 2f has no legend or ledger module: it must become the Yield
+  // Pool first (scripts/upgrade_yield_pool.ts), or the wiring below reverts half way.
+  if (!(await (await poolAt(lendingPoolAddress)).legend().then(() => true, () => false))) {
+    throw new Error(`LendingPool ${lendingPoolAddress} is not the Yield Pool yet: run scripts/upgrade_yield_pool.ts first.`);
+  }
 
   // ---- bonds ----
   //
-  // A three-month redemption window: the vault holds face value for everything maturing inside it
-  // and only the excess above that is deployable. The window is what makes the reserve a rule the
-  // code enforces rather than a policy somebody remembers.
+  // Phase 2f stage 2 (R2): the Redemption Reserve is the greater of the glide schedule (30% FIXED
+  // floor, raise-only) and 100% of every bond due within 90 days (FIXED) that will not roll. The
+  // third argument (the old governed window) is ignored. An existing Base Sepolia vault is upgraded in
+  // place (append-only; scripts/storage_report_bond_vault.ts) through the Earn timelock.
   const bondVault = await ensure("BondVault", [deployer.address, reserveToken, 90 * 24 * 60 * 60]);
   const bondVaultAddress = await bondVault.getAddress();
 
   let factoryAddress = getDeployment(network, "BurnerBondFactory")?.address;
+  // Phase 2f stage 3 (replacing the retired scripts/redeploy_bonds.ts): a factory recorded before
+  // Phase 2f clones the old collection, which cannot record into or settle through the upgraded
+  // BondVault. With REPLACE_BOND_FACTORY=1 its records are kept as `*Pre2f` and a new factory is
+  // deployed; deploy 23 then makes and wires the new collection, starting its ids at FIRST_BOND_ID.
+  // Unwind the old collection's bonds first (PHASE-2F-BONDS.md, judgement call 22).
+  if (factoryAddress && (await isPre2fFactory(ethers, factoryAddress, reserveToken))) {
+    if (process.env.REPLACE_BOND_FACTORY !== "1") {
+      log(`! BurnerBondFactory ${factoryAddress} is pre-2f. Set REPLACE_BOND_FACTORY=1 to keep it as BurnerBondFactoryPre2f and deploy the new one.`);
+    } else {
+      for (const name of ["BurnerBondFactory", "BurnerBond", "BurnerBondDeposit", "BondValuer"]) {
+        const record = getDeployment(network, name);
+        if (record && !getDeployment(network, `${name}Pre2f`)) saveDeployment(network, `${name}Pre2f`, record.address, record.abi);
+      }
+      log(`  BurnerBondFactory ${factoryAddress} kept on record as BurnerBondFactoryPre2f`);
+      factoryAddress = undefined;
+    }
+  }
   if (!factoryAddress) {
-    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
-    const factory = await BurnerBondFactory.deploy(
-      tokenRegistry,
-      process.env.BOND_BASE_URI ?? "ipfs://clear-bonds/"
-    );
-    await factory.waitForDeployment();
+    // Phase 2f: a prebuilt BurnerBond implementation (with BurnerBondPledges and BurnerBondIssue) and
+    // the IV-01 §4.12 legend. A new factory, so the collection it clones is the new one.
+    const factory = await deployBondFactory(tokenRegistry, process.env.BOND_BASE_URI ?? "ipfs://clear-bonds/");
     factoryAddress = await factory.getAddress();
     saveDeployment(network, "BurnerBondFactory", factoryAddress, JSON.parse(factory.interface.formatJson()));
     log(`+ BurnerBondFactory deployed to ${factoryAddress}`);
@@ -130,6 +174,26 @@ async function main() {
   const liquidatorAddress = await liquidator.getAddress();
 
   log("\nWiring:");
+
+  // The Liquidator's own grants on a fresh chain (DEPLOY-RUNBOOK §5.2 item 12), and CLRUSD's
+  // encumbrance source, which a fresh CollateralRegistry has to be named as again.
+  const accessRecord = getDeployment(network, "AccessManager");
+  if (!accessRecord) throw new Error(`AccessManager is not deployed on ${network}. Run deploy/16 first.`);
+  const access = await ethers.getContractAt("AccessManager", accessRecord.address);
+  const clrusdToken = await ethers.getContractAt("ClearUSDUpgradeable", clrusd);
+  const proposals = await wireLiquidatorGrants({
+    access,
+    clrusd: clrusdToken,
+    liquidator: liquidatorAddress,
+    collateralRegistry,
+    retiredLiquidators: [getDeployment(network, `Liquidator${RETIRED_SUFFIX}`)?.address].filter(Boolean) as string[],
+  }, deployer, log);
+
+  // Decision 48 (b): no retired contract (`*PreAudit`, `*Pre2f`, `*Legacy`) keeps a role on CLRUSD
+  // or on the fresh AccessManager. Revocations only; scripts/check_retired_credit.ts checks them.
+  const { contracts: retired } = await retiredContracts((n) => getDeployment(network, n));
+  proposals.push(...(await revokeRetiredRoles(clrusdToken, "CLRUSD", RETIRED_ROLE_CHECKS.ClearUSDUpgradeable, retired, deployer, VIA.vault, log)));
+  proposals.push(...(await revokeRetiredRoles(access, "AccessManager", RETIRED_ROLE_CHECKS.AccessManager, retired, deployer, VIA.credit, log)));
 
   const registry = await ethers.getContractAt("CollateralRegistry", collateralRegistry);
   const operatorRole = await registry.OPERATOR_ROLE();
@@ -175,24 +239,38 @@ async function main() {
     log("  PayoutPool REDEEMER_ROLE -> co-op treasury");
   }
 
-  // A borrower draws only to its stored destination, within a daily cap (audit H-4). The payout
-  // pool borrows to itself; the card settler, if named, to the card float.
-  const borrowerRole = await lendingPool.BORROWER_ROLE();
-  const poolBorrowCap = BigInt(process.env.PAYOUT_POOL_DAILY_BORROW_USD ?? "100000") * 10n ** 6n;
-  if (!(await lendingPool.hasRole(borrowerRole, payoutPoolAddress))) {
-    await (await lendingPool.grantRole(borrowerRole, payoutPoolAddress)).wait();
+  // Phase 2f, decision 17: only Clear Lending draws from the Yield Pool, as a recorded Deployment
+  // to its registered lending account (two DEPLOYER_ROLE signers). The PayoutPool and the card
+  // settler no longer borrow from it; the pool's `borrowableToday` is zero and `borrow` reverts.
+  const lendingAccount = process.env.CLEAR_LENDING_ACCOUNT?.trim();
+  if (lendingAccount && !ethers.isAddress(lendingAccount)) throw new Error(`CLEAR_LENDING_ACCOUNT ${lendingAccount} is not an address.`);
+  if (lendingAccount && (await lendingPool.deploymentAccount()).toLowerCase() !== lendingAccount.toLowerCase()) {
+    await (await lendingPool.setDeploymentAccount(lendingAccount)).wait();
+    log(`  LendingPool deployment account -> ${lendingAccount}`);
   }
-  await (await lendingPool.setBorrower(payoutPoolAddress, payoutPoolAddress, poolBorrowCap)).wait();
-  log(`  LendingPool borrower: PayoutPool -> itself, ${poolBorrowCap}/day`);
-  const cardSettler = process.env.CARD_SETTLER_ADDRESS;
-  const cardFloat = process.env.CARD_FLOAT_ADDRESS;
-  if (cardSettler && cardFloat && ethers.isAddress(cardSettler) && ethers.isAddress(cardFloat)) {
-    const cardCap = BigInt(process.env.CARD_SETTLER_DAILY_BORROW_USD ?? "25000") * 10n ** 6n;
-    if (!(await lendingPool.hasRole(borrowerRole, cardSettler))) {
-      await (await lendingPool.grantRole(borrowerRole, cardSettler)).wait();
-    }
-    await (await lendingPool.setBorrower(cardSettler, cardFloat, cardCap)).wait();
-    log(`  LendingPool borrower: card settler -> card float, ${cardCap}/day`);
+
+  // C1, decision 3, and decision 17 (Phase 2f): the BondVault and the Yield Pool lend nothing to a
+  // PayoutPool any more. Once a pool owes a lender nothing, that leg is switched off by
+  // configuration; its code is unchanged. Covers the PayoutPool retired with the old credit stack too.
+  const payoutPools = [{ name: "PayoutPool", contract: payoutPool }];
+  const retiredPayout = getDeployment(network, `PayoutPool${RETIRED_SUFFIX}`);
+  if (retiredPayout) {
+    payoutPools.push({ name: `PayoutPool${RETIRED_SUFFIX}`, contract: new ethers.Contract(retiredPayout.address, retiredPayout.abi, deployer) }); // its own ABI: the pre-audit pool has setLenders, not setYieldPool
+  }
+  proposals.push(...(await switchOffPayoutLegs(payoutPools, deployer, log)).proposals);
+
+  // IV-02 §8.4, decision 27: the legend the Register carries, written once here; any later change
+  // waits 7 days on chain after the Earn timelock proposes it. The pool's Deployments stay closed
+  // until two VALUATION_ROLE signers post the Pool Tier principal ceiling (IV-02 §4.3).
+  const pool = await poolAt(lendingPoolAddress);
+  if ((await pool.legend()) === "") {
+    await (await pool.setLegend(POOL_SHARE_LEGEND)).wait();
+    log("  LendingPool legend set (IV-02 §8.4)");
+  }
+
+  if (proposals.length > 0) {
+    log("\nThe deployer no longer holds these powers. Propose:");
+    printProposals(proposals, log);
   }
 
   log("\nBonds and pool deployed.");
@@ -200,9 +278,25 @@ async function main() {
   log("A BondValuer is deployed per collection, since it reads one collection's present values.");
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+/**
+ * Whether a recorded factory makes the pre-2f collection: the Phase 2f collection answers
+ * `controls()` (its EarnControls) and the old one has no such function. A factory with no
+ * collection for the token is judged by nothing and kept.
+ */
+async function isPre2fFactory(ethers: any, factoryAddress: string, token: string): Promise<boolean> {
+  const factory = await ethers.getContractAt("BurnerBondFactory", factoryAddress);
+  const collection: string = (await factory.getCollectionInfo(token)).collectionAddress;
+  if (collection === ethers.ZeroAddress) return false;
+  const probe = new ethers.Contract(collection, ["function controls() view returns (address)"], ethers.provider);
+  return probe.controls().then(() => false, () => true);
+}
+
+
+if (require.main === module) {
+  main()
+    .then(() => process.exit(0))
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+}

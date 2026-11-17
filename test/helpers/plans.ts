@@ -67,6 +67,27 @@ export function planTerms(
   };
 }
 
+/**
+ * 12.16 (Addendum 2): the origination fee leg goes to Clear Lending's fee recipient, never the co-op,
+ * and a plan with a fee will not open until one is named by two people. Tests that do not care which
+ * address it is get this one (signer 19), named by the admin and signer 1 (the fixture's operator).
+ */
+export const FEE_REASON = ethers.encodeBytes32String("TEST_SETUP");
+export async function feeRecipientOf(term: any): Promise<string> {
+  const current = await term.feeRecipient();
+  if (current !== ethers.ZeroAddress) return current;
+  const signers = await ethers.getSigners();
+  const to = signers[19].address;
+  const ledger = await ethers.getContractAt("StableCredit", await term.stableCredit());
+  const access = await ethers.getContractAt("AccessManager", await ledger.access());
+  const role = ethers.id("CREDIT_SETTINGS_ROLE");
+  const second = signers[1];
+  if (!(await access.hasRole(role, second.address))) await access.connect(signers[0]).grantRole(role, second.address);
+  await term.connect(signers[0]).proposeFeeRecipient(to, FEE_REASON);
+  await term.connect(second).approveFeeRecipient(to, FEE_REASON);
+  return to;
+}
+
 /** Opens a plan the way production does: member signs, operator submits. */
 export async function signedOpenPlan(
   term: any,
@@ -82,6 +103,7 @@ export async function signedOpenPlan(
   productId: string = ethers.ZeroHash,
 ) {
   const terms = planTerms(member, merchant, purchase, payout, ratePerCycle, cycleLength, installments, installmentLength, productId);
+  await feeRecipientOf(term);
   const signature = await signPlanTerms(term, await ethers.getSigner(member), terms);
   return term.connect(operator).openPlan(terms, signature);
 }
@@ -93,6 +115,7 @@ export async function signedOpenPlanStatic(
   ...args: [string, string, bigint, bigint, bigint | number, bigint | number, bigint | number, bigint | number]
 ) {
   const terms = planTerms(...args);
+  await feeRecipientOf(term);
   const signature = await signPlanTerms(term, await ethers.getSigner(args[0]), terms);
   return term.connect(operator).openPlan.staticCall(terms, signature);
 }

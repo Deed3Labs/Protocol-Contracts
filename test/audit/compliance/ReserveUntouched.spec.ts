@@ -5,6 +5,7 @@ import { driveToDefault } from "../../helpers/default";
 import { issuerProxyOptions } from "../../helpers/issuers";
 import { deployAssurancePool, fund, balances, TAG, AssuranceSetup } from "../../helpers/assurance";
 import { pledgeSigned } from "../../helpers/pledge";
+import { deployBondStack } from "../../helpers/bonds";
 
 /*
  * Compliance addendum 12.11 (restated by section 13): no redemption, payout or force-settlement
@@ -51,59 +52,38 @@ async function holdings(ctx: Ctx) {
 
 describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemption, payout and liquidation", function () {
   describe("bond principal never reaches the AssurancePool", function () {
+    // Phase 2f: the new collection. A bond is bought by quote straight into the vault (the
+    // discount-curve deposit path is retired, decision 8), and a matured bond is settled by anyone.
     async function bondSetup() {
       const ctx = await fillReserve(await deployPhase0Network());
       const signers = await ethers.getSigners();
-      const [buyer, safe] = [signers[8], signers[9]];
-      const factory: any = await (await ethers.getContractFactory("BurnerBondFactory")).deploy(
-        await ctx.tokenRegistry.getAddress(), "ipfs://b"
-      );
-      const deposit: any = await ethers.getContractAt("BurnerBondDeposit", await factory.getUnifiedDepositContract());
-      await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
-      const bond: any = await ethers.getContractAt("BurnerBond", (await factory.getCollectionInfo(await ctx.usdc.getAddress())).collectionAddress);
-      const vault: any = await upgrades.deployProxy(await ethers.getContractFactory("BondVault"), [ctx.admin.address, await ctx.usdc.getAddress(), 3 * MONTH], { kind: "uups" });
-      await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
-      await vault.grantRole(await vault.BOND_ROLE(), await bond.getAddress());
-      await deposit.setBondVault(await vault.getAddress());
-      await bond.setBondVault(await vault.getAddress());
-      await vault.setBackstops(safe.address, ethers.ZeroAddress);
-      await ctx.usdc.mint(buyer.address, 100_000n * ONE_USDC);
-      await ctx.usdc.connect(buyer).approve(await deposit.getAddress(), ethers.MaxUint256);
-      return { ctx, deposit, bond, vault, buyer, safe };
+      const [buyer, safe, keeper] = [signers[8], signers[9], signers[10]];
+      const s = await deployBondStack(ctx.admin, ctx.usdc, ctx.tokenRegistry, { rungs: [[365, 475]] });
+      await s.vault.setBackstops(safe.address, ethers.ZeroAddress);
+      return { ctx, s, bond: s.bond, vault: s.vault, buyer, safe, keeper };
     }
 
-    it("puts every deposit's principal in the bond vault and none in the AssurancePool", async function () {
-      const { ctx, deposit, bond, vault, buyer } = await bondSetup();
+    it("puts every purchase's principal in the bond vault and none in the AssurancePool", async function () {
+      const { ctx, s, vault, buyer } = await bondSetup();
       const before = await holdings(ctx);
-      const maturity = BigInt(await now()) + BigInt(12 * MONTH);
-      const paid0 = await ctx.usdc.balanceOf(buyer.address);
-      await deposit.connect(buyer).makeDeposit(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, maturity, await bond.calculateDiscount(maturity));
-      const principal = paid0 - (await ctx.usdc.balanceOf(buyer.address));
-
-      expect(principal).to.be.greaterThan(0n);
-      expect(await vault.held()).to.equal(principal);
+      const { price } = await s.buy(buyer, 1_000n * ONE_USDC, 365);
+      expect(price).to.be.greaterThan(0n);
+      expect(await vault.held()).to.equal(price);
       expect(await holdings(ctx)).to.deep.equal(before);
-      // The old path into the AssurancePool's excess (processDeposit) now routes to the vault, and
-      // has nothing to process anyway: every deposit is processed in the call that makes it.
-      await expect(deposit.processDeposit(1)).to.be.revertedWith("Deposit already processed");
     });
 
     it("redeems a matured bond from the vault and the treasury, never the AssurancePool", async function () {
-      const { ctx, deposit, bond, vault, buyer, safe } = await bondSetup();
-      const maturity = BigInt(await now()) + BigInt(2 * MONTH);
-      await deposit.connect(buyer).makeDeposit(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, maturity, await bond.calculateDiscount(maturity));
-      const bondId = await bond.bondIdsByCreator(buyer.address, 0);
+      const { ctx, s, bond, vault, buyer, safe, keeper } = await bondSetup();
+      const { id } = await s.buy(buyer, 1_000n * ONE_USDC, 365);
       const before = await holdings(ctx);
-      await advance(2 * MONTH + 1);
+      await advance(365 * 24 * 3600 + 1);
 
-      // The vault holds the discounted principal, not the face. With no treasury allowance the
-      // redemption waits; the AssurancePool's excess and buffer are not asked.
-      await expect(bond.connect(buyer).redeemBond(bondId)).to.be.reverted;
-      expect(await holdings(ctx)).to.deep.equal(before);
-
+      // The vault holds the discounted principal, not the face, and the treasury tops it up; the
+      // AssurancePool's excess and buffer are not asked.
       await ctx.usdc.mint(safe.address, 1_000n * ONE_USDC);
       await ctx.usdc.connect(safe).approve(await vault.getAddress(), 1_000n * ONE_USDC);
-      await bond.connect(buyer).redeemBond(bondId);
+      await bond.connect(keeper).settle(id);
+      expect(await ctx.usdc.balanceOf(buyer.address)).to.equal(1_000n * ONE_USDC);
       expect(await holdings(ctx)).to.deep.equal(before);
     });
   });
@@ -163,6 +143,7 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       await ctx.networkRegistry.registerIssuer(await issuer.getAddress(), await ctx.stableCredit.getAddress());
       await ctx.access.grantOperator(await issuer.getAddress());
       await issuer.connect(ctx.operator).addTier(SAVINGS, 0n, 30 * DAY);
+      await issuer.connect(ctx.operator).addTier(ethers.encodeBytes32String("INCOME"), 150n, 30 * DAY);
       const registry: any = await upgrades.deployProxy(await ethers.getContractFactory("CollateralRegistry"), [ctx.admin.address, await ctx.networkRegistry.getAddress()], { kind: "uups" });
       await registry.registerCollateralType(SAVINGS, 1, 10_000n, 10n ** 18n);
       await registry.setClrusdKind(SAVINGS);
@@ -190,13 +171,19 @@ describe("COMPLIANCE addendum 12.11: the AssurancePool is untouched by redemptio
       await ctx.usdc.connect(ctx.member).approve(await vault.getAddress(), ethers.MaxUint256);
       await vault.connect(ctx.member).deposit(await ctx.usdc.getAddress(), 1_000n * ONE_USDC, ctx.member.address);
       await pledgeSigned(registry, ctx.member.address, SAVINGS, 1_000n * ONE_USDC);
-      await issuer.connect(ctx.operator).openLine(ctx.member.address, [1_000n * ONE_USDC], 30 * DAY, 30 * DAY);
-      await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 400n * ONE_USDC);
+      // $400 on Savings and $10 unsecured: only an unpaid Rebalance Amount is a miss (Addendum 2).
+      await issuer.connect(ctx.operator).openLine(ctx.member.address, [400n * ONE_USDC, 50n * ONE_USDC], 0);
+      await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, 410n * ONE_USDC);
       // Section 12.5: two missed rebalances in a row, each judged, then the cure window.
       await driveToDefault(issuer, ctx.member.address, ctx.operator);
 
       const before = await holdings(ctx);
-      await liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS);
+      // Phase 2f, decision 22: a stranger's liquidation applies CLRUSD only to the Defaulted Amount of
+      // Savings-Backed Drawn, of which this default leaves none; the member's own instruction (MB-05
+      // §7.9) applies the savings on the same redemption path.
+      await expect(liquidator.connect(stranger).liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS))
+        .to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC);
       expect(await clrusd.balanceOf(ctx.member.address)).to.equal(600n * ONE_USDC);
       expect(await holdings(ctx)).to.deep.equal(before);
 

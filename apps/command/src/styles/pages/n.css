@@ -339,3 +339,12 @@ select.vin{appearance:auto}
 .gw.ro [data-npropose],.gw.ro [data-nopen],.gw.ro [data-nwithdraw],.gw.ro [data-nsync],.gw.ro [data-nrosa],.gw.ro [data-napprove],.gw.ro [data-nreject],.gw.ro [data-nsubmit]{display:none !important}
 /* Totals: co-op numbers, no depositor rows */
 .gw.tot .ndp tbody{display:none}
+/* Assurance fees (Pools · AssurancePool): each payment's steps, its links, and what needs a person */
+.naf-m{font-size:12px;font-weight:600;color:var(--fg-50);text-transform:uppercase;letter-spacing:.04em}
+.naf-st{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;font-size:11.5px;color:var(--fg-50)}
+.naf-st i{font-style:normal;padding:1px 6px;border:1px solid var(--hair)}
+.naf-st i.on{color:var(--fg);border-color:var(--fg-50)}
+.naf-st i.now{background:var(--fg);border-color:var(--fg);color:var(--ground)}
+.naf-a{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:6px;font-size:12px}
+.naf-a a{color:inherit}
+.nl-r > span .naf-w,.naf-w{color:var(--underway);font-size:12.5px}

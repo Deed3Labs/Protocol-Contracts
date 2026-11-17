@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
+import "./PauseClock.sol";
 import "./IExtensionKind.sol";
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
@@ -20,6 +21,22 @@ interface IRevolvingMandate {
 /// Served by TermIssuer itself; a module runs by delegatecall, so `address(this)` is the issuer.
 interface IOpenPrincipal {
     function openPrincipalOf(address member, bytes32 product, uint256 skip) external view returns (uint256);
+    /// @dev Brings every open plan of the member to now under the Combined Ceiling (12.3).
+    function materialiseMember(address member) external;
+}
+
+/// @dev The revolving line's half of the Combined Ceiling (12.3, Addendum 2).
+interface ICombinedCeilingRevolving {
+    function combinedInputsOf(address member)
+        external
+        view
+        returns (bytes32 state, bytes32 product, uint256 principal, uint256 monthlyCarry);
+}
+
+/// @dev Where the term issuer reads the pause clock (Phase 2g, 10c): the Liquidator it reads the
+/// Liquidation Hold from.
+interface IPauseClockSource {
+    function pauseClock() external view returns (address);
 }
 
 /// @title TermIssuerBase
@@ -97,6 +114,7 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// ones a mandated collection here honours. One switch for the member, one key for the co-op.
     address public mandateSource;
     /// @dev ref => amount collected under the mandate. Once per ref.
+    /// @dev What each mandated collection took, while `collectForMember` existed. Never written now.
     mapping(bytes32 => uint256) internal mandateCollections;
 
     /// @notice where the co-op's share of a purchase is minted, when that is not the carry treasury.
@@ -171,13 +189,69 @@ abstract contract TermIssuerBase is CreditIssuer {
         /// @dev Whether `merchant` and `payout` were recorded when the plan opened. Plans opened
         /// before Phase 4 recorded no payout and cannot be refunded through the issuer.
         bool refundTermsRecorded;
+        /// @dev Where this plan's origination fee went (12.16, Phase 2e), so a refund reverses it
+        /// from there even after `feeRecipient` changes. Zero for a plan opened before Phase 2e,
+        /// which reverses from `_feeRecipient()` as before. Appended; a new slot of the struct.
+        address feeTo;
     }
     mapping(uint256 => PlanPricing) internal planPricing;
     /// @dev planId => RateSchedule accumulators at the last touch.
     mapping(uint256 => RateSchedule.Snapshot) internal planSnap;
 
     /// @dev Three more slots from the gap: rateSchedule, planPricing, planSnap.
-    uint256[21] private __gap;
+
+    /* ---- Phase 2e: the fee leg (12.16) and the Combined Ceiling (12.3), Addendum 2 ---- */
+
+    /// @notice The governed origination fee cap: fee = min(discountBpsBySplit x amount, cap), where
+    /// the cap is `maxFeeSmall` ($50) up to `largeFrom` ($2,500) and `maxFeeLarge` ($75) above.
+    /// Zero in any field means the initial figure.
+    struct FeeTerms {
+        uint64 maxFeeSmall;
+        uint64 maxFeeLarge;
+        uint64 largeFrom;
+    }
+    FeeTerms internal feeTerms;
+
+    /// @notice A pending change of `feeRecipient`: one signer proposes, a different one approves.
+    struct FeeRecipientProposal {
+        address recipient;
+        address proposer;
+        bytes32 reasonCode;
+    }
+    FeeRecipientProposal internal feeRecipientProposal;
+
+    /// @notice The revolving line whose unsecured tiers share the member's Combined Ceiling (12.3),
+    /// and the RateSchedule product whose graduated schedule it is. Each set once: the ceiling is
+    /// permanent, and no function switches it off.
+    address public combinedRevolving;
+    bytes32 public combinedProduct;
+
+    /// @dev Six slots from the gap: feeTerms, feeRecipientProposal (3), combinedRevolving,
+    /// combinedProduct.
+
+    /// @notice A plan secured under MB-05, and its 12.14 default record.
+    struct SecuredPlan {
+        bool secured; // the member's signed instruction that MB-05 secures this plan
+        address noticeProposer; // proposer of a pending cure-notice timestamp
+        uint64 noticeAt; // the cure-notice timestamp: the approval's block time
+        uint64 defaultedAt; // when the 12.14 default was recorded; zero if not
+        uint128 noticeDue; // what the schedule asked by the notice: the past-due amount it concerns
+        uint256 noticeClock; // Phase 2g (10c): the member's pause clock at the notice
+    }
+    /// @notice a secured plan's 12.14 record: secured, the pending proposer, the cure-notice
+    /// timestamp, when its default was recorded, and the past-due amount the notice concerns.
+    mapping(uint256 => SecuredPlan) public securedPlans;
+    /// @notice Where the Liquidation Hold (12.6) is read: the Liquidator. Set once.
+    address public holdSource;
+
+    /// @dev plan => the member's pause clock (10c) when the plan was last known to be current: at
+    /// opening, and after every payment that leaves it on time (Phase 2g, owner decision 34). Its
+    /// installment default runs later by the paused time since. The plan fell behind after this
+    /// reading, so the paused time since it is never less than since the plan fell behind.
+    mapping(uint256 => uint256) internal currentClock;
+
+    /// @dev Two more slots from the gap: securedPlans, holdSource; and one for currentClock.
+    uint256[12] private __gap;
 
     uint256 internal constant RAY_ = 1e27;
     uint256 internal constant BPS_ = 10_000;
@@ -187,8 +261,14 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// @dev A term plan's cycle: its monthly rate is charged per 30 days (section 12.9).
     uint256 internal constant TERM_CYCLE = 30 days;
 
-    /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
+    /// @notice An unsecured plan defaults once its oldest missed installment is this many
+    /// installments overdue. A plan secured under MB-05 follows 12.14 instead.
     uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
+    /// @notice 12.14: a secured plan's scheduled payment must be this long past due (FIXED: MB-06 13.7),
+    /// and this long must pass after the cure-notice timestamp (MB-06 13.8).
+    uint256 internal constant SECURED_PAST_DUE = 60 days;
+    uint256 internal constant SECURED_CURE = 30 days;
+    bytes32 internal constant ATTESTER_ROLE = keccak256("CREDIT_ATTESTER_ROLE");
     /// @notice A plan may be re-split this many times in its life, and no more than once an
     /// installment period.
     uint8 public constant MAX_SPLIT_CHANGES = 3;
@@ -214,9 +294,8 @@ abstract contract TermIssuerBase is CreditIssuer {
     error TermIssuerSplitTooSoon(uint256 planId, uint256 availableAt);
     error TermIssuerNotDefaultable(address member);
     error TermIssuerNotReinstatable(address member);
-    error TermIssuerNotCollector(address caller);
-    error TermIssuerMandateOff(address member);
-    error TermIssuerCollectionUsed(bytes32 ref);
+    /// @notice `collectForMember` is retired: nothing takes a member's wallet USDC (Phase 2d, 10f).
+    error TermIssuerWalletCollectionRetired();
     /// @notice thrown when a plan's merchant is not a registered, active merchant (audit H-4).
     error TermIssuerMerchantNotActive(address merchant);
     /// @notice thrown when the member did not sign these plan terms (audit H-4).
@@ -240,12 +319,38 @@ abstract contract TermIssuerBase is CreditIssuer {
     error TermIssuerResplitShortens(uint256 planId);
     /// @notice thrown when the RateSchedule is named a second time (Phase 4, M-B).
     error TermIssuerRateScheduleSet();
+    /// @notice 12.16: the fee leg needs a fee recipient, and it is never a Clear Collective address.
+    error TermIssuerNoFeeRecipient();
+    error TermIssuerFeeRecipientNotAllowed(address recipient);
+    error TermIssuerSameSigner(address signer);
+    error TermIssuerNoProposal();
+    /// @notice 12.3: the Combined Ceiling's inputs are set once.
+    error TermIssuerCombinedSet();
+    /// @notice 12.14 (secured term plans).
+    error TermIssuerNotSecured(uint256 planId);
+    error TermIssuerNotPastDue(uint256 planId);
+    error TermIssuerOnHold(address member);
+    error TermIssuerHoldSourceSet();
 
     /* ========== EVENTS ========== */
 
     event TermLimitUpdated(address indexed member, uint256 limit);
     event CarryTreasuryUpdated(address treasury);
     event FeeRecipientUpdated(address recipient);
+    /// @notice 12.16: a two-person change of the fee recipient, for later charges only.
+    event FeeRecipientProposed(address indexed recipient, bytes32 indexed reasonCode, address indexed proposer);
+    event FeeRecipientChanged(
+        address indexed previous, address indexed recipient, bytes32 indexed reasonCode, address proposer, address approver
+    );
+    event FeeTermsUpdated(uint64 maxFeeSmall, uint64 maxFeeLarge, uint64 largeFrom);
+    event CombinedCeilingSet(address revolving, bytes32 product);
+    event PlanSecured(uint256 indexed planId, address indexed member);
+    event PlanNoticeProposed(uint256 indexed planId, address indexed proposer);
+    event PlanNoticeRecorded(uint256 indexed planId, uint64 noticeAt, uint256 pastDue, uint64 defaultFrom);
+    event SecuredPlanDefaulted(uint256 indexed planId, address indexed member);
+    event HoldSourceSet(address source);
+    /// @notice carry a plan would have accrued above the Combined Ceiling, not charged (12.3).
+    event PlanCarryTrimmed(uint256 indexed planId, uint256 amount);
     /// @notice everything needed to reproduce a plan's loan disclosure later (spec item 5).
     event PlanOpened(
         uint256 indexed planId,
@@ -270,6 +375,7 @@ abstract contract TermIssuerBase is CreditIssuer {
     event WrittenOffRepaid(address indexed member, address indexed payer, uint256 amount);
     event TermReinstated(address indexed member);
     event MandateSourceUpdated(address source);
+    /// @dev Emitted by the retired `collectForMember`; kept so past logs still decode.
     event CollectedForMember(bytes32 indexed ref, address indexed member, uint256 amount);
     event ResidualCarryPaid(address indexed member, address indexed payer, uint256 amount);
     /// @notice the terms the member signed for a plan, and the disclosure they were shown.
@@ -318,6 +424,53 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// closed-end schedule is quoted per cycle, and a 30-day cycle is never longer than a month.
     function _periodRate(Plan storage plan) internal view returns (uint256) {
         return (plan.index.ratePerCycle * RAY_ * plan.installmentLength) / (BPS_ * TERM_CYCLE);
+    }
+
+    /// @dev When a plan fell behind: the due date of its oldest installment not yet covered; zero
+    /// when on time.
+    function _delinquentSince(uint256 planId) internal view returns (uint256) {
+        if (arrearsOf(planId) == 0) return 0;
+        Plan storage plan = plans[planId];
+        if (plan.repaid < plan.scheduleFloor) return plan.scheduleStart;
+        uint256 n = plan.installments;
+        uint256 k = 1;
+        while (k < n && plan.repaid >= _dueAt(plan, k)) k++;
+        return plan.scheduleStart + k * plan.installmentLength;
+    }
+
+    /// @dev Whether a plan secured under MB-05 is in default (12.14): a scheduled payment at least
+    /// 60 days past due, a cure-notice timestamp recorded for it, 30 days since that timestamp, and
+    /// the past-due amount it concerns still unpaid. Computed; with no timestamp, never. (The
+    /// Liquidation Hold is checked by the trigger.)
+    function _securedDefaultable(uint256 planId) internal view returns (bool) {
+        SecuredPlan storage sp = securedPlans[planId];
+        Plan storage plan = plans[planId];
+        if (!sp.secured || plan.closed || sp.noticeAt == 0 || plan.repaid >= sp.noticeDue) return false;
+        uint256 since = _delinquentSince(planId);
+        // 10c (Phase 2g): the 30-day cure runs longer by the paused time since the notice, and no
+        // default arises while a pause affecting the member is in force.
+        uint256 cure = sp.noticeAt + SECURED_CURE;
+        address clock = _pauseClock();
+        if (clock != address(0)) {
+            if (IPauseClock(clock).inForce(plan.member)) return false;
+            cure += IPauseClock(clock).pausedSeconds(plan.member) - sp.noticeClock;
+        }
+        return since != 0 && block.timestamp >= since + SECURED_PAST_DUE && block.timestamp >= cure;
+    }
+
+    /// @dev Records the pause clock for a plan that is on time now (owner decision 34).
+    function _noteCurrent(uint256 planId) internal {
+        address clock = _pauseClock();
+        if (clock != address(0) && _delinquentSince(planId) == 0) {
+            currentClock[planId] = IPauseClock(clock).pausedSeconds(plans[planId].member);
+        }
+    }
+
+    /// @dev The member's pause clock (10c), as the Liquidator (`holdSource`) names it. None while
+    /// either is unset.
+    function _pauseClock() internal view returns (address) {
+        address source = holdSource;
+        return source == address(0) ? address(0) : IPauseClockSource(source).pauseClock();
     }
 
     /// @notice how far behind the schedule a plan is, in principal.
@@ -371,9 +524,16 @@ abstract contract TermIssuerBase is CreditIssuer {
         emit PlanSplitChanged(planId, left, plan.scheduleBase, behind);
     }
 
-    /// @dev The fee's home, falling back to the carry treasury while nobody has named one.
+    /// @dev Where a plan opened before Phase 2e had its fee minted: the recipient then, or the carry
+    /// treasury while nobody had named one. A refund of such a plan still reverses from there.
     function _feeRecipient() internal view returns (address) {
         return feeRecipient == address(0) ? carryTreasury : feeRecipient;
+    }
+
+    /// @dev Where a refund of `planId` reverses the fee from: the recipient its fee was paid to.
+    function _feeFrom(uint256 planId) internal view returns (address) {
+        address to = planPricing[planId].feeTo;
+        return to == address(0) ? _feeRecipient() : to;
     }
 
     /// @dev What a payment does to a plan, however it arrived: carry-aware reduction, the repaid
@@ -390,6 +550,7 @@ abstract contract TermIssuerBase is CreditIssuer {
             _untrackOpen(planId);
             emit PlanClosed(planId);
         }
+        _noteCurrent(planId);
     }
 
     /// @notice fixes the payment schedule for whatever the plan is spreading.
@@ -428,25 +589,20 @@ abstract contract TermIssuerBase is CreditIssuer {
     /// never on carry already owed: the lesser of the list rate and the legal cap on that principal,
     /// less the merchant's subsidy. A free plan accrues nothing, ever. Snapshots are reset to now,
     /// which is what lets principal be treated as constant between touches.
+    ///
+    /// Since Phase 2e every open plan of the member is brought to now together, by TermIssuer's
+    /// `materialiseMember`: the Combined Ceiling (12.3) divides one ceiling among them, so they must
+    /// share one stretch. A module reaches it by calling the issuer, which keeps the code in one place.
     function _materialiseCarry(uint256 planId) internal {
         Plan storage plan = plans[planId];
         if (plan.closed) return;
-        uint256 carry = _pendingPlanCarry(planId);
-        if (carry > 0) {
-            plan.principalOutstanding += carry;
-            carryOutstandingOf[planId] += carry;
-            stableCredit.accrueCarry(plan.member, carryTreasury, carry);
-            emit PlanCarryMaterialised(planId, carry);
-        }
-        PlanPricing storage pricing = planPricing[planId];
-        pricing.accruedAt = uint64(block.timestamp);
-        if (pricing.priced && !pricing.free) {
-            planSnap[planId] = rateSchedule.snapshot(pricing.state, pricing.product);
-        }
+        IOpenPrincipal(address(this)).materialiseMember(plan.member);
     }
 
-    /// @dev Carry a plan has accrued since its last touch.
-    function _pendingPlanCarry(uint256 planId) internal view returns (uint256) {
+    /// @dev Carry a plan has accrued since its last touch on its own terms (decision C: the list
+    /// rate per 30-day cycle, trimmed to the per-second-fitted cap on its principal, less the
+    /// merchant's subsidy), before the Combined Ceiling.
+    function _listCharge(uint256 planId) internal view returns (uint256) {
         Plan storage plan = plans[planId];
         PlanPricing storage pricing = planPricing[planId];
         if (plan.closed || pricing.free) return 0;
@@ -499,7 +655,10 @@ abstract contract TermIssuerBase is CreditIssuer {
         RateSchedule.ProductParams memory p = rateSchedule.paramsOf(q.state, product);
         (uint256 discountBps, uint256 subsidyBps, uint32 merchantFreeMax) =
             IMerchantSplitTerms(address(stableCredit.merchantRegistry())).splitTermsOf(merchant, installments);
-        q.payout = principal - (principal * discountBps) / BPS_;
+        // 12.16: the fee leg is the discount for this split, capped at $50 up to $2,500 and $75 above.
+        uint256 fee = (principal * discountBps) / BPS_;
+        uint256 cap = principal <= _feeTerm(feeTerms.largeFrom, 2_500e6) ? _feeTerm(feeTerms.maxFeeSmall, 50e6) : _feeTerm(feeTerms.maxFeeLarge, 75e6);
+        q.payout = principal - (fee < cap ? fee : cap);
         q.subsidyBps = uint32(subsidyBps);
         q.largeLoan = p.largeLoanThreshold != 0 && principal >= p.largeLoanThreshold;
         // The minimum term is judged on the member's open principal under this product, this plan
@@ -524,6 +683,11 @@ abstract contract TermIssuerBase is CreditIssuer {
         }
         if (!q.free && subsidyBps >= effective) q.free = true;
         q.rateBps = q.free ? 0 : effective - subsidyBps;
+    }
+
+    /// @dev A governed fee figure, or its initial value while unset (ledger units: USDC, 6 decimals).
+    function _feeTerm(uint64 value, uint256 initial) internal pure returns (uint256) {
+        return value == 0 ? initial : value;
     }
 
     /// @dev Applies a payment to a plan's outstanding carry first, and says how much it took.

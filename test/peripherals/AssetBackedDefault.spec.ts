@@ -4,6 +4,8 @@ import { deployPhase0Network } from "../helpers/phase0-fixture";
 import { driveToDefault } from "../helpers/default";
 import { issuerProxyOptions } from "../helpers/issuers";
 import { pledgeSigned } from "../helpers/pledge";
+import { deployBarePool } from "../helpers/yieldPool";
+import { deployEnforcer } from "../helpers/enforcement";
 
 const ONE_USDC = 10n ** 6n;
 const CYCLE = 30 * 24 * 60 * 60;
@@ -16,25 +18,24 @@ const ASSET_INT = 3;
 // Pool shares are a claim on a pool that may have lent the money out, so turning them into cash
 // can land in the withdrawal queue behind other depositors. That is the timing risk a haircut
 // does not price: it says what collateral is worth, not when.
+//
+// Phase 2f stage 2 (decisions 7, 10 and 22, C5): pledged shares are never seized. PoolShareEnforcer
+// asks the pool to redeem only the shares the Defaulted Amount needs, in the member's name through
+// the queue, and the Liquidator applies the proceeds when the queue fills.
 describe("asset-backed default", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
-  let pool: any, registry: any, issuer: any, liquidator: any;
-  let coop: any, depositor: any, borrower: any;
+  let pool: any, registry: any, issuer: any, liquidator: any, enforcer: any;
+  let coop: any, depositor: any, lending: any;
+  let deploy: (amount: bigint) => Promise<any>;
 
   beforeEach(async function () {
     ctx = await deployPhase0Network();
     const signers = await ethers.getSigners();
-    [coop, depositor, borrower] = [signers[8], signers[9], signers[10]];
+    [coop, depositor, lending] = [signers[8], signers[9], signers[10]];
 
-    const LendingPool = await ethers.getContractFactory("LendingPool");
-    pool = await upgrades.deployProxy(
-      LendingPool,
-      [ctx.admin.address, await ctx.usdc.getAddress(), "Clear Lending Pool", "clrLP"],
-      { kind: "uups" }
-    );
-    await pool.grantRole(await pool.BORROWER_ROLE(), borrower.address);
-    // A borrower draws only to its stored destination, within a daily cap (audit H-4).
-    await pool.setBorrower(borrower.address, borrower.address, ethers.MaxUint256);
+    // Phase 2f: the pool is the Yield Pool. Money leaves it only as a two-person Deployment to
+    // Clear Lending's lending account (decision 17), not a borrower's draw.
+    ({ pool, deploy } = await deployBarePool(ctx.admin, ctx.usdc, lending, [signers[11], signers[12]]));
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     issuer = await upgrades.deployProxy(
@@ -47,6 +48,9 @@ describe("asset-backed default", function () {
     await ctx.access.grantOperator(await issuer.getAddress());
     await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);
     await issuer.connect(ctx.operator).addTier(POOL_SHARE, 75n, CYCLE);
+    // An unsecured tier: since Addendum 2 only an unpaid Rebalance Amount is a miss, so a default
+    // needs some unsecured debt beside the pledged position.
+    await issuer.connect(ctx.operator).addTier(ethers.encodeBytes32String("INCOME"), 150n, CYCLE);
 
     const CollateralRegistry = await ethers.getContractFactory("CollateralRegistry");
     registry = await upgrades.deployProxy(
@@ -72,9 +76,12 @@ describe("asset-backed default", function () {
       ],
       { kind: "uups" }
     );
-    await pool.grantRole(await pool.LIQUIDATOR_ROLE(), await liquidator.getAddress());
+    // C5: no LIQUIDATOR_ROLE on the pool; the enforcer holds ENFORCER_ROLE and is the destination.
     await registry.grantRole(await registry.OPERATOR_ROLE(), await liquidator.getAddress());
     await ctx.access.grantOperator(await liquidator.getAddress());
+    await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
+    await liquidator.setEarnSources(await pool.getAddress(), ethers.ZeroAddress);
+    enforcer = await deployEnforcer(ctx.admin, pool, liquidator, registry, POOL_SHARE);
 
     // The member deposits into the pool and pledges the shares against a credit line.
     await ctx.usdc.mint(ctx.member.address, 1_000n * ONE_USDC);
@@ -84,11 +91,14 @@ describe("asset-backed default", function () {
 
     await issuer
       .connect(ctx.operator)
-      .openLine(ctx.member.address, [700n * ONE_USDC], CYCLE, CYCLE);
+      .openLine(ctx.member.address, [700n * ONE_USDC], 0);
   });
 
   async function spendAndDefault(amount: bigint) {
-    await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount);
+    // `amount` on the pool-share tier and $10 unsecured, which is what goes unpaid.
+    await issuer.connect(ctx.operator).setTierCapacity(ctx.member.address, 0, amount);
+    await issuer.connect(ctx.operator).setTierCapacity(ctx.member.address, 1, 50n * ONE_USDC);
+    await ctx.stableCredit.connect(ctx.member).transfer(ctx.counterparty.address, amount + 10n * ONE_USDC);
     // Section 12.5: two missed rebalances, each judged, then the cure window.
     await driveToDefault(issuer, ctx.member.address, ctx.operator);
   }
@@ -157,44 +167,56 @@ describe("asset-backed default", function () {
     });
   });
 
-  describe("the co-op takes the shares and redeems them", function () {
-    it("settles the debt when the pool has the cash", async function () {
+  // Phase 2f, decision 22 replaces "take the shares for what the tier owes": a default makes only
+  // its Defaulted Amount due (the unpaid Rebalance Amount and any past-due Secured Minimum), and
+  // only the shares that amount needs are redeemed, through the queue (C5).
+  describe("the pledge module redeems only what the Defaulted Amount needs", function () {
+    it("settles the Defaulted Amount when the pool has the cash, and the rest of the shares stay the member's", async function () {
+      const m = ctx.member.address;
       await spendAndDefault(700n * ONE_USDC);
-      expect(await issuer.inDefault(ctx.member.address)).to.equal(true);
+      expect(await issuer.inDefault(m)).to.equal(true);
+      const [due] = await liquidator.earnDefaultedOf(m);
+      expect(due).to.be.greaterThan(10n * ONE_USDC); // the $10 Rebalance Amount and its carry, and the past-due carry
+      expect(due).to.be.lessThan(60n * ONE_USDC);
+      const owedBefore = (await issuer.principalOf(m, 0)) + (await issuer.principalOf(m, 1));
 
-      const [realized, queued] = await liquidator.liquidateShares.staticCall(
-        ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
-      );
-      await liquidator.liquidateShares(
-        ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
-      );
+      await enforcer.enforce(m);
+      const queued = await pool.enforcementQueuedOf(m);
+      expect(queued).to.be.closeTo(due, 2n); // shares at about $1 each, sized by previewWithdraw
+      // In the member's name in the queue: nobody holds them but the pool's escrow.
+      expect(await pool.balanceOf(await enforcer.getAddress())).to.equal(0n);
+      expect(await pool.balanceOf(await liquidator.getAddress())).to.equal(0n);
 
-      expect(queued).to.equal(false);
-      expect(realized).to.be.greaterThan(690n * ONE_USDC);
-      // What is left is the carry that accrued while the position was in default and being
-      // liquidated. The shares covered what was owed when they were valued, not a moment later.
-      // Section 12.5's default takes two cycles and the cure window, so about twice the carry.
-      expect(await issuer.principalOf(ctx.member.address, 0)).to.be.lessThan(45n * ONE_USDC);
+      await pool.fillQueue(10);
+      // All of it pays the Defaulted Amount (the settlement first brings carry on the line up to date,
+      // so the balances fall by a little less than it); nothing is left over for the member.
+      const paid = await pool.enforcementFilledOf(m);
+      await expect(enforcer.settle(m)).to.emit(liquidator, "PoolProceedsApplied").withArgs(m, queued, paid[1], paid[1], 0n);
+      expect(paid[1]).to.be.closeTo(due, 2n);
+      expect((await issuer.principalOf(m, 0)) + (await issuer.principalOf(m, 1))).to.be.lessThan(owedBefore);
+      // Everything else the member pledged is still theirs, and still pledged behind what is owed.
+      expect(await pool.balanceOf(m)).to.equal(1_000n * ONE_USDC - queued);
+      expect(await issuer.principalOf(m, 0)).to.be.greaterThan(650n * ONE_USDC);
+      expect((await liquidator.earnDefaultedOf(m))[0]).to.be.lessThanOrEqual(2n);
     });
 
-    it("stops counting a pledge it has taken", async function () {
+    it("stops counting the shares the queue redeemed", async function () {
+      const m = ctx.member.address;
       await spendAndDefault(700n * ONE_USDC);
-      await liquidator.liquidateShares(
-        ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
-      );
-
-      expect(await registry.pledgedOf(ctx.member.address, POOL_SHARE))
-        .to.be.lessThan(1_000n * ONE_USDC);
+      await enforcer.enforce(m);
+      const queued = await pool.enforcementQueuedOf(m);
+      await pool.fillQueue(10);
+      await expect(enforcer.settle(m)).to.emit(registry, "EnforcementRedeemed").withArgs(m, POOL_SHARE, queued);
+      expect(await registry.pledgedOf(m, POOL_SHARE)).to.equal(1_000n * ONE_USDC - queued);
     });
 
-    it("takes no more than the tier owes", async function () {
+    it("takes no more than the Defaulted Amount", async function () {
       // A default is not a forfeiture of everything the member saved.
+      const m = ctx.member.address;
       await spendAndDefault(350n * ONE_USDC);
-      await liquidator.liquidateShares(
-        ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
-      );
-
-      expect(await pool.balanceOf(ctx.member.address)).to.be.greaterThan(0n);
+      await enforcer.enforce(m);
+      await expect(enforcer.enforce(m)).to.be.revertedWithCustomError(enforcer, "PoolShareEnforcerNothingNeeded");
+      expect(await pool.balanceOf(m)).to.be.greaterThan(900n * ONE_USDC);
     });
 
     it("refuses a member who has not defaulted", async function () {
@@ -202,65 +224,61 @@ describe("asset-backed default", function () {
         .connect(ctx.member)
         .transfer(ctx.counterparty.address, 700n * ONE_USDC);
 
-      await expect(
-        liquidator.liquidateShares(
-          ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
-        )
-      ).to.be.revertedWithCustomError(liquidator, "LiquidatorNotInDefault");
+      await expect(enforcer.enforce(ctx.member.address))
+        .to.be.revertedWithCustomError(enforcer, "PoolShareEnforcerNothingNeeded");
+      expect(pool.interface.getFunction("seizeShares")).to.equal(null);
+      expect(liquidator.interface.getFunction("liquidateShares")).to.equal(null);
     });
   });
 
   describe("when the pool has lent the money out", function () {
-    it("settles what it can and queues the rest, rather than failing", async function () {
+    it("waits in the queue rather than failing, and the debt is not forgiven meanwhile", async function () {
       // The timing risk a haircut does not price. The collateral is sufficient; it is just not
       // available today, because it is out on loan to somebody else.
+      const m = ctx.member.address;
       await spendAndDefault(700n * ONE_USDC);
-      await pool.connect(borrower).borrow(900n * ONE_USDC, borrower.address);
+      await deploy(900n * ONE_USDC);
+      const owedBefore = (await issuer.principalOf(m, 0)) + (await issuer.principalOf(m, 1));
 
-      const [realized, queued] = await liquidator.liquidateShares.staticCall(
-        ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
-      );
-      await liquidator.liquidateShares(
-        ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
-      );
-
-      expect(queued).to.equal(true);
-      expect(realized).to.be.lessThan(700n * ONE_USDC);
-      // The debt is not forgiven while the co-op waits in line for it.
-      expect(await issuer.principalOf(ctx.member.address, 0)).to.be.greaterThan(0n);
+      await enforcer.enforce(m);
+      await pool.fillQueue(10);
+      // Vault Cash is $100 and the Defaulted Amount under $60: this one fills. Deploy the rest
+      // before it can, and it waits.
+      expect(await pool.enforcementQueuedOf(m)).to.equal(0n);
+      await enforcer.settle(m);
+      expect((await issuer.principalOf(m, 0)) + (await issuer.principalOf(m, 1))).to.be.lessThan(owedBefore);
     });
 
-    it("settles the remainder once the co-op collects", async function () {
+    it("settles once Clear Lending returns the funds and the queue fills", async function () {
+      const m = ctx.member.address;
       await spendAndDefault(700n * ONE_USDC);
-      await pool.connect(borrower).borrow(900n * ONE_USDC, borrower.address);
-      await liquidator.liquidateShares(
-        ctx.member.address, await issuer.getAddress(), 0, POOL_SHARE, await pool.getAddress()
-      );
-      const stillOwed = await issuer.principalOf(ctx.member.address, 0);
-      expect(stillOwed).to.be.greaterThan(0n);
-      // What is queued is recorded against this member, at its value when queued, and no more than
-      // that may be applied to them (Phase 4, L-H). Carry since then is still owed.
-      const queuedFor = await liquidator.realizedPendingOf(ctx.member.address);
-      expect(queuedFor).to.be.greaterThan(0n);
-      expect(queuedFor).to.be.lessThanOrEqual(stillOwed);
+      // Everyone else's redemption comes first: a depositor queues ahead of the enforcement.
+      await ctx.usdc.mint(depositor.address, 500n * ONE_USDC);
+      await ctx.usdc.connect(depositor).approve(await pool.getAddress(), 500n * ONE_USDC);
+      await pool.connect(depositor).deposit(500n * ONE_USDC, depositor.address);
+      await deploy(1_350n * ONE_USDC);
+      await pool.connect(depositor).requestWithdrawal(500n * ONE_USDC, depositor.address);
+      const owedBefore = (await issuer.principalOf(m, 0)) + (await issuer.principalOf(m, 1));
 
-      // The loan comes back, the queued claim pays out, and the co-op applies it.
-      await ctx.usdc.mint(borrower.address, 900n * ONE_USDC);
-      await ctx.usdc.connect(borrower).approve(await pool.getAddress(), 900n * ONE_USDC);
-      await pool.connect(borrower).repay(900n * ONE_USDC);
-      await pool.connect(await ethers.getSigner(await liquidator.getAddress()));
+      await enforcer.enforce(m);
+      const queued = await pool.enforcementQueuedOf(m);
+      await pool.fillQueue(10);
+      // Nothing filled for the member yet: there is nothing to settle and nothing is forgiven.
+      await expect(enforcer.settle(m)).to.be.revertedWithCustomError(enforcer, "PoolShareEnforcerNothingToSettle");
+      expect((await issuer.principalOf(m, 0)) + (await issuer.principalOf(m, 1))).to.equal(owedBefore);
 
-      // The claim belongs to the liquidator; an operator applies whatever it collected.
-      await ctx.usdc.mint(ctx.admin.address, stillOwed);
-      await ctx.usdc.transfer(await liquidator.getAddress(), stillOwed);
-      await liquidator.settleRealized(
-        ctx.member.address, await issuer.getAddress(), 0, stillOwed
-      );
-
-      // Exactly the queued proceeds were applied; the rest is the member's to pay, not forgiven and
-      // not taken from anybody else's queued cash.
-      expect(await liquidator.realizedPendingOf(ctx.member.address)).to.equal(0n);
-      expect(await issuer.principalOf(ctx.member.address, 0)).to.be.closeTo(stillOwed - queuedFor, 1_000n);
+      // Clear Lending returns the funds, the queue fills in order, and the proceeds are applied.
+      await ctx.usdc.mint(lending.address, 1_350n * ONE_USDC);
+      await ctx.usdc.connect(lending).approve(await pool.getAddress(), 1_350n * ONE_USDC);
+      await pool.connect(lending).returnFunds(1_350n * ONE_USDC);
+      await pool.fillQueue(10);
+      expect(await pool.enforcementQueuedOf(m)).to.equal(0n);
+      const paid = await pool.enforcementFilledOf(m);
+      expect(paid[0]).to.equal(queued);
+      await expect(enforcer.settle(m)).to.emit(liquidator, "PoolProceedsApplied").withArgs(m, queued, paid[1], paid[1], 0n);
+      expect((await issuer.principalOf(m, 0)) + (await issuer.principalOf(m, 1))).to.be.lessThan(owedBefore);
+      expect(await ctx.usdc.balanceOf(await enforcer.getAddress())).to.equal(0n);
+      expect(await ctx.usdc.balanceOf(await liquidator.getAddress())).to.equal(0n);
     });
   });
 });

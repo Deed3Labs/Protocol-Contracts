@@ -172,6 +172,11 @@ export async function signTrust(ctx: Ctx, signer: any, primaryType: string, valu
       { name: "tokenId", type: "uint256" }, { name: "standby", type: "address" },
       { name: "docHash", type: "bytes32" }, { name: "nonce", type: "uint256" },
     ],
+    // Phase 4c (item 4): the second validator signer's consent to a freeze.
+    FreezeConsent: [
+      { name: "tokenId", type: "uint256" }, { name: "reasonCode", type: "uint8" },
+      { name: "recordingRefHash", type: "bytes32" }, { name: "uriHash", type: "bytes32" }, { name: "nonce", type: "uint256" },
+    ],
   };
   const domain = {
     name: "DeedNFT Trust",
@@ -180,6 +185,29 @@ export async function signTrust(ctx: Ctx, signer: any, primaryType: string, valu
     verifyingContract: await ctx.deed.getAddress(),
   };
   return signer.signTypedData(domain, { [primaryType]: types[primaryType] }, value);
+}
+
+/** Phase 4c (item 4): makes `who` a second signer of the default validator, so a freeze has its two. */
+export async function addValidatorSigner(ctx: Ctx, who: any) {
+  await ctx.validator.grantRole(await ctx.validator.VALIDATOR_ROLE(), who.address);
+}
+
+/** Phase 4c (item 4): `cosigner`'s FreezeConsent signature for a freezing markVoid at the deed's current nonce. */
+export async function signFreeze(ctx: Ctx, cosigner: any, tokenId: bigint, reasonCode: number, recordingRefHash: string, uri: string) {
+  const nonce = (await ctx.trust.trustRecordOf(tokenId)).nonce;
+  return signTrust(ctx, cosigner, "FreezeConsent", { tokenId, reasonCode, recordingRefHash, uriHash: k(uri), nonce });
+}
+
+/**
+ * Phase 4c (item 4): a freezing void by two validator signers. `cosigner` (default operator2, made a signer
+ * here) proposes by signing, `caller` (default the deployer) confirms.
+ */
+export async function freeze(ctx: Ctx, tokenId: bigint, reasonCode = 128, recordingRefHash = k("order"), uri = "ipfs://order", caller?: any, cosigner?: any) {
+  const by = caller ?? ctx.deployer;
+  const co = cosigner ?? ctx.operator2;
+  await addValidatorSigner(ctx, co);
+  const sig = await signFreeze(ctx, co, tokenId, reasonCode, recordingRefHash, uri);
+  return ctx.trust.connect(by).markVoid(tokenId, reasonCode, recordingRefHash, uri, co.address, sig);
 }
 
 /** Mint a trust deed (Land by default) with the trustee's signed acceptance. Returns its ID. */

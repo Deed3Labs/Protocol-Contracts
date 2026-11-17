@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
+import { deployBarePool } from "../../helpers/yieldPool";
 import { deployPhase0Network } from "../../helpers/phase0-fixture";
 
 /*
@@ -56,10 +57,10 @@ describe("COMPLIANCE addendum 12.10: PayoutPool deadline order (acceptance 27)",
     await registry.registerMerchant(net30.address, NET_30, 50_000n * ONE_USDC, 200n);
     await registry.registerMerchant(net14.address, NET_14, 50_000n * ONE_USDC, 200n);
 
-    const LendingPool = await ethers.getContractFactory("LendingPool");
-    yieldLender = await upgrades.deployProxy(LendingPool, [ctx.admin.address, await ctx.usdc.getAddress(), "Clear Yield", "cYLD"], { kind: "uups" });
-    await yieldLender.grantRole(await yieldLender.BORROWER_ROLE(), await pool.getAddress());
-    await yieldLender.setBorrower(await pool.getAddress(), await pool.getAddress(), ethers.MaxUint256);
+    // Phase 2f, decision 17: the Yield Pool no longer lends to the PayoutPool. It is still named
+    // here, to show the PayoutPool's unchanged code skips it (`borrowableToday` is zero); the
+    // co-op treasury's allowance funds the claim instead.
+    ({ pool: yieldLender } = await deployBarePool(ctx.admin, ctx.usdc, signers[17], [signers[18], signers[19]]));
     await pool.setYieldPool(await yieldLender.getAddress());
 
     // Two older net-30 claims are queued first, then a newer net-14 claim.
@@ -83,8 +84,12 @@ describe("COMPLIANCE addendum 12.10: PayoutPool deadline order (acceptance 27)",
     await ctx.usdc.mint(ctx.admin.address, 500n * ONE_USDC);
     await ctx.usdc.approve(await yieldLender.getAddress(), 500n * ONE_USDC);
     await yieldLender.deposit(500n * ONE_USDC, ctx.admin.address);
+    await ctx.usdc.mint(coop.address, 500n * ONE_USDC);
+    await ctx.usdc.connect(coop).approve(await pool.getAddress(), 500n * ONE_USDC);
     await ethers.provider.send("evm_setNextBlockTimestamp", [Number(dueBy)]);
-    await pool.drawForDueClaim();
+    await expect(pool.drawForDueClaim()).to.not.emit(pool, "DrewFromYieldPool");
+    // The Yield Pool's cash is untouched.
+    expect(await yieldLender.vaultCash()).to.equal(500n * ONE_USDC);
 
     expect(await ctx.usdc.balanceOf(net14.address)).to.equal(500n * ONE_USDC);
     const [, , , , paid] = await pool.claimAt(2);

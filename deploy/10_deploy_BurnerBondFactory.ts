@@ -1,4 +1,5 @@
 import { saveDeployment, getDeployment } from "./helpers";
+import { deployBondFactory } from "./bondModules";
 
 /**
  * Deploys the BurnerBondFactory contract
@@ -36,10 +37,8 @@ async function main() {
 
   // Deploy BurnerBondFactory
   console.log("\nDeploying BurnerBondFactory...");
-  const BurnerBondFactory = await hre.ethers.getContractFactory("BurnerBondFactory");
-  const burnerBondFactory = await BurnerBondFactory.deploy(tokenRegistryDeployment.address, baseURI);
-
-  await burnerBondFactory.waitForDeployment();
+  // Phase 2e: the factory takes the BurnerBondPledges module its bond implementation pins.
+  const burnerBondFactory = await deployBondFactory(tokenRegistryDeployment.address, baseURI);
   const burnerBondFactoryAddress = await burnerBondFactory.getAddress();
   console.log("✓ BurnerBondFactory deployed to:", burnerBondFactoryAddress);
 

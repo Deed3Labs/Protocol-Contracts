@@ -12,7 +12,7 @@ import "./RevolvingIssuerBase.sol";
 contract RevolvingIssuerExtension is RevolvingIssuerBase {
     /// @notice what RevolvingIssuer's constructor checks before pinning this as its extension.
     function extensionKind() external pure returns (bytes32) {
-        return keccak256("RevolvingIssuerExtension.v2");
+        return keccak256("RevolvingIssuerExtension.v4");
     }
 
     using CarryIndex for CarryIndex.Index;
@@ -65,14 +65,17 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
             revert RevolvingIssuerCardExceedsAuthorization(ref, amount, authorization.amount);
         }
         if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
-        if (inDefault(member) || hasDefaulted(member)) {
+        // The card follows the current line (4c item 2): a default of an earlier line, settled
+        // before the member was re-onboarded, does not stop this one.
+        if (_computedDefault(member) || _defaultedOnCurrentLine(member)) {
             revert RevolvingIssuerMemberNotInGoodStanding(member);
         }
         _consumeDailyCap(cardSpendCap, "CARD", amount);
+        _consumeMemberCardCap(member, amount);
         delete cardAuthorizations[ref];
 
         // Carry accrued since the last touch is part of what is owed; bring it on before measuring.
-        _materialiseCarry(member);
+        _touch(member);
 
         // Card spending draws against Savings only as far as the member has authorized (12.7): the
         // Savings tier is narrowed to that for this draw, and the rest falls to the next tiers.
@@ -128,18 +131,21 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         if (cardAuthorizations[ref].member != address(0) || cardSettlements[ref].member != address(0)) {
             revert RevolvingIssuerCardAlreadyAuthorized(ref);
         }
-        if (isFrozen(member) || inDefault(member) || hasDefaulted(member)) {
+        if (isFrozen(member) || _computedDefault(member) || _defaultedOnCurrentLine(member)) {
             revert RevolvingIssuerMemberNotInGoodStanding(member);
         }
         if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
-        uint256 headroom = _activeHeadroom(member);
-        // Savings count only as far as the member has authorized card draws against them (12.7).
+        // What the line could hold right now, carry brought on first. Savings count only as far as
+        // the member has authorized card draws against them (12.7), and not at all while an unpaid
+        // Secured Minimum pauses secured draws (12.1).
+        _touch(member);
+        bool paused = _securedDrawPaused(member);
+        uint256 headroom;
         for (uint256 i = 0; i < tiers.length; i++) {
-            if (tiers[i].kind != SAVINGS_KIND || !tiers[i].active) continue;
-            uint256 room = headroomOf(member, i);
-            uint256 allowed = savingsDrawAllowance[member];
-            if (room > allowed) headroom -= room - allowed;
-            break;
+            if (!tiers[i].active || (paused && !_isUnsecured(i))) continue;
+            uint256 room = _headroom(member, i, tierPrincipal[member][i]);
+            if (tiers[i].kind == SAVINGS_KIND && room > savingsDrawAllowance[member]) room = savingsDrawAllowance[member];
+            headroom += room;
         }
         if (headroom < amount) revert RevolvingIssuerCardHeadroom(member, amount, headroom);
         cardAuthorizations[ref] = CardAuthorization({member: member, amount: amount});
@@ -161,8 +167,8 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
             revert RevolvingIssuerCardReversalExceedsSettlement(ref, amount, settlement.amount);
         }
 
-        _materialiseCarry(settlement.member);
-        _repay(settlement.member, amount);
+        _touch(settlement.member);
+        _repay(settlement.member, amount, type(uint256).max);
         cardSettlements[ref].amount = settlement.amount - amount;
         stableCredit.reversePurchase(
             settlement.member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
@@ -195,13 +201,13 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         if (amount == 0) revert RevolvingIssuerCardAmountZero();
         if (cardRepayments[ref] != 0) revert RevolvingIssuerCardAlreadyRepaid(ref);
 
-        _materialiseCarry(member);
-        uint256 principal = totalPrincipalOf(member);
+        _touch(member);
+        uint256 principal = _totalPrincipal(member);
         if (amount > principal) revert RevolvingIssuerCardRepaymentExceedsDrawn(member, amount, principal);
         uint256 held = IERC20Upgradeable(address(stableCredit)).balanceOf(cardSettlementAccount);
         if (held < amount) revert RevolvingIssuerCardFloatCannotCover(amount, held);
 
-        _repay(member, amount);
+        _repay(member, amount, type(uint256).max);
         cardRepayments[ref] = amount;
         stableCredit.reversePurchase(
             member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
@@ -226,7 +232,7 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         onlyOperator
     {
         _requireTier(tierId);
-        _materialiseCarry(member);
+        _touch(member);
 
         uint256 principal = tierPrincipal[member][tierId];
         uint256 pay = principal < amount ? principal : amount;
@@ -237,7 +243,21 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         reserve.forceApprove(address(stableCredit), pay);
         stableCredit.repayCreditBalanceFor(address(this), member, uint128(pay));
 
-        _repayTier(member, tierId, pay);
+        // Collateral applied to the debt is not a cure of the default it enforces (12.5).
+        _repayTier(member, tierId, pay, false);
+    }
+
+    /// @dev 4c item 1: today's card settlements for one member, against the governed per-member cap,
+    /// so the settler key's reach over any one member is bounded. Zero means not set.
+    function _consumeMemberCardCap(address member, uint256 amount) private {
+        uint256 cap = dueTerms.cardMemberDailyCap;
+        if (cap == 0) return;
+        CycleState storage s = cycleState[member];
+        uint64 today = uint64(block.timestamp / 1 days);
+        uint256 used = s.cardDay == today ? s.cardUsed : 0;
+        if (used + amount > cap) revert RevolvingIssuerCardMemberDailyCap(member, amount, cap > used ? cap - used : 0);
+        s.cardDay = today;
+        s.cardUsed = uint128(used + amount);
     }
 
     /// @notice adds a tier at the end of the draw order.
@@ -252,11 +272,15 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         onlyCreditRole(CREDIT_SETTINGS_ROLE)
         returns (uint256 tierId)
     {
-        if (tiers.length > 0) {
-            uint256 previous = tiers[tiers.length - 1].index.ratePerCycle;
-            if (ratePerCycle < previous) {
-                revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
+        if (kind == WORKOUT_KIND) {
+            // The workout plan's position (12.18): one, at a fixed 0%, outside the draw order.
+            for (uint256 i = 0; i < tiers.length; i++) {
+                if (tiers[i].kind == WORKOUT_KIND) ratePerCycle = 1;
             }
+            if (ratePerCycle != 0) revert RevolvingIssuerWorkoutTerms(0, 0);
+        } else {
+            (bool found, uint256 previous) = _neighbourRate(tiers.length, false);
+            if (found && ratePerCycle < previous) revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
         }
         // Every tier shares one clock. Two tiers accruing on different periods would make
         // "cheapest first" meaningless, because the rates would stop being comparable and draw
@@ -280,16 +304,13 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
     /// one. The ascending order still has to hold afterwards, in both directions.
     function setTierRate(uint256 tierId, uint256 ratePerCycle) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
         _requireTier(tierId);
-        if (tierId > 0) {
-            uint256 previous = tiers[tierId - 1].index.ratePerCycle;
-            if (ratePerCycle < previous) {
-                revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
-            }
-        }
-        if (tierId + 1 < tiers.length) {
-            uint256 next = tiers[tierId + 1].index.ratePerCycle;
-            if (ratePerCycle > next) revert RevolvingIssuerRatesMustAscend(ratePerCycle, next);
-        }
+        // The workout plan's position stays at 0% (12.18), and is left out of the order.
+        if (tiers[tierId].kind == WORKOUT_KIND) revert RevolvingIssuerWorkoutTerms(0, 0);
+        (bool found, uint256 previous) = _neighbourRate(tierId, false);
+        if (found && ratePerCycle < previous) revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
+        uint256 next;
+        (found, next) = _neighbourRate(tierId, true);
+        if (found && ratePerCycle > next) revert RevolvingIssuerRatesMustAscend(ratePerCycle, next);
         // Bring the tier's own accumulator to now at the old rate first (spec item 3: a new rate
         // only ever applies going forward).
         localAcc[tierId] = _localAcc(tierId);
@@ -298,53 +319,15 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         emit TierRateUpdated(tierId, ratePerCycle);
     }
 
-    /// @notice opens a member's line with a starting ceiling in each tier.
-    /// @param member address of the member.
-    /// @param capacities ceiling contribution per tier, in tier order.
-    /// @param periodLength length of the credit period.
-    /// @param graceLength length of the grace period.
-    function openLine(
-        address member,
-        uint256[] calldata capacities,
-        uint256 periodLength,
-        uint256 graceLength
-    ) external onlyCreditRole(CREDIT_LINES_ROLE) notNull(member) notInActivePeriod(member) {
-        // State gate (spec item 9): no line for a member with no attested state, or in a state
-        // where the revolving product is not enabled.
-        if (address(rateSchedule) != address(0)) {
-            bytes32 state = _stateOf(member);
-            if (state == bytes32(0) || !rateSchedule.isEnabled(state, ceilingProduct)) {
-                revert RevolvingIssuerStateNotEnabled(member, state);
-            }
+    /// @dev The rate of the nearest tier below `tierId` (or above it, when `up`) other than the
+    /// workout plan's, and whether there is one.
+    function _neighbourRate(uint256 tierId, bool up) private view returns (bool, uint256) {
+        uint256 i = tierId;
+        while (up ? i + 1 < tiers.length : i > 0) {
+            i = up ? i + 1 : i - 1;
+            if (tiers[i].kind != WORKOUT_KIND) return (true, tiers[i].index.ratePerCycle);
         }
-        uint256 total;
-        uint256 increase;
-        for (uint256 i = 0; i < capacities.length && i < tiers.length; i++) {
-            uint256 previous = tierCapacity[member][i];
-            if (capacities[i] > previous) increase += capacities[i] - previous;
-            tierCapacity[member][i] = capacities[i];
-            total += capacities[i];
-            emit TierCapacityUpdated(member, i, capacities[i]);
-        }
-        _checkCreditCaps(member);
-        // Opening a line is new credit like any other limit raised (audit H-4).
-        _consumeDailyCap(capacityIncreaseCap, "CAPACITY", increase);
-        stableCredit.createCreditLine(member, total, 0);
-        // Zero means "this network's cycle", which is what every caller should want and what
-        // nothing previously supplied -- the period was whatever the caller happened to pass, so
-        // two members could be on different clocks with nothing saying so.
-        //
-        // Not forced to equal it. The rebalance period and the carry cycle are different
-        // questions: one is how long a member has to return to zero, the other is how often carry
-        // compounds. The plan makes them coincide at thirty days, and that is now the default
-        // rather than a coincidence -- but a longer period is a policy choice, not a bug, and
-        // refusing it would mean a member carrying a balance across cycles could never be modelled
-        // at all.
-        uint256 period = periodLength != 0 ? periodLength : tiers.length == 0 ? 0 : tiers[0].index.cycleLength;
-        _updateCreditPeriod(member, block.timestamp + period, graceLength);
-        // A new line starts a new default episode (Phase 4b, M-C): a default recorded before now
-        // stays on record, but no longer lets anyone liquidate this line.
-        lineOpenedAt[member] = uint64(block.timestamp);
+        return (false, 0);
     }
 
     /// @notice names the CLRUSD token whose lock a Savings draw refreshes (Phase 4b, L-B).
@@ -356,5 +339,76 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         if (token == address(0) || clrusdToken != address(0)) revert RevolvingIssuerClrusdSet();
         clrusdToken = token;
         emit ClrusdTokenSet(token);
+    }
+
+    /// @notice Automatic Clearing (12.2): records a deposit that landed in the member's Spendable at
+    /// the bank as a repayment, at the level the member chose.
+    /// @dev The settler delivers the cash; nothing is taken from the member's wallet, so Ready to
+    /// allocate USDC and CLRUSD are never swept. Refused while the member is in hybridMode (the only
+    /// thing that switches clearing off besides the member), for a deposit from an excluded payer
+    /// (federal benefits unless the member removed them), and once per ref.
+    ///
+    /// UNSECURED (the default) clears Boost and income-backed, then any unpaid Secured Minimum, and
+    /// stops. DUE_ONLY clears exactly the unpaid Rebalance Amount and any unpaid Secured Minimum.
+    /// EVERYTHING clears every tier. Within each, dearest first by what each tier costs now (4c
+    /// item 7). What is not applied stays in Spendable.
+    /// @param ref idempotency key.
+    /// @param member address being repaid for.
+    /// @param amount the deposit available to clear, in ledger units.
+    /// @param payer the deposit's originator (hashed ACH company id), checked against exclusions.
+    function repayForMember(bytes32 ref, address member, uint256 amount, bytes32 payer) external notNull(member) {
+        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
+        if (!autoRepayEnabled[member]) revert RevolvingIssuerAutoRepayNotEnabled(member);
+        if (cycleState[member].hybridMode) revert RevolvingIssuerHybridMode(member);
+        if (_payerExcluded(member, payer)) revert RevolvingIssuerExcludedPayer(member, payer);
+        if (amount == 0) revert RevolvingIssuerCardAmountZero();
+        if (autoRepayments[ref] != 0) revert RevolvingIssuerAutoRepayAlreadyUsed(ref);
+
+        _touch(member);
+        uint8 level = autoClearScopeOf[member];
+        uint256 unsecuredMask = _tierMask(true);
+        uint256 first;
+        uint256 second;
+        if (level == SCOPE_ALL) {
+            first = _min(amount, _totalPrincipal(member));
+        } else {
+            (uint256 owedUnsecured, uint256 owedSecured) = _owedBySide(member);
+            (uint256 dueU, uint256 dueT) = _dues(member);
+            first = _min(amount, owedUnsecured);
+            if (level == LEVEL_DUE_ONLY) first = _min(first, dueU);
+            // What the first part leaves of the Secured Minimum: every due figure falls with it.
+            uint256 leftU = dueU > first ? dueU - first : 0;
+            uint256 leftT = dueT > first ? dueT - first : 0;
+            second = _min(_min(amount - first, leftT - leftU), owedSecured);
+        }
+        uint256 applied = first + second;
+        if (applied == 0) revert RevolvingIssuerNothingToClear(member);
+        autoRepayments[ref] = applied;
+
+        IERC20Upgradeable reserve = stableCredit.reserveToken();
+        reserve.safeTransferFrom(_msgSender(), address(this), applied);
+        reserve.forceApprove(address(stableCredit), applied);
+        stableCredit.repayCreditBalanceFor(address(this), member, uint128(applied));
+
+        if (level == SCOPE_ALL) {
+            _repay(member, first, type(uint256).max);
+        } else {
+            _repay(member, first, unsecuredMask);
+            _repay(member, second, ~unsecuredMask);
+        }
+        emit AutoRepaid(ref, member, applied);
+        emit AutoCleared(ref, member, applied, amount - applied);
+    }
+
+    /// @dev What the member owes on the unsecured tiers and on the rest.
+    function _owedBySide(address member) private view returns (uint256 unsecured, uint256 secured) {
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (_isUnsecured(i)) unsecured += tierPrincipal[member][i];
+            else secured += tierPrincipal[member][i];
+        }
+    }
+
+    function _min(uint256 a, uint256 b) private pure returns (uint256) {
+        return a < b ? a : b;
     }
 }
