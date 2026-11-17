@@ -476,7 +476,8 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners });
     expect(PT_STEPS.map((id) => step(p, id).status)).to.deep.equal(["ready", "ready", "ready", "waiting"]);
     expect(step(p, "PT-safe-allowance").reason).to.equal("Waits for PT-safe-delegate first.");
-    expect(step(p, "PT-funder").stage).to.equal("Payout top-ups (day 0, before I2)");
+    expect(step(p, "PT-funder").stage).to.equal("Payout top-ups");
+    expect(step(p, "PT-funder").title).to.contain("before I2");
     expect(step(p, "PT-funder").signer).to.equal(s.deployer.address);
     expect(step(p, "PT-funder").data).to.equal(payoutPool.interface.encodeFunctionData("grantRole", [ethers.id("FUNDER_ROLE"), wallet]));
     for (const id of ["PT-safe-module", "PT-safe-delegate", "PT-safe-allowance"]) {

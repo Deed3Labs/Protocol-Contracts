@@ -1014,7 +1014,7 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
         }
       }
       push({
-        id: "PT-funder", stage: "Payout top-ups (day 0, before I2)", title: "Give the payout top-up wallet the PayoutPool's FUNDER_ROLE",
+        id: "PT-funder", stage: "Payout top-ups", title: "Give the payout top-up wallet the PayoutPool's FUNDER_ROLE (day 0, before I2)",
         explanation: "Lets the top-up wallet fund the PayoutPool (fund pulls the wallet's own USDC), and nothing else. Send it before the credit handover (I2): until then the deployer holds the PayoutPool's admin; afterwards the grant is a 7-day credit timelock proposal. The wallet never calls withdrawCapital (decision 51).",
         kind: "wallet", signer: deployer ?? ZERO_ADDRESS, signerLabel: "the deployer", to: payout.address ?? ZERO_ADDRESS, toLabel: "PayoutPool",
         ...encode(pp, "grantRole", [FUNDER, wallet ?? ZERO_ADDRESS], ["FUNDER_ROLE"]), dependsOn: [], ...st,
