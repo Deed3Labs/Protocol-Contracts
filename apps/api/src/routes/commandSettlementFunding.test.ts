@@ -20,6 +20,8 @@ const M1 = '0x00000000000000000000000000000000000000a1';
 const M2 = '0x00000000000000000000000000000000000000a2';
 const kind = (k: string) => stringToHex(k, { size: 32 });
 
+let laneUpgraded = false;
+
 /** The book as the chain would answer it: savings 100 + 40, asset 900, income 25, one open plan of 300. */
 const reader: ChainReader = {
   read: async (calls: ChainCall[]) =>
@@ -42,8 +44,10 @@ const reader: ChainReader = {
           return [400n * U, 1_795_000_000n];
         case 'deployedBalance':
           return 380n * U;
-        case 'settlementHeadroom':
-          throw new Error('execution reverted'); // before the lane's upgrade
+        case 'settlementLane':
+          // settlementLane() reverts before the lane's upgrade; after it, the headroom is its last field.
+          if (!laneUpgraded) throw new Error('execution reverted');
+          return [M1, 5_000n * U, 604_800n, 1_794_000_000n, 0n, false, 0n, 1_000n * U];
         default:
           throw new Error(`unexpected ${c.fn}`);
       }
@@ -122,6 +126,19 @@ describe('GET /pool-tier-principal', () => {
     expect(r.body.difference.usd).toBe(100);
     expect(r.body.headroom).toBe(null);
     expect(r.body.note).toContain('Read-only');
+  });
+
+  test('after the lane’s upgrade: the Settlement Headroom from settlementLane(), and the lane’s ceiling', async () => {
+    laneUpgraded = true;
+    try {
+      const kai = await signIn('did:kai|kai@useclear.org');
+      const r = await call(kai, '/pool-tier-principal');
+      expect(r.status).toBe(200);
+      expect(r.body.headroom).toEqual({ units: (1_000n * U).toString(), usd: 1_000 });
+      expect(r.body.laneCeiling.usd).toBe(1_400);
+    } finally {
+      laneUpgraded = false;
+    }
   });
 
   test('without a session: refused', async () => {

@@ -1,6 +1,7 @@
 import { parseAbi, hexToString, type Abi } from 'viem';
 import type { Queryable } from '../../db/db.js';
 import { events, offersAddress, type ChainReader } from '../command/onchain.js';
+import { SETTLEMENT_LANE_VIEW } from './abi.js';
 
 /*
  * The Pool Tier principal (IV-02 §4.3, §4.1 as amended; decision 54): what the two VALUATION_ROLE
@@ -96,7 +97,7 @@ const TERM = parseAbi([
 const POOL = parseAbi([
   'function poolTierPrincipal() view returns (uint256 value, uint256 postedAt)',
   'function deployedBalance() view returns (uint256)',
-  'function settlementHeadroom() view returns (uint256)',
+  SETTLEMENT_LANE_VIEW,
 ]) as Abi;
 
 const kindText = (v: unknown) => {
@@ -164,9 +165,10 @@ export async function readPoolTierPrincipal(input: {
     // A pool from before Phase 2f has neither.
   }
   try {
-    // The settlement lane's view: absent until its upgrade (decision 54) is executed.
-    const [h] = await reader.read([{ contract: 'LendingPool', fn: 'settlementHeadroom', abi: POOL }]);
-    headroom = BigInt(String(h));
+    // The settlement lane's one view, its last field the Settlement Headroom: it reverts until the
+    // lane's upgrade (decision 54, stage SL) is executed.
+    const [lane] = await reader.read([{ contract: 'LendingPool', fn: 'settlementLane', abi: POOL }]);
+    headroom = BigInt(String((lane as unknown[])[7]));
   } catch {
     headroom = null;
   }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { ethers } from 'ethers';
-import { CHAIN_ERROR_FRAGMENTS, CHAIN_ERRORS, chainErrorReason, decodeChainError, describeCreditRefusal, describeKeeperRefusal, describeOnboardingRefusal, isMissingRoleRevert, describeLiquidatorRefusal, describeRedeemRefusal, STATE_NOT_CONFIRMED } from './chainErrors';
+import { CHAIN_ERROR_FRAGMENTS, CHAIN_ERRORS, chainErrorReason, decodeChainError, describeCreditRefusal, describeKeeperRefusal, describeOnboardingRefusal, describeSettlementRefusal, isMissingRoleRevert, describeLiquidatorRefusal, describeRedeemRefusal, STATE_NOT_CONFIRMED } from './chainErrors';
 
 const redemption = readFileSync(new URL('../merchant/payoutRedemption.ts', import.meta.url), 'utf8');
 const SHOP = '0x00000000000000000000000000000000000000b2';
@@ -200,5 +200,54 @@ describe('decision 53: the keepers read each contract’s own "not now" as not d
       expect(sentence).not.toContain('0x');
     }
     expect(describeKeeperRefusal(decodeChainError({ data: data('LendingPoolInsufficientCash', [1n, 2n]) }))).toBeNull();
+  });
+});
+
+describe('decision 54: the settlement lane’s and the forwarder’s refusals read as sentences', () => {
+  const ARGS: Record<string, unknown[]> = {
+    LendingPoolSettlementCap: [4_000_000_000n, 5_000_000_000n, 1_500_000_000n],
+    LendingPoolNotAuthorized: [SHOP],
+    LendingPoolInvalidAmount: [],
+    LendingPoolInvalidAddress: [],
+    LendingPoolQueueOpen: [],
+    LendingPoolSuspended: [],
+    LendingPoolChargePending: [],
+    LendingPoolFinalMaturity: [],
+    LendingPoolInsufficientCash: [1n, 2n],
+    LendingPoolUtilizationCap: [910_000_000_000_000_000n],
+    LendingPoolTierCap: [1n, 2n],
+    SettlementForwarderNotDesk: [SHOP],
+    SettlementForwarderNotSafe: [SHOP],
+    SettlementForwarderNoOffRamp: [],
+    SettlementForwarderInvalidAmount: [],
+    SettlementForwarderInvalidAddress: [],
+  };
+
+  test('each has a sentence, with its figures', () => {
+    for (const [name, args] of Object.entries(ARGS)) {
+      const sentence = describeSettlementRefusal(decodeChainError({ data: data(name, args) }));
+      expect(`${name}: ${sentence}`).not.toBe(`${name}: null`);
+    }
+    const cap = describeSettlementRefusal(decodeChainError({ data: data('LendingPoolSettlementCap', ARGS.LendingPoolSettlementCap) }));
+    expect(cap).toContain('$1,500.00 asked, $4,000.00 of $5,000.00 already used');
+    expect(describeSettlementRefusal(decodeChainError({ data: data('LendingPoolUtilizationCap', ARGS.LendingPoolUtilizationCap) }))).toContain('91.00%');
+    expect(describeSettlementRefusal(decodeChainError({ data: data('PayoutPoolNotEligible', [SHOP]) }))).toBeNull();
+  });
+
+  test('the fragments match the Solidity, where this checkout declares them', () => {
+    const sources = ['LendingPoolBase.sol', 'SettlementForwarder.sol'].map((file) => {
+      try {
+        return readFileSync(new URL(`../../../../../contracts/peripherals/${file}`, import.meta.url), 'utf8');
+      } catch {
+        return ''; // not in this checkout
+      }
+    });
+    for (const name of Object.keys(ARGS)) {
+      // The lane's error and the forwarder land with the contracts' own PRs (decision 54).
+      const declared = sources.map((s) => s.match(new RegExp(`error ${name}\\(([^)]*)\\);`))).find(Boolean);
+      if (!declared) continue;
+      const fragment = (CHAIN_ERROR_FRAGMENTS as readonly string[]).find((f) => f.startsWith(`error ${name}(`));
+      expect(fragment).toBe(`error ${name}(${declared[1]})`);
+    }
   });
 });
