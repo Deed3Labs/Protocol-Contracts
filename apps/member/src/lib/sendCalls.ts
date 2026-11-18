@@ -4,19 +4,19 @@ import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings, recordGaslessPool, recordGaslessBond } from '@/utils/apiClient';
 import { requireStepUp, walletEnforcesMfa } from '@/lib/stepUp';
-import { pledgeWhatIsHeld } from '@/lib/pledgeSigning';
+import { pledgeAfterMove } from '@/lib/autoPledge';
 import { autoClearAuthHash } from '@/lib/autoClearSigning';
 import { ZERO_AUTH_HASH } from '@clear/domain';
 
 /*
  * After savings, the pool or a bond lands: pledge it so it backs the line. The member signs each
  * pledge (Phase 4b, L-I); the server only submits. Not awaited: the deposit is done, and a pledge
- * declined or failed leaves savings that back nothing yet, which the next deposit asks for again.
+ * declined or failed leaves savings that back nothing yet, which the background run on Home (or the
+ * next deposit) asks for again. Savings and Earn follow the member's "back my line automatically"
+ * setting; a bond is always asked for here, its explicit flow.
  */
 function askToPledge(kind: 'SAVINGS' | 'POOL_SHARE' | 'BOND', member: string, chainId: number): void {
-  void pledgeWhatIsHeld({ kind, member, chainId })
-    .then((r) => r.error && console.warn(`[pledge] ${kind}:`, r.error))
-    .catch((error) => console.warn(`[pledge] ${kind} not signed:`, error instanceof Error ? error.message : error));
+  pledgeAfterMove(kind, member, chainId);
 }
 
 /*

@@ -1172,6 +1172,8 @@ router.patch('/me/security', async (req: Request, res: Response) => {
   if (socialDiscovery === INVALID) return;
   const transferAlerts = parseOptionalBoolean(body.transferAlerts, 'transferAlerts', res);
   if (transferAlerts === INVALID) return;
+  const autoPledge = parseOptionalBoolean(body.autoPledge, 'autoPledge', res);
+  if (autoPledge === INVALID) return;
 
   const patch: UpdateSecuritySettingsInput = {
     signatureLock,
@@ -1179,6 +1181,7 @@ router.patch('/me/security', async (req: Request, res: Response) => {
     biometricAccess,
     socialDiscovery,
     transferAlerts,
+    autoPledge,
   };
 
   try {

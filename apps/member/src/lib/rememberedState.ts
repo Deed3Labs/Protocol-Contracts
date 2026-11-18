@@ -51,6 +51,17 @@ function writeStored(key: string, value: unknown, device: boolean): void {
   }
 }
 
+/** Read a remembered value outside a component (a module that runs work in the background). */
+export function readRemembered<T>(key: string): T | undefined {
+  const stored = readStored<T>(key);
+  return stored.hit ? stored.value : undefined;
+}
+
+/** Remember a value outside a component. Same store, so `useRemembered` on the key sees it next mount. */
+export function writeRemembered(key: string, value: unknown): void {
+  writeStored(key, value, true);
+}
+
 /** Whether a page has anything remembered under this key -- memory or device. */
 export function hasRemembered(key: string): boolean {
   return readStored(key).hit;

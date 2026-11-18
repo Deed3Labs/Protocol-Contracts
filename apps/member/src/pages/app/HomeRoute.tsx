@@ -13,6 +13,7 @@ import { useShopPurchases, useYourShops } from '@/hooks/useRewards';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
+import { useAutoPledge } from '@/hooks/useAutoPledge';
 import { useCreditRepay, usePayPlan, useRepayFromSavings, useRepayWrittenOff, useSetPlanSplit } from '@/hooks/useCreditRepay';
 import { useRemembered, walletKey } from '@/lib/rememberedState';
 import {
@@ -137,6 +138,10 @@ export default function HomeRoute() {
       stopListening();
     };
   }, [address]);
+
+  // Savings and Earn the member already holds back their line without a prompt (Settings can turn it
+  // off). Waits for the credit read to show a line; refreshes it through chainStale when one lands.
+  useAutoPledge(address, credit);
 
   // Only override a figure once it has been read. A zero balance mid-fetch tells a member their
   // money is gone, which is a worse thing to show than the placeholder it would replace.
