@@ -161,10 +161,29 @@ leg. Every card function requires `isCardSettler[msg.sender]`. `settleCardSpend`
 | Function | Effect |
 |---|---|
 | `authorizeCardSpend(ref, member, amount)` | Records what the card issuer approved, when it approved it. Refused for a member who is frozen, in default or has defaulted, or for more than the line could hold then |
-| `settleCardSpend(ref, member, amount)` | Settles only against a matching authorization for the same member, and never above it (audit M-2). Bound by `cardTxCap`, the daily `cardSpendCap` and the per-member cap; refused after a default on the current line; Savings draws only up to `savingsDrawAllowance`. Reverts unless active-tier headroom covers all of `amount`. `_draw`s the tiers, then `originatePurchase(member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0)` |
-| `reverseCardSpend(ref, amount)` | Up to what `ref` settled. Clears tiers dearest first and `reversePurchase` from the float |
+| `settleCardSpend(ref, member, amount)` | A purchase with no card credit fee. Settles only against a matching authorization for the same member, and never above it (audit M-2). Bound by `cardTxCap`, the daily `cardSpendCap` and the per-member cap; refused after a default on the current line; Savings draws only up to `savingsDrawAllowance`. Reverts unless active-tier headroom covers all of `amount`. `_draw`s the tiers, then `originatePurchase(member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0)` |
+| `settleCardSpendWithFee(ref, member, amount, fee)` | The same, with the card credit fee on top (decision 55; after the CF upgrade). Every check above applies to `amount + fee`: the authorization, `cardTxCap`, the daily and per-member caps, the line's headroom. `fee` must be above zero and at most `maxCardCreditFee`, else `RevolvingIssuerCardFeeZero` / `RevolvingIssuerCardFeeAboveMax`. Draws `amount + fee` cheapest first, all or nothing, then `originatePurchase(member, amount + fee, cardSettlementAccount, amount, cardSettlementAccount, fee)`: both legs to the card settlement account. `cardSettlementOf(ref)` stays the purchase alone; the fee is recorded per `ref` (`cardCreditFeeOf`) and emitted as `CardCreditFeeCharged` |
+| `reverseCardSpend(ref, amount)` | Up to what `ref` settled. Clears tiers dearest first and `reversePurchase` from the float. A partial refund keeps the fee; the reversal that brings the purchase to zero also credits back what is left of it, once (`CardCreditFeeReturned`) |
+| `returnCardCreditFee(ref, amount)` | Credits back part of a purchase's fee (the CFL cap trim, MB-04 §5.4(f)): at most the fee less what has been returned, else `RevolvingIssuerCardFeeReturnExceedsLeft`. Releases tiers dearest first and `reversePurchase(member, amount, cardSettlementAccount, 0, cardSettlementAccount, amount)` |
 | `repayCardSpend(ref, member, amount)` | A fiat repayment. Requires `amount <= totalPrincipalOf(member)` and the float to hold `amount`, then clears tiers and burns the float's claim against the member's obligation with `reversePurchase`. No reserve token moves |
 | `repayForMember(ref, member, amount, payer)` | Automatic Clearing (below). The settler delivers the cash, then `repayCreditBalanceFor(address(this), member, …)`. Refused in `hybridMode` or for an excluded payer. Clears at the member's chosen level |
+
+**The card credit fee (decision 55, `docs/audit/specs/card-credit-fee.md`).** Bounded by
+`maxCardCreditFee`, in ledger units (30 cents is 300000), which one `CREDIT_SETTINGS_ROLE` signer sets
+with `setMaxCardCreditFee` (`MaxCardCreditFeeUpdated`), never above `CARD_CREDIT_FEE_CEILING` ($5.00;
+`RevolvingIssuerCardFeeAboveCeiling`). The CF upgrade sets it in the same call (`upgradeToAndCall`), so the fee is on
+from the upgrade; zero refuses every fee, so setting it back to zero is the off switch, and it never holds
+up a credit-back of a fee already charged. The fee is
+drawn like the purchase, so it is principal and carries like it; `repayCardSpend` clears it with the rest
+(the float holds its claim). `cardCreditFeeOf(ref)` returns the fee charged and the amount credited back.
+The state is in its own ERC-7201 namespace, `clear.storage.RevolvingIssuer.CardFee` (slot
+`0x1891ea5b85bfa6342db2b66e11acc058002ca00880066dd1e907d492e4433d00`): nothing in the layout moved.
+`settleCardSpendWithFee`, `maxCardCreditFee`, `setMaxCardCreditFee` and `cardCreditFeeOf` run in
+`RevolvingIssuerWorkouts` (the two views through the fallback, with that module's ABI);
+`reverseCardSpend` and `returnCardCreditFee` in `RevolvingIssuerExtension`; one `_settleCard` in the
+base serves both settlement entry points. Base Sepolia gets it by the CF signing steps (one CreditTimelock
+operation, `upgradeToAndCall` with `setMaxCardCreditFee`); the generated reference page lists the new functions once the deployment
+record carries the upgraded ABI.
 
 ### Cycles, dues and Automatic Clearing (Addendum 2, Phase 2e)
 

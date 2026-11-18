@@ -367,6 +367,40 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         }
     }
 
+    /// @notice The card credit fee (decision 55), in its own ERC-7201 namespace, so nothing in the
+    /// layout above moves and the gap stays as it is: the most one card purchase may be charged, and
+    /// what each settled purchase was charged. Later additions go at the end of this struct.
+    /// @custom:storage-location erc7201:clear.storage.RevolvingIssuer.CardFee
+    struct CardFeeStorage {
+        /// @dev Ledger units (6 decimals). Zero refuses every fee (the off switch); the upgrade that
+        /// adds the fee sets it in the same call.
+        uint256 maxCardCreditFee;
+        /// @dev ref => the fee charged at settlement, and how much of it has been credited back.
+        mapping(bytes32 => CardCreditFee) feeOf;
+    }
+
+    /// @dev What a settled purchase was charged, and what has been credited back of it: in part by
+    /// `returnCardCreditFee` (the CFL cap trim, MB-04 §5.4(f)), the rest by a full refund. Kept per
+    /// ref, so the fee can be told apart from the purchase's principal later.
+    struct CardCreditFee {
+        uint128 fee;
+        uint128 returned;
+    }
+
+    /// @dev keccak256(abi.encode(uint256(keccak256("clear.storage.RevolvingIssuer.CardFee")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant CARD_FEE_STORAGE = 0x1891ea5b85bfa6342db2b66e11acc058002ca00880066dd1e907d492e4433d00;
+
+    function _cardFee() internal pure returns (CardFeeStorage storage $) {
+        bytes32 slot = CARD_FEE_STORAGE;
+        assembly {
+            $.slot := slot
+        }
+    }
+
+    /// @notice The most `maxCardCreditFee` may ever be set to: $5.00 in ledger units. Fixed in the
+    /// code, so the one settings signer who sets the bound cannot set an absurd one.
+    uint256 internal constant CARD_CREDIT_FEE_CEILING = 5_000_000;
+
     /// @dev Three slots, from 300. Phase 2e took five (cycleState, dueTerms (2),
     /// defaultExcludedPayer, payerChoice). The layout ends at slot 303.
     uint256[3] private __gap;
@@ -549,6 +583,18 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
     error RevolvingIssuerNoWorkoutTier();
     error RevolvingIssuerPlanNotDefaultable(address member);
 
+    /* ---- the card credit fee (decision 55) ---- */
+    error RevolvingIssuerCardFeeZero();
+    /// @notice thrown when a fee is above `maxCardCreditFee` (zero, the default, refuses every fee).
+    error RevolvingIssuerCardFeeAboveMax(uint256 fee, uint256 max);
+    /// @notice thrown when `maxCardCreditFee` would be set above `CARD_CREDIT_FEE_CEILING`.
+    error RevolvingIssuerCardFeeAboveCeiling(uint256 fee, uint256 ceiling);
+    event MaxCardCreditFeeUpdated(uint256 fee);
+    event CardCreditFeeCharged(bytes32 indexed ref, address indexed member, uint256 fee);
+    event CardCreditFeeReturned(bytes32 indexed ref, address indexed member, uint256 fee);
+    /// @notice thrown when more is credited back than is left of a purchase's fee.
+    error RevolvingIssuerCardFeeReturnExceedsLeft(bytes32 ref, uint256 amount, uint256 left);
+
     /// @notice moves carry accrued in each tier onto the ledger.
     /// @dev Carry deepens the member's negative balance and mints the matching claim to whoever
     /// funded the draw. Once it is on the ledger it stops being a figure this contract derives
@@ -721,6 +767,101 @@ abstract contract RevolvingIssuerBase is CreditIssuer {
         // Multiply before dividing: the per-second rate is never truncated on its own.
         return localAcc[tierId]
             + (at > since ? (tiers[tierId].index.ratePerCycle * RAY * 12 * (at - since)) / (BPS_ * 365 days) : 0);
+    }
+
+    /// @dev A card settlement (RevolvingIssuerExtension.settleCardSpend, and with the card credit fee
+    /// RevolvingIssuerWorkouts.settleCardSpendWithFee): one body for both. `fee` is zero for a plain
+    /// purchase.
+    function _settleCard(bytes32 ref, address member, uint256 amount, uint256 fee) internal notNull(member) {
+        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
+        if (cardSettlementAccount == address(0)) revert RevolvingIssuerNoCardSettlementAccount();
+        if (amount == 0) revert RevolvingIssuerCardAmountZero();
+        // Once settled, always settled -- even after a full refund, which leaves the amount at zero
+        // but must not let the same purchase be drawn again.
+        if (cardSettlements[ref].member != address(0)) revert RevolvingIssuerCardAlreadySettled(ref);
+
+        /*
+         * Only what was approved, for whom it was approved (audit M-2). The authorization was
+         * recorded when the card network asked, while the member was in good standing; a purchase
+         * that clears after a freeze is still honoured, because it was approved before it. One in
+         * default is not: a default ends the line. A per-purchase and a per-day cap bound what the
+         * settler key can do even with authorizations it recorded itself (DFAL 10a: flagged for
+         * counsel in the Phase 1 report). A fee counts toward every one of them (decision 55).
+         */
+        uint256 total = amount + fee;
+        CardAuthorization memory authorization = cardAuthorizations[ref];
+        if (authorization.member != member) revert RevolvingIssuerCardNotAuthorized(ref, member);
+        if (total > authorization.amount) {
+            revert RevolvingIssuerCardExceedsAuthorization(ref, total, authorization.amount);
+        }
+        if (cardTxCap != 0 && total > cardTxCap) revert RevolvingIssuerCardTxCap(total, cardTxCap);
+        // The card follows the current line (4c item 2): a default of an earlier line, settled
+        // before the member was re-onboarded, does not stop this one.
+        if (_computedDefault(member) || _defaultedOnCurrentLine(member)) {
+            revert RevolvingIssuerMemberNotInGoodStanding(member);
+        }
+        _consumeDailyCap(cardSpendCap, "CARD", total);
+        _consumeMemberCardCap(member, total);
+        delete cardAuthorizations[ref];
+
+        // Carry accrued since the last touch is part of what is owed; bring it on before measuring.
+        _touch(member);
+
+        // Card spending draws against Savings only as far as the member has authorized (12.7): the
+        // Savings tier is narrowed to that for this draw, and the rest falls to the next tiers.
+        uint256 savingsTier = type(uint256).max;
+        uint256 savingsCap;
+        uint256 savingsBefore;
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tiers[i].kind == SAVINGS_KIND) {
+                savingsTier = i;
+                savingsCap = tierCapacity[member][i];
+                savingsBefore = tierPrincipal[member][i];
+                // Saturating: an unlimited allowance (type(uint256).max) narrows nothing, and
+                // adding it to what is drawn must not overflow (Phase 4, L-A).
+                uint256 allowance = savingsDrawAllowance[member];
+                if (allowance < savingsCap && savingsBefore + allowance < savingsCap) {
+                    tierCapacity[member][i] = savingsBefore + allowance;
+                }
+                break;
+            }
+        }
+
+        // All or nothing: whatever the tiers cannot place reverts the whole settlement.
+        uint256 unplaced = _draw(member, total);
+        if (unplaced > 0) revert RevolvingIssuerCardHeadroom(member, total, total - unplaced);
+        if (savingsTier != type(uint256).max) {
+            tierCapacity[member][savingsTier] = savingsCap;
+            uint256 used = tierPrincipal[member][savingsTier] - savingsBefore;
+            if (used > 0) {
+                uint256 left = savingsDrawAllowance[member];
+                if (left != type(uint256).max) savingsDrawAllowance[member] = left - used;
+                emit SavingsDrawn(member, used, savingsDrawAllowance[member]);
+            }
+        }
+        // The purchase alone, as before the fee existed: refunds are measured against it.
+        cardSettlements[ref] = CardSettlement({member: member, amount: amount});
+        stableCredit.originatePurchase(
+            member, total, cardSettlementAccount, amount, cardSettlementAccount, fee
+        );
+        emit CardSpendSettled(ref, member, amount);
+        if (fee > 0) {
+            _cardFee().feeOf[ref].fee = uint128(fee);
+            emit CardCreditFeeCharged(ref, member, fee);
+        }
+    }
+
+    /// @dev 4c item 1: today's card settlements for one member, against the governed per-member cap,
+    /// so the settler key's reach over any one member is bounded. Zero means not set.
+    function _consumeMemberCardCap(address member, uint256 amount) internal {
+        uint256 cap = dueTerms.cardMemberDailyCap;
+        if (cap == 0) return;
+        CycleState storage s = cycleState[member];
+        uint64 today = uint64(block.timestamp / 1 days);
+        uint256 used = s.cardDay == today ? s.cardUsed : 0;
+        if (used + amount > cap) revert RevolvingIssuerCardMemberDailyCap(member, amount, cap > used ? cap - used : 0);
+        s.cardDay = today;
+        s.cardUsed = uint128(used + amount);
     }
 
     /// @notice fills tiers in order, cheapest first.
