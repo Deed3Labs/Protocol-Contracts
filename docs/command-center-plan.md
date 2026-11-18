@@ -197,11 +197,17 @@ group: Governance (with Home's entity tree and this plan), Money, Build.
   Transaction Builder files (as `tools/signing-page` does). Command holds no key.
 - **OffersIssuer's new record isn't pushed.** Contracts reads `OffersIssuer.json` by name when it lands;
   until then the map counts it as not live and Retired shows `OffersIssuerPreAudit`.
-- **The crawl fails on every route, on `dev` too.** `e2e/crawl.spec.ts` clicks through the original
-  prototype (`docs/command-reference`), and every page has moved on from it since the redesign (Waiting is
-  the Inbox now, and so on): 44 of 44 panes differ, none of them from this work. Passing it means pointing
-  it at the redesign reference for the ported pages, as `visual.spec.ts` already does. That reworks merged
-  checks, so it waits for Kai.
+- **The crawl, retargeted (Kai, 17 Nov).** It compared every page with the original prototype, which they've all
+  moved on from (44 of 44 panes failed on `dev`). It now compares a ported page with the redesign, tab by tab
+  inside its shadow root, as `visual.spec.ts` does; the rest with the prototype. On the new reference: Governance
+  passes every tab. The rest fall in three groups:
+  1. **Money, Build and Home** change in this update and come with their PRs.
+  2. **Records, Team and Settings (`ADMIN2`) and the merchants' `XAPI`** changed in the reference too (61 and
+     16 lines, beyond the brief's list); they're carried with Build.
+  3. **Growth, Field, Members, Merchants, Shop, Waiting, More**: their modules didn't change, so these are the
+     app's own differences from the redesign, made with the live work since #803 (Shop's "Show fewer", copy
+     that follows real data). Each is either ported back or recorded as a departure the crawl allows; that
+     choice waits for Kai once Money and Build are in.
 - **Records' demo names one real document.** The new reference's Records list (d12) uses a title from the
   agreements register. Records isn't part of this update, so it isn't ported; the guard test
   (`legalDemo.test.ts`) would fail if it were.
