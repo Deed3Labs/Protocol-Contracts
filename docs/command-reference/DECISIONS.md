@@ -770,3 +770,52 @@ prototype in this folder). The page sheets are copied from it; the sections carr
 - **The crawl's other Money differences are Merchants'.** "Review →" on a payout, "Payouts · Merchants →"
   and "Partners →" open Merchants, where the reference has held payouts that pay themselves and its own
   Payouts and Partners routes. The brief doesn't cover Merchants; it stays as it is until Kai says otherwise.
+
+### Build
+
+- **Contracts read the deployment records by name.** Migration 0080 brings the map's structure to the new
+  reference (42 contracts: 41 on the map in three bands, AssuranceOracle kept off it; who controls each). No
+  contract is deleted, so nothing that points at one moves. Live, a contract counts only when the indexer
+  found its record: **36 of 41 today, not the reference's 37**, because `OffersIssuer.json` isn't pushed yet.
+  When it lands, the map counts it and Retired says it was replaced by the 17 Nov deploy. `AssurancePool`
+  resolves to the `AssurancePoolV2` record.
+- **Timelocks and helpers, Retired** come from the records too: every `*Timelock`, then BurnerBondFactory,
+  BurnerBondDeposit and Create2Deployer; Retired lists the old OffersIssuer, AssurancePool v1, ClearUSD v1 and
+  AssuranceOracle, and counts the other copies by name (PreAudit, Pre2f, Pre2d, Legacy, and RevolvingIssuerV1):
+  21, where the reference says 22 (it counts the old OffersIssuer twice). The map's heading names the timelocks
+  the records have: four live (Credit, Assurance, Vault, Earn), where the reference says five with Deed.
+- **BurnerBondDeposit and its Pre2f copy share an address**, so the indexer keeps one name for it and live the
+  helpers card can show six rows. Kai may want one of the two records dropped.
+- **Signing sends from Command** (Kai, 17 Nov), ported from `tools/signing-page` (`sections/signingLive.ts`).
+  The plan is committed (`deployments/base-sepolia/signing-plan.json`, no longer gitignored) and the API serves
+  it untouched, read from the repo's `dev` branch through GitHub (the API's image doesn't carry `deployments/`);
+  until one is committed it falls back to the newest plan run's log, statuses only. The browser checks it as
+  the signing page does: format, every step's shape, the fingerprint, and **Base Sepolia only** (the local test
+  chain the signing page also takes is refused here). A wallet step is sent from MetaMask with exactly the
+  plan's call, only from the account it names, only on Base Sepolia; a Safe step is downloaded as a
+  Transaction Builder batch and the Safe app opened, where its owners sign (the reference's "Send to the
+  Safe's queue" would need an owner's signature through the Safe service). What this browser sent is kept per
+  plan and its receipts read from the wallet. Steps turn done when the plan script is re-run and committed.
+- **The plan's stages are mapped to the reference's codes** (Pool Tier → G1, Safe (before I2) → SF, Day 7 → D7,
+  Assurance → AS, Payout top-ups → TU), with E9 (the backstop change) as a stage of its own, Day 7 last.
+- **Live, "Standing signing jobs" isn't real yet**: the plan doesn't list them.
+- **The reference's step panel joins its links as text** ("After [object Object]"); the app draws them as
+  links, which the crawl sees as a difference on any step that waits on another.
+- **Automatic jobs read their own records**: payout top-ups from its job's state, the Assurance fee payer from
+  its items and snapshots, and the keeper from a record of its last pass kept in the API process
+  (`payoutFunding/keeperRuns.ts`; empty after a restart until its first pass, which runs at start). Each says
+  "Not on yet" until its switch is set.
+- **Home's Build tile** counts the map's contracts by group (Rules, the five layers, Deeds), as Build does.
+- **The crawl ignores the map's flow overlay** (`.bm-fx`): its dots move on the frame clock, so no two pages
+  hold the same positions at the moment the DOM is read.
+
+### Records, Team and Settings (ADMIN2), Merchants (XAPI), the shared data
+
+- Carried from the new reference: held payouts that a second person releases, approval-cap levels ($500,
+  $1,000, $1,500), the Yield Pool Deployment in place of the PayoutPool top-up, 7-day waits, Clear Collective
+  LLC, Settings' Protocol rules row, and the same changes in the shared data (`data.tsx`: the inbox, Home's
+  feed and the activity log).
+- **Records' documents keep the app's titles.** The reference's Records list now uses titles from the private
+  agreements register ("Partner Member Agreement (MR-02)", "Program Agreement (I-02)", the Holdings bylaws
+  and others). Under brief update 2's section 0 none of those may land in this repo, so Records → Documents
+  keeps its generic titles and differs from the reference there.
