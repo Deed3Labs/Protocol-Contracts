@@ -171,7 +171,7 @@ LendingPool had 1,652 bytes to spare. The work moved out of it and out of the va
 
 How it is wired:
 
-- **Pinning.** `YieldPoolValuation(ledger)` checks the ledger's `extensionKind()` ("YieldPoolLedger.v1"). LendingPool checks "YieldPoolValuation.v2" and reads `ledger()` from it. Both pin the address as an immutable.
+- **Pinning.** `YieldPoolValuation(ledger)` checks the ledger's `extensionKind()` ("YieldPoolLedger.v1"). LendingPool checks "YieldPoolValuation.v3" ("v2" before the Settlement Funding lane, decision 54) and reads `ledger()` from it. Both pin the address as an immutable.
 - **Deployment.** `deploy/poolModules.ts` deploys the ledger, then the valuation module.
 - **Existing functions** keep their LendingPool stubs, so the LendingPool ABI is unchanged for existing callers:
   - the mutating stubs forward to the ledger (`suspend`, `renewSuspension`, `liftSuspension`, `proposeRateModel`, `applyRateModel`);

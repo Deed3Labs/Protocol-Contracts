@@ -9,15 +9,15 @@
 /** How each sample waiting item reads on Home's queue. */
 export const HOME_QV = {
   payout: {
-    t: 'Rosa’s Panadería payout',
+    t: 'Rosa’s held payout',
     m: (
       <>
-        {'September · Dana proposed · '}
+        {'Dispute closed · Dana asked to release it · '}
         <em>due tomorrow</em>
       </>
     ),
     a: '$412.60',
-    btn: 'Approve',
+    btn: 'Release',
     ct: ['live', 'Due tomorrow'],
     by: 'Dana Ruiz',
     s: 'Send back',
@@ -25,9 +25,9 @@ export const HOME_QV = {
     go: 'merchants',
   },
   chain: {
-    t: 'Raise Rosa’s cap to $150',
-    m: 'MerchantRegistry · Dana signed · yours makes it 2 of 3',
-    a: '$150.00',
+    t: 'Raise Rosa’s approval cap to $1,000',
+    m: 'MerchantRegistry · Dana signed · yours is the second',
+    a: '$1,000.00',
     btn: 'Multisig',
     ct: ['live', '1 of 2 signed'],
     by: 'Marcus Lee',
@@ -80,6 +80,8 @@ export const HOME_DEMO = {
   operating: 21480.75,
   credit: 1527.6,
   creditUsed: 78.5,
+  /** the payout pool's funding against what's due in 30 days, and the keeper's word on it */
+  payoutFunding: { v: 3740.05, w: 73.2, s: 'Amber · nothing is late' },
   stuck: 64,
   heads: [
     { sv: 'absent', t: 'Plaid is 3 hours behind', age: '3h', m: 'Money · operating cash balance is stale', go: 'money', own: ['resync', 'Dana Ruiz is re-syncing', 58, '7/12'] },
@@ -90,40 +92,42 @@ export const HOME_DEMO = {
   members: { f: '124', s: 'of 300 invited · 1,500 on the waitlist', stuck: 64, active: [13, 13, 12, 11, 11, 10, 10, 10, 9, 9, 8, 8], opened: [6, 6, 6, 5, 5, 6, 6, 5, 5, 5, 5, 4] },
   merchants: { live: 12, of: 30, signing: 6, s: 'partner shops transacting · 13 cities' },
   money: {
-    held: 75984.75,
-    s: 'held across 6 accounts · +$10,418.55 this week',
+    held: 115746.77,
+    s: 'held across 13 accounts · +$10,418.55 this week',
+    // name, figure, width, right-aligned, and a title for a group too narrow to label (Clear Lending's)
     groups: [
-      ['Members’', '$42.4k', 55.8],
-      ['Co-op’s', '$22.0k', 28.9],
-      ['Set aside', '$11.7k', 15.3, 1],
+      ['Members’', '$48.6k', 42],
+      ['Set aside', '$36.7k', 31.7],
+      ['Co-op’s', '$23.9k', 20.7],
+      ['Clear Lending’s', '$6.6k', 5.6, 0, 'Clear Lending’s · $6.6k'],
     ],
+    names: 'Members’ money · Set aside · The co-op’s · Clear Lending’s',
     parts: [
-      [51.2, 'var(--fg)'],
-      [4.5, 'color-mix(in srgb,var(--live) 62%,transparent)'],
-      [28.3, 'var(--land)'],
-      [0.6, 'color-mix(in srgb,var(--fg) 30%,transparent)'],
-      [13.5, 'color-mix(in srgb,var(--fg) 58%,transparent)'],
-      [1.9, 'var(--underway)'],
+      [42, 'var(--fg)'],
+      [31.7, 'color-mix(in srgb,var(--fg) 45%,transparent)'],
+      [20.7, 'var(--land)'],
+      [5.6, 'var(--underway)'],
     ],
     key: 'Biggest mover: member savings, +$7,740.20 this week',
   },
   build: {
-    f: '30',
-    of: '31',
-    s: 'live on Base Sepolia · 2 changes in flight',
+    f: '37',
+    of: '41',
+    s: 'contracts live on Base Sepolia · day 7 runs 24 Nov',
     groups: [
-      ['Access', ['', '', '', '', 'c', '']],
+      ['Rules', ['', 'f', 'f', '', 'f']],
+      ['Access', ['', '', '', 'f', 'c']],
       ['Issue', ['', '', '', '', '']],
-      ['Tokens', ['', '']],
-      ['Pools', ['', '', '', '', 'x', 'f', 'w', '']],
-      ['Capital', ['f', '']],
-      ['Deeds', ['', '', '', '', '', '', '', 'c']],
+      ['Tokens', ['', '', '']],
+      ['Pools', ['w', 'f', '', '', '', '']],
+      ['Earn', ['', 'f', '', '', 'f', 'f']],
+      ['Deeds', ['', 'f', '', '', '', '', '', 'f', '', '']],
     ],
   },
-  governance: { f: '4', of: '9', s: 'entities formed · 6 of 15 board seats filled', due: '3 due' },
+  governance: { f: '4', of: '10', s: 'entities formed · 6 of 15 board seats filled', due: '3 due' },
   /** date, time, what, detail, lane, go, pane */
   past: [
-    ['2026-10-21', '14:00', 'Mesa Laundry cap → $120', 'Marcus Lee', 'Merchants', 'merchants'],
+    ['2026-10-21', '14:00', 'Highland Hardware → Level 2 · $1,000 cap', 'Marcus Lee', 'Merchants', 'merchants'],
     ['2026-10-21', '12:00', 'Uptown Barber signed', '12 shops now transacting', 'Merchants', 'merchants'],
     ['2026-10-21', '10:00', 'Waitlist passed 1,500', 'At 16:12 yesterday it was 1,482', 'Growth', 'members', 'waitlist'],
     ['2026-10-20', '17:30', 'Batch 12 invites sent', '25 people · Marcus Lee', 'Members', 'members', 'batches'],
@@ -139,14 +143,14 @@ export const HOME_DEMO = {
     ['2026-11-01', 'Annual report', 'Wyoming annual report', 'ClearLabs Inc', 'ok', 'Governance', 'Report', ['vpane', 'calendar']],
     ['2026-11-02', 'Payouts clear', 'Payouts clear', '$9,510.65 to 11 shops', 'm', 'Money', '', ['xpane', 'payouts']],
     ['2026-11-04', 'Board meeting', 'Board meeting', 'Co-op board · 18:00', 'un', 'Governance', '', ['vpane', 'votes']],
-    ['2026-11-15', 'Statement', 'Statement of Information', 'Clear Co-op', 'bad', 'Governance', '', ['vpane', 'calendar']],
+    ['2026-11-15', 'Statement', 'Statement of Information', 'Clear Collective LLC', 'bad', 'Governance', '', ['vpane', 'calendar']],
   ],
   /** from, to (null runs past the window), label, value, lane, key, tone */
   rails: [
     ['2026-10-20', null, 'Batch 12 activation', '14/25 opened', 'Members', 'r1', ''],
     ['2026-10-21', '2026-10-21', 'Poster route', '3/8 shops', 'Growth', 'r2', ''],
     ['2026-10-21', '2026-10-21', 'Plaid re-sync', '7/12', 'Money', 'r3', ''],
-    ['2026-10-19', '2026-10-21', 'AssurancePool v1.3', 'Waiting on you', 'Contracts', 'q0', 'live'],
+    ['2026-10-19', '2026-10-21', 'AssurancePool v2', 'Live · setup 24 Nov', 'Contracts', 'q0', 'live'],
     ['2026-10-15', '2026-10-29', 'Member vote', '85.2% yes', 'Governance', 'd0', ''],
   ],
   railTo: ' · to 19 Jan',

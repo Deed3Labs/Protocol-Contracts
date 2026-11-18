@@ -365,14 +365,14 @@ export const FUNNEL = [
 export const WAITING0 = [
   {
     id: 'payout',
-    kind: 'Payout',
+    kind: 'Held payout',
     tag: 'Due tomorrow',
     urgent: true,
     title: 'Rosa’s Panadería',
     fig: '$412.60',
-    figSub: 'September · NET-14',
-    meta: ['Dana Ruiz proposed'],
-    cta: 'Review payout',
+    figSub: 'Held · September · NET-14',
+    meta: ['Dana Ruiz asked to release it'],
+    cta: 'Review the hold',
     mode: 'approve',
     ledger: [
       ['Shop', 'Rosa’s Panadería'],
@@ -380,13 +380,14 @@ export const WAITING0 = [
       ['Sales cleared', '$372.60'],
       ['$10 redemptions', '4 · $40.00'],
       ['Terms', 'NET-14'],
+      ['Why it’s held', 'A customer dispute · closed 20 Oct in Rosa’s favour'],
       ['Clears to', 'Business checking ····8831'],
       ['Total', '$412.60', true],
     ],
     rule: ['Dana Ruiz', 'Ops'],
-    primary: 'Approve payout',
-    steps: ['Checked the two-person rule', 'Recorded your approval', 'Scheduled the payout'],
-    done: ['Payout approved.', 'Clears to Rosa’s Panadería ····8831 on Thu 22 Oct.'],
+    primary: 'Release the payout',
+    steps: ['Checked the two-person rule', 'Recorded your approval', 'Lifted the hold · the queue pays it'],
+    done: ['Hold lifted.', 'The queue pays Rosa’s Panadería ····8831 on Thu 22 Oct, in its turn.'],
   },
   {
     id: 'invite',
@@ -436,25 +437,25 @@ export const WAITING0 = [
     id: 'chain',
     kind: 'On-chain',
     tag: '1 of 2 signed',
-    title: 'Rosa’s cap',
-    fig: '$150.00',
-    figSub: 'per sale, up from $100.00',
+    title: 'Rosa’s approval cap',
+    fig: '$1,000.00',
+    figSub: 'per charge, up from $500.00 · Level 2',
     meta: ['Marcus Lee proposed · Dana Ruiz signed'],
     cta: 'Open in multisig',
     mode: 'multisig',
     ledger: [
       ['Contract', 'MerchantRegistry v1.0'],
       ['Address', '0x4172…f1f5 · Base Sepolia'],
-      ['Change', 'Per-transaction cap'],
-      ['From', '$100.00'],
-      ['To', '$150.00'],
+      ['Change', 'Approval Cap · Level 1 to 2'],
+      ['From', '$500.00'],
+      ['To', '$1,000.00'],
       ['Why', 'Hit the cap 3 times today'],
       ['Loss rate', '0.0% on 41 originations'],
       ['Signatures', '2/3 · you are the third', true],
     ],
     primary: 'Open in multisig',
     steps: ['Prepared the transaction', 'Opened it in the multisig', 'Waiting for your signature there'],
-    done: ['Signed in the Ops Safe.', 'Live after the 24-hour wait, 22 Oct at 14:30.'],
+    done: ['Signed in the Ops Safe.', 'Live after the 7-day wait, 22 Oct at 14:30.'],
   },
 ];
 /* Alerts carry how bad, where, how old, and what is already being done about it. */
@@ -489,8 +490,8 @@ export const ALERTS0 = [
 export const DEADLINES = [
   // [title, entity, date, days from today, status]
   ['Wyoming annual report', 'ClearLabs Inc', '1 Nov', 11, 'ready'],
-  ['Board minutes', 'Clear Co-op', '4 Nov', 14, 'draft'],
-  ['Statement of Information', 'Clear Co-op', '15 Nov', 25, 'none'],
+  ['Board minutes', 'Clear Collective LLC', '4 Nov', 14, 'draft'],
+  ['Statement of Information', 'Clear Collective LLC', '15 Nov', 25, 'none'],
 ];
 /* $10 redemptions paid to shops this month, before today's payout */
 export const REDEEMED_PAID = 540;
@@ -574,10 +575,10 @@ export const LIVE0 = [
 export const UPD0 = [
   {
     icon: 'merchants',
-    title: 'Mesa Laundry cap',
-    fig: '$120.00',
-    sub: 'per sale',
-    viz: () => vizScale(100, 120, 80, 140, '$100.00', '$120.00'),
+    title: 'Highland Hardware cap',
+    fig: '$1,000.00',
+    sub: 'per charge · Level 2',
+    viz: () => vizScale(500, 1000, 0, 1500, '$500.00', '$1,000.00'),
     by: 'Marcus Lee',
     when: '2h ago',
     go: 'merchants',
@@ -624,7 +625,7 @@ export const UPD0 = [
   },
 ];
 export const UPD_FROM = {
-  payout: ['payout approved', 'merchants'],
+  payout: ['hold lifted', 'merchants'],
   invite: ['invites sent', 'members'],
   agreement: ['sent to e-signature', 'governance'],
   chain: ['sent to the multisig', 'build'],
@@ -673,15 +674,15 @@ export const W_VIZ = {
 export const NEED = {
   payout: {
     order: 1,
-    verb: 'Approve',
-    meta: 'Payout · Dana proposed',
+    verb: 'Release',
+    meta: 'Held payout · Dana asked',
     fig: '$412.60',
   },
   chain: {
     order: 2,
     verb: 'Sign',
-    meta: 'Cap raise from $100.00 · 1 of 2 signed',
-    fig: '$150.00',
+    meta: 'Cap raise from $500.00 · 1 of 2 signed',
+    fig: '$1,000.00',
   },
   invite: {
     order: 3,
@@ -708,8 +709,9 @@ export const FEED0 = [
   {
     what: (
       <>
-        {'Mesa Laundry cap raised to '}
-        <b>$120.00</b>
+        {'Highland Hardware raised to Level 2 · '}
+        <b>$1,000.00</b>
+        {' cap'}
       </>
     ),
     by: 'Marcus Lee',
@@ -778,7 +780,7 @@ export const FEED0 = [
   },
 ];
 export const FEED_FROM = {
-  payout: 'Approved Rosa’s payout',
+  payout: 'Released Rosa’s held payout',
   invite: 'Sent batch 13 invites',
   agreement: 'Sent the Inland Cycle Works agreement to e-signature',
   chain: 'Sent Rosa’s cap raise to the multisig',
@@ -1984,7 +1986,7 @@ export const ACCTS = [
   [
     'sav',
     'Member savings',
-    'CLRUSD, backed 1:1 by USDC at Bridge',
+    'CLRUSD, backed 1:1 by USDC in the ESA vault',
     'members',
     'bridge',
     M.savings,
@@ -2004,14 +2006,14 @@ export const ACCTS = [
   [
     'pay',
     'Payout pool',
-    'Pays shops for financed sales, oldest first',
+    'Pays shops for financed sales, deadline first',
     'set',
     'protocol',
     M.payout,
     [0, 1200, 3900, 5200, 7800, 9600, M.payout],
     'var(--fg-50)',
   ],
-  ['ap', 'AssurancePool', 'Covers unsecured losses after the yield pool', 'set', 'protocol', M.assurance, AP_BAL, 'var(--underway)'],
+  ['ap', 'AssurancePool', 'The co-op’s · Credit Backstop and Member Assurance', 'set', 'protocol', M.assurance, AP_BAL, 'var(--underway)'],
   [
     'ops',
     'Operating cash',
@@ -2126,7 +2128,7 @@ export const AGR = [
   {
     id: 'coop-oa',
     name: 'Cooperative operating agreement',
-    party: 'Clear Co-op',
+    party: 'Clear Collective LLC',
     type: 'company',
     st: 'signed',
     a: D(6, 12),
@@ -2254,7 +2256,7 @@ export const CTR = [
   ['nr', 'NetworkRegistry', 'v1.0', 0, 'live', '0x0a9F…3D7f', 'The parent registry every issuer is registered against.', 10, 37, 'c'],
   ['cr', 'CollateralRegistry', 'v1.0', 0, 'live', '0x62fB…52Cf', 'What each member has pledged, and what the AssurancePool would pay.', 10, 29, 'c'],
   ['mr', 'MerchantRegistry', 'v1.0', 0, 'live', '0x4172…f1f5', 'What each shop was promised: payout schedule, cap, fee, status.', 10, 45, 'c'],
-  ['tr', 'TokenRegistry', 'v1.0', 0, 'live', '0x4B13…6a86', 'Which tokens count, with fallback prices.', 10, 53, 'c'],
+  ['tr', 'TokenRegistry', 'v1.0', 0, 'live', '0x4B13…8a86', 'Which tokens count, with fallback prices.', 10, 53, 'c'],
   ['lc', 'LimitCalculator', 'v1.0', 1, 'live', '0xbA98…c0a7', 'Turns pledges and attestations into a member’s ceiling.', 30, 21, 'c'],
   ['ri', 'RevolvingIssuer', 'v1.3', 1, 'live', '0x7f15…6070', 'The tiered revolving line: savings-backed, asset-backed, income and Boost.', 30, 29, 'c'],
   ['ti', 'TermIssuer', 'v1.0', 1, 'live', '0xe467…3721', 'Term plans: partner credit and Clear Cash.', 30, 53, 'c'],
@@ -2424,7 +2426,7 @@ export const CH = [
     mine: 1,
     stage: 2,
     state: 'Waiting on you · 1 of 2',
-    d: 'Gates every withdrawal behind a role, so only bonds, credit and lending can claim. Closes the open withdraw.',
+    d: 'Two compartments, Credit Backstop and Member Assurance, with no withdraw, sweep or rescue. Money leaves only by a released draw, a grant or a 14-day transfer. Closes the open withdraw.',
     short: 'closes the open withdraw',
     ev: [
       ['seg', 'done', H(10, 12, 10), H(10, 20, 9)],
@@ -2439,12 +2441,12 @@ export const CH = [
   },
   {
     id: 'ch1',
-    t: 'Raise Rosa’s cap to $150.00',
+    t: 'Raise Rosa’s approval cap to $1,000.00',
     c: 'MerchantRegistry',
     by: 'Marcus Lee',
     stage: 3,
     state: 'Live tomorrow, 12:00',
-    d: 'Signed by Marcus Lee and you. In the 24-hour wait.',
+    d: 'Signed by Marcus Lee and you. In the 7-day wait.',
     ev: [
       ['seg', 'done', H(10, 19, 11), H(10, 21, 12)],
       ['seg', 'wait', H(10, 21, 12), H(10, 22, 12)],
@@ -2610,15 +2612,16 @@ export const VS = {
 };
 export const ENT = [
   /* id, name, kind, status, role, x, y */
-  ['coop', 'Clear Co-op', 'Wyoming LLC · co-op', 'formed', 'The parent. One member, one vote. Taxed as a corporation.', 40, 11],
-  ['fin', 'Clear Financial Co.', 'Wyoming LLC', 'formed', 'Runs the card and money programs. Holds member funds for their benefit.', 10, 41],
-  ['dt', 'The Deed & Title Co.', 'Wyoming LLC', 'forming', 'Keeps title records and will review deeds as a validator. Does not hold escrow.', 30, 41],
-  ['hold', 'Clear Capital Holdings', 'Wyoming C-corp', 'formed', 'Holds the economics of both funds. The co-op holds its governance class.', 50, 41],
-  ['labs', 'ClearLabs Inc.', 'Wyoming C-corp', 'formed', 'Research and development. Maintains the protocol for the Foundation.', 70, 41],
-  ['mgr', 'Manager LLC', 'Wyoming LLC', 'forming', 'Manages both funds. Owned by Holdings.', 50, 63],
-  ['prop', 'Clear Properties Co.', 'Wyoming LLC · partnership', 'planned', 'Takes property contributions for OP units.', 34, 92],
-  ['lend', 'Clear Lending Co.', 'Wyoming LLC', 'planned', 'The credit book, bond series and pool shares.', 66, 92],
-  ['fdn', 'Clear Foundation', 'Wyoming foundation', 'forming', 'Holds the protocol. Ownerless, outside the tree.', 91, 11],
+  ['coop', 'Clear Collective LLC', 'Wyoming LLC · member-owned', 'formed', 'The parent. One member, one vote. Taxed as a corporation under Subchapter T, trading as “Clear”.', 40, 11],
+  ['fin', 'Clear Financial Co.', 'Wyoming LLC · was Deed3Labs LLC', 'formed', 'The program entity: cash accounts, cards and money movement with Lithic and Bridge. Trustee of the ESA Reserve Trust, and services Clear Lending’s loans.', 10, 41],
+  ['dt', 'The Deed & Title Co.', 'Wyoming LLC', 'forming', 'Records and title administration. Holds title as trustee only for Clear and companies it wholly owns, and never holds funds.', 30, 41],
+  ['hold', 'Clear Capital Holdings', 'Wyoming corp · was StreetBased Inc.', 'formed', 'Owns the Manager, Clear Lending and Clear Properties. Clear holds Class A, the governance class; Class B is the financial class.', 50, 41],
+  ['labs', 'ClearLabs Inc.', 'Wyoming C-corp · was Deed3 Holdings Inc.', 'formed', 'Research and development. Builds Clear’s apps as work made for hire, and maintains the protocol for the Foundation.', 70, 41],
+  ['mgr', 'Clear Capital Management LLC', 'Wyoming LLC', 'forming', 'Manages Clear Lending and Clear Properties under M-02 and M-03. Owned by Holdings.', 63, 63],
+  ['lsub', 'Clear Building Co.', 'Wyoming LLC · the I-06 lender', 'planned', 'The I-06 lender: funds Clear and its project companies to build member homes. “Building Co.” in the agreements. A sister of Clear Lending, run by its own managers, never funded by Clear Lending or by Earn.', 37, 63],
+  ['prop', 'Clear Properties Co.', 'Wyoming LLC · partnership', 'planned', 'Takes §721 property contributions for OP units. Each property sits in its own project LLC.', 52, 92],
+  ['lend', 'Clear Lending Co.', 'Wyoming LLC', 'planned', 'Lender of record for all member credit, under a California Financing Law licence. Runs the Yield Pool and BurnerBonds.', 74, 92],
+  ['fdn', 'Deed Protocol Foundation SF', 'Wyoming statutory foundation', 'forming', 'Holds the Deed Protocol. Ownerless, perpetual and outside the tree.', 91, 11],
 ];
 export const EST = {
   formed: ['var(--fg)', 'Formed'],
@@ -2628,14 +2631,18 @@ export const EST = {
 export const OWN = {
   fin: '100%',
   dt: '100%',
-  hold: '100%',
-  labs: 'Majority',
+  hold: 'Class A',
+  labs: '56%, fully diluted',
   mgr: '100%',
+  lend: '100%',
+  prop: 'Majority, shrinking as contributors join',
+  lsub: '100%, once I-06 funds',
 };
 export const UNDER = {
   mgr: 'Holdings 100%',
   prop: 'Holdings majority',
   lend: 'Holdings 100%',
+  lsub: 'Holdings 100%',
 };
 export const ENTF = {
   /* facts for the panel */
@@ -2707,7 +2714,18 @@ export const ENTF = {
       ['Articles filed', 0],
       ['Operating agreement', 0],
       ['EIN', 0],
-      ['Bank account', 0],
+      ['CFL licence', 0],
+    ],
+    agr: [],
+  },
+  lsub: {
+    tax: 'Disregarded',
+    steps: [
+      ['Formed when I-06 first funds', 0],
+      ['Articles filed', 0],
+      ['Operating agreement', 0],
+      ['EIN', 0],
+      ['Licence check', 0],
     ],
     agr: [],
   },
@@ -2729,8 +2747,9 @@ export const PARENT = {
   hold: 'coop',
   labs: 'coop',
   mgr: 'hold',
-  prop: 'mgr',
+  prop: 'hold',
   lend: 'hold',
+  lsub: 'hold',
   fdn: null,
 };
 export const FILINGS = [
@@ -3005,7 +3024,7 @@ export const DOCS = [
   ['d11', 'Minutes · Holdings board, 16 Sep', 'minutes', 'hold', D(9, 17), 'signed', 'v1.0', 'Kai', 5],
   ['d12', 'Holdings bylaws', 'policy', 'hold', D(9, 16), 'final', 'v1.0', 'Holdings board', 22],
   ['d13', 'Cooperative operating agreement', 'agreement', 'coop', D(6, 12), 'signed', 'v1.0', 'Founding members', 31],
-  ['d14', 'Articles of organization · Manager LLC', 'filing', 'mgr', D(10, 9), 'filed', 'v1.0', 'Accountant', 3],
+  ['d14', 'Articles of organization · Clear Capital Management LLC', 'filing', 'mgr', D(10, 9), 'filed', 'v1.0', 'Accountant', 3],
   ['d15', 'Two-person rule', 'policy', 'coop', D(8, 1), 'final', 'v1.2', 'Co-op board', 4],
 ];
 export const DCOUNT = {
@@ -3076,8 +3095,8 @@ export const LOG = [
     H2(10, 21, 13, 10),
     'K',
     'money',
-    'Drafted the PayoutPool top-up',
-    '$1,116.89 from operating cash, due 30 Oct.',
+    'Drafted a Yield Pool Deployment',
+    '$1,116.89 to Clear Lending, for the 2 Nov Funding Deadline.',
     'Mac · Redlands',
     'waiting',
     'Needs a second person',
@@ -3093,11 +3112,11 @@ export const LOG = [
     'waiting',
     'Needs a second person',
   ],
-  ['a3', H2(10, 21, 10, 0), 'SY', 'chain', 'RevolvingIssuer v1.3 went live', 'After the 24-hour wait. Signed by Dana Ruiz and Kai.', 'Ops Safe', 'done', ''],
+  ['a3', H2(10, 21, 10, 0), 'SY', 'chain', 'RevolvingIssuer v1.3 went live', 'After the 7-day wait. Signed by Dana Ruiz and Kai.', 'Ops Safe', 'done', ''],
   ['a4', H2(10, 21, 9, 12), 'ML', 'field', 'Replaced poster P-012 at Uptown Barber', 'Photo attached. Next swap 20 Dec.', 'iPhone · Redlands', 'done', ''],
   ['a5', H2(10, 21, 8, 40), 'SY', 'alert', 'Orange St. Point went offline', 'Counter device stopped reporting.', 'Device', 'alert', ''],
   ['a6', H2(10, 20, 22, 41), 'SY', 'system', 'Plaid re-sync started', '7 of 12 bank links refreshed so far.', 'Plaid', 'running', ''],
-  ['a7', H2(10, 20, 18, 0), 'DR', 'chain', 'Signed “Raise Rosa’s cap to $150.00”', 'First of two signatures. Waiting on you.', 'Laptop · Riverside', 'signed', 'Marcus Lee proposed'],
+  ['a7', H2(10, 20, 18, 0), 'DR', 'chain', 'Signed “Raise Rosa’s approval cap to $1,000.00”', 'First of two signatures. Waiting on you.', 'Laptop · Riverside', 'signed', 'Marcus Lee proposed'],
   ['a8', H2(10, 20, 16, 0), 'ML', 'field', 'Drafted “Add Inland Cycle Works”', 'Waits on the merchant agreement.', 'iPhone · Redlands', 'waiting', ''],
   ['s2', H2(10, 20, 11, 0), 'K', 'shop', 'Put Graphic Tee · Two Ten Overpass on the shelf', 'Photos, price and stock checked.', 'Mac · Redlands', 'done', ''],
   ['a9', H2(10, 20, 10, 0), 'K', 'chain', 'Signed RevolvingIssuer v1.3', 'Second of two signatures.', 'Mac · Redlands', 'approved', 'Dana Ruiz proposed'],
@@ -3340,7 +3359,7 @@ export const RULES2 = [
   ['Shop refunds', 'Any refund over $50.00', ['K', 'DR'], 0, 0],
 ];
 export const WAIT2 = [
-  ['PayoutPool top-up · $1,116.89', 'Proposed by Kai · Money', 'Dana Ruiz', '20 h', 'money', 20, 4.2],
+  ['Yield Pool Deployment · $1,116.89', 'Proposed by Kai · Money', 'Dana Ruiz', '20 h', 'money', 20, 4.2],
   ['AssurancePool v1.3', 'Proposed by Dana Ruiz · On-chain', 'Kai', '30 h', 'chain', 30, 7.8],
   ['Refund · order #1079 · $98.00', 'Proposed by Kai · Shop', 'Dana Ruiz', '3 h', 'shop', 3, 1.6],
 ];

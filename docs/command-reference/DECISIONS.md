@@ -702,3 +702,120 @@ Kai, 2026-10-24: dev is the real thing on testnet. No seed, no demo people, no p
   an audit line each; `campaign-cost-remove` takes one back) saving to `command.campaign_costs` with the day
   it was spent. A poster design's $10 offers are the first spends of the people its posters brought at that
   same poster's shop. A campaign with no cost recorded and no offers shows a dash, never $0.
+
+## Brief update 2 (2026-11-17)
+
+The new reference replaces `design/command-center-ui/command-center.html` (Kai: it's the redesign, not the
+prototype in this folder). The page sheets are copied from it; the sections carry its diff by hand.
+
+### Governance
+
+- **Legal is a section of its own, `GET /sections/legal`** (`services/command/legal.ts`). It reads
+  `Deed3Labs/clear-agreements` with `COMMAND_AGREEMENTS_TOKEN` (Contents: read on that repo only;
+  `COMMAND_AGREEMENTS_REPO` for another) and answers Admin in full; every other group with Governance gets
+  the ids and counts, with every title, file name, question and change taken out on the server. Off, it says
+  so, and the tab says the repo isn't connected yet.
+- **Counsel's counts are the packet's, not each notes file's.** The four `docs/counsel-packet/part-*.md`
+  files are the triage of every agreement's counsel-notes file, one table per agreement; read together they
+  give the reference's figures exactly (1,979 notes; 228 open, 1,151 to confirm, 481 answered, 89 decided,
+  30 resolved; 20 open S1). The notes files are only linked. The gates' names are fixed (G0–G5), since the
+  parts don't all write them the same way.
+- **Recent changes are main's merge commits** ("Title (#37)"), so the token needs Contents and nothing more;
+  listing pull requests would need a second permission.
+- **Kept per commit, not polled.** The GitHub feed (5c) writes to tables on a schedule; the agreements are
+  read when someone opens Governance, kept in memory for the commit `main` is at, and read again only when
+  it moves (checked at most once a minute).
+- **The demo is the reference's placeholders, in `sections/legalDemo.ts`.** `legalDemo.test.ts` fails if a
+  row there isn't one, and, with the token set, if any title from the real register or a research memo turns
+  up in Command's source or bundle, the API's source and migrations, or the fixtures. Not the design
+  reference itself: its Records demo (d12) names one real document, and Records isn't part of this update.
+  If that row is ported as it stands, the test fails.
+- **The entities move with migration 0079**: Clear Building Co. (I-06's lender) under Holdings, the
+  drafting brief's names and roles, Holdings' Class A, ClearLabs' 56%, Clear Properties under Holdings and
+  run by the Manager. Each change only where the row still says what the structure wrote; the fixture
+  matches for a new database. The map draws the Manager's companies under it whatever their stored parent
+  says, so a database the migration hasn't reached draws no line twice.
+- **"Every agreement"'s header row is on the live list too**, and an agreement links to its draft in
+  Legal when it carries a `ref` (the demo's do; the live table has no such column yet).
+- **Home's tree** is the reference's four rows, and draws only the entities the data has.
+
+### Money
+
+- **The yield rate is the pool's own, read from the chain.** Since E2b the LendingPool is the Yield Pool and
+  its YieldPoolLedger charges Clear Lending the Funding Rate on the Deployed Balance. Live, the rate,
+  the curve (`rateModel`), the rate at 50/80/90/100% and at today's and after-top-up utilization
+  (`fundingRateAt`), interest pending and accrued and the Deployed Balance are all read from the pool;
+  holders' rate is the Funding Rate times Utilization, before losses. These are annual figures, so nothing
+  is compounded per cycle. Seeded (the demo), the reference's curve and figures stand. The carry members
+  pay on the book is still read (`credit.ts`), but it now only feeds "Where member payments go"; it is not
+  the pool's rate any more.
+- **New accounts come from the chain where they can, and are blank where they can't.** The Credit Backstop
+  and Member Assurance compartments, the coverage cap, what's covered now and approved draws not yet paid
+  are AssurancePool v2's views; the CL Loss Reserve's and CL Operating's USDC (`PAYOUT_TOPUP_SAFE`, else
+  the Base Sepolia default the top-up job uses) and payout claims due in 30 days are read too; the Clear
+  Treasury Safe is the co-op's Ops Safe. Member cash (Lithic), the Credit Settlement Account and the book's
+  monthly Spread and residual aren't wired yet: they're null, and the cells say so rather than show a
+  sample.
+- **The loss ladder is live only once every layer is read.** Its first rungs are the Spread and the
+  residual capital, which aren't read yet, so live it says it isn't real yet, and the compact ladder on
+  the gate falls back to the assurance cell. The demo is the reference's.
+- **Live, the Assurance fees and payout top-ups cards keep their current layout.** The new layout's rows
+  (keeper, top-ups, wallet) are the demo's; the live cards already read the real jobs (decision 51, #902) and get
+  the new layout when those jobs' figures are mapped onto it. The projection chart and "Needs" list are the
+  reference's in the demo, the live projection's live.
+- **Cash's groups keep the zero hairline** (#843): an empty account still draws its line.
+- **Home's Build labels stay centred and unclipped** (#846, Kai's fix): the reference's rule clips them at
+  12px and left-aligns. That is the one place Home differs from the reference; with the reference's rule
+  in, Home matches it at every width and theme.
+- **The crawl's other Money differences are Merchants'.** "Review →" on a payout, "Payouts · Merchants →"
+  and "Partners →" open Merchants, where the reference has held payouts that pay themselves and its own
+  Payouts and Partners routes. The brief doesn't cover Merchants; it stays as it is until Kai says otherwise.
+
+### Build
+
+- **Contracts read the deployment records by name.** Migration 0080 brings the map's structure to the new
+  reference (42 contracts: 41 on the map in three bands, AssuranceOracle kept off it; who controls each). No
+  contract is deleted, so nothing that points at one moves. Live, a contract counts only when the indexer
+  found its record: **37 of 41**, as the reference says, now that the fresh `OffersIssuer.json` is on `dev`
+  (deploy 24); Retired says the old one was replaced by the 17 Nov deploy. `AssurancePool`
+  resolves to the `AssurancePoolV2` record.
+- **Timelocks and helpers, Retired** come from the records too: every `*Timelock`, then BurnerBondFactory,
+  BurnerBondDeposit and Create2Deployer; Retired lists the old OffersIssuer, AssurancePool v1, ClearUSD v1 and
+  AssuranceOracle, and counts the other copies by name (PreAudit, Pre2f, Pre2d, Legacy, and RevolvingIssuerV1):
+  21, where the reference says 22 (it counts the old OffersIssuer twice). The map's heading names the timelocks
+  the records have: four live (Credit, Assurance, Vault, Earn), where the reference says five with Deed.
+- **BurnerBondDeposit and its Pre2f copy share an address**, so the indexer keeps one name for it and live the
+  helpers card can show six rows. Kai may want one of the two records dropped.
+- **Signing sends from Command** (Kai, 17 Nov), ported from `tools/signing-page` (`sections/signingLive.ts`).
+  The plan is committed (`deployments/base-sepolia/signing-plan.json`, no longer gitignored) and the API serves
+  it untouched, read from the repo's `dev` branch through GitHub (the API's image doesn't carry `deployments/`);
+  until one is committed it falls back to the newest plan run's log, statuses only. The browser checks it as
+  the signing page does: format, every step's shape, the fingerprint, and **Base Sepolia only** (the local test
+  chain the signing page also takes is refused here). A wallet step is sent from MetaMask with exactly the
+  plan's call, only from the account it names, only on Base Sepolia; a Safe step is downloaded as a
+  Transaction Builder batch and the Safe app opened, where its owners sign (the reference's "Send to the
+  Safe's queue" would need an owner's signature through the Safe service). What this browser sent is kept per
+  plan and its receipts read from the wallet. Steps turn done when the plan script is re-run and committed.
+- **The plan's stages are mapped to the reference's codes** (Pool Tier → G1, Safe (before I2) → SF, Day 7 → D7,
+  Assurance → AS, Payout top-ups → TU), with E9 (the backstop change) as a stage of its own, Day 7 last.
+- **Live, "Standing signing jobs" isn't real yet**: the plan doesn't list them.
+- **The reference's step panel joins its links as text** ("After [object Object]"); the app draws them as
+  links, which the crawl sees as a difference on any step that waits on another.
+- **Automatic jobs read their own records**: payout top-ups from its job's state, the Assurance fee payer from
+  its items and snapshots, and the keeper from a record of its last pass kept in the API process
+  (`payoutFunding/keeperRuns.ts`; empty after a restart until its first pass, which runs at start). Each says
+  "Not on yet" until its switch is set.
+- **Home's Build tile** counts the map's contracts by group (Rules, the five layers, Deeds), as Build does.
+- **The crawl ignores the map's flow overlay** (`.bm-fx`): its dots move on the frame clock, so no two pages
+  hold the same positions at the moment the DOM is read.
+
+### Records, Team and Settings (ADMIN2), Merchants (XAPI), the shared data
+
+- Carried from the new reference: held payouts that a second person releases, approval-cap levels ($500,
+  $1,000, $1,500), the Yield Pool Deployment in place of the PayoutPool top-up, 7-day waits, Clear Collective
+  LLC, Settings' Protocol rules row, and the same changes in the shared data (`data.tsx`: the inbox, Home's
+  feed and the activity log).
+- **Records' documents keep the app's titles.** The reference's Records list now uses titles from the private
+  agreements register ("Partner Member Agreement (MR-02)", "Program Agreement (I-02)", the Holdings bylaws
+  and others). Under brief update 2's section 0 none of those may land in this repo, so Records → Documents
+  keeps its generic titles and differs from the reference there.

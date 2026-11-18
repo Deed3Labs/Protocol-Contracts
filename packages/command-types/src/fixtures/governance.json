@@ -3,10 +3,10 @@
   {
    "row": [
     "coop",
-    "Clear Co-op",
-    "Wyoming LLC · co-op",
+    "Clear Collective LLC",
+    "Wyoming LLC · member-owned",
     "formed",
-    "The parent. One member, one vote. Taxed as a corporation.",
+    "The parent. One member, one vote. Taxed as a corporation under Subchapter T, trading as “Clear”.",
     40,
     11
    ],
@@ -30,9 +30,9 @@
    "row": [
     "fin",
     "Clear Financial Co.",
-    "Wyoming LLC",
+    "Wyoming LLC · was Deed3Labs LLC",
     "formed",
-    "Runs the card and money programs. Holds member funds for their benefit.",
+    "The program entity: cash accounts, cards and money movement with Lithic and Bridge. Trustee of the ESA Reserve Trust, and services Clear Lending’s loans.",
     10,
     41
    ],
@@ -58,7 +58,7 @@
     "The Deed & Title Co.",
     "Wyoming LLC",
     "forming",
-    "Keeps title records and will review deeds as a validator. Does not hold escrow.",
+    "Records and title administration. Holds title as trustee only for Clear and companies it wholly owns, and never holds funds.",
     30,
     41
    ],
@@ -96,14 +96,14 @@
    "row": [
     "hold",
     "Clear Capital Holdings",
-    "Wyoming C-corp",
+    "Wyoming corp · was StreetBased Inc.",
     "formed",
-    "Holds the economics of both funds. The co-op holds its governance class.",
+    "Owns the Manager, Clear Lending and Clear Properties. Clear holds Class A, the governance class; Class B is the financial class.",
     50,
     41
    ],
    "parent": "coop",
-   "owned": "100%",
+   "owned": "Class A",
    "under": null,
    "facts": {
     "formed": "20 Jul 2026",
@@ -119,14 +119,14 @@
    "row": [
     "labs",
     "ClearLabs Inc.",
-    "Wyoming C-corp",
+    "Wyoming C-corp · was Deed3 Holdings Inc.",
     "formed",
-    "Research and development. Maintains the protocol for the Foundation.",
+    "Research and development. Builds Clear’s apps as work made for hire, and maintains the protocol for the Foundation.",
     70,
     41
    ],
    "parent": "coop",
-   "owned": "Majority",
+   "owned": "56%, fully diluted",
    "under": null,
    "facts": {
     "formed": "5 Aug 2026",
@@ -141,10 +141,10 @@
   {
    "row": [
     "mgr",
-    "Manager LLC",
+    "Clear Capital Management LLC",
     "Wyoming LLC",
     "forming",
-    "Manages both funds. Owned by Holdings.",
+    "Manages Clear Lending and Clear Properties under M-02 and M-03. Owned by Holdings.",
     50,
     63
    ],
@@ -184,12 +184,12 @@
     "Clear Properties Co.",
     "Wyoming LLC · partnership",
     "planned",
-    "Takes property contributions for OP units.",
+    "Takes §721 property contributions for OP units. Each property sits in its own project LLC.",
     34,
     92
    ],
-   "parent": "mgr",
-   "owned": null,
+   "parent": "hold",
+   "owned": "Majority, shrinking as contributors join",
    "under": "Holdings majority",
    "facts": {
     "tax": "Partnership",
@@ -224,12 +224,12 @@
     "Clear Lending Co.",
     "Wyoming LLC",
     "planned",
-    "The credit book, bond series and pool shares.",
+    "Lender of record for all member credit, under a California Financing Law licence. Runs the Yield Pool and BurnerBonds.",
     66,
     92
    ],
    "parent": "hold",
-   "owned": null,
+   "owned": "100%",
    "under": "Holdings 100%",
    "facts": {
     "tax": "Disregarded",
@@ -251,7 +251,47 @@
       0
      ],
      [
-      "Bank account",
+      "CFL licence",
+      0
+     ]
+    ],
+    "agr": []
+   }
+  },
+  {
+   "row": [
+    "lsub",
+    "Clear Building Co.",
+    "Wyoming LLC · the I-06 lender",
+    "planned",
+    "The I-06 lender: funds Clear and its project companies to build member homes. “Building Co.” in the agreements. A sister of Clear Lending, run by its own managers, never funded by Clear Lending or by Earn.",
+    37,
+    63.2
+   ],
+   "parent": "hold",
+   "owned": "100%, once I-06 funds",
+   "under": "Holdings 100%",
+   "facts": {
+    "tax": "Disregarded",
+    "steps": [
+     [
+      "Formed when I-06 first funds",
+      0
+     ],
+     [
+      "Articles filed",
+      0
+     ],
+     [
+      "Operating agreement",
+      0
+     ],
+     [
+      "EIN",
+      0
+     ],
+     [
+      "Licence check",
       0
      ]
     ],
@@ -261,10 +301,10 @@
   {
    "row": [
     "fdn",
-    "Clear Foundation",
-    "Wyoming foundation",
+    "Deed Protocol Foundation SF",
+    "Wyoming statutory foundation",
     "forming",
-    "Holds the protocol. Ownerless, outside the tree.",
+    "Holds the Deed Protocol. Ownerless, perpetual and outside the tree.",
     91,
     11
    ],

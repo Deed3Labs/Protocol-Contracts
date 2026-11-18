@@ -21,7 +21,8 @@ import {
  *   - the two CDP wallets (ASSURANCE_CL_FEES_PAYER, ASSURANCE_DISBURSEMENT) are plain accounts;
  *   - nothing the Assurance Pool would refuse (a payer or Lending Co. address that is a signer, a payer
  *     that is the draw address, two of the five the same);
- *   - the payout top-ups' setup (decision 51, `checkPayoutTopUpSetup` below): steps not done yet are WARN.
+ *   - the payout top-ups' setup (decision 51, `checkPayoutTopUpSetup` below): steps not done yet are WARN;
+ *   - the Settlement Funding forwarder's setup (decision 54, `checkSettlementForwarderSetup` below).
  */
 
 export const ROLLOUT_INPUTS = [
@@ -37,7 +38,7 @@ export interface InputCheck {
   what: string;
 }
 
-export async function checkRolloutInputs(env: Record<string, string | undefined>, provider: any, opts: { payoutPool?: string } = {}): Promise<InputCheck[]> {
+export async function checkRolloutInputs(env: Record<string, string | undefined>, provider: any, opts: { payoutPool?: string; settlementForwarder?: string } = {}): Promise<InputCheck[]> {
   const { ethers } = require("ethers");
   const out: InputCheck[] = [];
   const push = (status: InputCheck["status"], what: string) => out.push({ status, what });
@@ -111,6 +112,80 @@ export async function checkRolloutInputs(env: Record<string, string | undefined>
     // The empty ones are listed above.
   }
   out.push(...(await checkPayoutTopUpSetup(env, provider, opts)));
+  out.push(...(await checkSettlementForwarderSetup(env, provider, opts)));
+  return out;
+}
+
+/**
+ * Settlement Funding (decision 54), read-only: the funding desk's wallet (SETTLEMENT_FUNDER) is a
+ * plain account no other job uses; the SettlementForwarder (deploy 28) is deployed for CL Operating,
+ * Safe's AllowanceModule and USDC; CL Operating has set its off-ramp (SETTLEMENT_OFFRAMP_ADDRESS) and
+ * its desk (the funder), named it a delegate, and given it an allowance no larger than the lane's
+ * cap (SETTLEMENT_CAP_USDC per SETTLEMENT_PERIOD_DAYS). A step not done yet is a WARN (signing plan
+ * SL-cl-operating-*); a wrong one is a FAIL.
+ */
+export async function checkSettlementForwarderSetup(env: Record<string, string | undefined>, provider: any, opts: { settlementForwarder?: string } = {}): Promise<InputCheck[]> {
+  const { ethers } = require("ethers");
+  const out: InputCheck[] = [];
+  const push = (status: InputCheck["status"], what: string) => out.push({ status, what });
+  const val = (k: string) => env[k]?.trim() ?? "";
+  const same = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+  const isZero = (a: string) => same(a, ethers.ZeroAddress);
+  const a = (k: string) => (ethers.isAddress(val(k)) ? ethers.getAddress(val(k)) : undefined);
+
+  const funder = a("SETTLEMENT_FUNDER");
+  if (!val("SETTLEMENT_FUNDER")) push("WARN", "SETTLEMENT_FUNDER is empty: the Settlement Funding steps (SL-) wait; owner to create the funding desk's CDP wallet and fill it in");
+  else if (!funder) push("FAIL", `SETTLEMENT_FUNDER is not an address: ${val("SETTLEMENT_FUNDER")}`);
+  else {
+    const code: string = await provider.getCode(funder);
+    push(code === "0x" || code.toLowerCase().startsWith("0xef0100") ? "PASS" : "FAIL", `the funding desk's wallet ${funder} is a plain account (a CDP wallet)`);
+    const others = ["DEPLOYER", "RELAYER", "SAVINGS_RELAYER_ADDRESS", "SEND_RELAYER_ADDRESS", "CREDIT_OPERATOR_ADDRESS", "CARD_SETTLER_ADDRESS", "ASSURANCE_CL_FEES_PAYER", "ASSURANCE_DISBURSEMENT", "AGENT_KEY", "CLEAR_LENDING_ACCOUNT", "PAYOUT_TOPUP_WALLET"]
+      .filter((k) => same(val(k), funder));
+    push(others.length ? "FAIL" : "PASS", `the funding desk's wallet is no other job's wallet${others.length ? `: it is also ${others.join(", ")}` : ""}`);
+  }
+  const cap = parseUsdc(val("SETTLEMENT_CAP_USDC"));
+  const days = Number(val("SETTLEMENT_PERIOD_DAYS"));
+  // Empty: the SL steps wait (a WARN); set but unusable: a FAIL.
+  if (!val("SETTLEMENT_CAP_USDC")) push("WARN", "SETTLEMENT_CAP_USDC is empty: the lane's cap and the forwarder's allowance wait for it");
+  else if (cap === null || cap === 0n) push("FAIL", `SETTLEMENT_CAP_USDC is not a dollar amount above 0: ${val("SETTLEMENT_CAP_USDC")}`);
+  if (!val("SETTLEMENT_PERIOD_DAYS")) push("WARN", "SETTLEMENT_PERIOD_DAYS is empty: the lane's period and the forwarder's allowance wait for it");
+  else if (!Number.isInteger(days) || days < 1 || days > 45) push("FAIL", `SETTLEMENT_PERIOD_DAYS is not a whole number of days from 1 to 45: ${val("SETTLEMENT_PERIOD_DAYS")}`);
+  const offRamp = a("SETTLEMENT_OFFRAMP_ADDRESS");
+  if (!val("SETTLEMENT_OFFRAMP_ADDRESS")) push("WARN", "SETTLEMENT_OFFRAMP_ADDRESS is empty: the forwarder's off-ramp step (SL-cl-operating-offramp) waits; owner to fill it in");
+  else if (!offRamp) push("FAIL", `SETTLEMENT_OFFRAMP_ADDRESS is not an address: ${val("SETTLEMENT_OFFRAMP_ADDRESS")}`);
+
+  const fAddr = opts.settlementForwarder;
+  if (!fAddr || !ethers.isAddress(fAddr) || (await provider.getCode(fAddr)) === "0x") {
+    push("WARN", "no SettlementForwarder yet (deploy 28): CL Operating's forwarder steps (SL-cl-operating-*) wait");
+    return out;
+  }
+  const f = new ethers.Contract(fAddr, [
+    "function safe() view returns (address)", "function allowanceModule() view returns (address)", "function token() view returns (address)",
+    "function offRamp() view returns (address)", "function desk() view returns (address)",
+  ], provider);
+  const operating = a("CLEAR_LENDING_ACCOUNT");
+  const moduleAddr = a("PAYOUT_TOPUP_ALLOWANCE_MODULE") ?? CANONICAL_ALLOWANCE_MODULE;
+  const token = a("RESERVE_TOKEN");
+  const [fSafe, fModule, fToken, fOffRamp, fDesk] = (await Promise.all([f.safe(), f.allowanceModule(), f.token(), f.offRamp(), f.desk()])).map((x: string) => ethers.getAddress(x));
+  push(same(fSafe, operating) ? "PASS" : "FAIL", `the SettlementForwarder ${fAddr} serves CL Operating${same(fSafe, operating) ? "" : `: it names ${fSafe}, not ${operating ?? "(CLEAR_LENDING_ACCOUNT empty)"}`}`);
+  push(same(fModule, moduleAddr) ? "PASS" : "FAIL", `the SettlementForwarder calls Safe's AllowanceModule ${moduleAddr}${same(fModule, moduleAddr) ? "" : `: it calls ${fModule}`}`);
+  push(same(fToken, token) ? "PASS" : "FAIL", `the SettlementForwarder forwards USDC (RESERVE_TOKEN)${same(fToken, token) ? "" : `: it forwards ${fToken}`}`);
+  if (isZero(fOffRamp)) push("WARN", "the SettlementForwarder has no off-ramp yet (SL-cl-operating-offramp)");
+  else push(offRamp && same(fOffRamp, offRamp) ? "PASS" : "FAIL", `the SettlementForwarder's off-ramp is ${fOffRamp}${offRamp && same(fOffRamp, offRamp) ? ", as SETTLEMENT_OFFRAMP_ADDRESS says" : `; SETTLEMENT_OFFRAMP_ADDRESS says ${offRamp ?? "(empty)"}`}`);
+  if (isZero(fDesk)) push("WARN", "the SettlementForwarder has no desk wallet yet (SL-cl-operating-desk)");
+  else push(funder && same(fDesk, funder) ? "PASS" : "FAIL", `the SettlementForwarder's desk is ${fDesk}${funder && same(fDesk, funder) ? ", the funding desk's wallet" : `; SETTLEMENT_FUNDER is ${funder ?? "(empty)"}`}`);
+
+  if (!operating || (await provider.getCode(moduleAddr)) === "0x") return out;
+  const mod = new ethers.Contract(moduleAddr, ALLOWANCE_MODULE_ABI, provider);
+  const [delegates] = await mod.getDelegates(operating, 0, 50);
+  const isDelegate = (delegates as string[]).some((d) => same(d, fAddr));
+  push(isDelegate ? "PASS" : "WARN", `the SettlementForwarder is CL Operating's spending-limit delegate${isDelegate ? "" : ": not yet (SL-cl-operating-delegate)"}`);
+  if (!token) return out;
+  const al = await mod.getTokenAllowance(operating, fAddr, token);
+  const [amount, spent, reset] = [BigInt(al[0]), BigInt(al[1]), Number(al[2])];
+  if (amount === 0n) push("WARN", "the SettlementForwarder has no allowance on CL Operating yet (SL-cl-operating-allowance)");
+  else if (cap === null || amount > cap) push("FAIL", `the SettlementForwarder's allowance is ${formatUsdc(amount)} per period, above the lane's cap ${cap === null ? "?" : formatUsdc(cap)} (SETTLEMENT_CAP_USDC)`);
+  else push(reset === days * 1440 ? "PASS" : "WARN", `the SettlementForwarder's allowance is ${formatUsdc(amount)} every ${reset} minutes (${formatUsdc(spent)} spent this period), within the cap ${formatUsdc(cap)}${reset === days * 1440 ? "" : `; the rollout's period is ${days * 1440} minutes`}`);
   return out;
 }
 
@@ -206,7 +281,10 @@ async function main() {
   const chainId = Number((await provider.getNetwork()).chainId);
   if (![84532, 31337].includes(chainId)) throw new Error(`Refusing: this preflight is for Base Sepolia (84532) or its fork; ${hre.network.name} is chain ${chainId}.`);
   console.log(`Rollout inputs preflight on ${hre.network.name} (chain ${chainId}), from ${process.env.ROLLOUT_ENV || path.join("deploy", "config", "base-sepolia.rollout.env")}. Sends nothing.\n`);
-  const results = await checkRolloutInputs(env, provider, { payoutPool: freshPayoutPoolRecord(hre.network.name === "base-sepolia-fork" ? "base-sepolia" : hre.network.name) });
+  const records = hre.network.name === "base-sepolia-fork" ? "base-sepolia" : hre.network.name;
+  const forwarderFile = path.join("deployments", records, "SettlementForwarder.json");
+  const settlementForwarder = require("fs").existsSync(forwarderFile) ? JSON.parse(require("fs").readFileSync(forwarderFile, "utf8")).address : undefined;
+  const results = await checkRolloutInputs(env, provider, { payoutPool: freshPayoutPoolRecord(records), settlementForwarder });
   for (const r of results) console.log(`${r.status.padEnd(4)}  ${r.what}`);
   const fails = results.filter((r) => r.status === "FAIL").length;
   console.log(`\n${results.filter((r) => r.status === "PASS").length} PASS, ${fails} FAIL, ${results.filter((r) => r.status === "WARN").length} WARN.`);

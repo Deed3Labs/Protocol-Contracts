@@ -1,12 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { testDb } from '../../db/testDb';
 import { deskStore, recordMarginAdvance } from '../settlementFunding/store';
-import { payoutTopUpsJob, payoutTopUpsSeed } from './payoutTopUps';
-import { settlementFundingJob, settlementFundingLive, settlementFundingSeed } from './settlementFunding';
+import type { Queryable } from '../../db/db';
+import { autoJobs } from './autoJobs';
+import { settlementFundingLive, settlementFundingSeed, type SettlementCard } from './settlementFunding';
 
 /*
  * Money's "Card settlement funding" card and Build → Security's automatic jobs (decision 54): read
- * from what the funding desk recorded (migration 0079), never from the chain; seeded, a sample.
+ * from what the funding desk recorded (migration 0081), never from the chain; seeded, a sample.
  */
 
 const POOL = '0x1000000000000000000000000000000000000001';
@@ -53,6 +54,10 @@ function snapshot(over: { lane?: Record<string, unknown>; forwarder?: Record<str
   };
 }
 
+/** Build → Security's row for the desk (autoJobs.ts), switched on, from this card. */
+const job = async (db: Queryable, c: SettlementCard | null) =>
+  (await autoJobs(db, { env: { SETTLEMENT_FUNDING_ENABLED: '1', SETTLEMENT_DESK_WALLET: WALLET }, topUps: async () => null, keeper: () => null, settlement: async () => c })).find((j) => j.id === 'settlement')!;
+
 const check = (snap: ReturnType<typeof snapshot>, at = new Date((CUTOFF - 6 * 3600) * 1000)) => ({ checkedAt: at, cutoffAt: new Date(CUTOFF * 1000), need: 2_200n * U, surplus: 0n, csa: 500n * U, outcome: snap.outcome, snapshot: snap });
 
 describe('Money’s card settlement funding card', () => {
@@ -84,7 +89,8 @@ describe('Money’s card settlement funding card', () => {
     expect(c.recent.map((r) => [r.kind, r.status])).toEqual([['deploy', 'forwarded'], ['book', 'done']]);
     expect(c.recent[0].txs.map(([k]) => k)).toEqual(['deploySettlement', 'forward']);
     expect(c.explorer).toBe('https://sepolia.basescan.org/tx/');
-    expect(settlementFundingJob(c)).toMatchObject({ name: 'Settlement funding', state: 'on', wallet: WALLET, limit: { cap: 5_000, used: 3_500 } });
+    expect(await job(db, c)).toMatchObject({ t: 'Settlement funding', st: 'ok', w: 'settlement-desk-base-sepolia', a: '0x2000…0002', lim: ['$5,000 a week', 'The lane’s limit, set on chain by two deployers · $3,500 used this period'] });
+    expect((await job(db, c)).run[1]).toBe('Funded the Credit Settlement Account');
   });
 
   test('short: the cap’s remainder as the two Transaction Builder batches, and the pool’s shortfall', async () => {
@@ -106,13 +112,13 @@ describe('Money’s card settlement funding card', () => {
     expect(c.lane.upgraded).toBe(false);
     expect(c.lane.periodStart).toBe(null);
     expect(c.setup[0]).toContain('the settlement lane is not set up: the Yield Pool has no settlementLane() yet');
-    expect(settlementFundingJob(c).state).toBe('setup');
+    expect(await job(db, c)).toMatchObject({ st: 'wait', lim: ['The lane’s limit set on chain', 'By two DEPLOYER_ROLE signers · SL-funder-1/2'] });
 
     await store.saveCheck(check(snapshot({ lane: { stopped: true, epoch: 1 }, outcome: 'setup' }), new Date((CUTOFF - 5.5 * 3600) * 1000)));
     c = (await settlementFundingLive(db))!;
     expect(c.lane.stopped).toBe(true);
     expect(c.setup).toEqual(['the settlement lane is stopped (stopSettlementFunder); two DEPLOYER_ROLE signers restart it (SL-funder-1/2)']);
-    expect(settlementFundingJob(c).state).toBe('setup');
+    expect(await job(db, c)).toMatchObject({ st: 'bad', run: ['Stopped on chain', 'stopSettlementFunder was called · two deployers restart it (SL-funder-1/2)'] });
 
     await store.saveCheck(check(snapshot({ lane: { funder: '0x0000000000000000000000000000000000000000', capPerPeriod: '0' }, forwarder: { allowance: { amount: '0', spent: '0', resetTimeMin: 0, lastResetMin: 0, nonce: 0 } }, outcome: 'setup' }), new Date((CUTOFF - 5 * 3600) * 1000)));
     c = (await settlementFundingLive(db))!;
@@ -130,7 +136,7 @@ describe('Money’s card settlement funding card', () => {
     const c = (await settlementFundingLive(db))!;
     expect(c.halted).toMatchObject({ id: row.id, error: 'deploySettlement reverted' });
     expect(c.dryRun).toBe(true);
-    expect(settlementFundingJob(c)).toMatchObject({ state: 'stopped', note: `Stopped after move #${row.id}: deploySettlement reverted` });
+    expect(await job(db, c)).toMatchObject({ st: 'bad', run: ['Stopped', `Move ${row.id} failed: deploySettlement reverted`] });
   });
 
   test('the Margin outstanding shows until it is restored', async () => {
@@ -140,12 +146,12 @@ describe('Money’s card settlement funding card', () => {
     expect((await settlementFundingLive(db))!.marginOutstanding).toBe(35);
   });
 
-  test('seeded: a sample, like the other cards; the jobs from it', () => {
+  test('seeded: a sample, like the other cards; the job waits until the desk has checked', async () => {
     const c = settlementFundingSeed(1_795_000_000_000);
     expect(c.lane.cap).toBe(5_000);
     expect(c.lane.headroom).toBe(1_000);
     expect(c.recent[0].kind).toBe('deploy');
-    expect(settlementFundingJob(null).state).toBe('off');
-    expect(payoutTopUpsJob(payoutTopUpsSeed(1_795_000_000_000))).toMatchObject({ name: 'Payout top-ups', state: 'on', limit: { cap: 5_000, periodSeconds: 604_800 } });
+    const { db } = await testDb();
+    expect((await job(db, null)).run).toEqual(['Not run yet', 'Checks every 15 minutes once started']);
   });
 });

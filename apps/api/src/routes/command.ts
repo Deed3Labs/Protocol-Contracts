@@ -38,6 +38,8 @@ import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 import type { Deploys } from '../services/command/deploys.js';
 import { poolTierPrincipalFor, settlementFundingStatus } from '../services/settlementFunding/api.js';
+import { type Legal, totalsOnly } from '../services/command/legal.js';
+import type { Signing } from '../services/command/signing.js';
 
 /*
  * The Command Center's API (docs/command-center-plan.md, Phase 2): sign-in sessions, who you are and
@@ -72,6 +74,10 @@ export interface CommandDeps {
   code?: { catchUp(): void };
   /** Where each app runs, for Build (deploys.ts: Vercel's deploys, the API's Railway environments). */
   deploys?: () => Promise<Deploys>;
+  /** Governance → Legal: the private clear-agreements repo, read with its own token (legal.ts). */
+  legal?: { off(): string | null; read(): Promise<Legal> };
+  /** Build → Signing: the committed signing plan, read from the repo (signing.ts). */
+  signing?: { read(): Promise<Signing> };
   /** The sandbox feeds, for their status (Phase 6a): the live four unless given. */
   feeds?: Feed[];
   /** The member app's records, for Members when it's live (Phase 7b). */
@@ -629,10 +635,27 @@ export function commandRouter(deps: CommandDeps) {
     deps.indexer?.catchUp();
     deps.code?.catchUp();
     try {
-      res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now(), chain: deps.chain, deploys: deps.deploys }));
+      res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now(), chain: deps.chain, deploys: deps.deploys, signing: deps.signing?.read }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
+    }
+  });
+
+  /**
+   * Governance → Legal: the agreements in clear-agreements and counsel's questions on them. Admin gets
+   * the titles, files and questions; everyone else the ids and counts. Off until its token is set.
+   */
+  router.get('/sections/legal', need('governance', TOTALS), async (req, res) => {
+    const c = req.command!;
+    res.setHeader('Cache-Control', 'private, no-store');
+    const off = deps.legal ? deps.legal.off() : 'Not connected';
+    if (off || !deps.legal) return res.json({ off, asOf: new Date().toISOString() });
+    try {
+      const L = await deps.legal.read();
+      res.json({ ...(isAdmin(c) ? L : totalsOnly(L)), asOf: new Date(L.readAt).toISOString() });
+    } catch (e) {
+      fail(res, 502, 'AGREEMENTS', `clear-agreements didn’t answer: ${(e as Error).message}`);
     }
   });
 

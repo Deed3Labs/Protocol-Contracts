@@ -5,14 +5,15 @@ import { localDate, zonedInstant } from '../settlementFunding/schedule.js';
 import { deskOverview, deskStore, type MoveRow } from '../settlementFunding/store.js';
 
 /*
- * Money's "Card settlement funding" card (decision 54), on Pools → Yield pool, and its row in Build →
- * Security's automatic jobs. The settlement funding desk (jobs/fundingDesk.ts) funds the Credit
- * Settlement Account before each card settlement cut-off; this is what it last saw and did: the next
+ * Money's "Card settlement funding" card (decision 54), on Pools → Yield pool; Build → Security's
+ * automatic jobs read the same record for the desk's row (autoJobs.ts). The settlement funding desk
+ * (jobs/fundingDesk.ts) funds the Credit Settlement Account before each card settlement cut-off;
+ * this is what it last saw and did: the next
  * cut-off and what is due, the CSA and the buffer, the Collection Account and today's book transfers
  * (the netting that exists), Settlement Funding sent and returned, the settlement lane's period
  * limit, and what needs a person (a stop, lane setup, the cap's remainder, a shortfall).
  *
- * Live, it is read from what the desk recorded (migration 0079), never from the chain on page load,
+ * Live, it is read from what the desk recorded (migration 0081), never from the chain on page load,
  * as the top-ups card is; seeded, a fixed sample, as Money's other cards are. Dollars, as numbers.
  */
 
@@ -267,29 +268,5 @@ export function settlementFundingSeed(now: number): SettlementCard {
       { id: 2, at: now - 2 * 3_600_000, kind: 'deploy', status: 'forwarded', amount: 783.65, cutoffAt: next, txs: [['deploySettlement', h(0xb1)], ['forward', h(0xb2)]], error: null },
       { id: 1, at: now - 2 * 3_600_000, kind: 'book', status: 'booked', amount: 1_412.6, cutoffAt: next, txs: [], error: null },
     ],
-  };
-}
-
-/** Build → Security's automatic jobs: the desk's row, from the card (or why it has none). */
-export function settlementFundingJob(card: SettlementCard | null) {
-  const state = !card
-    ? 'off'
-    : card.halted
-      ? 'stopped'
-      : card.setup.length
-        ? 'setup'
-        : card.dryRun
-          ? 'dry-run'
-          : 'on';
-  return {
-    id: 'settlement-funding',
-    name: 'Settlement funding',
-    state,
-    wallet: card?.wallet ?? '',
-    lastCheck: card?.lastCheck ?? null,
-    calls: 'deploySettlement on the Yield Pool · forward on the SettlementForwarder · approve and returnFunds for a Return',
-    limit: card ? { cap: card.lane.cap, periodSeconds: card.lane.periodSeconds, used: card.lane.used, allowance: card.allowance.cap } : null,
-    stop: 'stopSettlementFunder() · one DEPLOYER_ROLE or CCO_ROLE holder · restarting takes two deployers (SL-funder-1/2)',
-    note: card?.halted ? `Stopped after move #${card.halted.id}: ${card.halted.error}` : card?.setup.length ? card.setup.join('; ') : '',
   };
 }

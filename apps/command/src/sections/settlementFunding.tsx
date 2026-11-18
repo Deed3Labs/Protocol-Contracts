@@ -1,7 +1,6 @@
-// @ts-nocheck: reads the section data the API fills (money.SETTLEMENT_FUNDING, contracts.AUTOMATIC_JOBS), which is untyped, as the sections are.
+// @ts-nocheck: reads the section data the API fills (money.SETTLEMENT_FUNDING), which is untyped, as the sections are.
 import { Fragment, useEffect, useState } from 'react';
 import { api } from '../live/api';
-import { demoTopUps } from './payoutTopUps';
 
 /*
  * Card settlement funding (decision 54), on Money · Pools · Yield pool, in the automatic top-ups
@@ -12,7 +11,8 @@ import { demoTopUps } from './payoutTopUps';
  * (services/command/settlementFunding.ts); the demo shows the same sample the seeded API does.
  *
  * Also here: the Pool Tier principal worksheet (GET /pool-tier-principal), a read-only suggestion for
- * the two valuation signers, and Build → Security's automatic jobs (the demo's rows).
+ * the two valuation signers. The desk's row in Build → Security's automatic jobs is the API's AUTO
+ * (autoJobs.ts), with a demo row beside the others in build2.tsx.
  */
 
 const DAY = 86_400_000;
@@ -201,30 +201,4 @@ export function PoolTierPrincipal({ demo, money, cls = 's5' }) {
       <div className="bk-ft"><span>Read-only · two VALUATION_ROLE signers post it with postPoolTierPrincipal · nothing posts it automatically</span><span /></div>
     </div>
   );
-}
-
-/* ── Build → Security: the automatic jobs ── */
-
-/** The demo's rows (the seeded API sends the same): the payout top-up bot and the settlement funding desk. */
-export function demoJobs(now) {
-  const T = demoTopUps(now);
-  const S = demoSettlement(now);
-  return [
-    { id: 'payout-topups', name: 'Payout top-ups', state: 'on', wallet: T.wallet, lastCheck: T.lastCheck, calls: 'AllowanceModule pull from CL Operating · approve and fund on the PayoutPool', limit: { cap: T.allowance.cap, periodSeconds: T.allowance.resetMinutes * 60, used: T.allowance.spent, allowance: T.allowance.cap }, stop: 'CL Operating’s owners remove the bot as delegate (AllowanceModule.removeDelegate)', note: '' },
-    { id: 'settlement-funding', name: 'Settlement funding', state: 'on', wallet: S.wallet, lastCheck: S.lastCheck, calls: 'deploySettlement on the Yield Pool · forward on the SettlementForwarder · approve and returnFunds for a Return', limit: { cap: S.lane.cap, periodSeconds: S.lane.periodSeconds, used: S.lane.used, allowance: S.allowance.cap }, stop: 'stopSettlementFunder() · one DEPLOYER_ROLE or CCO_ROLE holder · restarting takes two deployers (SL-funder-1/2)', note: '' },
-  ];
-}
-
-const JOB_STATE = { on: 'On', off: 'Off · never checked', stopped: 'Stopped', setup: 'Lane not set up', 'dry-run': 'Dry run' };
-const shortA = (a) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : 'No wallet yet');
-
-const dollars = (n) => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-/** The automatic jobs' ledger rows: [name, what it may call and how it is stopped, its state, wallet and limit]. */
-export function jobRows(jobs, now = Date.now(), money = dollars) {
-  return (jobs ?? []).map((j) => [
-    j.name,
-    `${j.calls} · stop: ${j.stop}${j.note ? ` · ${j.note}` : ''}`,
-    `${JOB_STATE[j.state] ?? j.state} · ${shortA(j.wallet)}${j.limit ? ` · ${money(j.limit.used)} of ${money(j.limit.cap)} per ${period(j.limit.periodSeconds)}` : ''}${j.lastCheck ? ` · ${ago(j.lastCheck, now)}` : ''}`,
-  ]);
 }

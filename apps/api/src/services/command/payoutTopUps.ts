@@ -77,21 +77,6 @@ export async function payoutTopUpsLive(db: Queryable): Promise<TopUpsCard | null
   };
 }
 
-/** Build → Security's automatic jobs: the payout top-up bot's row, from the card (null: it has never checked). */
-export function payoutTopUpsJob(card: TopUpsCard | null) {
-  return {
-    id: 'payout-topups',
-    name: 'Payout top-ups',
-    state: !card ? 'off' : card.halted ? 'stopped' : 'on',
-    wallet: card?.wallet ?? '',
-    lastCheck: card?.lastCheck ?? null,
-    calls: 'AllowanceModule pull from CL Operating · approve and fund on the PayoutPool',
-    limit: card ? { cap: card.allowance.cap, periodSeconds: card.allowance.resetMinutes * 60, used: card.allowance.spent, allowance: card.allowance.cap } : null,
-    stop: 'CL Operating’s owners remove the bot as delegate (AllowanceModule.removeDelegate)',
-    note: card?.halted ? `Stopped after top-up #${card.halted.id}: ${card.halted.error}` : '',
-  };
-}
-
 /** The seeded card: a quiet week with one automatic top-up, as the other seeded cards are samples. */
 export function payoutTopUpsSeed(now: number): TopUpsCard {
   const DAY = 86_400_000;

@@ -54,13 +54,19 @@ describe('Card settlement funding on Money → Pools → Yield pool (decision 54
 });
 
 describe('Build → Security: automatic jobs (decisions 51 and 54)', () => {
-  test('a row for payout top-ups and one for settlement funding, live from the contracts section', () => {
-    expect(live).toContain('vars.automaticJobs = d.AUTOMATIC_JOBS ?? [];');
-    expect(buildLive).toContain('JOBS: Array.isArray(vars.automaticJobs) ? vars.automaticJobs : [],');
-    expect(build).toContain('band(jobsCell(demoJobs(NOW)))');
-    expect(build).toContain('band(jobsCell(LV.JOBS))');
-    expect(card).toContain("name: 'Payout top-ups'");
-    expect(card).toContain("name: 'Settlement funding'");
-    expect(card).toContain('stopSettlementFunder() · one DEPLOYER_ROLE or CCO_ROLE holder');
+  test('the settlement funding desk is a row of the one AUTO card, beside payout top-ups (once), live from the API', () => {
+    // one card, driven by AUTO (the API's autoJobs live, the reference's rows in the demo)
+    expect(build).toContain('const AUTO = LV ? LV.AUTO : [');
+    expect(buildLive).toContain('AUTO: Array.isArray(vars.buildAuto) ? vars.buildAuto : null,');
+    expect(live).toContain('vars.buildAuto = d.AUTO ?? null;');
+    expect(build).not.toContain('jobsCell');
+    expect(live).not.toContain('AUTOMATIC_JOBS');
+    expect(build.match(/t: 'Payout top-ups'/g)?.length).toBe(1);
+    expect(build.match(/t: 'Settlement funding'/g)?.length).toBe(1);
+    expect(build).toContain("off: ['SETTLEMENT_FUNDING_ENABLED', 'Or stopSettlementFunder() on the Yield Pool']");
+  });
+
+  test('Signing names the settlement stages (SA, SR, SL) from the plan reader’s table', () => {
+    expect(build).toContain('SGL.stageOf(k)');
   });
 });
