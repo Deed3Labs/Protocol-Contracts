@@ -2610,15 +2610,16 @@ export const VS = {
 };
 export const ENT = [
   /* id, name, kind, status, role, x, y */
-  ['coop', 'Clear Co-op', 'Wyoming LLC · co-op', 'formed', 'The parent. One member, one vote. Taxed as a corporation.', 40, 11],
-  ['fin', 'Clear Financial Co.', 'Wyoming LLC', 'formed', 'Runs the card and money programs. Holds member funds for their benefit.', 10, 41],
-  ['dt', 'The Deed & Title Co.', 'Wyoming LLC', 'forming', 'Keeps title records and will review deeds as a validator. Does not hold escrow.', 30, 41],
-  ['hold', 'Clear Capital Holdings', 'Wyoming C-corp', 'formed', 'Holds the economics of both funds. The co-op holds its governance class.', 50, 41],
-  ['labs', 'ClearLabs Inc.', 'Wyoming C-corp', 'formed', 'Research and development. Maintains the protocol for the Foundation.', 70, 41],
-  ['mgr', 'Manager LLC', 'Wyoming LLC', 'forming', 'Manages both funds. Owned by Holdings.', 50, 63],
-  ['prop', 'Clear Properties Co.', 'Wyoming LLC · partnership', 'planned', 'Takes property contributions for OP units.', 34, 92],
-  ['lend', 'Clear Lending Co.', 'Wyoming LLC', 'planned', 'The credit book, bond series and pool shares.', 66, 92],
-  ['fdn', 'Clear Foundation', 'Wyoming foundation', 'forming', 'Holds the protocol. Ownerless, outside the tree.', 91, 11],
+  ['coop', 'Clear Collective LLC', 'Wyoming LLC · member-owned', 'formed', 'The parent. One member, one vote. Taxed as a corporation under Subchapter T, trading as “Clear”.', 40, 11],
+  ['fin', 'Clear Financial Co.', 'Wyoming LLC · was Deed3Labs LLC', 'formed', 'The program entity: cash accounts, cards and money movement with Lithic and Bridge. Trustee of the ESA Reserve Trust, and services Clear Lending’s loans.', 10, 41],
+  ['dt', 'The Deed & Title Co.', 'Wyoming LLC', 'forming', 'Records and title administration. Holds title as trustee only for Clear and companies it wholly owns, and never holds funds.', 30, 41],
+  ['hold', 'Clear Capital Holdings', 'Wyoming corp · was StreetBased Inc.', 'formed', 'Owns the Manager, Clear Lending and Clear Properties. Clear holds Class A, the governance class; Class B is the financial class.', 50, 41],
+  ['labs', 'ClearLabs Inc.', 'Wyoming C-corp · was Deed3 Holdings Inc.', 'formed', 'Research and development. Builds Clear’s apps as work made for hire, and maintains the protocol for the Foundation.', 70, 41],
+  ['mgr', 'Clear Capital Management LLC', 'Wyoming LLC', 'forming', 'Manages Clear Lending and Clear Properties under M-02 and M-03. Owned by Holdings.', 63, 63],
+  ['lsub', 'Clear Building Co.', 'Wyoming LLC · the I-06 lender', 'planned', 'The I-06 lender: funds Clear and its project companies to build member homes. “Building Co.” in the agreements. A sister of Clear Lending, run by its own managers, never funded by Clear Lending or by Earn.', 37, 63],
+  ['prop', 'Clear Properties Co.', 'Wyoming LLC · partnership', 'planned', 'Takes §721 property contributions for OP units. Each property sits in its own project LLC.', 52, 92],
+  ['lend', 'Clear Lending Co.', 'Wyoming LLC', 'planned', 'Lender of record for all member credit, under a California Financing Law licence. Runs the Yield Pool and BurnerBonds.', 74, 92],
+  ['fdn', 'Deed Protocol Foundation SF', 'Wyoming statutory foundation', 'forming', 'Holds the Deed Protocol. Ownerless, perpetual and outside the tree.', 91, 11],
 ];
 export const EST = {
   formed: ['var(--fg)', 'Formed'],
@@ -2628,14 +2629,18 @@ export const EST = {
 export const OWN = {
   fin: '100%',
   dt: '100%',
-  hold: '100%',
-  labs: 'Majority',
+  hold: 'Class A',
+  labs: '56%, fully diluted',
   mgr: '100%',
+  lend: '100%',
+  prop: 'Majority, shrinking as contributors join',
+  lsub: '100%, once I-06 funds',
 };
 export const UNDER = {
   mgr: 'Holdings 100%',
   prop: 'Holdings majority',
   lend: 'Holdings 100%',
+  lsub: 'Holdings 100%',
 };
 export const ENTF = {
   /* facts for the panel */
@@ -2707,7 +2712,18 @@ export const ENTF = {
       ['Articles filed', 0],
       ['Operating agreement', 0],
       ['EIN', 0],
-      ['Bank account', 0],
+      ['CFL licence', 0],
+    ],
+    agr: [],
+  },
+  lsub: {
+    tax: 'Disregarded',
+    steps: [
+      ['Formed when I-06 first funds', 0],
+      ['Articles filed', 0],
+      ['Operating agreement', 0],
+      ['EIN', 0],
+      ['Licence check', 0],
     ],
     agr: [],
   },
@@ -2729,8 +2745,9 @@ export const PARENT = {
   hold: 'coop',
   labs: 'coop',
   mgr: 'hold',
-  prop: 'mgr',
+  prop: 'hold',
   lend: 'hold',
+  lsub: 'hold',
   fdn: null,
 };
 export const FILINGS = [

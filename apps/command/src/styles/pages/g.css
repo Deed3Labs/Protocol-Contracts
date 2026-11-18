@@ -71,6 +71,13 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .hd{min-height:52px;display:flex;align-items:center;gap:12px;padding:0 22px;border-bottom:1px solid var(--hair)}
 .hd h2{font:600 17px/1 var(--f-display);letter-spacing:-.01em;margin:0}
 .hd .r{margin-left:auto;display:flex;align-items:center;gap:12px}
+/* polish: a card title never wraps; its right label shrinks to one line instead; a foot line wraps to two at most */
+@media (min-width:761px){
+  .hd h2{white-space:nowrap;flex:none}
+  .hd .r{min-width:0;flex:0 1 auto}
+  .hd .r > .lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .bk-ft > span:first-child:not(.f-key){min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4}
+}
 .ft{border-top:1px solid var(--hair);margin-top:auto;display:grid}
 .ft button{display:flex;align-items:center;justify-content:space-between;height:44px;padding:0 22px;font-size:14px;color:var(--fg-70)}
 .ft button + button{border-left:1px solid var(--hair)}

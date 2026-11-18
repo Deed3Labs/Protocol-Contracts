@@ -702,3 +702,39 @@ Kai, 2026-10-24: dev is the real thing on testnet. No seed, no demo people, no p
   an audit line each; `campaign-cost-remove` takes one back) saving to `command.campaign_costs` with the day
   it was spent. A poster design's $10 offers are the first spends of the people its posters brought at that
   same poster's shop. A campaign with no cost recorded and no offers shows a dash, never $0.
+
+## Brief update 2 (2026-11-17)
+
+The new reference replaces `design/command-center-ui/command-center.html` (Kai: it's the redesign, not the
+prototype in this folder). The page sheets are copied from it; the sections carry its diff by hand.
+
+### Governance
+
+- **Legal is a section of its own, `GET /sections/legal`** (`services/command/legal.ts`). It reads
+  `Deed3Labs/clear-agreements` with `COMMAND_AGREEMENTS_TOKEN` (Contents: read on that repo only;
+  `COMMAND_AGREEMENTS_REPO` for another) and answers Admin in full; every other group with Governance gets
+  the ids and counts, with every title, file name, question and change taken out on the server. Off, it says
+  so, and the tab says the repo isn't connected yet.
+- **Counsel's counts are the packet's, not each notes file's.** The four `docs/counsel-packet/part-*.md`
+  files are the triage of every agreement's counsel-notes file, one table per agreement; read together they
+  give the reference's figures exactly (1,979 notes; 228 open, 1,151 to confirm, 481 answered, 89 decided,
+  30 resolved; 20 open S1). The notes files are only linked. The gates' names are fixed (G0–G5), since the
+  parts don't all write them the same way.
+- **Recent changes are main's merge commits** ("Title (#37)"), so the token needs Contents and nothing more;
+  listing pull requests would need a second permission.
+- **Kept per commit, not polled.** The GitHub feed (5c) writes to tables on a schedule; the agreements are
+  read when someone opens Governance, kept in memory for the commit `main` is at, and read again only when
+  it moves (checked at most once a minute).
+- **The demo is the reference's placeholders, in `sections/legalDemo.ts`.** `legalDemo.test.ts` fails if a
+  row there isn't one, and, with the token set, if any title from the real register or a research memo turns
+  up in Command's source or bundle, the API's source and migrations, or the fixtures. Not the design
+  reference itself: its Records demo (d12) names one real document, and Records isn't part of this update.
+  If that row is ported as it stands, the test fails.
+- **The entities move with migration 0079**: Clear Building Co. (I-06's lender) under Holdings, the
+  drafting brief's names and roles, Holdings' Class A, ClearLabs' 56%, Clear Properties under Holdings and
+  run by the Manager. Each change only where the row still says what the structure wrote; the fixture
+  matches for a new database. The map draws the Manager's companies under it whatever their stored parent
+  says, so a database the migration hasn't reached draws no line twice.
+- **"Every agreement"'s header row is on the live list too**, and an agreement links to its draft in
+  Legal when it carries a `ref` (the demo's do; the live table has no such column yet).
+- **Home's tree** is the reference's four rows, and draws only the entities the data has.
