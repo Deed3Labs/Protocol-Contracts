@@ -15,7 +15,8 @@ import "../libraries/PacificCalendar.sol";
 ///
 /// No function here can pay a holdback anywhere but its Holder's account, raise an existing H,
 /// apply more than the formula, or move money out of the vault except a Deployment to the
-/// registered lending account and the part of a loss charge above the Deployed Balance and
+/// registered lending account (by two people, or by the Settlement Funding lane's one registered
+/// funder within its cap, decision 54) and the part of a loss charge above the Deployed Balance and
 /// accrued interest, to the same account (§6). There is no sweep or rescue.
 contract YieldPoolValuation is LendingPoolBase {
     using MathUpgradeable for uint256;
@@ -26,7 +27,7 @@ contract YieldPoolValuation is LendingPoolBase {
 
     /// @notice what LendingPool's constructor checks before pinning this module.
     function extensionKind() external pure returns (bytes32) {
-        return keccak256("YieldPoolValuation.v2");
+        return keccak256("YieldPoolValuation.v3");
     }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -219,40 +220,129 @@ contract YieldPoolValuation is LendingPoolBase {
         emit EncumbranceSourceUpdated(source);
     }
 
-    /* ========== DEPLOYMENTS (two people; decision 17) ========== */
+    /* ========== DEPLOYMENTS (two people, decision 17; the Settlement Funding lane, decision 54) ========== */
 
     /// @notice a Deployment to Clear Lending's registered lending account. The first
     /// `DEPLOYER_ROLE` signer's call proposes; the same call from a different one sends it.
     /// @dev Only with no open queue request, no Suspension, no pending loss charge and before
     /// Final Maturity, and only if afterwards Utilization is at most 90% (FIXED) and the Deployed
     /// Balance does not exceed the posted Pool Tier principal (IV-02 §4.3; none before it is
-    /// first posted).
+    /// first posted). The Settlement Headroom is the lane's alone: it never raises this ceiling.
     /// @param amount USDC to deploy.
     /// @param ref a reference that makes each proposal distinct.
     function deploy(uint256 amount, bytes32 ref) external {
-        address to = _deploymentAccount;
+        address to = _deployable(amount);
+        (bool done, address first) = _pair(keccak256(abi.encode("deploy", amount, ref)), DEPLOYER_ROLE);
+        if (!done) return;
+        uint256 id = _sendDeployment(to, amount, _poolTierPrincipal);
+        emit Deployed(id, to, amount, first, msg.sender);
+    }
+
+    /* ========== SETTLEMENT FUNDING LANE (decision 54; IV-02 §4.3A, L-01 §8.4A) ========== */
+
+    /// @notice registers the Settlement Funding lane's funder (the funding desk's wallet), its cap
+    /// per period and the period. Two `DEPLOYER_ROLE` signers: the first proposes, the same call
+    /// from a different one applies it. It also restarts a stopped lane, and a proposal made
+    /// before a stop never applies after it. The period running keeps what it has used, so
+    /// setting the lane again never adds to it.
+    function setSettlementFunder(address funder, uint256 capPerPeriod, uint64 periodSeconds) external {
+        if (funder == address(0)) revert LendingPoolInvalidAddress();
+        if (capPerPeriod == 0 || periodSeconds == 0) revert LendingPoolInvalidAmount();
+        SettlementLane storage l = _settlementLane;
+        (bool done, address first) = _pair(
+            keccak256(abi.encode("settlementFunder", funder, capPerPeriod, periodSeconds, l.epoch)), DEPLOYER_ROLE
+        );
+        if (!done) return;
+        if (block.timestamp >= uint256(l.periodStart) + l.periodSeconds) {
+            l.periodStart = uint64(block.timestamp);
+            l.used = 0;
+        }
+        l.funder = funder;
+        l.periodSeconds = periodSeconds;
+        l.capPerPeriod = capPerPeriod;
+        l.stopped = false;
+        emit SettlementFunderSet(funder, capPerPeriod, periodSeconds, first, msg.sender);
+    }
+
+    /// @notice sets the Settlement Headroom: how far above the posted Pool Tier principal the lane,
+    /// and only the lane, may take the Deployed Balance. Two `DEPLOYER_ROLE` signers.
+    function setSettlementHeadroom(uint256 amount) external {
+        (bool done, address first) = _pair(keccak256(abi.encode("settlementHeadroom", amount)), DEPLOYER_ROLE);
+        if (!done) return;
+        _settlementHeadroom = amount;
+        emit SettlementHeadroomSet(amount, first, msg.sender);
+    }
+
+    /// @notice stops the lane at once: one call from any `DEPLOYER_ROLE` or `CCO_ROLE` holder.
+    /// Restarting it takes two `DEPLOYER_ROLE` signers (`setSettlementFunder`).
+    function stopSettlementFunder() external {
+        if (!hasRole(DEPLOYER_ROLE, msg.sender) && !hasRole(CCO_ROLE, msg.sender)) revert LendingPoolNotAuthorized(msg.sender);
+        SettlementLane storage l = _settlementLane;
+        l.stopped = true;
+        unchecked {
+            ++l.epoch;
+        }
+        emit SettlementFunderStopped(l.funder, msg.sender);
+    }
+
+    /// @notice a Settlement Funding Deployment by the registered funder alone, to the registered
+    /// deployment account only. It is a Deployment like `deploy` (recorded, and brought back by
+    /// `returnFunds`) under every condition `deploy` has, with two differences: the funder's cap
+    /// per period applies, and its ceiling is the posted Pool Tier principal plus the Settlement
+    /// Headroom.
+    /// @param amount USDC to deploy.
+    /// @param ref the hash of the settlement it funds (its cut-off and credit-portion total).
+    function deploySettlement(uint256 amount, bytes32 ref) external {
+        SettlementLane storage l = _settlementLane;
+        if (msg.sender != l.funder || l.stopped) revert LendingPoolNotAuthorized(msg.sender);
+        if (ref == bytes32(0)) revert LendingPoolInvalidAmount();
+        address to = _deployable(amount);
+        uint256 start = l.periodStart;
+        uint256 period = l.periodSeconds;
+        uint256 used = l.used;
+        if (block.timestamp >= start + period) {
+            l.periodStart = uint64(start + ((block.timestamp - start) / period) * period);
+            used = 0;
+        }
+        uint256 cap = l.capPerPeriod;
+        // A cap lowered during a period may already be passed.
+        if (used > cap || amount > cap - used) revert LendingPoolSettlementCap(used, cap, amount);
+        used += amount;
+        l.used = uint192(used);
+        uint256 id = _sendDeployment(to, amount, _poolTierPrincipal + _settlementHeadroom);
+        emit Deployed(id, to, amount, msg.sender, msg.sender);
+        emit SettlementDeployed(id, amount, ref, used);
+    }
+
+    /// @dev Where a Deployment goes, if one may be made now: not with an open queue request, a
+    /// Suspension, a pending loss charge, or from Final Maturity.
+    function _deployable(uint256 amount) internal view returns (address to) {
+        to = _deploymentAccount;
         if (to == address(0)) revert LendingPoolInvalidAddress();
         if (amount == 0) revert LendingPoolInvalidAmount();
         if (_queuedShares > 0) revert LendingPoolQueueOpen();
         if (isSuspended()) revert LendingPoolSuspended();
         if (lossCharge.pending) revert LendingPoolChargePending();
         if (_maturedAt()) revert LendingPoolFinalMaturity();
-        (bool done, address first) = _pair(keccak256(abi.encode("deploy", amount, ref)), DEPLOYER_ROLE);
-        if (!done) return;
+    }
+
+    /// @dev Makes and records a Deployment, if Vault Cash covers it, Utilization afterwards is at
+    /// most 90% and the Deployed Balance afterwards is within `ceiling` (none before the Pool Tier
+    /// principal is first posted).
+    function _sendDeployment(address to, uint256 amount, uint256 ceiling) internal returns (uint256 id) {
         _accrue();
         uint256 cash = _vaultCash();
         if (amount > cash) revert LendingPoolInsufficientCash(cash, amount);
         uint256 deployed = totalBorrowed;
-        // After it: (D + amount) ÷ (D + amount + Vault Cash − amount).
+        // After it: (D + amount) / (D + amount + Vault Cash - amount).
         uint256 u = (deployed + amount).mulDiv(WAD, deployed + cash);
         if (u > MAX_UTILIZATION) revert LendingPoolUtilizationCap(u);
         deployed += amount;
-        if (_poolTierPostedAt == 0 || deployed > _poolTierPrincipal) revert LendingPoolTierCap(deployed, _poolTierPrincipal);
+        if (_poolTierPostedAt == 0 || deployed > ceiling) revert LendingPoolTierCap(deployed, ceiling);
         totalBorrowed = deployed;
         _totalDeployed += amount;
-        uint256 id = _deploymentCount++;
+        id = _deploymentCount++;
         SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(asset()), to, amount);
-        emit Deployed(id, to, amount, first, msg.sender);
         _syncClock();
     }
 
