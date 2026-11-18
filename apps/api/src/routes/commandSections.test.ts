@@ -88,7 +88,7 @@ describe('the seed', () => {
     expect(rows[0].n).toBe(Object.keys(MEMBERS_FIGURES).length);
     const all = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM command.figures');
     expect(all.rows[0].n).toBe(Object.keys(SEED_FIGURES).length);
-    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops', '30 merchants', '32 board cards', '6 accounts', '6 bonds', '18 yield positions', '13 products', '19 orders', '6 pre-orders', '41 agreements', '32 contracts', '11 changes', '9 entities', '16 filings', '3 boards', '16 documents']));
+    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops', '30 merchants', '32 board cards', '6 accounts', '6 bonds', '18 yield positions', '13 products', '19 orders', '6 pre-orders', '41 agreements', '32 contracts', '11 changes', '10 entities', '16 filings', '3 boards', '16 documents']));
   });
 
   test('never overwrites a figure a live job wrote', async () => {
@@ -373,8 +373,8 @@ describe('Contracts, Governance, Records and Home, built from the database', () 
     expect(r.body.POSTERS).toBe(102);
     expect(r.body.DEADLINES).toEqual([
       ['Annual report', 'ClearLabs Inc.', '1 Nov', 11, 'ready'],
-      ['Board minutes', 'Clear Co-op', '4 Nov', 14, 'draft'],
-      ['Statement of Information', 'Clear Co-op', '15 Nov', 25, 'none'],
+      ['Board minutes', 'Clear Collective LLC', '4 Nov', 14, 'draft'],
+      ['Statement of Information', 'Clear Collective LLC', '15 Nov', 25, 'none'],
     ]);
     expect(r.body.figures['home.funnel'][0]).toEqual(['Visits', 36410]);
     expect(JSON.stringify(r.body)).not.toContain('@');
