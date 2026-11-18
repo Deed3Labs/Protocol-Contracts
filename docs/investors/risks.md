@@ -8,101 +8,129 @@ is not complete, and it says nothing about the regulatory status of any contribu
 **No independent security review has been done.** The system is an early developer preview (alpha),
 and how the contracts work can still change.
 
-**The lending pool, the bonds, the bond vault, the AssurancePool and the payout pool run on Base
-Sepolia, a test network.** None of them is on Base mainnet; on Base, only the savings and send
-contracts run. The current state is listed under
-[Deployed addresses](../../README.md#deployed-addresses).
+**The lending pool, the Earn controls, the bonds, the bond vault, the Collateral Agent, the
+AssurancePool and the payout pool run on Base Sepolia, a test network.** None of them is on Base
+mainnet; on Base, only the savings and send contracts run. The current versions went onto Base
+Sepolia from 17 November 2026, and several of their settings take effect only after a 7-day
+timelock, Settlement Funding among them. Every contract and its address is in the
+[Contract reference](../protocol/contracts/README.md).
 
 ## Smart-contract risk
 
 A bug in any of these contracts, or in the ones they rely on (the credit ledger, the credit issuers,
-the collateral registry, the liquidator), can lose or lock money. The Protocol section records known
-behaviour a reader might not expect, for example:
+the collateral registry, the liquidator, the pool-share enforcer), can lose or lock money. Several
+of them run part of their logic in separate modules they call into, which adds code that has to be
+right.
 
-- Some bond functions can never succeed as written
-  ([Bonds → Unreachable paths](../protocol/bonds.md#unreachable-paths)).
-
-The AssurancePool values the tokens it holds through a price oracle: a time-weighted price from
-Uniswap, with a fallback list of prices. Every contract here holds and pays in a single token, USDC
-in the deployed setup, and carries that token's own risk.
+Every contract here holds and pays in a single token, USDC in the deployed setup, and carries that
+token's own risk: a token that refuses a payment, or a network problem, can stop payments. The
+lending pool keeps a refused payment for its payee to claim later, and can be suspended for a USDC
+or network problem.
 
 ## Upgrade and control risk
 
-**Most of these contracts can be replaced.** The lending pool, the payout pool, the bond vault, the
-merchant registry and the AssurancePool are upgradeable. Whoever holds the upgrade permission (the
-admin, or the owner for the AssurancePool) can change any behaviour described in this section,
-including how money leaves. Bond series cannot be upgraded, but a series' owner can point it at a
-different vault.
+**Most of these contracts can be replaced.** The lending pool, the Earn controls, the bond vault, the
+Collateral Agent, the payout pool and the AssurancePool are upgradeable. Whoever holds the upgrade
+permission can change any behaviour described in this section, including how money leaves. Upgrades
+and admin settings of the lending pool, the Earn controls and the bond vault go through the Earn
+timelock, which delays each by 7 days, and the bond vault's also need the Collateral Agent's
+co-signature. The AssurancePool's go through its own timelock, also at least 7 days. Bond series
+cannot be upgraded.
 
 **Settings change without an upgrade.** Permission holders can, among other things:
 
-- change the bond vault's reserve window (no limit) and its floor (anywhere from 20% to 100%);
-- name or change the payout pool's lenders and the bond vault's backstops;
-- approve new borrowers on the lending pool, or give someone the power to write down its losses or
-  seize pledged shares;
-- withdraw the bond vault's deployable excess to the co-op's Safe;
-- change the AssurancePool's target reserve ratio and its withdrawal list;
-- change the discount, maturity and face-value ranges for new bonds.
+- post the Pool Tier principal, a loss allowance, a loss charge or a recovery (two valuation
+  signers);
+- suspend the pool, or hold one holder's shares under a legal order (two authorized people);
+- set the settlement lane's funder, cap and headroom (two deployment signers), or the forwarder's
+  allowance (the owners of Clear Lending's Safe);
+- change the Funding Rate curve, with 48 hours' notice, or 30 days' for a change that lowers it;
+- change the Ladder of bond terms and rates, with 48 hours' notice;
+- pause new subscriptions and bond purchases, or set the bonds' wind-down flag;
+- raise the bond vault's reserve floor, or change its glide schedule;
+- change the treasury's allowances, which pay merchants and help pay bonds.
 
 Who holds each key, and how a change is decided, is in [Governance](../governance/README.md).
 
 ## Liquidity
 
-**Lending pool.** A depositor can withdraw only what the pool holds in cash. When the cash is lent
-out, the depositor queues, and the request is paid once the pool holds enough cash from repayments
-or new deposits. There is no date by which that happens, and requests are not paid in order. The
-pool's cash is lent against member credit, which members repay over time.
+**Lending pool.** A holder can redeem on demand only while nobody is waiting in the queue and the
+pool holds the cash. Otherwise the request waits its turn, first in, first out, and is filled as
+Clear Lending returns money or new subscriptions arrive. There is no date by which that happens. A
+Deployment can take Utilization up to 90%, and money deployed comes back only as Returns. Queued
+shares are paid at the Share Value when they are filled, so they share in interest and in losses
+until then.
 
-**Bonds.** A bond is redeemed only at or after maturity. A holder has no way to redeem early; the one
-early path belongs to the bond series' liquidator. A bond can be transferred unless it is pledged,
-but the contracts provide no market for it.
+Other things can delay a redemption:
 
-**Payment at maturity is not funded in full in advance.** The vault keeps face value for bonds
-maturing inside its reserve window, and a floor across the rest. The remainder of the proceeds can be
-withdrawn by the co-op's Safe or lent to the payout pool. At maturity a bond is paid from the vault,
-then the treasury's allowance, then the AssurancePool's excess and buffer
-([What stands behind it](./what-stands-behind.md#bonds-at-maturity)). The treasury's allowance is
-discretionary, and the AssurancePool's buffer is lent only while its reserve ratio is at target. If
-those sources together cannot pay, the redemption fails and the bond stays unpaid until they can.
+- a suspension, which stops redemptions and queue fills for up to 72 hours at a time and 30 days in
+  all, longer under a legal order;
+- a legal hold on the holder's shares;
+- a loss allowance, which keeps back part of each redemption until it is released, at the latest
+  after 540 days;
+- a pledge: pledged shares cannot be redeemed or queued until the credit they back is paid down.
+
+**Bonds.** A holder cannot redeem before maturity, and bonds move only between a holder's own
+accounts, so the contracts provide no market for them. A buyback happens only if someone offers one
+and the holder accepts.
+
+**Payment at maturity is not funded in full in advance.** The vault keeps back every bond due within
+90 days that will not roll, and a glide schedule across the rest, at least 30% of what is
+outstanding. The remainder can leave to Clear Lending. At maturity a bond is paid from the vault,
+then the treasury's allowance, which is discretionary. If they fall short, the unpaid part is
+recorded as owed and paid only as money arrives
+([What stands behind it](./what-stands-behind.md#bonds-at-maturity)).
 
 ## Credit losses
 
-**The lending pool funds unsecured credit.** Its borrowers repay it from what members repay. A member
-who does not repay leaves a loan that does not come back.
+**The lending pool's money is deployed to Clear Lending, which funds members' credit.** A member who
+does not repay leaves a loss with Clear Lending, and the pool's Returns depend on Clear Lending paying
+them.
 
-**The lending pool can write down a loss, but no contract or service does.** A write-down lowers the
-amount the pool counts as lent, and with it the value of every share. Because nothing makes one, an
-unpaid loan stays counted at full value. That means:
+**A loss reaches holders only when two valuation signers post it.** A loss charge lowers the Deployed
+Balance, then accrued interest, and with them the value of every share outstanding at that moment,
+queued shares included. Holdbacks kept from earlier redemptions absorb their part first. A charge
+larger than the Deployed Balance and accrued interest together is paid out of the pool's cash. That
+means:
 
-- the share value does not fall when a loan goes bad;
-- the loss shows up instead as cash that never arrives, so withdrawals and queued requests wait for
-  money that may not come;
-- depositors who withdraw while cash is available are paid at the undiminished value, and the loss
-  falls on those who remain;
-- if someone is later given the power to write losses down and does so, the loss falls on the shares
-  outstanding at that moment. Requests already queued are fixed in USDC and are not written down.
+- until a loss is posted, the Share Value counts deployed money and accrued interest at full value,
+  even if some will not come back;
+- interest Clear Lending does not pay by its due date is added to the Deployed Balance, so it raises
+  the Share Value without bringing in cash;
+- holders who redeem before a loss is posted are paid at the undiminished value, less any holdback
+  then in force, and the loss falls on those who remain.
 
 Nothing in the contracts passes a lending pool loss to the AssurancePool or any other reserve
 ([What stands behind it](./what-stands-behind.md#what-does-not-stand-behind-the-lending-pool)).
 
-**Bondholders are owed a fixed face value, but the sources that pay it are shared.** The
-AssurancePool's buffer, the last source for a maturing bond, is also the first to pay for written-off
-member debt. A run of member defaults can spend it, or take the reserve ratio below target so that
-it is not lent. The vault's deployable excess may have been lent to the payout pool, which repays
-only as members repay.
+**Bondholders are owed a fixed amount, but what pays it is limited.** The vault's reserve covers the
+near term and part of the rest; the treasury's allowance can be lowered to zero; the AssurancePool
+does not pay bonds.
+
+## Settlement exposure
+
+**Settlement Funding moves pool money without two signatures for each move.** Within its cap per
+period, the registered settlement funder deploys to Clear Lending's Safe, and the forwarder sends it
+on to an off-ramp that pays the account card purchases settle from. It can take the Deployed Balance
+above the posted Pool Tier principal by the Settlement Headroom. If the funder's key were misused,
+it could deploy up to the cap for the period into Clear Lending's Safe; any one deployment signer or
+compliance signer can stop the lane with a single call. Surplus comes back to the pool only when
+Clear Lending makes a Return.
 
 ## Dependence on the co-op's operations
 
-**Much of what this section describes depends on the co-op doing things off the chain.**
+**Much of what this section describes depends on people and services off the chain.**
 
-- The card-funding wallet's borrowing from, and repayment to, the lending pool is run by the co-op's
-  server. If that service stops, or the wallet lacks the USDC to repay, the pool is not repaid on
-  time.
-- The treasury's allowances to the bond vault and the payout pool are set by the Safe's owners, and
-  can be withdrawn.
-- No contract governs what the co-op does with the bond vault's deployable excess once the Safe
-  withdraws it.
-- Merchants are paid in dollars from the co-op's float, which is refilled off the chain.
+- Returns, and the interest in them, are made by Clear Lending. Nothing on the chain makes it pay.
+- The Pool Tier principal, loss allowances and loss charges are posted by people, from records kept
+  off the chain.
+- Settlement Funding is run by the co-op's server, and the money it sends passes through an off-ramp
+  and the card settlement account before it pays for members' credit.
+- Eligibility attestations, Roll Notices and Ladder changes come from the co-op's signers.
+- The treasury's allowances to the bond vault and the payout pool are set by the treasury's owners,
+  and can be withdrawn.
+- No contract governs what Clear Lending does with money deployed to it, or with the bond vault's
+  excess once it arrives.
 
 **It is one co-op and one credit book.** The lending pool, the bonds and the reserve all stand behind
 the same members' credit, run by the same operators, so a problem in one part of the co-op's

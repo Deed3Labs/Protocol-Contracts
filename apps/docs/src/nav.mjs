@@ -50,7 +50,8 @@ export const NAV = [
     ['Sign-in only', ['L:data-room|Data room', 'L:terms-room|Terms and agreements']]] },
   { id: 'governance', name: 'Governance', icon: 'M2.5 15.5h13M4 13V8M7.5 13V8M10.5 13V8M14 13V8M2.5 8h13L9 3z', groups: [
     ['Structure', ['docs/governance/README.md|Introduction', 'docs/governance/structure.md', 'docs/governance/membership.md']],
-    ['Rules and keys', ['docs/governance/parameters.md', 'docs/governance/on-chain-authority.md', 'docs/governance/command-center.md']]] },
+    ['Rules and keys', ['docs/governance/parameters.md', 'docs/governance/on-chain-authority.md', 'docs/governance/command-center.md']],
+    ['Agreements', ['docs/governance/legal-agreements.md']]] },
   { id: 'developers', name: 'Developers', fold: true, icon: 'M6.5 5L2.5 9l4 4M11.5 5l4 4-4 4', groups: [
     ['Pay with Clear', ['apps/member/public/docs/quickstart.md|Quickstart', 'apps/member/public/docs/server.md|Server', 'apps/member/public/docs/webhooks.md|Webhooks', 'apps/member/public/docs/mcp.md|MCP server', 'apps/member/public/docs/api.md|API reference']],
     ['This repository', ['docs/developers/README.md|Introduction', 'docs/developers/setup.md', 'docs/developers/merchant-privy-orgs.md', 'docs/developers/api/local-redis.md', 'docs/developers/api/testing.md', 'docs/developers/integrations/lithic.md']]] },

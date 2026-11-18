@@ -17,7 +17,7 @@ trail, with who asked and who approved; the owner can read it.
 
 The refund limit starts at $500.00 and is set by the owner in Staff (see
 [Staff and shifts](./staff.md#the-refund-limit)). The shop's approval cap, and who sets it, is in
-[Governance](../governance/README.md).
+[Parameters](../governance/parameters.md#shops).
 
 ## Voiding a sale
 

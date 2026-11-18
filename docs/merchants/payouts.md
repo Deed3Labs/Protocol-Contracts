@@ -44,7 +44,27 @@ rest **queues**, and the sheet tells you so before and after, with the date it's
 into your cash account when it comes due, and stays counted as owed until then; you don't have to
 ask again.
 
+```mermaid
+flowchart LR
+  O["Owed"] -->|"Withdraw"| Q{"Can the payout pool<br/>pay it now?"}
+  Q -->|"yes"| C["Cash account"]
+  Q -->|"no"| W["Queued, in order"]
+  W -->|"when it comes due"| C
+  C -->|"Withdraw"| A["Your account, by ACH"]
+```
+
 Card deposits follow your Stripe account's own payout schedule.
+
+### How the payout pool is kept funded
+
+**Clear Lending keeps the payout pool funded, and tops it up automatically.** The pool is checked
+through the day. When it is short of what is coming due soon, or a payment is already overdue, Clear
+Lending's money is moved in to cover what comes due over the weeks ahead. An automatic top-up never
+moves more in a period than a limit Clear Lending's signers set on chain; anything larger waits for
+them to sign it.
+
+Payouts are paid in the order shops asked for them. No shop can be moved ahead of another: the terms
+have no such setting.
 
 ## Withdrawing
 
@@ -88,9 +108,11 @@ for an ACH payment or a wire. The owner opens them once, after Bridge has verifi
 ## Fees
 
 **On a Clear charge**, Clear's fee is a percentage of the charge: the rate in your terms for a
-charge paid now, or the rate for one paid over time. What the shop receives is the charge less that
-fee, and the screens show the fee as the charge happens. The rates are part of your terms; see
-**Settings › Partnership**, and [Governance](../governance/README.md) for who sets them.
+charge paid now, or the rate for one paid over time. Your terms can set a different rate for each
+number of instalments, and can have the shop take part of the member's rate on a plan, or make short
+plans free to the member. What the shop receives is the charge less that fee, and the screens show
+the fee as the charge happens. The rates are part of your terms; see **Settings › Partnership**, and
+[Parameters](../governance/parameters.md#shops) for who sets them.
 
 **On a card sale**, two fees come out:
 

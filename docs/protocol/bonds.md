@@ -1,191 +1,286 @@
 # Bonds
 
-BurnerBonds are zero-coupon bonds: a buyer pays less than face value today and is paid face value at
-maturity. Each bond is one ERC-1155 token with its own id. There is one collection per underlying
-token, made by a factory, and every collection pays out of one `BondVault`.
+BurnerBonds are zero-coupon bonds: a buyer pays less than the Maturity Amount today and is paid the
+Maturity Amount at maturity. Each bond is one ERC-1155 token, quantity one, with its own id. There
+is one collection per underlying token, cloned by a factory, and every collection pays out of one
+`BondVault`. This page describes the Phase 2f collection: bonds sold on a signed quote at the
+Ladder's rate, valued at a compounding Accreted Value, reserved for by a glide schedule, settled at
+maturity by anyone, rolled only on the Holder's confirmation, and held under a Collateral Agent.
 
-Deployed addresses are in the root [`README.md`](../../README.md) (**Deployed addresses**).
+Deployed addresses are in the root [`README.md`](../../README.md) (**Deployed addresses**). Every
+live function and who may call it is on the generated contract pages:
+[BurnerBond](./contracts/BurnerBond.md), [BondVault](./contracts/BondVault.md),
+[CollateralAgent](./contracts/CollateralAgent.md), [HolderDirections](./contracts/HolderDirections.md),
+[EarnControls](./contracts/EarnControls.md).
 
 | Contract | Role |
 |---|---|
-| `BurnerBondFactory.sol` | Opens a collection per whitelisted token as a clone, and holds the global parameters every collection reads |
-| `BurnerBondDeposit.sol` | The one entry point for buying: takes the price, sends it to the vault, mints, books the obligation |
-| `BurnerBond.sol` | The collection. Mints, redeems, rolls, values a bond today, and refuses to move a pledged one |
-| `BondVault.sol` | Where proceeds live. Per-bond obligations, a derived redemption reserve, and the backstops behind it |
-| `BondDiscountCurve.sol` | Shared pricing policy: discount as a function of term |
+| `BurnerBondFactory.sol` | Opens a collection per whitelisted token as a clone of a prebuilt implementation, and can deactivate one |
+| `BurnerBond.sol` | The collection: storage (`BurnerBondBase`), views, owner settings. Everything else runs in two delegatecall modules it pins |
+| `BurnerBondPledges.sol` | Module: `settle` (payment, the pledged split or a confirmed roll), `payPledged`, `buyback`, `redeemUnderWindDown` |
+| `BurnerBondIssue.sol` | Module: `purchase` by quote, Roll Notices and confirmations, the wind-down flag and `redeemAll`, `burnPaid` |
+| `BondVault.sol` | Where proceeds live: per-bond obligations, the Redemption Reserve, settlement, and the Collateral Agent's hooks |
+| `CollateralAgent.sol` | The Agent Role over the vault (IV-10 Exhibit A): Enforcement Notices, distribution rounds, costs, co-signed changes, excess withdrawal |
+| `HolderDirections.sol` | Required-Holder Directions, signed by Holders and counted against the bond register |
+| `EarnControls.sol` | The shared Earn controls: the Ladder, eligibility, the Funding Limit, the offering cap, purchase pauses, transfers and payees |
 | `BondValuer.sol` | Tells `CollateralRegistry` what a member's pledged bonds are worth today |
 | `BondTraits.sol` | Shared ERC-7496 display metadata, keyed by collection |
+| `Accretion.sol` (library) | Accreted Value, purchase price and roll terms |
 
 ## Buying a bond
 
-**Proceeds go to the BondVault, never to the AssurancePool.** `BurnerBondDeposit.makeDeposit(token,
-faceValue, maturityDate, discountPercentage)` does everything in one transaction:
+**A bond is sold on a quote the payer signed, and its price goes straight to the BondVault.**
+`purchase(quote, sig, attestation)` takes a `Quote(payer, holder, maturityAmount, termDays,
+yieldBps, quotedAt, nonce)` signed under EIP-712 (domain `BurnerBond`, version `2`, the
+collection's address), checked with `SignatureChecker` so a Smart Account signs through EIP-1271.
+Anyone may submit it; the USDC is pulled from the payer, who must have approved the collection.
 
 ```mermaid
 flowchart LR
-  B["Buyer"] -->|"price"| D["BurnerBondDeposit.makeDeposit"]
-  D -->|"no collection yet"| F["BurnerBondFactory.createCollection"]
-  D -->|"safeTransfer price"| V["BondVault"]
-  D -->|"mintBond"| C["BurnerBond"] -->|"ERC-1155 id"| B
-  D -->|"recordPurchase"| V
+  P["Payer signs Quote<br/>(EIP-712)"] --> PU["BurnerBond.purchase<br/><i>anyone submits</i>"]
+  PU -->|"rungAt(termDays, quotedAt)"| L["EarnControls<br/>the Ladder"]
+  PU -->|"checkPurchase"| L
+  PU -->|"price: transferFrom payer"| V["BondVault"]
+  PU -->|"mint id"| H["Holder"]
+  PU -->|"recordPurchase"| V
 ```
 
-1. The token must be `BondVault`'s `reserveToken` (`"Not the vault's reserve token"`): the vault holds
-   and pays out in that one token, so proceeds in anything else would sit there uncounted. If it has
-   no collection yet, `_createCollectionViaFactory` opens one; the factory refuses a token
-   `AssuranceOracle.isTokenWhitelisted` does not accept. A collection the factory has deactivated
-   refuses the sale (`"Collection inactive"`).
-2. Face value must sit within the factory's bounds and maturity within `maxMaturity`.
-3. The price is `calculateRequiredDeposit`: face less `face × discount / 10000`, the discount read
-   from the curve for the time to maturity.
-4. The price moves from the buyer to the deposit contract and straight on to `BondVault`. The call
-   reverts with `"Bond vault not set"` if there is none.
-5. `BurnerBond.mintBond` (only the deposit contract may call it) re-checks the bounds and mints the
-   next id to the buyer — from 1, or from wherever `setFirstBondId` started the collection. `BondVault.recordPurchase` books principal, face and maturity in the same call.
+1. The collection refuses while the wind-down flag is set or `redeemAll` has started, and while the
+   factory has deactivated it (`BurnerBondWindDown`).
+2. The quote must be no older than `QUOTE_LIFETIME` (15 minutes, FIXED), unused (`quoteUsed`), and
+   its term and rate must equal the Ladder's at `quotedAt` (`EarnControls.rungAt`), offered then
+   (`BurnerBondBadQuote`). A Ladder change never alters a quote already given (decision 31).
+3. The price is `quotePrice(maturityAmount, termDays, yieldBps)`: the Accreted Value at issue,
+   floored to the cent.
+4. `EarnControls.checkPurchase` (the collection holds its `BOND_ROLE`) refuses while
+   `purchasesPaused()` (a Reserve Shortfall in the vault, the `RESERVE_SHORTFALL` or
+   `EQUITY_CUSHION` flag, or an Enforcement Notice), for a refused or ineligible payer, a holder who
+   is not the payer's own Holder, a price under `MIN_PURCHASE_DOLLARS` ($250, FIXED), a term not
+   offered, or a purchase that would pass the Funding Limit or the offering cap that bonds and
+   LendingPool subscriptions share (decision 38). It returns the exemption code of the payer's
+   eligibility attestation, which the bond stores; `attestation` records a new one first, or is
+   empty to use the one on file.
+5. The price moves from the payer to the vault, the bond is minted to the holder, and
+   `BondVault.recordPurchase(bondId, principal, faceValue, maturity, yieldBps, termDays)` books the
+   obligation, its Series and its place in the register, in the same transaction.
 
-`discountPercentage` must not exceed the curve's discount for that maturity. It is stored on the bond
-and its traits, but the price charged is the curve's, whatever was passed.
+The bond matures `termDays` days after the purchase. Its cost basis (the price) is carried through
+rolls and taken off the Holder's Earn total when the bond leaves (`recordBondExit`).
 
-| Factory parameter | Default | Setter and bounds |
-|---|---|---|
-| `maxDiscount` / `minDiscount` | 5,000 / 0 bps | `updateGlobalParameters`: max ≤ 5,000, min < max; `setMinDiscount` |
-| `maxMaturity` | 30 years | `updateGlobalParameters`: ≥ `minMaturity`, ≤ 50 years |
-| `minMaturity` | 1 day | `updateMinMaturity`: ≥ 60 s, ≤ `maxMaturity` |
-| `minFaceValue` / `maxFaceValue` | 100e6 / 1,000,000e6 raw units | `updateFaceValueLimits`: min > 0, max > min, max ≤ 10,000,000e6 |
+**The Ladder** is EarnControls': terms of 12 to 36 months (60 at most, by the Earn timelock's
+`setMaxTermMonths`), counted in days of a 365-day year, each with its rate. A longer offered term
+never has a lower rate than a shorter one (`EarnControlsLadderOrder`). Changes are scheduled and
+applied 48 hours later (`scheduleRungs`, `applyRungs`). `deploy/23` sets the Ladder from
+`deploy/config/earn-controls.json` where a term is not yet offered.
 
-`deploy/23` sets the curve bounds to 3,200 bps over five years (`BOND_MAX_DISCOUNT`,
-`BOND_MAX_MATURITY`). Face-value bounds are raw token units, so they read as dollars only for a
-six-decimal token.
+## Accreted Value
 
-All setters are `onlyOwner` on the factory, and every collection reads them from there. The
-collection and the deposit contract have no setters of their own for these.
-
-## The discount curve
-
-`BondDiscountCurve.discountFor` returns 0 below `minMaturity`, caps the term at `maxMaturity`, and
-reads the calling collection's curve (`curveOf`, LINEAR at 10,000 until configured). For LINEAR:
+**A bond's value compounds at its own rate.** `accretedValue(id)` (also `presentValueOf(id)`, the
+name the pledge module's valuer reads) is `Accretion.accretedValue`:
 
 ```
-discount = minDiscount + (term / maxMaturity) × (maxDiscount − minDiscount)
+Accreted Value = Maturity Amount ÷ (1 + yieldBps / 10,000) ^ (days to maturity ÷ 365)
 ```
 
-With `deploy/23`'s bounds a bond maturing 365 days out is priced at a 640 bps discount.
+Days to maturity are whole days, a part day counted as a day, so the value is constant within a day
+and steps up at each day boundary. It is rounded down. From the Maturity Date on it is the Maturity
+Amount, and it is 0 for a bond that has left or never existed. It is what a pledged bond counts for
+as collateral, what `payPledged` and `redeemUnderWindDown` pay, the ceiling on a buyback price, and
+what a Required-Holder Direction counts.
 
-`BurnerBond.setDiscountCurve(curveType, parameter)` (collection owner) sets the shape; the bounds it
-is drawn between are the factory's, and its `DiscountCurveUpdated` event reports them. The parameter
-is on a 10,000 scale (10,000 = 1.0), which `setCurve` validates and `discountFor` converts to 1e18
-before the maths. With `t = term / maxMaturity`:
-
-| Curve | Parameter | Discount, as a share of the range |
-|---|---|---|
-| LINEAR | 10,000 | `t` |
-| BONDING | steepness `s`, 10,000–50,000 | `1 − (1 − t)^s`, fractional `s` as given |
-| LOGARITHMIC | base `b`, 15,000–100,000 | `log_b(1 + t(b − 1))` |
-
-Powers and logarithms use fixed-point `log2` and `exp2`. Every shape runs from `minDiscount` at
-`minMaturity` to `maxDiscount` at `maxMaturity`. CUSTOM reverts. No deploy script configures a
-curve, so collections run LINEAR.
+There is no discount curve: the collection has no `calculateDiscount`, `mintBond`, `redeemBond`,
+`rollBond`, `setAutoRollOptOut` or `setRollTerm` (C7, decision 8).
 
 ## Where the money lives — BondVault
 
-**The redemption reserve is derived, not set.** `BondVault.requiredReserve()` is the larger of:
+**The Redemption Reserve is derived, not set.** `BondVault.requiredReserve()` is the larger of:
 
-- `faceDueWithin(reserveWindow)` — face value of every outstanding bond maturing inside the window;
-- `totalFaceOutstanding × minReserveBps / 10000` — a floor across everything outstanding.
+- `glideReserve()`: each outstanding bond's Maturity Amount at the ratio of its time-to-maturity
+  band, never below the floor `minReserveBps`, rounded up. The bands (`setGlideSchedule`, at most
+  `MAX_GLIDE_BANDS` = 8, read with `glideSchedule()`) are raise-only: a change may add or raise
+  bands, never lower the ratio at any time to maturity (`BondVaultBadGlide`). No deploy script sets
+  bands, so the glide reserve is the floor alone. The floor starts at `MIN_RESERVE_FLOOR_BPS`
+  (3,000, FIXED) and only `raiseReserveFloor` moves it, upward, to at most 10,000;
+- `nearTermReserve()`: 100% of every bond due within `RESERVE_WINDOW` (90 days, FIXED), less
+  confirmed rolls that can roll (`faceDueWithin − rollingDueWithin`);
 
-It rises by itself as maturities come into the window. `deploy/22` initialises the window at 90 days;
-`minReserveBps` starts at 3,000. `setReserveTerms` (`OPERATOR_ROLE`) can change both, with the floor
-bounded to `MIN_RESERVE_FLOOR_BPS = 2,000` … `MAX_RESERVE_FLOOR_BPS = 10,000`. The window is not
-bounded: any `uint64` is accepted, zero included.
+plus `totalSettlementOwed` (maturity payments recorded as owed) and the Collateral Agent's
+`unclaimedDistributions()`.
 
-`deployableExcess()` is `held() − (requiredReserve() + owedToReserve)`, floored at zero. It is the
-only money that leaves the vault other than to a bondholder:
+Both near-term figures come from Fenwick trees over daily maturity buckets. A confirmed bond counts
+as rolling only while its Holder is not flagged ineligible and a term of its length or shorter is
+offered. A withdrawn confirmation, a Holder flagged ineligible (`holderEligibilityChanged`) or a
+term change (`termOfferChanged`), each called by EarnControls, moves the reserve in the same
+transaction.
+
+**Below the reserve the vault is in Reserve Shortfall** (`inReserveShortfall()`): EarnControls
+pauses purchases, buybacks are refused and `deployableExcess()` is 0. Rolls and settlements go on.
+`shortfallSince` records when it began; every state-changing call and the permissionless
+`pokeReserve()` update it (`ReserveShortfall`, `ReserveShortfallCured`). Anyone may cure it with
+`topUp(amount)`.
+
+**`deployableExcess()` is `held() − requiredReserve()`, floored at zero**, where `held()` is the
+vault's balance of its single `reserveToken` (USDC). Money leaves the vault only this way:
 
 | Outflow | Caller | Limit |
 |---|---|---|
-| `settle`, `settleEarly` | `BOND_ROLE` (the collection) | The bond's face, or its present value |
-| `withdrawDeployable(amount, to)` | `TREASURY_ROLE` | `deployableExcess()`, after `_repayReserve()`; reverts `BondVaultWouldBreachReserve` |
-| `lendToPayoutPool(amount)` | The named `payoutPool` | `deployableExcess()` |
-| `_repayReserve` | Internal / `repayReserve()` | `held() − requiredReserve()`, up to `owedToReserve` |
+| `settle`, `settlePledged`, `settleAt` | `BOND_ROLE` (the collection) | The bond's Maturity Amount (its Accreted Value under `redeemAll`); what cannot be paid is recorded |
+| `settleEarly` | `BOND_ROLE`, for `payPledged` | The bond's Accreted Value, to the pledge module, in full or a revert |
+| `roll` | `BOND_ROLE` | The roll's remainder only, to the Holder's payee |
+| `completeSettlement(id)` | Anyone | What `pendingSettlement[id]` still owes, debt part first |
+| `agentTransfer` | The Collateral Agent | Distributions, the Collateral Deposit Account and capped costs, during an Enforcement Period |
+| `agentWithdrawExcess(to, amount)` | The Collateral Agent | `deployableExcess()`, only to the Agent's registered `excessDestination`, never during enforcement |
 
-`held()` is the vault's balance of its single `reserveToken`, and `settle` pays face in that token.
-That is why `makeDeposit` sells only in it.
+Payments to a Holder go to `EarnControls.payeeOf(holder)`: a registered payment Successor after its
+7 days, otherwise the Holder.
 
-`coversNearTermMaturities()` reports whether `held()` covers everything due inside the window — a
-timing test, not an aggregate one.
+`withdrawDeployable`, `setReserveTerms` and the vault's loans are gone (C1, decision 3).
+`lendToPayoutPool(uint256)` survives only as a stub that returns 0 and moves nothing, so
+PayoutPool's unchanged draw path skips the vault rather than reverting until its vault leg is
+switched off (`PayoutPool.setBondVault(0)`). `repayFromPayoutPool` (the named `payoutPool` only)
+still takes back what was lent before Phase 2f, reducing `lentToPayoutPool` and keeping any carry
+in the vault; `setBackstops(treasury, 0)` clears the payout pool once `lentToPayoutPool` is 0
+(decision 48), and reverts with `BondVaultLoanOutstanding` before.
+
+`coversNearTermMaturities()` reports whether `held()` covers everything due inside 90 days, and
+`uncoveredNearTerm()` what of it neither the vault nor `treasuryAvailable()` could pay.
 
 ## Redemption
 
-`redeemBond(id)` and `batchRedeemBonds(ids)` (at most 50) run the same `_redeem`: the caller must
-hold the bond, it must be mature (`block.timestamp >= maturityDate`) and not yet redeemed. It is
-marked redeemed, burned, and `BondVault.settle(id, holder)` pays face value. A bond is transferable,
-so whoever holds it at maturity is paid.
+**Once a bond has matured, anyone may settle it.** `settle(id)` (in `BurnerBondPledges`) reverts
+before the Maturity Date (`BurnerBondNotSettleable`). A Holder has no redemption of their own and no
+early exit: `redeemBond` and batch redemption are gone.
 
-**A bond the vault cannot pay alone draws on the treasury, then the reserve.** `BondVault._cover`:
+```mermaid
+flowchart TD
+  S["settle(id)<br/><i>anyone, at or after maturity</i>"] --> C{"Roll confirmed, redeemAll not started,<br/>Holder not flagged ineligible?"}
+  C -->|"yes"| R{"_roll: a term offered,<br/>an attestation in force,<br/>within the Funding Limit?"}
+  R -->|"yes"| NB["New bond at the old Maturity Date<br/>BondVault.roll: remainder to the payee"]
+  R -->|"no"| PL{"Pledged?"}
+  C -->|"no"| PL
+  PL -->|"no"| U["BondVault.settle<br/>Maturity Amount to the payee"]
+  PL -->|"yes"| SP["Liquidator.maturityToDebt<br/>BondVault.settlePledged"]
+```
+
+What the vault pays, it covers in this order (`BondVault._coverUpTo`):
 
 ```mermaid
 flowchart LR
-  S["settle / settleEarly"] --> H{"held() ≥ amount?"}
+  A["Amount due"] --> H{"held() ≥ amount?"}
   H -->|"yes"| PAY["pay"]
-  H -->|"no"| T["Treasury: transferFrom<br/>up to min(allowance, balance)"]
-  T --> A["AssurancePool.lendToBondVault<br/><i>excess, then buffer if hasValidRTD()</i>"]
-  A --> C{"held() ≥ amount?"}
+  H -->|"no"| T["Treasury: transferFrom<br/>up to treasuryAvailable()"]
+  T --> C{"held() ≥ amount?"}
   C -->|"yes"| PAY
-  C -->|"no"| R["revert BondVaultInsufficientFunds<br/><i>nothing moves</i>"]
+  C -->|"no"| O["pay what there is<br/>record the rest: pendingSettlement<br/>(SettlementShortfall)"]
+  O --> CS["completeSettlement(id)<br/><i>anyone, later</i>"]
 ```
 
-The treasury is the Safe, named with `setBackstops(treasury, payoutPool)` (`OPERATOR_ROLE`). The
-vault names no AssurancePool: since section 13 nothing on the bond side can reach it. Its
-contribution is whatever allowance the Safe's owners have given the vault, and it is not repaid as a
-loan: it comes back as deployable excess.
+The treasury is the Safe, named with `setBackstops(treasury, payoutPool)`. Its contribution is
+whatever allowance its owners have given the vault, capped at its balance. Since section 13 the
+vault names no AssurancePool and nothing on the bond side can reach one.
 
-What the AssurancePool lends is recorded in `owedToReserve`. It comes off `deployableExcess()`, so
-the Safe cannot take it, and it is repaid from anything above `requiredReserve()` —
-`withdrawDeployable` repays first, and `repayReserve()` is permissionless. The pool's side of the loan
-— excess then buffer, never primary, repaid buffer-first — is in [The Reserve](./reserve.md).
+**A settlement never waits for funds.** `_settle` pays what the vault and the treasury hold and
+records the rest in `pendingSettlement[id]` (holder, debt recipient, debt owed, holder owed) and
+`totalSettlementOwed`, which is added to the reserve ahead of any excess. The permissionless
+`completeSettlement(id)` pays it as money arrives: the rest of the debt part first (the vault then
+calls the Liquidator's `applyMaturityInstruction`), then the Holder's, to the recipients fixed at
+settlement. `settleEarly` (for `payPledged`) and a roll's remainder are the exceptions: they pay in
+full or revert with `BondVaultInsufficientFunds`.
 
-The pool measures the gap it backs. `BondVault.uncoveredNearTerm()` is face due inside the window
-less `held() + treasuryAvailable()`, and `AssurancePool.bondExposure()` adds it to the RTD
-denominator.
+An unpledged settlement refuses a bond the registry still reports encumbered
+(`BondVaultBondPledged`). Every settlement path, `completeSettlement` included, reverts while an
+Enforcement Notice is in force (`BondVaultEnforcementInForce`).
 
 ## Seniority
 
-The vault calls the AssurancePool only to borrow (`lendToBondVault`) and to repay what it borrowed
-(`repayFromBondVault`, through `_repayReserve`). The pool has no function that pulls from the vault. Redemption goes
-`BurnerBond → BondVault.settle` and does not call the AssurancePool unless the vault and the treasury
-are short.
-
-The vault lends to the PayoutPool from `deployableExcess()` only, never from the redemption reserve.
-`repayFromPayoutPool` reduces `lentToPayoutPool` by the principal part and keeps any carry in the
-vault, where it adds to `held()`. Money out with the PayoutPool is not in `held()` while it is out,
-and `requiredReserve()` does not wait for it.
+**The vault has no path to or from the AssurancePool, the Loss Reserve or the ESA.** It holds no
+AssurancePool address (`retiredAssurancePool` is a renamed, unread slot), borrows from nothing and
+lends to nothing. Bondholders are creditors of the vault: its USDC is the BurnerBond Collateral,
+under the Collateral Agent's first lien (IV-10), and leaves only to a Holder (or, for a pledged
+bond, to the Holder's own secured debt: C3, decision 5), through the Agent, or as deployable excess
+to the Agent's registered destination.
 
 ## Rolling
 
-`rollBond(id)` replaces a mature bond with a new one instead of paying it. The caller must hold the
-bond, must not be the `liquidator`, and the bond must not be opted out (`setAutoRollOptOut`, holder
-only). The new bond matures at `now + rollTerm` (365 days by default; `setRollTerm` within the
-factory's maturity bounds). Its face is `oldFace × 10000 / (10000 − discount)`, its recorded purchase
-price is the old face, and `BondVault.roll` moves the obligation with no cash.
+**A bond rolls only on its Holder's confirmed Roll Notice** (Earn §4A; IV-01 §§5.1–5.5). Nothing
+rolls on its own.
 
-Nothing rolls on its own. `willAutoRoll` is a flag that `rollBond` checks; `redeemBond` ignores it.
-**A rolled bond keeps its pledge.** If the collection has an encumbrance source, `rollBond` calls
-`CollateralRegistry.rollItem(holder, kind, oldId, newId)`, which moves a pledge on the old id to the
-new one and refreshes the holder's limit; it does nothing for a bond that was not pledged. The
-collection needs `ITEM_ROLLER_ROLE` on the registry for this, which `deploy/23` grants — without it
-every roll of that collection reverts.
+1. **Notice.** `postRollNotice(id, noticeHash, rollDeadline, termDays, yieldBps)`, by an
+   EarnControls `ROLL_NOTICE_ROLE` holder, once per bond, at least `NOTICE_LEAD` (20 days, FIXED)
+   before maturity. `rollDeadline` must be in the future and no later than `latestRollDeadline`:
+   the end of the day (Pacific) seven calendar days before the Maturity Date (FIXED). The term must
+   be `EarnControls.rollTermFor(term)` now, and the rate at least the Ladder's for it
+   (`ladderYieldBps`) and at most `Accretion.MAX_YIELD_BPS`.
+2. **Confirmation.** `confirmRoll(id, noticeHash, sig)`, or `confirmRolls` for several bonds, each
+   with its own signature. The Holder signs `ConfirmRoll(bondId, noticeHash, rollDeadline, nonce)`
+   (`confirmRollDigest(id)`) from the account holding the bond; anyone may submit it, before the
+   deadline. `nonce` counts confirmations given or withdrawn, so a withdrawn one cannot be
+   replayed. A confirmed bond that can roll leaves the vault's 90-day 100% reserve
+   (`setRollConfirmation`, `RollConfirmationSet`).
+3. **Withdrawal.** `withdrawRollConfirmation(id)`, the Holder only, before the deadline. A transfer
+   withdraws it too. The bond returns to the reserve in the same transaction.
+4. **At maturity**, `settle(id)` rolls a confirmed bond unless the Holder is flagged ineligible
+   (`holderIneligible`), `redeemAll` has started, no term of the same length or shorter is offered,
+   the Holder has no eligibility attestation in force (`eligibleCode`, decision 44), or the larger
+   Maturity Amount would pass the Funding Limit. In any of those cases it is paid instead.
+
+**The roll's terms** (`_roll`, IV-01 §5.2): the same term or the nearest shorter one offered
+(`rollTermFor`); the notice's rate, or the Ladder's for that term if higher (`rollYieldFor`). The
+new Maturity Amount is `Accretion.rollTerms`: the old Maturity Amount divided by the new price per
+dollar, rounded down to the cent, and the remainder is paid to the Holder's payee
+(`RollRemainderPaid`). No other USDC leaves. The replacement is issued at the old Maturity Date, so
+a late `settle` costs the Holder no accretion; it starts with no notice, keeps the cost basis, takes
+the exemption code of the attestation in force, and is not counted against the offering cap.
+`BondVault.roll` moves the obligation (`Rolled`); the collection emits `BondRolled`.
+
+**A rolled bond keeps its pledge.** If the old bond was pledged, the collection calls
+`CollateralRegistry.rollItem(holder, kind, oldId, newId)` in the same transaction, which moves the
+pledge, its Maturity Instruction hash and its advance rate to the new id. The collection needs
+`ITEM_ROLLER_ROLE` on the registry, which `deploy/23` grants; without it every roll of a pledged
+bond reverts.
+
+No roll executes while an Enforcement Notice is in force, even a confirmed one (decision 19).
+
+## Buyback and wind-down
+
+**`buyback(id, price, deadline, sig)`** (Earn §4(a)). Any caller pays `price` from its own funds to
+the Holder's payee, on the Holder's EIP-712 signature over `Buyback(bondId, price, deadline)`
+(`buybackDigest`). `price` may not exceed the Accreted Value. It is refused for a pledged bond,
+after the deadline, during a Reserve Shortfall, while any settlement shortfall is owed
+(`totalSettlementOwed() != 0`, decision 43) and during enforcement. The bond burns and
+`BondVault.retireUnpaid` drops the obligation; the vault pays nothing (`BondBoughtBack`,
+`BondRetired`).
+
+**Wind-down** (Earn §4(c), R5). Two different EarnControls `WIND_DOWN_ROLE` holders make the same
+`setWindDown(true, reasonHash)` call (`WindDownProposed`, then `WindDownSet`); purchases stop at
+once. The flag can be cleared the same way until `redeemAll` starts. `WIND_DOWN_DELAY` (30 days,
+FIXED) after it was set, anyone may call `redeemAll()`, which is irreversible and refused during
+enforcement (`RedeemAllStarted`). From then no bond rolls or is sold, and anyone may call
+`redeemUnderWindDown(id)`, which pays a bond its Accreted Value through `settleAt`: all to the
+payee for an unpledged bond, or split for a pledged one, with `Liquidator.maturityToDebt` asked with
+the Accreted Value in place of the Maturity Amount (decision 14). A short vault records the rest as
+owed, as at maturity.
+
+## Transfers
+
+**A bond moves only between a Holder's own accounts, or to an approved Successor.**
+`_beforeTokenTransfer` refuses a transfer (not a mint or burn) of a pledged bond
+(`BurnerBondPledged`), of a bond that has left, or one `EarnControls.transferAllowed(from, to)`
+refuses (`BurnerBondTransferNotAllowed`): it allows two Smart Accounts of the same Holder
+(`sameHolder`), or the Successor path within 30 days of its approval. `setApprovalForAll` always
+reverts (`BurnerBondNoOperators`), so no operator can move a bond. A transfer withdraws any roll
+confirmation, because the new holder did not sign it. `holderOf(id)` records who holds each bond.
 
 ## Bonds as collateral
 
-**A pledged bond is valued at what it is worth today.** `BurnerBond.presentValueOf(id)` accretes
-straight-line from the purchase price at `issuedAt` to face at maturity, returns face from maturity
-on, and 0 for a redeemed or unknown id. `BondValuer.valueOfItems(holder, ids)` sums it over the ids
-the holder still holds; a bond they no longer hold is worth 0. One valuer is deployed per collection.
+**A pledged bond is valued at its Accreted Value today.** `BondValuer.valueOfItems(holder, ids)`
+sums `presentValueOf` over the ids the holder still holds; a bond they no longer hold is worth 0.
+One valuer is deployed per collection (`deploy/23`).
 
 | Kind | Registered by | Backing | Advance rate (stored per pledge) | Valued by |
 |---|---|---|---|---|
-| `BOND` | `deploy/23` | `AssetInternal` | 95% (`9_500`) of Present Value | `BondValuer`; unit price 0 |
-| `POOL_SHARE` | `deploy/22` | `AssetInternal` | 70% (`7_000`) of Pool Share Value | Unit price `1e18` |
+| `BOND` | `deploy/20` (`deploy/23` if missing) | `AssetInternal` | 95% (`9_500`) of Accreted Value | `BondValuer`; unit price 0 |
+| `POOL_SHARE` | `deploy/20` (`deploy/22` if missing) | `AssetInternal` | 70% (`7_000`) of Pool Share Value | Unit price `1e18` |
 
 **A bond pledge carries a signed Maturity Instruction (Phase 2e, section 9).**
 `CollateralRegistry.pledgeItem(member, kind, itemId, maturityInstruction, deadline, signature)`
@@ -195,12 +290,12 @@ maturityInstruction, nonce, deadline)`; a zero `maturityInstruction` reverts
 (`maturityInstructionOf`) and the kind's advance rate at that moment (`itemAdvanceBpsOf`); a later
 `setCollateralTerms` reaches new pledges, not this one. A roll moves both to the replacement.
 
-**A pledged bond stays put.** `deploy/23` sets the collection's `encumbranceSource` to the registry
-with kind `BOND`, and `_beforeTokenTransfer` refuses to move a bond while `isItemPledged` is true,
-whether or not anything is drawn (`BurnerBondPledged`). Nobody is exempt. Burns are allowed: they are
-the exits. `redeemBond` refuses a pledged bond too; a pledged bond pays out only through `settle`,
-and is otherwise released first (`releaseItem`, once nothing is drawn). Rolling is not affected —
-the pledge moves to the new bond. Limits are in [Credit](./credit.md).
+**A pledged bond stays put.** `setSources` names the registry as the collection's
+`encumbranceSource` with kind `BOND`, and `_beforeTokenTransfer` refuses to move a bond while
+`isItemPledged` is true, whether or not anything is drawn. Burns are allowed: they are the exits. A
+pledged bond leaves only by `settle` (the split or a roll), `payPledged`, `redeemUnderWindDown` or
+the Collateral Agent's distributions, or is released first (`releaseItem`, once nothing is drawn
+under the kind). It cannot be bought back. Limits are in [Credit](./credit.md).
 
 **`payPledged(id)`: the pledge payment term (IV-01 §4.9, founder answer G).** Anyone may call it. It
 pays only a pledged bond, only when the collection's `liquidator` (the `Liquidator`, the pledge
@@ -213,87 +308,168 @@ Liquidation Hold or pause is in force, and that this is the bond next in MB-05 �
 first still pledged in the member's own order (`CollateralRegistry.setEnforcementOrder`, signed
 before any notice), else the one nearest maturity (Phase 2f, decision 20). The bond is paid its
 `accretedValue(id)` in that block, in full, through `BondVault.settleEarly` to the Liquidator, which
-applies it: on a default only to Defaulted Amounts (decision 22) — the line's past-due Secured
-Minimum on `BOND` then `POOL_SHARE`, then the member's defaulted secured plans oldest first, then the
-unpaid Rebalance Amount on `BOOST` then `INCOME`, never `SAVINGS`; on a Shortfall to the asset-backed
-tiers until it ends (decision 21). The surplus goes to the holder. The
+applies it (`applyPledgePayment`): on a default only to Defaulted Amounts (decision 22) — the line's
+past-due Secured Minimum on `BOND` then `POOL_SHARE`, then the member's defaulted secured plans
+oldest first, then the unpaid Rebalance Amount on `BOOST` then `INCOME`, never `SAVINGS`; on a
+Shortfall to the asset-backed tiers until it ends (decision 21). The surplus goes to the holder. The
 pledge is released (`releaseRetiredItem`) and the bond burns. It emits `PledgePaid(id, holder,
-amount, toDebt, toHolder)`. There is no `seizeBond` or `redeemEarly`: the seize-and-redeem path is
-gone, and the Liquidator takes no bond.
+amount, toDebt, toHolder)`. There is no `seizeBond` or `redeemEarly`, and the Liquidator takes no
+bond. Not while an Enforcement Notice is in force (C3, decision 5).
 
-**`settle(id)`: maturity, and the pledged split (MB-05 §5.6).** Anyone may call it on a matured
-bond whose holder opted out of rolling. An unpledged bond pays its face value to its holder. A
-pledged one is split: `toDebt = min(face, max(0, drawn − limitWithout))`, where `drawn` is the
-holder's Asset-Backed Drawn (the `BOND` and `POOL_SHARE` tiers with the Liquidator's trusted issuers)
-and `limitWithout` their Asset-Backed Limit without this bond (their other pledged bonds and their
-pool shares, each at the higher of its stored and current advance rate; MB-05 §§1.3, 5.3, 5.6).
-`BondVault.settlePledged` pays `toDebt` to the Liquidator first, which applies it to the `BOND`, then
-the `POOL_SHARE`, tier as the holder's own instruction (no Liquidation Hold stops it), then the rest to the
-holder. It never waits for funds: what the vault and the treasury hold goes to `toDebt` first, then
-`toHolder`, and whatever of either they cannot pay is recorded (`pendingSettlement`,
-`SettlementShortfall`), reserved ahead of any deployable excess, and paid by the permissionless
-`completeSettlement(id)` -- the rest of `toDebt` first (the vault calls the Liquidator's
-`applyMaturityInstruction`), then the rest of `toHolder`, to the recipients fixed at settlement. The pledge releases and the bond burns; `PledgedMaturitySplit(id, toDebt,
-toHolder)`.
+**`settle(id)` on a pledged bond: the Maturity Instruction split (MB-05 §5.6).** A matured pledged
+bond that does not roll is split: `toDebt = min(face, max(0, drawn − limitWithout))`
+(`Liquidator.maturityToDebt`), where `drawn` is the holder's Asset-Backed Drawn (the `BOND` and
+`POOL_SHARE` tiers with the Liquidator's trusted issuers) and `limitWithout` their Asset-Backed
+Limit without this bond (their other pledged bonds and their pool shares, each at the higher of its
+stored and current advance rate; MB-05 §§1.3, 5.3, 5.6). `BondVault.settlePledged` pays `toDebt` to
+the Liquidator first, which applies it to the `BOND`, then the `POOL_SHARE`, tier as the holder's
+own instruction (`applyMaturityInstruction`; no Liquidation Hold stops it), then the rest to the
+holder's payee. What the vault and the treasury cannot pay is recorded and paid by
+`completeSettlement`, as for any settlement. The pledge releases and the bond burns;
+`PledgedMaturitySplit(id, toDebt, toHolder)`.
+
+## The Collateral Agent
+
+**The Agent Role over the vault is a contract** (`CollateralAgent`, IV-10 Exhibit A; Phase 2f,
+decisions 18 and 19). It holds the Enforcement Notice, the distribution rounds, the cost cap, the
+change co-signatures, the Agent Key and Clear Lending's treasury role, and is the only thing the
+vault lets move USDC outside settlement.
+
+**The Agent Key** (an address, not a role) has seven powers: `enforce`, `releaseEnforcement`,
+`postDistribution`, `toCollateralAccount`, `postCostStatement` with `withdrawCosts`,
+`approveChange` and `rotateAgentKey` (effective after `ROTATION_DELAY`, 48 hours). It cannot pay
+anyone but a Holder through a round, the Collateral Deposit Account or the cost address within the
+cap, cannot withdraw excess, and cannot change a setting alone.
+
+**Enforcement.** `enforce(reasonCode, noticeHash)` records an Enforcement Notice. While it is in
+force (`enforcementInForce()`), every vault outflow but the Agent's own reverts, and so do
+purchases and rolls. Then:
+
+1. `snapshotBonds(maxCount)` (anyone, batched) fixes each outstanding bond's amount due at the
+   enforcement time: its Accreted Value then (`BondVault.amountDueAt`), or its Maturity Amount if
+   matured, less what earlier periods paid or still owe it.
+2. `postDistribution(amount, roundId)` (the Agent Key) posts a round. The Agent sets only the total;
+   each bond's share is its amount due over the total due.
+3. `claimDistribution(id)` (anyone) pays a bond its share of every posted round to the Holder's
+   payee. A pledged bond's share goes first to the pledge module (`routeDistribution`;
+   `Liquidator.applyDistribution`), up to the Holder's Defaulted Amounts, only while
+   `enforcementPermitted` (decision 19). A bond paid in full is burned through
+   `BondVault.burnPaid`, which releases any pledge (`BondPaidThroughDistributions`).
+
+Enforcement costs go to the registered cost address only, at least `STATEMENT_WAIT` (7 days) after
+an on-chain cost statement, within the cap: the greater of $50,000 and 2% of the vault's assets at
+the start of the Enforcement Period, plus what the Required Holders approve. `releaseEnforcement`
+withdraws the notice; posted rounds stay claimable.
+
+**Clear Lending's treasury role** (`TREASURY_ROLE` on the Agent) can only withdraw deployable excess
+to the registered `excessDestination` (`proposeExcessWithdrawal`, then `executeExcessWithdrawal` by
+a different signer, never during enforcement, keeping unclaimed distributions in the vault), propose
+and confirm changes, and propose replacements of the Agent Key or the Collateral Deposit Account
+(approved by a second signer, executed by anyone 7 days later unless the Required Holders block it).
+
+**Changes are co-signed.** Once the Agent is named on the vault (`setEarnSources`) or a collection
+(`setSources`), every upgrade, role grant or revocation, setting and destination change there also
+needs a treasury proposal (`proposeChange`), a second treasury signer's confirmation
+(`confirmChange`), the Agent's `approveChange` and `CHANGE_DELAY` (7 days) from the confirmation.
+The changed contract calls `consumeChange(keccak256(msg.data))`, so the co-signature covers the
+exact call. Naming the Agent for the first time is the admin's alone.
+
+## Required-Holder Directions
+
+**Required Holders** (IV-01 §1) hold more than 50% (`REQUIRED_BPS`) of the aggregate Accreted Value
+of the bonds outstanding at the record time, not counting bonds held by accounts with EarnControls
+`EXCLUDED_HOLDER_ROLE` (Clear's insiders, granted by resolution through the Earn timelock).
+`HolderDirections` counts their Directions on chain (decision 30); the CollateralAgent's
+`recordCostApproval` and `recordHolderBlock` accept only this contract:
+
+1. `open(kind, subject, directionHash)` (anyone) opens a cost approval (`COST_APPROVAL`, during an
+   Enforcement Period) or a block on a pending replacement (`BLOCK_REPLACEMENT`). The record time is
+   the time of opening.
+2. `sign(id, holder, bondIds, sig)` adds each bond's Accreted Value at the record time, on the
+   Holder's EIP-712 `Direction(directionId, bondIds)` (domain `HolderDirections`, version `1`). A
+   bond counts once, must have been outstanding at the record time and must still be held by the
+   signer.
+3. `tally(id, maxCount)` (anyone, batched) sums the total over the vault's register
+   (`registerLength`, `registerAt`, `registerEntry`).
+4. `execute(id)` records the Direction on the Agent once the signed value exceeds half the total. A
+   cost approval raises the cap 7 days after it is recorded.
+
+`HolderDirections` has no admin, no setter and no upgrade.
 
 ## Collections
 
-`createCollection` is permissionless for an oracle-whitelisted token and allows one collection per
-token. Each is a clone of `bondImplementation` initialised with the shared deposit contract,
-`bondTraits` and `bondDiscountCurve`; ownership passes to the factory owner. The deposit contract is
-itself a clone, created and handed to the deployer in the factory's constructor.
-`deactivateCollection` / `reactivateCollection` flip `isActive`, which `hasCollection` and
-`getActiveCollections` report and `makeDeposit` enforces.
+`createCollection` is open to the factory's owner and to the factory's deposit contract only
+(audit X-19), one collection per token, and refuses a token the `TokenRegistry` does not
+whitelist. Each collection is a clone of `bondImplementation`, a prebuilt BurnerBond whose pinned
+`BurnerBondPledges` module must report `BurnerBondPledges.v2` (the factory's constructor checks it).
+The clone is initialised with the factory, the token, its name and symbol, the shared `bondTraits`
+store and the IV-01 §4.12 legend (`legendHash`, `legendURI`, carried in `contractURI()`), and
+ownership passes to the factory owner. `deactivateCollection` / `reactivateCollection` flip
+`isActive`: a deactivated collection sells nothing, and its bonds still settle.
+
+The modules are chained through fallbacks: `BurnerBond` → `BurnerBondPledges` → `BurnerBondIssue`,
+each pinned in the constructor of the one before and checked by `extensionKind()`
+(`BurnerBondPledges.v2`, `BurnerBondIssue.v1`). `deploy/bondModules.ts` builds them and gives the
+joined ABI (`bondAt`, `bondAbi`).
+
+A collection settles nothing until its owner calls `setSources(vault, encumbrance, kind, controls,
+agent)` (the vault must use the same token) and the vault grants it `BOND_ROLE`, and it sells
+nothing until EarnControls grants it `BOND_ROLE`, which `deploy/23` does.
 
 **A replacement collection shares the vault without sharing ids.** `BondVault` and
 `CollateralRegistry` key a bond by its id alone, so a collection built to replace another calls
 `setFirstBondId` (owner, before its first sale) to start above every id the old one issued.
-The Base Sepolia factory and USDC collection were replaced this way on 3 Nov 2026, with ids from
-1001; the old ones sell nothing, and every bond they issued has been redeemed. The script that did
-it was retired in Phase 2f (it used the pre-2f collection API). A Phase 2f collection replaces a
-pre-2f one through the deploy scripts: `REPLACE_BOND_FACTORY=1` on `deploy/22` keeps the old
-records as `*Pre2f` and deploys the new factory, and `FIRST_BOND_ID` on `deploy/23` sets the new
-collection's first id (it refuses to go on without one while an older collection is on record).
-
-A new collection redeems nothing until its owner calls `setBondVault` and the vault grants
-`BOND_ROLE` to both the collection and the deposit contract, which `deploy/23` does.
+`REPLACE_BOND_FACTORY=1` on `deploy/22` keeps the old records as `*Pre2f` and deploys the new
+factory, and `FIRST_BOND_ID` on `deploy/23` sets the new collection's first id (it refuses to go on
+without one while an older collection is on record). Decision 48 (b): `deploy/23` revokes every
+BondVault role a retired collection or deposit contract still holds. Pre-2f collections cannot
+record into, or settle through, the upgraded vault.
 
 ## Traits
 
 `BondTraits` stores display metadata keyed by `msg.sender`, so a collection writes only its own
-bonds' traits. `mintBond` writes eight: `faceValue`, `maturityDate`, `discountPercentage`,
-`purchasePrice`, `creator`, `currentHolder`, `isRedeemed`, `createdAt`. A transfer updates
-`currentHolder`; `_redeem`, `settle` and `payPledged` set `isRedeemed` and `redeemedAt`. `rollBond`
-writes no traits. `getBondType(maturityDate)` is a view on the remaining term: up to 180 days short-term, up to
-540 mid-term, otherwise long-term. Owner functions add, change and remove traits.
+bonds' traits. The Phase 2f collection writes none on mint, transfer or redemption; the owner's
+`setBondTrait` remains, and the getters read the store. A bond's data is in `getBondInfo(id)`
+(Maturity Amount, price, cost basis, amount paid, issue and maturity dates, term, rate, whether it
+has left, exemption code), `rollNotice(id)` and the events.
 
 ## Unreachable paths
 
-`processDeposit`, `batchProcessDeposits` and `refundDeposit` act only on an unprocessed deposit.
-`makeDeposit` marks every deposit processed in the transaction that creates it and nothing adds to
-`pendingDeposits`, so they always revert. `_processDepositInternal` would deposit into the
-AssurancePool's excess reserve. `BurnerBond.assurancePool` and `BurnerBondDeposit.assurancePool` are
-stored and settable but no redemption or purchase path reads them.
+- **`BurnerBondDeposit`.** The factory still clones and registers one, but its `makeDeposit` calls
+  `mintBond` and `getDiscountForMaturity`, which the Phase 2f collection does not have, and the
+  vault's old four-argument `recordPurchase`, so it always reverts. `processDeposit`,
+  `batchProcessDeposits` and `refundDeposit` act only on an unprocessed deposit, of which there are
+  none.
+- **The factory's pricing parameters** (`maxDiscount`, `minDiscount`, `maxMaturity`, `minMaturity`,
+  `minFaceValue`, `maxFaceValue` and their setters) are read only by `BurnerBondDeposit`. Terms and
+  the minimum purchase are EarnControls'.
+- **`BondDiscountCurve`** is no longer used by any collection or deploy script.
+- **`BondVault.lendToPayoutPool`** returns 0. `OPERATOR_ROLE` and `TREASURY_ROLE` on the vault gate
+  nothing; they remain so existing grants still read.
 
 ## Authority
 
-| Contract | Gate | Held at deploy by | Functions |
+| Contract | Gate | Held by | Functions |
 |---|---|---|---|
-| `BurnerBondFactory` | `onlyOwner` | Deployer | Parameters, `deactivateCollection`, `setAssurancePool`, `setAssuranceOracle`, `setBaseURI`, `emergencyRecover` |
-| `BurnerBond` | `onlyOwner` | Factory owner | `setBondVault`, `setLiquidator` (7-day delay once bonds exist), `setEncumbranceSource`, `setRollTerm`, `setDiscountCurve`, `setFirstBondId` (before the first sale), traits, `setURI`, `emergencyRecover` (not the underlying) |
-| `BurnerBond` | Anyone | — | `settle`, `payPledged` (each takes only the id) |
-| `BurnerBondDeposit` | `onlyOwner` | Deployer | `setBondVault`, `setFactory`, `emergencyRecover` (not a collection token) |
-| `BondVault` | `DEFAULT_ADMIN_ROLE` | `initialize` admin | Roles, UUPS upgrades |
-| `BondVault` | `OPERATOR_ROLE` | `initialize` admin | `setBackstops`, `setReserveTerms`, `setEncumbranceSource` |
-| `BondVault` | `BOND_ROLE` | Collection, deposit contract | `recordPurchase`, `settle`, `settleEarly`, `settlePledged`, `roll` |
-| `BondVault` | Anyone | — | `completeSettlement` (pays only the recorded debt part and holder) |
-| `BondVault` | `TREASURY_ROLE` | Granted by the admin | `withdrawDeployable` |
+| `BurnerBondFactory` | `onlyOwner` | Deployer, then the Earn timelock (`earn_timelock_handover.ts`) | `createCollection`, `deactivateCollection`, `reactivateCollection`, `setTokenRegistry`, `setBaseURI`, the unread pricing parameters, `emergencyRecover` |
+| `BurnerBond` | `onlyOwner` | Factory owner, then the Earn timelock; co-signed once the Agent is named | `setSources`, `setLiquidator` and `executeLiquidatorChange` (7-day delay once bonds exist, audit M-6, not co-signed), `setFirstBondId` (before the first sale), `setBondTrait`, `setURI`, `emergencyRecover` (not the underlying) |
+| `BurnerBond` | EarnControls `ROLL_NOTICE_ROLE` | Granted by resolution | `postRollNotice` |
+| `BurnerBond` | Two EarnControls `WIND_DOWN_ROLE` holders | Granted by resolution | `setWindDown` |
+| `BurnerBond` | The Holder | — | `withdrawRollConfirmation`; signatures for `confirmRoll(s)` and `buyback` |
+| `BurnerBond` | Anyone | — | `purchase` (on the payer's signed quote), `confirmRoll(s)` (on the Holder's signature), `settle`, `payPledged`, `buyback` (on the Holder's signature), `redeemAll` (30 days after the flag), `redeemUnderWindDown` |
+| `BondVault` | `DEFAULT_ADMIN_ROLE` | The Earn timelock; co-signed once the Agent is named | Roles, UUPS upgrades, `setBackstops`, `setEncumbranceSource`, `setEarnSources`, `raiseReserveFloor`, `setGlideSchedule` |
+| `BondVault` | `BOND_ROLE` | Each collection | `recordPurchase`, `settle`, `settlePledged`, `settleAt`, `settleEarly`, `roll`, `retireUnpaid`, `setRollConfirmation` |
+| `BondVault` | The Collateral Agent | — | `agentTransfer`, `agentWithdrawExcess`, `burnPaid` |
+| `BondVault` | EarnControls | — | `holderEligibilityChanged`, `termOfferChanged` |
+| `BondVault` | The named `payoutPool` | — | `repayFromPayoutPool` |
+| `BondVault` | Anyone | — | `completeSettlement`, `pokeReserve`, `topUp` |
+| `CollateralAgent` | The Agent Key | — | `enforce`, `releaseEnforcement`, `postDistribution`, `toCollateralAccount`, `postCostStatement`, `withdrawCosts`, `approveChange`, `rotateAgentKey` |
+| `CollateralAgent` | `TREASURY_ROLE` | Clear Lending's signers | Excess withdrawal, changes, replacements |
+| `CollateralAgent` | `DEFAULT_ADMIN_ROLE`, co-signed | The Earn timelock | `setVault`, `setBondBook`, `setPledgeModule`, `setPayeeSource`, `setHolderDirections`, `setCostAddress`, `setExcessDestination`, roles, upgrades |
+| `CollateralAgent` | `HolderDirections` | — | `recordCostApproval`, `recordHolderBlock` |
 | `CollateralRegistry` | `ITEM_ROLLER_ROLE` | Each bond collection (`deploy/23`) | `rollItem`, `releaseRetiredItem` |
 
-`BondVault` is a UUPS proxy; its fields added after deployment come from its storage gap.
-`BurnerBond` and `BurnerBondDeposit` are clones, not upgradeable proxies. Since Phase 2e the bond
-implementation pins a `BurnerBondPledges` delegatecall module (where `settle` and `payPledged` run),
-checked by `extensionKind()` in its constructor; the factory takes the module's address as its third
-constructor argument (`deploy/bondModules.ts`). A collection made by an earlier factory keeps its
-old code, including `seizeBond` and `redeemEarly`. `BondValuer`, `BondTraits`
-and `BondDiscountCurve` are plain deployments.
+`BondVault` and `CollateralAgent` are UUPS proxies; the vault's Phase 2f fields come from its
+storage gap, and `reserveWindow`, `assurancePool` and `owedToReserve` are renamed, unread slots.
+`BurnerBond` collections are clones, not upgradeable proxies, so a collection keeps the modules its
+implementation pinned. `HolderDirections`, `BondValuer` and `BondTraits` are plain deployments.

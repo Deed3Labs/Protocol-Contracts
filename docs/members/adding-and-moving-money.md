@@ -89,8 +89,8 @@ monthly. You'll find it on Savings, under your home path.
 - Each run earns equity credits like any other deposit into savings.
 - **Adjust auto-save** shows the next run, the runs left, and what it has saved this year.
 
-If you've turned on automatic repayment, money you owe on credit is set aside from a new deposit
-first, and auto-save runs on the rest. See [Credit](./credit.md#automatic-repayment).
+If auto-clear is on, money you owe on credit is cleared from a new deposit first, and auto-save
+runs on the rest. See [Credit](./credit.md#automatic-repayment).
 
 ## Related
 

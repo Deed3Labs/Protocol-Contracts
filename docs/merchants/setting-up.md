@@ -43,7 +43,7 @@ Clear until step 4.
 4. **Your terms.** If Clear gave you a terms code, type it and choose **Apply**. Clear answers with
    what the code changes, or that its places are taken, or that it isn't a code Clear knows. You
    accept the Clear Partner terms here. What the terms are, and who sets them, is in
-   [Governance](../governance/README.md).
+   [Parameters](../governance/parameters.md#shops).
 5. **Verify it is you.** Choose a four-digit PIN for yourself, then sign in with an emailed code
    or a passkey. **This step creates the shop and its wallet**, and the account you signed in with
    becomes the owner. If a code's last place went while you were signing up, the shop is on

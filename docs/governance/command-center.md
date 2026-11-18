@@ -70,9 +70,12 @@ Safe's Transaction Service. The transaction is executed in Safe{Wallet}.
 - **What it can build:** a shop's cap, switching a shop on or off, the payout run, a payout pool
   top-up, and any contract function chosen by contract, function and arguments, checked against the
   deployed contract's interface.
-- **What it does not do:** hand admin roles over to the Safe, or move operational roles. Those are
-  done outside it ([On-chain authority](./on-chain-authority.md#the-ops-safe)).
-- **A waiting period** between the last signature and a change taking effect: Not available yet.
+- **What it does not do:** hand admin power over to the timelocks, or move operational roles. Those
+  are done outside it ([On-chain authority](./on-chain-authority.md#the-ops-safe)).
+- **No waiting period** applies to what the Ops Safe does through its own roles: a shop's cap,
+  switching a shop on or off, a payout pool top-up. Those take effect when the transaction executes.
+  An upgrade, an admin setting or a role grant goes through the credit timelock instead, and waits
+  7 days after the Safe proposes it ([The four timelocks](./on-chain-authority.md#the-four-timelocks)).
 
 ## Going live
 

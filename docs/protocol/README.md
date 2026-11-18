@@ -1,8 +1,8 @@
 # Protocol
 
-The Clear Protocol: the contracts under [`contracts/`](../../contracts/). Deployed addresses are in
-the root [`README.md`](../../README.md) (**Deployed addresses**) and recorded in
-[`deployments/`](../../deployments/).
+The Clear Protocol: the contracts under [`contracts/`](../../contracts/). The
+[contract reference](./contracts/README.md) has a page for every deployed contract with its
+address, recorded in [`deployments/`](../../deployments/).
 
 [The contract design](./clear-contracts-build-plan.md) explains the model behind them: StableCredit
 as a ledger of obligations rather than a pot of money, the ESA (Equity Savings Account) vault, the
@@ -14,9 +14,9 @@ How each part works:
 |---|---|
 | [`savings.md`](./savings.md) | CLRUSD and its redemption lock, the `ESADepositVault`, gasless savings intents, link-based send (`ClaimEscrow`), the cross-chain pool |
 | [`credit.md`](./credit.md) | The ledger, the issuers — revolving tiers, term plans, offers — carry, collateral and the ceiling, default and liquidation, access |
-| [`settlement.md`](./settlement.md) | Merchant terms, how a positive balance becomes USDC, who fronts the cash when it is due, how it and its carry come back, the `LendingPool` |
-| [`visa-card-purchases.md`](./visa-card-purchases.md) | One Clear Visa card purchase end to end: the authorisation, `settleCardSpend` at clearing, borrowing from the `LendingPool`, repayment and carry, reversals and refunds |
-| [`reserve.md`](./reserve.md) | The `AssurancePool` — primary, buffer and excess, RTD, lost debt, lending as a last resort — and pricing |
+| [`settlement.md`](./settlement.md) | Merchant terms, how a positive balance becomes USDC, who fronts the cash when it is due, how it and its carry come back, the `LendingPool` and its settlement lane |
+| [`visa-card-purchases.md`](./visa-card-purchases.md) | One Clear Visa card purchase end to end: the authorisation, `settleCardSpend` at clearing, how settlement is funded, repayment and carry, reversals and refunds |
+| [`reserve.md`](./reserve.md) | The Assurance Pool: one ledger per compartment (Credit Backstop and Member Assurance), money in, the floor, draws and grants, and the retired Phase 1 reserve |
 | [`bonds.md`](./bonds.md) | BurnerBonds, the discount curve, `BondVault` and its backstops, seniority, bonds as collateral |
 
 And the reasoning and reference behind them:
@@ -33,10 +33,10 @@ Deploying and running them is in [Operators](../operators/README.md); who holds 
 
 ## The Deed track
 
-T-Deeds, validators, subdivision and fractionalization — a named subsystem of the protocol, ten of
-its forty-four production contracts. It keeps its own names — `DeedNFT`, `Validator`, the T-Deed
+T-Deeds, validators, subdivision and fractionalization: a named subsystem of the protocol. It keeps its own names — `DeedNFT`, `Validator`, the T-Deed
 token — because those are on-chain identifiers. For a plain-language introduction, see
-[Clear Deeds and real-world assets](../overview/deeds-and-real-world-assets.md).
+[Clear Deeds and real-world assets](../overview/deeds-and-real-world-assets.md). The trust agreements a
+deed is held under are listed in [Legal agreements](../governance/legal-agreements.md).
 
 | | |
 |---|---|
