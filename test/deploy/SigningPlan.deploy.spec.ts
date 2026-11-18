@@ -46,7 +46,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
   let safe: any;
   let s: Record<string, any>;
   let bondVault: any, agent: any, earnTimelock: any, liquidator: any, term: any, pool: any, clrusd: any, vault: any, vaultTimelock: any;
-  let holderDirections: any;
+  let holderDirections: any, revolving: any;
   let lendingSafe: any, assurancePool: any, assuranceTimelock: any, collateralRegistry: any;
   let usdcToken: any;
   const PT_STEPS = ["TU-funder", "TU-safe-module", "TU-safe-delegate", "TU-safe-allowance"];
@@ -107,11 +107,12 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     // D1, D2, D3: a fresh AccessManager and credit core; the old ones retired.
     const access = await upgrades.deployProxy(await ethers.getContractFactory("AccessManager"), [deployer.address]);
     record("AccessManager", await access.getAddress());
-    for (const n of ["AccessManager", "TermIssuer", "Liquidator", "PayoutPool", "CollateralRegistry"]) record(`${n}PreAudit`, random());
+    for (const n of ["AccessManager", "TermIssuer", "RevolvingIssuer", "Liquidator", "PayoutPool", "CollateralRegistry"]) record(`${n}PreAudit`, random());
     record("PayoutPoolPreAudit", retiredPayout);
     process.env.CARRY_TREASURY = treasury.address;
     const core = await deployCreditCore({ quiet: true });
     term = core.term;
+    revolving = core.revolving;
     collateralRegistry = core.collateral;
     // Deploy 25 proposes the fee recipient (the deployer holds the AccessManager's admin).
     await term.proposeFeeRecipient(feeTo.address, ethers.encodeBytes32String("INITIAL"));
@@ -209,6 +210,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       CREDIT_ATTESTER_SIGNERS: `${ca1.address},${ca2.address}`,
       HOLD_SIGNERS: `${h1.address},${h2.address}`,
       FEE_RECIPIENT: feeTo.address,
+      CARD_SETTLEMENT_ACCOUNT: clOperating,
       RELAYER: relayer.address,
       POOL_TIER_PRINCIPAL: "100000000000",
       POOL_TIER_EVIDENCE: ethers.id("Pool Tier valuation (test)"),
@@ -229,7 +231,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       "D4-settings-1", "D4-settings-2", "D4-attester-1", "D4-attester-2", "D4-operator",
       ...["vault", "bondbook", "holderdirections", "pledgemodule", "backstop"].flatMap((k) => [`E8-${k}-propose`, `E8-${k}-confirm`, `E8-${k}-approve`]),
       "E8-hold-1", "E8-hold-2", "E8-earn-schedule", "E8x-earn-execute",
-      "F2-fee-approve", "G1-tier-1", "G1-tier-2", "safe-owner", "I3-vault-schedule", "I3x-vault-execute",
+      "F2-fee-approve", "RT-fee-propose", "RT-fee-approve", "RT-card-account", "G1-tier-1", "G1-tier-2", "safe-owner", "I3-vault-schedule", "I3x-vault-execute",
       ...ASSURANCE_KEYS.flatMap((k) => [`AS-${k}-approve-1`, `AS-${k}-approve-2`]), "AS-assurance-schedule", "ASx-assurance-execute",
       "AS-floor-1", "AS-floor-2",
       ...PT_STEPS,
@@ -256,6 +258,11 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(step(p, "E8-vault-confirm").reason).to.contain("proposed");
     expect(step(p, "E8-vault-confirm").data).to.equal(null);
     expect(step(p, "F2-fee-approve").reason).to.contain("D4-settings-2");
+    // RT: no fee recipient is set yet, so F2 names it and RT has nothing to change; the card account waits for its grant.
+    expect(step(p, "RT-fee-propose").reason).to.contain("F2 names the first one");
+    expect(step(p, "RT-fee-approve").reason).to.contain("F2 names the first one");
+    expect(step(p, "RT-card-account").reason).to.contain("D4-settings-1");
+    expect(step(p, "RT-card-account").args[0].value).to.equal(clOperating);
     expect(step(p, "E8-earn-schedule").reason).to.contain("E8-vault-confirm");
     expect(step(p, "E8-earn-schedule").kind).to.equal("safe");
     // The MockSafe has no addOwnerWithThreshold: the dry run catches what would revert.
@@ -354,6 +361,8 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     // Dependents became ready only after what they wait for: confirms after proposals, F2 after its grant.
     expect(sent.indexOf("E8-vault-confirm")).to.be.greaterThan(sent.indexOf("E8-vault-propose"));
     expect(sent.indexOf("F2-fee-approve")).to.be.greaterThan(sent.indexOf("D4-settings-2"));
+    expect(sent.indexOf("RT-card-account")).to.be.greaterThan(sent.indexOf("D4-settings-1"));
+    expect(sent).to.not.include("RT-fee-propose"); // F2 set FEE_RECIPIENT itself
     expect(sent.indexOf("E8-earn-schedule")).to.be.greaterThan(sent.indexOf("E8-backstop-approve"));
     expect(sent.indexOf("AS-payer-clfees-approve-2")).to.be.greaterThan(sent.indexOf("AS-payer-clfees-approve-1"));
     expect(sent.indexOf("AS-assurance-schedule")).to.be.greaterThan(sent.indexOf("AS-exposure-approve-2"));
@@ -376,6 +385,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(await bondVault.payoutPool()).to.equal(ethers.ZeroAddress);
     expect(await bondVault.treasury()).to.equal(s.treasury.address);
     expect(await term.feeRecipient()).to.equal(s.feeTo.address);
+    expect(await revolving.cardSettlementAccount()).to.equal(clOperating);
     expect((await pool.poolTierPrincipal())[0]).to.equal(100000000000n);
     expect(await clrusd.defaultAdmin()).to.equal(await vaultTimelock.getAddress());
     expect(await vault.hasRole(ethers.id("RELAYER_ROLE"), s.relayer.address)).to.equal(true);
@@ -446,6 +456,31 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     // A signer list that is not the pool's.
     expect(await refused({ ASSURANCE_SIGNERS: `${a3},${random()}` })).to.contain("not one of the AssurancePool's signers");
     expect(await refused({ ASSURANCE_EXPOSURE_SOURCES: random() })).to.contain("has no code");
+  });
+
+  it("RT: moves an already-set fee recipient to Clear Lending by two different signers", async function () {
+    // F2 named feeTo; FEE_RECIPIENT now names CL Operating, as on Base Sepolia (the Clear Treasury Safe was carried over).
+    const moved = { ...env, FEE_RECIPIENT: clOperating };
+    const at = () => buildSigningPlan({ network: "hardhat", env: moved, valuationSigners, deploymentSigners });
+    let p = await at();
+    expect(step(p, "F2-fee-approve").status).to.equal("done");
+    expect(step(p, "RT-fee-propose").status).to.equal("ready");
+    expect(step(p, "RT-fee-propose").signer).to.equal(s.cs1.address);
+    expect(step(p, "RT-fee-propose").args[0].value).to.equal(clOperating);
+    expect(step(p, "RT-fee-approve").status).to.equal("waiting");
+    await send(step(p, "RT-fee-propose"));
+    p = await at();
+    expect(step(p, "RT-fee-propose").status).to.equal("done");
+    expect(step(p, "RT-fee-approve").status).to.equal("ready");
+    expect(step(p, "RT-fee-approve").signer).to.equal(s.cs2.address); // not the proposer
+    expect(await term.feeRecipient()).to.equal(s.feeTo.address); // nothing moves until the second signer approves
+    await send(step(p, "RT-fee-approve"));
+    expect(await term.feeRecipient()).to.equal(clOperating);
+    p = await at();
+    for (const id of ["F2-fee-approve", "RT-fee-propose", "RT-fee-approve", "RT-card-account"]) expect(step(p, id).status, id).to.equal("done");
+    // Put feeTo back for the tests that follow.
+    await term.connect(s.cs1).proposeFeeRecipient(s.feeTo.address, ethers.encodeBytes32String("RESET"));
+    await term.connect(s.cs2).approveFeeRecipient(s.feeTo.address, ethers.encodeBytes32String("RESET"));
   });
 
   it("follows the inputs: a new signer in a slot becomes the step's signer", async function () {

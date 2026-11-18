@@ -607,6 +607,9 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
     else if (settings.length < 2) st = waitingFor("Waiting for input: CREDIT_SETTINGS_SIGNERS needs two addresses.");
     else if (!t) st = waitingFor(`Waits for deploy 20 (D3): ${term.why}.`);
     else if (same(await t.feeRecipient(), feeRecipient)) st = { status: "done" };
+    // F2 is the first naming. Once a recipient is set, changing it to a different FEE_RECIPIENT is RT-fee-propose and
+    // RT-fee-approve below.
+    else if (!same(await t.feeRecipient(), ZERO_ADDRESS)) st = { status: "done", reason: `A fee recipient is set (${nameOf(await t.feeRecipient())}); RT-fee-propose and RT-fee-approve change it to FEE_RECIPIENT.` };
     else {
       const p = await t.feeRecipientProposalOf();
       if (!same(p.recipient, feeRecipient)) st = waitingFor(`Deploy 25 (F2) proposes ${feeRecipient} as the fee recipient first.`);
@@ -623,6 +626,89 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       kind: "wallet", signer: signer ?? ZERO_ADDRESS, signerLabel: `credit settings signer ${settings.findIndex((s) => same(s, signer)) + 1 || 2}`, to: term.address ?? ZERO_ADDRESS, toLabel: "TermIssuer",
       ...encode(iface, "approveFeeRecipient", [feeRecipient ?? ZERO_ADDRESS, reasonCode], [undefined, `"${reasonText}"`]),
       dependsOn: signer && grantStepIds.get(`CREDIT_SETTINGS_ROLE:${signer.toLowerCase()}`) ? [grantStepIds.get(`CREDIT_SETTINGS_ROLE:${signer.toLowerCase()}`)!] : [], ...st,
+    });
+  }
+
+  // ================= RT: Clear Lending routing (the fee recipient and the card settlement account) =================
+  // Deploy 25 carried both over from the old issuers, where they were the Clear Treasury Safe (the co-op's). A split
+  // plan's fee is Clear Lending's (TermIssuer, 12.16 and Addendum 2), and a settled card purchase's claim belongs to
+  // whoever paid the settlement: Clear Lending, through CL Operating, once Settlement Funding is live (decision 54).
+  // FEE_RECIPIENT and CARD_SETTLEMENT_ACCOUNT name the target; these steps move an issuer that holds another account.
+  // Neither has a timelock: the fee recipient takes two different CREDIT_SETTINGS_ROLE signers, the card account one.
+  {
+    const term = await fresh("TermIssuer");
+    const t = term.address ? await contract("TermIssuer", term.address) : undefined;
+    const tIface = t ?? (await contract("TermIssuer", ZERO_ADDRESS));
+    const reasonCode = ethers.encodeBytes32String("CLEAR_LENDING_ROUTING");
+    const settingsDep = (s?: string) => (s && grantStepIds.get(`CREDIT_SETTINGS_ROLE:${s.toLowerCase()}`) ? [grantStepIds.get(`CREDIT_SETTINGS_ROLE:${s.toLowerCase()}`)!] : []);
+    const signerLabel = (s?: string) => `credit settings signer ${settings.findIndex((x) => same(x, s)) + 1 || "?"}`;
+    let proposer = settings[0];
+    let approver = settings[1];
+    let ps: { status: StepStatus; reason?: string };
+    let ap: { status: StepStatus; reason?: string };
+    if (!feeRecipient) ps = ap = waitingFor("Waiting for input: FEE_RECIPIENT.");
+    else if (settings.length < 2) ps = ap = waitingFor("Waiting for input: CREDIT_SETTINGS_SIGNERS needs two addresses.");
+    else if (!t) ps = ap = waitingFor(`Waits for deploy 20 (D3): ${term.why}.`);
+    else {
+      const current: string = await t.feeRecipient();
+      const p = await t.feeRecipientProposalOf();
+      if (same(current, feeRecipient)) ps = ap = { status: "done", reason: `TermIssuer's fee recipient is ${nameOf(feeRecipient)}.` };
+      else if (same(current, ZERO_ADDRESS)) ps = ap = waitingFor("No fee recipient is set yet: F2 names the first one.");
+      else if (same(feeRecipient, await t.carryTreasury())) ps = ap = waitingFor(`FEE_RECIPIENT ${feeRecipient} is TermIssuer's carry treasury, which it refuses as the fee recipient.`);
+      else if (same(p.recipient, feeRecipient) && p.reasonCode === reasonCode) {
+        proposer = p.proposer;
+        approver = settings.find((s) => !same(s, p.proposer)) ?? settings[1];
+        ps = { status: "done", reason: `Proposed by ${nameOf(p.proposer)}.` };
+        ap = { status: "ready", reason: `Moves plan fees from ${nameOf(current)} to ${nameOf(feeRecipient)}. A refund of an earlier charge still reverses from where its fee went.` };
+      } else {
+        ps = { status: "ready", reason: `TermIssuer sends plan fees to ${nameOf(current)}; FEE_RECIPIENT is ${nameOf(feeRecipient)}.` };
+        ap = waitingFor("Waits for RT-fee-propose, by a different credit settings signer.");
+      }
+    }
+    push({
+      id: "RT-fee-propose", stage: "RT", title: "Propose Clear Lending as the fee recipient for term plans",
+      explanation: `TermIssuer sends each split plan's fee to its fee recipient, which is Clear Lending's (Addendum 2: the fee no longer goes to the co-op). Deploy 25 carried the old issuer's recipient over, the Clear Treasury Safe. This proposes ${feeRecipient ? nameOf(feeRecipient) : "FEE_RECIPIENT"}; a different credit settings signer approves it. No timelock.`,
+      kind: "wallet", signer: proposer ?? ZERO_ADDRESS, signerLabel: signerLabel(proposer), to: term.address ?? ZERO_ADDRESS, toLabel: "TermIssuer",
+      ...encode(tIface, "proposeFeeRecipient", [feeRecipient ?? ZERO_ADDRESS, reasonCode], [undefined, '"CLEAR_LENDING_ROUTING"']),
+      dependsOn: settingsDep(proposer), ...ps,
+    });
+    push({
+      id: "RT-fee-approve", stage: "RT", title: "Approve Clear Lending as the fee recipient for term plans",
+      explanation: `The second credit settings signer approves the proposal: from then on plan fees go to ${feeRecipient ? nameOf(feeRecipient) : "FEE_RECIPIENT"}. It must be a different signer from the one who proposed.`,
+      kind: "wallet", signer: approver ?? ZERO_ADDRESS, signerLabel: signerLabel(approver), to: term.address ?? ZERO_ADDRESS, toLabel: "TermIssuer",
+      ...encode(tIface, "approveFeeRecipient", [feeRecipient ?? ZERO_ADDRESS, reasonCode], [undefined, '"CLEAR_LENDING_ROUTING"']),
+      dependsOn: ["RT-fee-propose", ...settingsDep(approver)], ...ap,
+    });
+
+    const cardAccount = addr(env.CARD_SETTLEMENT_ACCOUNT);
+    const rev = await fresh("RevolvingIssuer");
+    const r = rev.address ? await contract("RevolvingIssuer", rev.address) : undefined;
+    const rIface = r ?? (await contract("RevolvingIssuer", ZERO_ADDRESS));
+    label(rev.address, "RevolvingIssuer");
+    const cardSigner = settings[0];
+    let cs: { status: StepStatus; reason?: string };
+    if (!cardAccount) cs = waitingFor("Waiting for input: CARD_SETTLEMENT_ACCOUNT.");
+    else if (!cardSigner) cs = waitingFor("Waiting for input: CREDIT_SETTINGS_SIGNERS.");
+    else if (!r) cs = waitingFor(`Waits for deploy 20 (D3): ${rev.why}.`);
+    else {
+      const current: string = await r.cardSettlementAccount();
+      if (same(current, cardAccount)) cs = { status: "done", reason: `Card claims are minted to ${nameOf(cardAccount)}.` };
+      else {
+        // repayCardSpend reverses a purchase out of the current account's claims: claims left with the old account
+        // could not be repaid once the account changes, so the step waits until it holds none.
+        const credit = new ethers.Contract(await r.stableCredit(), ["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)"], provider);
+        const held: bigint = same(current, ZERO_ADDRESS) ? 0n : await credit.balanceOf(current);
+        cs = held > 0n
+          ? waitingFor(`${nameOf(current)} holds ${ethers.formatUnits(held, await credit.decimals())} of card claims. Card repayments reverse out of the current account, so those claims must be repaid or moved before the account changes. Ask before going on.`)
+          : { status: "ready", reason: `Card claims are minted to ${nameOf(current)}, which holds none; CARD_SETTLEMENT_ACCOUNT is ${nameOf(cardAccount)}.` };
+      }
+    }
+    push({
+      id: "RT-card-account", stage: "RT", title: "Point card settlement claims at Clear Lending",
+      explanation: `Each settled card purchase mints its claim to RevolvingIssuer's card settlement account. Deploy 25 carried the old issuer's account over, the Clear Treasury Safe, but Clear Lending pays card settlements (decision 54: the Credit Settlement Account is funded from CL Operating). This sets it to ${cardAccount ? nameOf(cardAccount) : "CARD_SETTLEMENT_ACCOUNT"}. One credit settings signer; no timelock.`,
+      kind: "wallet", signer: cardSigner ?? ZERO_ADDRESS, signerLabel: signerLabel(cardSigner), to: rev.address ?? ZERO_ADDRESS, toLabel: "RevolvingIssuer",
+      ...encode(rIface, "setCardSettlementAccount", [cardAccount ?? ZERO_ADDRESS], [cardAccount ? nameOf(cardAccount) : undefined]),
+      dependsOn: settingsDep(cardSigner), ...cs,
     });
   }
 
