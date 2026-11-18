@@ -11,7 +11,7 @@ describe('the AssurancePool on Money, live (Phase 2c)', () => {
   });
 
   test('two compartments, the backstop floor and the coverage, read only', () => {
-    // live, the gate shows this cell until every rung of the loss ladder is read (brief update 2)
+    // live, Overview's gate shows this cell until every rung of the loss ladder is read (brief update 2); Pools draws the order
     expect(money).toContain('if (L && !ladderRead()) return assuranceCell();');
     expect(money).toContain('Backstop floor');
     expect(money).toContain('Available coverage');
@@ -19,5 +19,18 @@ describe('the AssurancePool on Money, live (Phase 2c)', () => {
     // Nothing here proposes or sends a pool action.
     const cell = money.slice(money.indexOf('function assuranceCell()'), money.indexOf('function gateCell()'));
     expect(cell).not.toMatch(/data-npropose|requestDraw|releaseDraw|proposeTransfer/);
+  });
+});
+
+describe('the loss order on Pools, live', () => {
+  test('is drawn with the rungs that are read; the rest say so and count as nothing', () => {
+    expect(money).not.toContain("notReal('s12', 'If a member stops paying'");
+    expect(money).toContain("unread ? 'Not read yet'");
+    expect(money).toContain("<b>{unread ? '—' : money(v)}</b>");
+    expect(money).toContain('partial = L.slice(0, 4).some(x => x[2] == null)');
+  });
+  test('Loss Holdback and the rate model are read, not written in', () => {
+    expect(money).toContain("Y.holdback == null ? 'Not read yet'");
+    expect(money).toContain('const c = L ? Y.curve : null;');
   });
 });

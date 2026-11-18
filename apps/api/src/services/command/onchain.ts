@@ -152,6 +152,8 @@ export interface YieldPoolLive {
   /** Pool Interest accrued and unpaid (`accruedInterest()`), and the Deployed Balance (`deployedBalance()`), in dollars. */
   accrued: number | null;
   deployed: number | null;
+  /** Holdback Amounts open on redemptions (`totalHoldback()`), in dollars; null when it couldn't be read. */
+  holdback: number | null;
   /** Where Deployments go (`deploymentAccount()`): Clear Lending's account. */
   deploymentAccount: string | null;
   cycleDays: number;
@@ -231,12 +233,12 @@ export async function yieldPoolLive(db: Queryable, reader: ChainReader, now: num
   const gap = big(payoutShort) < big(availableCash) ? big(payoutShort) : big(availableCash);
   const utilAfterBps = big(totalAssets) === 0n ? 0 : Math.round((Number(big(totalBorrowed) + gap) / Number(big(totalAssets))) * 10_000);
   const points = [...new Set([5000, 8000, 9000, 10_000, Number(util), utilAfterBps])];
-  const [rates, [accrued, deployed, account, pending]] = await Promise.all([
+  const [rates, [accrued, deployed, account, pending, holdback]] = await Promise.all([
     reader
       .read(points.map((u) => ({ contract: 'LendingPool', fn: 'fundingRateAt', args: [BigInt(u) * 10n ** 14n] })))
       .then((r) => Object.fromEntries(points.map((u, i) => [u, wadBps(r[i])])) as Record<number, number>)
       .catch(() => null),
-    readEach(reader, ['accruedInterest', 'deployedBalance', 'deploymentAccount', 'pendingRate'].map((fn) => ({ contract: 'LendingPool', fn }))),
+    readEach(reader, ['accruedInterest', 'deployedBalance', 'deploymentAccount', 'pendingRate', 'totalHoldback'].map((fn) => ({ contract: 'LendingPool', fn }))),
   ]);
   const worth = (shares: bigint) => (big(totalSupply) === 0n ? 0n : (shares * big(totalAssets)) / big(totalSupply));
 
@@ -279,6 +281,7 @@ export async function yieldPoolLive(db: Queryable, reader: ChainReader, now: num
     pending: pendingOf(pending),
     accrued: accrued == null ? null : usd(big(accrued)),
     deployed: deployed == null ? null : usd(big(deployed)),
+    holdback: holdback == null ? null : usd(big(holdback)),
     deploymentAccount: addressOr(account),
     // a cycle is the credit line's: 30 days until the issuer has a tier to say otherwise
     cycleDays: Number(cycle) ? Number(cycle) / 86_400 : 30,

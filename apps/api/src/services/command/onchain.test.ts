@@ -46,6 +46,8 @@ const views: Record<string, string> = {
   fundingRate: '20000000000000000', decimals: '6',
   // what the YieldPoolLedger has accrued on the Deployed Balance (nothing deployed now: interest still unpaid)
   accruedInterest: usdc(1.25), deployedBalance: '0',
+  // Holdback Amounts open on redemptions
+  totalHoldback: usdc(12.5),
   cycleLength: '2592000', borrowedFromYield: '0', shortfall: usdc(140.6),
 };
 const held: Record<string, [number, number]> = { [getAddress(A)]: [800, 100], [getAddress(B)]: [400, 0], [getAddress(Cc)]: [200, 0] };
@@ -212,7 +214,7 @@ describe('the yield pool, live', () => {
     // fundingRateAt at 50, 80, 90 and 100%, now (0) and after the next Deployment (10%): the contract's, not a formula here
     expect(m.Y.rateAt).toEqual({ 5000: 387.5, 8000: 500, 9000: 750, 10000: 1000, 0: 200, 1000: 237.5 });
     expect(m.Y.apyAfter).toBeCloseTo(0.002375, 12);
-    expect([m.Y.pending, m.Y.accrued, m.Y.deployed]).toEqual([null, 1.25, 0]);
+    expect([m.Y.pending, m.Y.accrued, m.Y.deployed, m.Y.holdback]).toEqual([null, 1.25, 0, 12.5]);
     expect(m.Y.price).toBeCloseTo(1406 / 1400, 10);
     // every read in one request: the pool's views, the cycle, the payout draw, and each holder's shares and pledge
     expect([...asked].reverse().find((a) => a.some((c) => c.fn === 'totalAssets'))!.length).toBe(12 + 3 * 2);
@@ -292,13 +294,13 @@ describe('the yield pool, live', () => {
   test('a rate read that fails is null, never worked out from a formula', async () => {
     const broken: ChainReader = {
       read: async (calls) => {
-        if (calls.some((c) => ['fundingRateAt', 'accruedInterest', 'pendingRate'].includes(c.fn))) throw new Error('execution reverted');
+        if (calls.some((c) => ['fundingRateAt', 'accruedInterest', 'pendingRate', 'totalHoldback'].includes(c.fn))) throw new Error('execution reverted');
         return reader.read(calls);
       },
     };
     const m: any = await moneySection(db, { ...read(), chain: broken });
     // the Funding Rate itself is the pool's required read; what's missing is null, the rest still read one by one
-    expect(m.Y).toMatchObject({ borrowBps: 200, rateAt: null, apyAfter: null, pending: null, accrued: null, deployed: 0 });
+    expect(m.Y).toMatchObject({ borrowBps: 200, rateAt: null, apyAfter: null, pending: null, accrued: null, deployed: 0, holdback: null });
   });
 
   test('live with no reader says so', async () => {
