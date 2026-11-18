@@ -3,12 +3,14 @@ import { LiquidationHolds } from './liquidationHolds';
 import { Fragment } from 'react';
 import { attrs, css, hasHtml, html } from '../runtime/dom';
 import { run } from '../live/actions';
+import { api } from '../live/api';
 import { REAL } from '../live/env';
 import { CC } from './cc';
 import { LOG, S, vars } from './data';
 import { moneyLive, settleMove } from './moneyLive';
 import { demoTopUps, topUpsParts } from './payoutTopUps';
-import { demoSettlement, PoolTierPrincipal, settlementParts } from './settlementFunding';
+import { PoolTierPrincipal } from './settlementFunding';
+import { demoSettle, settleCard, settleNeed, settleSlim, settleTile } from './settleCard';
 import { keep, registerPage, shadowHost } from './pageHost';
 import { openItem, render as renderShell, toast, vLevel } from './shell';
 
@@ -221,7 +223,7 @@ function makeMoney() {
     ['BB-0001', 2500, '14 Aug', '14 Dec', 54, 4, 6.0, 'Member'], ['BB-0002', 5000, '21 Aug', '21 Jan', 92, 5, 6.5, 'Founding lender'], ['BB-0003', 2500, '2 Sep', '2 Mar', 132, 6, 7.0, 'Member'], ['BB-0004', 2500, '9 Sep', '9 Mar', 139, 6, 7.0, 'Member'], ['BB-0005', 7500, '1 Oct', '1 Jun', 223, 8, 7.5, 'Founding lender'], ['BB-0006', 5000, '15 Oct', '15 Sep', 329, 11, 8.0, 'Member']];
     /* every account, in the order the bar draws them: whose money it is decides the bracket */
     const ACCTS = L ? L.ACCTS : [/* id, name, what it's for, group, source, balance, 7 weeks, colour */
-    ['sav', 'Member savings', 'CLRUSD, backed 1:1 by USDC in the ESA vault', 'members', 'protocol', M.savings, [0, 2100, 6400, 13900, 22800, 31200, M.savings], 'var(--fg)'], ['cash', 'Member cash', 'Spendable at the Bank Partner, through Lithic · the card spends it', 'members', 'lithic', M.memberCash, [0, 1180, 2460, 3520, 4310, 5390, M.memberCash], 'color-mix(in srgb,var(--fg) 72%,transparent)'], ['yld', 'Yield pool', 'Members’ deposits not lent out yet', 'members', 'protocol', Y.cash, [0, 0, 0, 0, 0, 2180, Y.cash], 'color-mix(in srgb,var(--live) 60%,transparent)'], ['pay', 'Payout pool', 'Pays shops for financed sales, deadline first', 'set', 'protocol', M.payout, [0, 1200, 3900, 5200, 7800, 9600, M.payout], 'color-mix(in srgb,var(--fg) 45%,transparent)'], ['ap', 'AssurancePool', 'The co-op’s · Credit Backstop and Member Assurance', 'set', 'protocol', M.assurance, AP_BAL, 'var(--underway)'], ['bv', 'BondVault', 'Bond buyers’ money · paid back at maturity', 'set', 'protocol', M.bv, [10000, 12500, 12500, 12500, 20000, 20000, M.bv], 'color-mix(in srgb,var(--fg) 28%,transparent)'], ['ops', 'Operating cash', 'Business checking · the co-op’s own money', 'coop', 'plaid', M.cash, [16800, 17900, 18600, 19800, 20400, 21100, M.cash], 'var(--land)'], ['trs', 'Clear Treasury Safe', 'USDC on chain · pays the co-op’s interchange share into the AssurancePool', 'coop', 'protocol', M.treasury, [0, 0, 480, 960, 1420, 1780, M.treasury], 'color-mix(in srgb,var(--land) 70%,transparent)'], ['coop', 'Co-op balance', 'Discounts on member purchases, held for a vote', 'coop', 'protocol', M.coop, [0, 22.40, 61.80, 140.20, 249.40, 376.20, M.coop], 'color-mix(in srgb,var(--land) 45%,transparent)'], ['clop', 'CL Operating', 'Safe · Deployments land here; top-ups and fees leave from here', 'cl', 'protocol', M.clOp, [0, 0, 0, 0, 0, 1220.00, M.clOp], 'color-mix(in srgb,var(--land) 60%,var(--fg) 25%)'], ['clset', 'Credit Settlement Account', 'At the Bank Partner · prefunded so card credit swipes settle', 'cl', 'lithic', M.clSettle, [0, 0, 0, 1500, 2000, 2000, M.clSettle], 'color-mix(in srgb,var(--land) 40%,var(--fg) 15%)'], ['cllr', 'CL Loss Reserve', 'Safe · takes credit losses right after the Spread', 'cl', 'protocol', M.lr, [0, 0, 500, 900, 1300, 1600, M.lr], 'color-mix(in srgb,var(--fg) 58%,transparent)'], ['clfee', 'CL Fees wallet', 'CDP · pays the Assurance fee into the pool, once funded', 'cl', 'protocol', 0, [0, 0, 0, 0, 0, 0, 0], 'color-mix(in srgb,var(--underway) 45%,transparent)']];
+    ['sav', 'Member savings', 'CLRUSD, backed 1:1 by USDC in the ESA vault', 'members', 'protocol', M.savings, [0, 2100, 6400, 13900, 22800, 31200, M.savings], 'var(--fg)'], ['cash', 'Member cash', 'Spendable at the Bank Partner, through Lithic · the card spends it', 'members', 'lithic', M.memberCash, [0, 1180, 2460, 3520, 4310, 5390, M.memberCash], 'color-mix(in srgb,var(--fg) 72%,transparent)'], ['yld', 'Yield pool', 'Members’ deposits not lent out yet', 'members', 'protocol', Y.cash, [0, 0, 0, 0, 0, 2180, Y.cash], 'color-mix(in srgb,var(--live) 60%,transparent)'], ['pay', 'Payout pool', 'Pays shops for financed sales, deadline first', 'set', 'protocol', M.payout, [0, 1200, 3900, 5200, 7800, 9600, M.payout], 'color-mix(in srgb,var(--fg) 45%,transparent)'], ['ap', 'AssurancePool', 'The co-op’s · Credit Backstop and Member Assurance', 'set', 'protocol', M.assurance, AP_BAL, 'var(--underway)'], ['bv', 'BondVault', 'Bond buyers’ money · paid back at maturity', 'set', 'protocol', M.bv, [10000, 12500, 12500, 12500, 20000, 20000, M.bv], 'color-mix(in srgb,var(--fg) 28%,transparent)'], ['ops', 'Operating cash', 'Business checking · the co-op’s own money', 'coop', 'plaid', M.cash, [16800, 17900, 18600, 19800, 20400, 21100, M.cash], 'var(--land)'], ['trs', 'Clear Treasury Safe', 'USDC on chain · pays the co-op’s interchange share into the AssurancePool', 'coop', 'protocol', M.treasury, [0, 0, 480, 960, 1420, 1780, M.treasury], 'color-mix(in srgb,var(--land) 70%,transparent)'], ['coop', 'Co-op balance', 'Discounts on member purchases, held for a vote', 'coop', 'protocol', M.coop, [0, 22.40, 61.80, 140.20, 249.40, 376.20, M.coop], 'color-mix(in srgb,var(--land) 45%,transparent)'], ['clop', 'CL Operating', 'Safe · Deployments land here; top-ups and fees leave from here', 'cl', 'protocol', M.clOp, [0, 0, 0, 0, 0, 1220.00, M.clOp], 'color-mix(in srgb,var(--land) 60%,var(--fg) 25%)'], ['clset', 'Credit Settlement Account', 'At the Bank Partner · funded before each daily card cut-off', 'cl', 'lithic', M.clSettle, [0, 0, 0, 1500, 2000, 2000, M.clSettle], 'color-mix(in srgb,var(--land) 40%,var(--fg) 15%)'], ['cllr', 'CL Loss Reserve', 'Safe · takes credit losses right after the Spread', 'cl', 'protocol', M.lr, [0, 0, 500, 900, 1300, 1600, M.lr], 'color-mix(in srgb,var(--fg) 58%,transparent)'], ['clfee', 'CL Fees wallet', 'CDP · pays the Assurance fee into the pool, once funded', 'cl', 'protocol', 0, [0, 0, 0, 0, 0, 0, 0], 'color-mix(in srgb,var(--underway) 45%,transparent)']];
     const GROUPS = {
       members: ['Members’ money', 'Owed back to members on request'],
       set: ['Set aside', 'Only for shops, losses and bondholders'],
@@ -465,6 +467,60 @@ function makeMoney() {
       ok: 'kai',
       tx: '0x91b4…5c0e'
     }];
+    /* card settlement (decision 54): live, the funding desk's last check with the API's verdict; the demo, the reference's
+       "now" (Wed 21 Oct 16:04) in its Covered state */
+    const SF_NOW = () => L ? Date.now() : new Date(2026, 9, 21, 16, 4).getTime();
+    const SETL = () => L ? vars.settlementFunding ?? null : demoSettle(SF_NOW(), 'covered');
+    const SH = () => ({
+      cell,
+      lbl,
+      can: CAN()
+    });
+    const SETTLE_KINDS = {
+      csabook: {
+        t: 'Book repayments to the settlement account',
+        from: 'col',
+        to: 'csa',
+        card: 'settlement-book',
+        amt: () => {
+          const S = SETL(),
+            V = S?.verdict;
+          return V ? Math.min(S.netting.collection ?? 0, Math.max(V.gapBuffer, 0) || S.netting.collection || 0) : 0;
+        },
+        why: 'Members’ repayments already at the bank cover the next card cut-off. A book transfer between Clear Lending’s two accounts at the Bank Partner: instant, and it can run until 15 minutes before the cut-off.'
+      },
+      csadeploy: {
+        t: 'Fund the card settlement from the pool',
+        from: 'yld',
+        to: 'csa',
+        card: 'settlement-deploy',
+        amt: () => {
+          const S = SETL(),
+            V = S?.verdict;
+          return V ? Math.min(V.gapBuffer, Math.max(0, S.lane.poolRoom - V.willMove.lane)) : 0;
+        },
+        why: 'More than the settlement lane allows this week. Two Deployment signers send it from the pool to CL Operating, and the off-ramp takes it to the settlement account. It must leave by the fund-by time to arrive before the cut-off.'
+      },
+      csamargin: {
+        t: 'Advance the Savings-Backed Margin',
+        from: 'sbm',
+        to: 'csa',
+        card: 'settlement-margin',
+        amt: () => {
+          const V = SETL()?.verdict;
+          return V ? V.gapDue || V.gapBuffer : 0;
+        },
+        why: 'Last resort for this cut-off. The Margin settles the swipes until Settlement Funding or members’ repayments replace it, within two business days (L-01 8.4).'
+      },
+      csarestart: {
+        t: 'Restart the settlement funding desk',
+        from: 'yld',
+        to: 'lane',
+        card: 'settlement-restart',
+        amt: () => 0,
+        why: 'A stop takes one person; a restart takes two. It clears the desk’s halt, and when the lane is stopped on chain both Deployment signers send setSettlementFunder. Clear the cause first.'
+      }
+    };
     /* what someone can propose */
     // live, a top-up is the only move the API can propose (money/top: the Ops Safe funds the PayoutPool)
     const KINDS = L ? {
@@ -474,8 +530,10 @@ function makeMoney() {
         to: 'pay',
         amt: () => M.short,
         why: ''
-      }
+      },
+      ...SETTLE_KINDS
     } : {
+      ...SETTLE_KINDS,
       topup: {
         t: 'Deploy to Clear Lending',
         from: 'yld',
@@ -509,6 +567,10 @@ function makeMoney() {
       ...(L ? {
         safe: 'The Ops Safe'
       } : {}),
+      col: 'Collection Account',
+      csa: 'Credit Settlement Account',
+      sbm: 'Savings-Backed Margin',
+      lane: 'The settlement lane',
       ops: 'Operating cash',
       pay: 'Payout pool',
       bv: 'BondVault',
@@ -579,7 +641,13 @@ function makeMoney() {
         cov = M.cover ?? 0,
         bk = lrv + cov || 1;
       const backstop = <div className="sc" data-npool="ap" data-ntab="pools"><span className="lbl">Credit backstop</span><div className="sc-v">{money(cov).replace(/\.\d+$/, '')}<small>available</small></div><div className="mb"><i style={css(`width:${lrv / bk * 100}%;background:var(--fg)`)} /><i style={css(`left:${lrv / bk * 100}%;width:${cov / bk * 100}%;background:var(--underway)`)} /></div><div className="sc-s">{M.lr != null ? <>{"Behind Clear Lending’s "}{money0(lrv)}{" reserve"}</> : 'Clear Lending’s reserve isn’t read yet'}</div></div>;
-      html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{L ? `Money · ${WD(0)} ${dayD(0)}` : 'Money · Wed 21 Oct · Demo data'}</span><p className="brief">{B}</p><div className="strip">{!L || M.cover != null ? backstop : apStrip()}<div className="sc"><span className="lbl">Member savings</span><div className="sc-v">{money(M.savings).replace(/\.\d+$/, '')}<small className="ct">{money(M.savings).match(/\.\d+$/)[0]}</small></div><div className="mb"><i style={css("width:100%")} /></div><div className="sc-s">{L ? L.reserve ? `Reserved ${L.reserve.ratio} · checked ${L.reserve.checked}` : 'The reserve isn’t read yet' : 'Reserved 1 : 1 · checked 2 min ago'}</div></div>{L && !L.flowsReal ? <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · the schedule isn’t recorded</div></div> : L ? <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">{money(OUT30).replace(/\.\d+$/, '')}<small>out</small></div><div className="mb"><i style={css(`width:${OUT30 ? Math.min(100, IN30 / OUT30 * 100) : 0}%;background:var(--land)`)} /></div><div className="sc-s">{money(IN30)}{" in · "}{M.short ? `${money(M.short)} short in 14 days` : 'nothing short'}</div></div> : <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">{money(13980.05).replace(/\.\d+$/, '')}<small>out</small></div><div className="mb"><i style={css(`width:${7632.61 / 13980.05 * 100}%;background:var(--land)`)} /></div><div className="sc-s">{money(7632.61)}{" in · top-up included"}</div></div>}<div className="sc"><span className="lbl">Moves</span><div className="sc-v">{w.length}{" "}<small>waiting</small></div><div className="mb">{w.map((m, i) => <i key={i} style={css(`left:${i / Math.max(3, w.length) * 100}%;width:calc(${100 / Math.max(3, w.length)}% - 2px);background:${forMe().includes(m) ? 'var(--underway)' : m.st === 'merchants' ? 'var(--live)' : 'color-mix(in srgb,var(--fg) 40%,transparent)'}`)} />)}</div><div className="sc-s">{mine.length ? `${mine.length} for you` : 'None for you'}{w.some(m => m.st === 'merchants') ? ` · ${w.filter(m => m.st === 'merchants').length} shop payout` : ''}</div></div></div></>);
+      html(document.getElementById('hdr'), <><span className="when"><span className="dot" />{L ? `Money · ${WD(0)} ${dayD(0)}` : 'Money · Wed 21 Oct · Demo data'}</span><p className="brief">{B}</p><div className="strip s5">{!L || M.cover != null ? backstop : apStrip()}<div className="sc"><span className="lbl">Member savings</span><div className="sc-v">{money(M.savings).replace(/\.\d+$/, '')}<small className="ct">{money(M.savings).match(/\.\d+$/)[0]}</small></div><div className="mb"><i style={css("width:100%")} /></div><div className="sc-s">{L ? L.reserve ? `Reserved ${L.reserve.ratio} · checked ${L.reserve.checked}` : 'The reserve isn’t read yet' : 'Reserved 1 : 1 · checked 2 min ago'}</div></div>{L && !L.flowsReal ? <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">—</div><div className="mb hatch" /><div className="sc-s">Not real yet · the schedule isn’t recorded</div></div> : L ? <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">{money(OUT30).replace(/\.\d+$/, '')}<small>out</small></div><div className="mb"><i style={css(`width:${OUT30 ? Math.min(100, IN30 / OUT30 * 100) : 0}%;background:var(--land)`)} /></div><div className="sc-s">{money(IN30)}{" in · "}{M.short ? `${money(M.short)} short in 14 days` : 'nothing short'}</div></div> : <div className="sc"><span className="lbl">Next 30 days</span><div className="sc-v">{money(13980.05).replace(/\.\d+$/, '')}<small>out</small></div><div className="mb"><i style={css(`width:${7632.61 / 13980.05 * 100}%;background:var(--land)`)} /></div><div className="sc-s">{money(7632.61)}{" in · top-up included"}</div></div>}{settleTile(SETL(), {
+        cls: 'sc sc-sf',
+        attrs: {
+          'data-ntab': 'overview',
+          'data-njump': 'nsettle'
+        }
+      })}<div className="sc"><span className="lbl">Moves</span><div className="sc-v">{w.length}{" "}<small>waiting</small></div><div className="mb">{w.map((m, i) => <i key={i} style={css(`left:${i / Math.max(3, w.length) * 100}%;width:calc(${100 / Math.max(3, w.length)}% - 2px);background:${forMe().includes(m) ? 'var(--underway)' : m.st === 'merchants' ? 'var(--live)' : 'color-mix(in srgb,var(--fg) 40%,transparent)'}`)} />)}</div><div className="sc-s">{mine.length ? `${mine.length} for you` : 'None for you'}{w.some(m => m.st === 'merchants') ? ` · ${w.filter(m => m.st === 'merchants').length} shop payout` : ''}</div></div></div></>);
     }
 
     /* ══ Overview: is everything covered? ══════════════════════════════════════════════ */
@@ -742,6 +810,11 @@ function makeMoney() {
       return <div className="nrw"><div className="nrw-p"><svg viewBox={`0 0 ${W} ${h}`} preserveAspectRatio="none" aria-hidden="true"><defs><pattern id="nhu" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="7" className="hxu" /></pattern></defs>{grid.map((v, __k) => <line key={__k} x1="0" x2={W} y1={y(v)} y2={y(v)} className="grid" />)}<path d={area} className="ar" />{L && neg < 0 ? '' : <rect x={x(g0)} y={z} width={x(g1) - x(g0)} height={y(lo) - z} className="gap" />}<line x1="0" x2={W} y1={z} y2={z} className="zero" /><path d={line} className="ln" /></svg>{(L ? [[mx, kfmt(mx)], [mx / 2, kfmt(mx / 2)], [0, '$0']] : [[10000, '$10k'], [5000, '$5k'], [0, '$0']]).map(([v, t], __k) => <span key={__k} className="nrw-y" style={css(`top:${pc(v)}`)}>{t}</span>)}{L && neg < 0 ? '' : <span className="nrw-c" style={css(`left:${(x(g0) + x(g1)) / 2 / W * 100}%;top:calc(${pc(lo)} + 8px)`)}><b>{"Borrows "}{money(-lo)}</b><span>{dayD(g0)}{" → "}{dayD(g1)}, from the yield pool</span></span>}<span className="nrw-e" style={css(`top:${pc(b)}`)}><b>{money(b)}</b></span></div><div className="nrw-x"><div className="nrw-m">{marks}</div>{[0, 7, 14, 21, 28].map((d, __k) => <span key={__k} style={css(`left:${d / 30 * 100}%`)}>{dayD(d)}</span>)}</div></div>;
     }
     /* live, what else needs someone: the bank feed when it's behind or hasn't read yet, and the next bond to mature */
+    /** Needs you's card settlement row: none when it's Covered; when the desk has it, no button to fund. */
+    function settleRow() {
+      const n = settleNeed(SETL(), SF_NOW());
+      return n ? [[n.sev, n.title, n.meta, n.age, <><span className="who">{n.owner}</span><button className="lnk" data-ntab="overview" data-njump="nsettle">{n.action}</button></>]] : [];
+    }
     function liveNeeds() {
       const out = [],
         [, age, late] = SRC.plaid,
@@ -762,14 +835,17 @@ function makeMoney() {
       const run = L && !L.flowsReal ? notReal('s8', 'The payout pool, next 30 days', NEED_FLOWS) : cell('s8', 'The payout pool, next 30 days', <span className="lbl">Projected from the schedule</span>, <div className="nrun"><div className="nrun-h"><div className="m-big">{L ? money(M.payout + IN30 - OUT30) : money(3892.56)}{" "}<small>{L ? `left on ${dayD(30)}${FLOWS.some((f, i) => M.payout + FLOWS.slice(0, i + 1).reduce((a, g) => a + (g[1] === 'in' ? g[2] : -g[2]), 0) < 0) ? ', once Clear Lending funds what’s due' : ''}` : 'left on 20 Nov · Clear Lending funds each charge before it’s due'}</small></div></div>{runwayChart()}<div className="f-key nrun-k"><span><i style={css("background:var(--land)")} />Repayments and top-ups</span><span><i style={css("background:var(--fg)")} />Payouts to shops</span>{L ? <span><i className="hatch" />Funding Clear Lending owes</span> : ''}<span><i style={css("background:color-mix(in srgb,var(--fg) 12%,transparent);box-shadow:inset 0 0 0 1px var(--fg-50)")} />In the pool</span></div></div>, <><span>{money(L ? OUT30 : 13980.05)}{" out · "}{money(L ? IN30 : 7632.61)}{" in"}</span><button data-ntab="cash">Cash flow →</button></>);
       const w = pend(),
         mine = forMe();
-      const NEED = L ? [...mine.map((m, __k) => ['underway', `Approve: ${m.t}`, `${money(m.amt)} · ${firstN(m.by)} proposed ${rel(m.d)}${m.due != null ? ' · due ' + dayD(m.due) : ''}`, rel(m.d) === 'today' ? 'Today' : WD(m.d), <><span className="who">Needs you</span><button className="lnk" data-nopen={m.id}>Review →</button></>]), ...w.filter(m => m.st === 'waiting' && m.by === N.me).map((m, __k) => ['line', m.t, `${money(m.amt)} · you proposed ${rel(m.d)}`, WD(m.d), <><span className="who">{"Waiting on "}{waitOn(m)}</span><button className="lnk" data-ntab="moves">Moves →</button></>]), ...w.filter(m => m.st === 'merchants').map((m, __k) => ['live', m.t, `${money(m.amt)} · ${firstN(m.by)} proposed · goes ${rel(m.due)}`, 'Tomorrow', <><span className="who">Needs a second person</span><button className="lnk" data-nrosa="">Review →</button></>]), ...(L ? liveNeeds() : [['absent', 'Operating cash is 3 hours old', 'Plaid last synced at 08:12 · the bank feed is behind', '3 h', <><span className="who none">Not synced</span><button className="lnk" data-nsync="">Sync now →</button></>], ['line', 'The first bond matures 14 Dec', `BB-0001 · ${money(2500)} · paid from what BondVault keeps back`, '54 d', <button className="lnk" data-npool="bonds">Bonds →</button>]])] : [...mine.map((m, __k) => ['underway', `Approve: ${m.t}`, `${money(m.amt)} · ${firstN(m.by)} proposed ${rel(m.d)}${m.due != null ? ' · due ' + dayD(m.due) : ''}`, rel(m.d) === 'today' ? 'Today' : WD(m.d), <><span className="who">Needs you</span><button className="lnk" data-nopen={m.id}>Review →</button></>]), ...w.filter(m => m.st === 'waiting' && m.by === N.me).map((m, __k) => ['line', m.t, `${money(m.amt)} · you proposed ${rel(m.d)}`, WD(m.d), <><span className="who">{"Waiting on "}{firstN(m.wait || 'dana')}</span><button className="lnk" data-ntab="moves">Moves →</button></>]), ...w.filter(m => m.st === 'merchants').map((m, __k) => ['live', m.t, `${money(m.amt)} · ${firstN(m.by)} proposed · goes ${rel(m.due)}`, 'Tomorrow', <><span className="who">Needs a second person</span><button className="lnk" data-nrosa="">Review →</button></>]), ...(M.standShort && TU.op < TU.refill() ? [['underway', 'Top-up waits on CL Operating', `It needs ${money(TU.refill())}, CL Operating holds ${money(TU.op)} · the keeper is Amber, nothing is late`, '6 min', <><span className="who">Clear Lending</span><button className="lnk" data-npool="pay" data-ntab="pools">Payout pool →</button></>]] : []), ...AFD.items.filter(it => it.st === 0).map((it, __k) => ['underway', `Fund ${it.month.split(' ')[0]}’s Assurance fee`, `${money(it.amt)} · CL Operating to the CL Fees wallet · Clear Lending’s two signers sign`, '20 d', <><span className="who">Needs you</span><button className="lnk" data-npool="ap" data-ntab="pools">AssurancePool →</button></>]), ['absent', 'Operating cash is 3 hours old', 'Plaid last synced at 08:12 · the bank feed is behind', '3 h', <><span className="who none">Not synced</span><button className="lnk" data-nsync="">Sync now →</button></>], ['line', 'The first bond matures 14 Dec', `BB-0001 · ${money(2500)} · paid from BondVault’s Redemption Reserve`, '54 d', <button className="lnk" data-npool="bonds">Bonds →</button>]];
+      const NEED = L ? [...settleRow(), ...mine.map((m, __k) => ['underway', `Approve: ${m.t}`, `${money(m.amt)} · ${firstN(m.by)} proposed ${rel(m.d)}${m.due != null ? ' · due ' + dayD(m.due) : ''}`, rel(m.d) === 'today' ? 'Today' : WD(m.d), <><span className="who">Needs you</span><button className="lnk" data-nopen={m.id}>Review →</button></>]), ...w.filter(m => m.st === 'waiting' && m.by === N.me).map((m, __k) => ['line', m.t, `${money(m.amt)} · you proposed ${rel(m.d)}`, WD(m.d), <><span className="who">{"Waiting on "}{waitOn(m)}</span><button className="lnk" data-ntab="moves">Moves →</button></>]), ...w.filter(m => m.st === 'merchants').map((m, __k) => ['live', m.t, `${money(m.amt)} · ${firstN(m.by)} proposed · goes ${rel(m.due)}`, 'Tomorrow', <><span className="who">Needs a second person</span><button className="lnk" data-nrosa="">Review →</button></>]), ...(L ? liveNeeds() : [['absent', 'Operating cash is 3 hours old', 'Plaid last synced at 08:12 · the bank feed is behind', '3 h', <><span className="who none">Not synced</span><button className="lnk" data-nsync="">Sync now →</button></>], ['line', 'The first bond matures 14 Dec', `BB-0001 · ${money(2500)} · paid from what BondVault keeps back`, '54 d', <button className="lnk" data-npool="bonds">Bonds →</button>]])] : [...settleRow(), ...mine.map((m, __k) => ['underway', `Approve: ${m.t}`, `${money(m.amt)} · ${firstN(m.by)} proposed ${rel(m.d)}${m.due != null ? ' · due ' + dayD(m.due) : ''}`, rel(m.d) === 'today' ? 'Today' : WD(m.d), <><span className="who">Needs you</span><button className="lnk" data-nopen={m.id}>Review →</button></>]), ...w.filter(m => m.st === 'waiting' && m.by === N.me).map((m, __k) => ['line', m.t, `${money(m.amt)} · you proposed ${rel(m.d)}`, WD(m.d), <><span className="who">{"Waiting on "}{firstN(m.wait || 'dana')}</span><button className="lnk" data-ntab="moves">Moves →</button></>]), ...w.filter(m => m.st === 'merchants').map((m, __k) => ['live', m.t, `${money(m.amt)} · ${firstN(m.by)} proposed · goes ${rel(m.due)}`, 'Tomorrow', <><span className="who">Needs a second person</span><button className="lnk" data-nrosa="">Review →</button></>]), ...(M.standShort && TU.op < TU.refill() ? [['underway', 'Top-up waits on CL Operating', `It needs ${money(TU.refill())}, CL Operating holds ${money(TU.op)} · the keeper is Amber, nothing is late`, '6 min', <><span className="who">Clear Lending</span><button className="lnk" data-npool="pay" data-ntab="pools">Payout pool →</button></>]] : []), ...AFD.items.filter(it => it.st === 0).map((it, __k) => ['underway', `Fund ${it.month.split(' ')[0]}’s Assurance fee`, `${money(it.amt)} · CL Operating to the CL Fees wallet · Clear Lending’s two signers sign`, '20 d', <><span className="who">Needs you</span><button className="lnk" data-npool="ap" data-ntab="pools">AssurancePool →</button></>]), ['absent', 'Operating cash is 3 hours old', 'Plaid last synced at 08:12 · the bank feed is behind', '3 h', <><span className="who none">Not synced</span><button className="lnk" data-nsync="">Sync now →</button></>], ['line', 'The first bond matures 14 Dec', `BB-0001 · ${money(2500)} · paid from BondVault’s Redemption Reserve`, '54 d', <button className="lnk" data-npool="bonds">Bonds →</button>]];
       const need = cell('s4', 'Needs you', <span className="lbl">{NEED.length}{NEED.length === 1 ? ' thing' : " things"}</span>, <div className="al">{L && !NEED.length ? <p className="nmv-e">Nothing needs you.</p> : ''}{NEED.map(([sv, t, m, age, own], __k) => <div key={__k} className="alr"><div className="al-m"><div className="al-t"><i className="sv" style={css(`background:${{
                 underway: 'var(--underway)',
                 live: 'var(--live)',
                 absent: 'var(--absent)',
                 line: 'var(--line)'
               }[sv]}`)} /><b>{t}</b><span className="age">{age}</span></div><span className="m">{m}</span></div><div className={`own ${sv === 'absent' ? 'none' : ''}`}>{own}</div></div>)}</div>, <><span>Every move needs two people</span><button data-ntab="moves">All moves →</button></>);
-      html(document.getElementById('nv'), <>{band(<>{claimsCell()}{gateCell()}</>, 1)}{band(<>{run}{need}</>)}{band(holdingsCell())}</>);
+      // card settlement leads (decision 54): will the swipes settle at the next cut-off, and what to press if not
+      const SC = SETL(),
+        settle = SC ? settleCard(SC, SH(), SF_NOW()) : notReal('s12', 'Next card settlement', 'Needs the settlement funding desk (SETTLEMENT_FUNDING_ENABLED) to have checked: the next cut-off, what’s due, the settlement account and what the desk can move.', 'nsettle');
+      html(document.getElementById('nv'), <>{band(settle, 1)}{band(<>{claimsCell()}{gateCell()}</>)}{band(<>{run}{need}</>)}{band(holdingsCell())}</>);
     }
     /* BondVault keeps back what's due to bondholders within 90 days, or 30% of all owed, whichever is more; the Safe can take the rest */
     /* the bonds that mature in the next 90 days, soonest first */
@@ -1314,9 +1390,9 @@ function makeMoney() {
       const V = lossVerdict();
       const flow = cell('s12', 'How the pool’s money moves', <span className="lbl">Lending order</span>, <><div className="ny-dg">{node('Holders', money(Y.principal), `${Y.depositors} members put in`)}{link('Subscribe', 'Redeem')}{node('Yield pool', money(Y.assets), `Share Value $${Y.price.toFixed(4)}`, 'me')}{link('Deploy · two signers', 'Return · interest, then principal')}{node('Clear Lending', money(Y.lent), 'Borrowed · owed back')}{link('Lend as credit', 'Repay')}{node('Members', money(M.unsecured), 'Owe on unsecured credit')}</div><div className="ny-ls"><span className="ny-lx">If a member doesn’t repay</span><span>{"Clear Lending takes the loss first: its Spread, Loss Reserve and capital, then the co-op’s backstop, "}{V.partial ? 'at least ' : ''}<b>{money(V.ahead)}</b>{" in all. The pool is last."}</span><button className="lnk" data-ntab="pools" data-npool="yield" data-njump="loss">Loss order ↓</button></div></>, <><span>The pool and the bonds are the funding base · they lend only to Clear Lending, never to housing</span><span /></>);
       // card settlement funding (decision 54): what the funding desk last saw and did, and the Pool Tier principal beside it
-      const SF = L ? vars.settlementFunding : demoSettlement(Date.now());
-      const sf = SF ? cell('s7', 'Card settlement funding', ...settlementParts(SF, money)) : notReal('s7', 'Card settlement funding', 'Needs the settlement funding desk (SETTLEMENT_FUNDING_ENABLED) to have checked: the next cut-off and what’s due, the Credit Settlement Account, the funder limit and each move it made.');
-      const settle = band(<>{sf}<PoolTierPrincipal demo={!L} money={money} /></>);
+      const SF = SETL();
+      const sf = SF ? settleSlim(SF, SH()) : notReal('s12', 'Card settlement', 'Needs the settlement funding desk (SETTLEMENT_FUNDING_ENABLED) to have checked.');
+      const settle = <>{band(sf)}{band(<PoolTierPrincipal demo={!L} money={money} cls="s12" />)}</>;
       /* one card: what holders put in, what the pool holds, and how that moves over 30 days, as a chart with its events beneath */
       const D = P.days,
         top = Math.max(500, Math.ceil(Math.max(L ? Y.principal : 0, ...D.map(d => d.cash + d.dep + d.owed)) * 1.16 / 500) * 500),
@@ -1377,7 +1453,7 @@ function makeMoney() {
       const bar = segs => <div className="wp-bar">{segs.filter(x => x.v > 0).map((x, __k) => <i key={__k} style={css(`width:${Wp(x.v)};background:${x.c}`)} title={`${x.k} · ${money(x.v)}`} />)}</div>;
       const legend = segs => <div className="wp-lg">{segs.map((x, __k) => <div key={__k}><i style={css(`background:${x.c}`)} /><span><b>{x.k}</b><em>{x.sub}</em></span><strong>{money(x.v)}</strong></div>)}</div>;
       const pay = L && !MP ? notReal('s12', 'Where member payments go', 'Needs the credit issuers’ tiers: each one’s carry and what’s drawn in it.') : cell('s12', 'Where member payments go', <span className="lbl">{L ? `One cycle · ${MP.c.length ? 'the issuers’ rates at today’s balances' : 'nothing drawn yet'}` : 'One month · the deployed rate schedule · demo balances'}</span>, <><div className="wp"><div className="wp-col"><div className="wp-h"><span>Comes in to Clear Lending</span><b>{money(MP.inc)}</b></div>{bar(inSeg)}{legend(inSeg)}</div><div className="wp-mid" aria-hidden="true"><svg viewBox="0 0 12 20"><path d="M2 2l8 8-8 8" /></svg></div><div className="wp-col"><div className="wp-h"><span>Goes out</span><b>{money(MP.inc)}</b></div>{bar(outSeg)}{legend(outSeg)}<p className="wp-n">{"Holders get "}{L && !MP.inc ? '—' : pct(MP.pool, MP.inc, 0)}{" of it. They don’t share in carry or fees: Clear Lending keeps the Spread and takes every loss before the pool does. Charged off this month: "}{money(MP.losses)}.</p></div></div><div className="wp-af"><span className="wp-afh">Then the Spread</span>{[['1', 'Bills and reserves first', 'Expenses, bonds due, pool interest, reserves, the Assurance fee · L-01 9.2'], ['2', 'Kept as capital', 'More member and merchant lending, and the fourth loss layer'], ['3', 'Or paid to Holdings', 'Only if reserves, coverage and licences pass · L-01 12.2'], ['4', 'Split by shares', 'The co-op’s Class A and investors’ Class B alike · Holdings funds Clear Building Co. for homes']].map(([n, k, t], i) => <div key={i} className="wp-as"><b><i>{n}</i>{k}</b><span>{t}</span></div>)}</div></>, <><span>Many members pay in full and owe no carry · savings-backed lines carry none</span><button data-npool="ap" data-ntab="pools">Loss order →</button></>);
-      return <>{band(flow)}{band(pay)}{band(proj)}{band(<>{a}{b}</>)}{settle}{band(tbl)}</>;
+      return <>{band(flow)}{band(pay)}{band(proj)}{settle}{band(<>{a}{b}</>)}{band(tbl)}</>;
     }
     function poolBonds() {
       // live, the ten months from this one, each bond by when it matures
@@ -1455,7 +1531,7 @@ function makeMoney() {
       return {
         cash: [lithic, ['Held for', 'Members, in their own names'], ['Held by', 'The Bank Partner · Clear Financial services it'], ['Never funds', 'Card credit · I-02 4.9(b)']],
         clop: [['Owned by', 'Clear Lending Co. · through the Clear Lending Safe'], ['Address', at(C.clop)], ['Comes in', 'Yield Pool Deployments, BondVault excess'], ['Goes out', 'Payout top-ups, Assurance fee funding, card settlement funding']],
-        clset: [lithic, ['Owned by', 'Clear Lending Co. · Clear Financial runs it as servicer'], ['Pays', 'The credit part of each card swipe']],
+        clset: [lithic, ['Owned by', 'Clear Lending Co. · Clear Financial runs it as servicer'], ['Funded to', SETL()?.verdict ? `${money(SETL().verdict.target)} · what is due at the next cut-off plus the buffer` : 'What is due at the next cut-off plus the buffer'], ['Pays', 'The credit part of each card swipe']],
         cllr: [['Owned by', 'Clear Lending Co. · its own Safe'], ['Address', C.cllr ? `${at(C.cllr)}${C.cllrFrom === 'config' ? ' · the rollout’s; the pool names it after its Assurance batch runs' : ''}` : 'Not set'], ['Takes losses', 'After the month’s Spread, before the Credit Backstop'], ['Receives', 'Backstop draws, once two signers release them']],
         clfee: [['Address', at(C.clfee)], ['Holds', 'Only what CL Operating sends it to pay'], ['Pays', 'Credit Enhancement Fees and recoveries into the Credit Backstop'], ['Between payments', 'Empty, by design']]
       };
@@ -1484,7 +1560,7 @@ function makeMoney() {
         bv: [['Owed to bondholders', money(M.bonds) + ' · 6 bonds'], ['Kept back', money(Math.min(M.bv || 0, BV_NEED())) + ' of ' + money(BV_NEED())], ['Excess Clear Lending can withdraw', money(Math.max(0, (M.bv || 0) - BV_NEED()))], ['First maturity', '14 Dec · BB-0001 · ' + money(2500)], ['Moves by', 'Two treasury signers, through the Collateral Agent']],
         cash: [['Held for', `${M.members} members · in their own names`], ['Held by', 'The Bank Partner · Clear Financial services it'], ['Never funds', 'Card credit · I-02 4.9(b)'], ['Reconciled', 'Hourly, against Lithic’s ledger']],
         clop: [['Owned by', 'Clear Lending Co. · through the Clear Lending Safe'], ['Address', '0xfAFf…df65'], ['Comes in', 'Yield Pool Deployments, BondVault excess'], ['Goes out', 'Payout top-ups (bot, $5,000 a week), Assurance fee funding']],
-        clset: [['Owned by', 'Clear Lending Co. · Clear Financial runs it as servicer'], ['Kept at least', `${money(M.clSettlePeak)} · the peak day forecast`], ['Pays', 'The credit part of each card swipe'], ['If it runs short', 'Card credit is declined, and Clear Lending is told that day'], ['Testnet', 'Lithic sandbox has no funded float yet']],
+        clset: [['Owned by', 'Clear Lending Co. · Clear Financial runs it as servicer'], ['Funded to', SETL()?.verdict ? `${money(SETL().verdict.target)} · what is due at the next cut-off plus the buffer` : 'What is due at the next cut-off plus the buffer'], ['Pays', 'The credit part of each card swipe'], ['If it runs short', 'Card credit is declined, and Clear Lending is told that day'], ['Testnet', 'Lithic sandbox has no funded float yet']],
         cllr: [['Owned by', 'Clear Lending Co. · its own Safe'], ['Address', '0xb425…'], ['Takes losses', 'After the month’s Spread, before the Credit Backstop'], ['Receives', 'Backstop draws, once two signers release them']],
         clfee: [['Address', '0xB9ed…cDFd'], ['Holds', 'Only what CL Operating sends it to pay'], ['Pays', 'Credit Enhancement Fees and recoveries into the Credit Backstop'], ['Between payments', 'Empty, by design']],
         trs: [['Address', '0x52e6…cf50'], ['Signers', 'Two · Clear and Clear Financial'], ['Pays', '25% of card interchange into the AssurancePool, monthly'], ['On testnet', 'Also plays the Ops, board and Clear Financial Safes']],
@@ -1514,6 +1590,11 @@ function makeMoney() {
       return <><div className="pn-hd"><span className="lbl">{GROUPS[g][0]}</span><span className={`nsrc ${SRC[src][2] || ''}`}><i />{srcTxt(src)}</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><div><p className="npn-t">{n}</p><p className="npn-s">{why}</p></div><div><div className="m-big">{L && acctOf(id)[9] ? '—' : money(bal)}</div><svg className="npn-ch" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d={`M${pts} L100,40 L0,40 Z`} className="ar" style={css(`fill:color-mix(in srgb,${col} 18%,transparent)`)} /><path d={`M${pts}`} className="ln" style={css(`stroke:${col}`)} /></svg><div className="npn-ax"><span>{L ? acctOf(id)[8] > 1 ? dayD(-7 * (wk.length - 1)) : 'Now' : NW[0]}</span><span>{L ? 'Now' : NW[NW.length - 1]}</span></div></div><div>{lbl('Facts')}<div className="led">{facts.map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>{id === 'coop' && L && L.OFFERS && CAN() ? offersCapForm() : ''}</div><div className="pn-ft">{!act ? <span className="small quiet">{g === 'cl' ? 'Clear Lending’s account · its signers move it' : 'Read-only here'}</span> : CAN() || !/propose/.test(act) ? act : <span className="small quiet">Read-only for you</span>}</div></>;
     }
     function proposePanel(P) {
+      if (KINDS[P.kind]?.card) {
+        const K = KINDS[P.kind],
+          amt = P.amt ?? K.amt();
+        return <><div className="pn-hd"><span className="lbl">Card settlement</span><button className="x" data-nclose="" aria-label="Close">{ICO.x}</button></div><div className="pn-b"><p className="npn-t">{K.t}</p><div className="led"><div><span>From</span><b>{PLACES[K.from]}</b></div><div><span>To</span><b>{PLACES[K.to]}</b></div></div>{P.kind === 'csarestart' ? '' : <div className="npf"><label>{lbl('Amount')}<input id="namt" className="vin" inputMode="decimal" defaultValue={amt ? amt.toFixed(2) : ''} placeholder="0.00" /></label></div>}<p className="npn-n">{K.why}</p><p className="npn-n"><b>Two people.</b>{" You propose it; someone else with Approve in Money approves it. Nothing moves until they do."}</p></div><div className="pn-ft"><button className="btn" data-nclose="">Cancel</button><button className="btn p" data-nsubmit="">Propose it</button></div></>;
+      }
       if (L) {
         // live: a top-up the Ops Safe funds; anyone else with Approve in Money is the second person
         const amt = P.amt ?? KINDS.topup.amt();
@@ -1748,12 +1829,68 @@ function makeMoney() {
         };
         return render();
       }
+      if (d.nsf) {
+        if (!CAN()) return toast(L ? 'Moving money for the card settlement takes Propose in Money' : 'Only Clear Lending signers can move money for the settlement');
+        if (d.nsf === 'run') {
+          if (!L) return toast('Checked just now · nothing to move');
+          return api('POST', '/settlement-funding/run').then(r => {
+            toast(`Desk ran · ${r.tick}`);
+            window.dispatchEvent(new Event('command:changed'));
+          }, e => toast(e.message));
+        }
+        if (d.nsf === 'stop') {
+          const why = window.prompt('Why stop the desk? It shows on the card until two people restart it.');
+          if (!why) return;
+          if (!L) return toast('Desk stopped · nothing moves on its own until two people restart it');
+          return api('POST', '/settlement-funding/stop', {
+            why
+          }).then(r => {
+            saveJson({
+              version: '1.0',
+              chainId: String(r.chainId),
+              createdAt: Date.now(),
+              meta: {
+                name: 'Stop the settlement funding lane',
+                description: 'stopSettlementFunder(): send it from your own wallet. The desk is already halted.'
+              },
+              transactions: [r.call]
+            }, 'stop-settlement-funder.json');
+            toast('Desk stopped · send stopSettlementFunder from your wallet');
+            window.dispatchEvent(new Event('command:changed'));
+          }, e => toast(e.message));
+        }
+        N.panel = {
+          propose: true,
+          kind: {
+            book: 'csabook',
+            deploy: 'csadeploy',
+            margin: 'csamargin',
+            restart: 'csarestart'
+          }[d.nsf]
+        };
+        return render();
+      }
       if (d.nkind) {
         const P = N.panel;
         P.kind = d.nkind;
         P.amt = null;
         P.why = null;
         return render();
+      }
+      if (d.nsubmit !== undefined && KINDS[N.panel?.kind]?.card) {
+        const K = KINDS[N.panel.kind],
+          restart = N.panel.kind === 'csarestart';
+        const amt = restart ? 0 : parseFloat((document.getElementById('namt').value || '').replace(/[^0-9.]/g, '')) || 0;
+        if (!restart && !amt) return toast('Add an amount');
+        closeN();
+        render();
+        if (!L) {
+          logIt(`Proposed “${K.t}”`, restart ? 'Waiting for a second person' : `${money(amt)} · waiting for a second person`, 'waiting');
+          return toast('Proposed · waiting for a second person · logged in Records');
+        }
+        return run('money', K.card, restart ? {} : {
+          amount: amt
+        }, () => renderShell());
       }
       if (d.nsubmit !== undefined && L) {
         // live: the API's money/top, which waits for a second person (202) before it reaches the Ops Safe

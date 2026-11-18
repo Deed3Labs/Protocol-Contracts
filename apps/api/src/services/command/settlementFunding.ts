@@ -104,6 +104,8 @@ export interface SettlementCard {
   stopped: { by: string | null; at: number | null; why: string } | null;
   /** Will the swipes settle at the next cut-off (the desk's own rule); null while the CSA can't be read. */
   verdict: SettlementVerdict | null;
+  /** The cut-off's own zone: every time the card says is in it, so the page and the verdict agree. */
+  timeZone: string;
 }
 
 function move(r: MoveRow): SettlementMove {
@@ -289,6 +291,7 @@ function extras(x: { s: any; halted: MoveRow | null; recent: MoveRow[]; laneStop
     inFlightEta: inFlight > 0 && forwarded ? (forwarded.forwardedAt ?? forwarded.createdAt).getTime() + latencyMinutes * 60_000 : null,
     stopped,
     verdict,
+    timeZone: cfg.schedule.timeZone,
   };
 }
 
@@ -319,7 +322,7 @@ export function settlementFundingSeed(now: number, state: SettlementSeedState = 
   const stopped = stoppedState ? { by: 'Dana Ruiz', at: now - 54 * MIN, why: 'A forward reverted: CL Operating’s allowance was spent' } : null;
   const lane = { upgraded: true, stopped: false, cap: 5_000, used, left: 5_000 - used, periodSeconds: 604_800, periodStart: now - 3 * 86_400_000, headroom: 1_000, headroomUsed: 0, principal: 9_400, deployed: 8_870, poolRoom: 3_412.98 };
   const verdict = settlementVerdict(
-    { due, buffer, csa, inFlight, collection, laneRoom: lane.poolRoom, capLeft: lane.left, forwardLeft: lane.left, laneReady: true, stopped, dryRun: false, cutoff: next, forcedAt, latencyMinutes: 240, timeZone: 'UTC' },
+    { due, buffer, csa, inFlight, collection, laneRoom: lane.poolRoom, capLeft: lane.left, forwardLeft: lane.left, laneReady: true, stopped, dryRun: false, cutoff: next, forcedAt, latencyMinutes: 240, timeZone: DEFAULT_DESK_CONFIG.schedule.timeZone },
     DEFAULT_DESK_CONFIG,
   );
   // what the desk moved for this cut-off, newest first
@@ -366,5 +369,6 @@ export function settlementFundingSeed(now: number, state: SettlementSeedState = 
     inFlightEta: inFlight ? now + 92 * MIN : null,
     stopped,
     verdict,
+    timeZone: DEFAULT_DESK_CONFIG.schedule.timeZone,
   };
 }
