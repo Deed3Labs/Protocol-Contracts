@@ -934,7 +934,7 @@ function makeShop() {
           b = v;
           run = v;
         }
-        return <div key={__k} className={`sx-wf-r ${c}`}><span>{k}</span><span className="sx-wf-b"><i style={css(`left:${a / S.rev * 100}%;width:${(b - a) / S.rev * 100}%`)} /></span>{LV && k === 'Running the line' ? <b>Not real yet</b> : <b>{c === 'neg' ? '−' : ''}{money(Math.abs(v))}</b>}</div>;
+        return <div key={__k} className={`sx-wf-r ${c}`}><span>{k}</span><span className="sx-wf-b"><i style={css(`left:${a / S.rev * 100}%;width:${(b - a) / S.rev * 100}%`)} /></span>{LV && (k === 'Running the line' || k === 'For marketing') ? <b>Not real yet</b> : <b>{c === 'neg' ? '−' : ''}{money(Math.abs(v))}</b>}</div>;
       });
       return cell('s7', 'Where each dollar goes', <span className="lbl">Last 4 weeks</span>, LV && !S.rev ? <div className="gv-e"><span>No sales in the last 4 weeks</span></div> : <div className="sx-wf">{rows}</div>, <><span>{LV ? 'Running the line needs the shop’s own costs: samples, photos, software' : 'Materials use the average cost of what was on hand'}</span><button data-stab="materials">Materials →</button></>);
     }

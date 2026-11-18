@@ -1259,6 +1259,18 @@ async function bondRowsLive(db: Queryable, chain: ChainReader, o: ReadOptions): 
     });
 }
 
+/** The revolving tiers a member's own pledge backs (credit.ts names them): their draws are never unsecured. */
+const BACKED_TIERS = new Set(['Savings', 'Bond', 'Pool share']);
+
+/**
+ * What's unsecured on the live book: drawn in a tier no pledge backs (Income, Boost, a workout) plus the open term
+ * plans. With the issuers unread (null), all of what's owed counts, so the loss order is never told less is at risk.
+ */
+export function unsecuredOf(rates: { tiers: Array<{ name: string; out: number }>; term: { out: number } } | null, owed: number): number {
+  if (!rates) return owed;
+  return Math.round((rates.tiers.filter((t) => !BACKED_TIERS.has(t.name)).reduce((a, t) => a + t.out, 0) + rates.term.out) * 100) / 100;
+}
+
 export async function moneySection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('money');
   const f = await figures(db, 'money');
@@ -1371,6 +1383,12 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     M.lost = credit.lost;
     M.dueMembers = credit.due14;
     M.autopay = credit.autopay;
+    // live, what's unsecured is the issuers' own: drawn in a tier no pledge backs (Income, Boost, a workout) plus the
+    // open term plans; Savings, Bond and Pool share lines are backed by the member's pledge. Never the seed's book.
+    // With the issuers unread, all of it counts as unsecured: the loss order is never told less is at risk.
+    if (provider === 'live') {
+      M.unsecured = unsecuredOf(credit.rates, credit.credit);
+    }
     // what isn't unsecured is backed by the members' own savings
     M.savingsBacked = Math.max(0, Math.round((credit.credit - M.unsecured) * 100) / 100);
   }
@@ -1468,7 +1486,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       : { YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent] }),
     AP_BAL, UNSEC, AP_REQ: UNSEC.map((v) => v * M.floor), RTD_W: AP_BAL.map((v, i) => (UNSEC[i] ? v / UNSEC[i] : null)),
     COOP_W: f['money.coop.weekly'] ?? [],
-    FLOWS: payouts && credit ? [...payouts.out, ...credit.in].sort((a, b) => a[0] - b[0]) : (f['money.flows'] ?? []),
+    // live, only the chain's schedule: with either side unread, nothing (Money says it isn't read), never the seed's sample
+    FLOWS: payouts && credit ? [...payouts.out, ...credit.in].sort((a, b) => a[0] - b[0]) : provider === 'live' ? [] : (f['money.flows'] ?? []),
     ...(credit
       ? {
           CREDIT: {
@@ -2065,6 +2084,8 @@ export async function homeSection(db: Queryable, o: ReadOptions): Promise<Record
     [new Date(asOf), new Date(asOf + 30 * DAY)],
   );
   const f = { ...(await figures(db, 'home')) };
+  // live, nothing writes Home's stored alerts: the seed's samples never reach a live page (Home works its heads-up out)
+  if (provider === 'live') delete f['home.alerts'];
   for (const k of ['growth.range', 'merchants.payouts.schedule', 'members.first_spends.poster_ten']) {
     const { rows } = await db.query<{ value: unknown }>('SELECT value FROM command.figures WHERE key = $1', [k]);
     if (rows[0]) f[k] = rows[0].value;
@@ -2079,8 +2100,20 @@ export async function homeSection(db: Queryable, o: ReadOptions): Promise<Record
   const LOW_MATERIALS = o.level >= SEE ? await lowMaterials(db) : [];
   // the entities, as Governance sends them, for Home's small tree
   const ENT = (await q('SELECT * FROM command.entities ORDER BY position')).map(entityRow);
+  // the week behind on Home's timeline: what people did here (the app's own log), from See; nothing seeded
+  const PAST =
+    provider === 'live' && o.level >= SEE
+      ? (
+          await q(
+            `SELECT id, at, who, area, action, detail FROM command.audit_log
+              WHERE at >= $1 AND result IN ('done', 'approved') ORDER BY at DESC, id DESC LIMIT 40`,
+            [new Date(o.now.getTime() - 7 * DAY)],
+          )
+        ).map((l) => ({ at: ms_(l.at), who: l.who as string, area: l.area as string, action: l.action as string, detail: l.detail as string }))
+      : null;
   return {
     LOW_MATERIALS,
+    PAST,
     ENT,
     MEMBER_SUMMARY: { invited: m.invited, active: m.active, opened: m.opened, notOpened: m.notOpened, funded: m.funded },
     OWED: Object.fromEntries(owed.map((r) => [r.merchant_id, r.owed_cents / 100])),

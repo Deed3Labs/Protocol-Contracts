@@ -173,12 +173,12 @@ function liveModel() {
     feeds,
     feedBad: bad.length ? (bad.length === 1 ? `${bad[0].n} is ${bad[0].why}` : `${bad.length} feeds aren’t synced`) : '',
     money: liveVitals(),
-    heads: ALERTS0.map((a) => ({ sv: a.sev, t: a.t, age: a.age, m: a.area, go: a.go, own: a.fix === 'resync' && a.progress ? ['resync', 'Re-syncing', Math.round((a.progress[0] / a.progress[1]) * 100), `${a.progress[0]}/${a.progress[1]}`] : null })),
+    heads: [...liveHeads(), ...ALERTS0.map((a) => ({ sv: a.sev, t: a.t, age: a.age, m: a.area, go: a.go, own: a.fix === 'resync' && a.progress ? ['resync', 'Re-syncing', Math.round((a.progress[0] / a.progress[1]) * 100), `${a.progress[0]}/${a.progress[1]}`] : null }))],
     tiles: null,
     start,
     today: dateKey(now),
-    past: [],
-    due: dl,
+    past: livePast(),
+    due: [...dl, ...liveDue(now)].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)),
     rails: [],
     railTo: '',
     runs: [],
@@ -282,17 +282,7 @@ function header(M) {
           )}
           <span className="h-sc-s">{M.money ? `Of ${money(M.money.operating)} operating cash` : 'Opens Money'}</span>
         </button>
-        {M.money?.cover ? (
-          // live, loss cover: the AssurancePool backstops what gets past members' collateral and the yield pool, and stops nothing issuing
-          <button type="button" className="h-sc" data-npane="credit">
-            <span className="h-lbl">Loss cover</span>
-            <span className="h-sc-v">{M.money.cover.v}</span>
-            <span className="h-mb">
-              <i style={css(`width:${M.money.cover.w}%;background:var(--settled)`)} />
-            </span>
-            <span className="h-sc-s">{M.money.cover.s}</span>
-          </button>
-        ) : (
+        {(
           <button type="button" className="h-sc" data-npane="overview">
             <span className="h-lbl">Payout funding</span>
             {M.money?.payout != null ? (
@@ -608,6 +598,46 @@ function liveFunnel() {
   const T = growthLive().D.source.rows.reduce((a, r) => a.map((v, i) => v + (r.f[i] ?? 0)), [0, 0, 0, 0, 0, 0]);
   return ['Visits', 'Joined', 'Invited', 'Opened', 'Active', 'Spent'].map((n, i) => [n, T[i]]);
 }
+/**
+ * Heads-up, live, from what the jobs and feeds record (nothing stores alerts for Home): a feed behind or not reached,
+ * the payout top-ups stopped or waiting on CL Operating's owners, and the settlement funding desk asking for a person.
+ */
+function liveHeads() {
+  const out = [];
+  feedList()
+    .filter((f) => f.health === 'behind' || f.health === 'failing')
+    .forEach((f) => out.push({ sv: f.health === 'failing' ? 'absent' : 'underway', t: `${f.name} ${f.health === 'failing' ? 'isn’t reached' : 'is behind'}`, age: '—', m: 'Settings · Connections', go: 'settings', own: null }));
+  const T = vars.payoutTopUps;
+  if (T?.halted) out.push({ sv: 'absent', t: 'Payout top-ups stopped', age: '—', m: `Money · after top-up #${T.halted.id}: ${T.halted.error}`, go: 'money', own: null });
+  else if (T?.needsHuman) out.push({ sv: 'underway', t: 'A top-up waits on CL Operating', age: '—', m: `Money · ${money(T.needsHuman.remainder)} is past the spending limit`, go: 'money', own: null });
+  const SF = vars.settlementFunding;
+  if (SF?.needsHuman) out.push({ sv: 'underway', t: 'Card settlement funding needs a person', age: '—', m: 'Money · Pools → Yield pool', go: 'money', own: null });
+  return out;
+}
+/** The audit log's areas, as Home's pages are named and where each one opens. */
+const PAST_AREA = { members: ['Members', 'members'], growth: ['Growth', 'growth'], field: ['Field', 'field'], merchants: ['Merchants', 'merchants'], money: ['Money', 'money'], shop: ['Shop', 'shop'], contracts: ['Build', 'contracts'], governance: ['Governance', 'governance'] };
+/** The week behind, live: what people did here, from the app's own log (the API sends it from See). */
+function livePast() {
+  return (vars.homePast ?? []).map((l) => {
+    const [area, go] = PAST_AREA[l.area] ?? ['Records', 'records'];
+    const d = new Date(l.at);
+    return [dateKey(l.at), `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, l.detail ? `${l.action} · ${l.detail}` : l.action, l.who, area, go];
+  });
+}
+/** The month ahead beyond the filings, live: the PayoutPool's payouts by day and the bonds that mature, from Money. */
+function liveDue(now) {
+  if (!loaded('money')) return [];
+  const { FLOWS, BONDS } = moneyLive();
+  const day0 = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const byDay = new Map();
+  FLOWS.filter((f) => f[1] === 'out').forEach((f) => {
+    const x = byDay.get(f[0]) ?? { v: 0, n: 0 };
+    byDay.set(f[0], { v: x.v + f[2], n: x.n + 1 });
+  });
+  const pays = [...byDay].map(([d, x]) => [dateKey(day0 + d * DAY), 'Payouts clear', 'Payouts clear', `${money(x.v)} to ${x.n} claim${x.n === 1 ? '' : 's'}`, 'm', 'Money', '', ['xpane', 'payouts']]);
+  const bonds = BONDS.filter((b) => b[4] >= 0 && b[4] <= 30).map((b) => [dateKey(day0 + b[4] * DAY), 'Bond matures', `${b[0]} matures`, money(b[1]), 'm', 'Money', '', ['go', 'money']]);
+  return [...pays, ...bonds];
+}
 /** The header's three money vitals, as Money's header and Overview work them out. */
 function liveVitals() {
   if (!loaded('money')) return null;
@@ -617,12 +647,18 @@ function liveVitals() {
   const [a, b] = String(r?.ratio ?? '').split(':').map(Number);
   const backed = r && b ? Math.min(100, (a / b) * 100) : 0;
   const used = M.unsecured + M.room ? (M.unsecured / (M.unsecured + M.room)) * 100 : 100;
-  // loss cover: the primary reserve against the unsecured exposure that could reach it, as Money's own cell has it
-  const cover = {
-    v: M.unsecured ? `${(M.rtd * 100).toFixed(1)}%` : 'Covered',
-    w: M.unsecured && M.floor ? Math.min(100, (M.rtd / M.floor) * 100).toFixed(1) : 100,
-    s: `Covers ${money(M.room)} more unsecured`,
-  };
+  /* payout funding, as the keeper (payoutFunding/fundingStatus.ts) grades it: Red when claims due within two business
+     days are short (12.10), Amber when the PayoutPool holds less than what's due within 30 days (decision 49) */
+  const due30 = M.due30,
+    short2 = vars.payoutDueSoon?.short ?? 0;
+  const payout =
+    due30 == null
+      ? { v: M.payout, w: 0, s: 'What’s due in 30 days isn’t read yet' }
+      : {
+          v: M.payout,
+          w: due30 ? Math.min(100, (M.payout / due30) * 100).toFixed(1) : 100,
+          s: short2 > 0 ? `Red · ${money(short2)} short within 2 business days` : M.payout < due30 ? `Amber · ${money(due30 - M.payout)} under 30 days due · nothing is late` : due30 ? `Green · ${money(due30)} due in 30 days` : 'Green · nothing due in 30 days',
+        };
   return {
     reserve: r?.ratio ?? null,
     backed,
@@ -631,7 +667,7 @@ function liveVitals() {
     operating: M.cash,
     credit: M.room,
     creditUsed: used.toFixed(1),
-    cover,
+    payout,
   };
 }
 /** Partner shops: transacting, signing, signed and idle (Merchants' own list). */
