@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildLegal, headingOf, leadOf, legalReader, parseOrder, parsePacket, parseRegister, totalsOnly } from './legal.js';
+import { buildLegal, headingOf, leadOf, LegalDenied, legalReader, parseOrder, parsePacket, parseRegister, totalsOnly } from './legal.js';
 
 /*
  * Governance → Legal from clear-agreements. That repo is private and this one is public, so every file
@@ -138,7 +138,7 @@ describe('reading clear-agreements', () => {
   });
 
   test('off without its token; read again only when main moves', async () => {
-    expect(legalReader({}).off()).toBe('COMMAND_AGREEMENTS_TOKEN isn’t set');
+    expect(legalReader({}).off()).toBe('neither COMMAND_AGREEMENTS_TOKEN nor GITHUB_TOKEN is set');
     let sha = 'abc';
     let t = 0;
     const asked: string[] = [];
@@ -173,5 +173,32 @@ describe('reading clear-agreements', () => {
     t = 122_000;
     expect((await r.read()).sha).toBe('def');
     expect(asked.length).toBeGreaterThan(n + 2);
+  });
+
+  test('without its own token it reads with the GitHub poller’s; its own wins when both are set', async () => {
+    const auth: (string | null)[] = [];
+    const f = (async (_url: string, init?: RequestInit) => {
+      auth.push(new Headers(init?.headers).get('authorization'));
+      return new Response('', { status: 500 });
+    }) as unknown as typeof fetch;
+    const shared = legalReader({ GITHUB_TOKEN: 'gh' }, f);
+    expect(shared.off()).toBeNull();
+    await shared.read().catch(() => {});
+    const own = legalReader({ GITHUB_TOKEN: 'gh', COMMAND_AGREEMENTS_TOKEN: 'own' }, f);
+    await own.read().catch(() => {});
+    expect(auth).toEqual(['Bearer gh', 'Bearer own']);
+  });
+
+  test('a token that can’t see the repo turns Legal off with the reason, naming the token', async () => {
+    for (const [status, env, why] of [
+      [404, { GITHUB_TOKEN: 'gh' }, 'GITHUB_TOKEN can’t read Deed3Labs/clear-agreements: add it to the token’s repositories, with Contents: read'],
+      [403, { COMMAND_AGREEMENTS_TOKEN: 'own' }, 'COMMAND_AGREEMENTS_TOKEN can’t read Deed3Labs/clear-agreements: add it to the token’s repositories, with Contents: read'],
+      [401, { GITHUB_TOKEN: 'gh' }, 'GitHub refused GITHUB_TOKEN (expired or revoked)'],
+    ] as const) {
+      const f = (async () => new Response('', { status })) as unknown as typeof fetch;
+      const e = await legalReader(env, f).read().catch((x) => x);
+      expect(e).toBeInstanceOf(LegalDenied);
+      expect(e.off).toBe(why);
+    }
   });
 });

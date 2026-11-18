@@ -712,7 +712,9 @@ prototype in this folder). The page sheets are copied from it; the sections carr
 
 - **Legal is a section of its own, `GET /sections/legal`** (`services/command/legal.ts`). It reads
   `Deed3Labs/clear-agreements` with `COMMAND_AGREEMENTS_TOKEN` (Contents: read on that repo only;
-  `COMMAND_AGREEMENTS_REPO` for another) and answers Admin in full; every other group with Governance gets
+  `COMMAND_AGREEMENTS_REPO` for another) or, without it, the GitHub poller's `GITHUB_TOKEN` (Kai, 18 Nov: one
+  token, its repository access widened to clear-agreements, Contents: read; the brief asked for a token of
+  its own). A token GitHub won't let see the repo turns Legal off with that reason, naming the token. It answers Admin in full; every other group with Governance gets
   the ids and counts, with every title, file name, question and change taken out on the server. Off, it says
   so, and the tab says the repo isn't connected yet.
 - **Counsel's counts are the packet's, not each notes file's.** The four `docs/counsel-packet/part-*.md`

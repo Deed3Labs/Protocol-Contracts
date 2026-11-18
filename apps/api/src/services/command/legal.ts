@@ -1,8 +1,10 @@
 /*
  * Governance → Legal (brief update 2, section 3): the agreements in the private Deed3Labs/clear-agreements
- * and counsel's questions on them, read with that repo's own read-only token (COMMAND_AGREEMENTS_TOKEN,
- * Contents: read on that repo only; COMMAND_AGREEMENTS_REPO for another). This repository is public:
- * nothing read here is written anywhere, only answered to an admin who asks.
+ * and counsel's questions on them, read with a read-only token: COMMAND_AGREEMENTS_TOKEN when it's set,
+ * else the GitHub poller's GITHUB_TOKEN, once that token's repository access includes clear-agreements
+ * (Contents: read). COMMAND_AGREEMENTS_REPO for another repo. A token that can't see the repo (GitHub
+ * answers 401, 403 or 404) turns Legal off with the reason, rather than an error. This repository is
+ * public: nothing read here is written anywhere, only answered to an admin who asks.
  *
  * - The register is the README's Status table; the signing order its "Signing order" list.
  * - Counsel's counts and the questions that could force a redesign are the counsel packet's four part
@@ -219,12 +221,24 @@ export function totalsOnly(L: Legal): Legal {
   };
 }
 
+/** A token that can't see the agreements repo: Legal is off with this reason, not failing. */
+export class LegalDenied extends Error {
+  constructor(readonly off: string) {
+    super(off);
+  }
+}
+
 export function legalReader(env: Env = process.env, f: typeof fetch = fetch, now = () => Date.now()) {
-  const token = env.COMMAND_AGREEMENTS_TOKEN?.trim();
+  const own = env.COMMAND_AGREEMENTS_TOKEN?.trim();
+  const tokenName = own ? 'COMMAND_AGREEMENTS_TOKEN' : 'GITHUB_TOKEN';
+  const token = own || env.GITHUB_TOKEN?.trim();
   const repo = env.COMMAND_AGREEMENTS_REPO?.trim() || 'Deed3Labs/clear-agreements';
   const headers = (raw = false) => ({ Accept: raw ? 'application/vnd.github.raw' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', Authorization: `Bearer ${token}` });
   const api = async <T>(path: string): Promise<T> => {
     const r = await f(`https://api.github.com/repos/${repo}/${path}`, { headers: headers(), signal: AbortSignal.timeout(10_000) });
+    if (r.status === 401) throw new LegalDenied(`GitHub refused ${tokenName} (expired or revoked)`);
+    // GitHub answers 404 for a private repo the token can't see
+    if (r.status === 403 || r.status === 404) throw new LegalDenied(`${tokenName} can’t read ${repo}: add it to the token’s repositories, with Contents: read`);
     if (!r.ok) throw new Error(`clear-agreements ${r.status}`);
     return (await r.json()) as T;
   };
@@ -264,7 +278,7 @@ export function legalReader(env: Env = process.env, f: typeof fetch = fetch, now
   let checked = 0;
   let head: Promise<string> | null = null;
   return {
-    off: () => (token ? null : 'COMMAND_AGREEMENTS_TOKEN isn’t set'),
+    off: () => (token ? null : 'neither COMMAND_AGREEMENTS_TOKEN nor GITHUB_TOKEN is set'),
     /** The register and counsel's counts at main; read again only when main has moved. */
     async read(): Promise<Legal> {
       if (!head || now() - checked > CHECK_MS) {

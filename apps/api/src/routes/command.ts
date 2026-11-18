@@ -38,7 +38,7 @@ import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 import type { Deploys } from '../services/command/deploys.js';
 import { poolTierPrincipalFor, settlementFundingStatus } from '../services/settlementFunding/api.js';
-import { type Legal, totalsOnly } from '../services/command/legal.js';
+import { type Legal, LegalDenied, totalsOnly } from '../services/command/legal.js';
 import type { Signing } from '../services/command/signing.js';
 
 /*
@@ -644,7 +644,8 @@ export function commandRouter(deps: CommandDeps) {
 
   /**
    * Governance → Legal: the agreements in clear-agreements and counsel's questions on them. Admin gets
-   * the titles, files and questions; everyone else the ids and counts. Off until its token is set.
+   * the titles, files and questions; everyone else the ids and counts. Off until a token that can read
+   * the repo is set (its own, or the GitHub poller's).
    */
   router.get('/sections/legal', need('governance', TOTALS), async (req, res) => {
     const c = req.command!;
@@ -655,6 +656,7 @@ export function commandRouter(deps: CommandDeps) {
       const L = await deps.legal.read();
       res.json({ ...(isAdmin(c) ? L : totalsOnly(L)), asOf: new Date(L.readAt).toISOString() });
     } catch (e) {
+      if (e instanceof LegalDenied) return res.json({ off: e.off, asOf: new Date().toISOString() });
       fail(res, 502, 'AGREEMENTS', `clear-agreements didn’t answer: ${(e as Error).message}`);
     }
   });

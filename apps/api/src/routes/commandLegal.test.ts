@@ -3,7 +3,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import type { AddressInfo } from 'node:net';
 import type { Db } from '../db/db.js';
 import { testDb } from '../db/testDb.js';
-import { buildLegal } from '../services/command/legal.js';
+import { buildLegal, LegalDenied } from '../services/command/legal.js';
 import { commandRouter } from './command.js';
 
 /*
@@ -66,7 +66,13 @@ const signIn = async (base: string, user: string) => {
 beforeAll(async () => {
   ({ db } = await testDb());
   servers.on = serve({ off: () => null, read: async () => LEGAL });
-  servers.off = serve({ off: () => 'COMMAND_AGREEMENTS_TOKEN isn’t set', read: async () => LEGAL });
+  servers.off = serve({ off: () => 'neither COMMAND_AGREEMENTS_TOKEN nor GITHUB_TOKEN is set', read: async () => LEGAL });
+  servers.denied = serve({
+    off: () => null,
+    read: async () => {
+      throw new LegalDenied('GITHUB_TOKEN can’t read Deed3Labs/clear-agreements: add it to the token’s repositories, with Contents: read');
+    },
+  });
 });
 
 describe('Governance → Legal', () => {
@@ -94,7 +100,15 @@ describe('Governance → Legal', () => {
     const kai = await signIn(servers.off, 'did:kai|kai@useclear.org');
     const r = await call(servers.off, kai, 'GET', '/sections/legal');
     expect(r.status).toBe(200);
-    expect(r.body.off).toBe('COMMAND_AGREEMENTS_TOKEN isn’t set');
+    expect(r.body.off).toBe('neither COMMAND_AGREEMENTS_TOKEN nor GITHUB_TOKEN is set');
+    expect(r.body.REG).toBeUndefined();
+  });
+
+  test('a token that can’t see the repo is off with the reason, not an error', async () => {
+    const kai = await signIn(servers.denied, 'did:kai|kai@useclear.org');
+    const r = await call(servers.denied, kai, 'GET', '/sections/legal');
+    expect(r.status).toBe(200);
+    expect(r.body.off).toContain('GITHUB_TOKEN can’t read Deed3Labs/clear-agreements');
     expect(r.body.REG).toBeUndefined();
   });
 });

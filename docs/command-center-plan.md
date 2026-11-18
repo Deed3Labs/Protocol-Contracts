@@ -265,7 +265,8 @@ Build template has its own copy).
 ### Live sources
 
 - **Legal:** `GET /sections/legal` reads `Deed3Labs/clear-agreements` (`COMMAND_AGREEMENTS_REPO`) with
-  its own read-only token (`COMMAND_AGREEMENTS_TOKEN`, Contents: read on that repo only), cached like
+  a read-only token: `COMMAND_AGREEMENTS_TOKEN` when set, else the GitHub poller's `GITHUB_TOKEN` once its
+  repository access includes clear-agreements (Contents: read; Kai, 18 Nov), cached like
   the GitHub feed. Admin only; every other level gets the totals. Nothing from that repo is committed
   here: the demo, seed and tests use the reference's placeholders, and a test fails if a real register
   title turns up in `src/` or the fixtures (it reads the titles at test time only when the token is
