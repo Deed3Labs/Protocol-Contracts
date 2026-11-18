@@ -61,6 +61,37 @@ and starts carry. The cash part is the member's own money and is not issued as c
 - **Refunds after settlement** give the difference back with `reverseCardSpend`. A purchase under
   an open dispute is held off the chain and accrues no carry.
 
+### The card credit fee (decision 55)
+
+A purchase that draws on a credit tier adds a flat **card credit fee** on top (30¢ once switched on;
+[spec](../../audit/specs/card-credit-fee.md)). A purchase paid entirely from cash has none. On by
+default in the API (`CARD_CREDIT_FEE_CENTS`, 30 when unset; an explicit 0 turns it off), and charged
+only while `maxCardCreditFee` on the `RevolvingIssuer` covers it, which bounds what the settler can
+charge: before the upgrade sets it to 30¢, nothing is charged.
+
+| Step | What happens to the fee |
+|---|---|
+| Authorisation | The waterfall decides the purchase exactly as before. If the purchase drew on a fee tier (`CARD_CREDIT_FEE_TIERS`) and is at least `CARD_CREDIT_FEE_MIN_PURCHASE_CENTS`, the fee is drawn after it from the credit tiers still with room, cheapest first, never cash. If the line cannot take it, the purchase is declined (`INSUFFICIENT_FUNDS`), all or nothing. The chain's bound is read off the hot path (the card settlement sweeper, at startup and every pass) and cached; the Auth Stream never calls out. Stored beside the decision: `fee_cents`, `fee_draws`, `fee_status = held` |
+| On-chain authorisation | `authorizeCardSpend` records the credit part plus the fee |
+| Void before settlement | Never charged: the purchase's credit part falls to zero, so the fee is `released`, its draws go back on the snapshot and its ledger lines are reversed |
+| Settlement | `settleCardSpendWithFee(ref, member, amount, fee)` when the decision carried a fee, `settleCardSpend` otherwise. The bound is read again first: a fee the chain no longer accepts is `waived` and the purchase settles without it. A clearing above the authorisation keeps the same fee (and goes to a person, as before). Status `charged` |
+| Refund after settlement | A full refund brings the purchase to zero and the contract returns what is left of the fee (`CardCreditFeeReturned`); the API reads `cardCreditFeeOf(ref)` (the fee, and the amount returned so far) and records it `returned`. A partial refund keeps it. Carry that accrued on the fee is not credited back yet (no on-chain mechanism; a TODO in the code) |
+| Credit back | `returnCardCreditFee(ref, amount)` gives back part or all of a charged fee. The API reconciles to a stored target (`fee_return_target_cents` against the chain's returned amount), so a retry never credits twice, and stores each attempt's outcome (`needs_review` after five failures). Its one caller today is the CFL cap (MB-04 §5.4(f)): the cycle keeper calls `applyCardFeeCapAtCycleClose` for each closed cycle, and `cardFeeCapExcess` returns 0 until counsel settles the measure (MB-04 #52) |
+
+No fee, whatever the settings: a purchase Spendable covers in full; Pay with Clear (it never passes
+through the Auth Stream); a hold that never settles (released with it); and a covered borrower under
+the Military Lending Act (MB-04 §5.10), read from the card snapshot (`covered_borrower`, copied from
+`lithic_covered_borrowers`; the check that sets it does not exist yet). One fee per purchase, however
+many tiers it draws on or times it clears. Note L-02 §2.6C on the plan of business.
+
+The ledger shows the fee as its own lines: `card_credit_fee` (the member's tier debited, Clear
+Lending's `coop_card_credit_fees` credited), reversed as `card_credit_fee_released`,
+`card_credit_fee_waived`, `card_credit_fee_returned` or (in part) `card_credit_fee_credit`. Pending figures include a held fee and stop
+counting it once the chain carries it, like the purchase's credit part. `GET
+/api/lithic/cards/transactions` returns `creditFeeCents`, `creditFeeState`, `creditFeeReturned` and
+`creditFeeReturnedCents` on each purchase, and `GET /api/lithic/cards/credit-fees?cycleStart=` the
+statement totals for the cycle and the year to date (Reg Z §1026.7(b)(6)) with whether the fee is on.
+
 ---
 
 ## 2. How each flow works

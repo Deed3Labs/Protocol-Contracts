@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { ethers } from 'ethers';
 import { creditCentsOf, refOf } from './cardSettlementService.js';
+import { sumHeldDraws } from '../lithic/cardTransactionsService.js';
 
 const service = readFileSync(new URL('./cardSettlementService.ts', import.meta.url), 'utf8');
 const events = readFileSync(new URL('../lithic/cardTransactionEvents.ts', import.meta.url), 'utf8');
@@ -54,7 +55,26 @@ describe('issued at settlement, once, and never silently', () => {
 describe('a settled purchase is not shown twice', () => {
   test('once issued, its credit part stops counting as a pending hold', () => {
     expect(held).toContain("const onChain = row.onchain_status === 'issued';");
-    expect(held).toContain("if (onChain && source !== 'cash') continue;");
+    expect(held).toContain('export function sumHeldDraws(');
+    const draws = [
+      { source: 'cash', amountCents: 2_500 },
+      { source: 'asset', amountCents: 10_000 },
+    ];
+    expect(sumHeldDraws([{ draws, onchain_status: null }])).toEqual({ cash: 2_500, savings: 0, asset: 10_000, income: 0, boost: 0 });
+    expect(sumHeldDraws([{ draws, onchain_status: 'issued' }])).toEqual({ cash: 2_500, savings: 0, asset: 0, income: 0, boost: 0 });
+  });
+
+  test('a held card credit fee counts with the hold, and stops once the chain carries it', () => {
+    const draws = [{ source: 'asset', amountCents: 10_000 }];
+    const fee = [{ source: 'asset', amountCents: 30 }];
+    // Pending: the purchase's credit part and the fee, once each.
+    expect(sumHeldDraws([{ draws, onchain_status: null, fee_draws: fee, fee_status: 'held' }]).asset).toBe(10_030);
+    // Settled with the fee: both are on chain now, in the tiers' own figures.
+    expect(sumHeldDraws([{ draws, onchain_status: 'issued', fee_draws: fee, fee_status: 'charged' }]).asset).toBe(0);
+    // Released (a void before settlement), waived or returned: never counted.
+    for (const status of ['released', 'waived', 'returned']) {
+      expect(sumHeldDraws([{ draws, onchain_status: null, fee_draws: fee, fee_status: status }]).asset).toBe(10_000);
+    }
   });
 });
 
@@ -153,9 +173,13 @@ describe('authorized at approval, settled only up to it (audit M-2)', () => {
   });
 
   test('settlement makes sure of the authorization first, and never settles more than it allows', () => {
-    const settleAt = service.indexOf('const tx = await issuer.settleCardSpend(ref, row.wallet, units);');
-    expect(service.indexOf('await ensureAuthorized(issuer, ref, row.wallet, units)')).toBeLessThan(settleAt);
-    expect(service.indexOf('if (authorized < units) {')).toBeLessThan(settleAt);
+    const settleAt = service.indexOf('await issuer.settleCardSpendWithFee(ref, row.wallet, units, feeUnits)');
+    expect(settleAt).toBeGreaterThan(-1);
+    expect(service.indexOf(': await issuer.settleCardSpend(ref, row.wallet, units);')).toBeGreaterThan(settleAt);
+    // The fee is authorized with the purchase, and settlement never draws past what was authorized.
+    expect(service.indexOf('await ensureAuthorized(issuer, ref, row.wallet, units + feeUnits)')).toBeGreaterThan(-1);
+    expect(service.indexOf('await ensureAuthorized(issuer, ref, row.wallet, units + feeUnits)')).toBeLessThan(settleAt);
+    expect(service.indexOf('if (authorized < units + feeUnits) {')).toBeLessThan(settleAt);
   });
 
   test('a re-issue after a dispute is a fresh purchase to the contract, so it is authorized too', () => {

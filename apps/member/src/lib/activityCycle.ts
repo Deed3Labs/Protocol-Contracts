@@ -1,6 +1,6 @@
 import { CATEGORY_LABEL, categoryForMcc } from './mccCategory';
 import type { CycleSpend, MerchantSpend, SpendCategory } from './clearModel';
-import type { CardTransaction, MemberCharge } from '@/utils/apiClient';
+import type { CardCreditFees, CardTransaction, MemberCharge } from '@/utils/apiClient';
 
 /*
  * What the cycle was made of, from what the member actually spent.
@@ -39,6 +39,19 @@ const cardAt = (tx: CardTransaction) => Date.parse(tx.at);
  * The authorization figure stays on the row itself; it just does not add up into these.
  */
 const cardSpend = (tx: CardTransaction) => Math.max(0, tx.heldCents ?? tx.amountCents) / 100;
+
+/**
+ * The card credit fee totals a statement lists (decision 55; Reg Z §1026.7(b)(6)): this cycle and the
+ * year to date, in dollars, net of anything given back. Undefined when unread or when there are none,
+ * so the line is shown only when it has something to say.
+ */
+export function creditFeeTotals(fees: CardCreditFees | null | undefined): CycleSpend['creditFees'] | undefined {
+  if (!fees) return undefined;
+  const net = (w: { chargedCents: number; returnedCents: number } | null | undefined) =>
+    w ? Math.max(0, w.chargedCents - w.returnedCents) / 100 : 0;
+  const totals = { cycle: net(fees.cycle), yearToDate: net(fees.yearToDate) };
+  return totals.cycle > 0 || totals.yearToDate > 0 ? totals : undefined;
+}
 
 /** At partners (under the member's code): what they paid Clear partners this cycle, now or over time. */
 export function partnerSpend(charges: MemberCharge[], startMs: number): number {

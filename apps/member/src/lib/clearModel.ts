@@ -370,6 +370,12 @@ export interface ActivityRow {
    * happened on credit; this is what stops it reading as though the limit were wrong.
    */
   creditRepaid?: 'full' | 'partial';
+  /**
+   * The card credit fee this purchase carried, in dollars (decision 55), whether it was all given back
+   * (a full refund), and how much has been given back so far. Absent when it carried none, or one
+   * that was never charged.
+   */
+  creditFee?: { amount: number; returned: boolean; returnedAmount: number };
   /** For a repayment row: how it was paid, in the member's words ("Bank deposit", "Savings"…). */
   repaymentMethod?: string;
 }
@@ -404,6 +410,11 @@ export interface CycleSpend {
   fromCash: number;
   fromCredit: number;
   carryCost: number;
+  /**
+   * Card credit fees, in dollars, net of any given back: this cycle and the year to date. Absent
+   * until read; shown only when there are some.
+   */
+  creditFees?: { cycle: number; yearToDate: number };
 }
 
 export interface SpendCategory {

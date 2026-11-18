@@ -145,7 +145,19 @@ export default function ActivityPage({
         <span className="c-t-ast">From credit</span> <strong>{money(cycle.fromCredit, { cents: true })}</strong>
         <span className="c-sep">&middot;</span>
         carry <strong>{money(cycle.carryCost, { cents: true })}</strong>
+        {cycle.creditFees && cycle.creditFees.cycle > 0 && (
+          <>
+            <span className="c-sep">&middot;</span>
+            card credit fees <strong>{money(cycle.creditFees.cycle, { cents: true })}</strong>
+          </>
+        )}
       </p>
+      {cycle.creditFees && (
+        <p className="c-det mt-s1">
+          Card credit fees: {money(cycle.creditFees.cycle, { cents: true })} this cycle,{' '}
+          {money(cycle.creditFees.yearToDate, { cents: true })} this year
+        </p>
+      )}
     </div>
   );
 

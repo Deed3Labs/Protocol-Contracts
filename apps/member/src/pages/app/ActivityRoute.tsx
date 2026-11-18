@@ -11,14 +11,16 @@ import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
-import { categoriesFrom, cycleSpendFrom, merchantsFrom } from '@/lib/activityCycle';
+import { categoriesFrom, creditFeeTotals, cycleSpendFrom, merchantsFrom } from '@/lib/activityCycle';
 import { oldestUnclaimed } from '@/lib/sendClaims';
 import {
+  getCardCreditFees,
   getCardTransactions,
   getCredit,
   getSpendGroups,
   listSendTransfers,
   setSpendGroups,
+  type CardCreditFees,
   type CardTransaction,
   type CreditState,
 } from '@/utils/apiClient';
@@ -132,6 +134,19 @@ export default function ActivityRoute() {
   // Shops paid with Clear count too: paid now as cash, over time as credit (and the paid-now transfers
   // the chain also lists are left out there, so nothing is counted twice).
   const clear = { charges, paidNowTx: chargePayments.map((p) => p.txHash).filter((h): h is string => Boolean(h)) };
+  // Card credit fees (decision 55): the cycle's total and the year to date, as a statement lists them.
+  const [creditFees, setCreditFees] = useState<CardCreditFees | null>(null);
+  const cycleStartSeconds = cycleRow && cycleRow.issuedAt > 0 ? cycleRow.issuedAt : 0;
+  useEffect(() => {
+    let cancelled = false;
+    void getCardCreditFees(cycleStartSeconds || undefined).then((fees) => {
+      if (!cancelled) setCreditFees(fees);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cycleStartSeconds]);
+
   const cycleSpend = cycleSpendFrom(
     cards,
     items,
@@ -142,6 +157,8 @@ export default function ActivityRoute() {
     },
     clear,
   );
+  const feeTotals = creditFeeTotals(creditFees);
+  if (feeTotals) cycleSpend.creditFees = feeTotals;
   const categories = categoriesFrom(cards, items, startMs, 3, clear);
   const merchants = merchantsFrom(cards, items, startMs, clear);
 

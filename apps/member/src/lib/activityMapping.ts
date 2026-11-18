@@ -4,6 +4,7 @@ import { categoryForMcc } from './mccCategory';
 import type { ActivityRow, ActivityKind, ActivitySource } from '@/lib/clearModel';
 import type { MemberCharge } from '@/utils/apiClient';
 import { chargeActivityRows } from './memberCharges';
+import { quotedFee } from './cardCreditFee';
 
 /**
  * Turns a transaction into a row the Activity page can show.
@@ -59,15 +60,36 @@ export function toActivityRow(item: ActivityItem): ActivityRow {
  */
 /** Whether the credit this purchase drew has been repaid, in full or in part. Undefined when it has not, or never drew any. */
 function repaidState(tx: CardTransaction): 'full' | 'partial' | undefined {
-  const credit = tx.creditCents ?? 0;
+  // The fee is owed on the line with the purchase, so "repaid" means both, until it is given back.
+  const feeOwed =
+    tx.creditFeeState === 'charged' ? Math.max(0, (tx.creditFeeCents ?? 0) - (tx.creditFeeReturnedCents ?? 0)) : 0;
+  const credit = (tx.creditCents ?? 0) > 0 ? (tx.creditCents ?? 0) + feeOwed : 0;
   const repaid = tx.creditRepaidCents ?? 0;
   if (credit <= 0 || repaid <= 0) return undefined;
   return repaid >= credit ? 'full' : 'partial';
 }
 
+/** A fee the way it is quoted: 30¢, or dollars and cents from a dollar up. */
+export function feeLabel(dollars: number): string {
+  return quotedFee(Math.round(dollars * 100));
+}
+
+/**
+ * The card credit fee a purchase carried, as the row shows it: charged (owed) or given back. One that
+ * was released with a void or waived at settlement was never charged, so it is not shown at all.
+ */
+export function creditFeeOf(tx: CardTransaction): ActivityRow['creditFee'] | undefined {
+  const cents = tx.creditFeeCents ?? 0;
+  if (cents <= 0 || (tx.creditFeeState !== 'charged' && tx.creditFeeState !== 'returned')) return undefined;
+  const returned = tx.creditFeeState === 'returned' || tx.creditFeeReturned === true;
+  const back = returned ? cents : Math.min(cents, Math.max(0, tx.creditFeeReturnedCents ?? 0));
+  return { amount: cents / 100, returned, returnedAmount: back / 100 };
+}
+
 export function cardTransactionRow(tx: CardTransaction, cardLast4?: string): ActivityRow {
   const credited = tx.draws.filter((draw) => draw.source !== 'cash');
   const at = new Date(tx.at);
+  const creditFee = creditFeeOf(tx);
   return {
     id: tx.id,
     name: tx.name,
@@ -90,6 +112,7 @@ export function cardTransactionRow(tx: CardTransaction, cardLast4?: string): Act
     paidFromLabel:
       credited.length === 0 ? 'Cash' : repaidState(tx) === 'full' ? 'Credit · repaid' : repaidState(tx) === 'partial' ? 'Credit · part repaid' : 'Credit',
     ...(repaidState(tx) ? { creditRepaid: repaidState(tx) } : {}),
+    ...(creditFee ? { creditFee } : {}),
     cardLast4,
     // A reversed charge has nothing held, so there is nothing to dispute at the network.
     ...(tx.reversed ? {} : { dispute: { kind: 'card' as const, ref: tx.id } }),

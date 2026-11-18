@@ -4,6 +4,7 @@ import { readChainCredit } from '../services/chain/creditReader.js';
 import { readChainEarn } from '../services/chain/earnReader.js';
 import { chargeStore } from '../services/chargeStore.js';
 import { heldDrawsByTier } from '../services/lithic/cardTransactionsService.js';
+import { creditFeeSettings, currentCreditFee } from '../services/lithic/cardCreditFee.js';
 import { recordUsdcRepayment } from '../services/chain/usdcRepaymentService.js';
 import { autoRepayStatus, setAutoRepayChoice } from '../services/chain/autoRepayService.js';
 import { repaymentHistory } from '../services/credit/repaymentHistory.js';
@@ -183,7 +184,12 @@ creditRouter.get('/:wallet/auto-repay', async (req: Request, res: Response) => {
   const wallet = req.params.wallet;
   if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
   try {
-    return res.json(await autoRepayStatus(wallet));
+    // The card credit fee, for the screen that turns on card spending from Savings (MB-07 §4.3(c)):
+    // the fee is shown before the member allows it.
+    return res.json({
+      ...(await autoRepayStatus(wallet)),
+      cardCreditFee: { cents: creditFeeSettings().cents, on: currentCreditFee().cents > 0 },
+    });
   } catch (error) {
     console.error('[credit] auto-repay status failed', error);
     return res.status(500).json({ error: 'Failed to read' });

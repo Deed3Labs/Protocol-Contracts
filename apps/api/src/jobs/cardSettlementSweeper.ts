@@ -1,5 +1,7 @@
 import {
   isCardSettlementConfigured,
+  refreshCardCreditFeeCap,
+  sweepCardCreditFeeReturns,
   sweepCardSettlements,
   syncCardRepayment,
   walletsWithCardDebtOnChain,
@@ -33,10 +35,20 @@ export async function tick(): Promise<number> {
   if (running) return 0;
   running = true;
   try {
+    // The chain's bound on the card credit fee (decision 55), cached for the Auth Stream, which never
+    // calls out. Read here, every pass and at startup; a failed read never stops the sweep.
+    await refreshCardCreditFeeCap().catch((error) => console.error('[card-credit-fee] cap read failed:', error));
+
     // Settlements first: a purchase repaid before it settled has to reach the chain before the
     // repayment against it can be cleared there.
     const results = await sweepCardSettlements();
     const acted = results.filter((r) => r.action !== 'none' && r.action !== 'skipped');
+    // Card credit fees with a credit back asked for (MB-04 §5.4(f)) and not yet on chain.
+    const feeCredits = await sweepCardCreditFeeReturns().catch((error) => {
+      console.error('[card-credit-fee] credit-back pass failed:', error);
+      return [];
+    });
+    for (const r of feeCredits) if (r.action !== 'none' && r.action !== 'skipped') console.log(`[card-credit-fee] sweep: ${r.transactionToken}=${r.action}`);
     if (acted.length) {
       console.log(`[card-settlement] sweep: ${acted.map((r) => `${r.transactionToken}=${r.action}`).join(', ')}`);
     }

@@ -5,6 +5,16 @@ import { chainProvider, writesAs } from './provider.js';
 import { CHAIN_ERROR_FRAGMENTS, chainErrorReason, decodeChainError, describeCardRefusal } from './chainErrors.js';
 import { syncClrusdEncumbrance } from './encumbranceSync.js';
 import { notificationStore } from '../notificationStore.js';
+import { coveredBorrowerOf, ensureAuthTables, recordCreditFeeReversal } from '../lithic/authStore.js';
+import { releaseDraws, type Draw } from '../lithic/authDecision.js';
+import {
+  creditFeeSettings,
+  feeDrawsLeft,
+  heldFeeCents,
+  liveFeeCents,
+  setChainMaxCardCreditFee,
+  type CreditFeeStatus,
+} from '../lithic/cardCreditFee.js';
 
 /*
  * A settled card purchase becomes debt on chain — build plan §4, step 4.
@@ -39,6 +49,13 @@ import { notificationStore } from '../notificationStore.js';
  * Refunds after settlement run the other way: when a settled purchase's credit part falls, the
  * difference is given back with `reverseCardSpend`.
  *
+ * The card credit fee (decision 55). A purchase that carried one at the swipe settles with
+ * `settleCardSpendWithFee`, which draws the purchase and the fee together; everything else settles
+ * with `settleCardSpend` exactly as before. The fee is charged only while the chain still accepts it
+ * (`maxCardCreditFee`): one it no longer accepts is waived and the purchase settles without it,
+ * rather than failing a purchase over 30¢. A full refund after settlement brings the purchase to
+ * zero and the contract gives the fee back on that reversal; a partial one keeps it.
+ *
  * Authorized first (audit M-2). Settlement may draw only up to an authorization recorded for the
  * same ref and member, while the member was in good standing, within a per-purchase cap
  * (`cardTxCap`) and a per-day cap. The Auth Stream answers Lithic from a snapshot and never calls
@@ -56,6 +73,15 @@ const ISSUER_ABI = [
   'function authorizeCardSpend(bytes32 ref, address member, uint256 amount)',
   'function cardAuthorizationOf(bytes32 ref) view returns (address member, uint256 amount)',
   'function settleCardSpend(bytes32 ref, address member, uint256 amount)',
+  // Decision 55: the card credit fee. Before the RevolvingIssuer upgrade these revert.
+  'function settleCardSpendWithFee(bytes32 ref, address member, uint256 amount, uint256 fee)',
+  'function maxCardCreditFee() view returns (uint256)',
+  // `returned` is the amount given back so far: returnCardCreditFee credits part or all of a fee
+  // back (MB-04 §5.4(f)), and the full-refund return gives back whatever is left.
+  'function cardCreditFeeOf(bytes32 ref) view returns (uint256 fee, uint256 returned)',
+  'function returnCardCreditFee(bytes32 ref, uint256 amount)',
+  'event CardCreditFeeCharged(bytes32 indexed ref, address indexed member, uint256 fee)',
+  'event CardCreditFeeReturned(bytes32 indexed ref, address indexed member, uint256 fee)',
   'function reverseCardSpend(bytes32 ref, uint256 amount)',
   'function cardSettlementOf(bytes32 ref) view returns (address member, uint256 amount)',
   'function isCardSettler(address) view returns (bool)',
@@ -150,8 +176,73 @@ async function ensureColumns(): Promise<void> {
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_auth_cents BIGINT;
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_auth_tx TEXT;
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_auth_error TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_cents BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_draws JSONB NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_status TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_at TIMESTAMPTZ;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_target_cents BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_returned_cents BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_status TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_tx TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_error TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_attempts INTEGER NOT NULL DEFAULT 0;
   `);
   ensured = true;
+}
+
+/** Did the chain answer "no" (a revert), rather than fail to answer? */
+function isRevert(error: unknown): boolean {
+  return (error as { code?: string })?.code === 'CALL_EXCEPTION';
+}
+
+/**
+ * The chain's bound on the card credit fee, in ledger units. A revert reads as zero: the
+ * RevolvingIssuer before the upgrade has no such function, and has no fee. Anything else (a timeout,
+ * a rate limit) is thrown, because "we could not ask" is not "no fee allowed".
+ */
+export async function readMaxCardCreditFee(issuer: ethers.Contract): Promise<bigint> {
+  try {
+    return BigInt(await issuer.maxCardCreditFee());
+  } catch (error) {
+    if (isRevert(error)) return 0n;
+    throw error;
+  }
+}
+
+/**
+ * The fee the chain charged for a purchase, and how much of it has been given back, in ledger units.
+ * A revert reads as none.
+ */
+export async function readCardCreditFee(issuer: ethers.Contract, ref: string): Promise<{ fee: bigint; returned: bigint }> {
+  try {
+    const [fee, returned] = (await issuer.cardCreditFeeOf(ref)) as [bigint, bigint];
+    return { fee: BigInt(fee), returned: BigInt(returned) };
+  } catch (error) {
+    if (isRevert(error)) return { fee: 0n, returned: 0n };
+    throw error;
+  }
+}
+
+/**
+ * Read `maxCardCreditFee` and cache it for the Auth Stream, which never calls out (decision 55).
+ *
+ * Off the authorization path: the card settlement sweeper runs this at startup and on every pass.
+ * Nothing is read while the API's own setting is off, or while nothing can settle on chain (a fee
+ * decided then could never be charged, so it must not be decided). An unreachable chain keeps the
+ * last read until it ages out (cardCreditFee.ts), after which the fee is off until a read succeeds.
+ */
+export async function refreshCardCreditFeeCap(): Promise<bigint | null> {
+  if (creditFeeSettings().cents <= 0 || !isCardSettlementConfigured()) return null;
+  const issuer = issuerFor(chainProvider(resolveChainId()));
+  if (!issuer) return null;
+  try {
+    const units = await readMaxCardCreditFee(issuer);
+    setChainMaxCardCreditFee(units);
+    return units;
+  } catch (error) {
+    console.warn('[card-credit-fee] maxCardCreditFee unreadable, keeping the last read:', chainErrorReason(error));
+    return null;
+  }
 }
 
 function issuerFor(signerOrProvider: ethers.ContractRunner): ethers.Contract | null {
@@ -224,7 +315,17 @@ async function ensureAuthorized(
 
 async function record(
   token: string,
-  fields: { status: OnchainStatus | null; cents?: number | null; tx?: string | null; error?: string | null; attempt?: boolean },
+  fields: {
+    status: OnchainStatus | null;
+    cents?: number | null;
+    tx?: string | null;
+    error?: string | null;
+    attempt?: boolean;
+    /** The card credit fee's new state, when this step changed it. */
+    feeStatus?: CreditFeeStatus | null;
+    /** What the chain says has been given back of the fee, when this step read it. */
+    feeReturnedCents?: number | null;
+  },
 ): Promise<void> {
   const pool = getPayPool();
   if (!pool) return;
@@ -235,10 +336,55 @@ async function record(
             onchain_tx = COALESCE($4, onchain_tx),
             onchain_error = $5,
             onchain_attempts = onchain_attempts + $6,
-            onchain_at = now()
+            onchain_at = now(),
+            fee_status = COALESCE($7, fee_status),
+            fee_at = CASE WHEN $7::text IS NULL THEN fee_at ELSE now() END,
+            fee_returned_cents = GREATEST(fee_returned_cents, COALESCE($8, 0))
       WHERE transaction_token = $1`,
-    [token, fields.status, fields.cents ?? null, fields.tx ?? null, fields.error ?? null, fields.attempt ? 1 : 0],
+    [
+      token,
+      fields.status,
+      fields.cents ?? null,
+      fields.tx ?? null,
+      fields.error ?? null,
+      fields.attempt ? 1 : 0,
+      fields.feeStatus ?? null,
+      fields.feeReturnedCents ?? null,
+    ],
   );
+}
+
+/** The fee's draws, as stored. */
+function feeDrawsOf(raw: unknown): Draw[] {
+  return Array.isArray(raw) ? (raw as Draw[]).filter((d) => d && d.source !== 'cash' && Number(d.amountCents) > 0) : [];
+}
+
+type FeeRow = {
+  wallet: string | null;
+  card_token?: string | null;
+  fee_draws: unknown;
+  fee_returned_cents?: string | number | null;
+};
+
+/**
+ * The fee is back in the member's books: waived at settlement, or returned with a full refund. Only
+ * what is left of it: a part already credited back (returnCardCreditFee) was booked when it was.
+ */
+async function bookFeeReversal(
+  token: string,
+  row: FeeRow,
+  eventType: 'card_credit_fee_waived' | 'card_credit_fee_returned',
+): Promise<void> {
+  const pool = getPayPool();
+  if (!pool || !row.wallet) return;
+  await ensureAuthTables();
+  const left = feeDrawsLeft(feeDrawsOf(row.fee_draws), Number(row.fee_returned_cents ?? 0) || 0);
+  await recordCreditFeeReversal(pool, row.wallet, token, row.card_token ?? null, left, eventType);
+}
+
+/** Whether the member is a covered borrower now (MB-04 §5.10). Unreadable reads as not covered. */
+async function isCoveredBorrower(wallet: string): Promise<boolean> {
+  return (await coveredBorrowerOf(wallet).catch(() => null)) === true;
 }
 
 /** One purchase at a time in this process; the contract's once-only rule covers other processes. */
@@ -269,8 +415,14 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
       onchain_attempts: number;
       onchain_ref: string | null;
       dispute_token: string | null;
+      card_token: string | null;
+      fee_cents: string | number | null;
+      fee_draws: unknown;
+      fee_status: string | null;
+      fee_returned_cents: string | number | null;
     }>(
-      `SELECT wallet, result, status, draws, onchain_status, onchain_cents, onchain_attempts, onchain_ref, dispute_token
+      `SELECT wallet, result, status, draws, onchain_status, onchain_cents, onchain_attempts, onchain_ref, dispute_token,
+              card_token, fee_cents, fee_draws, fee_status, fee_returned_cents
          FROM ${DECISIONS} WHERE transaction_token = $1`,
       [token],
     );
@@ -296,8 +448,14 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
     }
     const target = creditCentsOf(row.draws);
     const issued = row.onchain_status === 'issued' ? Number(row.onchain_cents ?? 0) : 0;
+    const feeCents = Number(row.fee_cents ?? 0) || 0;
+    /*
+     * A purchase refunded in full on chain whose fee was charged but not yet recorded as returned: the
+     * reversal landed and the read of the fee after it did not. Asked of the chain, never assumed.
+     */
+    const feeReturnUnrecorded = target === 0 && issued === 0 && row.onchain_status === 'issued' && row.fee_status === 'charged';
 
-    if (target === issued) {
+    if (target === issued && !feeReturnUnrecorded) {
       if (target === 0 && row.onchain_status !== 'not_needed' && row.onchain_status !== 'issued') {
         // Paid entirely from cash: nothing to issue, and saying so stops the sweep asking again.
         await record(token, { status: 'not_needed', cents: 0 });
@@ -311,30 +469,67 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
     const ref = refFor(token, row.onchain_ref);
 
     try {
+      if (feeReturnUnrecorded) {
+        const feeStatus = await feeReturnedOnChain(issuer, ref, token, row);
+        if (feeStatus) await record(token, { status: 'issued', error: null, feeStatus, feeReturnedCents: feeCents });
+        return { transactionToken: token, action: feeStatus ? 'reversed' : 'none' };
+      }
+
       if (issued === 0) {
         // A settlement that landed before we could record it is a success, not a retry.
         const [member, amount] = (await issuer.cardSettlementOf(ref)) as [string, bigint];
         if (member !== ethers.ZeroAddress) {
           const cents = Number(amount / CENTS_TO_UNITS);
-          await record(token, { status: 'issued', cents, error: null });
+          // The fee went with it or it did not, and the chain says which: never charged twice.
+          let feeStatus: CreditFeeStatus | null = null;
+          if (row.fee_status === 'held') {
+            const { fee } = await readCardCreditFee(issuer, ref);
+            feeStatus = fee > 0n ? 'charged' : 'waived';
+            if (feeStatus === 'waived') await bookFeeReversal(token, row, 'card_credit_fee_waived');
+          }
+          await record(token, { status: 'issued', cents, error: null, feeStatus });
           return { transactionToken: token, action: 'recovered' };
         }
         // Only up to what was authorized for this purchase and member (audit M-2).
         const units = BigInt(target) * CENTS_TO_UNITS;
-        const { authorized } = await ensureAuthorized(issuer, ref, row.wallet, units);
-        if (authorized < units) {
+        /*
+         * The card credit fee decided at the swipe, if the chain still takes it. Asked now rather
+         * than trusted from the swipe: the bound can have been lowered since, and a fee above it
+         * reverts. One the chain no longer accepts is waived, and the purchase settles without it.
+         */
+        const feeDue = row.fee_status === 'held' && feeCents > 0;
+        let feeUnits = 0n;
+        if (feeDue) {
+          const wanted = BigInt(feeCents) * CENTS_TO_UNITS;
+          const max = await readMaxCardCreditFee(issuer);
+          // A member who became a covered borrower since the swipe pays none either (MB-04 §5.10).
+          const covered = await isCoveredBorrower(row.wallet);
+          if (max >= wanted && !covered) feeUnits = wanted;
+          else console.warn(`[card-settlement] ${token} card credit fee ${feeCents}c waived: ${covered ? 'covered borrower' : `the chain allows ${max} units`}`);
+        }
+        const { authorized } = await ensureAuthorized(issuer, ref, row.wallet, units + feeUnits);
+        if (authorized < units + feeUnits) {
           // Cleared above its authorization (a tip, a fuel pump). The chain settles a purchase once
-          // and no further than it was approved, so the difference is a person's decision.
+          // and no further than it was approved, so the difference is a person's decision. The fee
+          // is the one decided at the swipe: a higher clearing does not add another.
           await record(token, {
             status: 'needs_review',
-            error: `settled credit ${target}c is more than the ${Number(authorized / CENTS_TO_UNITS)}c authorized on chain`,
+            error:
+              `settled credit ${target}c${feeUnits > 0n ? ` and its ${feeCents}c card credit fee` : ''} is more than the ` +
+              `${Number(authorized / CENTS_TO_UNITS)}c authorized on chain`,
           });
           return { transactionToken: token, action: 'needs_review' };
         }
-        const tx = await issuer.settleCardSpend(ref, row.wallet, units);
+        const tx =
+          feeUnits > 0n
+            ? await issuer.settleCardSpendWithFee(ref, row.wallet, units, feeUnits)
+            : await issuer.settleCardSpend(ref, row.wallet, units);
         await tx.wait(1);
-        await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true });
-        console.log(`[card-settlement] ${token} issued ${target}c on chain for ${row.wallet} (${tx.hash})`);
+        const feeStatus: CreditFeeStatus | null = feeDue ? (feeUnits > 0n ? 'charged' : 'waived') : null;
+        if (feeStatus === 'waived') await bookFeeReversal(token, row, 'card_credit_fee_waived');
+        await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true, feeStatus });
+        const withFee = feeStatus === 'charged' ? ` with a ${feeCents}c card credit fee` : '';
+        console.log(`[card-settlement] ${token} issued ${target}c on chain for ${row.wallet}${withFee} (${tx.hash})`);
         // A draw on savings moves the CLRUSD lock: keep its last-known record current (audit M-3).
         await syncClrusdEncumbrance(resolveChainId(), row.wallet, writesAs(signer));
         return { transactionToken: token, action: 'settled', txHash: tx.hash };
@@ -343,8 +538,18 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
       if (target < issued) {
         const tx = await issuer.reverseCardSpend(ref, BigInt(issued - target) * CENTS_TO_UNITS);
         await tx.wait(1);
-        await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true });
-        console.log(`[card-settlement] ${token} gave back ${issued - target}c on chain (${tx.hash})`);
+        // Brought to zero: the contract gave the fee back on this reversal. A partial refund keeps it.
+        const feeStatus = target === 0 && row.fee_status === 'charged' ? await feeReturnedOnChain(issuer, ref, token, row) : null;
+        await record(token, {
+          status: 'issued',
+          cents: target,
+          tx: tx.hash,
+          error: null,
+          attempt: true,
+          feeStatus,
+          feeReturnedCents: feeStatus ? feeCents : null,
+        });
+        console.log(`[card-settlement] ${token} gave back ${issued - target}c on chain${feeStatus ? ' and its card credit fee' : ''} (${tx.hash})`);
         return { transactionToken: token, action: 'reversed', txHash: tx.hash };
       }
 
@@ -370,8 +575,40 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
 }
 
 /**
+ * After a reversal brought a purchase to zero: whether the contract gave its fee back, and if it did,
+ * the books follow. Null when the chain does not say so (or could not be read): the fee stays charged
+ * and the next pass asks again. Never throws, because the reversal itself has landed and must be
+ * recorded whatever this read does.
+ */
+async function feeReturnedOnChain(
+  issuer: ethers.Contract,
+  ref: string,
+  token: string,
+  row: FeeRow,
+): Promise<CreditFeeStatus | null> {
+  /*
+   * TODO(MB-04, the full-refund rule on carry): the fee is returned here, but carry that accrued on
+   * the fee before the refund is not credited back, because no carry-credit mechanism exists on chain
+   * yet (the contracts side is checking). When one does, credit that carry here too.
+   */
+  try {
+    const { fee, returned } = await readCardCreditFee(issuer, ref);
+    if (fee === 0n || returned < fee) {
+      console.warn(`[card-settlement] ${token} refunded in full, but the chain has not returned its card credit fee`);
+      return null;
+    }
+    await bookFeeReversal(token, row, 'card_credit_fee_returned');
+    return 'returned';
+  } catch (error) {
+    console.warn(`[card-settlement] ${token} card credit fee return unread: ${chainErrorReason(error)}`);
+    return null;
+  }
+}
+
+/**
  * Settled purchases whose chain position may not match yet: never attempted, failed, or issued and
- * since refunded. Bounded, oldest first, so a backlog drains rather than starving.
+ * since refunded (or refunded in full with its fee's return not yet recorded). Bounded, oldest first,
+ * so a backlog drains rather than starving.
  */
 export async function sweepCardSettlements(limit = 25): Promise<SettlementSync[]> {
   if (!isCardSettlementConfigured()) return [];
@@ -381,13 +618,164 @@ export async function sweepCardSettlements(limit = 25): Promise<SettlementSync[]
     `SELECT transaction_token FROM ${DECISIONS}
       WHERE result = 'APPROVED' AND status = 'SETTLED'
         AND (onchain_status IS NULL OR onchain_status IN ('failed', 'issued'))
-        AND (onchain_status IS DISTINCT FROM 'issued' OR reconciled_at > onchain_at OR dispute_token IS NOT NULL)
+        AND (onchain_status IS DISTINCT FROM 'issued' OR reconciled_at > onchain_at OR dispute_token IS NOT NULL
+             OR (fee_status = 'charged' AND COALESCE(onchain_cents, 0) = 0))
       ORDER BY decided_at ASC
       LIMIT $1`,
     [limit],
   );
   const results: SettlementSync[] = [];
   for (const row of rows) results.push(await syncCardSettlement(row.transaction_token));
+  return results;
+}
+
+// ---- Crediting a card credit fee back (returnCardCreditFee) ---------------------------------------
+
+/*
+ * Part or all of a charged fee given back by the settler, apart from the full-refund return the
+ * contract makes by itself. Today's one reason is the CFL cap (MB-04 §5.4(f)): carry plus the fee may
+ * never exceed the CFL maximum, and the excess is credited back by that cycle's statement at the
+ * latest (cardFeeCap.ts asks; this does it).
+ *
+ * The same three rules as settlement. Reconciled to a target: the row says how much of the fee should
+ * have been credited back in total, the chain says how much has been (`cardCreditFeeOf`), and only the
+ * difference is sent, so a retry or a lost receipt can never credit twice. Every attempt's outcome is
+ * stored beside the purchase (`fee_return_*`), and five failures stop the retries for a person.
+ */
+
+export interface FeeCreditSync {
+  transactionToken: string;
+  action: 'none' | 'credited' | 'recovered' | 'failed' | 'needs_review' | 'skipped';
+  /** What has been credited back of the fee in total, after this step. */
+  creditedCents?: number;
+  txHash?: string;
+  error?: string;
+}
+
+/**
+ * Ask for a charged fee to be credited back up to `totalCents` in all (never more than the fee, and
+ * never lowering an earlier ask), then do it. Idempotent: asking for the same total twice credits once.
+ */
+export async function creditBackCardCreditFee(transactionToken: string, totalCents: number, reason: string): Promise<FeeCreditSync> {
+  const token = transactionToken.trim();
+  if (!token || !isCardSettlementConfigured()) return { transactionToken: token, action: 'skipped' };
+  await ensureColumns();
+  const cents = Math.max(0, Math.round(totalCents));
+  await getPayPool()!.query(
+    `UPDATE ${DECISIONS}
+        SET fee_return_target_cents = LEAST(fee_cents, GREATEST(fee_return_target_cents, $2)),
+            fee_return_status = CASE WHEN LEAST(fee_cents, GREATEST(fee_return_target_cents, $2)) > fee_returned_cents
+                                     THEN COALESCE(NULLIF(fee_return_status, 'done'), 'pending') ELSE fee_return_status END,
+            fee_return_error = CASE WHEN fee_return_status = 'needs_review' THEN fee_return_error ELSE $3 END
+      WHERE transaction_token = $1 AND fee_status = 'charged'`,
+    [token, cents, `asked: ${reason}`.slice(0, 400)],
+  );
+  return syncCardCreditFeeReturn(token);
+}
+
+const feeCreditsInFlight = new Set<string>();
+
+/** Bring what the chain has credited back of one fee up to what should have been. Safe to call any time. */
+export async function syncCardCreditFeeReturn(transactionToken: string): Promise<FeeCreditSync> {
+  const token = transactionToken.trim();
+  if (!token || !isCardSettlementConfigured()) return { transactionToken: token, action: 'skipped' };
+  if (feeCreditsInFlight.has(token)) return { transactionToken: token, action: 'skipped' };
+  feeCreditsInFlight.add(token);
+  try {
+    await ensureColumns();
+    const pool = getPayPool()!;
+    const { rows } = await pool.query<{
+      wallet: string | null;
+      card_token: string | null;
+      onchain_ref: string | null;
+      fee_cents: string | number | null;
+      fee_draws: unknown;
+      fee_status: string | null;
+      fee_return_target_cents: string | number | null;
+      fee_returned_cents: string | number | null;
+      fee_return_status: string | null;
+      fee_return_attempts: number | null;
+    }>(
+      `SELECT wallet, card_token, onchain_ref, fee_cents, fee_draws, fee_status, fee_return_target_cents, fee_returned_cents,
+              fee_return_status, fee_return_attempts
+         FROM ${DECISIONS} WHERE transaction_token = $1`,
+      [token],
+    );
+    const row = rows[0];
+    if (!row || row.fee_status !== 'charged' || !row.wallet) return { transactionToken: token, action: 'none' };
+    if (row.fee_return_status === 'needs_review') return { transactionToken: token, action: 'needs_review' };
+    const feeCents = Number(row.fee_cents ?? 0) || 0;
+    const target = Math.min(feeCents, Number(row.fee_return_target_cents ?? 0) || 0);
+    const booked = Number(row.fee_returned_cents ?? 0) || 0;
+    if (target <= booked) return { transactionToken: token, action: 'none', creditedCents: booked };
+
+    const signer = new ethers.Wallet(settlerKey(), chainProvider(resolveChainId()));
+    const issuer = issuerFor(writesAs(signer));
+    if (!issuer) return { transactionToken: token, action: 'skipped', error: 'No RevolvingIssuer address' };
+    const ref = refFor(token, row.onchain_ref);
+
+    try {
+      // What the chain has already given back: a credit that landed before it was recorded is not sent again.
+      const { returned } = await readCardCreditFee(issuer, ref);
+      let creditedCents = Number(returned / CENTS_TO_UNITS);
+      let txHash: string | null = null;
+      if (creditedCents < target) {
+        const tx = await issuer.returnCardCreditFee(ref, BigInt(target - creditedCents) * CENTS_TO_UNITS);
+        await tx.wait(1);
+        txHash = tx.hash;
+        creditedCents = target;
+      }
+      // The books follow the chain: credit the tiers for what moved since they were last told, dearest first.
+      const moved = Math.max(0, creditedCents - booked);
+      if (moved > 0) {
+        await ensureAuthTables();
+        const left = feeDrawsLeft(feeDrawsOf(row.fee_draws), booked);
+        await recordCreditFeeReversal(pool, row.wallet, token, row.card_token, releaseDraws(left, moved), 'card_credit_fee_credit', creditedCents);
+      }
+      await pool.query(
+        `UPDATE ${DECISIONS}
+            SET fee_returned_cents = GREATEST(fee_returned_cents, $2),
+                fee_return_status = 'done',
+                fee_return_tx = COALESCE($3, fee_return_tx),
+                fee_return_error = NULL,
+                fee_return_attempts = fee_return_attempts + $4,
+                fee_status = CASE WHEN $2 >= fee_cents THEN 'returned' ELSE fee_status END,
+                fee_at = now()
+          WHERE transaction_token = $1`,
+        [token, creditedCents, txHash, txHash ? 1 : 0],
+      );
+      console.log(`[card-credit-fee] ${token} ${creditedCents}c of ${feeCents}c credited back${txHash ? ` (${txHash})` : ' (already on chain)'}`);
+      return { transactionToken: token, action: txHash ? 'credited' : 'recovered', creditedCents, ...(txHash ? { txHash } : {}) };
+    } catch (error) {
+      const reason = reasonOf(error);
+      const attempts = (row.fee_return_attempts ?? 0) + 1;
+      const status = attempts >= MAX_ATTEMPTS ? 'needs_review' : 'failed';
+      await pool.query(
+        `UPDATE ${DECISIONS} SET fee_return_status = $2, fee_return_error = $3, fee_return_attempts = $4 WHERE transaction_token = $1`,
+        [token, status, reason, attempts],
+      );
+      console.error(`[card-credit-fee] ${token} credit back ${status} (attempt ${attempts}): ${reason}`);
+      return { transactionToken: token, action: status, error: reason };
+    }
+  } finally {
+    feeCreditsInFlight.delete(token);
+  }
+}
+
+/** Fees with a credit back asked for and not yet on chain. Bounded, oldest first. */
+export async function sweepCardCreditFeeReturns(limit = 25): Promise<FeeCreditSync[]> {
+  if (!isCardSettlementConfigured()) return [];
+  await ensureColumns();
+  const { rows } = await getPayPool()!.query<{ transaction_token: string }>(
+    `SELECT transaction_token FROM ${DECISIONS}
+      WHERE fee_status = 'charged' AND fee_return_target_cents > fee_returned_cents
+        AND fee_return_status IS DISTINCT FROM 'needs_review'
+      ORDER BY decided_at ASC
+      LIMIT $1`,
+    [limit],
+  );
+  const results: FeeCreditSync[] = [];
+  for (const row of rows) results.push(await syncCardCreditFeeReturn(row.transaction_token));
   return results;
 }
 
@@ -539,15 +927,23 @@ async function readCardDebt(
    * credit has not reached the chain yet. A disputed purchase's unpaid part is set aside in its own
    * ledger accounts and taken off the chain, so it is left out of both.
    */
+  /*
+   * The card credit fee is counted on the same terms as the purchase (decision 55): owed in the
+   * ledger from the swipe, not on chain while it is held, on chain (and so part of what was issued)
+   * once charged. Left out of `issued`, a charged fee would read as 30¢ of carry.
+   */
   const { rows } = await pool.query<{
     draws: unknown;
     onchain_status: string | null;
     onchain_cents: string | null;
     dispute_token: string | null;
+    fee_cents: string | number | null;
+    fee_status: string | null;
+    fee_returned_cents: string | number | null;
   }>(
-    `SELECT draws, onchain_status, onchain_cents, dispute_token FROM ${DECISIONS}
+    `SELECT draws, onchain_status, onchain_cents, dispute_token, fee_cents, fee_status, fee_returned_cents FROM ${DECISIONS}
       WHERE wallet = $1 AND result = 'APPROVED'
-        AND (COALESCE(net_cents, amount_cents) > 0 OR COALESCE(onchain_cents, 0) > 0)`,
+        AND (COALESCE(net_cents, amount_cents) > 0 OR COALESCE(onchain_cents, 0) > 0 OR fee_status = 'charged')`,
     [wallet],
   );
   let notOnChain = 0;
@@ -555,8 +951,12 @@ async function readCardDebt(
   for (const row of rows) {
     const onChainForRow = Number(row.onchain_cents ?? 0);
     issued += onChainForRow;
+    // What of the card credit fee the chain still carries: charged, less anything credited back.
+    if (row.fee_status === 'charged') issued += liveFeeCents(row.fee_cents, row.fee_status, row.fee_returned_cents);
     if (row.dispute_token || row.onchain_status === 'waived' || row.onchain_status === 'held') continue;
-    notOnChain += Math.max(0, creditCentsOf(row.draws) - (row.onchain_status === 'issued' ? onChainForRow : 0));
+    notOnChain +=
+      Math.max(0, creditCentsOf(row.draws) - (row.onchain_status === 'issued' ? onChainForRow : 0)) +
+      heldFeeCents(row.fee_cents, row.fee_status);
   }
 
   // Everything that came off the card tiers on chain: fiat netting, and repayments the member made
@@ -784,17 +1184,38 @@ export async function reverseForDispute(transactionToken: string, cents: number)
   if (cents <= 0 || !isCardSettlementConfigured()) return null;
   await ensureColumns();
   const pool = getPayPool()!;
-  const { rows } = await pool.query<{ onchain_ref: string | null; onchain_cents: string | null }>(
-    `SELECT onchain_ref, onchain_cents FROM ${DECISIONS} WHERE transaction_token = $1`,
+  const { rows } = await pool.query<{
+    onchain_ref: string | null;
+    onchain_cents: string | null;
+    wallet: string | null;
+    card_token: string | null;
+    fee_cents: string | number | null;
+    fee_draws: unknown;
+    fee_status: string | null;
+    fee_returned_cents: string | number | null;
+  }>(
+    `SELECT onchain_ref, onchain_cents, wallet, card_token, fee_cents, fee_draws, fee_status, fee_returned_cents
+       FROM ${DECISIONS} WHERE transaction_token = $1`,
     [transactionToken],
   );
   const row = rows[0];
   if (!row) return null;
   const issuer = await settlerIssuer();
-  const tx = await issuer.reverseCardSpend(refFor(transactionToken, row.onchain_ref), BigInt(cents) * CENTS_TO_UNITS);
+  const ref = refFor(transactionToken, row.onchain_ref);
+  const tx = await issuer.reverseCardSpend(ref, BigInt(cents) * CENTS_TO_UNITS);
   await tx.wait(1);
   const left = Math.max(0, Number(row.onchain_cents ?? 0) - cents);
-  await record(transactionToken, { status: 'held', cents: left, tx: tx.hash, error: null, attempt: true });
+  // Taken off to zero: the contract gave the card credit fee back with it, so the books say so too.
+  const feeStatus = left === 0 && row.fee_status === 'charged' ? await feeReturnedOnChain(issuer, ref, transactionToken, row) : null;
+  await record(transactionToken, {
+    status: 'held',
+    cents: left,
+    tx: tx.hash,
+    error: null,
+    attempt: true,
+    feeStatus,
+    feeReturnedCents: feeStatus ? Number(row.fee_cents ?? 0) || 0 : null,
+  });
   console.log(`[card-settlement] ${transactionToken} ${cents}c taken off chain for a dispute (${tx.hash})`);
   return tx.hash;
 }
@@ -864,14 +1285,24 @@ export async function authorizeCardOnChain(transactionToken: string): Promise<Au
   if (!token || !isCardSettlementConfigured()) return 'skipped';
   await ensureColumns();
   const pool = getPayPool()!;
-  const { rows } = await pool.query<{ wallet: string | null; result: string; draws: unknown; onchain_auth_status: string | null; onchain_ref: string | null }>(
-    `SELECT wallet, result, draws, onchain_auth_status, onchain_ref FROM ${DECISIONS} WHERE transaction_token = $1`,
+  const { rows } = await pool.query<{
+    wallet: string | null;
+    result: string;
+    draws: unknown;
+    onchain_auth_status: string | null;
+    onchain_ref: string | null;
+    fee_cents: string | number | null;
+    fee_status: string | null;
+  }>(
+    `SELECT wallet, result, draws, onchain_auth_status, onchain_ref, fee_cents, fee_status FROM ${DECISIONS} WHERE transaction_token = $1`,
     [token],
   );
   const row = rows[0];
   if (!row || row.result !== 'APPROVED' || !row.wallet) return 'skipped';
   if (row.onchain_auth_status === 'authorized') return 'already';
-  const cents = creditCentsOf(row.draws);
+  // The credit part plus the card credit fee (decision 55): settlement draws both, and may draw only
+  // what was authorized.
+  const cents = creditCentsOf(row.draws) + heldFeeCents(row.fee_cents, row.fee_status);
   const setAuth = (status: string, fields: { cents?: number; tx?: string | null; error?: string | null }) =>
     pool.query(
       `UPDATE ${DECISIONS} SET onchain_auth_status = $2, onchain_auth_cents = COALESCE($3, onchain_auth_cents),

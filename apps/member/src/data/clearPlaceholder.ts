@@ -433,7 +433,7 @@ export const ALERTS: Alert[] = [
     tone: 'boost',
     time: '8:14 AM',
     title: "You're using Clear Credit",
-    detail: 'Cash ran out at Shell. Savings-backed credit is free until $3,000.',
+    detail: 'Cash ran out at Shell, so this used your savings-backed credit. It has no carry. A card purchase on credit has a 30¢ card credit fee.',
   },
   {
     id: 'n2',

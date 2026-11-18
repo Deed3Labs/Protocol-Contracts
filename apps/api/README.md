@@ -274,6 +274,25 @@ Face ID, or without it a sign-in made in the last ten minutes, never the session
 (`PLAID_TOKEN_MASTER_KEY`, `MEMBER_PRIVATE_DATA_MASTER_KEY`, `SEND_CONTACT_ENCRYPTION_KEY`), each
 32 bytes, base64 or hex, with an optional keyring for rotation.
 
+### Card credit fee (decision 55)
+
+A card purchase that draws on a credit tier adds a flat fee on top, drawn through the tiers after the
+purchase ([`docs/audit/specs/card-credit-fee.md`](../../docs/audit/specs/card-credit-fee.md)). On by
+default in the API (30¢), and charged only while the RevolvingIssuer's `maxCardCreditFee` covers it,
+which the card settlement sweeper reads at startup and every pass and caches for the Auth Stream
+(which never calls out). A revert (the contract before the upgrade) reads as 0, so no fee until the
+upgrade sets the cap to 30¢. Note L-02 §2.6C on the plan of business. Never charged to a covered borrower under
+the Military Lending Act (MB-04 §5.10: `lithic_covered_borrowers`, copied onto each card snapshot; the
+check that sets it does not exist yet, so every member reads as not covered). Part or all of a charged
+fee can be credited back with `returnCardCreditFee` (the CFL cap, MB-04 §5.4(f), hooked into the cycle
+keeper, crediting nothing until counsel settles the measure; not a gate on the fee).
+
+| Variable | |
+|---|---|
+| `CARD_CREDIT_FEE_CENTS` | The fee in cents. `30` when unset; an explicit `0` turns it off |
+| `CARD_CREDIT_FEE_TIERS` | Which tiers' use carries it. Default `savings,asset,income,boost`; cash never does |
+| `CARD_CREDIT_FEE_MIN_PURCHASE_CENTS` | A purchase below this carries no fee. Default `0` |
+
 ### Settlement Funding (decision 54)
 
 The settlement funding desk (`jobs/fundingDesk.ts`) and its rules (`services/settlementFunding/`).
@@ -325,7 +344,7 @@ is the map the role handover reads.
 | `STATE_ATTESTER_PRIVATE_KEY`, else `CREDIT_OPERATOR_PRIVATE_KEY` | `NetworkRegistry.attestStateCode(member, stateCode)` (jobs/creditOnboarding, with `CREDIT_ONBOARDING_ENABLED=1`; two-letter code as `encodeBytes32String`, services/chain/stateCode.ts) | NetworkRegistry `STATE_ATTESTER_ROLE` (granted to the credit operator through the CreditTimelock) |
 | `CREDIT_OPERATOR_PRIVATE_KEY` | `TermIssuer.setTermLimit` (`apps/api/scripts/set_term_limit.ts`, termLimitService), tier capacity | AccessManager `CREDIT_LIMITS_ROLE` |
 | `CREDIT_OPERATOR_PRIVATE_KEY` | `CollateralRegistry.pledge`/`pledgeItem` (Phase 4b, L-I: only with the member's EIP-712 `Pledge`/`PledgeItem` signature, which the app asks for after a deposit or bond purchase: `POST /api/savings/pledge/prepare`, then `/submit`) and `release` (no signature: it only gives back), unless the savings relayer signs them; `MembershipRegistry` writes | CollateralRegistry `OPERATOR_ROLE`, MembershipRegistry `REGISTRAR_ROLE` (unchanged) |
-| `CARD_SETTLER_PRIVATE_KEY` | `RevolvingIssuer.authorizeCardSpend` (after the Auth Stream approves), `settleCardSpend`, `reverseCardSpend`, `repayCardSpend`, `repayForMember(ref, member, amount, payer)`; `TermIssuer.declareDefault`, `reinstate` (`collectForMember` is retired, Phase 2d); `ClearUSD.syncEncumbrance` | a card settler (`setCardSettler`, the Safe's). No `LendingPool` role: nothing borrows from the Yield Pool (decision 17); Clear Lending funds card settlement from its Deployments |
+| `CARD_SETTLER_PRIVATE_KEY` | `RevolvingIssuer.authorizeCardSpend` (after the Auth Stream approves), `settleCardSpend`, `settleCardSpendWithFee` (decision 55), `reverseCardSpend`, `repayCardSpend`, `repayForMember(ref, member, amount, payer)`; `TermIssuer.declareDefault`, `reinstate` (`collectForMember` is retired, Phase 2d); `ClearUSD.syncEncumbrance` | a card settler (`setCardSettler`, the Safe's). No `LendingPool` role: nothing borrows from the Yield Pool (decision 17); Clear Lending funds card settlement from its Deployments |
 | `CARD_SETTLER_PRIVATE_KEY` (auto-clear, Phase 2b) | `RevolvingIssuer.repayForMember` now pulls the reserve token from the **settler** (`msg.sender`): the sweep approves the RevolvingIssuer for exactly what it pays, and the settler must hold that USDC. The member's dollars for it move to the Lithic settlement account (below) | a card settler; USDC for the clearings, and the approval this service sends |
 | `CARD_SETTLER_PRIVATE_KEY` (cycle keeper, Phase 2b) | `RevolvingIssuer.syncCreditPeriod(member)` (jobs/cycleKeeper, hourly), and `setAutoClearWithSignature` / `setSavingsDrawAllowanceWithSignature` with the member's signature | no role, only gas: all three are permissionless (the member's signature decides the last two) |
 | `CARD_SETTLER_PRIVATE_KEY` (default keeper, decision 53) | `RevolvingIssuer.triggerDefault(member)` (jobs/cycleKeeper, only with `CREDIT_DEFAULT_KEEPER_ENABLED=1`) | no role, only gas: it is permissionless and fails closed unless the issuer computes the default |
