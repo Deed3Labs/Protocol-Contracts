@@ -100,3 +100,18 @@ describe('fundingPlan, the desk’s rule', () => {
     expect(fundingPlan({ need: 500_000_000n, collection: 105_000_000n, laneRoom: 0n, capLeft: 0n, forwardLeft: 0n, laneReady: true }, c)).toEqual({ book: 0n, deploy: 0n });
   });
 });
+
+describe('before the desk has ever checked', () => {
+  test('the card is its real state, nothing yet, tagged Queued while the lane waits on its timelock, Not on after', async () => {
+    const { settlementFundingOff } = await import('../command/settlementFunding.js');
+    const q = settlementFundingOff({}, Date.UTC(2026, 10, 18, 16), false);
+    expect(q.off?.tag).toBe('Queued');
+    expect([q.due, q.csa, q.inFlight, q.lane.cap]).toEqual([0, 0, 0, 0]);
+    expect(q.verdict?.label).toBe('Queued');
+    expect(q.verdict?.cells.map((c) => c.value)).toEqual(['$0.00', '$0.00', '$0.00', '—']);
+    expect(q.cutoff.next).toBeGreaterThan(Date.UTC(2026, 10, 18, 16));
+    expect(settlementFundingOff({}, Date.UTC(2026, 10, 18, 16), true).off?.tag).toBe('Not on');
+    // a pool that couldn't be asked counts as queued, never as on
+    expect(settlementFundingOff({}, Date.UTC(2026, 10, 18, 16), null).off?.tag).toBe('Queued');
+  });
+});

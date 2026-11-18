@@ -89,3 +89,13 @@ describe('Build → Security: automatic jobs (decisions 51 and 54)', () => {
     expect(build).toContain('SGL.stageOf(k)');
   });
 });
+
+describe('before the desk has checked: its live state, nothing yet, and a tag', () => {
+  test('no “Not real yet”, no notification, nothing to press', () => {
+    const off = { ...demoSettle(Date.now(), 'covered'), off: { tag: 'Queued', why: 'The settlement lane waits on its timelock' } };
+    expect(settleNeed(off)).toBeNull();
+    expect(card).toContain("const btn = (k, t, primary) => (can && !S.off ?");
+    expect(card).toContain("{h.can && !S.off ? (S.stopped ?");
+    expect(card).toContain("const pillTone = (S) => (S.off ? 'var(--fg-50)' : TONE[S.verdict.tone]);");
+  });
+});
