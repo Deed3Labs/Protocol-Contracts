@@ -102,6 +102,7 @@ import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
 import { startPayoutFundingKeeper } from './jobs/payoutFundingKeeper.js';
 import { startAssuranceFeePayer } from './jobs/assuranceFeePayer.js';
 import { startPayoutTopUp } from './jobs/payoutTopUp.js';
+import { startFundingDesk } from './jobs/fundingDesk.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 import stepUpRouter from './routes/stepUp.js';
@@ -494,6 +495,7 @@ async function startServer() {
     // read-only, hourly, off unless PAYOUT_KEEPER_ENABLED=1.
     startPayoutFundingKeeper();
     startPayoutTopUp();
+    startFundingDesk();
 
     // The merchant back office's tables. Awaited so the merchant endpoints never see a half-built
     // schema, but a failure doesn't take the member API down with it: nothing member-facing reads

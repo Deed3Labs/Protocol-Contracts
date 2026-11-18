@@ -96,7 +96,7 @@ describe('the structure', () => {
     expect(n[0].n).toBe(1);
   });
 
-  test('a map written before brief update 2 gets the new one from migrations 0080 and 0081, keeping every id, and running them again changes nothing', async () => {
+  test('a map written before brief update 2 gets the new one from migrations 0080 and 0082, keeping every id, and running them again changes nothing', async () => {
     const C = contractsFx as unknown as { contracts: any[][]; links: any[][] };
     const NEW = ['rs', 'pc', 'ec', 'lcm', 'ccp', 'pse', 'ca', 'hd', 'fcr', 'cta'];
     // the map as 0038 and 0073 left it: thirty-two contracts in two bands, no controller, OffersIssuer at the retired address
@@ -110,8 +110,8 @@ describe('the structure', () => {
     await db.query("INSERT INTO command.contract_links (position, from_id, to_id, kind, verb, label) VALUES (0, 'oi', 'cc', 'mint', 'gives $10 offers', '')");
     // and something that names a contract by id stays pointed at it
     await db.query("INSERT INTO command.contract_releases (contract_id, version, released_at) VALUES ('oi', 'v1.0', now())");
-    // 0080, then 0081 (SettlementForwarder, after the Yield Pool), each twice
-    for (const m of ['0080_command_contracts_map', '0081_command_contracts_forwarder_copy']) {
+    // 0080, then 0082 (SettlementForwarder, after the Yield Pool), each twice
+    for (const m of ['0080_command_contracts_map', '0082_command_contracts_forwarder_copy']) {
       const sql = readFileSync(new URL(`../../../migrations/${m}.sql`, import.meta.url), 'utf8');
       const statements = sql.replace(/^--.*$/gm, '').split(/;\s*$/m).map((x) => x.trim()).filter(Boolean);
       for (let i = 0; i < 2; i++) for (const st of statements) await db.query(st);
