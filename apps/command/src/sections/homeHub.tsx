@@ -61,11 +61,11 @@ function demoModel() {
     notes.push({
       w: 3,
       t: vRO() ? (
-        'Rosa’s payout is due tomorrow'
+        'Rosa’s held payout is due tomorrow'
       ) : (
         <>
           <button type="button" className="h-blu" data-hrev="payout">
-            Rosa’s payout
+            Rosa’s held payout
           </button>
           {' is due tomorrow'}
         </>
@@ -106,7 +106,7 @@ function demoModel() {
     notes,
     feeds: D.feeds.map(([n, ok]) => ({ n, ok: !!ok, why: ok ? 'synced' : '3 hours behind' })),
     feedBad: D.feedBad,
-    money: { free: D.freeToSpend, operating: D.operating, credit: D.credit, creditUsed: D.creditUsed, reserve: '1:1' },
+    money: { free: D.freeToSpend, operating: D.operating, payout: D.payoutFunding, reserve: '1:1' },
     heads: D.heads,
     tiles: D,
     start: D.start,
@@ -287,20 +287,20 @@ function header(M) {
             <span className="h-sc-s">{M.money.cover.s}</span>
           </button>
         ) : (
-          <button type="button" className="h-sc" data-npane="credit">
-            <span className="h-lbl">Credit headroom</span>
-            {M.money ? (
+          <button type="button" className="h-sc" data-npane="overview">
+            <span className="h-lbl">Payout funding</span>
+            {M.money?.payout != null ? (
               <>
-                <span className="h-sc-v">{cents(M.money.credit)}</span>
+                <span className="h-sc-v">{cents(M.money.payout.v)}</span>
                 <span className="h-mb">
-                  <i style={css(`width:${M.money.creditUsed}%`)} />
-                  <span className="hroom" style={css(`left:${M.money.creditUsed}%;right:0`)} />
+                  <i style={css(`width:${M.money.payout.w}%`)} />
+                  <span className="hroom" style={css(`left:${M.money.payout.w}%;right:0`)} />
                 </span>
               </>
             ) : (
               notYet
             )}
-            <span className="h-sc-s">{M.money ? 'Before the credit gate shuts' : 'Opens Money'}</span>
+            <span className="h-sc-s">{M.money?.payout != null ? M.money.payout.s : 'Opens Money'}</span>
           </button>
         )}
       </div>
@@ -784,15 +784,19 @@ function tiles(M) {
       viz: D || mo ? (
         <>
           <div className="h-mz">
-            {(D ? D.money : mo).groups.map(([n, v, flex, rt]) => (
-              <div key={n} className={`h-mz-g${rt ? ' h-rt' : ''}`} style={css(`flex:${flex}`)}>
-                <span>{n}</span>
-                <b>{v}</b>
-                <i />
-              </div>
-            ))}
+            {(D ? D.money : mo).groups.map(([n, v, flex, rt, title]) =>
+              title ? (
+                <div key={n} className="h-mz-g" style={css(`flex:${flex}`)} title={title} />
+              ) : (
+                <div key={n} className={`h-mz-g${rt ? ' h-rt' : ''}`} style={css(`flex:${flex}`)}>
+                  <span>{n}</span>
+                  <b>{v}</b>
+                  <i />
+                </div>
+              ),
+            )}
           </div>
-          <div className="h-comp" title={D ? 'Savings · Yield pool · Operating · Co-op balance · Payout pool · AssurancePool' : mo.names}>
+          <div className="h-comp" title={(D ? D.money : mo).names}>
             {(D ? D.money : mo).parts.map(([flex, bg], i) => (
               <Fragment key={i}>{sw(`flex:${flex};background:${bg}`)}</Fragment>
             ))}
@@ -813,7 +817,7 @@ function tiles(M) {
       viz: D || bd ? (
         <div className="h-pc">
           {(D ? D.build : bd).groups.map(([n, a], i) => (
-            <div key={n} className={`h-pc-c ${i === 5 ? 'h-dd' : ''}`}>
+            <div key={n} className={`h-pc-c ${n === 'Deeds' ? 'h-dd' : ''}`}>
               <div className="h-pc-s">
                 {a.map((c, j) => (
                   <i key={j} className={c} />

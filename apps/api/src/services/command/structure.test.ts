@@ -132,7 +132,8 @@ describe('Money with only the structure', () => {
       // the co-op's to use, owed back at maturity: what it keeps back, and what the Safe may take
       expect(m.ACCTS.find((a: any[]) => a[0] === 'bond')[3]).toBe('coop');
       expect(m.figures['money.bondvault']).toEqual({ required: 90, deployable: 200.38, floorPct: 30, windowDays: 90 });
-      for (const [k, v] of Object.entries(m.M)) expect([k, Number.isFinite(v)]).toEqual([k, true]);
+      // a figure is a number, or null where it can't be read (brief update 2's accounts), never NaN
+      for (const [k, v] of Object.entries(m.M)) expect([k, v === null || Number.isFinite(v)]).toEqual([k, true]);
       expect([m.AP_BAL, m.UNSEC, m.COOP_W, m.FLOWS]).toEqual([[0], [0], [], []]);
     } finally {
       env == null ? delete process.env.PROVIDER_MONEY : (process.env.PROVIDER_MONEY = env);

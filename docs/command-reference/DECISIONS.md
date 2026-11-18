@@ -738,3 +738,35 @@ prototype in this folder). The page sheets are copied from it; the sections carr
 - **"Every agreement"'s header row is on the live list too**, and an agreement links to its draft in
   Legal when it carries a `ref` (the demo's do; the live table has no such column yet).
 - **Home's tree** is the reference's four rows, and draws only the entities the data has.
+
+### Money
+
+- **The yield rate is the pool's own, read from the chain.** Since E2b the LendingPool is the Yield Pool and
+  its YieldPoolLedger charges Clear Lending the Funding Rate on the Deployed Balance. Live, the rate,
+  the curve (`rateModel`), the rate at 50/80/90/100% and at today's and after-top-up utilization
+  (`fundingRateAt`), interest pending and accrued and the Deployed Balance are all read from the pool;
+  holders' rate is the Funding Rate times Utilization, before losses. These are annual figures, so nothing
+  is compounded per cycle. Seeded (the demo), the reference's curve and figures stand. The carry members
+  pay on the book is still read (`credit.ts`), but it now only feeds "Where member payments go"; it is not
+  the pool's rate any more.
+- **New accounts come from the chain where they can, and are blank where they can't.** The Credit Backstop
+  and Member Assurance compartments, the coverage cap, what's covered now and approved draws not yet paid
+  are AssurancePool v2's views; the CL Loss Reserve's and CL Operating's USDC (`PAYOUT_TOPUP_SAFE`, else
+  the Base Sepolia default the top-up job uses) and payout claims due in 30 days are read too; the Clear
+  Treasury Safe is the co-op's Ops Safe. Member cash (Lithic), the Credit Settlement Account and the book's
+  monthly Spread and residual aren't wired yet: they're null, and the cells say so rather than show a
+  sample.
+- **The loss ladder is live only once every layer is read.** Its first rungs are the Spread and the
+  residual capital, which aren't read yet, so live it says it isn't real yet, and the compact ladder on
+  the gate falls back to the assurance cell. The demo is the reference's.
+- **Live, the Assurance fees and payout top-ups cards keep their current layout.** The new layout's rows
+  (keeper, top-ups, wallet) are the demo's; the live cards already read the real jobs (decision 51, #902) and get
+  the new layout when those jobs' figures are mapped onto it. The projection chart and "Needs" list are the
+  reference's in the demo, the live projection's live.
+- **Cash's groups keep the zero hairline** (#843): an empty account still draws its line.
+- **Home's Build labels stay centred and unclipped** (#846, Kai's fix): the reference's rule clips them at
+  12px and left-aligns. That is the one place Home differs from the reference; with the reference's rule
+  in, Home matches it at every width and theme.
+- **The crawl's other Money differences are Merchants'.** "Review →" on a payout, "Payouts · Merchants →"
+  and "Partners →" open Merchants, where the reference has held payouts that pay themselves and its own
+  Payouts and Partners routes. The brief doesn't cover Merchants; it stays as it is until Kai says otherwise.

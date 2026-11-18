@@ -46,6 +46,8 @@ function moveOf(p) {
   return { id: p.id, kind, t: p.summary, from, to, amt: num(b.amount), by: p.proposedBy };
 }
 
+const NULLABLE = ['apBack', 'apMem', 'cap', 'cover', 'drawn', 'lr', 'clOp', 'due30', 'treasury', 'memberCash', 'clSettle', 'clSettlePeak', 'spread', 'resid'];
+
 export function moneyLive() {
   const bond = ACCTS.find((a) => a[0] === 'bond');
   const MM = {
@@ -54,15 +56,24 @@ export function moneyLive() {
   };
   // BondVault's balance is the chain's (M.vault), else its account's
   MM.bv = M.vault != null ? num(M.vault) : num(bond?.[5]);
+  // the figures brief update 2 adds, null until their source is read (the cards say so rather than draw $0): the
+  // AssurancePool's two compartments and cover, Clear Lending's wallets, what's due in 30 days, the Treasury Safe
+  for (const k of NULLABLE) MM[k] = M[k] == null ? null : num(M[k]);
   MM.members = num(vars.memberSummary?.active);
   // how many members repay on autopay: the chain's (RevolvingIssuer), once the API reads the credit book
   MM.autopay = M.autopay != null ? num(M.autopay) : null;
   const cb = vars.credit;
 
-  const curve = Y.curve && Y.curve.kink > 0 ? { ...Y.curve } : { base: 0, s1: 0, s2: 0, kink: 1 };
+  // the deployed rate model, annual fractions (LendingPool.rateModel()); the rates themselves are the chain's (Y.rateAt)
+  const curve = Y.curve && Y.curve.k > 0 ? { ...Y.curve } : null;
   const YY = {
     assets: 0, principal: 0, lent: 0, depositors: 0, pledged: 0, queued: 0, cash: 0, util: 0, earned: 0, borrowBps: 0, supplyBps: 0, apy: 0, apr: 0, toPayout: 0, utilAfter: 0, apyAfter: 0,
-    ...Object.fromEntries(Object.entries(Y).filter(([k]) => !['curve', 'opened', 'rates'].includes(k)).map(([k, v]) => [k, num(v)])),
+    ...Object.fromEntries(Object.entries(Y).filter(([k]) => !['curve', 'opened', 'rates', 'rateAt', 'pending', 'accrued', 'deployed', 'deploymentAccount'].includes(k)).map(([k, v]) => [k, num(v)])),
+    // the Funding Rate at each utilization the page draws, by basis points of utilization (fundingRateAt); a pending change
+    rateAt: Y.rateAt && typeof Y.rateAt === 'object' ? Object.fromEntries(Object.entries(Y.rateAt).map(([u, b]) => [u, num(b)])) : null,
+    pending: Y.pending && typeof Y.pending === 'object' ? { ...Y.pending } : null,
+    accrued: Y.accrued == null ? null : num(Y.accrued),
+    deployed: Y.deployed == null ? null : num(Y.deployed),
     opened: Y.opened || '—',
     // what the book pays in carry, by tier and on term plans (the API's credit.rates); null until it reads the issuers
     rates: Y.rates && Array.isArray(Y.rates.tiers) ? Y.rates : null,
