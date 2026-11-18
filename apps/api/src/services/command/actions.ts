@@ -10,6 +10,7 @@ import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
 import { BATCH_ORDERS, sendBatch } from './waitlist.js';
 import { ActionError } from './actionError.js';
+import { settlementActions } from './settlementActions.js';
 import { overLimit, readSetting, settingsActions } from './settings.js';
 import { assuranceFeeConfig, type AssuranceFeeConfig } from '../assuranceFees/config.js';
 import { liveFeeChain } from '../assuranceFees/chain.js';
@@ -1937,6 +1938,8 @@ const moneyActions: Record<string, Action> = {
   reserve: { body: z.object({}).default({}), summary: () => 'Run the reserve check again', outbox: true },
   vote: { body: z.object({ what: text(300).min(1), amount: money.nullable().default(null) }), summary: (b) => `Propose a member vote on the co-op balance · ${b.what}`, second: () => true, outbox: true },
   ...assuranceActions(),
+  // card settlement's manual funding (decision 54): two people, run on approve (settlementActions.ts)
+  ...(settlementActions() as unknown as Record<string, Action>),
 };
 
 // ── Contracts ───────────────────────────────────────────────────────────────

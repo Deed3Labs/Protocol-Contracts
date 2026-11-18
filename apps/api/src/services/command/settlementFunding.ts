@@ -3,6 +3,8 @@ import { deskConfigFromEnv } from '../settlementFunding/config.js';
 import { laneSetup, remainderBatches, type DeskAddresses } from '../settlementFunding/desk.js';
 import { localDate, zonedInstant } from '../settlementFunding/schedule.js';
 import { deskOverview, deskStore, type MoveRow } from '../settlementFunding/store.js';
+import { settlementVerdict, type SettlementVerdict } from '../settlementFunding/verdict.js';
+import { DEFAULT_DESK_CONFIG } from '../settlementFunding/config.js';
 
 /*
  * Money's "Card settlement funding" card (decision 54), on Pools → Yield pool; Build → Security's
@@ -94,6 +96,14 @@ export interface SettlementCard {
   halted: { id: number; error: string; at: number | null } | null;
   marginOutstanding: number;
   recent: SettlementMove[];
+  /** The Savings-Backed Margin: its account's balance (null when it isn't read) and what is advanced and not yet restored. */
+  margin: { held: number | null; advanced: number };
+  /** When what's in flight to the CSA should land (ms): the newest forwarded move's time plus the latency; null with nothing in flight. */
+  inFlightEta: number | null;
+  /** Why nothing moves on its own: the desk halted (a person's stop, or a failed move) or the lane stopped on chain. */
+  stopped: { by: string | null; at: number | null; why: string } | null;
+  /** Will the swipes settle at the next cut-off (the desk's own rule); null while the CSA can't be read. */
+  verdict: SettlementVerdict | null;
 }
 
 function move(r: MoveRow): SettlementMove {
@@ -149,6 +159,7 @@ export async function settlementFundingLive(db: Queryable, env: Record<string, s
         }
       : null;
 
+  const cfg = deskConfigFromEnv(env);
   const cap = big(lane.capPerPeriod);
   const used = big(lane.periodUsed);
   const principal = big(lane.principal);
@@ -223,50 +234,137 @@ export async function settlementFundingLive(db: Queryable, env: Record<string, s
     halted: o.halted ? { id: o.halted.id, error: o.halted.error ?? '', at: o.halted.finishedAt?.getTime() ?? null } : null,
     marginOutstanding: usd(o.marginOutstanding),
     recent: o.recent.map(move),
+    ...extras({
+      s,
+      halted: o.halted,
+      recent: o.recent,
+      laneStopped: upgraded && !!lane.stopped,
+      laneReady: upgraded && !setup.length,
+      cfg,
+    }),
   };
 }
 
-/** The seeded card: a weekday with one book transfer and one lane Deployment, as the other seeded cards are samples. */
-export function settlementFundingSeed(now: number): SettlementCard {
+/* the card's new parts (the redesign): the Margin, the in-flight ETA, why nothing moves, and the verdict, from the check */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extras(x: { s: any; halted: MoveRow | null; recent: MoveRow[]; laneStopped: boolean; laneReady: boolean; cfg: ReturnType<typeof deskConfigFromEnv> }) {
+  const { s, cfg } = x;
+  const f = s.figures ?? {};
+  const cov = s.coverage ?? {};
+  const sec = (v: unknown) => (v == null ? 0 : Number(v) * 1000);
+  const latencyMinutes = Number(f.latencyMinutes ?? 0);
+  const inFlight = usd(f.inFlight);
+  const forwarded = x.recent.find((m) => m.kind === 'deploy' && m.status === 'forwarded');
+  const stopped = x.halted
+    ? { by: x.halted.recordedBy ?? null, at: (x.halted.finishedAt ?? x.halted.createdAt)?.getTime() ?? null, why: x.halted.error || 'A move failed and a person has to look at it' }
+    : x.laneStopped
+      ? { by: null, at: null, why: 'The settlement lane was stopped on chain (stopSettlementFunder)' }
+      : null;
+  const csa = usdOrNull(f.csa);
+  const verdict =
+    csa === null
+      ? null
+      : settlementVerdict(
+          {
+            due: usd(f.due),
+            buffer: usd(f.buffer),
+            csa,
+            inFlight,
+            collection: usdOrNull(s.collection),
+            laneRoom: usd(f.poolRoom),
+            capLeft: usd(f.capLeft),
+            forwardLeft: usd(f.forwardLeft),
+            laneReady: x.laneReady,
+            stopped: stopped ? { why: stopped.why } : null,
+            dryRun: !!s.dryRun,
+            cutoff: sec(cov.next),
+            forcedAt: sec(f.forcedAt),
+            latencyMinutes,
+            timeZone: cfg.schedule.timeZone,
+          },
+          cfg,
+        );
+  return {
+    margin: { held: usdOrNull(s.marginHeld), advanced: usd(s.marginOutstanding) },
+    inFlightEta: inFlight > 0 && forwarded ? (forwarded.forwardedAt ?? forwarded.createdAt).getTime() + latencyMinutes * 60_000 : null,
+    stopped,
+    verdict,
+  };
+}
+
+/** The reference's four states (Money → Overview): Covered, On track, Short and Stopped. */
+export type SettlementSeedState = 'covered' | 'ontrack' | 'short' | 'stopped';
+
+/**
+ * The seeded card, in step with the reference: its "now" is 20 h 56 min before a 13:00 cut-off (16:04 the day before),
+ * the desk's forced run at 08:00 and pool money by 09:00 (a 240-minute latency). Covered by default.
+ */
+export function settlementFundingSeed(now: number, state: SettlementSeedState = 'covered'): SettlementCard {
   const h = (n: number) => '0x' + n.toString(16).padStart(64, '0');
-  const next = now + 5 * 3_600_000;
+  const MIN = 60_000,
+    HOUR = 60 * MIN;
+  const next = now + 20 * HOUR + 56 * MIN;
+  const forcedAt = next - 5 * HOUR;
+  const short = state === 'short',
+    ontrack = state === 'ontrack',
+    stoppedState = state === 'stopped';
+  const due = short ? 5_850 : 2_316.4,
+    dueSettled = short ? 5_120.4 : 1_890.2;
+  const inFlight = ontrack || stoppedState ? 0 : 2_196.25;
+  const csa = 1_120.15,
+    buffer = 1_000;
+  const used = short ? 3_980 : 1_783.65;
+  const collection = short ? 0 : 412.6;
+  const bookedToday = ontrack ? 1_000 : 1_412.6;
+  const stopped = stoppedState ? { by: 'Dana Ruiz', at: now - 54 * MIN, why: 'A forward reverted: CL Operating’s allowance was spent' } : null;
+  const lane = { upgraded: true, stopped: false, cap: 5_000, used, left: 5_000 - used, periodSeconds: 604_800, periodStart: now - 3 * 86_400_000, headroom: 1_000, headroomUsed: 0, principal: 9_400, deployed: 8_870, poolRoom: 3_412.98 };
+  const verdict = settlementVerdict(
+    { due, buffer, csa, inFlight, collection, laneRoom: lane.poolRoom, capLeft: lane.left, forwardLeft: lane.left, laneReady: true, stopped, dryRun: false, cutoff: next, forcedAt, latencyMinutes: 240, timeZone: 'UTC' },
+    DEFAULT_DESK_CONFIG,
+  );
+  // what the desk moved for this cut-off, newest first
+  const deployMove = { id: 3, at: now - 2 * HOUR, kind: 'deploy', status: 'forwarded', amount: 2_196.25, cutoffAt: next, txs: [['deploySettlement', h(0xb1)], ['forward', h(0xb2)]] as Array<[string, string]>, error: null };
+  const bookMove = { id: 2, at: now - 2 * HOUR - MIN, kind: 'book', status: 'booked', amount: bookedToday, cutoffAt: next, txs: [] as Array<[string, string]>, error: null };
+  const stopMove = { id: 4, at: now - 54 * MIN, kind: 'stop', status: 'failed', amount: 0, cutoffAt: next, txs: [] as Array<[string, string]>, error: 'Dana Ruiz · forward reverted' };
+  const recent = stoppedState ? [stopMove, bookMove] : inFlight ? [deployMove, bookMove] : [bookMove];
   return {
     enabled: true,
     dryRun: false,
     returnsEnabled: false,
     chainId: 84532,
     explorer: EXPLORERS[84532],
-    lastCheck: now - 9 * 60_000,
-    outcome: 'funded',
+    lastCheck: now - 9 * MIN,
+    outcome: stoppedState ? 'halted' : 'funded',
     wallet: '0x5e77ed5fd1b3a6a0c3e5c0de57a1c0b3d5a9e2f4',
     forwarder: '0x9f0ad1e3a9cb0e7f2d4c5b6a7e8f9a0b1c2d3e4f',
     safe: '0xfAFf1081F77bF528bA21eea590f251a755bCdf65',
     offRamp: { name: 'mock', rail: 'same-day ACH', address: '0x0ff0000000000000000000000000000000000c5a' },
     bank: 'lithic',
-    cutoff: { next, through: next, rollover: false, forcedAt: next - 5 * 3_600_000, latencyMinutes: 240, measuredMinutes: 212 },
-    byCutoff: [[next, 2_316.4]],
-    due: 2_316.4,
-    dueSettled: 2_316.4,
-    duePending: 0,
-    buffer: 1_000,
-    target: 3_316.4,
-    csa: 1_120.15,
-    inFlight: 2_196.25,
-    need: 0,
+    cutoff: { next, through: next, rollover: false, forcedAt, latencyMinutes: 240, measuredMinutes: 212 },
+    byCutoff: [[next, due]],
+    due,
+    dueSettled,
+    duePending: Math.round((due - dueSettled) * 100) / 100,
+    buffer,
+    target: due + buffer,
+    csa,
+    inFlight,
+    need: Math.max(0, Math.round((due + buffer - csa - inFlight) * 100) / 100),
     surplus: 0,
     pendingCredit: 684.9,
-    netting: { collection: 412.6, bookedToday: 1_412.6, drawsDue: 2_316.4 },
-    today: { day: new Date(now).toISOString().slice(0, 10), sent: 0, booked: 1_412.6, returnedPool: 0, returnedMargin: 0, marginAdvanced: 0 },
+    netting: { collection, bookedToday, drawsDue: due },
+    today: { day: new Date(now).toISOString().slice(0, 10), sent: inFlight, booked: bookedToday, returnedPool: 0, returnedMargin: 0, marginAdvanced: 0 },
     week: { days: 5, sent: 3_850, booked: 6_204.35, returnedPool: 640, returnedMargin: 0 },
-    lane: { upgraded: true, stopped: false, cap: 5_000, used: 1_783.65, left: 3_216.35, periodSeconds: 604_800, periodStart: now - 3 * 86_400_000, headroom: 1_000, headroomUsed: 0, principal: 9_400, deployed: 8_870, poolRoom: 1_530 },
-    allowance: { cap: 5_000, spent: 1_783.65, remaining: 3_216.35, resetMinutes: 10_080 },
+    lane,
+    allowance: { cap: 5_000, spent: used, remaining: 5_000 - used, resetMinutes: 10_080 },
     setup: [],
     needsHuman: null,
-    halted: null,
+    halted: stoppedState ? { id: 4, error: stopped!.why, at: stopped!.at } : null,
     marginOutstanding: 0,
-    recent: [
-      { id: 2, at: now - 2 * 3_600_000, kind: 'deploy', status: 'forwarded', amount: 783.65, cutoffAt: next, txs: [['deploySettlement', h(0xb1)], ['forward', h(0xb2)]], error: null },
-      { id: 1, at: now - 2 * 3_600_000, kind: 'book', status: 'booked', amount: 1_412.6, cutoffAt: next, txs: [], error: null },
-    ],
+    recent,
+    margin: { held: 1_840, advanced: 0 },
+    inFlightEta: inFlight ? now + 92 * MIN : null,
+    stopped,
+    verdict,
   };
 }
