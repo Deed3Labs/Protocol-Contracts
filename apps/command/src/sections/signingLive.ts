@@ -76,6 +76,9 @@ const STAGES: Record<string, [string, string]> = {
   I3: ['I3', 'Vault timelock'],
   Assurance: ['AS', 'Assurance'],
   'Payout top-ups': ['TU', 'Top-ups'],
+  SA: ['SA', 'State attester'],
+  SR: ['SR', 'Credit by state'],
+  SL: ['SL', 'Settlement lane'],
   'Day 7': ['D7', 'Day 7 runs'],
 };
 export const stageOf = (st: string): [string, string] => STAGES[st] || [st, st];
