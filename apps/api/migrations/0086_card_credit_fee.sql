@@ -1,6 +1,5 @@
--- The card credit fee (decision 55; docs/audit/specs/card-credit-fee.md). Off by default
--- (CARD_CREDIT_FEE_CENTS=0, and 0 on chain), and not on for real members before the plan of business
--- (L-02 §2.6C).
+-- The card credit fee (decision 55; docs/audit/specs/card-credit-fee.md). 30¢ by default in the API,
+-- charged only while the chain's maxCardCreditFee covers it. Note L-02 §2.6C on the plan of business.
 --
 -- A Clear Visa purchase that draws on a credit tier adds a flat fee on top (30¢ once switched on).
 -- The fee is stored beside the authorization, never inside it: `draws` and `credit_cents` keep

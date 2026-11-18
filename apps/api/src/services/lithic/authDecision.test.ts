@@ -287,8 +287,11 @@ describe('card credit fee', () => {
     expect(effectiveCreditFee({ ...settings, cents: 0 }, 300_000n).cents).toBe(0);
   });
 
-  test('the settings read off when they cannot be read, and default to every credit tier', () => {
-    expect(creditFeeSettings({})).toEqual({ cents: 0, tiers: ['savings', 'asset', 'income', 'boost'], minPurchaseCents: 0 });
+  test('the settings default to 30¢ on every credit tier, and read off when they cannot be read', () => {
+    // On by default: unset is 30, and an explicit 0 turns it off.
+    expect(creditFeeSettings({})).toEqual({ cents: 30, tiers: ['savings', 'asset', 'income', 'boost'], minPurchaseCents: 0 });
+    expect(creditFeeSettings({ CARD_CREDIT_FEE_CENTS: '' }).cents).toBe(30);
+    expect(creditFeeSettings({ CARD_CREDIT_FEE_CENTS: '0' }).cents).toBe(0);
     expect(creditFeeSettings({ CARD_CREDIT_FEE_CENTS: 'thirty' }).cents).toBe(0);
     expect(creditFeeSettings({ CARD_CREDIT_FEE_CENTS: '-5' }).cents).toBe(0);
     expect(creditFeeSettings({ CARD_CREDIT_FEE_CENTS: '30' }).cents).toBe(30);

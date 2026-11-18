@@ -277,19 +277,19 @@ Face ID, or without it a sign-in made in the last ten minutes, never the session
 ### Card credit fee (decision 55)
 
 A card purchase that draws on a credit tier adds a flat fee on top, drawn through the tiers after the
-purchase ([`docs/audit/specs/card-credit-fee.md`](../../docs/audit/specs/card-credit-fee.md)). Off
-until both switches are on: the API's setting, and the RevolvingIssuer's `maxCardCreditFee`, which
-the card settlement sweeper reads at startup and every pass and caches for the Auth Stream (which
-never calls out). A revert (the contract before the upgrade) reads as 0, so no fee. Off for real
-members until the plan of business allows it (L-02 §2.6C). Never charged to a covered borrower under
+purchase ([`docs/audit/specs/card-credit-fee.md`](../../docs/audit/specs/card-credit-fee.md)). On by
+default in the API (30¢), and charged only while the RevolvingIssuer's `maxCardCreditFee` covers it,
+which the card settlement sweeper reads at startup and every pass and caches for the Auth Stream
+(which never calls out). A revert (the contract before the upgrade) reads as 0, so no fee until the
+upgrade sets the cap to 30¢. Note L-02 §2.6C on the plan of business. Never charged to a covered borrower under
 the Military Lending Act (MB-04 §5.10: `lithic_covered_borrowers`, copied onto each card snapshot; the
 check that sets it does not exist yet, so every member reads as not covered). Part or all of a charged
 fee can be credited back with `returnCardCreditFee` (the CFL cap, MB-04 §5.4(f), hooked into the cycle
-keeper and crediting nothing until counsel settles the measure).
+keeper, crediting nothing until counsel settles the measure; not a gate on the fee).
 
 | Variable | |
 |---|---|
-| `CARD_CREDIT_FEE_CENTS` | The fee in cents. `0` (default) is off; `30` once the amendment is signed and the cap is set on chain |
+| `CARD_CREDIT_FEE_CENTS` | The fee in cents. `30` when unset; an explicit `0` turns it off |
 | `CARD_CREDIT_FEE_TIERS` | Which tiers' use carries it. Default `savings,asset,income,boost`; cash never does |
 | `CARD_CREDIT_FEE_MIN_PURCHASE_CENTS` | A purchase below this carries no fee. Default `0` |
 

@@ -76,12 +76,12 @@ describe('on the cycle', () => {
 });
 
 describe('before card spending on credit is allowed', () => {
-  test('the APR and the fee, said to be not charged yet while it is off', () => {
-    expect(cardCreditCostLine(undefined)).toBe(
-      'Savings-backed credit is 0% APR: it has no carry. Each card purchase that uses credit has a 30¢ card credit fee (not charged yet).',
-    );
-    expect(cardCreditCostLine({ cents: 0, on: false })).toContain('30¢ card credit fee (not charged yet)');
-    expect(cardCreditCostLine({ cents: 30, on: true })).toContain('has a 30¢ card credit fee.');
+  test('the APR and the fee, stated plainly', () => {
+    const line = 'Savings-backed credit is 0% APR: it has no carry. Each card purchase that uses credit has a 30¢ card credit fee.';
+    expect(cardCreditCostLine(undefined)).toBe(line);
+    expect(cardCreditCostLine({ cents: 0, on: false })).toBe(line);
+    expect(cardCreditCostLine({ cents: 30, on: true })).toBe(line);
+    expect(line).not.toContain('not charged yet');
     expect(quotedFee(125)).toBe('$1.25');
   });
 
@@ -93,6 +93,7 @@ describe('before card spending on credit is allowed', () => {
   test('the placeholder alert no longer calls savings-backed credit free', () => {
     const data = readFileSync(new URL('../data/clearPlaceholder.ts', import.meta.url), 'utf8');
     expect(data).not.toContain('Savings-backed credit is free until $3,000.');
-    expect(data).toContain('30¢ card credit fee, not charged yet');
+    expect(data).toContain('A card purchase on credit has a 30¢ card credit fee.');
+    expect(data).not.toContain('not charged yet');
   });
 });

@@ -64,9 +64,10 @@ and starts carry. The cash part is the member's own money and is not issued as c
 ### The card credit fee (decision 55)
 
 A purchase that draws on a credit tier adds a flat **card credit fee** on top (30¢ once switched on;
-[spec](../../audit/specs/card-credit-fee.md)). A purchase paid entirely from cash has none. Off until
-both switches are on: `CARD_CREDIT_FEE_CENTS` in the API, and `maxCardCreditFee` on the
-`RevolvingIssuer`, which bounds what the settler can charge.
+[spec](../../audit/specs/card-credit-fee.md)). A purchase paid entirely from cash has none. On by
+default in the API (`CARD_CREDIT_FEE_CENTS`, 30 when unset; an explicit 0 turns it off), and charged
+only while `maxCardCreditFee` on the `RevolvingIssuer` covers it, which bounds what the settler can
+charge: before the upgrade sets it to 30¢, nothing is charged.
 
 | Step | What happens to the fee |
 |---|---|
@@ -81,8 +82,7 @@ No fee, whatever the settings: a purchase Spendable covers in full; Pay with Cle
 through the Auth Stream); a hold that never settles (released with it); and a covered borrower under
 the Military Lending Act (MB-04 §5.10), read from the card snapshot (`covered_borrower`, copied from
 `lithic_covered_borrowers`; the check that sets it does not exist yet). One fee per purchase, however
-many tiers it draws on or times it clears. Off for real members until the plan of business allows it
-(L-02 §2.6C).
+many tiers it draws on or times it clears. Note L-02 §2.6C on the plan of business.
 
 The ledger shows the fee as its own lines: `card_credit_fee` (the member's tier debited, Clear
 Lending's `coop_card_credit_fees` credited), reversed as `card_credit_fee_released`,

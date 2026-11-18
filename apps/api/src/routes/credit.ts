@@ -185,7 +185,7 @@ creditRouter.get('/:wallet/auto-repay', async (req: Request, res: Response) => {
   if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
   try {
     // The card credit fee, for the screen that turns on card spending from Savings (MB-07 §4.3(c)):
-    // the fee is shown before the member allows it, and said to be not charged yet while it is off.
+    // the fee is shown before the member allows it.
     return res.json({
       ...(await autoRepayStatus(wallet)),
       cardCreditFee: { cents: creditFeeSettings().cents, on: currentCreditFee().cents > 0 },

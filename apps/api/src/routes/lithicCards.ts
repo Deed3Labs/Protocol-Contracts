@@ -90,8 +90,7 @@ router.get('/credit-fees', async (req: Request, res: Response) => {
   if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
   const cycleStart = Number(req.query.cycleStart);
   const cycleStartMs = Number.isFinite(cycleStart) && cycleStart > 0 ? Math.floor(cycleStart) * 1000 : null;
-  // Off unless both the API's setting and the chain's bound allow it (L-02 §2.6C: off for real members
-  // before the plan of business). The member app says "not charged yet" while it is off.
+  // Charged only when both the API's setting and the chain's bound allow it.
   const fee = { cents: creditFeeSettings().cents, on: currentCreditFee().cents > 0 };
   try {
     res.json({ fee, ...(await cardCreditFeeTotals(wallet, cycleStartMs)) });

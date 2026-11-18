@@ -1,11 +1,9 @@
 /*
  * The card credit fee, as the member is told about it (decision 55).
  *
- * A card purchase that uses credit has a flat 30¢ card credit fee on top. It is off until Clear turns
- * it on (and not on for real members before the plan of business allows it), so every place that
- * mentions it before then says it is not charged yet, as the public docs do. A purchase that carried
- * one shows it on the purchase itself (activityMapping, TransactionDetailDialog); this is the copy for
- * the places that describe it in advance.
+ * A card purchase that uses credit has a flat 30¢ card credit fee on top, stated plainly. A purchase
+ * that carried one shows it on the purchase itself (activityMapping, TransactionDetailDialog); this is
+ * the copy for the places that describe it in advance.
  */
 
 /** The fee the member agreements set, in cents: what is quoted while the API has no amount set. */
@@ -22,6 +20,5 @@ export function quotedFee(cents: number): string {
  */
 export function cardCreditCostLine(fee?: { cents: number; on: boolean } | null): string {
   const cents = fee && fee.cents > 0 ? fee.cents : CARD_CREDIT_FEE_QUOTED_CENTS;
-  const when = fee?.on ? '' : ' (not charged yet)';
-  return `Savings-backed credit is 0% APR: it has no carry. Each card purchase that uses credit has a ${quotedFee(cents)} card credit fee${when}.`;
+  return `Savings-backed credit is 0% APR: it has no carry. Each card purchase that uses credit has a ${quotedFee(cents)} card credit fee.`;
 }

@@ -22,17 +22,22 @@ import {
  * file holds only the cache and pure arithmetic: nothing in it reaches a chain, which is what lets
  * the authorization path import it.
  *
- * OFF BY DEFAULT, and it stays off for real members until the plan of business allows it (L-02
- * §2.6C): `CARD_CREDIT_FEE_CENTS` defaults to 0, and the chain's bound defaults to 0 after the
- * upgrade. Who never pays it, whatever the settings (MB-04): a purchase Spendable covers in full; a
+ * ON BY DEFAULT in the API (owner's decision): `CARD_CREDIT_FEE_CENTS` is 30 when unset, and an
+ * explicit 0 turns it off. The chain's bound still decides: nothing is charged until
+ * `maxCardCreditFee()` covers it (the RevolvingIssuer upgrade sets it to 30¢ in the same timelock
+ * operation), so before the upgrade nothing changes. Note L-02 §2.6C on the plan of business.
+ * The CFL cap (MB-04 §5.4(f)) is not a gate: see cardFeeCapExcess. Who never pays it, whatever the settings (MB-04): a purchase Spendable covers in full; a
  * Pay with Clear payment (it never passes through the card's Auth Stream, the only caller of the
  * decision that adds the fee); a hold that never settles (released with the hold); and a member who
  * is a covered borrower under the Military Lending Act (MB-04 §5.10), read from the snapshot.
  * One fee per purchase, however many tiers it draws on and however many times the merchant clears it.
  */
 
+/** The fee when `CARD_CREDIT_FEE_CENTS` is unset, in cents. */
+export const DEFAULT_CARD_CREDIT_FEE_CENTS = 30;
+
 export interface CreditFeeSettings {
-  /** The fee in cents. 0 (the default) is off. */
+  /** The fee in cents: 30 when unset; an explicit 0 is off. */
   cents: number;
   /** Which tiers' use carries the fee. Default every credit tier. */
   tiers: DrawSource[];
@@ -60,7 +65,8 @@ export function creditFeeSettings(env: Record<string, string | undefined> = proc
         .filter((t): t is DrawSource => (TIER_ORDER as readonly string[]).includes(t) && t !== 'cash')
     : DEFAULT_TIERS;
   return {
-    cents: wholeCents(env.CARD_CREDIT_FEE_CENTS),
+    // Unset: the default fee. Set: what it says, and 0 (or anything unreadable) is off.
+    cents: String(env.CARD_CREDIT_FEE_CENTS ?? '').trim() === '' ? DEFAULT_CARD_CREDIT_FEE_CENTS : wholeCents(env.CARD_CREDIT_FEE_CENTS),
     tiers: [...new Set(named)],
     minPurchaseCents: wholeCents(env.CARD_CREDIT_FEE_MIN_PURCHASE_CENTS),
   };
