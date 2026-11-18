@@ -1,0 +1,253 @@
+=== Step 1: validate only (2026-11-18T08:38:07Z, dev 88e3b0aa)
+$ npx hardhat run scripts/upgrade_settlement_lane.ts --network base-sepolia
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:72:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                        ^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:82:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:267:98:
+    |
+267 |     function pledgePaymentDue(address, uint256) external view returns (bool due, address issuer, bool onDefault) {
+    |                                                                                                  ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:272:84:
+    |
+272 |     function applyPledgePayment(address, address, bool, uint256) external returns (uint256 applied) {
+    |                                                                                    ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:277:79:
+    |
+277 |     function maturityToDebt(address, uint256, uint256) external view returns (uint256 toDebt) {
+    |                                                                               ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:292:76:
+    |
+292 |     function enforcementPermitted(address, uint256) external view returns (bool permitted) {
+    |                                                                            ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:297:64:
+    |
+297 |     function defaultedAmountOf(address) external view returns (uint256 due) {
+    |                                                                ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:302:77:
+    |
+302 |     function applyPoolProceeds(address, uint256, uint256) external returns (uint256 applied) {
+    |                                                                             ^^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:307:57:
+    |
+307 |     function noticeShortfall(address) external returns (uint256 gap) {
+    |                                                         ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:58:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                          ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:312:71:
+    |
+312 |     function shortfallOf(address) external view returns (uint256 gap, uint256 dueAt) {
+    |                                                                       ^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:62:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                              ^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:317:75:
+    |
+317 |     function earnDefaultedOf(address) external view returns (uint256 due, address issuer) {
+    |                                                                           ^^^^^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:57:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                         ^^^^^^^^^^
+
+
+Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+   --> contracts/peripherals/Liquidator.sol:322:69:
+    |
+322 |     function nextBondOf(address) external view returns (bool found, uint256 bondId) {
+    |                                                                     ^^^^^^^^^^^^^^
+
+
+Compiled 271 Solidity files successfully (evm target: paris).
+LendingPool 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23: the new implementation validates as an upgrade of what the manifest records
+Validated only: nothing deployed. SETTLEMENT_LANE_PREPARE=1 deploys the implementation for the Earn timelock proposal.
+[exit 0]
+
+=== Step 2: prepare (2026-11-18T08:39:40Z)
+$ LendingPool proxy implementation slot at block 60346559: 0x22dF3E277916053248a9138fA6670569eB676B51 (before)
+$ SETTLEMENT_LANE_PREPARE=1 npx hardhat run scripts/upgrade_settlement_lane.ts --network base-sepolia
+LendingPool 0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23: the new implementation validates as an upgrade of what the manifest records
++ YieldPoolLedger     0x0fe621a5ED0CA2E31130e693f27451c4528dB628
++ YieldPoolValuation  0x6B2eC419A229b1ba447533f244e0928dBA94A027
++ LendingPool impl    0xeccfDDCac073a657CFB94D3Ff9f22997e7EcBAbD
+  recorded as deployments/base-sepolia/LendingPoolSettlementLane.json
+
+Nothing is upgraded. The Clear Lending Safe schedules upgradeTo(impl) on the Earn timelock after E8x has run:
+  npx hardhat run scripts/signing_plan.ts --network base-sepolia   (steps SL-upgrade-schedule, SLx-upgrade-execute)
+[exit 0]
+after: LendingPool proxy implementation slot at block 60346585: 0x22dF3E277916053248a9138fA6670569eB676B51
+
+=== Step 3: signing plan (2026-11-18T08:40:03Z)
+$ npx hardhat run scripts/signing_plan.ts --network base-sepolia
+Signing plan for base-sepolia (chain 84532) at block 60346681, 2026-11-18T08:40:05.000Z. Sends nothing.
+
+DONE    C1d-1                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).upgradeToAndCall
+DONE    C1d-2                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).grantRole
+DONE    C1d-3                      the vault's admin (VAULT_ADMIN, the deployer) -> ESADepositVault (the savings vault).revokeRole
+DONE    D4-settings-1              the deployer -> AccessManager.grantRole
+DONE    D4-settings-2              the deployer -> AccessManager.grantRole
+DONE    D4-attester-1              the deployer -> AccessManager.grantRole
+DONE    D4-attester-2              the deployer -> AccessManager.grantRole
+DONE    D4-operator                the deployer -> AccessManager.grantOperator
+DONE    E8-vault-propose           treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-vault-confirm           treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-vault-approve           the Agent Key -> CollateralAgent.approveChange
+DONE    E8-bondbook-propose        treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-bondbook-confirm        treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-bondbook-approve        the Agent Key -> CollateralAgent.approveChange
+DONE    E8-holderdirections-propose treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-holderdirections-confirm treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-holderdirections-approve the Agent Key -> CollateralAgent.approveChange
+DONE    E8-pledgemodule-propose    treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-pledgemodule-confirm    treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-pledgemodule-approve    the Agent Key -> CollateralAgent.approveChange
+DONE    E8-backstop-propose        treasury signer 1 -> CollateralAgent.proposeChange
+DONE    E8-backstop-confirm        treasury signer 2 -> CollateralAgent.confirmChange
+DONE    E8-backstop-approve        the Agent Key -> CollateralAgent.approveChange
+DONE    E8-hold-1                  the deployer -> Liquidator.grantRole
+DONE    E8-hold-2                  the deployer -> Liquidator.grantRole
+DONE    E8-earn-schedule           [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.scheduleBatch
+WAITING E8x-earn-execute           [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.executeBatch
+        Not yet: the Earn timelock's 7 days end at 2026-11-24T18:35:48.000Z; the Collateral Agent's 7 days (from the last confirmation) end at 2026-11-24T18:25:33.000Z.
+DONE    F2-fee-approve             credit settings signer 2 -> TermIssuer.approveFeeRecipient
+DONE    G1-tier-1                  valuation signer 1 -> LendingPool (the Yield Pool).postPoolTierPrincipal
+        Posted: 100000000000 (both signers).
+DONE    G1-tier-2                  valuation signer 2 -> LendingPool (the Yield Pool).postPoolTierPrincipal
+        Posted: 100000000000 (both signers).
+DONE    safe-owner                 [Safe] the Clear Treasury Safe 0x52e6…cf50 (its owners sign in the Safe app) -> the Safe itself.changeThreshold
+        2 of 4.
+DONE    I3-vault-schedule          [Safe] Clear Financial Safe (its owners sign in the Safe app) -> vault timelock.scheduleBatch
+WAITING I3x-vault-execute          [Safe] Clear Financial Safe (its owners sign in the Safe app) -> vault timelock.executeBatch
+        Not yet: the vault timelock's 7 days end at 2026-11-24T21:00:10.000Z; CLRUSD's admin delay ends at 2026-11-19T20:43:36.000Z.
+DONE    AS-payer-clfees-approve-1  Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-payer-clfees-approve-2  Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-payer-treasury-approve-1 Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-payer-treasury-approve-2 Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-lendingco-approve-1     Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-lendingco-approve-2     Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-disbursement-approve-1  Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-disbursement-approve-2  Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-exposure-approve-1      Assurance signer 1 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-exposure-approve-2      Assurance signer 2 -> AssurancePool.approveAction
+        Both signers approved this exact call.
+DONE    AS-assurance-schedule      [Safe] Clear Treasury (board) Safe (its owners sign in the Safe app) -> Assurance timelock.scheduleBatch
+WAITING ASx-assurance-execute      [Safe] Clear Treasury (board) Safe (its owners sign in the Safe app) -> Assurance timelock.executeBatch
+        Not yet: the Assurance timelock's 7 days end at 2026-11-24T18:55:35.000Z.
+DONE    AS-floor-1                 Assurance signer 1 -> AssurancePool.setFloorInputs
+        Posted: coverage cap $10,000.00 (both signers).
+DONE    AS-floor-2                 Assurance signer 2 -> AssurancePool.setFloorInputs
+        Posted: coverage cap $10,000.00 (both signers).
+DONE    TU-funder                  the deployer -> PayoutPool.grantRole
+DONE    TU-safe-module             [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> CL Operating itself.enableModule
+DONE    TU-safe-delegate           [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> AllowanceModule.addDelegate
+DONE    TU-safe-allowance          [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> AllowanceModule.setAllowance
+        $5,000.00 every 7 days; $0.00 spent this period.
+WAITING SL-upgrade-schedule        [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.schedule
+        Waits for E8x-earn-execute first.
+WAITING SLx-upgrade-execute        [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.execute
+        Waits for SL-upgrade-schedule, then 7 days.
+READY   SL-deployer-1-schedule     [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.schedule
+WAITING SLx-deployer-1-execute     [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.execute
+        Waits for SL-deployer-1-schedule, then 7 days.
+DONE    SL-deployer-2-schedule     [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.schedule
+        Deployment signer 2 holds the pool's DEPLOYER_ROLE.
+DONE    SLx-deployer-2-execute     [Safe] Clear Lending Safe (its owners sign in the Safe app) -> Earn timelock.execute
+        Deployment signer 2 holds the pool's DEPLOYER_ROLE.
+WAITING SL-funder-1                deployment signer 1 -> LendingPool (the Yield Pool).setSettlementFunder
+        Waiting for input: SETTLEMENT_FUNDER (the funding desk's CDP wallet; the owner creates it).
+WAITING SL-funder-2                deployment signer 2 -> LendingPool (the Yield Pool).setSettlementFunder
+        Waiting for input: SETTLEMENT_FUNDER (the funding desk's CDP wallet; the owner creates it).
+WAITING SL-headroom-1              deployment signer 1 -> LendingPool (the Yield Pool).setSettlementHeadroom
+        Waits for SLx-upgrade-execute: the lane is in the new LendingPool implementation.
+WAITING SL-headroom-2              deployment signer 2 -> LendingPool (the Yield Pool).setSettlementHeadroom
+        Waits for SLx-upgrade-execute: the lane is in the new LendingPool implementation.
+WAITING SL-cl-operating            [Safe] CL Operating (its owner, the Clear Lending Safe, signs in the Safe app) -> AllowanceModule.addDelegate
+        Waits for the SettlementForwarder (decision 54, part 2): not deployed yet.
+DONE    SA-attester-schedule       [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.schedule
+WAITING SAx-attester-execute       [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.execute
+        Scheduled. The Safe can run it from 2026-11-25T02:54:36.000Z.
+DONE    SR-rates-schedule-1        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.scheduleBatch
+WAITING SRx-rates-execute-1        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.executeBatch
+        Not yet: the credit timelock's 7 days end at 2026-11-25T04:13:16.000Z.
+DONE    SR-rates-schedule-2        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.scheduleBatch
+WAITING SRx-rates-execute-2        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.executeBatch
+        Not yet: the credit timelock's 7 days end at 2026-11-25T04:13:58.000Z.
+DONE    SR-rates-schedule-3        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.scheduleBatch
+WAITING SRx-rates-execute-3        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.executeBatch
+        Not yet: the credit timelock's 7 days end at 2026-11-25T04:14:58.000Z.
+DONE    SR-rates-schedule-4        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.scheduleBatch
+WAITING SRx-rates-execute-4        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.executeBatch
+        Not yet: the credit timelock's 7 days end at 2026-11-25T04:17:06.000Z.
+DONE    SR-rates-schedule-5        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.scheduleBatch
+WAITING SRx-rates-execute-5        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.executeBatch
+        Not yet: the credit timelock's 7 days end at 2026-11-25T04:18:27.000Z.
+DONE    SR-rates-schedule-6        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.scheduleBatch
+WAITING SRx-rates-execute-6        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.executeBatch
+        Not yet: the credit timelock's 7 days end at 2026-11-25T04:20:00.000Z.
+DONE    SR-rates-schedule-7        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.scheduleBatch
+WAITING SRx-rates-execute-7        [Safe] Clear Treasury Safe (its owners sign in the Safe app) -> credit timelock.executeBatch
+        Not yet: the credit timelock's 7 days end at 2026-11-25T04:21:14.000Z.
+
+NOTE Deployment signer 1 0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA (deploy/config/earn-roles.json) does not hold the pool's DEPLOYER_ROLE on chain: SL-deployer-1-schedule and SLx-deployer-1-execute grant it through the Earn timelock, before the SL-funder and SL-headroom pairs.
+
+1 ready, 19 waiting, 58 done. steps sha256 623cbcefbe9c5ec34845018d730df21efaf8bd3d73502d6d9c4e527ef1339d1f
+
+Wrote deployments/base-sepolia/signing-plan.json and 1 Safe batch(es): deployments/base-sepolia/safe-batches/signing-SL-deployer-1-schedule.json.
+Open it in tools/signing-page/index.html (see tools/signing-page/README.md). Re-run this after each stage. Live network: base-sepolia.
+[exit 0]

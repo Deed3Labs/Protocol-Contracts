@@ -28007,6 +28007,1375 @@
         },
         "namespaces": {}
       }
+    },
+    "4b39d7cbebcc3245156f31a3242d1c178aa41c1b1dd10b5e6e9350ef6f7581f1": {
+      "address": "0xeccfDDCac073a657CFB94D3Ff9f22997e7EcBAbD",
+      "txHash": "0xac0e17c66075215e0043a03751d1f7fe3bf0a317bde299dc8d67d08b8e9c4cee",
+      "layout": {
+        "solcVersion": "0.8.29",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:40"
+          },
+          {
+            "label": "_balances",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:40"
+          },
+          {
+            "label": "_allowances",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:42"
+          },
+          {
+            "label": "_totalSupply",
+            "offset": 0,
+            "slot": "53",
+            "type": "t_uint256",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:44"
+          },
+          {
+            "label": "_name",
+            "offset": 0,
+            "slot": "54",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:46"
+          },
+          {
+            "label": "_symbol",
+            "offset": 0,
+            "slot": "55",
+            "type": "t_string_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:47"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "56",
+            "type": "t_array(t_uint256)45_storage",
+            "contract": "ERC20Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol:376"
+          },
+          {
+            "label": "_asset",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_contract(IERC20Upgradeable)3876",
+            "contract": "ERC4626Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol:54"
+          },
+          {
+            "label": "_underlyingDecimals",
+            "offset": 20,
+            "slot": "101",
+            "type": "t_uint8",
+            "contract": "ERC4626Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol:55"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ERC4626Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol:267"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC165Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol:41"
+          },
+          {
+            "label": "_roles",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_mapping(t_bytes32,t_struct(RoleData)23_storage)",
+            "contract": "AccessControlUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol:57"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "AccessControlUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol:260"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "251",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:169"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "301",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:111"
+          },
+          {
+            "label": "totalBorrowed",
+            "offset": 0,
+            "slot": "351",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:92"
+          },
+          {
+            "label": "queuedAssets",
+            "offset": 0,
+            "slot": "352",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:94"
+          },
+          {
+            "label": "requests",
+            "offset": 0,
+            "slot": "353",
+            "type": "t_array(t_struct(WithdrawalRequest)101466_storage)dyn_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:95"
+          },
+          {
+            "label": "requestsOf",
+            "offset": 0,
+            "slot": "354",
+            "type": "t_mapping(t_address,t_array(t_uint256)dyn_storage)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:97"
+          },
+          {
+            "label": "baseRatePerCycle",
+            "offset": 0,
+            "slot": "355",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:99"
+          },
+          {
+            "label": "slope1PerCycle",
+            "offset": 0,
+            "slot": "356",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:100"
+          },
+          {
+            "label": "slope2PerCycle",
+            "offset": 0,
+            "slot": "357",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:101"
+          },
+          {
+            "label": "kinkBps",
+            "offset": 0,
+            "slot": "358",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:102"
+          },
+          {
+            "label": "encumbranceSource",
+            "offset": 0,
+            "slot": "359",
+            "type": "t_contract(IEncumbranceSource)42101",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:104"
+          },
+          {
+            "label": "collateralKind",
+            "offset": 0,
+            "slot": "360",
+            "type": "t_bytes32",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:106"
+          },
+          {
+            "label": "borrowDestinationOf",
+            "offset": 0,
+            "slot": "361",
+            "type": "t_mapping(t_address,t_address)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:111"
+          },
+          {
+            "label": "dailyBorrowCapOf",
+            "offset": 0,
+            "slot": "362",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:112"
+          },
+          {
+            "label": "borrowWindowOf",
+            "offset": 0,
+            "slot": "363",
+            "type": "t_mapping(t_address,t_struct(BorrowWindow)101512_storage)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:117"
+          },
+          {
+            "label": "requestSharesOf",
+            "offset": 0,
+            "slot": "364",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:119"
+          },
+          {
+            "label": "escrowedQueueCaps",
+            "offset": 0,
+            "slot": "365",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:120"
+          },
+          {
+            "label": "lockedInterest",
+            "offset": 0,
+            "slot": "366",
+            "type": "t_uint192",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:122"
+          },
+          {
+            "label": "interestLockedAt",
+            "offset": 24,
+            "slot": "366",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:123"
+          },
+          {
+            "label": "accountedCash",
+            "offset": 0,
+            "slot": "367",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:124"
+          },
+          {
+            "label": "cashAccountingOn",
+            "offset": 0,
+            "slot": "368",
+            "type": "t_bool",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:125"
+          },
+          {
+            "label": "lastKnownLock",
+            "offset": 0,
+            "slot": "369",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:127"
+          },
+          {
+            "label": "_earnControls",
+            "offset": 0,
+            "slot": "370",
+            "type": "t_contract(IPoolEarnControls)147154",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:194"
+          },
+          {
+            "label": "_deploymentAccount",
+            "offset": 0,
+            "slot": "371",
+            "type": "t_address",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:196"
+          },
+          {
+            "label": "_enforcementDestination",
+            "offset": 0,
+            "slot": "372",
+            "type": "t_address",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:198"
+          },
+          {
+            "label": "interestAccrued",
+            "offset": 0,
+            "slot": "373",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:200"
+          },
+          {
+            "label": "_lastAccrualAt",
+            "offset": 0,
+            "slot": "374",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:201"
+          },
+          {
+            "label": "_initialClosing",
+            "offset": 8,
+            "slot": "374",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:203"
+          },
+          {
+            "label": "_holdbackBps",
+            "offset": 16,
+            "slot": "374",
+            "type": "t_uint16",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:205"
+          },
+          {
+            "label": "_holderCapBps",
+            "offset": 18,
+            "slot": "374",
+            "type": "t_uint16",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:207"
+          },
+          {
+            "label": "escrowMode",
+            "offset": 20,
+            "slot": "374",
+            "type": "t_uint8",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:209"
+          },
+          {
+            "label": "_rateModel",
+            "offset": 0,
+            "slot": "375",
+            "type": "t_struct(RateModel)101579_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:211"
+          },
+          {
+            "label": "_pendingRate",
+            "offset": 0,
+            "slot": "376",
+            "type": "t_struct(PendingRate)101587_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:213"
+          },
+          {
+            "label": "_lastLoweringQuarter",
+            "offset": 0,
+            "slot": "378",
+            "type": "t_uint32",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:215"
+          },
+          {
+            "label": "queue",
+            "offset": 0,
+            "slot": "379",
+            "type": "t_array(t_struct(QueueRequest)101550_storage)dyn_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:217"
+          },
+          {
+            "label": "_queueHead",
+            "offset": 0,
+            "slot": "380",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:219"
+          },
+          {
+            "label": "_queuedShares",
+            "offset": 0,
+            "slot": "381",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:221"
+          },
+          {
+            "label": "_queuedSharesOf",
+            "offset": 0,
+            "slot": "382",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:223"
+          },
+          {
+            "label": "_enforcementQueuedOf",
+            "offset": 0,
+            "slot": "383",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:225"
+          },
+          {
+            "label": "holdbacks",
+            "offset": 0,
+            "slot": "384",
+            "type": "t_array(t_struct(Holdback)101563_storage)dyn_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:227"
+          },
+          {
+            "label": "_holdbackHead",
+            "offset": 0,
+            "slot": "385",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:229"
+          },
+          {
+            "label": "_totalHoldback",
+            "offset": 0,
+            "slot": "386",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:231"
+          },
+          {
+            "label": "openHoldbackGross",
+            "offset": 0,
+            "slot": "387",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:233"
+          },
+          {
+            "label": "_holdbackOf",
+            "offset": 0,
+            "slot": "388",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:235"
+          },
+          {
+            "label": "_holdbackMaxAge",
+            "offset": 0,
+            "slot": "389",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:237"
+          },
+          {
+            "label": "ageCaps",
+            "offset": 0,
+            "slot": "390",
+            "type": "t_array(t_struct(AgeCap)101569_storage)dyn_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:238"
+          },
+          {
+            "label": "_poolLossAllowance",
+            "offset": 0,
+            "slot": "391",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:240"
+          },
+          {
+            "label": "_allowancePostedAt",
+            "offset": 0,
+            "slot": "392",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:241"
+          },
+          {
+            "label": "releaseCursor",
+            "offset": 8,
+            "slot": "392",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:243"
+          },
+          {
+            "label": "releaseEnd",
+            "offset": 16,
+            "slot": "392",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:244"
+          },
+          {
+            "label": "_releasePending",
+            "offset": 24,
+            "slot": "392",
+            "type": "t_bool",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:246"
+          },
+          {
+            "label": "lossCharge",
+            "offset": 0,
+            "slot": "393",
+            "type": "t_struct(LossCharge)101603_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:247"
+          },
+          {
+            "label": "_lossChargeCount",
+            "offset": 0,
+            "slot": "396",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:249"
+          },
+          {
+            "label": "_suspension",
+            "offset": 0,
+            "slot": "397",
+            "type": "t_struct(Suspension)101616_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:252"
+          },
+          {
+            "label": "evidenceEndedAt",
+            "offset": 0,
+            "slot": "400",
+            "type": "t_mapping(t_bytes32,t_uint256)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:254"
+          },
+          {
+            "label": "_proposerOf",
+            "offset": 0,
+            "slot": "401",
+            "type": "t_mapping(t_bytes32,t_address)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:257"
+          },
+          {
+            "label": "_unpaidOf",
+            "offset": 0,
+            "slot": "402",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:260"
+          },
+          {
+            "label": "_totalUnpaid",
+            "offset": 0,
+            "slot": "403",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:261"
+          },
+          {
+            "label": "_deploymentCount",
+            "offset": 0,
+            "slot": "404",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:264"
+          },
+          {
+            "label": "_totalDeployed",
+            "offset": 0,
+            "slot": "405",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:265"
+          },
+          {
+            "label": "_holdbackRate",
+            "offset": 0,
+            "slot": "406",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:271"
+          },
+          {
+            "label": "_billedInterest",
+            "offset": 0,
+            "slot": "407",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:274"
+          },
+          {
+            "label": "_billedDueAt",
+            "offset": 0,
+            "slot": "408",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:276"
+          },
+          {
+            "label": "_periodEnd",
+            "offset": 8,
+            "slot": "408",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:278"
+          },
+          {
+            "label": "_lowUtilSince",
+            "offset": 16,
+            "slot": "408",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:280"
+          },
+          {
+            "label": "_leftoverStart",
+            "offset": 24,
+            "slot": "408",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:282"
+          },
+          {
+            "label": "_leftover",
+            "offset": 0,
+            "slot": "409",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:284"
+          },
+          {
+            "label": "_unrestoredCharges",
+            "offset": 0,
+            "slot": "410",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:286"
+          },
+          {
+            "label": "_poolTierPrincipal",
+            "offset": 0,
+            "slot": "411",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:289"
+          },
+          {
+            "label": "_poolTierPostedAt",
+            "offset": 0,
+            "slot": "412",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:290"
+          },
+          {
+            "label": "_valuationEventAt",
+            "offset": 8,
+            "slot": "412",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:292"
+          },
+          {
+            "label": "_legendEffectiveAt",
+            "offset": 16,
+            "slot": "412",
+            "type": "t_uint64",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:294"
+          },
+          {
+            "label": "_valuationEventPending",
+            "offset": 24,
+            "slot": "412",
+            "type": "t_bool",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:295"
+          },
+          {
+            "label": "_valuationSuspended",
+            "offset": 25,
+            "slot": "412",
+            "type": "t_bool",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:297"
+          },
+          {
+            "label": "evidenceStartedAt",
+            "offset": 0,
+            "slot": "413",
+            "type": "t_mapping(t_bytes32,t_uint256)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:300"
+          },
+          {
+            "label": "_legend",
+            "offset": 0,
+            "slot": "414",
+            "type": "t_string_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:302"
+          },
+          {
+            "label": "_pendingLegend",
+            "offset": 0,
+            "slot": "415",
+            "type": "t_string_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:303"
+          },
+          {
+            "label": "_totalCapitalized",
+            "offset": 0,
+            "slot": "416",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:305"
+          },
+          {
+            "label": "_enforcementFilled",
+            "offset": 0,
+            "slot": "417",
+            "type": "t_mapping(t_address,t_struct(EnforcementFill)101803_storage)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:316"
+          },
+          {
+            "label": "_legalHolds",
+            "offset": 0,
+            "slot": "418",
+            "type": "t_array(t_struct(LegalHold)101820_storage)dyn_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:330"
+          },
+          {
+            "label": "_openHoldsOf",
+            "offset": 0,
+            "slot": "419",
+            "type": "t_mapping(t_address,t_array(t_uint256)dyn_storage)",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:332"
+          },
+          {
+            "label": "__yieldPoolGap",
+            "offset": 0,
+            "slot": "420",
+            "type": "t_array(t_uint256)36_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:338"
+          },
+          {
+            "label": "_settlementLane",
+            "offset": 0,
+            "slot": "456",
+            "type": "t_struct(SettlementLane)101852_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:357"
+          },
+          {
+            "label": "_settlementHeadroom",
+            "offset": 0,
+            "slot": "459",
+            "type": "t_uint256",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:360"
+          },
+          {
+            "label": "__gap_settlementLane",
+            "offset": 0,
+            "slot": "460",
+            "type": "t_array(t_uint256)46_storage",
+            "contract": "LendingPoolBase",
+            "src": "contracts/peripherals/LendingPoolBase.sol:363"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_struct(AgeCap)101569_storage)dyn_storage": {
+            "label": "struct LendingPoolBase.AgeCap[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_struct(Holdback)101563_storage)dyn_storage": {
+            "label": "struct LendingPoolBase.Holdback[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_struct(LegalHold)101820_storage)dyn_storage": {
+            "label": "struct LendingPoolBase.LegalHold[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_struct(QueueRequest)101550_storage)dyn_storage": {
+            "label": "struct LendingPoolBase.QueueRequest[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_struct(WithdrawalRequest)101466_storage)dyn_storage": {
+            "label": "struct LendingPoolBase.WithdrawalRequest[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)36_storage": {
+            "label": "uint256[36]",
+            "numberOfBytes": "1152"
+          },
+          "t_array(t_uint256)45_storage": {
+            "label": "uint256[45]",
+            "numberOfBytes": "1440"
+          },
+          "t_array(t_uint256)46_storage": {
+            "label": "uint256[46]",
+            "numberOfBytes": "1472"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_array(t_uint256)dyn_storage": {
+            "label": "uint256[]",
+            "numberOfBytes": "32"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IERC20Upgradeable)3876": {
+            "label": "contract IERC20Upgradeable",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IEncumbranceSource)42101": {
+            "label": "contract IEncumbranceSource",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IPoolEarnControls)147154": {
+            "label": "contract IPoolEarnControls",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_address)": {
+            "label": "mapping(address => address)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_array(t_uint256)dyn_storage)": {
+            "label": "mapping(address => uint256[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(BorrowWindow)101512_storage)": {
+            "label": "mapping(address => struct LendingPoolBase.BorrowWindow)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(EnforcementFill)101803_storage)": {
+            "label": "mapping(address => struct LendingPoolBase.EnforcementFill)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_address)": {
+            "label": "mapping(bytes32 => address)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(RoleData)23_storage)": {
+            "label": "mapping(bytes32 => struct AccessControlUpgradeable.RoleData)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_uint256)": {
+            "label": "mapping(bytes32 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_uint256)": {
+            "label": "mapping(uint256 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_struct(AgeCap)101569_storage": {
+            "label": "struct LendingPoolBase.AgeCap",
+            "members": [
+              {
+                "label": "boundary",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "maxAge",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(BorrowWindow)101512_storage": {
+            "label": "struct LendingPoolBase.BorrowWindow",
+            "members": [
+              {
+                "label": "day",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "drawn",
+                "type": "t_uint192",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(EnforcementFill)101803_storage": {
+            "label": "struct LendingPoolBase.EnforcementFill",
+            "members": [
+              {
+                "label": "shares",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "paid",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(Holdback)101563_storage": {
+            "label": "struct LendingPoolBase.Holdback",
+            "members": [
+              {
+                "label": "holder",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "createdAt",
+                "type": "t_uint64",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "maxAge",
+                "type": "t_uint32",
+                "offset": 28,
+                "slot": "0"
+              },
+              {
+                "label": "gross",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "held",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(LegalHold)101820_storage": {
+            "label": "struct LendingPoolBase.LegalHold",
+            "members": [
+              {
+                "label": "holder",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "expiresAt",
+                "type": "t_uint64",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "released",
+                "type": "t_bool",
+                "offset": 28,
+                "slot": "0"
+              },
+              {
+                "label": "shares",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "orderHash",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(LossCharge)101603_storage": {
+            "label": "struct LendingPoolBase.LossCharge",
+            "members": [
+              {
+                "label": "amount",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "absorbed",
+                "type": "t_uint128",
+                "offset": 16,
+                "slot": "0"
+              },
+              {
+                "label": "denominator",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "cursor",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "end",
+                "type": "t_uint64",
+                "offset": 8,
+                "slot": "2"
+              },
+              {
+                "label": "id",
+                "type": "t_uint64",
+                "offset": 16,
+                "slot": "2"
+              },
+              {
+                "label": "pending",
+                "type": "t_bool",
+                "offset": 24,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(PendingRate)101587_storage": {
+            "label": "struct LendingPoolBase.PendingRate",
+            "members": [
+              {
+                "label": "model",
+                "type": "t_struct(RateModel)101579_storage",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "effectiveAt",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "lowers",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(QueueRequest)101550_storage": {
+            "label": "struct LendingPoolBase.QueueRequest",
+            "members": [
+              {
+                "label": "owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "requestedAt",
+                "type": "t_uint64",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "enforcement",
+                "type": "t_bool",
+                "offset": 28,
+                "slot": "0"
+              },
+              {
+                "label": "receiver",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "shares",
+                "type": "t_uint128",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(RateModel)101579_storage": {
+            "label": "struct LendingPoolBase.RateModel",
+            "members": [
+              {
+                "label": "r0",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "s1",
+                "type": "t_uint64",
+                "offset": 8,
+                "slot": "0"
+              },
+              {
+                "label": "k",
+                "type": "t_uint64",
+                "offset": 16,
+                "slot": "0"
+              },
+              {
+                "label": "s2",
+                "type": "t_uint64",
+                "offset": 24,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(RoleData)23_storage": {
+            "label": "struct AccessControlUpgradeable.RoleData",
+            "members": [
+              {
+                "label": "members",
+                "type": "t_mapping(t_address,t_bool)",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "adminRole",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(SettlementLane)101852_storage": {
+            "label": "struct LendingPoolBase.SettlementLane",
+            "members": [
+              {
+                "label": "funder",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "periodSeconds",
+                "type": "t_uint64",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "stopped",
+                "type": "t_bool",
+                "offset": 28,
+                "slot": "0"
+              },
+              {
+                "label": "epoch",
+                "type": "t_uint24",
+                "offset": 29,
+                "slot": "0"
+              },
+              {
+                "label": "periodStart",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "used",
+                "type": "t_uint192",
+                "offset": 8,
+                "slot": "1"
+              },
+              {
+                "label": "capPerPeriod",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(Suspension)101616_storage": {
+            "label": "struct LendingPoolBase.Suspension",
+            "members": [
+              {
+                "label": "eventId",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "reason",
+                "type": "t_uint8",
+                "offset": 8,
+                "slot": "0"
+              },
+              {
+                "label": "startedAt",
+                "type": "t_uint64",
+                "offset": 9,
+                "slot": "0"
+              },
+              {
+                "label": "expiresAt",
+                "type": "t_uint64",
+                "offset": 17,
+                "slot": "0"
+              },
+              {
+                "label": "lastSigner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "evidenceHash",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(WithdrawalRequest)101466_storage": {
+            "label": "struct LendingPoolBase.WithdrawalRequest",
+            "members": [
+              {
+                "label": "owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "receiver",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "assets",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "requestedAt",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "claimed",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "3"
+              }
+            ],
+            "numberOfBytes": "128"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint16": {
+            "label": "uint16",
+            "numberOfBytes": "2"
+          },
+          "t_uint192": {
+            "label": "uint192",
+            "numberOfBytes": "24"
+          },
+          "t_uint24": {
+            "label": "uint24",
+            "numberOfBytes": "3"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
     }
   }
 }
