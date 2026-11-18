@@ -53,7 +53,7 @@ Members pay now or over time; anyone can pay by card on the shop's own Stripe.
 
 - **Settings › Developers**: copy the publishable key (\`clear_pk_live_…\`), and add the website under
   **Allowed websites**. The modal only opens on those sites, so a copied key is useless anywhere else.
-- **A price**: make one for what's sold (\`price_…\`). Its amount is set there, never in the page.
+- **A price**: each item in the merchant app's Inventory is a price (\`price_…\`, listed by \`GET /v1/prices\`). Its amount is set there, never in the page.
 
 ## 2. On the page
 
@@ -186,8 +186,8 @@ ${DOCS_BASE}/docs/api.md.
 ## The signature, without the SDK
 
 \`Clear-Signature: t=<unix seconds>,v1=<hex>\`. The \`v1\` is HMAC-SHA256, keyed with the endpoint's secret,
-of \`"<t>.<raw body>"\`. Accept it when any \`v1\` matches (while a secret is being rolled a delivery carries one
-for each) and \`t\` is within ${SIGNATURE_TOLERANCE_SECONDS / 60} minutes of your clock. Compare in constant time.
+of \`"<t>.<raw body>"\`. Accept it when the \`v1\` matches and \`t\` is within ${SIGNATURE_TOLERANCE_SECONDS / 60} minutes of your clock. Compare in
+constant time. An endpoint's secret can't be rolled: to change it, add a new endpoint and delete the old one.
 
 ## Retries
 

@@ -40,7 +40,7 @@ need = due at the next cut-off + buffer − CSA balance − in flight
 - **In flight** is book transfers not landed and off-ramp payouts not yet arrived (and, for `SETTLEMENT_OFFRAMP_SETTLE_MINUTES` after the provider reports a payout processed, that payout too).
 - **Measured latency.** Each Deployment records when its forward was mined and when the off-ramp reported it paid. The longest of the last ten replaces `SETTLEMENT_OFFRAMP_LATENCY_MINUTES` once it is longer, which moves the forced run earlier and raises the buffer.
 
-The lane enforces on chain every condition of a two-person `deploy` (no open queue request, no Suspension, no pending loss charge, Utilization at most 90% afterwards), and it lets the Deployed Balance exceed the posted Pool Tier principal by up to the Settlement Headroom, to cover credit authorized and not yet settled. The desk checks the same before it tries, so a shortfall reads as a sentence, not a revert. The one it cannot check is a pending loss charge (the pool has no view of it): then the `deploySettlement` dry run reverts and the desk stops, as for any revert.
+The lane enforces on chain every condition of a two-person `deploy` (no open queue request, no Suspension, no pending loss charge, Utilization at most 90% afterwards), and it lets the Deployed Balance exceed the posted Pool Tier principal by up to the Settlement Headroom, to cover credit authorized and not yet settled. The desk checks the same before it tries, a pending loss charge included (`pendingLossCharge()`), so a shortfall reads as a sentence, not a revert.
 
 ## Returns
 
@@ -142,7 +142,7 @@ Any revert stops the desk: a dry run (`eth_call` and `estimateGas`) or a mined t
 
 ## Restarts and double funding
 
-Every move is recorded (migration 0079, `ops.settlement_funding_moves`) before its first transaction or bank call, with the cut-off, the ref, the need, the amount, what was left for people, the forwarder's allowance nonce, the block before `deploySettlement`, and each hash and bank token. At most one move per pool is acting at a time (a unique index); moves waiting on the bank or the off-ramp do not block. A run that finds one acting finishes it rather than starting another. After a restart the desk reads how far it got:
+Every move is recorded (migration 0081, `ops.settlement_funding_moves`) before its first transaction or bank call, with the cut-off, the ref, the need, the amount, what was left for people, the forwarder's allowance nonce, the block before `deploySettlement`, and each hash and bank token. At most one move per pool is acting at a time (a unique index); moves waiting on the bank or the off-ramp do not block. A run that finds one acting finishes it rather than starting another. After a restart the desk reads how far it got:
 
 - the receipts it recorded;
 - the `SettlementDeployed` event for the move's ref, after the recorded block: if it is there, `deploySettlement` happened;

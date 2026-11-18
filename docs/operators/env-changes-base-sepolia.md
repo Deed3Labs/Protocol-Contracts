@@ -56,7 +56,7 @@ them. Each address matches its record in `deployments/base-sepolia/`.
 ### Removed
 
 - `BURNER_BOND_DEPOSIT_84532` (was `0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3`, `BurnerBondDepositLegacy`): retired, no replacement.
-- `OFFERS_ISSUER_84532` (was `0x150EA8497700E127a3dFe44a98a618bcC7D8841c`, `OffersIssuerPreAudit`): retired with the credit stack, no replacement.
+- `OFFERS_ISSUER_84532` (was `0x150EA8497700E127a3dFe44a98a618bcC7D8841c`, `OffersIssuerPreAudit`): removed. The fresh OffersIssuer (`0x52ED…Edb1`, deploy 24) is set once the credit timelock has registered it.
 
 ### Left as they are
 

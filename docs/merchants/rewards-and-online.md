@@ -45,7 +45,7 @@ have the right to use on the web and in an app).
 - **Boosts** multiply the rate on some days, some hours or some items (1.5×, 2× or 3×). Only the
   biggest boost that applies counts.
 - **For joining**: points when someone joins.
-- **Birthday**: a reward on their birthday.
+- **Birthday**: a reward in their birthday month.
 - **Bring a friend**: points for a referral.
 
 ### Rewards
@@ -108,8 +108,9 @@ Customers can pay your online shop with Clear, and by card when Stripe is connec
 - **Build with AI**: the docs as plain text, a prompt with your keys filled in for a coding
   assistant, and an MCP (Model Context Protocol) server.
 
-A refund your server asks for with the secret key is approved as it's asked: the key is the shop's
-own, so nobody at the counter approves it.
+A refund your server asks for with the secret key is approved as it's asked, unless the request sets
+`requireApproval`; then it waits for an owner or manager in the app. The MCP server's refund tool
+always sets it.
 
 Everything a developer needs — the checkout button, the server SDK, webhooks and every endpoint — is
 in [Developers](../developers/README.md).

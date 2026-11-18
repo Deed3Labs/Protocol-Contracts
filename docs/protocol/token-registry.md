@@ -16,11 +16,14 @@ It covers:
 
 | Contract | Reads | Used for |
 |---|---|---|
-| `AssuranceOracle` | `getIsWhitelisted`, `getIsStablecoin`, `getFallbackPrice`, `getWhitelistedTokens`, `hasPricingData`, `getPriceSource` | Which tokens it prices, which it treats as $1, and the fallback when no pool price is available |
 | `Validator`, `FundManager` | `getIsWhitelisted` | Accepting a token that is either on their own local list or whitelisted here |
+| `BurnerBondFactory` (and `BurnerBondDeposit` through it) | `getIsWhitelisted` | Which tokens a bond collection may be opened for |
 
-`AssurancePool` never reads the registry directly. It accepts a token when the oracle does, so the
-registry reaches it through the oracle. See [The reserve](./reserve.md).
+No contract reads the price fields or the stablecoin flag today; they are kept for off-chain
+clients. The retired Phase 1 `AssuranceOracle` read them.
+
+The `AssurancePool` reads no registry: it takes deposits only from allowlisted payers. See
+[The reserve](./reserve.md).
 
 ## Data model
 
@@ -29,7 +32,7 @@ For each token, keyed by its address on this chain:
 | Field | Type | Notes |
 |---|---|---|
 | Whitelisted | `bool` | Presence-based: a token is whitelisted when it is in `whitelistedList` and flagged in `isWhitelisted` |
-| Stablecoin | `bool` | The oracle prices a flagged token at $1 |
+| Stablecoin | `bool` | A dollar stablecoin. No contract reads it today |
 | Fallback price | `uint256` | USD with 18 decimals, in its own mapping |
 | Chain addresses | `mapping(uint256 => address)` | The token's address on other chains |
 | Symbol, name, decimals | `string`, `string`, `uint8` | Optional metadata |
@@ -79,10 +82,8 @@ mapping. Chain addresses set for a removed token therefore remain readable throu
 
 1. The registry owner calls `registerToken(T, C, T_on_C, priceOrZero)`.
 2. If the token is a dollar stablecoin, the owner also calls `setStablecoin(T, true)`.
-3. The oracle accepts T at once. It prices it at $1 if it is flagged as a stablecoin; otherwise from
-   a Uniswap time-weighted average, falling back to the registry price, or from the registry price
-   first if the oracle's `forceRegistryFallback` is set for T. The order is in
-   [The reserve](./reserve.md#pricing--assuranceoracle).
+3. Contracts that read the whitelist (`Validator`, `FundManager`, `BurnerBondFactory`) accept T at
+   once.
 
 `deploy/14_register_CLRUSD_in_registry.ts` registers CLRUSD this way, with its metadata and the
 stablecoin flag.
@@ -121,11 +122,10 @@ removeToken(0xToken)
 
 ## Security considerations
 
-- **Owner-only writes.** Whoever owns the registry decides which tokens the oracle accepts and what
-  they are worth when market prices are unavailable. Who holds that key is in
+- **Owner-only writes.** Whoever owns the registry decides which tokens validators, fee collection
+  and bond collections accept. Who holds that key is in
   [Governance](../governance/README.md).
-- **Fallback prices.** A fallback price is used whenever the oracle cannot read a pool price, and
-  always for a token the oracle forces to the registry. Watch `FallbackPriceUpdated`.
-- **Stablecoin flag.** A flagged token is valued at $1 regardless of its market price.
+- **Fallback prices and the stablecoin flag** are read by no contract today. An off-chain client that
+  reads them should watch `FallbackPriceUpdated`.
 - **Chain addresses.** Off-chain clients and cross-chain flows read these; a wrong address
   misleads them. Chain addresses also survive `removeToken`, as noted above.

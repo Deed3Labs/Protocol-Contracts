@@ -7,7 +7,7 @@ Members pay now or over time; anyone can pay by card on the shop's own Stripe.
 
 - **Settings › Developers**: copy the publishable key (`clear_pk_live_…`), and add the website under
   **Allowed websites**. The modal only opens on those sites, so a copied key is useless anywhere else.
-- **A price**: make one for what's sold (`price_…`). Its amount is set there, never in the page.
+- **A price**: each item in the merchant app's Inventory is a price (`price_…`, listed by `GET /v1/prices`). Its amount is set there, never in the page.
 
 ## 2. On the page
 

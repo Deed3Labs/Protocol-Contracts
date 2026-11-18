@@ -12,8 +12,7 @@ These are the facts of the structure that a tax adviser will want to know:
   the contributor receives shares in Clear Properties.
 - **Nothing is settled in cash.** Shares are issued one per dollar of appraised value, and no cash is
   paid either way to balance the exchange.
-- **Tax distributions are required.** The agreement that governs the shares requires them. The
-  agreement is not public.
+- **Holders receive tax distributions.**
 
 See [How contributing works](./how-contributing-works.md).
 

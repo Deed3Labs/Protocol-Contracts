@@ -69,8 +69,9 @@ parcel, or homes on one piece of land.
 - The owner sets how many units there are, then issues each unit to whoever should hold it. Each
   unit is unique: it stands for one particular part of the property, not a share of the whole.
 - Each unit can be validated on its own.
-- The T-Deed itself stays with its owner. The subdivision can only be closed once every unit that
-  was issued has been given up by its holder, which is possible only while the owner allows it.
+- The subdivision contract holds the T-Deed while units are out, so it can't be sold or burned. The
+  subdivision can only be closed once every unit that was issued has been given up by its holder,
+  which is possible only while the owner allows it; then the T-Deed goes back to the owner.
 
 The contract is `Subdivide`; its units are ERC-1155 tokens. More:
 [subdivision](../protocol/deed-track/subdivision.md).

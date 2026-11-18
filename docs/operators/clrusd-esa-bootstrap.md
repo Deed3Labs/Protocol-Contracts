@@ -38,9 +38,9 @@ npm run deploy:esa-vault -- base-sepolia
 The vault backs, in order of preference: `VAULT_CLRUSD`, the recorded `ClearUSDUpgradeable`, the
 recorded `ClearUSD`, then `CLRUSD_ADDRESS`. The script:
 
-- deploys the vault proxy, with `CLRUSD_ADMIN` holding `DEFAULT_ADMIN_ROLE`, `OPERATOR_ROLE` and
+- deploys the vault proxy, with `CLRUSD_ADMIN` holding `DEFAULT_ADMIN_ROLE`, `RELAYER_ROLE` and
   `PAUSER_ROLE`
-- grants `OPERATOR_ROLE` to the savings relayer (`SAVINGS_RELAYER_ADDRESS_<chainId>`, else
+- grants `RELAYER_ROLE` to the savings relayer (`SAVINGS_RELAYER_ADDRESS_<chainId>`, else
   `SAVINGS_RELAYER_ADDRESS`), and warns if neither is set
 - grants the vault `MINTER_ROLE` and `BURNER_ROLE` on the token
 - accepts `ESA_VAULT_DEPOSIT_TOKEN` as a deposit token, or USDC by default on Base, Base Sepolia,
@@ -108,15 +108,21 @@ missing.
 
 | To | Do | Needs |
 |---|---|---|
-| Stop deposits and redemptions | `ESADepositVault.pause()` | `PAUSER_ROLE` on the vault |
+| Stop deposits and redemptions | `ESADepositVault.pause()`: the first call proposes, a second, different pauser's identical call pauses. It lapses after 72 hours unless a different pauser renews it (`renewPause`), and runs past 30 days only with a legal basis | Two `PAUSER_ROLE` holders on the vault |
+| Stop all CLRUSD movement | `ClearUSDUpgradeable.pauseForSecurity(reason)`, same two-signer and lapse rules | Two `SECURITY_ROLE` holders on the token |
+| Freeze one account | `ClearUSDUpgradeable.pauseAccount(account, reason)`, same rules | Two `FRAUD_ROLE` holders on the token |
 | Stop issuance | Revoke `MINTER_ROLE` on the token from the vault and the CCIP pool | The token's `DEFAULT_ADMIN_ROLE` |
 | Stop a compromised burner | Revoke its `BURNER_ROLE` on the token | The token's `DEFAULT_ADMIN_ROLE` |
 | Stop seizures | Revoke `LIQUIDATOR_ROLE` on the token | The token's `DEFAULT_ADMIN_ROLE` |
 | Lift the redemption lock for everyone | `setEncumbranceSource(address(0))`, for example if the source breaks | The token's `DEFAULT_ADMIN_ROLE` |
 | Stop upgrades | Revoke `UPGRADER_ROLE` on the token. The vault upgrades under its `DEFAULT_ADMIN_ROLE` | The token's `DEFAULT_ADMIN_ROLE` |
 
+The rows that need the token's `DEFAULT_ADMIN_ROLE` are not fast: on Base Sepolia that role (and
+`UPGRADER_ROLE`) belongs to the 7-day vault timelock, so each is a Clear Financial Co. Safe proposal
+that executes 7 days later. The pauses above are the fast stops.
+
 To resume: re-grant roles only after the incident is reviewed and the state reconciled, then
-`unpause()` the vault.
+`unpause()` the vault (two pausers).
 
 ## Solvency checks
 

@@ -89,7 +89,7 @@ Alerts go to `OPS_ALERT_EMAIL`, and each is sent once (keyed in `ops_alerts`).
 | Payout top-up needs CL Operating's owners: $X | The refill needed more than the limit allows this period. | The body holds a Transaction Builder batch for CL Operating, also on the Command Center (Money, Pools, Payout pool, "Safe batch"): `USDC.transfer(top-up wallet, X)`. Sign it like the setup batch. On its next check the wallet funds exactly that, with approve and fund. |
 | Clear Lending needs to move money into CL Operating | The pool is short at 14 days, but CL Operating cannot cover the move. | Move money into CL Operating: a Yield Pool Deployment, BondVault excess through the Collateral Agent, or the treasury. The next check moves it. |
 | …the next 30 days need more than the spending limit has left | An early warning. Nothing is short yet. | Optional. Fund by hand early, or raise the limit. |
-| …automatic top-ups are not set up | The pool is short, but the module, delegate, allowance or `FUNDER_ROLE` is missing, or the wallet holds another PayoutPool role. | Finish the `PT-` steps. Revoke any extra role. |
+| …automatic top-ups are not set up | The pool is short, but the module, delegate, allowance or `FUNDER_ROLE` is missing, or the wallet holds another PayoutPool role. | Finish the `TU-` steps. Revoke any extra role. |
 | Automatic payout top-up stopped: … | A dry run or a transaction reverted, or a call failed the code's guard. | See "When it stops". |
 | Automatic payout top-up cannot read the chain | Three checks in a row failed to read. | Check the RPC. The keeper still alerts. |
 

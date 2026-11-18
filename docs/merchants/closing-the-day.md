@@ -55,7 +55,8 @@ given, cash refunds and tips paid out.
 
 ## Closing with one person on
 
-A separate rule for closing alone: Not available yet.
+A separate rule for closing alone: Not available yet. Settings › Closing shows a choice for when only
+one person is on; it has no effect yet.
 
 With one person on, Close the day follows the rules above:
 

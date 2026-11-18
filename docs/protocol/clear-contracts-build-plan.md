@@ -30,7 +30,7 @@ answers "what is owed and what is the ceiling", and an issuer answers "what is t
 | | What it is | Backing | Redemption |
 |---|---|---|---|
 | **CLRUSD** | Money. Transferable, circulates like cash. | Fully reserved one-for-one against USDC in `ESADepositVault` | Always available, one-for-one, unrationed |
-| **StableCredit** | The credit ledger. A position per member. | Owing side: the member's obligation and any collateral. Holding side: a counterparty's promise | Through the PayoutPool for a payable; against lost debt for a peer claim (below) |
+| **StableCredit** | The credit ledger. A position per member. | Owing side: the member's obligation and any collateral. Holding side: a counterparty's promise | Through the PayoutPool for a payable; a peer claim has no exit (below) |
 
 **Merging them would break full reserve.** CLRUSD would end up backed partly by USDC and partly by
 somebody's promise, and nobody could tell which. CLRUSD is a separate token from the credit ledger,
@@ -44,7 +44,7 @@ A purchase at a partner merchant moves no CLRUSD and nobody lends anything at or
 |---|---|
 | Member | **−** purchase amount |
 | Merchant | **+** payout amount |
-| Co-op | **+** the discount (purchase − payout) |
+| Fee recipient (`TermIssuer.feeRecipient`, meant to be Clear Lending) | **+** the fee (purchase − payout) |
 
 `StableCredit.originatePurchase` asserts that the three legs net. Origination needs no capital.
 
@@ -59,8 +59,8 @@ working capital the co-op has to find. Card spend outside the network is differe
 **A merchant who also owes is paid by drawdown first, when value reaches them by transfer.**
 Credits arriving by transfer burn against the recipient's own debt (`MutualCredit._afterTransfer`),
 so only the surplus can be redeemed, and that payout costs no reserve at all. Credits minted to a
-merchant by a new partner purchase do not net this way; see
-[The payable](./settlement.md#the-payable).
+merchant by a new partner purchase do not net against ordinary debt, but they do settle a refund the
+merchant still owes (`refundReceivableOf`); see [The payable](./settlement.md#the-payable).
 
 ### Member-to-member transfer
 
@@ -72,8 +72,9 @@ mechanism. The contracts are built for it:
 - StableCredit is **transferable**, not soulbound. Merchants hold real positive balances.
 - The settlement path does **not assume the co-op is the counterparty** holding the positive side.
   In the common case the merchant is.
-- Redemption handles a positive holder who is not the co-op. `PayoutPool.redeem` takes any positive
-  balance, unless the holder is a registered merchant marked inactive.
+- Redemption handles a positive holder who is not the co-op. `PayoutPool.redeem` pays an active
+  registered merchant, or a co-op account the admin has named (`REDEEMER_ROLE`) or a funder
+  (`FUNDER_ROLE`); any other holder is refused (`PayoutPoolNotEligible`, audit C-1).
 
 ### Two kinds of positive balance
 
@@ -98,18 +99,18 @@ else had defaulted. That was wrong for a payable, and section 13 retired it for 
 Carry is not a fee charged at intervals. It accrues continuously into what a member owes, so a
 position grows with time held. Two consequences:
 
-**It cannot be computed by iterating accounts.** That does not scale. Accrual is lazy: an index
-(`CarryIndex`) advances with time, and each position stores its amount against the index at its last
-touch. Accrued carry is derived on read, and written to the ledger (`accrueCarry`) only when an
-issuer materialises it. A position untouched for six cycles reads the same carry as one touched
-every cycle.
+**It cannot be computed by iterating accounts.** That does not scale. Accrual is lazy: each tier and
+each plan accrues simple carry per second on its principal, at its monthly rate × 12 / 365, from the
+rate it recorded, trimmed to the legal caps and the Combined Ceiling. Accrued carry is derived on
+read, and written to the ledger (`accrueCarry`) only when an issuer materialises it. A position
+untouched for six cycles reads the same carry as one touched every cycle. Carry never bears carry.
 
-**Revolving tiers and term plans accrue differently:**
+**Revolving tiers and term plans accrue separately:**
 
 | | Basis | Why |
 |---|---|---|
-| **Revolving tiers** | One index per tier | All drawn balance in a tier shares a rate and a clock |
-| **Term plans** | One index per plan | Each plan has its own rate, opening date and split schedule. Two plans at different rates cannot share an index |
+| **Revolving tiers** | One rate per tier | All drawn balance in a tier shares a rate and a clock |
+| **Term plans** | One rate per plan | Each plan has its own rate, opening date and split schedule. Two plans at different rates cannot share one |
 
 A member's debt is therefore made of parts — tier positions and plan positions, each with its own
 carry — which is also how the app presents it.
@@ -539,9 +540,11 @@ when someone else's cash pays a claim, is in [Refunds and repayments](./refund-r
 **The payout window is the latest a merchant waits, not when they are paid.** A well-funded pool pays
 at once.
 
-### Oldest claim first, no priority
+### Earliest deadline first, no priority
 
-Payout order is **claim age, always.** There is no priority field to set.
+Payout order is **earliest deadline first**: each claim is due at the time it was queued plus the
+merchant's payout window, and claims due at the same moment go oldest first (addendum 12.10). There
+is no priority field to set.
 
 Configurable priority would make every slow payout a question of "someone else went first" rather
 than "the pool ran short" — a worse conversation, with a merchant the co-op also needs. Better terms
@@ -606,14 +609,15 @@ during a stress event.
 
 ## 10. Invariants
 
-**A partner purchase nets to zero.** Member debit + merchant credit + co-op credit = 0.
+**A partner purchase nets to zero.** Member debit + merchant credit + fee recipient credit = 0.
 `originatePurchase` and `reversePurchase` assert it on every call, not just in tests.
 
 **Value received by transfer nets against the recipient's own debt first.** Only the surplus is
-redeemable.
+redeemable. A new sale nets only against a refund the recipient still owes.
 
-**Unmaterialised carry is derived, never stored.** A position stores an amount against an index;
-accrued carry is read through the index and reaches the ledger only through `accrueCarry`.
+**Carry is simple and accrues per second.** Principal and carry are held apart, carry never bears
+carry, and accrued carry reaches the ledger only through `accrueCarry` when an issuer materialises
+it.
 
 **The Credit Backstop's floor is the larger of the timing-buffer shortfall and 5% of the covered
 book.** A transfer out of the backstop executes only if it keeps that floor plus every pending draw.
@@ -623,7 +627,7 @@ settlement reaches the AssurancePool, and its `deposit` refuses any money-path c
 
 **The AssurancePool holds no bond principal.** Bond proceeds go to `BondVault`.
 
-**Payout order is claim age.** No priority field exists to be set.
+**Payout order is earliest deadline, then claim age.** No priority field exists to be set.
 
 **The ledger and the issuers are reconciled, not merged.** The ledger holds one number per member;
 the issuers hold the positions behind it. A repayment the issuers do not fully absorb leaves a
@@ -662,5 +666,6 @@ solvent in aggregate and short on timing, which is why bond coverage is measured
 - **Revolving tiers are assumed to hold card debt only.** The off-chain carry measure reads any draw
   on a revolving tier that did not come from a card as carry. A member spending StableCredit directly
   would draw there too.
-- **Term plans use a level schedule.** `CarryIndex.scheduleCost` fixes a level annuity when a plan
-  opens, divided into equal installments; there is no declining-payment option.
+- **Term plans use a level schedule.** `_fixSchedule` sets a level installment when a plan opens,
+  and the schedule total is that installment times the number of installments; there is no
+  declining-payment option.

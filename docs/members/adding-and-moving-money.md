@@ -28,7 +28,7 @@ The **Add money** sheet offers these ways in:
 | Debit or credit card | Opens Coinbase's checkout page |
 | Apple Pay | Opens Coinbase's checkout page |
 | Bank via Coinbase | Runs in Coinbase's page and needs a Coinbase account |
-| Direct deposit or bank push | You send it from your own bank to your Clear account and routing numbers. Free |
+| Direct deposit or bank push | You send it from your own bank to the deposit account and routing numbers this option shows. It arrives as USDC in Ready to allocate. Free |
 
 The sheet opens from **Add money** on the Move money sheet, when you have nothing in Ready to
 allocate, and from a shop charge when you're short.
@@ -38,15 +38,19 @@ added to your balance — and finish on Coinbase's page. The app tells you when 
 added, or when a checkout was cancelled.
 
 **Clear cannot pull money from your bank.** For a bank deposit, you push it: the app gives you
-account and routing numbers, and you send the money from your bank.
+account and routing numbers, and you send the money from your bank. You have two sets, and they
+land in different places: the deposit numbers under **Add money** add USDC to Ready to allocate, and
+your Spendable account details on Home add dollars to Spendable.
 
 **Adding money from a linked bank, through Add money on Home.** Not available yet.
 
 ### Your account details
 
-On Home, your cash account's **Account details** shows your account and routing numbers. Use them
-to receive a paycheck or to move money in from another bank. **Share details** opens your phone's
-share sheet, or copies them where there isn't one.
+On Home, **Spendable account details** shows the account and routing numbers for Spendable. Use
+them to receive a paycheck or to move money in from another bank. Money that lands there clears
+what you've used on Clear Credit first, if auto-clear is on, and the rest is spendable. The account
+number shows only its last four digits; **Show** and **Copy** need Face ID, or a sign-in made in
+the last few minutes. **Get direct deposit form** gives you a form for your employer.
 
 ## Moving money between cash and savings
 

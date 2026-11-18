@@ -11,8 +11,8 @@ lends nothing, in [`reserve.md`](./reserve.md).
 | `MerchantRegistry` | Per-merchant terms: payout window, approval cap, discount, active flag |
 | `PayoutPool` | Turns a positive balance into reserve tokens. Queues claims, borrows for due ones, repays lenders, splits carry |
 | `LendingPool` | The Clear Earn Yield Pool (Phase 2f): an ERC-4626 vault of Pool Shares. Lends only to Clear Lending, as recorded Deployments |
-| `IPayoutSink` | The five calls the ledger makes on the PayoutPool |
-| `IPayoutLenders` | `ILendingPool` and `IAssuranceLender`: the calls the PayoutPool makes on its lenders |
+| `IPayoutSink` | The calls the ledger makes on the PayoutPool (`shortfall`, `receiveRepayment`, `held`, `memberFunded`, `refundsOwed`, `payRefund`) |
+| `IPayoutLenders` | `ILendingPool` and `IPayoutLender` (the BondVault's loan calls, now inert): the calls the PayoutPool makes on its old lenders |
 | `StableCredit` | Routes members' repayments (`_routeRepayment`) and burns claims the pool settles (`settleClaim`) |
 
 `MerchantRegistry`, `PayoutPool` and `LendingPool` are UUPS proxies with `AccessControl`; upgrades need `DEFAULT_ADMIN_ROLE`.
@@ -29,9 +29,11 @@ A merchant who also draws credit is paid by drawdown first **when value reaches 
 only the surplus shows in `balanceOf` and only the surplus can be redeemed. No code in the pool
 enforces this.
 
-Credits minted by `_accrueCredit` do not net. `StableCredit.originatePurchase` (a partner purchase)
-and `accrueCarry` use it, so a merchant who owes and is then paid for a sale holds both a
+`originatePurchase` (a partner purchase) first applies a recipient's new sale to any refund it still
+owes (`refundReceivableOf`, audit X-4) and mints only the rest. Other debt the recipient owes is not
+netted, so a merchant who owes on its own line and is then paid for a sale holds both a
 `creditBalance` and a positive `balanceOf`, and `redeem` will take the positive balance.
+`accrueCarry` mints with plain `_accrueCredit` and does not net.
 
 The pool pays `claim.amount` in reserve tokens for `claim.amount` of credits. It does no
 conversion, so credits and the reserve token are treated as the same unit.
@@ -46,35 +48,42 @@ conversion, so credits and the reserve token are treated as the same unit.
 | `payoutWindow` | `PayoutPool.redeem`, through `payoutWindowOf` |
 | `active` | `PayoutPool.redeem`, through `isActive` |
 | `approvalCap` | No contract. The API checks each charge against `approvalCapOf` (`apps/api/src/services/chargeService.ts`) |
-| `discountBps` | No contract. The API computes each charge's payout from `discountBpsOf` (same file) |
+| `discountBps` | `TermIssuer`, through `splitTermsOf(merchant, installments)`: the per-split discount (`discountBpsBySplit`), falling back to this flat figure, sets each plan's fee and payout, capped at $50 / $75. The API also reads `discountBpsOf` for charges |
+| `discountBpsBySplit`, `subsidyBpsBySplit` | `TermIssuer`, through `splitTermsOf`: the discount and the rate the merchant takes off the member's plan, per number of instalments (`setSplitTerms`) |
+| `freeSplitMax` | `TermIssuer`, through `splitTermsOf`: plans up to this many instalments are free to the member at that shop |
+| `noSurcharge` | Recorded for the shop's agreement not to surcharge Clear. No contract enforces it |
 
 `payoutWindowOf` returns `defaultPayoutWindow` when the merchant is unregistered **or** registered
 with a window of zero, so a per-merchant zero means the default. `setDefaultPayoutWindow` itself
 accepts any value, zero included. The deploy script
 (`deploy/22_deploy_BondsAndPool.ts`) initialises the default at thirty days.
 
-There is no priority field. Payout order is claim age, set by the order of `redeem` calls.
+There is no priority field. Payout order is deadline first, then claim age (addendum 12.10): the
+unpaid claim due soonest is paid first, and claims due at the same moment oldest first. The pool
+keeps one first-in, first-out queue per payout window and compares only their heads (`_head`); at
+most `MAX_QUEUED_WINDOWS` (16) windows can be queued at once.
 
 ## Redemption
 
 **`PayoutPool.redeem(amount)` moves the merchant's credits into the pool and opens a claim.** It
 does not burn them.
 
-1. If the caller is registered and inactive, it reverts (`PayoutPoolMerchantInactive`). An
-   unregistered address with a positive balance may redeem, on the default window.
+1. Only a registered, active merchant, or an address the admin named with `REDEEMER_ROLE` or
+   `FUNDER_ROLE`, may redeem (audit C-1). A registered, inactive merchant reverts
+   `PayoutPoolMerchantInactive`; anyone else reverts `PayoutPoolNotEligible`.
 2. The amount is capped at `redeemableOf`. Zero reverts.
 3. `stableCredit.transferFrom(merchant, pool, amount)`. The merchant must have approved the pool.
    `inFlight` rises by the amount.
 4. If the caller is a funder carrying positions (`advancedOf`), that figure falls by what they
    redeem.
 5. A `Claim` is pushed with `dueBy = now + payoutWindowOf(merchant)`; `queuedTotal` rises.
-6. If this claim is the next unpaid one and the pool's cash less `refundsOwed` covers it, it is
-   paid in the same call.
+6. If this claim is now the next due and the pool's cash, less members' money set aside for
+   refunds still owed, covers it, it is paid in the same call.
    Otherwise `ShortfallReported(shortfall())` is emitted.
 
 ```mermaid
 flowchart TD
-  R["redeem(amount)<br/><i>credits → pool, claim opened</i>"] --> Q{"next in line<br/>and held() − refundsOwed ≥ amount?"}
+  R["redeem(amount)<br/><i>credits → pool, claim opened</i>"] --> Q{"next due<br/>and cash less refund set-aside ≥ amount?"}
   Q -->|yes| P["_pay: USDC to merchant"]
   Q -->|no| W["queued, ShortfallReported"]
   W -->|"cash arrives"| N["payNext / payQueue"]
@@ -84,10 +93,12 @@ flowchart TD
   P --> PL["_placePosition<br/><i>settle, or hand to funder</i>"]
 ```
 
-Claims are paid strictly in index order. `payNext()` pays the claim at `nextUnpaid` and reverts if
-the pool's cash less `refundsOwed` does not cover it; it takes no argument. `payQueue(maxClaims)` calls `payNext` until it
+Claims are paid in deadline order. `payNext()` pays the claim `nextUnpaid()` names and reverts if
+the pool's cash, less the members' money set aside for refunds owed (`min(refundsOwed,
+memberFunded)`), does not cover it; it takes no argument. `payQueue(maxClaims)` calls `payNext` until it
 reaches a claim it cannot cover. Both are permissionless. `canPayNext()` reports whether the next
-claim is covered.
+claim is covered. `dueWithin(horizon, maxClaims)` says how much falls due within a horizon, for
+funding ahead of deadlines.
 
 `shortfall()` is `queuedTotal + refundsOwed − held()`, floored at zero: refunds owed come first, so
 they are part of what the pool is short. It is a view; nothing acts on it.
@@ -163,9 +174,11 @@ Lending's operating address. With no payout pool set, all of it goes to `lenderO
 
 The BondVault credits principal against `lentToPayoutPool` and keeps the rest.
 
-`LendingPool.repay` does not track principal per borrower: it lowers `totalBorrowed` by the amount
-paid, floored at zero. That is why the PayoutPool sends interest as a transfer. The card settler
-repays through `repay` too, and what it repays includes carry
+Since Phase 2f `LendingPool.repay` is the same call as `returnFunds`: it pays accrued Pool Interest
+first (the billed month first), then the Deployed Balance, and keeps anything over as Vault Cash.
+That is why the PayoutPool sends its interest share as a plain transfer: it raises Vault Cash
+directly. Nobody borrows from the pool any more, so this path only unwinds what the PayoutPool
+borrowed before decision 17; the card settler does not use the pool
 ([Card settlement](#card-settlement)).
 
 ## Carry, by who bore the float
@@ -173,8 +186,8 @@ repays through `repay` too, and what it repays includes carry
 **Carry is split by the positions each party holds, against every claim outstanding.** Carry
 reaches the pool as credits when an issuer names the pool as its recipient.
 `scripts/configure-carry-recipients.mjs` points `TermIssuer.carryTreasury` and
-`RevolvingIssuer.carryTreasury` at the pool, after setting `TermIssuer.feeRecipient` so the co-op's
-discount does not follow. It leaves per-tier recipients (`tierCarryRecipient`) unchanged.
+`RevolvingIssuer.carryTreasury` at the pool, after setting `TermIssuer.feeRecipient` (Clear Lending's
+fee address, which can never be the carry treasury), so the fee leg never follows carry to the pool. It leaves per-tier recipients (`tierCarryRecipient`) unchanged.
 
 `distributableCarry()` is the pool's credit balance less `inFlight`, `advancedOf[pool]` and
 `carryEarned`. `distributeCarry()` is permissionless and pays each carrier:
@@ -193,9 +206,9 @@ time-weighted holdings.
 | Call | Who | What it does |
 |---|---|---|
 | `fund(amount)` | `FUNDER_ROLE` | Pulls reserve tokens in, adds to `capitalOf[caller]`. That capital buys positions in `_placePosition` |
-| `withdrawCapital(amount, to)` | Any funder | Returns unspent capital, capped by `idleCapitalOf`: the lesser of own capital, `unencumbered()`, and `held() − memberFunded` |
-| `withdrawCoopIncome(amount)` | `OPERATOR_ROLE` | Pays the co-op from members' cash. Capped by the treasury's credit balance, `unencumbered()` and `memberFunded`. Burns that much of the treasury's credits and sends cash to `coopIncomeRecipient`, or to `coopTreasury` if unset |
-| `setCoopTreasury`, `setCoopIncomeRecipient` | `OPERATOR_ROLE` | Where the co-op's positions are held, and where its income is paid |
+| `withdrawCapital(amount, to)` | Any funder | Returns unspent capital, capped by `idleCapitalOf`: the least of own capital, `held() − queuedTotal` and `held() − memberFunded`. Refunds owed do not hold it back, since only members' money pays those |
+| `withdrawCoopIncome(amount)` | `OPERATOR_ROLE` | Pays the co-op from members' cash. Capped by the treasury's credit balance less the positions it bought (`advancedOf[coopTreasury]`, audit X-8), by `unencumbered()`, and by members' money not set aside for refunds. Burns that much of the treasury's credits and sends cash to `coopIncomeRecipient`, or to `coopTreasury` if unset |
+| `setCoopTreasury`, `setCoopIncomeRecipient` | `DEFAULT_ADMIN_ROLE` | Where the co-op's positions are held, and where its income is paid |
 
 `unencumbered()` is `held() − queuedTotal − refundsOwed`, floored at zero. Capital already spent
 on a claim cannot be withdrawn; the funder holds the position instead, which settles as the member
@@ -351,8 +364,11 @@ delegatecall, pinned at construction ([`deploy/poolModules.ts`](../../deploy/poo
 ## Card settlement
 
 `RevolvingIssuer.settleCardSpend(ref, member, amount)` records a cleared card purchase. Only an
-address allowed by `setCardSettler` may call it. It reverts unless the member's active tiers have
-headroom for the whole amount, draws the tiers in tier order (`_draw`), and calls `originatePurchase` with the full amount credited to `cardSettlementAccount` and no
+address allowed by `setCardSettler` may call it. It settles only against an earlier
+`authorizeCardSpend(ref, member, amount)` for the same member, recorded when the card issuer approved
+the purchase, and never for more than was authorized (audit M-2). It is bound by the per-transaction
+and daily card caps, refused after a default on the current line, reverts unless the member's
+active tiers have headroom for the whole amount, draws the tiers in tier order (`_draw`), and calls `originatePurchase` with the full amount credited to `cardSettlementAccount` and no
 discount. That account then holds an ordinary positive balance. `reverseCardSpend` undoes it through
 `reversePurchase`. Details are in [`credit.md`](./credit.md).
 
@@ -367,16 +383,19 @@ to or from the pool: it sends the settlement, reversal and netting calls above a
 `StableCredit.repayRefund`, which reverts unless the merchant's and co-op's shares sum to what the
 member paid. `_takeBack` burns each share from the merchant's or co-op's balance. Where that
 balance is too small (a merchant who has redeemed), the rest becomes their obligation. Credits they
-later receive by transfer burn against it; credits minted to them by a new purchase do not (see
+later receive by transfer or by a new sale are applied to it first (see
 [The payable](#the-payable)). The ledger
 then calls `PayoutPool.payRefund(member, paid − carryWithheld)`.
 
-`payRefund` accepts calls from the ledger only. It pays from `held() − refundsOwed`. Anything it
-cannot cover is recorded in `refundOwedTo[member]` and `refundsOwed`. `payRefundsOwed()` is
-permissionless and pays those from the pool's whole cash balance.
+`payRefund` accepts calls from the ledger only. It pays only from members' repayments held here
+(`memberFunded`, capped at the cash), never from funders' capital (audit X-12). Anything it cannot
+cover is recorded in `refundOwedTo[member]` and `refundsOwed`. `payRefundsOwed()` is permissionless
+and pays those, up to 100 members a call (`payRefundsOwedUpTo(n)` for another batch size), from
+members' money only.
 
-`refundsOwed` is held back by every path that pays a claim — `redeem`, `payNext`, `payQueue`,
-`canPayNext` and `drawForDueClaim` — and by `unencumbered` and `payRefund`. There is no draw for a
+Every path that pays a claim — `redeem`, `payNext`, `payQueue`, `canPayNext` and
+`drawForDueClaim` — holds back the part of `refundsOwed` that members' money can cover, and
+`unencumbered` holds back all of it. There is no draw for a
 refund shortfall. The arithmetic and worked examples are in
 [Refunds and repayments](./refund-repayment-plan.md).
 
@@ -384,7 +403,7 @@ refund shortfall. The arithmetic and worked examples are in
 
 | Function | Access |
 |---|---|
-| `redeem` | Any account with a positive balance, unless registered and inactive |
+| `redeem` | A registered, active merchant, or a `REDEEMER_ROLE` or `FUNDER_ROLE` holder |
 | `payNext`, `payQueue`, `drawForDueClaim`, `distributeCarry`, `payRefundsOwed`, `withdrawCapital` | Anyone |
 | `receiveRepayment`, `payRefund` | The ledger only |
 | `fund` | `FUNDER_ROLE` |

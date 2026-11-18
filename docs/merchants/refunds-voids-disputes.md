@@ -11,7 +11,8 @@ trail, with who asked and who approved; the owner can read it.
 | Card or cash refund | A manager or owner | Their own request goes through as they make it. A counter request waits for a manager's or owner's PIN, from someone other than whoever asked |
 | Void (same day) | A manager or owner | Their PIN, always, whoever is on shift |
 | Clear refund, under the refund limit | The owner's PIN at the counter, or a manager or owner signed in | |
-| Clear refund, at or over the limit | The owner, signed in on their own device | A manager can't approve it |
+| Clear refund, at the limit | A manager or owner signed in | The owner's PIN at the counter can't approve it |
+| Clear refund, over the limit | The owner, signed in on their own device | A manager can't approve it |
 | A discount over your limit | A manager or owner whose limit covers it | Their PIN at the counter |
 | A drawer difference at close | A manager or owner who didn't make the first count | Their PIN and a note |
 
@@ -47,8 +48,13 @@ drawer has to be open. A card not yet captured is voided, not refunded.
 
 ## Refunding a Clear charge
 
-A Clear refund unwinds the customer's plan. Open the charge in **Charges** and choose **Start a
-refund**.
+Open the charge in **Charges** and choose **Start a refund**.
+
+**A charge the customer paid now is refunded in full.** Your share comes out of the shop's cash
+account and Clear returns its fee. If the cash account can't cover your share, the refund waits until
+it can.
+
+**A charge paid over time unwinds the customer's plan:**
 
 - **The customer gets back what they paid, less carry** they've already paid on a plan over time.
   A refund unwinds the purchase, not the time they had the money.
@@ -84,7 +90,7 @@ approved; if they win, it's treated as refunded. How Clear decides is in
 | "Only today's orders are voided; an earlier one is refunded" | Use Start a refund |
 | "A refund is approved by a manager or owner, or with their PIN" | A counter shift can't approve its own refund |
 | "Someone other than whoever asked approves it" | The approver's PIN is the requester's own |
-| "That one needs approving from the owner's phone, not a code at the counter" | The Clear refund is at or over the refund limit |
+| "That one needs approving from the owner's phone, not a code at the counter" | The Clear refund is at or over the refund limit, and an owner's PIN was used |
 | "That one is above the refund limit and needs an owner" | A manager tried to approve over the limit |
 | "Open the drawer to give cash back" | Cash refunds come out of an open drawer |
 | "Card processing isn't set up here" or a disconnected account | A card taken on a Stripe account that's since been disconnected can only be refunded in that Stripe account |

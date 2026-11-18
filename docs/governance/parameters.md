@@ -67,9 +67,9 @@ app and read by a person, who moves it on by hand.
 | Instalment choices | `TermIssuer`, fixed in the contract | A contract upgrade | 1, 2, 4, 6 or 12 |
 | When a split plan can be declared in default | `TermIssuer`, fixed in the contract | A contract upgrade | Two instalment periods after the first unpaid one |
 | How often a member may re-spread a plan | `TermIssuer`, fixed in the contract | A contract upgrade | Three times, not while behind, and not within one instalment period of the last |
-| Revolving tiers and their rates | `RevolvingIssuer.addTier`, `setTierRate` | `CREDIT_SETTINGS_ROLE` (the Ops Safe) | Each tier's rate is at least the one before it |
+| Revolving tiers and their rates | `RevolvingIssuer.addTier`, `setTierRate` | `CREDIT_SETTINGS_ROLE` (two named signers) | Each tier's rate is at least the one before it |
 | A member's revolving capacity | `RevolvingIssuer.setTierCapacity`, or `LimitCalculator` from pledged collateral | `CREDIT_LIMITS_ROLE`, within the daily caps; `LimitCalculator` writes it from collateral for anyone who calls | — |
-| Daily caps on new limits and card spending, card settlers, treasuries | The credit issuers | `CREDIT_SETTINGS_ROLE` (the Ops Safe) | — |
+| Daily caps on new limits and card spending, card settlers, treasuries | The credit issuers | `CREDIT_SETTINGS_ROLE` (two named signers) | — |
 | Collateral haircuts and prices | `CollateralRegistry.setCollateralTerms` | The registry's `OPERATOR_ROLE` (the savings relayer) | Bonds registered as collateral at 95% at deployment |
 
 **The automatic split-plan limit.** Clear's server sets term limits by a rule:
@@ -112,7 +112,7 @@ Assurance grant takes two signers. How the reserve works:
 |---|---|---|---|
 | A shop's discount on a plan paid over time, Clear Lending's fee | `MerchantRegistry` terms | `MerchantRegistry` `OPERATOR_ROLE` (the Ops Safe) | 2.5% by default when a shop is registered. Never above 100% |
 | The cap on that fee | `TermIssuer.setFeeTerms` | `CREDIT_SETTINGS_ROLE` | $50.00 a plan, or $75.00 on a plan over $2,500.00 |
-| Who receives the fee | `TermIssuer` `feeRecipient` | Two `CREDIT_SETTINGS_ROLE` holders: one proposes, another approves | Clear Lending, never the co-op's treasury |
+| Who receives the fee | `TermIssuer` `feeRecipient` | Two `CREDIT_SETTINGS_ROLE` holders: one proposes, another approves | Meant to be Clear Lending's account. The contract refuses only zero and the payout pool. On Base Sepolia it is set to the Clear Treasury Safe |
 | A shop's approval cap: the largest Clear charge it can take | `MerchantRegistry` terms | Same | Set per shop. Zero means no cap |
 | A shop's payout window | `MerchantRegistry` terms | Same | The default window unless set |
 | The default payout window | `MerchantRegistry.setDefaultPayoutWindow` | Same | 30 days, set at deploy |
@@ -135,7 +135,7 @@ on chain.
 
 | Parameter | Lives in | Set by | Today |
 |---|---|---|---|
-| Size of each offer | `OffersIssuer.setTerms` | Its owner (the credit timelock) or `CREDIT_SETTINGS_ROLE` (the Ops Safe) | $10.00, set at deploy |
+| Size of each offer | `OffersIssuer.setTerms` | Its owner (the credit timelock) or `CREDIT_SETTINGS_ROLE` (two named signers) | $10.00, set at deploy |
 | How long an unspent offer lasts | `OffersIssuer.setTerms` | Same | 90 days, set at deploy |
 | Total offers the line can carry | `OffersIssuer.setCap` | Same | No offer is granted beyond it |
 | Where the money to settle offers comes from | `OffersIssuer.setTreasury` | Its owner: the credit timelock | — |
@@ -164,7 +164,7 @@ See [Membership and the co-op](./membership.md).
 
 1. **A value on the chain**: everything in the tables above marked as living in a contract. It
    changes by a transaction from whoever holds the role.
-   - Where that is the Ops Safe acting directly (shop terms, credit settings), the change needs
+   - Where that is the Ops Safe acting directly (shop terms), the change needs
      signatures from more than one of the Safe's owners, and takes effect when it executes. The
      Command Center can prepare the transaction and collect signatures; it is executed in
      Safe{Wallet}.

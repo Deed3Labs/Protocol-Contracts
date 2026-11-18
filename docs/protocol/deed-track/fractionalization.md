@@ -1,8 +1,9 @@
 # Fractionalization
 
-`Fractionalize` takes custody of a T-Deed and issues an ERC-20 share token against it. Each
-fraction has an id, from 1, and its own `FractionToken`, cloned by `FractionTokenFactory`. The deed
-comes back out through `unlockAsset`, to whoever holds every minted share.
+`Fractionalize` takes custody of a T-Deed or a subdivision unit and issues an ERC-20 share token
+against it. Each fraction has an id, from 1, and its own `FractionToken`, cloned by
+`FractionTokenFactory`. The asset comes back out through `unlockAsset`, to whoever holds every
+outstanding share.
 
 Source: [`Fractionalize.sol`](../../../contracts/extensions/Fractionalize.sol),
 [`FractionToken.sol`](../../../contracts/core/FractionToken.sol),
@@ -11,10 +12,10 @@ function, role and event is in [`smart-contracts.md`](./smart-contracts.md#fract
 
 ```mermaid
 flowchart LR
-  O["Deed owner"] -->|"createFraction"| F["Fractionalize<br/>holds the deed"]
+  O["Deed or unit holder"] -->|"createFraction"| F["Fractionalize<br/>holds the asset"]
   F -->|"createFractionToken"| T["FractionToken<br/>(clone)"]
   F -->|"mintShares<br/>(collection admin)"| H["Share holders"]
-  H -->|"unlockAsset<br/>(holder of every share)"| R["Deed sent to 'to'"]
+  H -->|"unlockAsset<br/>(holder of every share)"| R["Asset sent to 'to'"]
 ```
 
 ---
@@ -33,32 +34,41 @@ caller becomes the fraction's collection admin.
 | `name`, `symbol` | The share token's ERC-20 name and symbol. `symbol` must not be empty |
 | `description`, `collectionUri` | Stored on the fraction and returned by `getFractionExtendedInfo` |
 | `totalShares` | The most shares that can ever be minted. Must be above zero |
-| `burnable` | Whether shares can be burned. Fixed for the life of the fraction |
+| `burnable` | Whether holders can burn shares for nothing. Fixed for the life of the fraction |
 | `approvalPercentage` | 51–100. Stored as `requiredApprovalPercentage`; see [Known limitations](#known-limitations) |
 
 What `createFraction` checks:
 
-- The caller owns the asset. For a unit, the subdivision is active and the unit id is below its
+- The caller holds the asset. For a unit, the subdivision is active and the unit id is below its
   `totalUnits`.
 - `totalShares`, `symbol` and `approvalPercentage`, as above.
 
 What it does not check:
 
-- **Validation.** An unvalidated deed can be fractionalized. `validateDeedNFTAsset` and
+- **Validation.** An unvalidated deed or unit can be fractionalized. `validateDeedNFTAsset` and
   `validateSubdivisionAsset` report a locked asset's validation status; nothing requires it.
-- **An active subdivision.** A deed with one can still be locked. While `Fractionalize` holds the
-  deed, no one can mint more units or deactivate the subdivision, because both follow the deed's
-  owner.
 
-**Moving the deed.** `Fractionalize` calls `DeedNFT.transferFrom`, so the owner must approve it
-first. While `DeedNFT` enforces royalties, which it does from `initialize`, both that approval and
-the transfer revert unless `Fractionalize` is on `DeedNFT`'s approved-marketplace list
-(`setApprovedMarketplace(Fractionalize, true)`).
+**Moving a deed.** `Fractionalize` calls `DeedNFT.transferFrom`, so the holder approves it first.
+While `DeedNFT` enforces royalties, which it does from `initialize`, both that approval and the
+transfer revert unless `Fractionalize` is on `DeedNFT`'s approved-marketplace list; the deploy
+scripts add it. A trust deed with the Verified or Coop policy can go in only because `Fractionalize`
+is an active Functional Contract, which `deploy_all.ts` registers. A deed with an active subdivision
+cannot be fractionalized: `Subdivide` holds it, so the caller is not its holder.
+
+**Moving a unit.** `Fractionalize` calls `Subdivide.safeTransferFrom`, so the holder first calls
+`Subdivide.setApprovalForAll(Fractionalize, true)`, and `Fractionalize` must be on `Subdivide`'s
+approved-marketplace list (the deploy scripts add it). `Fractionalize.onERC1155Received` accepts the
+unit only from `Subdivide`, and only for a transfer `Fractionalize` itself started; any other
+ERC-1155 deposit, and every batch deposit, reverts. The unit's `beneficiary` trait stays with the
+depositor.
 
 **The share token.** `FractionTokenFactory.createFractionToken` clones the `FractionToken`
 implementation and initializes it with `Fractionalize` as its minter, the fraction's name and
-symbol, `burnable`, and a per-wallet cap equal to `totalShares`. Events: `FractionCreated`,
-`AssetLocked`.
+symbol, `burnable`, and a per-wallet cap equal to `totalShares`. The factory then renounces its own
+admin roles on the clone. Events: `FractionCreated`, `AssetLocked`.
+
+`Fractionalize.beneficialOwnerOf(deedId)` returns the collection admin while the fraction holding the
+deed is active, so `DeedNFT.beneficialOwnerOf` reports the depositor rather than `Fractionalize`.
 
 ---
 
@@ -79,27 +89,33 @@ function batchMintShares(BatchMintParams calldata params) external // fractionId
 
 **Burning.** `burnShares(fractionId, amount)` burns the caller's shares through the token's
 `burnFrom` and reduces `activeShares`. It needs `burnable`. A holder can also call
-`FractionToken.burn` directly, but that leaves `activeShares` unchanged; see
-[Known limitations](#known-limitations).
+`FractionToken.burn` directly, also only while `burnable`; that lowers the token's supply but not
+`activeShares`.
 
 **Transfers.** Shares are ordinary ERC-20 tokens. `transfer` and `transferFrom` revert if the
 recipient would end up above the per-wallet cap.
 
 ---
 
-## Unlocking the deed
+## Unlocking the asset
 
 **`unlockAsset(params)` ends the fraction and sends the asset to `params.to`.** `params` is an
-`UnlockParams`: `fractionId`, `to` (not zero) and `checkApprovals`.
+`UnlockParams`: `fractionId`, `to` (not zero) and `checkApprovals`. Who may unlock is decided by the
+share token's `totalSupply`:
 
 | State | Who can unlock |
 |---|---|
-| No shares minted (`activeShares == 0`) | The collection admin only |
-| Shares minted, `checkApprovals` false | A caller holding every minted share (`getVotingPower == activeShares`) |
-| Shares minted, `checkApprovals` true | No one; the check needs an approval nothing can set |
+| No shares outstanding (`totalSupply == 0`) | The collection admin only |
+| Shares outstanding, `checkApprovals` false | A caller holding the whole supply (`getVotingPower == totalSupply`) |
+| Shares outstanding, `checkApprovals` true | No one; the check needs an approval nothing can set |
 
-On unlock the fraction is marked inactive, every share the caller holds is burned, and the asset is
-transferred to `to`. Validation status is not checked. Event: `AssetUnlocked`.
+On unlock the fraction is marked inactive, every share the caller holds is burned with
+`FractionToken.burnForRedemption`, and the asset is transferred to `to`. `burnForRedemption` ignores
+`burnable` and the token's pause, so a non-burnable fraction can be unlocked too. Validation status
+is not checked. Event: `AssetUnlocked`.
+
+For a trust deed, the transfer out must pass the deed's transfer rules: back to the depositor always
+passes; to anyone else, the policy decides, and a Coop deed cannot go straight to a new owner.
 
 ---
 
@@ -114,6 +130,7 @@ transferred to `to`. Validation status is not checked. Event: `AssetUnlocked`.
 | `canReceiveShares(fractionId, account)` | Whether the account's balance is below the per-wallet cap |
 | `getVotingPower(fractionId, account)` | The account's share balance |
 | `getApprovals(fractionId, account)` | `(transferApproved, adminApproved)`, which are always false |
+| `beneficialOwnerOf(deedId)` | The collection admin of the active fraction holding the deed, else zero |
 | `validateAsset`, `validateDeedNFTAsset`, `validateSubdivisionAsset` | Whether the locked asset is validated, with a short description |
 | `getAssetInformation(fractionId)` | Asset kind, validation status, validator, and the deed's `tokenURI` (for a unit, its deed and unit ids) |
 | `getDeedNFTAssetDetails`, `getDeedNFTAssetTrait`, `getDeedNFTAssetTraitKeys` | The locked deed's asset type, status and traits |
@@ -126,28 +143,26 @@ balance; there is no voting function.
 
 ## Roles and pausing
 
-- **Collection admin**: the caller of `createFraction`. Mints shares and, before any are minted, can
-  unlock. No function hands the role on.
+- **Collection admin**: the caller of `createFraction`. Mints shares and, while no shares are
+  outstanding, can unlock. No function hands the role on.
 - **`ADMIN_ROLE`** on `Fractionalize`: `pause` and `unpause`, which stop `createFraction`, minting,
   `burnShares` and `unlockAsset`. They do not stop share transfers.
 - **`DEFAULT_ADMIN_ROLE`**: upgrades and role grants.
 
-Each `FractionToken`'s own admin roles belong to `FractionTokenFactory`, which has no function that
-uses them. A token's cap, `burnable` flag and pause cannot be changed after it is created.
+No one holds a `FractionToken`'s admin roles: the factory renounces them when it creates the token.
+Only `Fractionalize` (`MINTER_ROLE`) acts on it. A token's cap, `burnable` flag and pause cannot be
+changed, and the token cannot be upgraded.
 
 ---
 
 ## Known limitations
 
-- **A subdivision unit cannot be fractionalized.** `createFraction` moves a unit with
-  `safeTransferFrom`, which requires the receiver to implement `onERC1155Received`. `Fractionalize`
-  does not, so the call reverts.
 - **The `checkApprovals` unlock path never passes.** It counts the caller's shares only if
   `adminApprovals[caller]` is set, and nothing in the contract sets it. `requiredApprovalPercentage`
   has no other use.
-- **A non-burnable fraction cannot be unlocked once shares are minted.** Unlocking burns the
-  caller's shares through `burnFrom`, which reverts unless the token is burnable.
-- **Shares burned with `FractionToken.burn` stay counted.** `activeShares` does not go down, so no
-  one can hold every minted share afterwards and the deed cannot be unlocked. Burn through
-  `burnShares`.
-- **No tests cover `Fractionalize`, `FractionToken` or `FractionTokenFactory`.**
+- **Shares burned with `FractionToken.burn` cannot be minted again.** They leave `activeShares`
+  unchanged, so the mint cap still counts them. Unlocking is not affected, since it compares
+  against the token's supply. Burn through `burnShares` to free the room.
+- **A locked trust deed's holder calls wait.** While `Fractionalize` holds a trust deed, the calls
+  only the holder can make, such as `electAgreementVersion` and `reassignValidator`, cannot be made,
+  nor, when no protector is recorded, the protector's calls such as `setTrustee`.

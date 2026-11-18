@@ -69,11 +69,12 @@ transfer into the CCIP pool. Minting has no `from` and is exempt, so an encumber
 |---|---|
 | `freeBalanceOf(holder)` | `balanceOf(holder)` minus `encumberedOf(holder)`, floored at zero |
 | `_update(from, to, value)` | Reverts `ClearUSDEncumbered` if `from` is non-zero and `value > freeBalanceOf(from)` |
-| `_encumberedOf(holder)` | Asks the `IEncumbranceSource`. Returns zero if no source is set, or if the call reverts |
+| `_encumberedOf(holder)` | Asks the `IEncumbranceSource`. Returns zero if no source is set. If the source reverts, returns the last lock it read for that holder (`lastKnownLockOf`) |
 | `setEncumbranceSource(source)` | Admin only. Setting it to zero lifts the lock for everyone |
 
-A fresh `ClearUSDUpgradeable` has no source and locks nothing. A source that reverts also locks
-nothing: `_encumberedOf` catches the revert and returns zero.
+A fresh `ClearUSDUpgradeable` has no source and locks nothing. A source that reverts does not unlock
+anyone (audit M-3): `_encumberedOf` and `_update` fall back to the last lock read for the holder and
+emit `EncumbranceSourceReverted`, so a pledger stays locked and everyone else stays free.
 
 ### Members only (spec 12.15) and de-listing (10d)
 
@@ -123,8 +124,8 @@ seconds the security pause or that account's pause was in force, the overlap onc
 ### Seizure
 
 **`seize(holder, to, amount)` is the one move allowed past the lock, and only up to the lock.** It
-requires `LIQUIDATOR_ROLE`, reverts with `ClearUSDSeizureExceedsEncumbrance` if `amount` exceeds
-`_encumberedOf(holder)`, and then calls the parent `_update` directly, skipping the check. It needs no
+requires `LIQUIDATOR_ROLE`, reads the live source (reverting `ClearUSDEncumbranceUnreadable` if it
+cannot), reverts with `ClearUSDSeizureExceedsEncumbrance` if `amount` exceeds the lock, and then calls the parent `_update` directly, skipping the check. It needs no
 allowance from the holder. It cannot reach a free balance, and a holder with nothing encumbered has
 nothing seizable.
 
@@ -153,9 +154,10 @@ the Savings tier, a plain transfer or a card settlement (`RevolvingIssuer.setClr
 by the owner), so that record is never older than the member's last Savings draw. If the registry
 is down at that moment the draw reverts.
 
-`Liquidator` uses `seize` in two places. `liquidate` (`OPERATOR_ROLE`) checks that the issuer reports
-the member in default, seizes up to the tier's outstanding principal, records the seizure in the
-registry, redeems the CLRUSD through `ESADepositVault.redeem` and settles the tier.
+`Liquidator` uses `seize` in two places. `liquidate` (anyone may call it) checks that a trusted
+issuer reports a current default and that no Liquidation Hold is in force, seizes the least of the
+open Defaulted Amount, the tier's principal, the CLRUSD held and the registry's lock, records the
+seizure in the registry, redeems the CLRUSD through `ESADepositVault.redeem` and settles the tier.
 `settleFromSavings` is the member-initiated version against a trusted issuer's savings tier. Both
 are bounded by the token to what is encumbered. The rest is in [Credit](./credit.md).
 
@@ -190,16 +192,18 @@ The vault needs `MINTER_ROLE` and `BURNER_ROLE` on whichever CLRUSD it points at
 
 ### Gasless paths
 
-Each of these is `OPERATOR_ROLE` and `whenNotPaused`. The relayer holding `OPERATOR_ROLE` pays gas;
-the member signs.
+Each of these is `RELAYER_ROLE` and `whenNotPaused`. The relayer holding `RELAYER_ROLE` pays gas;
+the member signs. `OPERATOR_ROLE` opens none of them (audit H-3).
 
 | Function | What the member signs | Replay protection |
 |---|---|---|
-| `depositWithAuthorization` | An EIP-3009 `receiveWithAuthorization` on the reserve token, payee = vault | The token's own authorization nonce |
-| `redeemWithAuthorization` | EIP-712 `Redeem(redeemer, token, clrusdAmount, receiver, nonce, deadline)` | `redeemNonces[redeemer]`, used in order; `deadline` |
+| `depositWithAuthorization` | An EIP-3009 `receiveWithAuthorization` on the reserve token, payee = vault. Mints only to the depositor | The token's own authorization nonce |
+| `depositWithAuthorizationFor` | The same authorization, plus an EIP-712 `DepositIntent(depositor, token, amount, receiver, authNonce)` naming who receives the CLRUSD | The authorization's nonce, which the intent names |
+| `redeemWithAuthorization`, `redeemWithSignature` | EIP-712 `Redeem(redeemer, token, clrusdAmount, receiver, nonce, deadline)`; the first takes `v, r, s`, the second a signature of any length | `redeemNonces[redeemer]`, used in order; `deadline` |
 | `executeMandateDeposit` | EIP-712 `DepositMandate(depositor, token, amountPerRun, interval, maxRuns, startAt, expiry, nonce)` | `depositMandates[digest]` run count |
 
-`redeemWithAuthorization` recovers an ECDSA signer and requires it to equal `redeemer`. It still
+Redeem signatures are checked with `SignatureChecker` (audit M-5), so a smart-contract wallet
+(EIP-1271) can sign as `redeemer`. It still
 burns through `burnFrom`, so the redeemer needs a standing CLRUSD allowance to the vault.
 
 `executeMandateDeposit` is autopay: one signature authorizes up to `maxRuns` deposits of
@@ -252,7 +256,8 @@ The DFAL pilot measure (spec item 11) is tracked off chain from `Deposited`, `Re
 ## Savings intents
 
 **A member funds an address before any contract exists there, with one ordinary transfer.**
-`SavingsIntentFactory.predictIntentAddress(salt)` returns the EIP-1167 clone address for a salt. The
+`SavingsIntentFactory.predictIntentAddress(userSalt, config)` returns the EIP-1167 clone address for
+a salt bound to the whole config. The
 member sends USDC (to save) or CLRUSD (to withdraw) to it. A settler later deploys the escrow and
 runs the vault call in one transaction.
 
@@ -272,21 +277,24 @@ flowchart LR
 
 | Function | Role | Behaviour |
 |---|---|---|
+| `announceIntent` | `CREATOR_ROLE` | For a redeem intent only: records the escrow address before it is funded, so CLRUSD lets it receive. Deploys nothing |
 | `createIntentDeterministic` | `CREATOR_ROLE` | Deploys and initializes the clone, or checks the config against an existing one |
 | `settleDeterministic` | `SETTLER_ROLE` | Same provisioning, then `SavingsIntentEscrow.finalize` |
 | `refundDeterministic` | `SETTLER_ROLE` | Same provisioning, then `SavingsIntentEscrow.refund` |
 
-The salt is not derived from the config. The first provisioning call initializes the clone with
-whatever config it passes; every later call must match that config field for field
+The clone salt is `intentSalt(userSalt, config)`, `keccak256(abi.encode(userSalt, config))` (audit
+H-4), so funding an address commits to every field of the config and any other config deploys
+elsewhere. A later call on an existing clone must still match its config field for field
 (`_assertConfigMatches`). Neither contract checks `vault` against a known vault.
 
 The escrow accepts calls only from its factory (`onlyFactory`).
 
-- `finalize` requires status `Pending` and a balance of exactly `amount` (`SavingsIntentEscrowFundingIncomplete`
-  otherwise). It approves the vault and calls `deposit` or `redeem` as itself, so the vault sees the
+- `finalize` requires status `Pending` and a balance of at least `amount`
+  (`SavingsIntentEscrowFundingIncomplete` otherwise). It sends exactly `amount` on and returns any
+  excess to `depositor` (audit M-4). It approves the vault and calls `deposit` or `redeem` as itself, so the vault sees the
   escrow as caller. It does not check `expiry`.
 - `refund` requires status `Pending` and `block.timestamp > expiry`, and returns the escrow's whole
-  balance of `transferToken` to `depositor`.
+  balance of `transferToken` to `depositor`. It reverts on a zero balance.
 
 A redeem escrow redeems to itself and forwards the reserve token to `receiver`, because the vault
 pays a plain `redeem` only to its caller.
@@ -306,8 +314,8 @@ is not upgradeable, so this needs a new deployment of it.
 
 `initialize` rejects an `expiry` that has already passed, and `refund` rejects one that has not. An
 escrow must therefore be provisioned (by `createIntentDeterministic` or a settle attempt) before its
-expiry for `refundDeterministic` to succeed later. A balance that is not exactly `amount` cannot be
-finalized and leaves only through `refund`.
+expiry for `refundDeterministic` to succeed later. A balance below `amount` cannot be finalized; it
+leaves only through `refund`.
 
 Both factory roles and `DEFAULT_ADMIN_ROLE` go to `admin` in the constructor. The factory is not
 upgradeable; the escrow implementation is deployed inside its constructor.

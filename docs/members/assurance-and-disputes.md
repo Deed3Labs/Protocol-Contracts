@@ -10,7 +10,7 @@ the same ladder, and each step turns on when your credits reach it.
 
 | Protection | Turns on at | What it covers |
 |---|---|---|
-| Cycle assurance | Day one | One cycle a year can close short. Your line holds, your savings stay put and the cycle does not count as missed |
+| Cycle assurance | Day one, once Clear confirms you're eligible | One cycle a year can close short. Your line holds, your savings stay put and the cycle does not count as missed |
 | Home repair | 1,500 credits | Qualifying home repairs, covered by the co-op |
 | Income | 4,000 credits | If you hit a hardship, such as your income dropping, nothing is due for up to three cycles. Two people at Clear approve it, and you can end it early |
 | Deposit | 8,000 credits | Your security deposit, paid to your landlord by the co-op |
@@ -53,8 +53,8 @@ A person on the team reads every claim and decides it: yes, no, or what's missin
 paid goes into your cash account. A claim costs you nothing and doesn't touch your credits,
 whichever way it goes.
 
-If you have no active protections yet, there is nothing to claim on. Cycle assurance is active from
-day one.
+If you have no active protections yet, there is nothing to claim on. Cycle assurance needs no
+claim: once Clear has confirmed you're eligible, it applies on its own.
 
 ## Disputes
 

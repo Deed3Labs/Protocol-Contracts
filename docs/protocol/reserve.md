@@ -16,7 +16,8 @@ are not here either — they sit in `PayoutPool` ([Settlement](./settlement.md))
 savings, payout or bond contract holds the pool's address**, so no redemption, withdrawal, payout,
 refund, liquidation or force settlement can reach it.
 
-Deployed addresses are in the root [`README.md`](../../README.md) (**Deployed addresses**). Who
+The live pool is the `AssurancePoolV2` record ([contract page](./contracts/AssurancePoolV2.md)); the
+`AssurancePool` record is the retired Phase 1 pool. Who
 governs it is in [`UPGRADEABILITY.md`](../audit/UPGRADEABILITY.md).
 
 ## One ledger per compartment
@@ -43,7 +44,8 @@ move it.
 
 Payers are allowlisted per tag by governance. `deposit` refuses any address the `NetworkRegistry`
 lists as a money path (`isMoneyPath`: every registered credit issuer, plus CLRUSD, the ESA vault,
-the pledge registry, the Liquidator, the LendingPool, BondVault, PayoutPool and the ledger).
+the pledge registry, the Liquidator, the LendingPool, BondVault, PayoutPool, `ClaimEscrow` and the
+ledger).
 
 The allocation (`setAllocation`, basis points per compartment, summing to 10,000; 50/50 at launch)
 is set per program year. Within the year it was last set in, the Credit Backstop's share may rise
@@ -64,8 +66,9 @@ availableCoverage()    = min(backstopBalance(), coverageCap)
 
 `floorBps` starts at 500. The exposure source is the `CollateralRegistry`, which reads every
 issuer's debt by kind: income-backed, Clear Boost and term-plan debt count in full, savings-backed
-debt not at all, asset-backed debt by the shortfall after its haircut. With no unsecured credit live
-the floor is zero.
+debt not at all, asset-backed debt by the shortfall after its haircut. The registry's figure is a
+running total, updated as each member's exposure is refreshed (`refresh(member)`). With no unsecured
+credit live and no monthly inputs set, the floor is zero.
 
 `timingBufferShortfall`, `coverageCap` and `attestedCoveredBook` are set each month by two signers
 (`setFloorInputs`, with an evidence hash; event `FloorInputsSet`).

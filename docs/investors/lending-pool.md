@@ -59,8 +59,9 @@ lending pool and the bonds share.** A subscription is refused when:
 The Funding Limit counts outstanding bonds at their Maturity Amount, outstanding Pool Shares at their
 Share Value, and Clear Lending's other borrowings as last posted.
 
-Pool Shares move only between two accounts of the same holder, or to a successor approved for a
-holder whose account cannot be reached. Every other transfer is refused.
+Pool Shares move only between two accounts of the same holder, or, when a holder dies, becomes
+incapacitated, divorces or goes bankrupt, to the person entitled, once two signers have approved it;
+that move is still signed from the holder's own account. Every other transfer is refused.
 
 ## What the pool funds
 
@@ -75,7 +76,8 @@ refused unless, at that moment:
 - Utilization afterwards, the Deployed Balance divided by the Deployed Balance plus Vault Cash, is at
   most 90%;
 - the Deployed Balance afterwards is within the Pool Tier principal: the outstanding principal of the
-  credit the pool funds, as two valuation signers last posted it. Nothing can be deployed before it
+  credit the pool funds, plus what the pool has advanced to the savings-backed settlement margin and
+  not had back, as two valuation signers last posted it. Nothing can be deployed before it
   is posted.
 
 The credit the pool funds is the savings-backed, income-based and Boost tiers, and open term plans.

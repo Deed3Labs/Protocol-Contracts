@@ -29,6 +29,7 @@ sequenceDiagram
     L->>A: ASA request
     A->>A: Lock snapshot, run waterfall, decrement, book credit part
     A-->>L: APPROVED or a decline
+    A->>R: authorizeCardSpend(ref, member, credit part)
     L->>L: Network clears and pays the shop
     L->>A: card_transaction SETTLED
     A->>A: Reconcile the hold to the settled amount
@@ -97,7 +98,10 @@ chain cannot be read, cash is written fresh and the previous credit figures are 
 | No snapshot for the card, no database, missing transaction or card token, or any error | `INSUFFICIENT_FUNDS` |
 | Signature fails (`LITHIC_ASA_SECRET`, falling back to `LITHIC_WEBHOOK_SECRET`) | `SUSPECTED_FRAUD` |
 
-Nothing reaches the chain at this point. An approved authorisation is a hold in the API's books.
+An approved authorisation is a hold in the API's books. Right after answering Lithic, the API also
+records the approval on chain with `authorizeCardSpend(ref, member, amount)` for the credit part
+(`authorizeCardOnChain`), which checks the member's standing, the per-transaction cap and headroom.
+Settlement can later draw up to that amount and no more (audit M-2).
 
 ## 2. The co-op's float pays the shop
 
@@ -145,6 +149,10 @@ What `RevolvingIssuer.settleCardSpend` writes:
 
 - It reverts unless the caller is allowed by `setCardSettler`, `cardSettlementAccount` is set, the
   amount is not zero and the ref has never been settled. A fully refunded ref stays settled.
+- It settles only against a matching `authorizeCardSpend` for the same member, for at most the
+  authorized amount, within the per-transaction, daily and per-member card caps, for a member in good
+  standing, and draws Savings only up to `savingsDrawAllowance`. A settled credit part above the
+  on-chain authorization goes to `needs_review` in the API before it is sent.
 - It materialises the member's carry, then reverts with `RevolvingIssuerCardHeadroom` unless the
   member's active tiers together have room for the whole amount.
 - `_draw` fills the tiers in tier order, cheapest first, and emits `TierDrawn(member, tierId, amount)`
@@ -189,8 +197,8 @@ first.
 | Route | What starts it | What happens on chain |
 |---|---|---|
 | Fiat deposit | A settled inbound `payment_transaction` to the member's Lithic cash account | `repayCardSpend(ref, member, amount)`: the co-op's claim is burned against the member's obligation with `reversePurchase`. No reserve token moves |
-| Repay in USDC | The member's wallet calls `StableCredit.repayCreditBalance` | The USDC is routed by `_routeRepayment` to the PayoutPool, and the rest to the AssurancePool. The issuers absorb the payment, dearest position first |
-| Automatic repayment | A USDC deposit, for a member who called `setAutoRepay(true)` and approved the ledger | `repayForMember(ref, member, amount)` pulls the member's USDC through `repayCreditBalanceFor` |
+| Repay in USDC | The member's wallet calls `StableCredit.repayCreditBalance` | The USDC is routed by `_routeRepayment` to the PayoutPool, up to what it is short, and the rest to Clear Lending's operating address (`lenderOperating`). The issuers absorb the payment, dearest position first |
+| Automatic Clearing | A deposit landing in Spendable, for a member with Automatic Clearing on | `repayForMember(ref, member, amount, payer)`: the card settler delivers the reserve token and nothing is taken from the member's wallet. Refused in `hybridMode` or for an excluded payer. Clears at the member's chosen scope: unsecured only, what is due, or everything |
 
 **A fiat deposit** is applied in the API's books first
 ([`depositReceiptService.ts`](../../apps/api/src/services/deposits/depositReceiptService.ts)):

@@ -1,7 +1,9 @@
 # Estates
 
 Estate is asset type `2` (`DeedNFT.AssetType.Estate`): land together with the buildings on it, such
-as a house or an apartment building. A validated Estate deed can be
+as a house or an apartment building. An Estate deed is a trust deed: it is minted with
+`mintTrustDeed`, not `mintAsset`, and has a trustee, a protector and a transfer policy
+([trust deeds](../protocol-overview.md#trust-deeds-land-and-estate)). A validated Estate deed can be
 [subdivided](../subdivision.md) into units. Estates use the same trait keys as
 [Land](./land-assets.md).
 
@@ -14,8 +16,9 @@ traits below are present, and record the validator's result.
 ## Trait keys
 
 **These are the keys the contracts read.** Each is a separate trait on the deed, set with
-`DeedNFT.setTrait` and a string value (`valueType` 1). Keys are case-sensitive and hashed with
-`keccak256`, so `parcelNumber` and `Parcel Number` are different traits.
+`DeedNFT.setTrait` by the holder or the deed's validator, with a string value (`valueType` 1). Keys
+are case-sensitive and hashed with `keccak256`, so `parcelNumber` and `Parcel Number` are different
+traits. Once the deed is validated, only the validator can change the keys its criteria require.
 
 | Key | Required by the preset criteria | Used in the metadata name |
 |---|---|---|
@@ -38,8 +41,13 @@ or `Parcel #{parcelNumber}, {state} {zipCode}, {country} - Estate` without a str
 ([names](../metadata-renderer.md#names)). The example in [Land](./land-assets.md#trait-keys) shows
 how to set the keys.
 
-Every deed also carries the seven traits set at mint: `assetType`, `isValidated`,
-`operatingAgreement`, `definition`, `configuration`, `validator` and `beneficiary`.
+Every deed also carries the six traits set at mint: `assetType`, `isValidated`,
+`operatingAgreement`, `definition`, `configuration` and `validator`. Who owns the deed is not a
+trait; `DeedNFT.beneficialOwnerOf` answers it. A Land or Estate deed also carries the reserved trust traits
+(`agreementHash`, `riderHashes`, `trustee`, `protector`, `transferPolicy`, `status`,
+`mintParamsHash`, and the program traits when a program applies).
+On an Estate deed `definition`, `operatingAgreement` and `assetType` cannot be changed with
+`setTrait`; the definition changes only by the trustee's `correctDefinition`.
 
 ---
 
@@ -64,8 +72,9 @@ Supporting records are stored in the `MetadataRenderer`
 
 ## Subdividing an estate
 
-A validated Estate deed can be split into units, for example one per apartment. Each unit copies
-`assetType`, `operatingAgreement`, `definition` and `configuration`, but not the keys above. To
+A validated Estate deed can be split into units, for example one per apartment; `Subdivide` holds
+the deed while the subdivision is active. Each unit copies `assetType`, `operatingAgreement`,
+`definition` and `configuration`, but not the keys above. To
 validate a unit against the preset, the collection admin sets `country`, `state`, `county`,
 `parcelNumber` and `legalDescription` on the unit itself
 ([validating units](../subdivision.md#validating-units)).

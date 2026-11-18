@@ -46,6 +46,9 @@ Equity credits earned on a test network are recorded separately from those earne
 - **Two people for the sharpest powers.** Pausing the savings vault or an account, taking a wallet
   off the members list, and paying anything out of the reserve each take two different people. A
   pause lapses after 72 hours unless it is renewed.
+- **Base runs older contracts.** On Base, savings and send run on an earlier version of the vault
+  and CLRUSD, without the members-only rule, the savings lock, the two-person pause or the timelocks.
+  Those are on Base Sepolia only.
 - **Interfaces still move.** Contract functions and API shapes can change between versions.
 
 ## Licensing
@@ -57,7 +60,7 @@ directory.**
 |---|---|
 | The contracts, and the tooling that deploys and tests them (`contracts/`, `deploy/`, `scripts/`, `test/`) | AGPL-3.0, because the contracts are a fork of StableCredit |
 | The apps (`apps/*`) | Proprietary, all rights reserved |
-| `packages/domain`, `packages/tokens`, `packages/contracts-sdk` | MIT |
+| `packages/domain`, `packages/tokens`, `packages/contracts-sdk`, and the Pay with Clear SDKs `packages/clear-js`, `packages/clear-node`, `packages/clear-mcp` | MIT |
 | Every other package | Proprietary |
 
 [`NOTICE.md`](../../NOTICE.md) is the authority on which license applies where. It records which
