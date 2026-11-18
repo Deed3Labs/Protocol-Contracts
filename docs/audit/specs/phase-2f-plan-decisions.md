@@ -212,6 +212,32 @@ IV-02 in full is `IV-02-yield-pool-subscription-and-pool-share-terms.md` in this
     - **Stale wording.** "Borrows from the yield pool" in Command's `money.tsx` and `money2.tsx` and in `docs/investors/lending-pool.md` is corrected with the next app change.
     - **Left as they are:** `deployments/base-sepolia/BurnerBondDeposit.json` stays as history and is left out of the docs. The MetadataRenderer address is checked under the Deed v5 work: the API and member app name 0xAc50…48BE, the record names 0x849e…70E5, and DeedNFT reads 0xc8A9…10cD on chain. The Deed track was not redeployed, so nothing changes now.
 
+## Automatic card settlement funding (founder, Nov 17, 2026)
+
+54. **The Yield Pool funds card settlements automatically, within limits two people set once (founder, Nov 17, 2026).** The agreements were amended for this; only their section numbers are cited here. Recorded as 54 because 53 was already taken. Amends decision 49's "funding stays manual" for card settlements only, as decision 51 did for PayoutPool top-ups.
+    - **Savings-backed credit is a Pool Tier** (IV-02 §4.1). The Yield Pool may fund savings-backed, income-backed, Clear Boost, Partner Credit and Clear Cash draws. Asset-backed credit stays out of the pool (§4.2). Savings-backed credit stays free to members and secured 1:1 by their own locked CLRUSD. The API's `POOL_FUNDED_TIER_KINDS` defaults to `SAVINGS,INCOME,BOOST`, and the Pool Tier principal worksheet counts them, with the open term plans and the Margin Advances not yet restored.
+    - **Settlement Funding** (L-01 §8.4A; I-02 §4.9(a); I-07 §4.10). Before each settlement cut-off, the Credit Settlement Account (CSA) at the bank partner is funded to cover the credit portions due in that settlement plus a Settlement Buffer. The sources, in this order:
+      1. collections already in the Collection Account (same bank), by book transfer;
+      2. Settlement Funding: Yield Pool Deployments, and BondVault excess where its documents allow it;
+      3. the Savings-Backed Margin.
+
+      Cash in the CSA above the next settlement plus the buffer goes back within 2 business days: first to restore the Margin, then as a Return to the pool, then to the BondVault.
+    - **Standing Approvals** (C-01 §6.14; L-01 §6.4; IV-02 §4.3A). Two people may approve an automated flow once, if it has all three of: a fixed destination; a per-period limit enforced on chain; and an immediate stop. The automated pool lane (IV-02 §4.3A):
+      - can be used only by a funder registered on the Vault;
+      - has a per-period cap set by two `DEPLOYER_ROLE` signers;
+      - may deploy above the posted Pool Tier principal by up to a **Settlement Headroom**, to cover credit portions authorized and not yet settled;
+      - meets every other `deploy` condition: no open queue request, no Suspension, no pending loss charge, Utilization at most 90% afterwards.
+
+      Unused Settlement Funding comes back within 2 business days.
+    - **The ESA vault never funds anything.** The ESA reserve is held in trust, 1:1, and is used only to redeem CLRUSD. Nothing in this design reads, names or moves it.
+    - **How it is built.**
+      - On chain: the settlement lane on the Yield Pool (`setSettlementFunder`, `setSettlementHeadroom`, `deploySettlement(amount, ref)`, `stopSettlementFunder`, which any one `DEPLOYER_ROLE` or `CCO_ROLE` holder may call), added by a new Earn timelock proposal scheduled after E8x has executed; and a `SettlementForwarder`, CL Operating's AllowanceModule delegate, which only the desk wallet may call and which pays only the off-ramp address CL Operating's owners set. A stolen desk key can push USDC only to the off-ramp, within the lane's cap and the forwarder's allowance.
+      - Off chain: the funding desk (`apps/api/src/jobs/fundingDesk.ts`, off unless `SETTLEMENT_FUNDING_ENABLED=1`, with a dry run) on the payout top-ups pattern (decision 51): a CDP server wallet (`settlement-desk-base-sepolia`), every move recorded before it is sent, idempotency keys per step, a stop on any revert until a person clears it, each alert once. `need = due at the next cut-off + buffer − CSA − in flight`; the Collection Account first, then the lane; never more than the cap, with Transaction Builder batches for the rest; the Margin and the manual options named otherwise. Returns run behind their own switch, `SETTLEMENT_RETURNS_ENABLED`. It funds settlements, never individual swipes.
+      - The per-purchase `borrow` (retired with decision 17's Yield Pool) is gone from the API.
+      - The Pool Tier principal is a read-only worksheet for the two `VALUATION_ROLE` signers (`GET /api/command/pool-tier-principal`, shown in the Command Center as "suggested"). Nothing posts it automatically.
+    - **One-time setup** (signing plan stage `SL`): the Earn timelock proposal; `SL-funder` and `SL-headroom`, each by two `DEPLOYER_ROLE` signers; then the CL Operating batch for the forwarder. On Base Sepolia the lane is small: $5,000 a week and $1,000 of headroom. Nothing on chain is scheduled, granted or sent without the owner. `docs/operators/settlement-funding.md` has the detail.
+    - **Configuration, filled in later by the owner** (never written into the code): the bank's and Lithic's cut-off times, whether a Collection Account to CSA book transfer is same-day, the CSA minimum the bank requires (the buffer's floor), the off-ramp provider, rail and latency, and the lane's cap, period and headroom.
+
 ## Notes for counsel
 - **Exhibit A Part 5** says matured-bond settlements pay only to the Holder or into the BondVault. Phase 2e's maturity split (and `completeSettlement`) pays the debt part to the Holder's own debt with Clear Lending, on the Holder's signed Maturity Instruction (MB-05 §5.6). This is treated as a payment to the Holder.
 - **Decision 19 versus IV-10 §7.6.**
