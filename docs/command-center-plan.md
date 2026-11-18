@@ -197,6 +197,14 @@ group: Governance (with Home's entity tree and this plan), Money, Build.
   Transaction Builder files (as `tools/signing-page` does). Command holds no key.
 - **OffersIssuer's new record isn't pushed.** Contracts reads `OffersIssuer.json` by name when it lands;
   until then the map counts it as not live and Retired shows `OffersIssuerPreAudit`.
+- **The crawl fails on every route, on `dev` too.** `e2e/crawl.spec.ts` clicks through the original
+  prototype (`docs/command-reference`), and every page has moved on from it since the redesign (Waiting is
+  the Inbox now, and so on): 44 of 44 panes differ, none of them from this work. Passing it means pointing
+  it at the redesign reference for the ported pages, as `visual.spec.ts` already does. That reworks merged
+  checks, so it waits for Kai.
+- **Records' demo names one real document.** The new reference's Records list (d12) uses a title from the
+  agreements register. Records isn't part of this update, so it isn't ported; the guard test
+  (`legalDemo.test.ts`) would fail if it were.
 - **What the brief calls #854.** The repo's redesign reference was last replaced in #803 (Oct); #854 was
   the live-refresh change. The diff below is against #803.
 
