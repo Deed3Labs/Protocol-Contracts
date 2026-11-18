@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { ethers } from 'ethers';
 import { DESK_SELECTORS, erc20Interface, forwarderInterface, isSettlementDeployedFor, laneInterface, SETTLEMENT_DEPLOYED_TOPIC, twoPersonDeployInterface } from './abi';
 import { DEFAULT_DESK_CONFIG, deskConfigFromEnv, type DeskConfig } from './config';
-import { assertDeskCall, decideFunding, figures, poolRoom, remainderBatches, settlementRef, type DeskAddresses, type DeskReads, type LaneReads } from './desk';
+import { assertDeskCall, decideFunding, figures, LANE_NOT_UPGRADED, poolRoom, remainderBatches, settlementRef, type DeskAddresses, type DeskReads, type LaneReads } from './desk';
 import { addBusinessDays, businessDaysAfter, coverage, cutoffOn, dueCutoffFor, forcedRunAt, isBusinessDay, localDate, nextCutoff, previousCutoff, zonedInstant, type CutoffSchedule } from './schedule';
 
 const U = 1_000_000n;
@@ -23,10 +23,14 @@ const a: DeskAddresses = {
 };
 
 const lane = (over: Partial<LaneReads> = {}): LaneReads => ({
+  upgraded: true,
   funder: a.wallet,
   capPerPeriod: 5_000n * U,
   periodSeconds: 604_800,
+  periodStart: 0,
   periodUsed: 0n,
+  stopped: false,
+  epoch: 0,
   headroom: 1_000n * U,
   principal: 50_000n * U,
   principalPosted: true,
@@ -35,6 +39,7 @@ const lane = (over: Partial<LaneReads> = {}): LaneReads => ({
   vaultCash: 100_000n * U,
   queuedShares: 0n,
   suspended: false,
+  chargePending: false,
   ...over,
 });
 
@@ -196,8 +201,22 @@ describe('need, and the order it is covered in', () => {
     expect(d.f.headroomUsed).toBe(200n * U);
   });
 
-  test('every deploy condition: an open queue, a Suspension, no posted principal, 90% Utilization', () => {
-    for (const over of [{ queuedShares: 1n }, { suspended: true }, { principalPosted: false }]) {
+  test('a two-person deploy has no Settlement Headroom: what the lane cannot send stops at the posted principal', () => {
+    // D 49,500; principal 50,000 + headroom 1,000; the lane has 300 left this period.
+    const d = decideFunding(reads(TUE, { lane: lane({ deployedBalance: 49_500n * U, periodUsed: 4_700n * U }) }), a, config);
+    if (d.kind !== 'fund') throw new Error(d.kind);
+    expect(d.deploy).toBe(300n * U);
+    expect(d.capShort).toBe(200n * U); // 50,000 - (49,500 + 300)
+    expect(d.poolShort).toBe(2_000n * U);
+    expect(d.blocked.join(' ')).toContain('a two-person deploy up to the posted principal alone');
+    const at = decideFunding(reads(TUE, { lane: lane({ deployedBalance: 50_000n * U, periodUsed: 5_000n * U }) }), a, config);
+    if (at.kind !== 'fund') throw new Error(at.kind);
+    expect(at.capShort).toBe(0n);
+    expect(at.blocked.join(' ')).toContain('a two-person deploy has no Settlement Headroom');
+  });
+
+  test('every deploy condition: an open queue, a Suspension, a pending loss charge, no posted principal, 90% Utilization', () => {
+    for (const over of [{ queuedShares: 1n }, { suspended: true }, { chargePending: true }, { principalPosted: false }]) {
       const d = decideFunding(reads(TUE, { lane: lane(over) }), a, config);
       if (d.kind !== 'fund') throw new Error(d.kind);
       expect(d.deploy).toBe(0n);
@@ -215,6 +234,25 @@ describe('need, and the order it is covered in', () => {
     expect(d.deploy).toBe(0n);
     expect(d.capShort).toBe(2_500n * U);
     expect(d.setup.join(' ')).toContain('no funder');
+    // Before the SL upgrade settlementLane() reverts: the lane is not set up, whatever else is.
+    const before = decideFunding(reads(TUE, { lane: lane({ upgraded: false, funder: ethers.ZeroAddress, capPerPeriod: 0n, headroom: 0n }) }), a, config);
+    if (before.kind !== 'fund') throw new Error(before.kind);
+    expect(before.deploy).toBe(0n);
+    expect(before.setup).toEqual([LANE_NOT_UPGRADED]);
+    expect(before.setup[0]).toContain('settlement lane is not set up');
+    // Stopped: the funder stays registered, and nothing goes through the lane until two deployers restart it.
+    const stopped = decideFunding(reads(TUE, { lane: lane({ stopped: true, epoch: 1 }) }), a, config);
+    if (stopped.kind !== 'fund') throw new Error(stopped.kind);
+    expect(stopped.deploy).toBe(0n);
+    expect(stopped.capShort).toBe(2_500n * U);
+    expect(stopped.setup.join(' ')).toContain('stopped');
+    // The forwarder built for another Safe, module or token is not set up either.
+    const other = reads(TUE);
+    other.forwarder = { ...other.forwarder, safe: a.safe, module: a.module, token: a.pool };
+    const o = decideFunding(other, a, config);
+    if (o.kind !== 'fund') throw new Error(o.kind);
+    expect(o.deploy).toBe(0n);
+    expect(o.setup).toEqual([`the SettlementForwarder moves ${a.pool}, not the pool's USDC ${a.usdc}`]);
     const wrong = reads(TUE);
     wrong.forwarder.offRamp = '0x9999999999999999999999999999999999999999';
     const w = decideFunding(wrong, a, config);
@@ -314,15 +352,17 @@ describe('the code allowlist of calls', () => {
     for (const [tx, want, why] of bad) expect(() => assertDeskCall(a, tx, want)).toThrow(why);
   });
 
-  test('the selectors and the event match by topic, however the event is indexed', () => {
+  test('the selectors, and SettlementDeployed(uint256 indexed id, amount, ref, periodUsed) found by its ref', () => {
     expect(DESK_SELECTORS.forward).toBe(forwarderInterface.getFunction('forward')!.selector);
-    const id = 7n;
-    const dataAll = ethers.AbiCoder.defaultAbiCoder().encode(['uint256', 'uint256', 'bytes32', 'uint256'], [id, 5n, ref, 9n]);
-    expect(isSettlementDeployedFor({ topics: [SETTLEMENT_DEPLOYED_TOPIC], data: dataAll }, ref)).toBe(true);
-    const indexed = { topics: [SETTLEMENT_DEPLOYED_TOPIC, ethers.zeroPadValue('0x07', 32), ref], data: ethers.AbiCoder.defaultAbiCoder().encode(['uint256', 'uint256'], [5n, 9n]) };
-    expect(isSettlementDeployedFor(indexed, ref)).toBe(true);
-    expect(isSettlementDeployedFor(indexed, ethers.ZeroHash)).toBe(false);
-    expect(isSettlementDeployedFor({ topics: [ethers.id('Other()')], data: dataAll }, ref)).toBe(false);
+    const log = laneInterface.encodeEventLog('SettlementDeployed', [7n, 5n, ref, 9n]);
+    expect(log.topics[0]).toBe(SETTLEMENT_DEPLOYED_TOPIC);
+    expect(log.topics[1]).toBe(ethers.zeroPadValue('0x07', 32));
+    expect(isSettlementDeployedFor(log, ref)).toBe(true);
+    expect(isSettlementDeployedFor(log, ethers.ZeroHash)).toBe(false);
+    // The ref only counts in its own place: not as the amount or the period's use.
+    const elsewhere = laneInterface.encodeEventLog('SettlementDeployed', [7n, BigInt(ref), ethers.ZeroHash, BigInt(ref)]);
+    expect(isSettlementDeployedFor(elsewhere, ref)).toBe(false);
+    expect(isSettlementDeployedFor({ topics: [ethers.id('Other()')], data: log.data }, ref)).toBe(false);
   });
 
   test('the ref is the cut-off and the credit-portion total, hashed', () => {

@@ -1,37 +1,39 @@
 import { ethers } from 'ethers';
 
 /*
- * Every contract fragment the settlement funding desk uses, in one place, so they can be lined up
- * with the contracts as deployed (decision 54; the Earn spec §6 settlement lane, and the
- * SettlementForwarder). The lane and the forwarder are being written alongside this; the names
- * below are the ones agreed for them. When the contracts land, compare this file with their ABIs
- * and change only here.
+ * Every contract fragment the settlement funding desk uses, in one place (decision 54; the Earn
+ * spec §6 settlement lane, acceptance test 27, and the SettlementForwarder). Each one is checked
+ * against the compiled ABIs (artifacts/contracts/peripherals/LendingPool.sol/LendingPool.json, with
+ * the ledger's views it serves by fallback, YieldPoolValuation.json and SettlementForwarder.json):
+ * abi.test.ts holds the list, and compares it with the artifacts when they are built.
  *
- * Agreed (the owner's spec, section 1 and 2):
- *   LendingPool (the Yield Pool, forwarding to YieldPoolValuation like `deploy`):
- *     deploySettlement(uint256 amount, bytes32 ref)       only the registered funder; to CL Operating
- *     event SettlementDeployed(id, amount, ref, periodUsed)
- *     settlementFunder() / settlementCapPerPeriod() / settlementPeriodSeconds()
- *     settlementPeriodUsed() / settlementHeadroom()
- *   SettlementForwarder (CL Operating's AllowanceModule delegate):
- *     forward(uint256 amount)                             only the desk wallet; USDC to the off-ramp
- *
- * To align (named here, not yet in the spec): the forwarder's views `desk()`, `offRamp()`, `safe()`
- * and `token()`. The desk reads them only to check its own configuration and carries on, with a
- * warning, when they are missing.
- *
- * The event is matched by its topic (the signature does not depend on which arguments are indexed)
- * and the ref is looked for in its topics and data, so the indexing chosen for it does not matter.
+ *   LendingPool (the Yield Pool; the lane runs in YieldPoolValuation, forwarded like `deploy`):
+ *     deploySettlement(uint256 amount, bytes32 ref)    only the registered funder, while not stopped;
+ *                                                      to the deployment account (CL Operating)
+ *     settlementLane()                                 one view of the whole lane, the period's
+ *                                                      rollover already applied; it reverts on a pool
+ *                                                      from before the SL upgrade
+ *     pendingLossCharge()                              a charge being applied blocks every Deployment
+ *     events SettlementDeployed (with the usual Deployed), SettlementFunderSet,
+ *     SettlementHeadroomSet, SettlementFunderStopped
+ *   SettlementForwarder (CL Operating's AllowanceModule delegate, deploy 28):
+ *     forward(uint256 amount)                          only the desk; USDC to the off-ramp
+ *     safe(), allowanceModule(), token()               fixed at construction
+ *     offRamp(), desk()                                set only by CL Operating (the Safe)
  */
+
+/** The lane's one view: what the desk reads every check. */
+export const SETTLEMENT_LANE_VIEW =
+  'function settlementLane() view returns (address funder, uint256 capPerPeriod, uint256 periodSeconds, uint256 periodStart, uint256 usedInPeriod, bool stopped, uint256 epoch, uint256 headroom)';
 
 export const SETTLEMENT_LANE_ABI = [
   'function deploySettlement(uint256 amount, bytes32 ref)',
-  'function settlementFunder() view returns (address)',
-  'function settlementCapPerPeriod() view returns (uint256)',
-  'function settlementPeriodSeconds() view returns (uint64)',
-  'function settlementPeriodUsed() view returns (uint256)',
-  'function settlementHeadroom() view returns (uint256)',
-  'event SettlementDeployed(uint256 id, uint256 amount, bytes32 ref, uint256 periodUsed)',
+  SETTLEMENT_LANE_VIEW,
+  'event SettlementDeployed(uint256 indexed id, uint256 amount, bytes32 ref, uint256 periodUsed)',
+  'event Deployed(uint256 indexed deploymentId, address indexed to, uint256 amount, address proposer, address approver)',
+  'event SettlementFunderSet(address indexed funder, uint256 capPerPeriod, uint64 periodSeconds, address proposer, address approver)',
+  'event SettlementHeadroomSet(uint256 amount, address proposer, address approver)',
+  'event SettlementFunderStopped(address indexed funder, address indexed by)',
 ] as const;
 
 /** The Yield Pool's existing views and the Return, which the lane's conditions are checked against. */
@@ -45,17 +47,19 @@ export const YIELD_POOL_ABI = [
   'function poolTierPrincipal() view returns (uint256 value, uint256 postedAt)',
   'function queuedShares() view returns (uint256)',
   'function isSuspended() view returns (bool)',
+  'function pendingLossCharge() view returns (bool pending, uint256 id, uint256 amount, uint256 absorbed, uint256 cursor, uint256 end)',
   'function deploymentAccount() view returns (address)',
   'function returnFunds(uint256 amount)',
 ] as const;
 
 export const SETTLEMENT_FORWARDER_ABI = [
   'function forward(uint256 amount)',
-  // To align with the contract (see above).
-  'function desk() view returns (address)',
-  'function offRamp() view returns (address)',
   'function safe() view returns (address)',
+  'function allowanceModule() view returns (address)',
   'function token() view returns (address)',
+  'function offRamp() view returns (address)',
+  'function desk() view returns (address)',
+  'event Forwarded(address indexed offRamp, address indexed desk, uint256 amount)',
 ] as const;
 
 export const DESK_ERC20_ABI = [
@@ -85,7 +89,7 @@ export const DESK_FORBIDDEN = {
   transferFrom: sel('transferFrom(address,address,uint256)'),
 } as const;
 
-/** topic0 of SettlementDeployed, the same whatever is indexed. */
+/** topic0 of SettlementDeployed. */
 export const SETTLEMENT_DEPLOYED_TOPIC = ethers.id('SettlementDeployed(uint256,uint256,bytes32,uint256)');
 
 export const laneInterface = new ethers.Interface(YIELD_POOL_ABI as unknown as string[]);
@@ -93,12 +97,13 @@ export const forwarderInterface = new ethers.Interface(SETTLEMENT_FORWARDER_ABI 
 export const erc20Interface = new ethers.Interface(DESK_ERC20_ABI as unknown as string[]);
 export const twoPersonDeployInterface = new ethers.Interface(TWO_PERSON_DEPLOY_ABI as unknown as string[]);
 
-/** Whether a log is the SettlementDeployed for `ref`: its topic, and the ref in a topic or the data. */
+/** Whether a log is the SettlementDeployed for `ref` (its data: amount, ref, periodUsed). */
 export function isSettlementDeployedFor(log: { topics: readonly string[]; data: string }, ref: string): boolean {
   if ((log.topics[0] ?? '').toLowerCase() !== SETTLEMENT_DEPLOYED_TOPIC.toLowerCase()) return false;
-  const r = ref.toLowerCase().replace(/^0x/, '');
-  if (log.topics.slice(1).some((t) => t.toLowerCase().replace(/^0x/, '') === r)) return true;
-  const data = log.data.toLowerCase().replace(/^0x/, '');
-  for (let i = 0; i + 64 <= data.length; i += 64) if (data.slice(i, i + 64) === r) return true;
-  return false;
+  try {
+    const parsed = laneInterface.parseLog({ topics: [...log.topics], data: log.data });
+    return !!parsed && String(parsed.args.ref).toLowerCase() === ref.toLowerCase();
+  } catch {
+    return false;
+  }
 }

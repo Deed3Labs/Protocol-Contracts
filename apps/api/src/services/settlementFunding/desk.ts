@@ -40,12 +40,24 @@ const pos = (x: bigint) => (x > 0n ? x : 0n);
 
 /* ========== READS ========== */
 
-/** The Yield Pool's settlement lane and the conditions every Deployment meets. */
+/**
+ * The Yield Pool's settlement lane (`settlementLane()`, with the period's rollover applied) and the
+ * conditions every Deployment meets.
+ */
 export interface LaneReads {
+  /** The pool answers `settlementLane()`: false before the SL upgrade, and the lane fields are then zero. */
+  upgraded: boolean;
   funder: string;
   capPerPeriod: bigint;
   periodSeconds: number;
+  /** The start of the period running now (unix seconds). */
+  periodStart: number;
+  /** What the lane has deployed in the period running now (`usedInPeriod`). */
   periodUsed: bigint;
+  /** Stopped by `stopSettlementFunder`: the funder stays registered, and only two deployers restart it. */
+  stopped: boolean;
+  /** The stop count, part of a `setSettlementFunder` proposal's action hash. */
+  epoch: number;
   headroom: bigint;
   principal: bigint;
   principalPosted: boolean;
@@ -54,6 +66,8 @@ export interface LaneReads {
   vaultCash: bigint;
   queuedShares: bigint;
   suspended: boolean;
+  /** A Pool Loss Charge is being applied (`pendingLossCharge()`): no Deployment until it is done. */
+  chargePending: boolean;
 }
 
 /** CL Operating's AllowanceModule allowance for the SettlementForwarder (its delegate). */
@@ -64,6 +78,10 @@ export interface ForwarderReads {
   offRamp: string | null;
   /** The forwarder's desk, when its view answers. */
   desk: string | null;
+  /** What the forwarder was built with (immutable), when its views answer. */
+  safe?: string | null;
+  module?: string | null;
+  token?: string | null;
 }
 
 export interface DeskReads {
@@ -138,22 +156,35 @@ export function laneCapLeft(lane: LaneReads, capOverride: bigint | null): bigint
 
 /**
  * What the pool itself allows now, by every `deploy` condition: no open queue request, no
- * Suspension, a posted principal; within vault cash; Utilization at most 90% afterwards; and the
- * Deployed Balance within the posted Pool Tier principal plus the Settlement Headroom.
+ * Suspension, no pending loss charge, a posted principal; within vault cash; Utilization at most
+ * 90% afterwards; and the Deployed Balance within the ceiling. The lane's ceiling is the posted Pool
+ * Tier principal plus the Settlement Headroom; the two-person `deploy` (`twoPerson`) keeps the
+ * posted principal alone. `after` is what the lane deploys first in the same run.
  */
-export function poolRoom(lane: LaneReads): { room: bigint; blocked: string[] } {
+export function poolRoom(lane: LaneReads, opts: { twoPerson?: boolean; after?: bigint } = {}): { room: bigint; blocked: string[] } {
   const blocked: string[] = [];
   if (lane.queuedShares > 0n) blocked.push('a redemption request is open in the queue');
   if (lane.suspended) blocked.push('the pool is in a Suspension');
+  if (lane.chargePending) blocked.push('a Pool Loss Charge is being applied');
   if (!lane.principalPosted) blocked.push('no Pool Tier principal has been posted');
   if (blocked.length) return { room: 0n, blocked };
-  const tier = pos(lane.principal + lane.headroom - lane.deployedBalance);
-  const util = pos((MAX_UTILIZATION_BPS * (lane.deployedBalance + lane.vaultCash)) / 10_000n - lane.deployedBalance);
-  const room = min(lane.availableCash, tier, util);
+  const after = opts.after ?? 0n;
+  const deployed = lane.deployedBalance + after;
+  const cash = pos(lane.availableCash - after);
+  const vault = pos(lane.vaultCash - after);
+  const ceiling = lane.principal + (opts.twoPerson ? 0n : lane.headroom);
+  const tier = pos(ceiling - deployed);
+  const util = pos((MAX_UTILIZATION_BPS * (deployed + vault)) / 10_000n - deployed);
+  const room = min(cash, tier, util);
   if (room === 0n) {
-    if (lane.availableCash === 0n) blocked.push('the pool has no available cash');
-    else if (tier === 0n) blocked.push('the Deployed Balance is at the posted Pool Tier principal plus the Settlement Headroom');
-    else blocked.push('a Deployment would take Utilization over 90%');
+    if (cash === 0n) blocked.push('the pool has no available cash');
+    else if (tier === 0n) {
+      blocked.push(
+        opts.twoPerson
+          ? 'the Deployed Balance is at the posted Pool Tier principal (a two-person deploy has no Settlement Headroom)'
+          : 'the Deployed Balance is at the posted Pool Tier principal plus the Settlement Headroom',
+      );
+    } else blocked.push('a Deployment would take Utilization over 90%');
   }
   return { room, blocked };
 }
@@ -211,7 +242,10 @@ export type DeskDecision =
       book: bigint;
       /** Through the lane: deploySettlement then forward. */
       deploy: bigint;
-      /** What the lane's cap or the forwarder's allowance could not cover, but the pool could: for people. */
+      /**
+       * What the lane could not cover (its cap, the forwarder's allowance, or its setup) but a
+       * two-person Deployment could, within the posted principal alone: for people.
+       */
       capShort: bigint;
       /** What neither the Collection Account nor the pool can cover: the Margin, or people. */
       poolShort: bigint;
@@ -225,25 +259,34 @@ export type DeskDecision =
   /** Idle surplus to send back, in the order L-01 §8.4A gives. */
   | { kind: 'return'; f: DeskFigures; margin: bigint; pool: bigint; bondVault: bigint };
 
+/** The lane's setup as sentences, when the pool has no lane yet. */
+export const LANE_NOT_UPGRADED =
+  'the settlement lane is not set up: the Yield Pool has no settlementLane() yet (the SL upgrade, a new Earn timelock proposal, has not run)';
+
 /** The lane setup the desk needs, as sentences; empty when it is all there. */
-export function laneSetup(r: DeskReads, a: DeskAddresses): string[] {
+export function laneSetup(
+  r: { lane: Pick<LaneReads, 'upgraded' | 'funder' | 'stopped' | 'capPerPeriod'>; forwarder: Pick<ForwarderReads, 'moduleEnabled' | 'offRamp' | 'desk' | 'safe' | 'module' | 'token'> & { allowance: Pick<AllowanceRead, 'amount'> } },
+  a: Pick<DeskAddresses, 'wallet' | 'offRamp'> & Partial<Pick<DeskAddresses, 'safe' | 'module' | 'usdc'>>,
+): string[] {
   const missing: string[] = [];
-  if (r.lane.funder.toLowerCase() !== a.wallet.toLowerCase()) {
-    missing.push(
-      r.lane.funder === ethers.ZeroAddress
-        ? 'the settlement lane has no funder (stopped, or SL-funder not signed yet)'
-        : `the settlement lane's funder is ${r.lane.funder}, not the desk wallet ${a.wallet}`,
-    );
+  const same = (x: string, y: string) => x.toLowerCase() === y.toLowerCase();
+  if (!r.lane.upgraded) missing.push(LANE_NOT_UPGRADED);
+  else {
+    if (r.lane.funder === ethers.ZeroAddress) missing.push('the settlement lane has no funder (SL-funder-1/2 not signed yet)');
+    else if (!same(r.lane.funder, a.wallet)) missing.push(`the settlement lane's funder is ${r.lane.funder}, not the desk wallet ${a.wallet}`);
+    if (r.lane.stopped) missing.push('the settlement lane is stopped (stopSettlementFunder); two DEPLOYER_ROLE signers restart it (SL-funder-1/2)');
+    if (r.lane.capPerPeriod === 0n) missing.push('the settlement lane has no cap per period (SL-funder-1/2)');
   }
-  if (r.lane.capPerPeriod === 0n) missing.push('the settlement lane has no cap per period (SL-funder)');
-  if (!r.forwarder.moduleEnabled) missing.push('the AllowanceModule is not enabled on CL Operating');
-  if (r.forwarder.allowance.amount === 0n) missing.push('the SettlementForwarder has no allowance on CL Operating (the CL Operating batch after SL-headroom)');
-  if (r.forwarder.offRamp && r.forwarder.offRamp.toLowerCase() !== a.offRamp.toLowerCase()) {
-    missing.push(`the SettlementForwarder pays ${r.forwarder.offRamp}, not the configured off-ramp ${a.offRamp}`);
-  }
-  if (r.forwarder.desk && r.forwarder.desk.toLowerCase() !== a.wallet.toLowerCase()) {
-    missing.push(`the SettlementForwarder's desk is ${r.forwarder.desk}, not the desk wallet ${a.wallet}`);
-  }
+  const fw = r.forwarder;
+  if (!fw.moduleEnabled) missing.push('the AllowanceModule is not enabled on CL Operating (TU-safe-module)');
+  if (fw.allowance.amount === 0n) missing.push('the SettlementForwarder has no allowance on CL Operating (SL-cl-operating-allowance)');
+  if (fw.offRamp === ethers.ZeroAddress) missing.push('the SettlementForwarder has no off-ramp (SL-cl-operating-offramp)');
+  else if (fw.offRamp && !same(fw.offRamp, a.offRamp)) missing.push(`the SettlementForwarder pays ${fw.offRamp}, not the configured off-ramp ${a.offRamp}`);
+  if (fw.desk === ethers.ZeroAddress) missing.push('the SettlementForwarder has no desk (SL-cl-operating-desk)');
+  else if (fw.desk && !same(fw.desk, a.wallet)) missing.push(`the SettlementForwarder's desk is ${fw.desk}, not the desk wallet ${a.wallet}`);
+  if (fw.safe && a.safe && !same(fw.safe, a.safe)) missing.push(`the SettlementForwarder spends from ${fw.safe}, not CL Operating ${a.safe}`);
+  if (fw.module && a.module && !same(fw.module, a.module)) missing.push(`the SettlementForwarder calls the AllowanceModule at ${fw.module}, not ${a.module}`);
+  if (fw.token && a.usdc && !same(fw.token, a.usdc)) missing.push(`the SettlementForwarder moves ${fw.token}, not the pool's USDC ${a.usdc}`);
   return missing;
 }
 
@@ -269,12 +312,20 @@ export function decideFunding(r: DeskReads, a: DeskAddresses, c: DeskConfig, opt
   const rest = f.need - book;
 
   const setup = laneSetup(r, a);
-  const { room, blocked } = poolRoom(r.lane);
-  const fromPool = min(rest, room);
-  let deploy = setup.length ? 0n : min(fromPool, f.capLeft, f.forwardLeft);
+  const lane = poolRoom(r.lane);
+  let deploy = setup.length ? 0n : min(rest, lane.room, f.capLeft, f.forwardLeft);
   if (deploy < c.minMove && deploy < rest) deploy = 0n;
-  const capShort = fromPool - deploy;
-  const poolShort = rest - fromPool;
+  // The rest is for two deployers, whose deploy has no Settlement Headroom: within the posted
+  // principal alone, after what the lane sends first.
+  const two = poolRoom(r.lane, { twoPerson: true, after: deploy });
+  const capShort = min(rest - deploy, two.room);
+  const poolShort = rest - deploy - capShort;
+  const blocked = [...new Set([...lane.blocked, ...two.blocked])];
+  if (!blocked.length) {
+    blocked.push(
+      `the pool allows ${formatUsdc(deploy + capShort)} more now (the lane up to the posted Pool Tier principal plus the Settlement Headroom, a two-person deploy up to the posted principal alone)`,
+    );
+  }
   return {
     kind: 'fund',
     f,
