@@ -90,6 +90,14 @@ export function buildLive() {
     : [{ id: 'proto', name: 'Protocol', tiny: 'Contracts', what: 'Smart contracts', lang: 'Solidity · Hardhat', path: CODE.path || 'contracts', lastAt: CODE.commits[0]?.at ?? null }];
   /* checks: the branch's GitHub Actions in 30 days (the poller's), each project read by the job that covers its folder */
   const RUNS = CODE.checks ?? null;
+  /* an app's "Runs on": its production deploy as Vercel or Railway has it (deploys.ts), once those are read */
+  const runsOn = (id) => {
+    const R0 = vars.contractsRunning;
+    const c = R0 && (id === 'sdk' || !R0.vercelOff) ? R0.projects?.[id]?.prod : null;
+    if (!R0 || (id !== 'sdk' && R0.vercelOff)) return 'Not read yet';
+    if (!c) return 'No production deploy';
+    return `${c.state === 'ready' ? 'Running' : c.state === 'building' ? 'Building' : 'Failed'}${c.ref ? ' · ' + c.ref : ''}`;
+  };
   const jobFor = (path) => (RUNS?.jobs ?? []).find((j) => (String(path || '').startsWith('contracts') ? /contract/i : /app/i).test(j.name)) ?? null;
   const jobState = (j) => (!j ? 'none' : j.last?.conclusion === 'success' ? 'pass' : j.last?.conclusion ? 'fail' : 'none');
   const REPOS = PROJ.map((p) => ({
@@ -105,7 +113,7 @@ export function buildLive() {
     // the job that checks it on the branch: its runs, passes and usual time
     job: jobFor(p.path),
     last: p.lastAt ?? null,
-    live: p.id === 'proto' ? (CHAIN.network ? `${CHAIN.network} · ${live} of ${onMap.length}` : 'Not indexed yet') : 'Not read yet',
+    live: p.id === 'proto' ? (CHAIN.network ? `${CHAIN.network} · ${live} of ${onMap.length}` : 'Not indexed yet') : runsOn(p.id),
     url: CODE.repo ? `https://github.com/${CODE.repo}` : '',
   }));
   const RSHORT = Object.fromEntries(PROJ.map((p) => [p.id, p.name]));

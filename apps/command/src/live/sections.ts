@@ -533,6 +533,8 @@ export async function refreshSection(page: string, ok: () => boolean): Promise<b
   }
   if (!ok()) return false;
   applySection(route, d);
+  // Build's signers are the Ops Safe's own (loadSafe): applying the section again put the stored rows back
+  if (route === 'contracts') await import('./safe').then((m) => m.loadSafe()).catch(() => undefined);
   loadedAt.set(route, Date.now());
   said.set(route, say);
   loads++;
