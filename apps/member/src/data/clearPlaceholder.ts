@@ -306,9 +306,8 @@ export const HOME_DAY_ONE: HomeData = {
  */
 export const MILESTONES: Milestone[] = [
   { id: 'start', title: 'Start saving', credits: 1000 },
-  // Not "full assurance": the top two protections are thousands of credits further on, so a
-  // milestone claiming the set is complete here would be promising what the list does not give.
-  { id: 'assurance', title: 'Unlock first protections', credits: 4000 },
+  // Every protection on the register is unlocked by 4,000 credits (Income is the last).
+  { id: 'assurance', title: 'Unlock your protections', credits: 4000 },
   { id: 'community', title: 'Choose your community', credits: 8000 },
   { id: 'reserve', title: 'Reserve your home', credits: 12000 },
   { id: 'deed', title: 'Sign your ELPA & Clear Deed', credits: 15000, note: 'move in' },
@@ -317,11 +316,12 @@ export const MILESTONES: Milestone[] = [
 /**
  * What saving unlocks, cheapest promise first — and the home path's ladder, step for step.
  *
- * One list for both on purpose: the ladder on Savings is these five protections, so a step and its
- * chip are the same fact read twice and cannot drift. The thresholds are the Savings reference's
- * (docs/reference/savings-reference.html), adopted 2026-10-13 in place of the earlier four protections
- * (grace cycles, progress hold, rent protection at 8,000, home repairs at 15,000). Rent sits at the
- * top beside the Clear Deed, which is the same 15,000 credits.
+ * One list for both on purpose: the ladder on Savings is these protections, so a step and its chip
+ * are the same fact read twice and cannot drift. The register is the Assurance Program Terms'
+ * Schedule 1 (2026-11-14): Cycle and Income Assurance are relief on the credit line; Home repair and
+ * the Hardship grant are grants paid to whoever is owed, never to the member. Slot 4 is not adopted
+ * and is not shown. There is no rent protection keyed to job loss and no deposit protection: the
+ * Hardship grant covers any documented hardship, whatever caused it.
  *
  * None of these names say "assurance" in the Protections list: the block is already headed
  * Protections. The ladder's `step` names do, because a step sits alone without that heading.
@@ -330,49 +330,38 @@ const ASSURANCE: AssuranceItem[] = [
   {
     id: 'cycle',
     name: 'Cycle assurance',
-    line: 'Two grace cycles a year',
+    line: 'One grace cycle a year',
     step: 'Cycle assurance',
     stepShort: 'Cycle',
-    description: 'Two cycles a year can close short. Your line holds and savings stay put.',
+    description: 'One cycle a year can close short without counting against you, once you are eligible. Nothing you owe is cancelled.',
     unlocksAt: 0,
   },
   {
     id: 'home-repair',
     name: 'Home repair',
-    line: 'Covered by the co-op',
+    line: 'Up to $1,000 a year',
     step: 'Home repair assurance',
     stepShort: 'Repair',
-    description: 'Qualifying home repairs, covered by the co-op. Nothing to pay back.',
+    description: 'Help with repairs that keep your home safe and livable, up to $1,000 a year, paid to the contractor or supplier. Nothing to pay back.',
+    unlocksAt: 1500,
+  },
+  {
+    id: 'hardship',
+    name: 'Hardship grant',
+    line: 'Toward your rent, up to $1,000 a year',
+    step: 'Hardship grant',
+    stepShort: 'Hardship',
+    description: 'Help toward your rent or housing payment through a hardship of any kind, up to $1,000 a year, paid to your landlord or lender. Nothing to pay back.',
     unlocksAt: 1500,
   },
   {
     id: 'income',
     name: 'Income',
-    line: 'Your limit holds a cycle',
+    line: 'Up to three cycles off',
     step: 'Income assurance',
     stepShort: 'Income',
-    description: 'If your income drops, your credit limit holds for a cycle.',
+    description: 'After a documented hardship, up to three cycles with nothing to clear on your credit line. Nothing you owe is cancelled.',
     unlocksAt: 4000,
-  },
-  {
-    id: 'deposit',
-    name: 'Deposit',
-    line: 'Paid to your landlord',
-    step: 'Deposit assurance',
-    stepShort: 'Deposit',
-    description: 'Your security deposit, paid to your landlord by the co-op. Nothing to pay back.',
-    unlocksAt: 8000,
-  },
-  {
-    id: 'rent',
-    name: 'Rent',
-    line: 'Two months on job loss',
-    step: 'Rent assurance and your Clear Deed',
-    stepShort: 'Rent and deed',
-    // The co-op's own words: "up to 60 days of rent paid by the co-op if crisis strikes, zero
-    // payback, zero premium." No waiting period: membership plans set the credit multiplier only.
-    description: 'Up to two months of rent paid if you lose your job. No premium, nothing to pay back.',
-    unlocksAt: 15000,
   },
 ];
 
@@ -420,7 +409,7 @@ export const CLAIM_STEPS: ClaimStep[] = [
   { id: 'tell', title: 'You tell us what happened', detail: 'A short form and any receipts or photos' },
   { id: 'read', title: 'A member of the team reads it', detail: 'Usually the same day, always within two' },
   { id: 'answer', title: 'We say yes, no, or what is missing', detail: 'In writing, with the reason' },
-  { id: 'paid', title: 'Paid from the reserve', detail: 'Into your cash account, not against your credits' },
+  { id: 'paid', title: 'Paid from the reserve', detail: 'To whoever you owe: your landlord, lender or contractor. Never against your credits' },
 ];
 
 /**

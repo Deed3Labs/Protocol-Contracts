@@ -159,7 +159,7 @@ export default function StartClaimDialog({
 
           <div className="mt-s3 grid grid-cols-2 gap-s2 border-t border-ink-13 pt-s2">
             {reassurance('A decision', 'Usually the same day')}
-            {reassurance('If we say yes', 'Paid into your cash account')}
+            {reassurance('If we say yes', 'Paid to your landlord, lender or contractor')}
             {reassurance('Your credits', 'Not touched either way')}
             {reassurance('What this costs you', 'Nothing')}
           </div>

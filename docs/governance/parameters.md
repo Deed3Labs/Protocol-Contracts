@@ -49,10 +49,9 @@ sets these thresholds and draws the path toward the Clear Deed from them.
 | Protection | Unlocks at |
 |---|---|
 | Cycle assurance: one cycle a year can close short | From the start |
-| Home repair | 1,500 credits |
+| Home repair: up to $1,000 a year, paid to the contractor or supplier | 1,500 credits |
+| Hardship grant: up to $1,000 a year toward rent or a housing payment, paid to the landlord or lender | 1,500 credits |
 | Income: nothing is due for up to three cycles after a documented hardship | 4,000 credits |
-| Deposit: your security deposit paid to your landlord | 8,000 credits |
-| Rent: up to two months of rent if you lose your job | 15,000 credits |
 
 The app's progress bar toward the Clear Deed also ends at 15,000 credits. A claim is filed in the
 app and read by a person, who moves it on by hand.

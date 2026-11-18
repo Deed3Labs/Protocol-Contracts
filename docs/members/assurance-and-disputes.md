@@ -11,10 +11,12 @@ the same ladder, and each step turns on when your credits reach it.
 | Protection | Turns on at | What it covers |
 |---|---|---|
 | Cycle assurance | Day one, once Clear confirms you're eligible | One cycle a year can close short. Your line holds, your savings stay put and the cycle does not count as missed |
-| Home repair | 1,500 credits | Qualifying home repairs, covered by the co-op |
+| Home repair | 1,500 credits | Repairs that keep your home safe and livable, up to $1,000 a year, paid to the contractor or supplier |
+| Hardship grant | 1,500 credits | Help toward your rent or housing payment through a hardship of any kind, up to $1,000 a year, paid to your landlord or lender |
 | Income | 4,000 credits | If you hit a hardship, such as your income dropping, nothing is due for up to three cycles. Two people at Clear approve it, and you can end it early |
-| Deposit | 8,000 credits | Your security deposit, paid to your landlord by the co-op |
-| Rent | 15,000 credits | Up to two months of rent paid if you lose your job |
+
+Each protection has a yearly budget, and a grant is decided case by case: unlocking one means you
+can ask, not that you will be paid.
 
 **Nothing on this list is paid back**, and there is no premium. The Savings page shows the ladder,
 which protections are on, and how many credits you need for the next one. How credits are earned is
@@ -49,8 +51,8 @@ then **How to make a claim**.
 2. **Say what happened**, in your own words — up to 2,000 characters.
 3. **Send the claim.**
 
-A person on the team reads every claim and decides it: yes, no, or what's missing. A claim that's
-paid goes into your cash account. A claim costs you nothing and doesn't touch your credits,
+A person on the team reads every claim and decides it: yes, no, or what's missing. A grant is paid
+to whoever you owe, your landlord, lender or contractor, never into your own account. A claim costs you nothing and doesn't touch your credits,
 whichever way it goes.
 
 If you have no active protections yet, there is nothing to claim on. Cycle assurance needs no

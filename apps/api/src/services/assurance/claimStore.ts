@@ -33,7 +33,7 @@ export interface ClaimRecord {
   status: ClaimStatus;
   /** What we told them, and why. Null until somebody has read it. */
   decision: string | null;
-  /** Paid into the member's cash account. Null unless the claim was paid. */
+  /** What was paid, to the landlord, lender or contractor owed (never to the member). Null unless the claim was paid. */
   paidCents: number | null;
   createdAt: string;
   decidedAt: string | null;

@@ -8,8 +8,8 @@ on time — and consistency is what gets you there.
 
 **The Clear Deed is reached at 15,000 equity credits.** Your Savings page shows your
 **home path**: your credits out of 15,000, a step for each protection you unlock on the way, and,
-with auto-save running, the month you're on track for. The last step, at 15,000, is rent assurance
-and your Clear Deed together.
+with auto-save running, the month you're on track for. Every protection is unlocked by 4,000 credits;
+the path ends at 15,000 with your Clear Deed.
 
 When you've reached the end of the path, the Savings page reads **Ready · Your Clear Deed**. The next
 step, signing your Equity-Lease Participation Agreement (ELPA), is not available yet.
