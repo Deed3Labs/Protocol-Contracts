@@ -1130,6 +1130,78 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
     }
   }
 
+  // ================= State rates (SR): switch the products on in more states (testnet) =================
+  // RateSchedule is owned by the CreditTimelock, and a line or plan opens only where its products are
+  // enabled for the member's attested state. RATE_STATES lists the states to switch on with the
+  // config's products (deploy/config/rate-schedule.json: CA's rows, the same placeholder rates).
+  // Each state takes ~1.4M gas (5 products), and a transaction may use at most 2^24 gas, so the
+  // states go in fixed chunks of RATE_STATES_PER_BATCH: one scheduleBatch each, all signed together
+  // today, and one executeBatch each after the 7 days.
+  {
+    const wanted = (env.RATE_STATES ?? "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+    const rateAddr = await rec("RateSchedule");
+    const creditTimelock = await rec("CreditTimelock");
+    if (wanted.length && rateAddr && creditTimelock && financialSafe) {
+      label(rateAddr, "RateSchedule");
+      label(creditTimelock, "credit timelock");
+      const { loadRateTable } = require("../deploy/25_wire_Compliance");
+      const table = loadRateTable() as { state: string; product: string; params: any; bands: any[] }[];
+      const base = table.filter((r) => ethers.decodeBytes32String(r.state) === ethers.decodeBytes32String(table[0].state));
+      const rates = await contract("RateSchedule", rateAddr);
+      const tl = await timelockOf(creditTimelock);
+      const delay: bigint = await tl.getMinDelay();
+      const configured = new Set(table.map((r) => ethers.decodeBytes32String(r.state)));
+      const states = wanted.filter((st) => !configured.has(st));
+      const per = Math.max(1, Number(env.RATE_STATES_PER_BATCH ?? 8));
+      const scheduleIds: string[] = [];
+      for (let i = 0; i < states.length; i += per) {
+        const chunk = states.slice(i, i + per);
+        const n = i / per + 1;
+        const calls = chunk.flatMap((st) => base.map((r) => ({
+          to: rateAddr,
+          data: rates.interface.encodeFunctionData("setProduct", [ethers.encodeBytes32String(st), r.product, r.params, r.bands]),
+        })));
+        const targets = calls.map((c) => c.to);
+        const values = calls.map(() => 0n);
+        const payloads = calls.map((c) => c.data);
+        const salt = ethers.id(`signing-plan: SR state rates ${chunk.join(",")}`);
+        const opId: string = await tl.hashOperationBatch(targets, values, payloads, ZERO_HASH, salt);
+        let have = 0;
+        for (const st of chunk) if (await rates.hasProduct(ethers.encodeBytes32String(st), base[0].product)) have++;
+        let sSt: { status: StepStatus; reason?: string };
+        let xSt: { status: StepStatus; reason?: string };
+        if (have === chunk.length) sSt = xSt = { status: "done", reason: `Products set for ${chunk.join(", ")}.` };
+        else if (have > 0) sSt = xSt = waitingFor(`Only ${have} of ${chunk.join(", ")} are set: products changed outside this plan. Ask before scheduling.`);
+        else {
+          sSt = (await tl.isOperation(opId)) ? { status: "done" } : { status: "ready" };
+          if (await tl.isOperationDone(opId)) xSt = { status: "done" };
+          else if (!(await tl.isOperation(opId))) xSt = waitingFor("Waits for its schedule step, then 7 days.");
+          else if (!(await tl.isOperationReady(opId))) xSt = waitingFor(`Not yet: the credit timelock's 7 days end at ${new Date(Number(await tl.getTimestamp(opId)) * 1000).toISOString()}.`);
+          else xSt = { status: "ready" };
+        }
+        const list = chunk.join(", ");
+        const sid = `SR-rates-schedule-${n}`;
+        scheduleIds.push(sid);
+        push({
+          id: sid, stage: "SR", title: `Clear Treasury Safe: schedule the products for ${list}`,
+          explanation: `Queues RateSchedule.setProduct for ${base.length} products (${base.map((r) => ethers.decodeBytes32String(r.product)).join(", ")}) in ${list}, with the same test rates as ${ethers.decodeBytes32String(base[0].state)}, so members there can get a line and plans. Testnet only; every rate is pending counsel. Sign all SR schedule steps at once: safe-batches/signing-SR-rates-schedule.json.`,
+          kind: "safe", signer: financialSafe, signerLabel: "Clear Treasury Safe (its owners sign in the Safe app)", to: creditTimelock, toLabel: "credit timelock",
+          ...encode(timelockIface, "scheduleBatch", [targets, values, payloads, ZERO_HASH, salt, delay], [`RateSchedule (${calls.length} calls)`, undefined, `setProduct for ${list}`, "none", "a fixed label for this batch", `${Number(delay) / 86400} days`]),
+          dependsOn: [], ...sSt,
+        });
+        push({
+          id: `SRx-rates-execute-${n}`, stage: "Day 7", title: `Clear Treasury Safe: run the products for ${list} (7 days after scheduling)`,
+          explanation: `After the 7 days, the Safe runs the queued products for ${list}. About ${(1.4 * chunk.length).toFixed(1)}M gas: send each batch as its own Safe transaction.`,
+          kind: "safe", signer: financialSafe, signerLabel: "Clear Treasury Safe (its owners sign in the Safe app)", to: creditTimelock, toLabel: "credit timelock",
+          ...encode(timelockIface, "executeBatch", [targets, values, payloads, ZERO_HASH, salt], [`RateSchedule (${calls.length} calls)`, undefined, `setProduct for ${list}`, "none", "the same label"]),
+          dependsOn: [sid], ...xSt,
+        });
+      }
+    } else if (wanted.length) {
+      notes.push("RATE_STATES is set but RateSchedule, the CreditTimelock or CLEAR_FINANCIAL_SAFE is missing: no state rate steps.");
+    }
+  }
+
   // ================= dependencies, then a dry run of every ready step =================
   const byId = new Map(steps.map((s) => [s.id, s]));
   for (const s of steps) {
@@ -1230,6 +1302,16 @@ export function writeSigningPlan(plan: SigningPlan, outDir: string) {
       setup.map((s) => ({ to: s.to, data: s.data! }))), null, 2));
     written.push(file);
     plan.notes.push(`CL Operating's payout top-up setup (${setup.map((s) => s.id).join(", ")}) is one batch: ${path.relative(outDir, file)}.`);
+  }
+  // State rates: every ready SR schedule step in one Transaction Builder batch, signed once.
+  const srReady = plan.steps.filter((s) => s.kind === "safe" && s.id.startsWith("SR-rates-schedule-") && s.status === "ready" && s.data);
+  if (srReady.length) {
+    const file = path.join(batches, "signing-SR-rates-schedule.json");
+    fs.writeFileSync(file, JSON.stringify(safeBatch(plan.chainId, "Clear Treasury Safe: schedule the state products (testnet)",
+      `${srReady.map((s) => s.title).join("; ")}. Generated by scripts/signing_plan.ts at block ${plan.block}. Review every call before signing.`,
+      srReady.map((s) => ({ to: s.to, data: s.data! }))), null, 2));
+    written.push(file);
+    plan.notes.push(`The state products' schedule steps (${srReady.map((s) => s.id).join(", ")}) are one batch: ${path.relative(outDir, file)}.`);
   }
   // The file names are added after the hash: recompute it over what is written.
   plan.stepsSha256 = stepsSha256(plan.steps);
