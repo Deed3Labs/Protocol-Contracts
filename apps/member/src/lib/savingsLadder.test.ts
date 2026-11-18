@@ -5,8 +5,8 @@ import { SAVINGS_DAY_ONE } from '../data/clearPlaceholder.js';
 const items = SAVINGS_DAY_ONE.assurance;
 
 describe('the home-path ladder', () => {
-  test('is the five protections, cheapest first', () => {
-    expect(ladderSteps(items, 0).map((s) => s.item.unlocksAt)).toEqual([0, 1500, 4000, 8000, 15000]);
+  test('is the four protections on the register, cheapest first', () => {
+    expect(ladderSteps(items, 0).map((s) => s.item.unlocksAt)).toEqual([0, 1500, 1500, 4000]);
   });
 
   test('never has more than one next step', () => {
@@ -36,8 +36,8 @@ describe('the home-path ladder', () => {
     expect(next?.fill).toBeCloseTo(0.68);
   });
 
-  test('at 15,000 the path is complete: every step unlocked, none next', () => {
-    const steps = ladderSteps(items, 15000);
+  test('at 4,000 the path is complete: every step unlocked, none next', () => {
+    const steps = ladderSteps(items, 4000);
     expect(steps.every((s) => s.state === 'got')).toBe(true);
   });
 });

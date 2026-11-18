@@ -7,7 +7,7 @@ described under [Protocol](../protocol/README.md).
 |---|---|
 | **Accelerated** | An optional paid membership plan. Not available yet |
 | **AccessManager** | The contract that says who is an admin, an operator or a member for the credit contracts. See [On-chain authority](../governance/on-chain-authority.md) |
-| **Assurance, Clear Assurance** | The co-op's protections for members, such as rent paid for you if you lose your job. Each one unlocks at a number of equity credits |
+| **Assurance, Clear Assurance** | The co-op's protections for members, such as help toward rent through a hardship. Each one unlocks at a number of equity credits. Not insurance: a grant is decided case by case |
 | **AssurancePool** | The contract that holds the co-op's reserve, in two compartments: the Credit Backstop and Member Assurance |
 | **Base, Base Sepolia** | Base is the public network the contracts run on. Base Sepolia is its test network, where nothing is real money |
 | **Carry** | The cost of credit. It builds up on what you have drawn |

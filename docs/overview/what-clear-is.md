@@ -73,8 +73,8 @@ yet. More in [Deeds and real-world assets](./deeds-and-real-world-assets.md).
 
 ### Clear Assurance
 
-Protections from the co-op for the moments that go wrong — for example, rent paid for you if you
-lose your job. **Protections unlock as your equity credits grow,** not by which plan you are on. A
+Protections from the co-op for the moments that go wrong — for example, help toward your rent
+through a hardship, paid to your landlord. **Protections unlock as your equity credits grow,** not by which plan you are on. A
 claim is read by a person at the co-op, and paid from the Member Assurance part of the co-op's
 reserve.
 

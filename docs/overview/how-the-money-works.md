@@ -134,7 +134,7 @@ compartments that never share a balance:
 | Compartment | What it is for |
 |---|---|
 | **Credit Backstop** | Credit that Clear Lending has written off as lost |
-| **Member Assurance** | Members' Assurance grants, such as rent paid for you if you lose your job |
+| **Member Assurance** | Members' Assurance grants, such as help toward rent through a hardship or a home repair |
 
 Money comes in only from named payers: the fee Clear Lending pays for the cover, recoveries on
 written-off credit, and money the co-op puts in. Recoveries go to the Credit Backstop. Everything
