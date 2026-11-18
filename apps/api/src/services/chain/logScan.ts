@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { coalesce } from './readCache.js';
+import { isRateLimited } from './provider.js';
 
 /*
  * Reading a member's event history without asking for the whole chain.
@@ -83,6 +84,28 @@ export function logStartBlock(chainId: number, latestBlock: number): number {
   return Math.max(0, latestBlock - FALLBACK_LOOKBACK);
 }
 
+/*
+ * The public node allows 25 requests a second. The shared provider sends what it refuses to the
+ * backup, so a page refused for that normally never gets here -- but with no backup configured, or
+ * the backup refusing too, it does. A per-second limit clears in a second, so the page is asked
+ * again after a pause rather than the whole figure given up on. The same pauses the credit read
+ * retries on. Only a rate limit is retried; anything else is thrown as before.
+ *
+ * Each pause must be longer than ethers' 250 ms cache of an identical request (`cacheTimeout`), or
+ * the retry is handed the same refusal without the node being asked again.
+ */
+let rateLimitDelaysMs = [1_000, 2_500];
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function rateLimited(error: unknown): boolean {
+  const e = error as { message?: unknown; code?: unknown; error?: { message?: unknown; code?: unknown } };
+  const inner = e?.error;
+  return (
+    isRateLimited(String(e?.message ?? error), e?.code) ||
+    (inner !== undefined && isRateLimited(String(inner?.message ?? ''), inner?.code))
+  );
+}
+
 type CacheEntry = { scannedTo: number; events: ethers.Log[] };
 const cache = new Map<string, CacheEntry>();
 
@@ -112,6 +135,7 @@ export async function scanLogs(
   if (from > latestBlock) return known as (ethers.Log | ethers.EventLog)[];
 
   const found: ethers.Log[] = [];
+  let waits = 0;
   for (let start = from; start <= latestBlock; ) {
     const span = logSpan(chainId);
     const end = Math.min(start + span - 1, latestBlock);
@@ -119,10 +143,16 @@ export async function scanLogs(
     try {
       page = await contract.queryFilter(filter, start, end);
     } catch (error) {
-      // Refused for the range: ask for the same blocks again, smaller. Anything else is not caught
-      // here: a partial scan cached as complete would under-report gains for good, and the caller
-      // already treats a failure as "no figure" rather than "zero".
+      // Refused for the range: ask for the same blocks again, smaller.
       if (learnLogSpan(chainId, error, span)) continue;
+      // Refused for the rate: ask for the same blocks again, after a pause. A budget per scan, not
+      // per page, so a node that stays refusing ends the scan rather than stalling it page by page.
+      if (waits < rateLimitDelaysMs.length && rateLimited(error)) {
+        await sleep(rateLimitDelaysMs[waits++]!);
+        continue;
+      }
+      // Anything else is not caught here: a partial scan cached as complete would under-report
+      // gains for good, and the caller already treats a failure as "no figure" rather than "zero".
       throw error;
     }
     found.push(...page);
@@ -138,4 +168,10 @@ export async function scanLogs(
 export function resetLogScan(): void {
   cache.clear();
   spanByChain.clear();
+  rateLimitDelaysMs = [1_000, 2_500];
+}
+
+/** Tests only: the pauses before a rate-limited page is asked again. */
+export function setLogScanRateLimitDelays(delaysMs: number[]): void {
+  rateLimitDelaysMs = delaysMs;
 }
