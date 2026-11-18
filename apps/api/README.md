@@ -205,6 +205,7 @@ process:
 | `creditOnboarding` | Hourly and at startup, off unless `CREDIT_ONBOARDING_ENABLED=1` (`_DRY_RUN=1` simulates only). For each member with no line: attests the state on their private profile (`NetworkRegistry.attestStateCode`, `STATE_ATTESTER_ROLE`) when their Lithic identity check passed and the state is a US state, then `RevolvingIssuer.openLine`. Never overwrites an attested state (alerts ops instead); a state without the revolving product waits a day. Until the attester holds the role it attests nothing and logs one line a run. At most `CREDIT_ONBOARDING_MAX_PER_RUN` (25) members a run. Signup and a passed identity check run it for their member at once. Replaces `scripts/backfillCreditLines.ts` |
 | `pledgeKeeper` | Decision 53. Hourly, off unless switched on: `PoolShareEnforcer.settle`, `cancelExcess` and `enforce(holder)` (`POOL_ENFORCE_KEEPER_ENABLED=1`) and `BurnerBond.payPledged(bondId)` for the Liquidator's `nextBondOf`/`pledgePaymentDue` (`BOND_PLEDGE_KEEPER_ENABLED=1`), only when the contracts say it is due, never under a Liquidation Hold or a 10c pause; each send alerts ops |
 | `queueFillKeeper` | Decision 53. Every 15 minutes, off unless `QUEUE_FILL_KEEPER_ENABLED=1`: `LendingPool.fillQueue(maxCount)` when shares are queued, Vault Cash is above zero, the pool is not suspended and no Pool Loss Charge is pending, and the simulation fills at least one request |
+| `fundingDesk` | Decision 54. Off unless `SETTLEMENT_FUNDING_ENABLED=1` (`SETTLEMENT_FUNDING_DRY_RUN=1` decides and records, sends nothing). Every 15 minutes and at each cut-off's forced time, funds the Credit Settlement Account for the card credit due at the next cut-off plus a buffer: a Lithic book transfer from the Collection Account, then the Yield Pool's settlement lane (`deploySettlement`, then the SettlementForwarder's `forward` to the off-ramp) from a CDP server wallet, never past the lane's cap; the rest goes to people as Transaction Builder batches or an alert naming the Margin. Returns behind `SETTLEMENT_RETURNS_ENABLED`. Every move recorded first (migration 0079); any revert halts it until `src/scripts/clearSettlementFundingHalt.ts`. [`docs/operators/settlement-funding.md`](../../docs/operators/settlement-funding.md) |
 | `relayerGas` | A signer with no gas fails silently — every figure downstream goes quietly stale. This is the only thing that would say so |
 
 Shutdown is graceful on `SIGTERM`/`SIGINT`: listeners and sockets cleaned up, Redis and the Postgres
@@ -272,6 +273,28 @@ Face ID, or without it a sign-in made in the last ten minutes, never the session
 `STRIPE_*`, `SEND_*` and `SAVINGS_*` for the relayers, and the at-rest encryption keys
 (`PLAID_TOKEN_MASTER_KEY`, `MEMBER_PRIVATE_DATA_MASTER_KEY`, `SEND_CONTACT_ENCRYPTION_KEY`), each
 32 bytes, base64 or hex, with an optional keyring for rotation.
+
+### Settlement Funding (decision 54)
+
+The settlement funding desk (`jobs/fundingDesk.ts`) and its rules (`services/settlementFunding/`).
+Everything is in `env.example` under "Automatic Settlement Funding"; the operator page is
+[`docs/operators/settlement-funding.md`](../../docs/operators/settlement-funding.md). Addresses only,
+never keys: the desk wallet is a CDP server wallet.
+
+| Variable | |
+|---|---|
+| `SETTLEMENT_FUNDING_ENABLED`, `SETTLEMENT_FUNDING_DRY_RUN`, `SETTLEMENT_RETURNS_ENABLED` | Off unless `1`. Turn on with the dry run first |
+| `SETTLEMENT_DESK_WALLET`, `SETTLEMENT_DESK_CDP_ACCOUNT_NAME` | The desk wallet: the lane's registered funder and the forwarder's only caller |
+| `SETTLEMENT_FORWARDER`, `SETTLEMENT_OFFRAMP_ADDRESS` | The SettlementForwarder and the off-ramp deposit address it pays |
+| `SETTLEMENT_OFFRAMP` (`mock`/`bridge`), `SETTLEMENT_BRIDGE_CUSTOMER_ID`, `SETTLEMENT_BRIDGE_LIQUIDATION_ADDRESS_ID`, `SETTLEMENT_OFFRAMP_RAIL`, `SETTLEMENT_OFFRAMP_LATENCY_MINUTES` | The off-ramp. `mock` on Base Sepolia |
+| `SETTLEMENT_BANK` (`lithic`/`mock`), `SETTLEMENT_CSA_FINANCIAL_ACCOUNT_TOKEN`, `SETTLEMENT_COLLECTION_FINANCIAL_ACCOUNT_TOKEN`, `SETTLEMENT_MARGIN_FINANCIAL_ACCOUNT_TOKEN`, `SETTLEMENT_ONRAMP_EXTERNAL_BANK_ACCOUNT_TOKEN`, `SETTLEMENT_BOOK_TRANSFER_*` | The bank accounts, as Lithic financial accounts |
+| `SETTLEMENT_CUTOFF_TIME`, `SETTLEMENT_CUTOFF_TZ`, `SETTLEMENT_BUSINESS_DAYS`, `SETTLEMENT_HOLIDAYS`, `SETTLEMENT_LAG_BUSINESS_DAYS` | The cut-off schedule |
+| `SETTLEMENT_BUFFER_USDC`, `SETTLEMENT_CSA_MINIMUM_USDC`, `SETTLEMENT_FUNDING_CAP_USDC`, `SETTLEMENT_MIN_MOVE_USDC` | Dollars |
+| `POOL_FUNDED_TIER_KINDS` | The Pool Tiers for the Pool Tier principal helper; default `SAVINGS,INCOME,BOOST` |
+
+Two read-only Command routes (Money at See): `GET /api/command/settlement-funding` (the desk's last
+check, moves, halt and daily reconciliation) and `GET /api/command/pool-tier-principal` (what the two
+valuation signers should post: the pool-funded tiers' principal, open term plans and Margin Advances).
 
 ### Relayers
 
