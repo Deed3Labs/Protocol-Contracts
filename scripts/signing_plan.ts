@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { createHash } from "crypto";
 import { liveNetworkOf } from "../deploy/helpers";
+import { stateAttesterGrant } from "./state_attester_grant";
 import { RETIRED_SUFFIX } from "../deploy/retire_credit_stack";
 import { parseEnvFile } from "./rehearse_sepolia_fork";
 import {
@@ -1090,6 +1091,42 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       safeStep("TU-safe-allowance", `CL Operating: let the payout top-up wallet move up to ${capText} of USDC every ${periodText}`,
         "The spending limit is the most the automatic top-ups can move out of CL Operating in a period, whatever happens to the bot or its key. What a top-up needs beyond it is prepared for CL Operating's owners to sign. Change it the same way.",
         modHasCode ? moduleAddr : undefined, enc, st, ["TU-safe-delegate"]);
+    }
+  }
+
+  // ================= State attester (SA): the credit operator may attest members' states =================
+  // No line or plan opens until a member's state is attested (NetworkRegistry.stateCodeOf), and only
+  // STATE_ATTESTER_ROLE attests. Its admin is the CreditTimelock (7 days), whose proposer and executor
+  // is the Clear Treasury Safe. scripts/state_attester_grant.ts holds the checks and the calls.
+  {
+    const attester = addr(env.STATE_ATTESTER);
+    const registry = await rec("NetworkRegistry");
+    const creditTimelock = await rec("CreditTimelock");
+    if (attester && registry && creditTimelock && financialSafe) {
+      label(creditTimelock, "credit timelock");
+      label(registry, "NetworkRegistry");
+      const g = await stateAttesterGrant({ provider, registry, timelock: creditTimelock, safe: financialSafe, attester });
+      const signerLabel = "Clear Treasury Safe (its owners sign in the Safe app)";
+      const sSt = g.step === "schedule" ? { status: "ready" as StepStatus } : { status: "done" as StepStatus };
+      const xSt = g.step === "execute" ? { status: "ready" as StepStatus }
+        : g.step === "done" ? { status: "done" as StepStatus, reason: g.reason }
+        : waitingFor(g.step === "wait" ? g.reason : "Waits for the schedule step, then 7 days.");
+      push({
+        id: "SA-attester-schedule", stage: "SA", title: "Clear Treasury Safe: schedule the state attester grant",
+        explanation: `Queues NetworkRegistry.grantRole(STATE_ATTESTER_ROLE, ${attester}) on the credit timelock, so the credit operator can attest members' states and their lines can open. It can run 7 days later. Sign it in the Safe app.`,
+        kind: "safe", signer: financialSafe, signerLabel, to: creditTimelock, toLabel: "credit timelock",
+        ...encode(timelockIface, "schedule", [...timelockIface.interface.decodeFunctionData("schedule", g.schedule.data)], ["NetworkRegistry", undefined, `grantRole(STATE_ATTESTER_ROLE, ${attester})`, "none", "a fixed label for this grant", "7 days"]),
+        dependsOn: [], ...sSt,
+      });
+      push({
+        id: "SAx-attester-execute", stage: "Day 7", title: "Clear Treasury Safe: run the state attester grant (7 days after scheduling)",
+        explanation: "After the 7 days, the Safe runs the queued grant: the credit operator gets STATE_ATTESTER_ROLE on the NetworkRegistry and nothing else. Then the API's credit onboarding job attests states and opens lines.",
+        kind: "safe", signer: financialSafe, signerLabel, to: creditTimelock, toLabel: "credit timelock",
+        ...encode(timelockIface, "execute", [...timelockIface.interface.decodeFunctionData("execute", g.execute.data)], ["NetworkRegistry", undefined, `grantRole(STATE_ATTESTER_ROLE, ${attester})`, "none", "the same label"]),
+        dependsOn: ["SA-attester-schedule"], ...xSt,
+      });
+    } else if (attester) {
+      notes.push("STATE_ATTESTER is set but the NetworkRegistry, the CreditTimelock or CLEAR_FINANCIAL_SAFE is missing: no state attester steps.");
     }
   }
 
