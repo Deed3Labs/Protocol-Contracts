@@ -5,6 +5,7 @@ import { api } from '../live/api';
 import { LIVE as LIVE_APP, REAL } from '../live/env';
 import { CC } from './cc';
 import { growthLive } from './growthLive';
+import { vars } from './data';
 import { run } from '../live/actions';
 import { toast } from './shell';
 import { keep, registerPage, shadowHost } from './pageHost';
@@ -602,7 +603,7 @@ function makeGrowth() {
         return <tr key={__k} className="sub" data-ref={rn}><td className="tn"><span className="ind">{rn}</span><span className="of">{Math.round(rv / refT * 100)}{"% of "}{r.n.toLowerCase()}</span></td><td>{fmt(v)}</td><td><span className="shb thin"><i style={css(`width:${sAll / maxS * 100}%;background:${CH_COL[r.n]}`)} /></span><span className="shp sub">{p1(sAll)}</span></td><td /><td /><td>{growth != null && cmpOn() ? <span className="dl up">+{growth.toFixed(1)}%</span> : ''}</td></tr>;
       }) : '';
       const canOpen = r.refs.length > 1;
-      return <Fragment key={__k}><tr data-row-src={r.n} className={open && canOpen ? 'opened' : ''}><td className="tn">{canOpen ? <button className="tw" data-twist={r.n} aria-expanded={open}>{open ? '−' : '+'}</button> : <i className="tw-x" />}<i className="swt" style={css(`background:${CH_COL[r.n]}`)} /><b>{r.n}</b></td><td>{fmt(r.v)}</td><td><span className="shb"><i style={css(`width:${pct(r.v, V) / maxS * 100}%;background:${CH_COL[r.n]}`)} /></span><span className="shp">{p1(pct(r.v, V))}</span></td><td>{r.bounce == null ? <span className="quiet small">—</span> : `${r.bounce}%`}</td><td className={r.join > 5 ? 'good' : ''}>{p1(r.join)}</td><td>{cmpOn() ? <span className={`dl ${r.chg >= 0 ? 'up' : 'dn'}`}>+{r.chg.toFixed(1)}%</span> : ''}</td></tr>{refs}</Fragment>;
+      return <Fragment key={__k}><tr data-row-src={r.n} className={open && canOpen ? 'opened' : ''}><td className="tn">{canOpen ? <button className="tw" data-twist={r.n} aria-expanded={open}>{open ? '−' : '+'}</button> : <i className="tw-x" />}<i className="swt" style={css(`background:${CH_COL[r.n]}`)} /><b>{r.n}</b></td><td>{fmt(r.v)}</td><td><span className="shb"><i style={css(`width:${pct(r.v, V) / maxS * 100}%;background:${CH_COL[r.n]}`)} /></span><span className="shp">{p1(pct(r.v, V))}</span></td><td>{r.bounce == null ? <span className="quiet small">—</span> : `${r.bounce}%`}</td><td className={r.join > 5 ? 'good' : ''}>{p1(r.join)}</td><td>{cmpOn() ? r.chg == null ? <span className="quiet small">—</span> : <span className={`dl ${r.chg >= 0 ? 'up' : 'dn'}`}>{r.chg >= 0 ? '+' : ''}{r.chg.toFixed(1)}%</span> : ''}</td></tr>{refs}</Fragment>;
     });
 
     // when: 7×24 heatmap, Sunday noon and weekday evenings
@@ -631,7 +632,7 @@ function makeGrowth() {
     // devices + browsers
     const devT = DEV.reduce((s, d) => s + d[1], 0),
       brT = BROWSERS.reduce((s, b) => s + b[1], 0);
-    const devices = <div className="dv"><div className="dv-bar">{DEV.map((d, i) => <i key={i} style={css(`flex:${d[1]};background:${['var(--fg)', 'var(--land)', 'color-mix(in srgb,var(--fg) 30%,transparent)'][i]}`)} />)}</div><div className="dv-k">{DEV.map((d, i) => <span key={i}><i style={css(`background:${['var(--fg)', 'var(--land)', 'color-mix(in srgb,var(--fg) 30%,transparent)'][i]}`)} />{d[0]}<b>{p1(d[1] / devT * 100)}</b></span>)}</div><div className="dv-l"><span className="lbl">Browsers</span>{BROWSERS.map((b, __k) => <div key={__k}><span>{b[0]}</span><span className="shb"><i style={css(`width:${b[1] / BROWSERS[0][1] * 100}%`)} /></span><b>{p1(b[1] / brT * 100)}</b></div>)}</div></div>;
+    const devices = <div className="dv"><div className="dv-bar">{DEV.map((d, i) => <i key={i} style={css(`flex:${d[1]};background:${['var(--fg)', 'var(--land)', 'color-mix(in srgb,var(--fg) 30%,transparent)'][i]}`)} />)}</div><div className="dv-k">{DEV.map((d, i) => <span key={i}><i style={css(`background:${['var(--fg)', 'var(--land)', 'color-mix(in srgb,var(--fg) 30%,transparent)'][i]}`)} />{d[0]}<b>{p1(d[1] / devT * 100)}</b></span>)}</div><div className="dv-l"><span className="lbl">Browsers</span>{L && !BROWSERS.length ? <span className="quiet small">Not measured yet</span> : ''}{BROWSERS.map((b, __k) => <div key={__k}><span>{b[0]}</span><span className="shb"><i style={css(`width:${b[1] / BROWSERS[0][1] * 100}%`)} /></span><b>{p1(b[1] / brT * 100)}</b></div>)}</div></div>;
 
     // cities
     const cityRows = rowsFor('city').map(r => ({
@@ -1521,7 +1522,7 @@ function makeGrowth() {
     const shopsLive = shopsByDay(b);
     if (L) appsHdrLive(dauM, wauM, stick);else html($g('hdr'), <><span className="when"><span className="dot" />Growth · Apps{L ? '' : ' · Demo data'}</span><p className="brief">{live ? <>{"About "}{fmt(dauM)}{" members open Clear on a typical day, and most of them "}<a data-ajump="feat">pay at a shop</a>{". The biggest drop in onboarding is "}<a data-ajump="onb">funding the account</a>.</> : 'The apps weren’t live yet in this period.'}{" "}<span className="q">{perName()}{filterDesc() ? ' · ' + filterDesc() : ''}.</span></p><div className="strip"><div className="sc"><span className="lbl">Active members · this week</span><div className="sc-v">{fmt(wauM)}{" "}<small>{"of "}{fmt(actByDay(b) * mult)}</small></div><div className="mb"><i style={css("width:79%")} /></div><div className="sc-s">79% of activated members</div></div><div className="sc"><span className="lbl">Daily, on average</span><div className="sc-v">{fmt(dauM)}{" "}<small>{Math.round(stick)}%</small></div><div className="mb"><i style={css(`width:${stick}%`)} /></div><div className="sc-s">of weekly actives, each day</div></div><div className="sc"><span className="lbl">Shops on the merchant app</span><div className="sc-v">{shopsLive}{" "}<small>of 30</small></div><div className="mb"><i style={css(`width:${shopsLive / 30 * 100}%;background:var(--land)`)} /><i style={css(`left:${shopsLive / 30 * 100}%;width:20%`)} className="hatch" /></div><div className="sc-s">6 signing · 19 staff logins</div></div><div className="sc"><span className="lbl">Crash-free sessions</span><div className="sc-v">99.4%</div><div className="mb"><i style={css("width:99.4%;background:var(--settled)")} /></div><div className="sc-s">{ERRS.length}{" open issues · "}{ERRS.filter(e => !e.own).length}{" with no owner"}</div></div></div></>);
     if (!live) {
-      html(el, <div className="bento"><div className="cell s12"><div className="bk-empty">{"The member app opened to the first batch on 15 Sep. "}<button className="clear" data-per="all">Show since launch</button></div></div></div>);
+      html(el, <div className="bento"><div className="cell s12"><div className="bk-empty">{L ? 'No one opened the member app in this range. ' : 'The member app opened to the first batch on 15 Sep. '}<button className="clear" data-per="all">Show since launch</button></div></div></div>);
       return;
     }
 
@@ -1882,7 +1883,7 @@ function makeGrowth() {
             el: undefined,
             ...c
           }, Math.min((i + 1) * 7, TODAY - c.d)) * 100) : undefined).filter(x => x !== undefined)]).map(([w, n, v], __k) => <Fragment key={__k}><div className="r">{w}</div><div>{n}</div>{cols.map((_, i) => v[i] !== undefined ? <div key={i} style={css(`background:color-mix(in srgb,var(--fg) ${Math.round(12 + v[i] * 1.5)}%,transparent);color:${v[i] > 34 ? 'var(--ground)' : 'var(--fg)'}`)}>{v[i]}%</div> : <div key={i} className="na" />)}</Fragment>)}</div></div>;
-      foot = <><span>{"Share of each invite week that's active. "}<b>About half</b>{" activate by week three."}</span><button data-go="members" data-gp="nudges:opened">Nudge the stuck in Members →</button></>;
+      foot = <><span>{"Share of each invite week that's active."}{L ? '' : <>{" "}<b>About half</b>{" activate by week three."}</>}</span><button data-go="members" data-gp="nudges:opened">Nudge the stuck in Members →</button></>;
     } else {
       const pr = prevRange(),
         on = cmpOn();
@@ -1900,7 +1901,8 @@ function makeGrowth() {
         r.rate = r.in && !hand(r) ? pct(r.out, r.in) : null;
         const pv = prevRows[r.n];
         const j = rng(hash(r.n + k))();
-        r.prev = pv && pv[k] ? pct(pv[k + 1], pv[k]) * (0.92 + j * 0.16) : null;
+        // live, the previous period isn't recorded by row (only scaled from the totals): no change is shown
+        r.prev = L ? null : pv && pv[k] ? pct(pv[k + 1], pv[k]) * (0.92 + j * 0.16) : null;
       });
       const key = S.sort === 'in' ? 'in' : S.sort === 'out' ? 'out' : 'rate';
       rows.sort((a, b) => ((a[key] ?? -1) - (b[key] ?? -1)) * S.dir);
@@ -1910,7 +1912,7 @@ function makeGrowth() {
       if (!rows.length) body = <div className="bk-empty">{"No "}{D[S.dim].name.toLowerCase()}{" rows match these filters. Shop and design only cover posters, so add Posters to the source filter."}</div>;else if (S.view === 'list') {
         body = <div className="bt-wrap"><table className="bt"><thead><tr><th className="c-nm">{D[S.dim].name}</th>{th('in', STG[k], 'c-in')}{th('out', STG[k + 1], 'c-out')}{th('rate', 'Rate', 'c-rt')}{on ? <th className="c-cmp">Change</th> : ''}<th className="c-sp">Last 14 days</th></tr></thead><tbody>{rows.map((r, __k) => {
                 const d = r.rate != null && r.prev != null ? r.rate - r.prev : null;
-                return <tr key={__k} data-row={r.n} title={`Filter the page to ${r.n}`}><td className="tn c-nm"><b>{r.n}</b>{r.s ? <span>{r.s}</span> : ''}<span className="m-only mi">{fmt(r.in)}{" → "}{r.rate == null ? '—' : fmt(r.out)}</span></td><td className="c-in">{fmt(r.in)}</td><td className="c-out">{r.rate == null ? <span className="quiet">—</span> : fmt(r.out)}</td><td className="c-rt">{r.rate == null ? <span className="quiet small">Hands off</span> : <div className="rb"><span className="bar"><i className={cls(r)} style={css(`width:${r.rate / mx * 100}%`)} /><s style={css(`left:${avg / mx * 100}%`)} /></span><b>{p1(r.rate)}</b></div>}</td>{on ? <td className="c-cmp">{d == null ? '' : Math.abs(d) < .05 ? <span className="dl">±0.0 pts</span> : <span className={`dl ${d >= 0 ? 'up' : 'dn'}`}>{d >= 0 ? '+' : ''}{d.toFixed(1)}{" pts"}</span>}</td> : ''}<td className="c-sp">{spark(hash(r.n) + k, r.rate > avg)}</td></tr>;
+                return <tr key={__k} data-row={r.n} title={`Filter the page to ${r.n}`}><td className="tn c-nm"><b>{r.n}</b>{r.s ? <span>{r.s}</span> : ''}<span className="m-only mi">{fmt(r.in)}{" → "}{r.rate == null ? '—' : fmt(r.out)}</span></td><td className="c-in">{fmt(r.in)}</td><td className="c-out">{r.rate == null ? <span className="quiet">—</span> : fmt(r.out)}</td><td className="c-rt">{r.rate == null ? <span className="quiet small">Hands off</span> : <div className="rb"><span className="bar"><i className={cls(r)} style={css(`width:${r.rate / mx * 100}%`)} /><s style={css(`left:${avg / mx * 100}%`)} /></span><b>{p1(r.rate)}</b></div>}</td>{on ? <td className="c-cmp">{d == null ? '' : Math.abs(d) < .05 ? <span className="dl">±0.0 pts</span> : <span className={`dl ${d >= 0 ? 'up' : 'dn'}`}>{d >= 0 ? '+' : ''}{d.toFixed(1)}{" pts"}</span>}</td> : ''}<td className="c-sp">{L ? <span className="quiet">—</span> : spark(hash(r.n) + k, r.rate > avg)}</td></tr>;
               })}<tr className="tot"><td className="c-nm">All{D[S.dim].posters ? ' posters' : ''}<span className="m-only mi">{fmt(sumIn)}{" → "}{fmt(sumOut)}</span></td><td className="c-in">{fmt(sumIn)}</td><td className="c-out">{fmt(sumOut)}</td><td className="c-rt"><div className="rb"><span className="bar" style={css("background:none")}><s style={css(`left:${avg / mx * 100}%`)} /></span><b>{p1(avg)}</b></div></td>{on ? <td className="c-cmp" /> : ''}<td className="c-sp" /></tr></tbody></table></div>;
       } else {
         const pts = rows.filter(r => r.rate != null && r.in > 0);
@@ -2005,7 +2007,26 @@ function makeGrowth() {
   const ago = m => m < 60 ? `${m} min ago` : `${Math.floor(m / 60)}h ago`;
   function renderWl() {
     // live, the people waiting are Members' to show (masked there); Growth says how many
-    if (L) return html($g('wl'), <><div className="wl-list"><div className="bk-empty">{L.WL.waiting ? `${fmt(L.WL.waiting)} ${L.WL.waiting === 1 ? 'person is' : 'people are'} waiting. Who they are shows in Members, masked.` : 'Nobody is waiting.'}</div></div><button className="foot" data-go="members" data-gp="waitlist">{`See the waitlist in Members`}{" "}<span>→</span></button></>);
+    if (L) {
+      /* live, the reference's two lists from Members' own rows (masked there, none at Totals), once Members has loaded */
+      const W = vars.WAITLIST;
+      if (!W || !W.length) return html($g('wl'), <><div className="wl-list"><div className="bk-empty">{L.WL.waiting ? `${fmt(L.WL.waiting)} ${L.WL.waiting === 1 ? 'person is' : 'people are'} waiting. Who they are shows in Members, masked.` : 'Nobody is waiting.'}</div></div><button className="foot" data-go="members" data-gp="waitlist">{`See the waitlist in Members`}{" "}<span>→</span></button></>);
+      const tab = S.wl || 'next',
+        now = Date.now(),
+        med = L.WL.medianDays,
+        cap = Math.max(60, Math.ceil((med || 0) * 2.5));
+      const ini = v => String(v || '').trim().charAt(0).toUpperCase() || '·';
+      const from = r => `${r.city || 'Unknown city'} · ${r.src}${r.poster ? ' · ' + r.poster : ''}`;
+      const since = t => {
+        const m = Math.max(0, Math.round((now - t) / 6e4));
+        return m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)} days ago`;
+      };
+      const rows = tab === 'next' ? W.slice().sort((x, y) => x.joined - y.joined).slice(0, 5).map((r, i) => {
+        const w = Math.round((now - r.joined) / 864e5);
+        return <div key={i} className="wr"><span className="wr-n">{i + 1}</span><span className="wr-m"><b>{mask(ini(r.first), ini(r.last))}</b><span>{from(r)}</span></span><span className="wr-r"><b>{w}{" days"}</b><span className="wr-bar"><i style={css(`width:${Math.min(100, w / cap * 100)}%`)} />{med != null ? <s style={css(`left:${Math.min(100, med / cap * 100)}%`)} /> : ''}</span></span></div>;
+      }) : W.slice().sort((x, y) => y.joined - x.joined).slice(0, 5).map((r, i) => <div key={i} className="wr nn"><span className="wr-m"><b>{mask(ini(r.first), ini(r.last))}</b><span>{from(r)}</span></span><span className="wr-r"><b className="t">{since(r.joined)}</b><span className="wr-pos">#{fmt(r.pos)}{" in line"}</span></span></div>);
+      return html($g('wl'), <><div className="wl-sub"><div className="seg sm" role="group" aria-label="Waitlist view"><button data-wl="next" aria-pressed={tab === 'next'}>Next in line</button><button data-wl="new" aria-pressed={tab === 'new'}>Just joined</button></div><span className="wl-note">{`${fmt(W.length)} waiting`}</span></div><div className="wl-list">{rows}</div><div className="wl-key">{tab === 'next' ? med != null ? `Waited, against the ${Math.round(med)}-day median` : 'No one invited yet, so no median wait' : 'Names stay masked until you open someone in Members'}</div><button className="foot" data-go="members" data-gp="waitlist">{`See the waitlist in Members`}{" "}<span>→</span></button></>);
+    }
     const tab = S.wl || 'next';
     const rows = tab === 'next' ? WAIT_NEXT.slice(0, 5).map((r, i) => {
       const w = daysSince(r[4]);

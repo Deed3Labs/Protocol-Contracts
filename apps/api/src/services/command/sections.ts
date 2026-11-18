@@ -568,6 +568,9 @@ async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | 
       'growth.weekly.joined': per(wl.map((w) => ms_(w.joined_at))),
       'growth.weekly.invited': per(wl.filter((w) => w.invited_at).map((w) => ms_(w.invited_at!))),
       'growth.weekly.activated': per((members ?? []).filter((m) => m.activeAt != null).map((m) => m.activeAt!)),
+      // who opened their invite, and who made their first $10 spend, by week (Growth's funnel and Overview)
+      'growth.weekly.opened': per((members ?? []).filter((m) => m.opened != null).map((m) => m.opened!)),
+      'growth.weekly.spent': per((members ?? []).filter((m) => m.spentAt != null).map((m) => m.spentAt!)),
       // the waitlist now: who's waiting, everyone who joined it, and the median wait of those invited
       'growth.waitlist': {
         waiting: wl.filter((w) => !w.invited_at).length,
@@ -787,6 +790,8 @@ export interface MerchantsPayload {
   CLAIMS: Array<{ id: number; shop: string; name: string; amount: number; due: number; net: number }> | null;
   /** Phase 2b: PayoutPool.dueWithin over two business days; null until the API reads the chain. */
   DUE_SOON?: { claims: number; amount: number; short: number; businessDays: number; until: number; truncated: boolean } | null;
+  /** Live, each shop's approved Clear charges a day over the last 14 days (UTC), oldest first: the shop panel's bars. */
+  CLEARED_14?: Record<string, number[]>;
   /** The refurb line's units, in the order they were added. */
   REFURB: RefurbUnit[];
   /** The shops' hardware pre-orders (the shop's reservations), oldest first. */
@@ -1211,11 +1216,13 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
   const DUE_SOON = due
     ? { claims: due.claimIds.length, amount: due.amountCents / 100, short: due.shortCents / 100, businessDays: due.businessDays, until: now + due.horizonSeconds * 1000, truncated: due.truncated }
     : null;
+  const CLEARED_14 = await clearedByDay(charges, ids, now, 14).catch(() => ({}));
 
   return {
     TX,
     SIGNED,
     PROSPECTS,
+    CLEARED_14,
     OWED,
     BOARD,
     FLEET,
@@ -1230,6 +1237,27 @@ export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<Merc
   };
 }
 const ms_ = (d: Date) => new Date(d).getTime();
+
+/** Each shop's approved Clear charges a day over the last `days` days (UTC, today last), in dollars, by its address. */
+export async function clearedByDay(charges: Pick<Queryable, 'query'>, ids: string[], now: number, days: number): Promise<Record<string, number[]>> {
+  if (!ids.length) return {};
+  const today = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate());
+  const from = today - (days - 1) * DAY;
+  const { rows } = await charges.query<{ merchant: string; day: string | number; cents: string | number }>(
+    `SELECT lower(merchant_address) AS merchant, floor(extract(epoch FROM coalesce(resolved_at, created_at)) / 86400) AS day, sum(amount_cents) AS cents
+       FROM charge_requests
+      WHERE lower(merchant_address) = ANY($1) AND status = 'approved' AND coalesce(resolved_at, created_at) >= $2
+      GROUP BY 1, 2`,
+    [ids, new Date(from).toISOString()],
+  );
+  const out: Record<string, number[]> = {};
+  for (const r of rows) {
+    const i = Number(r.day) - from / DAY;
+    if (i < 0 || i >= days) continue;
+    (out[r.merchant] ??= Array(days).fill(0))[i] += Number(r.cents) / 100;
+  }
+  return out;
+}
 
 // ── Money ───────────────────────────────────────────────────────────────────
 

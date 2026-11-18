@@ -8,6 +8,8 @@ import { addReveal } from './admin2';
 import { CC } from './cc';
 import { INBOX, RANGE, vars } from './data';
 import { membersLive } from './membersLive';
+import { fmLive } from './fmLive';
+import { needsData } from '../live/sections';
 import { keep, registerPage, shadowHost } from './pageHost';
 import { render as redraw, toast } from './shell';
 
@@ -191,6 +193,12 @@ function makeMembers() {
   const JOINS = WAITING.filter(p => p.joined > TODAY - 7).length; // joins this week (~320)
   const QUIET = p => p.act && TODAY - p.lastSeen >= 21;
   const LEFT = p => p.invited != null ? 90 - (TODAY - p.invited) : null;
+  /** Invites a week over the last four weeks, from the batches sent (rounded); 0 when none went out. */
+  const recentPace = () => {
+    const since = Date.now() - 28 * 864e5;
+    const n = (vars.BATCHES ?? []).filter(b => b.sentAt != null && Number(b.sentAt) >= since).reduce((a, b) => a + (b.size || 0), 0);
+    return Math.round(n / 4);
+  };
   const median = a => {
     const s = a.slice().sort((x, y) => x - y);
     return s.length ? s[Math.floor(s.length / 2)] : 0;
@@ -223,7 +231,8 @@ function makeMembers() {
       cities: new Set(LV ? [] : ['Riverside']),
       shops: new Set(),
       picked: [],
-      pace: 50,
+      // the planner's invites a week: live, what the last four weeks' batches actually sent, when any went out
+      pace: LV ? recentPace() || 50 : 50,
       proposed: false,
       hq: ''
     },
@@ -793,6 +802,8 @@ function makeMembers() {
       body = W.slice().sort((a, b) => b.jt - a.jt).slice(0, 11).map((p, __k) => <Fragment key={__k}>{qrow(p, <span className="qw"><b>{p.joined === TODAY ? 'Today' : dFmt(p.joined)}</b><span>{tFmt(p.jt)}</span></span>)}</Fragment>);
     }
     // by city
+    // live, shops transacting in each city, as Merchants counts them, once its section has loaded
+    const SL = LV && !needsData('merchants') ? fmLive().LIVE_BY_CITY : null;
     const cities = CITIES.map(([c]) => {
       const ppl = W.filter(p => p.city === c);
       return {
@@ -806,7 +817,7 @@ function makeMembers() {
       };
     }).filter(x => x.n).sort((a, b) => b.n - a.n);
     const cm = Math.max(...cities.map(x => x.n), 1);
-    html($m('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s7"><div className="hd"><h2>The queue</h2><div className="r"><div className="seg sm" role="group" aria-label="Queue view"><button data-wq="next" aria-pressed={M.wq === 'next'}>Next in line</button><button data-wq="new" aria-pressed={M.wq === 'new'}>Just joined</button></div></div></div><div className="ql3">{none ? (LV ? <div className="lv-e"><span>Nobody matches.</span></div> : <p className="small quiet" style={css("padding:22px;margin:0")}>Nobody matches.</p>) : body}</div><button className="foot" data-mtab="people" data-mstagego="waiting"><span>{"All "}{fmt(W.length)}{" on the waitlist"}</span><span>People →</span></button></div><div className="cell s5"><div className="hd"><h2>How long they’ve waited</h2><div className="r"><span className="lbl">{"Median "}{med}{" days"}</span></div></div><div className="wt3">{wk.map(([t, v, o], __k) => <div key={__k} className={`wt3-r ${o ? 'old' : ''}`}><span className="wt3-l">{t}</span><span className="wt3-b"><i style={css(`width:${v / bm * 100}%`)} /></span><b>{fmt(v)}</b></div>)}</div><div className="bk-ft"><span><b>{fmt(old)}</b>{" have waited four weeks or more"}</span><button data-mtab="batches">{"Plan batch "}{N14}{" →"}</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Where they’re waiting</h2><div className="r"><span className="lbl">For batches by city</span></div></div>{LV && !cities.length ? <div className="lv-e"><span>No one is waiting in any city yet</span></div> : <div className="bt-wrap"><table className="bt wc"><colgroup><col style={css("width:18%")} /><col style={css("width:26%")} /><col style={css("width:11%")} /><col style={css("width:12%")} /><col style={css("width:11%")} /><col style={css("width:10%")} /><col style={css("width:12%")} /></colgroup><thead><tr><th className="c-nm">City</th><th style={css("text-align:left")}>Waiting</th><th>4+ weeks</th><th>This week</th><th>Posters</th><th>Shops live</th><th /></tr></thead><tbody>{cities.map((x, __k) => <tr key={__k}><td className="tn"><b>{x.c}</b></td><td style={css("text-align:left")}><span className="wc-b"><span className="m-bar"><i style={css(`width:${x.n / cm * 100}%`)} /></span><b>{fmt(x.n)}</b></span></td><td>{fmt(x.old)}</td><td>+{fmt(x.wk)}</td><td>{Math.round(pct(x.post, x.n))}%</td><td>{LV ? <span className="quiet">—</span> : x.shops || <span className="quiet">None</span>}</td><td><button className="lnk4" data-bcitygo={x.c}>Plan a batch →</button></td></tr>)}</tbody></table></div>}<div className="bk-ft"><span>{LV ? 'Shops live in each city isn’t here yet: Merchants has them.' : 'Cities with no live shop can’t spend their $10 nearby yet. Invite them once a shop signs.'}</span><button data-gto="merchants">Shops signing · Merchants →</button></div></div></div></section>{formsCell()}</>);
+    html($m('mv'), <><section className="band" style={css("margin-top:0")}><div className="bento"><div className="cell s7"><div className="hd"><h2>The queue</h2><div className="r"><div className="seg sm" role="group" aria-label="Queue view"><button data-wq="next" aria-pressed={M.wq === 'next'}>Next in line</button><button data-wq="new" aria-pressed={M.wq === 'new'}>Just joined</button></div></div></div><div className="ql3">{none ? (LV ? <div className="lv-e"><span>Nobody matches.</span></div> : <p className="small quiet" style={css("padding:22px;margin:0")}>Nobody matches.</p>) : body}</div><button className="foot" data-mtab="people" data-mstagego="waiting"><span>{"All "}{fmt(W.length)}{" on the waitlist"}</span><span>People →</span></button></div><div className="cell s5"><div className="hd"><h2>How long they’ve waited</h2><div className="r"><span className="lbl">{"Median "}{med}{" days"}</span></div></div><div className="wt3">{wk.map(([t, v, o], __k) => <div key={__k} className={`wt3-r ${o ? 'old' : ''}`}><span className="wt3-l">{t}</span><span className="wt3-b"><i style={css(`width:${v / bm * 100}%`)} /></span><b>{fmt(v)}</b></div>)}</div><div className="bk-ft"><span><b>{fmt(old)}</b>{" have waited four weeks or more"}</span><button data-mtab="batches">{"Plan batch "}{N14}{" →"}</button></div></div></div></section><section className="band"><div className="bento"><div className="cell s12"><div className="hd"><h2>Where they’re waiting</h2><div className="r"><span className="lbl">For batches by city</span></div></div>{LV && !cities.length ? <div className="lv-e"><span>No one is waiting in any city yet</span></div> : <div className="bt-wrap"><table className="bt wc"><colgroup><col style={css("width:18%")} /><col style={css("width:26%")} /><col style={css("width:11%")} /><col style={css("width:12%")} /><col style={css("width:11%")} /><col style={css("width:10%")} /><col style={css("width:12%")} /></colgroup><thead><tr><th className="c-nm">City</th><th style={css("text-align:left")}>Waiting</th><th>4+ weeks</th><th>This week</th><th>Posters</th><th>Shops live</th><th /></tr></thead><tbody>{cities.map((x, __k) => <tr key={__k}><td className="tn"><b>{x.c}</b></td><td style={css("text-align:left")}><span className="wc-b"><span className="m-bar"><i style={css(`width:${x.n / cm * 100}%`)} /></span><b>{fmt(x.n)}</b></span></td><td>{fmt(x.old)}</td><td>+{fmt(x.wk)}</td><td>{Math.round(pct(x.post, x.n))}%</td><td>{LV ? SL ? SL[x.c] || <span className="quiet">None</span> : <span className="quiet">—</span> : x.shops || <span className="quiet">None</span>}</td><td><button className="lnk4" data-bcitygo={x.c}>Plan a batch →</button></td></tr>)}</tbody></table></div>}<div className="bk-ft"><span>{LV && !SL ? 'Shops live in each city show once Merchants has loaded.' : 'Cities with no live shop can’t spend their $10 nearby yet. Invite them once a shop signs.'}</span><button data-gto="merchants">Shops signing · Merchants →</button></div></div></div></section>{formsCell()}</>);
   }
 
   /* ── render + events ── */
