@@ -140,7 +140,7 @@ import { setFigures } from './figures';
  * opened; until then the page shows the prototype's loading state. Sections not listed here still
  * draw the prototype's demo data.
  */
-export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records', 'settings']);
+export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records', 'settings', 'legal']);
 const ready = new Set<string>();
 let loads = 0;
 /** Counts the sections loaded: a redesigned page built from older data is built again (pageHost.tsx). */
@@ -373,6 +373,13 @@ const apply = {
     vars.contractsDeployed = d.DEPLOYED ?? null;
     // where each app runs (the API's deploys.ts): Vercel's deploys and the API's Railway environments
     vars.contractsRunning = d.RUNNING ?? null;
+    // live, from the deployment records by name (brief update 2): the timelocks and helpers, the retired copies, the jobs
+    vars.contractsTimelocks = d.TIMELOCKS ?? null;
+    vars.contractsAux = d.CTR_AUX ?? null;
+    vars.contractsOld = d.CTR_OLD ?? null;
+    vars.contractsOldN = d.CTR_OLD_N ?? null;
+    vars.buildAuto = d.AUTO ?? null;
+    vars.contractsSigning = d.SIGNING ?? null;
     replace(SIGNERS, d.SIGNERS);
     // Build's own records (migration 0066): incidents, findings, audits, and who can be given an incident
     vars.buildRecords = { incidents: d.INCIDENTS ?? [], findings: d.FINDINGS ?? [], audits: d.AUDITS ?? [], team: d.TEAM ?? [] };
@@ -437,6 +444,10 @@ const apply = {
     // the stored alerts, and the shop's materials at or under their low mark (Phase 10c)
     replace(ALERTS0, [...(f['home.alerts'] ?? []), ...(d.LOW_MATERIALS ?? []).map(lowAlert)]);
     if (f['growth.range']) assign(RANGE, f['growth.range']);
+  },
+  // Governance → Legal: the private agreements repo through the API, in full for Admin, the counts for anyone else; or why it's off
+  legal(d) {
+    vars.legal = d;
   },
   // Settings → Rules and limits (the redesign's admin2.tsx, through sections/adminLive.ts): every rule, what waits, what changed
   settings(d) {

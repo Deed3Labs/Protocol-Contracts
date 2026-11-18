@@ -118,7 +118,7 @@
 .fair{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--underway);line-height:1.45}
 .fair b{font-weight:600}
 .m-big{color:var(--fg);font-weight:600;font-size:34px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.m-big small{font-size:16px;color:var(--fg-50);font-weight:500;letter-spacing:0}
+.m-big small{font-size:16px;color:var(--fg-50);font-weight:500;letter-spacing:0;line-height:1.35}
 
 /* batches: every batch */
 .pl-wrap{display:grid;grid-template-columns:minmax(0,1fr) 330px;flex:1}

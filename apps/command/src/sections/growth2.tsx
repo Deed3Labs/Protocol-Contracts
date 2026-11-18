@@ -1554,7 +1554,8 @@ function makeGrowth() {
     const feats = L && !F.length ? <div className="lv-e"><span>{L.APPS_ON[AS.feat] ? 'Nothing used this week.' : `The ${APPS[AS.feat].n.toLowerCase()} isn’t sending its visits yet.`}</span></div> : <div className="ft2">{F.map(([nm, p, s], __k) => <div key={__k} className="ft2-r"><span className="ft2-n"><b>{nm}</b><span>{s}</span></span><span className="shb"><i style={css(`width:${p}%;background:${fcol}`)} /></span><b className="ft2-p">{p}%</b></div>)}</div>;
 
     /* onboarding: each step's count, and what fell off between steps */
-    const om = ONB[0][1];
+    // shares of the first step: with nobody at it yet, every share is 0, not 0/0
+    const om = ONB[0][1] || 1;
     let worst = 0,
       wi = 0;
     ONB.forEach((s, i) => {
@@ -1566,7 +1567,7 @@ function makeGrowth() {
     const onb = <div className="ob">{ONB.map(([nm, v], i) => {
         const vv = v * mult,
           drop = i ? (ONB[i - 1][1] - v) * mult : 0;
-        return <Fragment key={i}>{i ? <div className={`ob-d ${i === wi ? 'hot' : ''}`}><span>−{fmt(drop)}</span>{i === wi ? <em>Biggest drop</em> : ''}</div> : ''}<div className="ob-r"><span className="ob-n">{nm}</span><span className="ob-b"><i style={css(`width:${v / om * 100}%;${i === ONB.length - 1 ? 'background:var(--fg)' : ''}`)} /></span><b>{fmt(vv)}</b><span className="ob-p">{p1(v / om * 100)}</span></div></Fragment>;
+        return <Fragment key={i}>{i ? <div className={`ob-d ${i === wi ? 'hot' : ''}`}><span>{drop ? `−${fmt(drop)}` : '0'}</span>{i === wi ? <em>Biggest drop</em> : ''}</div> : ''}<div className="ob-r"><span className="ob-n">{nm}</span><span className="ob-b"><i style={css(`width:${v / om * 100}%;${i === ONB.length - 1 ? 'background:var(--fg)' : ''}`)} /></span><b>{fmt(vv)}</b><span className="ob-p">{p1(v / om * 100)}</span></div></Fragment>;
       })}</div>;
 
     /* issues: Home's list rule */

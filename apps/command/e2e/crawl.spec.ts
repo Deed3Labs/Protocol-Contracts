@@ -1,11 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
-import { APP, PROTO } from '../playwright.config';
-import { NEW_ROUTES, ROUTES, canonical, open } from './pages';
+import { APP, PROTO, REDESIGN } from '../playwright.config';
+import { ROUTES, SHADOWED, SHADOW_TABS, canonical, open, ported } from './pages';
 
 /**
- * The buttons on every page and pane, clicked once in the prototype and once in the app, from the
+ * The buttons on every page and pane, clicked once in the reference and once in the app, from the
  * same starting point: what opens (a panel, a modal, the profile menu, a toast, another page) must
- * be the same DOM. A table's rows all do the same thing, so up to three of each kind of control are
+ * be the same DOM. A page ported to the redesign is clicked against the redesign
+ * (design/command-center-ui), tab by tab inside its shadow root, as the pixel check does; the rest
+ * against the old prototype. A table's rows all do the same thing, so up to three of each kind of control are
  * clicked (a kind is its tag and data-* attribute names). Slow, so it runs on demand:
  * `npm run test:crawl`.
  */
@@ -16,8 +18,11 @@ test.describe.configure({ timeout: 30 * 60_000 });
 const CLICKABLE = '#main button, #main [data-member], #main tr[data-merchant], #main tr[data-poster], #main [data-cmcity]';
 const LAYERS = ['#main', '#modalRoot', '#pfRoot', '#loginRoot', '#railNav'];
 
-async function snapshot(page: Page) {
-  const parts = await Promise.all(LAYERS.map((s) => canonical(page, s)));
+async function snapshot(page: Page, route: string) {
+  // a redesigned page draws inside its host's shadow root, its side panel too: that's what's compared, and not
+  // #main around it, where the app keeps the host in a slot of its own (sections/pageHost.tsx)
+  const layers = SHADOWED.has(route) ? [...LAYERS.filter((l) => l !== '#main'), 'shadow:.gw'] : LAYERS;
+  const parts = await Promise.all(layers.map((s) => canonical(page, s)));
   const toast = await page.evaluate(() => {
     const t = document.getElementById('toast');
     return t && t.classList.contains('on') ? t.textContent : '';
@@ -35,8 +40,12 @@ async function at(page: Page, base: string, route: string, pane: number) {
     Date.now = () => Date.UTC(2026, 9, 21, 21);
     Math.random = () => 0.5;
   });
-  if (pane > 0) await page.locator('#main .ptabs button').nth(pane).click({ timeout: 5000 });
+  if (pane > 0) await page.locator(tabsOf(route)).nth(pane).click({ timeout: 5000 });
 }
+
+/** What a route is compared with, and where its tabs are. */
+const baseOf = (route: string) => (ported(route) ? REDESIGN : PROTO);
+const tabsOf = (route: string) => (SHADOWED.has(route) ? SHADOW_TABS : '#main .ptabs button');
 
 /** Up to three of each kind of control, by index into CLICKABLE. */
 async function sample(page: Page): Promise<number[]> {
@@ -54,29 +63,29 @@ async function sample(page: Page): Promise<number[]> {
   });
 }
 
-// the crawl compares with the old prototype, which has no page for a route new in the redesign (Community, Settings)
-for (const route of ROUTES.filter((r) => !NEW_ROUTES.has(r))) {
+for (const route of ROUTES) {
   for (let pane = 0; pane < 8; pane++) {
-    test(`clicks match the prototype: ${route} · pane ${pane}`, async ({ browser }) => {
-      const proto = await browser.newPage();
+    test(`clicks match the reference: ${route} · pane ${pane}`, async ({ browser }) => {
+      const ref = await browser.newPage();
       const app = await browser.newPage();
-      await at(proto, PROTO, route, 0);
-      const panes = Math.max(1, await proto.locator('#main .ptabs button').count());
+      const base = baseOf(route);
+      await at(ref, base, route, 0);
+      const panes = Math.max(1, await ref.locator(tabsOf(route)).count());
       test.skip(pane >= panes, 'no such pane');
-      await at(proto, PROTO, route, pane);
-      for (const i of await sample(proto)) {
-        await at(proto, PROTO, route, pane);
+      await at(ref, base, route, pane);
+      for (const i of await sample(ref)) {
+        await at(ref, base, route, pane);
         await at(app, APP, route, pane);
-        const target = proto.locator(CLICKABLE).nth(i);
+        const target = ref.locator(CLICKABLE).nth(i);
         if (!(await target.isVisible())) continue;
         const label = `${route} · pane ${pane} · #${i} ${(await target.textContent())?.trim().slice(0, 40)}`;
         await target.click({ timeout: 2000 }).catch(() => undefined);
         await app.locator(CLICKABLE).nth(i).click({ timeout: 2000 }).catch(() => undefined);
-        await proto.waitForTimeout(60);
+        await ref.waitForTimeout(60);
         await app.waitForTimeout(60);
-        expect.soft(await snapshot(app), label).toBe(await snapshot(proto));
+        expect.soft(await snapshot(app, route), label).toBe(await snapshot(ref, route));
       }
-      await proto.close();
+      await ref.close();
       await app.close();
     });
   }

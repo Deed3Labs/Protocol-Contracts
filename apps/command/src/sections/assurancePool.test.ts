@@ -11,7 +11,8 @@ describe('the AssurancePool on Money, live (Phase 2c)', () => {
   });
 
   test('two compartments, the backstop floor and the coverage, read only', () => {
-    expect(money).toContain('if (L) return assuranceCell();');
+    // live, the gate shows this cell until every rung of the loss ladder is read (brief update 2)
+    expect(money).toContain('if (L && !ladderRead()) return assuranceCell();');
     expect(money).toContain('Backstop floor');
     expect(money).toContain('Available coverage');
     expect(money).toContain('Draws, grants and transfers need two signers, from their own wallets');
