@@ -197,12 +197,18 @@ function brief(M) {
   const cap = (x) => (x.T ? x.T : typeof x.t === 'string' ? x.t[0].toUpperCase() + x.t.slice(1) : x.t);
   return (
     <>
-      {n.map((x, i) => (
-        <Fragment key={i}>
-          {i === 0 ? cap(x) : x.t}
-          {i < n.length - 2 ? ', ' : i === n.length - 2 ? ', and ' : ''}
-        </Fragment>
-      ))}
+      {n.map((x, i) => {
+        const t = i === 0 ? cap(x) : x.t,
+          last = i === n.length - 1;
+        // a note that ends on a link keeps its comma with it, so no line starts with a comma (the reference's withComma)
+        const ends = t && typeof t === 'object' && t.type === 'button';
+        return (
+          <Fragment key={i}>
+            {last ? t : ends ? <span className="h-nw">{t},</span> : <>{t},</>}
+            {last ? '' : i === n.length - 2 ? ' and ' : ' '}
+          </Fragment>
+        );
+      })}
       {'. '}
       <span className="q">{S.waiting.length ? 'Everything else is moving.' : 'Nothing else needs you.'}</span>
     </>
