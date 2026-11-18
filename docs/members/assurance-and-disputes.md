@@ -10,9 +10,9 @@ the same ladder, and each step turns on when your credits reach it.
 
 | Protection | Turns on at | What it covers |
 |---|---|---|
-| Cycle assurance | Day one | Two cycles a year can close short. Your line holds and your savings stay put |
+| Cycle assurance | Day one | One cycle a year can close short. Your line holds, your savings stay put and the cycle does not count as missed |
 | Home repair | 1,500 credits | Qualifying home repairs, covered by the co-op |
-| Income | 4,000 credits | If your income drops, your credit limit holds for a cycle |
+| Income | 4,000 credits | If you hit a hardship, such as your income dropping, nothing is due for up to three cycles. Two people at Clear approve it, and you can end it early |
 | Deposit | 8,000 credits | Your security deposit, paid to your landlord by the co-op |
 | Rent | 15,000 credits | Up to two months of rent paid if you lose your job |
 
