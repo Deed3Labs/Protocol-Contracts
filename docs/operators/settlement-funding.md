@@ -89,7 +89,7 @@ To check the setup read-only, run `npx hardhat run scripts/check_rollout_inputs.
 
 To change the limits later, two `DEPLOYER_ROLE` signers call `setSettlementFunder` or `setSettlementHeadroom` again, and CL Operating's owners call `setAllowance` for the forwarder. Setting the lane again never adds to the period running. Restarting a stopped funder also takes both deployers, both after the stop: a proposal made before it never applies.
 
-**Open: a second deployment signer.** `deploy/config/earn-roles.json` lists two `DEPLOYER_ROLE` signers for the pool, `0x895d…7AAA` and `0x608d…7c23`, but on Base Sepolia only `0x608d…7c23` holds the role (read Nov 18, 2026). `SL-funder-1/2` and `SL-headroom-1/2` need two different holders, so a second deployer has to hold the role first. The owner chooses who; the grant is the pool admin's, the Earn timelock (the Clear Lending Safe schedules it, 7 days). `0x895d…7AAA` is also listed for `CCO_ROLE` and holds neither, so today only `0x608d…7c23` can stop the lane.
+**The second deployment signer.** `deploy/config/earn-roles.json` lists two `DEPLOYER_ROLE` signers for the pool, `0x895d…7AAA` and `0x608d…7c23`, but on Base Sepolia only `0x608d…7c23` holds the role (read Nov 18, 2026). `SL-funder-1/2` and `SL-headroom-1/2` need two different holders, so `0x895d…7AAA` (the owner's choice, Nov 18, 2026, testnet) has to hold the role first: the Clear Lending Safe signs `SL-deployer-1-schedule` (Earn timelock: `LendingPool.grantRole(DEPLOYER_ROLE, 0x895d…7AAA)`, ready now, no dependency on E8x), then `SLx-deployer-1-execute` 7 days later. `0x895d…7AAA` is also listed for `CCO_ROLE` and holds neither, so today only `0x608d…7c23` can stop the lane.
 
 ## Owner checklist
 
