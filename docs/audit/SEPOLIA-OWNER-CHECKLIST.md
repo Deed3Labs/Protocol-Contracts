@@ -95,3 +95,15 @@ Both are in the signing plan. Do them before the credit handover (I2):
    - `PAYOUT_KEEPER_ENABLED=1`;
    - the Assurance fee payer, once the new pool is deployed: `ASSURANCE_POOL_V2_84532` (its address) the same day, then `ASSURANCE_FEE_PAYER_CDP_ACCOUNT_NAME=cl-fees-base-sepolia` and, once the pool's payers are set, `ASSURANCE_FEE_PAYER_ENABLED=1`. Each month Clear Lending's two signers sign CL Operating's funding transfer that Command proposes; the CL Fees wallet then pays the pool on its own. See [`assurance-fee-payer.md`](../operators/assurance-fee-payer.md).
    - once the two signatures in 4b are done and `PAYOUT_POOL_84532` names the fresh PayoutPool: `PAYOUT_TOPUP_WALLET=0xC0C4EC7875D1838C0AE610accC16AAdCDb475068`, `PAYOUT_TOPUP_CDP_ACCOUNT_NAME=payout-topup-base-sepolia`, then `PAYOUT_TOPUP_ENABLED=1`.
+
+## State attester grant (Nov 18, 2026)
+
+A credit line opens only for a member whose state is attested on chain (`NetworkRegistry.stateCodeOf`), and only `STATE_ATTESTER_ROLE` may attest. Day 0 left the role ungranted. The owner chose the credit operator, `0x8801A480Cd6a2Ab40964d3895d5BED8fCfa51edd`, as the attester.
+
+1. **Today (Clear Treasury Safe):** in the Safe app's Transaction Builder, load `deployments/base-sepolia/safe-batches/state-attester-schedule.json`, check it, and sign it with two owners.
+   - **What it does:** it calls `CreditTimelock.schedule` on `0x3941…d330` with a 7-day delay.
+   - **The call it queues:** `NetworkRegistry.grantRole(STATE_ATTESTER_ROLE, 0x8801…edd)` on `0xee10…1164`.
+   - **Operation id:** `0x80b28fcf…2cd6`.
+2. **Seven days later (Clear Treasury Safe):** load `state-attester-execute.json` the same way and sign it. The timelock refuses it before the 7 days are up.
+3. **Check where it stands at any time:** `STATE_ATTESTER=0x8801… SAFE=0x52e6… npx ts-node scripts/state_attester_grant.ts`. It reads the chain and prints the next step: schedule, wait, execute or done. It rewrites the batch files to match, and it never sends anything.
+4. **Then:** attest each member's state, run `apps/api/src/scripts/backfillCreditLines.ts` to open lines for existing members, and let the app pledge their Savings and Yield Pool shares.
