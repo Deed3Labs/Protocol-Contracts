@@ -9,9 +9,12 @@ import { assertCdpNetworkMatches, expectedCdpNetwork } from '../cdpNetworkGuard.
  *
  * Credentials are the relayers' (SAVINGS_CDP_*, SEND_CDP_*, or CDP_* API key id, secret and wallet
  * secret). Nothing here reads or holds a private key.
+ *
+ * `cdpWalletSender` is the same thing for any job's own named wallet: the settlement funding desk
+ * (services/settlementFunding/deskCdp.ts) uses it with its own names.
  */
 
-interface CdpEvm {
+export interface CdpEvm {
   getAccount(options: { name: string }): Promise<{ address: string }>;
   sendTransaction(options: {
     address: string;
@@ -27,10 +30,23 @@ export function topUpAccountName(chainId: number, env: Record<string, string | u
   return first(env, `PAYOUT_TOPUP_CDP_ACCOUNT_NAME_${chainId}`, 'PAYOUT_TOPUP_CDP_ACCOUNT_NAME') || (chainId === 84532 ? 'payout-topup-base-sepolia' : `payout-topup-chain-${chainId}`);
 }
 
-export function cdpTopUpSender(chainId: number, wallet: string, env: Record<string, string | undefined> = process.env, load?: () => Promise<CdpEvm>) {
+/** What a job's CDP wallet is called, where its overrides live, and how its errors read. */
+export interface CdpWalletSpec {
+  /** The CDP account's name: looked up, never created. */
+  accountName: string;
+  /** Env var names for the CDP network, the chain-suffixed one first. */
+  networkVars: string[];
+  /** The env var holding the wallet's address, for messages. */
+  walletVar: string;
+  /** "payout top-up wallet", "settlement desk wallet": for messages. */
+  label: string;
+}
+
+/** Sends from one named CDP server wallet, and only from the address the job was configured with. */
+export function cdpWalletSender(chainId: number, wallet: string, spec: CdpWalletSpec, env: Record<string, string | undefined> = process.env, load?: () => Promise<CdpEvm>) {
   let evm: Promise<CdpEvm> | null = null;
   let checked = false;
-  const network = first(env, `PAYOUT_TOPUP_CDP_NETWORK_${chainId}`, 'PAYOUT_TOPUP_CDP_NETWORK') || expectedCdpNetwork(chainId) || '';
+  const network = first(env, ...spec.networkVars) || expectedCdpNetwork(chainId) || '';
   const client = () =>
     (evm ??= load
       ? load()
@@ -38,7 +54,7 @@ export function cdpTopUpSender(chainId: number, wallet: string, env: Record<stri
           const apiKeyId = first(env, 'SAVINGS_CDP_API_KEY_ID', 'SEND_CDP_API_KEY_ID', 'CDP_API_KEY_ID', 'CDP_API_KEY_NAME');
           const apiKeySecret = first(env, 'SAVINGS_CDP_API_KEY_SECRET', 'SEND_CDP_API_KEY_SECRET', 'CDP_API_KEY_SECRET');
           const walletSecret = first(env, 'SAVINGS_CDP_WALLET_SECRET', 'SEND_CDP_WALLET_SECRET', 'CDP_WALLET_SECRET');
-          if (!apiKeyId || !apiKeySecret || !walletSecret) throw new Error('The payout top-up wallet needs the CDP credentials (CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET).');
+          if (!apiKeyId || !apiKeySecret || !walletSecret) throw new Error(`The ${spec.label} needs the CDP credentials (CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET).`);
           const mod = await import('@coinbase/cdp-sdk');
           return new mod.CdpClient({ apiKeyId, apiKeySecret, walletSecret }).evm as unknown as CdpEvm;
         })());
@@ -48,12 +64,12 @@ export function cdpTopUpSender(chainId: number, wallet: string, env: Record<stri
     async send(tx: { to: string; data: string }, idempotencyKey: string): Promise<string> {
       if (!network) throw new Error(`No CDP network for chain ${chainId}.`);
       // A testnet chain paired with a mainnet network name would sign on mainnet (cdpNetworkGuard).
-      assertCdpNetworkMatches(chainId, network, 'payout top-up wallet');
+      assertCdpNetworkMatches(chainId, network, spec.label);
       const c = await client();
       if (!checked) {
-        const account = await c.getAccount({ name: topUpAccountName(chainId, env) });
+        const account = await c.getAccount({ name: spec.accountName });
         if (ethers.getAddress(account.address) !== ethers.getAddress(wallet)) {
-          throw new Error(`The CDP account "${topUpAccountName(chainId, env)}" is ${account.address}, not PAYOUT_TOPUP_WALLET ${wallet}: refusing to send.`);
+          throw new Error(`The CDP account "${spec.accountName}" is ${account.address}, not ${spec.walletVar} ${wallet}: refusing to send.`);
         }
         checked = true;
       }
@@ -63,4 +79,19 @@ export function cdpTopUpSender(chainId: number, wallet: string, env: Record<stri
       return hash;
     },
   };
+}
+
+export function cdpTopUpSender(chainId: number, wallet: string, env: Record<string, string | undefined> = process.env, load?: () => Promise<CdpEvm>) {
+  return cdpWalletSender(
+    chainId,
+    wallet,
+    {
+      accountName: topUpAccountName(chainId, env),
+      networkVars: [`PAYOUT_TOPUP_CDP_NETWORK_${chainId}`, 'PAYOUT_TOPUP_CDP_NETWORK'],
+      walletVar: 'PAYOUT_TOPUP_WALLET',
+      label: 'payout top-up wallet',
+    },
+    env,
+    load,
+  );
 }

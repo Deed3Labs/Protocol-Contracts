@@ -132,6 +132,22 @@ export const CHAIN_ERROR_FRAGMENTS = [
   // LendingPool (the Yield Pool): nothing borrows from it since Phase 2f (decision 17)
   'error LendingPoolDirectBorrowOff()',
   'error LendingPoolInsufficientCash(uint256 available, uint256 requested)',
+  // The Yield Pool's Deployments, and the Settlement Funding lane (decision 54): what
+  // deploySettlement can refuse, beyond the Suspension and the pending charge above
+  'error LendingPoolSettlementCap(uint256 usedInPeriod, uint256 capPerPeriod, uint256 amount)',
+  'error LendingPoolNotAuthorized(address account)',
+  'error LendingPoolInvalidAmount()',
+  'error LendingPoolInvalidAddress()',
+  'error LendingPoolQueueOpen()',
+  'error LendingPoolFinalMaturity()',
+  'error LendingPoolUtilizationCap(uint256 utilization)',
+  'error LendingPoolTierCap(uint256 deployedBalance, uint256 poolTierPrincipal)',
+  // SettlementForwarder (decision 54): CL Operating's AllowanceModule delegate
+  'error SettlementForwarderNotDesk(address caller)',
+  'error SettlementForwarderNotSafe(address caller)',
+  'error SettlementForwarderNoOffRamp()',
+  'error SettlementForwarderInvalidAmount()',
+  'error SettlementForwarderInvalidAddress()',
   // ESADepositVault
   'error ESADepositVaultReceiverNotAuthorized()',
   'error ESADepositVaultBadSignature()',
@@ -424,6 +440,50 @@ export function describeKeeperRefusal(decoded: DecodedChainError | null): string
     case 'LiquidatorNoShortfall':
     case 'LiquidatorShortfallNoticed':
       return describeLiquidatorRefusal(decoded);
+    default:
+      return null;
+  }
+}
+
+/**
+ * The settlement funding desk's refusals (decision 54): the Yield Pool's settlement lane
+ * (`deploySettlement`, `returnFunds`) and the SettlementForwarder's `forward`, in words an operator
+ * can act on. Null for anything else.
+ */
+export function describeSettlementRefusal(decoded: DecodedChainError | null): string | null {
+  switch (decoded?.name) {
+    case 'LendingPoolSettlementCap':
+      return `Over the settlement lane's cap this period: ${usd(units(decoded.args.amount))} asked, ${usd(units(decoded.args.usedInPeriod))} of ${usd(units(decoded.args.capPerPeriod))} already used. The rest needs two deployers.`;
+    case 'LendingPoolNotAuthorized':
+      return `${decoded.args.account} may not do this: the settlement lane's registered funder alone deploys through it, and not while the lane is stopped.`;
+    case 'LendingPoolInvalidAmount':
+      return 'The amount is zero or the settlement ref is empty, so the pool refused it. Nothing moved.';
+    case 'LendingPoolInvalidAddress':
+      return 'The Yield Pool has no registered deployment account, so nothing can be deployed.';
+    case 'LendingPoolQueueOpen':
+      return 'A redemption request is open in the Yield Pool’s queue, so no Deployment can be made until it is filled.';
+    case 'LendingPoolSuspended':
+      return 'The Yield Pool is suspended, so no Deployment can be made.';
+    case 'LendingPoolChargePending':
+      return 'A Pool Loss Charge is being applied, so no Deployment can be made until it is done.';
+    case 'LendingPoolFinalMaturity':
+      return 'The Yield Pool has reached Final Maturity: Deployments have stopped.';
+    case 'LendingPoolInsufficientCash':
+      return `The Yield Pool’s Vault Cash cannot cover it: ${usd(units(decoded.args.requested))} asked, ${usd(units(decoded.args.available))} there.`;
+    case 'LendingPoolUtilizationCap':
+      return `It would take the Yield Pool’s Utilization to ${(Number(decoded.args.utilization) / 1e16).toFixed(2)}%, over 90%.`;
+    case 'LendingPoolTierCap':
+      return `It would take the Deployed Balance to ${usd(units(decoded.args.deployedBalance))}, over the ceiling of ${usd(units(decoded.args.poolTierPrincipal))} (the posted Pool Tier principal, plus the Settlement Headroom for the lane).`;
+    case 'SettlementForwarderNotDesk':
+      return `${decoded.args.caller} is not the SettlementForwarder's desk: only the desk wallet CL Operating set may call forward.`;
+    case 'SettlementForwarderNotSafe':
+      return 'Only CL Operating (the Safe) may change the SettlementForwarder.';
+    case 'SettlementForwarderNoOffRamp':
+      return 'CL Operating has not set the SettlementForwarder’s off-ramp yet, so nothing can be forwarded.';
+    case 'SettlementForwarderInvalidAmount':
+      return 'The SettlementForwarder refused a zero amount. Nothing moved.';
+    case 'SettlementForwarderInvalidAddress':
+      return 'The SettlementForwarder refused the zero address.';
     default:
       return null;
   }
