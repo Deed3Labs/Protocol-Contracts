@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express';
-import { listCardTransactions } from '../services/lithic/cardTransactionsService.js';
+import { cardCreditFeeTotals, listCardTransactions } from '../services/lithic/cardTransactionsService.js';
+import { creditFeeSettings, currentCreditFee } from '../services/lithic/cardCreditFee.js';
 import { isConfigured } from '../services/lithic/lithicClient.js';
 import { cardStore } from '../services/lithic/cardStore.js';
 import { cardService } from '../services/lithic/cardService.js';
@@ -74,6 +75,29 @@ router.get('/transactions', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[lithic] card transactions read failed:', error instanceof Error ? error.message : error);
     res.status(502).json({ error: 'Could not read card transactions' });
+  }
+});
+
+/**
+ * GET /api/lithic/cards/credit-fees?cycleStart=<unix seconds> — the card credit fee for a statement
+ * (decision 55): whether it is charged now, and the totals for the cycle and the year to date
+ * (Reg Z §1026.7(b)(6)). Each fee also sits on its own purchase in /transactions. The cycle window
+ * comes from the caller, which reads it from the chain with the line (GET /api/credit); without it,
+ * only the year to date is given.
+ */
+router.get('/credit-fees', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  const cycleStart = Number(req.query.cycleStart);
+  const cycleStartMs = Number.isFinite(cycleStart) && cycleStart > 0 ? Math.floor(cycleStart) * 1000 : null;
+  // Off unless both the API's setting and the chain's bound allow it (L-02 §2.6C: off for real members
+  // before the plan of business). The member app says "not charged yet" while it is off.
+  const fee = { cents: creditFeeSettings().cents, on: currentCreditFee().cents > 0 };
+  try {
+    res.json({ fee, ...(await cardCreditFeeTotals(wallet, cycleStartMs)) });
+  } catch (error) {
+    console.error('[lithic] card credit fee totals failed:', error instanceof Error ? error.message : error);
+    res.status(502).json({ error: 'Could not read card credit fees' });
   }
 });
 

@@ -6,6 +6,7 @@ import {
   keeperDeps,
   runCycleKeeper,
 } from '../services/chain/cycleKeeper.js';
+import { applyCardFeeCapAtCycleClose } from '../services/chain/cardFeeCap.js';
 
 /*
  * The credit keeper's clock (Phase 2b; decision 53). See services/chain/cycleKeeper for what it
@@ -33,6 +34,12 @@ async function tick(): Promise<void> {
     const defaulted = run.results.filter((r) => r.action === 'defaulted');
     const wouldSend = run.results.filter((r) => r.action === 'would_send');
     const failed = run.results.filter((r) => r.action === 'failed');
+    // The statement hook (MB-04 §5.4(f)): a closed cycle is when the CFL cap on carry plus the card
+    // credit fee is checked, and any excess credited back. Credits nothing until counsel settles how
+    // the excess is measured (MB-04 #52; cardCreditFee.cardFeeCapExcess).
+    for (const r of judged) {
+      await applyCardFeeCapAtCycleClose(r.wallet, (r.since ?? Math.floor(Date.now() / 1000)) * 1000);
+    }
     if (judged.length) {
       const missed = judged.filter((r) => r.clean === false).length;
       console.log(`[cycle-keeper] judged ${judged.length} member(s) (${judged.length - missed} clean, ${missed} missed) of ${run.checked}`);

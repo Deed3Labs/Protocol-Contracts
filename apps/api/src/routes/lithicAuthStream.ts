@@ -149,9 +149,10 @@ router.post('/', async (req: Request, res: Response) => {
      */
     console.log(
       `[lithic:asa] ${outcome.decision.result} ${amountCents}c tx=${transactionToken} card=${cardToken}` +
-        ` credit=${outcome.decision.creditCents}c${outcome.replayed ? ' (replay)' : ''}` +
+        ` credit=${outcome.decision.creditCents}c` +
+        `${outcome.decision.feeCents > 0 ? ` fee=${outcome.decision.feeCents}c` : ''}${outcome.replayed ? ' (replay)' : ''}` +
         ` ${latency}ms`,
-      { draws: outcome.decision.draws, wallet: outcome.wallet },
+      { draws: outcome.decision.draws, feeDraws: outcome.decision.feeDraws, wallet: outcome.wallet },
     );
 
     if (!outcome.known) {

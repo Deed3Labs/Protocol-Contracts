@@ -1,4 +1,5 @@
 import { getPayPool } from '../../config/postgres.js';
+import { liveFeeCents, type CreditFeeStatus } from './cardCreditFee.js';
 
 /*
  * What the card actually spent, from the authorizations we already decide.
@@ -56,6 +57,21 @@ export interface CardTransactionRow {
    * the way a statement reads. When nothing is owed, every credit purchase is fully repaid.
    */
   creditRepaidCents: number;
+  /**
+   * The card credit fee on this purchase (decision 55), in cents: 0 when it carried none. Shown under
+   * the purchase, never inside `amountCents` (the merchant's figure) or `creditCents`.
+   */
+  creditFeeCents: number;
+  /**
+   * Where the fee stands: `charged` while it is owed (held or settled), `returned` once a full refund
+   * gave it back, `released` when the purchase was voided before it was ever charged, `waived` when
+   * the chain no longer accepted it at settlement. Null with no fee.
+   */
+  creditFeeState: 'charged' | 'returned' | 'released' | 'waived' | null;
+  /** True once all of the fee was given back (a full refund, or credited back in full). */
+  creditFeeReturned: boolean;
+  /** How much of the fee has been given back so far, in cents (part of it can be credited back). */
+  creditFeeReturnedCents: number;
 }
 
 interface Row {
@@ -66,6 +82,9 @@ interface Row {
   draws: unknown;
   merchant: unknown;
   decided_at: Date;
+  fee_cents?: string | number | null;
+  fee_status?: string | null;
+  fee_returned_cents?: string | number | null;
 }
 
 function asString(value: unknown): string | null {
@@ -103,31 +122,52 @@ export async function heldDrawsByTier(wallet: string): Promise<HeldDraws> {
 
   // `onchain_status` is added by the card settlement service; read it defensively so this keeps
   // working on a database that has never settled anything.
+  type HeldRow = { draws: unknown; onchain_status: string | null; fee_draws: unknown; fee_status: string | null };
   const { rows } = await pool
-    .query<{ draws: unknown; onchain_status: string | null }>(
-      `SELECT draws, onchain_status FROM lithic_auth_decisions
+    .query<HeldRow>(
+      `SELECT draws, onchain_status, fee_draws, fee_status FROM lithic_auth_decisions
         WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0`,
       [wallet.toLowerCase()],
     )
     .catch(() =>
-      pool.query<{ draws: unknown; onchain_status: string | null }>(
-        `SELECT draws, NULL::text AS onchain_status FROM lithic_auth_decisions
+      pool.query<HeldRow>(
+        `SELECT draws, NULL::text AS onchain_status, '[]'::jsonb AS fee_draws, NULL::text AS fee_status
+           FROM lithic_auth_decisions
           WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0`,
         [wallet.toLowerCase()],
       ),
     );
 
-  const held = { ...empty };
+  return rows.length ? sumHeldDraws(rows) : empty;
+}
+
+/**
+ * The sum behind heldDrawsByTier, pure so it can be tested without a database.
+ *
+ * The card credit fee (decision 55) is held exactly like the purchase's credit part: counted while
+ * it is only a hold (`held`), and not once the chain carries it (`charged`: the tiers' own figures
+ * include it) or once it is gone (released, waived, returned). So a member never sees it twice, and
+ * never sees one that was not charged.
+ */
+export function sumHeldDraws(
+  rows: Array<{ draws: unknown; onchain_status: string | null; fee_draws?: unknown; fee_status?: string | null }>,
+): HeldDraws {
+  const held: HeldDraws = { cash: 0, savings: 0, asset: 0, income: 0, boost: 0 };
+  const add = (draw: { source?: unknown; amountCents?: unknown }, skipCredit: boolean) => {
+    const source = String(draw?.source ?? '');
+    if (skipCredit && source !== 'cash') return;
+    const cents = Number(draw?.amountCents ?? 0);
+    if (source in held && Number.isFinite(cents)) held[source as keyof HeldDraws] += cents;
+  };
   for (const row of rows) {
-    if (!Array.isArray(row.draws)) continue;
     // Settled and issued: the credit part is on chain now, in the tiers' own figures. Counting it
     // here as well would show the member the same purchase twice.
     const onChain = row.onchain_status === 'issued';
-    for (const draw of row.draws as Array<{ source?: unknown; amountCents?: unknown }>) {
-      const source = String(draw?.source ?? '');
-      if (onChain && source !== 'cash') continue;
-      const cents = Number(draw?.amountCents ?? 0);
-      if (source in held && Number.isFinite(cents)) held[source as keyof HeldDraws] += cents;
+    if (Array.isArray(row.draws)) {
+      for (const draw of row.draws as Array<{ source?: unknown; amountCents?: unknown }>) add(draw, onChain);
+    }
+    if (row.fee_status === 'held' && !onChain && Array.isArray(row.fee_draws)) {
+      for (const draw of row.fee_draws as Array<{ source?: unknown; amountCents?: unknown }>) add(draw, false);
     }
   }
   return held;
@@ -154,23 +194,33 @@ export async function creditRepaidByTransaction(wallet: string): Promise<Map<str
   const pool = getPayPool();
   if (!pool) return out;
   const w = wallet.toLowerCase();
+  type RepaidRow = {
+    transaction_token: string;
+    draws: unknown;
+    fee_cents: string | number | null;
+    fee_status: string | null;
+    fee_returned_cents: string | number | null;
+  };
   const { rows } = await pool
-    .query<{ transaction_token: string; draws: unknown }>(
-      `SELECT transaction_token, draws FROM lithic_auth_decisions
+    .query<RepaidRow>(
+      `SELECT transaction_token, draws, fee_cents, fee_status, fee_returned_cents FROM lithic_auth_decisions
         WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0
           AND dispute_token IS NULL AND COALESCE(onchain_status, '') <> 'waived'
         ORDER BY decided_at ASC`,
       [w],
     )
     .catch(() =>
-      pool.query<{ transaction_token: string; draws: unknown }>(
-        `SELECT transaction_token, draws FROM lithic_auth_decisions
+      pool.query<RepaidRow>(
+        `SELECT transaction_token, draws, 0 AS fee_cents, NULL::text AS fee_status, 0 AS fee_returned_cents FROM lithic_auth_decisions
           WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0
           ORDER BY decided_at ASC`,
         [w],
       ),
     );
-  const drawn = rows.reduce((sum, r) => sum + creditOf(r.draws), 0);
+  // The card credit fee is owed on the same tiers as the purchase, so it is in `owed` below and has
+  // to be in what was drawn too, or every fee would read as a repayment not yet made.
+  const creditWithFee = (r: RepaidRow) => creditOf(r.draws) + liveFeeCents(r.fee_cents, r.fee_status, r.fee_returned_cents);
+  const drawn = rows.reduce((sum, r) => sum + creditWithFee(r), 0);
   const owed = await pool
     .query<{ net: string }>(
       `SELECT COALESCE(SUM(GREATEST(net, 0)), 0) AS net FROM (
@@ -182,11 +232,88 @@ export async function creditRepaidByTransaction(wallet: string): Promise<Map<str
     .then((r) => Number(r.rows[0]?.net ?? 0))
     .catch(() => drawn);
   const allocated = allocateRepaidOldestFirst(
-    rows.map((r) => ({ id: r.transaction_token, creditCents: creditOf(r.draws) })),
+    rows.map((r) => ({ id: r.transaction_token, creditCents: creditWithFee(r) })),
     Math.max(0, drawn - owed),
   );
   for (const [id, cents] of allocated) out.set(id, cents);
   return out;
+}
+
+/** The fee fields of a card transaction, from the stored fee and its state. Pure. */
+export function creditFeeOf(
+  feeCents: unknown,
+  status: unknown,
+  returnedCents: unknown = 0,
+): Pick<CardTransactionRow, 'creditFeeCents' | 'creditFeeState' | 'creditFeeReturned' | 'creditFeeReturnedCents'> {
+  const cents = Math.max(0, Math.round(Number(feeCents ?? 0) || 0));
+  const s = (typeof status === 'string' ? status : null) as CreditFeeStatus | null;
+  if (cents <= 0 || !s) return { creditFeeCents: 0, creditFeeState: null, creditFeeReturned: false, creditFeeReturnedCents: 0 };
+  const state = s === 'held' || s === 'charged' ? 'charged' : s;
+  const back = state === 'returned' ? cents : state === 'charged' ? Math.min(cents, Math.max(0, Math.round(Number(returnedCents ?? 0) || 0))) : 0;
+  return { creditFeeCents: cents, creditFeeState: state, creditFeeReturned: state === 'returned', creditFeeReturnedCents: back };
+}
+
+/** Card credit fees over a window: what was charged, and what of it was given back. */
+export interface CreditFeeWindow {
+  chargedCents: number;
+  returnedCents: number;
+}
+
+export interface CreditFeeTotals {
+  /** The current cycle, when the caller gave its start; null otherwise. */
+  cycle: CreditFeeWindow | null;
+  /** January 1 (UTC) to now (Reg Z §1026.7(b)(6): fee totals for the period and the year to date). */
+  yearToDate: CreditFeeWindow;
+}
+
+/**
+ * Sum fees into windows. Pure. A fee counts where it was imposed (the swipe); one released, waived or
+ * never charged was not imposed and counts nowhere. Given back (a full refund, or a credit back) is
+ * shown beside it rather than netted away, so the statement says both.
+ */
+export function sumCreditFees(
+  rows: Array<{ decidedAtMs: number; feeCents: number; status: string | null; returnedCents: number }>,
+  windows: { cycleStartMs: number | null; yearStartMs: number },
+): CreditFeeTotals {
+  const empty = (): CreditFeeWindow => ({ chargedCents: 0, returnedCents: 0 });
+  const totals: CreditFeeTotals = { cycle: windows.cycleStartMs === null ? null : empty(), yearToDate: empty() };
+  for (const row of rows) {
+    const f = creditFeeOf(row.feeCents, row.status, row.returnedCents);
+    if (f.creditFeeCents <= 0 || (f.creditFeeState !== 'charged' && f.creditFeeState !== 'returned')) continue;
+    const add = (w: CreditFeeWindow) => {
+      w.chargedCents += f.creditFeeCents;
+      w.returnedCents += f.creditFeeReturnedCents;
+    };
+    if (row.decidedAtMs >= windows.yearStartMs) add(totals.yearToDate);
+    if (totals.cycle && windows.cycleStartMs !== null && row.decidedAtMs >= windows.cycleStartMs) add(totals.cycle);
+  }
+  return totals;
+}
+
+/** A member's card credit fees for the cycle (from `cycleStartMs`) and the year to date. */
+export async function cardCreditFeeTotals(wallet: string, cycleStartMs: number | null, now = new Date()): Promise<CreditFeeTotals> {
+  const yearStartMs = Date.UTC(now.getUTCFullYear(), 0, 1);
+  const windows = { cycleStartMs, yearStartMs };
+  const pool = getPayPool();
+  if (!pool) return sumCreditFees([], windows);
+  const since = new Date(Math.min(yearStartMs, cycleStartMs ?? yearStartMs));
+  const { rows } = await pool
+    .query<{ decided_at: Date; fee_cents: string | number; fee_status: string | null; fee_returned_cents: string | number | null }>(
+      `SELECT decided_at, fee_cents, fee_status, fee_returned_cents FROM lithic_auth_decisions
+        WHERE wallet = $1 AND result = 'APPROVED' AND fee_cents > 0 AND decided_at >= $2`,
+      [wallet.toLowerCase(), since],
+    )
+    // A database that has never decided a fee has none to total.
+    .catch(() => ({ rows: [] as never[] }));
+  return sumCreditFees(
+    rows.map((r) => ({
+      decidedAtMs: new Date(r.decided_at).getTime(),
+      feeCents: Number(r.fee_cents) || 0,
+      status: r.fee_status,
+      returnedCents: Number(r.fee_returned_cents ?? 0) || 0,
+    })),
+    windows,
+  );
 }
 
 /** Spread a repaid total over purchases, oldest first. Pure; `purchases` must be oldest first. */
@@ -212,14 +339,28 @@ export async function listCardTransactions(
   if (!pool) return [];
   const repaidBy = await creditRepaidByTransaction(wallet).catch(() => new Map<string, number>());
 
-  const { rows } = await pool.query<Row>(
-    `SELECT transaction_token, card_token, amount_cents, net_cents, draws, merchant, decided_at
-       FROM lithic_auth_decisions
-      WHERE wallet = $1 AND result = 'APPROVED'
-      ORDER BY decided_at DESC
-      LIMIT $2`,
-    [wallet.toLowerCase(), Math.min(Math.max(limit, 1), 200)],
-  );
+  const params = [wallet.toLowerCase(), Math.min(Math.max(limit, 1), 200)];
+  const { rows } = await pool
+    .query<Row>(
+      `SELECT transaction_token, card_token, amount_cents, net_cents, draws, merchant, decided_at, fee_cents, fee_status,
+              fee_returned_cents
+         FROM lithic_auth_decisions
+        WHERE wallet = $1 AND result = 'APPROVED'
+        ORDER BY decided_at DESC
+        LIMIT $2`,
+      params,
+    )
+    // A database that has never decided a fee (the columns arrive with the auth store) still lists.
+    .catch(() =>
+      pool.query<Row>(
+        `SELECT transaction_token, card_token, amount_cents, net_cents, draws, merchant, decided_at
+           FROM lithic_auth_decisions
+          WHERE wallet = $1 AND result = 'APPROVED'
+          ORDER BY decided_at DESC
+          LIMIT $2`,
+        params,
+      ),
+    );
 
   return rows.map((row) => {
     const merchant = (row.merchant ?? {}) as Record<string, unknown>;
@@ -247,6 +388,7 @@ export async function listCardTransactions(
       cardToken: row.card_token,
       creditCents: creditOf(row.draws),
       creditRepaidCents: repaidBy.get(row.transaction_token) ?? 0,
+      ...creditFeeOf(row.fee_cents, row.fee_status, row.fee_returned_cents),
     };
   });
 }

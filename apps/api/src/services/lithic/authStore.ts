@@ -8,9 +8,11 @@ import {
   releaseDraws,
   restoreDraws,
   type AuthDecision,
+  type CreditFeeInput,
   type Draw,
   type TierAvailability,
 } from './authDecision.js';
+import { currentCreditFee, type CreditFeeStatus } from './cardCreditFee.js';
 
 /*
  * The authorization side of the ledger — spec step 3.
@@ -38,6 +40,7 @@ import {
 const SNAPSHOTS = 'lithic_tier_snapshots';
 const DECISIONS = 'lithic_auth_decisions';
 const ENTRIES = 'lithic_ledger_entries';
+const COVERED = 'lithic_covered_borrowers';
 
 let ensured = false;
 
@@ -91,6 +94,44 @@ async function ensureTables(): Promise<void> {
      * know which bank cut-off a credit portion is due at.
      */
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS settled_at TIMESTAMPTZ;
+    /*
+     * The card credit fee (decision 55; migration 0084 adds the same columns where this table shares
+     * the migrated database). Beside the purchase, never inside it: draws and credit_cents keep
+     * meaning the purchase, which settlement funding (fiat owed to the merchant) relies on. The
+     * fee is Clear Lending's, on the member's line, and is never paid to anyone in fiat.
+     *   fee_cents    what was decided at the swipe; fee_draws, the tiers it came from.
+     *   fee_status   held | charged | released | waived | returned (cardCreditFee.ts). Null: none.
+     */
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_cents BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_draws JSONB NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_status TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_at TIMESTAMPTZ;
+    /*
+     * Credited back by returnCardCreditFee (MB-04 §5.4(f)), apart from the full-refund return:
+     *   fee_return_target_cents  what should have been credited back, in total;
+     *   fee_returned_cents       what the chain says has been (cardCreditFeeOf's returned);
+     *   fee_return_*             the last attempt's outcome, like every other chain call here.
+     */
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_target_cents BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_returned_cents BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_status TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_tx TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_error TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS fee_return_attempts INTEGER NOT NULL DEFAULT 0;
+
+    /*
+     * Covered borrowers under the Military Lending Act (MB-04 §5.10): no card credit fee while a
+     * member is one. Kept per member and copied onto each card's snapshot when it is written, so
+     * the Auth Stream reads it from the one row it already reads. No row, or NULL: not covered.
+     * Nothing sets it yet: the covered-borrower check is still to be built (authStore.setCoveredBorrower).
+     */
+    CREATE TABLE IF NOT EXISTS ${COVERED} (
+      wallet TEXT PRIMARY KEY,
+      covered BOOLEAN,
+      source TEXT,
+      checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    ALTER TABLE ${SNAPSHOTS} ADD COLUMN IF NOT EXISTS covered_borrower BOOLEAN;
 
     CREATE TABLE IF NOT EXISTS ${ENTRIES} (
       id BIGSERIAL PRIMARY KEY,
@@ -125,6 +166,8 @@ export interface AuthorizeInput {
   amountCents: number;
   requestStatus: string;
   merchant?: unknown;
+  /** The card credit fee in force. Omitted: the cached settings (the Auth Stream's case). */
+  creditFee?: CreditFeeInput;
 }
 
 export interface AuthorizeOutcome {
@@ -172,6 +215,8 @@ export async function authorize(input: AuthorizeInput): Promise<AuthorizeOutcome
         draws: [],
         creditCents: 0,
         availableCents: 0,
+        feeCents: 0,
+        feeDraws: [],
       },
       replayed: false,
       known: false,
@@ -193,9 +238,12 @@ export async function authorize(input: AuthorizeInput): Promise<AuthorizeOutcome
       credit_cents: string;
       availability: unknown;
       wallet: string | null;
-    }>(`SELECT result, draws, credit_cents, availability, wallet FROM ${DECISIONS} WHERE transaction_token = $1`, [
-      input.transactionToken,
-    ]);
+      fee_cents: string | number | null;
+      fee_draws: unknown;
+    }>(
+      `SELECT result, draws, credit_cents, availability, wallet, fee_cents, fee_draws FROM ${DECISIONS} WHERE transaction_token = $1`,
+      [input.transactionToken],
+    );
 
     if (existing.rows[0]) {
       await client.query('COMMIT');
@@ -204,8 +252,10 @@ export async function authorize(input: AuthorizeInput): Promise<AuthorizeOutcome
         decision: {
           result: row.result as AuthDecision['result'],
           draws: (row.draws as AuthDecision['draws']) ?? [],
-          creditCents: parseInt(row.credit_cents, 10) || 0,
+          creditCents: parseInt(String(row.credit_cents), 10) || 0,
           availableCents: 0,
+          feeCents: Number(row.fee_cents ?? 0) || 0,
+          feeDraws: Array.isArray(row.fee_draws) ? (row.fee_draws as Draw[]) : [],
         },
         replayed: true,
         known: true,
@@ -226,6 +276,8 @@ export async function authorize(input: AuthorizeInput): Promise<AuthorizeOutcome
         draws: [],
         creditCents: 0,
         availableCents: 0,
+        feeCents: 0,
+        feeDraws: [],
       };
       await recordDecision(client, input, decision, null, Date.now() - started);
       await client.query('COMMIT');
@@ -238,11 +290,16 @@ export async function authorize(input: AuthorizeInput): Promise<AuthorizeOutcome
       amountCents: input.amountCents,
       availability,
       cardPaused: Boolean(row.card_paused),
+      // No fee for a covered borrower (MB-04 §5.10). Null, as for every member today, is not covered.
+      coveredBorrower: row.covered_borrower === true,
+      // The card credit fee: settings and a cached chain bound, no I/O (cardCreditFee.ts).
+      creditFee: input.creditFee ?? currentCreditFee(),
     });
 
-    // 3. Decrement and write the issuance, only on an approval that actually drew something.
+    // 3. Decrement and write the issuance, only on an approval that actually drew something. The fee
+    //    comes off the snapshot with the purchase: it uses the same room.
     if (decision.result === 'APPROVED' && decision.draws.length > 0) {
-      const next = applyDraws(availability, decision.draws);
+      const next = applyDraws(availability, [...decision.draws, ...decision.feeDraws]);
       await client.query(
         `UPDATE ${SNAPSHOTS}
          SET cash_cents = $2, savings_cents = $3, asset_cents = $4, income_cents = $5,
@@ -260,6 +317,9 @@ export async function authorize(input: AuthorizeInput): Promise<AuthorizeOutcome
 
       if (decision.creditCents > 0) {
         await recordCreditIssuance(client, row.wallet, input, decision);
+      }
+      if (decision.feeCents > 0) {
+        await recordCreditFee(client, row.wallet, input.transactionToken, input.cardToken, decision.feeDraws);
       }
     }
 
@@ -285,9 +345,11 @@ async function recordDecision(
   await client.query(
     `INSERT INTO ${DECISIONS} (
        transaction_token, card_token, wallet, amount_cents, request_status,
-       result, draws, credit_cents, availability, merchant, latency_ms, net_cents
+       result, draws, credit_cents, availability, merchant, latency_ms, net_cents,
+       fee_cents, fee_draws, fee_status, fee_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb, $10::jsonb, $11, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9::jsonb, $10::jsonb, $11, $12,
+             $13, $14::jsonb, $15, CASE WHEN $15::text IS NULL THEN NULL ELSE now() END)
      ON CONFLICT (transaction_token) DO NOTHING`,
     [
       input.transactionToken,
@@ -303,6 +365,9 @@ async function recordDecision(
       latencyMs,
       // A decline holds nothing, so there is nothing for a later reversal to give back.
       decision.result === 'APPROVED' ? Math.max(0, input.amountCents) : 0,
+      decision.result === 'APPROVED' ? decision.feeCents : 0,
+      JSON.stringify(decision.result === 'APPROVED' ? decision.feeDraws : []),
+      decision.result === 'APPROVED' && decision.feeCents > 0 ? ('held' satisfies CreditFeeStatus) : null,
     ],
   );
 }
@@ -358,8 +423,12 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileOutcome
       draws: unknown;
       net_cents: string | null;
       unfunded_cents: string | null;
+      fee_cents: string | number | null;
+      fee_draws: unknown;
+      fee_status: string | null;
     }>(
-      `SELECT card_token, wallet, amount_cents, result, draws, net_cents, unfunded_cents
+      `SELECT card_token, wallet, amount_cents, result, draws, net_cents, unfunded_cents,
+              fee_cents, fee_draws, fee_status
          FROM ${DECISIONS} WHERE transaction_token = $1 FOR UPDATE`,
       [input.transactionToken],
     );
@@ -446,6 +515,25 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileOutcome
       }
     }
 
+    const creditCents = draws
+      .filter((d) => d.source !== 'cash')
+      .reduce((sum, d) => sum + d.amountCents, 0);
+
+    /*
+     * The card credit fee rides on the purchase's credit part (decision 55). While that part stands,
+     * the fee stands too: a partial refund keeps it, and a clearing above the authorization keeps
+     * the same fee rather than adding another. When it falls to zero (a void, a full refund, or a
+     * clearing that ended up paid from cash), the fee goes with it. Before settlement it was never
+     * charged, so it is released here: its draws go back on the snapshot and its ledger entries are
+     * reversed. After settlement (charged) it is the chain's to give back: the contract returns
+     * it on the reversal that brings the purchase to zero, and the settlement sync records that from
+     * the chain, ledger included (cardSettlementService), so the books never say it is back while
+     * the chain still carries it.
+     */
+    const feeDrawn = (Array.isArray(row.fee_draws) ? row.fee_draws : []) as Draw[];
+    const feeGoes = creditCents <= 0 && row.fee_status === 'held';
+    if (feeGoes) next = restoreDraws(next, feeDrawn);
+
     await client.query(
       `UPDATE ${SNAPSHOTS}
        SET cash_cents = $2, savings_cents = $3, asset_cents = $4, income_cents = $5,
@@ -454,9 +542,15 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileOutcome
       [row.card_token, next.cashCents, next.savingsCents, next.assetCents, next.incomeCents, next.boostCents],
     );
 
-    const creditCents = draws
-      .filter((d) => d.source !== 'cash')
-      .reduce((sum, d) => sum + d.amountCents, 0);
+    if (feeGoes) {
+      await client.query(
+        `UPDATE ${DECISIONS} SET fee_status = 'released', fee_at = now() WHERE transaction_token = $1`,
+        [input.transactionToken],
+      );
+      if (wallet) {
+        await recordCreditFeeReversal(client, wallet, input.transactionToken, row.card_token, feeDrawn, 'card_credit_fee_released');
+      }
+    }
 
     await client.query(
       `UPDATE ${DECISIONS}
@@ -566,6 +660,127 @@ async function recordCreditIssuance(
   }
 }
 
+/*
+ * The card credit fee's double entry (decision 55), its own lines rather than part of the purchase's.
+ *
+ * At the swipe the member owes the fee against the tier it was drawn from, like the purchase, so it
+ * counts in what they owe and in each tier's outstanding; the other side is Clear Lending's fee
+ * income (the contract mints the fee's claim to the card settlement account, CL Operating), not the
+ * settlement float: no fiat leaves for it. A fee that is released (a void before settlement), waived
+ * (the chain refused it at settlement) or returned (a full refund after settlement) is reversed with
+ * the same pair the other way, under its own event type, so the history says which it was.
+ *
+ * Keyed by the purchase and the tier, so a redelivery collides with itself on the unique index.
+ */
+export const CARD_CREDIT_FEE_ACCOUNT = 'coop_card_credit_fees';
+/**
+ * Released, waived and returned give back the whole of what is left. A credit
+ * (`card_credit_fee_credit`, returnCardCreditFee: the CFL cap of MB-04 §5.4(f)) gives back part of it,
+ * and is keyed by the running total credited so each one is booked once.
+ */
+export type CreditFeeReversal =
+  | 'card_credit_fee_released'
+  | 'card_credit_fee_waived'
+  | 'card_credit_fee_returned'
+  | 'card_credit_fee_credit';
+
+type Queryable = Pick<PoolClient, 'query'>;
+
+async function recordCreditFee(
+  client: Queryable,
+  wallet: string,
+  transactionToken: string,
+  cardToken: string,
+  feeDraws: Draw[],
+): Promise<void> {
+  for (const draw of feeDraws) {
+    if (draw.source === 'cash' || !(draw.amountCents > 0)) continue;
+    await client.query(
+      `INSERT INTO ${ENTRIES} (entry_group, wallet, account, direction, amount_cents, rail, event_type, external_id, metadata)
+       VALUES ($1, $2, $3, 'debit', $4, 'fiat', 'card_credit_fee', $5, $6::jsonb),
+              ($1, $2, '${CARD_CREDIT_FEE_ACCOUNT}', 'credit', $4, 'fiat', 'card_credit_fee', $5, $6::jsonb)
+       ON CONFLICT DO NOTHING`,
+      [
+        transactionToken,
+        wallet,
+        `member_credit_${draw.source}`,
+        draw.amountCents,
+        `${transactionToken}:fee:${draw.source}`,
+        JSON.stringify({ cardToken, tier: draw.source, fee: true }),
+      ],
+    );
+  }
+}
+
+/** Give the fee back in the books: released, waived or returned. Exported for the settlement sync. */
+export async function recordCreditFeeReversal(
+  client: Queryable,
+  wallet: string,
+  transactionToken: string,
+  cardToken: string | null,
+  feeDraws: Draw[],
+  eventType: CreditFeeReversal,
+  /** For a partial credit: the running total credited back after this one, which keys it. */
+  creditedTotalCents?: number,
+): Promise<void> {
+  for (const draw of feeDraws) {
+    if (draw.source === 'cash' || !(draw.amountCents > 0)) continue;
+    const key =
+      creditedTotalCents === undefined
+        ? `${transactionToken}:fee:${draw.source}`
+        : `${transactionToken}:fee:${draw.source}:${creditedTotalCents}`;
+    await client.query(
+      `INSERT INTO ${ENTRIES} (entry_group, wallet, account, direction, amount_cents, rail, event_type, external_id, metadata)
+       VALUES ($1, $2, $3, 'credit', $4, 'fiat', $7, $5, $6::jsonb),
+              ($1, $2, '${CARD_CREDIT_FEE_ACCOUNT}', 'debit', $4, 'fiat', $7, $5, $6::jsonb)
+       ON CONFLICT DO NOTHING`,
+      [
+        transactionToken,
+        wallet,
+        `member_credit_${draw.source}`,
+        draw.amountCents,
+        key,
+        JSON.stringify({ cardToken, tier: draw.source, fee: true }),
+        eventType,
+      ],
+    );
+  }
+}
+
+/** Whether a member is a covered borrower (MB-04 §5.10). Null: never checked, which is not covered. */
+export async function coveredBorrowerOf(wallet: string): Promise<boolean | null> {
+  const pool = getPayPool();
+  if (!pool) return null;
+  await ensureTables();
+  const { rows } = await pool.query<{ covered: boolean | null }>(`SELECT covered FROM ${COVERED} WHERE wallet = $1`, [
+    wallet.trim().toLowerCase(),
+  ]);
+  return rows[0]?.covered ?? null;
+}
+
+/**
+ * Record a member's covered-borrower status and put it on every card snapshot they have, so the next
+ * authorization sees it. For the covered-borrower check, which does not exist yet: nothing calls this
+ * outside tests today, and every member reads as not covered.
+ */
+export async function setCoveredBorrower(wallet: string, covered: boolean | null, source: string): Promise<void> {
+  const pool = getPayPool();
+  if (!pool) return;
+  await ensureTables();
+  const w = wallet.trim().toLowerCase();
+  await pool.query(
+    `INSERT INTO ${COVERED} (wallet, covered, source, checked_at) VALUES ($1, $2, $3, now())
+     ON CONFLICT (wallet) DO UPDATE SET covered = EXCLUDED.covered, source = EXCLUDED.source, checked_at = now()`,
+    [w, covered, source],
+  );
+  await pool.query(`UPDATE ${SNAPSHOTS} SET covered_borrower = $2 WHERE wallet = $1`, [w, covered]);
+}
+
+/** For the settlement sync: make sure the ledger table exists before it writes a fee reversal. */
+export async function ensureAuthTables(): Promise<void> {
+  await ensureTables();
+}
+
 export const authStore = {
   isConfigured(): boolean {
     return Boolean(getPayPool());
@@ -577,9 +792,11 @@ export const authStore = {
     if (!pool) return;
     await ensureTables();
     await pool.query(
-      `INSERT INTO ${SNAPSHOTS} (card_token, wallet, cash_cents, savings_cents, asset_cents, income_cents, boost_cents, card_paused)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO ${SNAPSHOTS} (card_token, wallet, cash_cents, savings_cents, asset_cents, income_cents, boost_cents, card_paused,
+                                 covered_borrower)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT covered FROM ${COVERED} WHERE wallet = $2))
        ON CONFLICT (card_token) DO UPDATE SET
+         covered_borrower = EXCLUDED.covered_borrower,
          wallet = EXCLUDED.wallet,
          cash_cents = EXCLUDED.cash_cents,
          savings_cents = EXCLUDED.savings_cents,
@@ -619,4 +836,6 @@ export const authStore = {
 
   authorize,
   reconcile,
+  coveredBorrowerOf,
+  setCoveredBorrower,
 };

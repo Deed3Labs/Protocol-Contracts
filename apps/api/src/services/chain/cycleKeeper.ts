@@ -113,6 +113,8 @@ export interface KeeperResult {
   frozen?: boolean;
   txHash?: string;
   reason?: string;
+  /** Unix seconds of the cycle end (or grace end) that made the call due. */
+  since?: number;
 }
 
 export interface KeeperRun {
@@ -184,7 +186,7 @@ export async function runCycleKeeper(deps: KeeperDeps): Promise<KeeperRun> {
     run.deferred = Math.max(0, due.length - max);
 
     for (const d of due.slice(0, max)) {
-      const result: KeeperResult = { wallet: d.wallet, call: d.call, action: 'failed', because: d.because };
+      const result: KeeperResult = { wallet: d.wallet, call: d.call, action: 'failed', because: d.because, since: d.since };
       run.results.push(result);
       try {
         const call = { to: deps.issuer, data: IFACE.encodeFunctionData(d.call, [d.wallet]) };
