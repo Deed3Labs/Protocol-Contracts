@@ -599,21 +599,24 @@ function makeMoney() {
       compact = false
     } = {}) {
       const L = lossLayers(),
-        ahead = L.slice(0, 4).reduce((a, x) => a + x[2], 0),
-        total = ahead + L[4][2];
+        ahead = L.slice(0, 4).reduce((a, x) => a + (x[2] ?? 0), 0),
+        total = ahead + (L[4][2] ?? 0);
       const step = compact ? total > 12000 ? 10000 : 5000 : total > 12000 ? 5000 : 2500,
-        max = Math.ceil(total / step) * step,
+        max = Math.max(step, Math.ceil(total / step) * step),
         pc = v => (v / max * 100).toFixed(3) + '%';
       const worst = M.unsecured,
-        reach = L.findIndex((_, i) => L.slice(0, i + 1).reduce((a, x) => a + x[2], 0) >= worst);
+        reach = L.findIndex((_, i) => L.slice(0, i + 1).reduce((a, x) => a + (x[2] ?? 0), 0) >= worst);
       let at = 0;
-      const rows = L.map(([k, sub, v, c], i) => {
+      /* live, a rung that isn't read yet counts as nothing and says so: the order then shows the pool's loss at its worst */
+      const rows = L.map(([k, sub, v0, c], i) => {
+        const unread = v0 == null,
+          v = v0 ?? 0;
         const a = at;
         at += v;
-        const hit = i === reach,
+        const hit = !unread && i === reach,
           used = Math.max(0, Math.min(v, worst - a));
-        const note = used >= v ? 'All used' : used > 0 ? `${money0(used)}${compact ? '' : ' of it'} used` : 'Untouched';
-        return <div key={i} className={`lw-r${i === 4 ? ' pool' : ''}${hit ? ' hit' : ''}`}><span className="lw-n" style={css(`--c:${c}`)}>{i + 1}</span><span className="lw-k"><b>{compact && k === 'Clear Lending’s capital' ? 'Residual Capital' : k}</b>{compact ? '' : <em>{sub}</em>}</span><span className="lw-t"><i className="lw-bar" style={css(`left:${pc(a)};width:${pc(v)};--c:${c}`)} />{used ? <i className="lw-used" style={css(`left:${pc(a)};width:${pc(used)};--c:${c}`)} /> : ''}{compact ? '' : <i className="lw-wc" style={css(`left:${pc(worst)}`)} />}</span><span className="lw-v"><b>{money(v)}</b><em className={used ? 'u' : ''}>{note}</em></span></div>;
+        const note = unread ? 'Not read yet' : used >= v && v ? 'All used' : used > 0 ? `${money0(used)}${compact ? '' : ' of it'} used` : 'Untouched';
+        return <div key={i} className={`lw-r${i === 4 ? ' pool' : ''}${hit ? ' hit' : ''}`}><span className="lw-n" style={css(`--c:${c}`)}>{i + 1}</span><span className="lw-k"><b>{compact && k === 'Clear Lending’s capital' ? 'Residual Capital' : k}</b>{compact ? '' : <em>{sub}</em>}</span><span className="lw-t"><i className="lw-bar" style={css(`left:${pc(a)};width:${pc(v)};--c:${c}`)} />{used ? <i className="lw-used" style={css(`left:${pc(a)};width:${pc(used)};--c:${c}`)} /> : ''}{compact ? '' : <i className="lw-wc" style={css(`left:${pc(worst)}`)} />}</span><span className="lw-v"><b>{unread ? '—' : money(v)}</b><em className={used ? 'u' : ''}>{note}</em></span></div>;
       });
       const ticks = Array.from({
         length: max / step + 1
@@ -623,27 +626,32 @@ function makeMoney() {
     }
     function lossVerdict() {
       const L = lossLayers(),
-        ahead = L.slice(0, 4).reduce((a, x) => a + x[2], 0),
+        ahead = L.slice(0, 4).reduce((a, x) => a + (x[2] ?? 0), 0),
         worst = M.unsecured,
-        hit = Math.max(0, worst - ahead);
+        hit = Math.max(0, worst - ahead),
+        partial = L.slice(0, 4).some(x => x[2] == null);
       return {
         ahead,
         hit,
+        partial,
         line: hit ? `If every unsecured member stopped paying at once, the yield pool would bear ${money(hit)}` : `Even if every unsecured member stopped paying at once, the yield pool loses nothing`
       };
     }
-    /* live, the ladder's layers as Money reads them: Clear Lending's Spread and capital aren't read yet (the credit book's
-       monthly figures), so until they are the ladder isn't drawn (a ladder missing rungs would say a loss stops too soon) */
+    /* live, the ladder's layers as Money reads them. Clear Lending's Spread and capital aren't read yet (the credit book's
+       monthly figures): those rungs show "Not read yet" and count as nothing, so what stands ahead of the pool is a floor
+       ("at least") and the pool's loss is never understated */
     function lossLayersLive() {
       return [['Spread', 'Clear Lending’s margin this month', M.spread, 'var(--fg)'], ['Loss Reserve', 'Clear Lending’s CL Loss Reserve', M.lr, 'color-mix(in srgb,var(--fg) 58%,transparent)'], ['Credit Backstop', 'AssurancePool · coverage available', M.cover ?? (L.assurance ? L.assurance.coverage : null), 'var(--underway)'], ['Clear Lending’s capital', 'Its own money, behind its lenders', M.resid, 'var(--land)'], ['Yield pool', 'Holders’ deposits, last', Y.assets, 'var(--live)']];
     }
+    /* Overview's slot keeps the AssurancePool's own cell live until every rung is read: it's the one place its compartments,
+       floor and draws show. Pools draws the order with what is read (lossLadder marks the rest) */
     const ladderRead = () => !L || lossLayersLive().every(l => l[2] != null);
     function gateCell() {
       if (L && !ladderRead()) return assuranceCell();
       const V = lossVerdict();
       return cell('s5', 'Who takes a loss first', <span className="lbl">If a member stops paying</span>, <div className="ngt lw-c">{lossLadder({
           compact: true
-        })}</div>, <><span><b>{money(V.ahead)}</b>{" stands ahead of the yield pool · in the worst case it loses "}{V.hit ? money(V.hit) : 'nothing'}</span><button data-npool="ap" data-ntab="pools">Full order →</button></>);
+        })}</div>, <><span>{V.partial ? 'At least ' : ''}<b>{money(V.ahead)}</b>{" stands ahead of the yield pool · in the worst case it loses "}{V.hit ? money(V.hit) : 'nothing'}</span><button data-npool="ap" data-ntab="pools">Full order →</button></>);
     }
     // the demo draws the reference's chart; live, the one below, scaled to the schedule with its gap marked
     function runwayChartRef(h = 200) {
@@ -902,7 +910,7 @@ function makeMoney() {
       const st = (n, k, v, s) => <div className="nlo-s"><span className="nlo-n">{n}</span><b>{k}</b><span className="m-big">{v}</span><span>{s}</span></div>;
       const V = lossVerdict();
       const NEVER = [['Bondholders', M.bonds, 'Never written down'], ['Payout pool', M.payout, 'Owed to shops'], ['Member Assurance', M.apMem ?? 0, 'The other compartment'], ['Other members’ savings', M.savings - M.savingsBacked, 'Theirs, untouched']];
-      const order = L && !ladderRead() ? notReal('s12', 'If a member stops paying', 'Needs Clear Lending’s Spread and capital this month, from the credit book, beside its Loss Reserve and the Credit Backstop.') : cell('s12', 'If a member stops paying', <span className="lbl">Who takes the loss, in order · IV-02 5.1</span>, <div className="lw-wrap"><div className="lw-top"><div className="m-big">{money(V.ahead)}{" "}<small>{"stands ahead of the yield pool. "}{V.line}.</small></div><p className="lw-pre"><b>Before any of this:</b>{" savings-backed credit ("}{money(M.savingsBacked)}) is paid from the member’s own pledged savings. Only what collateral doesn’t cover becomes a loss and starts at step 1.</p></div>{lossLadder()}<div className="lw-nv"><span className="lw-nh"><b>Never takes a loss</b><span>{money(NEVER.reduce((a, x) => a + x[1], 0))}</span><em>Outside the order</em></span>{NEVER.map(([k, v, sub], __k) => <span key={__k} className="lw-ni"><b>{k}</b><span>{money(v)}</span><em>{sub}</em></span>)}</div></div>, <><span className="f-key"><span><i className="lw-ks" />Used if every unsecured member stopped paying</span><span><i className="lw-ks lt" />Still left</span></span><button data-ntab="credit">Credit →</button></>, 'loss');
+      const order = cell('s12', 'If a member stops paying', <span className="lbl">Who takes the loss, in order · IV-02 5.1</span>, <div className="lw-wrap"><div className="lw-top"><div className="m-big">{money(V.ahead)}{" "}<small>{V.partial ? 'at least stands ahead of the yield pool: Clear Lending’s Spread and capital aren’t read yet. ' : 'stands ahead of the yield pool. '}{V.line}.</small></div><p className="lw-pre"><b>Before any of this:</b>{" savings-backed credit ("}{money(M.savingsBacked)}) is paid from the member’s own pledged savings. Only what collateral doesn’t cover becomes a loss and starts at step 1.</p></div>{lossLadder()}<div className="lw-nv"><span className="lw-nh"><b>Never takes a loss</b><span>{money(NEVER.reduce((a, x) => a + x[1], 0))}</span><em>Outside the order</em></span>{NEVER.map(([k, v, sub], __k) => <span key={__k} className="lw-ni"><b>{k}</b><span>{money(v)}</span><em>{sub}</em></span>)}</div></div>, <><span className="f-key"><span><i className="lw-ks" />Used if every unsecured member stopped paying</span><span><i className="lw-ks lt" />Still left</span></span><button data-ntab="credit">Credit →</button></>, 'loss');
       html(document.getElementById('nv'), <>{band(tiles, 1)}{D}{band(order)}</>);
     }
     function poolAP() {
@@ -1189,14 +1197,21 @@ function makeMoney() {
     function poolYield() {
       const yr = bps => (bps / 100).toFixed(2) + '%',
         depAt = u => yApy(yBorrowBps(u) * u) * 100;
+      /* live, the rate model as the pool holds it (rateModel()); the demo keeps the reference's words */
+      const rateFoot = () => {
+        const c = L ? Y.curve : null;
+        if (!c || c.r0 == null) return '2% base, +3% to the 80% kink, +5% above · 10% is the ceiling, only if every dollar were lent out';
+        const p = f => `${+(f * 100).toFixed(2)}%`;
+        return `${p(c.r0)} base, +${p(c.s1)} to the ${p(c.k)} kink, +${p(c.s2)} above · ${p(c.r0 + c.s1 + c.s2)} is the ceiling, only if every dollar were lent out`;
+      };
       const sc = [['50%', .5], [`${Math.round(Y.util * 100)}% now`, Y.util], [`${Math.round(Y.utilAfter * 100)}% ${L ? 'in 14 days' : '2 Nov'}`, Y.utilAfter], ['80% · kink', .8], ['90%', .9], ['100%', 1]],
         smx = 10;
       const t = (k, v, n, cls = '') => <div className={cls}>{lbl(k)}<b>{v}</b><span>{n}</span></div>;
       const a = L && !Y.rateAt ? notReal('s7', 'Rate', 'Needs the Yield Pool’s Funding Rate, read by the API from the chain: fundingRate and fundingRateAt at each share lent out.') : cell('s7', 'Rate', <span className="lbl">{"LendingPool · opened "}{Y.opened}</span>, <div className="npd"><div className="ngp-eq">{t('Funding Rate', yr(Y.borrowBps), 'a year · Clear Lending pays it')}<i>×</i>{t('Deployed', pct(Y.lent, Y.assets), `${money(Y.lent)} to Clear Lending`)}<i>=</i>{t('Holders earn', yr(Y.supplyBps), 'a year · before losses', 'hi')}</div>{lbl('Holders earn, by share lent out · Funding Rate × share, before losses')}<div className="nlm wk yr">{sc.map(([k, u], i) => {
             const h = depAt(u) / smx * 100;
             return <div key={i}><b className="yr-t"><span style={css(`bottom:calc(${h}% + 6px)`)}>{depAt(u).toFixed(2)}%</span><i style={css(`height:${h}%`)} className={i === 1 ? 'hi' : 'hx'} /></b><s>{k}</s></div>;
-          })}</div></div>, <><span>2% base, +3% to the 80% kink, +5% above · 10% is the ceiling, only if every dollar were lent out</span><span /></>);
-      const b = cell('s5', 'How holders get paid', <span className="lbl">Pool Shares · ERC-4626</span>, <div className="npd"><div className="m-big">${Y.price.toFixed(4)}{" "}<small>{"Share Value · up "}{((Y.price - 1) * 100).toFixed(2)}{"% since "}{Y.opened}</small></div><div className="led">{[['Pool Interest', 'Raises Share Value'], [`Redemptions up to ${money(Y.cash)}`, 'Paid at once, while no one is queued'], ['Above that', 'A strict queue · still earning, still bearing losses'], ['Loss Holdback', 'None open'], ['Pledged to credit', `${money(Y.pledged)} · locked`], ['Earned so far', money(Y.earned)]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span>{L && Y.queued ? `Queue: ${money(Y.queued)}` : 'Queue: empty'}</span><span /></>);
+          })}</div></div>, <><span>{rateFoot()}</span><span /></>);
+      const b = cell('s5', 'How holders get paid', <span className="lbl">Pool Shares · ERC-4626</span>, <div className="npd"><div className="m-big">${Y.price.toFixed(4)}{" "}<small>{"Share Value · up "}{((Y.price - 1) * 100).toFixed(2)}{"% since "}{Y.opened}</small></div><div className="led">{[['Pool Interest', 'Raises Share Value'], [`Redemptions up to ${money(Y.cash)}`, 'Paid at once, while no one is queued'], ['Above that', 'A strict queue · still earning, still bearing losses'], ['Loss Holdback', L ? Y.holdback == null ? 'Not read yet' : Y.holdback ? `${money(Y.holdback)} held` : 'None open' : 'None open'], ['Pledged to credit', `${money(Y.pledged)} · locked`], ['Earned so far', money(Y.earned)]].map(([k, v], __k) => <div key={__k}><span>{k}</span><b>{v}</b></div>)}</div></div>, <><span>{L && Y.queued ? `Queue: ${money(Y.queued)}` : 'Queue: empty'}</span><span /></>);
       const per = 8,
         rows = Y_DEP.slice(N.dp * per, N.dp * per + per);
       const tbl = cell('s12', 'Holders', <span className="lbl">{Y.depositors}{" members · masked"}</span>, L && !rows.length ? <div className="lv-e"><span>No one holds Pool Shares yet</span></div> : <div className="bt-wrap"><table className="bt ndp"><colgroup><col style={css("width:16%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /></colgroup><thead><tr><th className="c-nm">Member</th><th style={css("text-align:left")}>Since</th><th>Put in</th><th>Earned</th><th>Worth now</th><th>Pledged</th><th>Can redeem</th></tr></thead><tbody>{rows.map((r, __k) => <tr key={__k}><td className="tn"><b className="mono">M•••{r.id}</b></td><td style={css("text-align:left")}>{r.since}</td><td>{money(r.d)}</td><td>{money(r.e)}</td><td><b>{money(r.w)}</b></td><td>{r.pl ? money(r.pl) : <span className="quiet">None</span>}</td><td className="quiet">{r.pl ? money(r.w - r.pl) : 'All of it'}</td></tr>)}</tbody></table></div>, <><span>{"Names stay masked · "}{money(Y.assets)}{" in all"}</span>{pager(N.dp, Y_DEP.length, per, 'ndp')}</>);
@@ -1207,7 +1222,7 @@ function makeMoney() {
       const node = (k, v, sub, cls = '') => <div className={`ny-nd ${cls}`}><span>{k}</span><b>{v}</b><em>{sub}</em></div>;
       const link = (out, back) => <div className="ny-ln"><div className="ny-o"><em>{out}</em><i /></div><div className="ny-b"><i /><em>{back}</em></div></div>;
       const V = lossVerdict();
-      const flow = cell('s12', 'How the pool’s money moves', <span className="lbl">Lending order</span>, <><div className="ny-dg">{node('Holders', money(Y.principal), `${Y.depositors} members put in`)}{link('Subscribe', 'Redeem')}{node('Yield pool', money(Y.assets), `Share Value $${Y.price.toFixed(4)}`, 'me')}{link('Deploy · two signers', 'Return · interest, then principal')}{node('Clear Lending', money(Y.lent), 'Borrowed · owed back')}{link('Lend as credit', 'Repay')}{node('Members', money(M.unsecured), 'Owe on unsecured credit')}</div><div className="ny-ls"><span className="ny-lx">If a member doesn’t repay</span>{L && !ladderRead() ? <span>Clear Lending takes the loss first: its Spread, Loss Reserve and capital, then the co-op’s backstop. The pool is last.</span> : <span>{"Clear Lending takes the loss first: its Spread, Loss Reserve and capital, then the co-op’s backstop, "}<b>{money(V.ahead)}</b>{" in all. The pool is last."}</span>}<button className="lnk" data-ntab="pools" data-npool="yield" data-njump="loss">Loss order ↓</button></div></>, <><span>The pool and the bonds are the funding base · they lend only to Clear Lending, never to housing</span><span /></>);
+      const flow = cell('s12', 'How the pool’s money moves', <span className="lbl">Lending order</span>, <><div className="ny-dg">{node('Holders', money(Y.principal), `${Y.depositors} members put in`)}{link('Subscribe', 'Redeem')}{node('Yield pool', money(Y.assets), `Share Value $${Y.price.toFixed(4)}`, 'me')}{link('Deploy · two signers', 'Return · interest, then principal')}{node('Clear Lending', money(Y.lent), 'Borrowed · owed back')}{link('Lend as credit', 'Repay')}{node('Members', money(M.unsecured), 'Owe on unsecured credit')}</div><div className="ny-ls"><span className="ny-lx">If a member doesn’t repay</span><span>{"Clear Lending takes the loss first: its Spread, Loss Reserve and capital, then the co-op’s backstop, "}{V.partial ? 'at least ' : ''}<b>{money(V.ahead)}</b>{" in all. The pool is last."}</span><button className="lnk" data-ntab="pools" data-npool="yield" data-njump="loss">Loss order ↓</button></div></>, <><span>The pool and the bonds are the funding base · they lend only to Clear Lending, never to housing</span><span /></>);
       // card settlement funding (decision 54): what the funding desk last saw and did, and the Pool Tier principal beside it
       const SF = L ? vars.settlementFunding : demoSettlement(Date.now());
       const sf = SF ? cell('s7', 'Card settlement funding', ...settlementParts(SF, money)) : notReal('s7', 'Card settlement funding', 'Needs the settlement funding desk (SETTLEMENT_FUNDING_ENABLED) to have checked: the next cut-off and what’s due, the Credit Settlement Account, the funder limit and each move it made.');

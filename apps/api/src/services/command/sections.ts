@@ -1344,7 +1344,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     Y.borrowBps = chainPool.fundingBps;
     Y.supplyBps = Y.borrowBps * Y.util;
     Y.apy = Y.supplyBps / 1e4; Y.apr = Y.borrowBps / 1e4;
-    Y.rateAt = chainPool.rateAt; Y.pending = chainPool.pending; Y.accrued = chainPool.accrued; Y.deployed = chainPool.deployed;
+    Y.rateAt = chainPool.rateAt; Y.pending = chainPool.pending; Y.accrued = chainPool.accrued; Y.deployed = chainPool.deployed; Y.holdback = chainPool.holdback;
   } else {
     Y.borrowBps = borrowBps(Y.util);
     Y.supplyBps = Y.borrowBps * Y.util;
