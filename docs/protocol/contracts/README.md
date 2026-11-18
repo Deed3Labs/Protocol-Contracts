@@ -45,6 +45,7 @@ on-chain state: see [Governance](../../governance/README.md).
 | [MerchantRegistry](./MerchantRegistry.md) | Base Sepolia | [settlement](../settlement.md) |
 | [MetadataRenderer](./MetadataRenderer.md) | Base Sepolia | [metadata-renderer](../deed-track/metadata-renderer.md) |
 | [NetworkRegistry](./NetworkRegistry.md) | Base Sepolia | [credit](../credit.md) |
+| [OffersIssuer](./OffersIssuer.md) | Base Sepolia | [credit](../credit.md) |
 | [PauseClock](./PauseClock.md) | Base Sepolia | — |
 | [PayoutPool](./PayoutPool.md) | Base Sepolia | [settlement](../settlement.md) |
 | [PoolShareEnforcer](./PoolShareEnforcer.md) | Base Sepolia | — |

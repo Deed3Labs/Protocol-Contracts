@@ -1701,6 +1701,8 @@ export interface MemberSecuritySettingsResponse {
   biometricAccess: boolean;
   socialDiscovery: boolean;
   transferAlerts: boolean;
+  /** Back the line with Savings and Earn in the background. Absent from an API that predates it: on. */
+  autoPledge?: boolean;
   updatedAt: string;
 }
 
@@ -2347,6 +2349,13 @@ export async function deleteMemberAvatar(): Promise<boolean> {
   return !response.error;
 }
 
+/** The member's account switches, read on their own (Settings and the background pledge). */
+export async function getMemberSecurity(): Promise<MemberSecuritySettingsResponse | null> {
+  const response = await apiRequest<{ security: MemberSecuritySettingsResponse }>('/api/members/me/security');
+  if (response.error || !response.data) return null;
+  return response.data.security;
+}
+
 export async function updateMemberSecurity(
   payload: Partial<{
     signatureLock: boolean;
@@ -2354,6 +2363,7 @@ export async function updateMemberSecurity(
     biometricAccess: boolean;
     socialDiscovery: boolean;
     transferAlerts: boolean;
+    autoPledge: boolean;
   }>
 ): Promise<MemberSecuritySettingsResponse | null> {
   const response = await apiRequest<{ security: MemberSecuritySettingsResponse }>('/api/members/me/security', {

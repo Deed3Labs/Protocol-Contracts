@@ -21,7 +21,8 @@ async function main() {
 
   let failed = false;
   for (const [key, impl] of Object.entries<any>(manifest.impls)) {
-    const isPool = impl.layout.storage.some((s: any) => s.contract === "LendingPool");
+    // The pool's fields are LendingPool's before Phase 2f and LendingPoolBase's since.
+    const isPool = impl.layout.storage.some((s: any) => s.label === "totalBorrowed" && /^LendingPool(Base)?$/.test(s.contract));
     if (!isPool) continue;
     const report = getStorageUpgradeReport(impl.layout, updated, withValidationDefaults({}));
     console.log(`${impl.address} (${key.slice(0, 10)}…): ${report.ok ? "compatible" : "INCOMPATIBLE"}`);

@@ -5,6 +5,7 @@ import { useMemberProfile, type MailingAddress } from '@/hooks/useMemberProfile'
 import { useFaceId } from '@/hooks/useFaceId';
 import { usePaymentProtection } from '@/hooks/usePaymentProtection';
 import { useAutoRepay } from '@/hooks/useAutoRepay';
+import { useAutoPledgeSetting } from '@/hooks/useAutoPledge';
 import { useLogout } from '@/hooks/useLogout';
 import { useContacts } from '@/context/ContactsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -38,6 +39,7 @@ export default function SettingsRoute() {
   const protection = usePaymentProtection();
   const disputes = useDisputes();
   const autoRepay = useAutoRepay();
+  const autoPledge = useAutoPledgeSetting(useOptionalAddress());
 
   const profile = {
     ...SETTINGS.profile,
@@ -73,6 +75,7 @@ export default function SettingsRoute() {
       }}
       disputes={disputes}
       autoRepay={autoRepay}
+      autoPledge={autoPledge}
       // What the wallet asks for before it signs a payment (Privy MFA), and the ways to set it up.
       payments={{
         factors: protection.factors,

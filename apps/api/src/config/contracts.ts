@@ -27,6 +27,9 @@ export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
     TermIssuer: process.env.TERM_ISSUER_84532 || '0x1b1695353f14E889906237D9b9C386eD0393da57',
     CollateralRegistry: process.env.COLLATERAL_REGISTRY_84532 || '0xfeDb873e6e1ec1C3BFC8cD561F66bd64D51C446A',
     LimitCalculator: process.env.LIMIT_CALCULATOR_84532 || '0x6C0859EcD05C6BB604c91B9De1CAf04724744a20',
+    // Where a member's state of residence is attested (`stateCodeOf`, STATE_ATTESTER_ROLE): the
+    // registry the RevolvingIssuer's state gate reads through ClearCredit.networkRegistry().
+    NetworkRegistry: process.env.NETWORK_REGISTRY_84532 || '0xee10a0d79a718cd13c49b68ce6ccCda398781164',
     // The Phase 1 reserve (the old Assurance Pool); the Money page's history still reads it.
     AssurancePool: process.env.ASSURANCE_POOL_84532 || '0xf5E40414410672636Ab1691ae19D2Aa1c1705840',
     // The co-op's new Assurance Pool (Phase 2c: compartments, Credit Backstop).

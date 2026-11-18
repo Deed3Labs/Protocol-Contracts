@@ -9,6 +9,7 @@ import {
 } from '../services/lithic/provisioningService.js';
 import { grantStarterLimit } from '../services/credit/termLimitService.js';
 import { grantOffer } from '../services/credit/offersService.js';
+import { onboardInBackground } from '../services/chain/creditOnboarding.js';
 import { lithicStore } from '../services/lithic/lithicStore.js';
 import { readFullAccountNumber, readMaskedAccountDetails } from '../services/lithic/accountDetailsService.js';
 import { requireReauth } from '../middleware/stepUp.js';
@@ -192,9 +193,12 @@ router.post('/account', async (req: Request, res: Response) => {
 
     // Verified on the spot: give them their starter term limit and the co-op's $10 now rather than
     // at the next hourly pass. Fire-and-forget -- each waits for a transaction, and never throws.
+    // With credit onboarding live, the same for their state attestation and credit line: signup
+    // could not attest a member whose identity had not been checked yet.
     if (result.record?.status === 'ACCEPTED') {
       void grantStarterLimit(wallet);
       void grantOffer(wallet);
+      onboardInBackground(wallet, 'identity');
     }
 
     res.json({

@@ -2,8 +2,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { createHash } from "crypto";
 import { liveNetworkOf } from "../deploy/helpers";
+import { stateAttesterGrant } from "./state_attester_grant";
 import { RETIRED_SUFFIX } from "../deploy/retire_credit_stack";
 import { parseEnvFile } from "./rehearse_sepolia_fork";
+import { SETTLEMENT_LANE_RECORD } from "./upgrade_settlement_lane";
 import {
   assuranceSetupFromEnv, assuranceSetupProblems, governedCalls, approvalKey, CL_FEES_MASK, BOARD_ALLOCATION_MASK, AssuranceSetup,
 } from "../deploy/assurance_timelock_handover";
@@ -98,6 +100,8 @@ export interface PlanOptions {
   env: Record<string, string>;
   /** The pool's VALUATION_ROLE signers; default deploy/config/earn-roles.json for the network. */
   valuationSigners?: string[];
+  /** The pool's DEPLOYER_ROLE signers (the SL steps); default deploy/config/earn-roles.json for the network. */
+  deploymentSigners?: string[];
   earnRolesFile?: string;
   /** The chain to read (default the Hardhat runtime's provider). */
   provider?: any;
@@ -211,6 +215,16 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
     }
   } catch (e: any) {
     notes.push(`No VALUATION_ROLE signers: ${String(e?.message ?? e)}`);
+  }
+  let deploymentSigners: string[] = [];
+  try {
+    if (o.deploymentSigners) deploymentSigners = o.deploymentSigners.map((a) => ethers.getAddress(a));
+    else {
+      const { loadEarnRoles, EARN_ROLES_FILE } = require("../deploy/earnWiring");
+      deploymentSigners = ((loadEarnRoles(network, o.earnRolesFile ?? EARN_ROLES_FILE).LendingPool.DEPLOYER_ROLE ?? []) as string[]).map((a) => ethers.getAddress(a));
+    }
+  } catch (e: any) {
+    notes.push(`No DEPLOYER_ROLE signers: ${String(e?.message ?? e)}`);
   }
 
   label(deployer, "the deployer");
@@ -1093,6 +1107,302 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
     }
   }
 
+  // ================= Settlement Funding (SL, decision 54): the Yield Pool's automated lane =================
+  // The LendingPool upgrade that adds the lane is a NEW Earn timelock proposal, scheduled by the Clear
+  // Lending Safe only once the E8 batch has run (E8x-earn-execute); its implementation is what
+  // scripts/upgrade_settlement_lane.ts recorded. Then two DEPLOYER_ROLE signers register the funding
+  // desk's wallet with its cap per period (SL-funder) and set the Settlement Headroom (SL-headroom).
+  // Empty inputs make these steps wait; nothing else waits on them.
+  {
+    const poolAddress = await rec("LendingPool");
+    const impl = await rec(SETTLEMENT_LANE_RECORD);
+    label(impl, "the LendingPool implementation with the Settlement Funding lane");
+    const funder = addr(env.SETTLEMENT_FUNDER);
+    const cap = parseUsdc(env.SETTLEMENT_CAP_USDC);
+    const daysRaw = Number(env.SETTLEMENT_PERIOD_DAYS ?? "");
+    // The AllowanceModule's period is at most 65,535 minutes: about 45 days.
+    const days = env.SETTLEMENT_PERIOD_DAYS && Number.isInteger(daysRaw) && daysRaw > 0 && daysRaw <= 45 ? daysRaw : undefined;
+    const periodSeconds = days ? BigInt(days * 86400) : undefined;
+    const headroom = parseUsdc(env.SETTLEMENT_HEADROOM_USDC);
+    label(funder, "settlement funding desk wallet");
+    const { poolAbi } = require("../deploy/poolModules");
+    const pool = new ethers.Contract(poolAddress ?? ZERO_ADDRESS, await poolAbi(), provider);
+    const tl = earnTimelock ? await timelockOf(earnTimelock) : undefined;
+    const tlAddress = earnTimelock ?? ZERO_ADDRESS;
+    const salt = ethers.id("signing-plan: SL Earn timelock proposal (LendingPool upgrade: the Settlement Funding lane, decision 54)");
+    const upgradeData = impl ? pool.interface.encodeFunctionData("upgradeTo", [impl]) : "0x";
+    const delay: bigint = tl ? await tl.getMinDelay() : 604800n;
+    const opId: string = tl && impl && poolAddress ? await tl.hashOperation(poolAddress, 0n, upgradeData, ZERO_HASH, salt) : ZERO_HASH;
+    let running: string | undefined;
+    if (poolAddress) running = ethers.getAddress("0x" + (await provider.getStorage(poolAddress, IMPL_SLOT)).slice(-40));
+    const upgraded = !!impl && same(running, impl);
+    let sSt: { status: StepStatus; reason?: string };
+    let xSt: { status: StepStatus; reason?: string };
+    if (upgraded) sSt = xSt = { status: "done", reason: "The pool runs the implementation with the lane." };
+    else if (!poolAddress) sSt = xSt = waitingFor("No LendingPool record.");
+    else if (!impl) {
+      const e8 = steps.find((x) => x.id === "E8x-earn-execute");
+      const first = e8 && e8.status !== "done" ? "Waits for E8x-earn-execute first (this is a new Earn timelock proposal, scheduled after the E8 batch has run), and " : "Waits ";
+      sSt = xSt = waitingFor(`${first}for the new LendingPool implementation: SETTLEMENT_LANE_PREPARE=1 npx hardhat run scripts/upgrade_settlement_lane.ts --network ${network} validates it against the manifest, deploys it and writes deployments/${network}/${SETTLEMENT_LANE_RECORD}.json.`);
+    } else if (!tl || !lendingSafe) {
+      sSt = xSt = waitingFor(!lendingSafe ? "Waiting for input: CLEAR_LENDING_SAFE." : "No EarnTimelock record yet (deploy 26, E1).");
+    } else if (!(await tl.hasRole(await tl.PROPOSER_ROLE(), lendingSafe))) {
+      sSt = xSt = waitingFor(`CLEAR_LENDING_SAFE ${lendingSafe} is not a proposer on the Earn timelock ${earnTimelock}.`);
+    } else if (!(await pool.hasRole(ZERO_HASH, earnTimelock))) {
+      sSt = xSt = waitingFor("The Earn timelock does not hold the LendingPool's admin yet (the Earn handover, I4, gives it).");
+    } else {
+      sSt = (await tl.isOperation(opId)) ? { status: "done" } : { status: "ready" };
+      if (await tl.isOperationDone(opId)) xSt = { status: "done" };
+      else if (!(await tl.isOperation(opId))) xSt = waitingFor("Waits for SL-upgrade-schedule, then 7 days.");
+      else if (!(await tl.isOperationReady(opId))) xSt = waitingFor(`Not yet: the Earn timelock's 7 days end at ${new Date(Number(await tl.getTimestamp(opId)) * 1000).toISOString()}.`);
+      else xSt = { status: "ready" };
+    }
+    const implNote = impl ? `upgradeTo(${impl}): the LendingPool implementation with the Settlement Funding lane` : "upgradeTo(the new implementation)";
+    push({
+      id: "SL-upgrade-schedule", stage: "SL", title: "Clear Lending Safe: schedule the Yield Pool upgrade that adds the Settlement Funding lane",
+      explanation: "A new Earn timelock proposal (decision 54), scheduled only after the E8 batch has run: it upgrades the LendingPool in place to the implementation scripts/upgrade_settlement_lane.ts validated and deployed. It adds the lane (one registered funder, a cap per period, a Settlement Headroom, an immediate stop) and changes nothing else. It can run 7 days later. Sign it in the Safe app.",
+      kind: "safe", signer: lendingSafe ?? ZERO_ADDRESS, signerLabel: "Clear Lending Safe (its owners sign in the Safe app)", to: tlAddress, toLabel: "Earn timelock",
+      ...encode(timelockIface, "schedule", [poolAddress ?? ZERO_ADDRESS, 0n, upgradeData, ZERO_HASH, salt, delay], ["LendingPool (the Yield Pool)", undefined, implNote, "none", "a fixed label for this proposal", `${Number(delay) / 86400} days`]),
+      dependsOn: ["E8x-earn-execute"], ...sSt,
+    });
+    push({
+      id: "SLx-upgrade-execute", stage: "Day 7", title: "Clear Lending Safe: run the Yield Pool upgrade that adds the Settlement Funding lane (day 7)",
+      explanation: "After the Earn timelock's 7 days, the Safe runs the queued upgrade. The lane starts empty: no funder, no headroom, until the SL-funder and SL-headroom steps.",
+      kind: "safe", signer: lendingSafe ?? ZERO_ADDRESS, signerLabel: "Clear Lending Safe (its owners sign in the Safe app)", to: tlAddress, toLabel: "Earn timelock",
+      ...encode(timelockIface, "execute", [poolAddress ?? ZERO_ADDRESS, 0n, upgradeData, ZERO_HASH, salt], ["LendingPool (the Yield Pool)", undefined, implNote, "none", "the same label"]),
+      dependsOn: ["SL-upgrade-schedule", "E8x-earn-execute"], ...xSt,
+    });
+
+    // The lane as the pool reports it (only once the pool runs the lane's implementation).
+    let lane: { funder: string; capPerPeriod: bigint; periodSeconds: bigint; stopped: boolean; epoch: bigint; headroom: bigint } | undefined;
+    if (upgraded) lane = await pool.settlementLane();
+    // Each of the two listed deployment signers needs the pool's DEPLOYER_ROLE (owner, Nov 18, 2026: the deployer
+    // …7AAA stays deployment signer 1 on testnet). A missing one is granted through its own Earn timelock
+    // proposal; it does not wait for E8x or the upgrade, so it can land before SL-funder needs it. A signer that
+    // already holds the role shows both steps done.
+    {
+      const DEPLOYER_R = ethers.id("DEPLOYER_ROLE");
+      for (const [i, d] of deploymentSigners.slice(0, 2).entries()) {
+        const n = i + 1;
+        const grantData = poolAddress ? pool.interface.encodeFunctionData("grantRole", [DEPLOYER_R, d]) : "0x";
+        const gSalt = ethers.id(`signing-plan: SL Earn timelock proposal (grant the pool's DEPLOYER_ROLE to ${d})`);
+        let gs: { status: StepStatus; reason?: string };
+        let gx: { status: StepStatus; reason?: string };
+        if (!poolAddress) gs = gx = waitingFor("No LendingPool record.");
+        else if (await pool.hasRole(DEPLOYER_R, d)) gs = gx = { status: "done", reason: `Deployment signer ${n} holds the pool's DEPLOYER_ROLE.` };
+        else if (!tl || !lendingSafe) gs = gx = waitingFor(!lendingSafe ? "Waiting for input: CLEAR_LENDING_SAFE." : "No EarnTimelock record yet (deploy 26, E1).");
+        else if (!(await tl.hasRole(await tl.PROPOSER_ROLE(), lendingSafe))) gs = gx = waitingFor(`CLEAR_LENDING_SAFE ${lendingSafe} is not a proposer on the Earn timelock ${earnTimelock}.`);
+        else if (!(await pool.hasRole(ZERO_HASH, earnTimelock))) gs = gx = waitingFor("The Earn timelock does not hold the LendingPool's admin yet (the Earn handover, I4, gives it).");
+        else {
+          const gId: string = await tl.hashOperation(poolAddress, 0n, grantData, ZERO_HASH, gSalt);
+          gs = (await tl.isOperation(gId)) ? { status: "done" } : { status: "ready" };
+          if (await tl.isOperationDone(gId)) gs = gx = waitingFor(`This grant ran, but deployment signer ${n} no longer holds the pool's DEPLOYER_ROLE (revoked since). Ask before granting it again.`);
+          else if (!(await tl.isOperation(gId))) gx = waitingFor(`Waits for SL-deployer-${n}-schedule, then 7 days.`);
+          else if (!(await tl.isOperationReady(gId))) gx = waitingFor(`Not yet: the Earn timelock's 7 days end at ${new Date(Number(await tl.getTimestamp(gId)) * 1000).toISOString()}.`);
+          else gx = { status: "ready" };
+        }
+        push({
+          id: `SL-deployer-${n}-schedule`, stage: "SL", title: `Clear Lending Safe: schedule the pool's DEPLOYER_ROLE for deployment signer ${n}`,
+          explanation: `Deployment signer ${n} (${d}, deploy/config/earn-roles.json) needs the Yield Pool's DEPLOYER_ROLE for the SL-funder and SL-headroom pairs. This queues LendingPool.grantRole(DEPLOYER_ROLE, ${d}) on the Earn timelock; it can run 7 days later. It does not wait for E8x. Sign it in the Safe app.`,
+          kind: "safe", signer: lendingSafe ?? ZERO_ADDRESS, signerLabel: "Clear Lending Safe (its owners sign in the Safe app)", to: tlAddress, toLabel: "Earn timelock",
+          ...encode(timelockIface, "schedule", [poolAddress ?? ZERO_ADDRESS, 0n, grantData, ZERO_HASH, gSalt, delay], ["LendingPool (the Yield Pool)", undefined, `grantRole(DEPLOYER_ROLE, ${d})`, "none", "a fixed label for this grant", `${Number(delay) / 86400} days`]),
+          dependsOn: [], ...gs,
+        });
+        push({
+          id: `SLx-deployer-${n}-execute`, stage: "Day 7", title: `Clear Lending Safe: run the DEPLOYER_ROLE grant for deployment signer ${n} (7 days after scheduling)`,
+          explanation: `After the 7 days, the Safe runs the queued grant: ${d} holds the pool's DEPLOYER_ROLE and can sign the SL pairs and two-person Deployments.`,
+          kind: "safe", signer: lendingSafe ?? ZERO_ADDRESS, signerLabel: "Clear Lending Safe (its owners sign in the Safe app)", to: tlAddress, toLabel: "Earn timelock",
+          ...encode(timelockIface, "execute", [poolAddress ?? ZERO_ADDRESS, 0n, grantData, ZERO_HASH, gSalt], ["LendingPool (the Yield Pool)", undefined, `grantRole(DEPLOYER_ROLE, ${d})`, "none", "the same label"]),
+          dependsOn: [`SL-deployer-${n}-schedule`], ...gx,
+        });
+      }
+    }
+    const deployers = deploymentSigners;
+    const DEPLOYER = ethers.id("DEPLOYER_ROLE");
+    if (deployers.length < 2) notes.push("Waiting for input: the pool's DEPLOYER_ROLE needs two signers in deploy/config/earn-roles.json (the SL steps).");
+    deployers.forEach((a, i) => label(a, `deployment signer ${ordinal(i)}`));
+    if (poolAddress) {
+      for (const [i, d] of deployers.slice(0, 2).entries()) {
+        if (!(await pool.hasRole(DEPLOYER, d))) notes.push(`Deployment signer ${i + 1} ${d} (deploy/config/earn-roles.json) does not hold the pool's DEPLOYER_ROLE on chain: SL-deployer-${i + 1}-schedule and SLx-deployer-${i + 1}-execute grant it through the Earn timelock, before the SL-funder and SL-headroom pairs.`);
+      }
+    }
+    const coder = ethers.AbiCoder.defaultAbiCoder();
+    const usd = (v: bigint | null | undefined) => (v === null || v === undefined ? "?" : formatUsdc(v));
+    const pairStep = async (
+      key: "funder" | "headroom", i: number, signer: string, inputs: string | undefined, applied: string | undefined,
+      action: string | undefined, enc: { data: string | null; functionSignature: string; args: PlanArg[] }, title: string, explanation: string,
+    ) => {
+      let st: { status: StepStatus; reason?: string };
+      if (inputs) st = waitingFor(inputs);
+      else if (!poolAddress) st = waitingFor("No LendingPool record.");
+      else if (!lane) st = waitingFor("Waits for SLx-upgrade-execute: the lane is in the new LendingPool implementation.");
+      else if (applied) st = { status: "done", reason: applied };
+      else if (action && same(await pool.proposerOf(action), signer)) st = { status: "done", reason: "Sent by this signer; waits for the other deployment signer." };
+      else if (!(await pool.hasRole(DEPLOYER, signer))) st = waitingFor(`This signer does not hold the pool's DEPLOYER_ROLE on chain (deploy/config/earn-roles.json lists it): the Earn timelock grants it first (SL-deployer-${i + 1}-schedule, then SLx-deployer-${i + 1}-execute).`);
+      else st = { status: "ready" };
+      push({
+        id: `SL-${key}-${i + 1}`, stage: "SL", title: `${title}: deployment signer ${i + 1}`, explanation,
+        kind: "wallet", signer, signerLabel: `deployment signer ${i + 1}`, to: poolAddress ?? ZERO_ADDRESS, toLabel: "LendingPool (the Yield Pool)",
+        ...enc, dependsOn: ["SLx-upgrade-execute", `SLx-deployer-${i + 1}-execute`], ...st,
+      });
+    };
+
+    // SL-funder: register the desk's wallet, its cap per period and the period.
+    {
+      const inputs: string[] = [];
+      if (!funder) inputs.push(env.SETTLEMENT_FUNDER ? `SETTLEMENT_FUNDER is not an address: ${env.SETTLEMENT_FUNDER}` : "SETTLEMENT_FUNDER (the funding desk's CDP wallet; the owner creates it)");
+      if (cap === null || cap === 0n) inputs.push("SETTLEMENT_CAP_USDC (dollars per period)");
+      if (!periodSeconds) inputs.push("SETTLEMENT_PERIOD_DAYS (1 to 45)");
+      const missing = inputs.length ? `Waiting for input: ${inputs.join(", ")}.` : undefined;
+      const action = lane && !missing
+        ? ethers.keccak256(coder.encode(["string", "address", "uint256", "uint64", "uint24"], ["settlementFunder", funder, cap, periodSeconds, lane.epoch]))
+        : undefined;
+      const applied = lane && !missing && same(lane.funder, funder) && BigInt(lane.capPerPeriod) === cap && BigInt(lane.periodSeconds) === periodSeconds && !lane.stopped
+        ? `Set: ${short(funder!)} may deploy up to ${usd(cap)} every ${days} day${days === 1 ? "" : "s"}.` : undefined;
+      if (lane?.stopped && !same(lane.funder, ZERO_ADDRESS)) notes.push(`The Settlement Funding lane is STOPPED (funder ${lane.funder}). SL-funder restarts it: two deployment signers.`);
+      const enc = missing
+        ? { data: null, functionSignature: "setSettlementFunder(address,uint256,uint64)", args: [] }
+        : encode(pool, "setSettlementFunder", [funder, cap, periodSeconds], [undefined, `${usd(cap)} per period (USDC base units)`, `${days} day${days === 1 ? "" : "s"}, in seconds`]);
+      for (const [i, d] of deployers.slice(0, 2).entries()) {
+        await pairStep("funder", i, d, missing, applied, action, enc, `Register the settlement funder (${usd(cap)} per ${days ?? "?"} days)`,
+          i === 0
+            ? "Registers the funding desk's wallet as the Yield Pool's settlement funder: it may then deploy, alone, up to the cap in each period, only to CL Operating, and only when a two-person Deployment could (no open queue request, no Suspension, no pending loss charge, Utilization at most 90% afterwards). Two different deployment signers send the same call; the second makes it count. It also restarts a stopped lane."
+            : "The same call from the other deployment signer; this one makes it count.");
+      }
+    }
+    // SL-headroom: how far above the posted Pool Tier principal the lane alone may go.
+    {
+      const missing = headroom === null ? "Waiting for input: SETTLEMENT_HEADROOM_USDC (dollars)." : undefined;
+      const action = !missing ? ethers.keccak256(coder.encode(["string", "uint256"], ["settlementHeadroom", headroom])) : undefined;
+      const applied = lane && !missing && BigInt(lane.headroom) === headroom ? `Set: ${usd(headroom)}.` : undefined;
+      const enc = missing
+        ? { data: null, functionSignature: "setSettlementHeadroom(uint256)", args: [] }
+        : encode(pool, "setSettlementHeadroom", [headroom], [`${usd(headroom)} (USDC base units)`]);
+      for (const [i, d] of deployers.slice(0, 2).entries()) {
+        await pairStep("headroom", i, d, missing, applied, action, enc, `Set the Settlement Headroom (${usd(headroom)})`,
+          i === 0
+            ? "Lets the settlement lane, and only the lane, take the Deployed Balance up to the posted Pool Tier principal plus this amount, to cover credit portions authorized and not yet settled. Two-person Deployments stay within the principal alone. Two different deployment signers send the same call."
+            : "The same call from the other deployment signer; this one makes it count.");
+      }
+    }
+    // CL Operating's batch for the SettlementForwarder (the AllowanceModule delegate that pushes USDC to the off-ramp).
+    push({
+      id: "SL-cl-operating", stage: "SL", title: "CL Operating: install the SettlementForwarder as its AllowanceModule delegate",
+      explanation: "CL Operating names the SettlementForwarder a spending-limit delegate and gives it an allowance, so the funding desk can push USDC from CL Operating only to the off-ramp. Its calls are added once the forwarder exists.",
+      kind: "safe", signer: addr(env.CLEAR_LENDING_ACCOUNT) ?? ZERO_ADDRESS, signerLabel: "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+      to: ZERO_ADDRESS, toLabel: "AllowanceModule", data: null, functionSignature: "addDelegate(address)", args: [], dependsOn: [],
+      ...waitingFor("Waits for the SettlementForwarder (decision 54, part 2): not deployed yet."),
+    });
+  }
+
+  // ================= State attester (SA): the credit operator may attest members' states =================
+  // No line or plan opens until a member's state is attested (NetworkRegistry.stateCodeOf), and only
+  // STATE_ATTESTER_ROLE attests. Its admin is the CreditTimelock (7 days), whose proposer and executor
+  // is the Clear Treasury Safe. scripts/state_attester_grant.ts holds the checks and the calls.
+  {
+    const attester = addr(env.STATE_ATTESTER);
+    const registry = await rec("NetworkRegistry");
+    const creditTimelock = await rec("CreditTimelock");
+    if (attester && registry && creditTimelock && financialSafe) {
+      label(creditTimelock, "credit timelock");
+      label(registry, "NetworkRegistry");
+      const g = await stateAttesterGrant({ provider, registry, timelock: creditTimelock, safe: financialSafe, attester });
+      const signerLabel = "Clear Treasury Safe (its owners sign in the Safe app)";
+      const sSt = g.step === "schedule" ? { status: "ready" as StepStatus } : { status: "done" as StepStatus };
+      const xSt = g.step === "execute" ? { status: "ready" as StepStatus }
+        : g.step === "done" ? { status: "done" as StepStatus, reason: g.reason }
+        : waitingFor(g.step === "wait" ? g.reason : "Waits for the schedule step, then 7 days.");
+      push({
+        id: "SA-attester-schedule", stage: "SA", title: "Clear Treasury Safe: schedule the state attester grant",
+        explanation: `Queues NetworkRegistry.grantRole(STATE_ATTESTER_ROLE, ${attester}) on the credit timelock, so the credit operator can attest members' states and their lines can open. It can run 7 days later. Sign it in the Safe app.`,
+        kind: "safe", signer: financialSafe, signerLabel, to: creditTimelock, toLabel: "credit timelock",
+        ...encode(timelockIface, "schedule", [...timelockIface.interface.decodeFunctionData("schedule", g.schedule.data)], ["NetworkRegistry", undefined, `grantRole(STATE_ATTESTER_ROLE, ${attester})`, "none", "a fixed label for this grant", "7 days"]),
+        dependsOn: [], ...sSt,
+      });
+      push({
+        id: "SAx-attester-execute", stage: "Day 7", title: "Clear Treasury Safe: run the state attester grant (7 days after scheduling)",
+        explanation: "After the 7 days, the Safe runs the queued grant: the credit operator gets STATE_ATTESTER_ROLE on the NetworkRegistry and nothing else. Then the API's credit onboarding job attests states and opens lines.",
+        kind: "safe", signer: financialSafe, signerLabel, to: creditTimelock, toLabel: "credit timelock",
+        ...encode(timelockIface, "execute", [...timelockIface.interface.decodeFunctionData("execute", g.execute.data)], ["NetworkRegistry", undefined, `grantRole(STATE_ATTESTER_ROLE, ${attester})`, "none", "the same label"]),
+        dependsOn: ["SA-attester-schedule"], ...xSt,
+      });
+    } else if (attester) {
+      notes.push("STATE_ATTESTER is set but the NetworkRegistry, the CreditTimelock or CLEAR_FINANCIAL_SAFE is missing: no state attester steps.");
+    }
+  }
+
+  // ================= State rates (SR): switch the products on in more states (testnet) =================
+  // RateSchedule is owned by the CreditTimelock, and a line or plan opens only where its products are
+  // enabled for the member's attested state. RATE_STATES lists the states to switch on with the
+  // config's products (deploy/config/rate-schedule.json: CA's rows, the same placeholder rates).
+  // Each state takes ~1.4M gas (5 products), and a transaction may use at most 2^24 gas, so the
+  // states go in fixed chunks of RATE_STATES_PER_BATCH: one scheduleBatch each, all signed together
+  // today, and one executeBatch each after the 7 days.
+  {
+    const wanted = (env.RATE_STATES ?? "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+    const rateAddr = await rec("RateSchedule");
+    const creditTimelock = await rec("CreditTimelock");
+    if (wanted.length && rateAddr && creditTimelock && financialSafe) {
+      label(rateAddr, "RateSchedule");
+      label(creditTimelock, "credit timelock");
+      const { loadRateTable } = require("../deploy/25_wire_Compliance");
+      const table = loadRateTable() as { state: string; product: string; params: any; bands: any[] }[];
+      const base = table.filter((r) => ethers.decodeBytes32String(r.state) === ethers.decodeBytes32String(table[0].state));
+      const rates = await contract("RateSchedule", rateAddr);
+      const tl = await timelockOf(creditTimelock);
+      const delay: bigint = await tl.getMinDelay();
+      const configured = new Set(table.map((r) => ethers.decodeBytes32String(r.state)));
+      const states = wanted.filter((st) => !configured.has(st));
+      const per = Math.max(1, Number(env.RATE_STATES_PER_BATCH ?? 8));
+      const scheduleIds: string[] = [];
+      for (let i = 0; i < states.length; i += per) {
+        const chunk = states.slice(i, i + per);
+        const n = i / per + 1;
+        const calls = chunk.flatMap((st) => base.map((r) => ({
+          to: rateAddr,
+          data: rates.interface.encodeFunctionData("setProduct", [ethers.encodeBytes32String(st), r.product, r.params, r.bands]),
+        })));
+        const targets = calls.map((c) => c.to);
+        const values = calls.map(() => 0n);
+        const payloads = calls.map((c) => c.data);
+        const salt = ethers.id(`signing-plan: SR state rates ${chunk.join(",")}`);
+        const opId: string = await tl.hashOperationBatch(targets, values, payloads, ZERO_HASH, salt);
+        let have = 0;
+        for (const st of chunk) if (await rates.hasProduct(ethers.encodeBytes32String(st), base[0].product)) have++;
+        let sSt: { status: StepStatus; reason?: string };
+        let xSt: { status: StepStatus; reason?: string };
+        if (have === chunk.length) sSt = xSt = { status: "done", reason: `Products set for ${chunk.join(", ")}.` };
+        else if (have > 0) sSt = xSt = waitingFor(`Only ${have} of ${chunk.join(", ")} are set: products changed outside this plan. Ask before scheduling.`);
+        else {
+          sSt = (await tl.isOperation(opId)) ? { status: "done" } : { status: "ready" };
+          if (await tl.isOperationDone(opId)) xSt = { status: "done" };
+          else if (!(await tl.isOperation(opId))) xSt = waitingFor("Waits for its schedule step, then 7 days.");
+          else if (!(await tl.isOperationReady(opId))) xSt = waitingFor(`Not yet: the credit timelock's 7 days end at ${new Date(Number(await tl.getTimestamp(opId)) * 1000).toISOString()}.`);
+          else xSt = { status: "ready" };
+        }
+        const list = chunk.join(", ");
+        const sid = `SR-rates-schedule-${n}`;
+        scheduleIds.push(sid);
+        push({
+          id: sid, stage: "SR", title: `Clear Treasury Safe: schedule the products for ${list}`,
+          explanation: `Queues RateSchedule.setProduct for ${base.length} products (${base.map((r) => ethers.decodeBytes32String(r.product)).join(", ")}) in ${list}, with the same test rates as ${ethers.decodeBytes32String(base[0].state)}, so members there can get a line and plans. Testnet only; every rate is pending counsel. Sign all SR schedule steps at once: safe-batches/signing-SR-rates-schedule.json.`,
+          kind: "safe", signer: financialSafe, signerLabel: "Clear Treasury Safe (its owners sign in the Safe app)", to: creditTimelock, toLabel: "credit timelock",
+          ...encode(timelockIface, "scheduleBatch", [targets, values, payloads, ZERO_HASH, salt, delay], [`RateSchedule (${calls.length} calls)`, undefined, `setProduct for ${list}`, "none", "a fixed label for this batch", `${Number(delay) / 86400} days`]),
+          dependsOn: [], ...sSt,
+        });
+        push({
+          id: `SRx-rates-execute-${n}`, stage: "Day 7", title: `Clear Treasury Safe: run the products for ${list} (7 days after scheduling)`,
+          explanation: `After the 7 days, the Safe runs the queued products for ${list}. About ${(1.4 * chunk.length).toFixed(1)}M gas: send each batch as its own Safe transaction.`,
+          kind: "safe", signer: financialSafe, signerLabel: "Clear Treasury Safe (its owners sign in the Safe app)", to: creditTimelock, toLabel: "credit timelock",
+          ...encode(timelockIface, "executeBatch", [targets, values, payloads, ZERO_HASH, salt], [`RateSchedule (${calls.length} calls)`, undefined, `setProduct for ${list}`, "none", "the same label"]),
+          dependsOn: [sid], ...xSt,
+        });
+      }
+    } else if (wanted.length) {
+      notes.push("RATE_STATES is set but RateSchedule, the CreditTimelock or CLEAR_FINANCIAL_SAFE is missing: no state rate steps.");
+    }
+  }
+
   // ================= dependencies, then a dry run of every ready step =================
   const byId = new Map(steps.map((s) => [s.id, s]));
   for (const s of steps) {
@@ -1193,6 +1503,16 @@ export function writeSigningPlan(plan: SigningPlan, outDir: string) {
       setup.map((s) => ({ to: s.to, data: s.data! }))), null, 2));
     written.push(file);
     plan.notes.push(`CL Operating's payout top-up setup (${setup.map((s) => s.id).join(", ")}) is one batch: ${path.relative(outDir, file)}.`);
+  }
+  // State rates: every ready SR schedule step in one Transaction Builder batch, signed once.
+  const srReady = plan.steps.filter((s) => s.kind === "safe" && s.id.startsWith("SR-rates-schedule-") && s.status === "ready" && s.data);
+  if (srReady.length) {
+    const file = path.join(batches, "signing-SR-rates-schedule.json");
+    fs.writeFileSync(file, JSON.stringify(safeBatch(plan.chainId, "Clear Treasury Safe: schedule the state products (testnet)",
+      `${srReady.map((s) => s.title).join("; ")}. Generated by scripts/signing_plan.ts at block ${plan.block}. Review every call before signing.`,
+      srReady.map((s) => ({ to: s.to, data: s.data! }))), null, 2));
+    written.push(file);
+    plan.notes.push(`The state products' schedule steps (${srReady.map((s) => s.id).join(", ")}) are one batch: ${path.relative(outDir, file)}.`);
   }
   // The file names are added after the hash: recompute it over what is written.
   plan.stepsSha256 = stepsSha256(plan.steps);

@@ -19,8 +19,9 @@ interface YieldPoolModule {
 ///   (less Holdback Amounts), the Deployed Balance and accrued unpaid Pool Interest. An expected
 ///   loss allowance never lowers it; it sets a Loss Holdback on redemptions instead (§6A).
 /// - **Deployments** go only to Clear Lending's registered lending account, by two people, and
-///   each is recorded (decision 17). Pool Interest accrues per second on the Deployed Balance at
-///   the Funding Rate; Returns (`returnFunds`, by anyone) pay interest first, then principal.
+///   each is recorded (decision 17); the Settlement Funding lane's one registered funder may also
+///   deploy there alone, within its cap per period and the Settlement Headroom (decision 54).
+///   Pool Interest accrues per second on the Deployed Balance at the Funding Rate; Returns (`returnFunds`, by anyone) pay interest first, then principal.
 ///   Direct borrowing by the PayoutPool and the card settler is off: `borrowableToday` is zero
 ///   and `borrow` reverts, so the PayoutPool, whose code is unchanged, simply skips this lender.
 /// - **Redemptions** are on demand only while no queue request is open and Vault Cash covers the
@@ -49,7 +50,7 @@ contract LendingPool is LendingPoolBase {
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address valuation_) {
         _disableInitializers();
-        if (IExtensionKind(valuation_).extensionKind() != keccak256("YieldPoolValuation.v2")) {
+        if (IExtensionKind(valuation_).extensionKind() != keccak256("YieldPoolValuation.v3")) {
             revert LendingPoolModuleMismatch();
         }
         valuation = valuation_;
@@ -103,6 +104,35 @@ contract LendingPool is LendingPoolBase {
     /// @notice The first issue of Pool Shares (the Initial Closing).
     function initialClosing() external view returns (uint256) {
         return _initialClosing;
+    }
+
+    /// @notice The Settlement Funding lane (decision 54): its funder, cap per period and period;
+    /// the start of the period running now and what the lane has deployed in it; whether it is
+    /// stopped; the stop count (part of a `setSettlementFunder` proposal's action hash); and the
+    /// Settlement Headroom.
+    function settlementLane()
+        external
+        view
+        returns (
+            address funder,
+            uint256 capPerPeriod,
+            uint256 periodSeconds,
+            uint256 periodStart,
+            uint256 usedInPeriod,
+            bool stopped,
+            uint256 epoch,
+            uint256 headroom
+        )
+    {
+        SettlementLane storage l = _settlementLane;
+        periodSeconds = l.periodSeconds;
+        periodStart = l.periodStart;
+        usedInPeriod = l.used;
+        if (periodSeconds != 0 && block.timestamp >= periodStart + periodSeconds) {
+            periodStart += ((block.timestamp - periodStart) / periodSeconds) * periodSeconds;
+            usedInPeriod = 0;
+        }
+        return (l.funder, l.capPerPeriod, periodSeconds, periodStart, usedInPeriod, l.stopped, l.epoch, _settlementHeadroom);
     }
 
     /// @notice The calendar quarter (year x 4 + quarter, plus one) of the last rate-lowering change.
@@ -738,6 +768,26 @@ contract LendingPool is LendingPoolBase {
 
     /// @notice see YieldPoolValuation.deploy.
     function deploy(uint256, bytes32) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.setSettlementFunder.
+    function setSettlementFunder(address, uint256, uint64) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.setSettlementHeadroom.
+    function setSettlementHeadroom(uint256) external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.stopSettlementFunder.
+    function stopSettlementFunder() external {
+        _forward();
+    }
+
+    /// @notice see YieldPoolValuation.deploySettlement.
+    function deploySettlement(uint256, bytes32) external {
         _forward();
     }
 

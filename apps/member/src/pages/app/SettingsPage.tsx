@@ -76,6 +76,7 @@ export default function SettingsPage({
   faceId,
   disputes,
   autoRepay,
+  autoPledge,
   payments,
 }: {
   data?: SettingsData;
@@ -130,6 +131,8 @@ export default function SettingsPage({
   };
   /** Automatic repayment from USDC deposits. Absent in the preview harness. */
   autoRepay?: import('@/hooks/useAutoRepay').AutoRepay;
+  /** Backing the line with Savings and Earn automatically. Absent in the preview harness. */
+  autoPledge?: import('@/hooks/useAutoPledge').AutoPledgeSetting;
   /**
    * What guards payments at the wallet (Privy MFA): Face ID, an authenticator app, or nothing yet.
    * Absent in the preview harness, which shows the rows without acting on them.
@@ -439,7 +442,7 @@ export default function SettingsPage({
       />
     ),
     bylaws: <BylawsPanel bylaws={data.bylaws} />,
-    permissions: <PermissionsPanel permissions={data.permissions} autoRepay={autoRepay} />,
+    permissions: <PermissionsPanel permissions={data.permissions} autoRepay={autoRepay} autoPledge={autoPledge} />,
     patronage: <PatronagePanel patronage={data.patronage} onExplain={() => go('patronage-calculation')} />,
     'patronage-calculation': <PatronageCalculationPanel patronage={data.patronage} desktop={desktop} />,
     acceleration: <AccelerationPanel data={data} intro={!desktop} />,
