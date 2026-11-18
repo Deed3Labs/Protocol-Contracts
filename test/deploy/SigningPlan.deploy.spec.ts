@@ -12,6 +12,8 @@ import { poolAt, poolProxyOptions } from "../../deploy/poolModules";
 import { deployAssuranceTimelock, deployAssurancePool, CL_FEES_MASK, BOARD_ALLOCATION_MASK } from "../../deploy/assurance_timelock_handover";
 import { checkRolloutInputs, checkPayoutTopUpSetup } from "../../scripts/check_rollout_inputs";
 import { prepareSettlementLaneUpgrade } from "../../scripts/upgrade_settlement_lane";
+import { prepareCardFeeUpgrade, readCardFeeRecord, CARD_FEE_RECORD } from "../../scripts/upgrade_card_credit_fee";
+import { deployCreditTimelock } from "../../deploy/credit_timelock_handover";
 import { deploySettlementForwarder } from "../../deploy/28_deploy_SettlementForwarder";
 import { checkSettlementForwarderSetup } from "../../scripts/check_rollout_inputs";
 import {
@@ -50,6 +52,8 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
   let lendingSafe: any, assurancePool: any, assuranceTimelock: any, collateralRegistry: any;
   let usdcToken: any;
   const PT_STEPS = ["TU-funder", "TU-safe-module", "TU-safe-delegate", "TU-safe-allowance"];
+  // The card credit fee (decision 55): the RevolvingIssuer upgrade on the credit timelock, which switches the fee on.
+  const CF_STEPS = ["CF-upgrade-schedule", "CFx-upgrade-execute"];
   // Settlement Funding (decision 54): the pool upgrade on the Earn timelock, the deployment signers' DEPLOYER_ROLE
   // grants, the lane's two-person settings, then CL Operating's batch for the SettlementForwarder.
   const SL_FORWARDER = ["SL-cl-operating-delegate", "SL-cl-operating-allowance", "SL-cl-operating-offramp", "SL-cl-operating-desk"];
@@ -76,7 +80,11 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
   /** Sends a plan step exactly as the page would: from its signer, to its `to`, with its data. */
   async function send(st: PlanStep) {
     await ethers.provider.send("hardhat_impersonateAccount", [st.signer]);
-    await ethers.provider.send("hardhat_setBalance", [st.signer, "0x" + ethers.parseEther("10").toString(16)]);
+    // Top up only: a step signed by one of the test's own accounts (the deployer) must not have its
+    // 10,000 ETH cut to 10, or later test files in the same CI shard run out of gas money.
+    if ((await ethers.provider.getBalance(st.signer)) < ethers.parseEther("10")) {
+      await ethers.provider.send("hardhat_setBalance", [st.signer, "0x" + ethers.parseEther("10").toString(16)]);
+    }
     const signer = await ethers.getSigner(st.signer);
     const rc = await (await signer.sendTransaction({ to: st.to, data: st.data!, value: 0 })).wait();
     expect(rc!.status).to.equal(1);
@@ -231,7 +239,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       "D4-settings-1", "D4-settings-2", "D4-attester-1", "D4-attester-2", "D4-operator",
       ...["vault", "bondbook", "holderdirections", "pledgemodule", "backstop"].flatMap((k) => [`E8-${k}-propose`, `E8-${k}-confirm`, `E8-${k}-approve`]),
       "E8-hold-1", "E8-hold-2", "E8-earn-schedule", "E8x-earn-execute",
-      "F2-fee-approve", "RT-fee-propose", "RT-fee-approve", "RT-card-account", "G1-tier-1", "G1-tier-2", "safe-owner", "I3-vault-schedule", "I3x-vault-execute",
+      "F2-fee-approve", "RT-fee-propose", "RT-fee-approve", "RT-card-account", ...CF_STEPS, "G1-tier-1", "G1-tier-2", "safe-owner", "I3-vault-schedule", "I3x-vault-execute",
       ...ASSURANCE_KEYS.flatMap((k) => [`AS-${k}-approve-1`, `AS-${k}-approve-2`]), "AS-assurance-schedule", "ASx-assurance-execute",
       "AS-floor-1", "AS-floor-2",
       ...PT_STEPS,
@@ -263,6 +271,11 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(step(p, "RT-fee-approve").reason).to.contain("F2 names the first one");
     expect(step(p, "RT-card-account").reason).to.contain("D4-settings-1");
     expect(step(p, "RT-card-account").args[0].value).to.equal(clOperating);
+    // CF: nothing to schedule until the prepare step has recorded the new implementation.
+    expect(step(p, "CF-upgrade-schedule").reason).to.match(/^Waiting for the prepare step: RevolvingIssuerCardFee\.json\./);
+    expect(step(p, "CFx-upgrade-execute").reason).to.equal(step(p, "CF-upgrade-schedule").reason);
+    expect(step(p, "CF-upgrade-schedule").signer).to.equal(await safe.getAddress());
+    expect(step(p, "CF-upgrade-schedule").kind).to.equal("safe");
     expect(step(p, "E8-earn-schedule").reason).to.contain("E8-vault-confirm");
     expect(step(p, "E8-earn-schedule").kind).to.equal("safe");
     // The MockSafe has no addOwnerWithThreshold: the dry run catches what would revert.
@@ -370,7 +383,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     // The lane's upgrade was scheduled only after the E8 batch ran; its own 7 days are still running.
     expect(sent.indexOf("SL-upgrade-schedule")).to.be.greaterThan(sent.indexOf("E8x-earn-execute"));
     expect(step(p, "SLx-upgrade-execute").reason).to.contain("the Earn timelock's 7 days end at");
-    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(["D4-operator", ...PT_STEPS, ...SL_LEFT]);
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(["D4-operator", ...CF_STEPS, ...PT_STEPS, ...SL_LEFT]);
     // The deployment signers' grants ran through the Earn timelock, without waiting for E8x.
     for (const id of SL_GRANTS) expect(sent, id).to.include(id);
     expect(sent.indexOf("SLx-deployer-1-execute")).to.be.greaterThan(sent.indexOf("SL-deployer-1-schedule"));
@@ -430,8 +443,8 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(step(p, "D4-operator").status).to.equal("ready");
     await send(step(p, "D4-operator"));
     p = await plan();
-    // Everything but the payout top-ups and the settlement lane, which wait for their inputs (the last tests walk them).
-    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal([...PT_STEPS, ...SL_LEFT]);
+    // Everything but the card fee, the payout top-ups and the settlement lane, which wait for their inputs (the last tests walk them).
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal([...CF_STEPS, ...PT_STEPS, ...SL_LEFT]);
     // Nothing left for a Safe to sign: no batch is written.
     expect(writeSigningPlan(p, DIR).batches).to.deep.equal([]);
     expect(fs.readdirSync(path.join(DIR, "safe-batches")).filter((f) => f.startsWith("signing-"))).to.deep.equal([]);
@@ -589,8 +602,8 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     p = await buildSigningPlan({ network: "hardhat", env: inputs, valuationSigners, deploymentSigners });
     for (const id of PT_STEPS) expect(step(p, id).status, id).to.equal("done");
     expect(step(p, "TU-safe-allowance").reason).to.contain("$5,000.00 every 7 days");
-    // Everything but the settlement lane (the next test).
-    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(SL_LEFT);
+    // Everything but the card fee and the settlement lane (the tests after this one).
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal([...CF_STEPS, ...SL_LEFT]);
     expect(writeSigningPlan(p, DIR).batches).to.deep.equal([]);
 
     // The preflight: every line passes; a wallet with another PayoutPool role fails.
@@ -641,6 +654,100 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     const bad = await checkPayoutTopUpSetup(inputs, ethers.provider, { payoutPool: await payoutPool.getAddress() });
     expect(bad.filter((r) => r.status === "FAIL").map((r) => r.what).join("\n")).to.contain("OPERATOR_ROLE");
     await (await payoutPool.revokeRole(ethers.id("OPERATOR_ROLE"), wallet)).wait();
+  });
+  /*
+   * The card credit fee (decision 55): scripts/upgrade_card_credit_fee.ts prepares the implementation, the Clear Treasury
+   * Safe schedules one CreditTimelock operation, upgradeToAndCall(impl, setMaxCardCreditFee(CARD_CREDIT_FEE_CAP_USDC)),
+   * and runs it 7 days later: the fee is on from the upgrade. The timelock passes onlyCreditRole because it holds the
+   * AccessManager's admin role, as on Base Sepolia after the credit handover.
+   */
+  it("card credit fee: prepare, schedule upgradeToAndCall on the credit timelock, 7 days, run: the fee is on", async function () {
+    const inputs = { ...env, CARD_CREDIT_FEE_CAP_USDC: "0.30" };
+    const planWith = (e: Record<string, string>) => buildSigningPlan({ network: "hardhat", env: e, valuationSigners, deploymentSigners });
+    const proxy = await revolving.getAddress();
+    let p = await planWith(inputs);
+    expect(step(p, "CF-upgrade-schedule").reason).to.contain("Waiting for the prepare step: RevolvingIssuerCardFee.json");
+
+    // Prepare: validate, deploy the modules and the implementation, write the record. The proxy is untouched.
+    const before = await upgrades.erc1967.getImplementationAddress(proxy);
+    const dry = await prepareCardFeeUpgrade({ proxy, network: "hardhat", recordsDir: DIR, log: () => undefined });
+    expect(dry.implementation).to.equal(undefined);
+    expect(readCardFeeRecord(DIR)).to.equal(undefined);
+    expect(await failure(prepareCardFeeUpgrade({ proxy, network: "base-sepolia", recordsDir: DIR, log: () => undefined })))
+      .to.contain("Refusing: base-sepolia must be chain 84532, and this node answers as chain 31337");
+    const prepared = await prepareCardFeeUpgrade({ proxy, prepare: true, network: "hardhat", recordsDir: DIR, log: () => undefined });
+    const impl = prepared.implementation!;
+    expect(await upgrades.erc1967.getImplementationAddress(proxy)).to.equal(before);
+    const prep = readCardFeeRecord(DIR)!;
+    expect([prep.address, prep.proxy, prep.replaces, prep.chainId]).to.deep.equal([impl, proxy, before, 31337]);
+    expect(Object.keys(prep.modules)).to.deep.equal(["RevolvingIssuerExtension", "RevolvingIssuerCycles", "RevolvingIssuerTerms", "RevolvingIssuerWorkouts"]);
+    for (const h of Object.values(prep.txHashes)) expect(h).to.match(/^0x[0-9a-f]{64}$/);
+    expect(prep.abi.some((f: any) => f.name === "settleCardSpendWithFee")).to.equal(true);
+
+    // The fee's amount is an input; without it there is nothing to schedule.
+    p = await planWith(env);
+    expect(step(p, "CF-upgrade-schedule").reason).to.contain("Waiting for input: CARD_CREDIT_FEE_CAP_USDC");
+    p = await planWith({ ...inputs, CARD_CREDIT_FEE_CAP_USDC: "5.01" });
+    expect(step(p, "CF-upgrade-schedule").reason).to.contain("above the contract's ceiling of $5.00");
+    // No CreditTimelock recorded yet; then one that does not own RevolvingIssuer, then one without the credit role: refused.
+    p = await planWith(inputs);
+    expect(step(p, "CF-upgrade-schedule").reason).to.equal("No CreditTimelock record.");
+    const creditTimelock = await deployCreditTimelock(await safe.getAddress());
+    const tl = await creditTimelock.getAddress();
+    record("CreditTimelock", tl);
+    p = await planWith(inputs);
+    expect(step(p, "CF-upgrade-schedule").reason).to.contain("Refusing: RevolvingIssuer's owner is");
+    // The credit handover (I2): the timelock owns RevolvingIssuer and holds the AccessManager's admin role.
+    await (await revolving.transferOwnership(tl)).wait();
+    p = await planWith(inputs);
+    expect(step(p, "CF-upgrade-schedule").reason).to.contain("does not hold CREDIT_SETTINGS_ROLE");
+    const access = await ethers.getContractAt("AccessManager", await (await ethers.getContractAt("ClearCredit", await revolving.stableCredit())).access());
+    await (await access.grantRole(ethers.ZeroHash, tl)).wait();
+    expect(await access.hasRole(ethers.id("CREDIT_SETTINGS_ROLE"), tl)).to.equal(false); // through the admin role only, as on Base Sepolia
+    // A record validated against another implementation is refused.
+    const file = path.join(DIR, `${CARD_FEE_RECORD}.json`);
+    const kept = fs.readFileSync(file, "utf8");
+    fs.writeFileSync(file, JSON.stringify({ ...prep, replaces: random() }));
+    p = await planWith(inputs);
+    expect(step(p, "CF-upgrade-schedule").reason).to.contain("the implementation RevolvingIssuerCardFee.json was validated against");
+    fs.writeFileSync(file, kept);
+
+    p = await planWith(inputs);
+    const schedule = step(p, "CF-upgrade-schedule");
+    expect(schedule.status).to.equal("ready");
+    expect(schedule.signer).to.equal(await safe.getAddress());
+    expect(schedule.to).to.equal(tl);
+    expect(schedule.title).to.contain("$0.30");
+    expect(schedule.args[0].value).to.equal(proxy);
+    expect(schedule.args[2].value).to.equal(revolving.interface.encodeFunctionData("upgradeToAndCall",
+      [impl, revolving.interface.encodeFunctionData("setMaxCardCreditFee", [300_000n])]));
+    expect(schedule.args[5].value).to.equal(String(7 * DAY));
+    expect(step(p, "CFx-upgrade-execute").reason).to.equal("Waits for CF-upgrade-schedule, then 7 days.");
+    // Its Safe batch is written while it is ready.
+    const w = writeSigningPlan(p, DIR);
+    const batchFile = w.batches.find((b) => b.endsWith("signing-CF-upgrade-schedule.json"))!;
+    expect(JSON.parse(fs.readFileSync(batchFile, "utf8")).transactions).to.deep.equal([{ to: tl, value: "0", data: schedule.data }]);
+    await send(schedule);
+
+    p = await planWith(inputs);
+    expect(step(p, "CF-upgrade-schedule").status).to.equal("done");
+    expect(step(p, "CFx-upgrade-execute").reason).to.contain("the credit timelock's 7 days end at");
+    await ethers.provider.send("evm_increaseTime", [7 * DAY + 60]);
+    await ethers.provider.send("evm_mine", []);
+    p = await planWith(inputs);
+    expect(step(p, "CFx-upgrade-execute").status).to.equal("ready");
+    await send(step(p, "CFx-upgrade-execute"));
+    expect(await upgrades.erc1967.getImplementationAddress(proxy)).to.equal(impl);
+    const wk = await ethers.getContractAt("RevolvingIssuerWorkouts", proxy);
+    expect(await wk.maxCardCreditFee()).to.equal(300_000n); // on from the upgrade
+    p = await planWith(inputs);
+    for (const id of CF_STEPS) expect(step(p, id).status, id).to.equal("done");
+
+    // One credit settings signer can switch it off; the plan notes the difference and asks nothing.
+    await (await revolving.connect(s.cs1).setMaxCardCreditFee(0n)).wait();
+    p = await planWith(inputs);
+    for (const id of CF_STEPS) expect(step(p, id).status, id).to.equal("done");
+    expect(p.notes.join("\n")).to.contain("maxCardCreditFee is $0.00, not CARD_CREDIT_FEE_CAP_USDC $0.30");
   });
   /*
    * Settlement Funding (decision 54): the pool upgrade scheduled after E8x (the walk above), its 7 days, then the

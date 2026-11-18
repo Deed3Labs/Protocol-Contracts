@@ -6,6 +6,7 @@ import { stateAttesterGrant } from "./state_attester_grant";
 import { RETIRED_SUFFIX } from "../deploy/retire_credit_stack";
 import { parseEnvFile } from "./rehearse_sepolia_fork";
 import { SETTLEMENT_LANE_RECORD } from "./upgrade_settlement_lane";
+import { CARD_FEE_RECORD, CARD_FEE_MODULE_KINDS, readCardFeeRecord } from "./upgrade_card_credit_fee";
 import {
   assuranceSetupFromEnv, assuranceSetupProblems, governedCalls, approvalKey, CL_FEES_MASK, BOARD_ALLOCATION_MASK, AssuranceSetup,
 } from "../deploy/assurance_timelock_handover";
@@ -44,6 +45,8 @@ export const DEFAULT_ROLLOUT_ENV = path.join("deploy", "config", "base-sepolia.r
 export const PLAN_FORMAT = "clear-signing-plan/1";
 const ZERO_HASH = "0x" + "00".repeat(32);
 const ZERO_ADDRESS = "0x" + "00".repeat(20);
+/** RevolvingIssuer's CARD_CREDIT_FEE_CEILING: the most `setMaxCardCreditFee` accepts ($5.00 in ledger units). */
+const CARD_CREDIT_FEE_CEILING = 5_000_000n;
 /** EIP-1967 implementation slot. */
 const IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 
@@ -709,6 +712,112 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       kind: "wallet", signer: cardSigner ?? ZERO_ADDRESS, signerLabel: signerLabel(cardSigner), to: rev.address ?? ZERO_ADDRESS, toLabel: "RevolvingIssuer",
       ...encode(rIface, "setCardSettlementAccount", [cardAccount ?? ZERO_ADDRESS], [cardAccount ? nameOf(cardAccount) : undefined]),
       dependsOn: settingsDep(cardSigner), ...cs,
+    });
+  }
+
+  // ================= CF: the card credit fee (decision 55) =================
+  // A new RevolvingIssuer implementation (and module set), prepared by scripts/upgrade_card_credit_fee.ts and
+  // recorded as RevolvingIssuerCardFee.json. RevolvingIssuer's owner is the CreditTimelock (7 days), whose proposer
+  // and executor is the Clear Treasury Safe. The fee is on by default (owner, Nov 18, 2026): the one timelock
+  // operation is upgradeToAndCall(impl, setMaxCardCreditFee(CARD_CREDIT_FEE_CAP_USDC)). The call runs as the
+  // timelock, which passes onlyCreditRole(CREDIT_SETTINGS_ROLE) because it holds the AccessManager's admin role
+  // (hasCreditRole); that is checked here. One credit settings signer can set the bound back to zero (the off switch).
+  {
+    const rev = await fresh("RevolvingIssuer");
+    label(rev.address, "RevolvingIssuer");
+    const creditTimelock = await rec("CreditTimelock");
+    label(creditTimelock, "credit timelock");
+    const impl = await rec(CARD_FEE_RECORD);
+    label(impl, "the RevolvingIssuer implementation with the card credit fee");
+    const record = readCardFeeRecord(recordsDir);
+    const r = await contract("RevolvingIssuer", rev.address ?? ZERO_ADDRESS);
+    const workouts = await contract("RevolvingIssuerWorkouts", rev.address ?? ZERO_ADDRESS);
+    const tl = creditTimelock ? await timelockOf(creditTimelock) : undefined;
+    const tlAddress = creditTimelock ?? ZERO_ADDRESS;
+    const treasurySafe = financialSafe;
+    const safeLabel = "Clear Treasury Safe (its owners sign in the Safe app)";
+    const cap = parseUsdc(env.CARD_CREDIT_FEE_CAP_USDC);
+    const capText = cap === null ? undefined : formatUsdc(cap);
+    const salt = ethers.id("signing-plan: CF credit timelock proposal (RevolvingIssuer upgrade: the card credit fee, decision 55)");
+    const upgradeData = impl && cap !== null
+      ? r.interface.encodeFunctionData("upgradeToAndCall", [impl, r.interface.encodeFunctionData("setMaxCardCreditFee", [cap])])
+      : "0x";
+    const delay: bigint = tl ? await tl.getMinDelay() : 604800n;
+    const opId: string = tl && impl && rev.address && cap !== null ? await tl.hashOperation(rev.address, 0n, upgradeData, ZERO_HASH, salt) : ZERO_HASH;
+    const running = rev.address ? ethers.getAddress("0x" + (await provider.getStorage(rev.address, IMPL_SLOT)).slice(-40)) : undefined;
+    const upgraded = !!impl && same(running, impl);
+    // What the record's implementation is: its four modules, each of the kind the card fee needs.
+    const kindsOk = async (a: string) => {
+      const im = new ethers.Contract(a, ["function extension() view returns (address)", "function cycles() view returns (address)", "function terms() view returns (address)", "function workouts() view returns (address)"], provider);
+      const kind = (m: string) => new ethers.Contract(m, ["function extensionKind() view returns (bytes32)"], provider).extensionKind();
+      try {
+        const mods = [await im.extension(), await im.cycles(), await im.terms(), await im.workouts()];
+        const names = Object.keys(CARD_FEE_MODULE_KINDS) as (keyof typeof CARD_FEE_MODULE_KINDS)[];
+        for (const [i, n] of names.entries()) {
+          if ((await kind(mods[i])) !== ethers.id(CARD_FEE_MODULE_KINDS[n])) return `its ${n} is not "${CARD_FEE_MODULE_KINDS[n]}"`;
+          if (record?.modules?.[n] && !same(record.modules[n], mods[i])) return `its ${n} is ${mods[i]}, not the record's ${record.modules[n]}`;
+        }
+        return undefined;
+      } catch (e: any) {
+        return `its modules cannot be read (${String(e?.shortMessage ?? e?.message ?? e).split("\n")[0]})`;
+      }
+    };
+    let sSt: { status: StepStatus; reason?: string };
+    let xSt: { status: StepStatus; reason?: string };
+    if (upgraded) {
+      sSt = xSt = { status: "done", reason: "RevolvingIssuer runs the implementation with the card credit fee." };
+      const now: bigint | undefined = await workouts.maxCardCreditFee().then((v: bigint) => v, () => undefined);
+      if (now !== undefined && cap !== null && now !== cap) notes.push(`RevolvingIssuer's maxCardCreditFee is ${formatUsdc(now)}, not CARD_CREDIT_FEE_CAP_USDC ${capText}: a credit settings signer changed it after the upgrade (setMaxCardCreditFee; zero is the off switch).`);
+    } else if (!rev.address) sSt = xSt = waitingFor(`Waits for deploy 20 (D3): ${rev.why}.`);
+    else if (!impl || !record) {
+      sSt = xSt = waitingFor(`Waiting for the prepare step: ${CARD_FEE_RECORD}.json. CARD_FEE_PREPARE=1 npx hardhat run scripts/upgrade_card_credit_fee.ts --network ${network} validates the new implementation against the manifest, deploys it and its modules, and writes deployments/${network}/${CARD_FEE_RECORD}.json. It upgrades nothing.`);
+    } else if (cap === null) {
+      sSt = xSt = waitingFor("Waiting for input: CARD_CREDIT_FEE_CAP_USDC (deploy/config/base-sepolia.rollout.env): the fee the upgrade switches on.");
+    } else if (cap > CARD_CREDIT_FEE_CEILING) {
+      sSt = xSt = waitingFor(`CARD_CREDIT_FEE_CAP_USDC ${capText} is above the contract's ceiling of $5.00, which it refuses.`);
+    } else if (!same(record.proxy, rev.address)) {
+      sSt = xSt = waitingFor(`Refusing: ${CARD_FEE_RECORD}.json was prepared for RevolvingIssuer ${record.proxy}, not the recorded ${rev.address}. Re-run the prepare step.`);
+    } else if (!same(record.replaces, running)) {
+      sSt = xSt = waitingFor(`Refusing: RevolvingIssuer runs ${running}, not ${record.replaces}, the implementation ${CARD_FEE_RECORD}.json was validated against. Re-run the prepare step.`);
+    } else if (!creditTimelock || !treasurySafe || !tl) {
+      sSt = xSt = waitingFor(!treasurySafe ? "Waiting for input: CLEAR_FINANCIAL_SAFE (the Clear Treasury Safe)." : "No CreditTimelock record.");
+    } else {
+      const wrong = await kindsOk(impl);
+      const owner: string = await r.owner();
+      const access = new ethers.Contract(await (new ethers.Contract(await r.stableCredit(), ["function access() view returns (address)"], provider)).access(),
+        ["function hasCreditRole(bytes32,address) view returns (bool)"], provider);
+      if (wrong) sSt = xSt = waitingFor(`Refusing: the recorded implementation ${impl} is not the card fee implementation: ${wrong}.`);
+      // _authorizeUpgrade is onlyOwner (CreditIssuer): only the owner's call can upgrade, so the proposal is the owner's.
+      else if (!same(owner, creditTimelock)) sSt = xSt = waitingFor(`Refusing: RevolvingIssuer's owner is ${nameOf(owner)}, not the credit timelock ${creditTimelock}. Only its owner can upgrade it; ask before going on.`);
+      // The same operation runs setMaxCardCreditFee as the timelock: without the role the whole upgrade would revert.
+      else if (!(await access.hasCreditRole(ethers.id("CREDIT_SETTINGS_ROLE"), creditTimelock))) {
+        sSt = xSt = waitingFor(`Refusing: the credit timelock ${creditTimelock} does not hold CREDIT_SETTINGS_ROLE (or the AccessManager's admin role), so setMaxCardCreditFee in the upgrade would revert.`);
+      } else if (!(await tl.hasRole(await tl.PROPOSER_ROLE(), treasurySafe)) || !(await tl.hasRole(await tl.EXECUTOR_ROLE(), treasurySafe))) {
+        sSt = xSt = waitingFor(`Refusing: the Clear Treasury Safe ${treasurySafe} is not both proposer and executor on the credit timelock ${creditTimelock}.`);
+      } else {
+        sSt = (await tl.isOperation(opId)) ? { status: "done" } : { status: "ready", reason: `Replaces ${nameOf(record.replaces)} (validated against the manifest by the prepare step) and sets the fee's bound to ${capText}.` };
+        if (await tl.isOperationDone(opId)) xSt = { status: "done", reason: `The upgrade ran, but RevolvingIssuer now runs ${running}: it was upgraded again since. Ask before going on.` };
+        else if (!(await tl.isOperation(opId))) xSt = waitingFor("Waits for CF-upgrade-schedule, then 7 days.");
+        else if (!(await tl.isOperationReady(opId))) xSt = waitingFor(`Not yet: the credit timelock's 7 days end at ${new Date(Number(await tl.getTimestamp(opId)) * 1000).toISOString()}.`);
+        else xSt = { status: "ready" };
+      }
+    }
+    const implNote = impl
+      ? `upgradeToAndCall(${impl}, setMaxCardCreditFee(${cap ?? "?"})): the implementation with the card credit fee, switched on at ${capText ?? "CARD_CREDIT_FEE_CAP_USDC"}`
+      : "upgradeToAndCall(the new implementation, setMaxCardCreditFee(the fee))";
+    push({
+      id: "CF-upgrade-schedule", stage: "CF", title: `Clear Treasury Safe: schedule the RevolvingIssuer upgrade that adds the card credit fee${capText ? ` (${capText})` : ""}`,
+      explanation: `Decision 55: queues one operation on the credit timelock: RevolvingIssuer.upgradeToAndCall to the implementation scripts/upgrade_card_credit_fee.ts validated and deployed, calling setMaxCardCreditFee(${capText ?? "CARD_CREDIT_FEE_CAP_USDC"}) in the same transaction, so the fee is on from the upgrade (owner, Nov 18, 2026). It adds settleCardSpendWithFee and returnCardCreditFee; nothing in the storage layout moves. One credit settings signer can set the bound back to zero at any time. It can run 7 days later. Sign it in the Safe app.`,
+      kind: "safe", signer: treasurySafe ?? ZERO_ADDRESS, signerLabel: safeLabel, to: tlAddress, toLabel: "credit timelock",
+      ...encode(timelockIface, "schedule", [rev.address ?? ZERO_ADDRESS, 0n, upgradeData, ZERO_HASH, salt, delay], ["RevolvingIssuer", undefined, implNote, "none", "a fixed label for this proposal", `${Number(delay) / 86400} days`]),
+      dependsOn: [], ...sSt,
+    });
+    push({
+      id: "CFx-upgrade-execute", stage: "Day 7", title: "Clear Treasury Safe: run the RevolvingIssuer upgrade that adds the card credit fee (day 7)",
+      explanation: `After the credit timelock's 7 days, the Safe runs the queued upgrade, and the card credit fee's bound is ${capText ?? "CARD_CREDIT_FEE_CAP_USDC"} from then on. The API charges it once its own CARD_CREDIT_FEE_CENTS is set.`,
+      kind: "safe", signer: treasurySafe ?? ZERO_ADDRESS, signerLabel: safeLabel, to: tlAddress, toLabel: "credit timelock",
+      ...encode(timelockIface, "execute", [rev.address ?? ZERO_ADDRESS, 0n, upgradeData, ZERO_HASH, salt], ["RevolvingIssuer", undefined, implNote, "none", "the same label"]),
+      dependsOn: ["CF-upgrade-schedule"], ...xSt,
     });
   }
 
@@ -1581,7 +1690,7 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       s.reason = `Waits for ${open.join(", ")} first.`;
     }
   }
-  const ifaces = await Promise.all(["AccessManager", "CollateralAgent", "BondVault", "Liquidator", "TermIssuer", "TimelockController", "ESADepositVault", "YieldPoolLedger", "LendingPool", "AssurancePool", "SettlementForwarder"].map(async (n) => new ethers.Interface((await artifacts.readArtifact(n)).abi)));
+  const ifaces = await Promise.all(["AccessManager", "CollateralAgent", "BondVault", "Liquidator", "TermIssuer", "RevolvingIssuer", "TimelockController", "ESADepositVault", "YieldPoolLedger", "LendingPool", "AssurancePool", "SettlementForwarder"].map(async (n) => new ethers.Interface((await artifacts.readArtifact(n)).abi)));
   const decodeRevert = (e: any): string => {
     const data: string | undefined = e?.data ?? e?.error?.data ?? e?.info?.error?.data;
     if (typeof data === "string" && data.length >= 10) {

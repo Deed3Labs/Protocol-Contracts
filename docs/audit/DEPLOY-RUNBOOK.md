@@ -412,6 +412,14 @@ The funding desk (`apps/api/src/jobs/fundingDesk.ts`, off unless `SETTLEMENT_FUN
 10. **Day to day.** Alerts say when the cap needs two deployers and CL Operating's owners (the batches are in the alert and on the Command Center), when the CSA is short (the Margin, then BondVault excess, then the treasury; record a Margin advance with `bun src/scripts/recordSettlementMarginAdvance.ts`), or when money will land after a cut-off. Any revert or failed bank or off-ramp payment stops the desk until a person clears it with `bun src/scripts/clearSettlementFundingHalt.ts <move id> "<your name>"`. Build, Security, "Automatic jobs" shows whether it runs.
 11. **To stop it at once:** `stopSettlementFunder()` on the Yield Pool, one call from any `DEPLOYER_ROLE` or `CCO_ROLE` holder; then CL Operating removes the forwarder as delegate. Restarting the funder needs both deployers again (`SL-funder-1/2`), both after the stop.
 
+### 4.5 The card credit fee (decision 55)
+
+A RevolvingIssuer upgrade adds the 30-cent card credit fee (`docs/audit/specs/card-credit-fee.md`): `settleCardSpendWithFee`, `returnCardCreditFee`, the fee given back on a full refund, and its bound `maxCardCreditFee` (at most $5.00). The fee is on by default (owner, Nov 18, 2026): the upgrade sets the bound in the same call. RevolvingIssuer's owner is the CreditTimelock, so it is a Clear Treasury Safe proposal. Nothing is sent without the owner.
+
+1. **Prepare, nothing live:** `CARD_FEE_PREPARE=1 npx hardhat run scripts/upgrade_card_credit_fee.ts --network base-sepolia` validates the upgrade against `.openzeppelin/base-sepolia.json`, deploys the four modules and the implementation, and writes `deployments/base-sepolia/RevolvingIssuerCardFee.json`. It never touches the proxy. Without `CARD_FEE_PREPARE=1` it only validates and prints.
+2. **`CF-upgrade-schedule`:** the Clear Treasury Safe schedules one CreditTimelock operation, `RevolvingIssuer.upgradeToAndCall(new implementation, setMaxCardCreditFee(CARD_CREDIT_FEE_CAP_USDC))` (0.30 in the rollout env). The call runs as the timelock, which holds the AccessManager's admin role and so passes `onlyCreditRole`; the plan refuses to schedule otherwise. **`CFx-upgrade-execute`** runs it seven days later: the fee's bound is 30 cents from then on.
+3. **Then the API:** `CARD_CREDIT_FEE_CENTS=30` on Railway. To switch the fee off, `setMaxCardCreditFee(0)` (one credit settings signer); fees already charged can still be credited back.
+
 The Pool Tier principal is still posted by hand: the two `VALUATION_ROLE` signers read the worksheet (`GET /api/command/pool-tier-principal`, the Command Center's "Pool Tier principal", marked "suggested") and post it with `postPoolTierPrincipal(value, evidenceHash)`. It now counts savings-backed credit (IV-02 §4.1) and the Margin Advances.
 
 ## 5. Open items

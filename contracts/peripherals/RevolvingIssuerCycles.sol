@@ -10,7 +10,7 @@ import "./RevolvingIssuerBase.sol";
 contract RevolvingIssuerCycles is RevolvingIssuerBase {
     /// @notice what RevolvingIssuer's constructor checks before pinning this as its cycles module.
     function extensionKind() external pure returns (bytes32) {
-        return keccak256("RevolvingIssuerCycles.v3");
+        return keccak256("RevolvingIssuerCycles.v4");
     }
 
     /* ---- section 12: cycles, terms and the member's own switches ---- */
@@ -365,6 +365,27 @@ contract RevolvingIssuerCycles is RevolvingIssuerBase {
             member, end, uint64(block.timestamp), startPrincipal, startCarry, endPrincipal, endCarry, cycleCarry,
             principalSeconds, ra, sm, required, s.closedWorkout, w.ref
         );
+    }
+
+    /* ---- section 12 settings: back here from the workouts module (decision 55, for room) ---- */
+
+    /// @notice sets the governed terms of the Clear Credit Agreement (section 12).
+    /// @dev `autoClearOffGlobal` is no longer read: only the member's hybridMode switches Automatic
+    /// Clearing off (12.2, Addendum 2). The field stays for the layout and the ABI.
+    function setCreditTerms(CreditTerms calldata terms, uint128 boostBase, uint128 boostEarned)
+        external
+        onlyCreditRole(CREDIT_SETTINGS_ROLE)
+    {
+        creditTerms = terms;
+        boostBaseCap = boostBase;
+        boostEarnedCap = boostEarned;
+        emit CreditTermsUpdated(terms, boostBase, boostEarned);
+    }
+
+    /// @notice names where a member's last ESA deposit is read, for the Boost deposit test.
+    function setDepositSource(address source) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
+        depositSource = source;
+        emit DepositSourceUpdated(source);
     }
 
     /* ---- moved here from the workouts module (Phase 2g, for room) ---- */

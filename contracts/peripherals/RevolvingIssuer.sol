@@ -38,10 +38,10 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
     constructor(address extension_, address cycles_, address terms_, address workouts_) {
         _disableInitializers();
         if (
-            IExtensionKind(extension_).extensionKind() != keccak256("RevolvingIssuerExtension.v4")
-                || IExtensionKind(cycles_).extensionKind() != keccak256("RevolvingIssuerCycles.v3")
+            IExtensionKind(extension_).extensionKind() != keccak256("RevolvingIssuerExtension.v5")
+                || IExtensionKind(cycles_).extensionKind() != keccak256("RevolvingIssuerCycles.v4")
                 || IExtensionKind(terms_).extensionKind() != keccak256("RevolvingIssuerTerms.v2")
-                || IExtensionKind(workouts_).extensionKind() != keccak256("RevolvingIssuerWorkouts.v1")
+                || IExtensionKind(workouts_).extensionKind() != keccak256("RevolvingIssuerWorkouts.v2")
         ) revert RevolvingIssuerExtensionMismatch();
         extension = extension_;
         cycles = cycles_;
@@ -562,6 +562,11 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _forward();
     }
 
+    /// @notice see RevolvingIssuerWorkouts.settleCardSpendWithFee (decision 55).
+    function settleCardSpendWithFee(bytes32, address, uint256, uint256) external {
+        _forwardTo(workouts);
+    }
+
     /// @notice see RevolvingIssuerExtension.authorizeCardSpend.
     function authorizeCardSpend(bytes32, address, uint256) external {
         _forward();
@@ -569,6 +574,11 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
 
     /// @notice see RevolvingIssuerExtension.reverseCardSpend.
     function reverseCardSpend(bytes32, uint256) external {
+        _forward();
+    }
+
+    /// @notice see RevolvingIssuerExtension.returnCardCreditFee (decision 55).
+    function returnCardCreditFee(bytes32, uint256) external {
         _forward();
     }
 
@@ -602,13 +612,19 @@ contract RevolvingIssuer is RevolvingIssuerBase, ICreditPositionSource {
         _forward();
     }
 
-    /// @notice see RevolvingIssuerExtension: section 12 settings and the member's own switches.
-    function setCreditTerms(CreditTerms calldata, uint128, uint128) external {
+    /// @notice see RevolvingIssuerWorkouts: the card credit fee's bound (decision 55).
+    function setMaxCardCreditFee(uint256) external {
         _forwardTo(workouts);
     }
 
+    /// @notice section 12 settings: RevolvingIssuerCycles (back there since decision 55, for room); the
+    /// member's own switches below: RevolvingIssuerWorkouts.
+    function setCreditTerms(CreditTerms calldata, uint128, uint128) external {
+        _forwardTo(cycles);
+    }
+
     function setDepositSource(address) external {
-        _forwardTo(workouts);
+        _forwardTo(cycles);
     }
 
     function setAutoClear(bool, uint8, bytes32) external {

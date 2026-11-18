@@ -16,7 +16,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
 
     /// @notice what RevolvingIssuer's constructor checks before pinning this module.
     function extensionKind() external pure returns (bytes32) {
-        return keccak256("RevolvingIssuerWorkouts.v1");
+        return keccak256("RevolvingIssuerWorkouts.v2");
     }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -342,6 +342,52 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
     }
 
 
+    /* ---- the card credit fee (decision 55) ---- */
+
+    /// @notice settles a card purchase that drew revolving credit, with the card credit fee on top
+    /// (decision 55): RevolvingIssuerExtension.settleCardSpend applied to `amount + fee`.
+    /// @dev Every check `settleCardSpend` makes holds for the purchase and the fee together: the
+    /// recorded authorization, the per-purchase and per-day caps, good standing, once per ref. Both
+    /// are drawn through the tiers in one draw, cheapest first, all or nothing, so the fee is owed
+    /// and carries like the purchase. The ledger mints it as the purchase's third leg, to the card
+    /// settlement account like the purchase's claim: no new recipient. The fee is bounded by
+    /// `maxCardCreditFee`: zero refuses every fee. `cardSettlementOf` keeps returning the purchase
+    /// alone.
+    /// @param ref the card issuer's transaction reference, hashed.
+    /// @param member address whose line the purchase is drawn on.
+    /// @param amount the settled purchase, in ledger units, without the fee.
+    /// @param fee the card credit fee, in ledger units: more than zero, at most `maxCardCreditFee`.
+    function settleCardSpendWithFee(bytes32 ref, address member, uint256 amount, uint256 fee) external {
+        if (fee == 0) revert RevolvingIssuerCardFeeZero();
+        uint256 max = _cardFee().maxCardCreditFee;
+        if (fee > max) revert RevolvingIssuerCardFeeAboveMax(fee, max);
+        _settleCard(ref, member, amount, fee);
+    }
+
+    /// @notice the most one card purchase may be charged as a card credit fee (decision 55), in
+    /// ledger units (6 decimals; 30 cents is 300000). Zero refuses
+    /// every fee. Set by `setMaxCardCreditFee`, never above $5.00. Reached through RevolvingIssuer's
+    /// fallback, like the other views here.
+    function maxCardCreditFee() external view returns (uint256) {
+        return _cardFee().maxCardCreditFee;
+    }
+
+    /// @notice the card credit fee a settled purchase was charged (zero if none), and how much of it
+    /// has been credited back (`returnCardCreditFee`, and a full refund).
+    function cardCreditFeeOf(bytes32 ref) external view returns (uint256 fee, uint256 returned) {
+        CardCreditFee memory charged = _cardFee().feeOf[ref];
+        return (charged.fee, charged.returned);
+    }
+
+    /// @notice bounds the card credit fee the card settler may charge (`settleCardSpendWithFee`).
+    /// @dev One credit settings signer, no timelock: it only bounds what the settler key can charge,
+    /// never above `CARD_CREDIT_FEE_CEILING` ($5.00), and zero switches the fee off.
+    function setMaxCardCreditFee(uint256 fee) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
+        if (fee > CARD_CREDIT_FEE_CEILING) revert RevolvingIssuerCardFeeAboveCeiling(fee, CARD_CREDIT_FEE_CEILING);
+        _cardFee().maxCardCreditFee = fee;
+        emit MaxCardCreditFeeUpdated(fee);
+    }
+
     /// @notice the member's workout record (12.18).
     function workoutStateOf(address member) external view returns (Workout memory) {
         return _p2g().workoutOf[member];
@@ -363,26 +409,7 @@ contract RevolvingIssuerWorkouts is RevolvingIssuerBase {
         return _p2g().positionStat[member][tierId];
     }
 
-    /* ---- moved here from the cycles module (Phase 2g, for room) ---- */
-
-    /// @notice sets the governed terms of the Clear Credit Agreement (section 12).
-    /// @dev `autoClearOffGlobal` is no longer read: only the member's hybridMode switches Automatic
-    /// Clearing off (12.2, Addendum 2). The field stays for the layout and the ABI.
-    function setCreditTerms(CreditTerms calldata terms, uint128 boostBase, uint128 boostEarned)
-        external
-        onlyCreditRole(CREDIT_SETTINGS_ROLE)
-    {
-        creditTerms = terms;
-        boostBaseCap = boostBase;
-        boostEarnedCap = boostEarned;
-        emit CreditTermsUpdated(terms, boostBase, boostEarned);
-    }
-
-    /// @notice names where a member's last ESA deposit is read, for the Boost deposit test.
-    function setDepositSource(address source) external onlyCreditRole(CREDIT_SETTINGS_ROLE) {
-        depositSource = source;
-        emit DepositSourceUpdated(source);
-    }
+    /* ---- moved here from the cycles module (Phase 2g, for room): the member's own switches ---- */
 
     /// @notice the member turns Automatic Clearing on or off, and chooses its level (12.2).
     /// @param authHash the hash of the authorization text the member approved (a copy goes to them);

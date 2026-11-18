@@ -12,7 +12,7 @@ import "./RevolvingIssuerBase.sol";
 contract RevolvingIssuerExtension is RevolvingIssuerBase {
     /// @notice what RevolvingIssuer's constructor checks before pinning this as its extension.
     function extensionKind() external pure returns (bytes32) {
-        return keccak256("RevolvingIssuerExtension.v4");
+        return keccak256("RevolvingIssuerExtension.v5");
     }
 
     using CarryIndex for CarryIndex.Index;
@@ -40,80 +40,8 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
     /// @param ref the card issuer's transaction reference, hashed.
     /// @param member address whose line the purchase is drawn on.
     /// @param amount the settled amount, in ledger units.
-    function settleCardSpend(bytes32 ref, address member, uint256 amount)
-        external
-        notNull(member)
-    {
-        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
-        if (cardSettlementAccount == address(0)) revert RevolvingIssuerNoCardSettlementAccount();
-        if (amount == 0) revert RevolvingIssuerCardAmountZero();
-        // Once settled, always settled -- even after a full refund, which leaves the amount at zero
-        // but must not let the same purchase be drawn again.
-        if (cardSettlements[ref].member != address(0)) revert RevolvingIssuerCardAlreadySettled(ref);
-
-        /*
-         * Only what was approved, for whom it was approved (audit M-2). The authorization was
-         * recorded when the card network asked, while the member was in good standing; a purchase
-         * that clears after a freeze is still honoured, because it was approved before it. One in
-         * default is not: a default ends the line. A per-purchase and a per-day cap bound what the
-         * settler key can do even with authorizations it recorded itself (DFAL 10a: flagged for
-         * counsel in the Phase 1 report).
-         */
-        CardAuthorization memory authorization = cardAuthorizations[ref];
-        if (authorization.member != member) revert RevolvingIssuerCardNotAuthorized(ref, member);
-        if (amount > authorization.amount) {
-            revert RevolvingIssuerCardExceedsAuthorization(ref, amount, authorization.amount);
-        }
-        if (cardTxCap != 0 && amount > cardTxCap) revert RevolvingIssuerCardTxCap(amount, cardTxCap);
-        // The card follows the current line (4c item 2): a default of an earlier line, settled
-        // before the member was re-onboarded, does not stop this one.
-        if (_computedDefault(member) || _defaultedOnCurrentLine(member)) {
-            revert RevolvingIssuerMemberNotInGoodStanding(member);
-        }
-        _consumeDailyCap(cardSpendCap, "CARD", amount);
-        _consumeMemberCardCap(member, amount);
-        delete cardAuthorizations[ref];
-
-        // Carry accrued since the last touch is part of what is owed; bring it on before measuring.
-        _touch(member);
-
-        // Card spending draws against Savings only as far as the member has authorized (12.7): the
-        // Savings tier is narrowed to that for this draw, and the rest falls to the next tiers.
-        uint256 savingsTier = type(uint256).max;
-        uint256 savingsCap;
-        uint256 savingsBefore;
-        for (uint256 i = 0; i < tiers.length; i++) {
-            if (tiers[i].kind == SAVINGS_KIND) {
-                savingsTier = i;
-                savingsCap = tierCapacity[member][i];
-                savingsBefore = tierPrincipal[member][i];
-                // Saturating: an unlimited allowance (type(uint256).max) narrows nothing, and
-                // adding it to what is drawn must not overflow (Phase 4, L-A).
-                uint256 allowance = savingsDrawAllowance[member];
-                if (allowance < savingsCap && savingsBefore + allowance < savingsCap) {
-                    tierCapacity[member][i] = savingsBefore + allowance;
-                }
-                break;
-            }
-        }
-
-        // All or nothing: whatever the tiers cannot place reverts the whole settlement.
-        uint256 unplaced = _draw(member, amount);
-        if (unplaced > 0) revert RevolvingIssuerCardHeadroom(member, amount, amount - unplaced);
-        if (savingsTier != type(uint256).max) {
-            tierCapacity[member][savingsTier] = savingsCap;
-            uint256 used = tierPrincipal[member][savingsTier] - savingsBefore;
-            if (used > 0) {
-                uint256 left = savingsDrawAllowance[member];
-                if (left != type(uint256).max) savingsDrawAllowance[member] = left - used;
-                emit SavingsDrawn(member, used, savingsDrawAllowance[member]);
-            }
-        }
-        cardSettlements[ref] = CardSettlement({member: member, amount: amount});
-        stableCredit.originatePurchase(
-            member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
-        );
-        emit CardSpendSettled(ref, member, amount);
+    function settleCardSpend(bytes32 ref, address member, uint256 amount) external {
+        _settleCard(ref, member, amount, 0);
     }
 
     /// @notice records what the card issuer approved, at the moment it approved it.
@@ -156,8 +84,12 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
     /// @dev The inverse of `settleCardSpend`, and capital-free for the same reason a partner
     /// reversal is. The tiers are cleared dearest first, which is what any repayment does, and
     /// the ledger takes the claim back from the float.
+    ///
+    /// A card credit fee (decision 55) is kept on a partial refund. The reversal that brings the
+    /// purchase to zero also credits back whatever is left of it, once, the way
+    /// `returnCardCreditFee` does.
     /// @param ref the card issuer's transaction reference, hashed.
-    /// @param amount the amount given back, in ledger units.
+    /// @param amount the amount given back, in ledger units, without the fee.
     function reverseCardSpend(bytes32 ref, uint256 amount) external {
         if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
         if (amount == 0) revert RevolvingIssuerCardAmountZero();
@@ -170,10 +102,46 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
         _touch(settlement.member);
         _repay(settlement.member, amount, type(uint256).max);
         cardSettlements[ref].amount = settlement.amount - amount;
+        // A full refund credits back what is left of the fee. First, so the fee's claim is taken back
+        // from the card settlement account before the purchase's reversal draws that account down.
+        CardCreditFee storage charged = _cardFee().feeOf[ref];
+        if (amount == settlement.amount && charged.fee > charged.returned) {
+            _returnCardFee(ref, settlement.member, charged, charged.fee - charged.returned);
+        }
         stableCredit.reversePurchase(
             settlement.member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
         );
         emit CardSpendReversed(ref, settlement.member, amount);
+    }
+
+    /// @notice credits back part or all of a settled purchase's card credit fee (decision 55): what
+    /// a cycle statement credits when carry and the fee together would pass the CFL maximum (MB-04
+    /// §5.4(f)).
+    /// @dev Card settler only. The fee's own three-party entry reversed for `amount`: the tiers
+    /// release it dearest first and the ledger takes that much of the fee's claim back from the card
+    /// settlement account. At most what is left of the fee; a full refund later credits only the
+    /// rest. Not bounded by `maxCardCreditFee`, so switching the fee off never holds up a credit.
+    /// @param ref the card issuer's transaction reference, hashed.
+    /// @param amount how much of the fee to credit back, in ledger units.
+    function returnCardCreditFee(bytes32 ref, uint256 amount) external {
+        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
+        if (amount == 0) revert RevolvingIssuerCardAmountZero();
+        address member = cardSettlements[ref].member;
+        if (member == address(0)) revert RevolvingIssuerCardNotSettled(ref);
+        CardCreditFee storage charged = _cardFee().feeOf[ref];
+        uint256 left = charged.fee - charged.returned;
+        if (amount > left) revert RevolvingIssuerCardFeeReturnExceedsLeft(ref, amount, left);
+        _touch(member);
+        _returnCardFee(ref, member, charged, amount);
+    }
+
+    /// @dev Credits `amount` of a purchase's fee back: tiers dearest first, then the ledger's
+    /// three-party reversal with the fee as its only leg. The caller has brought carry on.
+    function _returnCardFee(bytes32 ref, address member, CardCreditFee storage charged, uint256 amount) private {
+        charged.returned += uint128(amount);
+        _repay(member, amount, type(uint256).max);
+        stableCredit.reversePurchase(member, amount, cardSettlementAccount, 0, cardSettlementAccount, amount);
+        emit CardCreditFeeReturned(ref, member, amount);
     }
 
     /// @notice clears card debt a member has repaid in fiat.
@@ -245,19 +213,6 @@ contract RevolvingIssuerExtension is RevolvingIssuerBase {
 
         // Collateral applied to the debt is not a cure of the default it enforces (12.5).
         _repayTier(member, tierId, pay, false);
-    }
-
-    /// @dev 4c item 1: today's card settlements for one member, against the governed per-member cap,
-    /// so the settler key's reach over any one member is bounded. Zero means not set.
-    function _consumeMemberCardCap(address member, uint256 amount) private {
-        uint256 cap = dueTerms.cardMemberDailyCap;
-        if (cap == 0) return;
-        CycleState storage s = cycleState[member];
-        uint64 today = uint64(block.timestamp / 1 days);
-        uint256 used = s.cardDay == today ? s.cardUsed : 0;
-        if (used + amount > cap) revert RevolvingIssuerCardMemberDailyCap(member, amount, cap > used ? cap - used : 0);
-        s.cardDay = today;
-        s.cardUsed = uint128(used + amount);
     }
 
     /// @notice adds a tier at the end of the draw order.

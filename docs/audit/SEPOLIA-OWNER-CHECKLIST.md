@@ -113,6 +113,12 @@ The funding desk funds the Credit Settlement Account before each card settlement
 
 To stop it at any time: `stopSettlementFunder()` on the Yield Pool, one call from any `DEPLOYER_ROLE` or `CCO_ROLE` holder. Restarting it takes both deployers (`SL-funder-1/2` again).
 
+**The card credit fee (decision 55; stage CF).** On by default (owner, Nov 18, 2026): the upgrade switches it on.
+
+1. **Prepare, nothing live:** the cloud session runs `CARD_FEE_PREPARE=1 npx hardhat run scripts/upgrade_card_credit_fee.ts --network base-sepolia` (validates the RevolvingIssuer upgrade, deploys it and its modules, record `RevolvingIssuerCardFee`). Until then `CF-upgrade-schedule` reads "Waiting for the prepare step".
+2. **`CF-upgrade-schedule`:** the Clear Treasury Safe schedules one CreditTimelock operation: the upgrade, with `setMaxCardCreditFee($0.30)` in the same call (`CARD_CREDIT_FEE_CAP_USDC=0.30`). **`CFx-upgrade-execute`** runs it 7 days later.
+3. **`CARD_CREDIT_FEE_CENTS=30`** on Railway. One credit settings signer's `setMaxCardCreditFee(0)` switches it off on chain.
+
 ## 5. The order
 
 1. Create the two CDP wallets (step 1) and put their addresses in the rollout env (or send them to the cloud session).
