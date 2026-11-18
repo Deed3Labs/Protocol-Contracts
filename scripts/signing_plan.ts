@@ -1285,14 +1285,96 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
             : "The same call from the other deployment signer; this one makes it count.");
       }
     }
-    // CL Operating's batch for the SettlementForwarder (the AllowanceModule delegate that pushes USDC to the off-ramp).
-    push({
-      id: "SL-cl-operating", stage: "SL", title: "CL Operating: install the SettlementForwarder as its AllowanceModule delegate",
-      explanation: "CL Operating names the SettlementForwarder a spending-limit delegate and gives it an allowance, so the funding desk can push USDC from CL Operating only to the off-ramp. Its calls are added once the forwarder exists.",
-      kind: "safe", signer: addr(env.CLEAR_LENDING_ACCOUNT) ?? ZERO_ADDRESS, signerLabel: "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
-      to: ZERO_ADDRESS, toLabel: "AllowanceModule", data: null, functionSignature: "addDelegate(address)", args: [], dependsOn: [],
-      ...waitingFor("Waits for the SettlementForwarder (decision 54, part 2): not deployed yet."),
-    });
+    // CL Operating's batch for the SettlementForwarder (deploy 28): name it a spending-limit delegate on Safe's
+    // AllowanceModule with the lane's cap per period, and set its off-ramp and desk wallet. Four calls, signed
+    // once as one Transaction Builder batch by CL Operating's owner (the Clear Lending Safe). Only CL Operating
+    // can set the forwarder's off-ramp and desk.
+    {
+      const operating = addr(env.CLEAR_LENDING_ACCOUNT);
+      const forwarderAddr = await rec("SettlementForwarder");
+      const offRamp = addr(env.SETTLEMENT_OFFRAMP_ADDRESS);
+      const moduleAddr = addr(env.PAYOUT_TOPUP_ALLOWANCE_MODULE) ?? CANONICAL_ALLOWANCE_MODULE;
+      label(forwarderAddr, "SettlementForwarder");
+      label(offRamp, "settlement off-ramp");
+      label(moduleAddr, "AllowanceModule");
+      const fwd = await contract("SettlementForwarder", forwarderAddr ?? ZERO_ADDRESS);
+      const modHasCode = await hasCode(moduleAddr);
+      const mod = new ethers.Contract(modHasCode ? moduleAddr : ZERO_ADDRESS, ALLOWANCE_MODULE_ABI, provider);
+      const opHasCode = !!operating && (await hasCode(operating));
+      const safeC = new ethers.Contract(opHasCode ? operating! : ZERO_ADDRESS, SAFE_MODULE_ABI, provider);
+      const usdc = poolAddress ? ethers.getAddress(await pool.asset()) : addr(env.RESERVE_TOKEN);
+      const periodMin = days ? days * 1440 : undefined;
+      let problem: string | undefined;
+      if (!forwarderAddr) problem = "Waits for deploy 28 (deploy/28_deploy_SettlementForwarder.ts), which deploys the SettlementForwarder.";
+      else if (!operating) problem = "Waiting for input: CLEAR_LENDING_ACCOUNT (CL Operating).";
+      else if (!opHasCode) problem = `CL Operating ${operating} has no code on this chain.`;
+      else if (!modHasCode || (await mod.NAME().catch(() => "")) !== "Allowance Module") problem = `No AllowanceModule at ${moduleAddr} on this chain.`;
+      else if (!same(await fwd.safe(), operating)) problem = `The SettlementForwarder ${forwarderAddr} serves ${await fwd.safe()}, not CL Operating ${operating}: redeploy it (deploy 28).`;
+      else if (!same(await fwd.allowanceModule(), moduleAddr)) problem = `The SettlementForwarder ${forwarderAddr} calls the module ${await fwd.allowanceModule()}, not ${moduleAddr}.`;
+      else if (!usdc || !same(await fwd.token(), usdc)) problem = `The SettlementForwarder ${forwarderAddr} forwards ${await fwd.token()}, not the pool's USDC ${usdc ?? "?"}.`;
+      const moduleOn = !problem && (await safeC.isModuleEnabled(moduleAddr));
+      const via = "In the Safe app open CL Operating, load the batch in Transaction Builder, confirm it from the Clear Lending Safe (a nested-Safe confirmation, both owners), then execute.";
+      const batchHint = "Sign all four at once: safe-batches/signing-SL-cl-operating.json (written while they are ready).";
+      const fwdStep = (id: string, title: string, explanation: string, to: string | undefined, enc: any, st: { status: StepStatus; reason?: string }, dependsOn: string[] = []) =>
+        push({
+          id, stage: "SL", title, explanation: `${explanation} ${via} ${batchHint}`,
+          kind: "safe", signer: operating ?? ZERO_ADDRESS, signerLabel: "CL Operating (its owner, the Clear Lending Safe, signs in the Safe app)",
+          to: to ?? ZERO_ADDRESS, toLabel: /-(offramp|desk)$/.test(id) ? "SettlementForwarder" : "AllowanceModule", ...enc, dependsOn, ...st,
+        });
+      const blocked = problem ? waitingFor(problem) : !moduleOn ? waitingFor("Waits for TU-safe-module: the AllowanceModule is not enabled on CL Operating yet.") : undefined;
+      const fTo = forwarderAddr && !problem ? forwarderAddr : undefined;
+      const mTo = !problem ? moduleAddr : undefined;
+      {
+        let isDelegate = false;
+        if (!problem) {
+          let start = 0n;
+          for (let page = 0; page < 20; page++) {
+            const [found, next] = await mod.getDelegates(operating, start, 50);
+            if ((found as string[]).some((d) => same(d, forwarderAddr))) { isDelegate = true; break; }
+            if (BigInt(next) === 0n) break;
+            start = BigInt(next);
+          }
+        }
+        fwdStep("SL-cl-operating-delegate", "CL Operating: name the SettlementForwarder a spending-limit delegate",
+          "The forwarder may then move CL Operating's USDC, but only to its off-ramp and only within the allowance the next call sets.",
+          mTo, encode(mod, "addDelegate", [forwarderAddr ?? ZERO_ADDRESS], ["SettlementForwarder"]),
+          isDelegate ? { status: "done" } : blocked ?? { status: "ready" });
+      }
+      {
+        const inputs: string[] = [];
+        if (cap === null || cap === 0n) inputs.push("SETTLEMENT_CAP_USDC (dollars per period)");
+        if (!periodMin) inputs.push("SETTLEMENT_PERIOD_DAYS (1 to 45)");
+        let st: { status: StepStatus; reason?: string } = blocked ?? { status: "ready" };
+        if (inputs.length) st = waitingFor(`Waiting for input: ${inputs.join(", ")}.`);
+        else if (!problem) {
+          const al = await mod.getTokenAllowance(operating, forwarderAddr, usdc);
+          if (BigInt(al[0]) === cap && Number(al[2]) === periodMin) st = { status: "done", reason: `${usd(cap)} every ${days} day${days === 1 ? "" : "s"}; ${formatUsdc(BigInt(al[1]))} spent this period.` };
+          else if (BigInt(al[0]) !== 0n) notes.push(`CL Operating's allowance for the SettlementForwarder is ${formatUsdc(BigInt(al[0]))} every ${al[2]} minutes; SL-cl-operating-allowance sets it to ${usd(cap)} every ${days} days.`);
+        }
+        const enc = !inputs.length
+          ? encode(mod, "setAllowance", [forwarderAddr ?? ZERO_ADDRESS, usdc ?? ZERO_ADDRESS, cap, periodMin, 0], ["SettlementForwarder", "USDC", `${usd(cap)} per period (USDC base units): SETTLEMENT_CAP_USDC, the pool lane's cap`, `${days} days in minutes: SETTLEMENT_PERIOD_DAYS`, "periods counted from when it is set"])
+          : { data: null, functionSignature: signatureOf(mod, "setAllowance"), args: [] };
+        fwdStep("SL-cl-operating-allowance", `CL Operating: let the SettlementForwarder move up to ${usd(cap)} of USDC every ${days ?? "?"} days`,
+          "The most the funding desk can push from CL Operating to the off-ramp in a period, whatever happens to its key: the same cap as the pool lane's.",
+          mTo, enc, st, ["SL-cl-operating-delegate"]);
+      }
+      {
+        let st: { status: StepStatus; reason?: string } = blocked ?? { status: "ready" };
+        if (!offRamp) st = waitingFor(env.SETTLEMENT_OFFRAMP_ADDRESS ? `SETTLEMENT_OFFRAMP_ADDRESS is not an address: ${env.SETTLEMENT_OFFRAMP_ADDRESS}.` : "Waiting for input: SETTLEMENT_OFFRAMP_ADDRESS (the off-ramp's deposit address bound to the Credit Settlement Account).");
+        else if (!problem && same(await fwd.offRamp(), offRamp)) st = { status: "done" };
+        fwdStep("SL-cl-operating-offramp", "CL Operating: set the SettlementForwarder's off-ramp",
+          "Every forward goes to this address and nowhere else. Only CL Operating can change it.",
+          fTo, offRamp ? encode(fwd, "setOffRamp", [offRamp], ["the off-ramp (SETTLEMENT_OFFRAMP_ADDRESS)"]) : { data: null, functionSignature: signatureOf(fwd, "setOffRamp"), args: [] }, st);
+      }
+      {
+        let st: { status: StepStatus; reason?: string } = blocked ?? { status: "ready" };
+        if (!funder) st = waitingFor(env.SETTLEMENT_FUNDER ? `SETTLEMENT_FUNDER is not an address: ${env.SETTLEMENT_FUNDER}.` : "Waiting for input: SETTLEMENT_FUNDER (the funding desk's CDP wallet; the owner creates it).");
+        else if (!problem && same(await fwd.desk(), funder)) st = { status: "done" };
+        fwdStep("SL-cl-operating-desk", "CL Operating: name the funding desk's wallet as the SettlementForwarder's only caller",
+          "The same CDP wallet the pool lane registers as its funder. Only CL Operating can change it; zero stops forwarding.",
+          fTo, funder ? encode(fwd, "setDesk", [funder], ["the funding desk's wallet (SETTLEMENT_FUNDER)"]) : { data: null, functionSignature: signatureOf(fwd, "setDesk"), args: [] }, st);
+      }
+    }
   }
 
   // ================= State attester (SA): the credit operator may attest members' states =================
@@ -1413,7 +1495,7 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       s.reason = `Waits for ${open.join(", ")} first.`;
     }
   }
-  const ifaces = await Promise.all(["AccessManager", "CollateralAgent", "BondVault", "Liquidator", "TermIssuer", "TimelockController", "ESADepositVault", "YieldPoolLedger", "LendingPool", "AssurancePool"].map(async (n) => new ethers.Interface((await artifacts.readArtifact(n)).abi)));
+  const ifaces = await Promise.all(["AccessManager", "CollateralAgent", "BondVault", "Liquidator", "TermIssuer", "TimelockController", "ESADepositVault", "YieldPoolLedger", "LendingPool", "AssurancePool", "SettlementForwarder"].map(async (n) => new ethers.Interface((await artifacts.readArtifact(n)).abi)));
   const decodeRevert = (e: any): string => {
     const data: string | undefined = e?.data ?? e?.error?.data ?? e?.info?.error?.data;
     if (typeof data === "string" && data.length >= 10) {
@@ -1503,6 +1585,19 @@ export function writeSigningPlan(plan: SigningPlan, outDir: string) {
       setup.map((s) => ({ to: s.to, data: s.data! }))), null, 2));
     written.push(file);
     plan.notes.push(`CL Operating's payout top-up setup (${setup.map((s) => s.id).join(", ")}) is one batch: ${path.relative(outDir, file)}.`);
+  }
+  // Settlement Funding: CL Operating's four forwarder calls, as one batch to sign once (as the top-ups').
+  const slSetup = plan.steps.filter((s) => s.kind === "safe" && s.id.startsWith("SL-cl-operating-") && s.status !== "done");
+  if (
+    slSetup.some((s) => s.status === "ready") &&
+    slSetup.every((s) => s.data && s.to !== ZERO_ADDRESS && (s.status === "ready" || /^Waits for SL-cl-operating-[a-z]+(, SL-cl-operating-[a-z]+)* first\.$/.test(s.reason ?? "")))
+  ) {
+    const file = path.join(batches, "signing-SL-cl-operating.json");
+    fs.writeFileSync(file, JSON.stringify(safeBatch(plan.chainId, "CL Operating: install the SettlementForwarder (Settlement Funding)",
+      `${slSetup.map((s) => s.title).join("; ")}. Decision 54. Generated by scripts/signing_plan.ts at block ${plan.block}. Review every call before signing.`,
+      slSetup.map((s) => ({ to: s.to, data: s.data! }))), null, 2));
+    written.push(file);
+    plan.notes.push(`CL Operating's SettlementForwarder setup (${slSetup.map((s) => s.id).join(", ")}) is one batch: ${path.relative(outDir, file)}.`);
   }
   // State rates: every ready SR schedule step in one Transaction Builder batch, signed once.
   const srReady = plan.steps.filter((s) => s.kind === "safe" && s.id.startsWith("SR-rates-schedule-") && s.status === "ready" && s.data);

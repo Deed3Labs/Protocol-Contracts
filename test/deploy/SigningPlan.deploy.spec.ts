@@ -12,6 +12,8 @@ import { poolAt, poolProxyOptions } from "../../deploy/poolModules";
 import { deployAssuranceTimelock, deployAssurancePool, CL_FEES_MASK, BOARD_ALLOCATION_MASK } from "../../deploy/assurance_timelock_handover";
 import { checkRolloutInputs, checkPayoutTopUpSetup } from "../../scripts/check_rollout_inputs";
 import { prepareSettlementLaneUpgrade } from "../../scripts/upgrade_settlement_lane";
+import { deploySettlementForwarder } from "../../deploy/28_deploy_SettlementForwarder";
+import { checkSettlementForwarderSetup } from "../../scripts/check_rollout_inputs";
 import {
   ALLOWANCE_MODULE_ABI, ERC20_ABI, PAYOUT_POOL_TOPUP_ABI, SAFE_MODULE_ABI, CANONICAL_ALLOWANCE_MODULE, topUpCalls, assertTopUpCall,
 } from "../../apps/api/src/services/payoutFunding/topUp";
@@ -48,9 +50,11 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
   let lendingSafe: any, assurancePool: any, assuranceTimelock: any, collateralRegistry: any;
   let usdcToken: any;
   const PT_STEPS = ["TU-funder", "TU-safe-module", "TU-safe-delegate", "TU-safe-allowance"];
-  // Settlement Funding (decision 54): the pool upgrade on the Earn timelock, then the lane's two-person settings.
+  // Settlement Funding (decision 54): the pool upgrade on the Earn timelock, the deployment signers' DEPLOYER_ROLE
+  // grants, the lane's two-person settings, then CL Operating's batch for the SettlementForwarder.
+  const SL_FORWARDER = ["SL-cl-operating-delegate", "SL-cl-operating-allowance", "SL-cl-operating-offramp", "SL-cl-operating-desk"];
   const SL_GRANTS = ["SL-deployer-1-schedule", "SLx-deployer-1-execute", "SL-deployer-2-schedule", "SLx-deployer-2-execute"];
-  const SL_STEPS = ["SL-upgrade-schedule", "SLx-upgrade-execute", ...SL_GRANTS, "SL-funder-1", "SL-funder-2", "SL-headroom-1", "SL-headroom-2", "SL-cl-operating"];
+  const SL_STEPS = ["SL-upgrade-schedule", "SLx-upgrade-execute", ...SL_GRANTS, "SL-funder-1", "SL-funder-2", "SL-headroom-1", "SL-headroom-2", ...SL_FORWARDER];
   // What the walk leaves of SL: the upgrade's day 7, the pairs (no funder input yet) and CL Operating's batch.
   const SL_LEFT = SL_STEPS.filter((id) => id !== "SL-upgrade-schedule" && !SL_GRANTS.includes(id));
   // The pool's two DEPLOYER_ROLE signers (deploy 27 grants them; here the SL test does).
@@ -294,7 +298,8 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     expect(step(p, "SLx-upgrade-execute").dependsOn).to.include("E8x-earn-execute");
     expect(step(p, "SL-funder-1").reason).to.contain("Waiting for input: SETTLEMENT_FUNDER");
     expect(step(p, "SL-funder-1").data).to.equal(null);
-    expect(step(p, "SL-cl-operating").reason).to.contain("SettlementForwarder");
+    expect(step(p, "SL-cl-operating-delegate").reason).to.contain("deploy 28");
+    for (const id of SL_FORWARDER.slice(1)) expect(step(p, id).reason, id).to.contain("Waiting for input: SETTLEMENT_");
     for (const x of p.steps) expect(x.chainId).to.equal(31337);
   });
 
@@ -677,6 +682,83 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     await send(step(p, "SL-funder-1"));
     expect((await pool.settlementLane()).stopped).to.equal(false);
     p = await planWith(inputs);
-    expect(p.steps.filter((x) => x.id.startsWith("SL") && x.status !== "done").map((x) => x.id)).to.deep.equal(["SL-cl-operating"]);
+    expect(p.steps.filter((x) => x.id.startsWith("SL") && x.status !== "done").map((x) => x.id)).to.deep.equal(SL_FORWARDER);
+  });
+  /*
+   * Settlement Funding (decision 54): deploy 28's SettlementForwarder on the real AllowanceModule and a real Safe v1.5.0
+   * as CL Operating (the fixtures the payout test loaded), CL Operating's four calls as one batch, the preflight, and a
+   * forward by the desk wallet.
+   */
+  it("settlement funding: the forwarder's CL Operating batch, the preflight, and a forward to the off-ramp", async function () {
+    const fx = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "safe-allowance-module.base-sepolia.json"), "utf8")).contracts;
+    const clOp = ethers.Wallet.createRandom().address;
+    await ethers.provider.send("hardhat_setCode", [clOp, fx.SafeProxy.code]);
+    await ethers.provider.send("hardhat_setStorageAt", [clOp, "0x0", ethers.zeroPadValue(fx.SafeSingleton.address, 32)]);
+    const safeOp = new ethers.Contract(clOp, [...SAFE_MODULE_ABI, "function setup(address[],uint256,address,bytes,address,address,uint256,address)"], s.deployer);
+    await (await safeOp.setup([await lendingSafe.getAddress()], 1, ethers.ZeroAddress, "0x", ethers.ZeroAddress, ethers.ZeroAddress, 0, ethers.ZeroAddress)).wait();
+    const module = new ethers.Contract(CANONICAL_ALLOWANCE_MODULE, ALLOWANCE_MODULE_ABI, ethers.provider);
+    const usdc = await usdcToken.getAddress();
+    const funder = ethers.Wallet.createRandom().address;
+    const offRamp = ethers.Wallet.createRandom().address;
+    const inputs = {
+      ...env, CLEAR_LENDING_ACCOUNT: clOp, RESERVE_TOKEN: usdc, SETTLEMENT_FUNDER: funder, SETTLEMENT_CAP_USDC: "5000", SETTLEMENT_PERIOD_DAYS: "7",
+      SETTLEMENT_HEADROOM_USDC: "1000", SETTLEMENT_OFFRAMP_ADDRESS: offRamp,
+    };
+    const planWith = (e: Record<string, string>) => buildSigningPlan({ network: "hardhat", env: e, valuationSigners, deploymentSigners });
+
+    // Deploy 28: the deployer sets nothing on it.
+    const forwarder = await deploySettlementForwarder({ safe: clOp, allowanceModule: CANONICAL_ALLOWANCE_MODULE, token: usdc, network: "hardhat", log: () => undefined });
+    const f = await forwarder.getAddress();
+    expect([await forwarder.offRamp(), await forwarder.desk()]).to.deep.equal([ethers.ZeroAddress, ethers.ZeroAddress]);
+    // Run again, it reuses the record.
+    expect(await (await deploySettlementForwarder({ safe: clOp, allowanceModule: CANONICAL_ALLOWANCE_MODULE, token: usdc, network: "hardhat", log: () => undefined })).getAddress()).to.equal(f);
+
+    // The module is not enabled on this CL Operating yet: the batch waits for the top-ups' enableModule.
+    let p = await planWith(inputs);
+    for (const id of SL_FORWARDER) expect(step(p, id).reason, id).to.contain("TU-safe-module");
+    let pre = await checkSettlementForwarderSetup(inputs, ethers.provider, { settlementForwarder: f });
+    expect(pre.filter((r) => r.status === "FAIL")).to.deep.equal([]);
+    await send({ ...step(p, "SL-cl-operating-delegate"), to: clOp, data: safeOp.interface.encodeFunctionData("enableModule", [CANONICAL_ALLOWANCE_MODULE]) });
+
+    p = await planWith(inputs);
+    expect(SL_FORWARDER.map((id) => step(p, id).status)).to.deep.equal(["ready", "waiting", "ready", "ready"]);
+    expect(step(p, "SL-cl-operating-allowance").reason).to.equal("Waits for SL-cl-operating-delegate first.");
+    for (const id of SL_FORWARDER) expect(step(p, id).signer, id).to.equal(clOp);
+    expect(step(p, "SL-cl-operating-delegate").data).to.equal(module.interface.encodeFunctionData("addDelegate", [f]));
+    expect(step(p, "SL-cl-operating-allowance").data).to.equal(module.interface.encodeFunctionData("setAllowance", [f, usdc, 5000n * 10n ** 6n, 7 * 1440, 0]));
+    expect(step(p, "SL-cl-operating-offramp").data).to.equal(forwarder.interface.encodeFunctionData("setOffRamp", [offRamp]));
+    expect(step(p, "SL-cl-operating-desk").data).to.equal(forwarder.interface.encodeFunctionData("setDesk", [funder]));
+    const w = writeSigningPlan(p, DIR);
+    const file = w.batches.find((b) => b.endsWith("signing-SL-cl-operating.json"))!;
+    const batch = JSON.parse(fs.readFileSync(file, "utf8"));
+    expect(batch.transactions.map((t: any) => t.to)).to.deep.equal([CANONICAL_ALLOWANCE_MODULE, CANONICAL_ALLOWANCE_MODULE, f, f]);
+    expect(batch.transactions.map((t: any) => t.data)).to.deep.equal(SL_FORWARDER.map((id) => step(p, id).data));
+    // Before the batch, the preflight warns; nothing is wrong yet.
+    pre = await checkSettlementForwarderSetup(inputs, ethers.provider, { settlementForwarder: f });
+    expect(pre.filter((r) => r.status === "FAIL")).to.deep.equal([]);
+    expect(pre.filter((r) => r.status === "WARN").map((r) => r.what).join("\n")).to.contain("SL-cl-operating-delegate");
+
+    // CL Operating sends the batch's calls in order, as its Safe transaction would.
+    for (const t of batch.transactions) await send({ ...step(p, "SL-cl-operating-delegate"), to: t.to, data: t.data });
+    p = await planWith(inputs);
+    for (const id of SL_FORWARDER) expect(step(p, id).status, id).to.equal("done");
+    expect(step(p, "SL-cl-operating-allowance").reason).to.contain("$5,000.00 every 7 days");
+    const ok = await checkSettlementForwarderSetup(inputs, ethers.provider, { settlementForwarder: f });
+    expect(ok.filter((r) => r.status !== "PASS")).to.deep.equal([]);
+    expect(ok.length).to.be.greaterThan(8);
+
+    // A forward by the desk wallet: CL Operating's USDC goes to the off-ramp only.
+    await (await usdcToken.mint(clOp, 2_000n * 10n ** 6n)).wait();
+    await ethers.provider.send("hardhat_impersonateAccount", [funder]);
+    await ethers.provider.send("hardhat_setBalance", [funder, "0x" + ethers.parseEther("1").toString(16)]);
+    await (await forwarder.connect(await ethers.getSigner(funder)).forward(1_500n * 10n ** 6n)).wait();
+    expect(await usdcToken.balanceOf(offRamp)).to.equal(1_500n * 10n ** 6n);
+
+    // An allowance above the lane's cap, a wrong off-ramp or desk: the preflight fails them.
+    const bad = await checkSettlementForwarderSetup({ ...inputs, SETTLEMENT_CAP_USDC: "4000", SETTLEMENT_OFFRAMP_ADDRESS: random(), SETTLEMENT_FUNDER: s.deployer.address }, ethers.provider, { settlementForwarder: f });
+    const fails = bad.filter((r) => r.status === "FAIL").map((r) => r.what).join("\n");
+    expect(fails).to.contain("above the lane's cap");
+    expect(fails).to.contain("SETTLEMENT_OFFRAMP_ADDRESS says");
+    expect(fails).to.contain("no other job's wallet");
   });
 });
