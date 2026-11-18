@@ -76,6 +76,21 @@ Then `scripts/signing_plan.ts` lists these steps (stage `SL`):
 
 Nothing is scheduled until the owner says so.
 
+Their inputs are in `deploy/config/base-sepolia.rollout.env`: `SETTLEMENT_FUNDER` (the desk wallet), `SETTLEMENT_CAP_USDC` and `SETTLEMENT_PERIOD_DAYS` (the lane's cap, $5,000 every 7 days on Base Sepolia, and the forwarder's allowance, the same), `SETTLEMENT_HEADROOM_USDC` ($1,000) and `SETTLEMENT_OFFRAMP_ADDRESS` (the off-ramp's deposit address bound to the CSA). Addresses and dollars only. While the funder is empty, `SL-funder-1/2` and `SL-cl-operating-desk` wait; while the off-ramp is empty, `SL-cl-operating-offramp` waits; nothing else waits on them. The step-by-step for the owner is `docs/audit/SEPOLIA-OWNER-CHECKLIST.md` section 4c; the runbook is `docs/audit/DEPLOY-RUNBOOK.md` section 4.4.
+
+CL Operating is nested, so its batch is signed like the top-ups' setup batch:
+
+1. In the Safe app, open CL Operating.
+2. Load the batch in Transaction Builder.
+3. Confirm it from the Clear Lending Safe. Both of its owners sign.
+4. Execute it.
+
+To check the setup read-only, run `npx hardhat run scripts/check_rollout_inputs.ts --network base-sepolia`. Its `checkSettlementForwarderSetup` checks that the desk wallet is a plain account no other job uses, that the SettlementForwarder (deploy 28) serves CL Operating, Safe's AllowanceModule and USDC, that its off-ramp and desk are the rollout's, and that it is CL Operating's delegate with an allowance no larger than the lane's cap. A step not done yet is a WARN, a wrong one a FAIL. The desk makes the same checks on every run and says which is missing ("lane not set up").
+
+To change the limits later, two `DEPLOYER_ROLE` signers call `setSettlementFunder` or `setSettlementHeadroom` again, and CL Operating's owners call `setAllowance` for the forwarder. Setting the lane again never adds to the period running. Restarting a stopped funder also takes both deployers, both after the stop: a proposal made before it never applies.
+
+**The second deployment signer.** `deploy/config/earn-roles.json` lists two `DEPLOYER_ROLE` signers for the pool, `0x895d…7AAA` and `0x608d…7c23`, but on Base Sepolia only `0x608d…7c23` holds the role (read Nov 18, 2026). `SL-funder-1/2` and `SL-headroom-1/2` need two different holders, so `0x895d…7AAA` (the owner's choice, Nov 18, 2026, testnet) has to hold the role first: the Clear Lending Safe signs `SL-deployer-1-schedule` (Earn timelock: `LendingPool.grantRole(DEPLOYER_ROLE, 0x895d…7AAA)`, ready now, no dependency on E8x), then `SLx-deployer-1-execute` 7 days later. `0x895d…7AAA` is also listed for `CCO_ROLE` and holds neither, so today only `0x608d…7c23` can stop the lane.
+
 ## Owner checklist
 
 These are configuration, never code. Fill them in, then turn the desk on in dry run:
@@ -139,6 +154,27 @@ Each send carries a CDP idempotency key made from the move and the step, and eac
 ## Daily reconciliation
 
 On the first run of each day the desk writes yesterday (`ops.settlement_funding_days`, in the cut-off's zone): the credit authorized and settled, the money funded from the Collection Account and the pool, returned to the Margin and the pool, Margin advanced, and the CSA's balance at the close (the first reading after the day ended). `GET /api/command/settlement-funding` serves the last week of them with the latest check.
+
+## The Command Center
+
+- **Money, Pools, Yield pool, "Card settlement funding"**, in the automatic top-ups card's style, from what the desk recorded (never the chain on page load):
+  - the next cut-off and what is due at it (through Monday on a Friday), the CSA's balance and the buffer, what is on its way, and what is still needed by the forced run;
+  - today's netting as far as it is recorded: the Collection Account's balance and what was booked from it to the CSA today, beside the card credit due. Collections and new draws are not matched one against the other; members' repayments in the Collection Account net against the draws by book transfer, and the pool funds only the rest;
+  - Settlement Funding sent and returned today and over the reconciled days;
+  - the funder's period limit used, and the Settlement Headroom used;
+  - each recent move with its transactions.
+
+  It shows what needs a person on top: **stopped** (the move, why, and the clear-halt command), **lane not set up** (what is missing, before the `SL` steps), **over the limit** (the two remainder batches, to download), or **short** (the shortfall, why the pool cannot give more, and the manual options in order). With no check recorded yet, the card says what it needs.
+- **Beside it, "Pool Tier principal"**: the posted value and the worksheet's figure, marked "suggested — the valuation signers post it", with each tier, the term plans, the Margin Advances, the Deployed Balance and the lane's ceiling. Read when the pane opens; read-only.
+- **Build, Security, "Automatic jobs"**: one row each for payout top-ups and settlement funding: the wallet, what it may call, its limit and how much is used, how it is stopped, and whether it is on, in dry run, stopped or waiting for the lane.
+
+## Not automated yet
+
+- **Posting the Pool Tier principal.** The worksheet suggests it; the two `VALUATION_ROLE` signers post it.
+- **The BondVault's share of a Return, and BondVault excess as a source.** By people, through the Collateral Agent, where its documents allow.
+- **Margin advances.** The bank's Margin covers a shortfall without the desk knowing; a person records each with `recordSettlementMarginAdvance.ts` so the principal and the Returns include it.
+- **Money moved by hand.** The desk does not see a Deployment or forward sent by people; the next run may fund the same cut-off again, and the surplus then comes back as a Return.
+- **A faster rail.** The off-ramp uses `wire` until Bridge confirms a faster rail for liquidation addresses (see above); on Base Sepolia the off-ramp is the mock.
 
 ## Railway variables (the API)
 
