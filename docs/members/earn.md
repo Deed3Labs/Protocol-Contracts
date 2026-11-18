@@ -7,7 +7,7 @@ holding **bonds**, or by putting money in **the lending pool**. Both can back yo
 offer. It sets no terms, states no returns, and makes no claim about what anything on Earn will
 earn.
 
-**Status.** The contracts behind Earn have not been independently audited, and they run on Base
+**Status.** The smart contracts behind Earn have not been independently audited, and they run on Base
 Sepolia, a test network, where nothing is real money.
 
 ## Earn is not savings
@@ -202,8 +202,10 @@ to the bond vault and the treasury's allowance to it; the AssurancePool doesn't 
 
 What to know about this order:
 
-- **It is how Clear Lending applies a loss. No contract enforces it.** A loss reaches the pool only
-  when two valuation signers post it, with evidence.
+- **The order is binding.** It is part of the terms Clear Lending holds the pool's money on, and
+  the steps on the chain follow it: pledged collateral pays first, the Credit Backstop pays only
+  Clear Lending, and a loss reaches the pool only when two valuation signers post it, with
+  evidence, taking it from held-back amounts first.
 - **The Credit Backstop isn't a guarantee.** It can run out, and nothing requires the co-op to refill
   it.
 - **The pool stands behind the whole credit book,** so it can take a loss on credit it didn't fund.
@@ -218,5 +220,5 @@ The full list of risks is in [Investors → Risks](../investors/risks.md).
 - [Investors → The lending pool](../investors/lending-pool.md) and
   [BurnerBonds](../investors/burner-bonds.md), in full
 - [Investors → What stands behind it](../investors/what-stands-behind.md)
-- The contracts: [Protocol → Bonds](../protocol/bonds.md),
+- The smart contracts: [Protocol → Bonds](../protocol/bonds.md),
   [Protocol → Settlement and the float](../protocol/settlement.md#lendingpool)

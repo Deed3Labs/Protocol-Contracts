@@ -11,7 +11,7 @@ the lending pool's money deployed to Clear Lending, and a bond coming due. The d
 | Then | Treasury allowance to the vault | |
 | If still short | Paid what there is; the rest recorded as owed and paid as money arrives | A loss charge lowers the value of every share |
 | Under an Enforcement Notice | The Collateral Agent's distribution rounds | |
-| Never | The AssurancePool | The AssurancePool |
+| Never | The AssurancePool | The AssurancePool, directly. Its Credit Backstop pays Clear Lending, ahead of the pool ([below](#what-stands-in-front-of-the-lending-pool)) |
 
 ## The AssurancePool
 
@@ -77,13 +77,14 @@ layer used up before the next takes any of it:
 5. Clear Lending's own capital;
 6. the lending pool, through a loss charge.
 
-This order is how Clear Lending applies a loss. No contract enforces it, and none moves reserve
-money into the pool:
+The order is binding: it is part of the terms Clear Lending holds the pool's money on. On the
+chain:
 
-- The AssurancePool does not lend to, or reimburse, the lending pool.
+- Pledged collateral pays first, toward the debt it secures.
 - The Credit Backstop pays Clear Lending's charged-off principal to Clear Lending's own loss-reserve
-  address. No contract passes that payment on to the lending pool.
-- A loss is passed to holders by a loss charge, posted by two valuation signers. It lowers the value
+  address, within the available coverage, where it absorbs the loss ahead of the pool. Reserve
+  money is never paid into the pool itself, and the AssurancePool does not lend to the pool.
+- A loss is passed to holders by a loss charge, posted by two valuation signers with evidence. It lowers the value
   of every share outstanding, queued shares included, after any holdbacks have absorbed their part.
 
 See [Risks](./risks.md#credit-losses).

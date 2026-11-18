@@ -104,10 +104,12 @@ means:
 up before the next takes any of it: the member's own collateral, where the credit was secured;
 Clear Lending's margin for the period; its loss reserve; draws on the AssurancePool's Credit
 Backstop, for charged-off principal only and up to its available coverage; Clear Lending's own
-capital; and only then the lending pool, through a loss charge. Bonds are not written down. This
-order is how Clear Lending applies a loss, and no contract enforces it: no contract moves money from
-the AssurancePool or any other reserve into the pool, and a loss charge needs only two valuation
-signers. The Credit Backstop is not a guarantee: it can run out, and nothing requires the co-op to
+capital; and only then the lending pool, through a loss charge. Bonds are not written down. The
+order is binding: it is part of the terms Clear Lending holds the pool's money on. On the chain,
+pledged collateral pays first, Credit Backstop draws go only to Clear Lending's loss reserve, and a
+loss reaches the pool only through a loss charge that two valuation signers post with evidence.
+Reserve money is never paid into the pool itself: the Credit Backstop pays Clear Lending, which
+absorbs the loss ahead of the pool. The Credit Backstop is not a guarantee: it can run out, and nothing requires the co-op to
 refill it. Because the pool stands behind the whole credit book, it can bear a loss on credit it
 did not fund.
 See [What stands behind it](./what-stands-behind.md#what-stands-in-front-of-the-lending-pool).
