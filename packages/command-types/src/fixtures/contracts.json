@@ -849,9 +849,22 @@
    4,
    "live",
    "0x5840…ce23",
-   "The Earn Yield Pool (ERC-4626). Pool Shares are limited-recourse demand notes: Share Value is principal plus interest less realized losses, with a Loss Holdback on redemptions. Deploys only to Clear Lending’s lending account. Holds $9,000.00 from 18 depositors.",
+   "The Earn Yield Pool (ERC-4626). Pool Shares are limited-recourse demand notes: Share Value is principal plus interest less realized losses, with a Loss Holdback on redemptions. Deploys only to Clear Lending’s lending account.",
    90,
    27,
+   "c",
+   "CL"
+  ],
+  [
+   "sf",
+   "SettlementForwarder",
+   "v1.0",
+   4,
+   "live",
+   "0x0343…f46c",
+   "CL Operating’s delegate for Settlement Funding: the funding desk’s wallet forwards USDC from CL Operating to the off-ramp, within the allowance CL Operating gave it. Only CL Operating sets the off-ramp and the desk.",
+   90,
+   33.5,
    "c",
    "CL"
   ],
@@ -875,7 +888,7 @@
    4,
    "live",
    "0xe7F6…cC2A",
-   "Zero-coupon bonds, one token each. A bond rolls only on its holder’s confirmation; a pledged bond pays its debt at no less than present value. 6 issued.",
+   "Zero-coupon bonds, one token each. A bond rolls only on its holder’s confirmation; a pledged bond pays its debt at no less than present value.",
    90,
    46.5,
    "c",
@@ -888,7 +901,7 @@
    4,
    "live",
    "0x9f31…A855",
-   "Where bond proceeds live, behind a redemption reserve. Deployable excess goes only to Clear Lending’s treasury. Holds $25,000.00 for 6 bonds.",
+   "Where bond proceeds live, behind a redemption reserve. Deployable excess goes only to Clear Lending’s treasury.",
    90,
    53,
    "c",
@@ -1436,6 +1449,13 @@
    "reads",
    "functional contracts",
    null
+  ],
+  [
+   "lp",
+   "sf",
+   "money",
+   "settlement funding, through CL Operating",
+   ""
   ]
  ],
  "releases": {
