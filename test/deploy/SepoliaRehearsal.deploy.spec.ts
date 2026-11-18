@@ -49,7 +49,10 @@ describe("the Base Sepolia fork rehearsal's fixes", function () {
       expect(env.LENDER_OPERATING).to.equal(env.CLEAR_LENDING_ACCOUNT);
       expect(env.ASSURANCE_DRAW_ADDRESS).to.equal(env.CLEAR_LENDING_ACCOUNT);
       expect(env.ASSURANCE_LOSS_RESERVE).to.equal("0xb42561F3FE68B6719628C0eAC398eA097DD56bAa");
-      for (const k of ["CLEAR_FINANCIAL_SAFE", "OPS_SAFE", "COOP_TREASURY", "BOARD_SAFE", "CARRY_TREASURY", "FEE_RECIPIENT", "CARD_SETTLEMENT_ACCOUNT", "COLLATERAL_ACCOUNT", "AGENT_COST_ADDRESS", "EXCESS_DESTINATION", "SAFE_ADDRESS"]) {
+      // Clear Lending's plan fees and card claims go to CL Operating (Nov 18, 2026; the signing plan's RT steps).
+      expect(env.FEE_RECIPIENT).to.equal(env.CLEAR_LENDING_ACCOUNT);
+      expect(env.CARD_SETTLEMENT_ACCOUNT).to.equal(env.CLEAR_LENDING_ACCOUNT);
+      for (const k of ["CLEAR_FINANCIAL_SAFE", "OPS_SAFE", "COOP_TREASURY", "BOARD_SAFE", "CARRY_TREASURY", "COLLATERAL_ACCOUNT", "AGENT_COST_ADDRESS", "EXCESS_DESTINATION", "SAFE_ADDRESS"]) {
         expect(env[k], k).to.equal("0x52e6102B7C22eeC7A68B11Dd71faC7D6D9AEcf50");
       }
       // The two CDP wallets the owner created on Nov 17, 2026 (cl-fees-base-sepolia, assurance-disbursement-base-sepolia).

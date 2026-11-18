@@ -211,8 +211,16 @@ export async function wireCompliance(options: ComplianceOptions = {}) {
     // carry treasury unless CARD_SETTLEMENT_ACCOUNT names another.
     const settlementAccount = (process.env.CARD_SETTLEMENT_ACCOUNT ?? "").trim() || (await revolving.carryTreasury());
     if ((await revolving.cardSettlementAccount()).toLowerCase() !== settlementAccount.toLowerCase()) {
-      await (await revolving.setCardSettlementAccount(settlementAccount)).wait();
-      log(`  RevolvingIssuer card settlement account -> ${settlementAccount}`);
+      // After the handover the deployer no longer holds CREDIT_SETTINGS_ROLE: the signing plan's RT-card-account
+      // makes the change instead (a credit settings signer), so a re-run says so rather than reverting.
+      const ledger = await ethers.getContractAt(["function access() view returns (address)"], await revolving.stableCredit());
+      const access = await ethers.getContractAt(["function hasCreditRole(bytes32,address) view returns (bool)"], await ledger.access());
+      if (await access.hasCreditRole(ethers.id("CREDIT_SETTINGS_ROLE"), deployer.address)) {
+        await (await revolving.setCardSettlementAccount(settlementAccount)).wait();
+        log(`  RevolvingIssuer card settlement account -> ${settlementAccount}`);
+      } else {
+        log(`! RevolvingIssuer's card settlement account is ${await revolving.cardSettlementAccount()}, not ${settlementAccount}: a credit settings signer changes it (signing plan, RT-card-account).`);
+      }
     }
   } else {
     log("! CARD_SETTLER_ADDRESS unset: RevolvingIssuer has no card settler, so card spend cannot settle on chain.");
