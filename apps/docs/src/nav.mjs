@@ -33,7 +33,7 @@ export const NAV = [
     ['Reference', ['docs/overview/glossary.md', 'docs/overview/status-and-security.md']]] },
   { id: 'members', name: 'Members', icon: 'M9 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3.5 15.5c.6-3 2.8-4.5 5.5-4.5s4.9 1.5 5.5 4.5', groups: [
     ['Getting started', ['docs/members/README.md|Introduction', 'docs/members/getting-started.md']],
-    ['Money', ['docs/members/adding-and-moving-money.md', 'docs/members/savings-and-equity-credits.md', 'docs/members/credit.md', 'docs/members/sending-money.md', 'docs/members/paying-at-shops.md']],
+    ['Money', ['docs/members/adding-and-moving-money.md', 'docs/members/savings-and-equity-credits.md', 'docs/members/earn.md', 'docs/members/credit.md', 'docs/members/sending-money.md', 'docs/members/paying-at-shops.md']],
     ['Cards', ['docs/members/cards.md', 'docs/members/clear-visa-card.md', 'docs/members/clear-card.md']],
     ['Protection and your home', ['docs/members/assurance-and-disputes.md', 'docs/members/clear-deed-and-membership.md']]] },
   { id: 'merchants', name: 'Merchants', icon: 'M3 7.5h12M3.5 7.5l1-4.5h9l1 4.5M4 7.5v8h10v-8M7.5 15.5V11h3v4.5', groups: [

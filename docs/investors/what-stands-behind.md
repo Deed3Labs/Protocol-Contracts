@@ -11,7 +11,7 @@ the lending pool's money deployed to Clear Lending, and a bond coming due. The d
 | Then | Treasury allowance to the vault | |
 | If still short | Paid what there is; the rest recorded as owed and paid as money arrives | A loss charge lowers the value of every share |
 | Under an Enforcement Notice | The Collateral Agent's distribution rounds | |
-| Never | The AssurancePool | The AssurancePool |
+| Never | The AssurancePool | The AssurancePool, directly. Its Credit Backstop pays Clear Lending, ahead of the pool ([below](#what-stands-in-front-of-the-lending-pool)) |
 
 ## The AssurancePool
 
@@ -65,14 +65,26 @@ interest left unpaid past its due date is added to the Deployed Balance
 While any withdrawal request waits in the queue, the pool deploys nothing more, so cash coming back
 goes to the queue first.
 
-## What does not stand behind the lending pool
+## What stands in front of the lending pool
 
-**Nothing in the contracts covers a loss on money the lending pool has deployed.**
+**A loss reaches the lending pool last.** Clear Lending absorbs a credit loss in this order, each
+layer used up before the next takes any of it:
 
-- The AssurancePool does not lend to, or reimburse, the lending pool.
+1. the member's own collateral, where the credit was secured;
+2. Clear Lending's margin for the period;
+3. Clear Lending's loss reserve;
+4. draws on the Credit Backstop, for charged-off principal only, up to its available coverage;
+5. Clear Lending's own capital;
+6. the lending pool, through a loss charge.
+
+The order is binding: it is part of the terms Clear Lending holds the pool's money on. On the
+chain:
+
+- Pledged collateral pays first, toward the debt it secures.
 - The Credit Backstop pays Clear Lending's charged-off principal to Clear Lending's own loss-reserve
-  address. No contract passes that payment on to the lending pool.
-- A loss is passed to holders by a loss charge, posted by two valuation signers. It lowers the value
+  address, within the available coverage, where it absorbs the loss ahead of the pool. Reserve
+  money is never paid into the pool itself, and the AssurancePool does not lend to the pool.
+- A loss is passed to holders by a loss charge, posted by two valuation signers with evidence. It lowers the value
   of every share outstanding, queued shares included, after any holdbacks have absorbed their part.
 
 See [Risks](./risks.md#credit-losses).

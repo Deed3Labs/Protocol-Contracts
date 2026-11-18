@@ -110,9 +110,9 @@ Both, side by side: [Your cards](../members/cards.md).
 
 Two ways to hold money that are not savings. **A bond** costs less than its face value today
 and pays its face value at maturity. **The lending pool** lends to Clear Lending, which funds
-members' credit; a position shares in what the pool earns and loses, and nothing covers a loss. Both
-can back your credit line. Earn is open only to members who pass its eligibility check. See
-[Savings and equity credits](../members/savings-and-equity-credits.md#bonds-on-earn).
+members' credit; a position shares in what the pool gains and loses, and a loss reaches it only
+after Clear Lending's own layers. Both can back your credit line. Earn is offered only to qualifying
+members, in the app. See [Earn](../members/earn.md).
 
 ### Send
 

@@ -377,8 +377,10 @@ version in [The lending pool](../investors/lending-pool.md).
   charge is pending.
 - **Holders earn Pool Interest at the Funding Rate**, and withdrawals queue first in, first out
   when cash is deployed (`requestWithdrawal`, then `claimWithdrawal`).
-- **Losses are charged to holders** through a recorded loss charge, with holdbacks. Nothing covers
-  a loss.
+- **Losses are charged to holders** through a recorded loss charge, with holdbacks, and only after
+  Clear Lending's own layers: the member's collateral, its margin, its loss reserve, Credit Backstop
+  draws and its own capital. That order is binding on Clear Lending; reserve money is never paid into
+  the pool itself.
 
 ---
 
