@@ -2530,6 +2530,33 @@ export class MemberStore {
     return { email: privateProfile.email ?? null, phone: privateProfile.phone ?? null };
   }
 
+  /**
+   * The state of residence on the member's private profile, as they typed it (free text), for the
+   * credit onboarding job's state attestation. `unreadable` when the profile exists but this server
+   * cannot decrypt it (MEMBER_PRIVATE_DATA_* unset): that is not "no state", and must not read as one.
+   */
+  async addressStateByWallet(
+    walletAddress: string,
+  ): Promise<{ addressState: string | null; unreadable?: boolean }> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ member_id: number }>(
+        `SELECT m.id AS member_id
+           FROM ${TABLE_MEMBERS} m
+          WHERE m.primary_wallet = $1
+          LIMIT 1`,
+        [addr],
+      );
+    });
+    const row = result.rows[0];
+    if (!row) return { addressState: null };
+    const { privateProfile, privateProfileExists } = await this.loadPrivateProfile(Number(row.member_id), false);
+    if (!privateProfile) return { addressState: null, unreadable: privateProfileExists };
+    return { addressState: privateProfile.addressState ?? null };
+  }
+
   private async resolveMemberByAuthInput(input: ResolveMemberAuthInput): Promise<MemberRecord | null> {
     const authSubject = normalizeOptionalString(input.authSubject ?? null, 255) ?? null;
     if (authSubject) {

@@ -90,6 +90,7 @@ import { startMonthlyStatements } from './jobs/monthlyStatements.js';
 import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startCycleKeeper } from './jobs/cycleKeeper.js';
+import { startCreditOnboarding } from './jobs/creditOnboarding.js';
 import { startEnforcementKeeper } from './jobs/enforcementKeeper.js';
 import { startPledgeKeepers } from './jobs/pledgeKeeper.js';
 import { startQueueFillKeeper } from './jobs/queueFillKeeper.js';
@@ -455,6 +456,9 @@ async function startServer() {
     startCycleKeeper().catch((error) => {
       console.error('Failed to start the cycle keeper:', error);
     });
+    // No line opens until a member's state is attested: attest each verified member's state, then
+    // open the line. Off unless CREDIT_ONBOARDING_ENABLED=1. docs/operators/keepers.md.
+    startCreditOnboarding();
     // Phase 2b/2f: notice an Earn shortfall (and clear a closed one).
     startEnforcementKeeper().catch((error) => {
       console.error('Failed to start the enforcement keeper:', error);

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { isServedZip, servedZipPrefixes } from '../config/servedRegions.js';
 import { contactsStore } from '../services/contactsStore.js';
 import { generateHandle } from '../services/handles.js';
-import { openCreditLine } from '../services/chain/creditLineService.js';
+import { onboardInBackground } from '../services/chain/creditOnboarding.js';
 import { Router, type Request, type Response } from 'express';
 import {
   type CreateMemberWalletLinkChallengeInput,
@@ -573,19 +573,14 @@ router.post('/me/onboarding/submit', async (req: Request, res: Response) => {
     //
     // Deliberately not awaited into the response and deliberately not able to fail it: somebody
     // who has just finished signing up is a member whether or not a chain write landed, and the
-    // backfill catches anyone this misses. Refusing to complete a signup over an RPC blip would
+    // credit onboarding job catches anyone this misses. Refusing to complete a signup over an RPC blip would
     // be the wrong trade by a distance.
+    //
+    // No line opens until the member's state is attested; with the credit onboarding job live
+    // (CREDIT_ONBOARDING_ENABLED=1) this attests a verified member's state first, so they do not
+    // wait for its hourly run. Otherwise it only opens the line, as it always has.
     const wallet = (account as { primaryWallet?: string } | null)?.primaryWallet;
-    if (wallet) {
-      void openCreditLine(wallet)
-        .then((result) => {
-          if (result.opened) console.log('[credit] line opened for', wallet, result.txHash);
-          else if (result.reason !== 'already has a line') {
-            console.warn('[credit] no line for', wallet, '—', result.reason);
-          }
-        })
-        .catch((error) => console.error('[credit] openLine threw for', wallet, error));
-    }
+    if (wallet) onboardInBackground(wallet, 'signup');
 
     res.json(account);
   } catch (error) {
