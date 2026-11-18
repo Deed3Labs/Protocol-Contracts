@@ -1176,13 +1176,54 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
     // The lane as the pool reports it (only once the pool runs the lane's implementation).
     let lane: { funder: string; capPerPeriod: bigint; periodSeconds: bigint; stopped: boolean; epoch: bigint; headroom: bigint } | undefined;
     if (upgraded) lane = await pool.settlementLane();
+    // Each of the two listed deployment signers needs the pool's DEPLOYER_ROLE (owner, Nov 18, 2026: the deployer
+    // …7AAA stays deployment signer 1 on testnet). A missing one is granted through its own Earn timelock
+    // proposal; it does not wait for E8x or the upgrade, so it can land before SL-funder needs it. A signer that
+    // already holds the role shows both steps done.
+    {
+      const DEPLOYER_R = ethers.id("DEPLOYER_ROLE");
+      for (const [i, d] of deploymentSigners.slice(0, 2).entries()) {
+        const n = i + 1;
+        const grantData = poolAddress ? pool.interface.encodeFunctionData("grantRole", [DEPLOYER_R, d]) : "0x";
+        const gSalt = ethers.id(`signing-plan: SL Earn timelock proposal (grant the pool's DEPLOYER_ROLE to ${d})`);
+        let gs: { status: StepStatus; reason?: string };
+        let gx: { status: StepStatus; reason?: string };
+        if (!poolAddress) gs = gx = waitingFor("No LendingPool record.");
+        else if (await pool.hasRole(DEPLOYER_R, d)) gs = gx = { status: "done", reason: `Deployment signer ${n} holds the pool's DEPLOYER_ROLE.` };
+        else if (!tl || !lendingSafe) gs = gx = waitingFor(!lendingSafe ? "Waiting for input: CLEAR_LENDING_SAFE." : "No EarnTimelock record yet (deploy 26, E1).");
+        else if (!(await tl.hasRole(await tl.PROPOSER_ROLE(), lendingSafe))) gs = gx = waitingFor(`CLEAR_LENDING_SAFE ${lendingSafe} is not a proposer on the Earn timelock ${earnTimelock}.`);
+        else if (!(await pool.hasRole(ZERO_HASH, earnTimelock))) gs = gx = waitingFor("The Earn timelock does not hold the LendingPool's admin yet (the Earn handover, I4, gives it).");
+        else {
+          const gId: string = await tl.hashOperation(poolAddress, 0n, grantData, ZERO_HASH, gSalt);
+          gs = (await tl.isOperation(gId)) ? { status: "done" } : { status: "ready" };
+          if (await tl.isOperationDone(gId)) gs = gx = waitingFor(`This grant ran, but deployment signer ${n} no longer holds the pool's DEPLOYER_ROLE (revoked since). Ask before granting it again.`);
+          else if (!(await tl.isOperation(gId))) gx = waitingFor(`Waits for SL-deployer-${n}-schedule, then 7 days.`);
+          else if (!(await tl.isOperationReady(gId))) gx = waitingFor(`Not yet: the Earn timelock's 7 days end at ${new Date(Number(await tl.getTimestamp(gId)) * 1000).toISOString()}.`);
+          else gx = { status: "ready" };
+        }
+        push({
+          id: `SL-deployer-${n}-schedule`, stage: "SL", title: `Clear Lending Safe: schedule the pool's DEPLOYER_ROLE for deployment signer ${n}`,
+          explanation: `Deployment signer ${n} (${d}, deploy/config/earn-roles.json) needs the Yield Pool's DEPLOYER_ROLE for the SL-funder and SL-headroom pairs. This queues LendingPool.grantRole(DEPLOYER_ROLE, ${d}) on the Earn timelock; it can run 7 days later. It does not wait for E8x. Sign it in the Safe app.`,
+          kind: "safe", signer: lendingSafe ?? ZERO_ADDRESS, signerLabel: "Clear Lending Safe (its owners sign in the Safe app)", to: tlAddress, toLabel: "Earn timelock",
+          ...encode(timelockIface, "schedule", [poolAddress ?? ZERO_ADDRESS, 0n, grantData, ZERO_HASH, gSalt, delay], ["LendingPool (the Yield Pool)", undefined, `grantRole(DEPLOYER_ROLE, ${d})`, "none", "a fixed label for this grant", `${Number(delay) / 86400} days`]),
+          dependsOn: [], ...gs,
+        });
+        push({
+          id: `SLx-deployer-${n}-execute`, stage: "Day 7", title: `Clear Lending Safe: run the DEPLOYER_ROLE grant for deployment signer ${n} (7 days after scheduling)`,
+          explanation: `After the 7 days, the Safe runs the queued grant: ${d} holds the pool's DEPLOYER_ROLE and can sign the SL pairs and two-person Deployments.`,
+          kind: "safe", signer: lendingSafe ?? ZERO_ADDRESS, signerLabel: "Clear Lending Safe (its owners sign in the Safe app)", to: tlAddress, toLabel: "Earn timelock",
+          ...encode(timelockIface, "execute", [poolAddress ?? ZERO_ADDRESS, 0n, grantData, ZERO_HASH, gSalt], ["LendingPool (the Yield Pool)", undefined, `grantRole(DEPLOYER_ROLE, ${d})`, "none", "the same label"]),
+          dependsOn: [`SL-deployer-${n}-schedule`], ...gx,
+        });
+      }
+    }
     const deployers = deploymentSigners;
     const DEPLOYER = ethers.id("DEPLOYER_ROLE");
     if (deployers.length < 2) notes.push("Waiting for input: the pool's DEPLOYER_ROLE needs two signers in deploy/config/earn-roles.json (the SL steps).");
     deployers.forEach((a, i) => label(a, `deployment signer ${ordinal(i)}`));
     if (poolAddress) {
       for (const [i, d] of deployers.slice(0, 2).entries()) {
-        if (!(await pool.hasRole(DEPLOYER, d))) notes.push(`Deployment signer ${i + 1} ${d} (deploy/config/earn-roles.json) does not hold the pool's DEPLOYER_ROLE on chain: the SL-funder and SL-headroom pairs need it first (a grant by the pool's admin, the Earn timelock).`);
+        if (!(await pool.hasRole(DEPLOYER, d))) notes.push(`Deployment signer ${i + 1} ${d} (deploy/config/earn-roles.json) does not hold the pool's DEPLOYER_ROLE on chain: SL-deployer-${i + 1}-schedule and SLx-deployer-${i + 1}-execute grant it through the Earn timelock, before the SL-funder and SL-headroom pairs.`);
       }
     }
     const coder = ethers.AbiCoder.defaultAbiCoder();
@@ -1197,12 +1238,12 @@ export async function buildSigningPlan(o: PlanOptions): Promise<SigningPlan> {
       else if (!lane) st = waitingFor("Waits for SLx-upgrade-execute: the lane is in the new LendingPool implementation.");
       else if (applied) st = { status: "done", reason: applied };
       else if (action && same(await pool.proposerOf(action), signer)) st = { status: "done", reason: "Sent by this signer; waits for the other deployment signer." };
-      else if (!(await pool.hasRole(DEPLOYER, signer))) st = waitingFor(`This signer does not hold the pool's DEPLOYER_ROLE on chain (deploy/config/earn-roles.json lists it): the Earn timelock grants it first.`);
+      else if (!(await pool.hasRole(DEPLOYER, signer))) st = waitingFor(`This signer does not hold the pool's DEPLOYER_ROLE on chain (deploy/config/earn-roles.json lists it): the Earn timelock grants it first (SL-deployer-${i + 1}-schedule, then SLx-deployer-${i + 1}-execute).`);
       else st = { status: "ready" };
       push({
         id: `SL-${key}-${i + 1}`, stage: "SL", title: `${title}: deployment signer ${i + 1}`, explanation,
         kind: "wallet", signer, signerLabel: `deployment signer ${i + 1}`, to: poolAddress ?? ZERO_ADDRESS, toLabel: "LendingPool (the Yield Pool)",
-        ...enc, dependsOn: ["SLx-upgrade-execute"], ...st,
+        ...enc, dependsOn: ["SLx-upgrade-execute", `SLx-deployer-${i + 1}-execute`], ...st,
       });
     };
 
