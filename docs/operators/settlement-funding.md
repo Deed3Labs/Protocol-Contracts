@@ -63,13 +63,16 @@ What a stolen desk key could do: deploy up to the lane's cap per period into CL 
 
 ## What people sign, once
 
-`scripts/signing_plan.ts` lists these steps (stage `SL`), after the Earn timelock proposal that adds the lane:
+First, by the deployer (no signatures): `SETTLEMENT_LANE_PREPARE=1 npx hardhat run scripts/upgrade_settlement_lane.ts --network base-sepolia` validates the upgrade against the OpenZeppelin manifest and deploys the new LendingPool implementation (record `LendingPoolSettlementLane`); `npx hardhat run deploy/28_deploy_SettlementForwarder.ts --network base-sepolia` deploys the SettlementForwarder. Neither touches the pool or CL Operating.
+
+Then `scripts/signing_plan.ts` lists these steps (stage `SL`):
 
 | Step | Who | What |
 |---|---|---|
-| `SL-funder` | two `DEPLOYER_ROLE` signers | `setSettlementFunder(desk wallet, capPerPeriod, periodSeconds)` |
-| `SL-headroom` | two `DEPLOYER_ROLE` signers | `setSettlementHeadroom(amount)` |
-| CL Operating batch | CL Operating's owners | `enableModule` (if not already), `AllowanceModule.addDelegate(forwarder)`, `setAllowance(forwarder, USDC, cap, period, base)`, and the forwarder's off-ramp address |
+| `SL-upgrade-schedule`, then `SLx-upgrade-execute` (day 7) | the Clear Lending Safe, through the Earn timelock | The LendingPool upgrade that adds the lane: a new Earn timelock proposal, scheduled only once `E8x-earn-execute` has run. The lane starts empty. |
+| `SL-funder-1`, `SL-funder-2` | two different `DEPLOYER_ROLE` signers, the same call each | `setSettlementFunder(desk wallet, capPerPeriod, periodSeconds)`. The second call applies it. It also restarts a stopped lane. |
+| `SL-headroom-1`, `SL-headroom-2` | two different `DEPLOYER_ROLE` signers | `setSettlementHeadroom(amount)` |
+| `SL-cl-operating-delegate`, `SL-cl-operating-allowance`, `SL-cl-operating-offramp`, `SL-cl-operating-desk` | CL Operating's owner (the Clear Lending Safe), one batch: `safe-batches/signing-SL-cl-operating.json` | `AllowanceModule.addDelegate(forwarder)`; `setAllowance(forwarder, USDC, cap, period in minutes, 0)`, the same cap and period as the lane's; `forwarder.setOffRamp(SETTLEMENT_OFFRAMP_ADDRESS)`; `forwarder.setDesk(desk wallet)`. The AllowanceModule must already be on CL Operating (`TU-safe-module`, from the payout top-ups). |
 
 Nothing is scheduled until the owner says so.
 
@@ -107,7 +110,7 @@ Alerts go to `OPS_ALERT_EMAIL`, each sent once (keyed in `ops_alerts`).
 | Settlement funding needs two deployers and CL Operating's owners: $X | The cut-off needs more than the lane's cap or the forwarder's allowance has left this period (or the lane is not set up), though the pool allows it. | The body holds two Transaction Builder batches, also on the move's record: the two-person `deploy(X, ref)` that each `DEPLOYER_ROLE` signer sends, then CL Operating's `USDC.transfer(off-ramp, X)` once it has landed. |
 | Settlement funding is $X short for the cut-off at …: the Margin or a person | Neither the Collection Account nor the pool can cover it (a queue request, a Suspension, no posted principal, Utilization, or the principal plus headroom). | The Savings-Backed Margin covers it at the bank. Record it: `cd apps/api && bun src/scripts/recordSettlementMarginAdvance.ts <dollars> "<your name>" "<note>"`. Or BondVault excess, or the treasury. Never the ESA vault. |
 | Settlement funding will land after the cut-off at … | The off-ramp's latency, or a book transfer that is not same-day, puts the money past the cut-off. | The Margin covers the settlement until it lands. Record the advance as above; the surplus restores the Margin first. |
-| …the settlement lane is not set up | The desk wallet is not the lane's funder, there is no cap, or the forwarder has no allowance or pays another address. | Finish the `SL-` steps and the CL Operating batch. |
+| …the settlement lane is not set up | The pool has no `settlementLane()` yet (before `SLx-upgrade-execute`), the desk wallet is not the lane's funder, the lane is stopped or has no cap, or the forwarder has no allowance, no off-ramp or desk, or pays another address. The body names each. | Finish the `SL` steps. A stopped lane restarts only with `SL-funder-1/2` (two deployers). |
 | Settlement funding cannot read the Credit Settlement Account | The CSA's token is not set, or Lithic did not answer. | Set `SETTLEMENT_CSA_FINANCIAL_ACCOUNT_TOKEN`, or check Lithic. Fund the cut-off by hand meanwhile. |
 | Settlement funding: … sent to the off-ramp has not arrived | A payout is well past the off-ramp's latency. | Check the drain at Bridge. It still counts as in flight. |
 | …idle in the CSA (automatic Returns are off) | Surplus has been idle past the return window. | Send it back by hand within 2 business days: the Margin, then the pool (`returnFunds`), then the BondVault. |
@@ -172,4 +175,4 @@ Turn it on in dry run first, and watch a few cut-offs' checks before turning the
 | `POOL_FUNDED_TIER_KINDS` | `SAVINGS,INCOME,BOOST` | For the Pool Tier principal helper. |
 | `OPS_ALERT_EMAIL`, `DATABASE_URL`, `PAY_DATABASE_URL`, `LITHIC_API_KEY` | | As for the other jobs. |
 
-The Yield Pool is `LENDING_POOL_<chainId>`, or the default in `apps/api/src/config/contracts.ts`. USDC is the pool's `asset()`. The lane's views and the forwarder's ABI fragments are in `apps/api/src/services/settlementFunding/abi.ts`, in one place, to be lined up with the contracts as deployed.
+The Yield Pool is `LENDING_POOL_<chainId>`, or the default in `apps/api/src/config/contracts.ts`. USDC is the pool's `asset()`. Every fragment the desk uses is in `apps/api/src/services/settlementFunding/abi.ts`: the lane's one view, `settlementLane()` (funder, cap per period, period, the period's start and use with its rollover applied, stopped, the stop count, the Settlement Headroom), `deploySettlement`, `pendingLossCharge()` and the pool's other views, and the forwarder's `forward`, `safe`, `allowanceModule`, `token`, `offRamp` and `desk`. `abi.test.ts` checks them against the compiled contracts and the deployed pool's record. A pool from before the `SL` upgrade reverts on `settlementLane()`, and the desk reads that as "lane not set up" and sends nothing.

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { ethers } from 'ethers';
 import { testDb } from '../db/testDb';
 import type { Db } from '../db/db';
-import { DESK_SELECTORS, SETTLEMENT_DEPLOYED_TOPIC, erc20Interface, forwarderInterface, isSettlementDeployedFor, laneInterface } from '../services/settlementFunding/abi';
+import { DESK_SELECTORS, erc20Interface, forwarderInterface, isSettlementDeployedFor, laneInterface } from '../services/settlementFunding/abi';
 import { mockBank } from '../services/settlementFunding/bank';
 import type { CardCredit } from '../services/settlementFunding/cardCredit';
 import { DEFAULT_DESK_CONFIG, type DeskConfig } from '../services/settlementFunding/config';
@@ -12,7 +12,8 @@ import type { OffRamp } from '../services/settlementFunding/offRamp';
 import { zonedInstant, type CutoffSchedule } from '../services/settlementFunding/schedule';
 import { clearDeskHalt, deskStore, recordMarginAdvance } from '../services/settlementFunding/store';
 import { settlementFundingStatus } from '../services/settlementFunding/api';
-import { DeskRevert, createFundingDesk, deskIdempotencyKey, nextForcedRun, startFundingDesk, type DeskChain, type DeskChainReads, type DeskTx } from './fundingDesk';
+import { DeskRevert, createFundingDesk, deskIdempotencyKey, deskRevertWords, nextForcedRun, startFundingDesk, type DeskChain, type DeskChainReads, type DeskTx } from './fundingDesk';
+import { CHAIN_ERRORS } from '../services/chain/chainErrors';
 
 const U = 1_000_000n;
 const NY: CutoffSchedule = { timeZone: 'America/New_York', cutoffMinutes: 14 * 60, businessDays: [1, 2, 3, 4, 5], holidays: [], lagDays: 0 };
@@ -42,6 +43,8 @@ function fakeChain() {
     now: TUE,
     block: 100,
     funder: a.wallet,
+    stopped: false,
+    upgraded: true,
     cap: 5_000n * U,
     used: 0n,
     headroom: 1_000n * U,
@@ -70,14 +73,14 @@ function fakeChain() {
     const step = stepOf(tx.data);
     if (step === 'deploy') {
       const [amount, ref] = laneInterface.decodeFunctionData('deploySettlement', tx.data);
-      if (m.funder !== a.wallet) throw new DeskRevert('SettlementNotFunder');
-      if (m.used + amount > m.cap) throw new DeskRevert('SettlementCap');
+      if (m.funder !== a.wallet || m.stopped) throw new DeskRevert('LendingPoolNotAuthorized');
+      if (m.used + amount > m.cap) throw new DeskRevert('LendingPoolSettlementCap');
       if (dry) return;
       m.used += amount;
       m.deployed += amount;
       m.cash -= amount;
       m.operating += amount;
-      events.push({ topics: [SETTLEMENT_DEPLOYED_TOPIC], data: ethers.AbiCoder.defaultAbiCoder().encode(['uint256', 'uint256', 'bytes32', 'uint256'], [BigInt(events.length), amount, ref, m.used]), hash, block: m.block });
+      events.push({ ...laneInterface.encodeEventLog('SettlementDeployed', [BigInt(events.length), amount, ref, m.used]), hash, block: m.block });
     } else if (step === 'forward') {
       const amount = BigInt(forwarderInterface.decodeFunctionData('forward', tx.data)[0]);
       if (m.allowanceSpent + amount > m.allowanceCap) throw new DeskRevert('allowance');
@@ -105,12 +108,16 @@ function fakeChain() {
     read: async (): Promise<DeskChainReads> => ({
       now: m.now,
       block: m.block,
-      laneMissing: false,
+      laneMissing: !m.upgraded,
       lane: {
+        upgraded: m.upgraded,
         funder: m.funder,
         capPerPeriod: m.cap,
         periodSeconds: 604_800,
+        periodStart: TUE - 86_400,
         periodUsed: m.used,
+        stopped: m.stopped,
+        epoch: 0,
         headroom: m.headroom,
         principal: m.principal,
         principalPosted: true,
@@ -119,6 +126,7 @@ function fakeChain() {
         vaultCash: m.cash,
         queuedShares: 0n,
         suspended: false,
+        chargePending: false,
       },
       forwarder: { moduleEnabled: true, allowance: { amount: m.allowanceCap, spent: m.allowanceSpent, resetTimeMin: 10_080, lastResetMin: 0, nonce: m.nonce }, offRamp: a.offRamp, desk: a.wallet },
       operatingBalance: m.operating,
@@ -300,6 +308,16 @@ describe('a restart never funds twice', () => {
 });
 
 describe('when it stops, and who is told', () => {
+  test('a dry run that reverts is said as a sentence: the lane’s cap, the funder, the forwarder', () => {
+    const revert = (name: string, args: unknown[]) => ({ code: 'CALL_EXCEPTION', shortMessage: 'execution reverted', data: CHAIN_ERRORS.encodeErrorResult(name, args) });
+    expect(deskRevertWords(revert('LendingPoolSettlementCap', [4_000n * U, 5_000n * U, 1_500n * U]))).toBe(
+      'Over the settlement lane\'s cap this period: $1,500.00 asked, $4,000.00 of $5,000.00 already used. The rest needs two deployers. (LendingPoolSettlementCap)',
+    );
+    expect(deskRevertWords(revert('LendingPoolNotAuthorized', [a.wallet]))).toContain('registered funder alone');
+    expect(deskRevertWords(revert('SettlementForwarderNoOffRamp', []))).toContain('has not set the SettlementForwarder’s off-ramp');
+    expect(deskRevertWords({ shortMessage: 'execution reverted (unknown custom error)' })).toBe('execution reverted (unknown custom error)');
+  });
+
   test('a revert stops it, alerts once, and nothing moves until a person clears it', async () => {
     const f = fakeChain();
     f.opts.revert = 'forward';
@@ -364,6 +382,25 @@ describe('when it stops, and who is told', () => {
     expect(await j.tick()).toBe('setup');
     expect(f.sent).toEqual([]);
     expect(alerts.map((x) => x.subject).join(' | ')).toContain('the settlement lane is not set up');
+  });
+
+  test('a pool from before the SL upgrade (settlementLane() reverts): "lane not set up", nothing sent', async () => {
+    const f = fakeChain();
+    Object.assign(f.m, { upgraded: false, funder: ethers.ZeroAddress, cap: 0n, headroom: 0n });
+    const { j, alerts } = desk(f);
+    expect(await j.tick()).toBe('setup');
+    expect(f.sent).toEqual([]);
+    const setup = alerts.find((x) => x.subject.includes('the settlement lane is not set up'));
+    expect(setup?.body).toContain('the Yield Pool has no settlementLane() yet');
+  });
+
+  test('the lane stopped (stopSettlementFunder): its funder stays registered, and nothing is sent until two deployers restart it', async () => {
+    const f = fakeChain();
+    f.m.stopped = true;
+    const { j, alerts } = desk(f);
+    expect(await j.tick()).toBe('setup');
+    expect(f.sent).toEqual([]);
+    expect(alerts.find((x) => x.subject.includes('not set up'))?.body).toContain('the settlement lane is stopped');
   });
 
   test('an off-ramp payout that fails stops the desk', async () => {

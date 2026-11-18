@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { getContractAddress } from '../config/contracts.js';
 import { getPayPool } from '../config/postgres.js';
 import { merchantDb } from '../config/merchantDb.js';
+import { chainErrorReason, decodeChainError, describeSettlementRefusal } from '../services/chain/chainErrors.js';
 import { chainProvider } from '../services/chain/provider.js';
 import { alertOps } from '../services/opsAlert.js';
 import { cdpWalletSender } from '../services/payoutFunding/topUpCdp.js';
@@ -587,7 +588,7 @@ export function createFundingDesk(deps: DeskDeps) {
           await alert({
             key: `${keyBase}:setup:${day}`,
             subject: `Settlement funding: the CSA needs ${formatUsdc(f.need)} by ${cutoffIso}, and the settlement lane is not set up`,
-            body: `Nothing was deployed: ${decision.setup.join('; ')}. The one-time setup is in scripts/signing_plan.ts (SL-funder, SL-headroom and the CL Operating batch) and docs/operators/settlement-funding.md.`,
+            body: `Nothing was deployed: ${decision.setup.join('; ')}. The one-time setup is stage SL in scripts/signing_plan.ts (the upgrade, SL-funder-1/2, SL-headroom-1/2, and CL Operating’s batch signing-SL-cl-operating.json) and docs/operators/settlement-funding.md.`,
           });
         }
         if (decision.capShort > 0n) {
@@ -664,6 +665,14 @@ function chainId(): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 84532;
 }
 
+/** A revert as a sentence when it is one of the lane's or the forwarder's refusals, else its name and arguments. */
+export function deskRevertWords(error: unknown): string {
+  const decoded = decodeChainError(error);
+  const words = describeSettlementRefusal(decoded);
+  if (words) return `${words} (${decoded!.name})`;
+  return decoded ? chainErrorReason(error) : (error as { shortMessage?: string; message?: string })?.shortMessage ?? String((error as Error)?.message ?? error);
+}
+
 const isRevert = (e: unknown) => {
   const x = e as { code?: string; message?: string };
   return x?.code === 'CALL_EXCEPTION' || /execution reverted|revert/i.test(String(x?.message ?? ''));
@@ -671,6 +680,80 @@ const isRevert = (e: unknown) => {
 
 export function deskAccountName(id: number, env: Record<string, string | undefined> = process.env): string {
   return (env[`SETTLEMENT_DESK_CDP_ACCOUNT_NAME_${id}`] || env.SETTLEMENT_DESK_CDP_ACCOUNT_NAME || '').trim() || (id === 84532 ? 'settlement-desk-base-sepolia' : `settlement-desk-chain-${id}`);
+}
+
+const opt = async <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null);
+const addressOrNull = (v: unknown) => (typeof v === 'string' && ethers.isAddress(v) ? ethers.getAddress(v) : null);
+
+/**
+ * Reads what one check needs from the chain, at one block: the lane (`settlementLane()`, which
+ * reverts on a pool from before the SL upgrade, read as `laneMissing`), the conditions every
+ * Deployment meets, the forwarder's allowance on CL Operating and its own settings, and the
+ * balances. Read-only.
+ */
+export function deskChainReader(provider: ethers.Provider, addresses: DeskAddresses): () => Promise<DeskChainReads> {
+  const pool = new ethers.Contract(addresses.pool, YIELD_POOL_ABI as unknown as string[], provider);
+  const module = new ethers.Contract(addresses.module, ALLOWANCE_MODULE_ABI, provider);
+  const usdc = new ethers.Contract(addresses.usdc, DESK_ERC20_ABI as unknown as string[], provider);
+  const safe = new ethers.Contract(addresses.safe, SAFE_MODULE_ABI, provider);
+  const fwd = new ethers.Contract(addresses.forwarder, SETTLEMENT_FORWARDER_ABI as unknown as string[], provider);
+  return async () => {
+    const b = await provider.getBlock('latest');
+    if (!b) throw new Error('no latest block');
+    const at = { blockTag: b.number };
+    const lane = await opt(pool.settlementLane(at) as Promise<unknown[]>);
+    const [pp, deployed, available, vault, queued, suspended, charge] = await Promise.all([
+      pool.poolTierPrincipal(at), pool.deployedBalance(at), pool.availableCash(at), pool.vaultCash(at), pool.queuedShares(at), pool.isSuspended(at), pool.pendingLossCharge(at),
+    ]);
+    const [al, moduleEnabled, offRamp, desk, fwSafe, fwModule, fwToken, operating, walletBal] = await Promise.all([
+      module.getTokenAllowance(addresses.safe, addresses.forwarder, addresses.usdc, at),
+      safe.isModuleEnabled(addresses.module, at),
+      opt(fwd.offRamp(at) as Promise<string>),
+      opt(fwd.desk(at) as Promise<string>),
+      opt(fwd.safe(at) as Promise<string>),
+      opt(fwd.allowanceModule(at) as Promise<string>),
+      opt(fwd.token(at) as Promise<string>),
+      usdc.balanceOf(addresses.safe, at),
+      usdc.balanceOf(addresses.wallet, at),
+    ]);
+    const a5 = Array.from(al as Iterable<bigint>, (x) => BigInt(x));
+    const allowance: AllowanceRead = { amount: a5[0], spent: a5[1], resetTimeMin: Number(a5[2]), lastResetMin: Number(a5[3]), nonce: Number(a5[4]) };
+    return {
+      now: b.timestamp,
+      block: b.number,
+      laneMissing: !lane,
+      lane: {
+        upgraded: !!lane,
+        funder: lane ? ethers.getAddress(String(lane[0])) : ethers.ZeroAddress,
+        capPerPeriod: lane ? BigInt(lane[1] as bigint) : 0n,
+        periodSeconds: lane ? Number(lane[2]) : 0,
+        periodStart: lane ? Number(lane[3]) : 0,
+        periodUsed: lane ? BigInt(lane[4] as bigint) : 0n,
+        stopped: lane ? Boolean(lane[5]) : false,
+        epoch: lane ? Number(lane[6]) : 0,
+        headroom: lane ? BigInt(lane[7] as bigint) : 0n,
+        principal: BigInt(pp[0]),
+        principalPosted: BigInt(pp[1]) !== 0n,
+        deployedBalance: BigInt(deployed),
+        availableCash: BigInt(available),
+        vaultCash: BigInt(vault),
+        queuedShares: BigInt(queued),
+        suspended: Boolean(suspended),
+        chargePending: Boolean(charge[0]),
+      },
+      forwarder: {
+        moduleEnabled: Boolean(moduleEnabled),
+        allowance,
+        offRamp: addressOrNull(offRamp),
+        desk: addressOrNull(desk),
+        safe: addressOrNull(fwSafe),
+        module: addressOrNull(fwModule),
+        token: addressOrNull(fwToken),
+      },
+      operatingBalance: BigInt(operating),
+      walletBalance: BigInt(walletBal),
+    };
+  };
 }
 
 /** The desk on this server's chain and contracts. Null (with why) when it cannot run. */
@@ -707,9 +790,6 @@ export async function defaultDeskDeps(env: Record<string, string | undefined> = 
     wallet,
     offRamp: offRampAddress,
   };
-  const usdc = new ethers.Contract(usdcAddress, DESK_ERC20_ABI as unknown as string[], provider);
-  const safe = new ethers.Contract(addresses.safe, SAFE_MODULE_ABI, provider);
-  const fwd = new ethers.Contract(forwarder, SETTLEMENT_FORWARDER_ABI as unknown as string[], provider);
   const config = deskConfigFromEnv(env);
   const db = await merchantDb();
   if (!db) return { why: 'no database to record moves in' };
@@ -721,51 +801,10 @@ export async function defaultDeskDeps(env: Record<string, string | undefined> = 
     label: 'settlement desk wallet',
   }, env);
 
-  const opt = async <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null);
+  const usdc = new ethers.Contract(usdcAddress, DESK_ERC20_ABI as unknown as string[], provider);
+  const read = deskChainReader(provider, addresses);
   const chain: DeskChain = {
-    read: async () => {
-      const b = await provider.getBlock('latest');
-      if (!b) throw new Error('no latest block');
-      const at = { blockTag: b.number };
-      const lane = await Promise.all([
-        pool.settlementFunder(at), pool.settlementCapPerPeriod(at), pool.settlementPeriodSeconds(at), pool.settlementPeriodUsed(at), pool.settlementHeadroom(at),
-      ]).catch(() => null);
-      const [pp, deployed, available, vault, queued, suspended] = await Promise.all([
-        pool.poolTierPrincipal(at), pool.deployedBalance(at), pool.availableCash(at), pool.vaultCash(at), pool.queuedShares(at), pool.isSuspended(at),
-      ]);
-      const [al, moduleEnabled, offRamp, desk, operating, walletBal] = await Promise.all([
-        module.getTokenAllowance(addresses.safe, forwarder, usdcAddress, at),
-        safe.isModuleEnabled(addresses.module, at),
-        opt(fwd.offRamp(at) as Promise<string>),
-        opt(fwd.desk(at) as Promise<string>),
-        usdc.balanceOf(addresses.safe, at),
-        usdc.balanceOf(wallet, at),
-      ]);
-      const a5 = Array.from(al as Iterable<bigint>, (x) => BigInt(x));
-      const allowance: AllowanceRead = { amount: a5[0], spent: a5[1], resetTimeMin: Number(a5[2]), lastResetMin: Number(a5[3]), nonce: Number(a5[4]) };
-      return {
-        now: b.timestamp,
-        block: b.number,
-        laneMissing: !lane,
-        lane: {
-          funder: lane ? ethers.getAddress(lane[0]) : ethers.ZeroAddress,
-          capPerPeriod: lane ? BigInt(lane[1]) : 0n,
-          periodSeconds: lane ? Number(lane[2]) : 0,
-          periodUsed: lane ? BigInt(lane[3]) : 0n,
-          headroom: lane ? BigInt(lane[4]) : 0n,
-          principal: BigInt(pp[0]),
-          principalPosted: BigInt(pp[1]) !== 0n,
-          deployedBalance: BigInt(deployed),
-          availableCash: BigInt(available),
-          vaultCash: BigInt(vault),
-          queuedShares: BigInt(queued),
-          suspended: Boolean(suspended),
-        },
-        forwarder: { moduleEnabled: Boolean(moduleEnabled), allowance, offRamp: offRamp ? ethers.getAddress(offRamp) : null, desk: desk ? ethers.getAddress(desk) : null },
-        operatingBalance: BigInt(operating),
-        walletBalance: BigInt(walletBal),
-      };
-    },
+    read,
     state: async () => {
       const [al, bal, appr] = await Promise.all([
         module.getTokenAllowance(addresses.safe, forwarder, usdcAddress),
@@ -783,7 +822,7 @@ export async function defaultDeskDeps(env: Record<string, string | undefined> = 
         await provider.call({ from: wallet, to: tx.to, data: tx.data });
         await provider.estimateGas({ from: wallet, to: tx.to, data: tx.data });
       } catch (error) {
-        if (isRevert(error)) throw new DeskRevert((error as { shortMessage?: string; message?: string })?.shortMessage ?? String((error as Error)?.message ?? error));
+        if (isRevert(error)) throw new DeskRevert(deskRevertWords(error));
         throw error;
       }
     },
