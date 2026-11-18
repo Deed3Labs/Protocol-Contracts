@@ -8,8 +8,9 @@ import { prng } from "../audit/deep/fuzz-engine";
  * pays for members' credit swipes before the bank's settlement cut-off, through one registered
  * funder (the funding desk's wallet) acting alone within limits two DEPLOYER_ROLE signers set once.
  *
- * Earn acceptance test 27 is not written down in docs/audit/specs/earn-contract-requirements.md
- * yet; these tests are written from the owner's rules for the lane:
+ * Earn acceptance test 27 (docs/audit/specs/earn-contract-requirements.md): the lane's rules,
+ * each tested here, with a fuzz test on the cap and period below and a Base Sepolia fork test in
+ * SettlementLane.fork.spec.ts:
  * - only the registered funder may use it, and only to the registered deployment account;
  * - its cap per period, set by two DEPLOYER_ROLE signers, holds;
  * - it may deploy above the posted Pool Tier principal by the Settlement Headroom, while the

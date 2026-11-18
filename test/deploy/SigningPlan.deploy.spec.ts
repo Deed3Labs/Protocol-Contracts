@@ -50,10 +50,13 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
   let lendingSafe: any, assurancePool: any, assuranceTimelock: any, collateralRegistry: any;
   let usdcToken: any;
   const PT_STEPS = ["TU-funder", "TU-safe-module", "TU-safe-delegate", "TU-safe-allowance"];
-  // Settlement Funding (decision 54): the pool upgrade on the Earn timelock, then the lane's two-person settings,
-  // then CL Operating's batch for the SettlementForwarder.
+  // Settlement Funding (decision 54): the pool upgrade on the Earn timelock, the deployment signers' DEPLOYER_ROLE
+  // grants, the lane's two-person settings, then CL Operating's batch for the SettlementForwarder.
   const SL_FORWARDER = ["SL-cl-operating-delegate", "SL-cl-operating-allowance", "SL-cl-operating-offramp", "SL-cl-operating-desk"];
-  const SL_STEPS = ["SL-upgrade-schedule", "SLx-upgrade-execute", "SL-funder-1", "SL-funder-2", "SL-headroom-1", "SL-headroom-2", ...SL_FORWARDER];
+  const SL_GRANTS = ["SL-deployer-1-schedule", "SLx-deployer-1-execute", "SL-deployer-2-schedule", "SLx-deployer-2-execute"];
+  const SL_STEPS = ["SL-upgrade-schedule", "SLx-upgrade-execute", ...SL_GRANTS, "SL-funder-1", "SL-funder-2", "SL-headroom-1", "SL-headroom-2", ...SL_FORWARDER];
+  // What the walk leaves of SL: the upgrade's day 7, the pairs (no funder input yet) and CL Operating's batch.
+  const SL_LEFT = SL_STEPS.filter((id) => id !== "SL-upgrade-schedule" && !SL_GRANTS.includes(id));
   // The pool's two DEPLOYER_ROLE signers (deploy 27 grants them; here the SL test does).
   const deploymentSigners = [random(), random()];
   let laneImpl: string;
@@ -238,6 +241,8 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
       "E8-vault-propose", "E8-bondbook-propose", "E8-holderdirections-propose", "E8-pledgemodule-propose", "E8-backstop-propose",
       "E8-hold-1", "E8-hold-2", "G1-tier-1", "G1-tier-2", "I3-vault-schedule",
       ...ASSURANCE_KEYS.map((k) => `AS-${k}-approve-1`), "AS-floor-1",
+      // The deployment signers' DEPLOYER_ROLE grants (Earn timelock proposals) wait for nothing.
+      "SL-deployer-1-schedule", "SL-deployer-2-schedule",
     ]);
     expect(step(p, "AS-floor-2").reason).to.contain("AS-floor-1");
     // Payout top-ups (decision 51) with no top-up inputs: their steps wait, and nothing is refused.
@@ -306,7 +311,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     // A real plan for the page's browser check (tools/signing-page/page.check.cjs PLAN=<file>).
     if (process.env.SIGNING_PLAN_SAMPLE) fs.copyFileSync(firstWrite.planFile, process.env.SIGNING_PLAN_SAMPLE);
     // The vault acceptance is ready to schedule: its Transaction Builder batch is written.
-    expect(firstWrite.batches.map((b) => path.basename(b))).to.deep.equal(["signing-I3-vault-schedule.json"]);
+    expect(firstWrite.batches.map((b) => path.basename(b))).to.deep.equal(["signing-I3-vault-schedule.json", "signing-SL-deployer-1-schedule.json", "signing-SL-deployer-2-schedule.json"]);
     const batch = JSON.parse(fs.readFileSync(firstWrite.batches[0], "utf8"));
     expect(batch.chainId).to.equal("31337");
     expect(batch.transactions).to.deep.equal([{ to: step(p, "I3-vault-schedule").to, value: "0", data: step(p, "I3-vault-schedule").data }]);
@@ -356,8 +361,12 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     // The lane's upgrade was scheduled only after the E8 batch ran; its own 7 days are still running.
     expect(sent.indexOf("SL-upgrade-schedule")).to.be.greaterThan(sent.indexOf("E8x-earn-execute"));
     expect(step(p, "SLx-upgrade-execute").reason).to.contain("the Earn timelock's 7 days end at");
-    const SL_LEFT = SL_STEPS.filter((id) => id !== "SL-upgrade-schedule");
     expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(["D4-operator", ...PT_STEPS, ...SL_LEFT]);
+    // The deployment signers' grants ran through the Earn timelock, without waiting for E8x.
+    for (const id of SL_GRANTS) expect(sent, id).to.include(id);
+    expect(sent.indexOf("SLx-deployer-1-execute")).to.be.greaterThan(sent.indexOf("SL-deployer-1-schedule"));
+    for (const d of deploymentSigners) expect(await pool.hasRole(ethers.id("DEPLOYER_ROLE"), d), d).to.equal(true);
+    expect(step(p, "SL-deployer-1-schedule").reason).to.equal("Deployment signer 1 holds the pool's DEPLOYER_ROLE.");
 
     // The chain shows each change made.
     expect(await agent.vault()).to.equal(await bondVault.getAddress());
@@ -546,7 +555,7 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     for (const id of PT_STEPS) expect(step(p, id).status, id).to.equal("done");
     expect(step(p, "TU-safe-allowance").reason).to.contain("$5,000.00 every 7 days");
     // Everything but the settlement lane (the next test).
-    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(SL_STEPS.filter((id) => id !== "SL-upgrade-schedule"));
+    expect(p.steps.filter((x) => x.status !== "done").map((x) => x.id)).to.deep.equal(SL_LEFT);
     expect(writeSigningPlan(p, DIR).batches).to.deep.equal([]);
 
     // The preflight: every line passes; a wallet with another PayoutPool role fails.
@@ -621,12 +630,21 @@ describe("the signing plan (scripts/signing_plan.ts)", function () {
     await send(step(p, "SLx-upgrade-execute"));
     expect(await upgrades.erc1967.getImplementationAddress(await pool.getAddress())).to.equal(laneImpl);
 
-    // The signers do not hold DEPLOYER_ROLE yet: the steps say so. No funder yet: SL-funder waits for its input.
+    // No funder yet: SL-funder waits for its input. The walk's timelock grants gave both signers DEPLOYER_ROLE.
     p = await planWith(lane);
     expect(step(p, "SLx-upgrade-execute").status).to.equal("done");
-    expect(step(p, "SL-headroom-1").reason).to.contain("does not hold the pool's DEPLOYER_ROLE");
     expect(step(p, "SL-funder-1").reason).to.contain("Waiting for input: SETTLEMENT_FUNDER");
-    for (const d of deploymentSigners) await pool.grantRole(await pool.DEPLOYER_ROLE(), d);
+    for (const id of SL_GRANTS) expect(step(p, id).status, id).to.equal("done");
+    expect(step(p, "SL-headroom-2").dependsOn).to.deep.equal(["SLx-upgrade-execute", "SLx-deployer-2-execute"]);
+    // A listed signer without the role: its grant is a new proposal, and its half of each pair waits for it.
+    const newcomer = random();
+    const other = await buildSigningPlan({ network: "hardhat", env: lane, valuationSigners, deploymentSigners: [d1, newcomer] });
+    expect(step(other, "SL-deployer-1-schedule").status).to.equal("done");
+    expect(step(other, "SL-deployer-2-schedule").status).to.equal("ready");
+    expect(step(other, "SL-deployer-2-schedule").args[2].value).to.equal(pool.interface.encodeFunctionData("grantRole", [ethers.id("DEPLOYER_ROLE"), newcomer]));
+    expect(step(other, "SLx-deployer-2-execute").reason).to.contain("Waits for SL-deployer-2-schedule");
+    expect(step(other, "SL-headroom-2").reason).to.contain("SL-deployer-2-schedule, then SLx-deployer-2-execute");
+    expect(other.notes.join("\n")).to.contain(`Deployment signer 2 ${newcomer}`);
 
     const inputs = { ...lane, SETTLEMENT_FUNDER: funder };
     p = await planWith(inputs);

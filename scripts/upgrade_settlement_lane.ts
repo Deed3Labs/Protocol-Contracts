@@ -6,7 +6,10 @@ import { deployPoolValuation } from "../deploy/poolModules";
  * `setSettlementHeadroom`, `stopSettlementFunder` and `deploySettlement`, in `YieldPoolValuation`
  * (now "YieldPoolValuation.v3"), forwarded from `LendingPool`. A plain UUPS upgrade of the pool
  * proxy, with no call: the lane starts empty (no funder, no headroom) and two DEPLOYER_ROLE signers
- * set it afterwards (signing plan steps SL-funder, SL-headroom).
+ * set it afterwards (signing plan steps SL-funder-1 and SL-funder-2, SL-headroom-1 and SL-headroom-2).
+ * A listed deployment signer without the pool's DEPLOYER_ROLE gets it first through its own Earn
+ * timelock proposal (SL-deployer-N-schedule, then SLx-deployer-N-execute 7 days later), which does
+ * not wait for E8x or this upgrade.
  *
  * The pool's admin is the Earn timelock, so the upgrade is a NEW Earn timelock proposal the Clear
  * Lending Safe schedules after the E8 batch has executed (signing plan steps SL-upgrade-schedule and
