@@ -34,3 +34,19 @@ describe('the loss order on Pools, live', () => {
     expect(money).toContain('const c = L ? Y.curve : null;');
   });
 });
+
+describe('the yield pool’s reference cards, live', () => {
+  test('Where member payments go and the 30-day pool are drawn live, in the reference’s order', () => {
+    expect(money).not.toContain('if (L) return <>{band(flow)}{band(<>{a}{b}</>)}{settle}{band(tbl)}</>;');
+    expect(money).toContain('return <>{band(flow)}{band(pay)}{band(proj)}{band(<>{a}{b}</>)}{settle}{band(tbl)}</>;');
+  });
+  test('member payments come from the issuers’ tiers and the charges, not the demo balances', () => {
+    const live = money.slice(money.indexOf('function memberPaymentsLive()'), money.indexOf('function memberPayments()'));
+    expect(live).toContain('Y.rates');
+    expect(live).toContain('vars.merchantFees');
+    expect(live).not.toMatch(/CARRY|MFEE|10689|0\.025/);
+  });
+  test('live, the projection has no Returns it wasn’t told about', () => {
+    expect(money).toContain('const evs = L ? Y.toPayout > 0 ? [{');
+  });
+});

@@ -285,6 +285,8 @@ const apply = {
     vars.clAccounts = d.CL ?? null;
     // what Clear Lending pays into the new Assurance Pool (the Assurance fees card); null when the API couldn't read it
     vars.assuranceFees = d.ASSURANCE_FEES ?? null;
+    // this month's financed sales and their merchant fees (Where member payments go); null when the API couldn't read the charges
+    vars.merchantFees = d.MERCHANT_FEES ?? null;
     replace(FLOWS, d.FLOWS);
     replace(BONDS, d.BONDS);
     replace(ACCTS, d.ACCTS);

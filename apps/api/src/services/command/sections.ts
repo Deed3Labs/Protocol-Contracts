@@ -1487,6 +1487,8 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     ASSURANCE_FEES: provider === 'live' ? await assuranceFeesLive(db, o.now).catch(() => null) : assuranceFeesDemo(),
     // the automatic payout top-ups (decision 51): what the job recorded, live; a sample, seeded
     PAYOUT_TOPUPS: provider === 'live' ? await payoutTopUpsLive(db) : payoutTopUpsSeed(o.now.getTime()),
+    // live, this month's financed sales and the merchant fees on them (Where member payments go); null seeded or unread
+    MERCHANT_FEES: provider === 'live' ? await merchantFeesThisMonth(o.charges ?? getPostgresPool() ?? db, o.now).catch(() => null) : null,
     // card settlement funding (decision 54): what the funding desk recorded, live; a sample, seeded
     SETTLEMENT_FUNDING: provider === 'live' ? await settlementFundingLive(db, process.env, o.now.getTime()).catch(() => null) : settlementFundingSeed(o.now.getTime()),
     // live, what the yield pane lists since the opening is the pool's own deposits and withdrawals
@@ -1506,6 +1508,24 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     },
     asOf: asOfFor(provider, o.now),
   };
+}
+
+/**
+ * This month's (UTC) financed sales: charges that went through on a plan, not paid now, and what the shops gave up on
+ * them, the merchant fee (amount less the shop's payout). Clear Lending keeps it; Money's "Where member payments go".
+ */
+export async function merchantFeesThisMonth(charges: Pick<Queryable, 'query'>, now: Date): Promise<{ financed: number; fees: number; count: number }> {
+  const from = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  const to = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+  const { rows } = await charges.query<{ financed: string | number; fees: string | number; n: string | number }>(
+    `SELECT coalesce(sum(amount_cents), 0) AS financed, coalesce(sum(amount_cents - payout_cents), 0) AS fees, count(*) AS n
+       FROM charge_requests
+      WHERE status = 'approved' AND plan_id IS NOT NULL AND coalesce(paid_now, false) = false
+        AND coalesce(resolved_at, created_at) >= $1 AND coalesce(resolved_at, created_at) < $2`,
+    [new Date(from).toISOString(), new Date(to).toISOString()],
+  );
+  const r = rows[0];
+  return { financed: Number(r?.financed ?? 0) / 100, fees: Number(r?.fees ?? 0) / 100, count: Number(r?.n ?? 0) };
 }
 
 /** "1 : 1" when the vault's USDC covers CLRUSD to the cent; otherwise the USDC per CLRUSD. */

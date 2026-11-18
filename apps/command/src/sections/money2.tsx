@@ -1071,7 +1071,7 @@ function makeMoney() {
     function yieldProjection() {
       const day = Y.borrowBps / 1e4 / 365;
       let dep = Y.lent,
-        owed = Y.accrued,
+        owed = Y.accrued ?? 0,
         last = 0,
         cash = Y.cash,
         intIn = 0,
@@ -1081,7 +1081,12 @@ function makeMoney() {
         owed += dep * day * (d - last);
         last = d;
       };
-      const evs = Y_RET.map(([d, p]) => ({
+      /* live, only what is known: no Returns are scheduled (Clear Lending returns money as members repay), and the one
+         Deployment in view is the PayoutPool's shortfall, needed now */
+      const evs = L ? Y.toPayout > 0 ? [{
+        d: 0,
+        out: Y.toPayout
+      }] : [] : Y_RET.map(([d, p]) => ({
         d,
         p
       })).concat([{
@@ -1096,7 +1101,7 @@ function makeMoney() {
           rows.push({
             d: e.d,
             k: 'Deployment',
-            sub: 'Waiting in Moves · two signers',
+            sub: L ? 'The PayoutPool’s shortfall · two signers' : 'Waiting in Moves · two signers',
             out: e.out,
             cash,
             dep,
@@ -1127,7 +1132,7 @@ function makeMoney() {
       const days = [];
       {
         let d2 = Y.lent,
-          o2 = Y.accrued,
+          o2 = Y.accrued ?? 0,
           c2 = Y.cash;
         const ev = {};
         evs.forEach(e => ev[e.d] = e);
@@ -1169,6 +1174,45 @@ function makeMoney() {
       rate: 0.025,
       sales: 10689.20
     };
+    /* live, one cycle at today's balances: each credit tier's carry on what's drawn in it and the term plans', from the
+       issuers (Y.rates); the merchant fees on this month's financed sales, from the charges; the Funding Rate on what's
+       deployed; and what was charged off this month. Null until the issuers are read */
+    function memberPaymentsLive() {
+      const R = Y.rates;
+      if (!R) return null;
+      const per = bps => `${+(bps / 100).toFixed(2)}% a cycle`;
+      const c = R.tiers.map(t => ({
+        k: t.name,
+        bps: t.bps,
+        bal: t.out,
+        n: t.bps ? per(t.bps) : 'No carry',
+        v: Math.round(t.out * t.bps / 1e4 * 100) / 100
+      })).concat(R.term.out ? [{
+        k: 'Term plans',
+        bps: R.term.bps ?? 0,
+        bal: R.term.out,
+        n: R.term.bps ? per(R.term.bps) : 'No carry',
+        v: Math.round(R.term.out * (R.term.bps ?? 0) / 1e4 * 100) / 100
+      }] : []);
+      const F = vars.merchantFees,
+        carry = c.reduce((a, x) => a + x.v, 0),
+        fees = F ? F.fees : 0,
+        inc = Math.round((carry + fees) * 100) / 100;
+      const dom = new Date(TODAY).getUTCDate() - 1,
+        losses = Math.round((CR.losses ?? []).filter(x => -x[0] <= dom).reduce((a, x) => a + x[3], 0) * 100) / 100;
+      const pool = Math.round((Y.deployed ?? Y.lent) * Y.borrowBps / 1e4 * R.cycleDays / 365 * 100) / 100,
+        spread = Math.round((inc - pool - losses) * 100) / 100;
+      return {
+        c,
+        carry,
+        fees,
+        F,
+        inc,
+        pool,
+        losses,
+        spread
+      };
+    }
     function memberPayments() {
       const c = CARRY.map(([k, bps, bal, sh, n]) => ({
         k,
@@ -1215,7 +1259,7 @@ function makeMoney() {
       const per = 8,
         rows = Y_DEP.slice(N.dp * per, N.dp * per + per);
       const tbl = cell('s12', 'Holders', <span className="lbl">{Y.depositors}{" members · masked"}</span>, L && !rows.length ? <div className="lv-e"><span>No one holds Pool Shares yet</span></div> : <div className="bt-wrap"><table className="bt ndp"><colgroup><col style={css("width:16%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:12%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /><col style={css("width:15%")} /></colgroup><thead><tr><th className="c-nm">Member</th><th style={css("text-align:left")}>Since</th><th>Put in</th><th>Earned</th><th>Worth now</th><th>Pledged</th><th>Can redeem</th></tr></thead><tbody>{rows.map((r, __k) => <tr key={__k}><td className="tn"><b className="mono">M•••{r.id}</b></td><td style={css("text-align:left")}>{r.since}</td><td>{money(r.d)}</td><td>{money(r.e)}</td><td><b>{money(r.w)}</b></td><td>{r.pl ? money(r.pl) : <span className="quiet">None</span>}</td><td className="quiet">{r.pl ? money(r.w - r.pl) : 'All of it'}</td></tr>)}</tbody></table></div>, <><span>{"Names stay masked · "}{money(Y.assets)}{" in all"}</span>{pager(N.dp, Y_DEP.length, per, 'ndp')}</>);
-      const P = L ? null : yieldProjection(),
+      const P = yieldProjection(),
         prinTot = Y.principal,
         earned = Y.assets - Y.principal;
       /* the loop: money goes right (out), comes back left (Returns); the loss order is a separate question, answered below */
@@ -1227,11 +1271,9 @@ function makeMoney() {
       const SF = L ? vars.settlementFunding : demoSettlement(Date.now());
       const sf = SF ? cell('s7', 'Card settlement funding', ...settlementParts(SF, money)) : notReal('s7', 'Card settlement funding', 'Needs the settlement funding desk (SETTLEMENT_FUNDING_ENABLED) to have checked: the next cut-off and what’s due, the Credit Settlement Account, the funder limit and each move it made.');
       const settle = band(<>{sf}<PoolTierPrincipal demo={!L} money={money} /></>);
-      // live, the 30-day projection (scheduled Returns and Deployments) and member payments (the month's carry by product, merchant fees) aren't read yet
-      if (L) return <>{band(flow)}{band(<>{a}{b}</>)}{settle}{band(tbl)}</>;
       /* one card: what holders put in, what the pool holds, and how that moves over 30 days, as a chart with its events beneath */
       const D = P.days,
-        top = Math.ceil(Math.max(...D.map(d => d.cash + d.dep + d.owed)) * 1.16 / 500) * 500,
+        top = Math.max(500, Math.ceil(Math.max(L ? Y.principal : 0, ...D.map(d => d.cash + d.dep + d.owed)) * 1.16 / 500) * 500),
         W = 1000,
         H = 220;
       const X = t => t / 30 * W,
@@ -1250,31 +1292,35 @@ function makeMoney() {
       };
       const earnedNow = Y.assets - Y.principal,
         earned30 = P.assets - Y.principal;
-      const gl = [0, 2500, 5000, 7500, 10000].filter(v => v <= top).map((v, __k) => <Fragment key={__k}><span className="yc-g" style={css(`top:${pcy(v)}`)}>{v ? '$' + v / 1000 + 'k' : '$0'}</span><i className="yc-gl" style={css(`top:${pcy(v)}`)} /></Fragment>);
+      /* the demo's grid is the reference's; live, five lines fitted to the pool */
+      const gk = v => v >= 1000 ? '$' + +(v / 1000).toFixed(1) + 'k' : '$' + Math.round(v);
+      const gl = (L ? [0, .25, .5, .75, 1].map(f => f * top) : [0, 2500, 5000, 7500, 10000].filter(v => v <= top)).map((v, __k) => <Fragment key={__k}><span className="yc-g" style={css(`top:${pcy(v)}`)}>{L ? gk(v) : v ? '$' + v / 1000 + 'k' : '$0'}</span><i className="yc-gl" style={css(`top:${pcy(v)}`)} /></Fragment>);
       const lineTop = Math.max(Y.principal, P.assets);
       const marks = P.rows.map((r, __k) => <i key={__k} className={`yc-m${r.out ? ' out' : ''}`} style={css(`left:${pcx(r.d)}${r.out ? '' : `;top:${pcy(lineTop)}`}`)} />);
       /* money out sits above the chart, money back below it */
       const chip = r => <div className={`yc-e${r.out ? ' out' : ''}`} style={css(`left:${pcx(r.d)}`)}><span>{dayD(r.d)}{" · "}{r.out ? 'Deployment' : 'Return'}</span><b>{r.out ? '−' : '+'}{money(r.out || r.i + r.p)}</b><em>{r.out ? 'Out to Clear Lending' : <>{money(r.i)}{" interest"}<br />{money(r.p)}{" principal"}</>}</em></div>;
       const chips = P.rows.filter(r => !r.out).map(chip),
         outs = P.rows.filter(r => r.out).map(chip);
-      const proj = cell('s12', 'The pool, now and over the next 30 days', <span className="lbl">{"Projected at a "}{(Y.borrowBps / 100).toFixed(2)}{"% Funding Rate · "}{Y_RET.length}{" Returns, 1 Deployment"}</span>, <><div className="yp-top">{[['Holders put in', money(Y.principal), 'Returns don’t change it'], ['Pool Assets', money(Y.assets), `${money(P.assets)} in 30 days`], ['Earned on top', money(earnedNow), `${money(earned30)} in 30 days`], ['Share Value', `$${Y.price.toFixed(4)}`, `$${(P.assets / Y.principal).toFixed(4)} in 30 days`]].map(([k, v, n], __k) => <div key={__k}><span>{k}</span><b>{v}</b><em>{n}</em></div>)}</div><div className="yc"><div className="yc-ev up">{outs}</div><div className="yc-plot">{gl}<svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true"><defs><pattern id="ycHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="color-mix(in srgb,var(--settled) 12%,var(--ground))" /><rect width="2" height="6" fill="color-mix(in srgb,var(--settled) 62%,var(--ground))" /></pattern></defs><path className="yc-cash" d={step(d => 0, d => d.cash)} /><path className="yc-dep" d={step(d => d.cash, d => d.cash + d.dep)} /><path className="yc-own" d={step(d => d.cash + d.dep, d => d.cash + d.dep + d.owed)} /><line x1="0" x2={W} y1={Yv(Y.principal)} y2={Yv(Y.principal)} className="yc-pr" vectorEffect="non-scaling-stroke" /></svg>{marks}<span className="yc-pl" style={css(`top:${pcy(lineTop)}`)}>{"Holders’ principal "}{money(Y.principal)}</span><span className="yc-er" style={css(`top:${pcy(lineTop)}`)}><b>+{money(earned30)}</b>{" earned by "}{dayD(30)}</span><span className="yc-lb c" style={css(`top:${pcy(D[0].cash / 2)};left:14px`)}><em>Vault Cash</em>{money(Y.cash)}</span><span className="yc-lb h" style={css(`top:${pcy(D[0].cash + D[0].dep / 2)};left:14px`)}><em>Lent to Clear Lending</em>{money(Y.lent)}</span><span className="yc-lb c r" style={css(`top:${pcy(D[30].cash / 2)};right:14px`)}><em>{dayD(30)}</em>{money(D[30].cash)}</span><span className="yc-lb h r" style={css(`top:${pcy(D[30].cash + D[30].dep / 2)};right:14px`)}><em>{dayD(30)}</em>{money(D[30].dep)}</span></div><div className="yc-x">{[0, 7, 14, 21, 30].map((t, __k) => <span key={__k} style={css(`left:${pcx(t)}`)}>{t ? dayD(t) : 'Today · ' + dayD(0)}</span>)}</div><div className="yc-ev">{chips}</div></div></>, <><span className="f-key"><span><i className="yc-k1" />Vault Cash · in hand</span><span><i className="yc-k2" />Lent to Clear Lending · owed back</span><span><i className="yc-k3" />Interest owed</span><span><i className="yc-kd" />Holders’ principal</span></span><span className="quiet small yc-note">Returns follow member repayments</span></>);
-      const MP = memberPayments(),
-        Wp = v => (v / MP.inc * 100).toFixed(3) + '%';
-      const inSeg = MP.c.filter(x => x.v > 0).map((x, i) => ({
+      const proj = cell('s12', 'The pool, now and over the next 30 days', <span className="lbl">{"Projected at a "}{(Y.borrowBps / 100).toFixed(2)}{"% Funding Rate · "}{L ? P.rows.length ? `${P.rows.length} Deployment, the PayoutPool’s shortfall · no Returns scheduled` : 'nothing scheduled' : `${Y_RET.length} Returns, 1 Deployment`}</span>, <><div className="yp-top">{[['Holders put in', money(Y.principal), 'Returns don’t change it'], ['Pool Assets', money(Y.assets), `${money(P.assets)} in 30 days`], ['Earned on top', money(earnedNow), `${money(earned30)} in 30 days`], ['Share Value', `$${Y.price.toFixed(4)}`, `$${(L ? Y.price * (Y.assets ? P.assets / Y.assets : 1) : P.assets / Y.principal).toFixed(4)} in 30 days`]].map(([k, v, n], __k) => <div key={__k}><span>{k}</span><b>{v}</b><em>{n}</em></div>)}</div><div className="yc"><div className="yc-ev up">{outs}</div><div className="yc-plot">{gl}<svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true"><defs><pattern id="ycHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="color-mix(in srgb,var(--settled) 12%,var(--ground))" /><rect width="2" height="6" fill="color-mix(in srgb,var(--settled) 62%,var(--ground))" /></pattern></defs><path className="yc-cash" d={step(d => 0, d => d.cash)} /><path className="yc-dep" d={step(d => d.cash, d => d.cash + d.dep)} /><path className="yc-own" d={step(d => d.cash + d.dep, d => d.cash + d.dep + d.owed)} /><line x1="0" x2={W} y1={Yv(Y.principal)} y2={Yv(Y.principal)} className="yc-pr" vectorEffect="non-scaling-stroke" /></svg>{marks}<span className="yc-pl" style={css(`top:${pcy(lineTop)}`)}>{"Holders’ principal "}{money(Y.principal)}</span><span className="yc-er" style={css(`top:${pcy(lineTop)}`)}><b>+{money(earned30)}</b>{" earned by "}{dayD(30)}</span><span className="yc-lb c" style={css(`top:${pcy(D[0].cash / 2)};left:14px`)}><em>Vault Cash</em>{money(Y.cash)}</span>{!L || D[0].dep ? <span className="yc-lb h" style={css(`top:${pcy(D[0].cash + D[0].dep / 2)};left:14px`)}><em>Lent to Clear Lending</em>{money(Y.lent)}</span> : ''}<span className="yc-lb c r" style={css(`top:${pcy(D[30].cash / 2)};right:14px`)}><em>{dayD(30)}</em>{money(D[30].cash)}</span>{!L || D[30].dep ? <span className="yc-lb h r" style={css(`top:${pcy(D[30].cash + D[30].dep / 2)};right:14px`)}><em>{dayD(30)}</em>{money(D[30].dep)}</span> : ''}</div><div className="yc-x">{[0, 7, 14, 21, 30].map((t, __k) => <span key={__k} style={css(`left:${pcx(t)}`)}>{t ? dayD(t) : 'Today · ' + dayD(0)}</span>)}</div><div className="yc-ev">{chips}</div></div></>, <><span className="f-key"><span><i className="yc-k1" />Vault Cash · in hand</span><span><i className="yc-k2" />Lent to Clear Lending · owed back</span><span><i className="yc-k3" />Interest owed</span><span><i className="yc-kd" />Holders’ principal</span></span><span className="quiet small yc-note">Returns follow member repayments</span></>);
+      const MP = L ? memberPaymentsLive() : memberPayments(),
+        scale = MP ? Math.max(MP.inc, MP.pool + MP.losses) : 0,
+        Wp = v => (scale ? Math.max(0, v) / scale * 100 : 0).toFixed(3) + '%';
+      const LAND = ['var(--land)', 'color-mix(in srgb,var(--land) 70%,var(--ground))', 'color-mix(in srgb,var(--land) 45%,var(--ground))', 'color-mix(in srgb,var(--land) 28%,var(--ground))'];
+      const inSeg = !MP ? [] : (L ? MP.c.filter(x => x.bal > 0 || x.bps > 0) : MP.c.filter(x => x.v > 0)).map((x, i) => ({
         k: x.k,
         v: x.v,
-        sub: `${x.n} · ${Math.round(x.sh * 100)}% of ${money0(x.bal)} carried`,
-        c: ['var(--land)', 'color-mix(in srgb,var(--land) 70%,var(--ground))', 'color-mix(in srgb,var(--land) 45%,var(--ground))'][i]
+        sub: L ? `${x.n} on ${money0(x.bal)} drawn` : `${x.n} · ${Math.round(x.sh * 100)}% of ${money0(x.bal)} carried`,
+        c: LAND[Math.min(i, LAND.length - 1)]
       })).concat([{
         k: 'Merchant fees',
         v: MP.fees,
-        sub: `2.5% of ${money(MFEE.sales)} financed`,
+        sub: L ? MP.F ? MP.F.count ? `${pct(MP.F.fees, MP.F.financed)} of ${money(MP.F.financed)} financed this month` : 'Nothing financed this month' : 'The charges aren’t read yet' : `2.5% of ${money(MFEE.sales)} financed`,
         c: 'var(--underway)'
       }]);
-      const outSeg = [{
+      const outSeg = !MP ? [] : [{
         k: 'Holders’ interest',
         v: MP.pool,
-        sub: `${(Y.borrowBps / 100).toFixed(2)}% a year on ${money0(Y.lent)} lent out`,
+        sub: `${(Y.borrowBps / 100).toFixed(2)}% a year on ${money0(L ? Y.deployed ?? Y.lent : Y.lent)} ${L ? 'deployed' : 'lent out'}`,
         c: 'var(--live)'
       }, {
         k: 'Clear Lending’s Spread',
@@ -1282,9 +1328,9 @@ function makeMoney() {
         sub: 'Its costs, then the first loss',
         c: 'var(--fg)'
       }];
-      const bar = segs => <div className="wp-bar">{segs.map((x, __k) => <i key={__k} style={css(`width:${Wp(x.v)};background:${x.c}`)} title={`${x.k} · ${money(x.v)}`} />)}</div>;
+      const bar = segs => <div className="wp-bar">{segs.filter(x => x.v > 0).map((x, __k) => <i key={__k} style={css(`width:${Wp(x.v)};background:${x.c}`)} title={`${x.k} · ${money(x.v)}`} />)}</div>;
       const legend = segs => <div className="wp-lg">{segs.map((x, __k) => <div key={__k}><i style={css(`background:${x.c}`)} /><span><b>{x.k}</b><em>{x.sub}</em></span><strong>{money(x.v)}</strong></div>)}</div>;
-      const pay = cell('s12', 'Where member payments go', <span className="lbl">One month · the deployed rate schedule · demo balances</span>, <><div className="wp"><div className="wp-col"><div className="wp-h"><span>Comes in to Clear Lending</span><b>{money(MP.inc)}</b></div>{bar(inSeg)}{legend(inSeg)}</div><div className="wp-mid" aria-hidden="true"><svg viewBox="0 0 12 20"><path d="M2 2l8 8-8 8" /></svg></div><div className="wp-col"><div className="wp-h"><span>Goes out</span><b>{money(MP.inc)}</b></div>{bar(outSeg)}{legend(outSeg)}<p className="wp-n">{"Holders get "}{pct(MP.pool, MP.inc, 0)}{" of it. They don’t share in carry or fees: Clear Lending keeps the Spread and takes every loss before the pool does. Charged off this month: "}{money(MP.losses)}.</p></div></div><div className="wp-af"><span className="wp-afh">Then the Spread</span>{[['1', 'Bills and reserves first', 'Expenses, bonds due, pool interest, reserves, the Assurance fee · L-01 9.2'], ['2', 'Kept as capital', 'More member and merchant lending, and the fourth loss layer'], ['3', 'Or paid to Holdings', 'Only if reserves, coverage and licences pass · L-01 12.2'], ['4', 'Split by shares', 'The co-op’s Class A and investors’ Class B alike · Holdings funds Clear Building Co. for homes']].map(([n, k, t], i) => <div key={i} className="wp-as"><b><i>{n}</i>{k}</b><span>{t}</span></div>)}</div></>, <><span>Many members pay in full and owe no carry · savings-backed lines carry none</span><button data-npool="ap" data-ntab="pools">Loss order →</button></>);
+      const pay = L && !MP ? notReal('s12', 'Where member payments go', 'Needs the credit issuers’ tiers: each one’s carry and what’s drawn in it.') : cell('s12', 'Where member payments go', <span className="lbl">{L ? `One cycle · ${MP.c.length ? 'the issuers’ rates at today’s balances' : 'nothing drawn yet'}` : 'One month · the deployed rate schedule · demo balances'}</span>, <><div className="wp"><div className="wp-col"><div className="wp-h"><span>Comes in to Clear Lending</span><b>{money(MP.inc)}</b></div>{bar(inSeg)}{legend(inSeg)}</div><div className="wp-mid" aria-hidden="true"><svg viewBox="0 0 12 20"><path d="M2 2l8 8-8 8" /></svg></div><div className="wp-col"><div className="wp-h"><span>Goes out</span><b>{money(MP.inc)}</b></div>{bar(outSeg)}{legend(outSeg)}<p className="wp-n">{"Holders get "}{L && !MP.inc ? '—' : pct(MP.pool, MP.inc, 0)}{" of it. They don’t share in carry or fees: Clear Lending keeps the Spread and takes every loss before the pool does. Charged off this month: "}{money(MP.losses)}.</p></div></div><div className="wp-af"><span className="wp-afh">Then the Spread</span>{[['1', 'Bills and reserves first', 'Expenses, bonds due, pool interest, reserves, the Assurance fee · L-01 9.2'], ['2', 'Kept as capital', 'More member and merchant lending, and the fourth loss layer'], ['3', 'Or paid to Holdings', 'Only if reserves, coverage and licences pass · L-01 12.2'], ['4', 'Split by shares', 'The co-op’s Class A and investors’ Class B alike · Holdings funds Clear Building Co. for homes']].map(([n, k, t], i) => <div key={i} className="wp-as"><b><i>{n}</i>{k}</b><span>{t}</span></div>)}</div></>, <><span>Many members pay in full and owe no carry · savings-backed lines carry none</span><button data-npool="ap" data-ntab="pools">Loss order →</button></>);
       return <>{band(flow)}{band(pay)}{band(proj)}{band(<>{a}{b}</>)}{settle}{band(tbl)}</>;
     }
     function poolBonds() {
