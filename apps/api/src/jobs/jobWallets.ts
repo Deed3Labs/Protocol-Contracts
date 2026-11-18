@@ -8,21 +8,36 @@ import { ethers } from 'ethers';
  * Wallets held by Coinbase CDP have no key here; their addresses appear in the `[gas]` lines of
  * relayerGas.ts instead.
  */
-export const JOB_WALLET_KEYS: Array<{ job: string; envVar: string }> = [
+export const JOB_WALLET_KEYS: Array<{ job: string; envVar: string; unsetNote?: string }> = [
   { job: 'credit operator', envVar: 'CREDIT_OPERATOR_PRIVATE_KEY' },
   { job: 'card settler', envVar: 'CARD_SETTLER_PRIVATE_KEY' },
-  { job: 'membership registrar', envVar: 'MEMBERSHIP_REGISTRAR_PRIVATE_KEY' },
-  { job: 'savings relayer', envVar: 'SAVINGS_RELAYER_PRIVATE_KEY' },
-  { job: 'send relayer', envVar: 'SEND_RELAYER_PRIVATE_KEY' },
+  // The chain keepers pay their gas from the card settler's key (docs/operators/keepers.md): cycle
+  // and default, shortfall notices, pledged pool shares and bonds, and the Yield Pool's queue.
+  { job: 'chain keepers', envVar: 'CARD_SETTLER_PRIVATE_KEY' },
+  {
+    job: 'membership registrar',
+    envVar: 'MEMBERSHIP_REGISTRAR_PRIVATE_KEY',
+    unsetNote: 'the credit operator registers members instead',
+  },
+  {
+    job: 'savings relayer',
+    envVar: 'SAVINGS_RELAYER_PRIVATE_KEY',
+    unsetNote: 'needed only in local-key mode; a CDP relayer has no key here',
+  },
+  {
+    job: 'send relayer',
+    envVar: 'SEND_RELAYER_PRIVATE_KEY',
+    unsetNote: 'needed only in local-key mode; a CDP relayer has no key here',
+  },
 ];
 
 export type JobWallet = { job: string; envVar: string; address: string | null; problem?: string };
 
 /** The address behind each key that is set; `address: null` when unset or not a valid key. */
 export function jobWallets(env: Record<string, string | undefined> = process.env): JobWallet[] {
-  return JOB_WALLET_KEYS.map(({ job, envVar }) => {
+  return JOB_WALLET_KEYS.map(({ job, envVar, unsetNote }) => {
     const raw = (env[envVar] || '').trim();
-    if (!raw) return { job, envVar, address: null, problem: 'not set' };
+    if (!raw) return { job, envVar, address: null, problem: unsetNote ? `not set (${unsetNote})` : 'not set' };
     try {
       const key = raw.startsWith('0x') ? raw : `0x${raw}`;
       return { job, envVar, address: ethers.computeAddress(key) };

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { ethers } from 'ethers';
-import { CHAIN_ERROR_FRAGMENTS, CHAIN_ERRORS, chainErrorReason, decodeChainError, describeCreditRefusal, describeLiquidatorRefusal, describeRedeemRefusal, STATE_NOT_CONFIRMED } from './chainErrors';
+import { CHAIN_ERROR_FRAGMENTS, CHAIN_ERRORS, chainErrorReason, decodeChainError, describeCreditRefusal, describeKeeperRefusal, describeLiquidatorRefusal, describeRedeemRefusal, STATE_NOT_CONFIRMED } from './chainErrors';
 
 const redemption = readFileSync(new URL('../merchant/payoutRedemption.ts', import.meta.url), 'utf8');
 const SHOP = '0x00000000000000000000000000000000000000b2';
@@ -145,5 +145,29 @@ describe('Phase 2b: the Liquidator’s errors decode, and match the Solidity (en
     const held = decodeChainError({ data: data('LiquidatorOnHold', [SHOP, 2, 1_900_000_000n]) });
     expect(describeLiquidatorRefusal(held)).toContain('death');
     expect(describeLiquidatorRefusal(decodeChainError({ data: data('LiquidatorSameSigner', [SHOP]) }))).toContain('different HOLD_ROLE signer');
+  });
+});
+
+describe('decision 53: the keepers read each contract’s own "not now" as not due', () => {
+  test('each has a sentence an operator can read; anything else is not a refusal', () => {
+    const ARGS: Record<string, unknown[]> = {
+      RevolvingIssuerNotInDefault: [SHOP],
+      PoolShareEnforcerBlocked: [SHOP],
+      PoolShareEnforcerNothingNeeded: [SHOP],
+      PoolShareEnforcerNothingToSettle: [SHOP],
+      PoolShareEnforcerNotExcess: [3n],
+      BurnerBondNotPledgePayable: [3n],
+      BondVaultEnforcementInForce: [],
+      LendingPoolSuspended: [],
+      LendingPoolChargePending: [],
+      LiquidatorOnHold: [SHOP, 2, 1_900_000_000n],
+      LiquidatorPauseInForce: [SHOP],
+    };
+    for (const [name, args] of Object.entries(ARGS)) {
+      const sentence = describeKeeperRefusal(decodeChainError({ data: data(name, args) }));
+      expect(`${name}: ${sentence}`).not.toBe(`${name}: null`);
+      expect(sentence).not.toContain('0x');
+    }
+    expect(describeKeeperRefusal(decodeChainError({ data: data('LendingPoolInsufficientCash', [1n, 2n]) }))).toBeNull();
   });
 });

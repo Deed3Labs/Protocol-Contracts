@@ -4,6 +4,7 @@ import { getContractAddress } from '../../config/contracts.js';
 import { chainProvider, writesAs } from './provider.js';
 import { chainErrorReason, decodeChainError } from './chainErrors.js';
 import { alertOps } from '../opsAlert.js';
+import { keeperChainId, keeperKey, keeperMode, withKeeperSendLock } from './keeperKit.js';
 
 /*
  * Enforcement after an Earn shortfall (Phase 2b, 12.6 and 12.8, as Phase 2f left it), and the
@@ -17,8 +18,9 @@ import { alertOps } from '../opsAlert.js';
  *     Asset-Backed Limit (`shortfallOf(member)` -> gap, dueAt). Moves nothing; starts the governed
  *     wait (72 hours or more). With the gap closed, the same call clears a notice.
  * Once the wait has passed (`dueAt`), the shortfall is settled from Pledged Pool Shares through the
- * queue (`PoolShareEnforcer.enforce`) and then Pledged BurnerBonds (`payPledged`), decision 21. That
- * settlement keeper is not built here: a due shortfall is alerted to ops instead.
+ * queue (`PoolShareEnforcer.enforce`) and then Pledged BurnerBonds (`payPledged`), decision 21. The
+ * pledge keepers do that (services/chain/pledgeEnforcement, decision 53), each behind its own switch;
+ * a due shortfall is still alerted to ops once a day, saying whether they are on.
  * `noticeShortfall` reverts `LiquidatorOnHold` while a Liquidation Hold is active, so the keeper reads
  * the hold first and leaves a held member alone.
  *
@@ -90,6 +92,8 @@ export interface EnforcementReader {
 type Tx = { hash: string; wait: (confirms?: number) => Promise<unknown> };
 export interface EnforcementWriter {
   noticeShortfall(member: string): Promise<Tx>;
+  /** The same call, simulated only (an eth_call); throws its revert. For the dry run. */
+  simulateNoticeShortfall?(member: string): Promise<unknown>;
 }
 
 /**
@@ -116,6 +120,10 @@ export interface EnforcementDeps {
   maxPerRun?: number;
   /** When each (action, member) was last tried, for the cooldown. Kept across runs by the job. */
   tried?: Map<string, number>;
+  /** Who settles a shortfall past its wait: the pledge keepers' switches, in words, for the alert. */
+  settledBy?: string;
+  /** ENFORCEMENT_KEEPER_DRY_RUN: simulate each notice and report it; send nothing. */
+  dryRun?: boolean;
 }
 
 export interface EnforcementRun {
@@ -178,6 +186,12 @@ export async function runEnforcementKeeper(deps: EnforcementDeps): Promise<Enfor
     for (const { wallet, action } of queue.slice(0, max)) {
       tried.set(`${action}:${wallet}`, now);
       try {
+        if (deps.dryRun) {
+          await deps.writer.simulateNoticeShortfall?.(wallet);
+          run.results.push({ wallet, action, ok: true, reason: 'dry run: would send noticeShortfall' });
+          console.log(`[enforcement] dry run: would send noticeShortfall(${wallet}) (${action})`);
+          continue;
+        }
         const tx = await deps.writer.noticeShortfall(wallet);
         await tx.wait(1);
         run.results.push({ wallet, action, ok: true, txHash: tx.hash });
@@ -196,6 +210,17 @@ export async function runEnforcementKeeper(deps: EnforcementDeps): Promise<Enfor
       }
     }
 
+    const wouldSend = run.results.filter((r) => r.reason?.startsWith('dry run'));
+    if (wouldSend.length) {
+      await deps
+        .alert({
+          key: `enforcement:dry-run:${new Date(now * 1000).toISOString().slice(0, 10)}`,
+          subject: `Enforcement keeper (dry run): would send ${wouldSend.length} noticeShortfall call(s)`,
+          body: `noticeShortfall simulates successfully for ${wouldSend.map((r) => `${r.wallet} (${r.action === 'clearShortfall' ? 'clears a closed gap' : 'opens a notice'})`).join(', ')}. Nothing was sent: dry run.`,
+        })
+        .catch(() => null);
+    }
+
     if (due.length) {
       for (const wallet of due) run.results.push({ wallet, action: 'shortfallDue', ok: true });
       await deps
@@ -205,7 +230,7 @@ export async function runEnforcementKeeper(deps: EnforcementDeps): Promise<Enfor
           body:
             `The shortfall notice's wait has passed for ${due.join(', ')}. It is settled from Pledged Pool Shares ` +
             '(PoolShareEnforcer.enforce, then fillQueue and settle) and then Pledged BurnerBonds (payPledged), smallest amount first ' +
-            '(decision 21). No keeper sends those yet: do it by hand, or leave it while a Liquidation Hold is proposed.',
+            `(decision 21). ${deps.settledBy ?? 'No keeper sends those: do it by hand, or leave it while a Liquidation Hold is proposed.'}`,
         })
         .catch(() => null);
     }
@@ -231,11 +256,19 @@ export async function runEnforcementKeeper(deps: EnforcementDeps): Promise<Enfor
 
 /* ---- Wiring ---- */
 
-function chainId(): number {
-  const parsed = Number((process.env.SAVINGS_DEFAULT_CHAIN_ID || process.env.SEND_DEFAULT_CHAIN_ID || '').trim());
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 84532;
+const chainId = () => keeperChainId();
+
+/** noticeShortfall has run since Phase 2b whenever configured: on unless ENFORCEMENT_KEEPER_ENABLED=0. */
+export const shortfallNoticeMode = (env: Record<string, string | undefined> = process.env) => keeperMode('ENFORCEMENT_KEEPER', env, true);
+
+/** The pledge keepers' switches, in a sentence for the shortfall-due alert. */
+function settledBySentence(env: Record<string, string | undefined> = process.env): string {
+  const word = (prefix: string) => ({ off: 'off', dry_run: 'in dry run', live: 'on' })[keeperMode(prefix, env)];
+  const pool = word('POOL_ENFORCE_KEEPER');
+  const bond = word('BOND_PLEDGE_KEEPER');
+  if (pool === 'on' && bond === 'on') return 'The pledge keepers send those when the contracts say they are due (hourly); nothing to do unless they alert.';
+  return `The pledge keepers are: pool shares ${pool}, bonds ${bond}. What they do not send must be done by hand, or left while a Liquidation Hold is proposed.`;
 }
-const keeperKey = () => (process.env.CARD_SETTLER_PRIVATE_KEY || '').trim();
 
 export function isEnforcementConfigured(): boolean {
   return Boolean(
@@ -273,7 +306,9 @@ export function enforcementDeps(): EnforcementDeps | null {
   if (!liquidator || !keeperKey()) return null;
   const provider = chainProvider(chainId());
   const reads = new ethers.Contract(liquidator, LIQUIDATOR_ABI, provider);
-  const writer = new ethers.Contract(liquidator, LIQUIDATOR_ABI, writesAs(new ethers.Wallet(keeperKey(), provider)));
+  const signer = new ethers.Wallet(keeperKey(), provider);
+  const writer = new ethers.Contract(liquidator, LIQUIDATOR_ABI, writesAs(signer));
+  const iface = new ethers.Interface(LIQUIDATOR_ABI);
   const maxPerRun = Number(process.env.ENFORCEMENT_KEEPER_MAX_PER_RUN || DEFAULT_ENFORCEMENT_MAX_PER_RUN);
   return {
     reader: {
@@ -281,11 +316,22 @@ export function enforcementDeps(): EnforcementDeps | null {
       shortfallWait: () => reads.shortfallWait(),
       shortfallOf: (m) => reads.shortfallOf(m),
     },
-    writer: writer as unknown as EnforcementWriter,
+    writer: {
+      // One keeper send at a time from this key, each mined before the next (keeperKit).
+      noticeShortfall: (m) =>
+        withKeeperSendLock(async () => {
+          const tx = (await writer.noticeShortfall(m)) as Tx;
+          await tx.wait(1);
+          return tx;
+        }),
+      simulateNoticeShortfall: (m) => provider.call({ to: liquidator, data: iface.encodeFunctionData('noticeShortfall', [m]), from: signer.address }),
+    },
     wallets: memberWallets,
     alert: (input) => alertOps(input),
     maxPerRun: Number.isFinite(maxPerRun) && maxPerRun > 0 ? maxPerRun : DEFAULT_ENFORCEMENT_MAX_PER_RUN,
     tried: triedAcrossRuns,
+    settledBy: settledBySentence(),
+    dryRun: shortfallNoticeMode() === 'dry_run',
   };
 }
 

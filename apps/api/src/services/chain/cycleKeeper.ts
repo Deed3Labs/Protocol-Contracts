@@ -1,65 +1,97 @@
 import { ethers } from 'ethers';
 import { getPostgresPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
-import { chainProvider, writesAs } from './provider.js';
+import { chainProvider } from './provider.js';
 import { chainErrorReason } from './chainErrors.js';
 import { notificationStore } from '../notificationStore.js';
 import { alertOps } from '../opsAlert.js';
+import {
+  dayKey,
+  envCount,
+  hourKey,
+  keeperChainId,
+  keeperKey,
+  keeperMode,
+  liveRunner,
+  parseLogs,
+  usdOf,
+  type CallRunner,
+  type KeeperMode,
+} from './keeperKit.js';
 
 /*
- * The cycle keeper (Phase 2b, section 12.4-12.5).
+ * The credit keeper (Phase 2b, 12.4-12.5, as the day-0 RevolvingIssuer judges cycles; decision 53).
  *
- * RevolvingIssuer judges a cycle lazily: Clean, missed (the unsecured limit halves), cure notice, or
- * default is recorded only when the member transacts or someone calls `syncCreditPeriod(member)`.
- * That call is permissionless and needs no role, only gas. A member nobody syncs earns no Clean
- * Cycles (so never the higher Boost cap) and is never halved or noticed either. This keeper syncs
- * each member once their cycle is ready to be judged, from a key the API already pays gas with (the
- * card settler's).
+ * RevolvingIssuer judges a cycle lazily: Clean, missed (the unsecured limit halves), the second miss
+ * that freezes the line, and the cycle's statement (12.17) are recorded only when the member
+ * transacts or someone calls `syncCreditPeriod(member)`. A default is recorded by
+ * `triggerDefault(member)`. Both are permissionless and need only gas, paid here from the card
+ * settler's key. A member nobody syncs earns no Clean Cycles and is never halved either.
  *
- * When a cycle is ready (all read from chain):
- *   - the grace window has ended (`now >= expiration + graceLength`): judged Clean or missed;
- *   - or the period has expired and the line is already rebalanced (`inCompliance`): the contract
- *     judges that Clean straight away (`isFrozen` is false), so it is not left waiting out the grace;
- *   - a second miss leaves the period expired with a dated cure notice; it is synced again only once
- *     the cure window has passed (`cureNoticeAt + cureWindow`), which is when default is recorded.
- * A judged cycle rolls the period (a new expiration in the future), so the next run skips it: the
- * keeper is idempotent and safe to rerun, and never syncs a member twice for one cycle. Each run is
- * bounded (oldest due first) and runs never overlap.
- *
- * What the judgement did is read from the receipt (`CycleJudged`, `UnsecuredLimitHalved`,
- * `CureNotice`) and the member is told about a missed cycle or a cure notice. Failures are logged and
- * alerted.
+ * Since Phase 2e cycles are calendar months (`cycleStateOf(member).cycleEnd`), and the credit period
+ * is what the issuer keeps in step with them: `creditPeriods(member).expiration` is the next cycle end
+ * (or a held close's due point, 10c), with no grace (`graceLength` 0). So, all read from chain:
+ *   - sync once `now >= expiration`: the issuer judges every cycle end that has passed and rolls the
+ *     period to the next one, so the next run skips the member (idempotent);
+ *   - a second miss in a row leaves `cureAmount` set and the period expired at its due point. The
+ *     line stays frozen; syncing it again does nothing until the next cycle end passes (its statement
+ *     is recorded then), so it is synced only then, not every hour;
+ *   - default is computed (`inDefault`): two misses, a two-person cure-notice timestamp, the grace
+ *     over, no pause or Income Assurance. Only then is `triggerDefault` sent, and only when its own
+ *     switch is on (CREDIT_DEFAULT_KEEPER_ENABLED). A member in computed default is never synced
+ *     instead, because a sync would record the default too.
+ *   - a line opened before Phase 2e (a grace length, no cycle end) is synced once its grace ends, or
+ *     at expiry if it is already rebalanced, as before.
+ * Each call is simulated first; a refusal by the issuer's own rule is "not due". Bounded per run,
+ * oldest due first; runs never overlap. What the judgement did is read from the receipt and the
+ * member is told about a halved limit or a frozen line; ops are told about a second miss (a cure-notice
+ * timestamp needs two ATTESTER_ROLE signers) and about every default recorded.
  */
+
+const CYCLE_STATE =
+  'tuple(uint64 cycleEnd, uint64 closedAt, uint64 dayChangedAt, uint8 cycleEndDay, uint8 incomePause, bool hybridMode, uint128 rebalanceAmount, uint128 securedMinimum, uint128 paidSinceClose, uint128 assetCarry, uint128 securedPastDue, uint128 pastDueSM, uint128 cureAmount, uint64 cureDueAt, address noticeProposer, address pauseProposer, uint8 pauseCycles, bytes32 autoClearAuthHash, uint64 cardDay, uint128 cardUsed, bool graceEligible, address graceProposer, uint256 graceUses, bytes32 hardshipRef, bytes32 pauseRef, uint8 hardshipRun, uint64 hardshipLastEnd, uint8 closedWorkout, uint64 psAt, uint64 lastCycleEnd, uint64 lastRecordedAt, bool lastStatementRequired, uint256 closeClock, uint256 cureClock, uint64 heldClosedAt, uint64 heldDueAt, uint8 heldWorkout, uint128 heldRA, uint128 heldSM, uint128 heldPaid, uint256 heldClock)';
 
 export const KEEPER_ABI = [
   'function creditPeriods(address member) view returns (uint256 issuedAt, uint256 expiration, uint256 graceLength, bool paused)',
   'function inCompliance(address member) view returns (bool)',
-  'function cycleOf(address) view returns (uint8 missedInRow, uint8 cleanStreak, uint8 depositBits, uint64 cureNoticeAt, uint128 unsecuredCeiling)',
+  'function inDefault(address member) view returns (bool)',
+  'function totalDrawnOf(address member) view returns (uint256 total)',
+  // Reached through the issuer's static forwarder to RevolvingIssuerTerms.
+  `function cycleStateOf(address member) view returns (${CYCLE_STATE})`,
   'function creditTerms() view returns (uint128 unsecuredLineCap, uint64 cureWindow, uint8 boostCleanCycles, uint8 boostDepositCycles, bool autoClearOffGlobal)',
   'function syncCreditPeriod(address member) returns (bool)',
+  'function triggerDefault(address member)',
   'event CycleJudged(address indexed member, bool clean, uint8 missedInRow, uint8 cleanStreak, bool deposited)',
   'event UnsecuredLimitHalved(address indexed member, uint256 newLimit, uint256 excess)',
-  'event CureNotice(address indexed member, uint64 noticeAt, uint64 defaultFrom)',
+  'event CreditLineDefaulted(address member)',
 ];
-const EVENTS = new ethers.Interface(KEEPER_ABI);
+const IFACE = new ethers.Interface(KEEPER_ABI);
 
-/** Members synced per run, at most. A backlog drains oldest first over the next runs. */
+/** Calls sent per run, at most. A backlog drains oldest first over the next runs. */
 export const DEFAULT_MAX_PER_RUN = 50;
+
+export interface CycleStateLite {
+  cycleEnd: bigint | number;
+  cureAmount: bigint | number;
+  cureDueAt: bigint | number;
+}
 
 export interface KeeperReader {
   creditPeriods(member: string): Promise<[bigint, bigint, bigint, boolean] | readonly unknown[]>;
   inCompliance(member: string): Promise<boolean>;
-  cycleOf(member: string): Promise<{ missedInRow: bigint | number; cureNoticeAt: bigint | number }>;
-  creditTerms(): Promise<{ cureWindow: bigint | number }>;
-}
-
-export interface KeeperWriter {
-  syncCreditPeriod(member: string): Promise<{ hash: string; wait: (confirms?: number) => Promise<{ logs: ReadonlyArray<{ topics: ReadonlyArray<string>; data: string }> } | null> }>;
+  inDefault(member: string): Promise<boolean>;
+  cycleStateOf(member: string): Promise<CycleStateLite>;
+  totalDrawnOf(member: string): Promise<bigint>;
 }
 
 export interface KeeperDeps {
+  issuer: string;
   reader: KeeperReader;
-  writer: KeeperWriter;
+  runner: CallRunner;
+  /** syncCreditPeriod: the cycle keeper's switch. */
+  syncMode: KeeperMode;
+  /** triggerDefault: its own switch. */
+  defaultMode: KeeperMode;
   wallets: () => Promise<string[]>;
   notify: (input: { wallet: string; title: string; body: string; dedupeKey: string; data: Record<string, unknown> }) => Promise<unknown>;
   alert: (input: { key: string; subject: string; body: string }) => Promise<unknown>;
@@ -67,15 +99,18 @@ export interface KeeperDeps {
   maxPerRun?: number;
 }
 
+export type DueBecause = 'cycle_end' | 'grace_ended' | 'clean' | 'frozen_cycle_end' | 'computed_default';
+
 export interface KeeperResult {
   wallet: string;
-  action: 'judged' | 'failed';
-  /** Why it was due: the grace ended, the line was already clean, or the cure window passed. */
-  because: 'grace_ended' | 'clean' | 'cure_window_passed';
+  call: 'syncCreditPeriod' | 'triggerDefault';
+  action: 'judged' | 'defaulted' | 'would_send' | 'not_due' | 'failed';
+  because: DueBecause;
   clean?: boolean;
   missedInRow?: number;
   halved?: boolean;
-  cureNotice?: boolean;
+  /** A second miss in a row: the line is frozen until it is paid. */
+  frozen?: boolean;
   txHash?: string;
   reason?: string;
 }
@@ -88,57 +123,60 @@ export interface KeeperRun {
   deferred: number;
 }
 
-interface Due {
+export interface Due {
   wallet: string;
   since: number;
-  because: KeeperResult['because'];
+  call: KeeperResult['call'];
+  because: DueBecause;
 }
 
 /**
- * Whether this member's cycle is ready to be judged now, and since when. Null when it is not: no
- * line, paused, the period still running, still inside the grace with a balance, or a cure notice
- * whose window is still open.
+ * What is due for this member now, and since when; null when nothing is: no line, a period still
+ * running, a frozen line between cycle ends, or (for a pre-2e line) inside its grace with a balance.
  */
-export async function dueFor(reader: KeeperReader, wallet: string, now: number, cureWindow: number): Promise<Due | null> {
-  const [issuedAt, expiration, graceLength, paused] = (await reader.creditPeriods(wallet)) as [bigint, bigint, bigint, boolean];
-  if (Number(issuedAt) === 0 || Number(expiration) === 0 || paused) return null;
+export async function dueFor(reader: KeeperReader, wallet: string, now: number): Promise<Due | null> {
+  const [, expiration, graceLength, paused] = (await reader.creditPeriods(wallet)) as [bigint, bigint, bigint, boolean];
+  // No period: no line, or a default already recorded (the period is deleted).
+  if (Number(expiration) === 0 || paused) return null;
+  const state = await reader.cycleStateOf(wallet);
+  if (BigInt(state.cureAmount) > 0n) {
+    // A second consecutive miss stands unpaid: frozen. Default once computed; until then only a
+    // cycle end that passes (its statement) is worth a sync.
+    if (await reader.inDefault(wallet)) {
+      return { wallet, since: Number(state.cureDueAt), call: 'triggerDefault', because: 'computed_default' };
+    }
+    const end = Number(state.cycleEnd);
+    return end > 0 && now >= end ? { wallet, since: end, call: 'syncCreditPeriod', because: 'frozen_cycle_end' } : null;
+  }
   const expiresAt = Number(expiration);
   if (now < expiresAt) return null;
-  const graceEnds = expiresAt + Number(graceLength);
-
-  // A second miss in a row keeps the period expired with a dated cure notice. Sync it again only
-  // when the cure window has passed: that is the judgement that records default.
-  const cycle = await reader.cycleOf(wallet);
-  const noticeAt = Number(cycle.cureNoticeAt);
-  if (noticeAt > 0) {
-    const defaultFrom = noticeAt + cureWindow;
-    return now >= defaultFrom ? { wallet, since: defaultFrom, because: 'cure_window_passed' } : null;
-  }
-  if (now >= graceEnds) return { wallet, since: graceEnds, because: 'grace_ended' };
-  // Expired, inside the grace: judged straight away if already rebalanced (a Clean Cycle).
-  return (await reader.inCompliance(wallet)) ? { wallet, since: expiresAt, because: 'clean' } : null;
+  const grace = Number(graceLength);
+  if (grace === 0) return { wallet, since: expiresAt, call: 'syncCreditPeriod', because: 'cycle_end' };
+  // A line opened before Phase 2e: judged once its grace ends, or at expiry if already rebalanced.
+  if (now >= expiresAt + grace) return { wallet, since: expiresAt + grace, call: 'syncCreditPeriod', because: 'grace_ended' };
+  return (await reader.inCompliance(wallet)) ? { wallet, since: expiresAt, call: 'syncCreditPeriod', because: 'clean' } : null;
 }
 
 let running = false;
 
-/** One pass: find every member whose cycle is ready, oldest first, and sync up to the bound. */
+/** One pass: find every member with something due, oldest first, and send up to the bound. */
 export async function runCycleKeeper(deps: KeeperDeps): Promise<KeeperRun> {
   const run: KeeperRun = { checked: 0, due: 0, results: [], deferred: 0 };
-  if (running) return run; // never two passes at once: a sync in flight would be sent twice
+  if (running) return run; // never two passes at once: a call in flight would be sent twice
   running = true;
   try {
     const now = deps.now ?? Math.floor(Date.now() / 1000);
     const max = deps.maxPerRun ?? DEFAULT_MAX_PER_RUN;
-    const cureWindow = Number((await deps.reader.creditTerms()).cureWindow);
-    const wallets = await deps.wallets();
+    const modeOf = (call: Due['call']) => (call === 'triggerDefault' ? deps.defaultMode : deps.syncMode);
     const due: Due[] = [];
-    for (const wallet of wallets) {
+    for (const wallet of await deps.wallets()) {
       run.checked += 1;
       try {
-        const d = await dueFor(deps.reader, wallet, now, cureWindow);
-        if (d) due.push(d);
+        const d = await dueFor(deps.reader, wallet, now);
+        // A switch that is off leaves its calls alone; a member in computed default is never synced instead.
+        if (d && modeOf(d.call) !== 'off') due.push(d);
       } catch (error) {
-        run.results.push({ wallet, action: 'failed', because: 'grace_ended', reason: `read: ${chainErrorReason(error)}` });
+        run.results.push({ wallet, call: 'syncCreditPeriod', action: 'failed', because: 'cycle_end', reason: `read: ${chainErrorReason(error)}`.slice(0, 300) });
       }
     }
     due.sort((a, b) => a.since - b.since);
@@ -146,68 +184,117 @@ export async function runCycleKeeper(deps: KeeperDeps): Promise<KeeperRun> {
     run.deferred = Math.max(0, due.length - max);
 
     for (const d of due.slice(0, max)) {
+      const result: KeeperResult = { wallet: d.wallet, call: d.call, action: 'failed', because: d.because };
+      run.results.push(result);
       try {
-        const tx = await deps.writer.syncCreditPeriod(d.wallet);
-        const receipt = await tx.wait(1);
-        const result: KeeperResult = { wallet: d.wallet, action: 'judged', because: d.because, txHash: tx.hash };
-        let defaultFrom: number | null = null;
-        for (const log of receipt?.logs ?? []) {
-          let parsed: ethers.LogDescription | null = null;
-          try {
-            parsed = EVENTS.parseLog({ topics: [...log.topics], data: log.data });
-          } catch {
-            continue;
-          }
-          if (!parsed || String(parsed.args.member).toLowerCase() !== d.wallet.toLowerCase()) continue;
-          if (parsed.name === 'CycleJudged') {
-            result.clean = Boolean(parsed.args.clean);
-            result.missedInRow = Number(parsed.args.missedInRow);
-          } else if (parsed.name === 'UnsecuredLimitHalved') {
+        const call = { to: deps.issuer, data: IFACE.encodeFunctionData(d.call, [d.wallet]) };
+        const sim = await deps.runner.simulate(call);
+        if (sim.kind === 'refused') {
+          Object.assign(result, { action: 'not_due', reason: sim.sentence });
+          continue;
+        }
+        if (sim.kind === 'failed') {
+          result.reason = `simulation ${sim.reason}`;
+          continue;
+        }
+        const drawn = d.call === 'triggerDefault' ? await deps.reader.totalDrawnOf(d.wallet).catch(() => null) : null;
+        if (modeOf(d.call) === 'dry_run') {
+          Object.assign(result, { action: 'would_send', reason: 'dry run: the simulation succeeds' });
+          console.log(`[cycle-keeper] dry run: would send ${d.call}(${d.wallet}) (${d.because})`);
+          await deps
+            .alert({
+              key: `cycle-keeper:dry-run:${d.call}:${d.wallet}:${dayKey(now)}`,
+              subject: `Credit keeper (dry run): would send ${d.call} for ${d.wallet}`,
+              body:
+                `${d.call}(${d.wallet}) on the RevolvingIssuer ${deps.issuer} simulates successfully from ${deps.runner.from} ` +
+                `(${d.because.replace(/_/g, ' ')}). Nothing was sent: dry run.` +
+                (drawn != null ? ` Drawn on the line now: ${usdOf(drawn)}.` : ''),
+            })
+            .catch(() => null);
+          continue;
+        }
+        const sent = await deps.runner.send(call);
+        result.txHash = sent.hash;
+        if (d.call === 'triggerDefault') {
+          result.action = 'defaulted';
+          await deps
+            .alert({
+              key: `credit-default:${d.wallet}:${sent.hash}`,
+              subject: `Credit default recorded for ${d.wallet}`,
+              body:
+                `triggerDefault(${d.wallet}) was sent by the credit keeper from ${deps.runner.from}: ${sent.hash}. ` +
+                `The issuer computed the default itself (two missed cycles, the two-person cure-notice timestamp, the grace over). ` +
+                (drawn != null ? `Drawn on the line before the write-off: ${usdOf(drawn)}. ` : '') +
+                'The period is deleted, this issuer’s share written off and the line closed; pledged collateral is now for the pledge keepers.',
+            })
+            .catch(() => null);
+          continue;
+        }
+        result.action = 'judged';
+        const logs = parseLogs(IFACE, sent.logs).filter((p) => String(p.args.member).toLowerCase() === d.wallet.toLowerCase());
+        for (const p of logs) {
+          if (p.name === 'CycleJudged') {
+            result.clean = Boolean(p.args.clean);
+            result.missedInRow = Number(p.args.missedInRow);
+          } else if (p.name === 'UnsecuredLimitHalved') {
             result.halved = true;
-          } else if (parsed.name === 'CureNotice') {
-            result.cureNotice = true;
-            defaultFrom = Number(parsed.args.defaultFrom);
           }
+        }
+        // A second miss in a row leaves an unpaid cure amount: read it back rather than inferring it
+        // from the events (one sync can judge several cycle ends). Already frozen before: not news.
+        if (d.because !== 'frozen_cycle_end' && result.clean === false) {
+          result.frozen = await deps.reader
+            .cycleStateOf(d.wallet)
+            .then((s) => BigInt(s.cureAmount) > 0n)
+            .catch(() => false);
         }
         if (result.halved) {
           await deps
             .notify({
               wallet: d.wallet,
               title: 'Your cycle closed with a balance',
-              body: 'Your income-backed and Boost limit is halved until you finish a cycle at zero. Clearing your balance this cycle restores it.',
-              dedupeKey: `cycle-missed:${tx.hash}`,
-              data: { txHash: tx.hash },
+              body: 'Your income-backed and Boost limit is halved until you finish a cycle paid as due. Paying what was due this cycle restores it.',
+              dedupeKey: `cycle-missed:${sent.hash}`,
+              data: { txHash: sent.hash },
             })
             .catch(() => null);
         }
-        if (result.cureNotice) {
-          const by = defaultFrom ? new Date(defaultFrom * 1000).toISOString().slice(0, 10) : 'the date in your notice';
+        if (result.frozen) {
           await deps
             .notify({
               wallet: d.wallet,
-              title: 'Cure notice: two cycles missed',
-              body: `Your line is paused. Clear your balance by ${by} to avoid default.`,
-              dedupeKey: `cure-notice:${tx.hash}`,
-              data: { txHash: tx.hash, defaultFrom },
+              title: 'Your line is paused: two cycles missed',
+              body: 'Two cycles in a row closed without the amount due being paid, so your line is paused. Paying what was due reopens it.',
+              dedupeKey: `cycle-frozen:${sent.hash}`,
+              data: { txHash: sent.hash },
+            })
+            .catch(() => null);
+          await deps
+            .alert({
+              key: `cycle-keeper:second-miss:${d.wallet}:${sent.hash}`,
+              subject: `Second missed cycle: ${d.wallet}`,
+              body:
+                `${d.wallet} missed a second cycle in a row (syncCreditPeriod ${sent.hash}); the line is frozen. ` +
+                'Default can only be computed after a cure-notice timestamp: proposeCureNotice then approveCureNotice by two different ATTESTER_ROLE signers, if Clear decides to send the notice.',
             })
             .catch(() => null);
         }
-        run.results.push(result);
       } catch (error) {
-        run.results.push({ wallet: d.wallet, action: 'failed', because: d.because, reason: chainErrorReason(error).slice(0, 300) });
+        result.action = 'failed';
+        result.reason = chainErrorReason(error).slice(0, 300);
       }
     }
 
     const failed = run.results.filter((r) => r.action === 'failed');
     if (failed.length) {
-      for (const f of failed) console.error(`[cycle-keeper] ${f.wallet} failed: ${f.reason}`);
+      for (const f of failed) console.error(`[cycle-keeper] ${f.call} ${f.wallet} failed: ${f.reason}`);
       await deps
         .alert({
-          key: `cycle-keeper:failures:${new Date(now * 1000).toISOString().slice(0, 13)}`,
-          subject: `Cycle keeper: ${failed.length} member(s) not synced`,
+          key: `cycle-keeper:failures:${hourKey(now)}`,
+          subject: `Credit keeper: ${failed.length} call(s) not sent`,
           body:
-            `syncCreditPeriod failed or could not be read for: ${failed.map((f) => `${f.wallet} (${f.reason})`).join('; ')}. ` +
-            'It is permissionless and needs only gas: check the card settler key has ETH, and the RPC. The next run retries.',
+            `Failed or unreadable: ${failed.map((f) => `${f.call} ${f.wallet} (${f.reason})`).join('; ')}. ` +
+            'syncCreditPeriod and triggerDefault are permissionless and need only gas: check the card settler key has ETH, and the RPC. The next run retries.',
         })
         .catch(() => null);
     }
@@ -219,24 +306,24 @@ export async function runCycleKeeper(deps: KeeperDeps): Promise<KeeperRun> {
 
 /* ---- Wiring ---- */
 
-function chainId(): number {
-  const parsed = Number((process.env.SAVINGS_DEFAULT_CHAIN_ID || process.env.SEND_DEFAULT_CHAIN_ID || '').trim());
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 84532;
-}
-
-/** The key that pays the keeper's gas: the card settler, which already writes to the RevolvingIssuer. */
-const keeperKey = () => (process.env.CARD_SETTLER_PRIVATE_KEY || '').trim();
+/**
+ * The cycle keeper (syncCreditPeriod) has run since Phase 2b whenever it is configured, so it stays
+ * on unless CYCLE_KEEPER_ENABLED=0. The default keeper (triggerDefault) is off unless
+ * CREDIT_DEFAULT_KEEPER_ENABLED=1. Each takes `_DRY_RUN=1`.
+ */
+export const cycleSyncMode = (env: Record<string, string | undefined> = process.env) => keeperMode('CYCLE_KEEPER', env, true);
+export const creditDefaultMode = (env: Record<string, string | undefined> = process.env) => keeperMode('CREDIT_DEFAULT_KEEPER', env);
 
 export function isKeeperConfigured(): boolean {
-  return Boolean(getContractAddress(chainId(), 'RevolvingIssuer') && keeperKey() && getPostgresPool());
+  return Boolean(getContractAddress(keeperChainId(), 'RevolvingIssuer') && keeperKey() && getPostgresPool());
 }
 
 /** Whether the issuer judges cycles itself (Phase 2b). Before 2b the renewer rolls periods instead. */
 export async function issuerJudgesCycles(): Promise<boolean> {
-  const address = getContractAddress(chainId(), 'RevolvingIssuer');
+  const address = getContractAddress(keeperChainId(), 'RevolvingIssuer');
   if (!address) return false;
   try {
-    await new ethers.Contract(address, KEEPER_ABI, chainProvider(chainId())).creditTerms();
+    await new ethers.Contract(address, KEEPER_ABI, chainProvider(keeperChainId())).creditTerms();
     return true;
   } catch {
     return false;
@@ -244,7 +331,7 @@ export async function issuerJudgesCycles(): Promise<boolean> {
 }
 
 /** Every member with a wallet on record, from the members database (not the Pay one). */
-async function memberWallets(): Promise<string[]> {
+export async function memberWallets(): Promise<string[]> {
   const pool = getPostgresPool();
   if (!pool) return [];
   const { rows } = await pool.query<{ primary_wallet: string }>(
@@ -255,18 +342,26 @@ async function memberWallets(): Promise<string[]> {
   return rows.map((r) => r.primary_wallet.toLowerCase());
 }
 
-export function keeperDeps(): KeeperDeps | null {
-  const address = getContractAddress(chainId(), 'RevolvingIssuer');
-  if (!address || !keeperKey()) return null;
-  const provider = chainProvider(chainId());
-  const signer = new ethers.Wallet(keeperKey(), provider);
-  const maxPerRun = Number(process.env.CYCLE_KEEPER_MAX_PER_RUN || DEFAULT_MAX_PER_RUN);
+export function keeperDeps(env: Record<string, string | undefined> = process.env): KeeperDeps | null {
+  const chainId = keeperChainId(env);
+  const address = getContractAddress(chainId, 'RevolvingIssuer');
+  if (!address || !keeperKey(env)) return null;
+  const reads = new ethers.Contract(address, KEEPER_ABI, chainProvider(chainId));
   return {
-    reader: new ethers.Contract(address, KEEPER_ABI, provider) as unknown as KeeperReader,
-    writer: new ethers.Contract(address, KEEPER_ABI, writesAs(signer)) as unknown as KeeperWriter,
+    issuer: address,
+    reader: {
+      creditPeriods: (m) => reads.creditPeriods(m),
+      inCompliance: (m) => reads.inCompliance(m),
+      inDefault: (m) => reads.inDefault(m),
+      cycleStateOf: (m) => reads.cycleStateOf(m),
+      totalDrawnOf: (m) => reads.totalDrawnOf(m),
+    },
+    runner: liveRunner(chainId, keeperKey(env)),
+    syncMode: cycleSyncMode(env),
+    defaultMode: creditDefaultMode(env),
     wallets: memberWallets,
     notify: (input) => notificationStore.emit({ ...input, kind: 'credit' }),
     alert: (input) => alertOps(input),
-    maxPerRun: Number.isFinite(maxPerRun) && maxPerRun > 0 ? maxPerRun : DEFAULT_MAX_PER_RUN,
+    maxPerRun: envCount('CYCLE_KEEPER_MAX_PER_RUN', DEFAULT_MAX_PER_RUN, env),
   };
 }

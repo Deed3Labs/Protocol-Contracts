@@ -91,6 +91,8 @@ import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startCycleKeeper } from './jobs/cycleKeeper.js';
 import { startEnforcementKeeper } from './jobs/enforcementKeeper.js';
+import { startPledgeKeepers } from './jobs/pledgeKeeper.js';
+import { startQueueFillKeeper } from './jobs/queueFillKeeper.js';
 import { startTermLimitReviewer } from './jobs/termLimitReviewer.js';
 import { startOffersGranter } from './jobs/offersGranter.js';
 import { startReconciler } from './jobs/reconciler.js';
@@ -448,14 +450,22 @@ async function startServer() {
     startSessionCleanup();
     // Nothing else rolls a cycle over: without this every member's period runs out and stays out.
     startCreditPeriodRenewer();
-    // Phase 2b: cycles are judged only when somebody syncs them. This does, once each is due.
+    // Phase 2b: cycles are judged only when somebody syncs them. This does, once each is due, and
+    // records a computed default (triggerDefault) once its own switch is on. docs/operators/keepers.md.
     startCycleKeeper().catch((error) => {
       console.error('Failed to start the cycle keeper:', error);
     });
-    // Phase 2b: settle an excess after a missed cycle, and notice and settle Earn shortfalls.
+    // Phase 2b/2f: notice an Earn shortfall (and clear a closed one).
     startEnforcementKeeper().catch((error) => {
       console.error('Failed to start the enforcement keeper:', error);
     });
+    // Decision 53: settle a default or a shortfall past its wait from pledged pool shares
+    // (enforce, settle, cancelExcess) and pledged bonds (payPledged). Off unless switched on.
+    startPledgeKeepers().catch((error) => {
+      console.error('Failed to start the pledge keepers:', error);
+    });
+    // Decision 53: fill the Yield Pool's queue when it has cash for it. Off unless switched on.
+    startQueueFillKeeper();
     // Nothing else sets a term limit: without this a member's split plans all revert at zero.
     startTermLimitReviewer();
     // Nothing else gives a new member the co-op's $10, or takes an unspent one back.

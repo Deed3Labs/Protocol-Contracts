@@ -31,6 +31,7 @@ const DEFAULTS: Record<string, string> = {
   PayoutPool: 'PayoutPool',
   MerchantRegistry: 'MerchantRegistry',
   Liquidator: 'Liquidator',
+  PoolShareEnforcer: 'PoolShareEnforcer',
   CLRUSD: 'ClearUSDUpgradeable',
   ESADepositVault: 'ESADepositVault',
 };
